@@ -1,0 +1,26 @@
+{
+  "title": "Supercheck API",
+  "description": "REST API documentation and OpenAPI specification",
+  "root": true,
+  "icon": "Braces",
+  "pages": [
+    "---Reference---",
+    "authentication",
+    "endpoints",
+    "errors",
+    "---OpenAPI---",
+    "system",
+    "cli-tokens",
+    "jobs",
+    "trigger-keys",
+    "runs",
+    "tests",
+    "variables",
+    "monitors",
+    "tags",
+    "notifications",
+    "alerts",
+    "audit",
+    "status-pages"
+  ]
+}

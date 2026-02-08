@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { format } from "date-fns";
 import {
@@ -13,13 +12,23 @@ import {
   Loader2,
   CheckCircle,
   Ban,
-  Shield
+  Shield,
+  Clock,
+  User,
 } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { ApiKeyDialog } from "./api-key-dialog";
 import { useProjectContext } from "@/hooks/use-project-context";
 import { canDeleteJobs } from "@/lib/rbac/client-permissions";
 import { normalizeRole } from "@/lib/rbac/role-normalizer";
+import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -164,9 +173,9 @@ export function CicdSettings({ jobId, onChange }: CicdSettingsProps) {
     const daysUntilExpiry = Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 
     if (daysUntilExpiry < 0) {
-      return { status: "expired", text: "Expired", className: "bg-red-100 text-red-800 border-red-200" };
+      return { status: "expired", text: "Expired", className: "bg-red-500/10 text-red-500" };
     } else if (daysUntilExpiry <= 7) {
-      return { status: "expiring", text: `Expires in ${daysUntilExpiry} day${daysUntilExpiry === 1 ? '' : 's'}`, className: "bg-orange-100 text-orange-800 border-orange-200" };
+      return { status: "expiring", text: `Expires in ${daysUntilExpiry}d`, className: "bg-amber-500/10 text-amber-600 dark:text-amber-400" };
     }
 
     return null;
@@ -176,16 +185,24 @@ export function CicdSettings({ jobId, onChange }: CicdSettingsProps) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-xl font-semibold">CI/CD Integration</CardTitle>
+          <CardTitle className="text-lg font-semibold flex items-center gap-2">
+            <Key className="h-5 w-5 text-muted-foreground" />
+            API Keys
+          </CardTitle>
           <CardDescription>
-            Configure API access for continuous integration and deployment workflows
+            Create and manage API keys for automated job execution
           </CardDescription>
         </CardHeader>
         <CardContent>
           <Alert variant="destructive">
             <AlertTriangle className="h-4 w-4" />
-            <AlertTitle>Error</AlertTitle>
-            <AlertDescription>{error}</AlertDescription>
+            <AlertTitle>Failed to load API keys</AlertTitle>
+            <AlertDescription className="flex items-center justify-between">
+              <span>{error}</span>
+              <Button variant="outline" size="sm" onClick={loadApiKeys} className="ml-4 shrink-0">
+                Retry
+              </Button>
+            </AlertDescription>
           </Alert>
         </CardContent>
       </Card>
@@ -193,174 +210,224 @@ export function CicdSettings({ jobId, onChange }: CicdSettingsProps) {
   }
 
   return (
-    <div className="space-y-6">
-      {/* API Keys Section */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="text-xl font-semibold">API Keys</CardTitle>
-              <CardDescription>
-                Create and manage API keys for automated job execution
-              </CardDescription>
+    <TooltipProvider>
+      <div className="space-y-6">
+        {/* API Keys Section */}
+        <Card>
+          <CardHeader className="pb-4">
+            <div className="flex items-start justify-between gap-4">
+              <div className="space-y-1">
+                <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                  <Key className="h-5 w-5 text-muted-foreground" />
+                  API Keys
+                </CardTitle>
+                <CardDescription>
+                  Create and manage API keys for automated job execution
+                </CardDescription>
+              </div>
+              <ApiKeyDialog jobId={jobId} onApiKeyCreated={handleApiKeyCreated} />
             </div>
-            <ApiKeyDialog jobId={jobId} onApiKeyCreated={handleApiKeyCreated} />
-          </div>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="space-y-2">
-              {/* Skeleton matching API key card structure */}
-              {[...Array(2)].map((_, i) => (
-                <div key={i} className="flex items-center justify-between p-3 border rounded-lg bg-card">
-                  <div className="flex-1 space-y-1">
-                    <div className="flex items-center gap-2">
-                      <Skeleton className="h-4 w-4" />
-                      <Skeleton className="h-4 w-24" />
-                      <Skeleton className="h-4 w-12 rounded-full" />
-                    </div>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <Skeleton className="h-3 w-32" />
-                      <Skeleton className="h-3 w-24" />
-                      <Skeleton className="h-3 w-28" />
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Skeleton className="h-8 w-8" />
-                    <Skeleton className="h-8 w-8 ml-1" />
-                  </div>
+          </CardHeader>
+          <CardContent>
+            {isLoading ? (
+              <div className="flex flex-col items-center justify-center py-12">
+                <SuperCheckLoading size="sm" message="Loading API keys..." />
+              </div>
+            ) : apiKeys.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted mb-4">
+                  <Key className="h-6 w-6 text-muted-foreground" />
                 </div>
-              ))}
-            </div>
-          ) : apiKeys.length === 0 ? (
-            <div className="text-center py-6">
-              <Key className="h-6 w-6 text-muted-foreground/90 mx-auto mb-2" />
-              <h3 className="text-sm font-medium text-muted-foreground mb-1">No API Keys</h3>
-              <p className="text-xs text-muted-foreground mb-2">
-                Create your first API key to enable remote job triggering
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {apiKeys.map((key) => {
-                const expiryStatus = getExpiryStatus(key.expiresAt);
-                const isExpired = expiryStatus?.status === "expired";
-                return (
-                  <div
-                    key={key.id}
-                    className={`flex items-center justify-between p-3 border rounded-lg ${isExpired ? 'bg-red-50 border-red-200' : 'bg-card'
-                      }`}
-                  >
-                    <div className="flex-1 space-y-1">
-                      <div className="flex items-center gap-2">
-                        <Key className="h-4 w-4 text-muted-foreground" />
-                        <span className="font-semibold text-sm">{key.name}</span>
-                        {key.enabled && !isExpired && (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-green-100 text-green-800 border border-green-200">
-                            Active
+                <h3 className="text-sm font-medium mb-1">No API keys yet</h3>
+                <p className="text-sm text-muted-foreground max-w-sm">
+                  Create your first API key to enable remote job triggering from your CI/CD pipelines.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {apiKeys.map((key) => {
+                  const expiryStatus = getExpiryStatus(key.expiresAt);
+                  const isExpired = expiryStatus?.status === "expired";
+                  return (
+                    <div
+                      key={key.id}
+                      className={cn(
+                        "group flex items-center justify-between p-4 border rounded-lg transition-colors",
+                        isExpired
+                          ? "bg-red-500/5 border-red-500/20"
+                          : "hover:bg-muted/50"
+                      )}
+                    >
+                      <div className="flex-1 min-w-0 space-y-1.5">
+                        <div className="flex items-center gap-2.5 flex-wrap">
+                          <Key className="h-4 w-4 text-muted-foreground shrink-0" />
+                          <span className="font-medium text-sm">{key.name}</span>
+                          {key.enabled && !isExpired && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-green-500/10 text-green-600 dark:text-green-400">
+                              <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+                              Active
+                            </span>
+                          )}
+                          {!key.enabled && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-muted text-muted-foreground">
+                              Disabled
+                            </span>
+                          )}
+                          {expiryStatus && (
+                            <span className={cn(
+                              "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium",
+                              expiryStatus.className
+                            )}>
+                              {expiryStatus.text}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-x-4 gap-y-1 text-xs text-muted-foreground flex-wrap ml-[26px]">
+                          <span className="flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            {format(new Date(key.createdAt), "MMM d, yyyy")}
                           </span>
-                        )}
-                        {!key.enabled && (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-gray-100 text-gray-800 border border-gray-200">
-                            Disabled
+                          <span>
+                            {key.expiresAt
+                              ? `Expires ${format(new Date(key.expiresAt), "MMM d, yyyy")}`
+                              : "No expiry"}
                           </span>
-                        )}
-                        {expiryStatus && (
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border ${expiryStatus.className}`}>
-                            {expiryStatus.text}
-                          </span>
-                        )}
+                          {key.createdByName && (
+                            <span className="flex items-center gap-1">
+                              <User className="h-3 w-3" />
+                              {key.createdByName}
+                            </span>
+                          )}
+                          {key.lastRequest && (
+                            <span>
+                              Last used {format(new Date(key.lastRequest), "MMM d, yyyy")}
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5 flex-wrap">
-                        <span>Created: {format(new Date(key.createdAt), "PPP")}</span>
-                        <span className="mx-1">·</span>
-                        <span>Expires: {key.expiresAt ? format(new Date(key.expiresAt), "PPP") : "No expiry"}</span>
-                        {key.createdByName && <span className="mx-1">·</span>}
-                        {key.createdByName && <span>Created by: {key.createdByName}</span>}
-                        {key.lastRequest && <span className="mx-1">·</span>}
-                        {key.lastRequest && <span>Last used: {format(new Date(key.lastRequest), "PPP")}</span>}
+                      <div className="flex items-center gap-1 ml-4 shrink-0">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => handleToggleEnabled(key.id, key.enabled)}
+                              disabled={operationLoadingStates[key.id] === 'toggle'}
+                            >
+                              {operationLoadingStates[key.id] === 'toggle' ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : key.enabled ? (
+                                <CheckCircle className="h-4 w-4 text-green-500" />
+                              ) : (
+                                <Ban className="h-4 w-4 text-muted-foreground" />
+                              )}
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom">
+                            {key.enabled ? "Disable key" : "Enable key"}
+                          </TooltipContent>
+                        </Tooltip>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className={cn(
+                                "h-8 w-8",
+                                canDeleteApiKeys
+                                  ? "text-muted-foreground hover:text-red-600 hover:bg-red-500/10"
+                                  : "text-muted-foreground/50 cursor-not-allowed"
+                              )}
+                              onClick={() => handleDelete(key.id)}
+                              disabled={!canDeleteApiKeys || operationLoadingStates[key.id] === 'delete'}
+                            >
+                              {operationLoadingStates[key.id] === 'delete' ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Trash2 className="h-4 w-4" />
+                              )}
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom">
+                            {canDeleteApiKeys ? "Delete key" : "Insufficient permissions"}
+                          </TooltipContent>
+                        </Tooltip>
                       </div>
                     </div>
-                    <div className="flex items-center gap-1">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleToggleEnabled(key.id, key.enabled)}
-                        disabled={operationLoadingStates[key.id] === 'toggle'}
-                        className={key.enabled ? "text-green-600 hover:text-green-700 hover:bg-green-50" : "text-gray-500 hover:text-gray-600 hover:bg-red-50"}
-                        title={key.enabled ? "Disable key" : "Enable key"}
-                      >
-                        {operationLoadingStates[key.id] === 'toggle' ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          key.enabled ? <CheckCircle className="h-4 w-4" /> : <Ban className="h-4 w-4" />
-                        )}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleDelete(key.id)}
-                        disabled={!canDeleteApiKeys || operationLoadingStates[key.id] === 'delete'}
-                        className={`ml-1 ${!canDeleteApiKeys ? 'opacity-50 cursor-not-allowed text-muted-foreground' : 'text-red-600 hover:text-red-700 hover:bg-red-50'} disabled:opacity-50`}
-                        title={canDeleteApiKeys ? "Delete key" : "Insufficient permissions to delete API keys"}
-                      >
-                        {operationLoadingStates[key.id] === 'delete' ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Trash2 className="h-4 w-4" />
-                        )}
-                      </Button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
-      {/* Security Best Practices */}
-      <div className="bg-muted/30 p-4 rounded-lg">
-        <div className="flex items-center gap-2 mb-2">
-          <Shield className="h-4 w-4 " />
-          <h4 className="font-medium text-sm">  Security Best Practices:</h4>
-        </div>
-        <div className="text-xs text-muted-foreground space-y-2">
-          <p>• Monitor and rotate API keys regularly for enhanced security</p>
-          <p>• Set appropriate expiration dates for temporary access</p>
-          <p>• Store keys securely using environment variables or secrets management</p>
-          <p>• Use descriptive names to identify key purposes</p>
-        </div>
+        {/* Security Best Practices */}
+        <Card className="bg-muted/30 border-dashed">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <Shield className="h-4 w-4 text-muted-foreground" />
+              Security Best Practices
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ul className="space-y-2 text-xs text-muted-foreground">
+              <li className="flex items-start gap-2">
+                <span className="h-1 w-1 rounded-full bg-muted-foreground mt-1.5 shrink-0" />
+                Monitor and rotate API keys regularly for enhanced security
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="h-1 w-1 rounded-full bg-muted-foreground mt-1.5 shrink-0" />
+                Set appropriate expiration dates for temporary access
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="h-1 w-1 rounded-full bg-muted-foreground mt-1.5 shrink-0" />
+                Store keys securely using environment variables or secrets management
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="h-1 w-1 rounded-full bg-muted-foreground mt-1.5 shrink-0" />
+                Use descriptive names to identify key purposes
+              </li>
+            </ul>
+          </CardContent>
+        </Card>
+
+        {/* Delete Confirmation Dialog */}
+        <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle className="flex items-center gap-2">
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-red-500/10">
+                  <AlertTriangle className="h-4 w-4 text-red-500" />
+                </div>
+                Delete API Key
+              </AlertDialogTitle>
+              <AlertDialogDescription className="pt-2">
+                Are you sure you want to delete this API key? Any CI/CD pipelines using
+                this key will immediately lose the ability to trigger this job. This action
+                cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter className="pt-2">
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={confirmDelete}
+                disabled={keyToDelete ? operationLoadingStates[keyToDelete] === 'delete' : false}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                {keyToDelete && operationLoadingStates[keyToDelete] === 'delete' ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    Deleting...
+                  </>
+                ) : (
+                  'Delete Key'
+                )}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
-
-      {/* Delete Confirmation Dialog */}
-      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete API Key</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete this API key? This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={confirmDelete}
-              disabled={keyToDelete ? operationLoadingStates[keyToDelete] === 'delete' : false}
-              className="bg-red-600 hover:bg-red-700 disabled:opacity-50"
-            >
-              {keyToDelete && operationLoadingStates[keyToDelete] === 'delete' ? (
-                <div className="flex items-center gap-2">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Deleting...
-                </div>
-              ) : (
-                'Delete'
-              )}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
+    </TooltipProvider>
   );
 }

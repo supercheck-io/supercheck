@@ -1,0 +1,241 @@
+---
+title: CI/CD Integration
+description: Use Supercheck CLI in GitHub Actions, GitLab CI, and Docker pipelines
+---
+
+Supercheck CLI integrates with any CI/CD platform. Trigger jobs, wait for results, and gate deployments based on test outcomes.
+
+## GitHub Actions
+
+### Reusable Workflow
+
+Use the official reusable workflow to run Supercheck in your GitHub Actions pipeline:
+
+```yaml title=".github/workflows/supercheck.yml"
+name: Supercheck Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    uses: supercheck-io/supercheck/.github/workflows/supercheck-cli.yml@main
+    secrets:
+      SUPERCHECK_TOKEN: ${{ secrets.SUPERCHECK_TOKEN }}
+    with:
+      job-id: ${{ vars.SUPERCHECK_JOB_ID }}
+      wait: true
+      timeout: 300
+```
+
+### Manual Setup
+
+```yaml title=".github/workflows/e2e.yml"
+name: E2E Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Supercheck CLI
+        run: npm install -g @supercheck/cli
+
+      - name: Run E2E Tests
+        run: supercheck job trigger ${{ vars.JOB_ID }} --wait --json
+        env:
+          SUPERCHECK_TOKEN: ${{ secrets.SUPERCHECK_TOKEN }}
+
+      - name: Deploy Config
+        if: github.ref == 'refs/heads/main'
+        run: supercheck deploy --force
+        env:
+          SUPERCHECK_TOKEN: ${{ secrets.SUPERCHECK_TOKEN }}
+```
+
+### Deployment Gating
+
+Block deployments when tests fail:
+
+```yaml
+- name: Gate Deployment
+  run: |
+    result=$(supercheck job trigger ${{ vars.JOB_ID }} --wait --json)
+    status=$(echo "$result" | jq -r '.status')
+    if [ "$status" != "completed" ]; then
+      echo "Tests failed — blocking deployment"
+      exit 1
+    fi
+  env:
+    SUPERCHECK_TOKEN: ${{ secrets.SUPERCHECK_TOKEN }}
+```
+
+---
+
+## GitLab CI
+
+### Basic Template
+
+```yaml title=".gitlab-ci.yml"
+stages:
+  - test
+
+supercheck:
+  stage: test
+  image: node:20-slim
+  before_script:
+    - npm install -g @supercheck/cli
+  script:
+    - supercheck health
+    - supercheck job trigger $SUPERCHECK_JOB_ID --wait --json
+  variables:
+    SUPERCHECK_TOKEN: $SUPERCHECK_TOKEN
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+```
+
+### With Monitoring-as-Code Deploy
+
+```yaml title=".gitlab-ci.yml"
+stages:
+  - test
+  - deploy
+
+supercheck-test:
+  stage: test
+  image: node:20-slim
+  before_script:
+    - npm install -g @supercheck/cli
+  script:
+    - supercheck job trigger $SUPERCHECK_JOB_ID --wait
+  variables:
+    SUPERCHECK_TOKEN: $SUPERCHECK_TOKEN
+
+supercheck-deploy:
+  stage: deploy
+  image: node:20-slim
+  before_script:
+    - npm install -g @supercheck/cli
+  script:
+    - supercheck diff
+    - supercheck deploy --force
+  variables:
+    SUPERCHECK_TOKEN: $SUPERCHECK_TOKEN
+  only:
+    - main
+```
+
+---
+
+## Docker
+
+Run the CLI in Docker using the official Node.js image:
+
+```bash
+# Trigger a job
+docker run --rm \
+  -e SUPERCHECK_TOKEN=$SUPERCHECK_TOKEN \
+  node:20-slim sh -c "npm install -g @supercheck/cli && supercheck job trigger <job-id> --wait"
+
+# Deploy config (mount project directory)
+docker run --rm \
+  -e SUPERCHECK_TOKEN=$SUPERCHECK_TOKEN \
+  -v $(pwd):/app \
+  -w /app \
+  node:20-slim sh -c "npm install -g @supercheck/cli && supercheck deploy --force"
+
+# Health check
+docker run --rm node:20-slim sh -c "npm install -g @supercheck/cli && supercheck health"
+```
+
+### Docker Compose
+
+```yaml title="docker-compose.yml"
+services:
+  supercheck:
+    image: node:20-slim
+    environment:
+      SUPERCHECK_TOKEN: ${SUPERCHECK_TOKEN}
+    volumes:
+      - .:/app
+    working_dir: /app
+    entrypoint: ["sh", "-c"]
+    command: ["npm install -g @supercheck/cli && supercheck deploy --force"]
+```
+
+---
+
+## Environment Setup
+
+### Required Secrets
+
+Set these in your CI/CD platform's secret management:
+
+| Secret | Description |
+|--------|-------------|
+| `SUPERCHECK_TOKEN` | CLI token (`sck_live_*`) |
+
+### Optional Variables
+
+| Variable | Description |
+|----------|-------------|
+| `SUPERCHECK_URL` | Self-hosted instance URL |
+| `SUPERCHECK_JOB_ID` | Default job ID for triggers |
+
+### Self-Hosted
+
+```yaml
+env:
+  SUPERCHECK_TOKEN: ${{ secrets.SUPERCHECK_TOKEN }}
+  SUPERCHECK_URL: https://supercheck.yourdomain.com
+```
+
+---
+
+## Exit Code Handling
+
+The CLI uses specific exit codes for CI/CD scripting:
+
+| Code | Meaning | CI/CD Action |
+|------|---------|--------------|
+| `0` | Success | Continue pipeline |
+| `1` | Test failure | Block deployment |
+| `2` | Auth error | Check token configuration |
+| `3` | Config error | Fix `supercheck.config.ts` |
+| `4` | API error | Check connectivity |
+| `5` | Timeout | Increase `--timeout` value |
+
+```yaml
+# Example: Handle exit codes in GitHub Actions
+- name: Run Tests
+  id: tests
+  continue-on-error: true
+  run: supercheck job trigger $JOB_ID --wait
+
+- name: Report Results
+  if: steps.tests.outcome == 'failure'
+  run: echo "Tests failed — check Supercheck dashboard"
+```
+
+---
+
+## Best Practices
+
+- **Use `--json` output** for machine-readable results in pipelines
+- **Set `--timeout`** appropriate to your test suite duration
+- **Use trigger keys** (`sck_trigger_*`) for single-job CI/CD triggers (least-privilege)
+- **Cache the CLI** in your CI/CD environment to speed up builds
+- **Use `--wait`** to block the pipeline until tests complete
+- **Run `supercheck diff`** in PRs to preview config changes before merge

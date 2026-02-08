@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { motion } from "framer-motion";
 import Image from "next/image";
 import { useEffect, useState } from "react";
 import {
@@ -17,10 +16,24 @@ import {
   ChartSpline,
   BookOpenText,
   Chromium,
+  Sparkles,
+  Terminal,
 } from "lucide-react";
 import { SiteFooter } from "../../components/site-footer";
 
 const features = [
+  {
+    icon: Sparkles,
+    title: "AI-Powered",
+    description:
+      "Create, debug, and analyze Playwright tests, k6 scripts, and monitors with AI assistance.",
+  },
+  {
+    icon: Terminal,
+    title: "Supercheck CLI",
+    description:
+      "Define tests, monitors, and jobs in code. Deploy with supercheck deploy, integrate with any CI/CD pipeline.",
+  },
   {
     icon: Zap,
     title: "Parallel Execution",
@@ -71,56 +84,7 @@ const features = [
   },
 ];
 
-const featureVariants = {
-  container: {
-    hidden: {},
-    visible: {
-      transition: {
-        staggerChildren: 0.1,
-        delayChildren: 0.2,
-      },
-    },
-  },
-  item: {
-    hidden: {
-      opacity: 0,
-      y: 20,
-      scale: 0.95,
-    },
-    visible: {
-      opacity: 1,
-      y: 0,
-      scale: 1,
-      transition: {
-        type: "spring" as const,
-        bounce: 0.1,
-        duration: 0.6,
-      },
-    },
-  },
-};
 
-
-
-const transitionVariants = {
-  item: {
-    hidden: {
-      opacity: 0,
-      filter: "blur(4px)",
-      y: 8,
-    },
-    visible: {
-      opacity: 1,
-      filter: "blur(0px)",
-      y: 0,
-      transition: {
-        type: "spring" as const,
-        bounce: 0.15,
-        duration: 0.8,
-      },
-    },
-  },
-};
 
 export default function HomePage() {
   const [isDark, setIsDark] = useState(false);
@@ -202,7 +166,7 @@ export default function HomePage() {
           </Link>
           <div className="flex items-center gap-1 md:gap-4">
             <Link
-              href="/docs"
+              href="/docs/app/welcome"
               className="p-2 md:px-3 md:py-2 rounded-lg inline-flex items-center gap-1.5 text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition"
               aria-label="Documentation"
             >
@@ -239,17 +203,11 @@ export default function HomePage() {
                 className="p-2 rounded-lg text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition"
                 aria-label="Toggle theme"
               >
-                <motion.div
-                  initial={{ rotate: 0 }}
-                  animate={{ rotate: isDark ? 180 : 0 }}
-                  transition={{ duration: 0.5 }}
-                >
-                  {isDark ? (
-                    <Sun className="size-5" />
-                  ) : (
-                    <Moon className="size-5" />
-                  )}
-                </motion.div>
+                {isDark ? (
+                  <Sun className="size-5" />
+                ) : (
+                  <Moon className="size-5" />
+                )}
               </button>
             )}
           </div>
@@ -261,17 +219,14 @@ export default function HomePage() {
           <div className="relative pt-28 pb-12">
             <div className="mx-auto max-w-6xl px-6 relative z-20">
               <div className="text-center mx-auto max-w-5xl">
-                <motion.div
-                  initial="hidden"
-                  animate="visible"
-                  variants={transitionVariants}
-                  className="mx-auto"
+                <div
+                  className="mx-auto animate-fade-in-up"
                 >
                   <Link
                     href="https://demo.supercheck.dev/"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="group mx-auto flex w-fit items-center gap-4 rounded-full border border-white/20 dark:border-white/20 bg-white/10 dark:bg-white/10 px-4 py-2 shadow-md shadow-zinc-950/5 transition-colors duration-300 dark:shadow-zinc-950 backdrop-blur-sm"
+                    className="group mx-auto flex w-fit items-center gap-4 rounded-full border border-gray-200 dark:border-white/10 bg-white/60 dark:bg-zinc-900/50 px-4 py-2 shadow-md shadow-zinc-950/5 transition-colors duration-300 hover:bg-white/80 dark:hover:bg-zinc-800/50 dark:shadow-zinc-950 backdrop-blur-md"
                   >
                     <span className="text-base text-gray-900 dark:text-gray-100">
                       Checkout Live Demo
@@ -289,56 +244,25 @@ export default function HomePage() {
                       </div>
                     </div>
                   </Link>
-                </motion.div>
+                </div>
 
-                <motion.h1
-                  initial={{ opacity: 0, filter: "blur(4px)", y: 8 }}
-                  animate={{ opacity: 1, filter: "blur(0px)", y: 0 }}
-                  transition={{
-                    type: "spring",
-                    bounce: 0.15,
-                    duration: 0.8,
-                    delay: 0.2,
-                  }}
-                  className="mt-16 text-balance text-3xl font-bold leading-tight text-gray-900 dark:text-white md:text-5xl lg:text-6xl"
+                <h1
+                  className="mt-16 text-balance text-4xl font-extrabold leading-tight text-gray-900 dark:text-white md:text-5xl lg:text-6xl animate-fade-in-up [animation-delay:200ms]"
                 >
-                  Open Source AI-Powered Test Automation & Monitoring Platform
-                </motion.h1>
+                  Open-Source Testing, Monitoring, and Reliability — <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 dark:from-indigo-400 dark:via-purple-400 dark:to-pink-400">as Code</span>
+                </h1>
 
-                <motion.p
-                  initial={{ opacity: 0, filter: "blur(4px)", y: 8 }}
-                  animate={{ opacity: 1, filter: "blur(0px)", y: 0 }}
-                  transition={{
-                    type: "spring",
-                    bounce: 0.15,
-                    duration: 0.8,
-                    delay: 0.4,
-                  }}
-                  className="mx-auto mt-8 max-w-4xl text-balance text-xl leading-relaxed text-gray-600 dark:text-gray-300"
+                <p
+                  className="mx-auto mt-6 max-w-4xl text-balance text-lg md:text-xl leading-relaxed text-gray-600 dark:text-gray-300 animate-fade-in-up [animation-delay:400ms]"
                 >
-                  Empowering development and SRE teams with a scalable,
-                  distributed, and robust platform to drive faster delivery and
-                  higher software quality.
-                </motion.p>
+                  The unified platform for AI-powered Playwright testing, multi-region k6 load testing & uptime monitoring, and subscriber-ready status pages.
+                </p>
 
               </div>
 
               {/* YouTube Video Demo - Full Width */}
-              <motion.div
-                initial={{
-                  opacity: 0,
-                  filter: "blur(3px)",
-                  y: 12,
-                  scale: 0.98,
-                }}
-                animate={{ opacity: 1, filter: "blur(0px)", y: 0, scale: 1 }}
-                transition={{
-                  type: "spring",
-                  bounce: 0.1,
-                  duration: 0.9,
-                  delay: 1,
-                }}
-                className="mt-12 md:mt-16 mx-auto max-w-7xl px-2 sm:px-4 md:px-8"
+              <div
+                className="mt-12 md:mt-16 mx-auto max-w-7xl px-2 sm:px-4 md:px-8 animate-fade-in-up [animation-delay:600ms]"
               >
                 <div className="relative w-full aspect-video rounded-lg md:rounded-xl border border-gray-200 dark:border-gray-800 shadow-2xl overflow-hidden bg-gray-900">
                   {isVideoPlaying ? (
@@ -371,10 +295,8 @@ export default function HomePage() {
 
                       {/* YouTube play button - clean and professional */}
                       <div className="absolute inset-0 flex items-center justify-center pb-8 md:pb-12">
-                        <motion.div
-                          whileHover={{ scale: 1.1 }}
-                          whileTap={{ scale: 0.95 }}
-                          className="cursor-pointer"
+                        <div
+                          className="cursor-pointer hover:scale-110 active:scale-95 transition-transform duration-200"
                         >
                           {/* Custom YouTube-style play button SVG */}
                           <svg
@@ -389,7 +311,7 @@ export default function HomePage() {
                             {/* White play triangle */}
                             <path d="M 45,24 27,14 27,34" fill="#FFFFFF" />
                           </svg>
-                        </motion.div>
+                        </div>
                       </div>
 
                       {/* "Watch Demo" text - positioned below play button */}
@@ -401,25 +323,21 @@ export default function HomePage() {
                     </button>
                   )}
                 </div>
-              </motion.div>
+              </div>
             </div>
           </div>
         </section>
 
         <section className="py-2 mb-10">
           <div className="mx-auto max-w-6xl space-y-6 px-6">
-            <motion.div
-              variants={featureVariants.container}
-              initial="hidden"
-              whileInView="visible"
-              viewport={{ once: true }}
+            <div
               className="relative mx-auto grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4"
             >
-              {features.map(({ icon: Icon, title, description }) => (
-                <motion.div
+              {features.map(({ icon: Icon, title, description }, i) => (
+                <div
                   key={title}
-                  variants={featureVariants.item}
-                  className="rounded-lg border border-gray-200/30 dark:border-gray-800/30 bg-white/95 dark:bg-gray-950/95 p-6 space-y-3"
+                  className="rounded-lg border border-gray-200/30 dark:border-gray-800/30 bg-white/95 dark:bg-gray-950/95 p-6 space-y-3 animate-fade-in-up"
+                  style={{ animationDelay: `${800 + i * 100}ms` }}
                 >
                   <div className="flex items-center gap-2">
                     <Icon className="size-4" />
@@ -428,9 +346,9 @@ export default function HomePage() {
                   <p className="text-gray-600 dark:text-gray-400 text-sm">
                     {description}
                   </p>
-                </motion.div>
+                </div>
               ))}
-            </motion.div>
+            </div>
           </div>
         </section>
       </main>

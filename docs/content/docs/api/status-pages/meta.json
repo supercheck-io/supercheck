@@ -1,0 +1,12 @@
+{
+  "title": "Status Pages",
+  "icon": "Tally4",
+  "pages": [
+    "listStatusPages",
+    "checkStatusPageSubdomain",
+    "getStatusPage",
+    "uploadStatusPageAsset",
+    "getStatusPageRss",
+    "deleteStatusPage"
+  ]
+}

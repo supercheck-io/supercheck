@@ -74,9 +74,9 @@ RUN mkdir -p /home/nextjs/.npm && \
     chown -R nextjs:nodejs /home/nextjs && \
     chown -R nextjs:nodejs /app
 
-# Copy standalone build first (includes server.js and minimal node_modules)
-# Note: Next.js standalone output mirrors the WORKDIR structure, so server.js is in .next/standalone/app/
-COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone/app ./
+# Copy standalone build (includes server.js and minimal node_modules)
+# Next.js 16 places standalone output directly in .next/standalone/ (no WORKDIR mirroring)
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 

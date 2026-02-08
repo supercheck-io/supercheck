@@ -1,0 +1,13 @@
+{
+  "title": "Runs API",
+  "icon": "ClipboardList",
+  "pages": [
+    "listRuns",
+    "getRun",
+    "getRunPermissions",
+    "getRunStatus",
+    "streamRunOutput",
+    "cancelRun",
+    "deleteRun"
+  ]
+}

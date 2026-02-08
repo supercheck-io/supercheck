@@ -4,6 +4,8 @@
    Validates k6 performance test scripts for common issues
 =================================== */
 
+import { transpileTypeScript } from "./ts-transpiler";
+
 export interface K6ValidationResult {
   valid: boolean;
   errors: string[];
@@ -48,6 +50,19 @@ export function validateK6Script(
     };
   }
 
+  // Transpile TypeScript to JavaScript for regex-based validation.
+  // On failure, fall back to the original script so import checks still work.
+  const transpileResult = transpileTypeScript(script);
+  let jsCode: string;
+  if (transpileResult.success) {
+    jsCode = transpileResult.code;
+  } else {
+    jsCode = script;
+    warnings.push(
+      `TypeScript transpilation failed: ${transpileResult.message}. Validation will use the original source.`
+    );
+  }
+
   const normalizedType = options.selectedTestType?.toLowerCase();
   const scriptLooksLikeK6 = isK6Script(script);
   const isPerformanceType =
@@ -70,19 +85,16 @@ export function validateK6Script(
     };
   }
 
-  // Required: Must have k6 imports
-  if (!k6ImportPattern.test(script)) {
-    errors.push(
-      'Script must import from k6 modules (e.g., import http from "k6/http")'
-    );
-  }
-
   // Required: Must have default export function
+  // Use original script for structural checks because esbuild transforms
+  // 'export default function()' into 'export { stdin_default as default }'
+  // which breaks the regex pattern match
   if (!/export\s+default\s+(?:async\s+)?function/.test(script)) {
     errors.push('Script must export a default function');
   }
 
   // Warning: Recommend options export for test configuration
+  // Use original script - esbuild restructures exports
   if (!/export\s+const\s+options\s*=/.test(script)) {
     warnings.push(
       'Consider adding "export const options" to configure VUs, duration, and thresholds'
@@ -107,30 +119,32 @@ export function validateK6Script(
     const nodeModulePattern = new RegExp(
       `require\\s*\\(\\s*['"]${mod}['"]\\s*\\)|import\\s+.*\\s+from\\s+['"]${mod}['"]`
     );
-    if (nodeModulePattern.test(script)) {
+    if (nodeModulePattern.test(jsCode)) {
       errors.push(
         `k6 does not support Node.js module "${mod}". Use k6 built-in modules instead.`
       );
     }
   });
 
-  if (PLAYWRIGHT_IMPORT_PATTERNS.some((pattern) => pattern.test(script))) {
+  if (PLAYWRIGHT_IMPORT_PATTERNS.some((pattern) => pattern.test(jsCode))) {
     errors.push(
       "Playwright modules are not supported in k6 performance scripts. Split Playwright tests into a Browser test."
     );
   }
 
   // Warning: Check for console.log usage (recommend using check() instead)
-  if (/console\.log/.test(script)) {
+  if (/console\.log/.test(jsCode)) {
     warnings.push(
       'Consider using k6 check() functions instead of console.log() for validation'
     );
   }
 
   // Warning: Check if thresholds are defined
+  // Use original script for export pattern (esbuild restructures exports)
+  // Use jsCode for thresholds property check (esbuild preserves object literals)
   if (
     /export\s+const\s+options\s*=/.test(script) &&
-    !/thresholds\s*:\s*\{/.test(script)
+    !/thresholds\s*:\s*\{/.test(jsCode)
   ) {
     warnings.push(
       'Consider adding thresholds to define pass/fail criteria for your test'
@@ -139,6 +153,7 @@ export function validateK6Script(
 
   // Error: k6 does not support async/await in default function
   // Use Playwright for browser automation tests instead
+  // Use original script - esbuild restructures exports
   if (/export\s+default\s+async\s+function/.test(script)) {
     errors.push(
       'k6 does not support async/await. For browser testing, use Playwright test type instead.'
@@ -146,7 +161,7 @@ export function validateK6Script(
   }
 
   // Error: Block experimental browser module which is unsupported in our runtime
-  if (/import\s+[\s\S]*?from\s+['"]k6\/browser['"]/.test(script)) {
+  if (/import\s+[\s\S]*?from\s+['"]k6\/browser['"]/.test(jsCode)) {
     errors.push(
       'The k6/browser module is not supported. Use Playwright tests for browser automation.'
     );

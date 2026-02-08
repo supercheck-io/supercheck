@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { requireAuth } from "@/lib/rbac/middleware";
-import { getActiveOrganization } from "@/lib/session";
+import { requireUserAuthContext, isAuthError } from "@/lib/auth-context";
+import { getUserOrgRole } from "@/lib/rbac/middleware";
+import { Role } from "@/lib/rbac/permissions";
 import { billingSettingsService } from "@/lib/services/billing-settings.service";
 import { auditBillingSettingsChange } from "@/lib/audit-log";
 import { z } from "zod";
@@ -11,20 +12,35 @@ import { z } from "zod";
  */
 export async function GET() {
   try {
-    await requireAuth();
-    const activeOrg = await getActiveOrganization();
+    const { userId, organizationId } = await requireUserAuthContext();
 
-    if (!activeOrg) {
+    if (!organizationId) {
       return NextResponse.json(
         { error: "No active organization found" },
         { status: 400 }
       );
     }
 
-    const settings = await billingSettingsService.getSettings(activeOrg.id);
+    // Only org admins/owners can view billing settings
+    const orgRole = await getUserOrgRole(userId, organizationId);
+    const isOrgAdmin = orgRole === Role.ORG_ADMIN || orgRole === Role.ORG_OWNER;
+    if (!isOrgAdmin) {
+      return NextResponse.json(
+        { error: "Insufficient permissions" },
+        { status: 403 }
+      );
+    }
+
+    const settings = await billingSettingsService.getSettings(organizationId);
 
     return NextResponse.json(settings);
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
     console.error("Error fetching billing settings:", error);
     return NextResponse.json(
       { error: "Failed to fetch billing settings" },
@@ -51,13 +67,22 @@ const updateSettingsSchema = z.object({
  */
 export async function PATCH(request: Request) {
   try {
-    const session = await requireAuth();
-    const activeOrg = await getActiveOrganization();
+    const { userId, organizationId } = await requireUserAuthContext();
 
-    if (!activeOrg) {
+    if (!organizationId) {
       return NextResponse.json(
         { error: "No active organization found" },
         { status: 400 }
+      );
+    }
+
+    // Only org admins/owners can modify billing settings
+    const orgRole = await getUserOrgRole(userId, organizationId);
+    const isOrgAdmin = orgRole === Role.ORG_ADMIN || orgRole === Role.ORG_OWNER;
+    if (!isOrgAdmin) {
+      return NextResponse.json(
+        { error: "Insufficient permissions" },
+        { status: 403 }
       );
     }
 
@@ -74,7 +99,7 @@ export async function PATCH(request: Request) {
     const data = validation.data;
 
     // Get current settings for audit logging
-    const previousSettings = await billingSettingsService.getSettings(activeOrg.id);
+    const previousSettings = await billingSettingsService.getSettings(organizationId);
 
     // Convert dollars to cents if provided
     const updates: Parameters<typeof billingSettingsService.updateSettings>[1] = {};
@@ -113,18 +138,24 @@ export async function PATCH(request: Request) {
       updates.notificationEmails = data.notificationEmails;
     }
 
-    const settings = await billingSettingsService.updateSettings(activeOrg.id, updates);
+    const settings = await billingSettingsService.updateSettings(organizationId, updates);
 
     // Audit log the billing settings change (non-blocking)
     auditBillingSettingsChange(
-      activeOrg.id,
-      session.user?.id,
+      organizationId,
+      userId,
       previousSettings as unknown as Record<string, unknown>,
       settings as unknown as Record<string, unknown>,
     ).catch((err) => console.error("[Audit] Failed to log billing settings change:", err));
 
     return NextResponse.json(settings);
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
     console.error("Error updating billing settings:", error);
     return NextResponse.json(
       { error: "Failed to update billing settings" },

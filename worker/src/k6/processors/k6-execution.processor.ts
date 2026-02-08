@@ -160,7 +160,8 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
         .set({
           status: 'running',
           startedAt: new Date(),
-          location: effectiveJobLocation as any,
+          location:
+            effectiveJobLocation as (typeof schema.runs.$inferInsert)['location'],
         })
         .where(eq(schema.runs.id, runId));
 
@@ -211,7 +212,8 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
         jobId: taskData.jobId ?? null,
         organizationId: taskData.organizationId,
         projectId: taskData.projectId,
-        location: effectiveJobLocation as any, // Use the task's requested/resolved location
+        location:
+          effectiveJobLocation as (typeof schema.k6PerformanceRuns.$inferInsert)['location'], // Use the task's requested/resolved location
         status: k6PerformanceStatus,
         startedAt: new Date(Date.now() - result.durationMs),
         completedAt: new Date(),
@@ -237,19 +239,10 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
       });
 
       // Update run with final status and artifacts
-      const durationSeconds = Math.max(0, Math.round(result.durationMs / 1000));
-      let durationString: string;
-      if (durationSeconds <= 0) {
-        durationString = '<1s';
-      } else if (durationSeconds >= 60) {
-        const minutes = Math.floor(durationSeconds / 60);
-        const remainder = durationSeconds % 60;
-        durationString =
-          `${minutes}m${remainder ? ` ${remainder}s` : ''}`.trim();
-      } else {
-        durationString = `${durationSeconds}s`;
-      }
-
+      const _durationSeconds = Math.max(
+        0,
+        Math.round(result.durationMs / 1000),
+      );
       // Use the wasCancelled and isExecutionError checks from above
       // - 'error': cancelled, timed out, or execution error (Docker not available, etc.)
       // - 'failed': test ran but thresholds breached or checks failed
@@ -259,7 +252,7 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
           : result.success
             ? 'passed'
             : 'failed';
-      const runUpdate: Record<string, any> = {
+      const runUpdate: Record<string, unknown> = {
         status: runStatus,
         completedAt: new Date(),
         durationMs: result.durationMs,
@@ -268,12 +261,12 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
       };
 
       let metadataExpression: SQL | undefined;
-      if (result.summary?.runId) {
+      if ((result.summary as Record<string, unknown>)?.runId) {
         metadataExpression = sql`
           jsonb_set(
             coalesce(metadata, '{}'::jsonb),
             '{k6RunId}',
-            to_jsonb(${String(result.summary.runId)})
+            to_jsonb(${String((result.summary as Record<string, unknown>).runId)})
           )
         `;
       }
@@ -411,21 +404,9 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
 
       // Update run record to error status before rethrowing to ensure UI and retries work correctly
       try {
-        const durationSeconds = Math.round(
+        const _durationSeconds = Math.round(
           (Date.now() - processStartTime) / 1000,
         );
-        let durationString: string;
-        if (durationSeconds <= 0) {
-          durationString = '<1s';
-        } else if (durationSeconds >= 60) {
-          const minutes = Math.floor(durationSeconds / 60);
-          const remainder = durationSeconds % 60;
-          durationString =
-            `${minutes}m${remainder ? ` ${remainder}s` : ''}`.trim();
-        } else {
-          durationString = `${durationSeconds}s`;
-        }
-
         // Check if this is a cancellation error
         const isCancellation =
           message.includes('cancelled') ||
@@ -524,7 +505,7 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
     }
   }
 
-  private extractMetrics(summary: any): {
+  private extractMetrics(summary: Record<string, unknown> | undefined | null): {
     totalRequests: number;
     failedRequests: number;
     requestRate: number;
@@ -545,15 +526,29 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
       };
     }
 
-    const metrics = summary.metrics;
+    const metrics = summary.metrics as
+      | Record<string, Record<string, number>>
+      | undefined;
+    if (!metrics) {
+      return {
+        totalRequests: 0,
+        failedRequests: 0,
+        requestRate: 0,
+        avgResponseTimeMs: 0,
+        p95ResponseTimeMs: 0,
+        p99ResponseTimeMs: 0,
+        maxVUs: 0,
+      };
+    }
     const httpReqs = metrics['http_reqs'] || {};
     const httpReqDuration = metrics['http_req_duration'] || {};
     const vus = metrics['vus'] || {};
     const vusMax = metrics['vus_max'] || {};
+    const checks = metrics['checks'] as Record<string, number> | undefined;
 
     return {
       totalRequests: httpReqs.count || 0,
-      failedRequests: (metrics['checks']?.fails as number) || 0,
+      failedRequests: checks?.fails || 0,
       requestRate: httpReqs.rate || 0,
       avgResponseTimeMs: httpReqDuration.avg || 0,
       p95ResponseTimeMs: httpReqDuration['p(95)'] || 0,
@@ -562,7 +557,10 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
     };
   }
 
-  private formatSummary(summaryJson: any, success: boolean): string {
+  private formatSummary(
+    summaryJson: Record<string, unknown> | undefined | null,
+    success: boolean,
+  ): string {
     if (!summaryJson) {
       return success
         ? 'k6 test completed successfully.'
@@ -570,16 +568,19 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
     }
 
     try {
-      const metrics = summaryJson.metrics || {};
+      const metrics = (summaryJson.metrics || {}) as Record<
+        string,
+        Record<string, number>
+      >;
       const httpReqDuration = metrics['http_req_duration'] || {};
-      const avg = httpReqDuration.avg || 0;
-      const p95 = httpReqDuration['p(95)'] || 0;
-      const p99 = httpReqDuration['p(99)'] || 0;
+      const avg: number = httpReqDuration.avg || 0;
+      const p95: number = httpReqDuration['p(95)'] || 0;
+      const p99: number = httpReqDuration['p(99)'] || 0;
 
       return `k6 test ${success ? 'passed' : 'failed'}. Avg=${avg.toFixed(
         2,
       )}ms, p95=${p95.toFixed(2)}ms, p99=${p99.toFixed(2)}ms`;
-    } catch (error) {
+    } catch {
       return success
         ? 'k6 test completed successfully.'
         : 'k6 test failed with unknown error.';
@@ -622,12 +623,9 @@ export class K6ExecutionProcessor extends BaseK6ExecutionProcessor {
 
   @OnWorkerEvent('completed')
   onCompleted(job: Job, result: unknown) {
-    const timedOut = Boolean((result as any)?.timedOut);
-    const status = timedOut
-      ? 'timed out'
-      : (result as any)?.success
-        ? 'passed'
-        : 'failed';
+    const res = result as { timedOut?: boolean; success?: boolean } | undefined;
+    const timedOut = Boolean(res?.timedOut);
+    const status = timedOut ? 'timed out' : res?.success ? 'passed' : 'failed';
     this.logger.log(`k6 job ${job.id} completed: ${status}`);
   }
 
@@ -670,7 +668,9 @@ export class K6ExecutionProcessorUS extends K6ExecutionProcessor {
       cancellationService,
     );
     // Override logger name
-    (this as any).logger = new Logger('K6ExecutionProcessorUSEast');
+    (this as unknown as { logger: Logger }).logger = new Logger(
+      'K6ExecutionProcessorUSEast',
+    );
   }
 }
 
@@ -694,7 +694,9 @@ export class K6ExecutionProcessorEU extends K6ExecutionProcessor {
       hardStopNotificationService,
       cancellationService,
     );
-    (this as any).logger = new Logger('K6ExecutionProcessorEUCentral');
+    (this as unknown as { logger: Logger }).logger = new Logger(
+      'K6ExecutionProcessorEUCentral',
+    );
   }
 }
 
@@ -718,6 +720,8 @@ export class K6ExecutionProcessorAPAC extends K6ExecutionProcessor {
       hardStopNotificationService,
       cancellationService,
     );
-    (this as any).logger = new Logger('K6ExecutionProcessorAsiaPacific');
+    (this as unknown as { logger: Logger }).logger = new Logger(
+      'K6ExecutionProcessorAsiaPacific',
+    );
   }
 }

@@ -379,7 +379,7 @@ export function AIDiffViewer({
           `}</style>
           <DiffEditor
             height="500px"
-            language="javascript"
+            language="typescript"
             original={originalScript}
             modified={isStreaming ? streamingContent : currentFixedScript}
             onMount={handleEditorDidMount}

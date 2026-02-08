@@ -1,0 +1,145 @@
+---
+title: Error Handling
+description: API error codes, formats, and retry behavior
+---
+
+## Error Response Format
+
+All error responses return a JSON body with an `error` field:
+
+```json
+{
+  "error": "Not found"
+}
+```
+
+Some errors include additional context:
+
+```json
+{
+  "error": "Validation failed",
+  "details": [
+    { "field": "name", "message": "Name is required" }
+  ]
+}
+```
+
+## HTTP Status Codes
+
+| Status | Meaning | Action |
+|--------|---------|--------|
+| `200` | Success | — |
+| `201` | Created | Resource created successfully |
+| `400` | Bad Request | Fix the request body or parameters |
+| `401` | Unauthorized | Check token validity and permissions |
+| `403` | Forbidden | Insufficient RBAC permissions |
+| `404` | Not Found | Verify the resource ID exists |
+| `409` | Conflict | Duplicate resource (e.g. token name) |
+| `429` | Rate Limited | Wait and retry (see `Retry-After` header) |
+| `500` | Server Error | Retry with backoff; report if persistent |
+
+## Retry Behavior
+
+The Supercheck CLI implements automatic retries for transient errors:
+
+| Error Type | Retry | Strategy |
+|------------|-------|----------|
+| `5xx` Server Error | 3 attempts | Exponential backoff (1s, 2s, 4s) |
+| `429` Rate Limited | Up to 3 | Respects `Retry-After` header |
+| `4xx` Client Error | No retry | Immediate failure |
+| Network Timeout | 3 attempts | Exponential backoff |
+
+### Retry-After Header
+
+When rate limited, the server returns a `Retry-After` header with the number of seconds to wait:
+
+```
+HTTP/1.1 429 Too Many Requests
+Retry-After: 60
+```
+
+The CLI parses this header safely — non-numeric or negative values fall back to exponential backoff instead of causing a tight retry loop.
+
+## CLI Exit Codes
+
+The CLI maps errors to specific exit codes for scripting and CI/CD:
+
+| Exit Code | Meaning | Example |
+|-----------|---------|---------|
+| `0` | Success | Job completed, resource created |
+| `1` | General error | Test failed, validation error |
+| `2` | Authentication error | Invalid token, expired token |
+| `3` | Configuration error | Missing config, invalid schema |
+| `4` | Network / API error | API unreachable, 5xx response |
+| `5` | Timeout | Operation exceeded `--timeout` |
+
+### CI/CD Usage
+
+```bash
+# Exit code determines pipeline outcome
+supercheck job trigger $JOB_ID --wait
+if [ $? -eq 0 ]; then
+  echo "All tests passed"
+elif [ $? -eq 1 ]; then
+  echo "Tests failed"
+elif [ $? -eq 2 ]; then
+  echo "Authentication issue — check SUPERCHECK_TOKEN"
+fi
+```
+
+## Common Errors
+
+### Invalid Token
+
+```
+HTTP/1.1 401 Unauthorized
+{"error": "Unauthorized"}
+```
+
+**Fix:** Verify your token is valid with `supercheck whoami`. Create a new token if needed.
+
+### Token Expired
+
+```
+HTTP/1.1 401 Unauthorized
+{"error": "Token expired"}
+```
+
+**Fix:** Create a new token in the dashboard or via API.
+
+### Insufficient Permissions
+
+```
+HTTP/1.1 403 Forbidden
+{"error": "Insufficient permissions"}
+```
+
+**Fix:** The CLI token inherits the creating user's RBAC role. Contact your org admin to adjust permissions.
+
+### Resource Not Found
+
+```
+HTTP/1.1 404 Not Found
+{"error": "Not found"}
+```
+
+**Fix:** Verify the resource ID. Use `supercheck job list`, `supercheck monitor list`, etc. to find valid IDs.
+
+### Rate Limited
+
+```
+HTTP/1.1 429 Too Many Requests
+Retry-After: 60
+{"error": "Rate limit exceeded"}
+```
+
+**Fix:** The CLI handles this automatically. If hitting limits frequently, consider batching operations or using longer intervals between requests.
+
+### Duplicate Token Name
+
+```
+HTTP/1.1 409 Conflict
+{"error": "Token name already exists in this project"}
+```
+
+**Fix:** Use a unique name for the new CLI token.

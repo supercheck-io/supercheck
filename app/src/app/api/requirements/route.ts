@@ -10,12 +10,12 @@ import {
 } from "@/db/schema";
 import { desc, eq, and, sql, like, or, inArray } from "drizzle-orm";
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
-import { requireProjectContext } from '@/lib/project-context';
+import { requireAuthContext, isAuthError } from '@/lib/auth-context';
 
 export async function GET(request: NextRequest) {
   try {
     // Require authentication and project context
-    const context = await requireProjectContext();
+    const context = await requireAuthContext();
 
     // PERFORMANCE: Use checkPermissionWithContext to avoid 5-8 duplicate DB queries
     const canView = checkPermissionWithContext('requirement', 'view', context);
@@ -176,6 +176,12 @@ export async function GET(request: NextRequest) {
       pageSize,
     });
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Authentication required' },
+        { status: 401 }
+      );
+    }
     console.error('Error fetching requirements:', error);
     return NextResponse.json(
       { error: 'Failed to fetch requirements' },

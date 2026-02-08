@@ -1,8 +1,8 @@
 
 import { NextResponse } from "next/server";
 import { getQueueEventHub, NormalizedQueueEvent } from "@/lib/queue-event-hub";
-import { requireProjectContext } from "@/lib/project-context";
-import { hasPermission } from "@/lib/rbac/middleware";
+import { requireAuthContext, isAuthError } from "@/lib/auth-context";
+import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { db } from "@/utils/db";
 import { runs, jobs, tests } from "@/db/schema";
 import { eq } from "drizzle-orm";
@@ -12,13 +12,11 @@ const encoder = new TextEncoder();
 export async function GET(request: Request) {
   try {
     // Require authentication and get project context
-    const { project, organizationId } = await requireProjectContext();
+    const context = await requireAuthContext();
+    const { project, organizationId } = context;
 
     // Check permission to view jobs
-    const canView = await hasPermission("job", "view", {
-      organizationId,
-      projectId: project.id,
-    });
+    const canView = checkPermissionWithContext("job", "view", context);
 
     if (!canView) {
       return NextResponse.json(
@@ -39,6 +37,20 @@ export async function GET(request: Request) {
         const hub = getQueueEventHub();
         await hub.ready();
 
+        // Track whether the stream has been closed to prevent
+        // 'Controller is already closed' errors from async callbacks
+        let isClosed = false;
+
+        const safeEnqueue = (data: Uint8Array) => {
+          if (isClosed) return;
+          try {
+            controller.enqueue(data);
+          } catch {
+            // Controller was closed between our check and enqueue
+            isClosed = true;
+          }
+        };
+
         // Cache for run/job metadata to avoid repeated queries
         // Key: runId, Value: { projectId, jobId, jobName, jobType, metadata }
         const runCache = new Map<string, {
@@ -51,6 +63,7 @@ export async function GET(request: Request) {
         } | null>();
 
         const sendEvent = async (event: NormalizedQueueEvent) => {
+          if (isClosed) return;
           // Only send job and test events (Playwright jobs are in 'test' category)
           if (event.category !== "job" && event.category !== "test") {
             return;
@@ -165,24 +178,26 @@ export async function GET(request: Request) {
               hasJobId: !!runData.jobId,
             };
 
-            controller.enqueue(
+            safeEnqueue(
               encoder.encode(`data: ${JSON.stringify(payload)}\n\n`)
             );
           } catch (error) {
-            console.error("Error filtering job event:", error);
-            // Silently skip events that cause errors during authorization
+            if (!isClosed) {
+              console.error("Error filtering job event:", error);
+            }
           }
         };
 
         const unsubscribe = hub.subscribe(sendEvent);
 
-        controller.enqueue(encoder.encode(": connected\n\n"));
+        safeEnqueue(encoder.encode(": connected\n\n"));
 
         const keepAlive = setInterval(() => {
-          controller.enqueue(encoder.encode(": ping\n\n"));
+          safeEnqueue(encoder.encode(": ping\n\n"));
         }, 30000);
 
         const cleanup = () => {
+          isClosed = true;
           clearInterval(keepAlive);
           unsubscribe();
           try {
@@ -201,20 +216,18 @@ export async function GET(request: Request) {
     console.error("Error setting up job-status SSE stream:", error);
 
     // Handle authentication/authorization errors
-    if (error instanceof Error) {
-      if (error.message === "Authentication required") {
-        return NextResponse.json(
-          { error: "Authentication required" },
-          { status: 401 }
-        );
-      }
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
 
-      if (error.message.includes("not found") || error.message.includes("No active project")) {
-        return NextResponse.json(
-          { error: "No active project found" },
-          { status: 404 }
-        );
-      }
+    if (error instanceof Error && (error.message.includes("not found") || error.message.includes("No active project"))) {
+      return NextResponse.json(
+        { error: "No active project found" },
+        { status: 404 }
+      );
     }
 
     return NextResponse.json(

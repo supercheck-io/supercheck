@@ -36,7 +36,7 @@ global.fetch = mockFetch;
 
 describe('NotificationService', () => {
   let service: NotificationService;
-  let emailTemplateService: EmailTemplateService;
+  let _emailTemplateService: EmailTemplateService;
 
   const mockEmailTemplateService = {
     renderMonitorAlertEmail: jest.fn().mockResolvedValue({
@@ -146,7 +146,7 @@ describe('NotificationService', () => {
     }).compile();
 
     service = module.get<NotificationService>(NotificationService);
-    emailTemplateService =
+    _emailTemplateService =
       module.get<EmailTemplateService>(EmailTemplateService);
   });
 

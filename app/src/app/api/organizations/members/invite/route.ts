@@ -7,9 +7,8 @@ import {
   projects,
 } from "@/db/schema";
 import { eq, and, inArray } from "drizzle-orm";
-import { requireAuth } from "@/lib/rbac/middleware";
-import { getActiveOrganization, getCurrentUser } from "@/lib/session";
 import { getUserOrgRole } from "@/lib/rbac/middleware";
+import { requireUserAuthContext, isAuthError } from "@/lib/auth-context";
 import { Role } from "@/lib/rbac/permissions";
 import { EmailService } from "@/lib/email-service";
 import { inviteMemberSchema } from "@/lib/validations/member";
@@ -65,11 +64,9 @@ async function checkInviteRateLimit(userId: string): Promise<{ allowed: boolean;
 
 export async function POST(request: NextRequest) {
   try {
-    await requireAuth();
-    const currentUser = await getCurrentUser();
-    const activeOrg = await getActiveOrganization();
+    const { userId, organizationId } = await requireUserAuthContext();
 
-    if (!currentUser || !activeOrg) {
+    if (!organizationId) {
       return NextResponse.json(
         { error: "No active organization found" },
         { status: 400 }
@@ -77,7 +74,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check rate limit using Redis
-    const rateLimitResult = await checkInviteRateLimit(currentUser.id);
+    const rateLimitResult = await checkInviteRateLimit(userId);
     if (!rateLimitResult.allowed) {
       return NextResponse.json(
         { error: "Rate limit exceeded. Maximum 10 invitations per hour." },
@@ -91,7 +88,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if user is org admin
-    const orgRole = await getUserOrgRole(currentUser.id, activeOrg.id);
+    const orgRole = await getUserOrgRole(userId, organizationId);
     const isOrgAdmin = orgRole === Role.ORG_ADMIN || orgRole === Role.ORG_OWNER;
 
     if (!isOrgAdmin) {
@@ -127,11 +124,11 @@ export async function POST(request: NextRequest) {
     const currentMemberCount = await db
       .select({ count: member.userId })
       .from(member)
-      .where(eq(member.organizationId, activeOrg.id));
+      .where(eq(member.organizationId, organizationId));
 
-    const limitCheck = await checkTeamMemberLimit(activeOrg.id, currentMemberCount.length);
+    const limitCheck = await checkTeamMemberLimit(organizationId, currentMemberCount.length);
     if (!limitCheck.allowed) {
-      console.warn(`Team member limit reached for organization ${activeOrg.id}: ${limitCheck.error}`);
+      console.warn(`Team member limit reached for organization ${organizationId}: ${limitCheck.error}`);
       return NextResponse.json(
         { error: limitCheck.error },
         { status: 403 }
@@ -186,7 +183,7 @@ export async function POST(request: NextRequest) {
         .where(
           and(
             eq(member.userId, user.id),
-            eq(member.organizationId, activeOrg.id)
+            eq(member.organizationId, organizationId)
           )
         )
         .limit(1);
@@ -206,7 +203,7 @@ export async function POST(request: NextRequest) {
       .where(
         and(
           eq(invitation.email, email),
-          eq(invitation.organizationId, activeOrg.id),
+          eq(invitation.organizationId, organizationId),
           eq(invitation.status, "pending")
         )
       )
@@ -226,12 +223,12 @@ export async function POST(request: NextRequest) {
     const [newInvitation] = await db
       .insert(invitation)
       .values({
-        organizationId: activeOrg.id,
+        organizationId,
         email,
         role,
         status: "pending",
         expiresAt,
-        inviterId: currentUser.id,
+        inviterId: userId,
         selectedProjects: JSON.stringify(selectedProjects),
       })
       .returning();
@@ -266,10 +263,18 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Fetch org name for email
+    const { organization } = await import("@/db/schema");
+    const orgRecord = await db.query.organization.findFirst({
+      where: eq(organization.id, organizationId),
+      columns: { name: true },
+    });
+    const orgName = orgRecord?.name ?? "Your Organization";
+
     // Render email using react-email template
     const emailContent = await renderOrganizationInvitationEmail({
       inviteUrl,
-      organizationName: activeOrg.name,
+      organizationName: orgName,
       role,
       projectInfo,
     });
@@ -292,18 +297,18 @@ export async function POST(request: NextRequest) {
       );
     } else {
       console.log(
-        `📧 Email invitation sent successfully to ${email} for organization ${activeOrg.name}`
+        `📧 Email invitation sent successfully to ${email} for organization ${orgName}`
       );
     }
 
     // Log the audit event for member invitation
     await logAuditEvent({
-      userId: currentUser.id,
+      userId,
       action: "member_invited",
       resource: "invitation",
       resourceId: newInvitation.id,
       metadata: {
-        organizationId: activeOrg.id,
+        organizationId,
         invitedEmail: email,
         role: role,
         selectedProjectsCount: selectedProjects.length,
@@ -311,7 +316,7 @@ export async function POST(request: NextRequest) {
           id: p.id,
           name: p.name,
         })),
-        organizationName: activeOrg.name,
+        organizationName: orgName,
         emailSent: emailResult.success,
         expiresAt: newInvitation.expiresAt?.toISOString(),
       },
@@ -332,6 +337,12 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
     console.error("Error sending invitation:", error);
     return NextResponse.json(
       { error: "Failed to send invitation" },

@@ -2,15 +2,24 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/utils/db';
 import { tags, testTags, requirementTags } from '@/db/schema';
 import { eq, count, and } from 'drizzle-orm';
-import { hasPermission } from '@/lib/rbac/middleware';
-import { requireProjectContext } from '@/lib/project-context';
+import { checkPermissionWithContext } from '@/lib/rbac/middleware';
+import { requireAuthContext, isAuthError } from '@/lib/auth-context';
+import { createLogger } from '@/lib/logger/index';
+
+const logger = createLogger({ module: 'tags' }) as {
+  debug: (data: unknown, msg?: string) => void;
+  info: (data: unknown, msg?: string) => void;
+  warn: (data: unknown, msg?: string) => void;
+  error: (data: unknown, msg?: string) => void;
+};
 
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { project, organizationId } = await requireProjectContext();
+    const context = await requireAuthContext();
+    const { project, organizationId } = context;
 
     const resolvedParams = await params;
     const tagId = resolvedParams.id;
@@ -19,11 +28,15 @@ export async function DELETE(
       return NextResponse.json({ error: 'Tag ID is required' }, { status: 400 });
     }
 
-    // Check if the tag exists and get creator information
+    // Check if the tag exists, scoped to current org/project to prevent IDOR
     const existingTag = await db
       .select()
       .from(tags)
-      .where(eq(tags.id, tagId))
+      .where(and(
+        eq(tags.id, tagId),
+        eq(tags.organizationId, organizationId),
+        eq(tags.projectId, project.id)
+      ))
       .limit(1);
 
     if (existingTag.length === 0) {
@@ -31,10 +44,8 @@ export async function DELETE(
     }
 
     // Check permission to delete tag, including creator check for PROJECT_EDITOR
-    const canDelete = await hasPermission('tag', 'delete', { 
-      organizationId, 
-      projectId: project.id,
-      resourceCreatorId: existingTag[0].createdByUserId ?? undefined 
+    const canDelete = checkPermissionWithContext('tag', 'delete', context, {
+      resourceCreatorId: existingTag[0].createdByUserId ?? undefined,
     });
     
     if (!canDelete) {
@@ -89,7 +100,13 @@ export async function DELETE(
       deletedTag: existingTag[0]
     });
   } catch (error) {
-    console.error('Error deleting tag:', error);
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Authentication required' },
+        { status: 401 }
+      );
+    }
+    logger.error({ err: error }, 'Error deleting tag');
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -99,13 +116,11 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { project, organizationId } = await requireProjectContext();
+    const context = await requireAuthContext();
+    const { project, organizationId } = context;
 
     // Check permission to view tags
-    const canView = await hasPermission('tag', 'view', {
-      organizationId,
-      projectId: project.id
-    });
+    const canView = checkPermissionWithContext('tag', 'view', context);
 
     if (!canView) {
       return NextResponse.json(
@@ -138,7 +153,13 @@ export async function GET(
 
     return NextResponse.json(tag[0]);
   } catch (error) {
-    console.error('Error fetching tag:', error);
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Authentication required' },
+        { status: 401 }
+      );
+    }
+    logger.error({ err: error }, 'Error fetching tag');
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -148,13 +169,11 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { project, organizationId } = await requireProjectContext();
+    const context = await requireAuthContext();
+    const { project, organizationId } = context;
 
-    // Check permission to update tags (using 'update' action, not 'manage')
-    const canUpdate = await hasPermission('tag', 'update', {
-      organizationId,
-      projectId: project.id
-    });
+    // Check permission to update tags
+    const canUpdate = checkPermissionWithContext('tag', 'update', context);
 
     if (!canUpdate) {
       return NextResponse.json(
@@ -218,7 +237,13 @@ export async function PUT(
 
     return NextResponse.json(updatedTag);
   } catch (error) {
-    console.error('Error updating tag:', error);
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Authentication required' },
+        { status: 401 }
+      );
+    }
+    logger.error({ err: error }, 'Error updating tag');
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 } 

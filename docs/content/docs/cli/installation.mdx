@@ -1,0 +1,109 @@
+---
+title: Installation
+description: Install and set up the Supercheck CLI
+---
+
+## Install via npm
+
+```bash
+# Global install (recommended)
+npm install -g @supercheck/cli
+
+# Or run without installing
+npx @supercheck/cli health
+```
+
+<Callout type="info">
+  Requires **Node.js 18** or later.
+</Callout>
+
+## Verify Installation
+
+```bash
+supercheck --version
+supercheck health
+```
+
+## Docker
+
+Run the CLI in a container using the official Node.js image:
+
+```bash
+docker run --rm \
+  -e SUPERCHECK_TOKEN=$SUPERCHECK_TOKEN \
+  node:20-slim sh -c "npm install -g @supercheck/cli && supercheck job trigger <job-id> --wait"
+```
+
+See [CI/CD Integration](./ci-cd) for Docker-based pipeline examples.
+
+## Authenticate
+
+The CLI requires a **CLI token** for API access. Create one in the dashboard:
+
+1. Go to **Organization Admin → CLI Tokens**
+2. Click **Create Token**
+3. Copy the token (shown only once)
+
+Then authenticate:
+
+```bash
+# Option 1: Environment variable (recommended for CI/CD)
+export SUPERCHECK_TOKEN="sck_live_..."
+supercheck login --token $SUPERCHECK_TOKEN
+
+# Option 2: Direct login
+supercheck login --token sck_live_a1b2c3d4...
+```
+
+## Self-Hosted Setup
+
+Point the CLI at your self-hosted instance:
+
+```bash
+export SUPERCHECK_URL="https://supercheck.yourdomain.com"
+export SUPERCHECK_TOKEN="sck_live_..."
+
+supercheck login --token $SUPERCHECK_TOKEN --url $SUPERCHECK_URL
+supercheck health
+```
+
+Standard Supercheck self-hosted deployments use Traefik + Let's Encrypt for automatic TLS — no certificate configuration required.
+
+## Proxy Configuration
+
+For corporate networks, the CLI respects standard proxy environment variables:
+
+```bash
+export HTTPS_PROXY="http://proxy.corp.com:8080"
+export NO_PROXY="localhost,127.0.0.1,.internal.corp.com"
+supercheck job trigger <id> --wait
+```
+
+## Initialize a Project
+
+Scaffold a new `supercheck.config.ts` and `_supercheck_/` folder:
+
+```bash
+supercheck init
+```
+
+This creates:
+
+```
+my-project/
+├── _supercheck_/
+│   ├── tests/        # Playwright & k6 test files
+│   ├── monitors/     # Monitor definitions
+│   └── status-pages/ # Status page definitions
+└── supercheck.config.ts
+```
+
+## Uninstall
+
+```bash
+# Remove global install
+npm uninstall -g @supercheck/cli
+
+# Clear stored credentials
+supercheck logout
+```

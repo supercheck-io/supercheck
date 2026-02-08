@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -12,7 +13,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Card, CardContent } from "@/components/ui/card";
 import { Calendar } from "@/components/ui/calendar";
 import {
   Popover,
@@ -20,7 +20,18 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { format } from "date-fns";
-import { CalendarIcon, Copy, Eye, EyeOff, Check, Plus } from "lucide-react";
+import {
+  CalendarIcon,
+  Copy,
+  Eye,
+  EyeOff,
+  Check,
+  Plus,
+  CheckCircle,
+  Loader2,
+  Info,
+  Clock,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -34,7 +45,7 @@ interface CreatedApiKey {
   name: string;
   key: string;
   expiresAt?: string;
-  createdAt?: string; // Added createdAt for compact display
+  createdAt?: string;
 }
 
 export function ApiKeyDialog({ jobId, onApiKeyCreated }: ApiKeyDialogProps) {
@@ -172,104 +183,112 @@ export function ApiKeyDialog({ jobId, onApiKeyCreated }: ApiKeyDialogProps) {
     return (
       <Dialog open={open} onOpenChange={handleDialogClose}>
         <DialogTrigger asChild>
-          <Button size="sm" className="h-8">
-            <Plus className="h-3 w-3 mr-1" />
+          <Button size="sm">
+            <Plus className="h-4 w-4 mr-1.5" />
             Create Key
           </Button>
         </DialogTrigger>
-        <DialogContent className="max-w-md">
-          <DialogHeader className="pb-2">
-            <DialogTitle className="text-base">API Key Created</DialogTitle>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-green-500/10">
+                <CheckCircle className="h-4 w-4 text-green-500" />
+              </div>
+              API Key Created Successfully
+            </DialogTitle>
+            <DialogDescription>
+              Make sure to copy your API key now. You won&apos;t be able to see it again.
+            </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-3">
-            <Card>
-              <CardContent className="p-3">
-                <div className="space-y-2">
-                  <div>
-                    <Label className="text-xs font-medium text-muted-foreground">
-                      Name
-                    </Label>
-                    <div className="text-sm font-mono mt-0.5">
-                      {createdKey.name}
+          <div className="space-y-4 pt-2">
+            <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
+              <div>
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">
+                  Name
+                </p>
+                <p className="text-sm font-medium">
+                  {createdKey.name}
+                </p>
+              </div>
+              <div className="border-t pt-3">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                  API Key
+                </p>
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 relative">
+                    <Input
+                      value={createdKey.key}
+                      type={showKey ? "text" : "password"}
+                      readOnly
+                      className="pr-16 font-mono text-xs bg-background"
+                    />
+                    <div className="absolute right-1 top-1/2 -translate-y-1/2 flex gap-0.5">
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7"
+                        onClick={() => setShowKey(!showKey)}
+                      >
+                        {showKey ? (
+                          <EyeOff className="h-3.5 w-3.5" />
+                        ) : (
+                          <Eye className="h-3.5 w-3.5" />
+                        )}
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7"
+                        onClick={() => copyToClipboard(createdKey.key)}
+                      >
+                        {copied ? (
+                          <Check className="h-3.5 w-3.5 text-green-500" />
+                        ) : (
+                          <Copy className="h-3.5 w-3.5" />
+                        )}
+                      </Button>
                     </div>
-                  </div>
-                  <div>
-                    <Label className="text-xs font-medium text-muted-foreground mt-2">
-                      API Key
-                    </Label>
-                    <div className="flex items-center gap-2 mt-1">
-                      <div className="flex-1 relative">
-                        <Input
-                          value={createdKey.key}
-                          type={showKey ? "text" : "password"}
-                          readOnly
-                          className="pr-16 font-mono text-xs"
-                        />
-                        <div className="absolute right-1 top-1/2 -translate-y-1/2 flex gap-1">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-6 w-6 p-0"
-                            onClick={() => setShowKey(!showKey)}
-                          >
-                            {showKey ? (
-                              <EyeOff className="h-3 w-3" />
-                            ) : (
-                              <Eye className="h-3 w-3" />
-                            )}
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-6 w-6 p-0"
-                            onClick={() => copyToClipboard(createdKey.key)}
-                          >
-                            {copied ? (
-                              <Check className="h-3 w-3" />
-                            ) : (
-                              <Copy className="h-3 w-3" />
-                            )}
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  {/* Compact row for created/expiry date */}
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
-                    <span>
-                      Created:{" "}
-                      {createdKey.createdAt
-                        ? format(new Date(createdKey.createdAt), "PPP")
-                        : "-"}
-                    </span>
-                    {createdKey.expiresAt && <span className="mx-1">·</span>}
-                    {createdKey.expiresAt && (
-                      <span>
-                        Expires: {format(new Date(createdKey.expiresAt), "PPP")}
-                      </span>
-                    )}
                   </div>
                 </div>
-              </CardContent>
-            </Card>
-            {/* Quick Reference - compact, muted bg, rounded, small font */}
-            <div className="bg-muted border border-border rounded px-3 py-2">
-              <div className="text-xs font-medium text-muted-foreground mb-1">
-                Quick Reference
               </div>
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <span className="font-mono">
-                  Authorization: Bearer{" "}
-                  {createdKey.key?.substring(0, 20) || "..."}...
+              <div className="flex items-center gap-3 text-xs text-muted-foreground border-t pt-3">
+                <span className="flex items-center gap-1">
+                  <Clock className="h-3 w-3" />
+                  {createdKey.createdAt
+                    ? format(new Date(createdKey.createdAt), "PPP")
+                    : "-"}
                 </span>
-              </div>
-              <div className="text-xs text-blue-600 mt-1">
-                Copy this key now - it won&apos;t be shown again
+                {createdKey.expiresAt && (
+                  <>
+                    <span className="text-border">&middot;</span>
+                    <span>
+                      Expires {format(new Date(createdKey.expiresAt), "PPP")}
+                    </span>
+                  </>
+                )}
               </div>
             </div>
-            <Button onClick={handleDialogClose} className="w-full text-sm">
-              <Check className="h-4 w-4 mr-1" /> I have copied the key
+
+            <div className="rounded-lg border bg-muted/50 p-3 space-y-2">
+              <p className="text-xs font-medium text-muted-foreground">
+                Quick Reference
+              </p>
+              <code className="block text-xs font-mono text-muted-foreground bg-background rounded-md px-2.5 py-1.5 border">
+                Authorization: Bearer {createdKey.key?.substring(0, 20) || "..."}...
+              </code>
+            </div>
+
+            <div className="flex items-start gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3">
+              <Info className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
+              <p className="text-xs text-amber-600 dark:text-amber-400">
+                This key will only be displayed once. Please copy it and store it securely.
+              </p>
+            </div>
+
+            <Button onClick={handleDialogClose} className="w-full">
+              <Check className="h-4 w-4 mr-2" />
+              Done
             </Button>
           </div>
         </DialogContent>
@@ -280,36 +299,44 @@ export function ApiKeyDialog({ jobId, onApiKeyCreated }: ApiKeyDialogProps) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="sm" className="h-8">
-          <Plus className="h-3 w-3 mr-1" />
+        <Button size="sm">
+          <Plus className="h-4 w-4 mr-1.5" />
           Create Key
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-md">
-        <DialogHeader className="pb-3">
-          <DialogTitle className="text-lg">Create API Key</DialogTitle>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Create API Key</DialogTitle>
+          <DialogDescription>
+            Generate a new key for automated job triggering from CI/CD pipelines.
+          </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4 pt-2">
           <div className="space-y-2">
-            <Label htmlFor="name">Name</Label>
+            <Label htmlFor="name">Key Name</Label>
             <Input
               id="name"
               placeholder="e.g., Production CI/CD"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="h-9"
+              autoFocus
             />
+            <p className="text-xs text-muted-foreground">
+              Choose a descriptive name to identify this key&apos;s purpose.
+            </p>
           </div>
 
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <Label htmlFor="expiry" className="text-sm">
-                Set expiration date{" "}
-                <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                  Optional
-                </span>
-              </Label>
+              <div className="space-y-0.5">
+                <Label htmlFor="expiry" className="text-sm">
+                  Expiration Date
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Optionally set when this key should expire.
+                </p>
+              </div>
               <Switch
                 id="expiry"
                 checked={hasExpiry}
@@ -323,15 +350,15 @@ export function ApiKeyDialog({ jobId, onApiKeyCreated }: ApiKeyDialogProps) {
                   <Button
                     variant="outline"
                     className={cn(
-                      "w-full justify-center text-center font-normal h-9",
+                      "w-full justify-start font-normal",
                       !expiryDate && "text-muted-foreground"
                     )}
                   >
                     <CalendarIcon className="mr-2 h-4 w-4" />
-                    {expiryDate ? format(expiryDate, "PPP") : "Select date"}
+                    {expiryDate ? format(expiryDate, "PPP") : "Select expiration date"}
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-full p-0" align="center">
+                <PopoverContent className="w-auto p-0" align="start">
                   <Calendar
                     mode="single"
                     selected={expiryDate}
@@ -339,14 +366,13 @@ export function ApiKeyDialog({ jobId, onApiKeyCreated }: ApiKeyDialogProps) {
                     disabled={(date) => date < new Date()}
                     initialFocus
                     captionLayout="dropdown"
-                    className="rounded-md border shadow-sm"
                   />
                 </PopoverContent>
               </Popover>
             )}
           </div>
 
-          <div className="flex gap-2 pt-2">
+          <div className="flex gap-3 pt-2">
             <Button
               type="button"
               variant="outline"
@@ -355,8 +381,15 @@ export function ApiKeyDialog({ jobId, onApiKeyCreated }: ApiKeyDialogProps) {
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={isCreating} className="flex-1">
-              {isCreating ? "Creating..." : "Create"}
+            <Button type="submit" disabled={isCreating || !name.trim()} className="flex-1">
+              {isCreating ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                "Create Key"
+              )}
             </Button>
           </div>
         </form>

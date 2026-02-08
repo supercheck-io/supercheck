@@ -3,7 +3,7 @@ import { Logger } from '@nestjs/common';
 export interface StandardError {
   code: string;
   message: string;
-  details?: any;
+  details?: unknown;
   timestamp: string;
   correlationId?: string;
   category:
@@ -28,7 +28,7 @@ export interface ErrorContext {
   target?: string;
   userId?: string;
   correlationId?: string;
-  metadata?: any;
+  metadata?: unknown;
 }
 
 export class StandardizedErrorHandler {
@@ -41,7 +41,7 @@ export class StandardizedErrorHandler {
    */
   createValidationError(
     message: string,
-    details: any,
+    details: unknown,
     context?: ErrorContext,
   ): StandardError {
     return this.createError({
@@ -70,7 +70,7 @@ export class StandardizedErrorHandler {
    */
   createNetworkError(
     message: string,
-    details: any,
+    details: unknown,
     context?: ErrorContext,
   ): StandardError {
     return this.createError({
@@ -129,7 +129,7 @@ export class StandardizedErrorHandler {
    */
   createAuthenticationError(
     message: string,
-    details: any,
+    details: unknown,
     context?: ErrorContext,
   ): StandardError {
     return this.createError({
@@ -158,7 +158,7 @@ export class StandardizedErrorHandler {
    */
   createSslError(
     message: string,
-    details: any,
+    details: unknown,
     context?: ErrorContext,
   ): StandardError {
     return this.createError({
@@ -216,7 +216,7 @@ export class StandardizedErrorHandler {
    */
   createContentValidationError(
     message: string,
-    details: any,
+    details: unknown,
     context?: ErrorContext,
   ): StandardError {
     return this.createError({
@@ -245,7 +245,7 @@ export class StandardizedErrorHandler {
    */
   createSystemError(
     message: string,
-    details: any,
+    details: unknown,
     context?: ErrorContext,
   ): StandardError {
     return this.createError({
@@ -274,7 +274,7 @@ export class StandardizedErrorHandler {
   private createError(params: {
     code: string;
     message: string;
-    details: any;
+    details: unknown;
     category: StandardError['category'];
     severity: StandardError['severity'];
     retryable: boolean;
@@ -336,18 +336,30 @@ export class StandardizedErrorHandler {
   /**
    * Map common errors to standardized format
    */
-  mapError(error: any, context?: ErrorContext): StandardError {
+  mapError(error: unknown, context?: ErrorContext): StandardError {
+    const isErrorObject = error !== null && error !== undefined && typeof error === 'object';
+    const err = (isErrorObject ? error : {}) as Record<string, unknown>;
+    const code = typeof err.code === 'string' ? err.code : undefined;
+    let message: string;
+    if (isErrorObject && typeof err.message === 'string') {
+      message = err.message as string;
+    } else if (typeof error === 'string') {
+      message = error;
+    } else {
+      message = 'Unknown error occurred';
+    }
+
     // Network errors
-    if (error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED') {
+    if (code === 'ENOTFOUND' || code === 'ECONNREFUSED') {
       return this.createNetworkError(
-        `Connection failed: ${error.message}`,
-        { originalError: error.code },
+        `Connection failed: ${message}`,
+        { originalError: code },
         context,
       );
     }
 
     // Timeout errors
-    if (error.code === 'ETIMEDOUT' || error.message?.includes('timeout')) {
+    if (code === 'ETIMEDOUT' || message.includes('timeout')) {
       return this.createTimeoutError(
         'Request timed out',
         30000, // Default timeout
@@ -356,35 +368,25 @@ export class StandardizedErrorHandler {
     }
 
     // SSL errors
-    if (
-      error.code?.startsWith('CERT_') ||
-      error.message?.includes('certificate')
-    ) {
+    if (code?.startsWith('CERT_') || message.includes('certificate')) {
       return this.createSslError(
-        `SSL/TLS error: ${error.message}`,
-        { originalError: error.code },
+        `SSL/TLS error: ${message}`,
+        { originalError: code },
         context,
       );
     }
 
     // Authentication errors
-    if (
-      error.message?.includes('authentication') ||
-      error.message?.includes('401')
-    ) {
+    if (message.includes('authentication') || message.includes('401')) {
       return this.createAuthenticationError(
         'Authentication failed',
-        { originalError: error.message },
+        { originalError: message },
         context,
       );
     }
 
     // Default to system error
-    return this.createSystemError(
-      error.message || 'Unknown error occurred',
-      { originalError: error },
-      context,
-    );
+    return this.createSystemError(message, { originalError: error }, context);
   }
 
   /**
@@ -397,7 +399,7 @@ export class StandardizedErrorHandler {
   /**
    * Create user-friendly error response
    */
-  createUserResponse(error: StandardError): any {
+  createUserResponse(error: StandardError): Record<string, unknown> {
     return {
       success: false,
       error: {

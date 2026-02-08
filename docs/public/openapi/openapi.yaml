@@ -1,0 +1,2910 @@
+openapi: 3.1.0
+info:
+  title: Supercheck API
+  version: 1.0.0
+  description: >-
+    API for test automation, monitoring, and CI/CD integration. Supercheck
+    provides Playwright browser testing, k6 performance testing, uptime
+    monitoring, and alerting — all managed via API or CLI.
+  contact:
+    name: Supercheck
+    url: https://supercheck.io
+  license:
+    name: AGPL-3.0
+    url: https://github.com/supercheck-io/supercheck/blob/main/LICENSE
+servers:
+  - url: https://demo.supercheck.dev
+    description: Demo
+  - url: https://app.supercheck.io
+    description: Production (Cloud)
+security:
+  - bearerAuth: []
+tags:
+  - name: Authentication
+    description: CLI token management and verification
+  - name: Jobs
+    description: Job scheduling and execution
+  - name: Trigger Keys
+    description: API trigger key management for jobs
+  - name: Runs
+    description: Job run management and monitoring
+  - name: Tests
+    description: Test script management
+  - name: Monitors
+    description: Uptime and performance monitoring
+  - name: Variables
+    description: Project environment variables
+  - name: Tags
+    description: Resource tagging
+  - name: Notifications
+    description: Notification provider management
+  - name: Alerts
+    description: Alert history
+  - name: Audit
+    description: Audit log access
+  - name: System
+    description: Health checks and metadata
+  - name: Status Pages
+    description: Manage status pages for uptime dashboards
+paths:
+  /api/health:
+    get:
+      operationId: getHealth
+      summary: Health check
+      description: >-
+        Returns the health status of the API and its dependencies (database,
+        Redis, storage).
+      tags:
+        - System
+      security: []
+      responses:
+        '200':
+          description: Health status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum:
+                      - ok
+                      - degraded
+                      - unhealthy
+                  timestamp:
+                    type: string
+                    format: date-time
+                  latencyMs:
+                    type: integer
+                  checks:
+                    type: object
+                    properties:
+                      database:
+                        type: object
+                        properties:
+                          status:
+                            type: string
+                            enum:
+                              - ok
+                              - error
+                          latencyMs:
+                            type: integer
+                          error:
+                            type: string
+                      redis:
+                        type: object
+                        properties:
+                          status:
+                            type: string
+                            enum:
+                              - ok
+                              - error
+                          latencyMs:
+                            type: integer
+                          error:
+                            type: string
+                      s3:
+                        type: object
+                        properties:
+                          status:
+                            type: string
+                            enum:
+                              - ok
+                              - error
+                          latencyMs:
+                            type: integer
+                          error:
+                            type: string
+                required:
+                  - status
+                  - timestamp
+                  - latencyMs
+                  - checks
+        '503':
+          description: Service unavailable — one or more required services unhealthy
+  /api/locations:
+    get:
+      operationId: listLocations
+      summary: List execution locations
+      description: Returns available geographic locations for test and monitor execution.
+      tags:
+        - System
+      security: []
+      responses:
+        '200':
+          description: Available locations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Location'
+  /api/cli-tokens:
+    get:
+      operationId: listCliTokens
+      summary: List CLI tokens
+      description: >-
+        List all CLI tokens for the current project. Also used by `supercheck
+        whoami` to verify the current token.
+      tags:
+        - Authentication
+      responses:
+        '200':
+          description: List of CLI tokens
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  tokens:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CliToken'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: createCliToken
+      summary: Create a CLI token
+      description: >-
+        Create a new CLI token for API access. The plain token value is returned
+        only once in the response — store it securely.
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: Human-readable token name
+                  example: CI/CD Pipeline
+                expiresIn:
+                  type: integer
+                  description: >-
+                    Optional expiration duration in seconds (min 3600 = 1 hour,
+                    max 31536000 = 1 year)
+                  example: 7776000
+                  minimum: 3600
+                  maximum: 31536000
+              required:
+                - name
+      responses:
+        '201':
+          description: >-
+            Token created. The `key` field contains the plain token — store it
+            securely, it cannot be retrieved again.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  token:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                      name:
+                        type: string
+                      key:
+                        type: string
+                        description: Plain token value (shown only once)
+                        example: sck_live_a1b2c3d4e5f6789012345678901234ab
+                      start:
+                        type: string
+                        description: Display prefix for identification
+                      enabled:
+                        type: boolean
+                      expiresAt:
+                        type: string
+                        format: date-time
+                        nullable: true
+                      createdAt:
+                        type: string
+                        format: date-time
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Duplicate token name within this project
+  /api/cli-tokens/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: CLI token ID
+    patch:
+      operationId: updateCliToken
+      summary: Update a CLI token
+      description: Enable, disable, or rename a CLI token.
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                enabled:
+                  type: boolean
+                name:
+                  type: string
+      responses:
+        '200':
+          description: Token updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  token:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                      name:
+                        type: string
+                      enabled:
+                        type: boolean
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      operationId: deleteCliToken
+      summary: Revoke a CLI token
+      description: Permanently delete a CLI token. This action cannot be undone.
+      tags:
+        - Authentication
+      responses:
+        '200':
+          description: Token revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/jobs:
+    get:
+      operationId: listJobs
+      summary: List jobs
+      description: List all jobs in the current project with pagination.
+      tags:
+        - Jobs
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Paginated list of jobs
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Job'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: createJob
+      summary: Create a job
+      description: Create a new job with optional scheduling and test configuration.
+      tags:
+        - Jobs
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  example: Nightly E2E Suite
+                description:
+                  type: string
+                cronSchedule:
+                  type: string
+                  example: 0 2 * * *
+                timeoutSeconds:
+                  type: integer
+                  default: 300
+                retryCount:
+                  type: integer
+                  default: 0
+                config:
+                  type: object
+                tests:
+                  type: array
+                  items:
+                    type: string
+                  description: Array of test IDs to include in this job
+              required:
+                - name
+      responses:
+        '201':
+          description: Job created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  job:
+                    $ref: '#/components/schemas/Job'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/jobs/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Job ID
+    get:
+      operationId: getJob
+      summary: Get job details
+      description: >-
+        Retrieve full details for a job including its tests and last run
+        information.
+      tags:
+        - Jobs
+      responses:
+        '200':
+          description: Job details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      operationId: updateJob
+      summary: Update a job
+      description: Update job configuration. Only provided fields are changed.
+      tags:
+        - Jobs
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                cronSchedule:
+                  type: string
+                timeoutSeconds:
+                  type: integer
+                retryCount:
+                  type: integer
+                status:
+                  type: string
+                  enum:
+                    - active
+                    - paused
+      responses:
+        '200':
+          description: Job updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      operationId: deleteJob
+      summary: Delete a job
+      description: Permanently delete a job and all its associated runs.
+      tags:
+        - Jobs
+      responses:
+        '200':
+          description: Job deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                required:
+                  - success
+                  - message
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/jobs/{id}/trigger:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Job ID
+    post:
+      operationId: triggerJob
+      summary: Trigger job execution
+      description: >-
+        Trigger a job run. Supports both CLI tokens (`sck_live_*`) and trigger
+        keys (`sck_trigger_*` or legacy `job_*`).
+      tags:
+        - Jobs
+      responses:
+        '200':
+          description: Job triggered
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  runId:
+                    type: string
+                    format: uuid
+                  message:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          description: Rate limited — too many trigger requests
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  limit:
+                    type: integer
+                  remaining:
+                    type: integer
+                  resetAt:
+                    type: string
+                    format: date-time
+  /api/jobs/run:
+    post:
+      operationId: runJob
+      summary: Run a job immediately
+      description: >-
+        Execute a job immediately by providing its ID. The job's configured
+        tests will be run.
+      tags:
+        - Jobs
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                jobId:
+                  type: string
+                  format: uuid
+                  description: ID of the job to run
+              required:
+                - jobId
+      responses:
+        '200':
+          description: Job started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  runId:
+                    type: string
+                    format: uuid
+                  jobId:
+                    type: string
+                    format: uuid
+                  status:
+                    type: string
+                  message:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/jobs/{id}/api-keys:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Job ID
+    get:
+      operationId: listJobApiKeys
+      summary: List trigger keys
+      description: List all API trigger keys for a specific job.
+      tags:
+        - Trigger Keys
+      responses:
+        '200':
+          description: List of trigger keys
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  apiKeys:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TriggerKey'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      operationId: createJobApiKey
+      summary: Create a trigger key
+      description: >-
+        Create a new API trigger key for a job. The plain key is returned only
+        once — store it securely.
+      tags:
+        - Trigger Keys
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: Human-readable name for the trigger key
+                  example: GitHub Actions
+                expiresIn:
+                  type: integer
+                  description: Optional expiration duration in seconds
+                  example: 7776000
+              required:
+                - name
+      responses:
+        '201':
+          description: >-
+            Trigger key created. Store the `key` value securely — it cannot be
+            retrieved again.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  apiKey:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                      name:
+                        type: string
+                      key:
+                        type: string
+                        description: Plain key value (shown only once)
+                        example: sck_trigger_f1e2d3c4b5a6789012345678901234cd
+                      start:
+                        type: string
+                      enabled:
+                        type: boolean
+                      expiresAt:
+                        type: string
+                        format: date-time
+                        nullable: true
+                      createdAt:
+                        type: string
+                        format: date-time
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/jobs/{id}/api-keys/{keyId}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Job ID
+      - name: keyId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Trigger key ID
+    patch:
+      operationId: updateJobApiKey
+      summary: Update a trigger key
+      description: Enable, disable, or rename a trigger key.
+      tags:
+        - Trigger Keys
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                enabled:
+                  type: boolean
+                name:
+                  type: string
+      responses:
+        '200':
+          description: Trigger key updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  apiKey:
+                    $ref: '#/components/schemas/TriggerKey'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      operationId: deleteJobApiKey
+      summary: Delete a trigger key
+      description: Permanently delete a trigger key. This action cannot be undone.
+      tags:
+        - Trigger Keys
+      responses:
+        '200':
+          description: Trigger key deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/runs:
+    get:
+      operationId: listRuns
+      summary: List runs
+      description: List job runs with optional filters for job ID and status.
+      tags:
+        - Runs
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - name: jobId
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: Filter by job ID
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum:
+              - queued
+              - running
+              - passed
+              - failed
+              - error
+              - blocked
+          description: Filter by status
+      responses:
+        '200':
+          description: Paginated list of runs
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Run'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/runs/{runId}:
+    parameters:
+      - name: runId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Run ID
+    get:
+      operationId: getRun
+      summary: Get run details
+      description: Retrieve the full details of a specific run including test results.
+      tags:
+        - Runs
+      responses:
+        '200':
+          description: Run details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Run'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      operationId: deleteRun
+      summary: Delete a run
+      description: Permanently delete a run and its associated data.
+      tags:
+        - Runs
+      responses:
+        '200':
+          description: Run deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/runs/{runId}/permissions:
+    parameters:
+      - name: runId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Run ID
+    get:
+      operationId: getRunPermissions
+      summary: Get run access permissions
+      description: Returns the caller's role and scoped project/organization IDs for a run.
+      tags:
+        - Runs
+      responses:
+        '200':
+          description: Permissions payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunPermissionsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          description: Failed to fetch permissions
+  /api/runs/{runId}/status:
+    parameters:
+      - name: runId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Run ID
+    get:
+      operationId: getRunStatus
+      summary: Get run status
+      description: Quick status check for a run. Useful for polling in CI/CD pipelines.
+      tags:
+        - Runs
+      responses:
+        '200':
+          description: Run status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  runId:
+                    type: string
+                    format: uuid
+                  jobId:
+                    type: string
+                    format: uuid
+                  status:
+                    type: string
+                    enum:
+                      - queued
+                      - running
+                      - passed
+                      - failed
+                      - error
+                      - blocked
+                  startedAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  completedAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  durationMs:
+                    type: integer
+                    nullable: true
+                    description: Duration in milliseconds
+                  errorDetails:
+                    type: string
+                    nullable: true
+                  reportUrl:
+                    type: string
+                    nullable: true
+                    description: URL to the detailed run report
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/runs/{runId}/stream:
+    parameters:
+      - name: runId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Run ID
+    get:
+      operationId: streamRunOutput
+      summary: Stream run output (SSE)
+      description: >-
+        Stream live console output from a running job execution using
+        Server-Sent Events. The stream includes heartbeat events and closes when
+        the run completes.
+      tags:
+        - Runs
+      responses:
+        '200':
+          description: SSE event stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/runs/{runId}/cancel:
+    parameters:
+      - name: runId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Run ID
+    post:
+      operationId: cancelRun
+      summary: Cancel a run
+      description: Cancel a running or queued job execution.
+      tags:
+        - Runs
+      responses:
+        '200':
+          description: Run cancelled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  runId:
+                    type: string
+                    format: uuid
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/tests:
+    get:
+      operationId: listTests
+      summary: List tests
+      description: >-
+        List all tests in the current project with optional search and type
+        filters.
+      tags:
+        - Tests
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - name: search
+          in: query
+          schema:
+            type: string
+          description: Search by title
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum:
+              - browser
+              - api
+              - performance
+              - database
+              - custom
+          description: >-
+            Filter by test type. Aliases: `playwright` → `browser`, `k6` →
+            `performance`
+      responses:
+        '200':
+          description: Paginated list of tests
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Test'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: createTest
+      summary: Create a test
+      description: >-
+        Create a new test with a script. Supported types: `browser`
+        (Playwright), `api`, `performance` (k6), `database`, `custom`.
+      tags:
+        - Tests
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                  example: Homepage Load Test
+                script:
+                  type: string
+                  description: Test script content
+                type:
+                  type: string
+                  enum:
+                    - browser
+                    - api
+                    - performance
+                    - database
+                    - custom
+                  default: browser
+                  description: >-
+                    Test type. Aliases accepted: `playwright` → `browser`, `k6`
+                    → `performance`
+                description:
+                  type: string
+              required:
+                - title
+                - script
+      responses:
+        '201':
+          description: Test created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  test:
+                    $ref: '#/components/schemas/Test'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/tests/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Test ID
+    get:
+      operationId: getTest
+      summary: Get test details
+      description: Retrieve full details for a test including its script content.
+      tags:
+        - Tests
+      responses:
+        '200':
+          description: Test details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Test'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      operationId: updateTest
+      summary: Update a test
+      description: Update test title, script, description, or type.
+      tags:
+        - Tests
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                script:
+                  type: string
+                description:
+                  type: string
+                type:
+                  type: string
+                  enum:
+                    - browser
+                    - api
+                    - performance
+                    - database
+                    - custom
+      responses:
+        '200':
+          description: Test updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Test'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      operationId: deleteTest
+      summary: Delete a test
+      description: >-
+        Delete a test. Fails if the test is in use by active jobs or synthetic
+        monitors.
+      tags:
+        - Tests
+      responses:
+        '200':
+          description: Test deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                required:
+                  - success
+                  - message
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Test is in use by jobs or synthetic monitors and cannot be deleted
+  /api/tests/{id}/tags:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Test ID
+    get:
+      operationId: getTestTags
+      summary: Get test tags
+      description: List all tags attached to a test.
+      tags:
+        - Tests
+      responses:
+        '200':
+          description: Tags for the test
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Tag'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      operationId: replaceTestTags
+      summary: Replace test tags
+      description: Replace all tags for a test with the provided list.
+      tags:
+        - Tests
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tagIds:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+              required:
+                - tagIds
+      responses:
+        '200':
+          description: Updated tag list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Tag'
+        '400':
+          description: Invalid input
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      operationId: deleteTestTag
+      summary: Remove a tag from a test
+      description: Remove a specific tag from a test.
+      tags:
+        - Tests
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tagId:
+                  type: string
+                  format: uuid
+              required:
+                - tagId
+      responses:
+        '200':
+          description: Tag removed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+        '400':
+          description: Invalid input
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/tests/{id}/execute:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Test ID
+    post:
+      operationId: executeTest
+      summary: Execute a test
+      description: >-
+        Execute a single test immediately. Creates a run and enqueues the test
+        for execution. For k6 performance tests, an optional `location` can be
+        specified.
+      tags:
+        - Tests
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                location:
+                  type: string
+                  description: Execution location for performance tests (e.g. `us-east-1`)
+      responses:
+        '200':
+          description: Test execution started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  runId:
+                    type: string
+                    format: uuid
+                  message:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/monitors:
+    get:
+      operationId: listMonitors
+      summary: List monitors
+      description: List all uptime and performance monitors in the current project.
+      tags:
+        - Monitors
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Paginated list of monitors
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Monitor'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: createMonitor
+      summary: Create a monitor
+      description: Create a new uptime or performance monitor.
+      tags:
+        - Monitors
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  example: API Health Check
+                target:
+                  type: string
+                  format: uri
+                  example: https://api.example.com/health
+                  description: URL or host to monitor
+                type:
+                  type: string
+                  enum:
+                    - http_request
+                    - website
+                    - ping_host
+                    - port_check
+                    - synthetic_test
+                  default: http_request
+                frequencyMinutes:
+                  type: integer
+                  description: Check interval in minutes
+                  default: 5
+                  example: 5
+                timeout:
+                  type: integer
+                  description: Request timeout in seconds
+                  default: 30
+                method:
+                  type: string
+                  enum:
+                    - GET
+                    - POST
+                    - HEAD
+                    - PUT
+                    - PATCH
+                    - DELETE
+                  default: GET
+              required:
+                - name
+                - target
+      responses:
+        '201':
+          description: Monitor created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Monitor'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/monitors/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Monitor ID
+    get:
+      operationId: getMonitor
+      summary: Get monitor details
+      description: Retrieve full details for a monitor including recent check results.
+      tags:
+        - Monitors
+      responses:
+        '200':
+          description: Monitor details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Monitor'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      operationId: updateMonitor
+      summary: Update a monitor
+      description: Update monitor configuration. Only provided fields are changed.
+      tags:
+        - Monitors
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                target:
+                  type: string
+                  format: uri
+                frequencyMinutes:
+                  type: integer
+                timeout:
+                  type: integer
+                method:
+                  type: string
+                active:
+                  type: boolean
+      responses:
+        '200':
+          description: Monitor updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Monitor'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      operationId: deleteMonitor
+      summary: Delete a monitor
+      description: Permanently delete a monitor and its check history.
+      tags:
+        - Monitors
+      responses:
+        '200':
+          description: Monitor deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                required:
+                  - success
+                  - message
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/monitors/{id}/results:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Monitor ID
+    get:
+      operationId: getMonitorResults
+      summary: Get monitor check results
+      description: >-
+        Retrieve paginated check results for a monitor with optional date and
+        location filters.
+      tags:
+        - Monitors
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - name: location
+          in: query
+          schema:
+            type: string
+          description: Filter by execution location
+      responses:
+        '200':
+          description: Check results
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/MonitorResult'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/monitors/{id}/stats:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Monitor ID
+    get:
+      operationId: getMonitorStats
+      summary: Get monitor statistics
+      description: >-
+        Returns performance statistics including uptime percentage, average
+        response time, and p95 latency.
+      tags:
+        - Monitors
+      responses:
+        '200':
+          description: Monitor statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MonitorStats'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/variables:
+    get:
+      operationId: listVariables
+      summary: List variables
+      description: >-
+        List all environment variables for the current project. Secret values
+        are redacted in the response.
+      tags:
+        - Variables
+      responses:
+        '200':
+          description: List of variables
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Variable'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: createVariable
+      summary: Create a variable
+      description: >-
+        Create a new project environment variable. Variables are available to
+        all test executions in the project.
+      tags:
+        - Variables
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                key:
+                  type: string
+                  example: API_BASE_URL
+                value:
+                  type: string
+                  example: https://api.example.com
+                isSecret:
+                  type: boolean
+                  default: false
+                description:
+                  type: string
+              required:
+                - key
+                - value
+      responses:
+        '201':
+          description: Variable created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Variable'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/variables/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Variable ID
+    get:
+      operationId: getVariable
+      summary: Get a variable
+      description: Retrieve a single variable. Secret values are redacted.
+      tags:
+        - Variables
+      responses:
+        '200':
+          description: Variable details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Variable'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      operationId: updateVariable
+      summary: Update a variable
+      description: Update an existing variable's key, value, or secret flag.
+      tags:
+        - Variables
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                key:
+                  type: string
+                value:
+                  type: string
+                isSecret:
+                  type: boolean
+                description:
+                  type: string
+      responses:
+        '200':
+          description: Variable updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Variable'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      operationId: deleteVariable
+      summary: Delete a variable
+      description: Permanently remove an environment variable from the project.
+      tags:
+        - Variables
+      responses:
+        '200':
+          description: Variable deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/tags:
+    get:
+      operationId: listTags
+      summary: List tags
+      description: List all tags in the current project.
+      tags:
+        - Tags
+      responses:
+        '200':
+          description: List of tags
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Tag'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: createTag
+      summary: Create a tag
+      description: Create a new tag for organizing tests, monitors, and other resources.
+      tags:
+        - Tags
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  example: production
+                color:
+                  type: string
+                  example: '#3B82F6'
+              required:
+                - name
+      responses:
+        '201':
+          description: Tag created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tag'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/tags/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Tag ID
+    delete:
+      operationId: deleteTag
+      summary: Delete a tag
+      description: Delete a tag. Resources using this tag will have it removed.
+      tags:
+        - Tags
+      responses:
+        '200':
+          description: Tag deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/notification-providers:
+    get:
+      operationId: listNotificationProviders
+      summary: List notification providers
+      description: List all configured notification providers for the current project.
+      tags:
+        - Notifications
+      responses:
+        '200':
+          description: List of notification providers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/NotificationProvider'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: createNotificationProvider
+      summary: Create a notification provider
+      description: >-
+        Create a new notification provider (email, Slack, webhook, Telegram,
+        Discord, or Teams).
+      tags:
+        - Notifications
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  example: Slack Alerts
+                type:
+                  type: string
+                  enum:
+                    - email
+                    - slack
+                    - webhook
+                    - telegram
+                    - discord
+                    - teams
+                config:
+                  type: object
+                  description: >-
+                    Provider-specific configuration (e.g. `webhookUrl` for
+                    Slack)
+              required:
+                - name
+                - type
+                - config
+      responses:
+        '201':
+          description: Provider created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationProvider'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/notification-providers/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Notification provider ID
+    get:
+      operationId: getNotificationProvider
+      summary: Get notification provider details
+      description: Retrieve configuration details of a notification provider.
+      tags:
+        - Notifications
+      responses:
+        '200':
+          description: Provider details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationProvider'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      operationId: updateNotificationProvider
+      summary: Update a notification provider
+      description: Update notification provider name, type, or configuration.
+      tags:
+        - Notifications
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                type:
+                  type: string
+                config:
+                  type: object
+              required:
+                - name
+                - type
+                - config
+      responses:
+        '200':
+          description: Provider updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationProvider'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      operationId: deleteNotificationProvider
+      summary: Delete a notification provider
+      description: Remove a notification provider configuration.
+      tags:
+        - Notifications
+      responses:
+        '200':
+          description: Provider deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/notification-providers/test:
+    post:
+      operationId: testNotificationProvider
+      summary: Send a test notification
+      description: Send a test notification to verify provider configuration before saving.
+      tags:
+        - Notifications
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                type:
+                  type: string
+                  enum:
+                    - email
+                    - slack
+                    - webhook
+                    - telegram
+                    - discord
+                    - teams
+                config:
+                  type: object
+              required:
+                - type
+                - config
+      responses:
+        '200':
+          description: Test result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  error:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/alerts/history:
+    get:
+      operationId: getAlertHistory
+      summary: Get alert history
+      description: View the history of triggered alerts for the current project.
+      tags:
+        - Alerts
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Alert history
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: array
+                    items:
+                      $ref: '#/components/schemas/AlertHistoryEntry'
+                  - allOf:
+                      - $ref: '#/components/schemas/PaginatedResponse'
+                      - type: object
+                        properties:
+                          data:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/AlertHistoryEntry'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          description: Failed to fetch alert history
+  /api/audit:
+    get:
+      operationId: getAuditLogs
+      summary: Get audit logs
+      description: View audit trail of organization actions. Requires admin permissions.
+      tags:
+        - Audit
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - name: action
+          in: query
+          schema:
+            type: string
+          description: Filter by action type
+      responses:
+        '200':
+          description: Audit log entries
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          description: Failed to fetch audit logs
+  /api/status-pages:
+    get:
+      operationId: listStatusPages
+      summary: List status pages
+      description: Fetch status pages for the current project.
+      tags:
+        - Status Pages
+      responses:
+        '200':
+          description: Status page list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusPageListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          description: Failed to fetch status pages
+  /api/status-pages/check:
+    get:
+      operationId: checkStatusPageSubdomain
+      summary: Check status page subdomain
+      description: Verify a status page subdomain is published and return its ID.
+      tags:
+        - Status Pages
+      security: []
+      parameters:
+        - name: subdomain
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Status page subdomain
+      responses:
+        '200':
+          description: Status page lookup
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  status:
+                    type: string
+        '400':
+          description: Subdomain parameter is required
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/status-pages/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Status page ID
+    get:
+      operationId: getStatusPage
+      summary: Get status page details
+      description: Fetch a status page with components, monitors, and permissions.
+      tags:
+        - Status Pages
+      responses:
+        '200':
+          description: Status page details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusPageDetailResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          description: Failed to fetch status page
+    delete:
+      operationId: deleteStatusPage
+      summary: Delete a status page
+      description: Permanently deletes a status page and all its components.
+      tags:
+        - Status Pages
+      responses:
+        '200':
+          description: Status page deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                required:
+                  - success
+                  - message
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/status-pages/{id}/upload:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Status page ID
+    post:
+      operationId: uploadStatusPageAsset
+      summary: Upload status page assets
+      description: Upload favicon, logo, or cover image for a status page.
+      tags:
+        - Status Pages
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                type:
+                  type: string
+                  enum:
+                    - favicon
+                    - logo
+                    - cover
+              required:
+                - file
+                - type
+      responses:
+        '200':
+          description: Upload successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  url:
+                    type: string
+                  s3Key:
+                    type: string
+                  type:
+                    type: string
+        '400':
+          description: Invalid upload payload
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          description: Failed to upload file
+  /api/status-pages/{id}/rss:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Status page ID
+    get:
+      operationId: getStatusPageRss
+      summary: Get status page RSS feed
+      description: Returns an RSS feed for a published status page.
+      tags:
+        - Status Pages
+      security: []
+      responses:
+        '200':
+          description: RSS feed
+          content:
+            application/rss+xml:
+              schema:
+                type: string
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          description: Failed to generate RSS feed
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: >-
+        CLI token (`sck_live_*`) for full API access, or trigger key
+        (`sck_trigger_*` / legacy `job_*`) for job trigger endpoint only.
+  parameters:
+    Page:
+      name: page
+      in: query
+      schema:
+        type: integer
+        default: 1
+        minimum: 1
+        example: 1
+      description: Page number for pagination
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        default: 20
+        minimum: 1
+        maximum: 100
+        example: 20
+      description: Items per page
+  responses:
+    Unauthorized:
+      description: Authentication required or token invalid
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: Unauthorized
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: Not found
+    Forbidden:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+  schemas:
+    PaginatedResponse:
+      type: object
+      properties:
+        pagination:
+          type: object
+          properties:
+            total:
+              type: integer
+            page:
+              type: integer
+            limit:
+              type: integer
+            totalPages:
+              type: integer
+            hasNextPage:
+              type: boolean
+            hasPrevPage:
+              type: boolean
+    Job:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+          enum:
+            - active
+            - paused
+            - running
+        cronSchedule:
+          type: string
+          nullable: true
+        timeoutSeconds:
+          type: integer
+        retryCount:
+          type: integer
+        tests:
+          type: array
+          items:
+            type: object
+          description: Tests associated with this job
+        lastRunAt:
+          type: string
+          format: date-time
+          nullable: true
+        nextRunAt:
+          type: string
+          format: date-time
+          nullable: true
+        alertConfig:
+          type: object
+          nullable: true
+          description: Alert configuration for this job
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    Run:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        jobId:
+          type: string
+          format: uuid
+        jobName:
+          type: string
+        status:
+          type: string
+          enum:
+            - queued
+            - running
+            - passed
+            - failed
+            - error
+            - blocked
+        trigger:
+          type: string
+          enum:
+            - manual
+            - scheduled
+            - api
+            - ci
+            - remote
+        duration:
+          type: string
+          description: Formatted duration string
+          nullable: true
+        location:
+          type: string
+          nullable: true
+        jobType:
+          type: string
+          nullable: true
+        reportUrl:
+          type: string
+          nullable: true
+          description: URL to the run report
+        testCount:
+          type: integer
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+    RunPermissionsResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            userRole:
+              type: string
+            projectId:
+              type: string
+              format: uuid
+            organizationId:
+              type: string
+              format: uuid
+    StatusPage:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        subdomain:
+          type: string
+        status:
+          type: string
+        pageDescription:
+          type: string
+          nullable: true
+        allowRssFeed:
+          type: boolean
+        faviconLogo:
+          type: string
+          nullable: true
+        transactionalLogo:
+          type: string
+          nullable: true
+        heroCover:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+      additionalProperties: true
+    StatusPageComponentMonitor:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        type:
+          type: string
+        status:
+          type: string
+        target:
+          type: string
+        weight:
+          type: number
+          nullable: true
+    StatusPageComponent:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        position:
+          type: integer
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+        monitors:
+          type: array
+          items:
+            $ref: '#/components/schemas/StatusPageComponentMonitor'
+        monitorIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+      additionalProperties: true
+    StatusPageDetailResponse:
+      type: object
+      properties:
+        statusPage:
+          $ref: '#/components/schemas/StatusPage'
+        components:
+          type: array
+          items:
+            $ref: '#/components/schemas/StatusPageComponent'
+        monitors:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                format: uuid
+              name:
+                type: string
+              type:
+                type: string
+              status:
+                type: string
+        canUpdate:
+          type: boolean
+    StatusPageListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/StatusPage'
+        pagination:
+          type: object
+          properties:
+            total:
+              type: integer
+            page:
+              type: integer
+            limit:
+              type: integer
+            totalPages:
+              type: integer
+    AlertHistoryEntry:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        targetType:
+          type: string
+        targetId:
+          type: string
+        targetName:
+          type: string
+        type:
+          type: string
+        message:
+          type: string
+        status:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        notificationProvider:
+          type: string
+        metadata:
+          type: object
+          properties:
+            errorMessage:
+              type: string
+              nullable: true
+          additionalProperties: true
+    AuditLogEntry:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        action:
+          type: string
+        details:
+          type: object
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        user:
+          type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            name:
+              type: string
+              nullable: true
+            email:
+              type: string
+              nullable: true
+    AuditResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            logs:
+              type: array
+              items:
+                $ref: '#/components/schemas/AuditLogEntry'
+            pagination:
+              type: object
+              properties:
+                currentPage:
+                  type: integer
+                totalPages:
+                  type: integer
+                totalCount:
+                  type: integer
+                limit:
+                  type: integer
+                hasNext:
+                  type: boolean
+                hasPrev:
+                  type: boolean
+            filters:
+              type: object
+              properties:
+                actions:
+                  type: array
+                  items:
+                    type: string
+    Test:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        priority:
+          type: string
+          enum:
+            - low
+            - medium
+            - high
+          description: Test priority
+        type:
+          type: string
+          enum:
+            - browser
+            - api
+            - performance
+            - database
+            - custom
+          description: Test type. `browser` = Playwright, `performance` = k6
+        script:
+          type: string
+          description: Test script content
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    Monitor:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        target:
+          type: string
+          format: uri
+          description: URL or host being monitored
+        type:
+          type: string
+          enum:
+            - http_request
+            - website
+            - ping_host
+            - port_check
+            - synthetic_test
+        status:
+          type: string
+          enum:
+            - up
+            - down
+            - degraded
+            - pending
+        frequencyMinutes:
+          type: integer
+          description: Check interval in minutes
+        timeout:
+          type: integer
+        method:
+          type: string
+        active:
+          type: boolean
+        lastCheckAt:
+          type: string
+          format: date-time
+          nullable: true
+        responseTime:
+          type: integer
+          description: Last response time in ms
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+    MonitorResult:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum:
+            - up
+            - down
+        responseTime:
+          type: integer
+          description: Response time in ms
+        statusCode:
+          type: integer
+          nullable: true
+        location:
+          type: string
+    MonitorStats:
+      type: object
+      properties:
+        uptimePercent:
+          type: number
+          format: float
+        avgResponseTime:
+          type: number
+          format: float
+        p95ResponseTime:
+          type: number
+          format: float
+        totalChecks:
+          type: integer
+        successfulChecks:
+          type: integer
+        failedChecks:
+          type: integer
+    Variable:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        key:
+          type: string
+        value:
+          type: string
+          description: Redacted for secrets
+        isSecret:
+          type: boolean
+        description:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+    Tag:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        color:
+          type: string
+          nullable: true
+    CliToken:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        start:
+          type: string
+          description: Display prefix (e.g. sck_live_a1b2...)
+        enabled:
+          type: boolean
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastRequest:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+    TriggerKey:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        start:
+          type: string
+          description: Display prefix (e.g. sck_trigger_f1e2...)
+        enabled:
+          type: boolean
+        jobId:
+          type: string
+          format: uuid
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastRequest:
+          type: string
+          format: date-time
+          nullable: true
+        createdByName:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+    NotificationProvider:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        type:
+          type: string
+          enum:
+            - email
+            - slack
+            - webhook
+            - telegram
+            - discord
+            - teams
+        enabled:
+          type: boolean
+        config:
+          type: object
+        lastUsed:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+    AlertEvent:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+        message:
+          type: string
+        severity:
+          type: string
+          enum:
+            - info
+            - warning
+            - critical
+        resourceId:
+          type: string
+          format: uuid
+        resourceType:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    AuditEntry:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        action:
+          type: string
+        userId:
+          type: string
+          format: uuid
+        userName:
+          type: string
+        details:
+          type: object
+        ipAddress:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    Location:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        region:
+          type: string
+

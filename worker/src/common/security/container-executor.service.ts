@@ -18,7 +18,6 @@ import { ConfigService } from '@nestjs/config';
 import { execa } from 'execa';
 import * as path from 'path';
 import * as fs from 'fs/promises';
-import * as fsSync from 'fs';
 import { randomUUID } from 'crypto';
 import { CancellationService } from '../services/cancellation.service';
 
@@ -90,7 +89,7 @@ export interface ContainerExecutionOptions {
 
   /**
    * Filename for inline script (required if inlineScriptContent is provided)
-   * Example: 'test.spec.mjs'
+   * Example: 'test.spec.ts'
    */
   inlineScriptFileName?: string;
 
@@ -503,33 +502,35 @@ export class ContainerExecutorService {
       let containerKilled = false;
 
       if (options.runId) {
-        cancellationCheckInterval = setInterval(async () => {
-          try {
-            const isCancelled = await this.cancellationService.isCancelled(
-              options.runId!,
-            );
-            if (isCancelled && !containerKilled) {
-              this.logger.warn(
-                `[${options.runId}] Cancellation detected - killing container ${containerName}`,
-              );
-              containerKilled = true;
-
-              // Kill the container immediately
-              await this.killContainer(containerName);
-
-              // Clear the cancellation signal
-              await this.cancellationService.clearCancellationSignal(
+        cancellationCheckInterval = setInterval(() => {
+          void (async () => {
+            try {
+              const isCancelled = await this.cancellationService.isCancelled(
                 options.runId!,
               );
+              if (isCancelled && !containerKilled) {
+                this.logger.warn(
+                  `[${options.runId}] Cancellation detected - killing container ${containerName}`,
+                );
+                containerKilled = true;
 
-              // Kill the child process
-              child.kill('SIGKILL');
+                // Kill the container immediately
+                await this.killContainer(containerName);
+
+                // Clear the cancellation signal
+                await this.cancellationService.clearCancellationSignal(
+                  options.runId!,
+                );
+
+                // Kill the child process
+                child.kill('SIGKILL');
+              }
+            } catch (error) {
+              this.logger.error(
+                `Error checking cancellation: ${error instanceof Error ? error.message : String(error)}`,
+              );
             }
-          } catch (error) {
-            this.logger.error(
-              `Error checking cancellation: ${error instanceof Error ? error.message : String(error)}`,
-            );
-          }
+          })();
         }, 1000); // Check every second
       }
 

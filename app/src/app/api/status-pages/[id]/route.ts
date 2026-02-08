@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { statusPages, statusPageComponents, monitors } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
-import { hasPermission } from "@/lib/rbac/middleware";
-import { requireProjectContext } from "@/lib/project-context";
+import { checkPermissionWithContext } from "@/lib/rbac/middleware";
+import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import { generateProxyUrl } from "@/lib/asset-proxy";
+import { logAuditEvent } from "@/lib/audit-logger";
 import { z } from "zod";
 
 // UUID validation schema
@@ -34,14 +35,12 @@ export async function GET(request: NextRequest, context: RouteContext) {
       );
     }
 
-    const { project, organizationId } = await requireProjectContext();
+    const authCtx = await requireAuthContext();
+    const { project, organizationId } = authCtx;
     const targetProjectId = project.id;
 
     // Check permission to view status pages
-    const canView = await hasPermission("status_page", "view", {
-      organizationId,
-      projectId: targetProjectId,
-    });
+    const canView = checkPermissionWithContext("status_page", "view", authCtx);
 
     if (!canView) {
       return NextResponse.json(
@@ -51,10 +50,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     }
 
     // Check update permission
-    const canUpdate = await hasPermission("status_page", "update", {
-      organizationId,
-      projectId: targetProjectId,
-    });
+    const canUpdate = checkPermissionWithContext("status_page", "update", authCtx);
 
     // Fetch the status page
     const statusPage = await db.query.statusPages.findFirst({
@@ -144,6 +140,12 @@ export async function GET(request: NextRequest, context: RouteContext) {
       canUpdate,
     });
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
     console.error("Error fetching status page:", error);
 
     const isDevelopment = process.env.NODE_ENV === "development";
@@ -155,5 +157,90 @@ export async function GET(request: NextRequest, context: RouteContext) {
       },
       { status: 500 }
     );
+  }
+}
+
+/**
+ * DELETE /api/status-pages/[id]
+ * Deletes a status page. DB cascade handles related components and monitors.
+ */
+export async function DELETE(
+  _request: NextRequest,
+  context: RouteContext
+) {
+  try {
+    const { id } = await context.params;
+
+    const validationResult = uuidSchema.safeParse(id);
+    if (!validationResult.success) {
+      return NextResponse.json(
+        { error: "Invalid status page ID format" },
+        { status: 400 }
+      );
+    }
+
+    const authCtx = await requireAuthContext();
+    const { userId, project, organizationId } = authCtx;
+
+    const canDelete = checkPermissionWithContext("status_page", "delete", authCtx);
+    if (!canDelete) {
+      return NextResponse.json(
+        { error: "Insufficient permissions to delete status pages" },
+        { status: 403 }
+      );
+    }
+
+    // Verify ownership
+    const [statusPage] = await db
+      .select({ id: statusPages.id, name: statusPages.name, subdomain: statusPages.subdomain })
+      .from(statusPages)
+      .where(
+        and(
+          eq(statusPages.id, id),
+          eq(statusPages.organizationId, organizationId),
+          eq(statusPages.projectId, project.id)
+        )
+      )
+      .limit(1);
+
+    if (!statusPage) {
+      return NextResponse.json({ error: "Status page not found" }, { status: 404 });
+    }
+
+    // Delete (cascade handles components and component-monitor associations)
+    await db
+      .delete(statusPages)
+      .where(
+        and(
+          eq(statusPages.id, id),
+          eq(statusPages.organizationId, organizationId),
+          eq(statusPages.projectId, project.id)
+        )
+      );
+
+    await logAuditEvent({
+      userId,
+      organizationId,
+      action: "status_page_deleted",
+      resource: "status_page",
+      resourceId: id,
+      metadata: {
+        statusPageName: statusPage.name,
+        subdomain: statusPage.subdomain,
+        projectId: project.id,
+      },
+      success: true,
+    });
+
+    return NextResponse.json({ success: true, message: "Status page deleted successfully" });
+  } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
+    console.error("Error deleting status page:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

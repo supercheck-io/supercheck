@@ -8,8 +8,8 @@ import {
   TestExecutionTask,
 } from "@/lib/queue";
 import { playwrightValidationService } from "@/lib/playwright-validator";
-import { requireProjectContext } from "@/lib/project-context";
-import { hasPermission } from "@/lib/rbac/middleware";
+import { requireAuthContext, isAuthError } from "@/lib/auth-context";
+import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { resolveProjectVariables, extractVariableNames, generateVariableFunctions, type VariableResolutionResult } from "@/lib/variable-resolver";
 import { validateK6Script } from "@/lib/k6-validator";
@@ -25,13 +25,11 @@ function isK6Script(script: string): boolean {
 export async function POST(request: NextRequest) {
   try {
     // Check authentication and permissions first
-    const { userId, project, organizationId } = await requireProjectContext();
+    const authCtx = await requireAuthContext();
+    const { userId, project, organizationId } = authCtx;
 
     // Check permission to run tests
-    const canRunTests = await hasPermission('test', 'run', {
-      organizationId,
-      projectId: project.id
-    });
+    const canRunTests = checkPermissionWithContext('test', 'run', authCtx);
     
     if (!canRunTests) {
       console.warn(`User ${userId} attempted to run playground test without RUN_TESTS permission`);
@@ -310,6 +308,12 @@ export async function POST(request: NextRequest) {
       location: resolvedLocation ?? undefined,
     });
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
     console.error("Error processing test request:", error);
     return NextResponse.json(
       { error: "Internal server error" },

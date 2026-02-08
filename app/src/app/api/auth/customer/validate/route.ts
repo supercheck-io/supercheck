@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAuth } from "@/lib/rbac/middleware";
-import { getActiveOrganization } from "@/lib/session";
+import { requireUserAuthContext, isAuthError } from "@/lib/auth-context";
 import { db } from "@/utils/db";
 import { organization } from "@/db/schema";
 import { eq } from "drizzle-orm";
@@ -12,10 +11,9 @@ import { isPolarEnabled, getPolarConfig } from "@/lib/feature-flags";
  */
 export async function POST() {
   try {
-    await requireAuth();
-    const activeOrg = await getActiveOrganization();
+    const { organizationId } = await requireUserAuthContext();
 
-    if (!activeOrg) {
+    if (!organizationId) {
       return NextResponse.json(
         { error: "No active organization found" },
         { status: 400 }
@@ -24,7 +22,7 @@ export async function POST() {
 
     // Get organization details
     const org = await db.query.organization.findFirst({
-      where: eq(organization.id, activeOrg.id),
+      where: eq(organization.id, organizationId),
     });
 
     if (!org) {
@@ -44,7 +42,7 @@ export async function POST() {
             subscriptionStatus: "none",
             subscriptionId: null
           })
-          .where(eq(organization.id, activeOrg.id));
+          .where(eq(organization.id, organizationId));
         
         return NextResponse.json({
           message: "Polar disabled - cleared customer ID and set unlimited plan",
@@ -100,7 +98,7 @@ export async function POST() {
             subscriptionStatus: "none", 
             subscriptionId: null
           })
-          .where(eq(organization.id, activeOrg.id));
+          .where(eq(organization.id, organizationId));
 
         return NextResponse.json({
           message: "Invalid Polar customer ID cleared - customer will be recreated on next signup",
@@ -119,6 +117,12 @@ export async function POST() {
     }
 
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
     console.error("Error in customer validation:", error);
     return NextResponse.json(
       { error: "Internal server error" },

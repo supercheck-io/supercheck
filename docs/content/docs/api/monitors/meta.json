@@ -1,0 +1,13 @@
+{
+  "title": "Monitors API",
+  "icon": "Globe",
+  "pages": [
+    "listMonitors",
+    "getMonitor",
+    "createMonitor",
+    "updateMonitor",
+    "deleteMonitor",
+    "getMonitorResults",
+    "getMonitorStats"
+  ]
+}

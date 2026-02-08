@@ -1,0 +1,15 @@
+{
+  "title": "Tests API",
+  "icon": "FlaskConical",
+  "pages": [
+    "listTests",
+    "getTest",
+    "getTestTags",
+    "createTest",
+    "updateTest",
+    "deleteTest",
+    "executeTest",
+    "replaceTestTags",
+    "deleteTestTag"
+  ]
+}

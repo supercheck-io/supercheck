@@ -1,0 +1,133 @@
+---
+title: API Authentication
+description: Token types, security, and authentication methods for the Supercheck API
+---
+
+## Authentication Method
+
+All API requests are authenticated via the `Authorization` header with a Bearer token:
+
+```bash
+curl https://demo.supercheck.dev/api/jobs \
+  -H "Authorization: Bearer sck_live_a1b2c3d4e5f6789012345678901234ab"
+```
+
+## Token Types
+
+| Token Type | Prefix | Access Level | Use Case |
+|------------|--------|--------------|----------|
+| **CLI Token** | `sck_live_` | Full project API access | CLI, automation, integrations |
+| **Trigger Key** | `sck_trigger_` | Single job trigger only | CI/CD pipelines |
+| **Test Token** | `sck_test_` | Full project API access | Development/staging |
+
+<Callout type="info">
+  Legacy trigger keys with `job_` prefix continue to work. No migration is needed.
+</Callout>
+
+## CLI Tokens
+
+CLI tokens are project-scoped and inherit the creating user's RBAC permissions.
+
+### Create a Token
+
+```bash
+POST /api/cli-tokens
+Authorization: Bearer <existing-token>
+Content-Type: application/json
+
+{
+  "name": "CI/CD Pipeline",
+  "expiresIn": 7776000  // optional, seconds (e.g. 7776000 = 90 days)
+}
+```
+
+**Response** (201):
+
+```json
+{
+  "id": "uuid",
+  "name": "CI/CD Pipeline",
+  "key": "sck_live_a1b2c3d4e5f6789012345678901234ab",
+  "start": "sck_live_a1b2...",
+  "expiresAt": "2025-12-31T23:59:59Z",
+  "createdAt": "2024-01-15T10:30:00Z"
+}
+```
+
+<Callout type="warn">
+  The `key` field is returned **only once** at creation time. Store it securely.
+</Callout>
+
+### List Tokens
+
+```bash
+GET /api/cli-tokens
+Authorization: Bearer <token>
+```
+
+### Enable/Disable a Token
+
+```bash
+PATCH /api/cli-tokens/{id}
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{ "enabled": false }
+```
+
+### Revoke a Token
+
+```bash
+DELETE /api/cli-tokens/{id}
+Authorization: Bearer <token>
+```
+
+## Trigger Keys
+
+Trigger keys provide **minimal access** for CI/CD pipelines — they can only trigger a single job:
+
+```bash
+POST /api/jobs/{id}/trigger
+Authorization: Bearer sck_trigger_f1e2d3c4b5a6789012345678901234cd
+```
+
+Trigger keys **cannot** access any other API endpoint. Attempts to use them on general endpoints return `401 Unauthorized`.
+
+## Token Security
+
+| Practice | Implementation |
+|----------|---------------|
+| **Storage** | Only SHA-256 hash stored in database |
+| **Lookup** | Display prefix narrows DB candidates (1-2 rows vs full scan) |
+| **Comparison** | Constant-time hash comparison prevents timing attacks |
+| **Expiry** | Tokens can have optional expiration dates |
+| **Membership** | Token rejected if owner is removed from organization |
+| **Audit** | All token operations are logged in audit trail |
+| **Limits** | Max 20 CLI tokens per project |
+
+## Rate Limiting
+
+All endpoints enforce rate limiting. The CLI automatically handles `429` responses with exponential backoff.
+
+| Token Type | Limit | Window |
+|------------|-------|--------|
+| CLI Token | 1000 req/min | Per user |
+| Trigger Key | 60 req/min | Per key |
+| Unauthenticated | 10 req/min | Per IP |
+
+### Rate Limit Headers
+
+Every response includes rate limit information:
+
+```
+X-RateLimit-Limit: 1000
+X-RateLimit-Remaining: 999
+X-RateLimit-Reset: 1612137600
+```
+
+When rate limited (`429`), the `Retry-After` header indicates how long to wait:
+
+```
+HTTP/1.1 429 Too Many Requests
+Retry-After: 60
+```

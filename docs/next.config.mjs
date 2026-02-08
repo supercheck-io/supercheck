@@ -1,5 +1,4 @@
 import { createMDX } from 'fumadocs-mdx/next';
-import { resolve } from 'path';
 
 const withMDX = createMDX();
 
@@ -9,6 +8,14 @@ const config = {
   output: 'export',
   images: {
     unoptimized: true,
+  },
+  experimental: {
+    // Tree-shake barrel re-exports from these packages
+    optimizePackageImports: [
+      'lucide-react',
+      'fumadocs-ui',
+      'fumadocs-core',
+    ],
   },
 };
 

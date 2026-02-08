@@ -9,7 +9,8 @@ import {
   canCancelRun,
   type RunStatus,
 } from "@/lib/job-status-utils";
-import { requireAuth, canCancelRunInProject } from "@/lib/rbac/middleware";
+import { canCancelRunInProject } from "@/lib/rbac/middleware";
+import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import { setCancellationSignal } from "@/lib/cancellation-service";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { getCapacityManager } from "@/lib/capacity-manager";
@@ -51,8 +52,8 @@ export async function POST(
   try {
     const runId = params.runId;
 
-    // Require authentication
-    const { userId } = await requireAuth();
+    // Require authentication (supports both Bearer tokens and session cookies)
+    const { userId } = await requireAuthContext();
 
     logger.info({ runId, userId }, "Cancellation requested");
 
@@ -448,6 +449,12 @@ export async function POST(
       jobType,
     });
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
     logger.error({ error, runId: params.runId }, "Error cancelling run");
 
     return NextResponse.json(

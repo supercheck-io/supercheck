@@ -1,0 +1,13 @@
+{
+  "title": "Jobs API",
+  "icon": "CalendarClock",
+  "pages": [
+    "listJobs",
+    "getJob",
+    "createJob",
+    "updateJob",
+    "deleteJob",
+    "triggerJob",
+    "runJob"
+  ]
+}

@@ -4,9 +4,11 @@ import { apikey, jobs, user } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { z } from "zod";
 import { logAuditEvent } from "@/lib/audit-logger";
-import { hasPermission, requireAuth } from "@/lib/rbac/middleware";
+import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { createLogger } from "@/lib/logger/pino-config";
 import { hashApiKey, generateApiKey, getApiKeyPrefix } from "@/lib/security/api-key-hash";
+import { requireAuthContext, isAuthError } from "@/lib/auth-context";
+import crypto from "crypto";
 
 const logger = createLogger({ module: 'api-keys' });
 
@@ -29,6 +31,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const authCtx = await requireAuthContext();
     const { id: jobId } = await params;
 
     // Validate UUID format
@@ -36,10 +39,12 @@ export async function GET(
       return NextResponse.json({ error: "Invalid job ID format" }, { status: 400 });
     }
 
-    // Verify user is authenticated
-    await requireAuth();
+    const canView = checkPermissionWithContext("apiKey", "view", authCtx);
+    if (!canView) {
+      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
+    }
 
-    // Verify job exists
+    // Verify job exists (scoped to current project/org)
     const job = await db
       .select({
         id: jobs.id,
@@ -47,20 +52,17 @@ export async function GET(
         projectId: jobs.projectId,
       })
       .from(jobs)
-      .where(eq(jobs.id, jobId))
+      .where(
+        and(
+          eq(jobs.id, jobId),
+          eq(jobs.projectId, authCtx.project.id),
+          eq(jobs.organizationId, authCtx.organizationId)
+        )
+      )
       .limit(1);
 
     if (job.length === 0) {
       return NextResponse.json({ error: "Job not found" }, { status: 404 });
-    }
-
-    const isAuthorized = await hasPermission("job", "view", {
-      organizationId: job[0].organizationId || undefined,
-      projectId: job[0].projectId || undefined,
-    });
-
-    if (!isAuthorized) {
-      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
     }
 
     // Get API keys that belong to this job, including creator name
@@ -96,6 +98,12 @@ export async function GET(
       })),
     });
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
     logger.error({ err: error }, 'Error fetching job API keys');
     return NextResponse.json(
       { 
@@ -114,6 +122,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const authCtx = await requireAuthContext();
     const { id: jobId } = await params;
 
     // Validate UUID format
@@ -121,8 +130,7 @@ export async function POST(
       return NextResponse.json({ error: "Invalid job ID format" }, { status: 400 });
     }
 
-    // Verify user is authenticated
-    const { userId } = await requireAuth();
+    const userId = authCtx.userId;
 
     // Parse and validate request body
     let requestBody;
@@ -152,7 +160,12 @@ export async function POST(
 
     const { name, expiresIn } = validation.data;
 
-    // Verify job exists
+    const canCreate = checkPermissionWithContext("apiKey", "create", authCtx);
+    if (!canCreate) {
+      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
+    }
+
+    // Verify job exists (scoped to current project/org)
     const job = await db
       .select({
         id: jobs.id,
@@ -161,20 +174,17 @@ export async function POST(
         name: jobs.name,
       })
       .from(jobs)
-      .where(eq(jobs.id, jobId))
+      .where(
+        and(
+          eq(jobs.id, jobId),
+          eq(jobs.projectId, authCtx.project.id),
+          eq(jobs.organizationId, authCtx.organizationId)
+        )
+      )
       .limit(1);
 
     if (job.length === 0) {
       return NextResponse.json({ error: "Job not found" }, { status: 404 });
-    }
-
-    const canCreate = await hasPermission("apiKey", "create", {
-      organizationId: job[0].organizationId || undefined,
-      projectId: job[0].projectId || undefined,
-    });
-
-    if (!canCreate) {
-      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
     }
 
     // Check for duplicate names within the same job
@@ -286,6 +296,12 @@ export async function POST(
       },
     });
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
     logger.error({ err: error }, 'Error creating API key');
     
     // Enhanced error handling

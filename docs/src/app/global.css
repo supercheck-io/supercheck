@@ -1,6 +1,7 @@
 @import 'tailwindcss';
 @import 'fumadocs-ui/css/neutral.css';
 @import 'fumadocs-ui/css/preset.css';
+@import 'fumadocs-openapi/css/preset.css';
 
 :root {
   --color-fd-primary: hsl(220, 90%, 56%);
@@ -20,4 +21,22 @@ html:has(body[data-scroll-locked]) {
 
 body {
   background-color: var(--color-fd-background);
+}
+
+/* Homepage entrance animations (replaces framer-motion) */
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    filter: blur(4px);
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0px);
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
 }

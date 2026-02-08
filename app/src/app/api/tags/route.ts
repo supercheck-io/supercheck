@@ -3,11 +3,11 @@ import { db } from '@/utils/db';
 import { tags } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
-import { requireProjectContext } from '@/lib/project-context';
+import { requireAuthContext, isAuthError } from '@/lib/auth-context';
 
 export async function GET() {
   try {
-    const context = await requireProjectContext();
+    const context = await requireAuthContext();
     
     // PERFORMANCE: Use checkPermissionWithContext to avoid 5-8 duplicate DB queries
     const canView = checkPermissionWithContext('tag', 'view', context);
@@ -31,6 +31,12 @@ export async function GET() {
 
     return NextResponse.json(allTags);
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Authentication required' },
+        { status: 401 }
+      );
+    }
     console.error('Error fetching tags:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
@@ -38,7 +44,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const context = await requireProjectContext();
+    const context = await requireAuthContext();
 
     const { name, color } = await request.json();
     
@@ -127,6 +133,12 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(newTag, { status: 201 });
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Authentication required' },
+        { status: 401 }
+      );
+    }
     console.error('Error creating tag:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }

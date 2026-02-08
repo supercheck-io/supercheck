@@ -3,6 +3,21 @@ import { baseOptions } from '@/lib/layout.shared';
 import { source } from '@/lib/source';
 import type { ReactNode } from 'react';
 
+const tabConfig: Record<string, { description: string; color: string }> = {
+  'Supercheck App': {
+    description: 'Platform documentation',
+    color: 'text-emerald-500',
+  },
+  'Supercheck CLI': {
+    description: 'CLI for CI/CD automation',
+    color: 'text-amber-500',
+  },
+  'Supercheck API': {
+    description: 'REST API reference',
+    color: 'text-sky-500',
+  },
+};
+
 export default function Layout({ children }: { children: ReactNode }) {
   const base = baseOptions();
 
@@ -16,17 +31,21 @@ export default function Layout({ children }: { children: ReactNode }) {
       }}
       sidebar={{
         collapsible: true,
-        defaultOpenLevel: 0,
+        defaultOpenLevel: 1,
         tabs: {
           transform(option, node) {
             const meta = source.getNodeMeta(node);
             if (!meta || !node.icon) return option;
 
+            const title = typeof option.title === 'string' ? option.title : '';
+            const config = tabConfig[title];
+
             return {
               ...option,
+              description: config?.description ?? meta.data.description,
               icon: (
                 <div
-                  className="[&_svg]:size-full rounded-lg size-full max-md:bg-fd-primary/10 max-md:border max-md:p-1.5"
+                  className={`[&_svg]:size-full size-full ${config?.color ?? ''}`}
                 >
                   {node.icon}
                 </div>

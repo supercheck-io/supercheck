@@ -100,7 +100,8 @@ export class JobNotificationService {
       let projectName: string | undefined;
       let effectiveJobType = jobType;
       if (job.projectId) {
-        const project = await this.dbService.getProjectById(job.projectId);
+        const project: { name: string } | null =
+          await this.dbService.getProjectById(job.projectId);
         projectName = project?.name;
       }
 

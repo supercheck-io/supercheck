@@ -12,12 +12,14 @@ import { ReportUploadService } from '../../common/services/report-upload.service
 import { ContainerExecutorService } from '../../common/security/container-executor.service';
 import { CancellationService } from '../../common/services/cancellation.service';
 import { RequirementCoverageService } from './requirement-coverage.service';
-import { findFirstFileByNames } from '../../common/utils/file-search';
 import {
   TestResult,
   TestExecutionResult,
   TestExecutionTask,
   JobExecutionTask,
+  PlaywrightReport,
+  PlaywrightTestEntry,
+  PlaywrightTestResult,
 } from '../interfaces';
 
 // Helper function to check if running on Windows
@@ -328,7 +330,7 @@ export class ExecutionService implements OnModuleDestroy {
    * Performs optimized memory monitoring - only when needed
    * Note: Local file cleanup removed - execution now runs in containers
    */
-  private async performMemoryCleanup(): Promise<void> {
+  private performMemoryCleanup(): void {
     try {
       const memUsage = process.memoryUsage();
       const memUsageMB = Math.round(memUsage.heapUsed / 1024 / 1024);
@@ -421,7 +423,7 @@ export class ExecutionService implements OnModuleDestroy {
       let testScript: { scriptContent: string; fileName: string };
 
       try {
-        testScript = await this.prepareSingleTest(testId, code);
+        testScript = this.prepareSingleTest(testId, code);
       } catch (error) {
         throw new Error(`Failed to prepare test: ${(error as Error).message}`);
       }
@@ -781,7 +783,7 @@ export class ExecutionService implements OnModuleDestroy {
           // Prepare script for inline container execution
           // Prefix with zero-padded order number for correct sorting in Playwright report
           const orderPrefix = String(i + 1).padStart(3, '0');
-          const fileName = `${orderPrefix}-${testId}.spec.mjs`;
+          const fileName = `${orderPrefix}-${testId}.spec.ts`;
           preparedScripts[fileName] = script;
 
           // Use the first script as the main test file
@@ -961,9 +963,9 @@ export class ExecutionService implements OnModuleDestroy {
             task.organizationId,
             task.projectId,
           )
-          .catch((err) => {
+          .catch((err: unknown) => {
             this.logger.warn(
-              `[${runId}] Failed to update requirement coverage: ${err.message}`,
+              `[${runId}] Failed to update requirement coverage: ${err instanceof Error ? err.message : String(err)}`,
             );
           });
       }
@@ -1229,7 +1231,7 @@ export class ExecutionService implements OnModuleDestroy {
 
     try {
       const raw = await fs.readFile(resultsPath, 'utf-8');
-      const parsed = JSON.parse(raw);
+      const parsed = JSON.parse(raw) as PlaywrightReport;
 
       const collectedTests = this.collectPlaywrightTests(parsed);
       this.logger.debug(
@@ -1237,14 +1239,14 @@ export class ExecutionService implements OnModuleDestroy {
       );
 
       if (collectedTests.length > 0) {
-        const summarized = collectedTests.slice(0, 5).map((test: any) => ({
+        const summarized = collectedTests.slice(0, 5).map((test) => ({
           title:
             Array.isArray(test?.titlePath) && test.titlePath.length > 0
               ? test.titlePath.join(' › ')
               : (test?.title ?? test?.name ?? 'unknown'),
           outcome: this.determinePlaywrightTestOutcome(test),
           attempts: Array.isArray(test?.results)
-            ? test.results.map((result: any) => result?.status)
+            ? test.results.map((result: PlaywrightTestResult) => result?.status)
             : undefined,
         }));
         this.logger.debug(
@@ -1351,8 +1353,8 @@ export class ExecutionService implements OnModuleDestroy {
     return false;
   }
 
-  private collectPlaywrightTests(report: unknown): any[] {
-    const collected: any[] = [];
+  private collectPlaywrightTests(report: unknown): PlaywrightTestEntry[] {
+    const collected: PlaywrightTestEntry[] = [];
 
     const visit = (node: unknown) => {
       if (!node || typeof node !== 'object') {
@@ -1364,20 +1366,20 @@ export class ExecutionService implements OnModuleDestroy {
       if (Array.isArray(obj.tests)) {
         for (const test of obj.tests) {
           if (test) {
-            collected.push(test);
+            collected.push(test as PlaywrightTestEntry);
           }
         }
       }
 
       const nestedCollections: Array<unknown> = [];
       if (Array.isArray(obj.suites)) {
-        nestedCollections.push(...obj.suites);
+        nestedCollections.push(...(obj.suites as unknown[]));
       }
       if (Array.isArray(obj.projects)) {
-        nestedCollections.push(...obj.projects);
+        nestedCollections.push(...(obj.projects as unknown[]));
       }
       if (Array.isArray(obj.specs)) {
-        nestedCollections.push(...obj.specs);
+        nestedCollections.push(...(obj.specs as unknown[]));
       }
 
       if (nestedCollections.length > 0) {
@@ -1390,7 +1392,7 @@ export class ExecutionService implements OnModuleDestroy {
   }
 
   private determinePlaywrightTestOutcome(
-    test: any,
+    test: PlaywrightTestEntry,
   ): 'passed' | 'flaky' | 'failed' | 'unknown' {
     const statuses = this.extractPlaywrightAttemptStatuses(test);
     const hasPassed = statuses.includes('passed');
@@ -1410,7 +1412,7 @@ export class ExecutionService implements OnModuleDestroy {
     return 'unknown';
   }
 
-  private isPlaywrightTestFailure(test: any): boolean {
+  private isPlaywrightTestFailure(test: PlaywrightTestEntry): boolean {
     const statuses = this.extractPlaywrightAttemptStatuses(test);
     const hasPassed = statuses.includes('passed');
     const hasFailure = statuses.some((status) =>
@@ -1434,7 +1436,9 @@ export class ExecutionService implements OnModuleDestroy {
     return false;
   }
 
-  private extractPlaywrightAttemptStatuses(test: any): string[] {
+  private extractPlaywrightAttemptStatuses(
+    test: PlaywrightTestEntry,
+  ): string[] {
     const statuses: string[] = [];
 
     if (Array.isArray(test?.results)) {
@@ -1508,7 +1512,7 @@ export class ExecutionService implements OnModuleDestroy {
   /**
    * Cleanup browser processes only when explicitly needed - optimized for lower CPU usage
    */
-  private async cleanupBrowserProcesses(): Promise<void> {
+  private cleanupBrowserProcesses(): void {
     try {
       // Only run cleanup if we actually had active executions recently
       if (this.activeExecutions.size === 0) {
@@ -1517,9 +1521,10 @@ export class ExecutionService implements OnModuleDestroy {
 
       if (isWindows) {
         // Minimal cleanup on Windows - only target obviously stuck processes
+        // Use supercheck-exec prefix to avoid killing unrelated node/test processes
         const killPatterns = [
-          'playwright.*test',
-          'node.*spec.mjs',
+          'supercheck-exec.*playwright',
+          'supercheck-exec.*spec.ts',
           'for.*;;.*100', // Infinite loop patterns
         ];
 
@@ -1539,8 +1544,9 @@ export class ExecutionService implements OnModuleDestroy {
         }
       } else {
         // Minimal Unix cleanup - only target specific test processes
+        // Use supercheck-exec prefix to avoid killing unrelated node/test processes
         const killCommands = [
-          'pkill -9 -f "node.*spec.mjs"',
+          'pkill -9 -f "supercheck-exec.*spec.ts"',
           'pkill -9 -f "for.*;;.*100"', // Infinite loops
         ];
 
@@ -1754,10 +1760,7 @@ export class ExecutionService implements OnModuleDestroy {
         });
 
         // Update active executions with PID for better tracking
-        for (const [
-          executionId,
-          execution,
-        ] of this.activeExecutions.entries()) {
+        for (const [, execution] of this.activeExecutions.entries()) {
           if (!execution.pid) {
             execution.pid = childProcess.pid;
             break;
@@ -1823,7 +1826,7 @@ export class ExecutionService implements OnModuleDestroy {
                   childProcess.kill('SIGKILL');
                 }
               }, 2000); // 2 second grace period
-            } catch (error) {
+            } catch {
               // If SIGTERM fails, try SIGKILL immediately
               try {
                 childProcess.kill('SIGKILL');
@@ -1921,10 +1924,10 @@ export class ExecutionService implements OnModuleDestroy {
    * Returns the script content ready to be passed inline to container
    * Container-only: No host filesystem access needed
    */
-  private async prepareSingleTest(
+  private prepareSingleTest(
     testId: string,
     testScript: string,
-  ): Promise<{ scriptContent: string; fileName: string }> {
+  ): { scriptContent: string; fileName: string } {
     try {
       // Ensure proper trace configuration to avoid path issues
       const enhancedScript = ensureProperTraceConfiguration(testScript, testId);
@@ -1932,7 +1935,7 @@ export class ExecutionService implements OnModuleDestroy {
       // Return script content for inline container execution
       return {
         scriptContent: enhancedScript,
-        fileName: `${testId}.spec.mjs`, // ES module extension
+        fileName: `${testId}.spec.ts`, // TypeScript extension for Playwright
       };
     } catch (error) {
       this.logger.error(

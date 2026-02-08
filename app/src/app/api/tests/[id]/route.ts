@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
-import { tests } from "@/db/schema";
-import { eq } from "drizzle-orm";
-import { requireAuth, hasPermission } from '@/lib/rbac/middleware';
+import { tests, jobTests, jobs, monitors } from "@/db/schema";
+import { eq, and, count, sql } from "drizzle-orm";
+import { checkPermissionWithContext } from '@/lib/rbac/middleware';
+import { requireAuthContext, isAuthError } from '@/lib/auth-context';
+import { logAuditEvent } from '@/lib/audit-logger';
 
 declare const Buffer: {
   from(data: string, encoding: string): { toString(encoding: string): string };
@@ -40,22 +42,36 @@ async function decodeTestScript(base64Script: string): Promise<string> {
 
 export async function GET(
   request: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  routeContext: { params: Promise<{ id: string }> }
 ) {
-  const params = await context.params;
+  const params = await routeContext.params;
   const testId = params.id;
 
   try {
-    await requireAuth();
+    const context = await requireAuthContext();
+
+    // Check permission to view tests
+    const canView = checkPermissionWithContext('test', 'view', context);
+    if (!canView) {
+      return NextResponse.json(
+        { error: 'Insufficient permissions' },
+        { status: 403 }
+      );
+    }
     
-    // First, find the test without filtering by active project
+    // Find the test scoped to current project
     const result = await db
       .select()
       .from(tests)
-      .where(eq(tests.id, testId))
+      .where(
+        and(
+          eq(tests.id, testId),
+          eq(tests.projectId, context.project.id),
+          eq(tests.organizationId, context.organizationId)
+        )
+      )
       .limit(1);
 
-    // If no test was found, return 404
     if (result.length === 0) {
       return NextResponse.json(
         { error: "Test not found" },
@@ -64,26 +80,6 @@ export async function GET(
     }
 
     const test = result[0];
-    
-    // Now check if user has access to this test's project
-    if (!test.organizationId || !test.projectId) {
-      return NextResponse.json(
-        { error: "Test data incomplete" },
-        { status: 500 }
-      );
-    }
-    
-    const canView = await hasPermission('test', 'view', {
-      organizationId: test.organizationId,
-      projectId: test.projectId
-    });
-    
-    if (!canView) {
-      return NextResponse.json(
-        { error: 'Insufficient permissions' },
-        { status: 403 }
-      );
-    }
 
     // Decode the base64 script before returning
     const decodedScript = await decodeTestScript(test.script || "");
@@ -100,6 +96,12 @@ export async function GET(
       createdAt: test.createdAt,
     });
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
     console.error("Error fetching test:", error);
     return NextResponse.json(
       { error: "Failed to fetch test" },
@@ -110,18 +112,22 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  routeContext: { params: Promise<{ id: string }> }
 ) {
-  const params = await context.params;
+  const params = await routeContext.params;
   const testId = params.id;
 
   try {
-    const { userId } = await requireAuth();
+    const context = await requireAuthContext();
     const body = await request.json();
 
-    // First check if test exists and get its project context
+    // Find test scoped to current project
     const existingTest = await db.query.tests.findFirst({
-      where: eq(tests.id, testId),
+      where: and(
+        eq(tests.id, testId),
+        eq(tests.projectId, context.project.id),
+        eq(tests.organizationId, context.organizationId)
+      ),
     });
 
     if (!existingTest) {
@@ -129,10 +135,7 @@ export async function PUT(
     }
 
     // Check permissions
-    const canUpdate = await hasPermission("test", "update", {
-      organizationId: existingTest.organizationId || undefined,
-      projectId: existingTest.projectId || undefined,
-    });
+    const canUpdate = checkPermissionWithContext("test", "update", context);
 
     if (!canUpdate) {
       return NextResponse.json(
@@ -157,6 +160,12 @@ export async function PUT(
 
     return NextResponse.json(updatedTest);
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
     console.error(`Error updating test ${testId}:`, error);
     return NextResponse.json(
       { error: "Failed to update test" },
@@ -167,11 +176,136 @@ export async function PUT(
 
 export async function PATCH(
   request: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  routeContext: { params: Promise<{ id: string }> }
 ) {
   // NOTE: This API intentionally deviates from strict REST semantics.
   // PATCH is the canonical endpoint for partial updates and internally reuses
   // the same handler as PUT, which also behaves as a partial update for
   // backward-compatibility with older clients. New consumers should prefer PATCH.
-  return PUT(request, context);
+  return PUT(request, routeContext);
+}
+
+/**
+ * DELETE /api/tests/[id]
+ * Deletes a test. Blocks if the test is referenced by jobs or synthetic monitors.
+ */
+export async function DELETE(
+  _request: NextRequest,
+  routeContext: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await routeContext.params;
+    const context = await requireAuthContext();
+    const { project, organizationId } = context;
+
+    const canDelete = checkPermissionWithContext('test', 'delete', context);
+    if (!canDelete) {
+      return NextResponse.json(
+        { error: 'Insufficient permissions to delete tests' },
+        { status: 403 }
+      );
+    }
+
+    // Use a transaction to prevent race conditions between usage checks and delete
+    const txResult = await db.transaction(async (tx) => {
+      // Verify test exists and belongs to current project/org
+      const [existingTest] = await tx
+        .select({ id: tests.id, title: tests.title, type: tests.type })
+        .from(tests)
+        .where(
+          and(
+            eq(tests.id, id),
+            eq(tests.projectId, project.id),
+            eq(tests.organizationId, organizationId)
+          )
+        )
+        .limit(1);
+
+      if (!existingTest) {
+        return { success: false as const, status: 404, error: 'Test not found' };
+      }
+
+      // Block deletion if test is used in any jobs (scoped to current org/project)
+      const [jobUsage] = await tx
+        .select({ count: count() })
+        .from(jobTests)
+        .innerJoin(jobs, eq(jobTests.jobId, jobs.id))
+        .where(
+          and(
+            eq(jobTests.testId, id),
+            eq(jobs.projectId, project.id),
+            eq(jobs.organizationId, organizationId)
+          )
+        );
+
+      if ((jobUsage?.count ?? 0) > 0) {
+        return {
+          success: false as const,
+          status: 409,
+          error: 'Cannot delete test',
+          details: `This test is used by ${jobUsage.count} job(s). Remove it from all jobs first.`,
+        };
+      }
+
+      // Block deletion if test is used as a synthetic monitor (scoped to current org/project)
+      const [monitorUsage] = await tx
+        .select({ count: count() })
+        .from(monitors)
+        .where(
+          and(
+            eq(monitors.type, 'synthetic_test'),
+            eq(monitors.projectId, project.id),
+            eq(monitors.organizationId, organizationId),
+            sql`${monitors.config}->>'testId' = ${id}`
+          )
+        );
+
+      if ((monitorUsage?.count ?? 0) > 0) {
+        return {
+          success: false as const,
+          status: 409,
+          error: 'Cannot delete test',
+          details: `This test is used by ${monitorUsage.count} synthetic monitor(s). Delete the monitor(s) first.`,
+        };
+      }
+
+      // Delete scoped to org/project for defense-in-depth
+      await tx.delete(tests).where(
+        and(
+          eq(tests.id, id),
+          eq(tests.projectId, project.id),
+          eq(tests.organizationId, organizationId)
+        )
+      );
+
+      return { success: true as const, test: existingTest };
+    });
+
+    if (!txResult.success) {
+      const response: Record<string, string> = { error: txResult.error };
+      if ('details' in txResult && txResult.details) response.details = txResult.details;
+      return NextResponse.json(response, { status: txResult.status });
+    }
+
+    await logAuditEvent({
+      userId: context.userId,
+      organizationId,
+      action: 'test_deleted',
+      resource: 'test',
+      resourceId: id,
+      metadata: { testTitle: txResult.test.title, testType: txResult.test.type, projectId: project.id },
+      success: true,
+    });
+
+    return NextResponse.json({ success: true, message: 'Test deleted successfully' });
+  } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Authentication required' },
+        { status: 401 }
+      );
+    }
+    console.error('Error deleting test:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
 }

@@ -1,14 +1,11 @@
+# Cloudflare Pages configuration for static site deployment
+# https://developers.cloudflare.com/pages/functions/wrangler-configuration/
+
 name = "supercheck-web"
 pages_build_output_dir = "out"
 
-# [vars]
-# MY_VAR = "my-variable"
+# Compatibility settings
+compatibility_date = "2026-02-08"
 
-# [[kv_namespaces]]
-# binding = "MY_KV_NAMESPACE"
-# id = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-
-# [[d1_databases]]
-# binding = "DB"
-# database_name = "my-database"
-# database_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+# Preview deployments are enabled by default for GitHub integration
+# Each branch push creates a preview URL: <branch>.<project>.pages.dev

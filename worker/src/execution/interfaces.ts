@@ -90,6 +90,37 @@ export interface ReportMetadata {
   updatedAt?: Date;
 }
 
+// Playwright report types for type-safe report parsing
+export interface PlaywrightTestResult {
+  status?: string;
+  [key: string]: unknown;
+}
+
+export interface PlaywrightTestEntry {
+  titlePath?: string[];
+  title?: string;
+  name?: string;
+  status?: string;
+  results?: PlaywrightTestResult[];
+  [key: string]: unknown;
+}
+
+export interface PlaywrightReportSummary {
+  failed?: number;
+  passed?: number;
+  [key: string]: unknown;
+}
+
+export interface PlaywrightReport {
+  summary?: PlaywrightReportSummary;
+  status?: string;
+  tests?: unknown[];
+  suites?: unknown[];
+  projects?: unknown[];
+  specs?: unknown[];
+  [key: string]: unknown;
+}
+
 // Interface for Monitor Job Data (mirroring DTO in runner)
 export interface MonitorJobData {
   monitorId: string;

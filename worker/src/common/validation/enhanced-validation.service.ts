@@ -1,5 +1,4 @@
 import { Injectable, Logger } from '@nestjs/common';
-import * as crypto from 'crypto';
 
 export interface ValidationResult {
   valid: boolean;
@@ -222,8 +221,9 @@ export class EnhancedValidationService {
       const dangerousPatterns = [
         /[;&|`$(){}[\]<>'"\\]/, // Command injection characters
         /\s/, // No whitespace allowed
-        /\x00-\x1f/, // Control characters
-        /\x7f-\x9f/, // Extended control characters
+        // eslint-disable-next-line no-control-regex
+        /[\u0000-\u001f]/, // Control characters
+        /[\u007f-\u009f]/, // Extended control characters
         /^-/, // Leading dash (can be dangerous in commands)
         /\.\./, // Path traversal
         /[%#]/, // URL encoding attempts
@@ -250,7 +250,7 @@ export class EnhancedValidationService {
       // Validate hostname
       else {
         const hostnameRegex =
-          /^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$/;
+          /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
         if (!hostnameRegex.test(sanitized)) {
           return { valid: false, error: 'Invalid hostname format' };
         }
@@ -444,7 +444,7 @@ export class EnhancedValidationService {
       }
 
       return { valid: true, sanitized: portNum.toString() };
-    } catch (error) {
+    } catch {
       return { valid: false, error: 'Invalid port format' };
     }
   }
@@ -452,7 +452,7 @@ export class EnhancedValidationService {
   /**
    * Validates and sanitizes configuration values
    */
-  validateConfiguration(config: any): ValidationResult {
+  validateConfiguration(config: Record<string, unknown>): ValidationResult {
     try {
       if (!config || typeof config !== 'object') {
         return { valid: false, error: 'Configuration must be an object' };
@@ -460,7 +460,15 @@ export class EnhancedValidationService {
 
       // Validate timeout values
       if (config.timeoutSeconds !== undefined) {
-        const timeout = parseInt(config.timeoutSeconds, 10);
+        const rawTimeout = config.timeoutSeconds;
+        const timeout = parseInt(
+          typeof rawTimeout === 'number'
+            ? rawTimeout.toString()
+            : typeof rawTimeout === 'string'
+              ? rawTimeout
+              : '',
+          10,
+        );
         if (isNaN(timeout) || timeout < 1 || timeout > 300) {
           return {
             valid: false,
@@ -471,13 +479,18 @@ export class EnhancedValidationService {
 
       // Validate status codes
       if (config.expectedStatusCodes !== undefined) {
-        const result = this.validateStatusCodes(config.expectedStatusCodes);
+        const rawCodes = config.expectedStatusCodes;
+        const result = this.validateStatusCodes(
+          typeof rawCodes === 'string' ? rawCodes : '',
+        );
         if (!result.valid) return result;
       }
 
       // Validate headers (if present)
       if (config.headers !== undefined) {
-        const result = this.validateHeaders(config.headers);
+        const result = this.validateHeaders(
+          config.headers as Record<string, unknown>,
+        );
         if (!result.valid) return result;
       }
 
@@ -492,7 +505,8 @@ export class EnhancedValidationService {
           'HEAD',
           'OPTIONS',
         ];
-        if (!allowedMethods.includes(config.method)) {
+        const method = typeof config.method === 'string' ? config.method : '';
+        if (!allowedMethods.includes(method)) {
           return {
             valid: false,
             error: `HTTP method must be one of: ${allowedMethods.join(', ')}`,
@@ -555,7 +569,7 @@ export class EnhancedValidationService {
       }
 
       return { valid: true };
-    } catch (error) {
+    } catch {
       return { valid: false, error: 'Status code validation failed' };
     }
   }
@@ -563,7 +577,7 @@ export class EnhancedValidationService {
   /**
    * Validates HTTP headers
    */
-  private validateHeaders(headers: any): ValidationResult {
+  private validateHeaders(headers: Record<string, unknown>): ValidationResult {
     try {
       if (typeof headers !== 'object' || headers === null) {
         return { valid: false, error: 'Headers must be an object' };
@@ -602,7 +616,8 @@ export class EnhancedValidationService {
         }
 
         // Check for control characters
-        if (/[\x00-\x1f\x7f]/.test(value)) {
+        // eslint-disable-next-line no-control-regex
+        if (/[\u0000-\u001f\u007f]/.test(value)) {
           return {
             valid: false,
             error: `Header contains control characters: ${key}`,
@@ -611,7 +626,7 @@ export class EnhancedValidationService {
       }
 
       return { valid: true };
-    } catch (error) {
+    } catch {
       return { valid: false, error: 'Header validation failed' };
     }
   }

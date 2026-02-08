@@ -1,0 +1,12 @@
+{
+  "title": "Notifications API",
+  "icon": "Bell",
+  "pages": [
+    "listNotificationProviders",
+    "getNotificationProvider",
+    "createNotificationProvider",
+    "updateNotificationProvider",
+    "deleteNotificationProvider",
+    "testNotificationProvider"
+  ]
+}

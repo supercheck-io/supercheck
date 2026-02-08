@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { getQueueStats } from "@/lib/queue-stats";
-import { requireProjectContext } from "@/lib/project-context";
+import { requireAuthContext } from "@/lib/auth-context";
 import { getQueueEventHub, NormalizedQueueEvent } from "@/lib/queue-event-hub";
 
 // SSE Configuration
@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
   // SECURITY: Require authentication for queue stats
   let organizationId: string;
   try {
-    const projectContext = await requireProjectContext();
+    const projectContext = await requireAuthContext();
     organizationId = projectContext.organizationId;
   } catch {
     // Return 401 for unauthenticated requests
@@ -88,7 +88,13 @@ export async function GET(request: NextRequest) {
           if (force || statsJson !== lastStats) {
             lastStats = statsJson;
             const message = createSSEMessage(stats);
-            controller.enqueue(encoder.encode(message));
+            try {
+              controller.enqueue(encoder.encode(message));
+            } catch {
+              // Controller was closed between our check and enqueue
+              aborted = true;
+              return;
+            }
           }
         } catch {
           // Suppress errors to avoid noise
@@ -107,7 +113,8 @@ export async function GET(request: NextRequest) {
             });
             controller.enqueue(encoder.encode(reconnectMessage));
           } catch {
-            // Ignore errors
+            // Controller already closed
+            aborted = true;
           }
           cleanup();
           return true;

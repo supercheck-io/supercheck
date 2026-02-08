@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAuth } from "@/lib/rbac/middleware";
-import { getActiveOrganization } from "@/lib/session";
+import { requireUserAuthContext, isAuthError } from "@/lib/auth-context";
 import { polarUsageService } from "@/lib/services/polar-usage.service";
 
 /**
@@ -9,18 +8,17 @@ import { polarUsageService } from "@/lib/services/polar-usage.service";
  */
 export async function GET() {
   try {
-    await requireAuth();
-    const activeOrg = await getActiveOrganization();
+    const { organizationId } = await requireUserAuthContext();
 
-    if (!activeOrg) {
+    if (!organizationId) {
       return NextResponse.json(
         { error: "No active organization found" },
         { status: 400 }
       );
     }
 
-    const metrics = await polarUsageService.getUsageMetrics(activeOrg.id);
-    const spendingStatus = await polarUsageService.getSpendingStatus(activeOrg.id);
+    const metrics = await polarUsageService.getUsageMetrics(organizationId);
+    const spendingStatus = await polarUsageService.getSpendingStatus(organizationId);
 
     return NextResponse.json({
       usage: metrics,
@@ -35,6 +33,12 @@ export async function GET() {
       },
     });
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
     console.error("Error fetching usage metrics:", error);
     return NextResponse.json(
       { error: "Failed to fetch usage metrics" },

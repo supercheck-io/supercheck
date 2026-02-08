@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/utils/db';
 import { runs, projects } from '@/db/schema';
-import { eq } from 'drizzle-orm';
-import { requireProjectContext } from '@/lib/project-context';
-import { hasPermission } from '@/lib/rbac/middleware';
+import { eq, and } from 'drizzle-orm';
+import { requireAuthContext, isAuthError } from '@/lib/auth-context';
+import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { getRedisConnection, buildRedisOptions } from '@/lib/queue';
 import { createLogger } from '@/lib/logger/index';
 
@@ -49,11 +49,20 @@ const RETRY_MS = parseInterval(process.env.SSE_RETRY_MS, 4000);
 
 export async function GET(request: NextRequest, context: RunStreamContext) {
   try {
-    const { project, organizationId } = await requireProjectContext();
+    const authCtx = await requireAuthContext();
     const params = await context.params;
     const runId = params.runId;
 
-    // Verify run exists and load owning org/project
+    // Check permission via context
+    const canView = checkPermissionWithContext('job', 'view', authCtx);
+    if (!canView) {
+      return NextResponse.json(
+        { error: 'Insufficient permissions' },
+        { status: 403 }
+      );
+    }
+
+    // Verify run exists and belongs to current project
     const runRecord = await db
       .select({
         id: runs.id,
@@ -63,28 +72,18 @@ export async function GET(request: NextRequest, context: RunStreamContext) {
       })
       .from(runs)
       .leftJoin(projects, eq(projects.id, runs.projectId))
-      .where(eq(runs.id, runId))
+      .where(
+        and(
+          eq(runs.id, runId),
+          eq(runs.projectId, authCtx.project.id)
+        )
+      )
       .limit(1);
 
     const run = runRecord[0];
 
     if (!run) {
       return new Response('Run not found', { status: 404 });
-    }
-
-    const targetOrgId = run.orgId ?? organizationId;
-    const targetProjectId = run.projectId ?? project.id;
-
-    const canView = await hasPermission('test', 'view', {
-      organizationId: targetOrgId,
-      projectId: targetProjectId,
-    });
-
-    if (!canView) {
-      return NextResponse.json(
-        { error: 'Insufficient permissions' },
-        { status: 403 }
-      );
     }
 
     let finalizeStream: ((reason: string) => Promise<void>) | null = null;
@@ -304,6 +303,12 @@ export async function GET(request: NextRequest, context: RunStreamContext) {
       },
     });
   } catch (error) {
+    if (isAuthError(error)) {
+      return new Response(
+        JSON.stringify({ error: error instanceof Error ? error.message : 'Authentication required' }),
+        { status: 401, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
     sseLogger.error({ err: error }, 'Error setting up SSE stream');
     return new Response('Internal server error', { status: 500 });
   }

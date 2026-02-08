@@ -65,11 +65,11 @@ jest.mock('../../common/utils/file-search', () => ({
 
 describe('K6ExecutionService', () => {
   let service: K6ExecutionService;
-  let configService: ConfigService;
-  let s3Service: S3Service;
-  let dbService: DbService;
-  let redisService: RedisService;
-  let containerExecutorService: ContainerExecutorService;
+  let _configService: ConfigService;
+  let _s3Service: S3Service;
+  let _dbService: DbService;
+  let _redisService: RedisService;
+  let _containerExecutorService: ContainerExecutorService;
 
   const mockConfigService = {
     get: jest.fn((key: string, defaultValue?: any) => {
@@ -260,7 +260,7 @@ describe('K6ExecutionService', () => {
 
     it('should track run metadata', () => {
       // Active runs should store pid, startTime, runId, dashboardPort
-      const expectedKeys = ['pid', 'startTime', 'runId'];
+      const _expectedKeys = ['pid', 'startTime', 'runId'];
       expect(service['activeK6Runs']).toBeInstanceOf(Map);
     });
   });

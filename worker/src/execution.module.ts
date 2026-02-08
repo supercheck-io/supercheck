@@ -2,6 +2,7 @@ import { Module, Provider } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { ConfigService } from '@nestjs/config';
 import { drizzle } from 'drizzle-orm/postgres-js';
+// eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-assignment
 const postgres = require('postgres');
 
 // Import Services and Processors
@@ -52,6 +53,7 @@ const drizzleProvider: Provider = {
     // Workers process jobs concurrently, so we need adequate connection pool
 
     // Initialize the Postgres.js client with connection pooling
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
     const client = postgres(connectionString, {
       ssl: getSSLConfig(),
       max: parseInt(process.env.DB_POOL_MAX || '10', 10), // Default: 10 connections
@@ -61,6 +63,7 @@ const drizzleProvider: Provider = {
     });
 
     // Create and return the Drizzle ORM instance
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
     return drizzle(client, { schema });
   },
 };

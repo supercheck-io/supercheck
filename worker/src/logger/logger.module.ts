@@ -40,23 +40,24 @@ import { LoggerService } from './logger.service';
 
         // Serialize errors properly
         serializers: {
-          req: (req) => ({
-            id: req.id,
-            method: req.method,
-            url: req.url,
-            // Redact sensitive headers
-            headers: {
-              ...req.headers,
-              authorization: req.headers.authorization
-                ? '[REDACTED]'
-                : undefined,
-              cookie: req.headers.cookie ? '[REDACTED]' : undefined,
-            },
-          }),
-          res: (res) => ({
+          req: (req: Record<string, unknown>) => {
+            const headers = (req.headers ?? {}) as Record<string, unknown>;
+            return {
+              id: req.id,
+              method: req.method,
+              url: req.url,
+              // Redact sensitive headers
+              headers: {
+                ...headers,
+                authorization: headers.authorization ? '[REDACTED]' : undefined,
+                cookie: headers.cookie ? '[REDACTED]' : undefined,
+              },
+            };
+          },
+          res: (res: Record<string, unknown>) => ({
             statusCode: res.statusCode,
           }),
-          err: (err) => ({
+          err: (err: Record<string, unknown>) => ({
             type: err.type,
             message: err.message,
             stack: err.stack,

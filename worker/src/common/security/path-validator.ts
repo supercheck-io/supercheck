@@ -141,7 +141,6 @@ export function validatePath(
 
   // 8. Additional security checks
   // Block special device files on Unix systems
-  const fileName = path.basename(normalized);
   const blockedNames = [
     '/dev/null',
     '/dev/zero',
@@ -209,7 +208,7 @@ export async function validatePathExists(
       valid: true,
       sanitized: inputPath,
     };
-  } catch (error) {
+  } catch {
     return {
       valid: false,
       error: `Path does not exist or is not accessible: ${inputPath}`,

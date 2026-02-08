@@ -1,5 +1,6 @@
 import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { drizzle, PostgresJsDatabase } from 'drizzle-orm/postgres-js';
+// eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-assignment
 const postgres = require('postgres');
 import * as schema from './schema';
 import { eq } from 'drizzle-orm';
@@ -15,6 +16,7 @@ export class DbService implements OnModuleInit {
     try {
       const connectionString = process.env.DATABASE_URL!;
       // Initialize with proper connection pooling
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
       const queryClient = postgres(connectionString, {
         ssl: getSSLConfig(),
         max: parseInt(process.env.DB_POOL_MAX || '10', 10), // Default: 10 connections
@@ -22,6 +24,7 @@ export class DbService implements OnModuleInit {
         connect_timeout: parseInt(process.env.DB_CONNECT_TIMEOUT || '10', 10), // Default: 10 seconds
         max_lifetime: parseInt(process.env.DB_MAX_LIFETIME || '1800', 10), // Default: 30 minutes (in seconds)
       });
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
       this.db = drizzle(queryClient, { schema });
       this.logger.log('Database connection initialized successfully.');
     } catch (error) {

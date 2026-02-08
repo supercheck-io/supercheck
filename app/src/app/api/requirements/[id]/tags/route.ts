@@ -2,21 +2,19 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/utils/db';
 import { requirements, requirementTags, tags } from '@/db/schema';
 import { and, eq } from 'drizzle-orm';
-import { hasPermission } from '@/lib/rbac/middleware';
-import { requireProjectContext } from '@/lib/project-context';
+import { checkPermissionWithContext } from '@/lib/rbac/middleware';
+import { requireAuthContext, isAuthError } from '@/lib/auth-context';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { project, organizationId } = await requireProjectContext();
+    const context = await requireAuthContext();
+    const { project, organizationId } = context;
 
     // Check permission to view requirements
-    const canView = await hasPermission('requirement', 'view', {
-      organizationId,
-      projectId: project.id
-    });
+    const canView = checkPermissionWithContext('requirement', 'view', context);
 
     if (!canView) {
       return NextResponse.json(
@@ -57,6 +55,12 @@ export async function GET(
 
     return NextResponse.json(requirementTagsResult);
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Authentication required' },
+        { status: 401 }
+      );
+    }
     console.error('Error fetching requirement tags:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
@@ -67,13 +71,11 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { project, organizationId } = await requireProjectContext();
+    const context = await requireAuthContext();
+    const { project, organizationId } = context;
 
     // Check permission to update requirements
-    const canUpdate = await hasPermission('requirement', 'update', {
-      organizationId,
-      projectId: project.id
-    });
+    const canUpdate = checkPermissionWithContext('requirement', 'update', context);
 
     if (!canUpdate) {
       return NextResponse.json(
@@ -138,6 +140,12 @@ export async function POST(
 
     return NextResponse.json(updatedTags);
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Authentication required' },
+        { status: 401 }
+      );
+    }
     console.error('Error updating requirement tags:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }

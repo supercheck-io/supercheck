@@ -6,8 +6,8 @@ import {
   notificationProviders,
 } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
-import { hasPermission } from "@/lib/rbac/middleware";
-import { requireProjectContext } from "@/lib/project-context";
+import { checkPermissionWithContext } from "@/lib/rbac/middleware";
+import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 
 export async function GET(
   req: NextRequest,
@@ -15,13 +15,11 @@ export async function GET(
 ) {
   try {
     const { id } = await context.params;
-    const { project, organizationId } = await requireProjectContext();
+    const authContext = await requireAuthContext();
+    const { project, organizationId } = authContext;
 
-    // Check permission to view notification providers
-    const canView = await hasPermission("monitor", "view", {
-      organizationId,
-      projectId: project.id,
-    });
+    // PERFORMANCE: Use checkPermissionWithContext to avoid duplicate DB queries
+    const canView = checkPermissionWithContext("notification", "view", authContext);
 
     if (!canView) {
       return NextResponse.json(
@@ -75,6 +73,12 @@ export async function GET(
       },
     });
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
     console.error("Error checking notification provider usage:", error);
     return NextResponse.json(
       { error: "Failed to check provider usage" },

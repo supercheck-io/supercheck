@@ -19,12 +19,23 @@ export interface ResourceUsage {
   timestamp: Date;
 }
 
+export interface ManagedConnection {
+  id: string;
+  pool: string;
+  created: Date;
+  lastUsed: Date;
+  timeout: number;
+  maxResponseSize: number;
+  destroy: () => void;
+  trackRequest: (responseTimeMs: number, error?: unknown) => void;
+}
+
 export interface ConnectionPool {
   id: string;
   hostname: string;
   port: number;
   protocol: 'http:' | 'https:';
-  connections: Set<any>;
+  connections: Set<ManagedConnection>;
   lastUsed: Date;
   created: Date;
   stats: {
@@ -73,11 +84,11 @@ export class ResourceManagerService extends EventEmitter {
   /**
    * Get or create connection pool for a target
    */
-  async getConnectionPool(
+  getConnectionPool(
     hostname: string,
     port: number,
     protocol: 'http:' | 'https:' = 'https:',
-  ): Promise<ConnectionPool> {
+  ): ConnectionPool {
     const poolId = `${protocol}//${hostname}:${port}`;
 
     let pool = this.connectionPools.get(poolId);
@@ -109,7 +120,7 @@ export class ResourceManagerService extends EventEmitter {
   /**
    * Acquire a connection from the pool
    */
-  async acquireConnection(poolId: string): Promise<any> {
+  acquireConnection(poolId: string): ManagedConnection {
     const pool = this.connectionPools.get(poolId);
     if (!pool) {
       throw new Error(`Connection pool not found: ${poolId}`);
@@ -143,7 +154,7 @@ export class ResourceManagerService extends EventEmitter {
   /**
    * Release a connection back to the pool
    */
-  async releaseConnection(poolId: string, connection: any): Promise<void> {
+  releaseConnection(poolId: string, connection: ManagedConnection): void {
     const pool = this.connectionPools.get(poolId);
     if (!pool) {
       this.logger.warn(
@@ -168,7 +179,7 @@ export class ResourceManagerService extends EventEmitter {
   /**
    * Create a new connection with proper configuration
    */
-  private createConnection(pool: ConnectionPool): any {
+  private createConnection(pool: ConnectionPool): ManagedConnection {
     const connectionId = `conn_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
     // Create connection object with timeout and resource limits
@@ -187,7 +198,7 @@ export class ResourceManagerService extends EventEmitter {
       },
 
       // Usage tracking
-      trackRequest: (responseTimeMs: number, error?: any) => {
+      trackRequest: (responseTimeMs: number, error?: unknown) => {
         pool.stats.totalRequests++;
 
         // Update average response time
@@ -384,7 +395,7 @@ export class ResourceManagerService extends EventEmitter {
         this.logger.debug(`Removed idle connection pool: ${poolId}`);
       } else if (pool.connections.size > 0) {
         // Cleanup idle connections within the pool
-        const connectionsToRemove: any[] = [];
+        const connectionsToRemove: ManagedConnection[] = [];
 
         for (const connection of pool.connections) {
           const connIdleTime = now - connection.lastUsed.getTime();
@@ -430,7 +441,13 @@ export class ResourceManagerService extends EventEmitter {
   /**
    * Get resource statistics
    */
-  getResourceStats(): any {
+  getResourceStats(): {
+    limits: ResourceLimits;
+    current: Record<string, unknown>;
+    pools: Record<string, unknown>[];
+    utilization: Record<string, number>;
+    timestamp: Date;
+  } {
     const totalConnections = this.getTotalActiveConnections();
     const memoryUsage = this.getCurrentMemoryUsage();
 
@@ -473,7 +490,7 @@ export class ResourceManagerService extends EventEmitter {
   /**
    * Shutdown and cleanup all resources
    */
-  async shutdown(): Promise<void> {
+  shutdown(): void {
     this.logger.log('Shutting down resource manager...');
 
     // Clear intervals

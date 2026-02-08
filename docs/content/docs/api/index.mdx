@@ -1,0 +1,125 @@
+---
+title: API Reference
+description: Supercheck REST API documentation
+icon: Braces
+---
+
+The Supercheck API provides programmatic access to all platform features — jobs, tests, monitors, variables, notifications, and more. The API is used by the [CLI](/docs/cli), the web dashboard, and can be integrated directly into your own tools.
+
+## Base URL
+
+| Environment | URL |
+|-------------|-----|
+| **Cloud** | `https://demo.supercheck.dev` |
+| **Self-Hosted** | Your deployment URL (e.g. `https://supercheck.yourdomain.com`) |
+
+## Authentication
+
+All API requests require authentication via `Authorization: Bearer <token>` header. See [Authentication](./authentication) for details on token types.
+
+```bash
+curl https://demo.supercheck.dev/api/jobs \
+  -H "Authorization: Bearer sck_live_..."
+```
+
+## Interactive API Reference
+
+Browse the full interactive API documentation with request/response examples, code samples, and a built-in playground to test endpoints directly.
+
+<Cards>
+<Card title="Authentication" href="/docs/api/cli-tokens/listCliTokens" icon={<KeyRound className="text-amber-500" />}>
+CLI token management — create, list, update, and revoke tokens
+</Card>
+
+<Card title="Jobs" href="/docs/api/jobs/listJobs" icon={<CalendarClock className="text-purple-500" />}>
+Job scheduling, execution, and triggering
+</Card>
+
+<Card title="Runs" href="/docs/api/runs/listRuns" icon={<Play className="text-emerald-500" />}>
+Job run management, status tracking, and live streaming
+</Card>
+
+<Card title="Tests" href="/docs/api/tests/listTests" icon={<FlaskConical className="text-blue-500" />}>
+Test script CRUD operations
+</Card>
+
+<Card title="Monitors" href="/docs/api/monitors/listMonitors" icon={<Globe className="text-sky-500" />}>
+Uptime monitor management, check results, and statistics
+</Card>
+
+<Card title="Variables" href="/docs/api/variables/listVariables" icon={<Variable className="text-rose-500" />}>
+Project environment variables and secrets
+</Card>
+</Cards>
+
+## OpenAPI Specification
+
+The full OpenAPI 3.1 specification is available for SDK generation and tooling:
+
+| Format | URL |
+|--------|-----|
+| **JSON** | `/openapi/openapi.json` |
+| **YAML** | `/openapi/openapi.yaml` |
+
+### SDK Generation
+
+```bash
+# TypeScript types
+npx openapi-typescript https://demo.supercheck.dev/openapi.json -o ./types/supercheck-api.d.ts
+
+# TypeScript client
+npx openapi-typescript-codegen \
+  --input https://demo.supercheck.dev/openapi.json \
+  --output ./sdk
+
+# Python
+openapi-generator generate \
+  -i https://demo.supercheck.dev/openapi.json \
+  -g python -o ./supercheck-sdk-python
+
+# Go
+openapi-generator generate \
+  -i https://demo.supercheck.dev/openapi.json \
+  -g go -o ./supercheck-sdk-go
+```
+
+## Response Format
+
+All responses are JSON. Paginated endpoints return:
+
+```json
+{
+  "data": [...],
+  "pagination": {
+    "total": 42,
+    "page": 1,
+    "limit": 50,
+    "totalPages": 1,
+    "hasNextPage": false,
+    "hasPrevPage": false
+  }
+}
+```
+
+## Rate Limits
+
+| Token Type | Limit | Window |
+|------------|-------|--------|
+| CLI Token (`sck_live_*`) | 1000 req/min | Per user |
+| Trigger Key (`sck_trigger_*`) | 60 req/min | Per key |
+| Unauthenticated | 10 req/min | Per IP |
+
+Rate limit headers are included in every response:
+
+```
+X-RateLimit-Limit: 1000
+X-RateLimit-Remaining: 999
+X-RateLimit-Reset: 1612137600
+Retry-After: 60  # Only on 429 responses
+```
+
+## Reference Guides
+
+- [Authentication](./authentication) — Token types, security, and rate limiting
+- [Endpoints](./endpoints) — Quick endpoint reference with examples
+- [Errors](./errors) — Error codes, formats, and retry behavior

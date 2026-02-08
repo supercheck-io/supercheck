@@ -106,7 +106,7 @@ export function getErrorMessage(error: unknown): string {
  * Sanitizes log data before outputting
  * Recursively processes objects to remove sensitive data
  */
-export function sanitizeLogData(data: any, depth: number = 0): any {
+export function sanitizeLogData(data: unknown, depth: number = 0): unknown {
   // Prevent infinite recursion
   if (depth > 5) {
     return '[MAX_DEPTH_EXCEEDED]';
@@ -118,12 +118,12 @@ export function sanitizeLogData(data: any, depth: number = 0): any {
 
   // Handle arrays
   if (Array.isArray(data)) {
-    return data.map((item) => sanitizeLogData(item, depth + 1));
+    return data.map((item: unknown) => sanitizeLogData(item, depth + 1));
   }
 
   // Handle objects
   if (typeof data === 'object') {
-    const sanitized: Record<string, any> = {};
+    const sanitized: Record<string, unknown> = {};
     const sensitiveKeys = [
       'password',
       'token',
@@ -136,7 +136,9 @@ export function sanitizeLogData(data: any, depth: number = 0): any {
       'cookie',
     ];
 
-    for (const [key, value] of Object.entries(data)) {
+    for (const [key, value] of Object.entries(
+      data as Record<string, unknown>,
+    )) {
       const lowerKey = key.toLowerCase();
       if (sensitiveKeys.some((sk) => lowerKey.includes(sk.toLowerCase()))) {
         sanitized[key] = '[REDACTED]';

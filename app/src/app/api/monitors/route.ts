@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { monitors, monitorNotificationSettings } from "@/db/schema";
 import { eq, desc, and, sql } from "drizzle-orm";
-import { hasPermission, checkPermissionWithContext } from "@/lib/rbac/middleware";
-import { requireProjectContext } from "@/lib/project-context";
+import { checkPermissionWithContext } from "@/lib/rbac/middleware";
+import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import {
   createMonitorHandler,
   updateMonitorHandler,
@@ -20,7 +20,7 @@ import { subscriptionService } from "@/lib/services/subscription-service";
 export async function GET(request: Request) {
   try {
     // Require authentication and project context
-    const context = await requireProjectContext();
+    const context = await requireAuthContext();
 
     // PERFORMANCE: Use checkPermissionWithContext to avoid 5-8 duplicate DB queries
     const canView = checkPermissionWithContext('monitor', 'view', context);
@@ -117,6 +117,12 @@ export async function GET(request: Request) {
       });
     }
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
     console.error("Error fetching monitors:", error);
     return NextResponse.json(
       { error: "Failed to fetch monitors" },
@@ -127,7 +133,8 @@ export async function GET(request: Request) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { userId, project, organizationId } = await requireProjectContext();
+    const authCtx = await requireAuthContext();
+    const { userId, project, organizationId } = authCtx;
 
     // SECURITY: Rate limiting to prevent API abuse
     const { checkMonitorApiRateLimit } = await import(
@@ -343,10 +350,7 @@ export async function POST(req: NextRequest) {
     const targetProjectId = project.id;
 
     // Check permission to create monitors
-    const canCreate = await hasPermission("monitor", "create", {
-      organizationId,
-      projectId: targetProjectId,
-    });
+    const canCreate = checkPermissionWithContext("monitor", "create", authCtx);
 
     if (!canCreate) {
       return NextResponse.json(
@@ -511,6 +515,12 @@ export async function POST(req: NextRequest) {
     );
     return NextResponse.json(newMonitor, { status: 201 });
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
     console.error("[MONITOR_CREATE] Error creating monitor:", error);
     return NextResponse.json(
       { error: "Failed to create monitor" },
@@ -521,7 +531,8 @@ export async function POST(req: NextRequest) {
 
 export async function PUT(req: NextRequest) {
   try {
-    const { userId, project, organizationId } = await requireProjectContext();
+    const putCtx = await requireAuthContext();
+    const { userId, project, organizationId } = putCtx;
 
     const rawData = await req.json();
     const { id, ...updateData } = rawData;
@@ -557,10 +568,7 @@ export async function PUT(req: NextRequest) {
     }
 
     // Check permission to manage monitors
-    const canManage = await hasPermission("monitor", "manage", {
-      organizationId,
-      projectId: project.id,
-    });
+    const canManage = checkPermissionWithContext("monitor", "manage", putCtx);
 
     if (!canManage) {
       return NextResponse.json(
@@ -771,6 +779,12 @@ export async function PUT(req: NextRequest) {
 
     return NextResponse.json(updatedMonitor);
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
     console.error("Error updating monitor:", error);
     return NextResponse.json(
       { error: "Failed to update monitor" },

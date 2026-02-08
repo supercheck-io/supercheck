@@ -60,7 +60,10 @@ export function checkPermissionWithContext(
       userRole: string;
     };
   },
-  assignedProjectIds?: string[]
+  options?: {
+    assignedProjectIds?: string[];
+    resourceCreatorId?: string;
+  }
 ): boolean {
   // Convert role string to Role enum using existing normalizeRole
   const role = normalizeRole(context.project.userRole);
@@ -74,7 +77,8 @@ export function checkPermissionWithContext(
     // If assignedProjectIds not provided, assume user is assigned to current project
     // This is a safe assumption for org-level roles (OWNER/ADMIN) as they have full access
     // For project-level roles, they wouldn't have access without being assigned
-    assignedProjectIds: assignedProjectIds ?? [context.project.id],
+    assignedProjectIds: options?.assignedProjectIds ?? [context.project.id],
+    resourceCreatorId: options?.resourceCreatorId,
   };
 
   return checkPermission(permissionContext, resource, action);

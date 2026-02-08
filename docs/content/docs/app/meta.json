@@ -1,0 +1,20 @@
+{
+  "title": "Supercheck App",
+  "description": "Platform documentation for testing, monitoring, and communication",
+  "root": true,
+  "icon": "AppWindow",
+  "defaultOpen": true,
+  "pages": [
+    "welcome",
+    "---Deployment---",
+    "deployment",
+    "---Communicate---",
+    "communicate",
+    "---Automate---",
+    "automate",
+    "---Monitor---",
+    "monitor",
+    "---Settings---",
+    "admin"
+  ]
+}

@@ -24,9 +24,11 @@ import {
   Code,
   Globe,
   ClipboardList,
+  Terminal,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AuditLogsTable } from "@/components/admin/audit-logs-table";
+import { CliTokensTable } from "@/components/admin/cli-tokens-table";
 import { MembersTable } from "@/components/org-admin/members-table";
 import { ProjectsTable } from "@/components/org-admin/projects-table";
 import { SubscriptionTab } from "@/components/org-admin/subscription-tab";
@@ -356,8 +358,8 @@ function OrgAdminDashboardContent() {
               className="grid w-full grid-cols-4 lg:w-auto lg:inline-flex"
               style={{
                 gridTemplateColumns: isCloudHosted
-                  ? "repeat(5, 1fr)"
-                  : "repeat(4, 1fr)",
+                  ? "repeat(6, 1fr)"
+                  : "repeat(5, 1fr)",
               }}
             >
               <TabsTrigger value="overview" className="flex items-center gap-2">
@@ -371,6 +373,10 @@ function OrgAdminDashboardContent() {
               <TabsTrigger value="members" className="flex items-center gap-2">
                 <Users className="h-4 w-4" />
                 <span className="hidden sm:inline">Members</span>
+              </TabsTrigger>
+              <TabsTrigger value="cli-tokens" className="flex items-center gap-2">
+                <Terminal className="h-4 w-4" />
+                <span className="hidden sm:inline">CLI Tokens</span>
               </TabsTrigger>
               <TabsTrigger value="audit" className="flex items-center gap-2">
                 <UserSearch className="h-4 w-4" />
@@ -688,6 +694,10 @@ function OrgAdminDashboardContent() {
                 isLoading={inviting}
                 isCloudMode={isCloudHosted}
               />
+            </TabsContent>
+
+            <TabsContent value="cli-tokens" className="space-y-4">
+              <CliTokensTable />
             </TabsContent>
 
             <TabsContent value="audit" className="space-y-4">

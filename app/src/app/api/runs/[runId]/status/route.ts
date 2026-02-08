@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { runs, reports, jobs, ReportType } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
-import { requireProjectContext } from "@/lib/project-context";
+import { requireAuthContext, isAuthError } from "@/lib/auth-context";
+import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 
 export async function GET(
   request: Request, 
@@ -17,9 +18,18 @@ export async function GET(
 
   try {
     // Require authentication and project context
-    const { organizationId } = await requireProjectContext();
+    const authCtx = await requireAuthContext();
 
-    // Fetch run with its associated job to verify organization access
+    // Check view permission via context
+    const canView = checkPermissionWithContext("job", "view", authCtx);
+    if (!canView) {
+      return NextResponse.json(
+        { error: "Insufficient permissions" },
+        { status: 403 }
+      );
+    }
+
+    // Fetch run scoped to current project
     const runResult = await db
       .select({
         id: runs.id,
@@ -29,11 +39,15 @@ export async function GET(
         completedAt: runs.completedAt,
         durationMs: runs.durationMs,
         errorDetails: runs.errorDetails,
-        jobOrganizationId: jobs.organizationId,
       })
       .from(runs)
       .innerJoin(jobs, eq(runs.jobId, jobs.id))
-      .where(eq(runs.id, runId))
+      .where(
+        and(
+          eq(runs.id, runId),
+          eq(runs.projectId, authCtx.project.id)
+        )
+      )
       .limit(1);
 
     if (runResult.length === 0) {
@@ -41,11 +55,6 @@ export async function GET(
     }
 
     const run = runResult[0];
-
-    // Verify the run belongs to the user's organization
-    if (run.jobOrganizationId !== organizationId) {
-      return NextResponse.json({ error: "Access denied" }, { status: 403 });
-    }
 
     // Fetch report details for this run
     const reportResult = await db.query.reports.findFirst({
@@ -72,6 +81,12 @@ export async function GET(
     });
 
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
     console.error(`Error fetching status for run ${runId}:`, error);
     const errorMessage = error instanceof Error ? error.message : "An unknown error occurred";
     return NextResponse.json(

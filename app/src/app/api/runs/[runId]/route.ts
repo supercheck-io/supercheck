@@ -2,26 +2,34 @@ import { NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { runs, reports, jobs, jobTests } from "@/db/schema";
 import { eq, and, count, sql } from "drizzle-orm";
-import { requireAuth, getUserOrgRole } from "@/lib/rbac/middleware";
-import { isSuperAdmin } from "@/lib/admin";
+import { checkPermissionWithContext } from "@/lib/rbac/middleware";
+import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import { logAuditEvent } from "@/lib/audit-logger";
-import { canManageRuns } from "@/lib/rbac/client-permissions";
 
-// Get run handler - requires auth but no project restrictions
+// Get run handler - scoped to current project
 export async function GET(
   request: Request,
-  context: { params: Promise<{ runId: string }> }
+  routeContext: { params: Promise<{ runId: string }> }
 ) {
-  const params = await context.params;
+  const params = await routeContext.params;
   try {
-    const { userId } = await requireAuth();
+    const authCtx = await requireAuthContext();
     const runId = params.runId;
 
     if (!runId) {
       return NextResponse.json({ error: "Missing run ID" }, { status: 400 });
     }
 
-    // First, find the run and its associated job/project without filtering by active project
+    // Check view permission via context
+    const canView = checkPermissionWithContext("job", "view", authCtx);
+    if (!canView) {
+      return NextResponse.json(
+        { error: "Insufficient permissions" },
+        { status: 403 }
+      );
+    }
+
+    // Find the run scoped to current project
     const result = await db
       .select({
         id: runs.id,
@@ -47,7 +55,12 @@ export async function GET(
           eq(reports.entityType, "job")
         )
       )
-      .where(eq(runs.id, runId))
+      .where(
+        and(
+          eq(runs.id, runId),
+          eq(runs.projectId, authCtx.project.id)
+        )
+      )
       .limit(1);
 
     if (result.length === 0) {
@@ -55,20 +68,6 @@ export async function GET(
     }
 
     const run = result[0];
-
-    // Check if user has access to this run's organization
-    const userIsSuperAdmin = await isSuperAdmin();
-
-    if (!userIsSuperAdmin && run.organizationId) {
-      const orgRole = await getUserOrgRole(userId, run.organizationId);
-
-      if (!orgRole) {
-        return NextResponse.json(
-          { error: "Access denied: Not a member of this organization" },
-          { status: 403 }
-        );
-      }
-    }
 
     // Get test count for this job
     let testCount = 0;
@@ -88,6 +87,12 @@ export async function GET(
 
     return NextResponse.json(response);
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
     console.error("Error fetching run:", error);
     return NextResponse.json({ error: "Failed to fetch run" }, { status: 500 });
   }
@@ -96,15 +101,15 @@ export async function GET(
 // Delete run handler
 export async function DELETE(
   request: Request,
-  context: { params: Promise<{ runId: string }> }
+  routeContext: { params: Promise<{ runId: string }> }
 ) {
-  const params = await context.params;
+  const params = await routeContext.params;
   let userId: string | undefined;
   let runId: string | undefined;
 
   try {
-    const authResult = await requireAuth();
-    userId = authResult.userId;
+    const authCtx = await requireAuthContext();
+    userId = authCtx.userId;
     runId = params.runId;
     console.log(`Attempting to delete run with ID: ${runId}`);
 
@@ -116,17 +121,31 @@ export async function DELETE(
       );
     }
 
-    // First get the run and its associated job/project (same pattern as GET method)
+    // Check delete permission via context
+    const canDelete = checkPermissionWithContext("job", "delete", authCtx);
+    if (!canDelete) {
+      return NextResponse.json(
+        { error: "Insufficient permissions to delete runs" },
+        { status: 403 }
+      );
+    }
+
+    // Find the run scoped to current project
     const existingRunData = await db
       .select({
         id: runs.id,
         jobId: runs.jobId,
-        projectId: jobs.projectId,
+        projectId: runs.projectId,
         organizationId: jobs.organizationId,
       })
       .from(runs)
       .leftJoin(jobs, eq(runs.jobId, jobs.id))
-      .where(eq(runs.id, runId))
+      .where(
+        and(
+          eq(runs.id, runId),
+          eq(runs.projectId, authCtx.project.id)
+        )
+      )
       .limit(1);
 
     if (!existingRunData.length) {
@@ -138,28 +157,6 @@ export async function DELETE(
     }
 
     const run = existingRunData[0];
-
-    // Check if user has access to this run's organization (same access pattern as GET method)
-    const userIsSuperAdmin = await isSuperAdmin();
-
-    if (!userIsSuperAdmin && run.organizationId) {
-      const orgRole = await getUserOrgRole(userId, run.organizationId);
-
-      if (!orgRole) {
-        return NextResponse.json(
-          { error: "Access denied: Not a member of this organization" },
-          { status: 403 }
-        );
-      }
-
-      // Check if user has permission to manage runs
-      if (!canManageRuns(orgRole)) {
-        return NextResponse.json(
-          { error: "Access denied: Insufficient permissions to delete runs" },
-          { status: 403 }
-        );
-      }
-    }
 
     console.log(`Deleting reports for run: ${runId}`);
     // First delete any associated reports
@@ -191,6 +188,12 @@ export async function DELETE(
     console.log(`Successfully deleted run: ${runId}`);
     return NextResponse.json({ success: true });
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
     console.error("Error deleting run:", error);
 
     // Log audit event for run deletion failure

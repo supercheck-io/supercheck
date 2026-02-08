@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
-import { source, getPageImage } from '@/lib/source';
+import { source } from '@/lib/source';
 import { getMDXComponents } from '@/mdx-components';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { createRelativeLink } from 'fumadocs-ui/mdx';
 import {
   DocsBody,
@@ -16,6 +16,15 @@ export const revalidate = false;
 
 export default async function Page(props: PageProps<'/docs/[[...slug]]'>) {
   const params = await props.params;
+  if (!params.slug || params.slug.length === 0) {
+    redirect('/docs/app/welcome');
+  }
+  if (params.slug.length === 1 && params.slug[0] === 'app') {
+    redirect('/docs/app/welcome');
+  }
+  if (params.slug.length === 2 && params.slug[0] === 'app' && params.slug[1] === 'quickstart') {
+    redirect('/docs/app/welcome');
+  }
   const page = source.getPage(params.slug);
   if (!page) notFound();
 
@@ -27,6 +36,23 @@ export default async function Page(props: PageProps<'/docs/[[...slug]]'>) {
     : `${page.slugs.join('/')}.mdx`;
 
   const MDX = page.data.body;
+  const isFullWidth = page.data.full === true;
+
+  if (isFullWidth) {
+    return (
+      <DocsPage full>
+        <DocsTitle>{page.data.title}</DocsTitle>
+        <DocsDescription>{page.data.description}</DocsDescription>
+        <DocsBody>
+          <MDX
+            components={getMDXComponents({
+              a: createRelativeLink(source, page),
+            })}
+          />
+        </DocsBody>
+      </DocsPage>
+    );
+  }
 
   return (
     <DocsPage
@@ -67,14 +93,17 @@ export async function generateMetadata(
   props: PageProps<'/docs/[[...slug]]'>,
 ): Promise<Metadata> {
   const params = await props.params;
+  if (!params.slug || params.slug.length === 0) {
+    return {
+      title: 'Supercheck Documentation',
+      description: 'Open Source AI-Powered Test Automation & Monitoring Platform',
+    };
+  }
   const page = source.getPage(params.slug);
   if (!page) notFound();
 
   return {
     title: page.data.title,
     description: page.data.description,
-    openGraph: {
-      images: getPageImage(page).url,
-    },
   };
 }

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/utils/db';
 import { runs, jobs, projects } from '@/db/schema';
 import { eq, and, inArray, or } from 'drizzle-orm';
-import { requireProjectContext } from '@/lib/project-context';
+import { requireAuthContext, isAuthError } from '@/lib/auth-context';
 import { checkCapacityLimits } from '@/lib/middleware/plan-enforcement';
 
 export const dynamic = 'force-dynamic';
@@ -23,7 +23,7 @@ interface ExecutionItem {
 export async function GET() {
   try {
     // robustly get organizationId from project context
-    const { organizationId } = await requireProjectContext();
+    const { organizationId } = await requireAuthContext();
 
     if (!organizationId) {
       return NextResponse.json(
@@ -218,10 +218,13 @@ export async function GET() {
       queuedCapacity: capacityLimits.queuedCapacity,
     });
   } catch (error) {
-    console.error('Error fetching running/queued executions:', error);
-    if (error instanceof Error && error.message === 'Authentication required') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Authentication required' },
+        { status: 401 }
+      );
     }
+    console.error('Error fetching running/queued executions:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 },

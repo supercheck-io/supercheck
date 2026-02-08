@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { apikey, jobs } from "@/db/schema";
-import { eq } from "drizzle-orm";
-import { hasPermission, requireAuth } from "@/lib/rbac/middleware";
+import { and, eq } from "drizzle-orm";
+import { checkPermissionWithContext } from "@/lib/rbac/middleware";
+import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 
 // PATCH /api/jobs/[id]/api-keys/[keyId] - Update API key settings
 export async function PATCH(
@@ -10,11 +11,14 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string; keyId: string }> }
 ) {
   try {
+    const authCtx = await requireAuthContext();
     const { id: jobId, keyId } = await params;
     const { enabled, name } = await request.json();
 
-    // Verify user is authenticated
-    await requireAuth();
+    const canUpdate = checkPermissionWithContext("apiKey", "update", authCtx);
+    if (!canUpdate) {
+      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
+    }
 
     const keyRecord = await db
       .select({
@@ -25,25 +29,18 @@ export async function PATCH(
       })
       .from(apikey)
       .leftJoin(jobs, eq(jobs.id, apikey.jobId))
-      .where(eq(apikey.id, keyId))
+      .where(
+        and(
+          eq(apikey.id, keyId),
+          eq(apikey.jobId, jobId),
+          eq(jobs.projectId, authCtx.project.id),
+          eq(jobs.organizationId, authCtx.organizationId)
+        )
+      )
       .limit(1);
 
     if (!keyRecord.length) {
       return NextResponse.json({ error: "API key not found" }, { status: 404 });
-    }
-
-    if (keyRecord[0].jobId !== jobId) {
-      // Avoid leaking key existence across jobs
-      return NextResponse.json({ error: "API key not found" }, { status: 404 });
-    }
-
-    const canUpdate = await hasPermission("apiKey", "update", {
-      organizationId: keyRecord[0].organizationId || undefined,
-      projectId: keyRecord[0].projectId || undefined,
-    });
-
-    if (!canUpdate) {
-      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
     }
 
     // Update the API key directly in database
@@ -63,6 +60,12 @@ export async function PATCH(
       apiKey: updatedKey[0],
     });
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
     console.error("Error updating API key:", error);
     return NextResponse.json(
       { error: "Failed to update API key" },
@@ -77,10 +80,13 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string; keyId: string }> }
 ) {
   try {
+    const authCtx = await requireAuthContext();
     const { id: jobId, keyId } = await params;
 
-    // Verify user is authenticated
-    await requireAuth();
+    const canDelete = checkPermissionWithContext("apiKey", "delete", authCtx);
+    if (!canDelete) {
+      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
+    }
 
     const keyRecord = await db
       .select({
@@ -91,34 +97,36 @@ export async function DELETE(
       })
       .from(apikey)
       .leftJoin(jobs, eq(jobs.id, apikey.jobId))
-      .where(eq(apikey.id, keyId))
+      .where(
+        and(
+          eq(apikey.id, keyId),
+          eq(apikey.jobId, jobId),
+          eq(jobs.projectId, authCtx.project.id),
+          eq(jobs.organizationId, authCtx.organizationId)
+        )
+      )
       .limit(1);
 
     if (!keyRecord.length) {
       return NextResponse.json({ error: "API key not found" }, { status: 404 });
     }
 
-    if (keyRecord[0].jobId !== jobId) {
-      return NextResponse.json({ error: "API key not found" }, { status: 404 });
-    }
-
-    const canDelete = await hasPermission("apiKey", "delete", {
-      organizationId: keyRecord[0].organizationId || undefined,
-      projectId: keyRecord[0].projectId || undefined,
-    });
-
-    if (!canDelete) {
-      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
-    }
-
     // Delete the API key directly from database
-    await db.delete(apikey).where(eq(apikey.id, keyId));
+    await db
+      .delete(apikey)
+      .where(and(eq(apikey.id, keyId), eq(apikey.jobId, jobId)));
 
     return NextResponse.json({
       success: true,
       message: "API key deleted successfully",
     });
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
     console.error("Error deleting API key:", error);
     return NextResponse.json(
       { error: "Failed to delete API key" },

@@ -6,8 +6,8 @@ import {
   runs as runsTable,
   tests,
 } from "@/db/schema";
-import { requireProjectContext } from "@/lib/project-context";
-import { hasPermission } from "@/lib/rbac/middleware";
+import { requireAuthContext, isAuthError } from "@/lib/auth-context";
+import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 
 type Params = { runId: string };
 
@@ -23,13 +23,11 @@ export async function GET(
   }
 
   try {
-    const { project, organizationId } = await requireProjectContext();
+    const authCtx = await requireAuthContext();
+    const { project, organizationId } = authCtx;
 
     // Ensure user can view tests within project
-    const canViewTests = await hasPermission("test", "view", {
-      organizationId,
-      projectId: project.id,
-    });
+    const canViewTests = checkPermissionWithContext("test", "view", authCtx);
 
     if (!canViewTests) {
       return NextResponse.json(
@@ -84,6 +82,12 @@ export async function GET(
 
     return NextResponse.json(result[0]);
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
     console.error("Error fetching k6 run:", error);
     return NextResponse.json(
       { error: "Failed to fetch run details" },

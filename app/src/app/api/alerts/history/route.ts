@@ -3,31 +3,34 @@ import { db } from "@/utils/db";
 import { alertHistory } from "@/db/schema";
 import { sql } from "drizzle-orm";
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
-import { requireProjectContext } from '@/lib/project-context';
+import { requireAuthContext, isAuthError } from '@/lib/auth-context';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    let context: { userId: string; project: { id: string; name: string; organizationId: string; userRole: string }; organizationId: string };
-    
-    try {
-      context = await requireProjectContext();
-    } catch (contextError) {
-      console.error('Project context error:', contextError);
-      // Return empty array if no project context available or authentication failed
-      return NextResponse.json([]);
-    }
+    const url = new URL(request.url);
+    const rawPage = url.searchParams.get('page');
+    const rawLimit = url.searchParams.get('limit');
+    const MAX_LIMIT = 200;
+    const DEFAULT_LIMIT = 50;
+    const limit = rawLimit
+      ? Math.min(Math.max(1, Math.floor(Number(rawLimit)) || DEFAULT_LIMIT), MAX_LIMIT)
+      : DEFAULT_LIMIT;
+
+    const isPaginatedRequest = rawPage !== null;
+    const page = isPaginatedRequest
+      ? Math.max(1, Math.floor(Number(rawPage)) || 1)
+      : 1;
+    const offset = isPaginatedRequest ? (page - 1) * limit : 0;
+
+    const context = await requireAuthContext();
     
     // PERFORMANCE: Use checkPermissionWithContext to avoid 5-8 duplicate DB queries
-    try {
-      const canView = checkPermissionWithContext('monitor', 'view', context);
-      
-      if (!canView) {
-        return NextResponse.json([]);
-      }
-    } catch (permissionError) {
-      console.error('Permission check error:', permissionError);
-      // Return empty array if permission check fails
-      return NextResponse.json([]);
+    const canView = checkPermissionWithContext('monitor', 'view', context);
+    if (!canView) {
+      return NextResponse.json(
+        { error: 'Insufficient permissions' },
+        { status: 403 }
+      );
     }
     
     const dbInstance = db;
@@ -52,6 +55,29 @@ export async function GET() {
         jobName: string | null;
         monitorName: string | null;
       };
+
+      const total = isPaginatedRequest
+        ? await dbInstance.execute(sql`
+            WITH history AS (
+              (
+                SELECT ah.id
+                FROM alert_history ah
+                INNER JOIN jobs j ON ah.job_id = j.id
+                WHERE j.organization_id = ${context.organizationId}
+                  AND j.project_id = ${context.project.id}
+              )
+              UNION ALL
+              (
+                SELECT ah.id
+                FROM alert_history ah
+                INNER JOIN monitors m ON ah.monitor_id = m.id
+                WHERE m.organization_id = ${context.organizationId}
+                  AND m.project_id = ${context.project.id}
+              )
+            )
+            SELECT count(*)::int as total FROM history
+          `)
+        : null;
 
       const historyResult = await dbInstance.execute(sql`
         (
@@ -102,7 +128,8 @@ export async function GET() {
             AND m.project_id = ${context.project.id}
         )
         ORDER BY "timestamp" DESC
-        LIMIT 50
+        LIMIT ${limit}
+        OFFSET ${offset}
       `);
       
       const history = historyResult as unknown as AlertHistoryRow[];
@@ -127,7 +154,23 @@ export async function GET() {
         },
       }));
 
-      return NextResponse.json(transformedHistory);
+      if (!isPaginatedRequest) {
+        return NextResponse.json(transformedHistory);
+      }
+
+      const totalCount = Number((total as unknown as Array<{ total: number }>)[0]?.total ?? 0);
+      const totalPages = Math.ceil(totalCount / limit);
+      return NextResponse.json({
+        data: transformedHistory,
+        pagination: {
+          total: totalCount,
+          page,
+          limit,
+          totalPages,
+          hasNextPage: page < totalPages,
+          hasPrevPage: page > 1,
+        },
+      });
     } catch (dbError) {
       console.error('[AlertHistory] Database query error:', dbError);
       return NextResponse.json(
@@ -136,6 +179,12 @@ export async function GET() {
       );
     }
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
     console.error("[AlertHistory] Error fetching alert history:", error);
     return NextResponse.json(
       { error: "Failed to fetch alert history", details: error instanceof Error ? error.message : String(error) },
@@ -147,10 +196,16 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     // Require authentication and project context
-    let projectContext: { userId: string; project: { id: string; name: string; organizationId: string; userRole: string }; organizationId: string };
+    let projectContext: { userId: string; project: { id: string; name: string; organizationId: string; userRole: string }; organizationId: string; isCliAuth: boolean };
     try {
-      projectContext = await requireProjectContext();
-    } catch {
+      projectContext = await requireAuthContext();
+    } catch (error) {
+      if (isAuthError(error)) {
+        return NextResponse.json(
+          { error: error instanceof Error ? error.message : "Authentication required" },
+          { status: 401 }
+        );
+      }
       return NextResponse.json(
         { error: "Unauthorized" },
         { status: 401 }

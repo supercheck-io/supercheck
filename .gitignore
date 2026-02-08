@@ -86,6 +86,7 @@ app/e2e/auth-state.json
 test-results/
 
 ## Next.js
+.next/
 app/.next/
 app/.swc/
 app/out/
@@ -164,7 +165,6 @@ certs/
 tmp/
 .tmp/
 .cache/
-.next/cache/
 
 # Sentry CLI
 .sentryclirc
@@ -173,3 +173,8 @@ tmp/
 tasks/
 # Infisical
 .infisical.json
+
+# Supercheck CLI
+supercheck.config.local.ts
+supercheck.config.local.js
+supercheck.config.local.mjs

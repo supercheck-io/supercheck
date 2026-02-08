@@ -53,7 +53,7 @@ export class CredentialSecurityService {
   /**
    * 🔴 CRITICAL: Mask credentials in logs and debug output
    */
-  maskCredentials(data: any): any {
+  maskCredentials(data: unknown): unknown {
     if (!data) return data;
 
     // Handle different data types
@@ -62,11 +62,13 @@ export class CredentialSecurityService {
     }
 
     if (Array.isArray(data)) {
-      return data.map((item) => this.maskCredentials(item));
+      return data.map((item: unknown) => this.maskCredentials(item));
     }
 
     if (typeof data === 'object') {
-      const masked = { ...data };
+      const masked: Record<string, unknown> = {
+        ...(data as Record<string, unknown>),
+      };
 
       // Fields that should be masked
       const sensitiveFields = [
@@ -270,7 +272,7 @@ export class CredentialSecurityService {
   private sanitizeString(input: string): string {
     return input
       .trim()
-      .replace(/[<>\"'&]/g, '') // Remove potential XSS characters
+      .replace(/[<>"'&]/g, '') // Remove potential XSS characters
       .substring(0, 255); // Limit length
   }
 
@@ -281,16 +283,19 @@ export class CredentialSecurityService {
     operation: 'create' | 'update' | 'delete' | 'access' | 'rotate',
     credentialId: string,
     userId?: string,
-    metadata?: any,
-  ): any {
+    metadata?: Record<string, unknown>,
+  ): Record<string, unknown> {
     return {
       timestamp: new Date().toISOString(),
       operation,
       credentialId,
       userId,
       metadata: this.maskCredentials(metadata),
-      ip: metadata?.ip || 'unknown',
-      userAgent: metadata?.userAgent || 'unknown',
+      ip: typeof metadata?.ip === 'string' ? metadata.ip : 'unknown',
+      userAgent:
+        typeof metadata?.userAgent === 'string'
+          ? metadata.userAgent
+          : 'unknown',
     };
   }
 }

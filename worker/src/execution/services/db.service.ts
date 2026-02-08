@@ -12,7 +12,7 @@ import {
   AlertType,
   AlertStatus,
 } from '../../db/schema'; // Specifically import reports table
-import { eq, and, sql, desc } from 'drizzle-orm';
+import { eq, and, sql, desc, inArray, type SQL } from 'drizzle-orm';
 import { ReportMetadata } from '../interfaces'; // Import our interface
 import { NotificationProvider } from '../../notification/notification.service';
 import { decryptNotificationProviderConfig } from '../../common/notification-provider-crypto';
@@ -325,12 +325,15 @@ export class DbService implements OnModuleInit {
    * Gets project information by ID
    * @param projectId The project ID
    */
-  async getProjectById(projectId: string): Promise<any> {
+  async getProjectById(
+    projectId: string,
+  ): Promise<{ id: string; name: string; organizationId: string } | null> {
     try {
       const project = await this.db.query.projects.findFirst({
         where: eq(schema.projects.id, projectId),
+        columns: { id: true, name: true, organizationId: true },
       });
-      return project;
+      return project ?? null;
     } catch (error) {
       this.logger.error(
         `Failed to get project ${projectId}: ${(error as Error).message}`,
@@ -356,36 +359,22 @@ export class DbService implements OnModuleInit {
       }
 
       // Build where conditions with RBAC filtering
-      const whereConditions = [
-        (notificationProviders: any, { inArray }: any) =>
-          inArray(notificationProviders.id, providerIds),
+      const conditions: SQL[] = [
+        inArray(schema.notificationProviders.id, providerIds),
+        eq(schema.notificationProviders.isEnabled, true),
       ];
 
       if (organizationId) {
-        whereConditions.push((notificationProviders: any, { eq }: any) =>
-          eq(notificationProviders.organizationId, organizationId),
+        conditions.push(
+          eq(schema.notificationProviders.organizationId, organizationId),
         );
       }
       if (projectId) {
-        whereConditions.push((notificationProviders: any, { eq }: any) =>
-          eq(notificationProviders.projectId, projectId),
-        );
+        conditions.push(eq(schema.notificationProviders.projectId, projectId));
       }
 
-      whereConditions.push((notificationProviders: any, { eq }: any) =>
-        eq(notificationProviders.isEnabled, true),
-      );
-
       const providers = await this.db.query.notificationProviders.findMany({
-        where:
-          whereConditions.length > 1
-            ? (notificationProviders: any, ops: any) =>
-                ops.and(
-                  ...whereConditions.map((cond: any) =>
-                    cond(notificationProviders, ops),
-                  ),
-                )
-            : whereConditions[0],
+        where: and(...conditions),
       });
 
       this.logger.debug(

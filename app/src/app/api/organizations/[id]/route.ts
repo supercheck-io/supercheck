@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth, hasPermission } from '@/lib/rbac/middleware';
+import { getUserOrgRole } from '@/lib/rbac/middleware';
+import { requireUserAuthContext, isAuthError } from '@/lib/auth-context';
 import { db } from '@/utils/db';
 import { organization, member, projects } from '@/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, count } from 'drizzle-orm';
+import { Role } from '@/lib/rbac/permissions';
 
 /**
  * GET /api/organizations/[id]
@@ -14,21 +16,10 @@ export async function GET(
 ) {
   const resolvedParams = await params;
   try {
-    const { userId } = await requireAuth();
+    const { userId } = await requireUserAuthContext();
     const organizationId = resolvedParams.id;
     
-    // Check permission
-    const canView = await hasPermission('organization', 'view', {
-      organizationId
-    });
-    if (!canView) {
-      return NextResponse.json(
-        { error: 'Insufficient permissions' },
-        { status: 403 }
-      );
-    }
-    
-    // Get organization details
+    // Verify user is a member of this organization (implicit view permission)
     const orgData = await db
       .select({
         id: organization.id,
@@ -56,17 +47,11 @@ export async function GET(
     
     const org = orgData[0];
     
-    // Get projects count
-    const projectCount = await db
-      .select({ count: projects.id })
-      .from(projects)
-      .where(eq(projects.organizationId, organizationId));
-    
-    // Get members count
-    const memberCount = await db
-      .select({ count: member.id })
-      .from(member)
-      .where(eq(member.organizationId, organizationId));
+    // Get projects count and members count using SQL count() aggregate
+    const [projectCountResult, memberCountResult] = await Promise.all([
+      db.select({ count: count() }).from(projects).where(eq(projects.organizationId, organizationId)),
+      db.select({ count: count() }).from(member).where(eq(member.organizationId, organizationId)),
+    ]);
     
     return NextResponse.json({
       success: true,
@@ -79,31 +64,20 @@ export async function GET(
         metadata: org.metadata,
         role: org.userRole,
         stats: {
-          projectCount: projectCount.length,
-          memberCount: memberCount.length
+          projectCount: projectCountResult[0]?.count || 0,
+          memberCount: memberCountResult[0]?.count || 0
         }
       }
     });
     
   } catch (error) {
-    console.error('Failed to get organization:', error);
-    
-    if (error instanceof Error) {
-      if (error.message === 'Authentication required') {
-        return NextResponse.json(
-          { error: 'Authentication required' },
-          { status: 401 }
-        );
-      }
-      
-      if (error.message.includes('not found')) {
-        return NextResponse.json(
-          { error: 'Organization not found or access denied' },
-          { status: 404 }
-        );
-      }
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Authentication required' },
+        { status: 401 }
+      );
     }
-    
+    console.error('Failed to get organization:', error);
     return NextResponse.json(
       { error: 'Failed to fetch organization' },
       { status: 500 }
@@ -121,13 +95,19 @@ export async function PUT(
 ) {
   const resolvedParams = await params;
   try {
-    await requireAuth();
+    const { userId } = await requireUserAuthContext();
     const organizationId = resolvedParams.id;
     
-    // Check permission (using 'update' action - 'manage' doesn't exist for organization)
-    const canUpdate = await hasPermission('organization', 'update', {
-      organizationId
-    });
+    // Check permission using getUserOrgRole (works for both CLI tokens and session cookies)
+    const orgRole = await getUserOrgRole(userId, organizationId);
+    if (!orgRole) {
+      return NextResponse.json(
+        { error: 'Organization not found' },
+        { status: 404 }
+      );
+    }
+    // Only ORG_ADMIN and ORG_OWNER can update organizations
+    const canUpdate = orgRole === Role.ORG_ADMIN || orgRole === Role.ORG_OWNER;
     if (!canUpdate) {
       return NextResponse.json(
         { error: 'Insufficient permissions' },
@@ -170,24 +150,13 @@ export async function PUT(
     });
     
   } catch (error) {
-    console.error('Failed to update organization:', error);
-    
-    if (error instanceof Error) {
-      if (error.message === 'Authentication required') {
-        return NextResponse.json(
-          { error: 'Authentication required' },
-          { status: 401 }
-        );
-      }
-      
-      if (error.message.includes('not found')) {
-        return NextResponse.json(
-          { error: 'Organization not found or access denied' },
-          { status: 404 }
-        );
-      }
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Authentication required' },
+        { status: 401 }
+      );
     }
-    
+    console.error('Failed to update organization:', error);
     return NextResponse.json(
       { error: 'Failed to update organization' },
       { status: 500 }
@@ -205,14 +174,19 @@ export async function DELETE(
 ) {
   const resolvedParams = await params;
   try {
-    await requireAuth();
+    const { userId } = await requireUserAuthContext();
     const organizationId = resolvedParams.id;
     
     // Check permission - only owners can delete organizations
-    const canDelete = await hasPermission('organization', 'delete', {
-      organizationId
-    });
-    if (!canDelete) {
+    // Uses getUserOrgRole which works for both CLI tokens and session cookies
+    const orgRole = await getUserOrgRole(userId, organizationId);
+    if (!orgRole) {
+      return NextResponse.json(
+        { error: 'Organization not found' },
+        { status: 404 }
+      );
+    }
+    if (orgRole !== Role.ORG_OWNER) {
       return NextResponse.json(
         { error: 'Only organization owners can delete organizations' },
         { status: 403 }
@@ -230,24 +204,13 @@ export async function DELETE(
     });
     
   } catch (error) {
-    console.error('Failed to delete organization:', error);
-    
-    if (error instanceof Error) {
-      if (error.message === 'Authentication required') {
-        return NextResponse.json(
-          { error: 'Authentication required' },
-          { status: 401 }
-        );
-      }
-      
-      if (error.message.includes('not found')) {
-        return NextResponse.json(
-          { error: 'Organization not found or access denied' },
-          { status: 404 }
-        );
-      }
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Authentication required' },
+        { status: 401 }
+      );
     }
-    
+    console.error('Failed to delete organization:', error);
     return NextResponse.json(
       { error: 'Failed to delete organization' },
       { status: 500 }
