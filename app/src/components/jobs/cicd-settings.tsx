@@ -123,6 +123,10 @@ export function CicdSettings({ jobId, onChange }: CicdSettingsProps) {
 
       if (!response.ok) {
         const errorData = await response.json();
+        // Provide user-friendly error messages based on the error type
+        if (response.status === 403 || errorData.error === "Insufficient permissions") {
+          throw new Error("You don't have permission to delete API keys. Please contact a Project Admin or Organization Admin.");
+        }
         throw new Error(errorData.error || "Failed to delete API key");
       }
 
@@ -151,6 +155,10 @@ export function CicdSettings({ jobId, onChange }: CicdSettingsProps) {
 
       if (!response.ok) {
         const errorData = await response.json();
+        // Provide user-friendly error messages based on the error type
+        if (response.status === 403 || errorData.error === "Insufficient permissions") {
+          throw new Error("You don't have permission to update API keys. Please contact a Project Admin or Organization Admin.");
+        }
         throw new Error(errorData.error || "Failed to update API key");
       }
 

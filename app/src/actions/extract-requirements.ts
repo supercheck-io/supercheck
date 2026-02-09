@@ -18,7 +18,7 @@
 import { generateText } from "ai";
 import { z } from "zod";
 import { requireProjectContext } from "@/lib/project-context";
-import { hasPermission } from "@/lib/rbac/middleware";
+import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { db } from "@/utils/db";
 import {
@@ -544,10 +544,11 @@ export async function extractRequirementsFromDocument(
   try {
     const { userId, project, organizationId } = await requireProjectContext();
 
-    // Check create permission
-    const canCreate = await hasPermission("requirement", "create", {
+    // Check create permission (optimized - reuses context from requireProjectContext)
+    const canCreate = checkPermissionWithContext("requirement", "create", {
+      userId,
       organizationId,
-      projectId: project.id,
+      project,
     });
 
     if (!canCreate) {

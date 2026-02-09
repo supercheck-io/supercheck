@@ -215,9 +215,9 @@ const data = {
   navSecondary: [
     {
       title: "Docs",
-      url: "https://supercheck.io/docs",
+      url: "https://supercheck.io/docs/app/welcome",
       icon: BookOpenText,
-      badge: "v1.2.3-canary.18",
+      badge: "v1.2.3-canary.19",
     },
   ],
   documents: [

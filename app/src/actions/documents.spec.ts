@@ -40,7 +40,7 @@ jest.mock("@/lib/project-context", () => ({
 }));
 
 jest.mock("@/lib/rbac/middleware", () => ({
-  hasPermission: jest.fn(),
+  checkPermissionWithContext: jest.fn(),
 }));
 
 jest.mock("@/lib/audit-logger", () => ({
@@ -50,7 +50,7 @@ jest.mock("@/lib/audit-logger", () => ({
 // Import after mocks
 import { db } from "@/utils/db";
 import { requireProjectContext } from "@/lib/project-context";
-import { hasPermission } from "@/lib/rbac/middleware";
+import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { getS3Client } from "@/lib/s3-proxy";
 
@@ -65,7 +65,7 @@ import {
 // Cast mocks
 const mockDb = db as jest.Mocked<typeof db>;
 const mockRequireProjectContext = requireProjectContext as jest.Mock;
-const mockHasPermission = hasPermission as jest.Mock;
+const mockCheckPermissionWithContext = checkPermissionWithContext as jest.Mock;
 const mockLogAuditEvent = logAuditEvent as jest.Mock;
 const mockGetS3Client = getS3Client as jest.Mock;
 
@@ -97,7 +97,7 @@ describe("Documents Server Actions", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockRequireProjectContext.mockResolvedValue(mockProjectContext);
-    mockHasPermission.mockResolvedValue(true);
+    mockCheckPermissionWithContext.mockReturnValue(true);
   });
 
   // ==========================================================================
@@ -107,15 +107,16 @@ describe("Documents Server Actions", () => {
   describe("RBAC Enforcement", () => {
     describe("getDocuments", () => {
       it("should require view permission", async () => {
-        mockHasPermission.mockResolvedValue(false);
+        mockCheckPermissionWithContext.mockReturnValue(false);
 
         const result = await getDocuments();
 
         expect(result.success).toBe(false);
         expect(result.error).toBe("Insufficient permissions");
-        expect(mockHasPermission).toHaveBeenCalledWith("requirement", "view", {
+        expect(mockCheckPermissionWithContext).toHaveBeenCalledWith("requirement", "view", {
+          userId: testUserId,
           organizationId: testOrgId,
-          projectId: testProjectId,
+          project: expect.objectContaining({ id: testProjectId }),
         });
       });
 
@@ -136,7 +137,7 @@ describe("Documents Server Actions", () => {
 
     describe("getDocument", () => {
       it("should require view permission", async () => {
-        mockHasPermission.mockResolvedValue(false);
+        mockCheckPermissionWithContext.mockReturnValue(false);
 
         const result = await getDocument(testDocumentId);
 
@@ -147,7 +148,7 @@ describe("Documents Server Actions", () => {
 
     describe("getDocumentRequirements", () => {
       it("should require view permission", async () => {
-        mockHasPermission.mockResolvedValue(false);
+        mockCheckPermissionWithContext.mockReturnValue(false);
 
         const result = await getDocumentRequirements(testDocumentId);
 
@@ -158,7 +159,7 @@ describe("Documents Server Actions", () => {
 
     describe("getDocumentDownloadUrl", () => {
       it("should require view permission", async () => {
-        mockHasPermission.mockResolvedValue(false);
+        mockCheckPermissionWithContext.mockReturnValue(false);
 
         const result = await getDocumentDownloadUrl(testDocumentId);
 
@@ -169,15 +170,16 @@ describe("Documents Server Actions", () => {
 
     describe("deleteDocument", () => {
       it("should require delete permission", async () => {
-        mockHasPermission.mockResolvedValue(false);
+        mockCheckPermissionWithContext.mockReturnValue(false);
 
         const result = await deleteDocument(testDocumentId);
 
         expect(result.success).toBe(false);
         expect(result.error).toBe("Insufficient permissions");
-        expect(mockHasPermission).toHaveBeenCalledWith("requirement", "delete", {
+        expect(mockCheckPermissionWithContext).toHaveBeenCalledWith("requirement", "delete", {
+          userId: testUserId,
           organizationId: testOrgId,
-          projectId: testProjectId,
+          project: expect.objectContaining({ id: testProjectId }),
         });
       });
     });

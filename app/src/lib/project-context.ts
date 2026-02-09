@@ -446,7 +446,9 @@ export async function requireProjectContext(): Promise<{
         slug: undefined, // slug not strictly required for API context usually, adds query overhead
         organizationId: ctx.organizationId,
         isDefault: ctx.isDefaultProject || false,
-        userRole: ctx.projectRole || "project_viewer", 
+        // IMPORTANT: Org role takes precedence over project role in RBAC hierarchy
+        // Org admins/owners may not have explicit project_members rows but still have full access
+        userRole: ctx.organizationRole || ctx.projectRole || "project_viewer", 
     },
   };
 }

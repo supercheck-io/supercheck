@@ -17,7 +17,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import crypto from "crypto";
 import { requireProjectContext } from "@/lib/project-context";
-import { hasPermission } from "@/lib/rbac/middleware";
+import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { updateCoverageSnapshot } from "@/actions/requirements";
 
@@ -82,10 +82,11 @@ export async function saveTest(
 
     // Check if this is an update (has an ID) or a new test
     if (validatedData.id) {
-      // This is an update - check EDIT_TESTS permission
-      const canEditTests = await hasPermission("test", "update", {
+      // This is an update - check EDIT_TESTS permission (optimized - reuses context)
+      const canEditTests = checkPermissionWithContext("test", "update", {
+        userId,
         organizationId,
-        projectId: project.id,
+        project,
       });
 
       if (!canEditTests) {
@@ -142,10 +143,11 @@ export async function saveTest(
       // Return the updated test ID
       return { id: testId, success: true };
     } else {
-      // This is a new test - check CREATE_TESTS permission
-      const canCreateTests = await hasPermission("test", "create", {
+      // This is a new test - check CREATE_TESTS permission (optimized - reuses context)
+      const canCreateTests = checkPermissionWithContext("test", "create", {
+        userId,
         organizationId,
-        projectId: project.id,
+        project,
       });
 
       if (!canCreateTests) {

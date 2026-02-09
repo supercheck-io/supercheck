@@ -37,7 +37,7 @@ jest.mock("@/lib/project-context", () => ({
 }));
 
 jest.mock("@/lib/rbac/middleware", () => ({
-  hasPermission: jest.fn(),
+  checkPermissionWithContext: jest.fn(),
 }));
 
 jest.mock("@/lib/audit-logger", () => ({
@@ -92,14 +92,14 @@ jest.mock("ai", () => ({
 
 // Import after mocks
 import { requireProjectContext } from "@/lib/project-context";
-import { hasPermission } from "@/lib/rbac/middleware";
+import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { getActiveOrganization } from "@/lib/session";
 import { AISecurityService } from "@/lib/ai/ai-security";
 import { extractRequirementsFromDocument } from "./extract-requirements";
 
 // Cast mocks
 const mockRequireProjectContext = requireProjectContext as jest.Mock;
-const mockHasPermission = hasPermission as jest.Mock;
+const mockCheckPermissionWithContext = checkPermissionWithContext as jest.Mock;
 const mockGetActiveOrganization = getActiveOrganization as jest.Mock;
 const mockEscapeForPrompt = AISecurityService.escapeForPrompt as jest.Mock;
 const mockSanitizeTextOutput = AISecurityService.sanitizeTextOutput as jest.Mock;
@@ -169,7 +169,7 @@ describe("extractRequirementsFromDocument", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockRequireProjectContext.mockResolvedValue(mockProjectContext);
-    mockHasPermission.mockResolvedValue(true);
+    mockCheckPermissionWithContext.mockReturnValue(true);
     mockGetActiveOrganization.mockResolvedValue({ id: testOrgId, tier: "plus" });
   });
 
@@ -179,7 +179,7 @@ describe("extractRequirementsFromDocument", () => {
 
   describe("RBAC Enforcement", () => {
     it("should require create permission", async () => {
-      mockHasPermission.mockResolvedValue(false);
+      mockCheckPermissionWithContext.mockReturnValue(false);
 
       const formData = new MockFormData() as unknown as FormData;
       formData.append(
@@ -191,9 +191,10 @@ describe("extractRequirementsFromDocument", () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain("Insufficient permissions");
-      expect(mockHasPermission).toHaveBeenCalledWith("requirement", "create", {
+      expect(mockCheckPermissionWithContext).toHaveBeenCalledWith("requirement", "create", {
+        userId: testUserId,
         organizationId: testOrgId,
-        projectId: testProjectId,
+        project: expect.objectContaining({ id: testProjectId }),
       });
     });
 
@@ -206,12 +207,13 @@ describe("extractRequirementsFromDocument", () => {
 
       await extractRequirementsFromDocument(formData);
 
-      expect(mockHasPermission).toHaveBeenCalledWith(
+      expect(mockCheckPermissionWithContext).toHaveBeenCalledWith(
         "requirement",
         "create",
         expect.objectContaining({
+          userId: testUserId,
           organizationId: testOrgId,
-          projectId: testProjectId,
+          project: expect.objectContaining({ id: testProjectId }),
         })
       );
     });

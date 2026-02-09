@@ -5,6 +5,7 @@ import { tests, jobTests, monitors } from "@/db/schema";
 import { eq, count, and, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { requireProjectContext } from "@/lib/project-context";
+import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
 
 export async function deleteTest(testId: string) {
@@ -21,27 +22,23 @@ export async function deleteTest(testId: string) {
     // Get current project context (includes auth verification)
     const { userId, project, organizationId } = await requireProjectContext();
 
-    // Check test deletion permission using Better Auth with proper context
-    try {
-      const { hasPermission } = await import("@/lib/rbac/middleware");
-      const canDelete = await hasPermission("test", "delete", {
-        organizationId,
-        projectId: project.id,
-      });
+    // Check test deletion permission (optimized - reuses context from requireProjectContext)
+    const canDelete = checkPermissionWithContext("test", "delete", {
+      userId,
+      organizationId,
+      project,
+    });
 
-      if (!canDelete) {
-        throw new Error("Insufficient permissions to delete tests");
-      }
-    } catch (error) {
+    if (!canDelete) {
       console.warn(
-        `User ${userId} attempted to delete test ${testId} without permission:`,
-        error
+        `User ${userId} attempted to delete test ${testId} without permission`
       );
       return {
         success: false,
         error: "Insufficient permissions to delete tests",
       };
     }
+
 
     // First verify the test exists and belongs to current project - get details for audit
     const existingTest = await db

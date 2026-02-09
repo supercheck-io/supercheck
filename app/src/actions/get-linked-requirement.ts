@@ -4,7 +4,7 @@ import { db } from "@/utils/db";
 import { requirements, testRequirements, tests } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { requireProjectContext } from "@/lib/project-context";
-import { hasPermission } from "@/lib/rbac/middleware";
+import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 
 /**
  * Fetches the requirement linked to a specific test
@@ -13,18 +13,20 @@ import { hasPermission } from "@/lib/rbac/middleware";
  */
 export async function getLinkedTestRequirement(testId: string) {
   try {
-    // RBAC: Require project context and permission check
-    const { project, organizationId } = await requireProjectContext();
+    // RBAC: Require project context and permission check (optimized)
+    const { userId, project, organizationId } = await requireProjectContext();
 
-    const canView = await hasPermission("requirement", "view", {
+    const canView = checkPermissionWithContext("requirement", "view", {
+      userId,
       organizationId,
-      projectId: project.id,
+      project,
     });
 
     if (!canView) {
       console.warn(`User does not have permission to view requirements`);
       return null;
     }
+
 
     // First verify the test belongs to the current project
     const [testRecord] = await db

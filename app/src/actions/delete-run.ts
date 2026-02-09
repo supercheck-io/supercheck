@@ -5,7 +5,7 @@ import { runs, reports } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { requireProjectContext } from "@/lib/project-context";
-import { hasPermission } from "@/lib/rbac/middleware";
+import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
 import {
   createS3CleanupService,
@@ -173,11 +173,12 @@ export async function deleteRun(runId: string): Promise<DeleteRunResult> {
       organizationId: organizationId.substring(0, 8) + "...",
     });
 
-    // Check DELETE_JOBS permission (runs are considered part of job management)
+    // Check DELETE_JOBS permission (optimized - reuses context from requireProjectContext)
     console.log("[DELETE_RUN] Checking permissions for run deletion...");
-    const canDeleteJobs = await hasPermission("run", "delete", {
+    const canDeleteJobs = checkPermissionWithContext("run", "delete", {
+      userId,
       organizationId,
-      projectId: project.id,
+      project,
     });
     console.log("[DELETE_RUN] Permission check result:", canDeleteJobs);
 
@@ -191,6 +192,7 @@ export async function deleteRun(runId: string): Promise<DeleteRunResult> {
         error: "Insufficient permissions to delete runs",
       };
     }
+
 
     // Perform the deletion within a transaction
     console.log("[DELETE_RUN] Starting database transaction...");

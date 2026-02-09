@@ -4,7 +4,7 @@ import { db } from "@/utils/db";
 import { requirementDocuments, requirements as requirementsTable } from "@/db/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { requireProjectContext } from "@/lib/project-context";
-import { hasPermission } from "@/lib/rbac/middleware";
+import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { DeleteObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
@@ -21,11 +21,12 @@ export type RequirementDocument = typeof requirementDocuments.$inferSelect & {
  */
 export async function getDocuments(): Promise<{ success: boolean; documents?: RequirementDocument[]; error?: string }> {
   try {
-    const { project, organizationId } = await requireProjectContext();
+    const { userId, project, organizationId } = await requireProjectContext();
 
-    const canView = await hasPermission("requirement", "view", {
+    const canView = checkPermissionWithContext("requirement", "view", {
+      userId,
       organizationId,
-      projectId: project.id,
+      project,
     });
 
     if (!canView) {
@@ -67,11 +68,12 @@ export async function getDocuments(): Promise<{ success: boolean; documents?: Re
  */
 export async function getDocument(documentId: string): Promise<{ success: boolean; document?: RequirementDocument; error?: string }> {
   try {
-    const { project, organizationId } = await requireProjectContext();
+    const { userId, project, organizationId } = await requireProjectContext();
 
-    const canView = await hasPermission("requirement", "view", {
+    const canView = checkPermissionWithContext("requirement", "view", {
+      userId,
       organizationId,
-      projectId: project.id,
+      project,
     });
 
     if (!canView) {
@@ -125,11 +127,12 @@ export async function getDocumentRequirements(documentId: string): Promise<{
   error?: string 
 }> {
   try {
-    const { project, organizationId } = await requireProjectContext();
+    const { userId, project, organizationId } = await requireProjectContext();
 
-    const canView = await hasPermission("requirement", "view", {
+    const canView = checkPermissionWithContext("requirement", "view", {
+      userId,
       organizationId,
-      projectId: project.id,
+      project,
     });
 
     if (!canView) {
@@ -164,11 +167,12 @@ export async function getDocumentRequirements(documentId: string): Promise<{
  */
 export async function getDocumentDownloadUrl(documentId: string): Promise<{ success: boolean; url?: string; filename?: string; error?: string }> {
   try {
-    const { project, organizationId } = await requireProjectContext();
+    const { userId, project, organizationId } = await requireProjectContext();
 
-    const canView = await hasPermission("requirement", "view", {
+    const canView = checkPermissionWithContext("requirement", "view", {
+      userId,
       organizationId,
-      projectId: project.id,
+      project,
     });
 
     if (!canView) {
@@ -215,9 +219,10 @@ export async function deleteDocument(documentId: string): Promise<{ success: boo
   try {
     const { project, organizationId, userId } = await requireProjectContext();
 
-    const canDelete = await hasPermission("requirement", "delete", {
+    const canDelete = checkPermissionWithContext("requirement", "delete", {
+      userId,
       organizationId,
-      projectId: project.id,
+      project,
     });
 
     if (!canDelete) {

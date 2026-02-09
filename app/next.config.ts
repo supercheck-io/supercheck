@@ -1,5 +1,6 @@
 import type { NextConfig } from "next";
 import { PHASE_DEVELOPMENT_SERVER } from "next/constants";
+import path from "path";
 
 /**
  * Content Security Policy configuration
@@ -151,14 +152,16 @@ const createNextConfig = (phase: string): NextConfig => {
             },
           ],
         }),
+
+
     // Turbopack configuration (default in Next.js 16+)
     // Turbopack is now the default bundler
     turbopack: {
+      root: path.resolve(__dirname, ".."),
       rules: {
         // Add any Turbopack-specific rules here if needed
       },
-      // Note: resolveAlias not needed - polarClient removed from auth-client.ts
-      // to avoid node:async_hooks import issues in the browser
+      // Note: resolveAlias not needed - tailwindcss resolution handled via postcss.config.mjs base setting
     },
     // Note: serverRuntimeConfig and publicRuntimeConfig are deprecated in Next.js 16
     // Use environment variables directly instead

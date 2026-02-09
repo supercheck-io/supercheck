@@ -8,7 +8,7 @@ import { z } from "zod";
 import { scheduleJob, deleteScheduledJob } from "@/lib/job-scheduler";
 import { getNextRunDate } from "@/lib/cron-utils";
 import { requireProjectContext } from "@/lib/project-context";
-import { hasPermission } from "@/lib/rbac/middleware";
+import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
 
 const updateJobSchema = z.object({
@@ -44,10 +44,11 @@ export async function updateJob(data: UpdateJobData) {
     // Get current project context (includes auth verification)
     const { userId, project, organizationId } = await requireProjectContext();
 
-    // Check EDIT_JOBS permission
-    const canEditJobs = await hasPermission("job", "update", {
+    // Check EDIT_JOBS permission (optimized - reuses context from requireProjectContext)
+    const canEditJobs = checkPermissionWithContext("job", "update", {
+      userId,
       organizationId,
-      projectId: project.id,
+      project,
     });
 
     if (!canEditJobs) {
@@ -59,6 +60,7 @@ export async function updateJob(data: UpdateJobData) {
         message: "Insufficient permissions to edit jobs",
       };
     }
+
 
     // Validate the data
     const validatedData = updateJobSchema.parse(data);

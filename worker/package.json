@@ -112,6 +112,7 @@
   },
   "overrides": {
     "fast-xml-parser": ">=5.3.4",
-    "lodash": ">=4.17.23"
+    "lodash": ">=4.17.23",
+    "webpack": ">=5.104.1"
   }
 }
