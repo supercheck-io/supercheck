@@ -1,6 +1,5 @@
 import type { NextConfig } from "next";
 import { PHASE_DEVELOPMENT_SERVER } from "next/constants";
-import path from "path";
 
 /**
  * Content Security Policy configuration

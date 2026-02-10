@@ -131,6 +131,7 @@ supercheck job create --name "Nightly E2E" --schedule "0 2 * * *" --timeout 600
 |------|----------|-------------|
 | `--name` | Yes | Job name |
 | `--description` | No | Job description |
+| `--type` | No | Job type: `playwright` (default) or `k6` |
 | `--schedule` | No | Cron expression |
 | `--timeout` | No | Timeout in seconds (default: 300) |
 | `--retries` | No | Retry count (default: 0) |
