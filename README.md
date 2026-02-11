@@ -143,14 +143,14 @@ Full documentation available at **[supercheck.io/docs](https://supercheck.io/doc
 | [Monitor](https://supercheck.io/docs/monitors) | HTTP, ping, port, and synthetic monitoring |
 | [Communicate](https://supercheck.io/docs/communicate) | Alerts, dashboards, and status pages |
 | [Admin](https://supercheck.io/docs/admin) | User management, RBAC, and audit trails |
-| [CLI](https://supercheck.io/docs/cli) | Monitoring-as-code, CI/CD workflows, and CLI reference |
+| [CLI](https://supercheck.io/docs/cli/installation) | Monitoring-as-code, CI/CD workflows, and CLI reference |
 
 ## Supercheck CLI
 
 Install and manage Supercheck resources from the command line with `@supercheck/cli`.
 
 - [npm package](https://www.npmjs.com/package/@supercheck/cli)
-- [CLI docs](https://supercheck.io/docs/cli)
+- [CLI docs](https://supercheck.io/docs/cli/installation)
 
 
 ## Support
