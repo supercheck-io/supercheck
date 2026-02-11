@@ -498,8 +498,6 @@ async function extractWithAI(
       title: z.string().min(5).max(500),
       description: z.string().max(2000).optional(),
       priority: z.enum(["low", "medium", "high"]).optional(),
-      // AI might still return tags if using cached/older model behavior, but we ignore them
-      tags: z.array(z.string()).optional(),
     });
 
     const validated: ExtractedRequirement[] = [];

@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { SiteFooter } from "../../components/site-footer";
 
+
 const features = [
   {
     icon: Sparkles,
@@ -173,6 +174,16 @@ export default function HomePage() {
               <BookOpenText className="size-5" />
               <span className="hidden md:inline">Docs</span>
             </Link>
+            <a
+              href="https://www.npmjs.com/package/@supercheck/cli"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="p-2 md:px-3 md:py-2 rounded-lg inline-flex items-center gap-1.5 text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+              aria-label="Supercheck CLI on npm"
+            >
+              <img src="/npm.svg" alt="npm" className="size-4.5" />
+              <span className="hidden md:inline">npm</span>
+            </a>
             <a
               href="https://github.com/supercheck-io/supercheck"
               target="_blank"

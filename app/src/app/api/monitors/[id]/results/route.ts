@@ -9,9 +9,9 @@ import type { MonitoringLocation } from "@/lib/location-service";
 
 export async function GET(
   request: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  routeContext: { params: Promise<{ id: string }> }
 ) {
-  const params = await context.params;
+  const params = await routeContext.params;
   const { id } = params;
   
   if (!id) {
@@ -37,7 +37,7 @@ export async function GET(
   }
 
   try {
-    const context = await requireAuthContext();
+    const authContext = await requireAuthContext();
     
     // First, find the monitor to check permissions
     const monitor = await db.query.monitors.findFirst({
@@ -48,11 +48,11 @@ export async function GET(
       return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
     }
 
-    if (monitor.organizationId !== context.organizationId || monitor.projectId !== context.project.id) {
+    if (monitor.organizationId !== authContext.organizationId || monitor.projectId !== authContext.project.id) {
       return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
     }
 
-    const canView = checkPermissionWithContext("monitor", "view", context);
+    const canView = checkPermissionWithContext("monitor", "view", authContext);
     if (!canView) {
       return NextResponse.json(
         { error: "Insufficient permissions to view this monitor" },

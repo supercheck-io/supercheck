@@ -60,6 +60,8 @@ const sections = [
         links: [
             { name: "Live Demo", href: "https://demo.supercheck.io" },
             { name: "Chrome Extension", href: "https://chromewebstore.google.com/detail/supercheck-recorder/gfmbcelfhhfmifdkccnbgdadibdfhioe" },
+            { name: "Edge Extension", href: "https://microsoftedge.microsoft.com/addons/detail/supercheck-recorder/ngmlkgfgmdnfpddohcbfdgihennolnem" },
+            { name: "npm CLI", href: "https://www.npmjs.com/package/@supercheck/cli" },
             { name: "YouTube", href: "https://www.youtube.com/@supercheck-io" },
             { name: "GitHub", href: "https://github.com/supercheck-io/supercheck" },
         ],
@@ -89,6 +91,11 @@ const socialLinks = [
         icon: <GithubIcon className="size-5" />,
         href: "https://github.com/supercheck-io/supercheck",
         label: "GitHub"
+    },
+    {
+        icon: <img src="/npm.svg" alt="npm" className="size-4.5" />,
+        href: "https://www.npmjs.com/package/@supercheck/cli",
+        label: "npm"
     },
 ];
 
