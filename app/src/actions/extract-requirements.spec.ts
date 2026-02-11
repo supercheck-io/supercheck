@@ -83,7 +83,7 @@ jest.mock("ai", () => ({
         title: "User can login with email",
         description: "POST /api/login accepts email and password",
         priority: "high",
-        tags: ["api", "auth"],
+        // AI response no longer includes tags per prompt instructions
       },
     ]),
     usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
@@ -364,6 +364,28 @@ describe("extractRequirementsFromDocument", () => {
       const sanitized = AISecurityService.sanitizeTextOutput(maliciousInput);
       expect(sanitized).not.toContain("<");
       expect(sanitized).not.toContain(">");
+    });
+  });
+
+  describe("Tag Enforcement", () => {
+    it("should enforce 'ai' tag on extracted requirements", async () => {
+      const formData = new MockFormData() as unknown as FormData;
+      const validContent = "Valid content.".padEnd(100, ".");
+      formData.append(
+        "file",
+        createMockFile(validContent, "test.txt", { type: "text/plain" })
+      );
+
+      const result = await extractRequirementsFromDocument(formData);
+
+      expect(result.success).toBe(true);
+      expect(result.requirements).toBeDefined();
+      expect(result.requirements?.length).toBeGreaterThan(0);
+      
+      // Verify EVERY requirement has exactly ["ai"] as tags
+      result.requirements?.forEach(req => {
+        expect(req.tags).toEqual(["ai"]);
+      });
     });
   });
 

@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { monitors, monitorResults } from "@/db/schema";
 import { eq, desc, and, gte, lte, sql } from "drizzle-orm";
-import { requireAuth, hasPermission, getUserOrgRole } from '@/lib/rbac/middleware';
-import { isSuperAdmin } from '@/lib/admin';
+import { requireAuthContext, isAuthError } from '@/lib/auth-context';
+import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { isMonitoringLocation } from "@/lib/location-service";
 import type { MonitoringLocation } from "@/lib/location-service";
 
@@ -37,7 +37,7 @@ export async function GET(
   }
 
   try {
-    const { userId } = await requireAuth();
+    const context = await requireAuthContext();
     
     // First, find the monitor to check permissions
     const monitor = await db.query.monitors.findFirst({
@@ -48,32 +48,16 @@ export async function GET(
       return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
     }
 
-    // Check if user has access to this monitor
-    const userIsSuperAdmin = await isSuperAdmin();
-    
-    if (!userIsSuperAdmin && monitor.organizationId && monitor.projectId) {
-      // First, check if user is a member of the organization
-      const orgRole = await getUserOrgRole(userId, monitor.organizationId);
-      
-      if (!orgRole) {
-        return NextResponse.json(
-          { error: 'Access denied: Not a member of this organization' },
-          { status: 403 }
-        );
-      }
+    if (monitor.organizationId !== context.organizationId || monitor.projectId !== context.project.id) {
+      return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
+    }
 
-      // Then check if they have permission to view monitors (fail closed - no try-catch)
-      const canView = await hasPermission('monitor', 'view', { 
-        organizationId: monitor.organizationId, 
-        projectId: monitor.projectId 
-      });
-      
-      if (!canView) {
-        return NextResponse.json(
-          { error: 'Insufficient permissions to view this monitor' },
-          { status: 403 }
-        );
-      }
+    const canView = checkPermissionWithContext("monitor", "view", context);
+    if (!canView) {
+      return NextResponse.json(
+        { error: "Insufficient permissions to view this monitor" },
+        { status: 403 }
+      );
     }
 
     // Calculate offset for pagination
@@ -132,6 +116,12 @@ export async function GET(
       },
     });
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
     console.error(`Error fetching paginated monitor results for ${id}:`, error);
     return NextResponse.json({ error: "Failed to fetch monitor results" }, { status: 500 });
   }

@@ -376,7 +376,12 @@ OUTPUT FORMAT - For each requirement:
    - "medium": Standard features, common workflows
    - "low": Edge cases, nice-to-haves, cosmetic features
 
-4. **tags** (1-3): Categorize for filtering - use: api, ui, auth, data, integration, performance, validation, security
+3. **priority**: 
+   - "high": Core features, authentication, security, data integrity
+   - "medium": Standard features, common workflows
+   - "low": Edge cases, nice-to-haves, cosmetic features
+
+4. **tags**: IGNORE - do not generate tags.
 
 EXTRACTION RULES:
 - MAXIMIZE COVERAGE: Extract every testable statement, even implicit ones
@@ -389,15 +394,15 @@ EXTRACTION RULES:
 
 EXAMPLES:
 
-{"title": "User registration validates email format and password strength", "description": "Registration at /register requires valid email (must contain @, no spaces) and strong password (min 8 chars, 1 uppercase, 1 number, 1 special char). Invalid inputs show inline error messages. Submit button disabled until all fields valid. Successful registration redirects to /verify-email and sends confirmation email within 30 seconds.", "priority": "high", "tags": ["auth", "validation"]}
+{"title": "User registration validates email format and password strength", "description": "Registration at /register requires valid email (must contain @, no spaces) and strong password (min 8 chars, 1 uppercase, 1 number, 1 special char). Invalid inputs show inline error messages. Submit button disabled until all fields valid. Successful registration redirects to /verify-email and sends confirmation email within 30 seconds.", "priority": "high"}
 
-{"title": "User list API supports pagination and filtering", "description": "GET /api/users accepts: page (default 1), limit (default 20, max 100), search (partial name match), role (admin|user|guest). Response: {data: User[], total: number, page: number, hasMore: boolean}. Empty search returns data: []. Invalid limit returns 400 with 'limit must be between 1 and 100'. Unauthorized request returns 401.", "priority": "medium", "tags": ["api", "data"]}
+{"title": "User list API supports pagination and filtering", "description": "GET /api/users accepts: page (default 1), limit (default 20, max 100), search (partial name match), role (admin|user|guest). Response: {data: User[], total: number, page: number, hasMore: boolean}. Empty search returns data: []. Invalid limit returns 400 with 'limit must be between 1 and 100'. Unauthorized request returns 401.", "priority": "medium"}
 
-{"title": "File upload validates type and size before processing", "description": "Upload component accepts .pdf, .docx, .xlsx files up to 10MB. Oversized files show 'File exceeds 10MB limit' error. Invalid types show 'Unsupported format: [extension]'. During upload: progress indicator visible. On success: file appears in list with name, size (formatted), upload timestamp. Multiple files can be uploaded sequentially.", "priority": "medium", "tags": ["validation", "ui"]}
+{"title": "File upload validates type and size before processing", "description": "Upload component accepts .pdf, .docx, .xlsx files up to 10MB. Oversized files show 'File exceeds 10MB limit' error. Invalid types show 'Unsupported format: [extension]'. During upload: progress indicator visible. On success: file appears in list with name, size (formatted), upload timestamp. Multiple files can be uploaded sequentially.", "priority": "medium"}
 
-{"title": "Session automatically expires after inactivity period", "description": "User session expires after 30 minutes without activity. On expiry: API calls return 401 {error: 'Session expired'}, UI shows 'Session expired' modal with login button, auth tokens cleared from storage. Any authenticated request resets the inactivity timer. Users can optionally enable 'Remember me' for extended 7-day sessions.", "priority": "high", "tags": ["auth", "security"]}
+{"title": "Session automatically expires after inactivity period", "description": "User session expires after 30 minutes without activity. On expiry: API calls return 401 {error: 'Session expired'}, UI shows 'Session expired' modal with login button, auth tokens cleared from storage. Any authenticated request resets the inactivity timer. Users can optionally enable 'Remember me' for extended 7-day sessions.", "priority": "high"}
 
-{"title": "Dashboard renders large datasets efficiently", "description": "Dashboard at /dashboard loads and displays up to 1000 items. Initial render shows skeleton placeholders. Data appears within 2 seconds on standard connection. Items beyond viewport load on scroll (virtualized list). Each item shows: title, status badge, timestamp, action menu. Empty state shows 'No items yet' with create button.", "priority": "medium", "tags": ["ui", "performance"]}
+{"title": "Dashboard renders large datasets efficiently", "description": "Dashboard at /dashboard loads and displays up to 1000 items. Initial render shows skeleton placeholders. Data appears within 2 seconds on standard connection. Items beyond viewport load on scroll (virtualized list). Each item shows: title, status badge, timestamp, action menu. Empty state shows 'No items yet' with create button.", "priority": "medium"}
 </SYSTEM_INSTRUCTIONS>
 
 <USER_DOCUMENT>
@@ -406,7 +411,7 @@ EXAMPLES:
 
 <OUTPUT_FORMAT>
 Respond with a valid JSON array only. No markdown, no explanation, no preamble:
-[{"title": "...", "description": "...", "priority": "...", "tags": [...]}, ...]
+[{"title": "...", "description": "...", "priority": "..."}, ...]
 
 Extract ALL testable requirements - aim for comprehensive coverage.
 If truly no testable requirements exist, return: []
@@ -493,7 +498,8 @@ async function extractWithAI(
       title: z.string().min(5).max(500),
       description: z.string().max(2000).optional(),
       priority: z.enum(["low", "medium", "high"]).optional(),
-      tags: z.array(z.string().max(30)).max(5).optional(),
+      // AI might still return tags if using cached/older model behavior, but we ignore them
+      tags: z.array(z.string()).optional(),
     });
 
     const validated: ExtractedRequirement[] = [];
@@ -507,9 +513,8 @@ async function extractWithAI(
             ? AISecurityService.sanitizeTextOutput(req.description)
             : undefined,
           priority: req.priority,
-          tags: req.tags?.map((tag) =>
-            AISecurityService.sanitizeTextOutput(tag).toLowerCase()
-          ),
+          // ALWAYS override tags to just ["ai"] per requirements
+          tags: ["ai"],
         });
       } catch {
         // Skip invalid items but log for debugging

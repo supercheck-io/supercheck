@@ -32,10 +32,10 @@ export default defineConfig({
   },
   tests: {
     playwright: {
-      testMatch: '_supercheck_/tests/**/*.pw.ts',
+      testMatch: '_supercheck_/playwright/**/*.pw.ts',
     },
     k6: {
-      testMatch: '_supercheck_/tests/**/*.k6.ts',
+      testMatch: '_supercheck_/k6/**/*.k6.ts',
     },
   },
   monitors: [
@@ -66,7 +66,7 @@ export default defineConfig({
     {
       id: '01912345-abcd-7000-8000-000000000001',
       name: 'Nightly E2E Suite',
-      tests: ['_supercheck_/tests/019a1234-abcd-7000-8000-000000000001.pw.ts'],
+      tests: ['_supercheck_/playwright/homepage-check.019a1234-abcd-7000-8000-000000000001.pw.ts'],
       jobType: 'playwright',
       cronSchedule: '0 2 * * *',
       alertConfig: {
@@ -129,19 +129,16 @@ supercheck job trigger abc123 --wait
 
 ### `_supercheck_/` Folder
 
-Tests, monitors, and status page definitions live in the `_supercheck_/` folder:
+Tests live in the `_supercheck_/` folder, grouped by runner:
 
 ```
 my-project/
 ├── _supercheck_/
-│   ├── tests/
-│   │   ├── 019a1234-abcd-7000-8000-000000000001.pw.ts   # Playwright test (UUID filename)
-│   │   ├── 019a1234-abcd-7000-8000-000000000002.pw.ts   # Playwright API test
-│   │   └── 019a1234-abcd-7000-8000-000000000003.k6.ts   # k6 performance test
-│   ├── monitors/
-│   │   └── api-monitor.ts           # Monitor definition
-│   └── status-pages/
-│       └── main-status.ts           # Status page definition
+│   ├── playwright/
+│   │   ├── homepage-check.019a1234-abcd-7000-8000-000000000001.pw.ts   # Playwright test (slug + UUID)
+│   │   └── api-check.019a1234-abcd-7000-8000-000000000002.pw.ts        # Playwright API test
+│   ├── k6/
+│   │   └── load-test.019a1234-abcd-7000-8000-000000000003.k6.ts        # k6 performance test
 ├── supercheck.config.ts
 └── package.json
 ```
@@ -150,11 +147,11 @@ my-project/
 
 | Extension | Runner | Example |
 |-----------|--------|---------|
-| `*.pw.ts` | Playwright | `019a1234-abcd-7000-8000-000000000001.pw.ts` |
-| `*.k6.ts` | k6 | `019a1234-abcd-7000-8000-000000000003.k6.ts` |
+| `*.pw.ts` | Playwright | `_supercheck_/playwright/homepage-check.019a1234-abcd-7000-8000-000000000001.pw.ts` |
+| `*.k6.ts` | k6 | `_supercheck_/k6/load-test.019a1234-abcd-7000-8000-000000000003.k6.ts` |
 
 <Callout type="info">
-  Test files pulled from the cloud are named using their database UUID (`{uuid}.pw.ts` or `{uuid}.k6.ts`). This ensures stable file paths that survive test renames in the dashboard. The test title is stored in the Supercheck database.
+  Test files pulled from the cloud use `slug.{uuid}.pw.ts` and `slug.{uuid}.k6.ts`. The UUID keeps paths stable across renames, while the slug makes files easy to identify locally.
 </Callout>
 
 ## Config Schema Reference
@@ -190,7 +187,7 @@ my-project/
 |-------|------|-------------|
 | `id` | `string` | Database UUID (present for existing resources, omit for new) |
 | `name` | `string` | Job display name |
-| `jobType` | `string` | Job type (`playwright`, `k6`) |
+| `jobType` | `string` | Job runner type (`playwright`, `k6`) |
 | `cronSchedule` | `string` | Cron expression |
 | `alertConfig` | `object` | Alert config with `notificationProviders` (UUIDs), `alertOnFailure`, etc. |
 

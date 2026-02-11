@@ -13,7 +13,8 @@ These flags are available on all commands:
 | `--quiet` | Suppress non-essential output (only IDs and errors) |
 | `--debug` | Enable debug logging |
 | `-v` | Show version |
-| `--config <path>` | Path to config file |
+
+Config-aware commands (for example `config`, `diff`, `deploy`, `pull`, `validate`, `destroy`) accept `--config <path>` to point at a specific config file.
 
 ## Exit Codes
 
@@ -85,6 +86,14 @@ Validate the configuration file schema.
 supercheck config validate
 ```
 
+### `supercheck validate`
+
+Validate local test scripts using the same rules as Playground.
+
+```bash
+supercheck validate
+```
+
 ### `supercheck config print`
 
 Print the resolved configuration with environment variable expansion.
@@ -124,17 +133,20 @@ supercheck job get <job-id>
 Create a new job.
 
 ```bash
-supercheck job create --name "Nightly E2E" --schedule "0 2 * * *" --timeout 600
+supercheck job create --name "Nightly E2E" --tests <test-id> --schedule "0 2 * * *" --timeout 600
 ```
 
 | Flag | Required | Description |
 |------|----------|-------------|
 | `--name` | Yes | Job name |
+| `--tests` | Yes | Test IDs (space or comma separated) |
 | `--description` | No | Job description |
-| `--type` | No | Job type: `playwright` (default) or `k6` |
+| `--type` | No | Job runner type: `playwright` (default) or `k6` |
 | `--schedule` | No | Cron expression |
 | `--timeout` | No | Timeout in seconds (default: 300) |
 | `--retries` | No | Retry count (default: 0) |
+
+Job `--type` selects the runner. Test `--type` uses API types: `browser`, `performance`, `api`, `database`, `custom`.
 
 ### `supercheck job update`
 
@@ -168,6 +180,7 @@ Run a job immediately, bypassing the cron schedule.
 
 ```bash
 supercheck job run --id <job-id>
+supercheck job run --local --id <job-id>
 ```
 
 ### `supercheck job trigger`
@@ -275,7 +288,7 @@ List tests with optional search and type filters.
 
 ```bash
 supercheck test list
-supercheck test list --search "checkout" --type playwright
+supercheck test list --search "checkout" --type browser
 ```
 
 | Flag | Description |
@@ -283,7 +296,7 @@ supercheck test list --search "checkout" --type playwright
 | `--page` | Page number |
 | `--limit` | Items per page |
 | `--search` | Search by title |
-| `--type` | Filter by type (`playwright`, `k6`) |
+| `--type` | Filter by type (`browser`, `performance`, `api`, `database`, `custom`) |
 
 ### `supercheck test get`
 
@@ -299,14 +312,14 @@ supercheck test get <test-id> --include-script
 Create a new test from a script file.
 
 ```bash
-supercheck test create --title "Homepage Check" --file ./_supercheck_/tests/homepage.pw.ts --type playwright
+supercheck test create --title "Homepage Check" --file ./_supercheck_/playwright/homepage-check.<id>.pw.ts --type browser
 ```
 
 | Flag | Required | Description |
 |------|----------|-------------|
 | `--title` | Yes | Test title |
 | `--file` | Yes | Path to test script |
-| `--type` | No | `playwright` (default) or `k6` |
+| `--type` | No | `browser`, `performance`, `api`, `database`, `custom` |
 | `--description` | No | Test description |
 
 ### `supercheck test update`
@@ -348,7 +361,18 @@ supercheck test tags <test-id>
 Validate a test script without creating it.
 
 ```bash
-supercheck test validate --file ./_supercheck_/tests/homepage.pw.ts --type playwright
+supercheck test validate --file ./_supercheck_/playwright/homepage-check.<id>.pw.ts --type browser
+```
+
+### `supercheck test run`
+
+Run tests locally or in the cloud.
+
+```bash
+supercheck test run --local --file ./_supercheck_/playwright/homepage-check.<id>.pw.ts
+supercheck test run --local --all --type browser
+supercheck test run --local --all --type performance
+supercheck test run --cloud --id <test-id>
 ```
 
 ### `supercheck test status`
@@ -657,3 +681,28 @@ List available execution locations.
 ```bash
 supercheck locations
 ```
+
+### `supercheck upgrade`
+
+Upgrade the CLI to the latest release.
+
+```bash
+supercheck upgrade
+```
+
+### `supercheck doctor`
+
+Check that all dependencies and configuration are set up correctly.
+
+```bash
+supercheck doctor
+supercheck doctor --fix    # Attempt to automatically install missing dependencies
+```
+
+The doctor command checks:
+- **Node.js** — runtime availability
+- **@playwright/test** — npm package for browser tests
+- **Playwright browsers** — chromium binary for local test execution
+- **k6** — binary for performance/load tests (optional)
+- **Authentication** — whether a valid token is stored
+- **Configuration** — whether `supercheck.config.ts` exists and is valid

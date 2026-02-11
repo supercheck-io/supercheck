@@ -290,6 +290,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (!Array.isArray(jobData.tests) || jobData.tests.length === 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "At least one test is required to create a job.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const invalidTest = jobData.tests.find((test) => !test?.id || typeof test.id !== "string");
+    if (invalidTest) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Each job test must include a valid test ID.",
+        },
+        { status: 400 }
+      );
+    }
+
     // Use current project context
     const targetProjectId = project.id;
 
@@ -530,6 +551,21 @@ export async function PUT(request: Request) {
           error:
             "Missing required fields. Name, description, and cron schedule are required.",
         },
+        { status: 400 }
+      );
+    }
+
+    if (!Array.isArray(jobData.tests) || jobData.tests.length === 0) {
+      return NextResponse.json(
+        { success: false, error: "At least one test is required to update a job." },
+        { status: 400 }
+      );
+    }
+
+    const invalidTest = jobData.tests.find((test) => !test?.id || typeof test.id !== "string");
+    if (invalidTest) {
+      return NextResponse.json(
+        { success: false, error: "Each job test must include a valid test ID." },
         { status: 400 }
       );
     }

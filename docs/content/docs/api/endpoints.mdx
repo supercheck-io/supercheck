@@ -105,7 +105,9 @@ Create a new job.
   "cronSchedule": "0 2 * * *",
   "timeoutSeconds": 300,
   "retryCount": 0,
-  "tests": []
+  "tests": [
+    { "id": "uuid" }
+  ]
 }
 ```
 
@@ -138,7 +140,18 @@ Trigger a job run. Supports both CLI tokens and trigger keys.
 **Response:**
 
 ```json
-{ "runId": "uuid", "message": "Job triggered" }
+{
+  "success": true,
+  "message": "Job triggered successfully",
+  "data": {
+    "jobId": "uuid",
+    "jobName": "Nightly E2E Suite",
+    "runId": "uuid",
+    "testCount": 5,
+    "triggeredBy": "CI Trigger",
+    "triggeredAt": "2026-02-11T09:47:44.615Z"
+  }
+}
 ```
 
 ### `POST /api/jobs/run`
@@ -148,13 +161,19 @@ Run a job immediately, bypassing the schedule.
 **Body:**
 
 ```json
-{ "jobId": "uuid" }
+{
+  "jobId": "uuid",
+  "trigger": "manual",
+  "tests": [
+    { "id": "uuid" }
+  ]
+}
 ```
 
 **Response:**
 
 ```json
-{ "runId": "uuid", "message": "Job started" }
+{ "message": "Job execution queued successfully.", "jobId": "uuid", "runId": "uuid" }
 ```
 
 ---
@@ -170,11 +189,32 @@ List job runs with optional filters.
 | `page` | integer | Page number |
 | `limit` | integer | Items per page |
 | `jobId` | uuid | Filter by job |
-| `status` | string | `running`, `completed`, `failed`, `cancelled` |
+| `status` | string | `queued`, `running`, `passed`, `failed`, `error`, `blocked` |
 
 ### `GET /api/runs/{runId}`
 
 Get run details.
+
+**Response:**
+
+```json
+{
+  "id": "uuid",
+  "jobId": "uuid",
+  "jobName": "Nightly E2E Suite",
+  "status": "passed",
+  "durationMs": 3000,
+  "startedAt": "2026-02-11T09:32:58.363Z",
+  "completedAt": "2026-02-11T09:33:02.104Z",
+  "logs": null,
+  "errorDetails": null,
+  "reportUrl": "https://storage.example.com/reports/run-uuid/index.html",
+  "trigger": "manual",
+  "projectId": "uuid",
+  "organizationId": "uuid",
+  "testCount": 5
+}
+```
 
 ### `DELETE /api/runs/{runId}`
 
@@ -187,7 +227,16 @@ Quick status check (lighter than full details).
 **Response:**
 
 ```json
-{ "id": "uuid", "status": "completed" }
+{
+  "runId": "uuid",
+  "jobId": "uuid",
+  "status": "passed",
+  "startedAt": "2026-02-11T09:32:58.363Z",
+  "completedAt": "2026-02-11T09:33:02.104Z",
+  "durationMs": 3000,
+  "errorDetails": null,
+  "reportUrl": "https://storage.example.com/reports/run-uuid/index.html"
+}
 ```
 
 ### `GET /api/runs/{runId}/stream`
@@ -238,7 +287,7 @@ List tests with optional search and type filters.
 | `page` | integer | Page number |
 | `limit` | integer | Items per page |
 | `search` | string | Search by title |
-| `type` | string | Filter by test type (`browser`, `performance`, `api`, `playwright`, `k6`) |
+| `type` | string | Filter by test type (`browser`, `performance`, `api`, `database`, `custom`) |
 | `includeScript` | boolean | Include decoded script content (default: `false`) |
 
 ### `POST /api/tests`
@@ -251,7 +300,7 @@ Create a new test.
 {
   "title": "Homepage Load Test",
   "script": "import { test } from '@playwright/test';\n...",
-  "type": "playwright",
+  "type": "browser",
   "description": "Verify homepage loads correctly"
 }
 ```
