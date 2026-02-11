@@ -2,12 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { monitors, monitorResults, MonitoringLocation } from "@/db/schema";
 import { eq, and, gte, sql } from "drizzle-orm";
-import {
-  requireAuth,
-  hasPermission,
-  getUserOrgRole,
-} from "@/lib/rbac/middleware";
-import { isSuperAdmin } from "@/lib/admin";
+import { requireAuthContext, isAuthError } from "@/lib/auth-context";
+import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import {
   monitorAggregationService,
   calculatePercentile,
@@ -27,9 +23,9 @@ import {
  */
 export async function GET(
   request: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  routeContext: { params: Promise<{ id: string }> }
 ) {
-  const params = await context.params;
+  const params = await routeContext.params;
   const { id } = params;
 
   if (!id) {
@@ -43,7 +39,7 @@ export async function GET(
   const locationFilter = searchParams.get("location");
 
   try {
-    const { userId } = await requireAuth();
+    const authContext = await requireAuthContext();
 
     // First, find the monitor to check permissions
     const monitor = await db.query.monitors.findFirst({
@@ -55,36 +51,16 @@ export async function GET(
     }
 
     // Check if user has access to this monitor
-    const userIsSuperAdmin = await isSuperAdmin();
+    if (monitor.organizationId !== authContext.organizationId || monitor.projectId !== authContext.project.id) {
+      return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
+    }
 
-    if (!userIsSuperAdmin && monitor.organizationId && monitor.projectId) {
-      const orgRole = await getUserOrgRole(userId, monitor.organizationId);
-
-      if (!orgRole) {
-        return NextResponse.json(
-          { error: "Access denied: Not a member of this organization" },
-          { status: 403 }
-        );
-      }
-
-      try {
-        const canView = await hasPermission("monitor", "view", {
-          organizationId: monitor.organizationId,
-          projectId: monitor.projectId,
-        });
-
-        if (!canView) {
-          return NextResponse.json(
-            { error: "Insufficient permissions to view this monitor" },
-            { status: 403 }
-          );
-        }
-      } catch (permissionError) {
-        console.log(
-          "Permission check failed, but user is org member:",
-          permissionError
-        );
-      }
+    const canView = checkPermissionWithContext("monitor", "view", authContext);
+    if (!canView) {
+      return NextResponse.json(
+        { error: "Insufficient permissions to view this monitor" },
+        { status: 403 }
+      );
     }
 
     // Calculate date boundaries
@@ -338,9 +314,15 @@ export async function GET(
       },
     });
   } catch (error) {
-    console.error(`Error fetching stats for monitor ${id}:`, error);
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
+    console.error(`Error fetching monitor stats for ${id}:`, error);
     return NextResponse.json(
-      { error: "Failed to fetch monitor statistics" },
+      { error: "Failed to fetch monitor stats" },
       { status: 500 }
     );
   }

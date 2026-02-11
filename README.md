@@ -1,12 +1,14 @@
 <h1><img src="./supercheck-logo.png" alt="Supercheck Logo" width="40" height="40" align="top"> Supercheck</h1>
 
-**Open Source AI-Powered Test Automation & Monitoring Platform**
+**Open-Source Testing, Monitoring, and Reliability — as Code**
 
-Empowering development and SRE teams with a scalable, distributed, and robust platform to drive faster delivery and higher software quality.
+The unified platform for AI-powered Playwright testing, multi-region k6 load testing & uptime monitoring, and subscriber-ready status pages.
 
+
+[![Website](https://img.shields.io/badge/Website-supercheck.io-orange?logo=firefox)](https://supercheck.io)
 [![Deploy with Coolify](https://img.shields.io/badge/Deploy%20with-Coolify-6B16ED?logo=coolify&logoColor=white)](./deploy/coolify/README.md)
 [![Deploy with Docker](https://img.shields.io/badge/Deploy%20with-Docker%20Compose-2496ED?logo=docker&logoColor=white)](https://supercheck.io/docs/deployment)
-[![Website](https://img.shields.io/badge/Website-supercheck.io-orange?logo=firefox)](https://supercheck.io)
+[![npm](https://img.shields.io/npm/v/@supercheck/cli?logo=npm&label=Supercheck%20CLI)](https://www.npmjs.com/package/@supercheck/cli)
 [![Monitoring](https://img.shields.io/badge/Synthetic-Monitor-brightgreen?logo=speedtest&logoColor=white)](https://supercheck.io)
 [![Testing](https://img.shields.io/badge/Testing-Playwright-45ba4b?logo=googlechrome&logoColor=white)](https://playwright.dev)
 [![Load Testing](https://img.shields.io/badge/Load%20Testing-Grafana%20k6-7D64FF?logo=k6)](https://k6.io)
@@ -141,6 +143,14 @@ Full documentation available at **[supercheck.io/docs](https://supercheck.io/doc
 | [Monitor](https://supercheck.io/docs/monitors) | HTTP, ping, port, and synthetic monitoring |
 | [Communicate](https://supercheck.io/docs/communicate) | Alerts, dashboards, and status pages |
 | [Admin](https://supercheck.io/docs/admin) | User management, RBAC, and audit trails |
+| [CLI](https://supercheck.io/docs/cli) | Monitoring-as-code, CI/CD workflows, and CLI reference |
+
+## Supercheck CLI
+
+Install and manage Supercheck resources from the command line with `@supercheck/cli`.
+
+- [npm package](https://www.npmjs.com/package/@supercheck/cli)
+- [CLI docs](https://supercheck.io/docs/cli)
 
 
 ## Support

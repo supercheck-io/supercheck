@@ -128,7 +128,7 @@ const createNextConfig = (phase: string): NextConfig => {
       "canvas",
       // Document processing
       "mammoth",
-      // esbuild has native binaries - must be external for Turbopack compatibility
+      // esbuild has native binaries - must be external for Webpack build
       "esbuild",
     ],
     images: {
@@ -152,13 +152,13 @@ const createNextConfig = (phase: string): NextConfig => {
           ],
         }),
     // Turbopack configuration (default in Next.js 16+)
-    // Turbopack is now the default bundler
+    // Set root to __dirname to prevent incorrect workspace detection from parent package-lock.json
+    // Docker builds use --webpack flag, so this only affects local dev
     turbopack: {
+      root: __dirname,
       rules: {
         // Add any Turbopack-specific rules here if needed
       },
-      // Note: resolveAlias not needed - polarClient removed from auth-client.ts
-      // to avoid node:async_hooks import issues in the browser
     },
     // Note: serverRuntimeConfig and publicRuntimeConfig are deprecated in Next.js 16
     // Use environment variables directly instead

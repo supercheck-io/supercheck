@@ -8,9 +8,7 @@ import {
   tags,
   runs,
   JobStatus,
-  TestRunStatus,
   jobNotificationSettings,
-  JobTrigger,
   JobType,
 } from "@/db/schema";
 import { desc, eq, inArray, and, asc } from "drizzle-orm";
@@ -22,50 +20,6 @@ import { scheduleJob } from "@/lib/job-scheduler";
 
 import { randomUUID } from "crypto";
 
-// Create a simple implementation here
-async function executeJob(
-  jobId: string,
-  tests: { id: string; script: string }[]
-) {
-  // This function is now simplified to just create a run record
-  // The actual execution is handled by the backend service
-
-  console.log(
-    `Received job execution request: { jobId: ${jobId}, testCount: ${tests.length} }`
-  );
-
-  const runId = randomUUID();
-
-  // Get job details to add project scoping to run
-  const jobDetails = await db
-    .select({ projectId: jobs.projectId })
-    .from(jobs)
-    .where(eq(jobs.id, jobId))
-    .limit(1);
-
-  // Create a run record
-  await db.insert(runs).values({
-    id: runId,
-    jobId: jobId,
-    projectId: jobDetails.length > 0 ? jobDetails[0].projectId : null,
-    status: "running" as TestRunStatus,
-    startedAt: new Date(),
-    trigger: "manual" as JobTrigger,
-  });
-
-  console.log(`[${jobId}] Created running test run record: ${runId}`);
-
-  return {
-    runId,
-    jobId,
-    status: "running",
-    message: "Job execution request queued",
-    // Properties needed for other parts of the code
-    success: true,
-    results: [],
-    reportUrl: null,
-  };
-}
 
 interface Test {
   id: string;
@@ -100,14 +54,6 @@ interface JobData {
   createdByUserId?: string;
 }
 
-// Define the TestResult interface to match what's returned by executeMultipleTests
-interface TestResult {
-  testId: string;
-  success: boolean;
-  error: string | null;
-  stdout?: string;
-  stderr?: string;
-}
 
 // GET all jobs - OPTIMIZED: Uses batch queries instead of N+1 pattern
 // SECURITY: Added default pagination to prevent fetching unlimited records
@@ -326,13 +272,7 @@ export async function GET(request: Request) {
 // POST to create a new job
 export async function POST(request: NextRequest) {
   try {
-    // Check if this is a job execution request first
-    const url = new URL(request.url);
-    const action = url.searchParams.get("action");
 
-    if (action === "run") {
-      return await runJob(request);
-    }
 
     // Regular job creation - use project context
     const context = await requireAuthContext();
@@ -345,6 +285,27 @@ export async function POST(request: NextRequest) {
         {
           success: false,
           error: "Missing required field: name is required.",
+        },
+        { status: 400 }
+      );
+    }
+
+    if (!Array.isArray(jobData.tests) || jobData.tests.length === 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "At least one test is required to create a job.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const invalidTest = jobData.tests.find((test) => !test?.id || typeof test.id !== "string");
+    if (invalidTest) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Each job test must include a valid test ID.",
         },
         { status: 400 }
       );
@@ -594,6 +555,21 @@ export async function PUT(request: Request) {
       );
     }
 
+    if (!Array.isArray(jobData.tests) || jobData.tests.length === 0) {
+      return NextResponse.json(
+        { success: false, error: "At least one test is required to update a job." },
+        { status: 400 }
+      );
+    }
+
+    const invalidTest = jobData.tests.find((test) => !test?.id || typeof test.id !== "string");
+    if (invalidTest) {
+      return NextResponse.json(
+        { success: false, error: "Each job test must include a valid test ID." },
+        { status: 400 }
+      );
+    }
+
     // Check if job exists and belongs to current project
     const existingJob = await db
       .select({
@@ -693,250 +669,4 @@ export async function PUT(request: Request) {
   }
 }
 
-// Helper function to run a job
-async function runJob(request: Request) {
-  try {
-    // Parse the job data from the request
-    const data = await request.json();
-    const { jobId, tests } = data;
 
-    if (!jobId || !tests || !Array.isArray(tests) || tests.length === 0) {
-      return NextResponse.json(
-        { error: "Invalid job data. Job ID and tests are required." },
-        { status: 400 }
-      );
-    }
-
-    // Get job details to validate Polar customer
-    const jobDetails = await db
-      .select({ organizationId: jobs.organizationId })
-      .from(jobs)
-      .where(eq(jobs.id, jobId))
-      .limit(1);
-
-    if (jobDetails.length === 0) {
-      return NextResponse.json({ error: "Job not found" }, { status: 404 });
-    }
-
-    // SECURITY: Validate subscription and Polar customer before allowing test execution
-    if (!jobDetails[0].organizationId) {
-      return NextResponse.json(
-        { error: "Job has no associated organization" },
-        { status: 400 }
-      );
-    }
-    
-    try {
-      await subscriptionService.blockUntilSubscribed(
-        jobDetails[0].organizationId
-      );
-      await subscriptionService.requireValidPolarCustomer(
-        jobDetails[0].organizationId
-      );
-    } catch (subscriptionError) {
-      console.error("Subscription validation failed for job run:", subscriptionError);
-      const errorMessage = subscriptionError instanceof Error 
-        ? subscriptionError.message 
-        : "Subscription validation failed";
-      return NextResponse.json(
-        { success: false, error: errorMessage },
-        { status: 402 } // Payment Required
-      );
-    }
-
-    // Create a new test run record in the database
-    const runId = crypto.randomUUID();
-    const startTime = new Date();
-
-    // Insert a new test run record
-    await db.insert(runs).values({
-      id: runId,
-      jobId,
-      status: "running",
-      startedAt: startTime,
-      trigger: "manual" as JobTrigger,
-    });
-
-    // Prepare test scripts for execution
-    // OPTIMIZED: Batch fetch missing scripts instead of N+1 HTTP calls
-    const testScripts: { id: string; name: string; script: string }[] = [];
-    const testsWithScripts: typeof tests = [];
-    const testIdsMissingScripts: string[] = [];
-    
-    // Separate tests into those with scripts and those needing fetch
-    for (const test of tests) {
-      if (test.script) {
-        testsWithScripts.push(test);
-      } else {
-        testIdsMissingScripts.push(test.id);
-      }
-    }
-    
-    // Batch fetch all missing scripts in a single query
-    // SECURITY: Added explicit organizationId filter for defense-in-depth
-    let fetchedScripts: Map<string, { title: string; script: string | null }> = new Map();
-    if (testIdsMissingScripts.length > 0) {
-      const scriptsFromDb: { id: string; title: string; script: string | null }[] = [];
-      const CHUNK_SIZE = 500; // Chunk to avoid parameter limit issues (Postgres limit is ~65k params)
-      
-      for (let i = 0; i < testIdsMissingScripts.length; i += CHUNK_SIZE) {
-        const chunk = testIdsMissingScripts.slice(i, i + CHUNK_SIZE);
-        const chunkRows = await db
-          .select({
-            id: testsTable.id,
-            title: testsTable.title,
-            script: testsTable.script,
-          })
-          .from(testsTable)
-          .where(and(
-            inArray(testsTable.id, chunk),
-            eq(testsTable.organizationId, jobDetails[0].organizationId!)
-          ));
-        
-        scriptsFromDb.push(...chunkRows);
-      }
-      
-      fetchedScripts = new Map(scriptsFromDb.map(s => [s.id, { title: s.title, script: s.script }]));
-    }
-    
-    // Build final test scripts array
-    for (const test of tests) {
-      let testScript = test.script;
-      let testName = test.name || test.title || `Test ${test.id}`;
-      
-      if (!testScript) {
-        const fetched = fetchedScripts.get(test.id);
-        if (fetched?.script) {
-          testScript = fetched.script;
-          testName = fetched.title || testName;
-        } else {
-          console.error(`Failed to fetch script for test ${test.id}`);
-          // Add a placeholder for tests without scripts
-          testScripts.push({
-            id: test.id,
-            name: testName,
-            script: `
-              test('Missing test script', async ({ page }) => {
-                test.fail();
-                console.log('Test script not found');
-                expect(false).toBeTruthy();
-              });
-            `,
-          });
-          continue;
-        }
-      }
-
-      // Add the test to our list
-      testScripts.push({
-        id: test.id,
-        name: testName,
-        script: testScript,
-      });
-    }
-
-    // Execute all tests in a single run
-    const result = await executeJob(jobId, testScripts);
-
-    // Map individual test results for the response
-    const testResults =
-      result.results && Array.isArray(result.results)
-        ? result.results.map((testResult: TestResult) => ({
-            testId: testResult.testId,
-            success: testResult.success,
-            error: testResult.error,
-            reportUrl: result.reportUrl, // All tests share the same report URL
-          }))
-        : [];
-
-    // Calculate test duration
-    const startTimeMs = startTime.getTime();
-    const endTime = new Date().getTime();
-    const durationMs = endTime - startTimeMs;
-    const durationFormatted = `${Math.floor(durationMs / 1000)}s`;
-
-    // Update the job status in the database
-    await db
-      .update(jobs)
-      .set({
-        status: result.success
-          ? ("passed" as JobStatus)
-          : ("failed" as JobStatus),
-        lastRunAt: new Date(),
-      })
-      .where(eq(jobs.id, jobId));
-
-    // Create a separate variable for logs data that includes stdout and stderr
-    const logsData =
-      result.results && Array.isArray(result.results)
-        ? result.results.map((r: TestResult) => {
-            // Create a basic log entry with the test ID
-            const logEntry: { testId: string; stdout: string; stderr: string } =
-              {
-                testId: r.testId,
-                stdout: r.stdout?.toString() || "",
-                stderr: r.stderr?.toString() || "",
-              };
-
-            // Return the log entry
-            return logEntry;
-          })
-        : [];
-
-    // Stringify the logs data for storage
-    const logs = JSON.stringify(logsData);
-
-    // Get error details if any tests failed
-    const errorDetails = result.success
-      ? null
-      : JSON.stringify(
-          result.results && Array.isArray(result.results)
-            ? result.results
-                .filter((r: TestResult) => !r.success)
-                .map((r: TestResult) => r.error)
-            : []
-        );
-
-    // Check if any individual tests failed - this is an additional check to ensure
-    // we correctly flag runs with failed tests
-    const hasFailedTests =
-      result.results && Array.isArray(result.results)
-        ? result.results.some((r: TestResult) => !r.success)
-        : false;
-
-    // Update the test run record with results
-    await db
-      .update(runs)
-      .set({
-        status: hasFailedTests
-          ? ("failed" as TestRunStatus)
-          : ("passed" as TestRunStatus),
-        durationMs: durationMs,
-        completedAt: new Date(),
-        logs: logs || "",
-        errorDetails: errorDetails || "",
-      })
-      .where(eq(runs.id, runId));
-
-    // Return the combined result with the run ID
-    return NextResponse.json({
-      jobId,
-      runId,
-      success: result.success,
-      reportUrl: result.reportUrl,
-      results: testResults,
-      timestamp: new Date().toISOString(),
-    });
-  } catch (error) {
-    console.error("Error running job:", error);
-
-    return NextResponse.json(
-      {
-        success: false,
-        error:
-          error instanceof Error ? error.message : "An unknown error occurred",
-      },
-      { status: 500 }
-    );
-  }
-}

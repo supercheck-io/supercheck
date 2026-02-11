@@ -272,17 +272,21 @@ export function CliTokensTable() {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to revoke CLI token");
+        // Provide user-friendly error messages based on the error type
+        if (response.status === 403 || errorData.error === "Insufficient permissions") {
+          throw new Error("You don't have permission to delete CLI tokens. Please contact a Project Admin or Organization Admin.");
+        }
+        throw new Error(errorData.error || "Failed to delete CLI token");
       }
 
-      toast.success("CLI token revoked successfully");
+      toast.success("CLI token deleted successfully");
       loadTokens();
     } catch (error) {
-      console.error("Error revoking CLI token:", error);
+      console.error("Error deleting CLI token:", error);
       toast.error(
         error instanceof Error
           ? error.message
-          : "Failed to revoke CLI token"
+          : "Failed to delete CLI token"
       );
     } finally {
       setShowDeleteDialog(false);
@@ -306,6 +310,10 @@ export function CliTokensTable() {
 
       if (!response.ok) {
         const errorData = await response.json();
+        // Provide user-friendly error messages based on the error type
+        if (response.status === 403 || errorData.error === "Insufficient permissions") {
+          throw new Error("You don't have permission to update CLI tokens. Please contact a Project Admin or Organization Admin.");
+        }
         throw new Error(errorData.error || "Failed to update CLI token");
       }
 
@@ -646,7 +654,12 @@ export function CliTokensTable() {
                 </p>
               </div>
             ) : (
-              <div className="space-y-2">
+              <div
+                className={cn(
+                  "space-y-2",
+                  tokens.length > 4 && "max-h-[390px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent"
+                )}
+              >
                 {tokens.map((token) => {
                   const expiryStatus = getExpiryStatus(token.expiresAt);
                   const isExpired = expiryStatus?.status === "expired";
@@ -760,7 +773,7 @@ export function CliTokensTable() {
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent side="bottom">
-                            Revoke token
+                            Delete token
                           </TooltipContent>
                         </Tooltip>
                       </div>
@@ -809,14 +822,6 @@ export function CliTokensTable() {
                   </div>
                 ))}
               </div>
-              <a
-                href="https://docs.supercheck.dev/cli/installation"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-xs text-primary hover:underline mt-2"
-              >
-                View CLI documentation →
-              </a>
             </CardContent>
           </Card>
 
@@ -846,6 +851,14 @@ export function CliTokensTable() {
                   Max 20 CLI tokens per project
                 </li>
               </ul>
+              <a
+                href="https://supercheck.io/docs/cli/installation"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-xs text-primary hover:underline mt-8"
+              >
+                View CLI documentation →
+              </a>
             </CardContent>
           </Card>
         </div>
@@ -858,10 +871,10 @@ export function CliTokensTable() {
                 <div className="flex h-8 w-8 items-center justify-center rounded-full bg-red-500/10">
                   <AlertTriangle className="h-4 w-4 text-red-500" />
                 </div>
-                Revoke CLI Token
+                Delete CLI Token
               </AlertDialogTitle>
               <AlertDialogDescription className="pt-2">
-                Are you sure you want to revoke this CLI token? Any CLI sessions
+                Are you sure you want to delete this CLI token? Any CLI sessions
                 or CI/CD pipelines using this token will immediately lose access.
                 This action cannot be undone.
               </AlertDialogDescription>
@@ -881,10 +894,10 @@ export function CliTokensTable() {
                   operationLoadingStates[tokenToDelete] === "delete" ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    Revoking...
+                    Deleting...
                   </>
                 ) : (
-                  "Revoke Token"
+                  "Delete Token"
                 )}
               </AlertDialogAction>
             </AlertDialogFooter>

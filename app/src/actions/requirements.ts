@@ -17,7 +17,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import crypto from "crypto";
 import { requireProjectContext } from "@/lib/project-context";
-import { hasPermission } from "@/lib/rbac/middleware";
+import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
 
 // ============================================================================
@@ -205,12 +205,13 @@ export async function getRequirements(options?: {
   priority?: RequirementPriority;
   status?: RequirementCoverageStatus;
 }): Promise<RequirementListResponse> {
-  const { project, organizationId } = await requireProjectContext();
+  const { userId, project, organizationId } = await requireProjectContext();
 
-  // Check view permission
-  const canView = await hasPermission("requirement", "view", {
+  // Check view permission (optimized - reuses context)
+  const canView = checkPermissionWithContext("requirement", "view", {
+    userId,
     organizationId,
-    projectId: project.id,
+    project,
   });
 
   if (!canView) {
@@ -366,10 +367,11 @@ export async function createRequirement(
   try {
     const { userId, project, organizationId } = await requireProjectContext();
 
-    // Check create permission
-    const canCreate = await hasPermission("requirement", "create", {
+    // Check create permission (optimized - reuses context)
+    const canCreate = checkPermissionWithContext("requirement", "create", {
+      userId,
       organizationId,
-      projectId: project.id,
+      project,
     });
 
     if (!canCreate) {
@@ -470,10 +472,11 @@ export async function updateRequirement(
   try {
     const { userId, project, organizationId } = await requireProjectContext();
 
-    // Check update permission
-    const canUpdate = await hasPermission("requirement", "update", {
+    // Check update permission (optimized - reuses context)
+    const canUpdate = checkPermissionWithContext("requirement", "update", {
+      userId,
       organizationId,
-      projectId: project.id,
+      project,
     });
 
     if (!canUpdate) {
@@ -554,10 +557,11 @@ export async function deleteRequirement(
   try {
     const { userId, project, organizationId } = await requireProjectContext();
 
-    // Check delete permission
-    const canDelete = await hasPermission("requirement", "delete", {
+    // Check delete permission (optimized - reuses context)
+    const canDelete = checkPermissionWithContext("requirement", "delete", {
+      userId,
       organizationId,
-      projectId: project.id,
+      project,
     });
 
     if (!canDelete) {
@@ -633,10 +637,11 @@ export async function deleteRequirements(
   try {
     const { userId, project, organizationId } = await requireProjectContext();
 
-    // Check delete permission
-    const canDelete = await hasPermission("requirement", "delete", {
+    // Check delete permission (optimized - reuses context)
+    const canDelete = checkPermissionWithContext("requirement", "delete", {
+      userId,
       organizationId,
-      projectId: project.id,
+      project,
     });
 
     if (!canDelete) {
@@ -706,10 +711,11 @@ export async function linkTestsToRequirement(
   try {
     const { userId, project, organizationId } = await requireProjectContext();
 
-    // Check update permission
-    const canUpdate = await hasPermission("requirement", "update", {
+    // Check update permission (optimized - reuses context)
+    const canUpdate = checkPermissionWithContext("requirement", "update", {
+      userId,
       organizationId,
-      projectId: project.id,
+      project,
     });
 
     if (!canUpdate) {
@@ -775,10 +781,11 @@ export async function unlinkTestFromRequirement(
   try {
     const { userId, project, organizationId } = await requireProjectContext();
 
-    // Check update permission
-    const canUpdate = await hasPermission("requirement", "update", {
+    // Check update permission (optimized - reuses context)
+    const canUpdate = checkPermissionWithContext("requirement", "update", {
+      userId,
       organizationId,
-      projectId: project.id,
+      project,
     });
 
     if (!canUpdate) {
@@ -895,12 +902,13 @@ export async function getRequirementsDashboardStats(): Promise<{
   atRiskCount: number;
 }> {
   try {
-    const { project, organizationId } = await requireProjectContext();
+    const { userId, project, organizationId } = await requireProjectContext();
 
-    // Check view permission
-    const canView = await hasPermission("requirement", "view", {
+    // Check view permission (optimized - reuses context)
+    const canView = checkPermissionWithContext("requirement", "view", {
+      userId,
       organizationId,
-      projectId: project.id,
+      project,
     });
 
     if (!canView) {
@@ -998,12 +1006,13 @@ export async function getRequirement(
   id: string
 ): Promise<RequirementWithCoverage | null> {
   try {
-    const { project, organizationId } = await requireProjectContext();
+    const { userId, project, organizationId } = await requireProjectContext();
 
-    // Check view permission
-    const canView = await hasPermission("requirement", "view", {
+    // Check view permission (optimized - reuses context)
+    const canView = checkPermissionWithContext("requirement", "view", {
+      userId,
       organizationId,
-      projectId: project.id,
+      project,
     });
 
     if (!canView) {
@@ -1112,12 +1121,13 @@ export async function getLinkedTests(
   requirementId: string
 ): Promise<LinkedTest[]> {
   try {
-    const { project, organizationId } = await requireProjectContext();
+    const { userId, project, organizationId } = await requireProjectContext();
 
-    // Check view permission
-    const canView = await hasPermission("requirement", "view", {
+    // Check view permission (optimized - reuses context)
+    const canView = checkPermissionWithContext("requirement", "view", {
+      userId,
       organizationId,
-      projectId: project.id,
+      project,
     });
 
     if (!canView) {
@@ -1194,12 +1204,13 @@ export async function getAvailableTestsForLinking(
   search?: string
 ): Promise<{ id: string; title: string; type: string }[]> {
   try {
-    const { project, organizationId } = await requireProjectContext();
+    const { userId, project, organizationId } = await requireProjectContext();
 
-    // Check view permission
-    const canView = await hasPermission("requirement", "view", {
+    // Check view permission (optimized - reuses context)
+    const canView = checkPermissionWithContext("requirement", "view", {
+      userId,
       organizationId,
-      projectId: project.id,
+      project,
     });
 
     if (!canView) {
@@ -1267,10 +1278,11 @@ export async function exportRequirementsCsv(): Promise<{
   try {
     const { project, organizationId, userId } = await requireProjectContext();
 
-    // Check view permission
-    const canView = await hasPermission("requirement", "view", {
+    // Check view permission (optimized - reuses context)
+    const canView = checkPermissionWithContext("requirement", "view", {
+      userId,
       organizationId,
-      projectId: project.id,
+      project,
     });
 
     if (!canView) {

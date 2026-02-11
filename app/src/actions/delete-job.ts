@@ -5,7 +5,7 @@ import { jobs, jobTests, runs, reports } from "@/db/schema";
 import { eq, and, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { requireProjectContext } from "@/lib/project-context";
-import { hasPermission } from "@/lib/rbac/middleware";
+import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
 import {
   createS3CleanupService,
@@ -36,11 +36,12 @@ export async function deleteJob(jobId: string): Promise<JobDeletionResult> {
     console.log("[DELETE_JOB] Getting project context...");
     const { userId, project, organizationId } = await requireProjectContext();
 
-    // Check DELETE_JOBS permission
+    // Check DELETE_JOBS permission (optimized - reuses context from requireProjectContext)
     console.log("[DELETE_JOB] Checking permissions...");
-    const canDeleteJobs = await hasPermission("job", "delete", {
+    const canDeleteJobs = checkPermissionWithContext("job", "delete", {
+      userId,
       organizationId,
-      projectId: project.id,
+      project,
     });
 
     if (!canDeleteJobs) {
@@ -52,6 +53,7 @@ export async function deleteJob(jobId: string): Promise<JobDeletionResult> {
         error: "Insufficient permissions to delete jobs",
       };
     }
+
 
     // Perform the deletion within a transaction
     console.log("[DELETE_JOB] Starting database transaction...");

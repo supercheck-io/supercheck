@@ -25,7 +25,7 @@ jest.mock("@/lib/project-context", () => ({
 }));
 
 jest.mock("@/lib/rbac/middleware", () => ({
-  hasPermission: jest.fn(),
+  checkPermissionWithContext: jest.fn(),
 }));
 
 jest.mock("@/lib/audit-logger", () => ({
@@ -39,7 +39,7 @@ jest.mock("next/cache", () => ({
 // Import after mocks
 import { db } from "@/utils/db";
 import { requireProjectContext } from "@/lib/project-context";
-import { hasPermission } from "@/lib/rbac/middleware";
+import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
 
 import {
@@ -55,7 +55,7 @@ import {
 // Cast mocks
 const mockDb = db as jest.Mocked<typeof db>;
 const mockRequireProjectContext = requireProjectContext as jest.Mock;
-const mockHasPermission = hasPermission as jest.Mock;
+const mockCheckPermissionWithContext = checkPermissionWithContext as jest.Mock;
 const mockLogAuditEvent = logAuditEvent as jest.Mock;
 
 describe("Requirements Server Actions", () => {
@@ -77,7 +77,7 @@ describe("Requirements Server Actions", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockRequireProjectContext.mockResolvedValue(mockProjectContext);
-    mockHasPermission.mockResolvedValue(true);
+    mockCheckPermissionWithContext.mockReturnValue(true);
   });
 
   // ==========================================================================
@@ -87,22 +87,23 @@ describe("Requirements Server Actions", () => {
   describe("RBAC Enforcement", () => {
     describe("getRequirements", () => {
       it("should require view permission", async () => {
-        mockHasPermission.mockResolvedValue(false);
+        mockCheckPermissionWithContext.mockReturnValue(false);
 
         await expect(getRequirements()).rejects.toThrow(
           "Insufficient permissions to view requirements"
         );
 
-        expect(mockHasPermission).toHaveBeenCalledWith("requirement", "view", {
+        expect(mockCheckPermissionWithContext).toHaveBeenCalledWith("requirement", "view", {
+          userId: testUserId,
           organizationId: testOrgId,
-          projectId: testProjectId,
+          project: expect.objectContaining({ id: testProjectId }),
         });
       });
     });
 
     describe("createRequirement", () => {
       it("should require create permission", async () => {
-        mockHasPermission.mockResolvedValue(false);
+        mockCheckPermissionWithContext.mockReturnValue(false);
 
         const result = await createRequirement({
           title: "Test",
@@ -112,16 +113,17 @@ describe("Requirements Server Actions", () => {
 
         expect(result.success).toBe(false);
         expect(result.error).toContain("Insufficient permissions");
-        expect(mockHasPermission).toHaveBeenCalledWith("requirement", "create", {
+        expect(mockCheckPermissionWithContext).toHaveBeenCalledWith("requirement", "create", {
+          userId: testUserId,
           organizationId: testOrgId,
-          projectId: testProjectId,
+          project: expect.objectContaining({ id: testProjectId }),
         });
       });
     });
 
     describe("updateRequirement", () => {
       it("should require update permission", async () => {
-        mockHasPermission.mockResolvedValue(false);
+        mockCheckPermissionWithContext.mockReturnValue(false);
 
         const result = await updateRequirement({
           id: testRequirementId,
@@ -130,31 +132,33 @@ describe("Requirements Server Actions", () => {
 
         expect(result.success).toBe(false);
         expect(result.error).toContain("Insufficient permissions");
-        expect(mockHasPermission).toHaveBeenCalledWith("requirement", "update", {
+        expect(mockCheckPermissionWithContext).toHaveBeenCalledWith("requirement", "update", {
+          userId: testUserId,
           organizationId: testOrgId,
-          projectId: testProjectId,
+          project: expect.objectContaining({ id: testProjectId }),
         });
       });
     });
 
     describe("deleteRequirement", () => {
       it("should require delete permission", async () => {
-        mockHasPermission.mockResolvedValue(false);
+        mockCheckPermissionWithContext.mockReturnValue(false);
 
         const result = await deleteRequirement(testRequirementId);
 
         expect(result.success).toBe(false);
         expect(result.error).toContain("Insufficient permissions");
-        expect(mockHasPermission).toHaveBeenCalledWith("requirement", "delete", {
+        expect(mockCheckPermissionWithContext).toHaveBeenCalledWith("requirement", "delete", {
+          userId: testUserId,
           organizationId: testOrgId,
-          projectId: testProjectId,
+          project: expect.objectContaining({ id: testProjectId }),
         });
       });
     });
 
     describe("linkTestsToRequirement", () => {
       it("should require update permission", async () => {
-        mockHasPermission.mockResolvedValue(false);
+        mockCheckPermissionWithContext.mockReturnValue(false);
 
         const result = await linkTestsToRequirement(testRequirementId, ["test-1"]);
 
@@ -165,7 +169,7 @@ describe("Requirements Server Actions", () => {
 
     describe("unlinkTestFromRequirement", () => {
       it("should require update permission", async () => {
-        mockHasPermission.mockResolvedValue(false);
+        mockCheckPermissionWithContext.mockReturnValue(false);
 
         const result = await unlinkTestFromRequirement(testRequirementId, "test-1");
 

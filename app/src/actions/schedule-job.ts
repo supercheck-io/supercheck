@@ -6,7 +6,7 @@ import { eq, and } from "drizzle-orm";
 import { scheduleJob } from "../lib/job-scheduler";
 import { z } from "zod";
 import { requireProjectContext } from "@/lib/project-context";
-import { hasPermission } from "@/lib/rbac/middleware";
+import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 
 type Job = z.infer<typeof jobsSelectSchema>;
 
@@ -74,10 +74,11 @@ export async function scheduleCronJob(
     // Get current project context (includes auth verification)
     const { userId, project, organizationId } = await requireProjectContext();
 
-    // Check permission to update jobs
-    const canEditJobs = await hasPermission("job", "update", {
+    // Check permission to update jobs (optimized - reuses context from requireProjectContext)
+    const canEditJobs = checkPermissionWithContext("job", "update", {
+      userId,
       organizationId,
-      projectId: project.id,
+      project,
     });
 
     if (!canEditJobs) {
@@ -150,10 +151,11 @@ export async function cancelScheduledJob(
     // Get current project context (includes auth verification)
     const { userId, project, organizationId } = await requireProjectContext();
 
-    // Check permission to update jobs
-    const canEditJobs = await hasPermission("job", "update", {
+    // Check permission to update jobs (optimized - reuses context from requireProjectContext)
+    const canEditJobs = checkPermissionWithContext("job", "update", {
+      userId,
       organizationId,
-      projectId: project.id,
+      project,
     });
 
     if (!canEditJobs) {

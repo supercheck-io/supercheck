@@ -2,13 +2,13 @@
 
 import { db } from "@/utils/db";
 import { jobs, jobTests, jobNotificationSettings } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, asc } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { scheduleJob, deleteScheduledJob } from "@/lib/job-scheduler";
 import { getNextRunDate } from "@/lib/cron-utils";
 import { requireProjectContext } from "@/lib/project-context";
-import { hasPermission } from "@/lib/rbac/middleware";
+import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
 
 const updateJobSchema = z.object({
@@ -16,11 +16,14 @@ const updateJobSchema = z.object({
   name: z.string(),
   description: z.string().optional().default(""),
   cronSchedule: z.string().optional(),
-  tests: z.array(
-    z.object({
-      id: z.string().uuid(),
-    })
-  ),
+  tests: z
+    .array(
+      z.object({
+        id: z.string().uuid(),
+      })
+    )
+    .min(1, { message: "At least one test is required." })
+    .optional(),
   alertConfig: z
     .object({
       enabled: z.boolean(),
@@ -37,17 +40,24 @@ const updateJobSchema = z.object({
 
 export type UpdateJobData = z.infer<typeof updateJobSchema>;
 
-export async function updateJob(data: UpdateJobData) {
+type UpdateJobContext = {
+  userId: string;
+  organizationId: string;
+  project: { id: string; name: string; userRole: string };
+};
+
+export async function updateJob(data: UpdateJobData, contextOverride?: UpdateJobContext) {
   console.log(`Updating job ${data.jobId}`);
 
   try {
     // Get current project context (includes auth verification)
-    const { userId, project, organizationId } = await requireProjectContext();
+    const { userId, project, organizationId } = contextOverride ?? await requireProjectContext();
 
-    // Check EDIT_JOBS permission
-    const canEditJobs = await hasPermission("job", "update", {
+    // Check EDIT_JOBS permission (optimized - reuses context from requireProjectContext)
+    const canEditJobs = checkPermissionWithContext("job", "update", {
+      userId,
       organizationId,
-      projectId: project.id,
+      project,
     });
 
     if (!canEditJobs) {
@@ -59,6 +69,7 @@ export async function updateJob(data: UpdateJobData) {
         message: "Insufficient permissions to edit jobs",
       };
     }
+
 
     // Validate the data
     const validatedData = updateJobSchema.parse(data);
@@ -139,6 +150,23 @@ export async function updateJob(data: UpdateJobData) {
 
     const job = existingJob[0];
 
+    let testsToUse = validatedData.tests;
+    if (!testsToUse) {
+      const currentTests = await dbInstance
+        .select({ id: jobTests.testId })
+        .from(jobTests)
+        .where(eq(jobTests.jobId, validatedData.jobId))
+        .orderBy(asc(jobTests.orderPosition));
+      testsToUse = currentTests.map((test) => ({ id: test.id }));
+    }
+
+    if (!testsToUse || testsToUse.length === 0) {
+      return {
+        success: false,
+        message: "At least one test is required for a job.",
+      };
+    }
+
     console.log(
       `Job ${validatedData.jobId} being updated by user ${userId} in project ${project.name}`
     );
@@ -199,7 +227,7 @@ export async function updateJob(data: UpdateJobData) {
         .where(eq(jobTests.jobId, validatedData.jobId));
 
       // Create new test associations with updated ordering
-      const testRelations = validatedData.tests.map((test, index) => ({
+      const testRelations = testsToUse.map((test, index) => ({
         jobId: validatedData.jobId,
         testId: test.id,
         orderPosition: index,
@@ -293,7 +321,7 @@ export async function updateJob(data: UpdateJobData) {
           jobName: validatedData.name,
           projectId: project.id,
           projectName: project.name,
-          testsCount: validatedData.tests.length,
+          testsCount: testsToUse.length,
           cronScheduleChanged: previousSchedule !== newSchedule,
           oldCronSchedule: previousSchedule,
           newCronSchedule: newSchedule,
@@ -318,7 +346,7 @@ export async function updateJob(data: UpdateJobData) {
           cronSchedule: validatedData.cronSchedule || null,
           nextRunAt: nextRunAt?.toISOString() || null,
           scheduledJobId,
-          testCount: validatedData.tests.length,
+          testCount: testsToUse.length,
         },
       };
     } catch (dbError) {

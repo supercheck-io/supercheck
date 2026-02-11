@@ -46,6 +46,8 @@ export async function GET(
 ) {
   const params = await routeContext.params;
   const testId = params.id;
+  const includeScript = new URL(request.url).searchParams.get("includeScript");
+  const shouldIncludeScript = includeScript !== "false";
 
   try {
     const context = await requireAuthContext();
@@ -81,15 +83,16 @@ export async function GET(
 
     const test = result[0];
 
-    // Decode the base64 script before returning
-    const decodedScript = await decodeTestScript(test.script || "");
+    const decodedScript = shouldIncludeScript
+      ? await decodeTestScript(test.script || "")
+      : undefined;
 
     // Return the test data
     return NextResponse.json({
       id: test.id,
       title: test.title,
       description: test.description,
-      script: decodedScript, // Return the decoded script
+      ...(decodedScript !== undefined ? { script: decodedScript } : {}),
       priority: test.priority,
       type: test.type,
       updatedAt: test.updatedAt,

@@ -5,6 +5,8 @@ description: Install and set up the Supercheck CLI
 
 ## Install via npm
 
+[npm package](https://www.npmjs.com/package/@supercheck/cli)
+
 ```bash
 # Global install (recommended)
 npm install -g @supercheck/cli
@@ -92,10 +94,52 @@ This creates:
 ```
 my-project/
 ├── _supercheck_/
-│   ├── tests/        # Playwright & k6 test files
-│   ├── monitors/     # Monitor definitions
-│   └── status-pages/ # Status page definitions
+│   ├── playwright/   # Playwright test files
+│   └── k6/           # k6 performance tests
 └── supercheck.config.ts
+```
+
+The `init` command automatically:
+- Installs `@playwright/test` and `@types/k6` as dev dependencies
+- Downloads the Playwright **chromium** browser binary for local test execution
+- Warns if **k6** is not installed (needed for performance tests)
+
+## Test Dependencies
+
+### Playwright (Browser Tests)
+
+`supercheck init` handles Playwright setup automatically. If you need to install manually:
+
+```bash
+npm install --save-dev @playwright/test
+npx playwright install chromium
+```
+
+### k6 (Performance Tests)
+
+k6 is a standalone binary — install it via your system package manager:
+
+```bash
+# macOS
+brew install k6
+
+# Linux (snap)
+sudo snap install k6
+
+# Windows
+choco install k6
+# or
+winget install k6
+```
+
+See [k6 installation docs](https://grafana.com/docs/k6/latest/set-up/install-k6/) for more options.
+
+### Verify Dependencies
+
+Run the doctor command to check that everything is set up:
+
+```bash
+supercheck doctor
 ```
 
 ## Uninstall

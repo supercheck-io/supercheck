@@ -16,6 +16,16 @@ export const DiscordIcon = () => (
   </svg>
 );
 
+export const NpmIcon = ({ className }: { className?: string }) => (
+  <svg viewBox="0 0 256 256" className={className ?? "size-4 text-[#CB3837]"} aria-hidden="true">
+    <rect width="256" height="256" fill="#CB3837" />
+    <path
+      d="M48 64h160v128h-32V96h-32v96h-32V96h-32v96H80V96H48V64z"
+      fill="#ffffff"
+    />
+  </svg>
+);
+
 // Shared site header for standalone pages (terms, privacy, pricing)
 interface SiteHeaderProps {
   showPricing?: boolean;
@@ -42,6 +52,16 @@ export function SiteHeader({ showPricing = true, showDocs = true }: SiteHeaderPr
               Docs
             </Link>
           )}
+          <Link
+            href="https://www.npmjs.com/package/@supercheck/cli"
+            className="text-fd-muted-foreground hover:text-fd-foreground transition-colors inline-flex items-center gap-2"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Supercheck CLI on npm"
+          >
+            <img src="/npm.svg" alt="npm" className="size-4.5 rounded-sm" />
+            <span className="hidden md:inline">npm</span>
+          </Link>
           {showPricing && (
             <Link href="/pricing" className="text-sm text-fd-muted-foreground hover:text-fd-foreground transition-colors">
               Pricing
