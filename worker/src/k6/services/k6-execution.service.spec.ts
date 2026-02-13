@@ -361,37 +361,49 @@ describe('K6ExecutionService', () => {
       expect(context.__decodedSecret).toBe(utf8Secret);
     });
 
-    it('should not mutate non-writable console host methods in k6 runtime', () => {
+    it('should not mutate or pollute non-writable console host methods in k6 runtime', () => {
       const script = (service as any).injectK6VariableRuntimeHelpers(
         'globalThis.__runtimeOk = getVariable("ENV", { default: "ok" });',
       );
 
       const lockedConsole: Record<string, unknown> = {};
+      const lockedLog = jest.fn();
+      const lockedInfo = jest.fn();
+      const lockedWarn = jest.fn();
+      const lockedError = jest.fn();
+      const lockedDebug = jest.fn();
+
       Object.defineProperty(lockedConsole, 'log', {
-        value: jest.fn(),
+        value: lockedLog,
         writable: false,
         configurable: false,
       });
       Object.defineProperty(lockedConsole, 'info', {
-        value: jest.fn(),
+        value: lockedInfo,
         writable: false,
         configurable: false,
       });
       Object.defineProperty(lockedConsole, 'warn', {
-        value: jest.fn(),
+        value: lockedWarn,
         writable: false,
         configurable: false,
       });
       Object.defineProperty(lockedConsole, 'error', {
-        value: jest.fn(),
+        value: lockedError,
         writable: false,
         configurable: false,
       });
       Object.defineProperty(lockedConsole, 'debug', {
-        value: jest.fn(),
+        value: lockedDebug,
         writable: false,
         configurable: false,
       });
+
+      const beforeConsoleKeys = Object.keys(lockedConsole).sort();
+      const beforeConsoleOwnPropertyNames = Object.getOwnPropertyNames(
+        lockedConsole,
+      ).sort();
+      const beforeDescriptors = Object.getOwnPropertyDescriptors(lockedConsole);
 
       const context: Record<string, unknown> = {
         __ENV: {
@@ -407,6 +419,21 @@ describe('K6ExecutionService', () => {
 
       expect(() => runInNewContext(script, context)).not.toThrow();
       expect(context.__runtimeOk).toBe('ok');
+
+      expect(context.console).toBe(lockedConsole);
+      expect(Object.keys(lockedConsole).sort()).toEqual(beforeConsoleKeys);
+      expect(Object.getOwnPropertyNames(lockedConsole).sort()).toEqual(
+        beforeConsoleOwnPropertyNames,
+      );
+
+      const afterDescriptors = Object.getOwnPropertyDescriptors(lockedConsole);
+      expect(afterDescriptors).toEqual(beforeDescriptors);
+
+      expect((lockedConsole as any).log).toBe(lockedLog);
+      expect((lockedConsole as any).info).toBe(lockedInfo);
+      expect((lockedConsole as any).warn).toBe(lockedWarn);
+      expect((lockedConsole as any).error).toBe(lockedError);
+      expect((lockedConsole as any).debug).toBe(lockedDebug);
     });
 
     it('should redact secrets before persisting k6 console.log artifacts', async () => {
@@ -440,6 +467,19 @@ describe('K6ExecutionService', () => {
       const writtenContent = writeFileMock.mock.calls.at(-1)?.[1] as string;
       expect(writtenContent).toContain('[SECRET]');
       expect(writtenContent).not.toContain('super-secret-value');
+    });
+
+    it('should redact literal secrets containing regex chars and overlapping values', () => {
+      const redacted = (service as any).redactSecretsFromText(
+        'a.b[c] then abc then ab',
+        {
+          TOKEN_1: 'a.b[c]',
+          TOKEN_2: 'ab',
+          TOKEN_3: 'abc',
+        },
+      );
+
+      expect(redacted).toBe('[SECRET] then [SECRET] then [SECRET]');
     });
   });
 

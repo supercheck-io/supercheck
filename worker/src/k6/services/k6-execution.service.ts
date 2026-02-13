@@ -1066,16 +1066,6 @@ function __scBase64Decode(value) {
 
 const __scVariables = __scParseMap('SUPERCHECK_VARIABLES_B64');
 const __scSecrets = __scParseMap('SUPERCHECK_SECRETS_B64');
-const __scSecretValues = Object.values(__scSecrets).filter((v) => typeof v === 'string' && v.length > 0);
-
-function __scRedact(text) {
-  if (typeof text !== 'string' || __scSecretValues.length === 0) return text;
-  let out = text;
-  for (const secret of __scSecretValues) {
-    out = out.split(secret).join('[SECRET]');
-  }
-  return out;
-}
 
 globalThis.getVariable = function getVariable(key, options = {}) {
   const value = __scVariables[key];
@@ -1156,12 +1146,27 @@ globalThis.getSecret = function getSecret(key, options = {}) {
       return text;
     }
 
-    let redacted = text;
-    for (const secret of secretValues) {
-      redacted = redacted.split(secret).join('[SECRET]');
-    }
+    const uniqueSecrets = Array.from(new Set(secretValues)).sort(
+      (first, second) => second.length - first.length,
+    );
 
-    return redacted;
+    try {
+      const pattern = new RegExp(
+        uniqueSecrets.map((secret) => this.escapeRegexPattern(secret)).join('|'),
+        'g',
+      );
+      return text.replace(pattern, '[SECRET]');
+    } catch {
+      let redacted = text;
+      for (const secret of uniqueSecrets) {
+        redacted = redacted.split(secret).join('[SECRET]');
+      }
+      return redacted;
+    }
+  }
+
+  private escapeRegexPattern(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
   /**
