@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { monitors } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import { requireAuth, hasPermission } from '@/lib/rbac/middleware';
+import { requireUserAuthContext } from "@/lib/auth-context";
+import { hasPermissionForUser } from '@/lib/rbac/middleware';
 import { logAuditEvent } from "@/lib/audit-logger";
 
 export async function PATCH(
@@ -13,7 +14,7 @@ export async function PATCH(
   const { id } = params;
 
   try {
-    const { userId } = await requireAuth();
+    const { userId } = await requireUserAuthContext();
     const data = await request.json();
     const { status } = data;
 
@@ -38,13 +39,13 @@ export async function PATCH(
 
     // Check permission to manage/update monitor
     if (currentMonitor.organizationId && currentMonitor.projectId) {
-      const canManage = await hasPermission('monitor', 'manage', {
+      const canManage = await hasPermissionForUser(userId, 'monitor', 'manage', {
         organizationId: currentMonitor.organizationId,
         projectId: currentMonitor.projectId,
       });
 
       if (!canManage) {
-        const canUpdate = await hasPermission('monitor', 'update', {
+        const canUpdate = await hasPermissionForUser(userId, 'monitor', 'update', {
           organizationId: currentMonitor.organizationId,
           projectId: currentMonitor.projectId,
         });

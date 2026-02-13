@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getUserOrgRole } from '@/lib/rbac/middleware';
+import { hasPermissionForUser } from '@/lib/rbac/middleware';
 import { requireUserAuthContext, isAuthError } from '@/lib/auth-context';
 import { db } from '@/utils/db';
 import { projects, projectMembers, jobs, tests, monitors } from '@/db/schema';
 import { eq, and, count } from 'drizzle-orm';
-import { Role } from '@/lib/rbac/permissions';
 
 /**
  * GET /api/projects/[id]
@@ -45,10 +44,12 @@ export async function GET(
     
     const project = projectData[0];
     
-    // Check permission using getUserOrgRole (works for both CLI tokens and session cookies)
-    // Any org member can view projects they belong to
-    const orgRole = await getUserOrgRole(userId, project.organizationId);
-    if (!orgRole) {
+    const canView = await hasPermissionForUser(userId, 'project', 'view', {
+      organizationId: project.organizationId,
+      projectId,
+    });
+
+    if (!canView) {
       return NextResponse.json(
         { error: 'Insufficient permissions' },
         { status: 403 }
@@ -125,33 +126,16 @@ export async function PUT(
     
     const organizationId = projectData[0].organizationId;
     
-    // Check permission using getUserOrgRole (works for both CLI tokens and session cookies)
-    const orgRole = await getUserOrgRole(userId, organizationId);
-    if (!orgRole) {
-      return NextResponse.json(
-        { error: 'Organization not found' },
-        { status: 404 }
-      );
-    }
-    // Only ORG_ADMIN, ORG_OWNER, or PROJECT_ADMIN (with project membership) can update
-    const canUpdate = orgRole === Role.ORG_ADMIN || orgRole === Role.ORG_OWNER;
+    const canUpdate = await hasPermissionForUser(userId, 'project', 'update', {
+      organizationId,
+      projectId,
+    });
+
     if (!canUpdate) {
-      // Check project-level membership for PROJECT_ADMIN
-      const projectMember = await db
-        .select({ role: projectMembers.role })
-        .from(projectMembers)
-        .where(and(
-          eq(projectMembers.projectId, projectId),
-          eq(projectMembers.userId, userId)
-        ))
-        .limit(1);
-      const projectRole = projectMember[0]?.role;
-      if (projectRole !== 'project_admin') {
-        return NextResponse.json(
-          { error: 'Insufficient permissions to update project' },
-          { status: 403 }
-        );
-      }
+      return NextResponse.json(
+        { error: 'Insufficient permissions to update project' },
+        { status: 403 }
+      );
     }
     
     const body = await request.json();
@@ -241,18 +225,14 @@ export async function DELETE(
       );
     }
     
-    // Check permission - only ORG_OWNER and ORG_ADMIN can delete projects
-    // Uses getUserOrgRole which works for both CLI tokens and session cookies
-    const orgRole = await getUserOrgRole(userId, organizationId);
-    if (!orgRole) {
+    const canDelete = await hasPermissionForUser(userId, 'project', 'delete', {
+      organizationId,
+      projectId,
+    });
+
+    if (!canDelete) {
       return NextResponse.json(
-        { error: 'Organization not found' },
-        { status: 404 }
-      );
-    }
-    if (orgRole !== Role.ORG_OWNER && orgRole !== Role.ORG_ADMIN) {
-      return NextResponse.json(
-        { error: 'Only organization owners and admins can delete projects' },
+        { error: 'Insufficient permissions to delete project' },
         { status: 403 }
       );
     }

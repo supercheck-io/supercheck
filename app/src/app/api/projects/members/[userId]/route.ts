@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/utils/db';
 import { projectMembers, projects } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
-import { hasPermission } from '@/lib/rbac/middleware';
+import { hasPermissionForUser } from '@/lib/rbac/middleware';
 import { requireUserAuthContext, isAuthError } from '@/lib/auth-context';
 
 export async function GET(
@@ -11,7 +11,7 @@ export async function GET(
 ) {
   const resolvedParams = await params;
   try {
-    const { organizationId: activeOrganizationId } = await requireUserAuthContext();
+    const { userId, organizationId: activeOrganizationId } = await requireUserAuthContext();
 
     if (!activeOrganizationId) {
       return NextResponse.json(
@@ -20,7 +20,7 @@ export async function GET(
       );
     }
 
-    const canManageMembers = await hasPermission('member', 'update', {
+    const canManageMembers = await hasPermissionForUser(userId, 'member', 'update', {
       organizationId: activeOrganizationId,
     });
 

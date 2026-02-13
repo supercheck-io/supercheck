@@ -3,7 +3,7 @@ import { db } from "@/utils/db";
 import { projectVariables, projects } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import {
-  hasPermission,
+  hasPermissionForUser,
   withRateLimit,
 } from "@/lib/rbac/middleware";
 import { requireUserAuthContext, isAuthError } from "@/lib/auth-context";
@@ -45,7 +45,7 @@ export async function POST(
       }
 
       // Check if user has permission to view secret variables using centralized function
-      const canViewSecrets = await hasPermission("variable", "view_secrets", {
+      const canViewSecrets = await hasPermissionForUser(authUserId, "variable", "view_secrets", {
         organizationId: project[0].organizationId,
         projectId,
       });

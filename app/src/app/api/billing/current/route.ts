@@ -101,6 +101,9 @@ export async function GET() {
       effectiveStatus = "none"; // Invalid plan = no subscription
     }
 
+    const toPercent = (used: number, included: number) =>
+      included > 0 ? Math.round((used / included) * 100) : 100;
+
     return NextResponse.json({
       subscription: {
         plan: effectivePlan,
@@ -118,26 +121,22 @@ export async function GET() {
           used: usage.playwrightMinutes.used,
           included: usage.playwrightMinutes.included,
           overage: usage.playwrightMinutes.overage,
-          percentage: Math.round(
-            (usage.playwrightMinutes.used / usage.playwrightMinutes.included) *
-              100
+          percentage: toPercent(
+            usage.playwrightMinutes.used,
+            usage.playwrightMinutes.included
           ),
         },
         k6VuMinutes: {
           used: usage.k6VuMinutes.used,
           included: usage.k6VuMinutes.included,
           overage: usage.k6VuMinutes.overage,
-          percentage: Math.round(
-            (usage.k6VuMinutes.used / usage.k6VuMinutes.included) * 100
-          ),
+          percentage: toPercent(usage.k6VuMinutes.used, usage.k6VuMinutes.included),
         },
         aiCredits: {
           used: usage.aiCredits.used,
           included: usage.aiCredits.included,
           overage: usage.aiCredits.overage,
-          percentage: Math.round(
-            (usage.aiCredits.used / usage.aiCredits.included) * 100
-          ),
+          percentage: toPercent(usage.aiCredits.used, usage.aiCredits.included),
         },
       },
       limits: {
@@ -145,33 +144,25 @@ export async function GET() {
           current: monitorCount.length,
           limit: plan.maxMonitors,
           remaining: Math.max(0, plan.maxMonitors - monitorCount.length),
-          percentage: Math.round(
-            (monitorCount.length / plan.maxMonitors) * 100
-          ),
+          percentage: toPercent(monitorCount.length, plan.maxMonitors),
         },
         statusPages: {
           current: statusPageCount.length,
           limit: plan.maxStatusPages,
           remaining: Math.max(0, plan.maxStatusPages - statusPageCount.length),
-          percentage: Math.round(
-            (statusPageCount.length / plan.maxStatusPages) * 100
-          ),
+          percentage: toPercent(statusPageCount.length, plan.maxStatusPages),
         },
         projects: {
           current: projectCount.length,
           limit: plan.maxProjects,
           remaining: Math.max(0, plan.maxProjects - projectCount.length),
-          percentage: Math.round(
-            (projectCount.length / plan.maxProjects) * 100
-          ),
+          percentage: toPercent(projectCount.length, plan.maxProjects),
         },
         teamMembers: {
           current: memberCount.length,
           limit: plan.maxTeamMembers,
           remaining: Math.max(0, plan.maxTeamMembers - memberCount.length),
-          percentage: Math.round(
-            (memberCount.length / plan.maxTeamMembers) * 100
-          ),
+          percentage: toPercent(memberCount.length, plan.maxTeamMembers),
         },
         capacity: {
           runningCapacity: plan.runningCapacity,

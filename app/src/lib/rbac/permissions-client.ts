@@ -121,7 +121,7 @@ export const rolePermissions = {
     organization: ["view"],
     member: ["view"],
     invitation: ["view"],
-    project: ["view", "manage_members"],
+    project: ["view", "update", "manage_members"],
     test: ["create", "update", "delete", "view", "run"],
     job: ["create", "update", "delete", "view", "trigger"],
     monitor: ["create", "update", "delete", "view", "manage"],

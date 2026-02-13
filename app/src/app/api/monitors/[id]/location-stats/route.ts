@@ -6,11 +6,9 @@ import {
 } from "@/db/schema";
 import { eq, and, gte, sql, desc } from "drizzle-orm";
 import {
-  requireAuth,
-  hasPermission,
-  getUserOrgRole,
+  hasPermissionForUser,
 } from "@/lib/rbac/middleware";
-import { isSuperAdmin } from "@/lib/admin";
+import { requireUserAuthContext } from "@/lib/auth-context";
 import type {
   MonitorResultStatus,
   MonitoringLocation,
@@ -66,7 +64,7 @@ export async function GET(
   }
 
   try {
-    const { userId } = await requireAuth();
+    const { userId } = await requireUserAuthContext();
 
     // First, find the monitor to check permissions
     const monitor = await db.query.monitors.findFirst({
@@ -77,31 +75,17 @@ export async function GET(
       return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
     }
 
-    // Check if user has access to this monitor
-    const userIsSuperAdmin = await isSuperAdmin();
+    // Check if user has permission to view this monitor
+    const canView = await hasPermissionForUser(userId, "monitor", "view", {
+      organizationId: monitor.organizationId || undefined,
+      projectId: monitor.projectId || undefined,
+    });
 
-    if (!userIsSuperAdmin && monitor.organizationId && monitor.projectId) {
-      const orgRole = await getUserOrgRole(userId, monitor.organizationId);
-
-      if (!orgRole) {
-        return NextResponse.json(
-          { error: "Access denied: Not a member of this organization" },
-          { status: 403 }
-        );
-      }
-
-      // Check permission (fail closed - no try-catch)
-      const canView = await hasPermission("monitor", "view", {
-        organizationId: monitor.organizationId,
-        projectId: monitor.projectId,
-      });
-
-      if (!canView) {
-        return NextResponse.json(
-          { error: "Insufficient permissions to view this monitor" },
-          { status: 403 }
-        );
-      }
+    if (!canView) {
+      return NextResponse.json(
+        { error: "Insufficient permissions to view this monitor" },
+        { status: 403 }
+      );
     }
 
     // Calculate date range

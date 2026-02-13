@@ -92,8 +92,8 @@ export async function GET() {
               }
             : {
                 // Fallback values if not in database
-                playwrightMinutes: planType === "pro" ? 0.015 : 0.03,
-                k6VuMinutes: planType === "pro" ? 0.003 : 0.005,
+                playwrightMinutes: planType === "pro" ? 0.02 : 0.03,
+                k6VuMinutes: 0.01,
                 aiCredits: planType === "pro" ? 0.03 : 0.05,
               },
         };

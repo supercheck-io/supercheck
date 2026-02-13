@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { projectVariables, projects } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
-import { hasPermission } from "@/lib/rbac/middleware";
+import { hasPermissionForUser } from "@/lib/rbac/middleware";
 import { requireUserAuthContext, isAuthError } from "@/lib/auth-context";
 import { updateVariableSchema } from "@/lib/validations/variable";
 import { encryptValue, decryptValue } from "@/lib/encryption";
@@ -17,7 +17,7 @@ export async function GET(
     const projectId = resolvedParams.id;
     const variableId = resolvedParams.variableId;
 
-    await requireUserAuthContext();
+    const { userId } = await requireUserAuthContext();
 
     // Get project info for organization ID
     const project = await db
@@ -33,7 +33,7 @@ export async function GET(
       );
     }
 
-    const canView = await hasPermission("variable", "view", {
+    const canView = await hasPermissionForUser(userId, "variable", "view", {
       organizationId: project[0].organizationId,
       projectId,
     });
@@ -121,7 +121,7 @@ export async function PUT(
     const projectId = resolvedParams.id;
     const variableId = resolvedParams.variableId;
 
-    await requireUserAuthContext();
+    const { userId } = await requireUserAuthContext();
 
     // Get project info for organization ID
     const project = await db
@@ -137,7 +137,7 @@ export async function PUT(
       );
     }
 
-    const canUpdate = await hasPermission("variable", "update", {
+    const canUpdate = await hasPermissionForUser(userId, "variable", "update", {
       organizationId: project[0].organizationId,
       projectId,
     });
@@ -328,7 +328,7 @@ export async function DELETE(
     const projectId = resolvedParams.id;
     const variableId = resolvedParams.variableId;
 
-    await requireUserAuthContext();
+    const { userId } = await requireUserAuthContext();
 
     // Get project info for organization ID
     const project = await db
@@ -344,7 +344,7 @@ export async function DELETE(
       );
     }
 
-    const canDelete = await hasPermission("variable", "delete", {
+    const canDelete = await hasPermissionForUser(userId, "variable", "delete", {
       organizationId: project[0].organizationId,
       projectId,
     });

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { hasPermission } from '@/lib/rbac/middleware';
+import { hasPermissionForUser } from '@/lib/rbac/middleware';
 import { getUserProjectRole } from '@/lib/session';
 import { requireUserAuthContext, isAuthError } from '@/lib/auth-context';
 import { db } from '@/utils/db';
@@ -41,19 +41,19 @@ export async function GET(
     }
 
     const [canView, canEdit, canDelete, canToggle, userRole] = await Promise.all([
-      hasPermission('monitor', 'view', {
+      hasPermissionForUser(userId, 'monitor', 'view', {
         organizationId: monitor.organizationId,
         projectId: monitor.projectId,
       }),
-      hasPermission('monitor', 'update', {
+      hasPermissionForUser(userId, 'monitor', 'update', {
         organizationId: monitor.organizationId,
         projectId: monitor.projectId,
       }),
-      hasPermission('monitor', 'delete', {
+      hasPermissionForUser(userId, 'monitor', 'delete', {
         organizationId: monitor.organizationId,
         projectId: monitor.projectId,
       }),
-      hasPermission('monitor', 'manage', {
+      hasPermissionForUser(userId, 'monitor', 'manage', {
         organizationId: monitor.organizationId,
         projectId: monitor.projectId,
       }),

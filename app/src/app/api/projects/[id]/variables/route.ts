@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { projectVariables, projects } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
-import { hasPermission } from "@/lib/rbac/middleware";
+import { hasPermissionForUser } from "@/lib/rbac/middleware";
 import { requireUserAuthContext, isAuthError } from "@/lib/auth-context";
 import { createVariableSchema } from "@/lib/validations/variable";
 import { encryptValue } from "@/lib/encryption";
@@ -10,7 +10,7 @@ import { z } from "zod";
 
 export async function GET(request: NextRequest) {
   try {
-    await requireUserAuthContext();
+    const { userId } = await requireUserAuthContext();
     const url = new URL(request.url);
     const projectId =
       url.pathname.split("/projects/")[1]?.split("/")[0] || "";
@@ -32,19 +32,19 @@ export async function GET(request: NextRequest) {
     const organizationId = project[0].organizationId;
 
     const [canView, canCreate, canDelete, canViewSecrets] = await Promise.all([
-      hasPermission("variable", "view", {
+      hasPermissionForUser(userId, "variable", "view", {
         organizationId,
         projectId,
       }),
-      hasPermission("variable", "create", {
+      hasPermissionForUser(userId, "variable", "create", {
         organizationId,
         projectId,
       }),
-      hasPermission("variable", "delete", {
+      hasPermissionForUser(userId, "variable", "delete", {
         organizationId,
         projectId,
       }),
-      hasPermission("variable", "view_secrets", {
+      hasPermissionForUser(userId, "variable", "view_secrets", {
         organizationId,
         projectId,
       }),
@@ -129,7 +129,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const canCreate = await hasPermission("variable", "create", {
+    const canCreate = await hasPermissionForUser(userId, "variable", "create", {
       organizationId: project[0].organizationId,
       projectId,
     });

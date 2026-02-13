@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { hasPermission } from '@/lib/rbac/middleware';
+import { hasPermissionForUser } from '@/lib/rbac/middleware';
 import { requireUserAuthContext, isAuthError } from '@/lib/auth-context';
 import { db } from '@/utils/db';
 import { projects, projectMembers, user } from '@/db/schema';
@@ -15,7 +15,7 @@ export async function GET(
 ) {
   const resolvedParams = await params;
   try {
-    await requireUserAuthContext();
+    const { userId } = await requireUserAuthContext();
     const projectId = resolvedParams.id;
     
     // Get project to determine organization
@@ -35,7 +35,7 @@ export async function GET(
     const organizationId = projectData[0].organizationId;
     
     // Check permission
-    const canView = await hasPermission('project', 'view', { organizationId, projectId });
+    const canView = await hasPermissionForUser(userId, 'project', 'view', { organizationId, projectId });
     if (!canView) {
       return NextResponse.json(
         { error: 'Insufficient permissions' },
@@ -99,7 +99,7 @@ export async function POST(
 ) {
   const resolvedParams = await params;
   try {
-    await requireUserAuthContext();
+    const { userId } = await requireUserAuthContext();
     const projectId = resolvedParams.id;
     
     // Get project to determine organization
@@ -119,7 +119,7 @@ export async function POST(
     const organizationId = projectData[0].organizationId;
     
     // Check permission
-    const canInvite = await hasPermission('member', 'create', { organizationId, projectId });
+    const canInvite = await hasPermissionForUser(userId, 'member', 'create', { organizationId, projectId });
     if (!canInvite) {
       return NextResponse.json(
         { error: 'Insufficient permissions to add members' },
@@ -224,7 +224,7 @@ export async function PUT(
 ) {
   const resolvedParams = await params;
   try {
-    await requireUserAuthContext();
+    const { userId } = await requireUserAuthContext();
     const projectId = resolvedParams.id;
     
     // Get project to determine organization
@@ -244,7 +244,7 @@ export async function PUT(
     const organizationId = projectData[0].organizationId;
     
     // Check permission
-    const canManage = await hasPermission('member', 'update', { organizationId, projectId });
+    const canManage = await hasPermissionForUser(userId, 'member', 'update', { organizationId, projectId });
     if (!canManage) {
       return NextResponse.json(
         { error: 'Insufficient permissions to manage members' },
@@ -318,7 +318,7 @@ export async function DELETE(
 ) {
   const resolvedParams = await params;
   try {
-    await requireUserAuthContext();
+    const { userId } = await requireUserAuthContext();
     const projectId = resolvedParams.id;
     
     // Get project to determine organization
@@ -338,7 +338,7 @@ export async function DELETE(
     const organizationId = projectData[0].organizationId;
     
     // Check permission
-    const canManage = await hasPermission('member', 'update', { organizationId, projectId });
+    const canManage = await hasPermissionForUser(userId, 'member', 'update', { organizationId, projectId });
     if (!canManage) {
       return NextResponse.json(
         { error: 'Insufficient permissions to remove members' },

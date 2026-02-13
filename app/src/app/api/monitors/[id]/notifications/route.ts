@@ -7,11 +7,9 @@ import {
 } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import {
-  requireAuth,
-  hasPermission,
-  getUserOrgRole,
+  hasPermissionForUser,
 } from "@/lib/rbac/middleware";
-import { isSuperAdmin } from "@/lib/admin";
+import { requireUserAuthContext } from "@/lib/auth-context";
 
 export async function GET(
   request: NextRequest,
@@ -27,8 +25,8 @@ export async function GET(
   }
 
   try {
-    // Require authentication
-    const { userId } = await requireAuth();
+    // Require authentication (supports both Bearer tokens and session cookies)
+    const { userId } = await requireUserAuthContext();
 
     // Get monitor to check permissions
     const monitor = await db.query.monitors.findFirst({
@@ -40,30 +38,17 @@ export async function GET(
       return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
     }
 
-    // Check if user has access to this monitor
-    const userIsSuperAdmin = await isSuperAdmin();
+    // Check if user has permission to view this monitor's notifications
+    const canView = await hasPermissionForUser(userId, "monitor", "view", {
+      organizationId: monitor.organizationId || undefined,
+      projectId: monitor.projectId || undefined,
+    });
 
-    if (!userIsSuperAdmin && monitor.organizationId) {
-      const orgRole = await getUserOrgRole(userId, monitor.organizationId);
-
-      if (!orgRole) {
-        return NextResponse.json(
-          { error: "Access denied: Not a member of this organization" },
-          { status: 403 }
-        );
-      }
-
-      const canView = await hasPermission("monitor", "view", {
-        organizationId: monitor.organizationId,
-        projectId: monitor.projectId || undefined,
-      });
-
-      if (!canView) {
-        return NextResponse.json(
-          { error: "Insufficient permissions to view monitor notifications" },
-          { status: 403 }
-        );
-      }
+    if (!canView) {
+      return NextResponse.json(
+        { error: "Insufficient permissions to view monitor notifications" },
+        { status: 403 }
+      );
     }
 
     // Get all notification providers linked to this monitor
@@ -112,8 +97,8 @@ export async function POST(
   }
 
   try {
-    // Require authentication
-    const { userId } = await requireAuth();
+    // Require authentication (supports both Bearer tokens and session cookies)
+    const { userId } = await requireUserAuthContext();
 
     // Get monitor to check permissions
     const monitor = await db.query.monitors.findFirst({
@@ -126,29 +111,16 @@ export async function POST(
     }
 
     // Check if user has permission to update monitor notifications
-    const userIsSuperAdmin = await isSuperAdmin();
+    const canUpdate = await hasPermissionForUser(userId, "monitor", "update", {
+      organizationId: monitor.organizationId || undefined,
+      projectId: monitor.projectId || undefined,
+    });
 
-    if (!userIsSuperAdmin && monitor.organizationId) {
-      const orgRole = await getUserOrgRole(userId, monitor.organizationId);
-
-      if (!orgRole) {
-        return NextResponse.json(
-          { error: "Access denied: Not a member of this organization" },
-          { status: 403 }
-        );
-      }
-
-      const canUpdate = await hasPermission("monitor", "update", {
-        organizationId: monitor.organizationId,
-        projectId: monitor.projectId || undefined,
-      });
-
-      if (!canUpdate) {
-        return NextResponse.json(
-          { error: "Insufficient permissions to update monitor notifications" },
-          { status: 403 }
-        );
-      }
+    if (!canUpdate) {
+      return NextResponse.json(
+        { error: "Insufficient permissions to update monitor notifications" },
+        { status: 403 }
+      );
     }
 
     const { notificationProviderId } = await request.json();
@@ -214,8 +186,8 @@ export async function DELETE(
   }
 
   try {
-    // Require authentication
-    const { userId } = await requireAuth();
+    // Require authentication (supports both Bearer tokens and session cookies)
+    const { userId } = await requireUserAuthContext();
 
     // Get monitor to check permissions
     const monitor = await db.query.monitors.findFirst({
@@ -228,29 +200,16 @@ export async function DELETE(
     }
 
     // Check if user has permission to update monitor notifications
-    const userIsSuperAdmin = await isSuperAdmin();
+    const canUpdate = await hasPermissionForUser(userId, "monitor", "update", {
+      organizationId: monitor.organizationId || undefined,
+      projectId: monitor.projectId || undefined,
+    });
 
-    if (!userIsSuperAdmin && monitor.organizationId) {
-      const orgRole = await getUserOrgRole(userId, monitor.organizationId);
-
-      if (!orgRole) {
-        return NextResponse.json(
-          { error: "Access denied: Not a member of this organization" },
-          { status: 403 }
-        );
-      }
-
-      const canUpdate = await hasPermission("monitor", "update", {
-        organizationId: monitor.organizationId,
-        projectId: monitor.projectId || undefined,
-      });
-
-      if (!canUpdate) {
-        return NextResponse.json(
-          { error: "Insufficient permissions to update monitor notifications" },
-          { status: 403 }
-        );
-      }
+    if (!canUpdate) {
+      return NextResponse.json(
+        { error: "Insufficient permissions to update monitor notifications" },
+        { status: 403 }
+      );
     }
 
     const { notificationProviderId } = await request.json();

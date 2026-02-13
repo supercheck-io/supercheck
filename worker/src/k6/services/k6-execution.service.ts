@@ -1144,8 +1144,8 @@ globalThis.getSecret = function getSecret(key, options = {}) {
     text: string | null | undefined,
     secrets: Record<string, string>,
   ): string {
-    if (!text) {
-      return text ?? '';
+    if (text == null) {
+      return '';
     }
 
     const secretValues = Object.values(secrets).filter(

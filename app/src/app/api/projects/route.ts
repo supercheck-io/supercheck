@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { hasPermission, getUserRole } from "@/lib/rbac/middleware";
+import { hasPermissionForUser, getUserRole } from "@/lib/rbac/middleware";
 import { requireUserAuthContext, isAuthError } from "@/lib/auth-context";
 import { getUserProjects } from "@/lib/session";
 import { getCurrentProjectContext } from "@/lib/project-context";
@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
       targetOrgId = authOrgId;
     }
 
-    const canView = await hasPermission("project", "view", {
+    const canView = await hasPermissionForUser(userId, "project", "view", {
       organizationId: targetOrgId,
     });
 
@@ -107,7 +107,7 @@ export async function POST(request: NextRequest) {
     const userRole = await getUserRole(userId, targetOrgId);
 
     // Check permission to create projects
-    const canCreate = await hasPermission("project", "create", {
+    const canCreate = await hasPermissionForUser(userId, "project", "create", {
       organizationId: targetOrgId,
     });
     if (!canCreate) {

@@ -2167,8 +2167,8 @@ export class ExecutionService implements OnModuleDestroy {
     text: string | null | undefined,
     secrets: Record<string, string>,
   ): string {
-    if (!text) {
-      return text ?? '';
+    if (text == null) {
+      return '';
     }
 
     const secretValues = Object.values(secrets).filter(
