@@ -15,10 +15,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Changed
 - Resolved all ESLint and TypeScript errors across the entire worker codebase
+- Refactored secret handling and execution logging paths for safer runtime behavior
 
 ### Security
 - Fixed DoS vulnerability in fast-xml-parser (CVE) by upgrading to >=5.3.4
 - Added organization authorization checks for AI analysis endpoints
+- Strengthened secret redaction flow in execution outputs before persistence/return
 
 ---
 

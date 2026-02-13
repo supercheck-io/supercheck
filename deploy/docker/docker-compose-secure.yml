@@ -298,7 +298,7 @@ services:
 
   # App (Next.js Frontend) - Handles migrations internally
   app:
-    image: ghcr.io/supercheck-io/supercheck/app:1.2.2
+    image: ghcr.io/supercheck-io/supercheck/app:1.2.4
     expose:
       - "3000"
     environment:
@@ -369,7 +369,7 @@ services:
   # Tests run in isolated Docker containers (Playwright/K6), not inside worker
   # Playwright Docker best practices: https://playwright.dev/docs/docker
   worker:
-    image: ghcr.io/supercheck-io/supercheck/worker:1.2.2
+    image: ghcr.io/supercheck-io/supercheck/worker:1.2.4
     # init: Use tini as PID 1 to avoid zombie processes (Playwright recommendation)
     init: true
     environment:

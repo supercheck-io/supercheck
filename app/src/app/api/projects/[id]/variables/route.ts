@@ -31,11 +31,24 @@ export async function GET(request: NextRequest) {
 
     const organizationId = project[0].organizationId;
 
-    // SECURITY: Always enforce explicit variable:view access before listing variables
-    const canView = await hasPermission("variable", "view", {
-      organizationId,
-      projectId,
-    });
+    const [canView, canCreate, canDelete, canViewSecrets] = await Promise.all([
+      hasPermission("variable", "view", {
+        organizationId,
+        projectId,
+      }),
+      hasPermission("variable", "create", {
+        organizationId,
+        projectId,
+      }),
+      hasPermission("variable", "delete", {
+        organizationId,
+        projectId,
+      }),
+      hasPermission("variable", "view_secrets", {
+        organizationId,
+        projectId,
+      }),
+    ]);
 
     if (!canView) {
       return NextResponse.json(
@@ -43,19 +56,6 @@ export async function GET(request: NextRequest) {
         { status: 403 }
       );
     }
-
-    const canCreate = await hasPermission("variable", "create", {
-      organizationId,
-      projectId,
-    });
-    const canDelete = await hasPermission("variable", "delete", {
-      organizationId,
-      projectId,
-    });
-    const canViewSecrets = await hasPermission("variable", "view_secrets", {
-      organizationId,
-      projectId,
-    });
 
     // Fetch variables
     // Using ID ordering instead of createdAt since UUIDv7 is time-ordered (PostgreSQL 18+)
@@ -178,7 +178,7 @@ export async function POST(request: NextRequest) {
         projectId,
         key: validatedData.key,
         isSecret: validatedData.isSecret,
-        description: validatedData.description || null,
+        description: validatedData.description?.trim() || null,
         createdByUserId: userId,
         value: "",
         encryptedValue: null as string | null,

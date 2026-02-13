@@ -361,6 +361,54 @@ describe('K6ExecutionService', () => {
       expect(context.__decodedSecret).toBe(utf8Secret);
     });
 
+    it('should not mutate non-writable console host methods in k6 runtime', () => {
+      const script = (service as any).injectK6VariableRuntimeHelpers(
+        'globalThis.__runtimeOk = getVariable("ENV", { default: "ok" });',
+      );
+
+      const lockedConsole: Record<string, unknown> = {};
+      Object.defineProperty(lockedConsole, 'log', {
+        value: jest.fn(),
+        writable: false,
+        configurable: false,
+      });
+      Object.defineProperty(lockedConsole, 'info', {
+        value: jest.fn(),
+        writable: false,
+        configurable: false,
+      });
+      Object.defineProperty(lockedConsole, 'warn', {
+        value: jest.fn(),
+        writable: false,
+        configurable: false,
+      });
+      Object.defineProperty(lockedConsole, 'error', {
+        value: jest.fn(),
+        writable: false,
+        configurable: false,
+      });
+      Object.defineProperty(lockedConsole, 'debug', {
+        value: jest.fn(),
+        writable: false,
+        configurable: false,
+      });
+
+      const context: Record<string, unknown> = {
+        __ENV: {
+          SUPERCHECK_VARIABLES_B64: Buffer.from(
+            JSON.stringify({ ENV: 'ok' }),
+          ).toString('base64'),
+          SUPERCHECK_SECRETS_B64: Buffer.from('{}').toString('base64'),
+        },
+        console: lockedConsole,
+      };
+
+      context.globalThis = context;
+
+      expect(() => runInNewContext(script, context)).not.toThrow();
+      expect(context.__runtimeOk).toBe('ok');
+    });
+
     it('should redact secrets before persisting k6 console.log artifacts', async () => {
       const fsPromises = require('fs/promises');
       const writeFileMock = fsPromises.writeFile as jest.Mock;

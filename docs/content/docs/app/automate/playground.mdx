@@ -246,7 +246,7 @@ await page.goto(baseUrl);
 await page.fill('#password', password);
 ```
 
-Variables are resolved server-side before execution. Secrets are encrypted and automatically redacted from logs and screenshots.
+Variables are resolved server-side before execution. Secrets are encrypted and execution output is redacted before persistence/return.
 
 See [Variables](/docs/app/automate/variables) for setup instructions.
 

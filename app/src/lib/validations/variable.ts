@@ -14,8 +14,8 @@ export const createVariableSchema = z.object({
     .max(10000, "Value must be less than 10000 characters"),
   description: z
     .string()
-    .min(20, "Description must be at least 20 characters")
-    .max(300, "Description must be at most 300 characters"),
+    .max(300, "Description must be at most 300 characters")
+    .optional(),
   isSecret: z.boolean().default(false),
 });
 
@@ -35,7 +35,6 @@ export const updateVariableSchema = z.object({
     .optional(),
   description: z
     .string()
-    .min(20, "Description must be at least 20 characters")
     .max(300, "Description must be at most 300 characters")
     .optional(),
   isSecret: z.boolean().optional(),

@@ -40,10 +40,25 @@ export async function GET(
       );
     }
 
-    const canView = await hasPermission('monitor', 'view', {
-      organizationId: monitor.organizationId,
-      projectId: monitor.projectId,
-    });
+    const [canView, canEdit, canDelete, canToggle, userRole] = await Promise.all([
+      hasPermission('monitor', 'view', {
+        organizationId: monitor.organizationId,
+        projectId: monitor.projectId,
+      }),
+      hasPermission('monitor', 'update', {
+        organizationId: monitor.organizationId,
+        projectId: monitor.projectId,
+      }),
+      hasPermission('monitor', 'delete', {
+        organizationId: monitor.organizationId,
+        projectId: monitor.projectId,
+      }),
+      hasPermission('monitor', 'manage', {
+        organizationId: monitor.organizationId,
+        projectId: monitor.projectId,
+      }),
+      getUserProjectRole(userId, monitor.organizationId, monitor.projectId),
+    ]);
 
     if (!canView) {
       return NextResponse.json(
@@ -51,24 +66,6 @@ export async function GET(
         { status: 403 }
       );
     }
-
-    const canEdit = await hasPermission('monitor', 'update', {
-      organizationId: monitor.organizationId,
-      projectId: monitor.projectId,
-    });
-
-    const canDelete = await hasPermission('monitor', 'delete', {
-      organizationId: monitor.organizationId,
-      projectId: monitor.projectId,
-    });
-
-    const canToggle = await hasPermission('monitor', 'manage', {
-      organizationId: monitor.organizationId,
-      projectId: monitor.projectId,
-    });
-
-    // Get the user's actual role for this project
-    const userRole = await getUserProjectRole(userId, monitor.organizationId, monitor.projectId);
 
     return NextResponse.json({
       success: true,

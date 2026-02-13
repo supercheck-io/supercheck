@@ -1077,16 +1077,6 @@ function __scRedact(text) {
   return out;
 }
 
-if (typeof console !== 'undefined' && !(console).__scSecretPatched) {
-  const methods = ['log', 'info', 'warn', 'error', 'debug'];
-  for (const method of methods) {
-    if (typeof console[method] !== 'function') continue;
-    const original = console[method].bind(console);
-    console[method] = (...args) => original(...args.map((a) => typeof a === 'string' ? __scRedact(a) : a));
-  }
-  Object.defineProperty(console, '__scSecretPatched', { value: true, enumerable: false });
-}
-
 globalThis.getVariable = function getVariable(key, options = {}) {
   const value = __scVariables[key];
 

@@ -63,54 +63,22 @@ export async function GET(
       );
     }
 
-    const canViewSecrets = await hasPermission("variable", "view_secrets", {
-      organizationId: project[0].organizationId,
-      projectId,
-    });
-
-    // Return variable with decrypted value if permitted
+    // Return masked value for secrets. Use dedicated decrypt endpoint for explicit reveal.
     if (variable.isSecret) {
-      if (canViewSecrets && variable.encryptedValue) {
-        try {
-          const decryptedValue = decryptValue(variable.encryptedValue, projectId);
-          return NextResponse.json({
-            success: true,
-            data: {
-              id: variable.id,
-              projectId: variable.projectId,
-              key: variable.key,
-              value: decryptedValue, // Return decrypted value
-              isSecret: variable.isSecret,
-              description: variable.description,
-              createdByUserId: variable.createdByUserId,
-              createdAt: variable.createdAt,
-              updatedAt: variable.updatedAt,
-            },
-          });
-        } catch (error) {
-          console.error("Failed to decrypt value:", error);
-          return NextResponse.json(
-            { error: "Failed to decrypt secret value" },
-            { status: 500 }
-          );
-        }
-      } else {
-        // User can't view secrets, return encrypted placeholder
-        return NextResponse.json({
-          success: true,
-          data: {
-            id: variable.id,
-            projectId: variable.projectId,
-            key: variable.key,
-            value: "[ENCRYPTED]", // Don't expose encrypted value
-            isSecret: variable.isSecret,
-            description: variable.description,
-            createdByUserId: variable.createdByUserId,
-            createdAt: variable.createdAt,
-            updatedAt: variable.updatedAt,
-          },
-        });
-      }
+      return NextResponse.json({
+        success: true,
+        data: {
+          id: variable.id,
+          projectId: variable.projectId,
+          key: variable.key,
+          value: "[ENCRYPTED]",
+          isSecret: variable.isSecret,
+          description: variable.description,
+          createdByUserId: variable.createdByUserId,
+          createdAt: variable.createdAt,
+          updatedAt: variable.updatedAt,
+        },
+      });
     } else {
       // Regular variable, return as is
       return NextResponse.json({
@@ -234,6 +202,8 @@ export async function PUT(
         }
       }
 
+      const effectiveIsSecret = validatedData.isSecret ?? existingVariable.isSecret;
+
       // Prepare update data
       const updateData: Record<string, string | boolean | Date | null> = {
         updatedAt: new Date(),
@@ -244,50 +214,61 @@ export async function PUT(
       }
 
       if (validatedData.description !== undefined) {
-        updateData.description = validatedData.description;
+        const normalizedDescription = validatedData.description.trim();
+        updateData.description = normalizedDescription === "" ? null : normalizedDescription;
       }
 
       if (validatedData.isSecret !== undefined) {
         updateData.isSecret = validatedData.isSecret;
       }
 
-      // Handle value update
+      // Handle value transition/update rules
       if (validatedData.value !== undefined) {
-        if (validatedData.isSecret ?? existingVariable.isSecret) {
-          // Encrypt the new value
-          const encrypted = encryptValue(validatedData.value, projectId);
-          updateData.encryptedValue = encrypted;
+        if (effectiveIsSecret) {
+          updateData.encryptedValue = encryptValue(validatedData.value, projectId);
           updateData.value = "[ENCRYPTED]";
         } else {
-          // Store as plain text
           updateData.value = validatedData.value;
           updateData.encryptedValue = null;
         }
-      }
+      } else if (
+        validatedData.isSecret !== undefined &&
+        validatedData.isSecret !== existingVariable.isSecret
+      ) {
+        if (validatedData.isSecret) {
+          if (!existingVariable.value || existingVariable.value === "[ENCRYPTED]") {
+            return NextResponse.json(
+              {
+                error:
+                  "Cannot mark as secret without providing a value. The existing plaintext is unavailable.",
+              },
+              { status: 400 }
+            );
+          }
 
-      // If changing from secret to non-secret, decrypt the value
-      if (validatedData.isSecret === false && existingVariable.isSecret) {
-        try {
-          const decryptedValue = decryptValue(
-            existingVariable.encryptedValue || "",
-            projectId
-          );
-          updateData.value = decryptedValue;
-          updateData.encryptedValue = null;
-        } catch {
-          return NextResponse.json(
-            { error: "Cannot decrypt existing secret value" },
-            { status: 400 }
-          );
+          updateData.encryptedValue = encryptValue(existingVariable.value, projectId);
+          updateData.value = "[ENCRYPTED]";
+        } else {
+          if (!existingVariable.encryptedValue) {
+            return NextResponse.json(
+              {
+                error:
+                  "Cannot unmark as secret without providing a value. The encrypted value is unavailable.",
+              },
+              { status: 400 }
+            );
+          }
+
+          try {
+            updateData.value = decryptValue(existingVariable.encryptedValue, projectId);
+            updateData.encryptedValue = null;
+          } catch {
+            return NextResponse.json(
+              { error: "Cannot decrypt existing secret value" },
+              { status: 400 }
+            );
+          }
         }
-      }
-
-      // If changing from non-secret to secret, encrypt the existing value
-      if (validatedData.isSecret === true && !existingVariable.isSecret) {
-        const valueToEncrypt = validatedData.value || existingVariable.value;
-        const encrypted = encryptValue(valueToEncrypt, projectId);
-        updateData.encryptedValue = encrypted;
-        updateData.value = "[ENCRYPTED]";
       }
 
       // Update the variable
@@ -301,7 +282,7 @@ export async function PUT(
       const responseVariable = {
         ...updatedVariable,
         encryptedValue: undefined,
-        value: updatedVariable.isSecret ? "[ENCRYPTED]" : updatedVariable.value,
+        value: effectiveIsSecret ? "[ENCRYPTED]" : updatedVariable.value,
       };
 
       return NextResponse.json({
