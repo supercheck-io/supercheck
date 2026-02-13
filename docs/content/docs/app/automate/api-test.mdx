@@ -103,12 +103,12 @@ expect(response.headers()['content-type']).toContain('application/json');
  * Using project variables and secrets for API testing.
  * 
  * - getVariable() returns plain text configuration values
- * - getSecret() returns encrypted values (use .toString() to access)
+ * - getSecret() returns runtime-resolved secret values
  * 
  * @see /docs/app/automate/variables
  */
 const baseUrl = getVariable('API_BASE_URL');
-const apiKey = getSecret('API_KEY').toString();
+const apiKey = getSecret('API_KEY');
 
 const response = await request.get(`${baseUrl}/users`, {
   headers: { 'Authorization': `Bearer ${apiKey}` }
@@ -119,7 +119,7 @@ expect(response.ok()).toBeTruthy();
 
 ## Tips
 
-- Use `getSecret().toString()` for API keys (auto-redacted in logs)
+- Use `getSecret()` for API keys (execution output is redacted)
 - Set appropriate timeouts for slow endpoints
 - Validate response structure, not just status codes
 - Use Playwright's `request` context instead of `fetch` for better integration

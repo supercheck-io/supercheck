@@ -356,6 +356,12 @@ export class ExecutionService implements OnModuleDestroy {
     isMonitorExecution = false,
   ): Promise<TestResult> {
     const { testId, code } = task;
+    const runtimeVariables = task.variables ?? {};
+    const runtimeSecrets = task.secrets ?? {};
+    const runtimeEnv = this.buildVariableRuntimeEnv(
+      runtimeVariables,
+      runtimeSecrets,
+    );
 
     // Check concurrency limits (unless bypassed for monitors)
     if (
@@ -420,10 +426,15 @@ export class ExecutionService implements OnModuleDestroy {
       });
 
       // 3. Prepare test script content (container-only, no host files)
+      // Inject helper functions that resolve variables/secrets from runtime env,
+      // so secret values are not embedded in test source code.
       let testScript: { scriptContent: string; fileName: string };
 
       try {
-        testScript = this.prepareSingleTest(testId, code);
+        testScript = this.prepareSingleTest(
+          testId,
+          this.prependVariableRuntimeHelpers(code),
+        );
       } catch (error) {
         throw new Error(`Failed to prepare test: ${(error as Error).message}`);
       }
@@ -446,6 +457,20 @@ export class ExecutionService implements OnModuleDestroy {
         false,
         undefined, // No additional files for single test
         task.runId || undefined, // Pass runId for cancellation tracking
+        runtimeEnv,
+      );
+
+      execResult.stdout = this.redactSecretsFromText(
+        execResult.stdout,
+        runtimeSecrets,
+      );
+      execResult.stderr = this.redactSecretsFromText(
+        execResult.stderr,
+        runtimeSecrets,
+      );
+      execResult.error = this.redactSecretsFromText(
+        execResult.error,
+        runtimeSecrets,
       );
 
       // Check if this was a cancellation (exit code 137 = SIGKILL)
@@ -778,7 +803,10 @@ export class ExecutionService implements OnModuleDestroy {
           }
 
           // Ensure the script has proper trace configuration
-          const script = ensureProperTraceConfiguration(decodedScript, testId);
+          const script = ensureProperTraceConfiguration(
+            this.prependVariableRuntimeHelpers(decodedScript),
+            testId,
+          );
 
           // Prepare script for inline container execution
           // Prefix with zero-padded order number for correct sorting in Playwright report
@@ -847,6 +875,21 @@ export class ExecutionService implements OnModuleDestroy {
         true,
         additionalFiles, // Pass additional test files to execute in container
         runId, // Pass runId for cancellation tracking
+        this.buildVariableRuntimeEnv(task.variables ?? {}, task.secrets ?? {}),
+      );
+
+      const taskSecrets = task.secrets ?? {};
+      execResult.stdout = this.redactSecretsFromText(
+        execResult.stdout,
+        taskSecrets,
+      );
+      execResult.stderr = this.redactSecretsFromText(
+        execResult.stderr,
+        taskSecrets,
+      );
+      execResult.error = this.redactSecretsFromText(
+        execResult.error,
+        taskSecrets,
       );
 
       overallSuccess = execResult.success;
@@ -1067,6 +1110,7 @@ export class ExecutionService implements OnModuleDestroy {
     isJob: boolean = false,
     additionalFiles?: Record<string, string>,
     runId?: string,
+    runtimeEnvOverrides?: Record<string, string>,
   ): Promise<PlaywrightExecutionResult> {
     return this.executePlaywrightDirectly(
       testScript,
@@ -1074,6 +1118,7 @@ export class ExecutionService implements OnModuleDestroy {
       isJob,
       additionalFiles,
       runId,
+      runtimeEnvOverrides,
     );
   }
 
@@ -1091,6 +1136,7 @@ export class ExecutionService implements OnModuleDestroy {
     isJob: boolean,
     additionalFiles?: Record<string, string>,
     runId?: string,
+    runtimeEnvOverrides?: Record<string, string>,
   ): Promise<PlaywrightExecutionResult> {
     // For jobs with multiple tests, run playwright test /tmp/ to execute all tests
     // For single tests, target specific file
@@ -1129,6 +1175,7 @@ export class ExecutionService implements OnModuleDestroy {
         PLAYWRIGHT_TIMESTAMP: Date.now().toString(),
         // Set browsers path to pre-installed location in Docker image
         PLAYWRIGHT_BROWSERS_PATH: '/ms-playwright',
+        ...(runtimeEnvOverrides ?? {}),
       };
 
       this.logger.debug(
@@ -1599,6 +1646,7 @@ export class ExecutionService implements OnModuleDestroy {
     error?: string;
   }> {
     const startTime = Date.now();
+    const runtimeSecrets = this.decodeRuntimeSecretsFromEnv(options.env);
 
     // Validate execution mode: either scriptPath OR inlineScriptContent must be provided
     const useInlineScript = !!options.inlineScriptContent;
@@ -1646,18 +1694,31 @@ export class ExecutionService implements OnModuleDestroy {
       );
 
     // Return the container execution result with proper error context
+    const redactedStdout = this.redactSecretsFromText(
+      containerResult.stdout,
+      runtimeSecrets,
+    );
+    const redactedStderr = this.redactSecretsFromText(
+      containerResult.stderr,
+      runtimeSecrets,
+    );
+    const redactedError = this.redactSecretsFromText(
+      containerResult.error,
+      runtimeSecrets,
+    );
+
     if (!containerResult.success) {
       this.logger.error(
-        `[Container] Container execution failed: ${containerResult.error || 'Unknown error'}`,
+        `[Container] Container execution failed: ${redactedError || 'Unknown error'}`,
       );
     }
 
     return {
       success: containerResult.success,
-      stdout: containerResult.stdout,
-      stderr: containerResult.stderr,
+      stdout: redactedStdout,
+      stderr: redactedStderr,
       executionTimeMs: containerResult.duration,
-      error: containerResult.error,
+      error: redactedError,
     };
   }
 
@@ -1748,6 +1809,7 @@ export class ExecutionService implements OnModuleDestroy {
     executionTimeMs?: number;
   }> {
     const startTime = Date.now();
+    const runtimeSecrets = this.decodeRuntimeSecretsFromEnv(options.env);
     return new Promise((resolve) => {
       try {
         const childProcess = spawn(command, args, {
@@ -1841,22 +1903,30 @@ export class ExecutionService implements OnModuleDestroy {
 
         childProcess.stdout.on('data', (data: Buffer) => {
           const chunk = data.toString();
+          const redactedChunk = this.redactSecretsFromText(
+            chunk,
+            runtimeSecrets,
+          );
           if (stdout.length < MAX_BUFFER) {
-            stdout += chunk;
+            stdout += redactedChunk;
           } else if (stdout.length === MAX_BUFFER) {
             stdout += '...[TRUNCATED]';
           }
-          this.logger.debug(`STDOUT: ${chunk.trim()}`);
+          this.logger.debug(`STDOUT: ${redactedChunk.trim()}`);
         });
 
         childProcess.stderr.on('data', (data: Buffer) => {
           const chunk = data.toString();
+          const redactedChunk = this.redactSecretsFromText(
+            chunk,
+            runtimeSecrets,
+          );
           if (stderr.length < MAX_BUFFER) {
-            stderr += chunk;
+            stderr += redactedChunk;
           } else if (stderr.length === MAX_BUFFER) {
             stderr += '...[TRUNCATED]';
           }
-          this.logger.debug(`STDERR: ${chunk.trim()}`);
+          this.logger.debug(`STDERR: ${redactedChunk.trim()}`);
         });
 
         childProcess.on('close', (code) => {
@@ -1971,6 +2041,180 @@ export class ExecutionService implements OnModuleDestroy {
    */
   private getDurationSeconds(durationMs: number): number {
     return Math.floor(durationMs / 1000);
+  }
+
+  private buildVariableRuntimeEnv(
+    variables: Record<string, string>,
+    secrets: Record<string, string>,
+  ): Record<string, string> {
+    return {
+      SUPERCHECK_VARIABLES_B64: Buffer.from(
+        JSON.stringify(variables ?? {}),
+      ).toString('base64'),
+      SUPERCHECK_SECRETS_B64: Buffer.from(
+        JSON.stringify(secrets ?? {}),
+      ).toString('base64'),
+    };
+  }
+
+  private prependVariableRuntimeHelpers(script: string): string {
+    const runtimeHelpers = `
+(() => {
+  const env = (typeof process !== 'undefined' && process.env) ? process.env : {};
+
+  function parseMap(key) {
+    try {
+      const encoded = env[key];
+      if (!encoded) return {};
+      return JSON.parse(Buffer.from(encoded, 'base64').toString('utf8')) || {};
+    } catch {
+      return {};
+    }
+  }
+
+  const __scVariables = parseMap('SUPERCHECK_VARIABLES_B64');
+  const __scSecrets = parseMap('SUPERCHECK_SECRETS_B64');
+  const __scSecretValues = Object.values(__scSecrets).filter((v) => typeof v === 'string' && v.length > 0);
+
+  function redactText(text) {
+    if (typeof text !== 'string' || __scSecretValues.length === 0) return text;
+    let out = text;
+    for (const secret of __scSecretValues) {
+      out = out.split(secret).join('[SECRET]');
+    }
+    return out;
+  }
+
+  function redactValue(value) {
+    if (typeof value === 'string') return redactText(value);
+    if (Array.isArray(value)) return value.map(redactValue);
+    if (value && typeof value === 'object') {
+      const clone = {};
+      for (const [k, v] of Object.entries(value)) {
+        clone[k] = redactValue(v);
+      }
+      return clone;
+    }
+    return value;
+  }
+
+  if (typeof console !== 'undefined' && !(console).__scSecretPatched) {
+    const methods = ['log', 'info', 'warn', 'error', 'debug'];
+    for (const method of methods) {
+      if (typeof console[method] !== 'function') continue;
+      const original = console[method].bind(console);
+      console[method] = (...args) => original(...args.map(redactValue));
+    }
+    Object.defineProperty(console, '__scSecretPatched', { value: true, enumerable: false });
+  }
+
+  globalThis.getVariable = function getVariable(key, options = {}) {
+    const value = __scVariables[key];
+
+    if (value === undefined) {
+      if (options.required) {
+        throw new Error(\`Required variable '\${key}' is not defined\`);
+      }
+      return options.default !== undefined ? options.default : '';
+    }
+
+    if (options.type === 'number') {
+      const num = Number(value);
+      if (Number.isNaN(num)) {
+        throw new Error(\`Variable '\${key}' cannot be converted to number: \${value}\`);
+      }
+      return num;
+    }
+
+    if (options.type === 'boolean') {
+      return String(value).toLowerCase() === 'true' || String(value) === '1';
+    }
+
+    return value;
+  };
+
+  globalThis.getSecret = function getSecret(key, options = {}) {
+    const value = __scSecrets[key];
+
+    if (value === undefined) {
+      if (options.required) {
+        throw new Error(\`Required secret '\${key}' is not defined\`);
+      }
+      return options.default !== undefined ? options.default : '';
+    }
+
+    if (options.type === 'number') {
+      const num = Number(value);
+      if (Number.isNaN(num)) {
+        throw new Error(\`Secret '\${key}' cannot be converted to number\`);
+      }
+      return num;
+    }
+
+    if (options.type === 'boolean') {
+      return String(value).toLowerCase() === 'true' || String(value) === '1';
+    }
+
+    return value;
+  };
+})();
+`;
+
+    return `${runtimeHelpers}\n${script}`;
+  }
+
+  private redactSecretsFromText(
+    text: string | null | undefined,
+    secrets: Record<string, string>,
+  ): string {
+    if (!text) {
+      return text ?? '';
+    }
+
+    const secretValues = Object.values(secrets).filter(
+      (value) => typeof value === 'string' && value.length > 0,
+    );
+
+    if (secretValues.length === 0) {
+      return text;
+    }
+
+    let redacted = text;
+    for (const secret of secretValues) {
+      redacted = redacted.split(secret).join('[SECRET]');
+    }
+
+    return redacted;
+  }
+
+  private decodeRuntimeSecretsFromEnv(
+    env?: Record<string, string | undefined>,
+  ): Record<string, string> {
+    const encodedSecrets = env?.SUPERCHECK_SECRETS_B64;
+    if (!encodedSecrets) {
+      return {};
+    }
+
+    try {
+      const parsed = JSON.parse(
+        Buffer.from(encodedSecrets, 'base64').toString('utf8'),
+      ) as unknown;
+
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        return {};
+      }
+
+      const secrets: Record<string, string> = {};
+      for (const [key, value] of Object.entries(parsed)) {
+        if (typeof value === 'string') {
+          secrets[key] = value;
+        }
+      }
+
+      return secrets;
+    } catch {
+      return {};
+    }
   }
 
   /**

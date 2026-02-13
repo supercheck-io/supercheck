@@ -337,12 +337,13 @@ export class StandardizedErrorHandler {
    * Map common errors to standardized format
    */
   mapError(error: unknown, context?: ErrorContext): StandardError {
-    const isErrorObject = error !== null && error !== undefined && typeof error === 'object';
+    const isErrorObject =
+      error !== null && error !== undefined && typeof error === 'object';
     const err = (isErrorObject ? error : {}) as Record<string, unknown>;
     const code = typeof err.code === 'string' ? err.code : undefined;
     let message: string;
     if (isErrorObject && typeof err.message === 'string') {
-      message = err.message as string;
+      message = err.message;
     } else if (typeof error === 'string') {
       message = error;
     } else {

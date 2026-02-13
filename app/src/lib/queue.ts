@@ -85,6 +85,8 @@ export interface K6ExecutionTask {
   organizationId: string;
   projectId: string;
   script: string;
+  variables?: Record<string, string>; // Resolved variables for k6 execution
+  secrets?: Record<string, string>; // Resolved secrets for k6 execution
   jobId?: string | null;
   tests: Array<{ id: string; script: string }>;
   location?: string | null;

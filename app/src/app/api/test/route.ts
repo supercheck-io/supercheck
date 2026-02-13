@@ -11,7 +11,7 @@ import { playwrightValidationService } from "@/lib/playwright-validator";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
-import { resolveProjectVariables, extractVariableNames, generateVariableFunctions, type VariableResolutionResult } from "@/lib/variable-resolver";
+import { resolveProjectVariables, extractVariableNames, type VariableResolutionResult } from "@/lib/variable-resolver";
 import { validateK6Script } from "@/lib/k6-validator";
 import { db } from "@/utils/db";
 import { runs, type K6Location } from "@/db/schema";
@@ -118,7 +118,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // For k6 tests, skip variable resolution (k6 doesn't support it)
+    // Resolve variables and secrets for both Playwright and k6 tests.
+    // Helper injection happens in worker runtime to avoid embedding secret values in script source.
     let scriptToExecute = code;
     let variableResolution: VariableResolutionResult = {
       variables: {},
@@ -128,35 +129,26 @@ export async function POST(request: NextRequest) {
     let usedVariables: string[] = [];
     let missingVariables: string[] = [];
 
-    if (!isPerformanceTest) {
-      // Only resolve variables for Playwright tests
-      console.log("Resolving project variables...");
-      variableResolution = await resolveProjectVariables(project.id);
+    console.log("Resolving project variables...");
+    variableResolution = await resolveProjectVariables(project.id);
 
-      if (variableResolution.errors && variableResolution.errors.length > 0) {
-        console.warn("Variable resolution errors:", variableResolution.errors);
-        // Continue execution but log warnings
-      }
+    if (variableResolution.errors && variableResolution.errors.length > 0) {
+      console.warn("Variable resolution errors:", variableResolution.errors);
+      // Continue execution but log warnings
+    }
 
-      // Extract variable names used in the script for validation
-      usedVariables = extractVariableNames(code);
-      console.log(`Script uses ${usedVariables.length} variables: ${usedVariables.join(', ')}`);
+    // Extract variable names used in the script for validation
+    usedVariables = extractVariableNames(code);
+    console.log(`Script uses ${usedVariables.length} variables: ${usedVariables.join(', ')}`);
 
-      // Check if all used variables are available (check both variables and secrets)
-      missingVariables = usedVariables.filter(varName =>
-        !variableResolution.variables.hasOwnProperty(varName) &&
-        !variableResolution.secrets.hasOwnProperty(varName)
-      );
-      if (missingVariables.length > 0) {
-        console.warn(`Script references undefined variables: ${missingVariables.join(', ')}`);
-        // We'll continue execution and let getVariable/getSecret handle missing variables with defaults
-      }
-
-      // Generate both getVariable and getSecret function implementations
-      const variableFunctionCode = generateVariableFunctions(variableResolution.variables, variableResolution.secrets);
-
-      // Prepend the variable functions to the user's script
-      scriptToExecute = variableFunctionCode + '\n' + code;
+    // Check if all used variables are available (check both variables and secrets)
+    missingVariables = usedVariables.filter(varName =>
+      !variableResolution.variables.hasOwnProperty(varName) &&
+      !variableResolution.secrets.hasOwnProperty(varName)
+    );
+    if (missingVariables.length > 0) {
+      console.warn(`Script references undefined variables: ${missingVariables.join(', ')}`);
+      // We'll continue execution and let getVariable/getSecret handle missing variables with defaults
     }
 
     let resolvedLocation: K6Location | null = null;
@@ -216,6 +208,8 @@ export async function POST(request: NextRequest) {
           jobId: null,
           testId,
           script: code,
+          variables: variableResolution.variables,
+          secrets: variableResolution.secrets,
           tests: [{ id: testId, script: code }],
           organizationId,
           projectId: project.id,

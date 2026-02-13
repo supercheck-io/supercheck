@@ -1196,39 +1196,6 @@ declare type ReadStream = any;
 // === Supercheck Global Functions ===
 
 /**
- * Protected secret value that prevents accidental exposure while maintaining functionality.
- * 
- * This interface ensures that sensitive values cannot be accidentally logged, serialized,
- * or exposed through common inspection methods, while still working seamlessly with
- * Playwright methods and other APIs that require the actual secret value.
- * 
- * @example
- * ```typescript
- * const token = getSecret('API_TOKEN');
- * console.log(token);              // Outputs: "[SECRET]"
- * String(token);                   // Returns: "[SECRET]"
- * JSON.stringify({token});         // {"token":"[SECRET]"}
- * 
- * // But works perfectly for actual usage:
- * await page.setExtraHTTPHeaders({
- *   'Authorization': `Bearer ${token}` // Uses actual token value
- * });
- * ```
- */
-interface ProtectedSecret {
-  /** Returns the actual secret value for operations and type coercion */
-  valueOf(): string;
-  /** Returns "[SECRET]" to prevent console logging */
-  toString(): string;
-  /** Returns "[SECRET]" to prevent JSON serialization */
-  toJSON(): string;
-  /** Symbol.toPrimitive implementation for safe type coercion */
-  [Symbol.toPrimitive](hint: 'string' | 'number' | 'default'): string | number;
-  /** Prevents Node.js util.inspect from showing the actual value */
-  readonly [Symbol.toStringTag]: string;
-}
-
-/**
  * Configuration options for variable and secret retrieval functions.
  * 
  * @template T - The expected type of the default value
@@ -1305,29 +1272,25 @@ declare function getVariable<T = string>(
 ): T extends number ? number : T extends boolean ? boolean : string;
 
 /**
- * Retrieves a project secret value with enterprise-grade security protection.
+ * Retrieves a project secret value.
  * 
  * Project secrets are encrypted at rest using AES-128 encryption and are designed
  * for sensitive values such as passwords, API keys, tokens, and database credentials.
- * The returned value is protected from accidental exposure through logging, serialization,
- * and inspection while maintaining full compatibility with APIs that require the actual value.
+ * Values are resolved at runtime and execution output is redacted to avoid accidental exposure.
  * 
  * @param key - The secret key name as defined in project settings
  * @param options - Configuration options for retrieval and type conversion
- * @returns A protected secret object (default) or typed value when `options.type` is specified
+ * @returns Secret value with optional type conversion
  * 
  * @throws {Error} When `options.required` is true and the secret is not defined
  * @throws {Error} When type conversion fails (e.g., invalid number format)
  * @throws {Error} When decryption fails due to invalid encryption key or corrupted data
  * 
- * @example Basic usage with ProtectedSecret (recommended)
+ * @example Basic usage
  * ```typescript
  * const password = getSecret('USER_PASSWORD');
  * const apiToken = getSecret('API_TOKEN');
- * 
- * // Safe for logging - will show "[SECRET]" instead of actual value
- * console.log(`Using token: ${apiToken}`);
- * 
+ *
  * // Works seamlessly with Playwright and other APIs
  * await page.fill('#password', password);
  * await page.setExtraHTTPHeaders({
@@ -1335,13 +1298,12 @@ declare function getVariable<T = string>(
  * });
  * ```
  * 
- * @example Explicit type conversion (returns actual value)
+ * @example Explicit type conversion
  * ```typescript
  * const apiKey = getSecret('API_KEY', { type: 'string' });
  * const dbPort = getSecret('DB_PORT', { type: 'number' });
  * const sslEnabled = getSecret('SSL_ENABLED', { type: 'boolean' });
- * 
- * // These return actual typed values, not ProtectedSecret objects
+ *
  * console.log(typeof apiKey);    // "string"
  * console.log(typeof dbPort);    // "number"
  * console.log(typeof sslEnabled); // "boolean"
@@ -1353,10 +1315,10 @@ declare function getVariable<T = string>(
  *   required: true,
  *   default: 'fallback-password' // Not recommended for production
  * });
- * 
+ *
  * try {
  *   const token = getSecret('OPTIONAL_TOKEN');
- *   if (token.valueOf()) {
+ *   if (token) {
  *     // Token exists, use it
  *   }
  * } catch (error) {
@@ -1366,21 +1328,18 @@ declare function getVariable<T = string>(
  * 
  * @security
  * - Secrets are encrypted using AES-128-GCM with project-specific context
- * - Protected from console.log(), JSON.stringify(), and util.inspect()
- * - Returns "[SECRET]" for any string coercion or inspection
- * - Actual values only accessible through valueOf() or direct API usage
- * - No secret values are ever stored in browser memory unencrypted
+ * - Secret values are not embedded in generated script source
+ * - Runtime console output and execution logs are redacted
+ * - No secret values are ever sent to the browser UI from variable APIs
  * 
  * @see {@link getVariable} For non-sensitive configuration values
- * @see {@link ProtectedSecret} For details on the protection mechanism
  */
-declare function getSecret<T = ProtectedSecret>(
+declare function getSecret<T = string>(
   key: string,
   options?: VariableOptions<T>
-): T extends 'string' ? string 
-  : T extends 'number' ? number 
-  : T extends 'boolean' ? boolean 
-  : ProtectedSecret;
+): T extends number ? number
+  : T extends boolean ? boolean
+  : string;
 
 // === Async Utilities ===
 

@@ -35,12 +35,12 @@ export async function POST(request: Request) {
   try {
     // Check authentication and get project context
     const authCtx = await requireAuthContext();
-    const { userId, project, organizationId } = authCtx;
+    const { userId, project, organizationId, isCliAuth } = authCtx;
     
     const data = await request.json();
     jobId = data.jobId as string;
     const testData = data.tests;
-    const trigger = data.trigger as JobTrigger; // Get trigger from request body
+    const trigger = data.trigger as JobTrigger; // Requested trigger from request body
     
     // Validate trigger value
     if (!trigger || !['manual', 'remote', 'schedule'].includes(trigger)) {
@@ -50,6 +50,9 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
+
+    // Normalize trigger source: CLI-initiated remote executions should always be tracked as remote.
+    const effectiveTrigger: JobTrigger = isCliAuth ? "remote" : trigger;
 
     console.log(`Received job execution request:`, { jobId, testCount: testData?.length });
     
@@ -146,7 +149,7 @@ export async function POST(request: Request) {
       projectId: jobRecord?.projectId ?? null,
       status: "queued", // Start as queued, will be updated after capacity reservation
       startedAt: startTime,
-      trigger, // Include trigger value
+      trigger: effectiveTrigger,
       location: (resolvedLocation ?? null) as K6Location | null,
       metadata: {
         jobType,
@@ -310,6 +313,8 @@ export async function POST(request: Request) {
           jobId,
           testId: primaryTestId,
           script: primaryScript,
+          variables: variableResolution.variables,
+          secrets: variableResolution.secrets,
           tests: processedTestScripts.map((script) => ({
             id: script.id,
             script: script.script,
@@ -334,7 +339,7 @@ export async function POST(request: Request) {
           testScripts: processedTestScripts,
           runId: runId,
           originalJobId: jobId,
-          trigger: trigger,
+          trigger: effectiveTrigger,
           organizationId: jobRecord?.organizationId || "",
           projectId: jobRecord?.projectId || "",
           variables: variableResolution.variables,
@@ -361,7 +366,7 @@ export async function POST(request: Request) {
         resourceId: jobId,
         metadata: {
           runId,
-          trigger,
+          trigger: effectiveTrigger,
           testsCount: testScripts.length,
           projectId: project.id,
           projectName: project.name,

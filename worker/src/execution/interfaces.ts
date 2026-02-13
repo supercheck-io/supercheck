@@ -56,6 +56,8 @@ export interface TestExecutionTask {
   // Consider passing the code directly instead of a path
   // as the worker service doesn't share the filesystem
   code: string;
+  variables?: Record<string, string>; // Resolved variables for execution runtime
+  secrets?: Record<string, string>; // Resolved secrets for execution runtime
   // testPath: string; // Original field - needs adaptation
   runId?: string | null;
   organizationId?: string;

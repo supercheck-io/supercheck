@@ -237,9 +237,9 @@ Access project-level configuration and secrets in your tests:
 const baseUrl = getVariable('BASE_URL');
 const timeout = getVariable('TIMEOUT');
 
-// Secrets require .toString() to access the value
-const apiKey = getSecret('API_KEY').toString();
-const password = getSecret('DB_PASSWORD').toString();
+// Secrets are resolved at runtime and redacted from logs
+const apiKey = getSecret('API_KEY');
+const password = getSecret('DB_PASSWORD');
 
 // Using in Playwright
 await page.goto(baseUrl);

@@ -1,40 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
-import { headers } from "next/headers";
 import { db } from "@/utils/db";
-import { auth } from "@/utils/auth";
 import { projectVariables, projects } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
-import {
-  canCreateVariableInProject,
-  canDeleteVariableInProject,
-  canViewSecretVariableInProject,
-} from "@/lib/rbac/middleware";
+import { hasPermission } from "@/lib/rbac/middleware";
+import { requireUserAuthContext, isAuthError } from "@/lib/auth-context";
 import { createVariableSchema } from "@/lib/validations/variable";
 import { encryptValue } from "@/lib/encryption";
 import { z } from "zod";
 
 export async function GET(request: NextRequest) {
   try {
-    // Get authenticated user
-    const session = await auth.api.getSession({
-      headers: await headers(),
-    });
-
-    if (!session) {
-      return NextResponse.json(
-        { error: "Authentication required" },
-        { status: 401 }
-      );
-    }
-
-    const userId = session.user.id;
+    await requireUserAuthContext();
     const url = new URL(request.url);
     const projectId =
       url.pathname.split("/projects/")[1]?.split("/")[0] || "";
 
     // Verify project exists
     const project = await db
-      .select()
+      .select({ id: projects.id, organizationId: projects.organizationId })
       .from(projects)
       .where(eq(projects.id, projectId))
       .limit(1);
@@ -46,10 +29,33 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Check permissions using centralized functions
-    const canCreate = await canCreateVariableInProject(userId, projectId);
-    const canDelete = await canDeleteVariableInProject(userId, projectId);
-    const canViewSecrets = await canViewSecretVariableInProject(userId, projectId);
+    const organizationId = project[0].organizationId;
+
+    // SECURITY: Always enforce explicit variable:view access before listing variables
+    const canView = await hasPermission("variable", "view", {
+      organizationId,
+      projectId,
+    });
+
+    if (!canView) {
+      return NextResponse.json(
+        { error: "Insufficient permissions to view variables" },
+        { status: 403 }
+      );
+    }
+
+    const canCreate = await hasPermission("variable", "create", {
+      organizationId,
+      projectId,
+    });
+    const canDelete = await hasPermission("variable", "delete", {
+      organizationId,
+      projectId,
+    });
+    const canViewSecrets = await hasPermission("variable", "view_secrets", {
+      organizationId,
+      projectId,
+    });
 
     // Fetch variables
     // Using ID ordering instead of createdAt since UUIDv7 is time-ordered (PostgreSQL 18+)
@@ -87,6 +93,13 @@ export async function GET(request: NextRequest) {
       canManage: canDelete,
     });
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
+
     console.error("Error fetching project variables:", error);
     return NextResponse.json(
       { error: "Internal server error" },
@@ -100,23 +113,11 @@ export async function POST(request: NextRequest) {
     const url = new URL(request.url);
     const projectId = url.pathname.split("/projects/")[1]?.split("/")[0] || "";
 
-    // Get authenticated user
-    const session = await auth.api.getSession({
-      headers: await headers(),
-    });
-
-    if (!session) {
-      return NextResponse.json(
-        { error: "Authentication required" },
-        { status: 401 }
-      );
-    }
-
-    const userId = session.user.id;
+    const { userId } = await requireUserAuthContext();
 
     // Verify project exists and user has permission to create variables
     const project = await db
-      .select()
+      .select({ id: projects.id, organizationId: projects.organizationId })
       .from(projects)
       .where(eq(projects.id, projectId))
       .limit(1);
@@ -128,8 +129,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check permission using centralized function
-    const canCreate = await canCreateVariableInProject(userId, projectId);
+    const canCreate = await hasPermission("variable", "create", {
+      organizationId: project[0].organizationId,
+      projectId,
+    });
     if (!canCreate) {
       return NextResponse.json(
         { error: "Insufficient permissions to create variables" },
@@ -223,6 +226,13 @@ export async function POST(request: NextRequest) {
       );
     }
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
+
     console.error("Error creating project variable:", error);
     return NextResponse.json(
       { error: "Internal server error" },

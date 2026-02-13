@@ -1,14 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { headers } from "next/headers";
 import { db } from "@/utils/db";
-import { auth } from "@/utils/auth";
 import { projectVariables, projects } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
-import {
-  canUpdateVariableInProject,
-  canDeleteVariableInProject,
-  canViewSecretVariableInProject,
-} from "@/lib/rbac/middleware";
+import { hasPermission } from "@/lib/rbac/middleware";
+import { requireUserAuthContext, isAuthError } from "@/lib/auth-context";
 import { updateVariableSchema } from "@/lib/validations/variable";
 import { encryptValue, decryptValue } from "@/lib/encryption";
 import { z } from "zod";
@@ -22,23 +17,11 @@ export async function GET(
     const projectId = resolvedParams.id;
     const variableId = resolvedParams.variableId;
 
-    // Get authenticated user
-    const session = await auth.api.getSession({
-      headers: await headers(),
-    });
-
-    if (!session) {
-      return NextResponse.json(
-        { error: "Authentication required" },
-        { status: 401 }
-      );
-    }
-
-    const userId = session.user.id;
+    await requireUserAuthContext();
 
     // Get project info for organization ID
     const project = await db
-      .select()
+      .select({ id: projects.id, organizationId: projects.organizationId })
       .from(projects)
       .where(eq(projects.id, projectId))
       .limit(1);
@@ -47,6 +30,18 @@ export async function GET(
       return NextResponse.json(
         { error: "Project not found" },
         { status: 404 }
+      );
+    }
+
+    const canView = await hasPermission("variable", "view", {
+      organizationId: project[0].organizationId,
+      projectId,
+    });
+
+    if (!canView) {
+      return NextResponse.json(
+        { error: "Insufficient permissions to view variables" },
+        { status: 403 }
       );
     }
 
@@ -68,11 +63,10 @@ export async function GET(
       );
     }
 
-    // Check if user can view secret values using centralized function
-    const canViewSecrets = await canViewSecretVariableInProject(
-      userId,
-      projectId
-    );
+    const canViewSecrets = await hasPermission("variable", "view_secrets", {
+      organizationId: project[0].organizationId,
+      projectId,
+    });
 
     // Return variable with decrypted value if permitted
     if (variable.isSecret) {
@@ -135,6 +129,13 @@ export async function GET(
       });
     }
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
+
     console.error("Error fetching variable:", error);
     return NextResponse.json(
       { error: "Internal server error" },
@@ -152,23 +153,11 @@ export async function PUT(
     const projectId = resolvedParams.id;
     const variableId = resolvedParams.variableId;
 
-    // Get authenticated user
-    const session = await auth.api.getSession({
-      headers: await headers(),
-    });
-
-    if (!session) {
-      return NextResponse.json(
-        { error: "Authentication required" },
-        { status: 401 }
-      );
-    }
-
-    const userId = session.user.id;
+    await requireUserAuthContext();
 
     // Get project info for organization ID
     const project = await db
-      .select()
+      .select({ id: projects.id, organizationId: projects.organizationId })
       .from(projects)
       .where(eq(projects.id, projectId))
       .limit(1);
@@ -180,8 +169,10 @@ export async function PUT(
       );
     }
 
-    // Check permission to update variables using centralized function
-    const canUpdate = await canUpdateVariableInProject(userId, projectId);
+    const canUpdate = await hasPermission("variable", "update", {
+      organizationId: project[0].organizationId,
+      projectId,
+    });
     if (!canUpdate) {
       return NextResponse.json(
         { error: "Insufficient permissions to update variables" },
@@ -332,6 +323,13 @@ export async function PUT(
       );
     }
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
+
     console.error("Error updating project variable:", error);
     return NextResponse.json(
       { error: "Internal server error" },
@@ -349,23 +347,11 @@ export async function DELETE(
     const projectId = resolvedParams.id;
     const variableId = resolvedParams.variableId;
 
-    // Get authenticated user
-    const session = await auth.api.getSession({
-      headers: await headers(),
-    });
-
-    if (!session) {
-      return NextResponse.json(
-        { error: "Authentication required" },
-        { status: 401 }
-      );
-    }
-
-    const userId = session.user.id;
+    await requireUserAuthContext();
 
     // Get project info for organization ID
     const project = await db
-      .select()
+      .select({ id: projects.id, organizationId: projects.organizationId })
       .from(projects)
       .where(eq(projects.id, projectId))
       .limit(1);
@@ -377,8 +363,10 @@ export async function DELETE(
       );
     }
 
-    // Check permission to delete variables using centralized function
-    const canDelete = await canDeleteVariableInProject(userId, projectId);
+    const canDelete = await hasPermission("variable", "delete", {
+      organizationId: project[0].organizationId,
+      projectId,
+    });
     if (!canDelete) {
       return NextResponse.json(
         { error: "Insufficient permissions to delete variables" },
@@ -414,6 +402,13 @@ export async function DELETE(
       message: "Variable deleted successfully",
     });
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
+
     console.error("Error deleting project variable:", error);
     return NextResponse.json(
       { error: "Internal server error" },
