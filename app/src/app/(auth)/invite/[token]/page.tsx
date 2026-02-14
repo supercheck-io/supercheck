@@ -117,8 +117,8 @@ export default function InvitePage({
     }
   };
 
-  const getRoleBadgeStyle = (role: string) => {
-    switch (role.toLowerCase()) {
+  const getRoleBadgeStyle = (role: string | undefined) => {
+    switch (role?.toLowerCase()) {
       case "org_owner":
         return "bg-purple-500/10 text-purple-500 border-purple-500/20";
       case "org_admin":
@@ -132,9 +132,10 @@ export default function InvitePage({
     }
   };
 
-  const formatRoleName = (role: string) => {
+  const formatRoleName = (role: string | undefined) => {
+    if (!role) return "Member";
     return role
-      .replace("_", " ")
+      .replace(/_/g, " ")
       .split(" ")
       .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
       .join(" ");

@@ -217,7 +217,7 @@ const data = {
       title: "Docs",
       url: "https://supercheck.io/docs/app/welcome",
       icon: BookOpenText,
-      badge: "v1.2.3-canary.26",
+      badge: "v1.2.3-canary.27",
     },
   ],
   documents: [

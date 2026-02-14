@@ -6,6 +6,7 @@ import { getUserOrgRole } from '@/lib/rbac/middleware';
 import { requireUserAuthContext, isAuthError } from '@/lib/auth-context';
 import { Role } from '@/lib/rbac/permissions';
 import { logAuditEvent } from '@/lib/audit-logger';
+import { updateMemberSchema } from '@/lib/validations/member';
 
 export async function PUT(
   request: NextRequest,
@@ -33,14 +34,40 @@ export async function PUT(
       );
     }
 
-    const { role, projectAssignments } = await request.json();
+    const body = await request.json();
 
-    if (!role || !['project_viewer', 'project_editor', 'project_admin', 'org_admin', 'org_owner'].includes(role)) {
+    if (body.projectAssignments !== undefined && !Array.isArray(body.projectAssignments)) {
       return NextResponse.json(
-        { error: 'Invalid role provided' },
+        { error: 'Invalid project assignments' },
         { status: 400 }
       );
     }
+
+    const selectedProjects = Array.isArray(body.projectAssignments)
+      ? body.projectAssignments.map((p: unknown) => {
+          if (typeof p === 'string') return p;
+          if (p && typeof p === 'object' && 'projectId' in p) {
+            return (p as { projectId?: unknown }).projectId;
+          }
+          return undefined;
+        })
+      : [];
+
+    // Validate request body using Zod schema
+    const parseResult = updateMemberSchema.safeParse({
+      role: body.role,
+      selectedProjects,
+    });
+
+    if (!parseResult.success) {
+      const firstError = parseResult.error.errors[0];
+      return NextResponse.json(
+        { error: firstError?.message || 'Invalid request data' },
+        { status: 400 }
+      );
+    }
+
+    const { role, selectedProjects: selectedProjectIds } = parseResult.data;
 
     // Prevent changing owner role
     const existingMember = await db
@@ -80,22 +107,27 @@ export async function PUT(
       );
     }
 
+    // Prevent org_admin from assigning org_admin role (only org_owner can promote to org_admin)
+    if (role === 'org_admin' && orgRole !== Role.ORG_OWNER) {
+      return NextResponse.json(
+        { error: 'Only organization owners can assign the org_admin role' },
+        { status: 403 }
+      );
+    }
+
+    // Prevent org_admin from modifying another org_admin (only org_owner can)
+    if (existingMember[0].role === 'org_admin' && orgRole !== Role.ORG_OWNER) {
+      return NextResponse.json(
+        { error: 'Only organization owners can modify org admin members' },
+        { status: 403 }
+      );
+    }
+
     const oldRole = existingMember[0].role;
 
     // No role conversion needed - store new RBAC roles directly
 
-    // Update member role
-    await db
-      .update(member)
-      .set({ 
-        role: role
-      })
-      .where(and(
-        eq(member.userId, resolvedParams.memberId),
-        eq(member.organizationId, organizationId)
-      ));
-
-    // Get current project assignments for audit logging
+    // Get current project assignments BEFORE the transaction for audit logging
     const currentProjectAssignments = await db
       .select({
         projectId: projectMembers.projectId,
@@ -112,65 +144,80 @@ export async function PUT(
 
     const oldProjectIds = currentProjectAssignments.map(p => p.projectId);
 
-    // Handle project assignments if provided and not project_viewer
-    if (projectAssignments && Array.isArray(projectAssignments) && role !== 'project_viewer') {
-      // First, remove all existing project assignments for this user in this org
-      const orgProjectIds = await db
-        .select({ id: projects.id })
-        .from(projects)
-        .where(eq(projects.organizationId, organizationId));
-      
-      if (orgProjectIds.length > 0) {
-        await db
-          .delete(projectMembers)
-          .where(
-            and(
-              eq(projectMembers.userId, resolvedParams.memberId),
-              inArray(projectMembers.projectId, orgProjectIds.map(p => p.id))
-            )
-          );
-      }
+    // SECURITY: Wrap all role update operations in a transaction
+    // to prevent partial state (e.g., role updated but project assignments not changed)
+    await db.transaction(async (tx) => {
+      // Update member role
+      await tx
+        .update(member)
+        .set({ 
+          role: role
+        })
+        .where(and(
+          eq(member.userId, resolvedParams.memberId),
+          eq(member.organizationId, organizationId)
+        ));
 
-      // Then add new project assignments
-      if (projectAssignments.length > 0) {
-        const validProjectIds = await db
+      // Handle project assignments if provided and not project_viewer
+      if (selectedProjectIds.length > 0 && role !== 'project_viewer') {
+        // First, remove all existing project assignments for this user in this org
+        const orgProjectIds = await tx
           .select({ id: projects.id })
           .from(projects)
-          .where(
-            and(
-              eq(projects.organizationId, organizationId),
-              inArray(projects.id, projectAssignments.map((p: { projectId: string }) => p.projectId))
-            )
-          );
+          .where(eq(projects.organizationId, organizationId));
+        
+        if (orgProjectIds.length > 0) {
+          await tx
+            .delete(projectMembers)
+            .where(
+              and(
+                eq(projectMembers.userId, resolvedParams.memberId),
+                inArray(projectMembers.projectId, orgProjectIds.map(p => p.id))
+              )
+            );
+        }
 
-        if (validProjectIds.length > 0) {
-          await db.insert(projectMembers).values(
-            validProjectIds.map(project => ({
-              userId: resolvedParams.memberId,
-              projectId: project.id,
-              role: role // Use the same role for all project assignments
-            }))
-          );
+        // Then add new project assignments
+        if (selectedProjectIds.length > 0) {
+          const validProjectIds = await tx
+            .select({ id: projects.id })
+            .from(projects)
+            .where(
+              and(
+                eq(projects.organizationId, organizationId),
+                inArray(projects.id, selectedProjectIds)
+              )
+            );
+
+          if (validProjectIds.length > 0) {
+            await tx.insert(projectMembers).values(
+              validProjectIds.map(project => ({
+                userId: resolvedParams.memberId,
+                projectId: project.id,
+                role: role // Use the same role for all project assignments
+              }))
+            );
+          }
+        }
+      } else if (role === 'project_viewer') {
+        // For project_viewer, remove all specific project assignments since they get access to all
+        const orgProjectIds2 = await tx
+          .select({ id: projects.id })
+          .from(projects)
+          .where(eq(projects.organizationId, organizationId));
+        
+        if (orgProjectIds2.length > 0) {
+          await tx
+            .delete(projectMembers)
+            .where(
+              and(
+                eq(projectMembers.userId, resolvedParams.memberId),
+                inArray(projectMembers.projectId, orgProjectIds2.map(p => p.id))
+              )
+            );
         }
       }
-    } else if (role === 'project_viewer') {
-      // For project_viewer, remove all specific project assignments since they get access to all
-      const orgProjectIds2 = await db
-        .select({ id: projects.id })
-        .from(projects)
-        .where(eq(projects.organizationId, organizationId));
-      
-      if (orgProjectIds2.length > 0) {
-        await db
-          .delete(projectMembers)
-          .where(
-            and(
-              eq(projectMembers.userId, resolvedParams.memberId),
-              inArray(projectMembers.projectId, orgProjectIds2.map(p => p.id))
-            )
-          );
-      }
-    }
+    });
 
     // Get new project assignments after update for audit logging
     const newProjectAssignments = role !== 'project_viewer' ? await db
@@ -328,13 +375,41 @@ export async function DELETE(
       );
     }
 
-    // Remove member from organization
-    await db
-      .delete(member)
-      .where(and(
-        eq(member.userId, resolvedParams.memberId),
-        eq(member.organizationId, delOrgId)
-      ));
+    // Prevent org_admin from removing another org_admin (only org_owner can)
+    if (existingMember[0].role === 'org_admin' && delOrgRole !== Role.ORG_OWNER) {
+      return NextResponse.json(
+        { error: 'Only organization owners can remove org admin members' },
+        { status: 403 }
+      );
+    }
+
+    // Remove member and their project assignments in a transaction
+    await db.transaction(async (tx) => {
+      // First, clean up project member assignments for this org's projects
+      const orgProjectIds = await tx
+        .select({ id: projects.id })
+        .from(projects)
+        .where(eq(projects.organizationId, delOrgId));
+
+      if (orgProjectIds.length > 0) {
+        await tx
+          .delete(projectMembers)
+          .where(
+            and(
+              eq(projectMembers.userId, resolvedParams.memberId),
+              inArray(projectMembers.projectId, orgProjectIds.map(p => p.id))
+            )
+          );
+      }
+
+      // Then remove member from organization
+      await tx
+        .delete(member)
+        .where(and(
+          eq(member.userId, resolvedParams.memberId),
+          eq(member.organizationId, delOrgId)
+        ));
+    });
 
     // Log the audit event
     await logAuditEvent({

@@ -116,7 +116,7 @@ export function LoginForm({
                   <>
                     Sign in to join as{" "}
                     <span className="font-medium text-foreground">
-                      {inviteData.role.replace(/_/g, " ")}
+                      {(inviteData.role ?? "member").replace(/_/g, " ")}
                     </span>
                     <br />
                     <span className="text-xs">

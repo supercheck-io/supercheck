@@ -14,7 +14,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { UserMinus, Crown, Shield, User, Eye, Edit3 } from "lucide-react";
+import { UserMinus, Crown, Shield, User, Eye, Edit3, Mail, XCircle, FolderOpen } from "lucide-react";
 import { toast } from "sonner";
 import React, { useState } from "react";
 import { DataTableColumnHeader } from "@/components/tests/data-table-column-header";
@@ -32,6 +32,7 @@ export interface OrgMember {
     | "project_viewer";
   joinedAt: string;
   type: "member";
+  projects?: { projectId: string; projectName: string }[];
 }
 
 export interface PendingInvitation {
@@ -366,6 +367,136 @@ const MemberActionsCell = ({
   );
 };
 
+// Component to confirm invitation cancellation
+const CancelInvitationConfirmDialog = ({
+  isOpen,
+  onClose,
+  onConfirm,
+  email,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  email: string;
+}) => {
+  return (
+    <AlertDialog open={isOpen} onOpenChange={onClose}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Cancel invitation?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Are you sure you want to cancel the invitation for{" "}
+            <strong>{email}</strong>? They will no longer be able to accept this
+            invitation.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Keep Invitation</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={onConfirm}
+            className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+          >
+            Cancel Invitation
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+};
+
+// Invitation Actions Cell Component
+const InvitationActionsCell = ({
+  invitation,
+  onMemberUpdate,
+}: {
+  invitation: PendingInvitation;
+  onMemberUpdate: () => void;
+}) => {
+  const [showCancelDialog, setShowCancelDialog] = useState(false);
+  const [resending, setResending] = useState(false);
+
+  const handleResendInvitation = async () => {
+    setResending(true);
+    try {
+      const response = await fetch(
+        `/api/organizations/members/invite/${invitation.id}`,
+        { method: "POST" }
+      );
+      const data = await response.json();
+
+      if (data.success) {
+        toast.success(`Invitation resent to ${invitation.email}`);
+        onMemberUpdate();
+      } else {
+        toast.error(data.error || "Failed to resend invitation");
+      }
+    } catch (error) {
+      console.error("Error resending invitation:", error);
+      toast.error("Failed to resend invitation");
+    } finally {
+      setResending(false);
+    }
+  };
+
+  const handleCancelInvitation = async () => {
+    try {
+      const response = await fetch(
+        `/api/organizations/members/invite/${invitation.id}`,
+        { method: "DELETE" }
+      );
+      const data = await response.json();
+
+      if (data.success) {
+        toast.success("Invitation cancelled");
+        onMemberUpdate();
+      } else {
+        toast.error(data.error || "Failed to cancel invitation");
+      }
+    } catch (error) {
+      console.error("Error cancelling invitation:", error);
+      toast.error("Failed to cancel invitation");
+    }
+    setShowCancelDialog(false);
+  };
+
+  return (
+    <>
+      <div className="flex items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8 w-8 p-0 bg-blue-50 hover:bg-blue-100 text-blue-600 hover:text-blue-700 border-blue-200 hover:border-blue-300 transition-all duration-200 rounded-md shadow-sm"
+          onClick={handleResendInvitation}
+          disabled={resending}
+          title="Resend Invitation"
+        >
+          {resending ? (
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+          ) : (
+            <Mail className="h-4 w-4" />
+          )}
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8 w-8 p-0 bg-red-50 hover:bg-red-100 text-red-600 hover:text-red-700 border-red-200 hover:border-red-300 transition-all duration-200 rounded-md shadow-sm"
+          onClick={() => setShowCancelDialog(true)}
+          title="Cancel Invitation"
+        >
+          <XCircle className="h-4 w-4" />
+        </Button>
+      </div>
+
+      <CancelInvitationConfirmDialog
+        isOpen={showCancelDialog}
+        onClose={() => setShowCancelDialog(false)}
+        onConfirm={handleCancelInvitation}
+        email={invitation.email}
+      />
+    </>
+  );
+};
+
 export const createMemberColumns = (
   onMemberUpdate: () => void,
   projects: { id: string; name: string; description?: string }[] = []
@@ -574,6 +705,97 @@ export const createMemberColumns = (
     },
   },
   {
+    id: "projects",
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Projects" />
+    ),
+    size: 200,
+    cell: ({ row }) => {
+      const item = row.original;
+      const isInvitation = item.type === "invitation";
+
+      if (isInvitation) {
+        return (
+          <div className="flex items-center h-10">
+            <span className="text-muted-foreground text-sm">—</span>
+          </div>
+        );
+      }
+
+      const member = item as OrgMember;
+      const memberProjects = member.projects ?? [];
+
+      // org_owner and org_admin have access to all projects
+      if (member.role === "org_owner" || member.role === "org_admin") {
+        return (
+          <div className="flex items-center h-10">
+            <Badge
+              variant="outline"
+              className="bg-purple-50 text-purple-700 text-xs px-2 py-1 font-medium"
+            >
+              <FolderOpen className="mr-1 h-3 w-3" />
+              All Projects
+            </Badge>
+          </div>
+        );
+      }
+
+      // project_viewer gets access to all projects (no specific assignments needed)
+      if (member.role === "project_viewer" && memberProjects.length === 0) {
+        return (
+          <div className="flex items-center h-10">
+            <Badge
+              variant="outline"
+              className="bg-gray-50 text-gray-600 text-xs px-2 py-1 font-medium"
+            >
+              <FolderOpen className="mr-1 h-3 w-3" />
+              All Projects
+            </Badge>
+          </div>
+        );
+      }
+
+      if (memberProjects.length === 0) {
+        return (
+          <div className="flex items-center h-10">
+            <span className="text-muted-foreground text-sm">None</span>
+          </div>
+        );
+      }
+
+      // Show up to 2 project badges + count for overflow
+      const displayProjects = memberProjects.slice(0, 2);
+      const remaining = memberProjects.length - displayProjects.length;
+
+      return (
+        <div className="flex items-center h-10 gap-1 flex-wrap">
+          {displayProjects.map((p) => (
+            <Badge
+              key={p.projectId}
+              variant="outline"
+              className="bg-blue-50 text-blue-700 text-xs px-2 py-0.5 font-medium max-w-[100px] truncate"
+              title={p.projectName}
+            >
+              {p.projectName}
+            </Badge>
+          ))}
+          {remaining > 0 && (
+            <Badge
+              variant="outline"
+              className="bg-gray-50 text-gray-600 text-xs px-2 py-0.5 font-medium"
+              title={memberProjects
+                .slice(2)
+                .map((p) => p.projectName)
+                .join(", ")}
+            >
+              +{remaining}
+            </Badge>
+          )}
+        </div>
+      );
+    },
+  },
+  {
     id: "actions",
     header: ({ column }) => (
       <DataTableColumnHeader column={column} title="Actions" />
@@ -584,9 +806,13 @@ export const createMemberColumns = (
       const isInvitation = item.type === "invitation";
 
       if (isInvitation) {
+        const inv = item as PendingInvitation;
         return (
           <div className="flex items-center h-10">
-            <span className="text-muted-foreground text-sm">None</span>
+            <InvitationActionsCell
+              invitation={inv}
+              onMemberUpdate={onMemberUpdate}
+            />
           </div>
         );
       }
