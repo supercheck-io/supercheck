@@ -73,7 +73,7 @@ Block deployments when tests fail:
   run: |
     result=$(supercheck job trigger ${{ vars.JOB_ID }} --wait --json)
     status=$(echo "$result" | jq -r '.status')
-    if [ "$status" != "completed" ]; then
+    if [ "$status" != "passed" ]; then
       echo "Tests failed — blocking deployment"
       exit 1
     fi

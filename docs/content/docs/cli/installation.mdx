@@ -42,7 +42,7 @@ See [CI/CD Integration](./ci-cd) for Docker-based pipeline examples.
 
 The CLI requires a **CLI token** for API access. Create one in the dashboard:
 
-1. Go to **Organization Admin → CLI Tokens**
+1. Go to **Project Settings → CLI Tokens**
 2. Click **Create Token**
 3. Copy the token (shown only once)
 
@@ -145,9 +145,9 @@ supercheck doctor
 ## Uninstall
 
 ```bash
+# Clear stored credentials first
+supercheck logout
+
 # Remove global install
 npm uninstall -g @supercheck/cli
-
-# Clear stored credentials
-supercheck logout
 ```

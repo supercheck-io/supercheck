@@ -2,6 +2,11 @@
 /_next/static/*
   Cache-Control: public, max-age=31536000, immutable
 
+# Search index - serve as JSON with caching
+/api/search
+  Content-Type: application/json
+  Cache-Control: public, max-age=3600, stale-while-revalidate=86400
+
 # Cache OpenAPI spec with revalidation
 /openapi/*
   Cache-Control: public, max-age=3600, stale-while-revalidate=86400
