@@ -95,14 +95,10 @@ const { checkPermissionWithContext: mockCheckPermissionWithContext } =
 
 const {
   addTestToQueue: mockAddTestToQueue,
-  addK6TestToQueue: mockAddK6TestToQueue,
   addJobToQueue: mockAddJobToQueue,
-  addK6JobToQueue: mockAddK6JobToQueue,
 } = jest.requireMock("@/lib/queue") as {
   addTestToQueue: jest.Mock;
-  addK6TestToQueue: jest.Mock;
   addJobToQueue: jest.Mock;
-  addK6JobToQueue: jest.Mock;
 };
 
 const { validateK6Script: mockValidateK6Script } = jest.requireMock(

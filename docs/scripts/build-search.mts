@@ -2,8 +2,11 @@ import { create, insert, save } from '@orama/orama';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-const contentDir = path.resolve(process.cwd(), 'docs/content/docs');
-const publicDir = path.resolve(process.cwd(), 'docs/public');
+// Resolve paths relative to the script location (docs/scripts/), not cwd,
+// so the script works regardless of where it's invoked from (repo root, docs/, CI, etc.)
+const docsRoot = path.resolve(import.meta.dirname, '..');
+const contentDir = path.resolve(docsRoot, 'content/docs');
+const publicDir = path.resolve(docsRoot, 'public');
 
 async function getFiles(dir: string): Promise<string[]> {
   const dirents = await fs.readdir(dir, { withFileTypes: true });

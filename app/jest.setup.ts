@@ -35,7 +35,12 @@ if (typeof globalThis.TransformStream === 'undefined') {
 
 // Polyfill Fetch API primitives for Next.js server utilities in Jest
 if (typeof globalThis.Request === 'undefined' || typeof globalThis.fetch === 'undefined') {
-  const { fetch, Headers, Request, Response } = require('undici') as typeof import('undici');
+  const { fetch, Headers, Request, Response } = require('undici') as {
+    fetch: typeof globalThis.fetch;
+    Headers: typeof globalThis.Headers;
+    Request: typeof globalThis.Request;
+    Response: typeof globalThis.Response;
+  };
 
   if (typeof globalThis.fetch === 'undefined') {
     Object.defineProperty(globalThis, 'fetch', {
