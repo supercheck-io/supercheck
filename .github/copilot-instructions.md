@@ -1,118 +1,85 @@
 # Copilot Instructions for SuperCheck
 
-## Architecture Overview
-
-SuperCheck is a test automation and monitoring platform with two main services:
-
-- **App** (`/app`): Next.js 16 frontend + API using React 19, Better Auth, Drizzle ORM
-- **Worker** (`/worker`): NestJS service executing Playwright/k6 tests via BullMQ jobs
-
-Data flows: `User → Next.js API → Redis/BullMQ → Worker → PostgreSQL/MinIO`
-
-## Key Patterns
-
-### Database Operations
-
-- Use Drizzle ORM exclusively. Schemas in `/app/src/db/schema/`, queries in `/app/src/db/queries/`
-- Always create Zod schemas alongside tables (`createInsertSchema`, `createSelectSchema`)
-- Reference `/docs/specs/01-core/ERD_DIAGRAM.md` for schema relationships
-
-### Server Actions
-
-- Place in `/app/src/actions/` as async functions with `"use server"` directive
-- Always validate inputs with Zod before database operations
-- Return `{ success, data?, error? }` pattern
-
-### RBAC & Auth
-
-- Roles defined in `/app/src/lib/rbac/permissions-client.ts` (6 levels: super_admin → project_viewer)
-- Client components import `Role` from `permissions-client.ts` (never `permissions.ts`)
-- `@polar-sh/better-auth` is server-only (uses `node:async_hooks`) - never import in client code
-
-### Self-Hosted vs Cloud
-
-- Check `process.env.SELF_HOSTED === "true"` for feature gating
-- Cloud mode requires billing (Polar), email verification, disposable email blocking
-- Self-hosted mode: unlimited access, no billing, immediate signup
-
 ## Development Commands
 
 ```bash
-# App (in /app)
-npm run dev              # Next.js dev server at localhost:3000
-npm run db:generate      # Generate Drizzle migrations
-npm run db:migrate       # Apply migrations
-npm run db:studio        # Visual database explorer
+# App (/app)
+npm run dev
+npm run build
+npm run lint
+npm test
+npm test -- src/lib/capacity-manager.spec.ts        # single Jest file
+npm run e2e
+npm run e2e -- tests/jobs/jobs.spec.ts              # single Playwright file
+npm run e2e -- --grep "creates a job"               # single Playwright test by title
+npm run db:generate
+npm run db:migrate
+npm run db:studio
 
-# E2E Tests (in /app)
-npm run e2e              # Run Playwright E2E tests
-npm run e2e:ui           # Interactive test runner
+# Worker (/worker)
+npm run dev
+npm run build
+npm run lint
+npm test
+npm test -- src/execution/processors/playwright-execution.processor.spec.ts
 
-# Worker (in /worker)
-npm run dev              # NestJS watch mode
-npm run build            # Production build
+# Docs site (/docs)
+npm run dev
+npm run build
+npm run lint
+npm run generate-docs
 ```
 
-## File Location Patterns
+## High-Level Architecture
 
-| Type                | Location                                     |
-| ------------------- | -------------------------------------------- |
-| API Routes          | `/app/src/app/api/**/*.ts`                   |
-| Server Actions      | `/app/src/actions/*.ts`                      |
-| React Components    | `/app/src/components/**/*.tsx`               |
-| DB Schemas          | `/app/src/db/schema/*.ts`                    |
-| Worker Services     | `/worker/src/{execution,k6,monitor}/**/*.ts` |
-| Specs Documentation | `/docs/specs/**/*.md`                        |
+- Supercheck is split into three runnable apps:
+  - `/app`: Next.js frontend + API
+  - `/worker`: NestJS BullMQ workers for Playwright, k6, and monitor execution
+  - `/docs`: Next.js docs site
+- Execution flow is: UI/API request -> App API route creates/updates DB run rows -> App enqueues BullMQ jobs in Redis -> Worker processors execute and update statuses/artifacts -> results are stored in Postgres + S3/MinIO.
+- Queue topology is intentionally mixed:
+  - Playwright: single global queue (`playwright-global`)
+  - k6: global queue (`k6-global`) plus regional queues (`k6-us-east`, `k6-eu-central`, `k6-asia-pacific`)
+  - Monitor: regional-only queues (`monitor-us-east`, `monitor-eu-central`, `monitor-asia-pacific`)
+- Worker location routing is controlled by `WORKER_LOCATION` in `/worker/src/k6/k6.module.ts` and `/worker/src/monitor/monitor.module.ts`.
+- Scheduling now runs in the App side (see worker `AppModule` comment: scheduler module removed from worker).
 
-## Critical Files to Know
+## Key Conventions
 
-- `/app/src/lib/rbac/permissions-client.ts` - Role enum and permission statements
-- `/app/src/db/schema/index.ts` - All database table exports
-- `/worker/src/execution/services/` - Test execution logic
-- `/docs/specs/` - Always check before implementing new features
+### Multi-tenant scoping is mandatory
+- In App APIs and actions, scope reads/writes by both `projectId` and `organizationId` (example patterns in `/app/src/app/api/jobs/run/route.ts` and `/app/src/actions/*.ts`).
+- Prefer `requireAuthContext()` for API routes and `requireProjectContext()` for server actions.
 
-## Testing Approach
+### Server action pattern
+- Server actions live in `/app/src/actions` and use `"use server"` at the top.
+- Typical shape is explicit typed response objects with `success` and optional `error`.
+- Pair permission checks (`checkPermissionWithContext`) with context from `requireProjectContext`.
 
-- Unit tests: Jest (`npm test` in both `/app` and `/worker`)
-- E2E tests: Playwright in `/app/e2e/` with page objects in `/app/e2e/pages/`
-- Each E2E test uses `loginIfNeeded()` in `beforeEach` - no shared auth state
+### DB/schema pattern
+- Drizzle schema source of truth is `/app/src/db/schema`.
+- Define Zod schemas with Drizzle tables using `createInsertSchema` / `createSelectSchema`.
+- Export shared schema from `/app/src/db/schema/index.ts`.
 
-## Common Gotchas
+### RBAC split: client-safe vs server-only
+- Use `/app/src/lib/rbac/permissions-client.ts` in client code.
+- `/app/src/lib/rbac/permissions.ts` integrates Better Auth (`createAccessControl`) and is server-only.
 
-1. **Better Auth ESM**: It's ESM-only - use dynamic imports if needed in CommonJS contexts
-2. **Worker scaling**: `MAX_CONCURRENT_EXECUTIONS=1` is hardcoded; scale via `WORKER_REPLICAS`
-3. **S3/MinIO**: Use `S3_FORCE_PATH_STYLE=true` for local MinIO
-4. **Multi-tenant**: Always filter queries by `organizationId` and `projectId`
+### Queue constants must stay aligned
+- Keep queue names synchronized between:
+  - `/app/src/lib/queue.ts`
+  - `/worker/src/execution/constants.ts`
+  - `/worker/src/k6/k6.constants.ts`
+  - `/worker/src/monitor/monitor.constants.ts`
+- Do not rename queue constants in one place only.
 
-## Spec Documentation
+### Execution and scaling behavior
+- Per-process concurrency is intentionally low/hardcoded (`@Processor(..., { concurrency: 1 })`, plus `MAX_CONCURRENT_EXECUTIONS: 1` in worker memory constants); scale by running more worker replicas.
+- `SELF_HOSTED === "true"` gates behavior in AI/security flows (`/app/src/lib/ai/*`).
 
-Before modifying core systems, read the relevant spec in `/docs/specs/`:
+### E2E auth convention
+- E2E tests use `loginIfNeeded()` in each test file's `beforeEach` (see `/app/e2e/playwright.config.ts` and `/app/e2e/tests/**`); no shared Playwright storage-state auth file.
 
-- Architecture: `01-core/SUPERCHECK_ARCHITECTURE.md`
-- Auth flows: `02-authentication/AUTHENTICATION_SYSTEM.md`
-- Test execution: `03-execution/EXECUTION_SYSTEM.md`
-- Monitoring: `04-monitoring/MONITORING_SYSTEM.md`
-- AI Features: `05-features/AI_FIX_SYSTEM.md` (Multi-provider: OpenAI, Azure, Anthropic, Google Vertex, Bedrock)
+## Repository Notes
 
-Update specs when changing API contracts, DB schema, or auth logic.
-
-## AI Features
-
-Supercheck supports multiple AI providers for AI Fix, AI Create, and AI Analyze features:
-
-```bash
-# Provider selection (default: openai)
-AI_PROVIDER=openai|azure|anthropic|gemini|google-vertex|bedrock|openrouter
-AI_MODEL=gpt-4o-mini  # Provider-specific model ID
-
-# Provider-specific env vars (SDK auto-reads these):
-OPENAI_API_KEY=sk-...                    # OpenAI
-ANTHROPIC_API_KEY=sk-ant-...             # Anthropic
-AZURE_RESOURCE_NAME=...                  # Azure OpenAI
-GOOGLE_GENERATIVE_AI_API_KEY=...         # Gemini (Google AI Studio)
-GOOGLE_VERTEX_PROJECT=...                # Google Vertex AI
-BEDROCK_AWS_REGION=...                   # AWS Bedrock (uses BEDROCK_* prefix)
-OPENROUTER_API_KEY=sk-or-...             # OpenRouter
-```
-
-Key files: `/app/src/lib/ai/ai-service.ts`, `/app/src/lib/ai/ai-streaming-service.ts`
+- `README.md` is the primary product/architecture overview for this monorepo.
+- `CONTRIBUTING.md` currently states that external contributions are not being accepted.
