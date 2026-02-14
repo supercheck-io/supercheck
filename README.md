@@ -16,20 +16,26 @@ The unified platform for AI-powered Playwright testing, multi-region k6 load tes
 
 Supercheck combines **test automation**, **synthetic + uptime monitoring**, **performance testing**, and **status communication** in one self-hosted platform.
 
-### Competitive landscape (pricing snapshot)
+### Competitive landscape
 
 | Category | Platform | Pricing (public) | Notes |
 |----------|----------|------------------|-------|
-| Monitoring | Checkly | Hobby: $0/mo; Starter: $24/mo; Team: $64/mo; Browser overage: $6.50/1k (Starter) or $6.25/1k (Team) | Native Playwright checks; API/browser checks are metered ([source](https://www.checklyhq.com/pricing/)) |
-| Monitoring | Grafana Cloud Synthetics | API checks: $5 per 10k; Browser checks: $50 per 10k (plus platform fee on paid plan) | Also includes free usage tier ([source](https://grafana.com/pricing/)) |
-| Monitoring | Better Stack | Free: $0/mo; paid uptime responder license from $29/mo; Playwright transaction monitoring listed as $1 per 100 minutes | Combines uptime, incident management, and transaction monitoring ([source](https://betterstack.com/pricing)) |
-| Monitoring | UptimeRobot | Free: $0/mo; Solo: $7/mo (annual); Team: $29/mo (annual); Enterprise: $54/mo (annual) | Uptime-focused (HTTP, ping, port, keyword, DNS, SSL) ([source](https://uptimerobot.com/pricing/)) |
-| Automation | BrowserStack | Live manual testing: $29/mo (desktop, annual), $39/mo (desktop + mobile, annual), Team from $150/mo (annual) | Pricing varies by product and team size ([source](https://www.browserstack.com/pricing)) |
-| Automation | Sauce Labs | Virtual Cloud: $149/mo annually (1 parallel); Real Device Cloud: $199/mo annually (1 parallel) | Parallel sessions scale with plan tier ([source](https://saucelabs.com/pricing)) |
-| Automation | Cypress Cloud | Team: $67/mo (annual); Business: $267/mo (annual); overages from $5–$6 per 1k results | Free starter tier available ([source](https://www.cypress.io/pricing)) |
-| Automation + Performance | Azure App Testing | Playwright Linux browsers: $0.01/min; Windows browsers: $0.02/min; Load testing: $0.15/VUH (first 10k), then $0.06/VUH | Usage-based Azure service pricing ([source](https://azure.microsoft.com/en-us/pricing/details/app-testing/)) |
-| Performance | Grafana k6 Cloud | Starts at $0.15 per virtual user hour (VUH); enterprise as low as $0.05/VUH with annual commit | Includes free tier with 500 VUH/month ([source](https://grafana.com/pricing/)) |
-| All-in-one | **Supercheck** | **Open-source, self-hosted** | Includes tests, monitors, performance, alerts, status pages, and AI workflows |
+| **Monitoring** | Checkly | Free tier; Starter: $24/mo; Team: $64/mo | Playwright-based; Browser checks are metered & expensive at scale |
+| **Monitoring** | Datadog | API: $5/10k runs; Browser: $12/1k runs | High volume costs; complex enterprise pricing model |
+| **Monitoring** | Pingdom | Syn: $10/mo (10 checks); $15/10k runs | Legacy incumbent; limited modern browser automation features |
+| **Monitoring** | Better Stack | Free tier; Pro: $29/mo + usage | Focuses on incident management & pages; limited testing |
+| **Monitoring** | UptimeRobot | Free tier; Solo: $7/mo; Team: $29/mo | Basic uptime focus; limited synthetic capabilities |
+| **Automation** | BrowserStack | Desktop: $129/mo; Mobile: $199/mo | Pricing per parallel thread; becomes costly for high concurrency |
+| **Automation** | Sauce Labs | Virtual Cloud: $149/mo (1 parallel) | Similar to BrowserStack; expensive for parallel execution |
+| **Automation** | LambdaTest | Web: $79/mo (1 parallel); Pro: $158/mo | Cheaper than competitors but still costly for scaling parallelism |
+| **Automation** | Cypress Cloud | Free tier; Team: $67/mo; Business: $267/mo | Test orchestration only; requires separate infrastructure |
+| **Performance** | Grafana k6 | Free (500 VUH); Pro: $29/mo (500 VUH) | Usage-based (Virtual User Hours); enterprise is custom |
+| **Performance** | BlazeMeter | Basic: $99/mo; Pro: $499/mo | Enterprise-grade JMeter/Taurus; high entry cost for Pro features |
+| **Performance** | Gatling | Basic: €89/mo (~$95); Team: €396/mo | Scala/Java/JS based; expensive for team collaboration features |
+| **Performance** | Azure Test | $0.15/VUH (first 10k), then $0.06/VUH | Usage-only pricing; complex Azure infrastructure setup |
+| **Status** | Statuspage | Free tier; Startup: $99/mo; Business: $399/mo | The industry standard (Atlassian); expensive for business features |
+| **Status** | Instatus | Free tier; Pro: $20/mo; Business: $300/mo | Modern alternative; "Business" tier jump is steep ($20 -> $300) |
+| **All-in-one** | **Supercheck** | **Open-source, self-hosted** | **Unified Tests, Monitors, Load, & Status Pages in one platform** |
 
 ## Features
 
