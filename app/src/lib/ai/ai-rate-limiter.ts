@@ -13,6 +13,7 @@
 
 import { getRedisConnection } from "@/lib/queue";
 import { createLogger } from "@/lib/logger/index";
+import { isSelfHosted } from "@/lib/feature-flags";
 
 const logger = createLogger({ module: "ai-rate-limiter" }) as {
   debug: (data: unknown, msg?: string) => void;
@@ -188,7 +189,7 @@ function nowSeconds(): number {
  */
 function getLimitsForTier(tier?: string): RateLimitConfig {
   // Self-hosted mode has no rate limits
-  if (process.env.SELF_HOSTED === "true") {
+  if (isSelfHosted()) {
     return SELF_HOSTED_LIMITS;
   }
 

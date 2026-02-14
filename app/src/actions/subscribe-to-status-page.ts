@@ -1,8 +1,15 @@
 "use server";
 
 import { db } from "@/utils/db";
-import { statusPages, statusPageSubscribers } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import {
+  statusPages,
+  statusPageSubscribers,
+  statusPageComponents,
+  statusPageComponentSubscriptions,
+  statusPageIncidentSubscriptions,
+  incidents,
+} from "@/db/schema";
+import { eq, and, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { EmailService } from "@/lib/email-service";
@@ -16,6 +23,8 @@ const subscribeSchema = z.union([
     email: z.string().email("Please enter a valid email address"),
     subscribeToAllComponents: z.boolean().default(true),
     selectedComponentIds: z.array(z.string().uuid()).optional(),
+    subscribeToAllIncidents: z.boolean().default(true),
+    selectedIncidentIds: z.array(z.string().uuid()).optional(),
     subscriptionMode: z.literal("email").optional().default("email"),
   }),
   // Webhook subscription
@@ -26,6 +35,8 @@ const subscribeSchema = z.union([
     description: z.string().max(500).optional(),
     subscribeToAllComponents: z.boolean().default(true),
     selectedComponentIds: z.array(z.string().uuid()).optional(),
+    subscribeToAllIncidents: z.boolean().default(true),
+    selectedIncidentIds: z.array(z.string().uuid()).optional(),
   }),
   // Slack subscription
   z.object({
@@ -34,10 +45,13 @@ const subscribeSchema = z.union([
     subscriptionMode: z.literal("slack"),
     subscribeToAllComponents: z.boolean().default(true),
     selectedComponentIds: z.array(z.string().uuid()).optional(),
+    subscribeToAllIncidents: z.boolean().default(true),
+    selectedIncidentIds: z.array(z.string().uuid()).optional(),
   }),
 ]);
 
-type SubscribeInput = z.infer<typeof subscribeSchema>;
+type SubscribeInput = z.input<typeof subscribeSchema>;
+type SubscribeValidatedInput = z.output<typeof subscribeSchema>;
 
 const generateHexToken = (byteLength = 32) =>
   Array.from(
@@ -155,6 +169,139 @@ async function sendVerificationEmail(params: {
   }
 }
 
+async function syncComponentSubscriptions(params: {
+  subscriberId: string;
+  statusPageId: string;
+  subscribeToAllComponents?: unknown;
+  selectedComponentIds?: unknown;
+}) {
+  // Reset existing component-level subscriptions for idempotent updates
+  await db
+    .delete(statusPageComponentSubscriptions)
+    .where(eq(statusPageComponentSubscriptions.subscriberId, params.subscriberId));
+
+  const subscribeToAll =
+    params.subscribeToAllComponents === undefined
+      ? true
+      : Boolean(params.subscribeToAllComponents);
+
+  const selectedComponentIds = Array.isArray(params.selectedComponentIds)
+    ? params.selectedComponentIds.filter(
+      (id): id is string => typeof id === "string"
+    )
+    : [];
+
+  if (subscribeToAll || selectedComponentIds.length === 0) {
+    return;
+  }
+
+  // Only persist component subscriptions that belong to this status page
+  const validComponents = await db
+    .select({ id: statusPageComponents.id })
+    .from(statusPageComponents)
+    .where(
+      and(
+        eq(statusPageComponents.statusPageId, params.statusPageId),
+        inArray(statusPageComponents.id, selectedComponentIds)
+      )
+    );
+
+  if (validComponents.length === 0) {
+    return;
+  }
+
+  await db
+    .insert(statusPageComponentSubscriptions)
+    .values(
+      validComponents.map((component) => ({
+        subscriberId: params.subscriberId,
+        componentId: component.id,
+        createdAt: new Date(),
+      }))
+    )
+    .onConflictDoNothing();
+}
+
+async function syncIncidentSubscriptions(params: {
+  subscriberId: string;
+  statusPageId: string;
+  subscribeToAllIncidents?: unknown;
+  selectedIncidentIds?: unknown;
+}) {
+  // Reset existing incident-level subscriptions for idempotent updates
+  await db
+    .delete(statusPageIncidentSubscriptions)
+    .where(eq(statusPageIncidentSubscriptions.subscriberId, params.subscriberId));
+
+  const subscribeToAll =
+    params.subscribeToAllIncidents === undefined
+      ? true
+      : Boolean(params.subscribeToAllIncidents);
+
+  const selectedIncidentIds = Array.isArray(params.selectedIncidentIds)
+    ? params.selectedIncidentIds.filter(
+      (id): id is string => typeof id === "string"
+    )
+    : [];
+
+  if (subscribeToAll || selectedIncidentIds.length === 0) {
+    return;
+  }
+
+  // Only persist incident subscriptions that belong to this status page
+  const validIncidents = await db
+    .select({ id: incidents.id })
+    .from(incidents)
+    .where(
+      and(
+        eq(incidents.statusPageId, params.statusPageId),
+        inArray(incidents.id, selectedIncidentIds)
+      )
+    );
+
+  if (validIncidents.length === 0) {
+    return;
+  }
+
+  await db
+    .insert(statusPageIncidentSubscriptions)
+    .values(
+      validIncidents.map((incident) => ({
+        subscriberId: params.subscriberId,
+        incidentId: incident.id,
+        createdAt: new Date(),
+      }))
+    )
+    .onConflictDoNothing();
+}
+
+function isIncidentInterestRequested(params: {
+  rawInput: SubscribeInput;
+  validatedInput: SubscribeValidatedInput;
+}) {
+  const hasExplicitAllToggle = Object.prototype.hasOwnProperty.call(
+    params.rawInput,
+    "subscribeToAllIncidents"
+  );
+  const hasExplicitSelectedIncidents = Object.prototype.hasOwnProperty.call(
+    params.rawInput,
+    "selectedIncidentIds"
+  );
+
+  const selectedIncidentIds = Array.isArray(params.validatedInput.selectedIncidentIds)
+    ? params.validatedInput.selectedIncidentIds
+    : [];
+
+  const subscribeToAllIncidents = Boolean(
+    params.validatedInput.subscribeToAllIncidents
+  );
+
+  return (
+    (hasExplicitAllToggle && subscribeToAllIncidents) ||
+    (hasExplicitSelectedIncidents && selectedIncidentIds.length > 0)
+  );
+}
+
 export async function subscribeToStatusPage(data: SubscribeInput) {
   try {
     // Validate input
@@ -179,8 +326,43 @@ export async function subscribeToStatusPage(data: SubscribeInput) {
       };
     }
 
+    // Respect page-level subscription toggle
+    if (!statusPage.allowPageSubscribers) {
+      return {
+        success: false,
+        message: "Subscriptions are disabled for this status page",
+      };
+    }
+
+    const incidentInterestRequested = isIncidentInterestRequested({
+      rawInput: data,
+      validatedInput: validatedData,
+    });
+
+    if (!statusPage.allowIncidentSubscribers && incidentInterestRequested) {
+      return {
+        success: false,
+        message: "Incident subscriptions are disabled for this status page",
+      };
+    }
+
+    const normalizedIncidentSelection = statusPage.allowIncidentSubscribers
+      ? {
+          subscribeToAllIncidents: validatedData.subscribeToAllIncidents,
+          selectedIncidentIds: validatedData.selectedIncidentIds,
+        }
+      : {
+          subscribeToAllIncidents: false,
+          selectedIncidentIds: [],
+        };
+
+    const subscriptionData = {
+      ...validatedData,
+      ...normalizedIncidentSelection,
+    };
+
     // Determine subscription mode and check permissions
-    const mode = validatedData.subscriptionMode || "email";
+    const mode = subscriptionData.subscriptionMode || "email";
 
     if (mode === "email" && !statusPage.allowEmailSubscribers) {
       return {
@@ -205,19 +387,19 @@ export async function subscribeToStatusPage(data: SubscribeInput) {
 
     // Handle email subscription
     if (mode === "email") {
-      const emailData = validatedData as Extract<typeof validatedData, { subscriptionMode?: "email" }>;
+      const emailData = subscriptionData as Extract<typeof subscriptionData, { subscriptionMode?: "email" }>;
       return await handleEmailSubscription(emailData, statusPage);
     }
 
     // Handle webhook subscription
     if (mode === "webhook") {
-      const webhookData = validatedData as Extract<typeof validatedData, { subscriptionMode: "webhook" }>;
+      const webhookData = subscriptionData as Extract<typeof subscriptionData, { subscriptionMode: "webhook" }>;
       return await handleWebhookSubscription(webhookData, statusPage);
     }
 
     // Handle Slack subscription
     if (mode === "slack") {
-      const slackData = validatedData as Extract<typeof validatedData, { subscriptionMode: "slack" }>;
+      const slackData = subscriptionData as Extract<typeof subscriptionData, { subscriptionMode: "slack" }>;
       return await handleSlackSubscription(slackData, statusPage);
     }
 
@@ -290,6 +472,20 @@ async function handleEmailSubscription(
         };
       }
 
+      await syncComponentSubscriptions({
+        subscriberId: existingSubscriber.id,
+        statusPageId: statusPage.id as string,
+        subscribeToAllComponents: data.subscribeToAllComponents,
+        selectedComponentIds: data.selectedComponentIds,
+      });
+
+      await syncIncidentSubscriptions({
+        subscriberId: existingSubscriber.id,
+        statusPageId: statusPage.id as string,
+        subscribeToAllIncidents: data.subscribeToAllIncidents,
+        selectedIncidentIds: data.selectedIncidentIds,
+      });
+
       return {
         success: true,
         message: "Welcome back! Please check your email to verify your subscription.",
@@ -332,6 +528,20 @@ async function handleEmailSubscription(
         };
       }
 
+      await syncComponentSubscriptions({
+        subscriberId: existingSubscriber.id,
+        statusPageId: statusPage.id as string,
+        subscribeToAllComponents: data.subscribeToAllComponents,
+        selectedComponentIds: data.selectedComponentIds,
+      });
+
+      await syncIncidentSubscriptions({
+        subscriberId: existingSubscriber.id,
+        statusPageId: statusPage.id as string,
+        subscribeToAllIncidents: data.subscribeToAllIncidents,
+        selectedIncidentIds: data.selectedIncidentIds,
+      });
+
       return {
         success: true,
         message:
@@ -361,16 +571,19 @@ async function handleEmailSubscription(
     })
       .returning();
 
-    // TODO: If specific components selected, create component subscriptions
-    // if (!validatedData.subscribeToAllComponents && validatedData.selectedComponentIds) {
-    //   await db.insert(statusPageComponentSubscriptions).values(
-    //     validatedData.selectedComponentIds.map(componentId => ({
-    //       subscriberId: subscriber.id,
-    //       componentId,
-    //       createdAt: new Date(),
-    //     }))
-    //   );
-    // }
+  await syncComponentSubscriptions({
+    subscriberId: subscriber.id,
+    statusPageId: statusPage.id as string,
+    subscribeToAllComponents: data.subscribeToAllComponents,
+    selectedComponentIds: data.selectedComponentIds,
+  });
+
+  await syncIncidentSubscriptions({
+    subscriberId: subscriber.id,
+    statusPageId: statusPage.id as string,
+    subscribeToAllIncidents: data.subscribeToAllIncidents,
+    selectedIncidentIds: data.selectedIncidentIds,
+  });
 
   // Send verification email
   const emailResult = await sendVerificationEmail({
@@ -443,6 +656,20 @@ async function handleWebhookSubscription(
         })
         .where(eq(statusPageSubscribers.id, existingSubscriber.id));
 
+      await syncComponentSubscriptions({
+        subscriberId: existingSubscriber.id,
+        statusPageId: statusPage.id as string,
+        subscribeToAllComponents: data.subscribeToAllComponents,
+        selectedComponentIds: data.selectedComponentIds,
+      });
+
+      await syncIncidentSubscriptions({
+        subscriberId: existingSubscriber.id,
+        statusPageId: statusPage.id as string,
+        subscribeToAllIncidents: data.subscribeToAllIncidents,
+        selectedIncidentIds: data.selectedIncidentIds,
+      });
+
       return {
         success: true,
         message: "Webhook subscription updated successfully",
@@ -470,16 +697,19 @@ async function handleWebhookSubscription(
       })
       .returning();
 
-    // TODO: If specific components selected, create component subscriptions
-    // if (!data.subscribeToAllComponents && data.selectedComponentIds) {
-    //   await db.insert(statusPageComponentSubscriptions).values(
-    //     data.selectedComponentIds.map(componentId => ({
-    //       subscriberId: subscriber.id,
-    //       componentId,
-    //       createdAt: new Date(),
-    //     }))
-    //   );
-    // }
+    await syncComponentSubscriptions({
+      subscriberId: subscriber.id,
+      statusPageId: statusPage.id as string,
+      subscribeToAllComponents: data.subscribeToAllComponents,
+      selectedComponentIds: data.selectedComponentIds,
+    });
+
+    await syncIncidentSubscriptions({
+      subscriberId: subscriber.id,
+      statusPageId: statusPage.id as string,
+      subscribeToAllIncidents: data.subscribeToAllIncidents,
+      selectedIncidentIds: data.selectedIncidentIds,
+    });
 
     // Revalidate the public page
     revalidatePath(`/status/${statusPage.id as string}`);
@@ -551,6 +781,20 @@ async function handleSlackSubscription(
         })
         .where(eq(statusPageSubscribers.id, existingSubscriber.id));
 
+      await syncComponentSubscriptions({
+        subscriberId: existingSubscriber.id,
+        statusPageId: statusPage.id as string,
+        subscribeToAllComponents: data.subscribeToAllComponents,
+        selectedComponentIds: data.selectedComponentIds,
+      });
+
+      await syncIncidentSubscriptions({
+        subscriberId: existingSubscriber.id,
+        statusPageId: statusPage.id as string,
+        subscribeToAllIncidents: data.subscribeToAllIncidents,
+        selectedIncidentIds: data.selectedIncidentIds,
+      });
+
       return {
         success: true,
         message: "Slack subscription updated successfully",
@@ -576,16 +820,19 @@ async function handleSlackSubscription(
       })
       .returning();
 
-    // TODO: If specific components selected, create component subscriptions
-    // if (!data.subscribeToAllComponents && data.selectedComponentIds) {
-    //   await db.insert(statusPageComponentSubscriptions).values(
-    //     data.selectedComponentIds.map(componentId => ({
-    //       subscriberId: subscriber.id,
-    //       componentId,
-    //       createdAt: new Date(),
-    //     }))
-    //   );
-    // }
+    await syncComponentSubscriptions({
+      subscriberId: subscriber.id,
+      statusPageId: statusPage.id as string,
+      subscribeToAllComponents: data.subscribeToAllComponents,
+      selectedComponentIds: data.selectedComponentIds,
+    });
+
+    await syncIncidentSubscriptions({
+      subscriberId: subscriber.id,
+      statusPageId: statusPage.id as string,
+      subscribeToAllIncidents: data.subscribeToAllIncidents,
+      selectedIncidentIds: data.selectedIncidentIds,
+    });
 
     // Revalidate the public page
     revalidatePath(`/status/${statusPage.id as string}`);

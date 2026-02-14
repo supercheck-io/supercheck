@@ -30,6 +30,14 @@ export const isCloudHosted = (): boolean => {
 };
 
 /**
+ * Check if the application is running in self-hosted mode.
+ * Self-hosted is enabled only when SELF_HOSTED is explicitly set to "true" or "1".
+ */
+export const isSelfHosted = (): boolean => {
+  return !isCloudHosted();
+};
+
+/**
  * Check if Polar payment integration is enabled
  * Requires cloud-hosted mode and proper configuration
  */

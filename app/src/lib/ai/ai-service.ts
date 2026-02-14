@@ -7,6 +7,7 @@ import { createAmazonBedrock } from "@ai-sdk/amazon-bedrock";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { generateText, LanguageModel } from "ai";
 import { aiRateLimiter } from "./ai-rate-limiter";
+import { isSelfHosted } from "@/lib/feature-flags";
 
 interface AIFixRequest {
   prompt: string;
@@ -257,7 +258,7 @@ export class AIFixService {
     tier?: string
   ): Promise<void> {
     // Skip rate limiting in self-hosted mode
-    if (process.env.SELF_HOSTED === "true") {
+    if (isSelfHosted()) {
       return;
     }
 

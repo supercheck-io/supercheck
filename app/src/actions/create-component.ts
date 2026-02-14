@@ -13,6 +13,7 @@ import { requireProjectContext } from "@/lib/project-context";
 import { requirePermissions } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { eq, and, inArray } from "drizzle-orm";
+import { statusAggregationService } from "@/lib/status-aggregation.service";
 
 const createComponentSchema = z.object({
   statusPageId: z.string().uuid(),
@@ -139,6 +140,11 @@ export async function createComponent(data: CreateComponentData) {
           createdAt: new Date(),
         }))
       );
+
+      // If caller didn't explicitly set status, derive from linked monitor statuses
+      if (data.status === undefined) {
+        await statusAggregationService.updateComponentStatus(component.id);
+      }
     }
 
     // Log the audit event

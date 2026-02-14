@@ -24,7 +24,7 @@ export default function StatusPagePage() {
   );
 
   // Use React Query hook for status page data (cached, handles loading/error)
-  const { statusPage, components, monitors, canUpdate, isLoading, isRestoring, error } =
+  const { statusPage, components, monitors, canUpdate, stats, isLoading, isRestoring, error } =
     useStatusPageDetail(statusPageId);
   const hasData = statusPage !== undefined && statusPage !== null;
 
@@ -134,6 +134,7 @@ export default function StatusPagePage() {
             monitors={monitors}
             components={componentsForDetail}
             canUpdate={canUpdate}
+            stats={stats}
           />
         </CardContent>
       </Card>

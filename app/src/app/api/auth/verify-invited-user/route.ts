@@ -4,6 +4,34 @@ import { user } from "@/db/schema";
 import { invitation } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { isCloudHosted } from "@/lib/feature-flags";
+import { getRedisConnection } from "@/lib/queue";
+
+// Rate limiting to prevent abuse of email verification endpoint
+const VERIFY_RATE_LIMIT_KEY_PREFIX = "supercheck:verify-invited:ratelimit";
+const VERIFY_RATE_LIMIT_MAX = 10; // 10 requests per minute per IP
+const VERIFY_RATE_LIMIT_WINDOW_SECONDS = 60;
+
+async function checkVerifyRateLimit(ip: string): Promise<boolean> {
+  try {
+    const redis = await getRedisConnection();
+    if (!redis) return true; // Fail open if Redis unavailable (non-security-critical path)
+
+    const key = `${VERIFY_RATE_LIMIT_KEY_PREFIX}:${ip}`;
+    const now = Date.now();
+    const windowStart = now - VERIFY_RATE_LIMIT_WINDOW_SECONDS * 1000;
+
+    await redis.zremrangebyscore(key, 0, windowStart);
+    const count = await redis.zcard(key);
+
+    if (count >= VERIFY_RATE_LIMIT_MAX) return false;
+
+    await redis.zadd(key, now, `${now}`);
+    await redis.expire(key, VERIFY_RATE_LIMIT_WINDOW_SECONDS + 10);
+    return true;
+  } catch {
+    return true; // Fail open on error
+  }
+}
 
 /**
  * POST /api/auth/verify-invited-user
@@ -28,6 +56,18 @@ export async function POST(request: NextRequest) {
         success: true,
         message: "Self-hosted mode - no verification needed",
       });
+    }
+
+    // Rate limit to prevent abuse
+    const clientIP = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
+      || request.headers.get("x-real-ip")
+      || "unknown";
+    const allowed = await checkVerifyRateLimit(clientIP);
+    if (!allowed) {
+      return NextResponse.json(
+        { error: "Too many requests. Please try again later." },
+        { status: 429 }
+      );
     }
 
     const { token, email } = await request.json();

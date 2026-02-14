@@ -19,6 +19,8 @@ import {
   createRateLimitHeaders,
 } from "@/lib/api-key-rate-limiter";
 import { verifyApiKey } from "@/lib/security/api-key-hash";
+import { requireAuthContext, isAuthError } from "@/lib/auth-context";
+import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 
 const DEFAULT_K6_LOCATION: K6Location = "eu-central";
 
@@ -349,7 +351,7 @@ export async function POST(
       id: runId,
       jobId,
       projectId: job.projectId,
-      status: "running",
+      status: "queued", // Start as queued - capacity manager will update to running
       startedAt: startTime,
       trigger: "remote" as JobTrigger,
       location: resolvedLocation,
@@ -363,7 +365,7 @@ export async function POST(
     });
 
     console.log(
-      `[${jobId}/${runId}] Created running test run record: ${runId}`
+      `[${jobId}/${runId}] Created queued test run record: ${runId}`
     );
 
     // Use unified test script preparation with proper variable resolution
@@ -374,6 +376,9 @@ export async function POST(
         runId,
         `[${jobId}/${runId}]`
       );
+
+    let queueStatus: "running" | "queued" = "queued";
+    let queuePosition: number | undefined;
 
     try {
       if (isPerformanceJob) {
@@ -470,7 +475,16 @@ export async function POST(
           location: resolvedLocation ?? DEFAULT_K6_LOCATION,
         };
 
-        await addK6JobToQueue(k6Task, "k6-job-execution");
+        const queueResult = await addK6JobToQueue(k6Task, "k6-job-execution");
+        queueStatus = queueResult.status;
+        queuePosition = queueResult.position;
+
+        // Update run status based on actual queue result
+        await db.update(runs)
+          .set({ status: queueResult.status })
+          .where(eq(runs.id, runId));
+
+        console.log(`[${jobId}/${runId}] K6 job ${queueResult.status} (position: ${queueResult.position ?? 'N/A'})`);
       } else {
         const task: JobExecutionTask = {
           jobId: jobId,
@@ -485,7 +499,16 @@ export async function POST(
           jobType,
         };
 
-        await addJobToQueue(task);
+        const queueResult = await addJobToQueue(task);
+        queueStatus = queueResult.status;
+        queuePosition = queueResult.position;
+
+        // Update run status based on actual queue result
+        await db.update(runs)
+          .set({ status: queueResult.status })
+          .where(eq(runs.id, runId));
+
+        console.log(`[${jobId}/${runId}] Playwright job ${queueResult.status} (position: ${queueResult.position ?? 'N/A'})`);
       }
     } catch (error) {
       // Check if this is a queue capacity error
@@ -533,6 +556,8 @@ export async function POST(
         jobId: jobId,
         jobName: job.name,
         runId: runId,
+        status: queueStatus,
+        position: queuePosition,
         testCount: processedTestScripts.length,
         triggeredBy: key.name,
         triggeredAt: now.toISOString(),
@@ -554,12 +579,25 @@ export async function POST(
   }
 }
 
-// GET /api/jobs/[id]/trigger - Get trigger information
+// GET /api/jobs/[id]/trigger - Get trigger information (authenticated, tenant-scoped)
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // SECURITY: Require authentication and project context
+    const authCtx = await requireAuthContext();
+    const { project, organizationId } = authCtx;
+
+    // Check permission to view job trigger info
+    const canView = checkPermissionWithContext("job", "view", authCtx);
+    if (!canView) {
+      return NextResponse.json(
+        { error: "Insufficient permissions" },
+        { status: 403 }
+      );
+    }
+
     const { id: jobId } = await params;
 
     // Validate UUID format
@@ -575,7 +613,7 @@ export async function GET(
       );
     }
 
-    // Get job information
+    // SECURITY: Scope query by organizationId and projectId to prevent cross-tenant access
     const jobResult = await db
       .select({
         id: jobs.id,
@@ -583,7 +621,13 @@ export async function GET(
         status: jobs.status,
       })
       .from(jobs)
-      .where(eq(jobs.id, jobId))
+      .where(
+        and(
+          eq(jobs.id, jobId),
+          eq(jobs.projectId, project.id),
+          eq(jobs.organizationId, organizationId)
+        )
+      )
       .limit(1);
 
     if (jobResult.length === 0) {
@@ -617,6 +661,12 @@ export async function GET(
       },
     });
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
     console.error("Error getting trigger information:", error);
     return NextResponse.json(
       { error: "Failed to get trigger information" },

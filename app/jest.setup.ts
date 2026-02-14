@@ -1,8 +1,74 @@
 import { TextEncoder, TextDecoder } from 'util';
+import {
+  ReadableStream,
+  WritableStream,
+  TransformStream,
+} from 'node:stream/web';
 
-// Polyfill TextEncoder/TextDecoder for Next.js 15 compatibility (required by next/cache)
+// Polyfill TextEncoder/TextDecoder for Next.js compatibility
 global.TextEncoder = TextEncoder;
 global.TextDecoder = TextDecoder as typeof global.TextDecoder;
+
+if (typeof globalThis.ReadableStream === 'undefined') {
+  Object.defineProperty(globalThis, 'ReadableStream', {
+    value: ReadableStream,
+    writable: true,
+    configurable: true,
+  });
+}
+
+if (typeof globalThis.WritableStream === 'undefined') {
+  Object.defineProperty(globalThis, 'WritableStream', {
+    value: WritableStream,
+    writable: true,
+    configurable: true,
+  });
+}
+
+if (typeof globalThis.TransformStream === 'undefined') {
+  Object.defineProperty(globalThis, 'TransformStream', {
+    value: TransformStream,
+    writable: true,
+    configurable: true,
+  });
+}
+
+// Polyfill Fetch API primitives for Next.js server utilities in Jest
+if (typeof globalThis.Request === 'undefined' || typeof globalThis.fetch === 'undefined') {
+  const { fetch, Headers, Request, Response } = require('undici') as typeof import('undici');
+
+  if (typeof globalThis.fetch === 'undefined') {
+    Object.defineProperty(globalThis, 'fetch', {
+      value: fetch,
+      writable: true,
+      configurable: true,
+    });
+  }
+
+  if (typeof globalThis.Headers === 'undefined') {
+    Object.defineProperty(globalThis, 'Headers', {
+      value: Headers,
+      writable: true,
+      configurable: true,
+    });
+  }
+
+  if (typeof globalThis.Request === 'undefined') {
+    Object.defineProperty(globalThis, 'Request', {
+      value: Request,
+      writable: true,
+      configurable: true,
+    });
+  }
+
+  if (typeof globalThis.Response === 'undefined') {
+    Object.defineProperty(globalThis, 'Response', {
+      value: Response,
+      writable: true,
+      configurable: true,
+    });
+  }
+}
 
 import '@testing-library/jest-dom';
 

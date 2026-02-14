@@ -98,6 +98,10 @@ type StatusPageDetailProps = {
   monitors: StatusPageMonitor[];
   components: Component[];
   canUpdate: boolean;
+  stats?: {
+    activeIncidents: number;
+    subscribers: number;
+  };
 };
 
 export function StatusPageDetail({
@@ -105,6 +109,7 @@ export function StatusPageDetail({
   monitors,
   components,
   canUpdate,
+  stats,
 }: StatusPageDetailProps) {
   const router = useRouter();
   const [isPublishing, setIsPublishing] = useState(false);
@@ -319,7 +324,7 @@ export function StatusPageDetail({
                     <OctagonAlert className="h-6 w-6 text-orange-500 dark:text-orange-400" />
                   </div>
                   <div>
-                    <div className="text-2xl font-bold">0</div>
+                    <div className="text-2xl font-bold">{stats?.activeIncidents ?? 0}</div>
                     <div className="text-sm text-muted-foreground">
                       Active Incidents
                     </div>
@@ -334,7 +339,7 @@ export function StatusPageDetail({
                     <Users className="h-6 w-6 text-green-600 dark:text-green-400" />
                   </div>
                   <div>
-                    <div className="text-2xl font-bold">0</div>
+                    <div className="text-2xl font-bold">{stats?.subscribers ?? 0}</div>
                     <div className="text-sm text-muted-foreground">
                       Subscribers
                     </div>

@@ -132,6 +132,23 @@ export async function POST(
       );
     }
 
+    // SECURITY: Validate that the notification provider belongs to the same org/project as the monitor
+    const provider = await db.query.notificationProviders.findFirst({
+      where: and(
+        eq(notificationProviders.id, notificationProviderId),
+        eq(notificationProviders.organizationId, monitor.organizationId || ""),
+        eq(notificationProviders.projectId, monitor.projectId || "")
+      ),
+      columns: { id: true },
+    });
+
+    if (!provider) {
+      return NextResponse.json(
+        { error: "Notification provider not found or does not belong to this project" },
+        { status: 404 }
+      );
+    }
+
     // Check if the link already exists
     const existingLink = await db.query.monitorNotificationSettings.findFirst({
       where: and(

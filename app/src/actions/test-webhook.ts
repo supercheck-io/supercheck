@@ -1,14 +1,17 @@
 "use server";
 
 import { db } from "@/utils/db";
-import { statusPageSubscribers } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { statusPageSubscribers, statusPages } from "@/db/schema";
+import { eq, and } from "drizzle-orm";
 import {
   deliverWebhook,
   type WebhookEvent,
 } from "@/lib/webhook-delivery.service";
 import { generateWebhookTestPayload } from "@/lib/webhook-utils";
 import { z } from "zod";
+import { requireProjectContext } from "@/lib/project-context";
+import { requirePermissions } from "@/lib/rbac/middleware";
+import { logAuditEvent } from "@/lib/audit-logger";
 
 const testWebhookSchema = z.object({
   subscriberId: z.string().uuid(),
@@ -18,15 +21,58 @@ const testWebhookSchema = z.object({
 /**
  * Test webhook delivery by sending a test payload
  * Allows users to verify their webhook is working correctly
+ *
+ * SECURITY: Requires authentication, permission check, and ownership verification
  */
 export async function testWebhook(data: z.infer<typeof testWebhookSchema>) {
   try {
     // Validate input
     const validatedData = testWebhookSchema.parse(data);
 
-    // Fetch the webhook subscriber
+    // SECURITY: Authenticate user and verify project context
+    const { userId, project, organizationId } = await requireProjectContext();
+
+    // SECURITY: Check status page management permission
+    try {
+      await requirePermissions(
+        { status_page: ["update"] },
+        { organizationId, projectId: project.id }
+      );
+    } catch {
+      console.warn(
+        `[SECURITY] User ${userId} attempted to test webhook without permission`
+      );
+      return {
+        success: false,
+        message: "Insufficient permissions to test webhooks",
+      };
+    }
+
+    // SECURITY: Verify status page belongs to this organization and project
+    const statusPage = await db.query.statusPages.findFirst({
+      where: and(
+        eq(statusPages.id, validatedData.statusPageId),
+        eq(statusPages.organizationId, organizationId),
+        eq(statusPages.projectId, project.id)
+      ),
+    });
+
+    if (!statusPage) {
+      console.warn(
+        `[SECURITY] User ${userId} attempted to test webhook for status page ${validatedData.statusPageId} without ownership`
+      );
+      return {
+        success: false,
+        message: "Status page not found or access denied",
+      };
+    }
+
+    // SECURITY: Fetch subscriber scoped to the verified status page
     const subscriber = await db.query.statusPageSubscribers.findFirst({
-      where: eq(statusPageSubscribers.id, validatedData.subscriberId),
+      where: and(
+        eq(statusPageSubscribers.id, validatedData.subscriberId),
+        eq(statusPageSubscribers.statusPageId, validatedData.statusPageId)
+      ),
     });
 
     if (!subscriber) {
@@ -82,6 +128,22 @@ export async function testWebhook(data: z.infer<typeof testWebhookSchema>) {
           updatedAt: new Date(),
         })
         .where(eq(statusPageSubscribers.id, validatedData.subscriberId));
+
+      // Log audit event
+      await logAuditEvent({
+        userId,
+        action: "webhook_test_sent",
+        resource: "status_page_subscriber",
+        resourceId: validatedData.subscriberId,
+        metadata: {
+          organizationId,
+          projectId: project.id,
+          statusPageId: validatedData.statusPageId,
+          endpoint: subscriber.endpoint,
+          statusCode: result.statusCode,
+        },
+        success: true,
+      });
 
       return {
         success: true,

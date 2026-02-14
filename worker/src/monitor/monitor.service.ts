@@ -70,6 +70,13 @@ type MonitorResult = z.infer<typeof monitorResultsSelectSchema>;
 const REDIS_AGGREGATION_KEY_PREFIX = 'monitor:aggr:';
 const REDIS_AGGREGATION_TTL_SECONDS = 120; // 2 minutes - enough time for all locations to report
 
+type AggregatedAlertState = {
+  consecutiveFailureCount: number;
+  consecutiveSuccessCount: number;
+  alertsSentForFailure: number;
+  alertsSentForRecovery: number;
+};
+
 @Injectable()
 export class MonitorService {
   private readonly logger = new Logger(MonitorService.name);
@@ -444,41 +451,43 @@ export class MonitorService {
     await this.updateMonitorStatus(monitorId, overallStatus, checkedAt);
 
     // Handle alerts based on aggregated status using consolidated alert logic
+    // Always evaluate alerts (not just on status change) so threshold counting works correctly
     const currentStatus = overallStatus;
+
+    // Calculate location summary for alert reason
+    const downCount = results.filter((r) => !r.isUp).length;
+    const upCount = results.length - downCount;
+    const reason =
+      currentStatus === 'down'
+        ? `Monitor is down in ${downCount}/${results.length} locations`
+        : `Monitor has recovered (${upCount}/${results.length} locations up)`;
+
+    const avgResponseTime =
+      results.reduce((sum, r) => sum + (r.responseTimeMs || 0), 0) /
+      results.length;
+
     if (previousStatus !== currentStatus) {
       this.logger.log(
         `Monitor ${monitorId} status changed: ${previousStatus} -> ${currentStatus}`,
       );
-
-      // Calculate location summary for alert reason
-      const downCount = results.filter((r) => !r.isUp).length;
-      const upCount = results.length - downCount;
-      const reason =
-        currentStatus === 'down'
-          ? `Monitor is down in ${downCount}/${results.length} locations`
-          : `Monitor has recovered (${upCount}/${results.length} locations up)`;
-
-      const avgResponseTime =
-        results.reduce((sum, r) => sum + (r.responseTimeMs || 0), 0) /
-        results.length;
-
-      // Use consolidated alert evaluation method
-      await this.evaluateAndSendAlert({
-        monitorId,
-        monitor,
-        previousStatus,
-        currentStatus,
-        reason,
-        metadata: {
-          responseTime: avgResponseTime,
-          locationResults: results.map((r) => ({
-            location: r.location,
-            isUp: r.isUp,
-            responseTime: r.responseTimeMs,
-          })),
-        },
-      });
     }
+
+    // Use consolidated alert evaluation method with threshold support
+    await this.evaluateAndSendAlert({
+      monitorId,
+      monitor,
+      previousStatus,
+      currentStatus,
+      reason,
+      metadata: {
+        responseTime: avgResponseTime,
+        locationResults: results.map((r) => ({
+          location: r.location,
+          isUp: r.isUp,
+          responseTime: r.responseTimeMs,
+        })),
+      },
+    });
   }
 
   async saveDistributedMonitorResult(
@@ -2269,12 +2278,99 @@ export class MonitorService {
     }
   }
 
+  private readAggregatedAlertState(
+    monitorConfig: MonitorConfig | null | undefined,
+  ): AggregatedAlertState {
+    const rawAlertState =
+      (monitorConfig as { aggregatedAlertState?: Record<string, unknown> } | null)
+        ?.aggregatedAlertState;
+
+    const toSafeCounter = (value: unknown): number =>
+      typeof value === 'number' && Number.isFinite(value) && value >= 0
+        ? Math.floor(value)
+        : 0;
+
+    return {
+      consecutiveFailureCount: toSafeCounter(
+        rawAlertState?.consecutiveFailureCount,
+      ),
+      consecutiveSuccessCount: toSafeCounter(
+        rawAlertState?.consecutiveSuccessCount,
+      ),
+      alertsSentForFailure: toSafeCounter(rawAlertState?.alertsSentForFailure),
+      alertsSentForRecovery: toSafeCounter(
+        rawAlertState?.alertsSentForRecovery,
+      ),
+    };
+  }
+
+  private getNextAggregatedAlertState(
+    previousState: AggregatedAlertState,
+    previousStatus: string,
+    currentStatus: 'up' | 'down',
+  ): AggregatedAlertState {
+    if (currentStatus === 'down') {
+      const continuingFailureSequence = previousStatus === 'down';
+
+      return {
+        consecutiveFailureCount: continuingFailureSequence
+          ? previousState.consecutiveFailureCount + 1
+          : 1,
+        consecutiveSuccessCount: 0,
+        alertsSentForFailure: continuingFailureSequence
+          ? previousState.alertsSentForFailure
+          : 0,
+        alertsSentForRecovery: 0,
+      };
+    }
+
+    const continuingRecoverySequence = previousStatus === 'up';
+
+    return {
+      consecutiveFailureCount: 0,
+      consecutiveSuccessCount: continuingRecoverySequence
+        ? previousState.consecutiveSuccessCount + 1
+        : 1,
+      alertsSentForFailure: 0,
+      alertsSentForRecovery: continuingRecoverySequence
+        ? previousState.alertsSentForRecovery
+        : 0,
+    };
+  }
+
+  private async persistAggregatedAlertState(
+    monitorId: string,
+    monitorConfig: MonitorConfig | null | undefined,
+    aggregatedAlertState: AggregatedAlertState,
+  ): Promise<void> {
+    try {
+      const nextConfig: MonitorConfig = {
+        ...(monitorConfig ?? {}),
+        aggregatedAlertState,
+      };
+
+      await this.dbService.db
+        .update(schema.monitors)
+        .set({ config: nextConfig })
+        .where(eq(schema.monitors.id, monitorId));
+    } catch (error) {
+      this.logger.error(
+        `Failed to persist aggregated alert state for monitor ${monitorId}: ${getErrorMessage(error)}`,
+      );
+    }
+  }
+
   /**
-   * Evaluate and send alerts based on status transitions.
+   * Evaluate and send alerts based on status transitions with threshold support.
    * Consolidated alert logic for both single and multi-location monitors.
    * Prevents unnecessary alerts on initial monitor creation (pending → any status).
    *
-   * @returns Alert action metadata { alertSent: boolean, alertType?: string, alertsSentCount?: number }
+   * Threshold behavior (aligned with single-location saveMonitorResult path):
+   * - failureThreshold: Number of consecutive failures before first alert (default: 1)
+   * - recoveryThreshold: Number of consecutive successes before recovery alert (default: 1)
+   * - Max 3 alerts per failure/recovery sequence with exponential intervals
+   *
+   * @returns Alert action metadata { alertSent: boolean, alertType?: string }
    */
   private async evaluateAndSendAlert(options: {
     monitorId: string;
@@ -2305,36 +2401,139 @@ export class MonitorService {
       return { alertSent: false };
     }
 
-    // Only process if there's an actual status change
-    if (previousStatus === currentStatus) {
-      return { alertSent: false };
+    const monitorConfig = (monitor as Monitor | null)?.config;
+    const locationResults = Array.isArray(
+      (metadata as { locationResults?: unknown }).locationResults,
+    )
+      ? ((metadata as { locationResults?: unknown[] }).locationResults ?? [])
+      : [];
+    const isMultiLocationEvaluation = locationResults.length > 1;
+
+    let latestResult: MonitorResult | undefined;
+    let aggregatedAlertState: AggregatedAlertState | null = null;
+
+    if (isMultiLocationEvaluation) {
+      aggregatedAlertState = this.getNextAggregatedAlertState(
+        this.readAggregatedAlertState(monitorConfig),
+        previousStatus,
+        currentStatus,
+      );
+    } else {
+      // Keep existing row-based logic for single-location evaluations
+      latestResult = await this.dbService.db.query.monitorResults.findFirst({
+        where: eq(schema.monitorResults.monitorId, monitorId),
+        orderBy: [desc(schema.monitorResults.checkedAt)],
+      });
     }
 
-    // Determine alert type based on status transition
+    const consecutiveFailureCount = isMultiLocationEvaluation
+      ? (aggregatedAlertState?.consecutiveFailureCount ?? 0)
+      : (latestResult?.consecutiveFailureCount ?? 0);
+    const consecutiveSuccessCount = isMultiLocationEvaluation
+      ? (aggregatedAlertState?.consecutiveSuccessCount ?? 0)
+      : (latestResult?.consecutiveSuccessCount ?? 0);
+    const alertsSentForFailure = isMultiLocationEvaluation
+      ? (aggregatedAlertState?.alertsSentForFailure ?? 0)
+      : (latestResult?.alertsSentForFailure ?? 0);
+    const alertsSentForRecovery = isMultiLocationEvaluation
+      ? (aggregatedAlertState?.alertsSentForRecovery ?? 0)
+      : (latestResult?.alertsSentForRecovery ?? 0);
+
+    // Determine alert type and whether thresholds are met
     let shouldSendAlert = false;
     let alertType: 'recovery' | 'failure' | null = null;
 
-    if (currentStatus === 'up' && previousStatus === 'down') {
-      // Recovery: only alert when status changes from 'down' to 'up'
-      shouldSendAlert =
-        (monitorAlertConfig?.alertOnRecovery as boolean) || false;
-      alertType = 'recovery';
-    } else if (currentStatus === 'down' && previousStatus === 'up') {
-      // Failure: only alert when status changes from 'up' to 'down'
-      shouldSendAlert =
-        (monitorAlertConfig?.alertOnFailure as boolean) || false;
+    if (currentStatus === 'down') {
       alertType = 'failure';
-    } else if (currentStatus === 'down') {
-      // Monitor is down but wasn't from 'up' state
-      // This handles case where previous state was something other than 'up'/'down'
-      // (e.g., initial check that failed). Don't alert in this case.
-      this.logger.debug(
-        `[ALERT] Not alerting for monitor ${monitorId}: first failure detected (previous status: ${previousStatus})`,
-      );
-      return { alertSent: false };
+      const failureThreshold =
+        (monitorAlertConfig?.failureThreshold as number) || 1;
+
+      if (
+        consecutiveFailureCount === failureThreshold &&
+        alertsSentForFailure === 0
+      ) {
+        // First alert: threshold just reached
+        shouldSendAlert =
+          (monitorAlertConfig?.alertOnFailure as boolean) || false;
+      } else if (
+        consecutiveFailureCount > failureThreshold &&
+        alertsSentForFailure < 3
+      ) {
+        // Subsequent alerts: exponential intervals (max 3 total)
+        const subsequentInterval = Math.max(5, failureThreshold * 2);
+        const failuresAfterThreshold =
+          consecutiveFailureCount - failureThreshold;
+        const expectedAlerts = Math.floor(
+          failuresAfterThreshold / subsequentInterval,
+        );
+        shouldSendAlert =
+          (monitorAlertConfig?.alertOnFailure as boolean) &&
+          expectedAlerts >= alertsSentForFailure &&
+          failuresAfterThreshold % subsequentInterval === 0;
+      }
+
+      if (!shouldSendAlert) {
+        if (consecutiveFailureCount > 0 && alertsSentForFailure >= 3) {
+          this.logger.debug(
+            `[ALERT] Skipping failure alert for monitor ${monitorId} - already sent 3 alerts for this failure sequence`,
+          );
+        } else {
+          this.logger.debug(
+            `[ALERT] Failure threshold not yet met for monitor ${monitorId}: ${consecutiveFailureCount}/${failureThreshold}`,
+          );
+        }
+      }
+    } else if (currentStatus === 'up' && previousStatus === 'down') {
+      alertType = 'recovery';
+      const recoveryThreshold =
+        (monitorAlertConfig?.recoveryThreshold as number) || 1;
+
+      if (
+        consecutiveSuccessCount === recoveryThreshold &&
+        alertsSentForRecovery === 0
+      ) {
+        // First recovery alert: threshold just reached
+        shouldSendAlert =
+          (monitorAlertConfig?.alertOnRecovery as boolean) || false;
+      } else if (
+        consecutiveSuccessCount > recoveryThreshold &&
+        alertsSentForRecovery < 3
+      ) {
+        // Subsequent recovery alerts: exponential intervals (max 3 total)
+        const subsequentInterval = Math.max(5, recoveryThreshold * 2);
+        const successesAfterThreshold =
+          consecutiveSuccessCount - recoveryThreshold;
+        const expectedAlerts = Math.floor(
+          successesAfterThreshold / subsequentInterval,
+        );
+        shouldSendAlert =
+          (monitorAlertConfig?.alertOnRecovery as boolean) &&
+          expectedAlerts >= alertsSentForRecovery &&
+          successesAfterThreshold % subsequentInterval === 0;
+      }
+
+      if (!shouldSendAlert) {
+        if (consecutiveSuccessCount < ((monitorAlertConfig?.recoveryThreshold as number) || 1)) {
+          this.logger.debug(
+            `[ALERT] Recovery threshold not yet met for monitor ${monitorId}: ${consecutiveSuccessCount}/${(monitorAlertConfig?.recoveryThreshold as number) || 1}`,
+          );
+        } else if (alertsSentForRecovery >= 3) {
+          this.logger.debug(
+            `[ALERT] Skipping recovery alert for monitor ${monitorId} - already sent 3 alerts for this recovery sequence`,
+          );
+        }
+      }
     }
 
     if (!shouldSendAlert || !alertType) {
+      if (isMultiLocationEvaluation && aggregatedAlertState) {
+        await this.persistAggregatedAlertState(
+          monitorId,
+          monitorConfig,
+          aggregatedAlertState,
+        );
+      }
+
       return { alertSent: false };
     }
 
@@ -2343,15 +2542,69 @@ export class MonitorService {
         `Sending ${alertType} notification for monitor ${monitorId}`,
       );
 
+      const alertMetadata = {
+        ...metadata,
+        consecutiveFailureCount,
+        consecutiveSuccessCount,
+        alertsSentForFailure,
+        alertsSentForRecovery,
+      };
+
       await this.monitorAlertService.sendNotification(
         monitorId,
         alertType,
         reason,
-        metadata,
+        alertMetadata,
       );
+
+      if (isMultiLocationEvaluation && aggregatedAlertState) {
+        const updatedAggregatedAlertState =
+          alertType === 'failure'
+            ? {
+                ...aggregatedAlertState,
+                alertsSentForFailure:
+                  aggregatedAlertState.alertsSentForFailure + 1,
+              }
+            : {
+                ...aggregatedAlertState,
+                alertsSentForRecovery:
+                  aggregatedAlertState.alertsSentForRecovery + 1,
+              };
+
+        await this.persistAggregatedAlertState(
+          monitorId,
+          monitorConfig,
+          updatedAggregatedAlertState,
+        );
+      }
+
+      // Preserve existing single-location behavior
+      if (!isMultiLocationEvaluation && latestResult) {
+        if (alertType === 'failure') {
+          await this.dbService.db
+            .update(schema.monitorResults)
+            .set({ alertsSentForFailure: alertsSentForFailure + 1 })
+            .where(eq(schema.monitorResults.id, latestResult.id));
+        } else if (alertType === 'recovery') {
+          await this.dbService.db
+            .update(schema.monitorResults)
+            .set({
+              alertsSentForRecovery: alertsSentForRecovery + 1,
+            } as Partial<typeof schema.monitorResults.$inferInsert>)
+            .where(eq(schema.monitorResults.id, latestResult.id));
+        }
+      }
 
       return { alertSent: true, alertType };
     } catch (error) {
+      if (isMultiLocationEvaluation && aggregatedAlertState) {
+        await this.persistAggregatedAlertState(
+          monitorId,
+          monitorConfig,
+          aggregatedAlertState,
+        );
+      }
+
       this.logger.error(
         `Failed to send ${alertType} alert for monitor ${monitorId}: ${getErrorMessage(error)}`,
         error instanceof Error ? error.stack : undefined,

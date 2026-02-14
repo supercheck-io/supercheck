@@ -30,4 +30,9 @@ describe("getSSLConfig", () => {
     process.env.SELF_HOSTED = "TRUE";
     expect(getSSLConfig()).toBeUndefined();
   });
+
+  it("returns undefined when SELF_HOSTED=1", () => {
+    process.env.SELF_HOSTED = "1";
+    expect(getSSLConfig()).toBeUndefined();
+  });
 });

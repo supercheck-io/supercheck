@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "build": "next build",
+    "build": "tsx scripts/build-search.mts && next build",
     "dev": "next dev",
     "start": "next start",
     "postinstall": "fumadocs-mdx",

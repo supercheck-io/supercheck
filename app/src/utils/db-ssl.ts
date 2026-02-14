@@ -1,3 +1,5 @@
+import { isSelfHosted } from "@/lib/feature-flags";
+
 /**
  * Database SSL Configuration Utility
  *
@@ -23,8 +25,7 @@
  * @returns 'require' for SSL connections, undefined for non-SSL
  */
 export function getSSLConfig(): "require" | undefined {
-  const isSelfHosted = process.env.SELF_HOSTED?.toLowerCase() === "true";
-  return isSelfHosted ? undefined : "require";
+  return isSelfHosted() ? undefined : "require";
 }
 
 /**

@@ -6,7 +6,6 @@
   "pages": [
     "---Reference---",
     "authentication",
-    "endpoints",
     "errors",
     "---OpenAPI---",
     "system",

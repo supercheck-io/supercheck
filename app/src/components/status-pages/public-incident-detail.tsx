@@ -48,6 +48,7 @@ type PublicIncidentDetailProps = {
   transactionalLogo?: string | null;
   statusPageHeadline?: string | null;
   isPublicView?: boolean;
+  isCustomDomain?: boolean;
 };
 
 export function PublicIncidentDetail({
@@ -57,6 +58,7 @@ export function PublicIncidentDetail({
   transactionalLogo,
   statusPageHeadline,
   isPublicView = false,
+  isCustomDomain = false,
 }: PublicIncidentDetailProps) {
   useStatusPageFavicon(faviconLogo);
 
@@ -102,7 +104,9 @@ export function PublicIncidentDetail({
     incident.statusPage?.headline || incident.statusPage?.name || "Status Page";
   const statusPageId = incident.statusPage?.id || idOrSubdomain;
   const statusPageHref = isPublicView
-    ? `/status/${idOrSubdomain}`
+    ? isCustomDomain
+      ? `/status/_custom/${idOrSubdomain}`
+      : `/status/${idOrSubdomain}`
     : `/status-pages/${statusPageId}/public`;
 
   return (

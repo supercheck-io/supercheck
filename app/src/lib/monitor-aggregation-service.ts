@@ -694,7 +694,19 @@ export class MonitorAggregationService {
 
       if (agg.totalResponseMs && agg.totalChecks > 0) {
         totalResponseMs += agg.totalResponseMs;
-        validResponseCount += agg.totalChecks;
+        // Derive the actual valid response sample count from stored metrics.
+        // totalResponseMs is the sum of only valid (> 0) response times,
+        // and avgResponseMs = totalResponseMs / validSampleCount.
+        // Therefore validSampleCount = totalResponseMs / avgResponseMs.
+        if (agg.avgResponseMs && agg.avgResponseMs > 0) {
+          validResponseCount += Math.round(
+            agg.totalResponseMs / agg.avgResponseMs
+          );
+        } else {
+          // Fallback: if avgResponseMs is 0/null but totalResponseMs > 0,
+          // use successfulChecks as a reasonable approximation
+          validResponseCount += agg.successfulChecks;
+        }
       }
 
       if (agg.p95ResponseMs !== null) {

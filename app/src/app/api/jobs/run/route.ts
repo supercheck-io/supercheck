@@ -169,41 +169,47 @@ export async function POST(request: Request) {
     const testScripts: Array<{ id: string; name: string; script: string; type?: string }> = [];
     
     for (const test of testData) {
-      let testScript = test.script;
+      let testScript: string | undefined;
       let testName = test.name || test.title || `Test ${test.id}`;
       let testType: string | undefined = test.type;
       
-      if (!testScript) {
-        console.log(`[${jobId}/${runId}] Fetching script for test ${test.id} from database`);
-        
-        // Fetch test directly from database
-        const testResult = await db
-          .select({
-            id: tests.id,
-            title: tests.title,
-            script: tests.script,
-            type: tests.type,
-          })
-          .from(tests)
-          .where(
-            and(
-              eq(tests.id, test.id),
-              eq(tests.projectId, project.id),
-              eq(tests.organizationId, organizationId),
-            ),
-          )
-          .limit(1);
-        
-        if (testResult.length > 0 && testResult[0].script) {
-          // Decode the base64 script
-          testScript = await decodeTestScript(testResult[0].script);
-          testName = testResult[0].title || testName;
-          testType = testResult[0].type ?? testType;
-        } else {
-          console.error(`[${jobId}/${runId}] Failed to fetch script for test ${test.id}, skipping.`);
-          continue;
-        }
+      // SECURITY: Always validate test ownership against the current project/org,
+      // regardless of whether a script is provided in the request payload.
+      // This prevents test ID spoofing and ensures audit trail integrity.
+      console.log(`[${jobId}/${runId}] Validating ownership and fetching script for test ${test.id}`);
+      
+      const testResult = await db
+        .select({
+          id: tests.id,
+          title: tests.title,
+          script: tests.script,
+          type: tests.type,
+        })
+        .from(tests)
+        .where(
+          and(
+            eq(tests.id, test.id),
+            eq(tests.projectId, project.id),
+            eq(tests.organizationId, organizationId),
+          ),
+        )
+        .limit(1);
+      
+      if (testResult.length === 0) {
+        console.error(`[${jobId}/${runId}] Test ${test.id} not found or not owned by project, skipping.`);
+        continue;
       }
+
+      // Always use the server-side script as the authoritative source
+      if (testResult[0].script) {
+        testScript = await decodeTestScript(testResult[0].script);
+      } else {
+        console.error(`[${jobId}/${runId}] No script found for test ${test.id}, skipping.`);
+        continue;
+      }
+
+      testName = testResult[0].title || testName;
+      testType = testResult[0].type ?? testType;
       
       if (isPerformanceJob && testType !== "performance") {
         const errorMessage = `Test ${test.id} is not a performance test and cannot be executed in a k6 job`;

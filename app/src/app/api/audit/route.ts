@@ -34,13 +34,18 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Parse query parameters
+    // Parse and validate query parameters
     const { searchParams } = new URL(request.url);
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '10');
-    const sortOrder = searchParams.get('sortOrder') || 'desc';
-    const search = searchParams.get('search') || '';
-    const action = searchParams.get('action') || '';
+    const rawPage = Number.parseInt(searchParams.get('page') || '1', 10);
+    const rawLimit = Number.parseInt(searchParams.get('limit') || '10', 10);
+    const page = Number.isFinite(rawPage) && rawPage > 0 ? rawPage : 1;
+    const limit = Number.isFinite(rawLimit)
+      ? Math.min(Math.max(rawLimit, 1), 100)
+      : 10;
+    const sortOrderParam = searchParams.get('sortOrder');
+    const sortOrder = sortOrderParam === 'asc' ? 'asc' : 'desc';
+    const search = (searchParams.get('search') || '').trim().slice(0, 200);
+    const action = (searchParams.get('action') || '').trim().slice(0, 100);
 
     // Calculate offset
     const offset = (page - 1) * limit;
@@ -144,8 +149,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       { 
         success: false, 
-        error: 'Failed to fetch audit logs',
-        details: error instanceof Error ? error.message : 'Unknown error'
+        error: 'Failed to fetch audit logs'
       },
       { status: 500 }
     );

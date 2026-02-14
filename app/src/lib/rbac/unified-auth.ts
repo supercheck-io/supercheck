@@ -151,6 +151,33 @@ export async function getUnifiedAuthContext(
        const ctx = contextResult[0];
        
        if (ctx) {
+           // SECURITY: Verify user has organization membership for the project's org.
+           // Without this check, a user could pass an x-project-id header for a project
+           // in a different organization and get a valid context with null roles,
+           // enabling cross-tenant context confusion.
+           if (!ctx.orgRole) {
+             // Check if the user is a super admin (they bypass org membership)
+             const { isSuperAdmin } = await import("./super-admin");
+             const isSA = await isSuperAdmin(s.userId);
+             if (!isSA) {
+               return {
+                 isValid: false,
+                 userId: s.userId,
+                 impersonatedBy: null,
+                 projectId: null,
+                 projectName: null,
+                 projectRole: null,
+                 isDefaultProject: null,
+                 organizationId: null,
+                 organizationSlug: null,
+                 organizationRole: null,
+                 subscriptionStatus: null,
+                 polarCustomerId: null,
+                 error: "Not a member of this project's organization",
+               };
+             }
+           }
+
            return {
                isValid: true,
                userId: s.userId,

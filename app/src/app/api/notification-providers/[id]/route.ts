@@ -140,8 +140,21 @@ export async function PUT(
       createdByUserId: existingProvider.createdByUserId ?? userId,
     };
 
+    // If config is not provided in the update, preserve the existing config.
+    // This allows partial updates (e.g., name-only) without requiring the
+    // client to send back the full config (which may contain masked secrets).
+    const hasConfigUpdate = rawData.config !== undefined;
+
     const validationResult =
-      notificationProvidersInsertSchema.safeParse(transformedData);
+      notificationProvidersInsertSchema.safeParse(
+        hasConfigUpdate
+          ? transformedData
+          : {
+              ...transformedData,
+              // Use a placeholder for validation — we'll use existing config for the actual update
+              config: { name: rawData.name ?? existingProvider.name },
+            }
+      );
 
     if (!validationResult.success) {
       return NextResponse.json(
@@ -152,55 +165,84 @@ export async function PUT(
 
     const updateData = validationResult.data;
 
-    const plainConfig = (updateData.config ?? {}) as Record<string, unknown>;
+    // Only validate and re-encrypt config if it was explicitly provided
+    if (hasConfigUpdate) {
+      const plainConfig = (updateData.config ?? {}) as Record<string, unknown>;
 
-    try {
-      validateProviderConfig(
-        updateData.type as NotificationProviderType,
-        plainConfig
+      try {
+        validateProviderConfig(
+          updateData.type as NotificationProviderType,
+          plainConfig
+        );
+      } catch (validationError) {
+        return NextResponse.json(
+          {
+            error:
+              validationError instanceof Error
+                ? validationError.message
+                : "Invalid notification provider configuration",
+          },
+          { status: 400 }
+        );
+      }
+
+      const encryptedConfig = encryptNotificationProviderConfig(
+        plainConfig as PlainNotificationProviderConfig,
+        project.id
       );
-    } catch (validationError) {
-      return NextResponse.json(
-        {
-          error:
-            validationError instanceof Error
-              ? validationError.message
-              : "Invalid notification provider configuration",
-        },
-        { status: 400 }
+
+      const [updatedProvider] = await db
+        .update(notificationProviders)
+        .set({
+          name: updateData.name!,
+          type: updateData.type as NotificationProviderType,
+          config: encryptedConfig,
+          updatedAt: new Date(),
+        })
+        .where(eq(notificationProviders.id, id))
+        .returning();
+
+      const decryptedConfig = decryptNotificationProviderConfig(
+        updatedProvider.config,
+        project.id
       );
+      const { sanitizedConfig, maskedFields } = sanitizeConfigForClient(
+        updatedProvider.type as NotificationProviderType,
+        decryptedConfig
+      );
+
+      return NextResponse.json({
+        ...updatedProvider,
+        config: sanitizedConfig,
+        maskedFields,
+      });
+    } else {
+      // No config update — preserve existing encrypted config
+      const [updatedProvider] = await db
+        .update(notificationProviders)
+        .set({
+          name: updateData.name!,
+          type: updateData.type as NotificationProviderType,
+          updatedAt: new Date(),
+        })
+        .where(eq(notificationProviders.id, id))
+        .returning();
+
+      const decryptedConfig = decryptNotificationProviderConfig(
+        updatedProvider.config,
+        project.id
+      );
+      const { sanitizedConfig, maskedFields } = sanitizeConfigForClient(
+        updatedProvider.type as NotificationProviderType,
+        decryptedConfig
+      );
+
+      return NextResponse.json({
+        ...updatedProvider,
+        config: sanitizedConfig,
+        maskedFields,
+      });
     }
-
-    const encryptedConfig = encryptNotificationProviderConfig(
-      plainConfig as PlainNotificationProviderConfig,
-      project.id
-    );
-
-    const [updatedProvider] = await db
-      .update(notificationProviders)
-      .set({
-        name: updateData.name!,
-        type: updateData.type as NotificationProviderType,
-        config: encryptedConfig,
-        updatedAt: new Date(),
-      })
-      .where(eq(notificationProviders.id, id))
-      .returning();
-
-    const decryptedConfig = decryptNotificationProviderConfig(
-      updatedProvider.config,
-      project.id
-    );
-    const { sanitizedConfig, maskedFields } = sanitizeConfigForClient(
-      updatedProvider.type as NotificationProviderType,
-      decryptedConfig
-    );
-
-    return NextResponse.json({
-      ...updatedProvider,
-      config: sanitizedConfig,
-      maskedFields,
-    });
   } catch (error) {
     if (isAuthError(error)) {
       return NextResponse.json(

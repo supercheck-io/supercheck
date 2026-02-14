@@ -13,6 +13,7 @@ const customJestConfig = {
     "<rootDir>/src/db/",
     "<rootDir>/e2e/",
   ],
+  modulePathIgnorePatterns: ["<rootDir>/.next/"],
   moduleNameMapper: {
     "^@/(.*)$": "<rootDir>/src/$1",
   },

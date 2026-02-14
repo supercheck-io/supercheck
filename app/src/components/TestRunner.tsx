@@ -118,7 +118,7 @@ export default function TestRunner() {
       }
 
       // Test queued successfully, save the runId to start polling
-      setRunId(result.testId);
+      setRunId(result.runId || result.testId);
       // isLoading remains true while polling
     } catch (err) {
       console.error("Error running script:", err);

@@ -33,64 +33,77 @@ import type {
 /**
  * Stores status page configurations with UUID-based subdomains
  */
-export const statusPages = pgTable("status_pages", {
-  id: uuid("id")
-    .primaryKey()
-    .$defaultFn(() => sql`uuidv7()`),
-  organizationId: uuid("organization_id")
-    .notNull()
-    .references(() => organization.id, { onDelete: "cascade" }),
-  projectId: uuid("project_id").references(() => projects.id, {
-    onDelete: "cascade",
-  }),
-  createdByUserId: uuid("created_by_user_id").references(() => user.id, {
-    onDelete: "no action",
-  }),
-  name: varchar("name", { length: 255 }).notNull(),
-  subdomain: varchar("subdomain", { length: 36 }).unique().notNull(),
-  status: varchar("status", { length: 50 })
-    .$type<StatusPageStatus>()
-    .notNull()
-    .default("draft"),
-  pageDescription: text("page_description"),
-  headline: varchar("headline", { length: 255 }),
-  supportUrl: varchar("support_url", { length: 500 }),
-  allowPageSubscribers: boolean("allow_page_subscribers").default(true),
-  allowIncidentSubscribers: boolean("allow_incident_subscribers").default(true),
-  allowEmailSubscribers: boolean("allow_email_subscribers").default(true),
-  allowWebhookSubscribers: boolean("allow_webhook_subscribers").default(true),
-  allowSlackSubscribers: boolean("allow_slack_subscribers").default(true),
-  allowRssFeed: boolean("allow_rss_feed").default(true),
-  notificationsFromEmail: varchar("notifications_from_email", { length: 255 }),
-  notificationsEmailFooter: text("notifications_email_footer"),
-  timezone: varchar("timezone", { length: 50 }).default("UTC"),
-  // Branding
-  cssBodyBackgroundColor: varchar("css_body_background_color", {
-    length: 7,
-  }).default("#ffffff"),
-  cssFontColor: varchar("css_font_color", { length: 7 }).default("#333333"),
-  cssLightFontColor: varchar("css_light_font_color", { length: 7 }).default(
-    "#666666"
-  ),
-  cssGreens: varchar("css_greens", { length: 7 }).default("#2ecc71"),
-  cssYellows: varchar("css_yellows", { length: 7 }).default("#f1c40f"),
-  cssOranges: varchar("css_oranges", { length: 7 }).default("#e67e22"),
-  cssBlues: varchar("css_blues", { length: 7 }).default("#3498db"),
-  cssReds: varchar("css_reds", { length: 7 }).default("#e74c3c"),
-  cssBorderColor: varchar("css_border_color", { length: 7 }).default("#ecf0f1"),
-  cssGraphColor: varchar("css_graph_color", { length: 7 }).default("#3498db"),
-  cssLinkColor: varchar("css_link_color", { length: 7 }).default("#3498db"),
-  cssNoData: varchar("css_no_data", { length: 7 }).default("#bdc3c7"),
-  faviconLogo: varchar("favicon_logo", { length: 500 }),
-  transactionalLogo: varchar("transactional_logo", { length: 500 }),
-  heroCover: varchar("hero_cover", { length: 500 }),
-  customDomain: varchar("custom_domain", { length: 255 }),
-  customDomainVerified: boolean("custom_domain_verified").default(false),
-  theme: jsonb("theme").default({}),
-  brandingSettings: jsonb("branding_settings").default({}),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
-});
+export const statusPages = pgTable(
+  "status_pages",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .$defaultFn(() => sql`uuidv7()`),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    projectId: uuid("project_id").references(() => projects.id, {
+      onDelete: "cascade",
+    }),
+    createdByUserId: uuid("created_by_user_id").references(() => user.id, {
+      onDelete: "no action",
+    }),
+    name: varchar("name", { length: 255 }).notNull(),
+    subdomain: varchar("subdomain", { length: 36 }).unique().notNull(),
+    status: varchar("status", { length: 50 })
+      .$type<StatusPageStatus>()
+      .notNull()
+      .default("draft"),
+    pageDescription: text("page_description"),
+    headline: varchar("headline", { length: 255 }),
+    supportUrl: varchar("support_url", { length: 500 }),
+    allowPageSubscribers: boolean("allow_page_subscribers").default(true),
+    allowIncidentSubscribers: boolean("allow_incident_subscribers").default(
+      true
+    ),
+    allowEmailSubscribers: boolean("allow_email_subscribers").default(true),
+    allowWebhookSubscribers: boolean("allow_webhook_subscribers").default(true),
+    allowSlackSubscribers: boolean("allow_slack_subscribers").default(true),
+    allowRssFeed: boolean("allow_rss_feed").default(true),
+    notificationsFromEmail: varchar("notifications_from_email", { length: 255 }),
+    notificationsEmailFooter: text("notifications_email_footer"),
+    timezone: varchar("timezone", { length: 50 }).default("UTC"),
+    // Branding
+    cssBodyBackgroundColor: varchar("css_body_background_color", {
+      length: 7,
+    }).default("#ffffff"),
+    cssFontColor: varchar("css_font_color", { length: 7 }).default("#333333"),
+    cssLightFontColor: varchar("css_light_font_color", { length: 7 }).default(
+      "#666666"
+    ),
+    cssGreens: varchar("css_greens", { length: 7 }).default("#2ecc71"),
+    cssYellows: varchar("css_yellows", { length: 7 }).default("#f1c40f"),
+    cssOranges: varchar("css_oranges", { length: 7 }).default("#e67e22"),
+    cssBlues: varchar("css_blues", { length: 7 }).default("#3498db"),
+    cssReds: varchar("css_reds", { length: 7 }).default("#e74c3c"),
+    cssBorderColor: varchar("css_border_color", { length: 7 }).default(
+      "#ecf0f1"
+    ),
+    cssGraphColor: varchar("css_graph_color", { length: 7 }).default("#3498db"),
+    cssLinkColor: varchar("css_link_color", { length: 7 }).default("#3498db"),
+    cssNoData: varchar("css_no_data", { length: 7 }).default("#bdc3c7"),
+    faviconLogo: varchar("favicon_logo", { length: 500 }),
+    transactionalLogo: varchar("transactional_logo", { length: 500 }),
+    heroCover: varchar("hero_cover", { length: 500 }),
+    customDomain: varchar("custom_domain", { length: 255 }),
+    customDomainVerified: boolean("custom_domain_verified").default(false),
+    theme: jsonb("theme").default({}),
+    brandingSettings: jsonb("branding_settings").default({}),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => ({
+    // Prevent duplicate custom domains while allowing NULL values
+    uniqueCustomDomain: uniqueIndex("status_pages_custom_domain_idx")
+      .on(table.customDomain)
+      .where(sql`custom_domain IS NOT NULL`),
+  })
+);
 
 /**
  * Status page components linked to monitors

@@ -47,9 +47,13 @@ export async function GET(
       );
     }
 
-    // Find the monitor scoped to current project
+    // Find the monitor scoped to current organization and project (defense-in-depth)
     const monitor = await db.query.monitors.findFirst({
-      where: and(eq(monitors.id, id), eq(monitors.projectId, context.project.id)),
+      where: and(
+        eq(monitors.id, id),
+        eq(monitors.projectId, context.project.id),
+        eq(monitors.organizationId, context.organizationId)
+      ),
     });
 
     if (!monitor) {
@@ -133,9 +137,13 @@ export async function PUT(
       );
     }
 
-    // Find the monitor scoped to current project
+    // Find the monitor scoped to current organization and project (defense-in-depth)
     const currentMonitor = await db.query.monitors.findFirst({
-      where: and(eq(monitors.id, id), eq(monitors.projectId, authCtx.project.id)),
+      where: and(
+        eq(monitors.id, id),
+        eq(monitors.projectId, authCtx.project.id),
+        eq(monitors.organizationId, authCtx.organizationId)
+      ),
     });
 
     if (!currentMonitor) {
@@ -542,9 +550,13 @@ export async function PATCH(
       );
     }
 
-    // Find the monitor scoped to current project
+    // Find the monitor scoped to current organization and project (defense-in-depth)
     const currentMonitor = await db.query.monitors.findFirst({
-      where: and(eq(monitors.id, id), eq(monitors.projectId, authCtx.project.id)),
+      where: and(
+        eq(monitors.id, id),
+        eq(monitors.projectId, authCtx.project.id),
+        eq(monitors.organizationId, authCtx.organizationId)
+      ),
     });
 
     if (!currentMonitor) {

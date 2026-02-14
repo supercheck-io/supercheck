@@ -2,6 +2,11 @@
  * GET/PUT/DELETE /api/variables/[id]
  *
  * CLI-friendly variable endpoints that use project context from auth token.
+ *
+ * Multi-tenant scoping: The `projectVariables` table is scoped by `projectId` only
+ * (no `organizationId` column). Organization-level isolation is enforced by
+ * `requireAuthContext()`, which validates that the resolved project belongs to
+ * the authenticated user's organization.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";

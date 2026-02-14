@@ -1,21 +1,18 @@
 import { Job } from "bullmq";
 import { db } from "@/utils/db";
-import { jobs, runs } from "@/db/schema";
-import { JobTrigger } from "@/db/schema";
+import { jobs } from "@/db/schema";
 import { eq, isNotNull, and } from "drizzle-orm";
-import {
-  getQueues,
-  addJobToQueue,
-} from "./queue";
-import crypto from "crypto";
+import { getQueues } from "./queue";
 import { getNextRunDate } from "@/lib/cron-utils";
 import {
   createDataLifecycleService,
   setDataLifecycleInstance,
   type DataLifecycleService,
 } from "./data-lifecycle-service";
-import { prepareJobTestScripts } from "./job-execution-utils";
-import type { JobExecutionTask } from "./queue";
+import {
+  processScheduledJob,
+  type ScheduledJobData,
+} from "./scheduler/job-scheduler";
 
 interface ScheduleOptions {
   name: string;
@@ -39,7 +36,7 @@ export async function scheduleJob(options: ScheduleOptions): Promise<string> {
     // Generate a unique name for this scheduled job
     const schedulerJobName = `scheduled-job-${options.jobId}`;
 
-    // First, get job information to access projectId
+    // First, get job information to access projectId and jobType
     const jobData = await db
       .select()
       .from(jobs)
@@ -51,22 +48,10 @@ export async function scheduleJob(options: ScheduleOptions): Promise<string> {
     }
 
     const job = jobData[0];
-    const { testScripts, variableResolution } = await prepareJobTestScripts(
-      options.jobId,
-      job.projectId || "",
-      crypto.randomUUID(), // temporary runId for logging
-      `[Schedule Job ${options.jobId}]`
-    );
 
-    // Convert to the format expected by the worker
-    const testCases = testScripts.map((script) => ({
-      id: script.id,
-      title: script.name,
-      script: script.script, // This is already decoded and has variables resolved
-      type: script.type,
-    }));
-
-    // Prepared test cases with variables resolved
+    // IMPORTANT: Only store identifiers in the repeatable payload.
+    // Test scripts and variables are fetched at trigger time by processScheduledJob
+    // to ensure executions always use the latest test content and variable values.
 
     // Clean up ALL existing repeatable jobs for this job ID
     // Using .filter() instead of .find() to remove ALL matching jobs,
@@ -91,13 +76,10 @@ export async function scheduleJob(options: ScheduleOptions): Promise<string> {
     await schedulerQueue.add(
       schedulerJobName,
       {
+        // Minimal identifier payload — scripts/variables are resolved at trigger time
         jobId: options.jobId,
         name: options.name,
-        testCases,
         retryLimit: options.retryLimit || 3,
-        // Pass resolved variables and job info to worker
-        variables: variableResolution.variables,
-        secrets: variableResolution.secrets,
         projectId: job.projectId!,
         organizationId: job.organizationId!,
       },
@@ -149,148 +131,9 @@ export async function scheduleJob(options: ScheduleOptions): Promise<string> {
  * processed, this is the code that should run.
  */
 export async function handleScheduledJobTrigger(job: Job) {
-  const jobId = job.data.jobId;
-  try {
-    const data = job.data;
-
-    // Handling job trigger
-
-    // Check if there's already a run in progress for this job
-    const runningRuns = await db
-      .select()
-      .from(runs)
-      .where(and(eq(runs.jobId, jobId), eq(runs.status, "running")));
-
-    if (runningRuns.length > 0) {
-      // Job already running, skipping
-      return;
-    }
-
-    // Create a run record
-    const runId = crypto.randomUUID();
-
-    // Insert with known fields from the schema
-    await db.insert(runs).values({
-      id: runId,
-      jobId: jobId,
-      status: "running", // Using direct value matching TestRunStatus from schema
-      startedAt: new Date(),
-      trigger: "schedule" as JobTrigger,
-    });
-
-    // Created run record
-
-    // Update job's lastRunAt field and calculate nextRunAt
-    const now = new Date();
-    const jobData = await db
-      .select()
-      .from(jobs)
-      .where(eq(jobs.id, jobId))
-      .limit(1);
-
-    if (jobData.length > 0) {
-      const cronSchedule = jobData[0].cronSchedule;
-      let nextRunAt = null;
-
-      try {
-        if (cronSchedule) {
-          nextRunAt = getNextRunDate(cronSchedule);
-        }
-      } catch (error) {
-        console.error(`Failed to calculate next run date: ${error}`);
-      }
-
-      await db
-        .update(jobs)
-        .set({
-          lastRunAt: now,
-          nextRunAt: nextRunAt,
-          status: "running", // Using direct value matching JobStatus from schema
-        })
-        .where(eq(jobs.id, jobId));
-    }
-
-    // Get the queue for execution - no longer directly accessed
-
-    // Process the test cases that were passed from the scheduler setup
-    // These contain the test scripts that were fetched at scheduling time
-    if (!data.testCases || data.testCases.length === 0) {
-      console.error(
-        `[${jobId}/${runId}] No test cases found in scheduled job data`
-      );
-      throw new Error("No test cases found for scheduled job");
-    }
-
-    // Use pre-resolved test cases and variables from the scheduler data
-    // All scheduled jobs now have variables resolved on the app side for consistency
-    const processedTestScripts = data.testCases.map(
-      (test: { id: string; script: string; title: string }) => ({
-        id: test.id,
-        name: test.title || `Test ${test.id}`,
-        script: test.script, // Script is already decoded and has variables resolved
-      })
-    );
-
-    if (processedTestScripts.length === 0) {
-      console.error(
-        `[${jobId}/${runId}] No test scripts found in scheduled job data`
-      );
-      throw new Error("No test scripts found for scheduled job");
-    }
-
-    console.log(
-      `[${jobId}/${runId}] Using ${processedTestScripts.length} pre-resolved test scripts from scheduled job data`
-    );
-
-    // Use pre-resolved variables from the scheduler data
-    const variableResolution = {
-      variables: data.variables,
-      secrets: data.secrets,
-    };
-
-    // Create task for runner service with all necessary information
-    const task: JobExecutionTask = {
-      runId,
-      jobId,
-      testScripts: processedTestScripts,
-      trigger: "schedule",
-      organizationId: data.organizationId,
-      projectId: data.projectId,
-      variables: variableResolution.variables,
-      secrets: variableResolution.secrets,
-    };
-
-    // Add task to the execution queue using the helper function
-    await addJobToQueue(task);
-
-    // Created execution task
-  } catch (error) {
-    console.error(`Failed to process scheduled job trigger:`, error);
-
-    // Update job status to error
-    try {
-      await db
-        .update(jobs)
-        .set({
-          status: "error", // Using direct value matching JobStatus from schema
-        })
-        .where(eq(jobs.id, jobId));
-
-      // Update any "running" runs to "error" status
-      await db
-        .update(runs)
-        .set({
-          status: "error", // Using direct value matching TestRunStatus from schema
-          errorDetails: `Failed to process scheduled job: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-          completedAt: new Date(),
-        })
-        .where(and(eq(runs.jobId, jobId), eq(runs.status, "running")));
-    } catch (dbError) {
-      console.error(`Failed to update job/run status:`, dbError);
-    }
-  }
+  // Keep legacy export as a compatibility entrypoint, but delegate all logic
+  // to the active scheduler processor to avoid behavior drift.
+  await processScheduledJob(job as Job<ScheduledJobData>);
 }
 
 /**

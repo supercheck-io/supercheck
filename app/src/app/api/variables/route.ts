@@ -4,6 +4,11 @@
  * CLI-friendly variable endpoints that use project context from auth token.
  * These mirror /api/projects/[id]/variables but resolve the project from
  * the authenticated session or Bearer token instead of requiring it in the URL.
+ *
+ * Multi-tenant scoping: The `projectVariables` table is scoped by `projectId` only
+ * (no `organizationId` column). Organization-level isolation is enforced by
+ * `requireAuthContext()`, which validates that the resolved project belongs to
+ * the authenticated user's organization.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";

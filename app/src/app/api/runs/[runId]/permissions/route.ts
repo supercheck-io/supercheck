@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { requireAuthContext, isAuthError } from '@/lib/auth-context';
 import { db } from '@/utils/db';
-import { runs, jobs } from '@/db/schema';
+import { runs, jobs, projects } from '@/db/schema';
 import { and, eq } from 'drizzle-orm';
 
 export async function GET(
@@ -32,14 +32,16 @@ export async function GET(
       .select({
         runId: runs.id,
         projectId: runs.projectId,
-        organizationId: jobs.organizationId,
+        organizationId: projects.organizationId,
       })
       .from(runs)
       .leftJoin(jobs, eq(runs.jobId, jobs.id))
+      .innerJoin(projects, eq(runs.projectId, projects.id))
       .where(
         and(
           eq(runs.id, runId),
           eq(runs.projectId, authCtx.project.id),
+          eq(projects.organizationId, authCtx.organizationId),
         )
       )
       .limit(1);
@@ -57,7 +59,6 @@ export async function GET(
       );
     }
 
-    const hasDeletePermission = checkPermissionWithContext('run', 'delete', authCtx);
     const userRole = authCtx.project.userRole;
 
     return NextResponse.json({

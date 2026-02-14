@@ -2,9 +2,23 @@ import { NextRequest, NextResponse } from "next/server";
 import type { TestType } from "@/db/schema/types";
 import { playwrightValidationService } from "@/lib/playwright-validator";
 import { isK6Script, validateK6Script } from "@/lib/k6-validator";
+import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 
 export async function POST(request: NextRequest) {
   try {
+    // SECURITY: Require authentication to prevent abuse (DoS via expensive validation)
+    try {
+      await requireAuthContext();
+    } catch (error) {
+      if (isAuthError(error)) {
+        return NextResponse.json(
+          { error: error instanceof Error ? error.message : "Authentication required" },
+          { status: 401 }
+        );
+      }
+      throw error;
+    }
+
     const data = await request.json();
     const script = data.script as string;
     const requestedType =

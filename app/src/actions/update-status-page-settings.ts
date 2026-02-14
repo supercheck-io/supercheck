@@ -2,7 +2,7 @@
 
 import { db } from "@/utils/db";
 import { statusPages } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, ne } from "drizzle-orm";
 import { z } from "zod";
 import { requireProjectContext } from "@/lib/project-context";
 import { requirePermissions } from "@/lib/rbac/middleware";
@@ -149,6 +149,23 @@ export async function updateStatusPageSettings(data: UpdateSettingsInput) {
       settings.customDomain !== statusPage.customDomain
     ) {
       updatePayload.customDomainVerified = false;
+
+      if (settings.customDomain) {
+        const existingDomain = await db.query.statusPages.findFirst({
+          where: and(
+            eq(statusPages.customDomain, settings.customDomain),
+            ne(statusPages.id, statusPageId)
+          ),
+          columns: { id: true },
+        });
+
+        if (existingDomain) {
+          return {
+            success: false,
+            message: "This custom domain is already in use by another status page",
+          };
+        }
+      }
     }
 
     // Update status page
@@ -186,6 +203,18 @@ export async function updateStatusPageSettings(data: UpdateSettingsInput) {
     };
   } catch (error) {
     console.error("Error updating status page settings:", error);
+
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      (error as { code?: string }).code === "23505"
+    ) {
+      return {
+        success: false,
+        message: "This custom domain is already in use by another status page",
+      };
+    }
 
     if (error instanceof z.ZodError) {
       return {

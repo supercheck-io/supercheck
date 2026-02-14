@@ -9,6 +9,7 @@ import { streamText, LanguageModel } from "ai";
 import { aiRateLimiter } from "./ai-rate-limiter";
 import { aiCodeValidator } from "./ai-code-validator";
 import { getRedisConnection } from "@/lib/queue";
+import { isSelfHosted } from "@/lib/feature-flags";
 
 // Idempotency key configuration
 const IDEMPOTENCY_KEY_PREFIX = "supercheck:ai:idempotency";
@@ -218,7 +219,7 @@ export class AIStreamingService {
     tier?: string
   ): Promise<void> {
     // Skip rate limiting in self-hosted mode
-    if (process.env.SELF_HOSTED === "true") {
+    if (isSelfHosted()) {
       return;
     }
 

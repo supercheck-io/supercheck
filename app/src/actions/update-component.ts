@@ -13,6 +13,7 @@ import { z } from "zod";
 import { requireProjectContext } from "@/lib/project-context";
 import { requirePermissions } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
+import { statusAggregationService } from "@/lib/status-aggregation.service";
 
 const updateComponentSchema = z.object({
   id: z.string().uuid(),
@@ -182,6 +183,11 @@ export async function updateComponent(data: UpdateComponentData) {
             createdAt: new Date(),
           }))
         );
+
+        // Preserve explicit manual status updates; only aggregate when status not provided
+        if (validatedData.status === undefined) {
+          await statusAggregationService.updateComponentStatus(validatedData.id);
+        }
       }
     }
 

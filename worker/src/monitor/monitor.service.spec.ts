@@ -696,6 +696,76 @@ describe('MonitorService', () => {
   });
 
   // ==========================================================================
+  // MULTI-LOCATION ALERT THRESHOLD TESTS
+  // ==========================================================================
+
+  describe('Multi-location Alert Thresholds', () => {
+    it('uses aggregated alert state for multi-location thresholds', async () => {
+      mockDbService.db.query.monitorResults.findFirst.mockResolvedValue({
+        id: 'result-latest',
+        consecutiveFailureCount: 3,
+        consecutiveSuccessCount: 0,
+        alertsSentForFailure: 0,
+        alertsSentForRecovery: 0,
+      });
+
+      const monitorWithAlertConfig = {
+        ...mockMonitor,
+        status: 'down',
+        alertConfig: {
+          enabled: true,
+          alertOnFailure: true,
+          alertOnRecovery: true,
+          failureThreshold: 3,
+          recoveryThreshold: 1,
+          notificationProviders: [],
+        },
+        config: {
+          aggregatedAlertState: {
+            consecutiveFailureCount: 1,
+            consecutiveSuccessCount: 0,
+            alertsSentForFailure: 0,
+            alertsSentForRecovery: 0,
+          },
+        },
+      };
+
+      const result = await (service as any).evaluateAndSendAlert({
+        monitorId: monitorWithAlertConfig.id,
+        monitor: monitorWithAlertConfig,
+        previousStatus: 'down',
+        currentStatus: 'down',
+        reason: 'Monitor is down in 2/3 locations',
+        metadata: {
+          locationResults: [
+            { location: MONITORING_LOCATIONS.EU_CENTRAL, isUp: false },
+            { location: MONITORING_LOCATIONS.US_EAST, isUp: false },
+            { location: MONITORING_LOCATIONS.ASIA_PACIFIC, isUp: true },
+          ],
+        },
+      });
+
+      expect(result.alertSent).toBe(false);
+      expect(mockAlertService.sendNotification).not.toHaveBeenCalled();
+      expect(mockDbService.db.query.monitorResults.findFirst).not.toHaveBeenCalled();
+      expect(mockDbService.db.update).toHaveBeenCalled();
+
+      const firstUpdateCall = (mockDbService.db.update as jest.Mock).mock
+        .results[0]?.value;
+      expect(firstUpdateCall?.set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          config: expect.objectContaining({
+            aggregatedAlertState: expect.objectContaining({
+              consecutiveFailureCount: 2,
+              alertsSentForFailure: 0,
+            }),
+          }),
+        }),
+      );
+    });
+  });
+
+  // ==========================================================================
   // RESULT STORAGE TESTS
   // ==========================================================================
 

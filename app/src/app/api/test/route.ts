@@ -22,6 +22,10 @@ function isK6Script(script: string): boolean {
   return /import\s+.*\s+from\s+['"]k6(\/[^'"]+)?['"]/.test(script);
 }
 
+function buildReportProxyUrl(entityId: string): string {
+  return `/api/test-results/${encodeURIComponent(entityId)}/report/index.html?forceIframe=true`;
+}
+
 export async function POST(request: NextRequest) {
   try {
     // Check authentication and permissions first
@@ -290,13 +294,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Include the reportUrl in the response using direct UUID path
-    const reportUrl = `/api/test-results/${testId}/report/index.html`;
+    // Return a stable internal report proxy URL for backward compatibility.
+    // The proxy endpoint returns 202 while reports are still being generated,
+    // avoiding broken external S3 links while keeping the client contract intact.
+    const reportEntityId = isPerformanceTest
+      ? runIdForQueue || testId
+      : testId;
+    const reportUrl = buildReportProxyUrl(reportEntityId);
+    const statusUrl = runIdForQueue ? `/api/runs/${runIdForQueue}/status` : null;
 
     return NextResponse.json({
       message: "Test execution queued successfully.",
       testId: testId,
       reportUrl: reportUrl,
+      statusUrl,
       testType: testType, // Include test type so frontend knows if it's k6 or Playwright
       runId: runIdForQueue || testId,
       location: resolvedLocation ?? undefined,

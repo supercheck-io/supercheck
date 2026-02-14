@@ -82,6 +82,7 @@ type PublicStatusPageProps = {
   incidents: Incident[];
   idOrSubdomain: string;
   isPublicView?: boolean;
+  isCustomDomain?: boolean;
 };
 
 export function PublicStatusPage({
@@ -90,6 +91,7 @@ export function PublicStatusPage({
   incidents,
   idOrSubdomain,
   isPublicView = false,
+  isCustomDomain = false,
 }: PublicStatusPageProps) {
   const [currentPage, setCurrentPage] = useState(1);
   const DAYS_PER_PAGE = 7;
@@ -664,7 +666,9 @@ export function PublicStatusPage({
                             };
 
                             const incidentLinkBase = isPublicView
-                              ? `/status/${idOrSubdomain}/incidents`
+                              ? isCustomDomain
+                                ? `/status/_custom/${idOrSubdomain}/incidents`
+                                : `/status/${idOrSubdomain}/incidents`
                               : `/status-pages/${statusPage.id}/public/incidents`;
 
                             return (

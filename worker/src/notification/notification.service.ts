@@ -11,6 +11,7 @@ import {
   isValidTeamsWebhookDomain,
   getTeamsWebhookDomainError,
 } from './notification.constants';
+import { isUrlSafeForOutbound } from '../common/utils/url-validator';
 
 // Utility function to safely get error message
 function getErrorMessage(error: unknown): string {
@@ -385,11 +386,29 @@ export class NotificationService {
         }
         case 'slack': {
           const slackConfig = provider.config as SlackConfig;
-          return !!slackConfig.webhookUrl;
+          if (!slackConfig.webhookUrl) return false;
+          // SSRF defense-in-depth: re-validate URL at send-time
+          const slackCheck = isUrlSafeForOutbound(slackConfig.webhookUrl);
+          if (!slackCheck.safe) {
+            this.logger.warn(
+              `Blocked unsafe Slack webhook URL for provider ${provider.id}: ${slackCheck.reason}`,
+            );
+            return false;
+          }
+          return true;
         }
         case 'webhook': {
           const webhookConfig = provider.config as WebhookConfig;
-          return !!webhookConfig.url;
+          if (!webhookConfig.url) return false;
+          // SSRF defense-in-depth: re-validate URL at send-time
+          const webhookCheck = isUrlSafeForOutbound(webhookConfig.url);
+          if (!webhookCheck.safe) {
+            this.logger.warn(
+              `Blocked unsafe webhook URL for provider ${provider.id}: ${webhookCheck.reason}`,
+            );
+            return false;
+          }
+          return true;
         }
         case 'telegram': {
           const telegramConfig = provider.config as TelegramConfig;
@@ -397,11 +416,31 @@ export class NotificationService {
         }
         case 'discord': {
           const discordConfig = provider.config as DiscordConfig;
-          return !!discordConfig.discordWebhookUrl;
+          if (!discordConfig.discordWebhookUrl) return false;
+          // SSRF defense-in-depth: re-validate URL at send-time
+          const discordCheck = isUrlSafeForOutbound(
+            discordConfig.discordWebhookUrl,
+          );
+          if (!discordCheck.safe) {
+            this.logger.warn(
+              `Blocked unsafe Discord webhook URL for provider ${provider.id}: ${discordCheck.reason}`,
+            );
+            return false;
+          }
+          return true;
         }
         case 'teams': {
           const teamsConfig = provider.config as TeamsConfig;
-          return !!teamsConfig.teamsWebhookUrl;
+          if (!teamsConfig.teamsWebhookUrl) return false;
+          // SSRF defense-in-depth: re-validate URL at send-time
+          const teamsCheck = isUrlSafeForOutbound(teamsConfig.teamsWebhookUrl);
+          if (!teamsCheck.safe) {
+            this.logger.warn(
+              `Blocked unsafe Teams webhook URL for provider ${provider.id}: ${teamsCheck.reason}`,
+            );
+            return false;
+          }
+          return true;
         }
         default:
           return false;

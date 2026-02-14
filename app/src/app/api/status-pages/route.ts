@@ -1,7 +1,7 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { statusPages } from "@/db/schema";
-import { desc, eq, and } from "drizzle-orm";
+import { desc, eq, and, sql } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 
@@ -10,7 +10,7 @@ import { requireAuthContext, isAuthError } from "@/lib/auth-context";
  * Fetches status pages for the current project with standardized pagination format.
  * Used by React Query hooks for client-side data fetching with caching.
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const context = await requireAuthContext();
 
@@ -27,9 +27,31 @@ export async function GET() {
       );
     }
 
-    // Fetch all status pages for the current project
-    // OPTIMIZED: Added limit to prevent fetching unlimited records
-    const DEFAULT_LIMIT = 100;
+    // Parse pagination params (backward-compatible defaults)
+    const searchParams = request.nextUrl.searchParams;
+    const pageParam = Number.parseInt(searchParams.get("page") ?? "1", 10);
+    const limitParam = Number.parseInt(searchParams.get("limit") ?? "100", 10);
+
+    const page = Number.isNaN(pageParam) ? 1 : Math.max(1, pageParam);
+    const limit = Number.isNaN(limitParam)
+      ? 100
+      : Math.min(100, Math.max(1, limitParam));
+    const offset = (page - 1) * limit;
+
+    // Count total records for pagination metadata
+    const [countResult] = await db
+      .select({ total: sql<number>`count(*)` })
+      .from(statusPages)
+      .where(
+        and(
+          eq(statusPages.organizationId, context.organizationId),
+          eq(statusPages.projectId, targetProjectId)
+        )
+      );
+
+    const total = Number(countResult?.total ?? 0);
+
+    // Fetch paginated status pages for the current project
     const pages = await db
       .select()
       .from(statusPages)
@@ -40,7 +62,8 @@ export async function GET() {
         )
       )
       .orderBy(desc(statusPages.createdAt))
-      .limit(DEFAULT_LIMIT);
+      .limit(limit)
+      .offset(offset);
 
     // Map the database results to the expected format
     // Use spread operator with explicit overrides for date fields that need transformation
@@ -58,10 +81,12 @@ export async function GET() {
     return NextResponse.json({
       data: formattedPages,
       pagination: {
-        total: formattedPages.length,
-        page: 1,
-        limit: formattedPages.length,
-        totalPages: 1,
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+        hasNextPage: page * limit < total,
+        hasPrevPage: page > 1,
       },
     });
   } catch (error) {

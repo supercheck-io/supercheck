@@ -30,6 +30,7 @@ export async function GET(
     }
 
     // Fetch run scoped to current project
+    // Use leftJoin to support playground/single-test runs where jobId is null
     const runResult = await db
       .select({
         id: runs.id,
@@ -41,7 +42,7 @@ export async function GET(
         errorDetails: runs.errorDetails,
       })
       .from(runs)
-      .innerJoin(jobs, eq(runs.jobId, jobs.id))
+      .leftJoin(jobs, eq(runs.jobId, jobs.id))
       .where(
         and(
           eq(runs.id, runId),
