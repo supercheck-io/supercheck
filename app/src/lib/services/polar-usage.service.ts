@@ -193,12 +193,12 @@ class PolarUsageService {
    * Sync a usage event to Polar using their Events Ingestion API
    * Uses Polar SDK's usage metering endpoint
    */
-  private async syncEventToPolar(eventId: string): Promise<void> {
+  private async syncEventToPolar(eventId: string): Promise<boolean> {
     try {
       const polar = await this.getPolarClient();
       if (!polar) {
         console.warn("[PolarUsage] Polar client not available, skipping sync");
-        return;
+        return false;
       }
 
       // Fetch the usage event
@@ -208,7 +208,7 @@ class PolarUsageService {
 
       if (!usageEvent) {
         console.warn(`[PolarUsage] Event ${eventId} not found`);
-        return;
+        return false;
       }
 
       // Get organization with Polar customer ID
@@ -218,14 +218,14 @@ class PolarUsageService {
 
       if (!org?.polarCustomerId) {
         console.warn(`[PolarUsage] No Polar customer ID for org ${usageEvent.organizationId}`);
-        return;
+        return false;
       }
 
       // Get the Polar config
       const config = getPolarConfig();
       if (!config?.accessToken) {
         console.warn("[PolarUsage] No Polar access token configured");
-        return;
+        return false;
       }
 
       // Determine the meter name based on event type
@@ -293,6 +293,7 @@ class PolarUsageService {
         .where(eq(usageEvents.id, eventId));
 
       console.log(`[PolarUsage] ✅ Synced event ${eventId.substring(0, 8)}... to Polar`);
+      return true;
     } catch (error) {
       console.error("[PolarUsage] Failed to sync event to Polar:", error);
       
@@ -305,6 +306,8 @@ class PolarUsageService {
           lastSyncAttempt: new Date(),
         })
         .where(eq(usageEvents.id, eventId));
+
+      return false;
     }
   }
 
@@ -322,7 +325,7 @@ class PolarUsageService {
 
     // Get plan limits
     const { subscriptionService } = await import("./subscription-service");
-    const plan = await subscriptionService.getOrganizationPlan(organizationId);
+    const plan = await subscriptionService.getOrganizationPlanSafe(organizationId);
 
     // Get overage pricing
     const pricing = await this.getOveragePricing(org.subscriptionPlan || "plus");
@@ -337,7 +340,21 @@ class PolarUsageService {
 
     const playwrightOverageCost = playwrightOverage * (pricing?.playwrightMinutePriceCents || 10);
     const k6OverageCost = Math.ceil(k6Overage * (pricing?.k6VuMinutePriceCents || 1));
-    const aiCreditsOverageCost = aiCreditsOverage * (pricing?.aiCreditPriceCents || 5);
+    // AI credits use hard-limit model (no overage billing)
+    const aiCreditsOverageCost = 0;
+
+    const playwrightPercentage =
+      plan.playwrightMinutesIncluded > 0
+        ? Math.round((playwrightUsed / plan.playwrightMinutesIncluded) * 100)
+        : 100;
+    const k6Percentage =
+      plan.k6VuMinutesIncluded > 0
+        ? Math.round((k6Used / plan.k6VuMinutesIncluded) * 100)
+        : 100;
+    const aiPercentage =
+      plan.aiCreditsIncluded > 0
+        ? Math.round((aiCreditsUsed / plan.aiCreditsIncluded) * 100)
+        : 100;
 
     return {
       playwrightMinutes: {
@@ -345,23 +362,23 @@ class PolarUsageService {
         included: plan.playwrightMinutesIncluded,
         overage: playwrightOverage,
         overageCostCents: playwrightOverageCost,
-        percentage: Math.round((playwrightUsed / plan.playwrightMinutesIncluded) * 100),
+        percentage: playwrightPercentage,
       },
       k6VuMinutes: {
         used: k6Used,
         included: plan.k6VuMinutesIncluded,
         overage: k6Overage,
         overageCostCents: k6OverageCost,
-        percentage: Math.round((k6Used / plan.k6VuMinutesIncluded) * 100),
+        percentage: k6Percentage,
       },
       aiCredits: {
         used: aiCreditsUsed,
         included: plan.aiCreditsIncluded,
         overage: aiCreditsOverage,
         overageCostCents: aiCreditsOverageCost,
-        percentage: Math.round((aiCreditsUsed / plan.aiCreditsIncluded) * 100),
+        percentage: aiPercentage,
       },
-      totalOverageCostCents: playwrightOverageCost + k6OverageCost + aiCreditsOverageCost,
+      totalOverageCostCents: playwrightOverageCost + k6OverageCost,
       periodStart: org.usagePeriodStart,
       periodEnd: org.usagePeriodEnd,
     };
@@ -532,8 +549,14 @@ class PolarUsageService {
 
       for (const event of pendingEvents) {
         try {
-          await this.syncEventToPolar(event.id);
-          succeeded++;
+          const synced = await this.syncEventToPolar(event.id);
+          if (synced) {
+            succeeded++;
+          } else {
+            failed++;
+            const errorMsg = `Event ${event.id.substring(0, 8)}...: sync failed`;
+            errors.push(errorMsg);
+          }
         } catch (error) {
           failed++;
           const errorMsg = `Event ${event.id.substring(0, 8)}...: ${error instanceof Error ? error.message : 'Unknown error'}`;
@@ -586,8 +609,12 @@ class PolarUsageService {
         });
 
         if (org?.polarCustomerId) {
-          await this.syncEventToPolar(event.id);
-          succeeded++;
+          const synced = await this.syncEventToPolar(event.id);
+          if (synced) {
+            succeeded++;
+          } else {
+            failed++;
+          }
         }
       } catch (error) {
         failed++;

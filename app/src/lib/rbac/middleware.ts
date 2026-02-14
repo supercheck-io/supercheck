@@ -191,6 +191,50 @@ export async function hasPermission(
   }
 }
 
+/**
+ * Check if a specific user has a permission without reading from session state.
+ *
+ * This is required for Bearer-token authenticated API routes where identity is
+ * resolved via API key rather than cookie session.
+ */
+export async function hasPermissionForUser(
+  userId: string,
+  resource: keyof typeof statement,
+  action: string,
+  context?: Partial<PermissionContext>
+): Promise<boolean> {
+  try {
+    // SECURITY: Enforce organization membership for all org-scoped requests
+    if (context?.organizationId) {
+      const isSA = await isSuperAdmin(userId);
+      if (!isSA) {
+        const orgRole = await getUserOrgRole(userId, context.organizationId);
+        if (!orgRole) {
+          return false;
+        }
+      }
+    }
+
+    const userRole = await getUserRole(userId, context?.organizationId);
+    const assignedProjects =
+      context?.assignedProjectIds || (await getUserAssignedProjects(userId));
+
+    const permissionContext: PermissionContext = {
+      userId,
+      role: userRole,
+      organizationId: context?.organizationId,
+      projectId: context?.projectId,
+      assignedProjectIds: assignedProjects,
+      resourceCreatorId: context?.resourceCreatorId,
+    };
+
+    return checkPermission(permissionContext, resource, action);
+  } catch (error) {
+    console.error("Error checking permission for user:", error);
+    return false;
+  }
+}
+
 // ============================================================================
 // VARIABLE PERMISSIONS - Using unified role-based model (same as tests/jobs)
 // ============================================================================

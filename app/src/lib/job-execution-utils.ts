@@ -1,7 +1,7 @@
 import { db } from "@/utils/db";
 import { tests, jobTests } from "@/db/schema";
 import { eq, inArray } from "drizzle-orm";
-import { resolveProjectVariables, extractVariableNames, generateVariableFunctions } from "./variable-resolver";
+import { resolveProjectVariables, extractVariableNames } from "./variable-resolver";
 import type { VariableResolutionResult } from "./variable-resolver";
 
 declare const Buffer: {
@@ -80,20 +80,14 @@ export async function applyVariablesToTestScripts(
     // Continue execution but log warnings
   }
   
-  // Generate both getVariable and getSecret function implementations
-  const variableFunctionCode = generateVariableFunctions(
-    variableResolution.variables, 
-    variableResolution.secrets
-  );
-  
-  // Prepend the variable functions to each test script with logging
+  // Keep scripts unchanged; variable helpers are injected securely at worker runtime
   const processedTestScripts = testScripts.map(testScript => {
     const usedVariables = extractVariableNames(testScript.script);
     console.log(`${logPrefix} Test ${testScript.name} uses ${usedVariables.length} variables: ${usedVariables.join(', ')}`);
     
     return {
       ...testScript,
-      script: variableFunctionCode + '\n' + testScript.script
+      script: testScript.script
     };
   });
 

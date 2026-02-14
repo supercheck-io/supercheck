@@ -501,7 +501,7 @@ export class SubscriptionService {
   async updateSubscription(
     organizationId: string,
     data: {
-      subscriptionPlan?: SubscriptionPlan;
+      subscriptionPlan?: SubscriptionPlan | null;
       subscriptionStatus?: "active" | "canceled" | "past_due" | "none";
       subscriptionId?: string;
       polarCustomerId?: string;

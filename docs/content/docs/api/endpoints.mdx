@@ -216,6 +216,10 @@ Get run details.
 }
 ```
 
+### `GET /api/runs/{runId}/permissions`
+
+Get caller access details for a run, including role and scoped project/organization IDs.
+
 ### `DELETE /api/runs/{runId}`
 
 Delete a run record.
@@ -349,6 +353,34 @@ Execute a single test. Creates a run and enqueues the test for execution.
 | `eu-central` | EU Central |
 | `asia-pacific` | Asia Pacific |
 | `global` | Global (default) |
+
+### `GET /api/tests/{id}/tags`
+
+List all tags currently attached to a test.
+
+### `POST /api/tests/{id}/tags`
+
+Replace a test's tags.
+
+**Body:**
+
+```json
+{
+  "tagIds": ["uuid", "uuid"]
+}
+```
+
+### `DELETE /api/tests/{id}/tags`
+
+Remove a single tag from a test.
+
+**Body:**
+
+```json
+{
+  "tagId": "uuid"
+}
+```
 
 ---
 
@@ -642,3 +674,35 @@ View audit logs. Requires admin permissions.
 | `page` | integer | Page number |
 | `limit` | integer | Items per page |
 | `action` | string | Filter by action type |
+
+---
+
+## Status Pages
+
+### `GET /api/status-pages`
+
+List status pages for the current project.
+
+### `GET /api/status-pages/check`
+
+Verify a public status page subdomain and return its status page ID when published.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `subdomain` | string | Public status page subdomain |
+
+### `GET /api/status-pages/{id}`
+
+Get status page details including components, incidents, and settings.
+
+### `POST /api/status-pages/{id}/upload`
+
+Upload status page assets (favicon, logo, cover image).
+
+### `GET /api/status-pages/{id}/rss`
+
+Get the public RSS feed for a published status page.
+
+### `DELETE /api/status-pages/{id}`
+
+Delete a status page.

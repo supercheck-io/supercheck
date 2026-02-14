@@ -171,16 +171,16 @@ function getPolarPlugin() {
             );
             await handleSubscriptionRevoked(payload);
           },
-          // Order creation handler - activates subscription when payment is initiated
-          // Polar sends order.created when checkout completes successfully
+          // Order creation handler
+          // Do NOT activate subscription on order.created.
+          // Subscription activation must happen on subscription.active/order.paid.
            
           onOrderCreated: async (payload: any) => {
-            console.log("[Polar] Webhook: order.created - activating subscription");
-            const { handleOrderPaid } = await import(
+            console.log("[Polar] Webhook: order.created");
+            const { handleOrderCreated } = await import(
               "@/lib/webhooks/polar-webhooks"
             );
-            // Use the same handler as order.paid since order.created means payment was successful
-            await handleOrderPaid(payload);
+            await handleOrderCreated(payload);
           },
           // Payment confirmation handler
            
@@ -504,9 +504,15 @@ export const auth = betterAuth({
     // Track last login method for better UX (shows "Last used" badge)
     lastLoginMethod(),
     // Conditionally add Polar plugin if enabled
-    ...(getPolarPlugin() ? [getPolarPlugin()!] : []),
+    ...(() => {
+      const polarPlugin = getPolarPlugin();
+      return polarPlugin ? [polarPlugin] : [];
+    })(),
     // Conditionally add CAPTCHA plugin if enabled (Cloudflare Turnstile)
-    ...(getCaptchaPlugin() ? [getCaptchaPlugin()!] : []),
+    ...(() => {
+      const captchaPlugin = getCaptchaPlugin();
+      return captchaPlugin ? [captchaPlugin] : [];
+    })(),
   ],
   advanced: {
     database: {

@@ -85,6 +85,8 @@ export interface K6ExecutionTask {
   organizationId: string;
   projectId: string;
   script: string;
+  variables?: Record<string, string>; // Resolved variables for k6 execution
+  secrets?: Record<string, string>; // Resolved secrets for k6 execution
   jobId?: string | null;
   tests: Array<{ id: string; script: string }>;
   location?: string | null;
@@ -147,9 +149,11 @@ let emailTemplateQueue: Queue | null = null;
 let dataLifecycleCleanupQueue: Queue | null = null;
 
 let monitorExecutionEvents: Record<MonitorRegion, QueueEvents> | null = null;
+let executionQueueEvents: QueueEvents[] = [];
 
 // Store initialization promise to prevent race conditions
 let initPromise: Promise<void> | null = null;
+let queueShutdownHandlersAttached = false;
 
 // Queue event subscription type
 export type QueueEventType = "test" | "job";
@@ -170,6 +174,11 @@ export function buildRedisOptions(
     password: password || undefined,
     maxRetriesPerRequest: null,
     enableReadyCheck: false,
+    connectTimeout: 10000,
+    // NOTE: Do NOT add commandTimeout here. QueueEvents connections are created
+    // via redisClient.duplicate() and inherit these options. commandTimeout would
+    // conflict with QueueEvents' blocking XREAD commands (10s default block),
+    // causing "Command timed out" errors every cycle.
     // Enable TLS for cloud Redis (Upstash, Redis Cloud, etc.)
     ...(tlsEnabled && {
       tls: {
@@ -374,6 +383,12 @@ export async function getQueues(): Promise<{
           });
         }
 
+        // Track execution QueueEvents so they can be closed cleanly on shutdown/reload
+        executionQueueEvents = [
+          playwrightEvents["global"],
+          ...Object.values(k6Events),
+        ];
+
         // Add error listeners for regional monitor queues
         for (const region of MONITOR_REGIONS) {
           monitorExecution[region].on("error", (error: Error) =>
@@ -424,29 +439,6 @@ export async function getQueues(): Promise<{
         // Set up capacity management with atomic counters (pass queues to prevent circular dependency)
         const { setupCapacityManagement } = await import("./capacity-manager");
 
-        // Create QueueEvents for remaining queues
-        const jobSchedulerEvents = new QueueEvents(JOB_SCHEDULER_QUEUE, {
-          connection: redisClient!.duplicate(),
-        });
-        const k6JobSchedulerEvents = new QueueEvents(K6_JOB_SCHEDULER_QUEUE, {
-          connection: redisClient!.duplicate(),
-        });
-        const monitorSchedulerEvents = new QueueEvents(
-          MONITOR_SCHEDULER_QUEUE,
-          {
-            connection: redisClient!.duplicate(),
-          }
-        );
-        const emailTemplateEvents = new QueueEvents(EMAIL_TEMPLATE_QUEUE, {
-          connection: redisClient!.duplicate(),
-        });
-        const dataLifecycleCleanupEvents = new QueueEvents(
-          DATA_LIFECYCLE_CLEANUP_QUEUE,
-          {
-            connection: redisClient!.duplicate(),
-          }
-        );
-
         await setupCapacityManagement(
           {
             playwrightQueues,
@@ -474,6 +466,19 @@ export async function getQueues(): Promise<{
               "Scheduler worker initialization failed (non-fatal)"
             )
           );
+
+        // Attach graceful shutdown handlers once
+        if (!queueShutdownHandlersAttached) {
+          queueShutdownHandlersAttached = true;
+
+          const handleShutdown = (signal: string) => {
+            queueLogger.info({ signal }, "Graceful queue shutdown requested");
+            void closeQueue();
+          };
+
+          process.once("SIGINT", () => handleShutdown("SIGINT"));
+          process.once("SIGTERM", () => handleShutdown("SIGTERM"));
+        }
 
         // BullMQ Queues initialized
       } catch (error) {
@@ -525,6 +530,9 @@ export async function getQueues(): Promise<{
  */
 // Track if cleanup has been set up to prevent duplicate event listeners
 let cleanupSetupComplete = false;
+// Store interval references so they can be cleared during shutdown
+let cleanupIntervalRef: ReturnType<typeof setInterval> | null = null;
+let reconcileIntervalRef: ReturnType<typeof setInterval> | null = null;
 
 async function setupQueueCleanup(
   connection: Redis,
@@ -561,7 +569,7 @@ async function setupQueueCleanup(
     }
 
     // Schedule queue cleanup every 12 hours (43200000 ms)
-    const cleanupInterval = setInterval(
+    cleanupIntervalRef = setInterval(
       async () => {
         try {
           await performQueueCleanup(connection);
@@ -577,7 +585,7 @@ async function setupQueueCleanup(
 
     // Schedule capacity reconciliation every 5 minutes
     // This helps detect and auto-correct any counter drift quickly
-    const capacityReconcileInterval = setInterval(
+    reconcileIntervalRef = setInterval(
       async () => {
         try {
           const { reconcileCapacityCounters } = await import(
@@ -604,8 +612,8 @@ async function setupQueueCleanup(
     // Make sure intervals are properly cleared on process exit
     // Use process.once to prevent duplicate listeners
     process.once("exit", () => {
-      clearInterval(cleanupInterval);
-      clearInterval(capacityReconcileInterval);
+      if (cleanupIntervalRef) clearInterval(cleanupIntervalRef);
+      if (reconcileIntervalRef) clearInterval(reconcileIntervalRef);
     });
   } catch (error) {
     queueLogger.error(
@@ -1121,6 +1129,42 @@ export async function addK6JobToQueue(
  * Close queue connections (useful for graceful shutdown).
  */
 export async function closeQueue(): Promise<void> {
+  // Wait for any in-flight initialization to complete before tearing down.
+  // Without this, a SIGTERM during startup could leave orphaned queues/connections.
+  if (initPromise) {
+    try {
+      await initPromise;
+    } catch {
+      // Ignore init errors — we're shutting down anyway
+    }
+  }
+
+  // Stop background processors before closing connections
+  try {
+    const { resetCapacityManager } = await import("./capacity-manager");
+    resetCapacityManager();
+  } catch {
+    // capacity-manager may not be loaded yet
+  }
+
+  // Shutdown scheduler workers (they hold their own Redis connections)
+  try {
+    const { shutdownSchedulerWorkers } = await import("./scheduler");
+    await shutdownSchedulerWorkers();
+  } catch {
+    // scheduler may not be initialized
+  }
+
+  // Clear periodic cleanup/reconciliation intervals
+  if (cleanupIntervalRef) {
+    clearInterval(cleanupIntervalRef);
+    cleanupIntervalRef = null;
+  }
+  if (reconcileIntervalRef) {
+    clearInterval(reconcileIntervalRef);
+    reconcileIntervalRef = null;
+  }
+
   const promises = [];
   for (const queue of Object.values(playwrightQueues)) {
     promises.push(queue.close());
@@ -1138,6 +1182,7 @@ export async function closeQueue(): Promise<void> {
   if (k6JobSchedulerQueue) promises.push(k6JobSchedulerQueue.close());
   if (monitorSchedulerQueue) promises.push(monitorSchedulerQueue.close());
   if (emailTemplateQueue) promises.push(emailTemplateQueue.close());
+  if (dataLifecycleCleanupQueue) promises.push(dataLifecycleCleanupQueue.close());
   if (redisClient) promises.push(redisClient.quit());
 
   // Close all regional monitor events
@@ -1145,6 +1190,10 @@ export async function closeQueue(): Promise<void> {
     for (const events of Object.values(monitorExecutionEvents)) {
       promises.push(events.close());
     }
+  }
+
+  for (const events of executionQueueEvents) {
+    promises.push(events.close());
   }
 
   try {
@@ -1164,9 +1213,12 @@ export async function closeQueue(): Promise<void> {
     k6JobSchedulerQueue = null;
     monitorSchedulerQueue = null;
     emailTemplateQueue = null;
+    dataLifecycleCleanupQueue = null;
     redisClient = null;
     initPromise = null;
     monitorExecutionEvents = null;
+    executionQueueEvents = [];
+    cleanupSetupComplete = false;
   }
 }
 

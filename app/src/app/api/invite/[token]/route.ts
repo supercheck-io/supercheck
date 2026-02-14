@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/utils/db';
 import { invitation, member, organization, projects, projectMembers } from '@/db/schema';
 import { eq, and, inArray } from 'drizzle-orm';
-import { requireAuth } from '@/lib/rbac/middleware';
+import { requireUserAuthContext, isAuthError } from '@/lib/auth-context';
 import { getCurrentUser } from '@/lib/session';
 
 export async function GET(
@@ -84,7 +84,7 @@ export async function POST(
     // Try to get current user, but don't require authentication
     let currentUser;
     try {
-      await requireAuth();
+      await requireUserAuthContext();
       currentUser = await getCurrentUser();
     } catch {
       // User is not authenticated, that's ok for invitation acceptance
@@ -260,6 +260,13 @@ export async function POST(
       }
     });
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Authentication required' },
+        { status: 401 }
+      );
+    }
+
     console.error('Error accepting invitation:', error);
     return NextResponse.json(
       { error: 'Failed to accept invitation' },

@@ -143,10 +143,10 @@ export function DataTableToolbar<TData>({
                           {`// Variables
 const baseUrl = getVariable('BASE_URL');
 // Secrets
-const apiKey = getSecret('API_KEY').toString();
+const apiKey = getSecret('API_KEY');
 
 // In Playwright
-await page.goto(getVariable(baseUrl));
+await page.goto(baseUrl);
 await page.fill('#password', apiKey);
 
 // In k6
@@ -163,10 +163,10 @@ await page.fill('#password', apiKey);
 const baseUrl = getVariable('BASE_URL');
 
 // Secrets
-const apiKey = getSecret('API_KEY').toString();
+const apiKey = getSecret('API_KEY');
 
 // In Playwright
-await page.goto(getVariable(baseUrl));
+await page.goto(baseUrl);
 await page.fill('#password', apiKey);
 
 // In k6
@@ -180,10 +180,10 @@ await page.fill('#password', apiKey);
 const baseUrl = getVariable('BASE_URL');
 
 // Secrets
-const apiKey = getSecret('API_KEY').toString();
+const apiKey = getSecret('API_KEY');
 
 // In Playwright
-await page.goto(getVariable(baseUrl));
+await page.goto(baseUrl);
 await page.fill('#password', apiKey);
 
 // In k6

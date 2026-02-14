@@ -39,7 +39,7 @@ const pool = new Pool({
   port: parseInt(getVariable('DB_PORT') || '5432'),
   database: getVariable('DB_NAME'),
   user: getVariable('DB_USER'),
-  password: getSecret('DB_PASSWORD').toString(),
+  password: getSecret('DB_PASSWORD'),
 });
 
 test.afterAll(async () => {
@@ -69,7 +69,7 @@ test.describe('database read health check', () => {
 
 - **Direct** — Public database with credentials
 - **SSH Tunnel** — Private network via bastion host
-- **Secrets** — Store credentials securely with `getSecret().toString()`
+- **Secrets** — Store credentials securely with `getSecret()`
 
 ## Common Assertions
 

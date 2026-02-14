@@ -66,7 +66,7 @@ Supercheck uses OAuth for account creation and authentication.
 
 ### Future Updates (Optional)
 
-Update the image tag for `app` and `worker` services if you want a specific version other than `latest` (e.g., `1.2.2-canary.25`) and redeploy.
+Update the image tag for `app` and `worker` services if you want a specific version other than `latest` (e.g., `1.2.4`) and redeploy.
 
 For the **latest stable version**, simply redeploy.
 

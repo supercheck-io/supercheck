@@ -3,10 +3,10 @@ import { db } from "@/utils/db";
 import { projectVariables, projects } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import {
-  requireAuth,
-  canViewSecretVariableInProject,
+  hasPermissionForUser,
   withRateLimit,
 } from "@/lib/rbac/middleware";
+import { requireUserAuthContext, isAuthError } from "@/lib/auth-context";
 import { decryptValue } from "@/lib/encryption";
 import { logAuditEvent } from "@/lib/audit-logger";
 
@@ -25,7 +25,7 @@ export async function POST(
     let project: { id: string; organizationId: string }[] = [];
 
     try {
-      const authResult = await requireAuth();
+      const { userId: authUserId } = await requireUserAuthContext();
       const resolvedParams = await params;
       projectId = resolvedParams.id;
       variableId = resolvedParams.variableId;
@@ -45,14 +45,14 @@ export async function POST(
       }
 
       // Check if user has permission to view secret variables using centralized function
-      const canViewSecrets = await canViewSecretVariableInProject(
-        authResult.userId,
-        projectId
-      );
+      const canViewSecrets = await hasPermissionForUser(authUserId, "variable", "view_secrets", {
+        organizationId: project[0].organizationId,
+        projectId,
+      });
 
       if (!canViewSecrets) {
         await logAuditEvent({
-          userId: authResult.userId,
+          userId: authUserId,
           action: "secret_decrypt_unauthorized",
           resource: "project_variable",
           resourceId: variableId,
@@ -92,7 +92,7 @@ export async function POST(
       // Ensure the variable is actually a secret
       if (!existingVariable.isSecret) {
         await logAuditEvent({
-          userId: authResult.userId,
+          userId: authUserId,
           action: "secret_decrypt_non_secret",
           resource: "project_variable",
           resourceId: variableId,
@@ -116,7 +116,7 @@ export async function POST(
       // Check if encrypted value exists
       if (!existingVariable.encryptedValue) {
         await logAuditEvent({
-          userId: authResult.userId,
+          userId: authUserId,
           action: "secret_decrypt_no_value",
           resource: "project_variable",
           resourceId: variableId,
@@ -148,7 +148,7 @@ export async function POST(
         console.error("Failed to decrypt secret:", variableId, decryptError);
 
         await logAuditEvent({
-          userId: authResult.userId,
+          userId: authUserId,
           action: "secret_decrypt_failed",
           resource: "project_variable",
           resourceId: variableId,
@@ -171,7 +171,7 @@ export async function POST(
 
       // Log successful secret decryption
       await logAuditEvent({
-        userId: authResult.userId,
+        userId: authUserId,
         action: "secret_decrypt_success",
         resource: "project_variable",
         resourceId: variableId,
@@ -194,6 +194,13 @@ export async function POST(
         },
       });
     } catch (error) {
+      if (isAuthError(error)) {
+        return NextResponse.json(
+          { error: error instanceof Error ? error.message : "Authentication required" },
+          { status: 401 }
+        );
+      }
+
       // Log error
       if (userId && projectId && variableId) {
         await logAuditEvent({

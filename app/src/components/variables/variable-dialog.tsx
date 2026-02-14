@@ -59,7 +59,7 @@ export function VariableDialog({
 
   useEffect(() => {
     if (variable && open) {
-      // Fetch the variable from API to get decrypted value for secrets
+      // Fetch latest variable metadata from API; secret values remain masked.
       const fetchVariable = async () => {
         setFetchingData(true);
         try {
@@ -69,35 +69,38 @@ export function VariableDialog({
           const data = await response.json();
 
           if (data.success && data.data) {
+            const isSecretValue = typeof data.data.isSecret === 'string'
+              ? data.data.isSecret === 'true'
+              : data.data.isSecret;
             setFormData({
               key: data.data.key,
-              value: data.data.value || '', // Decrypted value from API
+              value: isSecretValue ? '' : (data.data.value || ''),
               description: data.data.description || '',
-              isSecret: typeof data.data.isSecret === 'string'
-                ? data.data.isSecret === 'true'
-                : data.data.isSecret
+              isSecret: isSecretValue
             });
           } else {
             // Fallback to prop data if API fails
+            const isSecretValue = typeof variable.isSecret === 'string'
+              ? variable.isSecret === 'true'
+              : variable.isSecret;
             setFormData({
               key: variable.key,
-              value: variable.value || '',
+              value: isSecretValue ? '' : (variable.value || ''),
               description: variable.description || '',
-              isSecret: typeof variable.isSecret === 'string'
-                ? variable.isSecret === 'true'
-                : variable.isSecret
+              isSecret: isSecretValue
             });
           }
         } catch (error) {
           console.error("Error fetching variable:", error);
           // Fallback to prop data if fetch fails
+          const isSecretValue = typeof variable.isSecret === 'string'
+            ? variable.isSecret === 'true'
+            : variable.isSecret;
           setFormData({
             key: variable.key,
-            value: variable.value || '',
+            value: isSecretValue ? '' : (variable.value || ''),
             description: variable.description || '',
-            isSecret: typeof variable.isSecret === 'string'
-              ? variable.isSecret === 'true'
-              : variable.isSecret
+            isSecret: isSecretValue
           });
         } finally {
           setFetchingData(false);
@@ -128,15 +131,11 @@ export function VariableDialog({
       newErrors.key = "Variable name must start with a letter and contain only uppercase letters, numbers, and underscores";
     }
 
-    if (!formData.value.trim()) {
+    if (!isEditing && !formData.value.trim()) {
       newErrors.value = "Value is required";
     }
 
-    if (!formData.description.trim()) {
-      newErrors.description = "Description is required";
-    } else if (formData.description.length < 20) {
-      newErrors.description = "Description must be at least 20 characters";
-    } else if (formData.description.length > 300) {
+    if (formData.description.length > 300) {
       newErrors.description = "Description must be less than 300 characters";
     }
 
@@ -158,13 +157,27 @@ export function VariableDialog({
         : `/api/projects/${projectId}/variables`;
 
       const method = isEditing ? 'PUT' : 'POST';
+      const normalizedDescription = formData.description.trim();
+
+      const payload: Record<string, string | boolean> = {
+        key: formData.key,
+        isSecret: formData.isSecret,
+      };
+
+      if (isEditing || normalizedDescription) {
+        payload.description = normalizedDescription;
+      }
+
+      if (!isEditing || formData.value.trim() !== '') {
+        payload.value = formData.value;
+      }
 
       const response = await fetch(url, {
         method,
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(payload),
       });
 
       const data = await response.json();
@@ -257,10 +270,10 @@ export function VariableDialog({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="description" className="text-sm font-medium">Description *</Label>
+              <Label htmlFor="description" className="text-sm font-medium">Description</Label>
               <Textarea
                 id="description"
-                placeholder="Describe what this variable is used for (20-300 characters)..."
+                placeholder="Describe what this variable is used for (optional, up to 300 characters)..."
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 rows={3}
@@ -271,7 +284,7 @@ export function VariableDialog({
                 <p className="text-sm text-destructive">{errors.description}</p>
               )}
               <p className="text-xs text-muted-foreground">
-                {formData.description.length}/300 characters (minimum 20 required)
+                {formData.description.length}/300 characters
               </p>
             </div>
 
@@ -295,7 +308,7 @@ export function VariableDialog({
                 <Info className="h-4 w-4" />
                 <AlertDescription className="text-sm">
                   {formData.isSecret ? (
-                    <>Secrets are encrypted and accessed using <code className="px-1 py-0.5 bg-muted rounded text-xs">getSecret(&apos;{formData.key || 'KEY'}&apos;)</code> in tests. They cannot be logged to console for security.</>
+                    <>Secrets are encrypted and accessed using <code className="px-1 py-0.5 bg-muted rounded text-xs">getSecret(&apos;{formData.key || 'KEY'}&apos;)</code> in tests. Avoid intentional logging; execution output redaction is applied as an additional protection layer.</>
                   ) : (
                     <>Variables are stored in plain text and accessed using <code className="px-1 py-0.5 bg-muted rounded text-xs">getVariable(&apos;{formData.key || 'KEY'}&apos;)</code> in tests.</>
                   )}
@@ -321,10 +334,9 @@ export function VariableDialog({
                 loading ||
                 fetchingData ||
                 !formData.key.trim() ||
-                !formData.value.trim() ||
-                !formData.description.trim() ||
+                (!isEditing && !formData.value.trim()) ||
                 formData.key.length < 4 ||
-                formData.description.length < 20
+                formData.description.length > 300
               }
             >
               {loading

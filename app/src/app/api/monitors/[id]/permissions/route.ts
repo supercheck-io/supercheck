@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/rbac/middleware';
+import { hasPermissionForUser } from '@/lib/rbac/middleware';
 import { getUserProjectRole } from '@/lib/session';
+import { requireUserAuthContext, isAuthError } from '@/lib/auth-context';
 import { db } from '@/utils/db';
 import { monitors } from '@/db/schema';
 import { eq } from 'drizzle-orm';
@@ -17,7 +18,7 @@ export async function GET(
   }
 
   try {
-    const { userId } = await requireAuth();
+    const { userId } = await requireUserAuthContext();
 
     // Find the monitor to get project and organization IDs
     const monitor = await db.query.monitors.findFirst({
@@ -39,19 +40,53 @@ export async function GET(
       );
     }
 
-    // Get the user's actual role for this project
-    const userRole = await getUserProjectRole(userId, monitor.organizationId, monitor.projectId);
+    const [canView, canEdit, canDelete, canToggle, userRole] = await Promise.all([
+      hasPermissionForUser(userId, 'monitor', 'view', {
+        organizationId: monitor.organizationId,
+        projectId: monitor.projectId,
+      }),
+      hasPermissionForUser(userId, 'monitor', 'update', {
+        organizationId: monitor.organizationId,
+        projectId: monitor.projectId,
+      }),
+      hasPermissionForUser(userId, 'monitor', 'delete', {
+        organizationId: monitor.organizationId,
+        projectId: monitor.projectId,
+      }),
+      hasPermissionForUser(userId, 'monitor', 'manage', {
+        organizationId: monitor.organizationId,
+        projectId: monitor.projectId,
+      }),
+      getUserProjectRole(userId, monitor.organizationId, monitor.projectId),
+    ]);
+
+    if (!canView) {
+      return NextResponse.json(
+        { error: 'Insufficient permissions' },
+        { status: 403 }
+      );
+    }
 
     return NextResponse.json({
       success: true,
       data: {
         userRole,
+        canEdit,
+        canDelete,
+        canToggle,
         projectId: monitor.projectId,
         organizationId: monitor.organizationId
       }
     });
 
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Authentication required' },
+        { status: 401 }
+      );
+    }
+
     console.error('Error fetching monitor permissions:', error);
     
     if (error instanceof Error) {

@@ -719,6 +719,15 @@ describe("SubscriptionService", () => {
 
           expect(mockDbUpdate).toHaveBeenCalled();
         });
+
+        it("should allow null subscriptionPlan for revocation in cloud mode", async () => {
+          await service.updateSubscription(testOrgId, {
+            subscriptionPlan: null,
+            subscriptionStatus: "none",
+          });
+
+          expect(mockDbUpdate).toHaveBeenCalled();
+        });
       });
     });
 

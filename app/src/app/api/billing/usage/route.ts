@@ -24,12 +24,18 @@ export async function GET() {
       usage: metrics,
       spending: {
         currentDollars: spendingStatus.currentSpendingCents / 100,
-        limitDollars: spendingStatus.limitCents ? spendingStatus.limitCents / 100 : null,
+        limitDollars:
+          spendingStatus.limitCents !== null
+            ? spendingStatus.limitCents / 100
+            : null,
         limitEnabled: spendingStatus.limitEnabled,
         hardStopEnabled: spendingStatus.hardStopEnabled,
         percentageUsed: spendingStatus.percentageUsed,
         isAtLimit: spendingStatus.isAtLimit,
-        remainingDollars: spendingStatus.remainingCents ? spendingStatus.remainingCents / 100 : null,
+        remainingDollars:
+          spendingStatus.remainingCents !== null
+            ? spendingStatus.remainingCents / 100
+            : null,
       },
     });
   } catch (error) {

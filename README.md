@@ -2,89 +2,86 @@
 
 **Open-Source Testing, Monitoring, and Reliability — as Code**
 
-The unified platform for AI-powered Playwright testing, multi-region k6 load testing & uptime monitoring, and subscriber-ready status pages.
-
+The unified platform for AI-powered Playwright testing, multi-region k6 load testing, uptime monitoring, and subscriber-ready status pages.
 
 [![Website](https://img.shields.io/badge/Website-supercheck.io-orange?logo=firefox)](https://supercheck.io)
 [![Deploy with Coolify](https://img.shields.io/badge/Deploy%20with-Coolify-6B16ED?logo=coolify&logoColor=white)](./deploy/coolify/README.md)
-[![Deploy with Docker](https://img.shields.io/badge/Deploy%20with-Docker%20Compose-2496ED?logo=docker&logoColor=white)](https://supercheck.io/docs/deployment)
+[![Deploy with Docker](https://img.shields.io/badge/Deploy%20with-Docker%20Compose-2496ED?logo=docker&logoColor=white)](https://supercheck.io/docs/app/deployment/self-hosted)
 [![npm](https://img.shields.io/npm/v/@supercheck/cli?logo=npm&label=Supercheck%20CLI)](https://www.npmjs.com/package/@supercheck/cli)
-[![Monitoring](https://img.shields.io/badge/Synthetic-Monitor-brightgreen?logo=speedtest&logoColor=white)](https://supercheck.io)
 [![Testing](https://img.shields.io/badge/Testing-Playwright-45ba4b?logo=googlechrome&logoColor=white)](https://playwright.dev)
 [![Load Testing](https://img.shields.io/badge/Load%20Testing-Grafana%20k6-7D64FF?logo=k6)](https://k6.io)
 [![AI](https://img.shields.io/badge/AI-Enabled-blueviolet?logo=openai&logoColor=white)](https://supercheck.io)
-[![Google CodeWiki](https://img.shields.io/badge/Google-CodeWiki-4285F4?logo=google&logoColor=white)](https://codewiki.google/github.com/supercheck-io/supercheck)
 
 ## Why Supercheck?
 
-### The Landscape
+Supercheck combines **test automation**, **synthetic + uptime monitoring**, **performance testing**, and **status communication** in one self-hosted platform.
 
-| Category | Platform | Pricing | Limitations |
-|----------|----------|---------|-------------|
-| Monitoring | Datadog Synthetics | $12/1K browser runs | High cost at scale; no native Playwright |
-| Monitoring | Checkly | $24–64/mo + overages | Per-run overage fees; limited to their cloud |
-| Monitoring | Dynatrace Synthetic | $4.50/1K actions | Complex "action" pricing; proprietary scripting |
-| Automation | BrowserStack | From $129/mo (annual) | High parallelism tax; 1 thread per license |
-| Automation | Sauce Labs | $149–249/mo per parallel | Strict concurrency limits; vendor lock-in |
-| Automation | Cypress Cloud | $67–267/mo | +$6/1K result overages; Cypress-only ecosystem |
-| Automation | LambdaTest | From ~$99/mo | Session timeouts; data on their cloud |
-| Automation | Azure App Testing | $0.01/min + $3.50/1K results | Reporting fees add up; Azure lock-in |
-| Performance | Grafana k6 Cloud | $0.15/VUh | Pay-per-scale; cloud-only execution |
-| Performance | LoadRunner Cloud | $0.15–1.50/VUh | Complex licensing; expensive GUI user pricing |
-| Performance | Gatling Enterprise | From €89/mo | User/generator limits on lower tiers |
-| All-in-one | **Supercheck** | **Free (Open Source)** | Self-hosted; requires own infrastructure |
+### Competitive landscape (pricing snapshot)
+
+| Category | Platform | Pricing (public) | Notes |
+|----------|----------|------------------|-------|
+| Monitoring | Checkly | Hobby: $0/mo; Starter: $24/mo; Team: $64/mo; Browser overage: $6.50/1k (Starter) or $6.25/1k (Team) | Native Playwright checks; API/browser checks are metered ([source](https://www.checklyhq.com/pricing/)) |
+| Monitoring | Grafana Cloud Synthetics | API checks: $5 per 10k; Browser checks: $50 per 10k (plus platform fee on paid plan) | Also includes free usage tier ([source](https://grafana.com/pricing/)) |
+| Monitoring | Better Stack | Free: $0/mo; paid uptime responder license from $29/mo; Playwright transaction monitoring listed as $1 per 100 minutes | Combines uptime, incident management, and transaction monitoring ([source](https://betterstack.com/pricing)) |
+| Monitoring | UptimeRobot | Free: $0/mo; Solo: $7/mo (annual); Team: $29/mo (annual); Enterprise: $54/mo (annual) | Uptime-focused (HTTP, ping, port, keyword, DNS, SSL) ([source](https://uptimerobot.com/pricing/)) |
+| Automation | BrowserStack | Live manual testing: $29/mo (desktop, annual), $39/mo (desktop + mobile, annual), Team from $150/mo (annual) | Pricing varies by product and team size ([source](https://www.browserstack.com/pricing)) |
+| Automation | Sauce Labs | Virtual Cloud: $149/mo annually (1 parallel); Real Device Cloud: $199/mo annually (1 parallel) | Parallel sessions scale with plan tier ([source](https://saucelabs.com/pricing)) |
+| Automation | Cypress Cloud | Team: $67/mo (annual); Business: $267/mo (annual); overages from $5–$6 per 1k results | Free starter tier available ([source](https://www.cypress.io/pricing)) |
+| Automation + Performance | Azure App Testing | Playwright Linux browsers: $0.01/min; Windows browsers: $0.02/min; Load testing: $0.15/VUH (first 10k), then $0.06/VUH | Usage-based Azure service pricing ([source](https://azure.microsoft.com/en-us/pricing/details/app-testing/)) |
+| Performance | Grafana k6 Cloud | Starts at $0.15 per virtual user hour (VUH); enterprise as low as $0.05/VUH with annual commit | Includes free tier with 500 VUH/month ([source](https://grafana.com/pricing/)) |
+| All-in-one | **Supercheck** | **Open-source, self-hosted** | Includes tests, monitors, performance, alerts, status pages, and AI workflows |
 
 ## Features
 
 ### Test Automation
 
-- **Browser Tests** — Playwright-based UI testing with screenshots, traces, and video recordings
-- **API Tests** — HTTP/GraphQL validation with request/response assertions
-- **Database Tests** — SQL queries against PostgreSQL, MySQL with result validation
-- **Performance Tests** — k6 load testing with multi-region load generators (US, EU, APAC)
-- **Custom Tests** — Node.js scripts for any testing scenario
+- **Browser Tests** — Playwright UI automation with screenshots, traces, and video
+- **API Tests** — HTTP/GraphQL request + response validation
+- **Database Tests** — SQL/DB validation workflows in custom test scripts
+- **Performance Tests** — k6 load testing with regional execution support
+- **Custom Tests** — Node.js-based custom test logic
 
 ### Monitoring
-- **HTTP / Website** — Endpoint availability with SSL certificate tracking
-- **Ping / Port** — Network-level checks for servers and services
-- **Synthetic Monitors** — Full Playwright tests running on a schedule
-- **Multi-Region** — Execute from US East, EU Central, and Asia Pacific
 
-### CI/CD Integration
-- **API Triggers** — Trigger jobs from GitHub Actions, GitLab CI, or any pipeline
-- **Scheduled Jobs** — Cron-based scheduling for regression suites
-- **Webhook Notifications** — Send results to Slack, Discord, Teams, or custom endpoints
+- **HTTP / Website** — Endpoint monitoring with SSL certificate tracking
+- **Ping / Port** — Network-level availability checks
+- **Synthetic Monitors** — Scheduled Playwright browser journeys
+- **Multi-Region** — US East, EU Central, Asia Pacific execution options
 
-### AI-Powered
-- **AI Create** — Generate test scripts from plain English descriptions
-- **AI Fix** — Analyze failures and suggest code fixes automatically
-- **AI Analyze** — Performance insights comparing test runs
+### AI Workflows
 
-### Debugging & Reports
-- **Screenshots** — Captured at each step and on failure
-- **Traces** — Interactive step-by-step replay with DOM inspection
-- **Videos** — Full browser session recordings
-- **Network Logs** — Request/response details for debugging
+- **AI Create** — Generate tests from natural language
+- **AI Fix** — Analyze failures and propose fixes
+- **AI Analyze** — Analyze monitor, job, and performance run outcomes
+
+### Debugging & Reporting
+
+- **Screenshots, traces, video, and logs** for fast failure diagnosis
+- **Report artifacts** stored in object storage with run linkage
 
 ### Communication
-- **Alerts** — Email, Slack, Discord, Telegram, Teams, Webhooks with threshold-based triggers
-- **Status Pages** — Branded public pages with incident management
-- **Dashboards** — Real-time visibility into test and monitor health
 
-### Administration
-- **Organizations** — Multi-tenant team management
-- **RBAC** — 6 permission levels from viewer to super admin
-- **API Keys** — Secure programmatic access
-- **Audit Trails** — Track all changes for compliance
+- **Alerts** — Email, Slack, Discord, Telegram, Teams, and Webhooks
+- **Status Pages** — Public-facing service status with incident workflows
+- **Dashboards** — Real-time visibility into run and monitor health
+
+### Administration & Governance
+
+- **Organizations + Projects** — Multi-tenant workspace model
+- **RBAC** — 6 role levels from `super_admin` to `project_viewer`
+- **API Keys** — Programmatic access
+- **Audit Trails** — Change and action history
 
 ### Requirements Management
-- **AI Extraction** — Extract requirements from PRDs, PDFs, and DOCX
-- **Computed Coverage** — Status derived from linked test executions
-- **Test Linking** — Many-to-many relationships between requirements and tests
-- **Source Traceability** — Track original document source for each requirement
+
+- **AI extraction** from requirement documents (PDF, DOCX, text)
+- **Coverage snapshots** linked to test execution outcomes
+- **Requirement-to-test linking** with traceability metadata
 
 ### Browser Extensions
+
 Record Playwright tests directly from your browser:
+
 - [Chrome Extension](https://chromewebstore.google.com/detail/supercheck-recorder/gfmbcelfhhfmifdkccnbgdadibdfhioe)
 - [Edge Extension](https://microsoftedge.microsoft.com/addons/detail/supercheck-recorder/ngmlkgfgmdnfpddohcbfdgihennolnem)
 
@@ -130,43 +127,38 @@ Self-host Supercheck on your own infrastructure:
 
 | Option | Description | Guide |
 |--------|-------------|-------|
-| [![Deploy with Coolify](https://img.shields.io/badge/Deploy%20with-Coolify-6B16ED?logo=coolify&logoColor=white)](./deploy/coolify/README.md) | One-click deploy on [Coolify](https://coolify.io) | [Read Guide ↗](./deploy/coolify/README.md) |
-| [![Deploy with Docker](https://img.shields.io/badge/Deploy%20with-Docker%20Compose-2496ED?logo=docker&logoColor=white)](https://supercheck.io/docs/deployment) | Manual deployment with Docker | [Read Guide ↗](https://supercheck.io/docs/deployment) |
+| [![Deploy with Coolify](https://img.shields.io/badge/Deploy%20with-Coolify-6B16ED?logo=coolify&logoColor=white)](./deploy/coolify/README.md) | One-click deployment on [Coolify](https://coolify.io) | [Read guide](./deploy/coolify/README.md) |
+| [![Deploy with Docker](https://img.shields.io/badge/Deploy%20with-Docker%20Compose-2496ED?logo=docker&logoColor=white)](https://supercheck.io/docs/app/deployment/self-hosted) | Docker Compose self-hosted deployment | [Read guide](https://supercheck.io/docs/app/deployment/self-hosted) |
 
 ## Documentation
 
-Full documentation available at **[supercheck.io/docs](https://supercheck.io/docs)**
+Official docs:
 
-| Topic | Description |
-|-------|-------------|
-| [Automate](https://supercheck.io/docs/automate) | Browser, API, database, and performance tests |
-| [Monitor](https://supercheck.io/docs/monitors) | HTTP, ping, port, and synthetic monitoring |
-| [Communicate](https://supercheck.io/docs/communicate) | Alerts, dashboards, and status pages |
-| [Admin](https://supercheck.io/docs/admin) | User management, RBAC, and audit trails |
-| [CLI](https://supercheck.io/docs/cli/installation) | Monitoring-as-code, CI/CD workflows, and CLI reference |
+- [Welcome](https://supercheck.io/docs/app/welcome)
+- [Deployment](https://supercheck.io/docs/app/deployment)
+- [Automate (Tests, Jobs, Runs)](https://supercheck.io/docs/app/automate)
+- [Monitor](https://supercheck.io/docs/app/monitor)
+- [Communicate (Alerts, Status Pages)](https://supercheck.io/docs/app/communicate)
+- [Admin](https://supercheck.io/docs/app/admin)
 
 ## Supercheck CLI
 
-Install and manage Supercheck resources from the command line with `@supercheck/cli`.
+Install and manage Supercheck resources from the command line with `@supercheck/cli`:
 
 - [npm package](https://www.npmjs.com/package/@supercheck/cli)
-- [CLI docs](https://supercheck.io/docs/cli/installation)
-
 
 ## Support
 
-If you find Supercheck useful, please consider:
+If Supercheck is useful to your team:
 
-- ⭐ **Star this repository** — it helps others discover the project
-- 💡 **Suggest features** — start a [discussion](https://github.com/supercheck-io/supercheck/discussions)
-- 📢 **Spread the word** — share with others
+- ⭐ Star this repository
+- 💡 Suggest features in [Discussions](https://github.com/supercheck-io/supercheck/discussions)
+- 🐞 Report issues in [Issues](https://github.com/supercheck-io/supercheck/issues)
 
 ## Community
 
 [![Discord](https://img.shields.io/badge/Discord-Join%20Community-5865F2?logo=discord&logoColor=white)](https://discord.gg/UVe327CSbm)
-<br>
 [![GitHub Issues](https://img.shields.io/badge/GitHub-Issues-181717?logo=github&logoColor=white)](https://github.com/supercheck-io/supercheck/issues)
-<br>
 [![GitHub Discussions](https://img.shields.io/badge/GitHub-Discussions-181717?logo=github&logoColor=white)](https://github.com/supercheck-io/supercheck/discussions)
 
 

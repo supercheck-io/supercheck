@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/utils/db';
 import { projectMembers, projects } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
-import { requireAuth } from '@/lib/rbac/middleware';
-import { getActiveOrganization, getCurrentUser } from '@/lib/session';
+import { hasPermissionForUser } from '@/lib/rbac/middleware';
+import { requireUserAuthContext, isAuthError } from '@/lib/auth-context';
 
 export async function GET(
   request: NextRequest,
@@ -11,14 +11,23 @@ export async function GET(
 ) {
   const resolvedParams = await params;
   try {
-    await requireAuth();
-    const currentUser = await getCurrentUser();
-    const activeOrg = await getActiveOrganization();
-    
-    if (!currentUser || !activeOrg) {
+    const { userId, organizationId: activeOrganizationId } = await requireUserAuthContext();
+
+    if (!activeOrganizationId) {
       return NextResponse.json(
         { error: 'No active organization found' },
         { status: 400 }
+      );
+    }
+
+    const canManageMembers = await hasPermissionForUser(userId, 'member', 'update', {
+      organizationId: activeOrganizationId,
+    });
+
+    if (!canManageMembers) {
+      return NextResponse.json(
+        { error: 'Insufficient permissions' },
+        { status: 403 }
       );
     }
 
@@ -35,7 +44,7 @@ export async function GET(
       .where(
         and(
           eq(projectMembers.userId, resolvedParams.userId),
-          eq(projects.organizationId, activeOrg.id)
+          eq(projects.organizationId, activeOrganizationId)
         )
       );
 
@@ -44,6 +53,13 @@ export async function GET(
       projects: userProjectAssignments
     });
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Authentication required' },
+        { status: 401 }
+      );
+    }
+
     console.error('Error fetching user project assignments:', error);
     return NextResponse.json(
       { error: 'Failed to fetch project assignments' },

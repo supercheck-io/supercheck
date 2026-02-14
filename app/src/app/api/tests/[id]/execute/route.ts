@@ -11,6 +11,7 @@ import {
   TestExecutionTask,
 } from "@/lib/queue";
 import { validateK6Script } from "@/lib/k6-validator";
+import { resolveProjectVariables } from "@/lib/variable-resolver";
 import { randomUUID } from "crypto";
 import { SubscriptionService } from "@/lib/services/subscription-service";
 
@@ -159,6 +160,9 @@ export async function POST(request: NextRequest, context: ExecuteContext) {
     // Decode script
     const decodedScript = Buffer.from(test.script, "base64").toString("utf-8");
 
+    // Resolve project variables and secrets for runtime helper injection in worker
+    const variableResolution = await resolveProjectVariables(project.id);
+
     // Enqueue based on test type
     if (test.type === "performance") {
       const k6Task: K6ExecutionTask = {
@@ -166,6 +170,8 @@ export async function POST(request: NextRequest, context: ExecuteContext) {
         jobId: null,
         testId: test.id,
         script: decodedScript,
+        variables: variableResolution.variables,
+        secrets: variableResolution.secrets,
         tests: [
           {
             id: test.id,
@@ -182,6 +188,8 @@ export async function POST(request: NextRequest, context: ExecuteContext) {
       const playwrightTask: TestExecutionTask = {
         testId: test.id,
         code: decodedScript,
+        variables: variableResolution.variables,
+        secrets: variableResolution.secrets,
         runId: run.id,
         organizationId: test.organizationId ?? "",
         projectId: test.projectId ?? "",

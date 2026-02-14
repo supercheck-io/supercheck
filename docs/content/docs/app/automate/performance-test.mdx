@@ -142,11 +142,11 @@ thresholds: {
 ```javascript
 /**
  * Using project variables and secrets in k6 tests.
- * Secrets require .toString() to access the value.
+ * Secrets are resolved at runtime and redacted from logs.
  */
 export default function () {
   const baseUrl = getVariable('API_URL');
-  const apiKey = getSecret('API_KEY').toString();
+  const apiKey = getSecret('API_KEY');
   
   const response = http.get(`${baseUrl}/protected`, {
     headers: { Authorization: `Bearer ${apiKey}` }

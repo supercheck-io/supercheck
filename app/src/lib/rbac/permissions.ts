@@ -157,7 +157,7 @@ export const projectAdmin = ac.newRole({
   invitation: ["view"],
 
   // Full project admin permissions for assigned projects
-  project: ["view", "manage_members"],
+  project: ["view", "update", "manage_members"],
   test: ["create", "update", "delete", "view", "run"],
   job: ["create", "update", "delete", "view", "trigger"],
   monitor: ["create", "update", "delete", "view", "manage"],

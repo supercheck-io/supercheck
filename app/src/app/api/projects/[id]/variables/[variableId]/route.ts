@@ -1,14 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { headers } from "next/headers";
 import { db } from "@/utils/db";
-import { auth } from "@/utils/auth";
 import { projectVariables, projects } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
-import {
-  canUpdateVariableInProject,
-  canDeleteVariableInProject,
-  canViewSecretVariableInProject,
-} from "@/lib/rbac/middleware";
+import { hasPermissionForUser } from "@/lib/rbac/middleware";
+import { requireUserAuthContext, isAuthError } from "@/lib/auth-context";
 import { updateVariableSchema } from "@/lib/validations/variable";
 import { encryptValue, decryptValue } from "@/lib/encryption";
 import { z } from "zod";
@@ -22,23 +17,11 @@ export async function GET(
     const projectId = resolvedParams.id;
     const variableId = resolvedParams.variableId;
 
-    // Get authenticated user
-    const session = await auth.api.getSession({
-      headers: await headers(),
-    });
-
-    if (!session) {
-      return NextResponse.json(
-        { error: "Authentication required" },
-        { status: 401 }
-      );
-    }
-
-    const userId = session.user.id;
+    const { userId } = await requireUserAuthContext();
 
     // Get project info for organization ID
     const project = await db
-      .select()
+      .select({ id: projects.id, organizationId: projects.organizationId })
       .from(projects)
       .where(eq(projects.id, projectId))
       .limit(1);
@@ -47,6 +30,18 @@ export async function GET(
       return NextResponse.json(
         { error: "Project not found" },
         { status: 404 }
+      );
+    }
+
+    const canView = await hasPermissionForUser(userId, "variable", "view", {
+      organizationId: project[0].organizationId,
+      projectId,
+    });
+
+    if (!canView) {
+      return NextResponse.json(
+        { error: "Insufficient permissions to view variables" },
+        { status: 403 }
       );
     }
 
@@ -68,55 +63,22 @@ export async function GET(
       );
     }
 
-    // Check if user can view secret values using centralized function
-    const canViewSecrets = await canViewSecretVariableInProject(
-      userId,
-      projectId
-    );
-
-    // Return variable with decrypted value if permitted
+    // Return masked value for secrets. Use dedicated decrypt endpoint for explicit reveal.
     if (variable.isSecret) {
-      if (canViewSecrets && variable.encryptedValue) {
-        try {
-          const decryptedValue = decryptValue(variable.encryptedValue, projectId);
-          return NextResponse.json({
-            success: true,
-            data: {
-              id: variable.id,
-              projectId: variable.projectId,
-              key: variable.key,
-              value: decryptedValue, // Return decrypted value
-              isSecret: variable.isSecret,
-              description: variable.description,
-              createdByUserId: variable.createdByUserId,
-              createdAt: variable.createdAt,
-              updatedAt: variable.updatedAt,
-            },
-          });
-        } catch (error) {
-          console.error("Failed to decrypt value:", error);
-          return NextResponse.json(
-            { error: "Failed to decrypt secret value" },
-            { status: 500 }
-          );
-        }
-      } else {
-        // User can't view secrets, return encrypted placeholder
-        return NextResponse.json({
-          success: true,
-          data: {
-            id: variable.id,
-            projectId: variable.projectId,
-            key: variable.key,
-            value: "[ENCRYPTED]", // Don't expose encrypted value
-            isSecret: variable.isSecret,
-            description: variable.description,
-            createdByUserId: variable.createdByUserId,
-            createdAt: variable.createdAt,
-            updatedAt: variable.updatedAt,
-          },
-        });
-      }
+      return NextResponse.json({
+        success: true,
+        data: {
+          id: variable.id,
+          projectId: variable.projectId,
+          key: variable.key,
+          value: "[ENCRYPTED]",
+          isSecret: variable.isSecret,
+          description: variable.description,
+          createdByUserId: variable.createdByUserId,
+          createdAt: variable.createdAt,
+          updatedAt: variable.updatedAt,
+        },
+      });
     } else {
       // Regular variable, return as is
       return NextResponse.json({
@@ -135,6 +97,13 @@ export async function GET(
       });
     }
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
+
     console.error("Error fetching variable:", error);
     return NextResponse.json(
       { error: "Internal server error" },
@@ -152,23 +121,11 @@ export async function PUT(
     const projectId = resolvedParams.id;
     const variableId = resolvedParams.variableId;
 
-    // Get authenticated user
-    const session = await auth.api.getSession({
-      headers: await headers(),
-    });
-
-    if (!session) {
-      return NextResponse.json(
-        { error: "Authentication required" },
-        { status: 401 }
-      );
-    }
-
-    const userId = session.user.id;
+    const { userId } = await requireUserAuthContext();
 
     // Get project info for organization ID
     const project = await db
-      .select()
+      .select({ id: projects.id, organizationId: projects.organizationId })
       .from(projects)
       .where(eq(projects.id, projectId))
       .limit(1);
@@ -180,8 +137,10 @@ export async function PUT(
       );
     }
 
-    // Check permission to update variables using centralized function
-    const canUpdate = await canUpdateVariableInProject(userId, projectId);
+    const canUpdate = await hasPermissionForUser(userId, "variable", "update", {
+      organizationId: project[0].organizationId,
+      projectId,
+    });
     if (!canUpdate) {
       return NextResponse.json(
         { error: "Insufficient permissions to update variables" },
@@ -243,6 +202,8 @@ export async function PUT(
         }
       }
 
+      const effectiveIsSecret = validatedData.isSecret ?? existingVariable.isSecret;
+
       // Prepare update data
       const updateData: Record<string, string | boolean | Date | null> = {
         updatedAt: new Date(),
@@ -253,50 +214,61 @@ export async function PUT(
       }
 
       if (validatedData.description !== undefined) {
-        updateData.description = validatedData.description;
+        const normalizedDescription = validatedData.description.trim();
+        updateData.description = normalizedDescription === "" ? null : normalizedDescription;
       }
 
       if (validatedData.isSecret !== undefined) {
         updateData.isSecret = validatedData.isSecret;
       }
 
-      // Handle value update
+      // Handle value transition/update rules
       if (validatedData.value !== undefined) {
-        if (validatedData.isSecret ?? existingVariable.isSecret) {
-          // Encrypt the new value
-          const encrypted = encryptValue(validatedData.value, projectId);
-          updateData.encryptedValue = encrypted;
+        if (effectiveIsSecret) {
+          updateData.encryptedValue = encryptValue(validatedData.value, projectId);
           updateData.value = "[ENCRYPTED]";
         } else {
-          // Store as plain text
           updateData.value = validatedData.value;
           updateData.encryptedValue = null;
         }
-      }
+      } else if (
+        validatedData.isSecret !== undefined &&
+        validatedData.isSecret !== existingVariable.isSecret
+      ) {
+        if (validatedData.isSecret) {
+          if (!existingVariable.value || existingVariable.value === "[ENCRYPTED]") {
+            return NextResponse.json(
+              {
+                error:
+                  "Cannot mark as secret without providing a value. The existing plaintext is unavailable.",
+              },
+              { status: 400 }
+            );
+          }
 
-      // If changing from secret to non-secret, decrypt the value
-      if (validatedData.isSecret === false && existingVariable.isSecret) {
-        try {
-          const decryptedValue = decryptValue(
-            existingVariable.encryptedValue || "",
-            projectId
-          );
-          updateData.value = decryptedValue;
-          updateData.encryptedValue = null;
-        } catch {
-          return NextResponse.json(
-            { error: "Cannot decrypt existing secret value" },
-            { status: 400 }
-          );
+          updateData.encryptedValue = encryptValue(existingVariable.value, projectId);
+          updateData.value = "[ENCRYPTED]";
+        } else {
+          if (!existingVariable.encryptedValue) {
+            return NextResponse.json(
+              {
+                error:
+                  "Cannot unmark as secret without providing a value. The encrypted value is unavailable.",
+              },
+              { status: 400 }
+            );
+          }
+
+          try {
+            updateData.value = decryptValue(existingVariable.encryptedValue, projectId);
+            updateData.encryptedValue = null;
+          } catch {
+            return NextResponse.json(
+              { error: "Cannot decrypt existing secret value" },
+              { status: 400 }
+            );
+          }
         }
-      }
-
-      // If changing from non-secret to secret, encrypt the existing value
-      if (validatedData.isSecret === true && !existingVariable.isSecret) {
-        const valueToEncrypt = validatedData.value || existingVariable.value;
-        const encrypted = encryptValue(valueToEncrypt, projectId);
-        updateData.encryptedValue = encrypted;
-        updateData.value = "[ENCRYPTED]";
       }
 
       // Update the variable
@@ -310,7 +282,7 @@ export async function PUT(
       const responseVariable = {
         ...updatedVariable,
         encryptedValue: undefined,
-        value: updatedVariable.isSecret ? "[ENCRYPTED]" : updatedVariable.value,
+        value: effectiveIsSecret ? "[ENCRYPTED]" : updatedVariable.value,
       };
 
       return NextResponse.json({
@@ -332,6 +304,13 @@ export async function PUT(
       );
     }
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
+
     console.error("Error updating project variable:", error);
     return NextResponse.json(
       { error: "Internal server error" },
@@ -349,23 +328,11 @@ export async function DELETE(
     const projectId = resolvedParams.id;
     const variableId = resolvedParams.variableId;
 
-    // Get authenticated user
-    const session = await auth.api.getSession({
-      headers: await headers(),
-    });
-
-    if (!session) {
-      return NextResponse.json(
-        { error: "Authentication required" },
-        { status: 401 }
-      );
-    }
-
-    const userId = session.user.id;
+    const { userId } = await requireUserAuthContext();
 
     // Get project info for organization ID
     const project = await db
-      .select()
+      .select({ id: projects.id, organizationId: projects.organizationId })
       .from(projects)
       .where(eq(projects.id, projectId))
       .limit(1);
@@ -377,8 +344,10 @@ export async function DELETE(
       );
     }
 
-    // Check permission to delete variables using centralized function
-    const canDelete = await canDeleteVariableInProject(userId, projectId);
+    const canDelete = await hasPermissionForUser(userId, "variable", "delete", {
+      organizationId: project[0].organizationId,
+      projectId,
+    });
     if (!canDelete) {
       return NextResponse.json(
         { error: "Insufficient permissions to delete variables" },
@@ -414,6 +383,13 @@ export async function DELETE(
       message: "Variable deleted successfully",
     });
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
+
     console.error("Error deleting project variable:", error);
     return NextResponse.json(
       { error: "Internal server error" },

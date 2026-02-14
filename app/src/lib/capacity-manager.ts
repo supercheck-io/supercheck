@@ -660,6 +660,18 @@ export async function getCapacityManager(): Promise<CapacityManager> {
   return capacityManager;
 }
 
+/**
+ * Stop the queue processor and reset the singleton.
+ * Called during graceful shutdown to prevent the background processor
+ * from running against closed/stale Redis connections.
+ */
+export function resetCapacityManager(): void {
+  if (capacityManager) {
+    capacityManager.stopQueueProcessor();
+  }
+  capacityManager = null;
+}
+
 // =============================================================================
 // SIMPLIFIED QUEUE EVENT SETUP
 // =============================================================================

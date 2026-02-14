@@ -593,9 +593,8 @@ export class ContainerExecutorService {
         );
       }
       if (result.stderr && result.stderr.trim().length > 0) {
-        // Only log stderr content since it indicates errors
         this.logger.debug(
-          `Container stderr (first 500 chars): ${result.stderr.substring(0, 500)}`,
+          `Container stderr: ${result.stderr.length} chars (content suppressed to avoid sensitive data exposure)`,
         );
       }
 
@@ -605,7 +604,9 @@ export class ContainerExecutorService {
           `Container ${containerName} failed with exit code ${result.exitCode}`,
         );
         if (result.stderr && result.stderr.trim().length > 0) {
-          this.logger.error(`Container stderr:\n${result.stderr}`);
+          this.logger.error(
+            `Container stderr captured (${result.stderr.length} chars). Content suppressed; inspect persisted run artifacts for details.`,
+          );
         }
       }
 

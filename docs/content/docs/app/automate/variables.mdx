@@ -23,7 +23,7 @@ Variables let you store configuration values and sensitive credentials that your
 
 - **Storage:** AES-128-GCM encrypted
 - **Visibility:** Masked with `***`
-- **Logging:** Auto-redacted as `[SECRET]`
+- **Logging:** Avoid intentional logging; execution output is redacted
 - **Use For:** API keys, passwords, tokens
 
 </Tab>
@@ -56,7 +56,7 @@ Variables let you store configuration values and sensitive credentials that your
 ![Add Secret](/screenshots/add-secret.png)
 
 <Callout type="info">
-Once saved, secret values cannot be viewed in the UI. You can only update or delete them.
+Secret values are masked by default in the UI. Users with secret-view permission can explicitly reveal a value via the dedicated action.
 </Callout>
 
 </Tab>
@@ -88,52 +88,46 @@ await page.goto(baseUrl + '/login');
 </Tab>
 <Tab value="getSecret()">
 
-Use for sensitive credentials. **Always call `.toString()`** to get the actual value:
+Use for sensitive credentials:
 
 ```javascript
 /**
- * Secrets are encrypted and require .toString() to access the value.
- * This ensures secrets are protected from accidental logging.
+ * Secrets are encrypted and resolved at runtime.
+ * Secret values are automatically redacted from logs.
  */
 
 // API authentication
-const apiKey = getSecret('API_KEY').toString();
+const apiKey = getSecret('API_KEY');
 await page.setExtraHTTPHeaders({
   'Authorization': `Bearer ${apiKey}`
 });
 
 // Form login
-const password = getSecret('TEST_PASSWORD').toString();
+const password = getSecret('TEST_PASSWORD');
 await page.fill('#password', password);
 
 // Database connection
-const dbPassword = getSecret('DB_PASSWORD').toString();
+const dbPassword = getSecret('DB_PASSWORD');
 ```
-
-<Callout type="warning">
-Always use `.toString()` when reading secrets. Without it, the secret object won't expose the actual value in most contexts.
-</Callout>
 
 </Tab>
 </Tabs>
 
 ### Secret Protection
 
-Secrets are automatically protected from accidental exposure:
+Secrets are resolved at runtime and execution output is redacted before persistence/return:
 
 ```javascript
 /**
- * Secret values are masked in logs and console output.
- * The actual value is only accessible via .toString().
+ * Secret values are injected at runtime.
+ * The actual values are resolved at runtime.
  */
 
-// These all show [SECRET] instead of the actual value
-console.log(getSecret('API_KEY'));           // "[SECRET]"
-console.log(`Key: ${getSecret('API_KEY')}`); // "Key: [SECRET]"
-JSON.stringify({ key: getSecret('API_KEY') }); // {"key":"[SECRET]"}
+// Avoid intentional secret logging in scripts
+// Worker redaction is an additional protection layer for accidental output
+console.log('API key configured:', !!getSecret('API_KEY'));
 
-// Use .toString() to get the actual value for operations
-const actualKey = getSecret('API_KEY').toString();
+const actualKey = getSecret('API_KEY');
 ```
 
 **Secrets work normally in:**
@@ -167,8 +161,8 @@ await page.goto(baseUrl);
  * @see https://playwright.dev/docs/api-testing
  */
 const apiUrl = getVariable('API_URL');
-const apiToken = getSecret('API_TOKEN').toString();
-const apiKey = getSecret('API_KEY').toString();
+const apiToken = getSecret('API_TOKEN');
+const apiKey = getSecret('API_KEY');
 
 const response = await request.get(apiUrl + '/users', {
   headers: {
@@ -193,7 +187,7 @@ const pool = new Pool({
   port: parseInt(getVariable('DB_PORT')),
   database: getVariable('DB_NAME'),
   user: getVariable('DB_USER'),
-  password: getSecret('DB_PASSWORD').toString()
+  password: getSecret('DB_PASSWORD')
 });
 ```
 
@@ -227,7 +221,7 @@ import http from 'k6/http';
 
 export default function () {
   const baseUrl = getVariable('API_URL');
-  const apiKey = getSecret('API_KEY').toString();
+  const apiKey = getSecret('API_KEY');
   
   http.get(`${baseUrl}/protected`, {
     headers: { Authorization: `Bearer ${apiKey}` }

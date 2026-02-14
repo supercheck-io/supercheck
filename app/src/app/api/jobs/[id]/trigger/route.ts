@@ -459,6 +459,8 @@ export async function POST(
           jobId,
           testId: primaryTestId,
           script: primaryScript,
+          variables: variableResolution.variables,
+          secrets: variableResolution.secrets,
           tests: processedTestScripts.map((script) => ({
             id: script.id,
             script: script.script,

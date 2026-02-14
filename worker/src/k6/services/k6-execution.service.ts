@@ -37,6 +37,8 @@ export interface K6ExecutionTask {
   organizationId: string;
   projectId: string;
   script: string; // Decoded k6 script
+  variables?: Record<string, string>; // Resolved variables for runtime helper injection
+  secrets?: Record<string, string>; // Resolved secrets for runtime helper injection
   jobId?: string | null;
   tests: Array<{ id: string; script: string }>;
   location?: string; // Execution location
@@ -234,6 +236,8 @@ export class K6ExecutionService {
    */
   async runK6Test(task: K6ExecutionTask): Promise<K6ExecutionResult> {
     const { runId, testId: _testId, script, location } = task;
+    const runtimeVariables = task.variables ?? {};
+    const runtimeSecrets = task.secrets ?? {};
     const startTime = Date.now();
 
     const uniqueRunId = `${runId}-${crypto.randomUUID().substring(0, 8)}`;
@@ -283,6 +287,8 @@ export class K6ExecutionService {
       const htmlExportFileName = 'report.html';
       const htmlExportPathContainer = `${k6OutputDir}/${reportDirName}/${htmlExportFileName}`;
 
+      const preparedScript = this.injectK6VariableRuntimeHelpers(script);
+
       const args = [
         'run',
         '--summary-export',
@@ -322,12 +328,13 @@ export class K6ExecutionService {
           K6_WEB_DASHBOARD_PORT: dashboardPort.toString(), // Use unique port
           K6_WEB_DASHBOARD_ADDR: this.dashboardBindAddress,
           K6_NO_COLOR: '1', // Disable ANSI colors in output
+          ...this.buildVariableRuntimeEnv(runtimeVariables, runtimeSecrets),
         };
 
         try {
           execResult = await this.executeK6Binary(
             args,
-            script, // Pass script content instead of directory
+            preparedScript, // Pass prepared script content instead of directory
             extractedReportsDir, // Pass extraction directory
             runId,
             uniqueRunId,
@@ -362,6 +369,19 @@ export class K6ExecutionService {
       if (!execResult) {
         throw new Error(`[${runId}] k6 did not produce an execution result`);
       }
+
+      execResult.stdout = this.redactSecretsFromText(
+        execResult.stdout,
+        runtimeSecrets,
+      );
+      execResult.stderr = this.redactSecretsFromText(
+        execResult.stderr,
+        runtimeSecrets,
+      );
+      execResult.error = this.redactSecretsFromText(
+        execResult.error,
+        runtimeSecrets,
+      );
 
       const timedOut = execResult.timedOut;
       const exitCode = execResult.exitCode;
@@ -721,7 +741,7 @@ export class K6ExecutionService {
     const _startTime = Date.now();
     this.logger.log(`[${runId}] Executing in container: k6 ${args.join(' ')}`);
     this.logger.debug(
-      `[${runId}] k6 environment variables: ${JSON.stringify(overrideEnv, null, 2)}`,
+      `[${runId}] k6 environment override keys: ${Object.keys(overrideEnv).join(', ')}`,
     );
 
     // Note: No validation of shell command arguments here
@@ -765,6 +785,7 @@ export class K6ExecutionService {
       }
 
       // Execute in container with inline script
+      const runtimeSecrets = this.decodeSecretsFromRuntimeEnv(overrideEnv);
       const containerResult =
         await this.containerExecutorService.executeInContainer(
           null, // No host script path - using inline content
@@ -789,9 +810,13 @@ export class K6ExecutionService {
             image: this.k6DockerImage, // Use K6-specific Docker image
             onStdoutChunk: async (chunk: string) => {
               try {
+                const redactedChunk = this.redactSecretsFromText(
+                  chunk,
+                  runtimeSecrets,
+                );
                 await this.redisService
                   .getClient()
-                  .publish(`k6:run:${runId}:console`, chunk);
+                  .publish(`k6:run:${runId}:console`, redactedChunk);
               } catch (err) {
                 this.logger.warn(
                   `[${runId}] Failed to publish streaming chunk: ${getErrorMessage(err)}`,
@@ -806,8 +831,18 @@ export class K6ExecutionService {
 
       const timedOut = containerResult.timedOut;
       const exitCode = containerResult.exitCode;
-      const stdout = containerResult.stdout;
-      const stderr = containerResult.stderr;
+      const stdout = this.redactSecretsFromText(
+        containerResult.stdout,
+        runtimeSecrets,
+      );
+      const stderr = this.redactSecretsFromText(
+        containerResult.stderr,
+        runtimeSecrets,
+      );
+      const redactedError = this.redactSecretsFromText(
+        containerResult.error,
+        runtimeSecrets,
+      );
 
       // Persist stdout + stderr to console.log so it can be fetched/archived later
       try {
@@ -853,7 +888,7 @@ export class K6ExecutionService {
         exitCode,
         stdout,
         stderr,
-        error: containerResult.error || null,
+        error: redactedError || null,
         timedOut,
       };
     } catch (error) {
@@ -942,6 +977,196 @@ export class K6ExecutionService {
     // All thresholds passed (or no thresholds defined)
     this.logger.debug('All thresholds passed');
     return true;
+  }
+
+  private buildVariableRuntimeEnv(
+    variables: Record<string, string>,
+    secrets: Record<string, string>,
+  ): Record<string, string> {
+    return {
+      SUPERCHECK_VARIABLES_B64: Buffer.from(
+        JSON.stringify(variables ?? {}),
+      ).toString('base64'),
+      SUPERCHECK_SECRETS_B64: Buffer.from(
+        JSON.stringify(secrets ?? {}),
+      ).toString('base64'),
+    };
+  }
+
+  private decodeSecretsFromRuntimeEnv(
+    env: Record<string, string>,
+  ): Record<string, string> {
+    const encodedSecrets = env.SUPERCHECK_SECRETS_B64;
+    if (!encodedSecrets) {
+      return {};
+    }
+
+    try {
+      const parsed = JSON.parse(
+        Buffer.from(encodedSecrets, 'base64').toString('utf8'),
+      ) as unknown;
+
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        return {};
+      }
+
+      const secrets: Record<string, string> = {};
+      for (const [key, value] of Object.entries(parsed)) {
+        if (typeof value === 'string') {
+          secrets[key] = value;
+        }
+      }
+
+      return secrets;
+    } catch {
+      // Best-effort decode for redaction only; ignore malformed values.
+      return {};
+    }
+  }
+
+  private injectK6VariableRuntimeHelpers(script: string): string {
+    const helperCode = `
+const __scEnv = (typeof __ENV !== 'undefined' && __ENV)
+  ? __ENV
+  : ((typeof process !== 'undefined' && process.env) ? process.env : {});
+
+function __scParseMap(key) {
+  try {
+    const encoded = __scEnv[key];
+    if (!encoded) return {};
+    return JSON.parse(__scBase64Decode(encoded)) || {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function __scBase64Decode(value) {
+  if (typeof Buffer !== 'undefined') {
+    return Buffer.from(value, 'base64').toString('utf8');
+  }
+
+  if (typeof atob === 'function') {
+    const binary = atob(value);
+
+    if (typeof TextDecoder !== 'undefined') {
+      const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+      return new TextDecoder('utf-8').decode(bytes);
+    }
+
+    // Fallback for runtimes without TextDecoder: percent-encode bytes and decode as UTF-8
+    let escaped = '';
+    for (let i = 0; i < binary.length; i++) {
+      escaped += '%' + binary.charCodeAt(i).toString(16).padStart(2, '0');
+    }
+    return decodeURIComponent(escaped);
+  }
+
+  throw new Error('No base64 decoder available in runtime');
+}
+
+const __scVariables = __scParseMap('SUPERCHECK_VARIABLES_B64');
+const __scSecrets = __scParseMap('SUPERCHECK_SECRETS_B64');
+
+globalThis.getVariable = function getVariable(key, options = {}) {
+  const value = __scVariables[key];
+
+  if (value === undefined) {
+    if (options.required) {
+      throw new Error(\`Required variable '\${key}' is not defined\`);
+    }
+    return options.default !== undefined ? options.default : '';
+  }
+
+  if (options.type === 'number') {
+    const num = Number(value);
+    if (Number.isNaN(num)) {
+      throw new Error(\`Variable '\${key}' cannot be converted to number: \${value}\`);
+    }
+    return num;
+  }
+
+  if (options.type === 'boolean') {
+    return String(value).toLowerCase() === 'true' || String(value) === '1';
+  }
+
+  return value;
+};
+
+globalThis.getSecret = function getSecret(key, options = {}) {
+  const value = __scSecrets[key];
+
+  if (value === undefined) {
+    if (options.required) {
+      throw new Error(\`Required secret '\${key}' is not defined\`);
+    }
+    return options.default !== undefined ? options.default : '';
+  }
+
+  if (options.type === 'number') {
+    const num = Number(value);
+    if (Number.isNaN(num)) {
+      throw new Error(\`Secret '\${key}' cannot be converted to number\`);
+    }
+    return num;
+  }
+
+  if (options.type === 'boolean') {
+    return String(value).toLowerCase() === 'true' || String(value) === '1';
+  }
+
+  return value;
+};
+`;
+
+    const importBlockRegex = /^(\s*import[\s\S]*?;\s*)+/;
+    const importBlock = script.match(importBlockRegex);
+
+    if (importBlock && importBlock.index === 0) {
+      const imports = importBlock[0];
+      const rest = script.slice(imports.length);
+      return `${imports}\n${helperCode}\n${rest}`;
+    }
+
+    return `${helperCode}\n${script}`;
+  }
+
+  private redactSecretsFromText(
+    text: string | null | undefined,
+    secrets: Record<string, string>,
+  ): string {
+    if (text == null) {
+      return '';
+    }
+
+    const secretValues = Object.values(secrets).filter(
+      (value) => typeof value === 'string' && value.length > 0,
+    );
+
+    if (secretValues.length === 0) {
+      return text;
+    }
+
+    const uniqueSecrets = Array.from(new Set(secretValues)).sort(
+      (first, second) => second.length - first.length,
+    );
+
+    try {
+      const pattern = new RegExp(
+        uniqueSecrets.map((secret) => this.escapeRegexPattern(secret)).join('|'),
+        'g',
+      );
+      return text.replace(pattern, '[SECRET]');
+    } catch {
+      let redacted = text;
+      for (const secret of uniqueSecrets) {
+        redacted = redacted.split(secret).join('[SECRET]');
+      }
+      return redacted;
+    }
+  }
+
+  private escapeRegexPattern(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
   /**

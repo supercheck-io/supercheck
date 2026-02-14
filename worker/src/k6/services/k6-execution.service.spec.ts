@@ -13,6 +13,7 @@
 
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
+import { runInNewContext } from 'node:vm';
 import {
   K6ExecutionService,
   K6ExecutionTask,
@@ -298,6 +299,187 @@ describe('K6ExecutionService', () => {
         createSafeTempPath,
       } = require('../../common/security/path-validator');
       expect(createSafeTempPath).toBeDefined();
+    });
+
+    it('should log only k6 environment override keys, not values', async () => {
+      const debugSpy = jest
+        .spyOn(service['logger'], 'debug')
+        .mockImplementation(() => {});
+
+      await service['executeK6Binary'](
+        ['run', 'test.js'],
+        'export default function() {}',
+        '/tmp/k6-test',
+        'run-123',
+        'run-123-abc',
+        {
+          SUPERCHECK_SECRETS_B64: 'c2VjcmV0LXZhbHVl',
+          K6_NO_COLOR: '1',
+        },
+      );
+
+      const envLogCall = debugSpy.mock.calls.find(([message]) =>
+        String(message).includes('k6 environment override keys:'),
+      );
+
+      expect(envLogCall).toBeDefined();
+      expect(String(envLogCall?.[0])).toContain('SUPERCHECK_SECRETS_B64');
+      expect(String(envLogCall?.[0])).not.toContain('c2VjcmV0LXZhbHVl');
+    });
+
+    it('should decode UTF-8 secrets correctly when using atob path', () => {
+      const utf8Secret = 'pässwörd-東京';
+      const script = (service as any).injectK6VariableRuntimeHelpers(
+        'globalThis.__decodedSecret = getSecret("API_TOKEN");',
+      );
+
+      const context: Record<string, unknown> = {
+        __ENV: {
+          SUPERCHECK_VARIABLES_B64: Buffer.from('{}').toString('base64'),
+          SUPERCHECK_SECRETS_B64: Buffer.from(
+            JSON.stringify({ API_TOKEN: utf8Secret }),
+          ).toString('base64'),
+        },
+        Buffer: undefined,
+        atob: (value: string) =>
+          Buffer.from(value, 'base64').toString('binary'),
+        TextDecoder,
+        Uint8Array,
+        console: {
+          log: jest.fn(),
+          info: jest.fn(),
+          warn: jest.fn(),
+          error: jest.fn(),
+          debug: jest.fn(),
+        },
+      };
+
+      context.globalThis = context;
+
+      runInNewContext(script, context);
+
+      expect(context.__decodedSecret).toBe(utf8Secret);
+    });
+
+    it('should not mutate or pollute non-writable console host methods in k6 runtime', () => {
+      const script = (service as any).injectK6VariableRuntimeHelpers(
+        'globalThis.__runtimeOk = getVariable("ENV", { default: "ok" });',
+      );
+
+      const lockedConsole: Record<string, unknown> = {};
+      const lockedLog = jest.fn();
+      const lockedInfo = jest.fn();
+      const lockedWarn = jest.fn();
+      const lockedError = jest.fn();
+      const lockedDebug = jest.fn();
+
+      Object.defineProperty(lockedConsole, 'log', {
+        value: lockedLog,
+        writable: false,
+        configurable: false,
+      });
+      Object.defineProperty(lockedConsole, 'info', {
+        value: lockedInfo,
+        writable: false,
+        configurable: false,
+      });
+      Object.defineProperty(lockedConsole, 'warn', {
+        value: lockedWarn,
+        writable: false,
+        configurable: false,
+      });
+      Object.defineProperty(lockedConsole, 'error', {
+        value: lockedError,
+        writable: false,
+        configurable: false,
+      });
+      Object.defineProperty(lockedConsole, 'debug', {
+        value: lockedDebug,
+        writable: false,
+        configurable: false,
+      });
+
+      const beforeConsoleKeys = Object.keys(lockedConsole).sort();
+      const beforeConsoleOwnPropertyNames = Object.getOwnPropertyNames(
+        lockedConsole,
+      ).sort();
+      const beforeDescriptors = Object.getOwnPropertyDescriptors(lockedConsole);
+
+      const context: Record<string, unknown> = {
+        __ENV: {
+          SUPERCHECK_VARIABLES_B64: Buffer.from(
+            JSON.stringify({ ENV: 'ok' }),
+          ).toString('base64'),
+          SUPERCHECK_SECRETS_B64: Buffer.from('{}').toString('base64'),
+        },
+        console: lockedConsole,
+      };
+
+      context.globalThis = context;
+
+      expect(() => runInNewContext(script, context)).not.toThrow();
+      expect(context.__runtimeOk).toBe('ok');
+
+      expect(context.console).toBe(lockedConsole);
+      expect(Object.keys(lockedConsole).sort()).toEqual(beforeConsoleKeys);
+      expect(Object.getOwnPropertyNames(lockedConsole).sort()).toEqual(
+        beforeConsoleOwnPropertyNames,
+      );
+
+      const afterDescriptors = Object.getOwnPropertyDescriptors(lockedConsole);
+      expect(afterDescriptors).toEqual(beforeDescriptors);
+
+      expect((lockedConsole as any).log).toBe(lockedLog);
+      expect((lockedConsole as any).info).toBe(lockedInfo);
+      expect((lockedConsole as any).warn).toBe(lockedWarn);
+      expect((lockedConsole as any).error).toBe(lockedError);
+      expect((lockedConsole as any).debug).toBe(lockedDebug);
+    });
+
+    it('should redact secrets before persisting k6 console.log artifacts', async () => {
+      const fsPromises = require('fs/promises');
+      const writeFileMock = fsPromises.writeFile as jest.Mock;
+
+      mockContainerExecutorService.executeInContainer.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'token=super-secret-value',
+        stderr: '',
+        error: null,
+        timedOut: false,
+      });
+
+      const result = await service['executeK6Binary'](
+        ['run', 'test.js'],
+        'export default function() {}',
+        '/tmp/k6-test',
+        'run-123',
+        'run-123-abc',
+        {
+          SUPERCHECK_SECRETS_B64: Buffer.from(
+            JSON.stringify({ API_TOKEN: 'super-secret-value' }),
+          ).toString('base64'),
+        },
+      );
+
+      expect(result.stdout).toContain('[SECRET]');
+      expect(result.stdout).not.toContain('super-secret-value');
+
+      const writtenContent = writeFileMock.mock.calls.at(-1)?.[1] as string;
+      expect(writtenContent).toContain('[SECRET]');
+      expect(writtenContent).not.toContain('super-secret-value');
+    });
+
+    it('should redact literal secrets containing regex chars and overlapping values', () => {
+      const redacted = (service as any).redactSecretsFromText(
+        'a.b[c] then abc then ab',
+        {
+          TOKEN_1: 'a.b[c]',
+          TOKEN_2: 'ab',
+          TOKEN_3: 'abc',
+        },
+      );
+
+      expect(redacted).toBe('[SECRET] then [SECRET] then [SECRET]');
     });
   });
 

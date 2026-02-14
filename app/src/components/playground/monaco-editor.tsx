@@ -225,15 +225,15 @@ export const MonacoEditorClient = memo(
                     contents: [
                       {
                         value:
-                          "**getSecret(key: string, options?): ProtectedSecret | T**",
+                          "**getSecret(key: string, options?): T**",
                       },
                       {
                         value:
-                          "Retrieves a project secret with enhanced security protection.",
+                          "Retrieves a project secret for runtime use in scripts.",
                       },
                       {
                         value:
-                          "\\n**Security:** Secrets are encrypted at rest and protected from console logging.",
+                          "\\n**Security:** Secrets are encrypted at rest and execution output is redacted to reduce accidental exposure.",
                       },
                       {
                         value:
@@ -261,11 +261,11 @@ export const MonacoEditorClient = memo(
               },
             });
 
-            // Register additional hover provider for ProtectedSecret interface
+            // Register additional hover provider for getSecret runtime behavior
             monaco.languages.registerHoverProvider("typescript", {
               provideHover: (model, position) => {
                 const word = model.getWordAtPosition(position);
-                if (!word || word.word !== "ProtectedSecret") return null;
+                if (!word || word.word !== "getSecret") return null;
 
                 return {
                   range: new monaco.Range(
@@ -275,36 +275,24 @@ export const MonacoEditorClient = memo(
                     word.endColumn
                   ),
                   contents: [
-                    { value: "### ProtectedSecret Interface" },
+                    { value: "### getSecret Runtime Behavior" },
                     {
                       value:
-                        "Enterprise-grade secret protection that prevents accidental exposure.",
+                        "Secrets are resolved at runtime and should be used directly in API calls and test actions.",
                     },
                     { value: "---" },
-                    { value: "**Protection Mechanisms:**" },
-                    { value: '• `toString()` → Returns "[SECRET]"' },
-                    { value: '• `toJSON()` → Returns "[SECRET]"' },
+                    { value: "**Security Model:**" },
+                    { value: "• Encrypted at rest in project variables" },
+                    { value: "• Injected at runtime in worker execution context" },
                     {
                       value:
-                        "• `valueOf()` → Returns actual secret value for APIs",
+                        "• Execution output is redacted before persistence/return",
                     },
-                    { value: "• `Symbol.toPrimitive` → Safe type coercion" },
-                    {
-                      value:
-                        "• `util.inspect` protection for Node.js debugging",
-                    },
+                    { value: "• Avoid intentionally logging secret values in scripts" },
                     { value: "---" },
                     { value: "**Usage:**" },
                     { value: "```typescript" },
                     { value: "const secret = getSecret('API_TOKEN');" },
-                    { value: 'console.log(secret);           // "[SECRET]"' },
-                    { value: 'String(secret);               // "[SECRET]"' },
-                    {
-                      value:
-                        'JSON.stringify({secret});     // {"secret":"[SECRET]"}',
-                    },
-                    { value: "" },
-                    { value: "// But works perfectly with APIs:" },
                     { value: "fetch(url, {" },
                     {
                       value:
