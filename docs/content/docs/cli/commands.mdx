@@ -75,8 +75,18 @@ Initialize a new project with `supercheck.config.ts` and `_supercheck_/` folder.
 
 ```bash
 supercheck init
-supercheck init --force    # Overwrite existing config
+supercheck init --force              # Overwrite existing config
+supercheck init --skip-install       # Skip dependency installation
+supercheck init --skip-examples      # Skip example test files
+supercheck init --pm pnpm            # Use specific package manager
 ```
+
+| Flag | Description |
+|------|-------------|
+| `--force` | Overwrite existing config files |
+| `--skip-install` | Skip automatic dependency installation |
+| `--skip-examples` | Skip generating example test files |
+| `--pm <manager>` | Package manager to use (`npm`, `pnpm`, `yarn`, `bun`) |
 
 ### `supercheck config validate`
 
@@ -180,7 +190,8 @@ Run a job immediately, bypassing the cron schedule.
 
 ```bash
 supercheck job run --id <job-id>
-supercheck job run --local --id <job-id>
+supercheck job run --local --id <job-id>     # Run locally
+supercheck job run --cloud --id <job-id>     # Run in the cloud
 ```
 
 ### `supercheck job trigger`
@@ -208,6 +219,7 @@ supercheck job keys <job-id>
 
 # Create a new trigger key
 supercheck job keys create <job-id> --name "CI Trigger"
+supercheck job keys create <job-id> --name "Temp Key" --expires-in 86400
 
 # Revoke a trigger key
 supercheck job keys delete <job-id> <key-id>
@@ -393,6 +405,10 @@ supercheck test status <test-id>
 supercheck test status <test-id> --idle-timeout 120
 ```
 
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--idle-timeout` | `60` | Seconds to wait before timing out if no data received (min: 10) |
+
 ---
 
 ## Monitors
@@ -427,8 +443,14 @@ supercheck monitor status <monitor-id>
 Get recent check results.
 
 ```bash
-supercheck monitor results <monitor-id> --limit 20
+supercheck monitor results <monitor-id>
+supercheck monitor results <monitor-id> --page 2 --limit 20
 ```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--page` | `1` | Page number |
+| `--limit` | `20` | Results per page |
 
 ### `supercheck monitor stats`
 
@@ -568,7 +590,12 @@ Delete a tag.
 
 ```bash
 supercheck tag delete <id>
+supercheck tag delete <id> --force    # Skip confirmation
 ```
+
+| Flag | Description |
+|------|-------------|
+| `--force` | Skip confirmation prompt |
 
 ---
 
@@ -611,7 +638,14 @@ Update a notification provider.
 
 ```bash
 supercheck notification update <id> --name "Updated Name" --config '{...}'
+supercheck notification update <id> --type webhook --config '{...}'
 ```
+
+| Flag | Description |
+|------|-------------|
+| `--name` | Provider name |
+| `--type` | Provider type |
+| `--config` | JSON configuration string |
 
 ### `supercheck notification delete`
 
@@ -629,6 +663,11 @@ Send a test notification to verify configuration.
 ```bash
 supercheck notification test --type slack --config '{"webhookUrl":"https://hooks.slack.com/..."}'
 ```
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--type` | Yes | Provider type (`email`, `slack`, `webhook`, `telegram`, `discord`, `teams`) |
+| `--config` | Yes | JSON configuration string |
 
 ---
 
@@ -737,7 +776,18 @@ Upgrade the CLI to the latest release.
 
 ```bash
 supercheck upgrade
+supercheck upgrade --tag beta             # Install specific tag
+supercheck upgrade --package-manager pnpm  # Use specific package manager
+supercheck upgrade --dry-run               # Preview without installing
+supercheck upgrade -y                      # Skip confirmation
 ```
+
+| Flag | Description |
+|------|-------------|
+| `--tag <tag>` | npm dist-tag to install (default: `latest`) |
+| `--package-manager <pm>` | Package manager to use (`npm`, `pnpm`, `yarn`, `bun`) |
+| `-y, --yes` | Skip confirmation prompt |
+| `--dry-run` | Preview the upgrade command without executing |
 
 ### `supercheck doctor`
 
