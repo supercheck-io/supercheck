@@ -50,3 +50,6 @@ src/db/supercheck.db
 
 # Infisical
 .infisical.json
+
+# Jest
+.jest-cache

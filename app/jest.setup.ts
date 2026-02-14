@@ -33,46 +33,118 @@ if (typeof globalThis.TransformStream === 'undefined') {
   });
 }
 
-// Polyfill Fetch API primitives for Next.js server utilities in Jest
-if (typeof globalThis.Request === 'undefined' || typeof globalThis.fetch === 'undefined') {
-  const { fetch, Headers, Request, Response } = require('undici') as {
-    fetch: typeof globalThis.fetch;
-    Headers: typeof globalThis.Headers;
-    Request: typeof globalThis.Request;
-    Response: typeof globalThis.Response;
-  };
+// Polyfill Fetch API primitives for Next.js server utilities in Jest.
+// Tests in jsdom don't need a real fetch — they mock all network calls.
+// Tests needing real fetch use @jest-environment node where these exist natively.
+if (typeof globalThis.fetch === 'undefined') {
+  Object.defineProperty(globalThis, 'fetch', {
+    value: (() => {
+      throw new Error('fetch is not implemented in this test environment. Use @jest-environment node or mock the call.');
+    }) as unknown as typeof globalThis.fetch,
+    writable: true,
+    configurable: true,
+  });
+}
 
-  if (typeof globalThis.fetch === 'undefined') {
-    Object.defineProperty(globalThis, 'fetch', {
-      value: fetch,
-      writable: true,
-      configurable: true,
-    });
+if (typeof globalThis.Headers === 'undefined') {
+  // Minimal Headers stub — enough to satisfy import-time checks
+  class HeadersStub {
+    private _map = new Map<string, string>();
+    constructor(init?: Record<string, string> | HeadersStub) {
+      if (init) {
+        if (init instanceof HeadersStub) {
+          init.forEach((v, k) => this.append(k, v));
+        } else {
+          Object.entries(init).forEach(([k, v]) => this.append(k, v));
+        }
+      }
+    }
+    append(name: string, value: string) { this._map.set(name.toLowerCase(), value); }
+    get(name: string) { return this._map.get(name.toLowerCase()) ?? null; }
+    has(name: string) { return this._map.has(name.toLowerCase()); }
+    set(name: string, value: string) { this._map.set(name.toLowerCase(), value); }
+    delete(name: string) { this._map.delete(name.toLowerCase()); }
+    forEach(cb: (value: string, key: string) => void) { this._map.forEach(cb); }
   }
+  Object.defineProperty(globalThis, 'Headers', {
+    value: HeadersStub,
+    writable: true,
+    configurable: true,
+  });
+}
 
-  if (typeof globalThis.Headers === 'undefined') {
-    Object.defineProperty(globalThis, 'Headers', {
-      value: Headers,
-      writable: true,
-      configurable: true,
-    });
+if (typeof globalThis.Request === 'undefined') {
+  class RequestStub {
+    headers: InstanceType<typeof globalThis.Headers>;
+    constructor(input: string | URL, init?: { method?: string; headers?: Record<string, string> }) {
+      // Use defineProperty so subclasses (like NextRequest) can override with a getter
+      Object.defineProperty(this, 'url', {
+        value: typeof input === 'string' ? input : input.toString(),
+        writable: true,
+        configurable: true,
+        enumerable: true,
+      });
+      Object.defineProperty(this, 'method', {
+        value: init?.method ?? 'GET',
+        writable: true,
+        configurable: true,
+        enumerable: true,
+      });
+      this.headers = new globalThis.Headers(init?.headers);
+    }
   }
+  Object.defineProperty(globalThis, 'Request', {
+    value: RequestStub,
+    writable: true,
+    configurable: true,
+  });
+}
 
-  if (typeof globalThis.Request === 'undefined') {
-    Object.defineProperty(globalThis, 'Request', {
-      value: Request,
-      writable: true,
-      configurable: true,
-    });
-  }
+if (typeof globalThis.Response === 'undefined') {
+  class ResponseStub {
+    body: unknown;
+    status: number;
+    headers: InstanceType<typeof globalThis.Headers>;
+    
+    static json(data: unknown, init?: { status?: number; statusText?: string; headers?: Record<string, string> }) {
+      const body = JSON.stringify(data);
+      const headers = new globalThis.Headers(init?.headers);
+      headers.set('Content-Type', 'application/json');
+      return new ResponseStub(body, { ...init, headers });
+    }
 
-  if (typeof globalThis.Response === 'undefined') {
-    Object.defineProperty(globalThis, 'Response', {
-      value: Response,
-      writable: true,
-      configurable: true,
-    });
+    constructor(body?: unknown, init?: { status?: number; headers?: any }) {
+      this.body = body;
+      this.status = init?.status ?? 200;
+      this.headers = init?.headers instanceof globalThis.Headers 
+        ? init.headers 
+        : new globalThis.Headers(init?.headers);
+    }
+    
+    json() { 
+      if (typeof this.body === 'string') {
+        try {
+          return Promise.resolve(JSON.parse(this.body));
+        } catch {
+          return Promise.resolve(this.body);
+        }
+      }
+      return Promise.resolve(this.body); 
+    }
+    
+    text() { return Promise.resolve(String(this.body)); }
+    
+    arrayBuffer() {
+      const encoder = new TextEncoder();
+      const view = encoder.encode(String(this.body ?? ''));
+      return Promise.resolve(view.buffer);
+    }
   }
+  Object.defineProperty(globalThis, 'Response', {
+    value: ResponseStub,
+    writable: true,
+    configurable: true,
+  });
 }
 
 import '@testing-library/jest-dom';
