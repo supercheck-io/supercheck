@@ -76,13 +76,15 @@ The CLI maps errors to specific exit codes for scripting and CI/CD:
 ### CI/CD Usage
 
 ```bash
-# Exit code determines pipeline outcome
+# Capture exit code before it's overwritten by subsequent commands
 supercheck job trigger $JOB_ID --wait
-if [ $? -eq 0 ]; then
+exit_code=$?
+
+if [ $exit_code -eq 0 ]; then
   echo "All tests passed"
-elif [ $? -eq 1 ]; then
+elif [ $exit_code -eq 1 ]; then
   echo "Tests failed"
-elif [ $? -eq 2 ]; then
+elif [ $exit_code -eq 2 ]; then
   echo "Authentication issue — check SUPERCHECK_TOKEN"
 fi
 ```

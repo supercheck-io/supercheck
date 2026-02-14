@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchFromS3 } from "@/lib/s3-proxy";
+import { db } from "@/utils/db";
+import { statusPages } from "@/db/schema";
+import { and, eq } from "drizzle-orm";
 
 // Bucket name from environment
 const BUCKET_NAME =
@@ -8,6 +11,28 @@ const BUCKET_NAME =
 // Interface for S3 error objects
 interface S3Error extends Error {
   Code?: string;
+}
+
+function extractStatusPageIdFromKey(s3Key: string): string | null {
+  const segments = s3Key.split("/").filter(Boolean);
+  if (segments.length < 3) return null;
+  if (segments[0] !== "status-pages") return null;
+  return segments[1] || null;
+}
+
+async function isPublishedStatusPageAsset(s3Key: string): Promise<boolean> {
+  const statusPageId = extractStatusPageIdFromKey(s3Key);
+  if (!statusPageId) return false;
+
+  const page = await db.query.statusPages.findFirst({
+    where: and(
+      eq(statusPages.id, statusPageId),
+      eq(statusPages.status, "published")
+    ),
+    columns: { id: true },
+  });
+
+  return !!page;
 }
 
 export async function GET(
@@ -21,6 +46,11 @@ export async function GET(
 
     if (!s3Key) {
       return NextResponse.json({ error: "No path provided" }, { status: 400 });
+    }
+
+    const isAllowedAsset = await isPublishedStatusPageAsset(s3Key);
+    if (!isAllowedAsset) {
+      return NextResponse.json({ error: "Asset not found" }, { status: 404 });
     }
 
     // Determine if this is a favicon asset (needs cache-busting)
@@ -66,6 +96,11 @@ export async function HEAD(
 
     if (!s3Key) {
       return new NextResponse(null, { status: 400 });
+    }
+
+    const isAllowedAsset = await isPublishedStatusPageAsset(s3Key);
+    if (!isAllowedAsset) {
+      return new NextResponse(null, { status: 404 });
     }
 
     // Use the shared S3 proxy utility with a minimal request

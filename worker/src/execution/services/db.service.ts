@@ -126,7 +126,7 @@ export class DbService implements OnModuleInit {
    */
   async updateJobStatus(
     jobId: string,
-    runStatuses: ('pending' | 'running' | 'passed' | 'failed' | 'error')[],
+    runStatuses: ('pending' | 'running' | 'passed' | 'failed' | 'error' | 'queued' | 'blocked')[],
   ): Promise<void> {
     try {
       // Determine the aggregate job status
@@ -135,12 +135,13 @@ export class DbService implements OnModuleInit {
         jobStatus = 'error';
       } else if (runStatuses.some((s) => s === 'failed')) {
         jobStatus = 'failed';
-      } else if (runStatuses.some((s) => s === 'running' || s === 'pending')) {
+      } else if (runStatuses.some((s) => s === 'running' || s === 'pending' || s === 'queued' || s === 'blocked')) {
         jobStatus = 'running';
-      } else if (runStatuses.every((s) => s === 'passed')) {
+      } else if (runStatuses.length > 0 && runStatuses.every((s) => s === 'passed')) {
         jobStatus = 'passed';
       } else {
-        jobStatus = 'passed'; // Default to completed if all runs are done (and not failed)
+        // No runs or unrecognized statuses — treat as running to avoid premature resolution
+        jobStatus = 'running';
       }
 
       this.logger.log(
@@ -470,7 +471,7 @@ export class DbService implements OnModuleInit {
 
   async getRunStatusesForJob(
     jobId: string,
-  ): Promise<('pending' | 'running' | 'passed' | 'failed' | 'error')[]> {
+  ): Promise<('pending' | 'running' | 'passed' | 'failed' | 'error' | 'queued' | 'blocked')[]> {
     try {
       const result = await this.db
         .select({ status: runs.status })
@@ -483,6 +484,8 @@ export class DbService implements OnModuleInit {
         | 'passed'
         | 'failed'
         | 'error'
+        | 'queued'
+        | 'blocked'
       )[];
     } catch (error) {
       this.logger.error(`Failed to get run statuses for job ${jobId}:`, error);

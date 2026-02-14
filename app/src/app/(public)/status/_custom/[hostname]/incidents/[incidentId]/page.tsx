@@ -80,6 +80,7 @@ export default async function CustomDomainIncidentDetailPage({
             transactionalLogo={statusPage.transactionalLogo}
             statusPageHeadline={statusPage.headline}
             isPublicView
+            isCustomDomain
         />
     );
 }

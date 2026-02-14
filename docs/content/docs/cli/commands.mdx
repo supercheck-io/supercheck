@@ -75,8 +75,18 @@ Initialize a new project with `supercheck.config.ts` and `_supercheck_/` folder.
 
 ```bash
 supercheck init
-supercheck init --force    # Overwrite existing config
+supercheck init --force              # Overwrite existing config
+supercheck init --skip-install       # Skip dependency installation
+supercheck init --skip-examples      # Skip example test files
+supercheck init --pm pnpm            # Use specific package manager
 ```
+
+| Flag | Description |
+|------|-------------|
+| `--force` | Overwrite existing config files |
+| `--skip-install` | Skip automatic dependency installation |
+| `--skip-examples` | Skip generating example test files |
+| `--pm <manager>` | Package manager to use (`npm`, `pnpm`, `yarn`, `bun`) |
 
 ### `supercheck config validate`
 
@@ -133,7 +143,8 @@ supercheck job get <job-id>
 Create a new job.
 
 ```bash
-supercheck job create --name "Nightly E2E" --tests <test-id> --schedule "0 2 * * *" --timeout 600
+supercheck job create --name "Nightly E2E" --tests <test-id> --schedule "0 2 * * *"
+supercheck job create --name "Smoke Tests" --tests id1,id2 --type k6 --dry-run
 ```
 
 | Flag | Required | Description |
@@ -143,8 +154,7 @@ supercheck job create --name "Nightly E2E" --tests <test-id> --schedule "0 2 * *
 | `--description` | No | Job description |
 | `--type` | No | Job runner type: `playwright` (default) or `k6` |
 | `--schedule` | No | Cron expression |
-| `--timeout` | No | Timeout in seconds (default: 300) |
-| `--retries` | No | Retry count (default: 0) |
+| `--dry-run` | No | Preview what would be sent without creating |
 
 Job `--type` selects the runner. Test `--type` uses API types: `browser`, `performance`, `api`, `database`, `custom`.
 
@@ -154,6 +164,7 @@ Update job configuration.
 
 ```bash
 supercheck job update <job-id> --name "Updated Name" --status paused
+supercheck job update <job-id> --schedule "0 3 * * *" --dry-run
 ```
 
 | Flag | Description |
@@ -161,9 +172,8 @@ supercheck job update <job-id> --name "Updated Name" --status paused
 | `--name` | Job name |
 | `--description` | Job description |
 | `--schedule` | Cron expression |
-| `--timeout` | Timeout in seconds |
-| `--retries` | Retry count |
 | `--status` | `active` or `paused` |
+| `--dry-run` | Preview what would be sent without updating |
 
 ### `supercheck job delete`
 
@@ -180,7 +190,8 @@ Run a job immediately, bypassing the cron schedule.
 
 ```bash
 supercheck job run --id <job-id>
-supercheck job run --local --id <job-id>
+supercheck job run --local --id <job-id>     # Run locally
+supercheck job run --cloud --id <job-id>     # Run in the cloud
 ```
 
 ### `supercheck job trigger`
@@ -208,6 +219,7 @@ supercheck job keys <job-id>
 
 # Create a new trigger key
 supercheck job keys create <job-id> --name "CI Trigger"
+supercheck job keys create <job-id> --name "Temp Key" --expires-in 86400
 
 # Revoke a trigger key
 supercheck job keys delete <job-id> <key-id>
@@ -321,6 +333,7 @@ supercheck test create --title "Homepage Check" --file ./_supercheck_/playwright
 | `--file` | Yes | Path to test script |
 | `--type` | No | `browser`, `performance`, `api`, `database`, `custom` |
 | `--description` | No | Test description |
+| `--dry-run` | No | Preview what would be sent without creating |
 
 ### `supercheck test update`
 
@@ -328,7 +341,15 @@ Update a test.
 
 ```bash
 supercheck test update <test-id> --title "Updated Title" --file ./updated-script.pw.ts
+supercheck test update <test-id> --description "New description" --dry-run
 ```
+
+| Flag | Description |
+|------|-------------|
+| `--title` | Test title |
+| `--file` | Path to updated test script |
+| `--description` | Test description |
+| `--dry-run` | Preview what would be sent without updating |
 
 ### `supercheck test delete`
 
@@ -339,14 +360,9 @@ supercheck test delete <test-id>
 supercheck test delete <test-id> --force
 ```
 
-### `supercheck test execute`
-
-Execute a test immediately.
-
-```bash
-supercheck test execute <test-id>
-supercheck test execute <test-id> --location us-east
-```
+<Callout type="warn">
+  Use `supercheck test run --file <path>` for local execution, or `supercheck job trigger <id>` for cloud execution.
+</Callout>
 
 ### `supercheck test tags`
 
@@ -366,14 +382,19 @@ supercheck test validate --file ./_supercheck_/playwright/homepage-check.<id>.pw
 
 ### `supercheck test run`
 
-Run tests locally or in the cloud.
+Run tests locally.
 
 ```bash
-supercheck test run --local --file ./_supercheck_/playwright/homepage-check.<id>.pw.ts
-supercheck test run --local --all --type browser
-supercheck test run --local --all --type performance
-supercheck test run --cloud --id <test-id>
+supercheck test run --file ./_supercheck_/playwright/homepage-check.<id>.pw.ts
+supercheck test run --all --type browser
+supercheck test run --all --type performance
 ```
+
+| Flag | Description |
+|------|-------------|
+| `--file` | Path to a local test file to run |
+| `--all` | Run all local tests |
+| `--type` | Filter by test type (`browser`, `performance`, `api`, `database`, `custom`) |
 
 ### `supercheck test status`
 
@@ -383,6 +404,10 @@ Stream live status events for a test.
 supercheck test status <test-id>
 supercheck test status <test-id> --idle-timeout 120
 ```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--idle-timeout` | `60` | Seconds to wait before timing out if no data received (min: 10) |
 
 ---
 
@@ -418,8 +443,14 @@ supercheck monitor status <monitor-id>
 Get recent check results.
 
 ```bash
-supercheck monitor results <monitor-id> --limit 20
+supercheck monitor results <monitor-id>
+supercheck monitor results <monitor-id> --page 2 --limit 20
 ```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--page` | `1` | Page number |
+| `--limit` | `20` | Results per page |
 
 ### `supercheck monitor stats`
 
@@ -434,7 +465,8 @@ supercheck monitor stats <monitor-id>
 Create a new monitor.
 
 ```bash
-supercheck monitor create --name "API Health" --url https://api.example.com/health --type http_request --interval 300
+supercheck monitor create --name "API Health" --url https://api.example.com/health --type http_request --interval-minutes 5
+supercheck monitor create --name "Website" --url https://example.com --dry-run
 ```
 
 | Flag | Required | Default | Description |
@@ -442,17 +474,37 @@ supercheck monitor create --name "API Health" --url https://api.example.com/heal
 | `--name` | Yes | — | Monitor name |
 | `--url` | Yes | — | URL to monitor |
 | `--type` | No | `http_request` | `http_request`, `website`, `ping_host`, `port_check`, `synthetic_test` |
-| `--interval` | No | `300` | Check interval in seconds |
+| `--interval-minutes` | No | `5` | Check interval in minutes (1–1440) |
 | `--timeout` | No | `30` | Request timeout in seconds |
-| `--method` | No | `GET` | HTTP method (for http type) |
+| `--method` | No | `GET` | HTTP method (`GET`, `POST`, `HEAD`) |
+| `--dry-run` | No | — | Preview what would be sent without creating |
+
+<Callout type="warn">
+  The `--interval` flag (seconds) is deprecated. Use `--interval-minutes` instead.
+</Callout>
 
 ### `supercheck monitor update`
 
 Update a monitor.
 
 ```bash
-supercheck monitor update <monitor-id> --interval 60 --active false
+supercheck monitor update <monitor-id> --interval-minutes 1 --active false
+supercheck monitor update <monitor-id> --name "Updated" --method POST --dry-run
 ```
+
+| Flag | Description |
+|------|-------------|
+| `--name` | Monitor name |
+| `--url` | URL to monitor |
+| `--interval-minutes` | Check interval in minutes (1–1440) |
+| `--timeout` | Request timeout in seconds |
+| `--method` | HTTP method |
+| `--active` | Enable or disable (`true`/`false`) |
+| `--dry-run` | Preview what would be sent without updating |
+
+<Callout type="warn">
+  The `--interval` flag (seconds) is deprecated. Use `--interval-minutes` instead.
+</Callout>
 
 ### `supercheck monitor delete`
 
@@ -504,7 +556,12 @@ Delete a variable by key name.
 
 ```bash
 supercheck var delete <key>
+supercheck var delete <key> --force
 ```
+
+| Flag | Description |
+|------|-------------|
+| `--force` | Skip confirmation |
 
 ---
 
@@ -533,7 +590,12 @@ Delete a tag.
 
 ```bash
 supercheck tag delete <id>
+supercheck tag delete <id> --force    # Skip confirmation
 ```
+
+| Flag | Description |
+|------|-------------|
+| `--force` | Skip confirmation prompt |
 
 ---
 
@@ -576,7 +638,14 @@ Update a notification provider.
 
 ```bash
 supercheck notification update <id> --name "Updated Name" --config '{...}'
+supercheck notification update <id> --type webhook --config '{...}'
 ```
+
+| Flag | Description |
+|------|-------------|
+| `--name` | Provider name |
+| `--type` | Provider type |
+| `--config` | JSON configuration string |
 
 ### `supercheck notification delete`
 
@@ -595,6 +664,11 @@ Send a test notification to verify configuration.
 supercheck notification test --type slack --config '{"webhookUrl":"https://hooks.slack.com/..."}'
 ```
 
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--type` | Yes | Provider type (`email`, `slack`, `webhook`, `telegram`, `discord`, `teams`) |
+| `--config` | Yes | JSON configuration string |
+
 ---
 
 ## Alerts & Audit
@@ -605,7 +679,13 @@ View alert history.
 
 ```bash
 supercheck alert history
+supercheck alert history --page 2 --limit 20
 ```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--page` | `1` | Page number |
+| `--limit` | `50` | Results per page |
 
 ### `supercheck audit`
 
@@ -614,7 +694,15 @@ View audit logs (admin only).
 ```bash
 supercheck audit
 supercheck audit --page 2 --limit 50 --action "notification_provider_created"
+supercheck audit --search "deploy"
 ```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--page` | `1` | Page number |
+| `--limit` | `20` | Items per page |
+| `--search` | — | Search by action |
+| `--action` | — | Filter by action type |
 
 ---
 
@@ -688,7 +776,18 @@ Upgrade the CLI to the latest release.
 
 ```bash
 supercheck upgrade
+supercheck upgrade --tag beta             # Install specific tag
+supercheck upgrade --package-manager pnpm  # Use specific package manager
+supercheck upgrade --dry-run               # Preview without installing
+supercheck upgrade -y                      # Skip confirmation
 ```
+
+| Flag | Description |
+|------|-------------|
+| `--tag <tag>` | npm dist-tag to install (default: `latest`) |
+| `--package-manager <pm>` | Package manager to use (`npm`, `pnpm`, `yarn`, `bun`) |
+| `-y, --yes` | Skip confirmation prompt |
+| `--dry-run` | Preview the upgrade command without executing |
 
 ### `supercheck doctor`
 

@@ -99,6 +99,10 @@ function SignUpPageContent() {
       ? { "x-captcha-response": captchaTokenRef.current }
       : {};
 
+    if (inviteToken) {
+      captchaHeaders["x-invite-token"] = inviteToken;
+    }
+
     const { error: signUpError } = await signUp.email({
       name,
       email,

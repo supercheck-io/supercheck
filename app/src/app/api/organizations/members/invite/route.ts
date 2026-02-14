@@ -229,11 +229,12 @@ export async function POST(request: NextRequest) {
         status: "pending",
         expiresAt,
         inviterId: userId,
-        selectedProjects: JSON.stringify(selectedProjects),
+        selectedProjects: selectedProjects,
       })
       .returning();
 
     // Get selected projects info for the email
+    // SECURITY: Also filter by organizationId to ensure only projects from this org are included
     const selectedProjectDetails = await db
       .select({
         id: projects.id,
@@ -243,9 +244,18 @@ export async function POST(request: NextRequest) {
       .where(
         and(
           inArray(projects.id, selectedProjects),
-          eq(projects.status, "active")
+          eq(projects.status, "active"),
+          eq(projects.organizationId, organizationId)
         )
       );
+
+    // SECURITY: Verify all selected projects belong to this organization
+    if (selectedProjectDetails.length !== selectedProjects.length) {
+      return NextResponse.json(
+        { error: "One or more selected projects do not belong to this organization" },
+        { status: 400 }
+      );
+    }
 
     // Send email invitation
     const emailService = EmailService.getInstance();

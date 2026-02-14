@@ -5,7 +5,7 @@
  *
  * Test Categories:
  * - Plan-Based Retention Logic
- * - Playground Cleanup (fixed 1-day retention)
+ * - Playground Cleanup (fixed 30-day retention)
  * - Multi-Tenancy Isolation
  * - Cleanup Strategy Configuration
  * - Error Handling and Fallbacks
@@ -21,7 +21,7 @@ describe("Data Lifecycle Service", () => {
       const retentionByPlan = {
         plus: 7,
         pro: 30,
-        unlimited: 365,
+        unlimited: 30,
       };
 
       it.each(Object.entries(retentionByPlan))(
@@ -38,7 +38,7 @@ describe("Data Lifecycle Service", () => {
       const aggregatedRetentionByPlan = {
         plus: 30,
         pro: 365,
-        unlimited: 730, // 2 years
+        unlimited: 180, // 6 months
       };
 
       it.each(Object.entries(aggregatedRetentionByPlan))(
@@ -57,7 +57,7 @@ describe("Data Lifecycle Service", () => {
       const jobRetentionByPlan = {
         plus: 30,
         pro: 90,
-        unlimited: 365,
+        unlimited: 180,
       };
 
       it.each(Object.entries(jobRetentionByPlan))(
@@ -85,9 +85,9 @@ describe("Data Lifecycle Service", () => {
 
   describe("Playground Cleanup", () => {
     describe("Retention Period", () => {
-      it("should use fixed 1-day retention for playground runs", () => {
-        const playgroundRetentionDays = 1;
-        expect(playgroundRetentionDays).toBe(1);
+      it("should use fixed 30-day retention for playground runs", () => {
+        const playgroundRetentionDays = 30;
+        expect(playgroundRetentionDays).toBe(30);
       });
 
       it("should not use organization-based retention for playground", () => {
@@ -97,10 +97,10 @@ describe("Data Lifecycle Service", () => {
     });
 
     describe("Cutoff Date Calculation", () => {
-      it("should calculate correct cutoff date for 1-day retention", () => {
-        const playgroundRetentionDays = 1;
+      it("should calculate correct cutoff date for 30-day retention", () => {
+        const playgroundRetentionDays = 30;
         const now = new Date("2025-12-04T12:00:00Z");
-        const expectedCutoff = new Date("2025-12-03T12:00:00Z");
+        const expectedCutoff = new Date("2025-11-04T12:00:00Z");
 
         const cutoffDate = new Date(
           now.getTime() - playgroundRetentionDays * 24 * 60 * 60 * 1000
@@ -126,7 +126,7 @@ describe("Data Lifecycle Service", () => {
     describe("MonitorAggregatesCleanupStrategy", () => {
       it("should use aggregated retention settings", () => {
         const rawRetention = 30;
-        const aggregatedRetention = 365;
+        const aggregatedRetention = 180;
         expect(aggregatedRetention).toBeGreaterThan(rawRetention);
       });
     });
@@ -261,13 +261,13 @@ describe("Data Lifecycle Service", () => {
       const orgs = [
         { id: "org-1", plan: "plus", expectedRetention: 7 },
         { id: "org-2", plan: "pro", expectedRetention: 30 },
-        { id: "org-3", plan: "unlimited", expectedRetention: 365 },
+        { id: "org-3", plan: "unlimited", expectedRetention: 30 },
       ];
 
       const retentionMap: Record<string, number> = {
         plus: 7,
         pro: 30,
-        unlimited: 365,
+        unlimited: 30,
       };
 
       orgs.forEach((org) => {
@@ -333,8 +333,9 @@ describe("Data Lifecycle Service", () => {
       "monitor_aggregates",
       "job_runs",
       "playground_artifacts",
-      "orphaned_s3_objects",
       "webhook_idempotency",
+      "alert_history",
+      "audit_logs",
     ];
 
     it.each(entityTypes)(
@@ -343,6 +344,96 @@ describe("Data Lifecycle Service", () => {
         expect(entityTypes).toContain(entityType);
       }
     );
+  });
+
+  // ==========================================================================
+  // AUDIT LOGS RETENTION POLICY TESTS
+  // ==========================================================================
+
+  describe("Audit Logs Retention Policy", () => {
+    const securityActions = new Set([
+      "failed_login",
+      "unauthorized_access",
+      "suspicious_activity",
+      "security_violation",
+      "rate_limit_exceeded",
+    ]);
+
+    function getCategoryRetentionDays(action: string, fallbackDays = 90): number {
+      const normalized = action.toLowerCase();
+
+      if (
+        securityActions.has(normalized) ||
+        normalized.startsWith("security_") ||
+        normalized.includes("unauthorized_access") ||
+        normalized.includes("rate_limit")
+      ) {
+        return 365;
+      }
+
+      if (
+        normalized === "login" ||
+        normalized === "logout" ||
+        normalized === "password_reset" ||
+        normalized === "login_failed" ||
+        normalized.startsWith("impersonation_")
+      ) {
+        return 90;
+      }
+
+      if (normalized === "role_change" || normalized.startsWith("permission_")) {
+        return 90;
+      }
+
+      if (normalized.includes("settings") || normalized.includes("integration")) {
+        return 90;
+      }
+
+      if (normalized.includes("executed") || normalized.includes("triggered")) {
+        return 30;
+      }
+
+      if (
+        normalized.endsWith("_created") ||
+        normalized.endsWith("_updated") ||
+        normalized.endsWith("_deleted") ||
+        normalized.endsWith("_create") ||
+        normalized.endsWith("_update") ||
+        normalized.endsWith("_delete")
+      ) {
+        return 30;
+      }
+
+      return fallbackDays;
+    }
+
+    it("should keep resource management events for 30 days", () => {
+      expect(getCategoryRetentionDays("monitor_created")).toBe(30);
+      expect(getCategoryRetentionDays("job_deleted")).toBe(30);
+    });
+
+    it("should keep authentication and authorization events for 90 days", () => {
+      expect(getCategoryRetentionDays("login")).toBe(90);
+      expect(getCategoryRetentionDays("permission_granted")).toBe(90);
+      expect(getCategoryRetentionDays("settings_changed")).toBe(90);
+    });
+
+    it("should keep security events for 365 days", () => {
+      expect(getCategoryRetentionDays("failed_login")).toBe(365);
+      expect(getCategoryRetentionDays("security_violation")).toBe(365);
+    });
+
+    it("should fall back to configured default for uncategorized actions", () => {
+      expect(getCategoryRetentionDays("misc_event", 120)).toBe(120);
+    });
+
+    it("should enforce minimum 30-day retention floor for all audit logs", () => {
+      const minimumRetentionDays = 30;
+      expect(minimumRetentionDays).toBe(30);
+      expect(getCategoryRetentionDays("test_executed")).toBeGreaterThanOrEqual(
+        minimumRetentionDays
+      );
+    });
   });
 
   // ==========================================================================
@@ -396,7 +487,7 @@ describe("Data Lifecycle Service", () => {
       const planRetentionMap = new Map([
         ["plus", 7],
         ["pro", 30],
-        ["unlimited", 365],
+        ["unlimited", 30],
       ]);
 
       const fallbackRetention = 30;

@@ -23,9 +23,8 @@ The Supercheck CLI (`@supercheck/cli`) provides a first-class command-line inter
 # Install globally
 npm install -g @supercheck/cli
 
-# Authenticate
-export SUPERCHECK_TOKEN="sck_live_..."
-supercheck login --token $SUPERCHECK_TOKEN
+# Authenticate with your CLI token
+supercheck login --token sck_live_...
 
 # Verify connection
 supercheck whoami
@@ -36,6 +35,10 @@ supercheck job list
 supercheck monitor list
 supercheck test list
 ```
+
+<Callout type="info">
+  In CI/CD environments, set the `SUPERCHECK_TOKEN` environment variable instead of using `supercheck login`. The CLI reads it automatically.
+</Callout>
 
 ## How It Works
 

@@ -248,6 +248,10 @@ export async function PUT(
     const result = await updateJob({
       jobId: params.id,
       ...body
+    }, {
+      userId: context.userId,
+      project: context.project,
+      organizationId: context.organizationId,
     });
     
     if (result.success) {

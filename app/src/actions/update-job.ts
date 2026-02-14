@@ -10,6 +10,7 @@ import { getNextRunDate } from "@/lib/cron-utils";
 import { requireProjectContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
+import { validateNotificationProviderOwnership } from "@/lib/notification-providers/ownership";
 
 const updateJobSchema = z.object({
   jobId: z.string().uuid(),
@@ -75,6 +76,7 @@ export async function updateJob(data: UpdateJobData, contextOverride?: UpdateJob
     const validatedData = updateJobSchema.parse(data);
 
     // Validate alert configuration if enabled
+    let validatedNotificationProviderIds: string[] = [];
     if (validatedData.alertConfig?.enabled) {
       // Check if at least one notification provider is selected
       if (
@@ -115,6 +117,25 @@ export async function updateJob(data: UpdateJobData, contextOverride?: UpdateJob
           error:
             "At least one alert type must be selected when alerts are enabled",
         };
+      }
+
+      if (validatedData.alertConfig.notificationProviders.length > 0) {
+        try {
+          validatedNotificationProviderIds =
+            await validateNotificationProviderOwnership({
+              providerIds: validatedData.alertConfig.notificationProviders,
+              organizationId,
+              projectId: project.id,
+            });
+        } catch (providerValidationError) {
+          return {
+            success: false,
+            message:
+              providerValidationError instanceof Error
+                ? providerValidationError.message
+                : "Invalid or unauthorized notification provider IDs",
+          };
+        }
       }
     }
 
@@ -195,7 +216,16 @@ export async function updateJob(data: UpdateJobData, contextOverride?: UpdateJob
           description: validatedData.description || "",
           cronSchedule: validatedData.cronSchedule || null,
           nextRunAt: nextRunAt,
-          alertConfig: validatedData.alertConfig || null,
+          alertConfig: validatedData.alertConfig
+            ? {
+                ...validatedData.alertConfig,
+                notificationProviders:
+                  validatedData.alertConfig.enabled &&
+                  validatedNotificationProviderIds.length > 0
+                    ? validatedNotificationProviderIds
+                    : validatedData.alertConfig.notificationProviders,
+              }
+            : null,
           updatedAt: new Date(),
         })
         .where(eq(jobs.id, validatedData.jobId));
@@ -212,7 +242,7 @@ export async function updateJob(data: UpdateJobData, contextOverride?: UpdateJob
 
         // Then, create new links
         await Promise.all(
-          validatedData.alertConfig.notificationProviders.map((providerId) =>
+          validatedNotificationProviderIds.map((providerId) =>
             dbInstance.insert(jobNotificationSettings).values({
               jobId: validatedData.jobId,
               notificationProviderId: providerId,

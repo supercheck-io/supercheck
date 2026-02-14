@@ -1,2 +1,5 @@
+# Proxy requests are handled by Cloudflare Pages Functions
+/api/proxy    /api/proxy    200
+
 # SPA fallback for Next.js dynamic routes
 /*    /index.html   200

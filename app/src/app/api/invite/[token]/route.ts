@@ -58,10 +58,12 @@ export async function GET(
     return NextResponse.json({
       success: true,
       data: {
+        // SECURITY: Only expose the minimum data needed for the sign-up form.
+        // Organization name is needed for display ("You've been invited to X").
+        // Email is needed to pre-fill and validate the sign-up form.
+        // Role and expiresAt are intentionally omitted to reduce disclosure on token leakage.
         organizationName: invite.orgName,
         email: invite.email,
-        role: invite.role,
-        expiresAt: invite.expiresAt
       }
     });
   } catch (error) {
@@ -144,7 +146,7 @@ export async function POST(
     }
 
     // Check if the current user's email matches the invitation
-    if (currentUser.email !== invite.email) {
+    if (currentUser.email.toLowerCase().trim() !== invite.email.toLowerCase().trim()) {
       return NextResponse.json(
         { error: 'This invitation is for a different email address' },
         { status: 400 }
@@ -168,51 +170,83 @@ export async function POST(
       );
     }
 
-    // Add user to organization (with duplicate handling)
-    try {
-      await db
-        .insert(member)
-        .values({
-          organizationId: invite.organizationId,
-          userId: currentUser.id,
-          role: invite.role as 'org_owner' | 'org_admin' | 'project_admin' | 'project_editor' | 'project_viewer',
-          createdAt: new Date()
-        });
-    } catch (error: unknown) {
-      // Handle duplicate membership gracefully
-      const dbError = error as { constraint?: string; code?: string; message?: string };
-      if (dbError?.constraint === 'member_uniqueUserOrg' || 
-          dbError?.code === '23505' || 
-          dbError?.message?.includes('duplicate key')) {
-        console.log(`ℹ️ User ${currentUser.email} was already a member of organization ${invite.orgName} - continuing with invitation acceptance`);
-      } else {
-        throw error; // Re-throw other errors
-      }
-    }
-
-    // Assign user to selected projects
-    if (invite.selectedProjects) {
+    // SECURITY: Wrap all invitation acceptance operations in a transaction
+    // to prevent partial state (e.g., member added but projects not assigned,
+    // or operations succeed but invitation not marked as accepted).
+    await db.transaction(async (tx) => {
+      // 1. Add user to organization
       try {
-        // selectedProjects is now a jsonb array
-        const selectedProjectIds = invite.selectedProjects as string[] | null;
-        
+        await tx
+          .insert(member)
+          .values({
+            organizationId: invite.organizationId,
+            userId: currentUser.id,
+            role: invite.role as 'org_owner' | 'org_admin' | 'project_admin' | 'project_editor' | 'project_viewer',
+            createdAt: new Date()
+          });
+      } catch (error: unknown) {
+        const dbError = error as { constraint?: string; code?: string; message?: string };
+        if (dbError?.constraint === 'member_uniqueUserOrg' || 
+            dbError?.code === '23505' || 
+            dbError?.message?.includes('duplicate key')) {
+          console.log(`ℹ️ User ${currentUser.email} was already a member of organization ${invite.orgName} - continuing`);
+        } else {
+          throw error;
+        }
+      }
+
+      // 2. Assign user to selected projects
+      if (invite.selectedProjects) {
+        // Parse selectedProjects — handles both jsonb arrays and legacy JSON-stringified arrays
+        let selectedProjectIds: string[] | null = null;
+        const rawProjects = invite.selectedProjects;
+        if (typeof rawProjects === "string") {
+          try {
+            const parsed = JSON.parse(rawProjects);
+            selectedProjectIds = Array.isArray(parsed) ? parsed : null;
+          } catch {
+            selectedProjectIds = null;
+          }
+        } else if (Array.isArray(rawProjects)) {
+          selectedProjectIds = rawProjects as string[];
+        }
+
         if (Array.isArray(selectedProjectIds) && selectedProjectIds.length > 0) {
-          // Get the selected projects
-          const selectedProjects = await db
+          const normalizedSelectedProjectIds = Array.from(
+            new Set(
+              selectedProjectIds.filter(
+                (projectId): projectId is string =>
+                  typeof projectId === "string" && projectId.trim().length > 0
+              )
+            )
+          );
+
+          if (normalizedSelectedProjectIds.length === 0) {
+            throw new Error("INVITE_PROJECT_SCOPE_MISMATCH");
+          }
+
+          // SECURITY: Filter by organization ID to prevent cross-org project assignment
+          const selectedProjectsList = await tx
             .select({
               id: projects.id,
               name: projects.name
             })
             .from(projects)
             .where(and(
-              inArray(projects.id, selectedProjectIds),
-              eq(projects.status, 'active')
+              inArray(projects.id, normalizedSelectedProjectIds),
+              eq(projects.status, 'active'),
+              eq(projects.organizationId, invite.organizationId)
             ));
 
-          // Assign user to each selected project (with duplicate handling)
-          for (const project of selectedProjects) {
+          // SECURITY: Require an exact project match. If any selected project is missing
+          // (wrong org, inactive, or invalid), abort and roll back the invitation acceptance.
+          if (selectedProjectsList.length !== normalizedSelectedProjectIds.length) {
+            throw new Error("INVITE_PROJECT_SCOPE_MISMATCH");
+          }
+
+          for (const project of selectedProjectsList) {
             try {
-              await db
+              await tx
                 .insert(projectMembers)
                 .values({
                   userId: currentUser.id,
@@ -221,35 +255,29 @@ export async function POST(
                   createdAt: new Date()
                 });
             } catch (error: unknown) {
-              // Handle duplicate project assignment gracefully
               const dbError = error as { constraint?: string; code?: string; message?: string };
               if (dbError?.constraint === 'project_members_uniqueUserProject' || 
                   dbError?.code === '23505' || 
                   dbError?.message?.includes('duplicate key')) {
                 console.log(`ℹ️ User ${currentUser.email} was already assigned to project "${project.name}" - skipping`);
               } else {
-                console.error(`Error assigning user to project "${project.name}":`, error);
-                // Don't throw here - continue with other projects
+                // In a transaction, non-duplicate errors should cause rollback
+                throw error;
               }
             }
           }
           
-          const projectNames = selectedProjects.map(p => p.name);
+          const projectNames = selectedProjectsList.map(p => p.name);
           console.log(`✅ Assigned user ${currentUser.email} to projects: ${projectNames.join(', ')} in organization "${invite.orgName}"`);
         }
-      } catch (error) {
-        console.error('Error parsing selected projects:', error);
-        console.warn(`⚠️ Could not assign user ${currentUser.email} to selected projects in organization "${invite.orgName}"`);
       }
-    } else {
-      console.warn(`⚠️ No selected projects found in invitation for user ${currentUser.email} in organization "${invite.orgName}"`);
-    }
 
-    // Update invitation status
-    await db
-      .update(invitation)
-      .set({ status: 'accepted' })
-      .where(eq(invitation.id, token));
+      // 3. Mark invitation as accepted (inside transaction)
+      await tx
+        .update(invitation)
+        .set({ status: 'accepted' })
+        .where(eq(invitation.id, token));
+    });
 
     return NextResponse.json({
       success: true,
@@ -260,6 +288,13 @@ export async function POST(
       }
     });
   } catch (error) {
+    if (error instanceof Error && error.message === "INVITE_PROJECT_SCOPE_MISMATCH") {
+      return NextResponse.json(
+        { error: 'Invitation contains invalid project assignments. Please request a new invitation.' },
+        { status: 400 }
+      );
+    }
+
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : 'Authentication required' },

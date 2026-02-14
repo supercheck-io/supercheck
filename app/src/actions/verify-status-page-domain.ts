@@ -71,8 +71,16 @@ export async function verifyStatusPageDomain(statusPageId: string) {
         `cname.${baseDomain}`, // e.g., "cname.supercheck.io"
         `ingress.${baseDomain}`, // e.g., "ingress.supercheck.io"
       ];
+
+      // SECURITY: Use exact canonical hostname matching (case-insensitive, trailing-dot normalized)
+      // DNS CNAME records may include a trailing dot (e.g., "supercheck.io.")
+      const normalizeDnsName = (name: string) =>
+        name.toLowerCase().replace(/\.$/, "");
+
       const isValid = cnames.some((cname) =>
-        validTargets.some((target) => cname.includes(target))
+        validTargets.some(
+          (target) => normalizeDnsName(cname) === normalizeDnsName(target)
+        )
       );
 
       if (isValid) {

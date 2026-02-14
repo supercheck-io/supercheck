@@ -415,6 +415,14 @@ export async function requireProjectContext(): Promise<{
   }
 
   if (!ctx.projectId || !ctx.organizationId) {
+     // SECURITY: If an explicit x-project-id was requested but unified auth couldn't resolve it,
+     // reject the request rather than falling back to a different project context.
+     // This prevents an attacker from requesting a cross-org project and silently getting
+     // their own default project context instead.
+     if (requestedProjectId) {
+       throw new Error("Access denied: You do not have access to the requested project.");
+     }
+     
      // Fallback: If unified query didn't find project, try the old (slow) way 
      // which handles default project creation logic
      // This ensures we don't break "first login" flow while optimizing standard flow
@@ -425,9 +433,6 @@ export async function requireProjectContext(): Promise<{
         );
      }
      
-     // Get session again to be safe about user ID (impersonation)
-     // getCurrentUser() was called inside old flow potentially, but let's just use what we have
-     // We know validity from ctx.isValid check above basically
      const userId = ctx.userId; // unified auth handles impersonation
      
      return {
@@ -437,18 +442,39 @@ export async function requireProjectContext(): Promise<{
      };
   }
 
+  // SECURITY: Resolve effective role with project-assignment awareness.
+  // Org-wide roles (owner/admin) can access all projects in org.
+  // Project-limited roles (project_admin/project_editor) require explicit project membership;
+  // without membership, degrade to viewer (consistent with legacy behavior).
+  const isOrgWideRole =
+    ctx.organizationRole === "org_owner" || ctx.organizationRole === "org_admin";
+
+  let effectiveRole: string | null = null;
+  if (isOrgWideRole) {
+    effectiveRole = ctx.organizationRole;
+  } else if (ctx.projectRole) {
+    effectiveRole = ctx.projectRole;
+  } else if (
+    ctx.organizationRole === "project_admin" ||
+    ctx.organizationRole === "project_editor"
+  ) {
+    effectiveRole = "project_viewer";
+  }
+
+  if (!effectiveRole) {
+    throw new Error("Access denied: You do not have a valid role for this project.");
+  }
+
   return {
     userId: ctx.userId,
     organizationId: ctx.organizationId,
     project: {
         id: ctx.projectId,
         name: ctx.projectName || "Unknown Project",
-        slug: undefined, // slug not strictly required for API context usually, adds query overhead
+        slug: undefined,
         organizationId: ctx.organizationId,
         isDefault: ctx.isDefaultProject || false,
-        // IMPORTANT: Org role takes precedence over project role in RBAC hierarchy
-        // Org admins/owners may not have explicit project_members rows but still have full access
-        userRole: ctx.organizationRole || ctx.projectRole || "project_viewer", 
+        userRole: effectiveRole, 
     },
   };
 }

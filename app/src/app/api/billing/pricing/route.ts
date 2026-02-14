@@ -2,6 +2,26 @@ import { NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { planLimits, overagePricing } from "@/db/schema";
 import { eq, or } from "drizzle-orm";
+import { PLAN_PRICING } from "@/lib/feature-flags";
+
+const PLAN_LIMIT_FALLBACKS = {
+  plus: {
+    playwrightMinutesIncluded: 3000,
+    k6VuMinutesIncluded: 20000,
+    aiCreditsIncluded: 100,
+    dataRetentionDays: 7,
+    aggregatedDataRetentionDays: 30,
+    jobDataRetentionDays: 30,
+  },
+  pro: {
+    playwrightMinutesIncluded: 10000,
+    k6VuMinutesIncluded: 75000,
+    aiCreditsIncluded: 300,
+    dataRetentionDays: 7,
+    aggregatedDataRetentionDays: 90,
+    jobDataRetentionDays: 90,
+  },
+} as const;
 
 /**
  * GET /api/billing/pricing
@@ -48,15 +68,15 @@ export async function GET() {
         const planInfo = {
           plus: {
             id: "plus",
-            name: "Plus",
-            price: 49,
+            name: PLAN_PRICING.plus.name,
+            price: PLAN_PRICING.plus.monthlyPriceCents / 100,
             interval: "month",
             description: "Best for small teams and growing projects",
           },
           pro: {
             id: "pro",
-            name: "Pro",
-            price: 149,
+            name: PLAN_PRICING.pro.name,
+            price: PLAN_PRICING.pro.monthlyPriceCents / 100,
             interval: "month",
             description: "Best for production applications and larger teams",
           },
@@ -126,18 +146,18 @@ export async function GET() {
         features: [
           {
             name: "Playwright Minutes",
-            plus: `${plans.find((p) => p.plan === "plus")?.playwrightMinutesIncluded || 2500}/month`,
-            pro: `${plans.find((p) => p.plan === "pro")?.playwrightMinutesIncluded || 7500}/month`,
+            plus: `${plans.find((p) => p.plan === "plus")?.playwrightMinutesIncluded || PLAN_LIMIT_FALLBACKS.plus.playwrightMinutesIncluded}/month`,
+            pro: `${plans.find((p) => p.plan === "pro")?.playwrightMinutesIncluded || PLAN_LIMIT_FALLBACKS.pro.playwrightMinutesIncluded}/month`,
           },
           {
             name: "K6 VU Minutes",
-            plus: `${plans.find((p) => p.plan === "plus")?.k6VuMinutesIncluded || 6000}/month`,
-            pro: `${plans.find((p) => p.plan === "pro")?.k6VuMinutesIncluded || 40000}/month`,
+            plus: `${plans.find((p) => p.plan === "plus")?.k6VuMinutesIncluded || PLAN_LIMIT_FALLBACKS.plus.k6VuMinutesIncluded}/month`,
+            pro: `${plans.find((p) => p.plan === "pro")?.k6VuMinutesIncluded || PLAN_LIMIT_FALLBACKS.pro.k6VuMinutesIncluded}/month`,
           },
           {
             name: "AI Credits",
-            plus: `${plans.find((p) => p.plan === "plus")?.aiCreditsIncluded || 100}/month`,
-            pro: `${plans.find((p) => p.plan === "pro")?.aiCreditsIncluded || 300}/month`,
+            plus: `${plans.find((p) => p.plan === "plus")?.aiCreditsIncluded || PLAN_LIMIT_FALLBACKS.plus.aiCreditsIncluded}/month`,
+            pro: `${plans.find((p) => p.plan === "pro")?.aiCreditsIncluded || PLAN_LIMIT_FALLBACKS.pro.aiCreditsIncluded}/month`,
           },
           {
             name: "Concurrent Executions",
@@ -186,13 +206,13 @@ export async function GET() {
         features: [
           {
             name: "Monitor Data Retention",
-            plus: `${plans.find((p) => p.plan === "plus")?.dataRetentionDays || 7}d raw / ${plans.find((p) => p.plan === "plus")?.aggregatedDataRetentionDays || 30}d metrics`,
-            pro: `${plans.find((p) => p.plan === "pro")?.dataRetentionDays || 30}d raw / ${plans.find((p) => p.plan === "pro")?.aggregatedDataRetentionDays || 365}d metrics`,
+            plus: `${plans.find((p) => p.plan === "plus")?.dataRetentionDays || PLAN_LIMIT_FALLBACKS.plus.dataRetentionDays}d raw / ${plans.find((p) => p.plan === "plus")?.aggregatedDataRetentionDays || PLAN_LIMIT_FALLBACKS.plus.aggregatedDataRetentionDays}d metrics`,
+            pro: `${plans.find((p) => p.plan === "pro")?.dataRetentionDays || PLAN_LIMIT_FALLBACKS.pro.dataRetentionDays}d raw / ${plans.find((p) => p.plan === "pro")?.aggregatedDataRetentionDays || PLAN_LIMIT_FALLBACKS.pro.aggregatedDataRetentionDays}d metrics`,
           },
           {
             name: "Job Runs Retention",
-            plus: `${plans.find((p) => p.plan === "plus")?.jobDataRetentionDays || 30} days`,
-            pro: `${plans.find((p) => p.plan === "pro")?.jobDataRetentionDays || 90} days`,
+            plus: `${plans.find((p) => p.plan === "plus")?.jobDataRetentionDays || PLAN_LIMIT_FALLBACKS.plus.jobDataRetentionDays} days`,
+            pro: `${plans.find((p) => p.plan === "pro")?.jobDataRetentionDays || PLAN_LIMIT_FALLBACKS.pro.jobDataRetentionDays} days`,
           },
           {
             name: "Email Support",

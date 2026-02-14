@@ -43,8 +43,10 @@ import {
   planLimits,
   monitorAggregates,
   jobs,
+  alertHistory,
+  auditLogs,
 } from "@/db/schema";
-import { sql, and, lt, eq, inArray, isNotNull } from "drizzle-orm";
+import { sql, and, lt, eq, inArray, asc } from "drizzle-orm";
 import { Queue, Worker, QueueEvents } from "bullmq";
 import type Redis from "ioredis";
 import { createS3CleanupService } from "./s3-cleanup";
@@ -66,6 +68,8 @@ import { monitorAggregationService } from "./monitor-aggregation-service";
  * - "job_runs": Test execution results and artifacts
  * - "playground_artifacts": Temporary test runs from playground
  * - "webhook_idempotency": Webhook deduplication keys with TTL
+ * - "alert_history": Alert notification history records
+ * - "audit_logs": User/system/security audit records
  * 
  * DATA PROCESSING (Aggregation Operations):
  * - "monitor_aggregation_hourly": Computes hourly metrics from raw results
@@ -78,7 +82,9 @@ export type CleanupEntityType =
   | "monitor_aggregation_daily"
   | "job_runs"
   | "playground_artifacts"
-  | "webhook_idempotency";
+  | "webhook_idempotency"
+  | "alert_history"
+  | "audit_logs";
 
 /**
  * Cleanup strategy configuration
@@ -182,8 +188,7 @@ async function getOrganizationRetentionSettings(
         organizationId: organization.id,
         subscriptionPlan: organization.subscriptionPlan,
       })
-      .from(organization)
-      .where(isNotNull(organization.subscriptionPlan));
+      .from(organization);
 
     // Get all plan limits for lookup
     const plans = await db.select().from(planLimits);
@@ -193,9 +198,10 @@ async function getOrganizationRetentionSettings(
 
     return orgsWithPlans.map((org) => ({
       organizationId: org.organizationId,
-      retentionDays:
-        planRetentionMap.get(org.subscriptionPlan!) || fallbackRetentionDays,
-      plan: org.subscriptionPlan || "unknown",
+      retentionDays: org.subscriptionPlan
+        ? planRetentionMap.get(org.subscriptionPlan) || fallbackRetentionDays
+        : fallbackRetentionDays,
+      plan: org.subscriptionPlan || "fallback",
     }));
   } catch (error) {
     console.warn(
@@ -251,8 +257,7 @@ async function getOrganizationAggregatedRetentionSettings(
         organizationId: organization.id,
         subscriptionPlan: organization.subscriptionPlan,
       })
-      .from(organization)
-      .where(isNotNull(organization.subscriptionPlan));
+      .from(organization);
 
     // Get all plan limits for lookup
     const plans = await db.select().from(planLimits);
@@ -262,10 +267,11 @@ async function getOrganizationAggregatedRetentionSettings(
 
     return orgsWithPlans.map((org) => ({
       organizationId: org.organizationId,
-      aggregatedRetentionDays:
-        planAggregatedRetentionMap.get(org.subscriptionPlan!) ||
-        fallbackAggregatedRetentionDays,
-      plan: org.subscriptionPlan || "unknown",
+      aggregatedRetentionDays: org.subscriptionPlan
+        ? planAggregatedRetentionMap.get(org.subscriptionPlan) ||
+          fallbackAggregatedRetentionDays
+        : fallbackAggregatedRetentionDays,
+      plan: org.subscriptionPlan || "fallback",
     }));
   } catch (error) {
     console.warn(
@@ -331,8 +337,7 @@ async function getOrganizationJobRetentionSettings(
         organizationId: organization.id,
         subscriptionPlan: organization.subscriptionPlan,
       })
-      .from(organization)
-      .where(isNotNull(organization.subscriptionPlan));
+      .from(organization);
 
     // Get all plan limits for lookup
     const plans = await db.select().from(planLimits);
@@ -342,10 +347,11 @@ async function getOrganizationJobRetentionSettings(
 
     return orgsWithPlans.map((org) => ({
       organizationId: org.organizationId,
-      jobRetentionDays:
-        planJobRetentionMap.get(org.subscriptionPlan!) ||
-        fallbackJobRetentionDays,
-      plan: org.subscriptionPlan || "unknown",
+      jobRetentionDays: org.subscriptionPlan
+        ? planJobRetentionMap.get(org.subscriptionPlan) ||
+          fallbackJobRetentionDays
+        : fallbackJobRetentionDays,
+      plan: org.subscriptionPlan || "fallback",
     }));
   } catch (error) {
     console.warn(
@@ -638,23 +644,24 @@ export class MonitorResultsCleanupStrategy implements ICleanupStrategy {
       let iterations = 0;
       const maxIterations = Math.ceil(maxRecords / batchSize);
 
-      while (iterations < maxIterations) {
-        if (dryRun) {
-          const countResult = await db
-            .select({ count: sql<number>`count(*)` })
-            .from(monitorResults)
-            .where(
-              and(
-                lt(monitorResults.checkedAt, cutoffDate),
-                eq(monitorResults.isStatusChange, false)
-              )
+      if (dryRun) {
+        // Dry-run: count matching records once (no loop needed since data isn't modified)
+        const countResult = await db
+          .select({ count: sql<number>`count(*)` })
+          .from(monitorResults)
+          .where(
+            and(
+              lt(monitorResults.checkedAt, cutoffDate),
+              eq(monitorResults.isStatusChange, false)
             )
-            .limit(batchSize);
+          );
 
-          const count = Number(countResult[0]?.count || 0);
-          if (count === 0) break;
-          totalDeleted += count;
-        } else {
+        totalDeleted = Math.min(
+          Number(countResult[0]?.count || 0),
+          maxRecords
+        );
+      } else {
+        while (iterations < maxIterations) {
           const idsToDelete = await db
             .select({ id: monitorResults.id })
             .from(monitorResults)
@@ -678,9 +685,9 @@ export class MonitorResultsCleanupStrategy implements ICleanupStrategy {
           if (idsToDelete.length === batchSize) {
             await new Promise((resolve) => setTimeout(resolve, 100));
           }
-        }
 
-        iterations++;
+          iterations++;
+        }
       }
 
       result.recordsDeleted = totalDeleted;
@@ -716,13 +723,13 @@ export class MonitorResultsCleanupStrategy implements ICleanupStrategy {
  * Manages retention of monitor_aggregates table with:
  * - **Multi-tenant aware**: Cleans up per organization based on plan's aggregatedDataRetentionDays
  * - Hourly aggregates: Kept for 7 days, then rolled into daily aggregates
- * - Daily aggregates: Kept according to plan (Plus: 30 days, Pro: 365 days, Unlimited: 730 days)
+ * - Daily aggregates: Kept according to plan (Plus: 30 days, Pro: 365 days, Unlimited: 180 days)
  * - Uses the MonitorAggregationService for actual cleanup
  *
  * Industry Standard (Checkly-inspired):
  * - Plus plan: 30 days aggregated data retention
  * - Pro plan: 365 days (1 year) aggregated data retention
- * - Unlimited plan: 730 days (2 years) aggregated data retention
+ * - Unlimited plan: 180 days (6 months) aggregated data retention
  */
 export class MonitorAggregatesCleanupStrategy implements ICleanupStrategy {
   entityType: CleanupEntityType = "monitor_aggregates";
@@ -1143,7 +1150,7 @@ export class MonitorAggregationDailyStrategy implements ICleanupStrategy {
  * Plan-Based Retention (industry standards):
  * - Plus: 30 days (matches CircleCI)
  * - Pro: 90 days (matches GitHub Actions default)
- * - Unlimited: 365 days (self-hosted)
+ * - Unlimited: 180 days (self-hosted)
  *
  * Note: This strategy handles ALL runs in the database:
  * - Job runs (where jobId is not null)
@@ -1584,13 +1591,13 @@ export class JobRunsCleanupStrategy implements ICleanupStrategy {
 
   /**
    * Clean up playground runs (not tied to organizations)
-   * Uses 1-day retention (ephemeral by design)
+  * Uses 30-day retention (aligned with job run retention policy)
    */
   private async cleanupPlaygroundRuns(
     dryRun: boolean,
     batchSize: number
   ): Promise<{ deleted: number; s3Deleted: number }> {
-    const playgroundRetentionDays = 1; // Playground runs are ephemeral, 1-day retention
+    const playgroundRetentionDays = 30; // Aligned with documented playground run retention
     const cutoffDate = new Date(
       Date.now() - playgroundRetentionDays * 24 * 60 * 60 * 1000
     );
@@ -2049,16 +2056,18 @@ export class WebhookIdempotencyCleanupStrategy implements ICleanupStrategy {
 
       while (iterations < maxIterations) {
         if (dryRun) {
-          // Just count expired records
+          // Dry-run: count expired records once (no loop needed since data isn't modified)
           const countResult = await db
             .select({ count: sql<number>`count(*)` })
             .from(webhookIdempotency)
-            .where(lt(webhookIdempotency.expiresAt, now))
-            .limit(batchSize);
+            .where(lt(webhookIdempotency.expiresAt, now));
 
-          const count = Number(countResult[0]?.count || 0);
-          if (count === 0) break;
-          totalDeleted += count;
+          totalDeleted = Math.min(
+            Number(countResult[0]?.count || 0),
+            maxRecords
+          );
+          // Break out of loop - dry-run only needs a single count
+          break;
         } else {
           // Get IDs of expired records to delete
           const idsToDelete = await db
@@ -2100,6 +2109,458 @@ export class WebhookIdempotencyCleanupStrategy implements ICleanupStrategy {
       }
     } catch (error) {
       // Table might not exist yet (pre-migration) - don't fail
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      if (
+        errorMessage.includes("does not exist") ||
+        errorMessage.includes("relation")
+      ) {
+        console.warn(
+          `[DATA_LIFECYCLE] [${this.entityType}] Table may not exist yet (pre-migration), skipping cleanup`
+        );
+        result.duration = Date.now() - startTime;
+        return result;
+      }
+
+      result.success = false;
+      result.errors.push(errorMessage);
+      result.duration = Date.now() - startTime;
+      console.error(
+        `[DATA_LIFECYCLE] [${this.entityType}] Cleanup failed:`,
+        error
+      );
+    }
+
+    return result;
+  }
+}
+
+/**
+ * Alert History Cleanup Strategy
+ *
+ * Manages cleanup of old alert history records to prevent unbounded table growth.
+ * Uses time-based retention (default 90 days) with batch deletion.
+ * Alert-heavy tenants can generate significant volume - this ensures storage pressure
+ * and query performance remain manageable.
+ */
+export class AlertHistoryCleanupStrategy implements ICleanupStrategy {
+  entityType: CleanupEntityType = "alert_history";
+  config: CleanupStrategyConfig;
+
+  constructor(config: CleanupStrategyConfig) {
+    this.config = config;
+    this.validate();
+  }
+
+  validate(): void {
+    if (
+      this.config.retentionDays !== undefined &&
+      this.config.retentionDays <= 0
+    ) {
+      throw new Error(
+        "Alert history cleanup requires retentionDays > 0"
+      );
+    }
+  }
+
+  async getStats(): Promise<{ totalRecords: number; oldRecords: number }> {
+    const retentionDays = this.config.retentionDays || 90;
+    const cutoffDate = new Date(
+      Date.now() - retentionDays * 24 * 60 * 60 * 1000
+    );
+
+    try {
+      const [total, old] = await Promise.all([
+        db.select({ count: sql<number>`count(*)` }).from(alertHistory),
+        db
+          .select({ count: sql<number>`count(*)` })
+          .from(alertHistory)
+          .where(lt(alertHistory.sentAt, cutoffDate)),
+      ]);
+
+      return {
+        totalRecords: Number(total[0]?.count || 0),
+        oldRecords: Number(old[0]?.count || 0),
+      };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      if (
+        errorMessage.includes("does not exist") ||
+        errorMessage.includes("relation")
+      ) {
+        return { totalRecords: 0, oldRecords: 0 };
+      }
+      console.warn(
+        `[DATA_LIFECYCLE] [alert_history] Failed to get stats:`,
+        error
+      );
+      return { totalRecords: 0, oldRecords: 0 };
+    }
+  }
+
+  async execute(dryRun = false): Promise<CleanupOperationResult> {
+    const startTime = Date.now();
+    const retentionDays = this.config.retentionDays || 90;
+    const cutoffDate = new Date(
+      Date.now() - retentionDays * 24 * 60 * 60 * 1000
+    );
+    const batchSize = this.config.batchSize || 1000;
+    const maxRecords = this.config.maxRecordsPerRun || 100000;
+
+    const result: CleanupOperationResult = {
+      success: true,
+      entityType: this.entityType,
+      recordsDeleted: 0,
+      duration: 0,
+      errors: [],
+      details: {
+        cutoffDate: cutoffDate.toISOString(),
+        retentionDays,
+        dryRun,
+      },
+    };
+
+    try {
+      if (dryRun) {
+        // Count records that would be deleted (single query, no loop)
+        const countResult = await db
+          .select({ count: sql<number>`count(*)` })
+          .from(alertHistory)
+          .where(lt(alertHistory.sentAt, cutoffDate));
+
+        const count = Math.min(
+          Number(countResult[0]?.count || 0),
+          maxRecords
+        );
+        result.recordsDeleted = count;
+      } else {
+        let totalDeleted = 0;
+        let iterations = 0;
+        const maxIterations = Math.ceil(maxRecords / batchSize);
+
+        while (iterations < maxIterations) {
+          // Get IDs of old records to delete
+          const idsToDelete = await db
+            .select({ id: alertHistory.id })
+            .from(alertHistory)
+            .where(lt(alertHistory.sentAt, cutoffDate))
+            .limit(batchSize);
+
+          if (idsToDelete.length === 0) break;
+
+          const ids = idsToDelete.map((r) => r.id);
+          await db
+            .delete(alertHistory)
+            .where(inArray(alertHistory.id, ids));
+
+          totalDeleted += idsToDelete.length;
+
+          // Small delay to prevent overwhelming the database
+          if (idsToDelete.length === batchSize) {
+            await new Promise((resolve) => setTimeout(resolve, 50));
+          }
+
+          iterations++;
+        }
+
+        result.recordsDeleted = totalDeleted;
+        result.details.iterations = iterations;
+      }
+
+      result.duration = Date.now() - startTime;
+
+      if (result.recordsDeleted > 0) {
+        console.log(
+          `[DATA_LIFECYCLE] ${this.entityType}: ${
+            dryRun ? "Would delete" : "Deleted"
+          } ${result.recordsDeleted} records older than ${retentionDays} days`
+        );
+      }
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      if (
+        errorMessage.includes("does not exist") ||
+        errorMessage.includes("relation")
+      ) {
+        console.warn(
+          `[DATA_LIFECYCLE] [${this.entityType}] Table may not exist yet (pre-migration), skipping cleanup`
+        );
+        result.duration = Date.now() - startTime;
+        return result;
+      }
+
+      result.success = false;
+      result.errors.push(errorMessage);
+      result.duration = Date.now() - startTime;
+      console.error(
+        `[DATA_LIFECYCLE] [${this.entityType}] Cleanup failed:`,
+        error
+      );
+    }
+
+    return result;
+  }
+}
+
+type AuditActionCategory =
+  | "authentication"
+  | "authorization"
+  | "resource"
+  | "execution"
+  | "configuration"
+  | "security"
+  | "default";
+
+const SECURITY_AUDIT_ACTIONS = new Set([
+  "failed_login",
+  "unauthorized_access_attempt",
+  "suspicious_activity",
+  "security_violation",
+  "rate_limit_exceeded",
+]);
+
+function getAuditActionCategory(action: string): AuditActionCategory {
+  const normalized = action.toLowerCase();
+
+  if (
+    SECURITY_AUDIT_ACTIONS.has(normalized) ||
+    normalized.startsWith("security_") ||
+    normalized.includes("unauthorized_access") ||
+    normalized.includes("rate_limit")
+  ) {
+    return "security";
+  }
+
+  if (
+    normalized === "login" ||
+    normalized === "logout" ||
+    normalized === "password_reset" ||
+    normalized === "login_failed" ||
+    normalized.startsWith("impersonation_")
+  ) {
+    return "authentication";
+  }
+
+  if (
+    normalized === "role_change" ||
+    normalized.startsWith("permission_")
+  ) {
+    return "authorization";
+  }
+
+  if (normalized.includes("settings") || normalized.includes("integration")) {
+    return "configuration";
+  }
+
+  if (normalized.includes("executed") || normalized.includes("triggered")) {
+    return "execution";
+  }
+
+  if (
+    normalized.endsWith("_created") ||
+    normalized.endsWith("_updated") ||
+    normalized.endsWith("_deleted") ||
+    normalized.endsWith("_create") ||
+    normalized.endsWith("_update") ||
+    normalized.endsWith("_delete")
+  ) {
+    return "resource";
+  }
+
+  return "default";
+}
+
+function getAuditActionRetentionDays(
+  action: string,
+  fallbackRetentionDays: number
+): number {
+  const category = getAuditActionCategory(action);
+  switch (category) {
+    case "resource":
+    case "execution":
+      return 30;
+    case "authentication":
+    case "authorization":
+    case "configuration":
+      return 90;
+    case "security":
+      return 365;
+    default:
+      return fallbackRetentionDays;
+  }
+}
+
+/**
+ * Audit Logs Cleanup Strategy
+ *
+ * Category-aware retention aligned with 06-data audit spec:
+ * - Resource management / Execution: 30 days
+ * - Authentication / Authorization / Configuration: 90 days
+ * - Security: 365 days
+ */
+export class AuditLogsCleanupStrategy implements ICleanupStrategy {
+  entityType: CleanupEntityType = "audit_logs";
+  config: CleanupStrategyConfig;
+
+  constructor(config: CleanupStrategyConfig) {
+    this.config = config;
+    this.validate();
+  }
+
+  validate(): void {
+    if (
+      this.config.retentionDays !== undefined &&
+      this.config.retentionDays <= 0
+    ) {
+      throw new Error("Audit logs cleanup requires retentionDays > 0");
+    }
+  }
+
+  async getStats(): Promise<{ totalRecords: number; oldRecords: number }> {
+    const fallbackRetentionDays = this.config.retentionDays || 90;
+    const cutoffDate = new Date(
+      Date.now() - fallbackRetentionDays * 24 * 60 * 60 * 1000
+    );
+
+    try {
+      const [total, old] = await Promise.all([
+        db.select({ count: sql<number>`count(*)` }).from(auditLogs),
+        db
+          .select({ count: sql<number>`count(*)` })
+          .from(auditLogs)
+          .where(lt(auditLogs.createdAt, cutoffDate)),
+      ]);
+
+      return {
+        totalRecords: Number(total[0]?.count || 0),
+        oldRecords: Number(old[0]?.count || 0),
+      };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      if (
+        errorMessage.includes("does not exist") ||
+        errorMessage.includes("relation")
+      ) {
+        return { totalRecords: 0, oldRecords: 0 };
+      }
+      console.warn(`[DATA_LIFECYCLE] [audit_logs] Failed to get stats:`, error);
+      return { totalRecords: 0, oldRecords: 0 };
+    }
+  }
+
+  async execute(dryRun = false): Promise<CleanupOperationResult> {
+    const startTime = Date.now();
+    const fallbackRetentionDays = this.config.retentionDays || 90;
+    const batchSize = this.config.batchSize || 1000;
+    const maxRecords = this.config.maxRecordsPerRun || 100000;
+
+    const minRetentionDays = 30;
+    const minCutoffDate = new Date(
+      Date.now() - minRetentionDays * 24 * 60 * 60 * 1000
+    );
+
+    const result: CleanupOperationResult = {
+      success: true,
+      entityType: this.entityType,
+      recordsDeleted: 0,
+      duration: 0,
+      errors: [],
+      details: {
+        dryRun,
+        minRetentionDays,
+        fallbackRetentionDays,
+      },
+    };
+
+    try {
+      let totalDeleted = 0;
+      let scannedRecords = 0;
+      let iterations = 0;
+      const maxIterations = Math.ceil(maxRecords / batchSize);
+
+      let lastSeenCreatedAt: Date | null = null;
+      let lastSeenId: string | null = null;
+
+      while (iterations < maxIterations) {
+        const conditions = [
+          lt(auditLogs.createdAt, minCutoffDate),
+          sql`${auditLogs.createdAt} IS NOT NULL`,
+        ];
+
+        if (lastSeenCreatedAt && lastSeenId) {
+          conditions.push(
+            sql`(${auditLogs.createdAt} > ${lastSeenCreatedAt} OR (${auditLogs.createdAt} = ${lastSeenCreatedAt} AND ${auditLogs.id} > ${lastSeenId}))`
+          );
+        }
+
+        const candidates = await db
+          .select({
+            id: auditLogs.id,
+            action: auditLogs.action,
+            createdAt: auditLogs.createdAt,
+          })
+          .from(auditLogs)
+          .where(and(...conditions))
+          .orderBy(asc(auditLogs.createdAt), asc(auditLogs.id))
+          .limit(batchSize);
+
+        if (candidates.length === 0) break;
+
+        const lastCandidate = candidates[candidates.length - 1];
+        lastSeenCreatedAt = lastCandidate.createdAt;
+        lastSeenId = lastCandidate.id;
+
+        scannedRecords += candidates.length;
+
+        const eligibleIds = candidates
+          .filter((record) => {
+            if (!record.createdAt) return false;
+            const retentionDays = getAuditActionRetentionDays(
+              record.action,
+              fallbackRetentionDays
+            );
+            const actionCutoffDate = new Date(
+              Date.now() - retentionDays * 24 * 60 * 60 * 1000
+            );
+            return record.createdAt < actionCutoffDate;
+          })
+          .map((record) => record.id);
+
+        const remainingQuota = maxRecords - totalDeleted;
+        const quotaEligibleIds = eligibleIds.slice(0, Math.max(0, remainingQuota));
+
+        if (!dryRun && quotaEligibleIds.length > 0) {
+          await db
+            .delete(auditLogs)
+            .where(inArray(auditLogs.id, quotaEligibleIds));
+        }
+
+        totalDeleted += quotaEligibleIds.length;
+        iterations++;
+
+        if (totalDeleted >= maxRecords) break;
+
+        if (candidates.length === batchSize) {
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+      }
+
+      result.recordsDeleted = totalDeleted;
+      result.duration = Date.now() - startTime;
+      result.details.iterations = iterations;
+      result.details.scannedRecords = scannedRecords;
+
+      if (totalDeleted > 0) {
+        console.log(
+          `[DATA_LIFECYCLE] ${this.entityType}: ${
+            dryRun ? "Would delete" : "Deleted"
+          } ${totalDeleted} records`
+        );
+      }
+    } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
       if (
@@ -2171,6 +2632,12 @@ export class DataLifecycleService {
           break;
         case "webhook_idempotency":
           strategy = new WebhookIdempotencyCleanupStrategy(config);
+          break;
+        case "alert_history":
+          strategy = new AlertHistoryCleanupStrategy(config);
+          break;
+        case "audit_logs":
+          strategy = new AuditLogsCleanupStrategy(config);
           break;
         default:
           console.warn(
@@ -2675,6 +3142,47 @@ export function createDataLifecycleService(): DataLifecycleService {
       batchSize: parseInt(process.env.WEBHOOK_CLEANUP_BATCH_SIZE || "1000", 10),
       maxRecordsPerRun: parseInt(
         process.env.WEBHOOK_CLEANUP_SAFETY_LIMIT || "100000",
+        10
+      ),
+    },
+
+    // Alert History Cleanup
+    // Enabled by default - prevents unbounded growth of alert notification history
+    // Default retention: 90 days (configurable via ALERT_HISTORY_RETENTION_DAYS)
+    {
+      entityType: "alert_history",
+      enabled: parseBooleanEnv(process.env.ALERT_HISTORY_CLEANUP_ENABLED, true),
+      cronSchedule: parseCronSchedule(
+        process.env.ALERT_HISTORY_CLEANUP_CRON,
+        "30 4 * * *" // 4:30 AM daily (after webhook cleanup)
+      ),
+      retentionDays: parseInt(
+        process.env.ALERT_HISTORY_RETENTION_DAYS || "90",
+        10
+      ),
+      batchSize: parseInt(
+        process.env.ALERT_HISTORY_CLEANUP_BATCH_SIZE || "1000",
+        10
+      ),
+      maxRecordsPerRun: parseInt(
+        process.env.ALERT_HISTORY_CLEANUP_SAFETY_LIMIT || "100000",
+        10
+      ),
+    },
+
+    // Audit Logs Cleanup
+    // Category-aware retention rules enforced in strategy (30d/90d/365d)
+    {
+      entityType: "audit_logs",
+      enabled: parseBooleanEnv(process.env.AUDIT_LOGS_CLEANUP_ENABLED, true),
+      cronSchedule: parseCronSchedule(
+        process.env.AUDIT_LOGS_CLEANUP_CRON,
+        "0 1 * * *"
+      ),
+      retentionDays: parseInt(process.env.AUDIT_LOGS_RETENTION_DAYS || "90", 10),
+      batchSize: parseInt(process.env.AUDIT_LOGS_CLEANUP_BATCH_SIZE || "1000", 10),
+      maxRecordsPerRun: parseInt(
+        process.env.AUDIT_LOGS_CLEANUP_SAFETY_LIMIT || "100000",
         10
       ),
     },

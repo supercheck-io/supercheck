@@ -12,6 +12,7 @@ import { db } from '@/utils/db';
 import { jobs, runs } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { addJobToQueue, addK6JobToQueue, JobExecutionTask, K6ExecutionTask, queueLogger } from '@/lib/queue';
+import { prepareJobTestScripts } from '@/lib/job-execution-utils';
 import { getNextRunDate } from './cron-utils';
 import { DEFAULT_K6_LOCATION } from './constants';
 
@@ -19,18 +20,25 @@ const logger = queueLogger;
 
 /**
  * Job data structure for scheduled jobs
+ * 
+ * IMPORTANT: Only identifiers are stored in the repeatable payload.
+ * Test scripts and variables are resolved at trigger time via prepareJobTestScripts()
+ * to ensure scheduled executions always use the latest test content and variable values.
  */
 export interface ScheduledJobData {
   jobId: string;
-  testCases: Array<{
+  /** @deprecated Legacy field — new schedules no longer embed test cases in payload */
+  testCases?: Array<{
     id: string;
     script: string;
     title: string;
     type?: string;
   }>;
   retryLimit?: number;
-  variables: Record<string, string>;
-  secrets: Record<string, string>;
+  /** @deprecated Legacy field — variables are now resolved at trigger time */
+  variables?: Record<string, string>;
+  /** @deprecated Legacy field — secrets are now resolved at trigger time */
+  secrets?: Record<string, string>;
   projectId: string;
   organizationId: string;
 }
@@ -85,8 +93,8 @@ export async function processScheduledJob(
     const resolvedLocation = isK6Job ? DEFAULT_K6_LOCATION : null;
 
     const runId = crypto.randomUUID();
-    const projectId = data.projectId;
-    const organizationId = data.organizationId;
+    const projectId = jobRecord.projectId || data.projectId;
+    const organizationId = jobRecord.organizationId || data.organizationId;
 
     // Create run record with 'queued' status - capacity manager will update to 'running'
     await db.insert(runs).values({
@@ -134,13 +142,36 @@ export async function processScheduledJob(
 
     await db.update(jobs).set(jobUpdatePayload).where(eq(jobs.id, jobId));
 
-    // Prepare test scripts
-    const processedTestScripts = data.testCases.map((test) => ({
-      id: test.id,
-      script: test.script,
-      name: test.title,
-      type: test.type,
-    }));
+    // Fetch current test scripts and resolve variables at trigger time
+    // This ensures scheduled executions always use the latest test content
+    let processedTestScripts: Awaited<
+      ReturnType<typeof prepareJobTestScripts>
+    >['testScripts'];
+    let variableResolution: Awaited<
+      ReturnType<typeof prepareJobTestScripts>
+    >['variableResolution'];
+    try {
+      const prepared = await prepareJobTestScripts(
+        jobId,
+        projectId,
+        runId,
+        `[Scheduled ${jobId}/${runId}]`
+      );
+      processedTestScripts = prepared.testScripts;
+      variableResolution = prepared.variableResolution;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to prepare test scripts';
+      logger.error({ jobId, runId, error }, 'Failed to prepare test scripts for scheduled job');
+      await db
+        .update(runs)
+        .set({
+          status: 'failed',
+          completedAt: new Date(),
+          errorDetails: errorMessage,
+        })
+        .where(eq(runs.id, runId));
+      return { success: false };
+    }
 
     // Route to appropriate queue with capacity management
     if (isK6Job) {
@@ -181,6 +212,8 @@ export async function processScheduledJob(
         organizationId,
         projectId,
         script: primaryScript,
+        variables: variableResolution.variables,
+        secrets: variableResolution.secrets,
         jobId,
         tests: processedTestScripts.map((script) => ({
           id: script.id,
@@ -223,8 +256,8 @@ export async function processScheduledJob(
         trigger: 'schedule',
         organizationId,
         projectId,
-        variables: data.variables,
-        secrets: data.secrets,
+        variables: variableResolution.variables,
+        secrets: variableResolution.secrets,
         jobType: 'playwright',
       };
 

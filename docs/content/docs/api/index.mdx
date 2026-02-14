@@ -35,6 +35,10 @@ CLI token management — create, list, update, and revoke tokens
 Job scheduling, execution, and triggering
 </Card>
 
+<Card title="Trigger Keys" href="/docs/api/trigger-keys/listJobApiKeys" icon={<Key className="text-orange-500" />}>
+Manage trigger keys for CI/CD job execution
+</Card>
+
 <Card title="Runs" href="/docs/api/runs/listRuns" icon={<Play className="text-emerald-500" />}>
 Job run management, status tracking, and live streaming
 </Card>
@@ -49,6 +53,30 @@ Uptime monitor management, check results, and statistics
 
 <Card title="Variables" href="/docs/api/variables/listVariables" icon={<Variable className="text-rose-500" />}>
 Project environment variables and secrets
+</Card>
+
+<Card title="Notifications" href="/docs/api/notifications/listNotificationProviders" icon={<Bell className="text-indigo-500" />}>
+Notification providers — Slack, email, webhooks, and more
+</Card>
+
+<Card title="Tags" href="/docs/api/tags/listTags" icon={<Tag className="text-teal-500" />}>
+Tag management for organizing tests and resources
+</Card>
+
+<Card title="Status Pages" href="/docs/api/status-pages/listStatusPages" icon={<Tally4 className="text-cyan-500" />}>
+Public status page management and RSS feeds
+</Card>
+
+<Card title="Alerts" href="/docs/api/alerts/getAlertHistory" icon={<AlertTriangle className="text-yellow-500" />}>
+Alert history and notification tracking
+</Card>
+
+<Card title="Audit" href="/docs/api/audit/getAuditLogs" icon={<ScrollText className="text-gray-500" />}>
+Organization audit logs
+</Card>
+
+<Card title="System" href="/docs/api/system/getHealth" icon={<HeartPulse className="text-red-500" />}>
+Health check and available execution locations
 </Card>
 </Cards>
 
@@ -121,5 +149,4 @@ Retry-After: 60  # Only on 429 responses
 ## Reference Guides
 
 - [Authentication](./authentication) — Token types, security, and rate limiting
-- [Endpoints](./endpoints) — Quick endpoint reference with examples
 - [Errors](./errors) — Error codes, formats, and retry behavior

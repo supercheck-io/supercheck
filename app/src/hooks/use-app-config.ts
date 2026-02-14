@@ -22,7 +22,7 @@ export interface AppConfig {
 }
 
 const DEFAULT_CONFIG: AppConfig = {
-  hosting: { selfHosted: true, cloudHosted: false },
+  hosting: { selfHosted: false, cloudHosted: true },
   authProviders: {
     github: { enabled: false },
     google: { enabled: false },
@@ -73,8 +73,8 @@ export function useAppConfig() {
     isLoading,
     isFetched,
     error: error as Error | null,
-    isSelfHosted: effectiveConfig.hosting?.selfHosted ?? true,
-    isCloudHosted: effectiveConfig.hosting?.cloudHosted ?? false,
+    isSelfHosted: effectiveConfig.hosting?.selfHosted ?? false,
+    isCloudHosted: effectiveConfig.hosting?.cloudHosted ?? true,
     isDemoMode: effectiveConfig.demoMode ?? false,
     showCommunityLinks: effectiveConfig.showCommunityLinks ?? false,
     isGithubEnabled: effectiveConfig.authProviders?.github?.enabled ?? false,

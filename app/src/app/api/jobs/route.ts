@@ -11,12 +11,13 @@ import {
   jobNotificationSettings,
   JobType,
 } from "@/db/schema";
-import { desc, eq, inArray, and, asc } from "drizzle-orm";
+import { desc, eq, inArray, and, asc, sql } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import { subscriptionService } from "@/lib/services/subscription-service";
 import { getNextRunDate } from "@/lib/cron-utils";
 import { scheduleJob } from "@/lib/job-scheduler";
+import { validateNotificationProviderOwnership } from "@/lib/notification-providers/ownership";
 
 import { randomUUID } from "crypto";
 
@@ -80,37 +81,60 @@ export async function GET(request: Request) {
     const limit = Math.min(100, Math.max(1, parseInt(url.searchParams.get("limit") || "100", 10)));
     const offset = (page - 1) * limit;
 
-    // Query 1: Get jobs for this project with pagination
-    const jobsResult = await db
-      .select({
-        id: jobs.id,
-        name: jobs.name,
-        description: jobs.description,
-        cronSchedule: jobs.cronSchedule,
-        status: jobs.status,
-        alertConfig: jobs.alertConfig,
-        createdAt: jobs.createdAt,
-        updatedAt: jobs.updatedAt,
-        organizationId: jobs.organizationId,
-        projectId: jobs.projectId,
-        createdByUserId: jobs.createdByUserId,
-        lastRunAt: jobs.lastRunAt,
-        nextRunAt: jobs.nextRunAt,
-        jobType: jobs.jobType,
-      })
-      .from(jobs)
-      .where(
-        and(
-          eq(jobs.projectId, targetProjectId),
-          eq(jobs.organizationId, context.organizationId)
-        )
-      )
-      .orderBy(desc(jobs.createdAt)) // Sort by latest created first
-      .limit(limit)
-      .offset(offset);
+    // PERFORMANCE: Run count and paginated queries in parallel
+    const whereCondition = and(
+      eq(jobs.projectId, targetProjectId),
+      eq(jobs.organizationId, context.organizationId)
+    );
+
+    const [countResult, jobsResult] = await Promise.all([
+      // Count query for accurate pagination metadata
+      db
+        .select({ count: sql<number>`count(*)` })
+        .from(jobs)
+        .where(whereCondition),
+      // Query 1: Get jobs for this project with pagination
+      db
+        .select({
+          id: jobs.id,
+          name: jobs.name,
+          description: jobs.description,
+          cronSchedule: jobs.cronSchedule,
+          status: jobs.status,
+          alertConfig: jobs.alertConfig,
+          createdAt: jobs.createdAt,
+          updatedAt: jobs.updatedAt,
+          organizationId: jobs.organizationId,
+          projectId: jobs.projectId,
+          createdByUserId: jobs.createdByUserId,
+          lastRunAt: jobs.lastRunAt,
+          nextRunAt: jobs.nextRunAt,
+          jobType: jobs.jobType,
+        })
+        .from(jobs)
+        .where(whereCondition)
+        .orderBy(desc(jobs.createdAt)) // Sort by latest created first
+        .limit(limit)
+        .offset(offset),
+    ]);
+
+    const totalCount = Number(countResult[0]?.count ?? 0);
+    const totalPages = Math.ceil(totalCount / limit);
+    const hasNextPage = totalPages > 0 && page < totalPages;
+    const hasPrevPage = totalPages > 0 && page > 1;
 
     if (jobsResult.length === 0) {
-      return NextResponse.json({ success: true, jobs: [] });
+      return NextResponse.json({
+        data: [],
+        pagination: {
+          total: totalCount,
+          page,
+          limit,
+          totalPages,
+          hasNextPage,
+          hasPrevPage,
+        },
+      });
     }
 
     const jobIds = jobsResult.map((job) => job.id);
@@ -244,14 +268,16 @@ export async function GET(request: Request) {
       };
     });
 
-    // Return standardized response format for React Query hooks
+    // Return standardized response format for React Query hooks and CLI pagination
     return NextResponse.json({
       data: jobsWithTests,
       pagination: {
-        total: jobsWithTests.length,
-        page: 1,
-        limit: jobsWithTests.length,
-        totalPages: 1,
+        total: totalCount,
+        page,
+        limit,
+        totalPages,
+        hasNextPage,
+        hasPrevPage,
       },
     });
   } catch (error) {
@@ -339,66 +365,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Generate a unique ID for the job
-    const jobId = randomUUID();
-
-    // Calculate next run date if cron schedule is provided
-    let nextRunAt: Date | null = null;
-    if (jobData.cronSchedule && jobData.cronSchedule.trim() !== "") {
-      try {
-        nextRunAt = getNextRunDate(jobData.cronSchedule);
-      } catch (error) {
-        console.error('Failed to calculate next run date for cron "%s":', jobData.cronSchedule, error);
-        // Continue without nextRunAt - the schedule can still be set up
-      }
-    }
-
-    // Insert the job into the database with default values for nullable fields
-    const [insertedJob] = await db
-      .insert(jobs)
-      .values({
-        id: jobId,
-        name: jobData.name,
-        description: jobData.description || null,
-        cronSchedule: jobData.cronSchedule || null,
-        nextRunAt: nextRunAt,
-        status: jobData.status || "pending",
-        alertConfig: jobData.alertConfig
-          ? {
-              enabled: Boolean(jobData.alertConfig.enabled),
-              notificationProviders: Array.isArray(
-                jobData.alertConfig.notificationProviders
-              )
-                ? jobData.alertConfig.notificationProviders
-                : [],
-              alertOnFailure:
-                jobData.alertConfig.alertOnFailure !== undefined
-                  ? Boolean(jobData.alertConfig.alertOnFailure)
-                  : true,
-              alertOnSuccess: Boolean(jobData.alertConfig.alertOnSuccess),
-              alertOnTimeout: Boolean(jobData.alertConfig.alertOnTimeout),
-              failureThreshold:
-                typeof jobData.alertConfig.failureThreshold === "number"
-                  ? jobData.alertConfig.failureThreshold
-                  : 1,
-              recoveryThreshold:
-                typeof jobData.alertConfig.recoveryThreshold === "number"
-                  ? jobData.alertConfig.recoveryThreshold
-                  : 1,
-              customMessage:
-                typeof jobData.alertConfig.customMessage === "string"
-                  ? jobData.alertConfig.customMessage
-                  : "",
-            }
-          : null,
-        organizationId: organizationId,
-        projectId: targetProjectId,
-        createdByUserId: userId, // Use authenticated user ID
-        jobType: jobData.jobType === "k6" ? "k6" : "playwright",
-      })
-      .returning();
-
     // Validate alert configuration if enabled
+    let validatedProviderIds: string[] = [];
     if (jobData.alertConfig?.enabled) {
       // Check if at least one notification provider is selected
       if (
@@ -444,34 +412,114 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
+
+      if (jobData.alertConfig.notificationProviders.length > 0) {
+        try {
+          validatedProviderIds = await validateNotificationProviderOwnership({
+            providerIds: jobData.alertConfig.notificationProviders,
+            organizationId,
+            projectId: targetProjectId,
+          });
+        } catch (providerValidationError) {
+          return NextResponse.json(
+            {
+              error:
+                providerValidationError instanceof Error
+                  ? providerValidationError.message
+                  : "Invalid or unauthorized notification provider IDs",
+            },
+            { status: 400 }
+          );
+        }
+      }
     }
 
-    // Link notification providers if alert config is enabled
-    if (
-      insertedJob &&
-      jobData.alertConfig?.enabled &&
-      Array.isArray(jobData.alertConfig.notificationProviders)
-    ) {
-      await Promise.all(
-        jobData.alertConfig.notificationProviders.map((providerId) =>
-          db.insert(jobNotificationSettings).values({
-            jobId: insertedJob.id,
+    // Generate a unique ID for the job
+    const jobId = randomUUID();
+
+    // Calculate next run date if cron schedule is provided
+    let nextRunAt: Date | null = null;
+    if (jobData.cronSchedule && jobData.cronSchedule.trim() !== "") {
+      try {
+        nextRunAt = getNextRunDate(jobData.cronSchedule);
+      } catch (error) {
+        console.error('Failed to calculate next run date for cron "%s":', jobData.cronSchedule, error);
+        // Continue without nextRunAt - the schedule can still be set up
+      }
+    }
+
+    // Insert job, provider links, and test relations atomically
+    await db.transaction(async (tx) => {
+      const [newJob] = await tx
+        .insert(jobs)
+        .values({
+          id: jobId,
+          name: jobData.name,
+          description: jobData.description || null,
+          cronSchedule: jobData.cronSchedule || null,
+          nextRunAt: nextRunAt,
+          status: jobData.status || "pending",
+          alertConfig: jobData.alertConfig
+            ? {
+                enabled: Boolean(jobData.alertConfig.enabled),
+                notificationProviders:
+                  jobData.alertConfig.enabled &&
+                  Array.isArray(jobData.alertConfig.notificationProviders)
+                    ? validatedProviderIds
+                    : Array.isArray(jobData.alertConfig.notificationProviders)
+                    ? jobData.alertConfig.notificationProviders
+                    : [],
+                alertOnFailure:
+                  jobData.alertConfig.alertOnFailure !== undefined
+                    ? Boolean(jobData.alertConfig.alertOnFailure)
+                    : true,
+                alertOnSuccess: Boolean(jobData.alertConfig.alertOnSuccess),
+                alertOnTimeout: Boolean(jobData.alertConfig.alertOnTimeout),
+                failureThreshold:
+                  typeof jobData.alertConfig.failureThreshold === "number"
+                    ? jobData.alertConfig.failureThreshold
+                    : 1,
+                recoveryThreshold:
+                  typeof jobData.alertConfig.recoveryThreshold === "number"
+                    ? jobData.alertConfig.recoveryThreshold
+                    : 1,
+                customMessage:
+                  typeof jobData.alertConfig.customMessage === "string"
+                    ? jobData.alertConfig.customMessage
+                    : "",
+              }
+            : null,
+          organizationId: organizationId,
+          projectId: targetProjectId,
+          createdByUserId: userId, // Use authenticated user ID
+          jobType: jobData.jobType === "k6" ? "k6" : "playwright",
+        })
+        .returning();
+
+      if (
+        newJob &&
+        jobData.alertConfig?.enabled &&
+        validatedProviderIds.length > 0
+      ) {
+        await tx.insert(jobNotificationSettings).values(
+          validatedProviderIds.map((providerId) => ({
+            jobId: newJob.id,
             notificationProviderId: providerId,
-          })
-        )
-      );
-    }
+          }))
+        );
+      }
 
-    // If tests are provided, create job-test associations with order preserved
-    if (jobData.tests && jobData.tests.length > 0) {
-      const jobTestValues = jobData.tests.map((test, index) => ({
-        jobId: jobId,
-        testId: test.id,
-        orderPosition: index,
-      }));
+      if (jobData.tests && jobData.tests.length > 0) {
+        const jobTestValues = jobData.tests.map((test, index) => ({
+          jobId: jobId,
+          testId: test.id,
+          orderPosition: index,
+        }));
 
-      await db.insert(jobTests).values(jobTestValues);
-    }
+        await tx.insert(jobTests).values(jobTestValues);
+      }
+
+    });
 
     // If a cronSchedule is provided, set up the job scheduler
     let scheduledJobId = null;

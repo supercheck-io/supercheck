@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { apikey } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { getRedisConnection } from "@/lib/queue";
 import { createLogger } from "@/lib/logger/index";
-import { verifyApiKey } from "@/lib/security/api-key-hash";
+// hashApiKey imported dynamically in handler for indexed lookup
 
 const logger = createLogger({ module: "verify-key" }) as {
   debug: (data: unknown, msg?: string) => void;
@@ -160,12 +160,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // SECURITY: Verify the API key using hash-based comparison
-    // Fetch all API keys and compare using constant-time comparison to prevent timing attacks
-    const allKeys = await db
+    // SECURITY: Verify the API key using indexed hash lookup.
+    // Since keys are stored as SHA-256 hashes and SHA-256 is deterministic,
+    // we compute the hash of the input key and do a direct indexed lookup
+    // instead of scanning all enabled keys. This is O(1) vs O(n).
+    const { hashApiKey } = await import("@/lib/security/api-key-hash");
+    const inputHash = hashApiKey(apiKey.trim());
+    
+    const matchingKeys = await db
       .select({
         id: apikey.id,
-        key: apikey.key, // This is now the hash
+        key: apikey.key,
         enabled: apikey.enabled,
         expiresAt: apikey.expiresAt,
         jobId: apikey.jobId,
@@ -173,16 +178,10 @@ export async function POST(request: NextRequest) {
         name: apikey.name,
       })
       .from(apikey)
-      .where(eq(apikey.enabled, true));
+      .where(and(eq(apikey.key, inputHash), eq(apikey.enabled, true)))
+      .limit(1);
 
-    // Find matching key using secure hash comparison
-    let matchedKey: typeof allKeys[0] | null = null;
-    for (const k of allKeys) {
-      if (verifyApiKey(apiKey.trim(), k.key)) {
-        matchedKey = k;
-        break;
-      }
-    }
+    const matchedKey = matchingKeys.length > 0 ? matchingKeys[0] : null;
 
     if (!matchedKey) {
       logger.warn(

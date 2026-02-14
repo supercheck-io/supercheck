@@ -1198,11 +1198,24 @@ export function withSystemAdminPermission(
 // RATE LIMITING MIDDLEWARE
 // ============================================================================
 
+/**
+ * In-memory rate limit middleware for API routes.
+ * 
+ * NOTE: This uses a per-process in-memory Map, which means rate limits
+ * are NOT shared across multiple server instances or serverless invocations.
+ * For auth-critical endpoints (login, API key verification), use Redis-based
+ * rate limiting from getRedisConnection() instead.
+ * 
+ * This is acceptable for endpoints that already have authentication checks
+ * (e.g., secret decryption), where the rate limiter serves as defense-in-depth
+ * rather than the primary security control.
+ */
 export function withRateLimit(
   maxRequests: number,
   windowMs: number,
   options: { auditAction?: string } = {}
 ) {
+  // Per-process rate limit store. See function JSDoc for limitations.
   const requests = new Map<string, { count: number; resetTime: number }>();
 
   return async (

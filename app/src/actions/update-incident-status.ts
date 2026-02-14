@@ -10,6 +10,7 @@ import {
 } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { z } from "zod";
 import { requireProjectContext } from "@/lib/project-context";
 import { requirePermissions } from "@/lib/rbac/middleware";
@@ -138,6 +139,7 @@ export async function updateIncidentStatus(data: UpdateIncidentStatusData) {
       });
 
       // If resolved and restore is true, restore affected components to operational
+      // SECURITY: Only restore if no other active (non-resolved) incidents affect the same component
       if (
         validatedData.status === "resolved" &&
         validatedData.restoreComponentStatus
@@ -147,13 +149,33 @@ export async function updateIncidentStatus(data: UpdateIncidentStatusData) {
         });
 
         for (const ic of affectedComponents) {
-          await tx
-            .update(statusPageComponents)
-            .set({
-              status: "operational",
-              updatedAt: new Date(),
-            })
-            .where(eq(statusPageComponents.id, ic.componentId));
+          // Check if any other active incidents still affect this component
+          const otherActiveIncidentComponents =
+            await tx.query.incidentComponents.findMany({
+              where: eq(incidentComponents.componentId, ic.componentId),
+              with: {
+                incident: {
+                  columns: { id: true, status: true },
+                },
+              },
+            });
+
+          const hasOtherActiveIncidents = otherActiveIncidentComponents.some(
+            (aic) =>
+              aic.incident &&
+              aic.incident.id !== validatedData.incidentId &&
+              aic.incident.status !== "resolved"
+          );
+
+          if (!hasOtherActiveIncidents) {
+            await tx
+              .update(statusPageComponents)
+              .set({
+                status: "operational",
+                updatedAt: new Date(),
+              })
+              .where(eq(statusPageComponents.id, ic.componentId));
+          }
         }
       }
 
@@ -177,31 +199,20 @@ export async function updateIncidentStatus(data: UpdateIncidentStatusData) {
       success: true,
     });
 
-    // Send notifications to subscribers (email, webhooks, and Slack, async, non-blocking)
+    // Send notifications to subscribers using after() to ensure
+    // background work completes even in serverless/short-lived runtimes
     if (validatedData.deliverNotifications) {
-      // Send email notifications
-      sendIncidentNotifications(result.id, validatedData.statusPageId).catch(
-        (error) => {
-          console.error("Failed to send incident email notifications:", error);
+      after(async () => {
+        try {
+          await Promise.allSettled([
+            sendIncidentNotifications(result.id, validatedData.statusPageId),
+            sendWebhookNotifications(result.id, validatedData.statusPageId),
+            sendSlackNotifications(result.id, validatedData.statusPageId),
+          ]);
+        } catch (error) {
+          console.error("Failed to send incident notifications:", error);
         }
-      );
-
-      // Send webhook notifications
-      sendWebhookNotifications(result.id, validatedData.statusPageId).catch(
-        (error) => {
-          console.error(
-            "Failed to send incident webhook notifications:",
-            error
-          );
-        }
-      );
-
-      // Send Slack notifications
-      sendSlackNotifications(result.id, validatedData.statusPageId).catch(
-        (error) => {
-          console.error("Failed to send incident Slack notifications:", error);
-        }
-      );
+      });
     }
 
     // Revalidate the status page

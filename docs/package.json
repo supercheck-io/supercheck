@@ -11,7 +11,6 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "@orama/orama": "^3.1.16",
     "fumadocs-core": "^16.5.1",
     "fumadocs-mdx": "13.0.8",
     "fumadocs-openapi": "^10.3.2",

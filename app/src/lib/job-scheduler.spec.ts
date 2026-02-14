@@ -42,7 +42,6 @@ const mockQueuesModule = {
     },
     redisConnection: {},
   }),
-  addJobToQueue: jest.fn(),
 };
 
 const mockDbModule = {
@@ -53,8 +52,6 @@ const mockDbModule = {
 
 jest.mock("./queue", () => ({
   getQueues: () => mockQueuesModule.getQueues(),
-  addJobToQueue: (...args: unknown[]) =>
-    mockQueuesModule.addJobToQueue(...args),
 }));
 
 jest.mock("@/utils/db", () => ({
@@ -81,15 +78,6 @@ jest.mock("@/lib/cron-utils", () => ({
   getNextRunDate: jest.fn().mockReturnValue(new Date("2025-12-01T00:00:00Z")),
 }));
 
-jest.mock("./job-execution-utils", () => ({
-  prepareJobTestScripts: jest.fn().mockResolvedValue({
-    testScripts: [
-      { id: "test-1", name: "Test 1", script: "test code", type: "playwright" },
-    ],
-    variableResolution: { variables: {}, secrets: {} },
-  }),
-}));
-
 jest.mock("./data-lifecycle-service", () => ({
   createDataLifecycleService: jest.fn().mockReturnValue({
     initialize: jest.fn(),
@@ -101,6 +89,10 @@ jest.mock("./data-lifecycle-service", () => ({
   }),
   setDataLifecycleInstance: jest.fn(),
   getDataLifecycleService: jest.fn(),
+}));
+
+jest.mock("./scheduler/job-scheduler", () => ({
+  processScheduledJob: jest.fn(),
 }));
 
 jest.mock("crypto", () => ({
@@ -116,8 +108,10 @@ import {
   cleanupJobScheduler,
 } from "./job-scheduler";
 import { getNextRunDate } from "@/lib/cron-utils";
+import { processScheduledJob } from "./scheduler/job-scheduler";
 
 const mockGetNextRunDate = getNextRunDate as jest.Mock;
+const mockSchedulerProcessor = processScheduledJob as jest.Mock;
 
 describe("Job Scheduler", () => {
   const testJobId = "job-123";
@@ -137,6 +131,7 @@ describe("Job Scheduler", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockSchedulerProcessor.mockResolvedValue({ success: true });
 
     // Reset Redis client mocks for distributed locking
     mockRedisClient.ping.mockResolvedValue('PONG');
@@ -513,91 +508,25 @@ describe("Job Scheduler", () => {
       data: {
         jobId: testJobId,
         name: "Test Job",
-        testCases: [{ id: "test-1", title: "Test 1", script: "code" }],
-        variables: {},
-        secrets: {},
         projectId: testProjectId,
         organizationId: testOrgId,
       },
     };
 
-    describe("Positive Cases", () => {
-      it("should create run record and add execution task", async () => {
-        const selectChain = {
-          from: jest.fn().mockReturnThis(),
-          where: jest.fn().mockReturnThis(),
-          limit: jest.fn().mockResolvedValue([mockJob]),
-        };
-        mockDbModule.select.mockReturnValue(selectChain);
+    it("should delegate to processScheduledJob", async () => {
+      await handleScheduledJobTrigger(mockBullJob as unknown as Job);
 
-        // Mock no running runs
-        mockDbModule.select.mockReturnValueOnce({
-          from: jest.fn().mockReturnThis(),
-          where: jest.fn().mockResolvedValue([]),
-        });
-
-        await handleScheduledJobTrigger(mockBullJob as unknown as Job);
-
-        expect(mockQueuesModule.addJobToQueue).toHaveBeenCalled();
-      });
-
-      it("should update job lastRunAt and nextRunAt", async () => {
-        const selectChain = {
-          from: jest.fn().mockReturnThis(),
-          where: jest.fn().mockReturnThis(),
-          limit: jest.fn().mockResolvedValue([mockJob]),
-        };
-        mockDbModule.select
-          .mockReturnValueOnce({
-            from: jest.fn().mockReturnThis(),
-            where: jest.fn().mockResolvedValue([]),
-          })
-          .mockReturnValue(selectChain);
-
-        const updateChain = {
-          set: jest.fn().mockReturnThis(),
-          where: jest.fn().mockResolvedValue(undefined),
-        };
-        mockDbModule.update.mockReturnValue(updateChain);
-
-        await handleScheduledJobTrigger(mockBullJob as unknown as Job);
-
-        expect(updateChain.set).toHaveBeenCalledWith(
-          expect.objectContaining({
-            lastRunAt: expect.any(Date),
-          })
-        );
-      });
+      expect(mockSchedulerProcessor).toHaveBeenCalledWith(
+        mockBullJob as unknown as Job,
+      );
     });
 
-    describe("Negative Cases", () => {
-      it("should skip when job already running", async () => {
-        mockDbModule.select.mockReturnValueOnce({
-          from: jest.fn().mockReturnThis(),
-          where: jest.fn().mockResolvedValue([{ status: "running" }]),
-        });
+    it("should bubble processor errors", async () => {
+      mockSchedulerProcessor.mockRejectedValueOnce(new Error("processor failure"));
 
-        await handleScheduledJobTrigger(mockBullJob as unknown as Job);
-
-        expect(mockQueuesModule.addJobToQueue).not.toHaveBeenCalled();
-      });
-
-      it("should throw error when no test cases", async () => {
-        const jobNoTests = {
-          data: { ...mockBullJob.data, testCases: [] },
-        };
-
-        mockDbModule.select.mockReturnValueOnce({
-          from: jest.fn().mockReturnThis(),
-          where: jest.fn().mockResolvedValue([]),
-        });
-
-        // Should handle error gracefully
-        await handleScheduledJobTrigger(jobNoTests as unknown as Job);
-
-        // Job status should be updated to error
-        expect(mockDbModule.update).toHaveBeenCalled();
-      });
+      await expect(
+        handleScheduledJobTrigger(mockBullJob as unknown as Job),
+      ).rejects.toThrow("processor failure");
     });
   });
 
@@ -662,36 +591,33 @@ describe("Job Scheduler", () => {
   // ==========================================================================
 
   describe("Security", () => {
-    it("should include organization and project IDs in task", async () => {
-      const mockBullJob = {
-        data: {
-          jobId: testJobId,
-          testCases: [{ id: "t1", title: "Test", script: "code" }],
-          variables: {},
-          secrets: {},
-          projectId: testProjectId,
-          organizationId: testOrgId,
-        },
+    it("should store identifier-only scheduler payload", async () => {
+      const options = {
+        name: "Test Job",
+        cron: "0 * * * *",
+        jobId: testJobId,
       };
 
-      mockDbModule.select
-        .mockReturnValueOnce({
-          from: jest.fn().mockReturnThis(),
-          where: jest.fn().mockResolvedValue([]),
-        })
-        .mockReturnValue({
-          from: jest.fn().mockReturnThis(),
-          where: jest.fn().mockReturnThis(),
-          limit: jest.fn().mockResolvedValue([mockJob]),
-        });
+      await scheduleJob(options);
 
-      await handleScheduledJobTrigger(mockBullJob as unknown as Job);
-
-      expect(mockQueuesModule.addJobToQueue).toHaveBeenCalledWith(
+      expect(mockQueueAdd).toHaveBeenCalledWith(
+        `scheduled-job-${testJobId}`,
         expect.objectContaining({
-          organizationId: testOrgId,
+          jobId: testJobId,
           projectId: testProjectId,
-        })
+          organizationId: testOrgId,
+        }),
+        expect.any(Object),
+      );
+
+      expect(mockQueueAdd).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.not.objectContaining({
+          testCases: expect.anything(),
+          variables: expect.anything(),
+          secrets: expect.anything(),
+        }),
+        expect.any(Object),
       );
     });
   });

@@ -144,7 +144,7 @@ export async function POST(request: NextRequest, context: ExecuteContext) {
         id: runId,
         jobId: null, // Single test execution has no job
         projectId: project.id,
-        status: "running",
+        status: "queued", // Start as queued - capacity manager will update to running
         trigger: "manual",
         location: test.type === "performance" ? resolvedLocation : null,
         metadata: {
@@ -164,6 +164,9 @@ export async function POST(request: NextRequest, context: ExecuteContext) {
     const variableResolution = await resolveProjectVariables(project.id);
 
     // Enqueue based on test type
+    let queueStatus: "running" | "queued" = "queued";
+    let queuePosition: number | undefined;
+
     if (test.type === "performance") {
       const k6Task: K6ExecutionTask = {
         runId: run.id,
@@ -183,7 +186,9 @@ export async function POST(request: NextRequest, context: ExecuteContext) {
         location: resolvedLocation,
       };
 
-      await addK6TestToQueue(k6Task, "k6-single-test-execution");
+      const queueResult = await addK6TestToQueue(k6Task, "k6-single-test-execution");
+      queueStatus = queueResult.status;
+      queuePosition = queueResult.position;
     } else {
       const playwrightTask: TestExecutionTask = {
         testId: test.id,
@@ -195,12 +200,20 @@ export async function POST(request: NextRequest, context: ExecuteContext) {
         projectId: test.projectId ?? "",
       };
 
-      await addTestToQueue(playwrightTask);
+      const queueResult = await addTestToQueue(playwrightTask);
+      queueStatus = queueResult.status;
+      queuePosition = queueResult.position;
     }
+
+    // Update run status based on actual queue result
+    await db.update(runs)
+      .set({ status: queueStatus })
+      .where(eq(runs.id, run.id));
 
     return NextResponse.json({
       runId: run.id,
-      status: "running",
+      status: queueStatus,
+      position: queuePosition,
       testType: test.type,
       location: test.type === "performance" ? resolvedLocation : undefined,
     });

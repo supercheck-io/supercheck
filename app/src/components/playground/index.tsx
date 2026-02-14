@@ -105,6 +105,9 @@ const normalizePriorityValue = (value: unknown): TestPriority =>
     ? (value as TestPriority)
     : ("medium" as TestPriority);
 
+const buildReportViewerUrl = (entityId: string): string =>
+  `/api/test-results/${encodeURIComponent(entityId)}/report/index.html?t=${Date.now()}&forceIframe=true`;
+
 // Define our own TestCaseFormData interface
 interface TestCaseFormData {
   title: string;
@@ -827,11 +830,12 @@ const Playground: React.FC<PlaygroundProps> = ({
           return;
         }
 
-        if (!result.reportUrl) {
-          throw new Error("Missing report URL from test execution response");
-        }
+        const resolvedReportUrl =
+          typeof result.reportUrl === "string" && result.reportUrl.length > 0
+            ? result.reportUrl
+            : buildReportViewerUrl(result.testId);
 
-        setReportUrl(result.reportUrl);
+        setReportUrl(resolvedReportUrl);
         setCurrentRunId(result.runId || result.testId); // Store runId for cancellation (runId is the database/queue ID)
 
         const eventSource = new EventSource(
@@ -895,8 +899,7 @@ const Playground: React.FC<PlaygroundProps> = ({
                 eventSourceClosed = true;
 
                 if (result.testId) {
-                  const apiUrl = `/api/test-results/${result.testId
-                    }/report/index.html?t=${Date.now()}&forceIframe=true`;
+                  const apiUrl = buildReportViewerUrl(result.testId);
                   setReportUrl(apiUrl);
                   setActiveTab("report");
 
@@ -960,8 +963,7 @@ const Playground: React.FC<PlaygroundProps> = ({
             eventSourceClosed = true;
 
             if (result.testId) {
-              const apiUrl = `/api/test-results/${result.testId
-                }/report/index.html?t=${Date.now()}&forceIframe=true`;
+              const apiUrl = buildReportViewerUrl(result.testId);
               setReportUrl(apiUrl);
               setActiveTab("report");
             } else {
@@ -1132,7 +1134,7 @@ const Playground: React.FC<PlaygroundProps> = ({
         // Update report URL to trigger refresh with cancellation info
         // The ReportViewer will detect the cancellation from the API response
         if (currentRunId) {
-          const apiUrl = `/api/test-results/${currentRunId}/report/index.html?t=${Date.now()}&forceIframe=true`;
+          const apiUrl = buildReportViewerUrl(currentRunId);
           setReportUrl(apiUrl);
           setActiveTab("report");
         }

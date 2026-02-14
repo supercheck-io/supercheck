@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/utils/db";
-import { runs, reports, jobs, jobTests } from "@/db/schema";
+import { runs, reports, jobs, jobTests, projects } from "@/db/schema";
 import { eq, and, count, sql } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
@@ -43,11 +43,12 @@ export async function GET(
         errorDetails: runs.errorDetails,
         reportUrl: reports.s3Url,
         trigger: runs.trigger,
-        projectId: jobs.projectId,
-        organizationId: jobs.organizationId,
+        projectId: runs.projectId,
+        organizationId: projects.organizationId,
       })
       .from(runs)
       .leftJoin(jobs, eq(runs.jobId, jobs.id))
+      .innerJoin(projects, eq(runs.projectId, projects.id))
       .leftJoin(
         reports,
         and(
@@ -58,7 +59,8 @@ export async function GET(
       .where(
         and(
           eq(runs.id, runId),
-          eq(runs.projectId, authCtx.project.id)
+          eq(runs.projectId, authCtx.project.id),
+          eq(projects.organizationId, authCtx.organizationId)
         )
       )
       .limit(1);
@@ -136,14 +138,16 @@ export async function DELETE(
         id: runs.id,
         jobId: runs.jobId,
         projectId: runs.projectId,
-        organizationId: jobs.organizationId,
+        organizationId: projects.organizationId,
       })
       .from(runs)
       .leftJoin(jobs, eq(runs.jobId, jobs.id))
+      .innerJoin(projects, eq(runs.projectId, projects.id))
       .where(
         and(
           eq(runs.id, runId),
-          eq(runs.projectId, authCtx.project.id)
+          eq(runs.projectId, authCtx.project.id),
+          eq(projects.organizationId, authCtx.organizationId)
         )
       )
       .limit(1);

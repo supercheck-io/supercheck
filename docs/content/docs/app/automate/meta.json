@@ -3,11 +3,17 @@
   "description": "Tests, jobs, and automation",
   "icon": "CalendarClock",
   "pages": [
+    "playground",
     "tests",
+    "---Test Types---",
+    "browser-test",
+    "api-test",
+    "database-test",
+    "custom-test",
+    "performance-test",
+    "---Execution---",
     "jobs",
     "runs",
-    "variables",
-    "playground",
-    "performance-test"
+    "variables"
   ]
 }

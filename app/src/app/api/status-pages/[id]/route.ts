@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
-import { statusPages, statusPageComponents, monitors } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import {
+  statusPages,
+  statusPageComponents,
+  monitors,
+  incidents,
+  statusPageSubscribers,
+} from "@/db/schema";
+import { eq, and, ne, isNull, sql } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import { generateProxyUrl } from "@/lib/asset-proxy";
@@ -104,6 +110,27 @@ export async function GET(request: NextRequest, context: RouteContext) {
       },
     });
 
+    // Fetch overview stats
+    const [activeIncidentsResult] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(incidents)
+      .where(
+        and(
+          eq(incidents.statusPageId, id),
+          ne(incidents.status, "resolved")
+        )
+      );
+
+    const [subscribersResult] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(statusPageSubscribers)
+      .where(
+        and(
+          eq(statusPageSubscribers.statusPageId, id),
+          isNull(statusPageSubscribers.purgeAt)
+        )
+      );
+
     // Transform components data
     const componentsWithMonitors = components.map((component) => {
       const linkedMonitors = component.monitors
@@ -138,6 +165,10 @@ export async function GET(request: NextRequest, context: RouteContext) {
       components: componentsWithMonitors,
       monitors: projectMonitors,
       canUpdate,
+      stats: {
+        activeIncidents: Number(activeIncidentsResult?.count ?? 0),
+        subscribers: Number(subscribersResult?.count ?? 0),
+      },
     });
   } catch (error) {
     if (isAuthError(error)) {

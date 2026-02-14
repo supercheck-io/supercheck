@@ -109,6 +109,7 @@ export class StalledJobHandlerService implements OnModuleInit {
         .select({
           id: schema.runs.id,
           jobId: schema.runs.jobId,
+          startedAt: schema.runs.startedAt,
           createdAt: schema.runs.createdAt,
           status: schema.runs.status,
         })
@@ -130,15 +131,18 @@ export class StalledJobHandlerService implements OnModuleInit {
       }> = [];
 
       for (const run of activeRuns) {
-        // Skip runs with null createdAt (should not happen, but handle gracefully)
-        if (!run.createdAt) {
+        // Use startedAt as the primary runtime clock for stalled detection.
+        // Fall back to createdAt only if startedAt is null (should not happen for running runs).
+        const referenceTime = run.startedAt ?? run.createdAt;
+
+        if (!referenceTime) {
           this.logger.warn(
-            `[${run.id}] Run has null createdAt timestamp, skipping stalled check`,
+            `[${run.id}] Run has null startedAt and createdAt timestamps, skipping stalled check`,
           );
           continue;
         }
 
-        const ageMs = now.getTime() - run.createdAt.getTime();
+        const ageMs = now.getTime() - referenceTime.getTime();
 
         // If a run has been "running" for longer than threshold + buffer, it's likely stuck
         // Threshold matches lockDuration in queue config (70 minutes)
@@ -200,7 +204,7 @@ export class StalledJobHandlerService implements OnModuleInit {
           // Group runs by job ID
           const runsByJob = new Map<
             string,
-            Array<'pending' | 'running' | 'passed' | 'failed' | 'error'>
+            Array<'pending' | 'running' | 'passed' | 'failed' | 'error' | 'queued' | 'blocked'>
           >();
           for (const jobRun of allJobRuns) {
             if (jobRun.jobId) {
@@ -215,7 +219,9 @@ export class StalledJobHandlerService implements OnModuleInit {
                     | 'running'
                     | 'passed'
                     | 'failed'
-                    | 'error',
+                    | 'error'
+                    | 'queued'
+                    | 'blocked',
                 );
             }
           }

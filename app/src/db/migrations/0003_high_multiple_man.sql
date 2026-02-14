@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "status_pages_custom_domain_idx" ON "status_pages" USING btree ("custom_domain") WHERE custom_domain IS NOT NULL;

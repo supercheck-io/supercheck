@@ -11,6 +11,7 @@
 
 import { aiCodeValidator, validateAICode } from "./ai-code-validator";
 import { aiRateLimiter, RateLimitResult } from "./ai-rate-limiter";
+import { isSelfHosted } from "@/lib/feature-flags";
 
 // Prompt injection patterns to detect and remove
 // These patterns are carefully tuned to catch malicious injection attempts
@@ -529,7 +530,7 @@ export class AuthService {
     tier?: string;
   }): Promise<RateLimitResult> {
     // Self-hosted mode skips rate limiting
-    if (process.env.SELF_HOSTED === "true") {
+    if (isSelfHosted()) {
       return {
         allowed: true,
         remaining: Number.MAX_SAFE_INTEGER,

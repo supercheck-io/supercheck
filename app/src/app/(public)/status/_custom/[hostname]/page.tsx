@@ -98,6 +98,7 @@ export default async function CustomDomainStatusPage({
             incidents={incidentsResult.incidents}
             idOrSubdomain={hostname}
             isPublicView
+            isCustomDomain
         />
     );
 }

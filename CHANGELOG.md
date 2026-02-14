@@ -5,7 +5,7 @@ All notable changes to Supercheck are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 
-## [1.2.4] - [Unreleased]
+## [1.2.4]
 
 ### Added
 - **New CLI** — Command-line interface for Testing, Monitoring, and Reliability — as Code (`npm install -g @supercheck/cli`)
@@ -18,7 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - Refactored secret handling and execution logging paths for safer runtime behavior
 
 ### Security
-- Fixed DoS vulnerability in fast-xml-parser (CVE) by upgrading to >=5.3.4
+- Fixed DoS vulnerability in fast-xml-parser (CVE)
 - Added organization authorization checks for AI analysis endpoints
 - Strengthened secret redaction flow in execution outputs before persistence/return
 

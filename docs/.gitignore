@@ -6,6 +6,9 @@
 .content-collections
 .source
 
+# build artifacts
+/public/search-index.json
+
 # test & build
 /coverage
 /.next/

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
-import { monitors, monitorNotificationSettings } from "@/db/schema";
-import { eq, desc, and, sql } from "drizzle-orm";
+import { monitors, monitorNotificationSettings, notificationProviders } from "@/db/schema";
+import { eq, desc, and, sql, inArray } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import {
@@ -453,38 +453,64 @@ export async function POST(req: NextRequest) {
     if (
       newMonitor &&
       alertConfig?.enabled &&
-      Array.isArray(alertConfig.notificationProviders)
+      Array.isArray(alertConfig.notificationProviders) &&
+      alertConfig.notificationProviders.length > 0
     ) {
-      console.log(
-        "[MONITOR_CREATE] Linking notification providers:",
-        alertConfig.notificationProviders
-      );
-
-      const providerLinks = await Promise.allSettled(
-        alertConfig.notificationProviders.map((providerId) =>
-          db.insert(monitorNotificationSettings).values({
-            monitorId: newMonitor.id,
-            notificationProviderId: providerId,
-          })
-        )
-      );
-
-      const successfulLinks = providerLinks.filter(
-        (result) => result.status === "fulfilled"
-      ).length;
-      const failedLinks = providerLinks.filter(
-        (result) => result.status === "rejected"
-      ).length;
-
-      console.log(
-        `[MONITOR_CREATE] Notification provider links: ${successfulLinks} successful, ${failedLinks} failed`
-      );
-
-      if (failedLinks > 0) {
-        console.warn(
-          "[MONITOR_CREATE] Some notification provider links failed:",
-          providerLinks.filter((result) => result.status === "rejected")
+      // SECURITY: Validate that all notification providers belong to the same org/project
+      const validProviders = await db
+        .select({ id: notificationProviders.id })
+        .from(notificationProviders)
+        .where(
+          and(
+            inArray(notificationProviders.id, alertConfig.notificationProviders),
+            eq(notificationProviders.organizationId, organizationId),
+            eq(notificationProviders.projectId, targetProjectId)
+          )
         );
+
+      const validProviderIds = new Set(validProviders.map((p) => p.id));
+      const invalidProviderIds = alertConfig.notificationProviders.filter(
+        (id: string) => !validProviderIds.has(id)
+      );
+
+      if (invalidProviderIds.length > 0) {
+        console.warn(
+          `[MONITOR_CREATE] Skipping ${invalidProviderIds.length} invalid/unauthorized notification provider(s)`
+        );
+      }
+
+      if (validProviderIds.size > 0) {
+        console.log(
+          "[MONITOR_CREATE] Linking notification providers:",
+          Array.from(validProviderIds)
+        );
+
+        const providerLinks = await Promise.allSettled(
+          Array.from(validProviderIds).map((providerId) =>
+            db.insert(monitorNotificationSettings).values({
+              monitorId: newMonitor.id,
+              notificationProviderId: providerId,
+            })
+          )
+        );
+
+        const successfulLinks = providerLinks.filter(
+          (result) => result.status === "fulfilled"
+        ).length;
+        const failedLinks = providerLinks.filter(
+          (result) => result.status === "rejected"
+        ).length;
+
+        console.log(
+          `[MONITOR_CREATE] Notification provider links: ${successfulLinks} successful, ${failedLinks} failed`
+        );
+
+        if (failedLinks > 0) {
+          console.warn(
+            "[MONITOR_CREATE] Some notification provider links failed:",
+            providerLinks.filter((result) => result.status === "rejected")
+          );
+        }
       }
     }
 
@@ -744,15 +770,33 @@ export async function PUT(req: NextRequest) {
         .delete(monitorNotificationSettings)
         .where(eq(monitorNotificationSettings.monitorId, id));
 
-      // Then, create new links
-      await Promise.all(
-        alertConfig.notificationProviders.map((providerId) =>
-          db.insert(monitorNotificationSettings).values({
-            monitorId: id,
-            notificationProviderId: providerId,
-          })
-        )
-      );
+      // SECURITY: Validate that all notification providers belong to the same org/project
+      if (alertConfig.notificationProviders.length > 0) {
+        const validProviders = await db
+          .select({ id: notificationProviders.id })
+          .from(notificationProviders)
+          .where(
+            and(
+              inArray(notificationProviders.id, alertConfig.notificationProviders),
+              eq(notificationProviders.organizationId, organizationId),
+              eq(notificationProviders.projectId, project.id)
+            )
+          );
+
+        const validProviderIds = validProviders.map((p) => p.id);
+
+        // Then, create new links only for validated providers
+        if (validProviderIds.length > 0) {
+          await Promise.all(
+            validProviderIds.map((providerId) =>
+              db.insert(monitorNotificationSettings).values({
+                monitorId: id,
+                notificationProviderId: providerId,
+              })
+            )
+          );
+        }
+      }
     }
 
     // Log the audit event for monitor update

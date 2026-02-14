@@ -1,6 +1,17 @@
 import { NextResponse } from "next/server";
 import { db } from "@/utils/db";
-import { monitors, monitorResults, jobs, runs, tests, auditLogs, reports, k6PerformanceRuns } from "@/db/schema";
+import {
+  monitors,
+  monitorResults,
+  jobs,
+  runs,
+  tests,
+  auditLogs,
+  reports,
+  k6PerformanceRuns,
+  requirements,
+  requirementCoverageSnapshots,
+} from "@/db/schema";
 import { eq, desc, gte, and, count, sql, sum } from "drizzle-orm";
 import { subDays, subHours } from "date-fns";
 import { getQueueStats } from "@/lib/queue-stats";
@@ -183,7 +194,8 @@ export async function GET() {
       totalTests,
       testsByType,
       playgroundExecutions30d,
-      k6Stats
+      k6Stats,
+      requirementsMetrics,
     ] = await Promise.all([
       // Total tests
       dbInstance.select({ count: count() }).from(tests)
@@ -222,7 +234,32 @@ export async function GET() {
           eq(k6PerformanceRuns.projectId, targetProjectId),
           eq(k6PerformanceRuns.organizationId, context.organizationId),
           sql`${k6PerformanceRuns.completedAt} IS NOT NULL`
-        ))
+        )),
+
+      // Requirements coverage (for dashboard Requirements card)
+      dbInstance
+        .select({
+          totalRequirements: count(),
+          coveredRequirements: sql<number>`COUNT(*) FILTER (WHERE ${requirementCoverageSnapshots.status} = 'covered')`,
+          atRiskRequirements: sql<number>`COUNT(*) FILTER (
+            WHERE ${requirements.priority} IN ('high', 'medium')
+            AND (
+              ${requirementCoverageSnapshots.status} IN ('failing', 'missing')
+              OR ${requirementCoverageSnapshots.status} IS NULL
+            )
+          )`,
+        })
+        .from(requirements)
+        .leftJoin(
+          requirementCoverageSnapshots,
+          eq(requirementCoverageSnapshots.requirementId, requirements.id)
+        )
+        .where(
+          and(
+            eq(requirements.projectId, targetProjectId),
+            eq(requirements.organizationId, context.organizationId)
+          )
+        ),
     ]);
 
     // PERFORMANCE: Run all remaining queries in parallel instead of sequential awaits
@@ -341,6 +378,13 @@ export async function GET() {
     const successfulChecks = uptimeResult[0]?.successfulChecks ?? 0;
     const overallUptime = totalChecks > 0 ? (successfulChecks / totalChecks) * 100 : 100;
 
+    const totalRequirements = Number(requirementsMetrics[0]?.totalRequirements) || 0;
+    const coveredRequirements = Number(requirementsMetrics[0]?.coveredRequirements) || 0;
+    const atRiskRequirements = Number(requirementsMetrics[0]?.atRiskRequirements) || 0;
+    const coveragePercentage = totalRequirements > 0
+      ? Math.round((coveredRequirements / totalRequirements) * 10000) / 100
+      : 0;
+
     // OPTIMIZED: Calculate total execution time using pre-aggregated SQL data
     // This eliminates CPU spikes from looping over 5000+ records in JavaScript
     const totalExecutionTimeCalculation = (() => {
@@ -447,6 +491,14 @@ export async function GET() {
         byType: testsByType,
         playgroundExecutions30d: playgroundExecutions30d[0].count,
         playgroundExecutionsTrend: playgroundExecutionsTrend
+      },
+
+      // Requirements coverage statistics
+      requirements: {
+        total: totalRequirements,
+        covered: coveredRequirements,
+        atRisk: atRiskRequirements,
+        coveragePercentage,
       },
 
       // K6 Performance Test Statistics (VU-minutes = VUs * duration)

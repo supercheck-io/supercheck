@@ -977,22 +977,15 @@ export class ExecutionService implements OnModuleDestroy {
         s3Url: s3Url ?? undefined,
       });
 
-      // Update the run record in the database with the duration
+      // Update the run record in the database with the final status and formatted duration
       try {
-        await this.dbService.updateRunStatus(
-          runId,
-          finalStatus,
-          durationSeconds.toString(),
-        );
+        await this.dbService.updateRunStatus(runId, finalStatus, durationStr);
       } catch (updateError) {
         this.logger.error(
-          `[${runId}] Error updating run duration: ${(updateError as Error).message}`,
+          `[${runId}] Error updating run status/duration: ${(updateError as Error).message}`,
           (updateError as Error).stack,
         );
       }
-
-      // Store final run result
-      await this.dbService.updateRunStatus(runId, finalStatus, durationStr);
       this.logger.log(
         `[Playwright Job] ${runId} ${finalStatus} (${durationMs}ms, ${testScripts.length} tests)`,
       );
@@ -1046,12 +1039,13 @@ export class ExecutionService implements OnModuleDestroy {
         );
 
       // Store final run result with error - use error status for cancellation
-      await this.dbService.updateRunStatus(
-        runId,
-        finalStatus,
-        '0ms',
-        errorDetails,
-      );
+      await this.dbService
+        .updateRunStatus(runId, finalStatus, '0ms', errorDetails)
+        .catch((updateErr) =>
+          this.logger.error(
+            `[${runId}] Failed to update run status on error: ${(updateErr as Error).message}`,
+          ),
+        );
 
       // Set finalResult for error case
       finalResult = {

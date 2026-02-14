@@ -1,5 +1,5 @@
 import { createDataHook, type PaginatedResponse } from "./lib/create-data-hook";
-import { useQuery, useQueryClient, useIsRestoring, keepPreviousData } from "@tanstack/react-query";
+import { useQuery, useQueryClient, useIsRestoring } from "@tanstack/react-query";
 import { useProjectContext } from "./use-project-context";
 
 export interface StatusPage {
@@ -52,6 +52,8 @@ export function getStatusPagesListQueryKey(projectId: string | null) {
 const statusPagesHook = createDataHook<StatusPage, CreateStatusPageData, UpdateStatusPageData>({
   queryKey: STATUS_PAGES_QUERY_KEY,
   endpoint: "/api/status-pages",
+  staleTime: 60 * 1000,
+  gcTime: 5 * 60 * 1000,
   refetchOnWindowFocus: false,
   refetchOnMount: 'always',  // Always refetch on page visit for fresh data
   singleItemField: "statusPage",
@@ -134,6 +136,10 @@ export interface StatusPageDetailResponse {
   components: StatusPageComponent[];
   monitors: StatusPageMonitor[];
   canUpdate: boolean;
+  stats?: {
+    activeIncidents: number;
+    subscribers: number;
+  };
 }
 
 export function useStatusPageDetail(statusPageId: string | null) {
@@ -159,7 +165,8 @@ export function useStatusPageDetail(statusPageId: string | null) {
       return response.json();
     },
     enabled: !!statusPageId && !!projectId,
-    // Uses global defaults: staleTime (30min), gcTime (24h)
+    staleTime: 60 * 1000,
+    gcTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
     refetchOnMount: false,
     refetchOnReconnect: false,
@@ -177,6 +184,10 @@ export function useStatusPageDetail(statusPageId: string | null) {
     components: query.data?.components ?? [],
     monitors: query.data?.monitors ?? [],
     canUpdate: query.data?.canUpdate ?? false,
+    stats: query.data?.stats ?? {
+      activeIncidents: 0,
+      subscribers: 0,
+    },
     isLoading: isInitialLoading,
     isRestoring,
     error: query.error as Error | null,

@@ -9,6 +9,7 @@ import {
   statusPages,
 } from "@/db/schema";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { z } from "zod";
 import { requireProjectContext } from "@/lib/project-context";
 import { requirePermissions } from "@/lib/rbac/middleware";
@@ -190,31 +191,20 @@ export async function createIncident(data: CreateIncidentData) {
       success: true,
     });
 
-    // Send notifications to subscribers (email, webhooks, and Slack, async, non-blocking)
+    // Send notifications to subscribers using after() to ensure
+    // background work completes even in serverless/short-lived runtimes
     if (validatedData.deliverNotifications) {
-      // Send email notifications
-      sendIncidentNotifications(result.id, validatedData.statusPageId).catch(
-        (error) => {
-          console.error("Failed to send incident email notifications:", error);
+      after(async () => {
+        try {
+          await Promise.allSettled([
+            sendIncidentNotifications(result.id, validatedData.statusPageId),
+            sendWebhookNotifications(result.id, validatedData.statusPageId),
+            sendSlackNotifications(result.id, validatedData.statusPageId),
+          ]);
+        } catch (error) {
+          console.error("Failed to send incident notifications:", error);
         }
-      );
-
-      // Send webhook notifications
-      sendWebhookNotifications(result.id, validatedData.statusPageId).catch(
-        (error) => {
-          console.error(
-            "Failed to send incident webhook notifications:",
-            error
-          );
-        }
-      );
-
-      // Send Slack notifications
-      sendSlackNotifications(result.id, validatedData.statusPageId).catch(
-        (error) => {
-          console.error("Failed to send incident Slack notifications:", error);
-        }
-      );
+      });
     }
 
     // Revalidate the status page
