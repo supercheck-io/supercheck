@@ -4,8 +4,9 @@ declare const Buffer: {
   from(data: string, encoding: string): { toString(encoding: string): string };
 };
 
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import {
+  requirements,
   tests,
   testsInsertSchema,
   type TestPriority,
@@ -20,6 +21,7 @@ import { requireProjectContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { updateCoverageSnapshot } from "@/actions/requirements";
+import { validateScriptTypeMatch, normalizeTestType } from "@/lib/script-type-validator";
 
 // Create a schema for the save test action
 const saveTestSchema = testsInsertSchema.omit({
@@ -80,6 +82,24 @@ export async function saveTest(
       scriptToSave = Buffer.from(scriptToSave, "utf-8").toString("base64");
     }
 
+    // Validate script-type compatibility before saving
+    const resolvedType = normalizeTestType(validatedData.type);
+    if (validatedData.script && validatedData.script.trim().length > 0) {
+      // Decode base64 for validation (use original script if it wasn't base64)
+      let scriptForValidation = validatedData.script;
+      if (isBase64(validatedData.script) && typeof window === "undefined") {
+        scriptForValidation = Buffer.from(validatedData.script, "base64").toString("utf-8");
+      }
+      const typeValidation = validateScriptTypeMatch(scriptForValidation, resolvedType);
+      if (!typeValidation.valid) {
+        return {
+          id: "",
+          success: false,
+          error: typeValidation.error,
+        };
+      }
+    }
+
     // Check if this is an update (has an ID) or a new test
     if (validatedData.id) {
       // This is an update - check EDIT_TESTS permission (optimized - reuses context)
@@ -104,21 +124,36 @@ export async function saveTest(
 
       // Remove the id from the data to update
        
-      const { id: _, ...updateData } = validatedData;
+      const { id: _, requirementId: _requirementId, ...updateData } = validatedData;
 
       // Update the test in the database
-      await db
+      const updatedTests = await db
         .update(tests)
         .set({
           ...updateData,
           script: scriptToSave,
           updatedAt: new Date(),
           priority: updateData.priority as TestPriority,
-          type: updateData.type as TestType,
+          type: resolvedType as TestType,
           organizationId: organizationId,
           projectId: project.id,
         })
-        .where(eq(tests.id, testId));
+        .where(
+          and(
+            eq(tests.id, testId),
+            eq(tests.organizationId, organizationId),
+            eq(tests.projectId, project.id)
+          )
+        )
+        .returning({ id: tests.id });
+
+      if (updatedTests.length === 0) {
+        return {
+          id: "",
+          success: false,
+          error: "Test not found or access denied",
+        };
+      }
 
       // Log the audit event for test update
       await logAuditEvent({
@@ -129,7 +164,7 @@ export async function saveTest(
         metadata: {
           organizationId,
           testTitle: validatedData.title,
-          testType: validatedData.type,
+          testType: resolvedType,
           testPriority: validatedData.priority,
           projectId: project.id,
           projectName: project.name,
@@ -163,6 +198,28 @@ export async function saveTest(
 
       const newTestId = crypto.randomUUID();
 
+      if (validatedData.requirementId) {
+        const requirementRecord = await db
+          .select({ id: requirements.id })
+          .from(requirements)
+          .where(
+            and(
+              eq(requirements.id, validatedData.requirementId),
+              eq(requirements.organizationId, organizationId),
+              eq(requirements.projectId, project.id)
+            )
+          )
+          .limit(1);
+
+        if (requirementRecord.length === 0) {
+          return {
+            id: "",
+            success: false,
+            error: "Requirement not found or access denied",
+          };
+        }
+      }
+
       // Insert the test into the database
       await db.insert(tests).values({
         id: newTestId,
@@ -170,7 +227,7 @@ export async function saveTest(
         description: validatedData.description,
         script: scriptToSave,
         priority: validatedData.priority as TestPriority,
-        type: validatedData.type as TestType,
+        type: resolvedType as TestType,
         organizationId: organizationId,
         projectId: project.id,
         createdByUserId: userId,
@@ -197,7 +254,7 @@ export async function saveTest(
         metadata: {
           organizationId,
           testTitle: validatedData.title,
-          testType: validatedData.type,
+          testType: resolvedType,
           testPriority: validatedData.priority,
           projectId: project.id,
           projectName: project.name,

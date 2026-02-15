@@ -480,37 +480,22 @@ export async function POST(req: NextRequest) {
       }
 
       if (validProviderIds.size > 0) {
+        const normalizedProviderIds = Array.from(validProviderIds);
+
         console.log(
           "[MONITOR_CREATE] Linking notification providers:",
-          Array.from(validProviderIds)
+          normalizedProviderIds
         );
 
-        const providerLinks = await Promise.allSettled(
-          Array.from(validProviderIds).map((providerId) =>
-            db.insert(monitorNotificationSettings).values({
+        await db
+          .insert(monitorNotificationSettings)
+          .values(
+            normalizedProviderIds.map((providerId) => ({
               monitorId: newMonitor.id,
               notificationProviderId: providerId,
-            })
+            }))
           )
-        );
-
-        const successfulLinks = providerLinks.filter(
-          (result) => result.status === "fulfilled"
-        ).length;
-        const failedLinks = providerLinks.filter(
-          (result) => result.status === "rejected"
-        ).length;
-
-        console.log(
-          `[MONITOR_CREATE] Notification provider links: ${successfulLinks} successful, ${failedLinks} failed`
-        );
-
-        if (failedLinks > 0) {
-          console.warn(
-            "[MONITOR_CREATE] Some notification provider links failed:",
-            providerLinks.filter((result) => result.status === "rejected")
-          );
-        }
+          .onConflictDoNothing();
       }
     }
 
@@ -787,14 +772,15 @@ export async function PUT(req: NextRequest) {
 
         // Then, create new links only for validated providers
         if (validProviderIds.length > 0) {
-          await Promise.all(
-            validProviderIds.map((providerId) =>
-              db.insert(monitorNotificationSettings).values({
+          await db
+            .insert(monitorNotificationSettings)
+            .values(
+              validProviderIds.map((providerId) => ({
                 monitorId: id,
                 notificationProviderId: providerId,
-              })
+              }))
             )
-          );
+            .onConflictDoNothing();
         }
       }
     }

@@ -225,6 +225,20 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: errorMessage }, { status: 400 });
       }
 
+      if (!isPerformanceJob && testType === "performance") {
+        const errorMessage = `Test ${test.id} is a performance (k6) test and cannot be executed in a Playwright job. Create a k6 job to run performance tests.`;
+        console.error(`[${jobId}/${runId}] ${errorMessage}`);
+        await db
+          .update(runs)
+          .set({
+            status: "failed",
+            completedAt: new Date(),
+            errorDetails: errorMessage,
+          })
+          .where(eq(runs.id, runId));
+        return NextResponse.json({ error: errorMessage }, { status: 400 });
+      }
+
       if (isPerformanceJob) {
         try {
           const validation = validateK6Script(testScript);

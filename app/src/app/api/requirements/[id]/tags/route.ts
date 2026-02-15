@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/utils/db';
 import { requirements, requirementTags, tags } from '@/db/schema';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { requireAuthContext, isAuthError } from '@/lib/auth-context';
 
@@ -85,14 +85,25 @@ export async function POST(
     }
 
     const { id: requirementId } = await params;
-    const { tagIds } = await request.json();
+    const body = await request.json();
+    const tagIds = body?.tagIds;
 
     if (!Array.isArray(tagIds)) {
       return NextResponse.json({ error: 'Tag IDs must be an array' }, { status: 400 });
     }
 
+    const normalizedTagIds = Array.from(
+      new Set(
+        tagIds.filter((tagId): tagId is string => typeof tagId === 'string' && tagId.trim().length > 0)
+      )
+    );
+
+    if (normalizedTagIds.length !== tagIds.length) {
+      return NextResponse.json({ error: 'Tag IDs must be non-empty strings' }, { status: 400 });
+    }
+
     // Validate maximum number of tags per requirement (10)
-    if (tagIds.length > 10) {
+    if (normalizedTagIds.length > 10) {
       return NextResponse.json({ error: 'Maximum of 10 tags allowed per requirement' }, { status: 400 });
     }
 
@@ -111,12 +122,33 @@ export async function POST(
       return NextResponse.json({ error: 'Requirement not found' }, { status: 404 });
     }
 
+    // Verify all tags belong to the same org/project to prevent cross-tenant assignment
+    if (normalizedTagIds.length > 0) {
+      const validTags = await db
+        .select({ id: tags.id })
+        .from(tags)
+        .where(
+          and(
+            inArray(tags.id, normalizedTagIds),
+            eq(tags.organizationId, organizationId),
+            eq(tags.projectId, project.id)
+          )
+        );
+
+      if (validTags.length !== normalizedTagIds.length) {
+        return NextResponse.json(
+          { error: 'One or more tags are invalid or not accessible in this project' },
+          { status: 400 }
+        );
+      }
+    }
+
     // Remove existing tags for this requirement
     await db.delete(requirementTags).where(eq(requirementTags.requirementId, requirementId));
 
     // Add new tags
-    if (tagIds.length > 0) {
-      const requirementTagsToInsert = tagIds.map((tagId: string) => ({
+    if (normalizedTagIds.length > 0) {
+      const requirementTagsToInsert = normalizedTagIds.map((tagId: string) => ({
         requirementId,
         tagId,
         assignedAt: new Date(),

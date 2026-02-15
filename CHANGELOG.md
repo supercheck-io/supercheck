@@ -5,17 +5,21 @@ All notable changes to Supercheck are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 
-## [1.2.4]
+## [1.2.4] - 2026-02-15
 
 ### Added
 - **New CLI** — Command-line interface for Testing, Monitoring, and Reliability — as Code (`npm install -g @supercheck/cli`)
 - **AI Analyze for Monitors** — Generate AI-powered health assessments and performance analysis for any monitor
 - **AI Analyze for Job Runs** — Get AI-powered failure diagnosis and execution insights for Playwright and K6 runs
 - TypeScript support for Playwright and K6 scripts
+- API proxy helper used by the CLI and documentation
 
 ### Changed
-- Resolved all ESLint and TypeScript errors across the entire worker codebase
-- Refactored secret handling and execution logging paths for safer runtime behavior
+- Improved invitation flows and member project assignment handling
+- Org members API now returns both pending and expired invitations for explicit client-side state handling
+- Updated CLI command flags and documentation
+- Docs: static search index, refactored search dialog
+- Refactored secret handling and execution logging for safer runtime behavior
 
 ### Security
 - Fixed DoS vulnerability in fast-xml-parser (CVE)

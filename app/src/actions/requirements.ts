@@ -6,6 +6,7 @@ import {
   requirementsInsertSchema,
   requirementCoverageSnapshots,
   testRequirements,
+  tests,
   tags,
   requirementTags,
   type RequirementPriority,
@@ -492,7 +493,7 @@ export async function updateRequirement(
     const validatedData = updateRequirementSchema.parse(data);
 
     // Update requirement
-    await db
+    const updatedRequirements = await db
       .update(requirements)
       .set({
         title: validatedData.title,
@@ -509,7 +510,15 @@ export async function updateRequirement(
           eq(requirements.projectId, project.id),
           eq(requirements.organizationId, organizationId)
         )
-      );
+      )
+      .returning({ id: requirements.id });
+
+    if (updatedRequirements.length === 0) {
+      return {
+        success: false,
+        error: "Requirement not found or access denied",
+      };
+    }
 
     // Sync tags if provided
     if (validatedData.tagIds !== undefined) {
@@ -665,7 +674,8 @@ export async function deleteRequirements(
       .where(
         and(
           inArray(requirements.id, ids),
-          eq(requirements.projectId, project.id)
+          eq(requirements.projectId, project.id),
+          eq(requirements.organizationId, organizationId)
         )
       );
 
@@ -764,6 +774,126 @@ export async function linkTestsToRequirement(
     return { success: true };
   } catch (error) {
     console.error("Error linking tests to requirement:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error occurred",
+    };
+  }
+}
+
+/**
+ * Sync all tests linked to a requirement in a single operation.
+ * Replaces existing links with the provided set and updates coverage once.
+ */
+export async function syncRequirementTests(
+  requirementId: string,
+  testIds: string[]
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { userId, project, organizationId } = await requireProjectContext();
+
+    const canUpdate = checkPermissionWithContext("requirement", "update", {
+      userId,
+      organizationId,
+      project,
+    });
+
+    if (!canUpdate) {
+      return {
+        success: false,
+        error: "Insufficient permissions to update requirement tests",
+      };
+    }
+
+    const requirementRecord = await db
+      .select({ id: requirements.id })
+      .from(requirements)
+      .where(
+        and(
+          eq(requirements.id, requirementId),
+          eq(requirements.projectId, project.id),
+          eq(requirements.organizationId, organizationId)
+        )
+      )
+      .limit(1);
+
+    if (requirementRecord.length === 0) {
+      return {
+        success: false,
+        error: "Requirement not found or access denied",
+      };
+    }
+
+    const normalizedTestIds = Array.from(
+      new Set(
+        testIds.filter(
+          (testId): testId is string =>
+            typeof testId === "string" && testId.trim().length > 0
+        )
+      )
+    );
+
+    if (normalizedTestIds.length > 0) {
+      const scopedTests = await db
+        .select({ id: tests.id })
+        .from(tests)
+        .where(
+          and(
+            inArray(tests.id, normalizedTestIds),
+            eq(tests.projectId, project.id),
+            eq(tests.organizationId, organizationId)
+          )
+        );
+
+      if (scopedTests.length !== normalizedTestIds.length) {
+        return {
+          success: false,
+          error: "One or more selected tests are invalid or not accessible",
+        };
+      }
+    }
+
+    await db.transaction(async (tx) => {
+      await tx
+        .delete(testRequirements)
+        .where(eq(testRequirements.requirementId, requirementId));
+
+      if (normalizedTestIds.length > 0) {
+        await tx
+          .insert(testRequirements)
+          .values(
+            normalizedTestIds.map((testId) => ({
+              testId,
+              requirementId,
+              createdAt: new Date(),
+            }))
+          )
+          .onConflictDoNothing();
+      }
+    });
+
+    await updateCoverageSnapshot(requirementId);
+
+    await logAuditEvent({
+      userId,
+      action: "requirement_tests_synced",
+      resource: "requirement",
+      resourceId: requirementId,
+      metadata: {
+        organizationId,
+        testIds: normalizedTestIds,
+        testCount: normalizedTestIds.length,
+        projectId: project.id,
+        projectName: project.name,
+      },
+      success: true,
+    });
+
+    revalidatePath("/requirements");
+
+    return { success: true };
+  } catch (error) {
+    console.error("Error syncing tests to requirement:", error);
     return {
       success: false,
       error: error instanceof Error ? error.message : "Unknown error occurred",

@@ -1,9 +1,16 @@
 "use client";
 
 import { useState, useEffect, Suspense, useSyncExternalStore } from "react";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { StatsCard } from "@/components/admin/stats-card";
-import { Card, CardContent } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { TableBadge } from "@/components/ui/table-badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,6 +24,8 @@ import {
 import {
   FolderOpen,
   Users,
+  Building2,
+  AlertTriangle,
   LayoutDashboard,
   DollarSign,
   UserSearch,
@@ -25,6 +34,7 @@ import {
   Globe,
   ClipboardList,
   Terminal,
+  Mail,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AuditLogsTable } from "@/components/admin/audit-logs-table";
@@ -47,9 +57,10 @@ import {
   canInviteMembers,
   canManageProject,
 } from "@/lib/rbac/client-permissions";
-import { normalizeRole } from "@/lib/rbac/role-normalizer";
+import { normalizeRole, roleToDisplayName } from "@/lib/rbac/role-normalizer";
 import { z } from "zod";
 import { useAppConfig } from "@/hooks/use-app-config";
+import { cn } from "@/lib/utils";
 // Use React Query hooks for cached data fetching
 import {
   useOrgStats,
@@ -136,9 +147,9 @@ export default function OrgAdminDashboard() {
 
 function OrgAdminDashboardContent() {
   const { setBreadcrumbs } = useBreadcrumbs();
+  const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
-  const defaultTab = searchParams.get("tab") || "overview";
-  const [activeTab, setActiveTab] = useState(defaultTab);
 
   const isMounted = useSyncExternalStore(
     () => () => { },
@@ -147,6 +158,17 @@ function OrgAdminDashboardContent() {
   );
 
   const { isCloudHosted } = useAppConfig();
+
+  const allowedTabs = isCloudHosted
+    ? ["overview", "projects", "members", "cli-tokens", "audit", "subscription"]
+    : ["overview", "projects", "members", "cli-tokens", "audit"];
+
+  const requestedTab = searchParams.get("tab");
+  const safeTab = requestedTab && allowedTabs.includes(requestedTab)
+    ? requestedTab
+    : "overview";
+
+  const [activeTab, setActiveTab] = useState(safeTab);
 
   const { stats: orgStats, isLoading: statsLoading } = useOrgStats();
   const { details: orgDetails, isLoading: detailsLoading } = useOrgDetails();
@@ -198,7 +220,27 @@ function OrgAdminDashboardContent() {
     return () => setBreadcrumbs([]);
   }, [setBreadcrumbs]);
 
-  const handleTabChange = (_value: string) => { };
+  useEffect(() => {
+    setActiveTab(safeTab);
+  }, [safeTab]);
+
+  const handleTabChange = (value: string) => {
+    if (!allowedTabs.includes(value)) {
+      return;
+    }
+
+    setActiveTab(value);
+
+    const params = new URLSearchParams(searchParams.toString());
+    if (value === "overview") {
+      params.delete("tab");
+    } else {
+      params.set("tab", value);
+    }
+
+    const nextUrl = params.toString() ? `${pathname}?${params.toString()}` : pathname;
+    router.replace(nextUrl, { scroll: false });
+  };
 
   const handleCreateProject = async (formData?: CreateProjectFormData) => {
     const projectData = formData || {
@@ -342,25 +384,78 @@ function OrgAdminDashboardContent() {
     );
   }
 
+  const pendingInvitationsCount = invitations.filter(
+    (invitation) => invitation.status === "pending"
+  ).length;
+  const expiredInvitationsCount = invitations.filter(
+    (invitation) => invitation.status === "expired"
+  ).length;
+  const currentUserDisplayRole = roleToDisplayName(normalizeRole(currentUserRole));
+  const organizationAgeDays = Math.max(
+    0,
+    Math.floor((Date.now() - new Date(orgDetails.createdAt).getTime()) / (1000 * 60 * 60 * 24))
+  );
+  const organizationAgeLabel = organizationAgeDays === 1 ? "1 day" : `${organizationAgeDays} days`;
+
+  const roleCounts = members.reduce(
+    (acc, member) => {
+      const memberRole = member.role as keyof typeof acc;
+      if (memberRole in acc) {
+        acc[memberRole] += 1;
+      }
+      return acc;
+    },
+    {
+      org_owner: 0,
+      org_admin: 0,
+      project_admin: 0,
+      project_editor: 0,
+      project_viewer: 0,
+    }
+  );
+
+  const orgLevelAccessCount = roleCounts.org_owner + roleCounts.org_admin;
+  const defaultProjectName = projects.find((project) => project.isDefault)?.name ?? "Not configured";
+
+  const nextPendingInvite = invitations
+    .filter((invitation) => invitation.status === "pending")
+    .sort((a, b) => new Date(a.expiresAt).getTime() - new Date(b.expiresAt).getTime())[0];
+
+  const nextPendingInviteExpiry = nextPendingInvite
+    ? new Date(nextPendingInvite.expiresAt).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      })
+    : "No pending invites";
+
   return (
-    <div>
+    <div className="overflow-hidden">
       <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 m-4">
-        <CardContent className="p-6">
+        <CardContent className="p-6 overflow-hidden">
+          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight">Organization Admin</h1>
+              <p className="text-muted-foreground text-sm">
+                Manage your organization&apos;s projects, members, and security audit data.
+              </p>
+            </div>
+            <TableBadge tone="info" className="max-w-[320px]">
+              <Building2 className="mr-1.5 h-3.5 w-3.5" />
+              <span className="truncate">{orgDetails.name}</span>
+            </TableBadge>
+          </div>
+
           <Tabs
             value={activeTab}
             className="space-y-4"
-            onValueChange={(value) => {
-              setActiveTab(value);
-              handleTabChange(value);
-            }}
+            onValueChange={handleTabChange}
           >
             <TabsList
-              className="grid w-full grid-cols-4 lg:w-auto lg:inline-flex"
-              style={{
-                gridTemplateColumns: isCloudHosted
-                  ? "repeat(6, 1fr)"
-                  : "repeat(5, 1fr)",
-              }}
+              className={cn(
+                "grid w-full lg:w-auto lg:inline-flex",
+                isCloudHosted ? "grid-cols-6" : "grid-cols-5"
+              )}
             >
               <TabsTrigger value="overview" className="flex items-center gap-2">
                 <LayoutDashboard className="h-4 w-4" />
@@ -394,26 +489,15 @@ function OrgAdminDashboardContent() {
             </TabsList>
 
             <TabsContent value="overview" className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-2xl font-bold tracking-tight">
-                    Organization Admin
-                  </h2>
-                  <p className="text-muted-foreground text-sm">
-                    Manage your organization&apos;s projects, members, and view
-                    audit logs.
-                  </p>
-                </div>
-              </div>
-
-              {/* Primary Metrics - 3 columns on large, 2 on medium */}
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 auto-rows-fr">
                 <StatsCard
                   title="Projects"
                   value={stats.projects}
                   description="Active projects"
                   icon={FolderOpen}
                   variant="primary"
+                  className="h-full"
+                  metaInline
                 />
                 <StatsCard
                   title="Members"
@@ -421,6 +505,8 @@ function OrgAdminDashboardContent() {
                   description="Organization members"
                   icon={Users}
                   variant="purple"
+                  className="h-full"
+                  metaInline
                 />
                 <StatsCard
                   title="Scheduled Jobs"
@@ -428,17 +514,30 @@ function OrgAdminDashboardContent() {
                   description="Active jobs"
                   icon={CalendarClock}
                   variant="warning"
+                  className="h-full"
+                  metaInline
                 />
-              </div>
-
-              {/* Secondary Metrics */}
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <StatsCard
+                  title="Pending Invites"
+                  value={pendingInvitationsCount}
+                  description={
+                    expiredInvitationsCount > 0
+                      ? `${expiredInvitationsCount} expired invites`
+                      : "Awaiting member response"
+                  }
+                  icon={Mail}
+                  variant="warning"
+                  className="h-full"
+                  metaInline
+                />
                 <StatsCard
                   title="Test Cases"
                   value={stats.tests}
                   description="Available tests"
                   icon={Code}
                   variant="cyan"
+                  className="h-full"
+                  metaInline
                 />
                 <StatsCard
                   title="Monitors"
@@ -446,13 +545,84 @@ function OrgAdminDashboardContent() {
                   description="Active monitors"
                   icon={Globe}
                   variant="success"
+                  className="h-full"
+                  metaInline
                 />
                 <StatsCard
                   title="Total Runs"
                   value={stats.runs}
                   description="Test executions"
                   icon={ClipboardList}
+                  className="h-full"
+                  metaInline
                 />
+                <StatsCard
+                  title="Expired Invites"
+                  value={expiredInvitationsCount}
+                  description={
+                    pendingInvitationsCount > 0
+                      ? `${pendingInvitationsCount} pending invites`
+                      : "No pending invites"
+                  }
+                  icon={AlertTriangle}
+                  variant="danger"
+                  className="h-full"
+                  metaInline
+                />
+              </div>
+
+              <div className="grid gap-4 lg:grid-cols-2">
+                <Card className="h-full">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base">Access Composition</CardTitle>
+                    <CardDescription>Role distribution across your organization</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Org-Level Access</span>
+                      <TableBadge tone="purple">{orgLevelAccessCount.toLocaleString()}</TableBadge>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Project Admins</span>
+                      <TableBadge tone="info">{roleCounts.project_admin.toLocaleString()}</TableBadge>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Project Editors</span>
+                      <TableBadge tone="success">{roleCounts.project_editor.toLocaleString()}</TableBadge>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Project Viewers</span>
+                      <TableBadge tone="slate">{roleCounts.project_viewer.toLocaleString()}</TableBadge>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="h-full">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base">Organization Context</CardTitle>
+                    <CardDescription>Governance and lifecycle details</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Your Role</span>
+                      <TableBadge tone="purple">{currentUserDisplayRole}</TableBadge>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Organization Age</span>
+                      <TableBadge tone="indigo">{organizationAgeLabel}</TableBadge>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Default Project</span>
+                      <span className="max-w-[180px] truncate text-right text-foreground" title={defaultProjectName}>
+                        {defaultProjectName}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Next Invite Expiry</span>
+                      <span className="text-foreground">{nextPendingInviteExpiry}</span>
+                    </div>
+                  </CardContent>
+                </Card>
               </div>
             </TabsContent>
 

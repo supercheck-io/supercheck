@@ -6,6 +6,7 @@ import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import { subscriptionService } from "@/lib/services/subscription-service";
 import type { TestType } from "@/db/schema/types";
+import { validateScriptTypeMatch, normalizeTestType } from "@/lib/script-type-validator";
 
 declare const Buffer: {
   from(data: string, encoding: string): { toString(encoding: string): string };
@@ -231,25 +232,30 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { title, description, priority, type, script } = body;
 
-    const normalizeTestType = (value: unknown): TestType => {
-      if (typeof value !== "string") return "browser";
-      const normalized = value.trim().toLowerCase();
-      if (normalized === "playwright") return "browser";
-      if (normalized === "k6") return "performance";
-      if (normalized === "browser") return "browser";
-      if (normalized === "api") return "api";
-      if (normalized === "database") return "database";
-      if (normalized === "custom") return "custom";
-      if (normalized === "performance") return "performance";
-      return "browser";
-    };
-
     // Validate required fields
     if (!title) {
       return NextResponse.json(
         { error: "Test title is required" },
         { status: 400 }
       );
+    }
+
+    const resolvedType: TestType = normalizeTestType(type);
+
+    // Validate script-type compatibility if a script is provided
+    if (typeof script === "string" && script.length > 0) {
+      // Decode base64 if needed for validation
+      const decodedScript = await decodeTestScript(script);
+      const typeValidation = validateScriptTypeMatch(decodedScript, resolvedType);
+      if (!typeValidation.valid) {
+        return NextResponse.json(
+          {
+            error: typeValidation.error,
+            suggestedType: typeValidation.suggestedType,
+          },
+          { status: 400 }
+        );
+      }
     }
 
     // Use current project context
@@ -272,7 +278,7 @@ export async function POST(request: NextRequest) {
         title,
         description: description || null,
         priority: priority || "medium",
-        type: normalizeTestType(type),
+        type: resolvedType,
         script: (typeof script === "string" ? script : ""),
         projectId: targetProjectId,
         organizationId: context.organizationId,

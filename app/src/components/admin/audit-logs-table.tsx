@@ -125,9 +125,7 @@ export function AuditLogsTable({ className }: AuditLogsTableProps) {
         columns={auditLogColumns}
         data={data?.logs || []}
         toolbar={CustomToolbar}
-        title="Audit Logs"
-        description="Track all administrative actions and system events in your organization."
-        itemName="logs"
+        itemName="audit logs"
         meta={{
           globalFilterColumns: ["action", "user", "details"],
         }}

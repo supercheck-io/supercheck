@@ -1,11 +1,11 @@
 "use client";
 
 import { ColumnDef } from "@tanstack/react-table";
-import { Badge } from "@/components/ui/badge";
 import { Building, User } from "lucide-react";
 import { toast } from "sonner";
 import { DataTableColumnHeader } from "@/components/tests/data-table-column-header";
 import { UUIDField } from "@/components/ui/uuid-field";
+import { TableBadge } from "@/components/ui/table-badge";
 
 export interface AdminOrganization {
   id: string;
@@ -79,12 +79,7 @@ export const createOrgColumns = (): ColumnDef<AdminOrganization>[] => [
       return (
         <div className="flex items-center h-10">
           {count !== undefined && count !== null ? (
-            <Badge
-              variant="outline"
-              className="bg-blue-100 text-blue-700 text-xs px-3 py-1.5 font-medium"
-            >
-              {count}
-            </Badge>
+              <TableBadge tone="info">{count}</TableBadge>
           ) : (
             <span className="text-muted-foreground text-sm">—</span>
           )}
@@ -102,12 +97,7 @@ export const createOrgColumns = (): ColumnDef<AdminOrganization>[] => [
       return (
         <div className="flex items-center h-10">
           {count !== undefined && count !== null ? (
-            <Badge
-              variant="outline"
-              className="bg-green-100 text-green-700 text-xs px-3 py-1.5 font-medium"
-            >
-              {count}
-            </Badge>
+              <TableBadge tone="success">{count}</TableBadge>
           ) : (
             <span className="text-muted-foreground text-sm">—</span>
           )}

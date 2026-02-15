@@ -314,6 +314,41 @@ export function TestForm({
     }
   };
 
+  const tagsChanged = useMemo(() => {
+    if (!initialTags) return selectedTags.length > 0;
+
+    if (initialTags.length !== selectedTags.length) return true;
+
+    const initialTagIds = new Set(initialTags.map((tag: Tag) => tag.id));
+    const selectedTagIds = new Set(selectedTags.map((tag: Tag) => tag.id));
+
+    return (
+      initialTagIds.size !== selectedTagIds.size ||
+      !Array.from(initialTagIds).every((id: string) => selectedTagIds.has(id))
+    );
+  }, [initialTags, selectedTags]);
+
+  const invalidatePostSaveQueries = useCallback(
+    (includeRequirements: boolean) => {
+      void queryClient.invalidateQueries({
+        queryKey: TESTS_QUERY_KEY,
+        refetchType: "all",
+      });
+      void queryClient.invalidateQueries({
+        queryKey: DASHBOARD_QUERY_KEY,
+        refetchType: "all",
+      });
+
+      if (includeRequirements) {
+        void queryClient.invalidateQueries({
+          queryKey: REQUIREMENTS_QUERY_KEY,
+          refetchType: "all",
+        });
+      }
+    },
+    [queryClient]
+  );
+
   // Track if form has changes compared to initial values
   const hasChangesLocal = useCallback(() => {
     // Check if any form field has changed
@@ -334,29 +369,13 @@ export function TestForm({
     const editorChanged = editorContent !== initialEditorContentProp;
 
     // Check if tags have changed
-    const tagsChanged = (() => {
-      if (!initialTags) return selectedTags.length > 0;
-
-      if (initialTags.length !== selectedTags.length) return true;
-
-      // Check if the same tags are selected (compare by ID)
-      const initialTagIds = new Set(initialTags.map((tag: Tag) => tag.id));
-      const selectedTagIds = new Set(selectedTags.map((tag: Tag) => tag.id));
-
-      return (
-        initialTagIds.size !== selectedTagIds.size ||
-        !Array.from(initialTagIds).every((id: string) => selectedTagIds.has(id))
-      );
-    })();
-
     return formFieldsChanged || editorChanged || tagsChanged;
   }, [
     testCase,
     editorContent,
     initialFormValues,
     initialEditorContentProp,
-    selectedTags,
-    initialTags,
+    tagsChanged,
     performanceMode,
   ]);
 
@@ -376,17 +395,6 @@ export function TestForm({
       locationChanged;
 
     // Check if tags have changed
-    const tagsChanged = (() => {
-      if (!initialTags) return selectedTags.length > 0;
-      if (initialTags.length !== selectedTags.length) return true;
-      const initialTagIds = new Set(initialTags.map((tag: Tag) => tag.id));
-      const selectedTagIds = new Set(selectedTags.map((tag: Tag) => tag.id));
-      return (
-        initialTagIds.size !== selectedTagIds.size ||
-        !Array.from(initialTagIds).every((id: string) => selectedTagIds.has(id))
-      );
-    })();
-
     // Script has NOT changed
     const scriptUnchanged = editorContent === initialEditorContentProp;
 
@@ -397,8 +405,7 @@ export function TestForm({
     editorContent,
     initialFormValues,
     initialEditorContentProp,
-    selectedTags,
-    initialTags,
+    tagsChanged,
     performanceMode,
   ]);
 
@@ -561,15 +568,14 @@ export function TestForm({
           });
 
           if (result.success) {
-            // Save tags after successful test update
-            await saveTestTags(testId);
+            // Save tags only when changed to avoid unnecessary API/DB work
+            if (tagsChanged) {
+              await saveTestTags(testId);
+            }
 
             toast.success("Test updated successfully.");
 
-            // Invalidate React Query cache to ensure fresh data on tests page
-            await queryClient.invalidateQueries({ queryKey: TESTS_QUERY_KEY, refetchType: 'all' });
-            // Cross-entity: Dashboard shows Total Tests count
-            await queryClient.invalidateQueries({ queryKey: DASHBOARD_QUERY_KEY, refetchType: 'all' });
+            invalidatePostSaveQueries(false);
 
             // Navigate to the tests page after updating
             router.push("/tests/");
@@ -591,20 +597,14 @@ export function TestForm({
           });
 
           if (result.success && result.id) {
-            // Save tags after successful test creation
-            await saveTestTags(result.id);
+            // Save tags only when changed to avoid unnecessary API/DB work
+            if (tagsChanged) {
+              await saveTestTags(result.id);
+            }
 
             toast.success("Test saved successfully.");
 
-            // Invalidate React Query cache to ensure fresh data on tests page
-            await queryClient.invalidateQueries({ queryKey: TESTS_QUERY_KEY, refetchType: 'all' });
-            // Cross-entity: Dashboard shows Total Tests count
-            await queryClient.invalidateQueries({ queryKey: DASHBOARD_QUERY_KEY, refetchType: 'all' });
-
-            // If linked to a requirement, also invalidate requirements cache for updated counts
-            if (initialLinkedRequirement?.id) {
-              await queryClient.invalidateQueries({ queryKey: REQUIREMENTS_QUERY_KEY, refetchType: 'all' });
-            }
+            invalidatePostSaveQueries(!!initialLinkedRequirement?.id);
 
             // Navigate to the tests page with the test ID
             router.push("/tests/");

@@ -29,7 +29,7 @@ jest.mock("@/lib/notification-providers/ownership", () => ({
   validateNotificationProviderOwnership: jest.fn(),
 }));
 
-import { GET, POST } from "./route";
+import { GET, POST, PUT } from "./route";
 
 const { db: mockDb } = jest.requireMock("@/utils/db") as {
   db: {
@@ -159,6 +159,66 @@ describe("Jobs route regressions", () => {
       organizationId: "org-1",
       projectId: "project-1",
     });
+    expect(mockDb.transaction).not.toHaveBeenCalled();
+  });
+
+  it("POST /api/jobs rejects duplicate test IDs", async () => {
+    const request = new NextRequest("http://localhost/api/jobs", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "Nightly Job",
+        description: "Nightly",
+        cronSchedule: "0 * * * *",
+        tests: [{ id: "test-1" }, { id: "test-1" }],
+      }),
+    });
+
+    const response = await POST(request);
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body.error).toContain("Duplicate test IDs");
+    expect(mockSubscriptionService.blockUntilSubscribed).not.toHaveBeenCalled();
+    expect(mockDb.transaction).not.toHaveBeenCalled();
+  });
+
+  it("PUT /api/jobs rejects jobType changes after creation", async () => {
+    const existingJobQuery = {
+      from: jest.fn().mockReturnValue({
+        where: jest.fn().mockReturnValue({
+          limit: jest.fn().mockResolvedValue([
+            {
+              id: "job-1",
+              projectId: "project-1",
+              organizationId: "org-1",
+              jobType: "playwright",
+            },
+          ]),
+        }),
+      }),
+    };
+
+    mockDb.select.mockReturnValueOnce(existingJobQuery);
+
+    const request = new Request("http://localhost/api/jobs", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        id: "job-1",
+        name: "Nightly Job",
+        description: "Nightly",
+        cronSchedule: "0 * * * *",
+        jobType: "k6",
+        tests: [{ id: "test-1" }],
+      }),
+    });
+
+    const response = await PUT(request);
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body.error).toContain("Job type cannot be changed");
     expect(mockDb.transaction).not.toHaveBeenCalled();
   });
 });

@@ -7,6 +7,7 @@ import {
   User,
   UserCheck,
   UserX,
+  UserPlus,
   Building2,
   Download,
   Loader2,
@@ -28,11 +29,13 @@ interface Organization {
 interface UserTableToolbarProps<TData> {
   table: Table<TData>;
   organizations?: Organization[];
+  onCreateUser?: () => void;
 }
 
 export function UserTableToolbar<TData>({
   table,
   organizations = [],
+  onCreateUser,
 }: UserTableToolbarProps<TData>) {
   const [isExporting, setIsExporting] = useState(false);
   const isFiltered = table.getState().columnFilters.length > 0;
@@ -213,6 +216,12 @@ export function UserTableToolbar<TData>({
           Export
         </Button>
         <DataTableViewOptions table={table} />
+        {onCreateUser && (
+          <Button size="sm" className="h-8" onClick={onCreateUser}>
+            <UserPlus className="h-4 w-4 mr-1.5" />
+            Create User
+          </Button>
+        )}
       </div>
     </div>
   );

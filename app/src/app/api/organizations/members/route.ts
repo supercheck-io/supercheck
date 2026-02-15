@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/utils/db';
 import { member, user as userTable, invitation, projectMembers, projects } from '@/db/schema';
-import { eq, desc, and } from 'drizzle-orm';
+import { eq, desc, and, or } from 'drizzle-orm';
 import { getUserOrgRole } from '@/lib/rbac/middleware';
 import { requireUserAuthContext, isAuthError } from '@/lib/auth-context';
 import { Role } from '@/lib/rbac/permissions';
@@ -44,7 +44,7 @@ export async function GET() {
         .where(eq(member.organizationId, organizationId))
         .orderBy(desc(member.id)), // UUIDv7 is time-ordered (PostgreSQL 18+)
 
-      // Get pending invitations for this organization (exclude cancelled/accepted)
+      // Get pending and expired invitations for this organization
       db
         .select({
           id: invitation.id,
@@ -60,7 +60,10 @@ export async function GET() {
         .where(
           and(
             eq(invitation.organizationId, organizationId),
-            eq(invitation.status, 'pending')
+            or(
+              eq(invitation.status, 'pending'),
+              eq(invitation.status, 'expired')
+            )
           )
         )
         .orderBy(desc(invitation.expiresAt)),

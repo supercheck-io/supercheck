@@ -1,8 +1,6 @@
 "use client";
 
 import React, { useEffect, useState, useMemo, useCallback } from "react";
-import { canEditMonitors } from "@/lib/rbac/client-permissions";
-import { Role } from "@/lib/rbac/permissions-client";
 import { LoadingBadge, Spinner } from "@/components/ui/spinner";
 import { Button } from "@/components/ui/button";
 import { deleteMonitor } from "@/actions/delete-monitor";
@@ -195,7 +193,9 @@ export function MonitorDetailClient({
     location: selectedLocation,
   });
   const {
-    userRole,
+    canEdit: canEditMonitor,
+    canDelete: canDeleteMonitor,
+    canToggle: canToggleMonitor,
     isLoading: permissionsLoading,
   } = useMonitorPermissions(monitor.id);
 
@@ -258,6 +258,12 @@ export function MonitorDetailClient({
   }, [availableLocations, selectedLocation]);
 
   const handleDelete = async () => {
+    if (!canDeleteMonitor) {
+      toast.error("Insufficient permissions to delete monitors");
+      setShowDeleteDialog(false);
+      return;
+    }
+
     setIsDeleting(true);
     try {
       // Use the server action to delete the monitor
@@ -284,6 +290,11 @@ export function MonitorDetailClient({
   };
 
   const handleToggleStatus = async () => {
+    if (!canToggleMonitor) {
+      toast.error("Insufficient permissions to control monitors");
+      return;
+    }
+
     let newStatus: DBMoniotorStatusType =
       monitor.status === "paused" ? "up" : "paused";
 
@@ -850,15 +861,15 @@ export function MonitorDetailClient({
               {/* Action buttons - only show if user has manage permissions and not notification view */}
               {!isNotificationView &&
                 !permissionsLoading &&
-                userRole &&
-                canEditMonitors(userRole) && (
+                (
                   <>
-
-
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={handleToggleStatus}
+                      onClick={canToggleMonitor ? handleToggleStatus : undefined}
+                      disabled={!canToggleMonitor}
+                      className={!canToggleMonitor ? "opacity-50 cursor-not-allowed" : ""}
+                      title={canToggleMonitor ? "Pause or resume monitor" : "Insufficient permissions to control monitors"}
                     >
                       {monitor.status === "paused" ? (
                         <Play className="mr-2 h-4 w-4" />
@@ -872,74 +883,42 @@ export function MonitorDetailClient({
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() =>
-                        router.push(`/monitors/${monitor.id}/edit`)
-                      }
+                      onClick={canEditMonitor ? () => router.push(`/monitors/${monitor.id}/edit`) : undefined}
+                      disabled={!canEditMonitor}
                       className="flex items-center"
+                      title={canEditMonitor ? "Edit monitor" : "Insufficient permissions to edit monitors"}
                     >
                       <Edit3 className="h-4 w-4 mr-1" />
                       <span className="hidden sm:inline">Edit</span>
                     </Button>
 
-
-
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => setShowDeleteDialog(true)}
-                      className="flex items-center text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/50"
+                      onClick={canDeleteMonitor ? () => setShowDeleteDialog(true) : undefined}
+                      disabled={!canDeleteMonitor}
+                      className={`flex items-center ${!canDeleteMonitor
+                        ? "opacity-50 cursor-not-allowed text-muted-foreground"
+                        : "text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/50"}`}
+                      title={canDeleteMonitor ? "Delete monitor" : "Insufficient permissions to delete monitors"}
                     >
                       <Trash2 className="h-4 w-4 mr-1" />
                       <span className="hidden sm:inline">Delete</span>
                     </Button>
 
-                    <AIMonitorAnalyzeButton
-                      monitorId={monitor.id}
-                      monitorName={monitor.name}
-                      monitorType={monitor.type}
-                    />
+                    {canEditMonitor && (
+                      <AIMonitorAnalyzeButton
+                        monitorId={monitor.id}
+                        monitorName={monitor.name}
+                        monitorType={monitor.type}
+                      />
+                    )}
 
                   </>
                 )}
 
               {/* Show loading state while fetching permissions - only in non-notification view */}
               {!isNotificationView && permissionsLoading && <LoadingBadge />}
-
-              {/* Show disabled action buttons when user doesn't have management permissions - only in non-notification view */}
-              {!isNotificationView &&
-                !permissionsLoading &&
-                userRole &&
-                !canEditMonitors(userRole) && (
-                  <>
-                    <Button variant="outline" size="sm" disabled>
-                      {monitor.status === "paused" ? (
-                        <Play className="mr-2 h-4 w-4" />
-                      ) : (
-                        <Pause className="mr-2 h-4 w-4" />
-                      )}
-                      {monitor.status === "paused" ? "Resume" : "Pause"}
-                    </Button>
-
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled
-                      className="flex items-center"
-                    >
-                      <Edit3 className="h-4 w-4 mr-1" />
-                      <span className="hidden sm:inline">Edit</span>
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled
-                      className="flex items-center text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/50"
-                    >
-                      <Trash2 className="h-4 w-4 mr-1" />
-                      <span className="hidden sm:inline">Delete</span>
-                    </Button>
-                  </>
-                )}
 
               {/* In notification view, just show project name without action buttons */}
               {isNotificationView && monitor.projectName && (

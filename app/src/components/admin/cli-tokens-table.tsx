@@ -362,16 +362,7 @@ export function CliTokensTable() {
   if (error) {
     return (
       <Card>
-        <CardHeader>
-          <CardTitle className="text-lg font-semibold flex items-center gap-2">
-            <Terminal className="h-5 w-5 text-muted-foreground" />
-            CLI Tokens
-          </CardTitle>
-          <CardDescription>
-            Create and manage CLI tokens for the Supercheck CLI and programmatic API access
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+        <CardContent className="pt-6">
           <Alert variant="destructive">
             <AlertTriangle className="h-4 w-4" />
             <AlertTitle>Failed to load tokens</AlertTitle>
@@ -400,12 +391,7 @@ export function CliTokensTable() {
                   CLI Tokens
                 </CardTitle>
                 <CardDescription className="text-sm">
-                  Create and manage CLI tokens for the Supercheck CLI and
-                  programmatic API access. Tokens are project-scoped with{" "}
-                  <code className="text-[11px] bg-muted px-1.5 py-0.5 rounded font-mono">
-                    sck_live_
-                  </code>{" "}
-                  prefix.
+                  Manage API tokens for CLI and CI/CD access.
                 </CardDescription>
               </div>
               <Dialog open={createOpen} onOpenChange={setCreateOpen}>
@@ -638,11 +624,11 @@ export function CliTokensTable() {
           </CardHeader>
           <CardContent>
             {isLoading ? (
-              <div className="flex flex-col items-center justify-center py-12">
+              <div className="flex flex-col items-center justify-center py-6">
                 <SuperCheckLoading size="sm" message="Loading tokens..." />
               </div>
             ) : tokens.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 text-center">
+              <div className="flex flex-col items-center justify-center py-4 text-center">
                 <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted mb-4">
                   <Key className="h-6 w-6 text-muted-foreground" />
                 </div>
@@ -650,7 +636,7 @@ export function CliTokensTable() {
                   No CLI tokens yet
                 </h3>
                 <p className="text-sm text-muted-foreground max-w-sm">
-                  Create your first CLI token to enable Supercheck CLI access and CI/CD integration.
+                  Create your first CLI token to get started with CLI and CI/CD access.
                 </p>
               </div>
             ) : (

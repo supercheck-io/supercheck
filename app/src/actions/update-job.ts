@@ -1,8 +1,13 @@
 "use server";
 
 import { db } from "@/utils/db";
-import { jobs, jobTests, jobNotificationSettings } from "@/db/schema";
-import { eq, and, asc } from "drizzle-orm";
+import {
+  jobs,
+  jobTests,
+  jobNotificationSettings,
+  tests as testsTable,
+} from "@/db/schema";
+import { eq, and, asc, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { scheduleJob, deleteScheduledJob } from "@/lib/job-scheduler";
@@ -11,6 +16,11 @@ import { requireProjectContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { validateNotificationProviderOwnership } from "@/lib/notification-providers/ownership";
+import type { TestType } from "@/db/schema/types";
+import {
+  getJobTestTypeMismatchError,
+  isTestTypeCompatibleWithJobType,
+} from "@/lib/script-type-validator";
 
 const updateJobSchema = z.object({
   jobId: z.string().uuid(),
@@ -147,6 +157,7 @@ export async function updateJob(data: UpdateJobData, contextOverride?: UpdateJob
         id: jobs.id,
         name: jobs.name,
         createdByUserId: jobs.createdByUserId,
+        jobType: jobs.jobType,
         cronSchedule: jobs.cronSchedule,
         scheduledJobId: jobs.scheduledJobId,
         projectId: jobs.projectId,
@@ -171,13 +182,14 @@ export async function updateJob(data: UpdateJobData, contextOverride?: UpdateJob
 
     const job = existingJob[0];
 
+    const currentTests = await dbInstance
+      .select({ id: jobTests.testId })
+      .from(jobTests)
+      .where(eq(jobTests.jobId, validatedData.jobId))
+      .orderBy(asc(jobTests.orderPosition));
+
     let testsToUse = validatedData.tests;
     if (!testsToUse) {
-      const currentTests = await dbInstance
-        .select({ id: jobTests.testId })
-        .from(jobTests)
-        .where(eq(jobTests.jobId, validatedData.jobId))
-        .orderBy(asc(jobTests.orderPosition));
       testsToUse = currentTests.map((test) => ({ id: test.id }));
     }
 
@@ -187,6 +199,58 @@ export async function updateJob(data: UpdateJobData, contextOverride?: UpdateJob
         message: "At least one test is required for a job.",
       };
     }
+
+    const testIds = testsToUse.map((test) => test.id);
+    if (new Set(testIds).size !== testIds.length) {
+      return {
+        success: false,
+        message: "Duplicate test IDs are not allowed in a job.",
+      };
+    }
+
+    const scopedTests = await dbInstance
+      .select({ id: testsTable.id, type: testsTable.type })
+      .from(testsTable)
+      .where(
+        and(
+          inArray(testsTable.id, testIds),
+          eq(testsTable.projectId, project.id),
+          eq(testsTable.organizationId, organizationId)
+        )
+      );
+
+    if (scopedTests.length !== testIds.length) {
+      return {
+        success: false,
+        message: "One or more selected tests are invalid or not accessible",
+      };
+    }
+
+    const jobType: "k6" | "playwright" =
+      job.jobType === "k6" ? "k6" : "playwright";
+
+    for (const scopedTest of scopedTests) {
+      if (
+        !isTestTypeCompatibleWithJobType(
+          scopedTest.type as TestType,
+          jobType
+        )
+      ) {
+        return {
+          success: false,
+          message: getJobTestTypeMismatchError(
+            scopedTest.id,
+            scopedTest.type as TestType,
+            jobType
+          ),
+        };
+      }
+    }
+
+    const currentTestIds = currentTests.map((test) => test.id);
+    const testsChanged =
+      currentTestIds.length !== testIds.length ||
+      currentTestIds.some((testId, index) => testIds[index] !== testId);
 
     console.log(
       `Job ${validatedData.jobId} being updated by user ${userId} in project ${project.name}`
@@ -235,36 +299,53 @@ export async function updateJob(data: UpdateJobData, contextOverride?: UpdateJob
         validatedData.alertConfig?.enabled &&
         Array.isArray(validatedData.alertConfig.notificationProviders)
       ) {
-        // First, delete existing links
-        await dbInstance
-          .delete(jobNotificationSettings)
+        const currentProviderLinks = await dbInstance
+          .select({ id: jobNotificationSettings.notificationProviderId })
+          .from(jobNotificationSettings)
           .where(eq(jobNotificationSettings.jobId, validatedData.jobId));
 
-        // Then, create new links
-        await Promise.all(
-          validatedNotificationProviderIds.map((providerId) =>
-            dbInstance.insert(jobNotificationSettings).values({
-              jobId: validatedData.jobId,
-              notificationProviderId: providerId,
-            })
-          )
-        );
+        const currentProviderIds = currentProviderLinks
+          .map((provider) => provider.id)
+          .sort();
+        const nextProviderIds = [...validatedNotificationProviderIds].sort();
+
+        const providersChanged =
+          currentProviderIds.length !== nextProviderIds.length ||
+          currentProviderIds.some((providerId, index) => nextProviderIds[index] !== providerId);
+
+        if (providersChanged) {
+          await dbInstance
+            .delete(jobNotificationSettings)
+            .where(eq(jobNotificationSettings.jobId, validatedData.jobId));
+
+          if (validatedNotificationProviderIds.length > 0) {
+            await dbInstance
+              .insert(jobNotificationSettings)
+              .values(
+                validatedNotificationProviderIds.map((providerId) => ({
+                  jobId: validatedData.jobId,
+                  notificationProviderId: providerId,
+                }))
+              )
+              .onConflictDoNothing();
+          }
+        }
       }
 
-      // Delete all existing test associations
-      await dbInstance
-        .delete(jobTests)
-        .where(eq(jobTests.jobId, validatedData.jobId));
+      if (testsChanged) {
+        await dbInstance
+          .delete(jobTests)
+          .where(eq(jobTests.jobId, validatedData.jobId));
 
-      // Create new test associations with updated ordering
-      const testRelations = testsToUse.map((test, index) => ({
-        jobId: validatedData.jobId,
-        testId: test.id,
-        orderPosition: index,
-      }));
+        const testRelations = testsToUse.map((test, index) => ({
+          jobId: validatedData.jobId,
+          testId: test.id,
+          orderPosition: index,
+        }));
 
-      if (testRelations.length > 0) {
-        await dbInstance.insert(jobTests).values(testRelations);
+        if (testRelations.length > 0) {
+          await dbInstance.insert(jobTests).values(testRelations);
+        }
       }
 
       // Handle scheduling changes

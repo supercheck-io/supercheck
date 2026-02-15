@@ -43,20 +43,39 @@ export async function PUT(
       );
     }
 
-    const selectedProjects = Array.isArray(body.projectAssignments)
-      ? body.projectAssignments.map((p: unknown) => {
-          if (typeof p === 'string') return p;
-          if (p && typeof p === 'object' && 'projectId' in p) {
-            return (p as { projectId?: unknown }).projectId;
-          }
-          return undefined;
-        })
+    const rawProjectAssignments: unknown[] = Array.isArray(body.projectAssignments)
+      ? body.projectAssignments
       : [];
+
+    const extractedProjectIds = rawProjectAssignments.map((assignment) => {
+      if (typeof assignment === 'string') {
+        return assignment;
+      }
+      if (assignment && typeof assignment === 'object' && 'projectId' in assignment) {
+        return (assignment as { projectId?: unknown }).projectId;
+      }
+      return undefined;
+    });
+
+    const hasInvalidProjectAssignments = extractedProjectIds.some(
+      (projectId) => typeof projectId !== 'string' || projectId.trim().length === 0
+    );
+
+    if (hasInvalidProjectAssignments) {
+      return NextResponse.json(
+        { error: 'Invalid project assignments' },
+        { status: 400 }
+      );
+    }
+
+    const normalizedSelectedProjects = Array.from(
+      new Set(extractedProjectIds.map((projectId) => (projectId as string).trim()))
+    );
 
     // Validate request body using Zod schema
     const parseResult = updateMemberSchema.safeParse({
       role: body.role,
-      selectedProjects,
+      selectedProjects: normalizedSelectedProjects,
     });
 
     if (!parseResult.success) {
@@ -68,6 +87,8 @@ export async function PUT(
     }
 
     const { role, selectedProjects: selectedProjectIds } = parseResult.data;
+    const requiresProjectAssignments =
+      role === 'project_editor' || role === 'project_admin';
 
     // Prevent changing owner role
     const existingMember = await db
@@ -158,63 +179,49 @@ export async function PUT(
           eq(member.organizationId, organizationId)
         ));
 
-      // Handle project assignments if provided and not project_viewer
-      if (selectedProjectIds.length > 0 && role !== 'project_viewer') {
-        // First, remove all existing project assignments for this user in this org
-        const orgProjectIds = await tx
+      // Always reset organization-scoped project assignments for this member first.
+      // This keeps role/project state deterministic across all transitions.
+      const organizationProjects = await tx
+        .select({ id: projects.id })
+        .from(projects)
+        .where(eq(projects.organizationId, organizationId));
+
+      if (organizationProjects.length > 0) {
+        await tx
+          .delete(projectMembers)
+          .where(
+            and(
+              eq(projectMembers.userId, resolvedParams.memberId),
+              inArray(projectMembers.projectId, organizationProjects.map((project) => project.id))
+            )
+          );
+      }
+
+      // For project-scoped roles, validate exact project ownership/status and re-insert assignments.
+      if (requiresProjectAssignments) {
+        const validSelectedProjects = await tx
           .select({ id: projects.id })
           .from(projects)
-          .where(eq(projects.organizationId, organizationId));
-        
-        if (orgProjectIds.length > 0) {
-          await tx
-            .delete(projectMembers)
-            .where(
-              and(
-                eq(projectMembers.userId, resolvedParams.memberId),
-                inArray(projectMembers.projectId, orgProjectIds.map(p => p.id))
-              )
-            );
+          .where(
+            and(
+              eq(projects.organizationId, organizationId),
+              eq(projects.status, 'active'),
+              inArray(projects.id, selectedProjectIds)
+            )
+          );
+
+        if (validSelectedProjects.length !== selectedProjectIds.length) {
+          throw new Error('MEMBER_PROJECT_SCOPE_MISMATCH');
         }
 
-        // Then add new project assignments
-        if (selectedProjectIds.length > 0) {
-          const validProjectIds = await tx
-            .select({ id: projects.id })
-            .from(projects)
-            .where(
-              and(
-                eq(projects.organizationId, organizationId),
-                inArray(projects.id, selectedProjectIds)
-              )
-            );
-
-          if (validProjectIds.length > 0) {
-            await tx.insert(projectMembers).values(
-              validProjectIds.map(project => ({
-                userId: resolvedParams.memberId,
-                projectId: project.id,
-                role: role // Use the same role for all project assignments
-              }))
-            );
-          }
-        }
-      } else if (role === 'project_viewer') {
-        // For project_viewer, remove all specific project assignments since they get access to all
-        const orgProjectIds2 = await tx
-          .select({ id: projects.id })
-          .from(projects)
-          .where(eq(projects.organizationId, organizationId));
-        
-        if (orgProjectIds2.length > 0) {
-          await tx
-            .delete(projectMembers)
-            .where(
-              and(
-                eq(projectMembers.userId, resolvedParams.memberId),
-                inArray(projectMembers.projectId, orgProjectIds2.map(p => p.id))
-              )
-            );
+        if (validSelectedProjects.length > 0) {
+          await tx.insert(projectMembers).values(
+            validSelectedProjects.map((project) => ({
+              userId: resolvedParams.memberId,
+              projectId: project.id,
+              role,
+            }))
+          );
         }
       }
     });
@@ -289,7 +296,7 @@ export async function PUT(
 
     return NextResponse.json({
       success: true,
-      message: `Member role updated to ${role}`,
+      message: actionDescription,
       data: {
         memberId: resolvedParams.memberId,
         newRole: role,
@@ -297,6 +304,13 @@ export async function PUT(
       }
     });
   } catch (error) {
+    if (error instanceof Error && error.message === 'MEMBER_PROJECT_SCOPE_MISMATCH') {
+      return NextResponse.json(
+        { error: 'One or more selected projects are invalid for this organization' },
+        { status: 400 }
+      );
+    }
+
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : 'Authentication required' },

@@ -14,7 +14,29 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { UserMinus, Crown, Shield, User, Eye, Edit3, Mail, XCircle, FolderOpen } from "lucide-react";
+import {
+  UserMinus,
+  Crown,
+  Shield,
+  User,
+  Eye,
+  Edit3,
+  Mail,
+  XCircle,
+  FolderOpen,
+} from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  TableBadge,
+  type TableBadgeTone,
+  TABLE_BADGE_BASE_CLASS,
+  TABLE_BADGE_COMPACT_CLASS,
+} from "@/components/ui/table-badge";
 import { toast } from "sonner";
 import React, { useState } from "react";
 import { DataTableColumnHeader } from "@/components/tests/data-table-column-header";
@@ -47,6 +69,113 @@ export interface PendingInvitation {
 }
 
 export type MemberOrInvitation = OrgMember | PendingInvitation;
+
+const BADGE_BASE_CLASS = TABLE_BADGE_BASE_CLASS;
+const PROJECT_BADGE_CLASS = `${TABLE_BADGE_COMPACT_CLASS} max-w-[120px]`;
+
+const roleBadgeConfig: Record<
+  string,
+  {
+    label: string;
+    icon: React.ComponentType<{ className?: string }>;
+    tone: TableBadgeTone;
+  }
+> = {
+  org_owner: {
+    label: "Org Owner",
+    icon: Crown,
+    tone: "purple",
+  },
+  org_admin: {
+    label: "Org Admin",
+    icon: Shield,
+    tone: "info",
+  },
+  project_admin: {
+    label: "Project Admin",
+    icon: Shield,
+    tone: "warning",
+  },
+  project_editor: {
+    label: "Project Editor",
+    icon: User,
+    tone: "success",
+  },
+  project_viewer: {
+    label: "Project Viewer",
+    icon: Eye,
+    tone: "slate",
+  },
+};
+
+const statusBadgeConfig: Record<string, { label: string; tone: TableBadgeTone }> = {
+  active: {
+    label: "Active",
+    tone: "success",
+  },
+  pending: {
+    label: "Pending",
+    tone: "warning",
+  },
+  expired: {
+    label: "Expired",
+    tone: "danger",
+  },
+};
+
+const formatRoleLabel = (role: string | null | undefined) => {
+  if (!role) {
+    return "Unknown Role";
+  }
+
+  return role
+    .split("_")
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(" ");
+};
+
+const RoleBadge = ({
+  role,
+  isInvitation,
+}: {
+  role: string | null | undefined;
+  isInvitation?: boolean;
+}) => {
+  const normalizedRole = role ?? "";
+
+  if (isInvitation) {
+    return (
+      <TableBadge tone="warning" className={BADGE_BASE_CLASS}>
+        <Mail className="mr-1 h-3.5 w-3.5" />
+        {formatRoleLabel(normalizedRole)}
+      </TableBadge>
+    );
+  }
+
+  const config = roleBadgeConfig[normalizedRole] ?? {
+    label: formatRoleLabel(normalizedRole),
+    icon: User,
+    tone: "slate" as const,
+  };
+  const Icon = config.icon;
+
+  return (
+    <TableBadge tone={config.tone} className={BADGE_BASE_CLASS}>
+      <Icon className="mr-1 h-3.5 w-3.5" />
+      {config.label}
+    </TableBadge>
+  );
+};
+
+const StatusBadge = ({ status }: { status: "active" | "pending" | "expired" }) => {
+  const config = statusBadgeConfig[status];
+
+  return (
+    <TableBadge tone={config.tone} className={BADGE_BASE_CLASS}>
+      {config.label}
+    </TableBadge>
+  );
+};
 
 const handleRemoveMember = async (
   memberId: string,
@@ -107,54 +236,6 @@ const RemoveMemberConfirmDialog = ({
       </AlertDialogContent>
     </AlertDialog>
   );
-};
-
-const getRoleIcon = (role: string) => {
-  switch (role) {
-    case "org_owner":
-      return <Crown className="mr-2 h-4 w-4" />;
-    case "org_admin":
-      return <Shield className="mr-2 h-4 w-4" />;
-    case "project_admin":
-      return <Shield className="mr-2 h-4 w-4" />;
-    case "project_editor":
-      return <User className="mr-2 h-4 w-4" />;
-    case "project_viewer":
-      return <Eye className="mr-2 h-4 w-4" />;
-    default:
-      return <User className="mr-2 h-4 w-4" />;
-  }
-};
-
-const getRoleColor = (role: string, isInvitation = false) => {
-  if (isInvitation) return "bg-orange-100 text-orange-700";
-
-  switch (role) {
-    case "org_owner":
-      return "bg-purple-100 text-purple-700";
-    case "org_admin":
-      return "bg-blue-100 text-blue-700";
-    case "project_admin":
-      return "bg-indigo-100 text-indigo-700";
-    case "project_editor":
-      return "bg-green-100 text-green-700";
-    case "project_viewer":
-    default:
-      return "bg-gray-100 text-gray-700";
-  }
-};
-
-const getStatusColor = (status: string) => {
-  switch (status) {
-    case "pending":
-      return "bg-yellow-100 text-yellow-700";
-    case "accepted":
-      return "bg-green-100 text-green-700";
-    case "expired":
-      return "bg-red-100 text-red-700";
-    default:
-      return "bg-gray-100 text-gray-700";
-  }
 };
 
 // All roles are now in new RBAC format - no conversion needed
@@ -357,6 +438,10 @@ const MemberActionsCell = ({
 
             if (data.success) {
               onMemberUpdate();
+              return {
+                successMessage:
+                  data.message || `Updated access for ${member.name}`,
+              };
             } else {
               throw new Error(data.error || "Failed to update member access");
             }
@@ -572,13 +657,7 @@ export const createMemberColumns = (
 
       return (
         <div className="flex items-center h-10">
-          <Badge
-            variant="outline"
-            className={`${getRoleColor(role, isInvitation)} text-xs px-3 py-1.5 font-medium capitalize`}
-          >
-            {getRoleIcon(role)}
-            {role}
-          </Badge>
+          <RoleBadge role={role} isInvitation={isInvitation} />
         </div>
       );
     },
@@ -604,25 +683,16 @@ export const createMemberColumns = (
     size: 120,
     cell: ({ row }) => {
       const item = row.original;
-      const isInvitation = item.type === "invitation";
+      const status =
+        item.type === "invitation"
+          ? (item as PendingInvitation).status
+          : "active";
 
       return (
         <div className="flex items-center h-10">
-          {isInvitation ? (
-            <Badge
-              variant="outline"
-              className={`${getStatusColor((item as PendingInvitation).status)} text-xs px-3 py-1.5 font-medium capitalize`}
-            >
-              {(item as PendingInvitation).status}
-            </Badge>
-          ) : (
-            <Badge
-              variant="outline"
-              className="bg-green-100 text-green-700 text-xs px-3 py-1.5 font-medium capitalize"
-            >
-              Active
-            </Badge>
-          )}
+          <StatusBadge
+            status={status as "active" | "pending" | "expired"}
+          />
         </div>
       );
     },
@@ -725,30 +795,19 @@ export const createMemberColumns = (
       const member = item as OrgMember;
       const memberProjects = member.projects ?? [];
 
-      // org_owner and org_admin have access to all projects
-      if (member.role === "org_owner" || member.role === "org_admin") {
+      // Org-level and viewer roles all have access to all projects.
+      if (
+        member.role === "org_owner" ||
+        member.role === "org_admin" ||
+        member.role === "project_viewer"
+      ) {
         return (
           <div className="flex items-center h-10">
             <Badge
-              variant="outline"
-              className="bg-purple-50 text-purple-700 text-xs px-2 py-1 font-medium"
+              variant="secondary"
+              className={`${BADGE_BASE_CLASS} bg-muted text-foreground`}
             >
-              <FolderOpen className="mr-1 h-3 w-3" />
-              All Projects
-            </Badge>
-          </div>
-        );
-      }
-
-      // project_viewer gets access to all projects (no specific assignments needed)
-      if (member.role === "project_viewer" && memberProjects.length === 0) {
-        return (
-          <div className="flex items-center h-10">
-            <Badge
-              variant="outline"
-              className="bg-gray-50 text-gray-600 text-xs px-2 py-1 font-medium"
-            >
-              <FolderOpen className="mr-1 h-3 w-3" />
+              <FolderOpen className="mr-1 h-3.5 w-3.5" />
               All Projects
             </Badge>
           </div>
@@ -767,31 +826,53 @@ export const createMemberColumns = (
       const displayProjects = memberProjects.slice(0, 2);
       const remaining = memberProjects.length - displayProjects.length;
 
-      return (
-        <div className="flex items-center h-10 gap-1 flex-wrap">
-          {displayProjects.map((p) => (
+      const trigger = (
+        <div className="flex items-center h-10 gap-1">
+          {displayProjects.map((project) => (
             <Badge
-              key={p.projectId}
-              variant="outline"
-              className="bg-blue-50 text-blue-700 text-xs px-2 py-0.5 font-medium max-w-[100px] truncate"
-              title={p.projectName}
+              key={project.projectId}
+              variant="secondary"
+              className={`${PROJECT_BADGE_CLASS} bg-muted text-foreground`}
+              title={project.projectName}
             >
-              {p.projectName}
+              <span className="truncate">{project.projectName}</span>
             </Badge>
           ))}
           {remaining > 0 && (
             <Badge
-              variant="outline"
-              className="bg-gray-50 text-gray-600 text-xs px-2 py-0.5 font-medium"
-              title={memberProjects
-                .slice(2)
-                .map((p) => p.projectName)
-                .join(", ")}
+              variant="secondary"
+              className={`${BADGE_BASE_CLASS} bg-muted text-muted-foreground`}
             >
               +{remaining}
             </Badge>
           )}
         </div>
+      );
+
+      if (remaining <= 0) {
+        return trigger;
+      }
+
+      return (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>{trigger}</TooltipTrigger>
+            <TooltipContent side="top" className="max-w-[420px]">
+              <div className="flex flex-wrap gap-1">
+                {memberProjects.map((project) => (
+                  <Badge
+                    key={project.projectId}
+                    variant="secondary"
+                    className={`${PROJECT_BADGE_CLASS} bg-muted text-foreground`}
+                    title={project.projectName}
+                  >
+                    <span className="truncate">{project.projectName}</span>
+                  </Badge>
+                ))}
+              </div>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       );
     },
   },

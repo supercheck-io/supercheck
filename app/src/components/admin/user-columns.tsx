@@ -1,12 +1,12 @@
 "use client";
 
 import { ColumnDef } from "@tanstack/react-table";
-import { Badge } from "@/components/ui/badge";
 import { Crown, Shield, User, Building2 } from "lucide-react";
 import { toast } from "sonner";
 import { DataTableColumnHeader } from "@/components/tests/data-table-column-header";
 import { UserActions } from "./user-actions";
 import { UUIDField } from "@/components/ui/uuid-field";
+import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
 import {
   Tooltip,
   TooltipContent,
@@ -37,30 +37,30 @@ export interface AdminUser {
 const getRoleIcon = (role: string) => {
   switch (role) {
     case "super_admin":
-      return <Crown className="mr-2 h-4 w-4" />;
+      return <Crown className="mr-1 h-3.5 w-3.5" />;
     case "org_owner":
     case "org_admin":
-      return <Shield className="mr-2 h-4 w-4" />;
+      return <Shield className="mr-1 h-3.5 w-3.5" />;
     case "project_editor":
     case "project_viewer":
     default:
-      return <User className="mr-2 h-4 w-4" />;
+      return <User className="mr-1 h-3.5 w-3.5" />;
   }
 };
 
-const getRoleColor = (role: string) => {
+const getRoleTone = (role: string): TableBadgeTone => {
   switch (role) {
     case "super_admin":
-      return "bg-purple-100 text-purple-800";
+      return "purple";
     case "org_owner":
-      return "bg-indigo-100 text-indigo-800";
+      return "indigo";
     case "org_admin":
-      return "bg-blue-100 text-blue-800";
+      return "info";
     case "project_editor":
-      return "bg-green-100 text-green-800";
+      return "success";
     case "project_viewer":
     default:
-      return "bg-gray-100 text-gray-800";
+      return "slate";
   }
 };
 
@@ -138,13 +138,10 @@ export const createUserColumns = (
 
       return (
         <div className="flex items-center h-10">
-          <Badge
-            variant="outline"
-            className={`${getRoleColor(role)} text-xs px-3 py-1.5 font-medium`}
-          >
+          <TableBadge tone={getRoleTone(role)}>
             {getRoleIcon(role)}
             {getDisplayRole(role)}
-          </Badge>
+          </TableBadge>
         </div>
       );
     },
@@ -166,19 +163,13 @@ export const createUserColumns = (
       return (
         <div className="flex items-center h-10">
           {banned ? (
-            <Badge
-              variant="outline"
-              className="bg-red-100 text-red-700 text-xs px-3 py-1.5 font-medium capitalize"
-            >
+            <TableBadge tone="danger">
               Banned
-            </Badge>
+            </TableBadge>
           ) : (
-            <Badge
-              variant="outline"
-              className="bg-green-100 text-green-700 text-xs px-3 py-1.5 font-medium capitalize"
-            >
+            <TableBadge tone="success">
               Active
-            </Badge>
+            </TableBadge>
           )}
         </div>
       );
@@ -221,9 +212,9 @@ export const createUserColumns = (
                     {firstOrg.organizationName}
                   </span>
                   {remainingCount > 0 && (
-                    <Badge variant="secondary" className="text-xs px-1.5 py-0">
+                    <TableBadge compact tone="neutral">
                       +{remainingCount}
-                    </Badge>
+                    </TableBadge>
                   )}
                 </div>
               </TooltipTrigger>
@@ -239,12 +230,9 @@ export const createUserColumns = (
                         className="flex items-center justify-between gap-3 text-xs"
                       >
                         <span className="truncate">{org.organizationName}</span>
-                        <Badge
-                          variant="outline"
-                          className="text-[10px] px-1 py-0"
-                        >
+                        <TableBadge compact tone="slate" className="text-[10px]">
                           {org.role.replace("_", " ")}
-                        </Badge>
+                        </TableBadge>
                       </div>
                     ))}
                   </div>

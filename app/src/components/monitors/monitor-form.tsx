@@ -953,8 +953,8 @@ export function MonitorForm({
           : `Monitor "${apiData.name}" has been created.`,
       });
 
-      // Invalidate Monitors cache to ensure fresh data on monitors page
-      await queryClient.invalidateQueries({ queryKey: MONITORS_QUERY_KEY, refetchType: 'all' });
+      // Invalidate Monitors cache without blocking navigation
+      void queryClient.invalidateQueries({ queryKey: MONITORS_QUERY_KEY, refetchType: 'all' });
 
       if (editMode) {
         router.push(`/monitors/${id}`);
