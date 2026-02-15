@@ -98,6 +98,35 @@ export async function saveTest(
           error: typeValidation.error,
         };
       }
+    } else if (validatedData.id) {
+      // When updating a test with no script provided, fetch the existing script
+      // and validate it against the new type to prevent type mismatches
+      const existingTest = await db
+        .select({ script: tests.script, type: tests.type })
+        .from(tests)
+        .where(
+          and(
+            eq(tests.id, validatedData.id),
+            eq(tests.organizationId, organizationId),
+            eq(tests.projectId, project.id)
+          )
+        )
+        .limit(1);
+
+      if (existingTest.length > 0 && existingTest[0].script) {
+        let existingScript = existingTest[0].script;
+        if (isBase64(existingScript) && typeof window === "undefined") {
+          existingScript = Buffer.from(existingScript, "base64").toString("utf-8");
+        }
+        const typeValidation = validateScriptTypeMatch(existingScript, resolvedType);
+        if (!typeValidation.valid) {
+          return {
+            id: "",
+            success: false,
+            error: typeValidation.error,
+          };
+        }
+      }
     }
 
     // Check if this is an update (has an ID) or a new test

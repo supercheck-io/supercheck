@@ -293,6 +293,7 @@ export async function POST(
         resentToEmail: invite.email,
         role: invite.role,
         expiryExtended: isExpired,
+        previousExpiresAt: isExpired ? invite.expiresAt.toISOString() : undefined,
         newExpiresAt: isExpired ? newExpiresAt.toISOString() : undefined,
       },
       success: true,

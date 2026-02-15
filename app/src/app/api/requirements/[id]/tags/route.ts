@@ -92,14 +92,18 @@ export async function POST(
       return NextResponse.json({ error: 'Tag IDs must be an array' }, { status: 400 });
     }
 
-    const normalizedTagIds = Array.from(
-      new Set(
-        tagIds.filter((tagId): tagId is string => typeof tagId === 'string' && tagId.trim().length > 0)
-      )
+    const validTagIds = tagIds.filter(
+      (tagId): tagId is string => typeof tagId === 'string' && tagId.trim().length > 0
     );
 
-    if (normalizedTagIds.length !== tagIds.length) {
+    if (validTagIds.length !== tagIds.length) {
       return NextResponse.json({ error: 'Tag IDs must be non-empty strings' }, { status: 400 });
+    }
+
+    const normalizedTagIds = Array.from(new Set(validTagIds));
+
+    if (normalizedTagIds.length !== validTagIds.length) {
+      return NextResponse.json({ error: 'Duplicate tag IDs are not allowed' }, { status: 400 });
     }
 
     // Validate maximum number of tags per requirement (10)

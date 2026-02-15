@@ -294,61 +294,73 @@ export async function PUT(
         );
       }
 
-      if (normalizedProviderIds.length > 0) {
-        const validProviders = await db
-          .select({ id: notificationProviders.id })
-          .from(notificationProviders)
-          .where(
-            and(
-              inArray(notificationProviders.id, normalizedProviderIds),
-              eq(notificationProviders.organizationId, authCtx.organizationId),
-              eq(notificationProviders.projectId, authCtx.project.id)
-            )
-          );
-
-        if (validProviders.length !== normalizedProviderIds.length) {
-          return NextResponse.json(
-            {
-              error:
-                "One or more notification providers are invalid or not accessible in this project",
-            },
-            { status: 400 }
-          );
-        }
-      }
     }
 
-    const updatedMonitor = await db.transaction(async (tx) => {
-      const [updated] = await tx
-        .update(monitors)
-        .set(updatePayload)
-        .where(eq(monitors.id, id))
-        .returning();
+    const NOTIFICATION_PROVIDER_VALIDATION_ERROR = "NOTIFICATION_PROVIDER_VALIDATION_FAILED";
 
-      if (!updated) {
-        return null;
-      }
+    let updatedMonitor;
+    try {
+      updatedMonitor = await db.transaction(async (tx) => {
+        const [updated] = await tx
+          .update(monitors)
+          .set(updatePayload)
+          .where(eq(monitors.id, id))
+          .returning();
 
-      if (shouldSyncNotificationProviders) {
-        await tx
-          .delete(monitorNotificationSettings)
-          .where(eq(monitorNotificationSettings.monitorId, id));
-
-        if (normalizedProviderIds.length > 0) {
-          await tx
-            .insert(monitorNotificationSettings)
-            .values(
-              normalizedProviderIds.map((providerId: string) => ({
-                monitorId: id,
-                notificationProviderId: providerId,
-              }))
-            )
-            .onConflictDoNothing();
+        if (!updated) {
+          return null;
         }
-      }
 
-      return updated;
-    });
+        if (shouldSyncNotificationProviders) {
+          // Validate notification providers inside the transaction to prevent TOCTOU race conditions
+          if (normalizedProviderIds.length > 0) {
+            const validProviders = await tx
+              .select({ id: notificationProviders.id })
+              .from(notificationProviders)
+              .where(
+                and(
+                  inArray(notificationProviders.id, normalizedProviderIds),
+                  eq(notificationProviders.organizationId, authCtx.organizationId),
+                  eq(notificationProviders.projectId, authCtx.project.id)
+                )
+              );
+
+            if (validProviders.length !== normalizedProviderIds.length) {
+              throw new Error(NOTIFICATION_PROVIDER_VALIDATION_ERROR);
+            }
+          }
+
+          await tx
+            .delete(monitorNotificationSettings)
+            .where(eq(monitorNotificationSettings.monitorId, id));
+
+          if (normalizedProviderIds.length > 0) {
+            await tx
+              .insert(monitorNotificationSettings)
+              .values(
+                normalizedProviderIds.map((providerId: string) => ({
+                  monitorId: id,
+                  notificationProviderId: providerId,
+                }))
+              )
+              .onConflictDoNothing();
+          }
+        }
+
+        return updated;
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message === NOTIFICATION_PROVIDER_VALIDATION_ERROR) {
+        return NextResponse.json(
+          {
+            error:
+              "One or more notification providers are invalid or not accessible in this project",
+          },
+          { status: 400 }
+        );
+      }
+      throw error;
+    }
 
     if (!updatedMonitor) {
       return NextResponse.json(

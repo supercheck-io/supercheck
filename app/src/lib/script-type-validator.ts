@@ -63,6 +63,11 @@ export function validateScriptTypeMatch(
 /**
  * Normalizes a raw type string to a valid TestType.
  * Returns the normalized type or defaults to "browser" for unknown values.
+ *
+ * Alias mappings:
+ * - "playwright" → "browser"
+ * - "k6" → "performance"
+ * - "load" → "performance"
  */
 export function normalizeTestType(value: unknown): TestType {
   if (typeof value !== "string") return "browser";
