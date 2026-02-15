@@ -25,6 +25,7 @@ import { REQUIREMENTS_QUERY_KEY } from "@/hooks/use-requirements";
 import { DASHBOARD_QUERY_KEY } from "@/hooks/use-dashboard";
 import { useTags, useTestTags, useTagMutations, useSaveTestTags } from "@/hooks/use-tags";
 import { normalizeRole } from "@/lib/rbac/role-normalizer";
+import { getRequirementDetailsPath } from "@/lib/requirements/url";
 import {
   canCreateTags,
   canDeleteTags,
@@ -314,6 +315,41 @@ export function TestForm({
     }
   };
 
+  const tagsChanged = useMemo(() => {
+    if (!initialTags) return selectedTags.length > 0;
+
+    if (initialTags.length !== selectedTags.length) return true;
+
+    const initialTagIds = new Set(initialTags.map((tag: Tag) => tag.id));
+    const selectedTagIds = new Set(selectedTags.map((tag: Tag) => tag.id));
+
+    return (
+      initialTagIds.size !== selectedTagIds.size ||
+      !Array.from(initialTagIds).every((id: string) => selectedTagIds.has(id))
+    );
+  }, [initialTags, selectedTags]);
+
+  const invalidatePostSaveQueries = useCallback(
+    (includeRequirements: boolean) => {
+      void queryClient.invalidateQueries({
+        queryKey: TESTS_QUERY_KEY,
+        refetchType: "all",
+      });
+      void queryClient.invalidateQueries({
+        queryKey: DASHBOARD_QUERY_KEY,
+        refetchType: "all",
+      });
+
+      if (includeRequirements) {
+        void queryClient.invalidateQueries({
+          queryKey: REQUIREMENTS_QUERY_KEY,
+          refetchType: "all",
+        });
+      }
+    },
+    [queryClient]
+  );
+
   // Track if form has changes compared to initial values
   const hasChangesLocal = useCallback(() => {
     // Check if any form field has changed
@@ -334,29 +370,13 @@ export function TestForm({
     const editorChanged = editorContent !== initialEditorContentProp;
 
     // Check if tags have changed
-    const tagsChanged = (() => {
-      if (!initialTags) return selectedTags.length > 0;
-
-      if (initialTags.length !== selectedTags.length) return true;
-
-      // Check if the same tags are selected (compare by ID)
-      const initialTagIds = new Set(initialTags.map((tag: Tag) => tag.id));
-      const selectedTagIds = new Set(selectedTags.map((tag: Tag) => tag.id));
-
-      return (
-        initialTagIds.size !== selectedTagIds.size ||
-        !Array.from(initialTagIds).every((id: string) => selectedTagIds.has(id))
-      );
-    })();
-
     return formFieldsChanged || editorChanged || tagsChanged;
   }, [
     testCase,
     editorContent,
     initialFormValues,
     initialEditorContentProp,
-    selectedTags,
-    initialTags,
+    tagsChanged,
     performanceMode,
   ]);
 
@@ -376,17 +396,6 @@ export function TestForm({
       locationChanged;
 
     // Check if tags have changed
-    const tagsChanged = (() => {
-      if (!initialTags) return selectedTags.length > 0;
-      if (initialTags.length !== selectedTags.length) return true;
-      const initialTagIds = new Set(initialTags.map((tag: Tag) => tag.id));
-      const selectedTagIds = new Set(selectedTags.map((tag: Tag) => tag.id));
-      return (
-        initialTagIds.size !== selectedTagIds.size ||
-        !Array.from(initialTagIds).every((id: string) => selectedTagIds.has(id))
-      );
-    })();
-
     // Script has NOT changed
     const scriptUnchanged = editorContent === initialEditorContentProp;
 
@@ -397,8 +406,7 @@ export function TestForm({
     editorContent,
     initialFormValues,
     initialEditorContentProp,
-    selectedTags,
-    initialTags,
+    tagsChanged,
     performanceMode,
   ]);
 
@@ -561,15 +569,14 @@ export function TestForm({
           });
 
           if (result.success) {
-            // Save tags after successful test update
-            await saveTestTags(testId);
+            // Save tags only when changed to avoid unnecessary API/DB work
+            if (tagsChanged) {
+              await saveTestTags(testId);
+            }
 
             toast.success("Test updated successfully.");
 
-            // Invalidate React Query cache to ensure fresh data on tests page
-            await queryClient.invalidateQueries({ queryKey: TESTS_QUERY_KEY, refetchType: 'all' });
-            // Cross-entity: Dashboard shows Total Tests count
-            await queryClient.invalidateQueries({ queryKey: DASHBOARD_QUERY_KEY, refetchType: 'all' });
+            invalidatePostSaveQueries(false);
 
             // Navigate to the tests page after updating
             router.push("/tests/");
@@ -591,20 +598,14 @@ export function TestForm({
           });
 
           if (result.success && result.id) {
-            // Save tags after successful test creation
-            await saveTestTags(result.id);
+            // Save tags only when changed to avoid unnecessary API/DB work
+            if (tagsChanged) {
+              await saveTestTags(result.id);
+            }
 
             toast.success("Test saved successfully.");
 
-            // Invalidate React Query cache to ensure fresh data on tests page
-            await queryClient.invalidateQueries({ queryKey: TESTS_QUERY_KEY, refetchType: 'all' });
-            // Cross-entity: Dashboard shows Total Tests count
-            await queryClient.invalidateQueries({ queryKey: DASHBOARD_QUERY_KEY, refetchType: 'all' });
-
-            // If linked to a requirement, also invalidate requirements cache for updated counts
-            if (initialLinkedRequirement?.id) {
-              await queryClient.invalidateQueries({ queryKey: REQUIREMENTS_QUERY_KEY, refetchType: 'all' });
-            }
+            invalidatePostSaveQueries(!!initialLinkedRequirement?.id);
 
             // Navigate to the tests page with the test ID
             router.push("/tests/");
@@ -773,7 +774,7 @@ export function TestForm({
         {linkedReq ? (
           <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 items-center text-sm p-3 rounded-md border bg-muted/30">
             <a
-              href={`/requirements?id=${linkedReq.id}`}
+              href={getRequirementDetailsPath(linkedReq.id)}
               target="_blank"
               rel="noopener noreferrer"
               className="font-medium truncate hover:underline hover:text-primary transition-colors cursor-pointer text-muted-foreground"
@@ -783,7 +784,7 @@ export function TestForm({
             </a>
 
             <a
-              href={linkedReq.externalUrl || `/requirements?id=${linkedReq.id}`}
+              href={linkedReq.externalUrl || getRequirementDetailsPath(linkedReq.id)}
               target="_blank"
               rel="noopener noreferrer"
               className="text-muted-foreground hover:text-primary transition-colors shrink-0 flex items-center"

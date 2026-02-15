@@ -12,15 +12,9 @@ import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { resolveProjectVariables, extractVariableNames, type VariableResolutionResult } from "@/lib/variable-resolver";
-import { validateK6Script } from "@/lib/k6-validator";
+import { isK6Script, validateK6Script } from "@/lib/k6-validator";
 import { db } from "@/utils/db";
 import { runs, type K6Location } from "@/db/schema";
-
-// Helper function to detect if a script is a k6 performance test
-function isK6Script(script: string): boolean {
-  // Check for k6 imports
-  return /import\s+.*\s+from\s+['"]k6(\/[^'"]+)?['"]/.test(script);
-}
 
 function buildReportProxyUrl(entityId: string): string {
   return `/api/test-results/${encodeURIComponent(entityId)}/report/index.html?forceIframe=true`;

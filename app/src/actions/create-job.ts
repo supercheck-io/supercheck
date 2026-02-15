@@ -1,8 +1,8 @@
 "use server";
 
 import { db } from "@/utils/db";
-import { jobs, jobTests } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { jobs, jobTests, tests as testsTable } from "@/db/schema";
+import { and, eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { scheduleJob } from "@/lib/job-scheduler";
@@ -11,6 +11,11 @@ import { getNextRunDate } from "@/lib/cron-utils";
 import { requireProjectContext } from "@/lib/project-context";
 import { requirePermissions } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
+import type { TestType } from "@/db/schema/types";
+import {
+  getJobTestTypeMismatchError,
+  isTestTypeCompatibleWithJobType,
+} from "@/lib/script-type-validator";
 
 const createJobSchema = z.object({
   name: z.string(),
@@ -51,6 +56,60 @@ export async function createJob(data: CreateJobData) {
 
     // Validate the data
     const validatedData = createJobSchema.parse(data);
+
+    if (!validatedData.tests || validatedData.tests.length === 0) {
+      return {
+        success: false,
+        message: "At least one test is required for a job.",
+      };
+    }
+
+    const testIds = validatedData.tests.map((test) => test.id);
+    if (new Set(testIds).size !== testIds.length) {
+      return {
+        success: false,
+        message: "Duplicate test IDs are not allowed in a job.",
+      };
+    }
+
+    const scopedTests = await db
+      .select({ id: testsTable.id, type: testsTable.type })
+      .from(testsTable)
+      .where(
+        and(
+          inArray(testsTable.id, testIds),
+          eq(testsTable.projectId, project.id),
+          eq(testsTable.organizationId, organizationId)
+        )
+      );
+
+    if (scopedTests.length !== testIds.length) {
+      return {
+        success: false,
+        message: "One or more selected tests are invalid or not accessible",
+      };
+    }
+
+    const jobType: "k6" | "playwright" =
+      validatedData.jobType === "k6" ? "k6" : "playwright";
+
+    for (const scopedTest of scopedTests) {
+      if (
+        !isTestTypeCompatibleWithJobType(
+          scopedTest.type as TestType,
+          jobType
+        )
+      ) {
+        return {
+          success: false,
+          message: getJobTestTypeMismatchError(
+            scopedTest.id,
+            scopedTest.type as TestType,
+            jobType
+          ),
+        };
+      }
+    }
 
     // Generate a UUID for the job
     const jobId = crypto.randomUUID();

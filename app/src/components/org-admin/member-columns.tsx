@@ -14,7 +14,29 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { UserMinus, Crown, Shield, User, Eye, Edit3 } from "lucide-react";
+import {
+  UserMinus,
+  Crown,
+  Shield,
+  User,
+  Eye,
+  Edit3,
+  Mail,
+  XCircle,
+  FolderOpen,
+} from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  TableBadge,
+  type TableBadgeTone,
+  TABLE_BADGE_BASE_CLASS,
+  TABLE_BADGE_COMPACT_CLASS,
+} from "@/components/ui/table-badge";
 import { toast } from "sonner";
 import React, { useState } from "react";
 import { DataTableColumnHeader } from "@/components/tests/data-table-column-header";
@@ -32,6 +54,7 @@ export interface OrgMember {
     | "project_viewer";
   joinedAt: string;
   type: "member";
+  projects?: { projectId: string; projectName: string }[];
 }
 
 export interface PendingInvitation {
@@ -46,6 +69,113 @@ export interface PendingInvitation {
 }
 
 export type MemberOrInvitation = OrgMember | PendingInvitation;
+
+const BADGE_BASE_CLASS = TABLE_BADGE_BASE_CLASS;
+const PROJECT_BADGE_CLASS = `${TABLE_BADGE_COMPACT_CLASS} max-w-[120px]`;
+
+const roleBadgeConfig: Record<
+  string,
+  {
+    label: string;
+    icon: React.ComponentType<{ className?: string }>;
+    tone: TableBadgeTone;
+  }
+> = {
+  org_owner: {
+    label: "Org Owner",
+    icon: Crown,
+    tone: "purple",
+  },
+  org_admin: {
+    label: "Org Admin",
+    icon: Shield,
+    tone: "info",
+  },
+  project_admin: {
+    label: "Project Admin",
+    icon: Shield,
+    tone: "warning",
+  },
+  project_editor: {
+    label: "Project Editor",
+    icon: User,
+    tone: "success",
+  },
+  project_viewer: {
+    label: "Project Viewer",
+    icon: Eye,
+    tone: "slate",
+  },
+};
+
+const statusBadgeConfig: Record<string, { label: string; tone: TableBadgeTone }> = {
+  active: {
+    label: "Active",
+    tone: "success",
+  },
+  pending: {
+    label: "Pending",
+    tone: "warning",
+  },
+  expired: {
+    label: "Expired",
+    tone: "danger",
+  },
+};
+
+const formatRoleLabel = (role: string | null | undefined) => {
+  if (!role) {
+    return "Unknown Role";
+  }
+
+  return role
+    .split("_")
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(" ");
+};
+
+const RoleBadge = ({
+  role,
+  isInvitation,
+}: {
+  role: string | null | undefined;
+  isInvitation?: boolean;
+}) => {
+  const normalizedRole = role ?? "";
+
+  if (isInvitation) {
+    return (
+      <TableBadge tone="warning" className={BADGE_BASE_CLASS}>
+        <Mail className="mr-1 h-3.5 w-3.5" />
+        {formatRoleLabel(normalizedRole)}
+      </TableBadge>
+    );
+  }
+
+  const config = roleBadgeConfig[normalizedRole] ?? {
+    label: formatRoleLabel(normalizedRole),
+    icon: User,
+    tone: "slate" as const,
+  };
+  const Icon = config.icon;
+
+  return (
+    <TableBadge tone={config.tone} className={BADGE_BASE_CLASS}>
+      <Icon className="mr-1 h-3.5 w-3.5" />
+      {config.label}
+    </TableBadge>
+  );
+};
+
+const StatusBadge = ({ status }: { status: "active" | "pending" | "expired" }) => {
+  const config = statusBadgeConfig[status];
+
+  return (
+    <TableBadge tone={config.tone} className={BADGE_BASE_CLASS}>
+      {config.label}
+    </TableBadge>
+  );
+};
 
 const handleRemoveMember = async (
   memberId: string,
@@ -106,54 +236,6 @@ const RemoveMemberConfirmDialog = ({
       </AlertDialogContent>
     </AlertDialog>
   );
-};
-
-const getRoleIcon = (role: string) => {
-  switch (role) {
-    case "org_owner":
-      return <Crown className="mr-2 h-4 w-4" />;
-    case "org_admin":
-      return <Shield className="mr-2 h-4 w-4" />;
-    case "project_admin":
-      return <Shield className="mr-2 h-4 w-4" />;
-    case "project_editor":
-      return <User className="mr-2 h-4 w-4" />;
-    case "project_viewer":
-      return <Eye className="mr-2 h-4 w-4" />;
-    default:
-      return <User className="mr-2 h-4 w-4" />;
-  }
-};
-
-const getRoleColor = (role: string, isInvitation = false) => {
-  if (isInvitation) return "bg-orange-100 text-orange-700";
-
-  switch (role) {
-    case "org_owner":
-      return "bg-purple-100 text-purple-700";
-    case "org_admin":
-      return "bg-blue-100 text-blue-700";
-    case "project_admin":
-      return "bg-indigo-100 text-indigo-700";
-    case "project_editor":
-      return "bg-green-100 text-green-700";
-    case "project_viewer":
-    default:
-      return "bg-gray-100 text-gray-700";
-  }
-};
-
-const getStatusColor = (status: string) => {
-  switch (status) {
-    case "pending":
-      return "bg-yellow-100 text-yellow-700";
-    case "accepted":
-      return "bg-green-100 text-green-700";
-    case "expired":
-      return "bg-red-100 text-red-700";
-    default:
-      return "bg-gray-100 text-gray-700";
-  }
 };
 
 // All roles are now in new RBAC format - no conversion needed
@@ -356,12 +438,146 @@ const MemberActionsCell = ({
 
             if (data.success) {
               onMemberUpdate();
+              return {
+                successMessage:
+                  data.message || `Updated access for ${member.name}`,
+              };
             } else {
               throw new Error(data.error || "Failed to update member access");
             }
           }}
         />
       )}
+    </>
+  );
+};
+
+// Component to confirm invitation cancellation
+const CancelInvitationConfirmDialog = ({
+  isOpen,
+  onClose,
+  onConfirm,
+  email,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  email: string;
+}) => {
+  return (
+    <AlertDialog open={isOpen} onOpenChange={onClose}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Cancel invitation?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Are you sure you want to cancel the invitation for{" "}
+            <strong>{email}</strong>? They will no longer be able to accept this
+            invitation.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Keep Invitation</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={onConfirm}
+            className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+          >
+            Cancel Invitation
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+};
+
+// Invitation Actions Cell Component
+const InvitationActionsCell = ({
+  invitation,
+  onMemberUpdate,
+}: {
+  invitation: PendingInvitation;
+  onMemberUpdate: () => void;
+}) => {
+  const [showCancelDialog, setShowCancelDialog] = useState(false);
+  const [resending, setResending] = useState(false);
+
+  const handleResendInvitation = async () => {
+    setResending(true);
+    try {
+      const response = await fetch(
+        `/api/organizations/members/invite/${invitation.id}`,
+        { method: "POST" }
+      );
+      const data = await response.json();
+
+      if (data.success) {
+        toast.success(`Invitation resent to ${invitation.email}`);
+        onMemberUpdate();
+      } else {
+        toast.error(data.error || "Failed to resend invitation");
+      }
+    } catch (error) {
+      console.error("Error resending invitation:", error);
+      toast.error("Failed to resend invitation");
+    } finally {
+      setResending(false);
+    }
+  };
+
+  const handleCancelInvitation = async () => {
+    try {
+      const response = await fetch(
+        `/api/organizations/members/invite/${invitation.id}`,
+        { method: "DELETE" }
+      );
+      const data = await response.json();
+
+      if (data.success) {
+        toast.success("Invitation cancelled");
+        onMemberUpdate();
+      } else {
+        toast.error(data.error || "Failed to cancel invitation");
+      }
+    } catch (error) {
+      console.error("Error cancelling invitation:", error);
+      toast.error("Failed to cancel invitation");
+    }
+    setShowCancelDialog(false);
+  };
+
+  return (
+    <>
+      <div className="flex items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8 w-8 p-0 bg-blue-50 hover:bg-blue-100 text-blue-600 hover:text-blue-700 border-blue-200 hover:border-blue-300 transition-all duration-200 rounded-md shadow-sm"
+          onClick={handleResendInvitation}
+          disabled={resending}
+          title="Resend Invitation"
+        >
+          {resending ? (
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+          ) : (
+            <Mail className="h-4 w-4" />
+          )}
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8 w-8 p-0 bg-red-50 hover:bg-red-100 text-red-600 hover:text-red-700 border-red-200 hover:border-red-300 transition-all duration-200 rounded-md shadow-sm"
+          onClick={() => setShowCancelDialog(true)}
+          title="Cancel Invitation"
+        >
+          <XCircle className="h-4 w-4" />
+        </Button>
+      </div>
+
+      <CancelInvitationConfirmDialog
+        isOpen={showCancelDialog}
+        onClose={() => setShowCancelDialog(false)}
+        onConfirm={handleCancelInvitation}
+        email={invitation.email}
+      />
     </>
   );
 };
@@ -441,13 +657,7 @@ export const createMemberColumns = (
 
       return (
         <div className="flex items-center h-10">
-          <Badge
-            variant="outline"
-            className={`${getRoleColor(role, isInvitation)} text-xs px-3 py-1.5 font-medium capitalize`}
-          >
-            {getRoleIcon(role)}
-            {role}
-          </Badge>
+          <RoleBadge role={role} isInvitation={isInvitation} />
         </div>
       );
     },
@@ -473,25 +683,16 @@ export const createMemberColumns = (
     size: 120,
     cell: ({ row }) => {
       const item = row.original;
-      const isInvitation = item.type === "invitation";
+      const status =
+        item.type === "invitation"
+          ? (item as PendingInvitation).status
+          : "active";
 
       return (
         <div className="flex items-center h-10">
-          {isInvitation ? (
-            <Badge
-              variant="outline"
-              className={`${getStatusColor((item as PendingInvitation).status)} text-xs px-3 py-1.5 font-medium capitalize`}
-            >
-              {(item as PendingInvitation).status}
-            </Badge>
-          ) : (
-            <Badge
-              variant="outline"
-              className="bg-green-100 text-green-700 text-xs px-3 py-1.5 font-medium capitalize"
-            >
-              Active
-            </Badge>
-          )}
+          <StatusBadge
+            status={status as "active" | "pending" | "expired"}
+          />
         </div>
       );
     },
@@ -574,6 +775,108 @@ export const createMemberColumns = (
     },
   },
   {
+    id: "projects",
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Projects" />
+    ),
+    size: 200,
+    cell: ({ row }) => {
+      const item = row.original;
+      const isInvitation = item.type === "invitation";
+
+      if (isInvitation) {
+        return (
+          <div className="flex items-center h-10">
+            <span className="text-muted-foreground text-sm">—</span>
+          </div>
+        );
+      }
+
+      const member = item as OrgMember;
+      const memberProjects = member.projects ?? [];
+
+      // Org-level and viewer roles all have access to all projects.
+      if (
+        member.role === "org_owner" ||
+        member.role === "org_admin" ||
+        member.role === "project_viewer"
+      ) {
+        return (
+          <div className="flex items-center h-10">
+            <Badge
+              variant="secondary"
+              className={`${BADGE_BASE_CLASS} bg-muted text-foreground`}
+            >
+              <FolderOpen className="mr-1 h-3.5 w-3.5" />
+              All Projects
+            </Badge>
+          </div>
+        );
+      }
+
+      if (memberProjects.length === 0) {
+        return (
+          <div className="flex items-center h-10">
+            <span className="text-muted-foreground text-sm">None</span>
+          </div>
+        );
+      }
+
+      // Show up to 2 project badges + count for overflow
+      const displayProjects = memberProjects.slice(0, 2);
+      const remaining = memberProjects.length - displayProjects.length;
+
+      const trigger = (
+        <div className="flex items-center h-10 gap-1">
+          {displayProjects.map((project) => (
+            <Badge
+              key={project.projectId}
+              variant="secondary"
+              className={`${PROJECT_BADGE_CLASS} bg-muted text-foreground`}
+              title={project.projectName}
+            >
+              <span className="truncate">{project.projectName}</span>
+            </Badge>
+          ))}
+          {remaining > 0 && (
+            <Badge
+              variant="secondary"
+              className={`${BADGE_BASE_CLASS} bg-muted text-muted-foreground`}
+            >
+              +{remaining}
+            </Badge>
+          )}
+        </div>
+      );
+
+      if (remaining <= 0) {
+        return trigger;
+      }
+
+      return (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>{trigger}</TooltipTrigger>
+            <TooltipContent side="top" className="max-w-[420px]">
+              <div className="flex flex-wrap gap-1">
+                {memberProjects.map((project) => (
+                  <Badge
+                    key={project.projectId}
+                    variant="secondary"
+                    className={`${PROJECT_BADGE_CLASS} bg-muted text-foreground`}
+                    title={project.projectName}
+                  >
+                    <span className="truncate">{project.projectName}</span>
+                  </Badge>
+                ))}
+              </div>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      );
+    },
+  },
+  {
     id: "actions",
     header: ({ column }) => (
       <DataTableColumnHeader column={column} title="Actions" />
@@ -584,9 +887,13 @@ export const createMemberColumns = (
       const isInvitation = item.type === "invitation";
 
       if (isInvitation) {
+        const inv = item as PendingInvitation;
         return (
           <div className="flex items-center h-10">
-            <span className="text-muted-foreground text-sm">None</span>
+            <InvitationActionsCell
+              invitation={inv}
+              onMemberUpdate={onMemberUpdate}
+            />
           </div>
         );
       }

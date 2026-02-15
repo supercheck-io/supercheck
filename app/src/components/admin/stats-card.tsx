@@ -19,6 +19,8 @@ interface StatsCardProps {
     | "danger"
     | "purple"
     | "cyan";
+  className?: string;
+  metaInline?: boolean;
 }
 
 const variantStyles = {
@@ -59,20 +61,29 @@ export function StatsCard({
   icon: Icon,
   trend,
   variant = "default",
+  className,
+  metaInline = false,
 }: StatsCardProps) {
   const styles = variantStyles[variant];
+  const trendText = trend
+    ? `${trend.isPositive !== false ? "+" : ""}${trend.value} ${trend.label}`
+    : null;
+  const metaText = metaInline
+    ? [description, trendText].filter(Boolean).join(" • ")
+    : description;
+  const showTrendNearValue = trend && !metaInline;
 
   return (
-    <Card className="relative overflow-hidden">
-      <CardContent className="p-5">
+    <Card className={cn("relative h-full overflow-hidden", className)}>
+      <CardContent className="p-5 h-full">
         <div className="flex items-start justify-between">
-          <div className="space-y-1.5">
+          <div className="space-y-1.5 min-w-0">
             <p className="text-sm font-medium text-muted-foreground">{title}</p>
             <div className="flex items-baseline gap-2">
               <span className="text-2xl font-semibold tracking-tight">
                 {typeof value === "number" ? value.toLocaleString() : value}
               </span>
-              {trend && (
+              {showTrendNearValue && (
                 <span
                   className={cn(
                     "text-xs font-medium",
@@ -86,10 +97,18 @@ export function StatsCard({
                 </span>
               )}
             </div>
-            {description && (
-              <p className="text-xs text-muted-foreground">{description}</p>
+            {metaText && (
+              <p
+                className={cn(
+                  "text-xs text-muted-foreground",
+                  metaInline ? "truncate whitespace-nowrap" : undefined
+                )}
+                title={metaInline ? metaText : undefined}
+              >
+                {metaText}
+              </p>
             )}
-            {trend && (
+            {trend && !metaInline && (
               <p className="text-xs text-muted-foreground">{trend.label}</p>
             )}
           </div>

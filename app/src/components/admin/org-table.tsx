@@ -17,8 +17,6 @@ export function OrgTable({ organizations }: OrgTableProps) {
       columns={columns}
       data={organizations}
       toolbar={OrgTableToolbar}
-      title="Organizations"
-      description="Manage organizations and their settings"
       itemName="organizations"
       meta={{
         globalFilterColumns: ["name", "ownerEmail"],

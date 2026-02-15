@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/utils/db';
 import { tests, testTags, tags } from '@/db/schema';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { requireAuthContext, isAuthError } from '@/lib/auth-context';
 
@@ -85,14 +85,29 @@ export async function POST(
     }
 
     const { id: testId } = await params;
-    const { tagIds } = await request.json();
+    const body = await request.json();
+    const tagIds = body?.tagIds;
 
     if (!Array.isArray(tagIds)) {
       return NextResponse.json({ error: 'Tag IDs must be an array' }, { status: 400 });
     }
 
+    const validTagIds = tagIds.filter(
+      (tagId): tagId is string => typeof tagId === 'string' && tagId.trim().length > 0
+    );
+
+    if (validTagIds.length !== tagIds.length) {
+      return NextResponse.json({ error: 'Tag IDs must be non-empty strings' }, { status: 400 });
+    }
+
+    const normalizedTagIds = Array.from(new Set(validTagIds));
+
+    if (normalizedTagIds.length !== validTagIds.length) {
+      return NextResponse.json({ error: 'Duplicate tag IDs are not allowed' }, { status: 400 });
+    }
+
     // Validate maximum number of tags per test (10)
-    if (tagIds.length > 10) {
+    if (normalizedTagIds.length > 10) {
       return NextResponse.json({ error: 'Maximum of 10 tags allowed per test' }, { status: 400 });
     }
 
@@ -111,12 +126,33 @@ export async function POST(
       return NextResponse.json({ error: 'Test not found' }, { status: 404 });
     }
 
+    // Verify all tags belong to the same org/project to prevent cross-tenant assignment
+    if (normalizedTagIds.length > 0) {
+      const validTags = await db
+        .select({ id: tags.id })
+        .from(tags)
+        .where(
+          and(
+            inArray(tags.id, normalizedTagIds),
+            eq(tags.organizationId, organizationId),
+            eq(tags.projectId, project.id)
+          )
+        );
+
+      if (validTags.length !== normalizedTagIds.length) {
+        return NextResponse.json(
+          { error: 'One or more tags are invalid or not accessible in this project' },
+          { status: 400 }
+        );
+      }
+    }
+
     // Remove existing tags for this test
     await db.delete(testTags).where(eq(testTags.testId, testId));
 
     // Add new tags
-    if (tagIds.length > 0) {
-      const testTagsToInsert = tagIds.map((tagId: string) => ({
+    if (normalizedTagIds.length > 0) {
+      const testTagsToInsert = normalizedTagIds.map((tagId: string) => ({
         testId,
         tagId,
       }));

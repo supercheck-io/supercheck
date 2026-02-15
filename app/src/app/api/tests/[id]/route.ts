@@ -5,6 +5,7 @@ import { eq, and, count, sql } from "drizzle-orm";
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { requireAuthContext, isAuthError } from '@/lib/auth-context';
 import { logAuditEvent } from '@/lib/audit-logger';
+import { validateScriptTypeMatch, normalizeTestType } from '@/lib/script-type-validator';
 
 declare const Buffer: {
   from(data: string, encoding: string): { toString(encoding: string): string };
@@ -147,6 +148,29 @@ export async function PUT(
       );
     }
 
+    // Normalize type if provided
+    const resolvedType = body.type !== undefined
+      ? normalizeTestType(body.type)
+      : existingTest.type;
+
+    // Determine the effective script for validation
+    const effectiveScript = body.script !== undefined ? body.script : existingTest.script;
+
+    // Validate script-type compatibility
+    if (effectiveScript && effectiveScript.length > 0) {
+      const decodedScript = await decodeTestScript(effectiveScript);
+      const typeValidation = validateScriptTypeMatch(decodedScript, resolvedType);
+      if (!typeValidation.valid) {
+        return NextResponse.json(
+          {
+            error: typeValidation.error,
+            suggestedType: typeValidation.suggestedType,
+          },
+          { status: 400 }
+        );
+      }
+    }
+
     // Update the test
     const [updatedTest] = await db
       .update(tests)
@@ -155,7 +179,7 @@ export async function PUT(
         description: body.description !== undefined ? body.description : existingTest.description,
         script: body.script !== undefined ? body.script : existingTest.script,
         priority: body.priority !== undefined ? body.priority : existingTest.priority,
-        type: body.type !== undefined ? body.type : existingTest.type,
+        type: resolvedType,
         updatedAt: new Date(),
       })
       .where(eq(tests.id, testId))

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
@@ -57,10 +57,17 @@ interface MemberAccessDialogProps {
   mode: "invite" | "edit";
   member?: MemberData;
   projects: Project[];
-  onSubmit: (memberData: MemberData) => Promise<void>;
+  onSubmit: (
+    memberData: MemberData
+  ) => Promise<{ successMessage?: string } | void>;
   isLoading?: boolean;
   isCloudMode?: boolean;
 }
+
+const rolesRequiringProjectSelection = new Set([
+  "project_editor",
+  "project_admin",
+]);
 
 const accessLevels = [
   {
@@ -166,43 +173,62 @@ export function MemberAccessDialog({
     selectedProjects: [],
   });
 
-  // Track previous open state to detect transitions
-  const wasOpen = useRef(open);
+  const memberId = member?.id;
+  const memberName = member?.name;
+  const memberEmail = member?.email;
+  const memberRole = member?.role;
+  const memberSelectedProjects = useMemo(
+    () => member?.selectedProjects ?? [],
+    [member?.selectedProjects]
+  );
+  const memberSelectedProjectsKey = memberSelectedProjects.join("|");
 
-  // Initialize form data only when transitioning from closed to open
+  // Initialize form data when dialog opens.
+  // Depend on member id (not full member object) to avoid resetting form on every re-render.
   useEffect(() => {
-    // Only run when dialog opens (not when already open)
-    if (open && !wasOpen.current) {
-      // Defer setState to avoid synchronous setState in effect body
-      setTimeout(() => {
-        if (mode === "edit" && member) {
-          setFormData({
-            id: member.id,
-            name: member.name,
-            email: member.email,
-            role: member.role,
-            selectedProjects: member.selectedProjects || [],
-          });
-        } else {
-          setFormData({
-            email: "",
-            role: "project_editor",
-            selectedProjects: [],
-          });
-        }
-      }, 0);
+    if (!open) {
+      return;
     }
-    wasOpen.current = open;
-  }, [open, mode, member]);
+
+    const timer = window.setTimeout(() => {
+      if (mode === "edit" && memberId && memberEmail && memberRole) {
+        setFormData({
+          id: memberId,
+          name: memberName,
+          email: memberEmail,
+          role: memberRole,
+          selectedProjects: memberSelectedProjects,
+        });
+        return;
+      }
+
+      setFormData({
+        email: "",
+        role: "project_editor",
+        selectedProjects: [],
+      });
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    open,
+    mode,
+    memberId,
+    memberName,
+    memberEmail,
+    memberRole,
+    memberSelectedProjects,
+    memberSelectedProjectsKey,
+  ]);
 
   // Handle role change - clear projects when project_viewer is selected
   const handleRoleChange = (newRole: string) => {
     setFormData((prev) => ({
       ...prev,
       role: newRole,
-      // Clear project assignments when project_viewer is selected
-      selectedProjects:
-        newRole === "project_viewer" ? [] : prev.selectedProjects,
+      selectedProjects: rolesRequiringProjectSelection.has(newRole)
+        ? prev.selectedProjects
+        : [],
     }));
   };
 
@@ -231,12 +257,7 @@ export function MemberAccessDialog({
   };
 
   const handleSubmit = async () => {
-    // Prepare data for validation
-    const dataToValidate = {
-      email: formData.email.trim(),
-      role: formData.role,
-      selectedProjects: formData.selectedProjects,
-    };
+    const trimmedEmail = formData.email.trim();
 
     // Note: Disposable email check removed - invitations go to trusted emails
     // The inviter already trusts the email they're inviting
@@ -244,9 +265,16 @@ export function MemberAccessDialog({
     // Validate form data using appropriate schema
     try {
       if (mode === "invite") {
-        inviteMemberSchema.parse(dataToValidate);
+        inviteMemberSchema.parse({
+          email: trimmedEmail,
+          role: formData.role,
+          selectedProjects: formData.selectedProjects,
+        });
       } else {
-        updateMemberSchema.parse(dataToValidate);
+        updateMemberSchema.parse({
+          role: formData.role,
+          selectedProjects: formData.selectedProjects,
+        });
       }
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -260,11 +288,21 @@ export function MemberAccessDialog({
     }
 
     try {
-      await onSubmit({
+      const result = await onSubmit({
         ...formData,
-        email: dataToValidate.email,
-        selectedProjects: dataToValidate.selectedProjects,
+        email: trimmedEmail,
+        selectedProjects: formData.selectedProjects,
       });
+
+      const selectedRoleLabel = accessLevels.find(
+        (level) => level.role === formData.role
+      )?.fullLabel;
+      const defaultSuccessMessage =
+        mode === "invite"
+          ? "Invitation sent successfully"
+          : selectedRoleLabel
+            ? `Member access updated to ${selectedRoleLabel}`
+            : "Member access updated successfully";
 
       // Reset form for invite mode
       if (mode === "invite") {
@@ -276,11 +314,7 @@ export function MemberAccessDialog({
       }
 
       onOpenChange(false);
-      toast.success(
-        mode === "invite"
-          ? "Invitation sent successfully"
-          : "Member access updated successfully"
-      );
+      toast.success(result?.successMessage ?? defaultSuccessMessage);
     } catch (error) {
       console.error(
         `Error ${mode === "invite" ? "inviting" : "updating"} member:`,
@@ -296,15 +330,16 @@ export function MemberAccessDialog({
     }
   };
 
-  const isFormValid =
-    formData.email.trim() &&
-    (formData.role === "project_viewer" ||
-      formData.role === "org_admin" ||
-      formData.selectedProjects.length > 0);
+  const hasRequiredEmail =
+    mode === "invite" ? formData.email.trim().length > 0 : true;
+  const requiresProjectSelection = rolesRequiringProjectSelection.has(
+    formData.role
+  );
+  const hasRequiredProjectSelection =
+    !requiresProjectSelection || formData.selectedProjects.length > 0;
+  const isFormValid = hasRequiredEmail && hasRequiredProjectSelection;
 
   const selectedRole = accessLevels.find((l) => l.role === formData.role);
-  const requiresProjectSelection =
-    formData.role === "project_editor" || formData.role === "project_admin";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

@@ -437,7 +437,7 @@ const Playground: React.FC<PlaygroundProps> = ({
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ script }),
+        body: JSON.stringify({ script, testType: testCase.type }),
       });
 
       const result = await response.json();

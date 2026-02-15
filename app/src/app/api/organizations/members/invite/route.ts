@@ -216,6 +216,31 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // SECURITY: Validate selected projects belong to this organization BEFORE creating invitation
+    let selectedProjectDetails: { id: string; name: string }[] = [];
+    if (selectedProjects && selectedProjects.length > 0) {
+      selectedProjectDetails = await db
+        .select({
+          id: projects.id,
+          name: projects.name,
+        })
+        .from(projects)
+        .where(
+          and(
+            inArray(projects.id, selectedProjects),
+            eq(projects.status, "active"),
+            eq(projects.organizationId, organizationId)
+          )
+        );
+
+      if (selectedProjectDetails.length !== selectedProjects.length) {
+        return NextResponse.json(
+          { error: "One or more selected projects do not belong to this organization" },
+          { status: 400 }
+        );
+      }
+    }
+
     // Create invitation
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7); // 7 days expiry
@@ -232,30 +257,6 @@ export async function POST(request: NextRequest) {
         selectedProjects: selectedProjects,
       })
       .returning();
-
-    // Get selected projects info for the email
-    // SECURITY: Also filter by organizationId to ensure only projects from this org are included
-    const selectedProjectDetails = await db
-      .select({
-        id: projects.id,
-        name: projects.name,
-      })
-      .from(projects)
-      .where(
-        and(
-          inArray(projects.id, selectedProjects),
-          eq(projects.status, "active"),
-          eq(projects.organizationId, organizationId)
-        )
-      );
-
-    // SECURITY: Verify all selected projects belong to this organization
-    if (selectedProjectDetails.length !== selectedProjects.length) {
-      return NextResponse.json(
-        { error: "One or more selected projects do not belong to this organization" },
-        { status: 400 }
-      );
-    }
 
     // Send email invitation
     const emailService = EmailService.getInstance();

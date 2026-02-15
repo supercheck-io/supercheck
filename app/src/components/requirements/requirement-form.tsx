@@ -44,8 +44,8 @@ import { toast } from "sonner";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { createRequirement, updateRequirement, linkTestsToRequirement, unlinkTestFromRequirement, deleteRequirement } from "@/actions/requirements";
-import { REQUIREMENTS_QUERY_KEY, REQUIREMENT_LINKED_TESTS_QUERY_KEY } from "@/hooks/use-requirements";
+import { createRequirement, updateRequirement, syncRequirementTests, deleteRequirement } from "@/actions/requirements";
+import { REQUIREMENTS_QUERY_KEY, REQUIREMENT_QUERY_KEY, REQUIREMENT_LINKED_TESTS_QUERY_KEY } from "@/hooks/use-requirements";
 import type { CreateRequirementInput, UpdateRequirementInput } from "@/actions/requirements";
 import { TagSelector, type Tag } from "@/components/ui/tag-selector";
 import { useTags, useTagMutations, useRequirementTags, useSaveRequirementTags } from "@/hooks/use-tags";
@@ -58,6 +58,7 @@ import { normalizeRole } from "@/lib/rbac/role-normalizer";
 import { canCreateTags, canDeleteTags } from "@/lib/rbac/client-permissions";
 import { useProjectContext } from "@/hooks/use-project-context";
 import { useSession } from "@/utils/auth-client";
+import { REQUIREMENTS_PATH } from "@/lib/requirements/url";
 
 // Form schema - following best practices like job form
 const requirementFormSchema = z.object({
@@ -134,6 +135,7 @@ export function RequirementForm({
 
     // Track selected tags as proper Tag objects (like test form)
     const [selectedTags, setSelectedTags] = React.useState<Tag[]>([]);
+    const [initialTags, setInitialTags] = React.useState<Tag[]>([]);
     const hasInitializedTagsRef = React.useRef(false);
 
     // Initialize selected tags when fetched from API (edit mode)
@@ -141,17 +143,59 @@ export function RequirementForm({
         if (!requirementId) {
             hasInitializedTagsRef.current = false;
             setSelectedTags([]);
+            setInitialTags([]);
             return;
         }
         // Wait for loading to complete before initializing
         if (!hasInitializedTagsRef.current && !isLoadingFetchedTags && fetchedTags !== undefined) {
             hasInitializedTagsRef.current = true;
             setSelectedTags(fetchedTags);
+            setInitialTags(fetchedTags);
         }
     }, [fetchedTags, requirementId, isLoadingFetchedTags]);
 
+    const tagsChanged = React.useMemo(() => {
+        if (!initialTags || initialTags.length === 0) {
+            return selectedTags.length > 0;
+        }
+
+        if (initialTags.length !== selectedTags.length) {
+            return true;
+        }
+
+        const initialTagIds = new Set(initialTags.map((tag) => tag.id));
+        const selectedTagIds = new Set(selectedTags.map((tag) => tag.id));
+
+        return (
+            initialTagIds.size !== selectedTagIds.size ||
+            !Array.from(initialTagIds).every((id) => selectedTagIds.has(id))
+        );
+    }, [initialTags, selectedTags]);
+
+    const invalidatePostSaveQueries = React.useCallback(
+        (targetId: string | null) => {
+            void queryClient.invalidateQueries({ queryKey: REQUIREMENTS_QUERY_KEY, refetchType: "all" });
+            if (targetId) {
+                // Invalidate the single-requirement cache so re-editing shows fresh data
+                void queryClient.invalidateQueries({
+                    queryKey: [...REQUIREMENT_QUERY_KEY, targetId],
+                    refetchType: "all",
+                });
+                void queryClient.invalidateQueries({
+                    queryKey: [...REQUIREMENT_LINKED_TESTS_QUERY_KEY, targetId],
+                    refetchType: "all",
+                });
+            }
+        },
+        [queryClient]
+    );
+
+    const navigateToRequirementsList = React.useCallback(() => {
+        router.push(REQUIREMENTS_PATH);
+    }, [router]);
+
     // Save tags after requirement is created/updated
-    const saveRequirementTags = async (targetId: string) => {
+    async function saveRequirementTags(targetId: string): Promise<void> {
         if (!targetId) return;
         try {
             await saveRequirementTagsMutation.mutateAsync({
@@ -161,7 +205,7 @@ export function RequirementForm({
         } catch (error) {
             console.error("Error saving requirement tags:", error);
         }
-    };
+    }
 
     // Handle tag change from TagSelector
     const handleTagChange = (tags: Tag[]) => {
@@ -196,19 +240,26 @@ export function RequirementForm({
 
     // Sync linked tests with selected tests state
     useEffect(() => {
-        if (linkedTests.length > 0 && mode === "edit") {
+        if (mode !== "edit") {
+            return;
+        }
+
+        if (linkedTests.length > 0) {
             const mappedTests: Test[] = linkedTests.map(t => ({
                 id: t.id,
                 name: t.name,
                 description: t.description,
-                type: t.type as any, // Cast to match Test type
-                status: "running", // Default
+                type: t.type as any,
+                status: "running",
                 lastRunAt: null,
                 duration: null,
                 tags: t.tags
             }));
             setSelectedTests(mappedTests);
+            return;
         }
+
+        setSelectedTests([]);
     }, [linkedTests, mode]);
 
     const onSubmit = form.handleSubmit(async (values: FormData) => {
@@ -252,34 +303,32 @@ export function RequirementForm({
 
             // Handle Test Linking/Unlinking
             if (targetId) {
-                const currentIds = selectedTests.map(t => t.id);
-                // For create mode, initial linked is empty. For edit, use fetched linkedTests.
-                const originalIds = mode === "edit" ? linkedTests.map(t => t.id) : [];
+                const currentIds = Array.from(new Set(selectedTests.map(t => t.id)));
+                const originalIds = mode === "edit" ? Array.from(new Set(linkedTests.map(t => t.id))) : [];
 
-                const toLink = currentIds.filter(id => !originalIds.includes(id));
-                const toUnlink = originalIds.filter(id => !currentIds.includes(id));
+                const testsChanged =
+                    currentIds.length !== originalIds.length ||
+                    currentIds.some((id) => !originalIds.includes(id));
 
-                // Sync linked test changes
-                if (toLink.length > 0) {
-                    await linkTestsToRequirement(targetId, toLink);
+                if (testsChanged) {
+                    const syncResult = await syncRequirementTests(targetId, currentIds);
+                    if (!syncResult.success) {
+                        throw new Error(syncResult.error || "Failed to sync requirement tests");
+                    }
                 }
-                await Promise.all(
-                    toUnlink.map(testId => unlinkTestFromRequirement(targetId!, testId))
-                );
 
-                // Save tags (like test form pattern)
-                await saveRequirementTags(targetId);
+                // Save tags only when changed to avoid unnecessary API/DB work
+                if (tagsChanged) {
+                    await saveRequirementTags(targetId);
+                }
             }
 
-            await queryClient.invalidateQueries({ queryKey: REQUIREMENTS_QUERY_KEY, refetchType: 'all' });
-            if (targetId) {
-                await queryClient.invalidateQueries({ queryKey: [...REQUIREMENT_LINKED_TESTS_QUERY_KEY, targetId], refetchType: 'all' });
-            }
+            invalidatePostSaveQueries(targetId ?? null);
 
             if (onSuccess && targetId) {
                 onSuccess(targetId);
             } else {
-                router.push("/requirements");
+                navigateToRequirementsList();
             }
 
         } catch (error) {
@@ -293,7 +342,12 @@ export function RequirementForm({
     });
 
     const handleCancel = () => {
-        router.push("/requirements");
+        if (onCancel) {
+            onCancel();
+            return;
+        }
+
+        navigateToRequirementsList();
     };
 
     const handleDelete = async () => {
@@ -306,7 +360,7 @@ export function RequirementForm({
             }
             toast.success("Requirement deleted");
             queryClient.invalidateQueries({ queryKey: REQUIREMENTS_QUERY_KEY, refetchType: 'all' });
-            router.push("/requirements");
+            navigateToRequirementsList();
         } catch (error) {
             console.error("Failed to delete requirement:", error);
             toast.error("Failed to delete requirement", {

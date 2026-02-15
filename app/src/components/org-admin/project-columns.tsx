@@ -1,8 +1,8 @@
 "use client";
 
 import { ColumnDef } from "@tanstack/react-table";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
 
 import { Edit3, FolderOpen, Users, Calendar } from "lucide-react";
 import { toast } from "sonner";
@@ -28,16 +28,16 @@ export interface Project {
   isDefault: boolean;
 }
 
-const getStatusBadgeColor = (status: string) => {
+const getStatusBadgeTone = (status: string): TableBadgeTone => {
   switch (status) {
     case "active":
-      return "bg-green-100 text-green-700 border-green-200";
+      return "success";
     case "archived":
-      return "bg-yellow-100 text-yellow-700 border-yellow-200";
+      return "warning";
     case "deleted":
-      return "bg-red-100 text-red-700 border-red-200";
+      return "danger";
     default:
-      return "bg-gray-100 text-gray-700 border-gray-200";
+      return "slate";
   }
 };
 
@@ -104,9 +104,9 @@ export function createProjectColumns(
                 <div className="text-sm font-medium text-foreground flex items-center gap-2">
                   <span className="truncate">{project.name}</span>
                   {project.isDefault && (
-                    <Badge variant="secondary" className="text-xs px-2 py-0.5">
+                    <TableBadge compact>
                       Default
-                    </Badge>
+                    </TableBadge>
                   )}
                 </div>
                 {project.description && (
@@ -136,12 +136,9 @@ export function createProjectColumns(
 
         return (
           <div className="flex items-center h-10">
-            <Badge
-              variant="outline"
-              className={`${getStatusBadgeColor(status)} text-xs px-3 py-1.5 font-medium capitalize`}
-            >
+            <TableBadge tone={getStatusBadgeTone(status)} className="capitalize">
               {status}
-            </Badge>
+            </TableBadge>
           </div>
         );
       },

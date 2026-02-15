@@ -28,8 +28,6 @@ export function ProjectsTable({ projects, onCreateProject, onEditProject, canCre
       columns={columns}
       data={projects}
       toolbar={CustomToolbar}
-      title="Projects"
-      description="Manage projects within your organization. Create, edit, and organize projects."
       itemName="projects"
       meta={{
         globalFilterColumns: ["name", "description"],

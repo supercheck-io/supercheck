@@ -1,5 +1,10 @@
 import { z } from "zod"
 
+const rolesRequiringProjectAssignments = new Set([
+  "project_editor",
+  "project_admin",
+])
+
 export const inviteMemberSchema = z.object({
   email: z
     .string()
@@ -14,12 +19,10 @@ export const inviteMemberSchema = z.object({
     .array(z.string())
     .max(50, "Cannot select more than 50 projects"),
 }).refine((data) => {
-  // Project viewers don't need specific project selection as they get access to all projects
-  if (data.role === "project_viewer") {
-    return true;
+  if (!rolesRequiringProjectAssignments.has(data.role)) {
+    return true
   }
-  // Other roles require at least one project to be selected
-  return data.selectedProjects.length > 0;
+  return data.selectedProjects.length > 0
 }, {
   message: "At least one project must be selected for project-specific roles",
   path: ["selectedProjects"]
@@ -34,12 +37,10 @@ export const updateMemberSchema = z.object({
     .array(z.string())
     .max(50, "Cannot select more than 50 projects"),
 }).refine((data) => {
-  // Project viewers don't need specific project selection as they get access to all projects
-  if (data.role === "project_viewer") {
-    return true;
+  if (!rolesRequiringProjectAssignments.has(data.role)) {
+    return true
   }
-  // Other roles require at least one project to be selected
-  return data.selectedProjects.length > 0;
+  return data.selectedProjects.length > 0
 }, {
   message: "At least one project must be selected for project-specific roles",
   path: ["selectedProjects"]

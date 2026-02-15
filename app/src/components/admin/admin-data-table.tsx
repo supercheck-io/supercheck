@@ -42,6 +42,10 @@ interface AdminDataTableProps<TData, TValue> {
   title?: string;
   description?: string;
   itemName?: string;
+  emptyTitle?: string;
+  emptyDescription?: string;
+  emptyFilteredTitle?: string;
+  emptyFilteredDescription?: string;
 }
 
 // Define the extended meta type locally
@@ -105,6 +109,10 @@ export function AdminDataTable<TData, TValue>({
   title,
   description,
   itemName = "items",
+  emptyTitle,
+  emptyDescription,
+  emptyFilteredTitle,
+  emptyFilteredDescription,
 }: AdminDataTableProps<TData, TValue>) {
   const [rowSelection, setRowSelection] = React.useState({});
   const [columnVisibility, setColumnVisibility] =
@@ -269,6 +277,18 @@ export function AdminDataTable<TData, TValue>({
     return null;
   }
 
+  const hasActiveFilters =
+    table.getState().columnFilters.length > 0 ||
+    Boolean(String(table.getState().globalFilter ?? "").trim());
+
+  const resolvedEmptyTitle = hasActiveFilters
+    ? emptyFilteredTitle ?? `No matching ${itemName}`
+    : emptyTitle ?? `No ${itemName} yet`;
+
+  const resolvedEmptyDescription = hasActiveFilters
+    ? emptyFilteredDescription ?? "Try adjusting your search or filters."
+    : emptyDescription ?? `When available, ${itemName} will appear here.`;
+
   return (
     <div className="space-y-4">
       {(title || description) && (
@@ -334,10 +354,13 @@ export function AdminDataTable<TData, TValue>({
             ) : (
               <TableRow>
                 <TableCell
-                  colSpan={columns.length}
-                  className="h-24 text-center"
+                  colSpan={Math.max(table.getVisibleLeafColumns().length, 1)}
+                  className="py-12"
                 >
-                  No results.
+                  <div className="flex flex-col items-center justify-center space-y-1 text-center">
+                    <p className="text-sm font-medium text-foreground">{resolvedEmptyTitle}</p>
+                    <p className="text-sm text-muted-foreground">{resolvedEmptyDescription}</p>
+                  </div>
                 </TableCell>
               </TableRow>
             )}

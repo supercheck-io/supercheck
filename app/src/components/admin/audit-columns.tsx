@@ -1,7 +1,6 @@
 "use client";
 
 import { ColumnDef } from "@tanstack/react-table";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -29,6 +28,7 @@ import { toast } from "sonner";
 import { useState } from "react";
 import { DataTableColumnHeader } from "@/components/tests/data-table-column-header";
 import { UUIDField } from "@/components/ui/uuid-field";
+import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
 
 export interface AuditUser {
   id: string | null;
@@ -125,16 +125,16 @@ function SyntaxHighlightedJSON({ data }: { data: unknown }) {
   );
 }
 
-const getActionBadgeColor = (action: string) => {
+const getActionBadgeTone = (action: string): TableBadgeTone => {
   if (action.includes("delete") || action.includes("remove"))
-    return "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400";
+    return "danger";
   if (action.includes("create") || action.includes("add"))
-    return "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400";
+    return "success";
   if (action.includes("update") || action.includes("edit"))
-    return "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400";
+    return "info";
   if (action.includes("login") || action.includes("auth"))
-    return "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400";
-  return "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300";
+    return "purple";
+  return "slate";
 };
 
 const formatDate = (dateString: string) => {
@@ -226,13 +226,10 @@ export const auditLogColumns: ColumnDef<AuditLog>[] = [
 
       return (
         <div className="flex items-center h-10">
-          <Badge
-            variant="outline"
-            className={`${getActionBadgeColor(action)} text-xs px-3 py-1.5 font-medium border-0`}
-          >
+          <TableBadge tone={getActionBadgeTone(action)}>
             <Activity className="mr-1.5 h-3 w-3" />
             {action}
-          </Badge>
+          </TableBadge>
         </div>
       );
     },
@@ -352,13 +349,13 @@ function ActionsCell({ log }: { log: AuditLog }) {
                 <p className="text-xs font-medium text-muted-foreground mb-1.5">
                   Action
                 </p>
-                <Badge
-                  variant="outline"
-                  className={`${getActionBadgeColor(log.action)} text-xs px-2.5 py-1 font-medium border-0`}
+                <TableBadge
+                  tone={getActionBadgeTone(log.action)}
+                  compact
                 >
                   <Activity className="mr-1 h-3 w-3" />
                   {log.action}
-                </Badge>
+                </TableBadge>
               </div>
 
               {/* User */}
@@ -427,9 +424,9 @@ function ActionsCell({ log }: { log: AuditLog }) {
                     <p className="text-xs font-medium text-muted-foreground mb-1">
                       Resource
                     </p>
-                    <Badge variant="secondary" className="font-mono text-xs">
+                    <TableBadge compact tone="neutral" className="font-mono">
                       {resource}
-                    </Badge>
+                    </TableBadge>
                   </div>
                 )}
                 {ipAddress && (

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/utils/db';
-import { invitation, member, organization, projects, projectMembers } from '@/db/schema';
+import { invitation, member, organization, projects, projectMembers, user as userTable } from '@/db/schema';
 import { eq, and, inArray } from 'drizzle-orm';
 import { requireUserAuthContext, isAuthError } from '@/lib/auth-context';
 import { getCurrentUser } from '@/lib/session';
@@ -13,7 +13,7 @@ export async function GET(
   const { token } = params;
 
   try {
-    // Get invitation details
+    // Get invitation details with inviter info
     const inviteDetails = await db
       .select({
         id: invitation.id,
@@ -23,10 +23,13 @@ export async function GET(
         status: invitation.status,
         expiresAt: invitation.expiresAt,
         selectedProjects: invitation.selectedProjects,
-        orgName: organization.name
+        orgName: organization.name,
+        inviterName: userTable.name,
+        inviterEmail: userTable.email,
       })
       .from(invitation)
       .innerJoin(organization, eq(invitation.organizationId, organization.id))
+      .innerJoin(userTable, eq(invitation.inviterId, userTable.id))
       .where(eq(invitation.id, token))
       .limit(1);
 
@@ -58,12 +61,16 @@ export async function GET(
     return NextResponse.json({
       success: true,
       data: {
-        // SECURITY: Only expose the minimum data needed for the sign-up form.
-        // Organization name is needed for display ("You've been invited to X").
-        // Email is needed to pre-fill and validate the sign-up form.
-        // Role and expiresAt are intentionally omitted to reduce disclosure on token leakage.
+        // NOTE: This endpoint serves both the invite acceptance page and the sign-in/sign-up
+        // page (for pre-filling forms). The invite page requires role, expiresAt, and inviter
+        // info to render the invitation details. The role is already disclosed in the
+        // invitation email, so including it here does not increase exposure.
         organizationName: invite.orgName,
         email: invite.email,
+        role: invite.role,
+        expiresAt: invite.expiresAt.toISOString(),
+        inviterName: invite.inviterName,
+        inviterEmail: invite.inviterEmail,
       }
     });
   } catch (error) {

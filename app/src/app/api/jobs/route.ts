@@ -18,6 +18,8 @@ import { subscriptionService } from "@/lib/services/subscription-service";
 import { getNextRunDate } from "@/lib/cron-utils";
 import { scheduleJob } from "@/lib/job-scheduler";
 import { validateNotificationProviderOwnership } from "@/lib/notification-providers/ownership";
+import { isTestTypeCompatibleWithJobType, getJobTestTypeMismatchError } from "@/lib/script-type-validator";
+import type { TestType } from "@/db/schema/types";
 
 import { randomUUID } from "crypto";
 
@@ -53,6 +55,11 @@ interface JobData {
   organizationId?: string;
   projectId?: string;
   createdByUserId?: string;
+}
+
+function hasDuplicateTestIds(tests: Test[]): boolean {
+  const testIds = tests.map((test) => test.id);
+  return new Set(testIds).size !== testIds.length;
 }
 
 
@@ -337,6 +344,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (hasDuplicateTestIds(jobData.tests)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Duplicate test IDs are not allowed in a job.",
+        },
+        { status: 400 }
+      );
+    }
+
     // Use current project context
     const targetProjectId = project.id;
 
@@ -431,6 +448,46 @@ export async function POST(request: NextRequest) {
             { status: 400 }
           );
         }
+      }
+    }
+
+    // Validate that all tests belong to this project and their types are compatible with the job type
+    const resolvedJobType: "k6" | "playwright" = jobData.jobType === "k6" ? "k6" : "playwright";
+    const testIds = jobData.tests.map((t) => t.id);
+    const testRecords = await db
+      .select({ id: testsTable.id, type: testsTable.type })
+      .from(testsTable)
+      .where(
+        and(
+          inArray(testsTable.id, testIds),
+          eq(testsTable.projectId, project.id),
+          eq(testsTable.organizationId, organizationId)
+        )
+      );
+
+    // Check all tests exist
+    const foundTestIds = new Set(testRecords.map((t) => t.id));
+    const missingTests = testIds.filter((id) => !foundTestIds.has(id));
+    if (missingTests.length > 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Tests not found or not accessible: ${missingTests.join(", ")}`,
+        },
+        { status: 400 }
+      );
+    }
+
+    // Validate test types are compatible with job type
+    for (const testRecord of testRecords) {
+      if (!isTestTypeCompatibleWithJobType(testRecord.type as TestType, resolvedJobType)) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: getJobTestTypeMismatchError(testRecord.id, testRecord.type as TestType, resolvedJobType),
+          },
+          { status: 400 }
+        );
       }
     }
 
@@ -587,6 +644,8 @@ export async function PUT(request: Request) {
       );
     }
 
+    const targetJobId = jobData.id;
+
     // Get current project context (includes auth verification)
     const context = await requireAuthContext();
     const { project, organizationId } = context;
@@ -618,15 +677,26 @@ export async function PUT(request: Request) {
       );
     }
 
+    if (hasDuplicateTestIds(jobData.tests)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Duplicate test IDs are not allowed in a job.",
+        },
+        { status: 400 }
+      );
+    }
+
     // Check if job exists and belongs to current project
     const existingJob = await db
       .select({
         id: jobs.id,
         projectId: jobs.projectId,
         organizationId: jobs.organizationId,
+        jobType: jobs.jobType,
       })
       .from(jobs)
-      .where(eq(jobs.id, jobData.id))
+      .where(eq(jobs.id, targetJobId))
       .limit(1);
 
     if (existingJob.length === 0) {
@@ -657,36 +727,88 @@ export async function PUT(request: Request) {
       );
     }
 
-    // Update the job in the database
-    await db
-      .update(jobs)
-      .set({
-        name: jobData.name,
-        description: jobData.description || "",
-        cronSchedule: jobData.cronSchedule,
-        status: jobData.status as JobStatus,
-        alertConfig: jobData.alertConfig || null,
-        updatedAt: new Date(),
-      })
-      .where(eq(jobs.id, jobData.id));
-
-    // Delete existing job-test associations
-    await db.delete(jobTests).where(eq(jobTests.jobId, jobData.id));
-
-    // If tests are provided, create new job-test associations
-    if (jobData.tests && jobData.tests.length > 0) {
-      const jobTestValues = jobData.tests.map((test) => ({
-        jobId: jobData.id!,
-        testId: test.id,
-      }));
-
-      await db.insert(jobTests).values(jobTestValues);
+    const persistedJobType: "k6" | "playwright" =
+      existingJob[0].jobType === "k6" ? "k6" : "playwright";
+    if (jobData.jobType && jobData.jobType !== persistedJobType) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Job type cannot be changed after creation.",
+        },
+        { status: 400 }
+      );
     }
+
+    // Validate that all tests belong to this project and their types are compatible with the job type
+    const updateJobType: "k6" | "playwright" = persistedJobType;
+    const updateTestIds = jobData.tests!.map((t) => t.id);
+    const updateTestRecords = await db
+      .select({ id: testsTable.id, type: testsTable.type })
+      .from(testsTable)
+      .where(
+        and(
+          inArray(testsTable.id, updateTestIds),
+          eq(testsTable.projectId, project.id),
+          eq(testsTable.organizationId, organizationId)
+        )
+      );
+
+    // Check all tests exist
+    const foundUpdateTestIds = new Set(updateTestRecords.map((t) => t.id));
+    const missingUpdateTests = updateTestIds.filter((id) => !foundUpdateTestIds.has(id));
+    if (missingUpdateTests.length > 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Tests not found or not accessible: ${missingUpdateTests.join(", ")}`,
+        },
+        { status: 400 }
+      );
+    }
+
+    // Validate test types are compatible with job type
+    for (const testRecord of updateTestRecords) {
+      if (!isTestTypeCompatibleWithJobType(testRecord.type as TestType, updateJobType)) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: getJobTestTypeMismatchError(testRecord.id, testRecord.type as TestType, updateJobType),
+          },
+          { status: 400 }
+        );
+      }
+    }
+
+    await db.transaction(async (tx) => {
+      await tx
+        .update(jobs)
+        .set({
+          name: jobData.name,
+          description: jobData.description || "",
+          cronSchedule: jobData.cronSchedule,
+          status: jobData.status as JobStatus,
+          alertConfig: jobData.alertConfig || null,
+          updatedAt: new Date(),
+        })
+        .where(eq(jobs.id, targetJobId));
+
+      await tx.delete(jobTests).where(eq(jobTests.jobId, targetJobId));
+
+      if (jobData.tests && jobData.tests.length > 0) {
+        const jobTestValues = jobData.tests.map((test, index) => ({
+          jobId: targetJobId,
+          testId: test.id,
+          orderPosition: index,
+        }));
+
+        await tx.insert(jobTests).values(jobTestValues);
+      }
+    });
 
     return NextResponse.json({
       success: true,
       job: {
-        id: jobData.id,
+        id: targetJobId,
         name: jobData.name,
         description: jobData.description || "",
         cronSchedule: jobData.cronSchedule,
@@ -716,5 +838,4 @@ export async function PUT(request: Request) {
     );
   }
 }
-
 

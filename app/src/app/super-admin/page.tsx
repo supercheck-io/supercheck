@@ -1,11 +1,10 @@
 "use client";
 
 import React, { useState, useEffect, useSyncExternalStore } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { StatsCard } from "@/components/admin/stats-card";
 import { UserTable } from "@/components/admin/user-table";
 import { OrgTable } from "@/components/admin/org-table";
-import type { AdminUser } from "@/components/admin/user-columns";
-import type { AdminOrganization } from "@/components/admin/org-columns";
 import {
   useSuperAdminStats,
   useSuperAdminUsers,
@@ -19,6 +18,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { TableBadge } from "@/components/ui/table-badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import {
@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   Users,
+  Crown,
   Building2,
   FolderOpen,
   LayoutDashboard,
@@ -40,7 +41,6 @@ import {
   CalendarClock,
   Code,
   ClipboardList,
-  Activity,
   Globe,
   RefreshCw,
   AlertCircle,
@@ -59,6 +59,9 @@ import { z } from "zod";
 
 export default function AdminDashboard() {
   const { setBreadcrumbs } = useBreadcrumbs();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
 
   const isMounted = useSyncExternalStore(
     () => () => { },
@@ -74,6 +77,14 @@ export default function AdminDashboard() {
   const hasData = stats !== null;
   const isInitialLoading = !isMounted || (!hasData && statsLoading);
 
+  const allowedTabs = ["overview", "users", "organizations", "queues"];
+  const requestedTab = searchParams.get("tab");
+  const safeTab = requestedTab && allowedTabs.includes(requestedTab)
+    ? requestedTab
+    : "overview";
+
+  const [activeTab, setActiveTab] = useState(safeTab);
+
   const [showCreateUserDialog, setShowCreateUserDialog] = useState(false);
   const [creatingUser, setCreatingUser] = useState(false);
   const [newUser, setNewUser] = useState({ name: "", email: "", password: "", role: "project_viewer" });
@@ -81,6 +92,7 @@ export default function AdminDashboard() {
   // Bull Dashboard iframe state
   const [iframeLoaded, setIframeLoaded] = useState(false);
   const [iframeError, setIframeError] = useState(false);
+  const iframeLoadedRef = React.useRef(false);
   const iframeTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
   const iframeRef = React.useRef<HTMLIFrameElement>(null);
 
@@ -98,30 +110,53 @@ export default function AdminDashboard() {
     return () => setBreadcrumbs([]);
   }, [setBreadcrumbs]);
 
+  useEffect(() => {
+    setActiveTab(safeTab);
+  }, [safeTab]);
+
   const handleTabChange = (value: string) => {
+    if (!allowedTabs.includes(value)) {
+      return;
+    }
+
+    setActiveTab(value);
+
+    const params = new URLSearchParams(searchParams.toString());
+    if (value === "overview") {
+      params.delete("tab");
+    } else {
+      params.set("tab", value);
+    }
+
+    const nextUrl = params.toString() ? `${pathname}?${params.toString()}` : pathname;
+    router.replace(nextUrl, { scroll: false });
+
     if (value === "queues") {
+      iframeLoadedRef.current = false;
       setIframeLoaded(false);
       setIframeError(false);
       if (iframeTimeoutRef.current) clearTimeout(iframeTimeoutRef.current);
       iframeTimeoutRef.current = setTimeout(() => {
-        if (!iframeLoaded) setIframeError(true);
+        if (!iframeLoadedRef.current) setIframeError(true);
       }, 15000);
     }
   };
 
   const handleIframeLoad = () => {
     if (iframeTimeoutRef.current) clearTimeout(iframeTimeoutRef.current);
+    iframeLoadedRef.current = true;
     setIframeLoaded(true);
     setIframeError(false);
   };
 
   const handleIframeRefresh = () => {
+    iframeLoadedRef.current = false;
     setIframeLoaded(false);
     setIframeError(false);
     if (iframeRef.current) iframeRef.current.src = "/api/admin/queues/";
     if (iframeTimeoutRef.current) clearTimeout(iframeTimeoutRef.current);
     iframeTimeoutRef.current = setTimeout(() => {
-      if (!iframeLoaded) setIframeError(true);
+      if (!iframeLoadedRef.current) setIframeError(true);
     }, 15000);
   };
 
@@ -201,11 +236,24 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div>
+    <div className="overflow-hidden">
       <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 m-4">
-        <CardContent className="p-6">
+        <CardContent className="p-6 overflow-hidden">
+          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight">Super Admin</h1>
+              <p className="text-muted-foreground text-sm">
+                Manage system users, organizations, and platform-wide operational data.
+              </p>
+            </div>
+            <TableBadge tone="indigo" className="ring-1 ring-indigo-500/35">
+              <Crown className="mr-1.5 h-3.5 w-3.5" />
+              System-wide access
+            </TableBadge>
+          </div>
+
           <Tabs
-            defaultValue="overview"
+            value={activeTab}
             className="space-y-4"
             onValueChange={handleTabChange}
           >
@@ -232,38 +280,24 @@ export default function AdminDashboard() {
             </TabsList>
 
             <TabsContent value="overview" className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-2xl font-bold tracking-tight">
-                    Super Admin
-                  </h2>
-                  <p className="text-muted-foreground text-sm">
-                    Manage system users, organizations, and view platform
-                    statistics.
-                  </p>
-                </div>
-              </div>
-
-              {/* Primary Metrics - Full Width Row */}
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 auto-rows-fr">
                 <StatsCard
                   title="Total Users"
                   value={stats.users.totalUsers}
-                  description="Registered accounts"
+                  description={`${stats.users.newUsersThisMonth.toLocaleString()} new this month`}
                   icon={Users}
                   variant="primary"
-                  trend={{
-                    value: stats.users.newUsersThisMonth,
-                    label: "new this month",
-                    isPositive: true,
-                  }}
+                  className="h-full"
+                  metaInline
                 />
                 <StatsCard
                   title="Active Users"
                   value={stats.users.activeUsers}
-                  description="Non-banned users"
+                  description={`${stats.users.bannedUsers.toLocaleString()} banned users`}
                   icon={UserCheck}
                   variant="success"
+                  className="h-full"
+                  metaInline
                 />
                 <StatsCard
                   title="Organizations"
@@ -271,24 +305,26 @@ export default function AdminDashboard() {
                   description="Total organizations"
                   icon={Building2}
                   variant="purple"
+                  className="h-full"
+                  metaInline
                 />
                 <StatsCard
                   title="Projects"
                   value={stats.organizations.totalProjects}
-                  description="Across all orgs"
+                  description="Across all organizations"
                   icon={FolderOpen}
                   variant="cyan"
+                  className="h-full"
+                  metaInline
                 />
-              </div>
-
-              {/* Secondary Metrics */}
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <StatsCard
                   title="Scheduled Jobs"
                   value={stats.organizations.totalJobs}
                   description="Active jobs"
                   icon={CalendarClock}
                   variant="warning"
+                  className="h-full"
+                  metaInline
                 />
                 <StatsCard
                   title="Test Cases"
@@ -296,6 +332,8 @@ export default function AdminDashboard() {
                   description="Total tests"
                   icon={Code}
                   variant="primary"
+                  className="h-full"
+                  metaInline
                 />
                 <StatsCard
                   title="Monitors"
@@ -303,6 +341,8 @@ export default function AdminDashboard() {
                   description="Active monitors"
                   icon={Globe}
                   variant="success"
+                  className="h-full"
+                  metaInline
                 />
                 <StatsCard
                   title="Total Runs"
@@ -310,115 +350,58 @@ export default function AdminDashboard() {
                   description="Test executions"
                   icon={ClipboardList}
                   variant="purple"
+                  className="h-full"
+                  metaInline
                 />
               </div>
 
-              {/* Detailed Stats Cards */}
               <div className="grid gap-4 lg:grid-cols-2">
-                <Card>
+                <Card className="h-full">
                   <CardHeader className="pb-3">
-                    <div className="flex items-center gap-2">
-                      <div className="rounded-lg bg-blue-500/10 p-2">
-                        <Users className="h-4 w-4 text-blue-500" />
-                      </div>
-                      <div>
-                        <CardTitle className="text-base">
-                          User Statistics
-                        </CardTitle>
-                        <CardDescription>
-                          Account overview and status
-                        </CardDescription>
-                      </div>
-                    </div>
+                    <CardTitle className="text-base">User Statistics</CardTitle>
+                    <CardDescription>Account overview and moderation signals</CardDescription>
                   </CardHeader>
-                  <CardContent>
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between py-2 border-b">
-                        <span className="text-sm text-muted-foreground">
-                          Total Users
-                        </span>
-                        <span className="font-semibold">
-                          {stats.users.totalUsers}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between py-2 border-b">
-                        <span className="text-sm text-muted-foreground">
-                          Active Users
-                        </span>
-                        <span className="font-semibold text-green-600">
-                          {stats.users.activeUsers}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between py-2 border-b">
-                        <span className="text-sm text-muted-foreground">
-                          Banned Users
-                        </span>
-                        <span className="font-semibold text-red-600">
-                          {stats.users.bannedUsers}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between py-2">
-                        <span className="text-sm text-muted-foreground">
-                          New This Month
-                        </span>
-                        <span className="font-semibold text-blue-600">
-                          +{stats.users.newUsersThisMonth}
-                        </span>
-                      </div>
+                  <CardContent className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Total Users</span>
+                      <TableBadge tone="info">{stats.users.totalUsers.toLocaleString()}</TableBadge>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Active Users</span>
+                      <TableBadge tone="success">{stats.users.activeUsers.toLocaleString()}</TableBadge>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Banned Users</span>
+                      <TableBadge tone="danger">{stats.users.bannedUsers.toLocaleString()}</TableBadge>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">New This Month</span>
+                      <TableBadge tone="purple">+{stats.users.newUsersThisMonth.toLocaleString()}</TableBadge>
                     </div>
                   </CardContent>
                 </Card>
 
-                <Card>
+                <Card className="h-full">
                   <CardHeader className="pb-3">
-                    <div className="flex items-center gap-2">
-                      <div className="rounded-lg bg-purple-500/10 p-2">
-                        <Activity className="h-4 w-4 text-purple-500" />
-                      </div>
-                      <div>
-                        <CardTitle className="text-base">
-                          Platform Activity
-                        </CardTitle>
-                        <CardDescription>
-                          Resource counts across platform
-                        </CardDescription>
-                      </div>
-                    </div>
+                    <CardTitle className="text-base">Platform Activity</CardTitle>
+                    <CardDescription>Key cross-organization resource totals</CardDescription>
                   </CardHeader>
-                  <CardContent>
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between py-2 border-b">
-                        <span className="text-sm text-muted-foreground">
-                          Organizations
-                        </span>
-                        <span className="font-semibold">
-                          {stats.organizations.totalOrganizations}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between py-2 border-b">
-                        <span className="text-sm text-muted-foreground">
-                          Projects
-                        </span>
-                        <span className="font-semibold">
-                          {stats.organizations.totalProjects}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between py-2 border-b">
-                        <span className="text-sm text-muted-foreground">
-                          Jobs Created
-                        </span>
-                        <span className="font-semibold">
-                          {stats.organizations.totalJobs}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between py-2">
-                        <span className="text-sm text-muted-foreground">
-                          Test Executions
-                        </span>
-                        <span className="font-semibold">
-                          {stats.organizations.totalRuns}
-                        </span>
-                      </div>
+                  <CardContent className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Organizations</span>
+                      <TableBadge tone="info">{stats.organizations.totalOrganizations.toLocaleString()}</TableBadge>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Projects</span>
+                      <TableBadge tone="success">{stats.organizations.totalProjects.toLocaleString()}</TableBadge>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Scheduled Jobs</span>
+                      <TableBadge tone="warning">{stats.organizations.totalJobs.toLocaleString()}</TableBadge>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Test Executions</span>
+                      <TableBadge tone="purple">{stats.organizations.totalRuns.toLocaleString()}</TableBadge>
                     </div>
                   </CardContent>
                 </Card>
@@ -426,6 +409,7 @@ export default function AdminDashboard() {
             </TabsContent>
 
             <TabsContent value="users" className="space-y-4">
+
               {/* Create User Dialog */}
               <Dialog
                 open={showCreateUserDialog}
@@ -517,6 +501,7 @@ export default function AdminDashboard() {
                     invalidateUsers();
                     invalidateStats();
                   }}
+                  onCreateUser={() => setShowCreateUserDialog(true)}
                 />
               )}
             </TabsContent>
@@ -529,22 +514,14 @@ export default function AdminDashboard() {
               )}
             </TabsContent>
 
-            <TabsContent value="queues" className="space-y-4">
-              {/* <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h3 className="text-2xl font-semibold">Queue Dashboard</h3>
-                  <p className="text-muted-foreground text-sm">
-                    Monitor and manage BullMQ job queues
-                  </p>
-                </div>
-              </div> */}
+            <TabsContent value="queues">
               <div className="rounded-lg border bg-background overflow-hidden">
                 {iframeError ? (
                   <div
                     className="flex justify-center items-center"
                     style={{
-                      height: "calc(100vh - 250px)",
-                      minHeight: "600px",
+                      height: "calc(100vh - 280px)",
+                      minHeight: "400px",
                     }}
                   >
                     <div className="flex flex-col items-center space-y-4 text-center px-4">
@@ -568,8 +545,8 @@ export default function AdminDashboard() {
                   <div
                     className="flex justify-center items-center"
                     style={{
-                      height: "calc(100vh - 250px)",
-                      minHeight: "600px",
+                      height: "calc(100vh - 280px)",
+                      minHeight: "400px",
                     }}
                   >
                     <SuperCheckLoading size="md" message="Loading Queue Dashboard..." />
@@ -581,8 +558,8 @@ export default function AdminDashboard() {
                   src="/api/admin/queues/"
                   className="w-full"
                   style={{
-                    height: "calc(100vh - 250px)",
-                    minHeight: "600px",
+                    height: "calc(100vh - 280px)",
+                    minHeight: "400px",
                     display: iframeLoaded && !iframeError ? "block" : "none",
                   }}
                   title="Queue Dashboard"

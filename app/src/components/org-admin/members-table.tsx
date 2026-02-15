@@ -66,8 +66,6 @@ export function MembersTable({
       columns={columns}
       data={members}
       toolbar={CustomToolbar}
-      title="Members"
-      description="Manage organization members and their roles. View pending invitations."
       itemName="members"
       meta={{
         globalFilterColumns: ["name", "email"],

@@ -25,6 +25,7 @@ export interface OrgMember {
   email: string;
   role: string;
   joinedAt: string;
+  projects?: { projectId: string; projectName: string }[];
 }
 
 export interface PendingInvitation {

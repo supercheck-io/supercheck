@@ -43,7 +43,7 @@ import { UrlTriggerTooltip } from "./url-trigger-tooltip";
 import { JobTestDataTable } from "./job-test-data-table";
 import { createJobTestColumns } from "./job-test-columns";
 import { useProjectContext } from "@/hooks/use-project-context";
-import { canEditJobs } from "@/lib/rbac/client-permissions";
+import { canDeleteJobs, canEditJobs } from "@/lib/rbac/client-permissions";
 import { normalizeRole } from "@/lib/rbac/role-normalizer";
 import { useJobs, useJobMutations } from "@/hooks/use-jobs";
 import {
@@ -92,6 +92,7 @@ export default function Jobs() {
   // Check permissions
   const userRole = currentProject?.userRole ? normalizeRole(currentProject.userRole) : null;
   const hasEditPermission = userRole ? canEditJobs(userRole) : false;
+  const hasDeletePermission = userRole ? canDeleteJobs(userRole) : false;
 
 
   const safeSetSelectedTest = useCallback((test: Test | null) => {
@@ -421,8 +422,9 @@ export default function Jobs() {
                         <Button
                           variant="destructive"
                           size="sm"
-                          disabled={!hasEditPermission}
-                          className={`${!hasEditPermission ? "opacity-50 cursor-not-allowed" : ""}`}
+                          disabled={!hasDeletePermission}
+                          className={`${!hasDeletePermission ? "opacity-50 cursor-not-allowed" : ""}`}
+                          title={hasDeletePermission ? "Delete job" : "Insufficient permissions to delete jobs"}
                         >
                           <Trash2 className="h-4 w-4 mr-2" />
                           Delete

@@ -5,9 +5,10 @@ import {
   monitorResults,
   monitorsUpdateSchema,
   monitorNotificationSettings,
+  notificationProviders,
 } from "@/db/schema";
 import { MonitorType, MonitorStatus } from "@/db/schema/types";
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc, and, inArray } from "drizzle-orm";
 import {
   scheduleMonitor,
   deleteScheduledMonitor,
@@ -267,38 +268,104 @@ export async function PUT(
     }
     // If alertConfig is not in rawData, existing alert settings are preserved
 
-    const [updatedMonitor] = await db
-      .update(monitors)
-      .set(updatePayload)
-      .where(eq(monitors.id, id))
-      .returning();
+    const shouldSyncNotificationProviders =
+      rawData.alertConfig?.enabled &&
+      Array.isArray(rawData.alertConfig.notificationProviders);
+
+    let normalizedProviderIds: string[] = [];
+    if (shouldSyncNotificationProviders) {
+      const rawProviderIds = rawData.alertConfig.notificationProviders as unknown[];
+
+      normalizedProviderIds = Array.from(
+        new Set(
+          rawProviderIds.filter(
+            (providerId: unknown): providerId is string =>
+              typeof providerId === "string" && providerId.trim().length > 0
+          )
+        )
+      );
+
+      if (normalizedProviderIds.length !== rawProviderIds.length) {
+        return NextResponse.json(
+          {
+            error: "Notification provider IDs must be non-empty strings",
+          },
+          { status: 400 }
+        );
+      }
+
+    }
+
+    const NOTIFICATION_PROVIDER_VALIDATION_ERROR = "NOTIFICATION_PROVIDER_VALIDATION_FAILED";
+
+    let updatedMonitor;
+    try {
+      updatedMonitor = await db.transaction(async (tx) => {
+        const [updated] = await tx
+          .update(monitors)
+          .set(updatePayload)
+          .where(eq(monitors.id, id))
+          .returning();
+
+        if (!updated) {
+          return null;
+        }
+
+        if (shouldSyncNotificationProviders) {
+          // Validate notification providers inside the transaction to prevent TOCTOU race conditions
+          if (normalizedProviderIds.length > 0) {
+            const validProviders = await tx
+              .select({ id: notificationProviders.id })
+              .from(notificationProviders)
+              .where(
+                and(
+                  inArray(notificationProviders.id, normalizedProviderIds),
+                  eq(notificationProviders.organizationId, authCtx.organizationId),
+                  eq(notificationProviders.projectId, authCtx.project.id)
+                )
+              );
+
+            if (validProviders.length !== normalizedProviderIds.length) {
+              throw new Error(NOTIFICATION_PROVIDER_VALIDATION_ERROR);
+            }
+          }
+
+          await tx
+            .delete(monitorNotificationSettings)
+            .where(eq(monitorNotificationSettings.monitorId, id));
+
+          if (normalizedProviderIds.length > 0) {
+            await tx
+              .insert(monitorNotificationSettings)
+              .values(
+                normalizedProviderIds.map((providerId: string) => ({
+                  monitorId: id,
+                  notificationProviderId: providerId,
+                }))
+              )
+              .onConflictDoNothing();
+          }
+        }
+
+        return updated;
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message === NOTIFICATION_PROVIDER_VALIDATION_ERROR) {
+        return NextResponse.json(
+          {
+            error:
+              "One or more notification providers are invalid or not accessible in this project",
+          },
+          { status: 400 }
+        );
+      }
+      throw error;
+    }
 
     if (!updatedMonitor) {
-      // Should not happen if currentMonitor was found, but as a safeguard
       return NextResponse.json(
         { error: "Failed to update monitor, monitor not found after update." },
         { status: 404 }
-      );
-    }
-
-    // Update notification provider links if alert config is enabled
-    if (
-      rawData.alertConfig?.enabled &&
-      Array.isArray(rawData.alertConfig.notificationProviders)
-    ) {
-      // First, delete existing links
-      await db
-        .delete(monitorNotificationSettings)
-        .where(eq(monitorNotificationSettings.monitorId, id));
-
-      // Then, create new links
-      await Promise.all(
-        rawData.alertConfig.notificationProviders.map((providerId: string) =>
-          db.insert(monitorNotificationSettings).values({
-            monitorId: id,
-            notificationProviderId: providerId,
-          })
-        )
       );
     }
 
