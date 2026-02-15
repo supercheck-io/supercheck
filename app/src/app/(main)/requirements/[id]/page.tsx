@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { getRequirementDetailsPath } from "@/lib/requirements/url";
 
 interface PageProps {
     params: Promise<{
@@ -11,5 +12,5 @@ interface PageProps {
  */
 export default async function RequirementDetailPage({ params }: PageProps) {
     const { id } = await params;
-    redirect(`/requirements?id=${id}`);
+    redirect(getRequirementDetailsPath(id));
 }

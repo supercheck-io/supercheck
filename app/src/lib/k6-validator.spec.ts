@@ -65,6 +65,16 @@ describe('K6Validator', () => {
       expect(isK6Script(script)).toBe(true);
     });
 
+    it('should detect k6 imports with tab-heavy spacing', () => {
+      const script = `import\thttp\tfrom\t'k6/http';`;
+      expect(isK6Script(script)).toBe(true);
+    });
+
+    it('should detect side-effect-only k6 imports', () => {
+      const script = `import 'k6/http';`;
+      expect(isK6Script(script)).toBe(true);
+    });
+
     it('should handle scripts with multiple imports', () => {
       const script = `
         import http from 'k6/http';

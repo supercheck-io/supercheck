@@ -391,7 +391,7 @@ export function CliTokensTable() {
                   CLI Tokens
                 </CardTitle>
                 <CardDescription className="text-sm">
-                  Manage API tokens for CLI and CI/CD access.
+                  Manage API tokens for CLI and CI/CD access
                 </CardDescription>
               </div>
               <Dialog open={createOpen} onOpenChange={setCreateOpen}>
@@ -643,7 +643,7 @@ export function CliTokensTable() {
               <div
                 className={cn(
                   "space-y-2",
-                  tokens.length > 4 && "max-h-[390px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent"
+                  tokens.length > 4 && "max-h-[300px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent"
                 )}
               >
                 {tokens.map((token) => {

@@ -16,19 +16,81 @@ export interface K6ValidationOptions {
   selectedTestType?: string;
 }
 
-const k6ImportPattern = /import\s+.*\s+from\s+['"]k6(?:\/[^'"]*)?['"]/;
+const REQUIRE_MODULE_PATTERN = /\brequire\s*\(\s*(['"])([^'"\\\r\n]+)\1\s*\)/g;
 
-const PLAYWRIGHT_IMPORT_PATTERNS = [
-  /import\s+.*\s+from\s+['"]@playwright\/test['"]/,
-  /import\s+.*\s+from\s+['"]playwright\/?(?:test)?['"]/,
-  /require\s*\(\s*['"]@playwright\/test['"]\s*\)/,
-  /require\s*\(\s*['"]playwright\/?(?:test)?['"]\s*\)/,
-];
+function readQuotedModuleSpecifier(input: string): string | null {
+  const trimmed = input.trimStart();
+  const quote = trimmed[0];
+
+  if (quote !== "'" && quote !== '"') {
+    return null;
+  }
+
+  for (let index = 1; index < trimmed.length; index += 1) {
+    if (trimmed[index] === quote && trimmed[index - 1] !== "\\") {
+      return trimmed.slice(1, index);
+    }
+  }
+
+  return null;
+}
+
+function extractModuleSpecifierFromImportLine(line: string): string | null {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith("import")) {
+    return null;
+  }
+
+  const importBody = trimmed.slice("import".length).trimStart();
+  if (importBody.startsWith("(")) {
+    return null;
+  }
+
+  const fromMatch = /\bfrom\b/.exec(importBody);
+  if (fromMatch) {
+    const afterFrom = importBody.slice(fromMatch.index + fromMatch[0].length);
+    return readQuotedModuleSpecifier(afterFrom);
+  }
+
+  return readQuotedModuleSpecifier(importBody);
+}
+
+function collectModuleSpecifiers(script: string): Set<string> {
+  const modules = new Set<string>();
+  const lines = script.split(/\r?\n/);
+
+  for (const line of lines) {
+    const importModule = extractModuleSpecifierFromImportLine(line);
+    if (importModule) {
+      modules.add(importModule);
+    }
+
+    REQUIRE_MODULE_PATTERN.lastIndex = 0;
+    let match: RegExpExecArray | null = null;
+    while ((match = REQUIRE_MODULE_PATTERN.exec(line)) !== null) {
+      modules.add(match[2]);
+    }
+  }
+
+  return modules;
+}
+
+function isK6ModuleSpecifier(moduleSpecifier: string): boolean {
+  return moduleSpecifier === "k6" || moduleSpecifier.startsWith("k6/");
+}
 
 /**
  * Detects whether a script imports any k6 modules.
  */
-export const isK6Script = (script: string): boolean => k6ImportPattern.test(script);
+export const isK6Script = (script: string): boolean => {
+  const moduleSpecifiers = collectModuleSpecifiers(script);
+  for (const moduleSpecifier of moduleSpecifiers) {
+    if (isK6ModuleSpecifier(moduleSpecifier)) {
+      return true;
+    }
+  }
+  return false;
+};
 
 /**
  * Validates a k6 script for common issues and best practices
@@ -115,18 +177,21 @@ export function validateK6Script(
     'buffer',
   ];
 
+  const importedModules = collectModuleSpecifiers(jsCode);
+
   forbiddenModules.forEach((mod) => {
-    const nodeModulePattern = new RegExp(
-      `require\\s*\\(\\s*['"]${mod}['"]\\s*\\)|import\\s+.*\\s+from\\s+['"]${mod}['"]`
-    );
-    if (nodeModulePattern.test(jsCode)) {
+    if (importedModules.has(mod)) {
       errors.push(
         `k6 does not support Node.js module "${mod}". Use k6 built-in modules instead.`
       );
     }
   });
 
-  if (PLAYWRIGHT_IMPORT_PATTERNS.some((pattern) => pattern.test(jsCode))) {
+  if (
+    importedModules.has("@playwright/test") ||
+    importedModules.has("playwright") ||
+    importedModules.has("playwright/test")
+  ) {
     errors.push(
       "Playwright modules are not supported in k6 performance scripts. Split Playwright tests into a Browser test."
     );
@@ -161,7 +226,7 @@ export function validateK6Script(
   }
 
   // Error: Block experimental browser module which is unsupported in our runtime
-  if (/import\s+[\s\S]*?from\s+['"]k6\/browser['"]/.test(jsCode)) {
+  if (importedModules.has('k6/browser')) {
     errors.push(
       'The k6/browser module is not supported. Use Playwright tests for browser automation.'
     );

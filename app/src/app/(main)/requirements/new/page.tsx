@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
 import { RequirementForm } from "@/components/requirements/requirement-form";
+import { REQUIREMENTS_PATH } from "@/lib/requirements/url";
 
 export default function CreateRequirementPage() {
     const router = useRouter();
@@ -18,8 +19,7 @@ export default function CreateRequirementPage() {
             <PageBreadcrumbs items={breadcrumbs} />
             <RequirementForm
                 mode="create"
-                onSuccess={() => router.push("/requirements")}
-                onCancel={() => router.push("/requirements")}
+                onCancel={() => router.push(REQUIREMENTS_PATH)}
             />
         </div>
     );

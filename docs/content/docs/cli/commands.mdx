@@ -776,7 +776,7 @@ Upgrade the CLI to the latest release.
 
 ```bash
 supercheck upgrade
-supercheck upgrade --tag beta             # Install specific tag
+supercheck upgrade --tag 0.1.1-rc.2      # Install a specific version
 supercheck upgrade --package-manager pnpm  # Use specific package manager
 supercheck upgrade --dry-run               # Preview without installing
 supercheck upgrade -y                      # Skip confirmation
@@ -784,7 +784,7 @@ supercheck upgrade -y                      # Skip confirmation
 
 | Flag | Description |
 |------|-------------|
-| `--tag <tag>` | npm dist-tag to install (default: `latest`) |
+| `--tag <tag>` | Release target to install (default: `latest`, accepts explicit versions) |
 | `--package-manager <pm>` | Package manager to use (`npm`, `pnpm`, `yarn`, `bun`) |
 | `-y, --yes` | Skip confirmation prompt |
 | `--dry-run` | Preview the upgrade command without executing |

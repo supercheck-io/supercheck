@@ -45,7 +45,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { createRequirement, updateRequirement, syncRequirementTests, deleteRequirement } from "@/actions/requirements";
-import { REQUIREMENTS_QUERY_KEY, REQUIREMENT_LINKED_TESTS_QUERY_KEY } from "@/hooks/use-requirements";
+import { REQUIREMENTS_QUERY_KEY, REQUIREMENT_QUERY_KEY, REQUIREMENT_LINKED_TESTS_QUERY_KEY } from "@/hooks/use-requirements";
 import type { CreateRequirementInput, UpdateRequirementInput } from "@/actions/requirements";
 import { TagSelector, type Tag } from "@/components/ui/tag-selector";
 import { useTags, useTagMutations, useRequirementTags, useSaveRequirementTags } from "@/hooks/use-tags";
@@ -58,6 +58,7 @@ import { normalizeRole } from "@/lib/rbac/role-normalizer";
 import { canCreateTags, canDeleteTags } from "@/lib/rbac/client-permissions";
 import { useProjectContext } from "@/hooks/use-project-context";
 import { useSession } from "@/utils/auth-client";
+import { REQUIREMENTS_PATH } from "@/lib/requirements/url";
 
 // Form schema - following best practices like job form
 const requirementFormSchema = z.object({
@@ -175,6 +176,11 @@ export function RequirementForm({
         (targetId: string | null) => {
             void queryClient.invalidateQueries({ queryKey: REQUIREMENTS_QUERY_KEY, refetchType: "all" });
             if (targetId) {
+                // Invalidate the single-requirement cache so re-editing shows fresh data
+                void queryClient.invalidateQueries({
+                    queryKey: [...REQUIREMENT_QUERY_KEY, targetId],
+                    refetchType: "all",
+                });
                 void queryClient.invalidateQueries({
                     queryKey: [...REQUIREMENT_LINKED_TESTS_QUERY_KEY, targetId],
                     refetchType: "all",
@@ -184,8 +190,12 @@ export function RequirementForm({
         [queryClient]
     );
 
+    const navigateToRequirementsList = React.useCallback(() => {
+        router.push(REQUIREMENTS_PATH);
+    }, [router]);
+
     // Save tags after requirement is created/updated
-    const saveRequirementTags = async (targetId: string) => {
+    async function saveRequirementTags(targetId: string): Promise<void> {
         if (!targetId) return;
         try {
             await saveRequirementTagsMutation.mutateAsync({
@@ -195,7 +205,7 @@ export function RequirementForm({
         } catch (error) {
             console.error("Error saving requirement tags:", error);
         }
-    };
+    }
 
     // Handle tag change from TagSelector
     const handleTagChange = (tags: Tag[]) => {
@@ -318,7 +328,7 @@ export function RequirementForm({
             if (onSuccess && targetId) {
                 onSuccess(targetId);
             } else {
-                router.push("/requirements");
+                navigateToRequirementsList();
             }
 
         } catch (error) {
@@ -332,7 +342,12 @@ export function RequirementForm({
     });
 
     const handleCancel = () => {
-        router.push("/requirements");
+        if (onCancel) {
+            onCancel();
+            return;
+        }
+
+        navigateToRequirementsList();
     };
 
     const handleDelete = async () => {
@@ -345,7 +360,7 @@ export function RequirementForm({
             }
             toast.success("Requirement deleted");
             queryClient.invalidateQueries({ queryKey: REQUIREMENTS_QUERY_KEY, refetchType: 'all' });
-            router.push("/requirements");
+            navigateToRequirementsList();
         } catch (error) {
             console.error("Failed to delete requirement:", error);
             toast.error("Failed to delete requirement", {

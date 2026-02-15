@@ -25,6 +25,7 @@ import { REQUIREMENTS_QUERY_KEY } from "@/hooks/use-requirements";
 import { DASHBOARD_QUERY_KEY } from "@/hooks/use-dashboard";
 import { useTags, useTestTags, useTagMutations, useSaveTestTags } from "@/hooks/use-tags";
 import { normalizeRole } from "@/lib/rbac/role-normalizer";
+import { getRequirementDetailsPath } from "@/lib/requirements/url";
 import {
   canCreateTags,
   canDeleteTags,
@@ -773,7 +774,7 @@ export function TestForm({
         {linkedReq ? (
           <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 items-center text-sm p-3 rounded-md border bg-muted/30">
             <a
-              href={`/requirements?id=${linkedReq.id}`}
+              href={getRequirementDetailsPath(linkedReq.id)}
               target="_blank"
               rel="noopener noreferrer"
               className="font-medium truncate hover:underline hover:text-primary transition-colors cursor-pointer text-muted-foreground"
@@ -783,7 +784,7 @@ export function TestForm({
             </a>
 
             <a
-              href={linkedReq.externalUrl || `/requirements?id=${linkedReq.id}`}
+              href={linkedReq.externalUrl || getRequirementDetailsPath(linkedReq.id)}
               target="_blank"
               rel="noopener noreferrer"
               className="text-muted-foreground hover:text-primary transition-colors shrink-0 flex items-center"

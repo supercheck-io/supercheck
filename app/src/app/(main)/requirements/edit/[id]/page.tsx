@@ -5,9 +5,9 @@ import { useQuery, useIsRestoring } from "@tanstack/react-query";
 import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
 import { RequirementForm } from "@/components/requirements/requirement-form";
 import { getRequirement } from "@/actions/requirements";
-import { Skeleton } from "@/components/ui/skeleton";
 import { RequirementFormSkeleton } from "@/components/requirements/requirement-form-skeleton";
 import React from "react";
+import { REQUIREMENTS_PATH } from "@/lib/requirements/url";
 
 export default function EditRequirementPage({ params }: { params: Promise<{ id: string }> }) {
     const router = useRouter();
@@ -22,9 +22,9 @@ export default function EditRequirementPage({ params }: { params: Promise<{ id: 
         queryKey: ["requirement", id],
         queryFn: () => getRequirement(id),
         enabled: !!id,
-        // Uses global defaults: staleTime (30min), gcTime (24h)
+        staleTime: 30_000,          // 30s - ensures fresh data when re-editing
         refetchOnWindowFocus: false,
-        refetchOnMount: false,
+        refetchOnMount: "always",   // Always refetch on page visit for latest data
         refetchOnReconnect: false,
     });
     const isLoading = isPending && isFetching && !isRestoring;
@@ -66,8 +66,7 @@ export default function EditRequirementPage({ params }: { params: Promise<{ id: 
                     externalUrl: requirement.externalUrl,
                     externalProvider: requirement.externalProvider,
                 }}
-                onSuccess={() => router.push("/requirements")}
-                onCancel={() => router.push("/requirements")}
+                onCancel={() => router.push(REQUIREMENTS_PATH)}
             />
         </div>
     );
