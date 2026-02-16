@@ -217,7 +217,7 @@ services:
 
   # App (Next.js Frontend + API)
   app:
-    image: ghcr.io/supercheck-io/supercheck/app:latest
+    image: ghcr.io/supercheck-io/supercheck/app:${SUPERCHECK_VERSION:-latest}
     environment:
       <<: *common-env
     depends_on:
@@ -247,10 +247,12 @@ services:
 
   # Worker (NestJS Test Runner)
   worker:
-    image: ghcr.io/supercheck-io/supercheck/worker:latest
+    image: ghcr.io/supercheck-io/supercheck/worker:${SUPERCHECK_VERSION:-latest}
     init: true
     environment:
       <<: *common-env
+      # WORKER_IMAGE tells the worker which Docker image to use when spawning test execution containers
+      WORKER_IMAGE: ghcr.io/supercheck-io/supercheck/worker:${SUPERCHECK_VERSION:-latest}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - supercheck-worker-reports:/worker/report
