@@ -191,7 +191,10 @@ export function RequirementForm({
     );
 
     const navigateToRequirementsList = React.useCallback(() => {
-        router.push(REQUIREMENTS_PATH);
+        // Use replace instead of push: semantically correct after form
+        // submission (prevents back-button returning to the filled form)
+        // and more resilient to any pending router state updates.
+        router.replace(REQUIREMENTS_PATH);
     }, [router]);
 
     // Save tags after requirement is created/updated

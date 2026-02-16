@@ -168,7 +168,7 @@ docker run \
   --ipc=host \
   --security-opt=no-new-privileges \
   --cap-drop=ALL \
-  mcr.microsoft.com/playwright:v1.57.0-noble
+  mcr.microsoft.com/playwright:v1.58.2-noble
 ```
 
 - **`--user pwuser`**: Runs as non-root user (UID 1000) in Playwright image
