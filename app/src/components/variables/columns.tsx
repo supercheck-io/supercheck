@@ -278,6 +278,7 @@ export const columns: ColumnDef<Variable>[] = [
         onDeleteVariable?: (id: string) => void;
         onEditVariable?: (variable: Variable) => void;
         secretVisibility?: { [key: string]: boolean };
+        decryptedValues?: { [key: string]: string };
         onToggleSecretVisibility?: (id: string) => void;
         projectId?: string;
         onSuccess?: () => void;
@@ -291,6 +292,9 @@ export const columns: ColumnDef<Variable>[] = [
       const isSecret = row.getValue("isSecret") as string;
       const isSecretBool = isSecret === "true";
       const editDialogOpen = meta?.editDialogState?.[variable.id] || false;
+      const decryptedValue = canViewSecrets
+        ? meta?.decryptedValues?.[variable.id]
+        : undefined;
 
       // Always show actions dropdown, but disable items based on permissions
 
@@ -399,6 +403,8 @@ export const columns: ColumnDef<Variable>[] = [
               onOpenChange={(open) => meta?.setEditDialogState?.(variable.id, open)}
               projectId={meta.projectId}
               variable={variable}
+              canViewSecrets={canViewSecrets}
+              initialSecretValue={decryptedValue}
               onSuccess={() => {
                 meta.onSuccess?.();
                 meta?.setEditDialogState?.(variable.id, false);

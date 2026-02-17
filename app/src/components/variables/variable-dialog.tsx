@@ -35,6 +35,12 @@ interface VariableDialogProps {
   variable?: Variable | null;
   onSuccess: () => void;
   defaultIsSecret?: boolean;
+  canViewSecrets?: boolean;
+  initialSecretValue?: string;
+}
+
+function toBoolean(value: boolean | string | undefined): boolean {
+  return typeof value === 'string' ? value === 'true' : Boolean(value);
 }
 
 export function VariableDialog({
@@ -43,7 +49,9 @@ export function VariableDialog({
   projectId,
   variable,
   onSuccess,
-  defaultIsSecret = false
+  defaultIsSecret = false,
+  canViewSecrets = false,
+  initialSecretValue,
 }: VariableDialogProps) {
   const [formData, setFormData] = useState<VariableFormData>({
     key: '',
@@ -54,71 +62,110 @@ export function VariableDialog({
   const [loading, setLoading] = useState(false);
   const [fetchingData, setFetchingData] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [secretLoadWarning, setSecretLoadWarning] = useState<string | null>(null);
 
   const isEditing = !!variable;
 
   useEffect(() => {
-    if (variable && open) {
-      // Fetch latest variable metadata from API; secret values remain masked.
-      const fetchVariable = async () => {
-        setFetchingData(true);
-        try {
-          const response = await fetch(
-            `/api/projects/${projectId}/variables/${variable.id}`
-          );
-          const data = await response.json();
-
-          if (data.success && data.data) {
-            const isSecretValue = typeof data.data.isSecret === 'string'
-              ? data.data.isSecret === 'true'
-              : data.data.isSecret;
-            setFormData({
-              key: data.data.key,
-              value: isSecretValue ? '' : (data.data.value || ''),
-              description: data.data.description || '',
-              isSecret: isSecretValue
-            });
-          } else {
-            // Fallback to prop data if API fails
-            const isSecretValue = typeof variable.isSecret === 'string'
-              ? variable.isSecret === 'true'
-              : variable.isSecret;
-            setFormData({
-              key: variable.key,
-              value: isSecretValue ? '' : (variable.value || ''),
-              description: variable.description || '',
-              isSecret: isSecretValue
-            });
-          }
-        } catch (error) {
-          console.error("Error fetching variable:", error);
-          // Fallback to prop data if fetch fails
-          const isSecretValue = typeof variable.isSecret === 'string'
-            ? variable.isSecret === 'true'
-            : variable.isSecret;
-          setFormData({
-            key: variable.key,
-            value: isSecretValue ? '' : (variable.value || ''),
-            description: variable.description || '',
-            isSecret: isSecretValue
-          });
-        } finally {
-          setFetchingData(false);
-        }
-      };
-
-      fetchVariable();
-    } else if (!variable || !open) {
+    if (!variable || !open) {
       setFormData({
         key: '',
         value: '',
         description: '',
         isSecret: defaultIsSecret
       });
+      setSecretLoadWarning(null);
       setFetchingData(false);
+      setErrors({});
+      return;
     }
-    setErrors({});
-  }, [variable, open, projectId, defaultIsSecret]);
+
+    const abortController = new AbortController();
+
+    const fetchVariable = async () => {
+      setFetchingData(true);
+      setSecretLoadWarning(null);
+      setErrors({});
+
+      try {
+        const response = await fetch(
+          `/api/projects/${projectId}/variables/${variable.id}`,
+          {
+            signal: abortController.signal,
+            cache: 'no-store',
+          }
+        );
+        const data = await response.json();
+
+        const sourceVariable = data.success && data.data ? data.data : variable;
+        const isSecretValue = toBoolean(sourceVariable.isSecret);
+        let resolvedValue = isSecretValue ? '' : (sourceVariable.value || '');
+
+        if (isSecretValue) {
+          if (canViewSecrets && initialSecretValue) {
+            resolvedValue = initialSecretValue;
+          } else if (canViewSecrets) {
+            try {
+              const decryptResponse = await fetch(
+                `/api/projects/${projectId}/variables/${variable.id}/decrypt`,
+                {
+                  method: 'POST',
+                  signal: abortController.signal,
+                  cache: 'no-store',
+                }
+              );
+
+              if (decryptResponse.ok) {
+                const decryptData = await decryptResponse.json();
+                resolvedValue = decryptData?.data?.value || '';
+              } else if (decryptResponse.status === 401 || decryptResponse.status === 403) {
+                setSecretLoadWarning('You can edit metadata, but secret reveal requires permission. Leave value blank to keep current secret.');
+              } else {
+                setSecretLoadWarning('Could not load the current secret value. Leave value blank to keep existing secret.');
+              }
+            } catch (decryptError) {
+              if (!abortController.signal.aborted) {
+                console.error('Error decrypting variable for edit:', decryptError);
+                setSecretLoadWarning('Could not load the current secret value. Leave value blank to keep existing secret.');
+              }
+            }
+          }
+        }
+
+        if (!abortController.signal.aborted) {
+          setFormData({
+            key: sourceVariable.key,
+            value: resolvedValue,
+            description: sourceVariable.description || '',
+            isSecret: isSecretValue
+          });
+        }
+      } catch (error) {
+        if (abortController.signal.aborted) {
+          return;
+        }
+
+        console.error('Error fetching variable:', error);
+        const isSecretValue = toBoolean(variable.isSecret);
+        setFormData({
+          key: variable.key,
+          value: isSecretValue ? (canViewSecrets ? (initialSecretValue || '') : '') : (variable.value || ''),
+          description: variable.description || '',
+          isSecret: isSecretValue
+        });
+      } finally {
+        if (!abortController.signal.aborted) {
+          setFetchingData(false);
+        }
+      }
+    };
+
+    fetchVariable();
+
+    return () => {
+      abortController.abort();
+    };
+  }, [variable, open, projectId, defaultIsSecret, canViewSecrets, initialSecretValue]);
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
@@ -266,6 +313,11 @@ export function VariableDialog({
               />
               {errors.value && (
                 <p className="text-sm text-destructive">{errors.value}</p>
+              )}
+              {isEditing && formData.isSecret && (
+                <p className="text-xs text-muted-foreground">
+                  {secretLoadWarning || 'Leave value blank to keep the current secret unchanged.'}
+                </p>
               )}
             </div>
 
