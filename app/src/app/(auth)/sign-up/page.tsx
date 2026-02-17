@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from "rea
 import { SignupForm } from "@/components/auth/signup-form";
 import { useAppConfig } from "@/hooks/use-app-config";
 import { Loader2 } from "lucide-react";
+import type { TurnstileCaptchaRef } from "@/components/auth/turnstile-captcha";
 
 interface InviteData {
   organizationName: string;
@@ -41,8 +42,8 @@ function SignUpPageContent() {
   const [inviteData, setInviteData] = useState<InviteData | null>(null);
   // Use cached hosting mode from useAppConfig (React Query cached)
   const { isCloudHosted } = useAppConfig();
-  // Store captcha token in ref since we need latest value in async handlers
-  const captchaTokenRef = useRef<string | null>(null);
+  // CAPTCHA ref for on-demand token execution (each auth call needs a fresh token)
+  const captchaRef = useRef<TurnstileCaptchaRef>(null);
 
   // Derive invite token from URL params (not state)
   const inviteToken = useMemo(() => searchParams.get("invite"), [searchParams]);
@@ -94,21 +95,31 @@ function SignUpPageContent() {
     // Note: Disposable email check removed - social-only signup prevents throwaway emails
     // Email/password form is only shown for invitation flow where email is already trusted
 
-    // Get CAPTCHA headers for auth requests
-    const captchaHeaders: Record<string, string> = captchaTokenRef.current
-      ? { "x-captcha-response": captchaTokenRef.current }
-      : {};
+    /**
+     * Helper: get fresh CAPTCHA headers for a single auth API call.
+     * Turnstile tokens are single-use, so we must execute a fresh challenge
+     * before EACH call to a CAPTCHA-protected endpoint (signUp.email, signIn.email).
+     */
+    const getFreshCaptchaHeaders = async (): Promise<Record<string, string>> => {
+      const token = await captchaRef.current?.execute();
+      const headers: Record<string, string> = token
+        ? { "x-captcha-response": token }
+        : {};
+      if (inviteToken) {
+        headers["x-invite-token"] = inviteToken;
+      }
+      return headers;
+    };
 
-    if (inviteToken) {
-      captchaHeaders["x-invite-token"] = inviteToken;
-    }
+    // Get fresh CAPTCHA token for sign-up
+    const signUpHeaders = await getFreshCaptchaHeaders();
 
     const { error: signUpError } = await signUp.email({
       name,
       email,
       password,
       fetchOptions: {
-        headers: captchaHeaders,
+        headers: signUpHeaders,
       },
     });
 
@@ -127,12 +138,14 @@ function SignUpPageContent() {
           });
 
           if (verifyResponse.ok) {
+            // Get a FRESH captcha token for sign-in (tokens are single-use)
+            const signInHeaders = await getFreshCaptchaHeaders();
             // Now sign in the user and redirect to invitation acceptance
             const { error: signInError } = await signIn.email({
               email,
               password,
               fetchOptions: {
-                headers: captchaHeaders,
+                headers: signInHeaders,
               },
             });
             if (!signInError) {
@@ -178,11 +191,13 @@ function SignUpPageContent() {
           });
 
           if (verifyResponse.ok) {
+            // Get a FRESH captcha token for sign-in (tokens are single-use)
+            const signInHeaders2 = await getFreshCaptchaHeaders();
             const { error: signInError } = await signIn.email({
               email,
               password,
               fetchOptions: {
-                headers: captchaHeaders,
+                headers: signInHeaders2,
               },
             });
             if (!signInError) {
@@ -254,11 +269,13 @@ function SignUpPageContent() {
 
       // CRITICAL: Sign in the user to establish session
       // Without this, setup-defaults and auto-accept will fail with 401
+      // Get a FRESH captcha token — the sign-up call already consumed the first one
+      const signInAfterSignupHeaders = await getFreshCaptchaHeaders();
       const { error: signInError } = await signIn.email({
         email,
         password,
         fetchOptions: {
-          headers: captchaHeaders,
+          headers: signInAfterSignupHeaders,
         },
       });
 
@@ -360,9 +377,11 @@ function SignUpPageContent() {
     setIsLoading(false);
   };
 
-  // Handler for CAPTCHA token updates
-  const handleCaptchaToken = useCallback((token: string | null) => {
-    captchaTokenRef.current = token;
+  // Handler for CAPTCHA token updates (not needed for on-demand execution,
+  // but kept for the initial automatic challenge completion)
+  const handleCaptchaToken = useCallback(() => {
+    // Token management is now handled via captchaRef.execute()
+    // No need to store it — each auth call gets a fresh token
   }, []);
 
   return (
@@ -374,6 +393,7 @@ function SignUpPageContent() {
       inviteData={inviteData}
       inviteToken={inviteToken}
       onCaptchaToken={handleCaptchaToken}
+      captchaRef={captchaRef}
     />
   );
 }
