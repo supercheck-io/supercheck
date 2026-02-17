@@ -76,6 +76,91 @@ function SignUpPageContent() {
     // Hosting mode comes from useAppConfig (cached)
   }, [inviteToken, router]);
 
+  /**
+   * Helper: get fresh CAPTCHA headers for a single auth API call.
+   * Turnstile tokens are single-use, so we must execute a fresh challenge
+   * before EACH call to a CAPTCHA-protected endpoint (signUp.email, signIn.email).
+   */
+  const getFreshCaptchaHeaders = useCallback(async (): Promise<Record<string, string>> => {
+    const token = await captchaRef.current?.execute();
+    const headers: Record<string, string> = token
+      ? { "x-captcha-response": token }
+      : {};
+    if (inviteToken) {
+      headers["x-invite-token"] = inviteToken;
+    }
+    return headers;
+  }, [inviteToken]);
+
+  /**
+   * Helper: verify email, sign in, then auto-accept invitation.
+   * Consolidated logic used by both the success path and error recovery paths.
+   * Returns true if the full flow succeeded and navigation happened.
+   */
+  const verifySignInAndAccept = useCallback(async (
+    email: string,
+    password: string,
+    token: string,
+  ): Promise<boolean> => {
+    // Step 1: Verify the user's email (invitation proves ownership)
+    try {
+      const verifyResponse = await fetch("/api/auth/verify-invited-user", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, email }),
+      });
+      if (!verifyResponse.ok) {
+        console.warn("Could not auto-verify email for invited user");
+      }
+    } catch (verifyError) {
+      console.error("Error verifying invited user:", verifyError);
+    }
+
+    // Step 2: Sign in to establish session
+    // Small delay to allow Turnstile widget to reset after previous execution
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    const signInHeaders = await getFreshCaptchaHeaders();
+    const { error: signInError } = await signIn.email({
+      email,
+      password,
+      fetchOptions: { headers: signInHeaders },
+    });
+
+    if (signInError) {
+      console.error("Auto sign-in after signup failed:", signInError.message);
+      return false;
+    }
+
+    // Step 3: Wait for session to be fully established
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    // Step 4: Call setup-defaults (will detect pending invitation and skip org creation)
+    try {
+      await fetch("/api/auth/setup-defaults", { method: "POST" });
+    } catch {
+      // Non-critical — the invitation acceptance below handles org membership
+    }
+
+    // Step 5: Auto-accept the invitation
+    try {
+      const acceptResponse = await fetch(`/api/invite/${token}`, {
+        method: "POST",
+      });
+      const acceptResult = await acceptResponse.json();
+      if (acceptResponse.ok && acceptResult.success) {
+        console.log(`✅ Auto-accepted invitation to ${acceptResult.data?.organizationName}`);
+        router.push("/");
+        return true;
+      }
+    } catch (acceptError) {
+      console.error("Error auto-accepting invitation:", acceptError);
+    }
+
+    // Fallback: redirect to invite page for manual acceptance
+    router.push(`/invite/${token}`);
+    return true; // Navigation happened, caller should stop
+  }, [getFreshCaptchaHeaders, router]);
+
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError(null);
@@ -92,25 +177,6 @@ function SignUpPageContent() {
       return;
     }
 
-    // Note: Disposable email check removed - social-only signup prevents throwaway emails
-    // Email/password form is only shown for invitation flow where email is already trusted
-
-    /**
-     * Helper: get fresh CAPTCHA headers for a single auth API call.
-     * Turnstile tokens are single-use, so we must execute a fresh challenge
-     * before EACH call to a CAPTCHA-protected endpoint (signUp.email, signIn.email).
-     */
-    const getFreshCaptchaHeaders = async (): Promise<Record<string, string>> => {
-      const token = await captchaRef.current?.execute();
-      const headers: Record<string, string> = token
-        ? { "x-captcha-response": token }
-        : {};
-      if (inviteToken) {
-        headers["x-invite-token"] = inviteToken;
-      }
-      return headers;
-    };
-
     // Get fresh CAPTCHA token for sign-up
     const signUpHeaders = await getFreshCaptchaHeaders();
 
@@ -124,171 +190,87 @@ function SignUpPageContent() {
     });
 
     if (signUpError) {
-      // Handle email verification required error gracefully
-      // For invitation flow, the user was created but needs verification
-      // We'll mark their email as verified since the invitation validates it
-      if (inviteToken && signUpError.status === 403) {
-        // User was created but blocked due to email verification
-        // Call our API to verify the invited user and redirect to accept invitation
-        try {
-          const verifyResponse = await fetch("/api/auth/verify-invited-user", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ token: inviteToken, email }),
-          });
-
-          if (verifyResponse.ok) {
-            // Get a FRESH captcha token for sign-in (tokens are single-use)
-            const signInHeaders = await getFreshCaptchaHeaders();
-            // Now sign in the user and redirect to invitation acceptance
-            const { error: signInError } = await signIn.email({
-              email,
-              password,
-              fetchOptions: {
-                headers: signInHeaders,
-              },
-            });
-            if (!signInError) {
-              // Auto-accept the invitation instead of redirecting to accept page
-              try {
-                const acceptResponse = await fetch(`/api/invite/${inviteToken}`, {
-                  method: "POST",
-                });
-                const acceptResult = await acceptResponse.json();
-                if (acceptResponse.ok && acceptResult.success) {
-                  console.log(`✅ Auto-accepted invitation to ${acceptResult.data?.organizationName}`);
-                  router.push("/");
-                  return;
-                }
-              } catch (acceptError) {
-                console.error("Error auto-accepting invitation:", acceptError);
-              }
-              // Fallback if auto-accept fails
-              router.push(`/invite/${inviteToken}`);
-              return;
-            }
-          }
-        } catch (verifyError) {
-          console.error("Error verifying invited user:", verifyError);
-        }
-        // If verification fails, redirect to sign-in to try again
-        router.push(`/sign-in?invite=${inviteToken}`);
-        return;
-      }
-
-      // For invitation flow with other email-related errors, also try to verify
+      // ── 1. User already exists ───────────────────────────────────────
+      // Better Auth returns 422 for duplicate users. The error message
+      // contains "already exists". For invited users, redirect to sign-in
+      // with a clear message so they can use their existing credentials.
       if (
-        inviteToken &&
-        (signUpError.message?.includes("verify") ||
-          signUpError.message?.includes("email"))
+        signUpError.status === 422 ||
+        signUpError.message?.toLowerCase().includes("already exist")
       ) {
-        // User was created but might need verification - try the same flow
-        try {
-          const verifyResponse = await fetch("/api/auth/verify-invited-user", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ token: inviteToken, email }),
-          });
-
-          if (verifyResponse.ok) {
-            // Get a FRESH captcha token for sign-in (tokens are single-use)
-            const signInHeaders2 = await getFreshCaptchaHeaders();
-            const { error: signInError } = await signIn.email({
-              email,
-              password,
-              fetchOptions: {
-                headers: signInHeaders2,
-              },
-            });
-            if (!signInError) {
-              try {
-                const acceptResponse = await fetch(`/api/invite/${inviteToken}`, {
-                  method: "POST",
-                });
-                const acceptResult = await acceptResponse.json();
-                if (acceptResponse.ok && acceptResult.success) {
-                  console.log(`✅ Auto-accepted invitation to ${acceptResult.data?.organizationName}`);
-                  router.push("/");
-                  return;
-                }
-              } catch (acceptError) {
-                console.error("Error auto-accepting invitation:", acceptError);
-              }
-              router.push(`/invite/${inviteToken}`);
-              return;
-            }
-          }
-        } catch (verifyError) {
-          console.error("Error verifying invited user:", verifyError);
+        if (inviteToken) {
+          // User already has an account — they should sign in instead
+          router.push(`/sign-in?invite=${inviteToken}`);
+          return;
         }
-        router.push(`/sign-in?invite=${inviteToken}`);
+        setError("An account with this email already exists. Please sign in instead.");
+        setIsLoading(false);
         return;
       }
 
-      // For non-invitation flow, redirect to email verification page
+      // ── 2. CAPTCHA verification failed ───────────────────────────────
+      // CAPTCHA plugin returns 403 with message containing "aptcha".
+      // This means the request was blocked before user creation.
+      // Do NOT confuse with email verification 403.
+      if (
+        signUpError.message?.toLowerCase().includes("captcha") ||
+        signUpError.message?.toLowerCase().includes("missing captcha")
+      ) {
+        setError("Verification failed. Please try again.");
+        setIsLoading(false);
+        return;
+      }
+
+      // ── 3. Email verification required (invite flow) ─────────────────
+      // In cloud mode, Better Auth returns 403 EMAIL_NOT_VERIFIED after
+      // creating the user. The user IS in the database but can't sign in
+      // until verified. For invited users, we auto-verify and sign in.
+      if (inviteToken && signUpError.status === 403) {
+        const success = await verifySignInAndAccept(email, password, inviteToken);
+        if (success) return;
+        // If auto flow failed, send user to sign-in page
+        router.push(`/sign-in?invite=${inviteToken}`);
+        setIsLoading(false);
+        return;
+      }
+
+      // ── 4. Non-invitation email verification ─────────────────────────
       if (
         signUpError.message?.includes("verify") ||
-        signUpError.message?.includes("email") ||
         signUpError.status === 403
       ) {
-        // User created but needs to verify email - redirect to verification page
         router.push(`/verify-email?email=${encodeURIComponent(email)}`);
         return;
       }
 
+      // ── 5. All other errors ──────────────────────────────────────────
       setError(signUpError.message || "An error occurred");
       setIsLoading(false);
       return;
     }
 
-    // In cloud mode with email verification enabled, redirect to verify-email page
-    // The user needs to verify their email before they can proceed
-    // EXCEPTION: For invitation flow, skip email verification since the email is already verified
-    // by the invitation system (the invite was sent to that specific email)
+    // ════════════════════════════════════════════════════════════════════
+    // Sign-up succeeded (200 OK). In cloud mode with requireEmailVerification,
+    // Better Auth returns { token: null, user } — no session is created.
+    // ════════════════════════════════════════════════════════════════════
+
+    // Cloud mode without invitation: redirect to email verification page
     if (isCloudHosted && !inviteToken) {
       router.push(`/verify-email?email=${encodeURIComponent(email)}`);
       return;
     }
 
-    // For invitation flow in cloud mode: mark email as verified and SIGN IN
-    // signUp doesn't establish a session, we need to explicitly sign in
+    // Cloud mode with invitation: auto-verify, sign in, and accept
     if (isCloudHosted && inviteToken) {
-      try {
-        const verifyResponse = await fetch("/api/auth/verify-invited-user", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ token: inviteToken, email }),
-        });
-
-        if (!verifyResponse.ok) {
-          console.warn("Could not auto-verify email for invited user");
-        }
-      } catch (verifyError) {
-        console.error("Error verifying invited user:", verifyError);
-      }
-
-      // CRITICAL: Sign in the user to establish session
-      // Without this, setup-defaults and auto-accept will fail with 401
-      // Get a FRESH captcha token — the sign-up call already consumed the first one
-      const signInAfterSignupHeaders = await getFreshCaptchaHeaders();
-      const { error: signInError } = await signIn.email({
-        email,
-        password,
-        fetchOptions: {
-          headers: signInAfterSignupHeaders,
-        },
-      });
-
-      if (signInError) {
-        console.error("Error signing in after signup:", signInError);
-        // Fallback: redirect to sign-in page with invite token
-        router.push(`/sign-in?invite=${inviteToken}`);
-        setIsLoading(false);
-        return;
-      }
+      const success = await verifySignInAndAccept(email, password, inviteToken);
+      if (success) return;
+      // If auto flow failed, redirect to sign-in page so user can sign in manually
+      router.push(`/sign-in?invite=${inviteToken}`);
+      setIsLoading(false);
+      return;
     }
 
-    // Self-hosted mode or invitation flow: no email verification required, proceed with setup
+    // Self-hosted mode: no email verification required, proceed with setup
     // Wait a moment for the session to be established
     await new Promise((resolve) => setTimeout(resolve, 1500));
 
