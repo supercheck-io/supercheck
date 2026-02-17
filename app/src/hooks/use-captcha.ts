@@ -8,6 +8,7 @@ import type { TurnstileCaptchaRef } from "@/components/auth/turnstile-captcha";
  * - Token state management
  * - Error handling callbacks
  * - Reset functionality
+ * - On-demand token execution via `executeCaptcha()`
  * - Ref for the Turnstile component
  *
  * @example
@@ -20,15 +21,17 @@ import type { TurnstileCaptchaRef } from "@/components/auth/turnstile-captcha";
  *   handleCaptchaError,
  *   handleCaptchaExpire,
  *   resetCaptcha,
+ *   executeCaptcha,
  * } = useCaptcha();
  *
- * // In form submission
+ * // Get a fresh token before each form submission
+ * const token = await executeCaptcha();
+ * const headers = token ? { "x-captcha-response": token } : {};
+ *
  * await signIn.email({
  *   email,
  *   password,
- *   fetchOptions: {
- *     headers: captchaToken ? { "x-captcha-response": captchaToken } : {},
- *   },
+ *   fetchOptions: { headers },
  * });
  * ```
  */
@@ -59,6 +62,26 @@ export function useCaptcha() {
   }, []);
 
   /**
+   * Execute the CAPTCHA challenge and return a fresh, unused token.
+   * 
+   * This is the preferred way to get tokens before form submissions.
+   * Each call resets the widget and obtains a new single-use token,
+   * avoiding the token-reuse bug that occurs when the same token is
+   * sent to multiple endpoints (e.g. signUp then signIn).
+   * 
+   * Returns null if CAPTCHA is disabled (e.g. self-hosted mode).
+   */
+  const executeCaptcha = useCallback(async (): Promise<string | null> => {
+    if (!captchaRef.current) return null;
+    const token = await captchaRef.current.execute();
+    if (token) {
+      setCaptchaToken(token);
+      setCaptchaError(null);
+    }
+    return token;
+  }, []);
+
+  /**
    * Get fetch options headers with CAPTCHA token if available
    * Use this when making auth API calls
    */
@@ -81,6 +104,12 @@ export function useCaptcha() {
     handleCaptchaExpire,
     /** Reset CAPTCHA state and widget */
     resetCaptcha,
+    /**
+     * Execute CAPTCHA and get a fresh single-use token.
+     * Returns null if CAPTCHA is disabled. Always use this
+     * before each auth API call to avoid token-reuse issues.
+     */
+    executeCaptcha,
     /** Get headers object with CAPTCHA token for fetch options */
     getCaptchaHeaders,
   };

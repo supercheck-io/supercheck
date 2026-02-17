@@ -315,6 +315,17 @@ export const auth = betterAuth({
   emailVerification: isCloudHosted()
     ? {
         sendVerificationEmail: async ({ user, url }, request) => {
+          // CRITICAL: Skip verification email for invited users.
+          // Better Auth wraps sign-up in a transaction. If this callback throws
+          // (rate limit, email failure), the ENTIRE user creation is rolled back.
+          // Invited users don't need email verification — the invitation itself
+          // proves email ownership. The sign-up page sends x-invite-token header.
+          const inviteToken = request?.headers?.get?.("x-invite-token");
+          if (inviteToken) {
+            console.log(`Skipping verification email for invited user: ${user.email} (invite: ${inviteToken})`);
+            return;
+          }
+
           // Rate limit by email address to prevent abuse
           const emailRateLimit = await checkEmailVerificationRateLimit(user.email);
           if (!emailRateLimit.allowed) {

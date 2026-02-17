@@ -1,7 +1,7 @@
 # Use official Playwright image which includes all browsers and dependencies
 # This avoids the heavy "npx playwright install" step that causes OOM on runners
 # Includes Chromium, Firefox, and WebKit (Safari) browsers
-FROM mcr.microsoft.com/playwright:v1.57.0-noble AS base
+FROM mcr.microsoft.com/playwright:v1.58.2-noble AS base
 
 # Build k6 with xk6-dashboard extension
 # Note: xk6 v1.3.0+ requires Go 1.25 which isn't publicly released yet.

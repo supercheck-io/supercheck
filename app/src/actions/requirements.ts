@@ -447,7 +447,11 @@ export async function createRequirement(
       success: true,
     });
 
-    revalidatePath("/requirements");
+    // Note: revalidatePath removed intentionally. The requirements page uses
+    // TanStack Query for data fetching; client-side cache invalidation
+    // (invalidatePostSaveQueries) handles freshness. Calling revalidatePath
+    // here triggers an internal router.refresh() that can cancel subsequent
+    // client-side navigation (router.push/replace).
 
     return { id: newId, success: true };
   } catch (error) {
@@ -541,7 +545,7 @@ export async function updateRequirement(
       success: true,
     });
 
-    revalidatePath("/requirements");
+    // Note: revalidatePath removed intentionally — see createRequirement comment.
 
     return { success: true };
   } catch (error) {
@@ -889,7 +893,7 @@ export async function syncRequirementTests(
       success: true,
     });
 
-    revalidatePath("/requirements");
+    // Note: revalidatePath removed intentionally — see createRequirement comment.
 
     return { success: true };
   } catch (error) {

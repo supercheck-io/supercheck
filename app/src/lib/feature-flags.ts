@@ -165,15 +165,22 @@ export const getPlanPricing = (plan: "plus" | "pro" | "unlimited") => {
 /**
  * Check if CAPTCHA verification is enabled
  *
- * CAPTCHA (Cloudflare Turnstile) is automatically enabled when
+ * CAPTCHA (Cloudflare Turnstile) is enabled ONLY in cloud mode when
  * both TURNSTILE_SITE_KEY and TURNSTILE_SECRET_KEY are set.
  *
- * This provides bot protection on authentication endpoints:
+ * Self-hosted instances NEVER have CAPTCHA enabled, regardless of
+ * whether Turnstile keys are configured. This is intentional:
+ * self-hosted operators control their own infrastructure and don't
+ * need bot protection gates on auth endpoints.
+ *
+ * Protected endpoints (cloud mode only):
  * - /sign-in/email
  * - /sign-up/email
  * - /forget-password
  */
 export const isCaptchaEnabled = (): boolean => {
+  // CAPTCHA is explicitly disabled for self-hosted deployments
+  if (isSelfHosted()) return false;
   return !!process.env.TURNSTILE_SECRET_KEY && !!process.env.TURNSTILE_SITE_KEY;
 };
 

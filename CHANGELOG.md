@@ -5,7 +5,7 @@ All notable changes to Supercheck are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 
-## [1.2.4] - 2026-02-15
+## [1.3.0] - 2026-02-16
 
 ### Added
 - **New CLI** — Command-line interface for Testing, Monitoring, and Reliability — as Code (`npm install -g @supercheck/cli`)

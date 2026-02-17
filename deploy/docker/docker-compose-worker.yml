@@ -13,6 +13,11 @@
 #   2. Create .env with connection details (see .env.example below)
 #   3. Run: docker compose -f docker-compose-worker.yml up -d
 #
+# Upgrading:
+#   Set SUPERCHECK_VERSION in your .env file or shell environment:
+#     SUPERCHECK_VERSION=1.4.0 docker compose -f docker-compose-worker.yml up -d
+#   This updates the worker image and WORKER_IMAGE in one place.
+#
 # Environment Variables Required:
 #   DATABASE_URL - PostgreSQL connection string to main server
 #   REDIS_URL - Redis connection string to main server
@@ -33,9 +38,12 @@
 
 services:
   worker:
-    image: ghcr.io/supercheck-io/supercheck/worker:1.2.4
+    image: ghcr.io/supercheck-io/supercheck/worker:${SUPERCHECK_VERSION:-1.3.0}
     init: true
     environment:
+      # WORKER_IMAGE tells the worker which Docker image to use when spawning test execution containers
+      WORKER_IMAGE: ghcr.io/supercheck-io/supercheck/worker:${SUPERCHECK_VERSION:-1.3.0}
+
       # Database connection (required)
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required - PostgreSQL connection to main server}
 

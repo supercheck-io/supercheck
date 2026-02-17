@@ -6,8 +6,8 @@ import { Input } from "@/components/ui/input";
 import { SupercheckLogo } from "@/components/logo/supercheck-logo";
 import { Loader2, Eye, EyeOff, Mail } from "lucide-react";
 import Link from "next/link";
-import { useState, useEffect } from "react";
-import { TurnstileCaptcha } from "./turnstile-captcha";
+import { useState, useEffect, type RefObject } from "react";
+import { TurnstileCaptcha, type TurnstileCaptchaRef } from "./turnstile-captcha";
 import { useCaptcha } from "@/hooks/use-captcha";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -41,6 +41,8 @@ interface SignupFormProps {
   inviteToken: string | null;
   /** Callback when CAPTCHA token changes (null when expired/failed) */
   onCaptchaToken?: (token: string | null) => void;
+  /** Ref to pass to the TurnstileCaptcha for on-demand token execution */
+  captchaRef?: RefObject<TurnstileCaptchaRef | null>;
 }
 
 /**
@@ -53,6 +55,7 @@ interface SignupFormProps {
  * - Email-only signup (no social buttons)
  * - Email locked to invited email address
  * - Clear invitation messaging
+ * - CAPTCHA support via parent-provided ref for on-demand token execution
  */
 export function SignupForm({
   className,
@@ -62,6 +65,7 @@ export function SignupForm({
   inviteData,
   inviteToken,
   onCaptchaToken,
+  captchaRef: externalCaptchaRef,
 }: SignupFormProps) {
   const [showPassword, setShowPassword] = useState(false);
 
@@ -288,7 +292,7 @@ export function SignupForm({
 
       {/* Invisible CAPTCHA - placed outside form to avoid any layout shift */}
       <TurnstileCaptcha
-        ref={captchaRef}
+        ref={externalCaptchaRef ?? captchaRef}
         onSuccess={handleCaptchaSuccess}
         onError={handleCaptchaError}
         onExpire={handleCaptchaExpire}

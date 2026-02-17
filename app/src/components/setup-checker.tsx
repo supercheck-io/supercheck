@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { useProjectContext } from "@/hooks/use-project-context";
 
 /**
@@ -15,6 +16,7 @@ export function SetupChecker() {
   const [isSetupComplete, setIsSetupComplete] = useState(false);
   const { projects, loading, refreshProjects } = useProjectContext();
   const setupAttemptedRef = useRef(false);
+  const router = useRouter();
 
   useEffect(() => {
     // Skip if setup already attempted or context is still loading
@@ -50,6 +52,17 @@ export function SetupChecker() {
           });
 
           if (setupResponse.ok) {
+            const setupData = await setupResponse.json();
+
+            // If user has a pending invitation, redirect to accept it
+            // This handles the case where an invited user signs in via
+            // password reset or other paths that bypass the invite flow
+            if (setupData.pendingInvitationId) {
+              console.log("📩 Found pending invitation, redirecting to accept");
+              router.push(`/invite/${setupData.pendingInvitationId}`);
+              return;
+            }
+
             console.log("✅ Default organization and project created");
 
             await new Promise((resolve) => setTimeout(resolve, 500));
@@ -85,7 +98,7 @@ export function SetupChecker() {
       const timer = setTimeout(checkAndSetupDefaults, 100);
       return () => clearTimeout(timer);
     }
-  }, [loading, projects, isSetupComplete, refreshProjects]);
+  }, [loading, projects, isSetupComplete, refreshProjects, router]);
 
   return null; // This component doesn't render anything
 }
