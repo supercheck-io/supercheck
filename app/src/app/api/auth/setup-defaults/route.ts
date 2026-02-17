@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/utils/db';
 import { organization as orgTable, projects, member, projectMembers, session, invitation, user as userTable } from '@/db/schema';
 import { getCurrentUser } from '@/lib/session';
-import { eq, and, gte, desc } from 'drizzle-orm';
+import { eq, and, gte, desc, sql } from 'drizzle-orm';
 import { auth } from '@/utils/auth';
 import { headers } from 'next/headers';
 import { randomUUID } from 'crypto';
@@ -190,12 +190,14 @@ export async function POST() {
 
     // Check if user has any pending invitations
     // If they have pending invitations, they should not get a default organization
+    // IMPORTANT: Use case-insensitive email comparison because Better Auth stores
+    // emails lowercase but invitations may store the original case from admin input.
     const [recentInvitation] = await db
       .select()
       .from(invitation)
       .where(
         and(
-          eq(invitation.email, currentUser.email),
+          sql`LOWER(${invitation.email}) = LOWER(${currentUser.email})`,
           eq(invitation.status, 'pending'),
           gte(invitation.expiresAt, new Date())
         )
@@ -207,7 +209,8 @@ export async function POST() {
       console.log(`User ${currentUser.email} was recently invited - not creating default organization`);
       return NextResponse.json({
         success: true,
-        message: 'User was recently invited - skipping default organization setup'
+        message: 'User was recently invited - skipping default organization setup',
+        pendingInvitationId: recentInvitation.id,
       });
     }
 
