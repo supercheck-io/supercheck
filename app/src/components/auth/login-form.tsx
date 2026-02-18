@@ -169,6 +169,7 @@ export function LoginForm({
 
             {/* Social Auth - Only show when NOT from an invitation */}
             {/* For invitations, user must sign in with the invited email address */}
+            {/* Social auth may use a different email, which would fail the email match check */}
             {!inviteData && (
               <>
                 <SocialAuthButtons
