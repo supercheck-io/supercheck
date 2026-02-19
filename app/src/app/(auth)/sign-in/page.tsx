@@ -38,6 +38,16 @@ function SignInPageContent() {
   // Derive invite token from URL params (not state)
   const inviteToken = useMemo(() => searchParams.get("invite"), [searchParams]);
 
+  const getInviteSignInGuidance = useCallback((message?: string) => {
+    const normalized = String(message ?? "").toLowerCase();
+
+    if (normalized.includes("too many requests") || normalized.includes("rate limit")) {
+      return "Too many sign-in attempts. Please wait a moment and try again, or use the invitation sign-up flow.";
+    }
+
+    return "It looks like this invited account is not signed up yet. Please click \"Create one\" to sign up first.";
+  }, []);
+
   // Fetch invite data - defined before useEffect that uses it
   const fetchInviteData = useCallback(async (token: string) => {
     try {
@@ -135,6 +145,14 @@ function SignInPageContent() {
           body: JSON.stringify({ action: "failed", email }),
         });
         const failedData = await failedResult.json();
+
+        // Invite flow UX: show clear guidance for first-time invitees.
+        // Keep recording failed attempts for security/rate limiting, but avoid
+        // lockout-style messaging that implies repeated password failures.
+        if (inviteToken) {
+          setError(getInviteSignInGuidance(error.message));
+          return;
+        }
 
         // Show lockout message if locked, otherwise show error with warning
         if (failedData.isLocked) {

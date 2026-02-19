@@ -5,7 +5,7 @@
 #
 # Quick Start:
 #   1. Clone the repository
-#   2. Create .env with OAuth credentials (see docs)
+#   2. Create .env with generated secrets (optional integrations can be added later)
 #   3. Run: docker compose up -d
 #   4. Access: http://localhost:3000
 #
@@ -254,8 +254,9 @@ x-common-env: &common-env # Database Configuration
   GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
   GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
 
-  # CAPTCHA Configuration (optional - Cloudflare Turnstile)
-  # CAPTCHA is automatically enabled when both keys are set
+  # CAPTCHA Configuration (Cloudflare Turnstile)
+  # NOTE: CAPTCHA is disabled in self-hosted mode even if keys are provided
+  # (enabled only in cloud mode when both keys are set)
   # Get keys from https://dash.cloudflare.com/?to=/:account/turnstile
   TURNSTILE_SITE_KEY: ${TURNSTILE_SITE_KEY:-}
   TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:-}

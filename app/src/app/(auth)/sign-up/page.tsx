@@ -14,11 +14,11 @@ interface InviteData {
 }
 
 /**
- * Sign-Up Page - INVITATION ONLY
+ * Sign-Up Page
  * 
- * This page is only for users who have been invited to an organization.
- * New users without an invitation should use the sign-in page with social auth
- * (GitHub/Google), which automatically creates accounts.
+ * Cloud mode: INVITATION ONLY — new users without invitation use social auth on sign-in page.
+ * Self-hosted mode: Open registration — anyone can create an account with email/password.
+ * This allows self-hosted deployments behind corporate proxies to work without OAuth.
  */
 export default function SignUpPage() {
   return (
@@ -41,7 +41,8 @@ function SignUpPageContent() {
   const [isLoading, setIsLoading] = useState(false);
   const [inviteData, setInviteData] = useState<InviteData | null>(null);
   // Use cached hosting mode from useAppConfig (React Query cached)
-  const { isCloudHosted } = useAppConfig();
+  const { isCloudHosted, isSelfHosted, isFetched, error: configError } = useAppConfig();
+  const shouldShowLegalFooter = isFetched && !configError && isCloudHosted;
   // CAPTCHA ref for on-demand token execution (each auth call needs a fresh token)
   const captchaRef = useRef<TurnstileCaptchaRef>(null);
 
@@ -49,32 +50,45 @@ function SignUpPageContent() {
   const inviteToken = useMemo(() => searchParams.get("invite"), [searchParams]);
 
   useEffect(() => {
-    // REDIRECT: If no invite token, redirect to sign-in page
-    // New users should use social auth (GitHub/Google) on sign-in page
-    if (!inviteToken) {
+    // Apply hosting rules once config query resolves.
+    // If config fetch fails, useAppConfig falls back to cloud-safe defaults.
+    const canApplyHostingRules = isFetched;
+
+    // Cloud mode: invitation-only sign-up. Redirect if no invite token.
+    // Self-hosted mode: open registration, no invite token required.
+    if (canApplyHostingRules && !inviteToken && isCloudHosted) {
       router.replace("/sign-in");
       return;
     }
 
     // Fetch invite data for valid tokens
-    const fetchInviteData = async () => {
-      try {
-        const response = await fetch(`/api/invite/${inviteToken}`);
-        const data = await response.json();
-        if (data.success) {
-          setInviteData(data.data);
-        } else {
-          // Invalid invite token, redirect to sign-in
-          router.replace("/sign-in");
+    if (inviteToken) {
+      const fetchInviteData = async () => {
+        try {
+          const response = await fetch(`/api/invite/${inviteToken}`);
+          const data = await response.json();
+          if (data.success) {
+            setInviteData(data.data);
+          } else if (canApplyHostingRules && isCloudHosted) {
+            // Invalid invite token in cloud mode, redirect to sign-in
+            router.replace("/sign-in");
+          } else if (canApplyHostingRules) {
+            // Self-hosted mode: invalid invite should fall back to open sign-up
+            router.replace("/sign-up");
+          }
+        } catch (fetchError) {
+          console.error("Error fetching invite data:", fetchError);
+          if (canApplyHostingRules && isCloudHosted) {
+            router.replace("/sign-in");
+          } else if (canApplyHostingRules) {
+            // Self-hosted mode: invalid invite should fall back to open sign-up
+            router.replace("/sign-up");
+          }
         }
-      } catch (fetchError) {
-        console.error("Error fetching invite data:", fetchError);
-        router.replace("/sign-in");
-      }
-    };
-    fetchInviteData();
-    // Hosting mode comes from useAppConfig (cached)
-  }, [inviteToken, router]);
+      };
+      fetchInviteData();
+    }
+  }, [inviteToken, router, isCloudHosted, isFetched, configError]);
 
   /**
    * Helper: get fresh CAPTCHA headers for a single auth API call.
@@ -221,11 +235,12 @@ function SignUpPageContent() {
         return;
       }
 
-      // ── 3. Email verification required (invite flow) ─────────────────
+      // ── 3. Email verification required (cloud mode invite flow) ─────
       // In cloud mode, Better Auth returns 403 EMAIL_NOT_VERIFIED after
       // creating the user. The user IS in the database but can't sign in
       // until verified. For invited users, we auto-verify and sign in.
-      if (inviteToken && signUpError.status === 403) {
+      // This does NOT apply to self-hosted mode (no email verification).
+      if (isCloudHosted && inviteToken && signUpError.status === 403) {
         const success = await verifySignInAndAccept(email, password, inviteToken);
         if (success) return;
         // If auto flow failed, send user to sign-in page
@@ -234,10 +249,13 @@ function SignUpPageContent() {
         return;
       }
 
-      // ── 4. Non-invitation email verification ─────────────────────────
+      // ── 4. Non-invitation email verification (cloud mode only) ───────
+      // Only redirect to verify-email in cloud mode where email verification
+      // is required. Self-hosted mode has no email verification requirement.
       if (
-        signUpError.message?.includes("verify") ||
-        signUpError.status === 403
+        isCloudHosted &&
+        (signUpError.message?.includes("verify") ||
+        signUpError.status === 403)
       ) {
         router.push(`/verify-email?email=${encodeURIComponent(email)}`);
         return;
@@ -250,29 +268,27 @@ function SignUpPageContent() {
     }
 
     // ════════════════════════════════════════════════════════════════════
-    // Sign-up succeeded (200 OK). In cloud mode with requireEmailVerification,
-    // Better Auth returns { token: null, user } — no session is created.
+    // Sign-up succeeded (200 OK).
+    // Cloud mode:  requireEmailVerification=true → no session, redirect to verify.
+    // Self-hosted: requireEmailVerification=false → session created, proceed.
     // ════════════════════════════════════════════════════════════════════
 
-    // Cloud mode without invitation: redirect to email verification page
-    if (isCloudHosted && !inviteToken) {
-      router.push(`/verify-email?email=${encodeURIComponent(email)}`);
-      return;
-    }
-
-    // Cloud mode with invitation: auto-verify, sign in, and accept
-    if (isCloudHosted && inviteToken) {
+    if (isCloudHosted) {
+      // Cloud mode without invitation: redirect to email verification page
+      if (!inviteToken) {
+        router.push(`/verify-email?email=${encodeURIComponent(email)}`);
+        return;
+      }
+      // Cloud mode with invitation: auto-verify, sign in, and accept
       const success = await verifySignInAndAccept(email, password, inviteToken);
       if (success) return;
-      // If auto flow failed, redirect to sign-in page so user can sign in manually
       router.push(`/sign-in?invite=${inviteToken}`);
       setIsLoading(false);
       return;
     }
 
-    // Self-hosted mode: no email verification required, proceed with setup
-    // Wait a moment for the session to be established
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    // Self-hosted mode: session is already established, proceed with setup
+    await new Promise((resolve) => setTimeout(resolve, 500));
 
     // Call setup-defaults endpoint to create default org/project
     try {
@@ -318,42 +334,6 @@ function SignUpPageContent() {
       return;
     }
 
-    // Check subscription for new user signup WITHOUT invitation
-    // For cloud mode, verify subscription status
-    // Note: isCloudHosted comes from useAppConfig (cached)
-    if (isCloudHosted) {
-      try {
-        const billingResponse = await fetch("/api/billing/current");
-        if (billingResponse.ok) {
-          const billingData = await billingResponse.json();
-          // Check if subscription is actually active
-          if (
-            billingData.subscription?.status !== "active" ||
-            !billingData.subscription?.plan
-          ) {
-            console.log(
-              "Cloud mode: No active subscription, redirecting to subscribe"
-            );
-            router.push("/subscribe?setup=true");
-            setIsLoading(false);
-            return;
-          }
-        } else {
-          // Billing check failed - redirect to subscribe to be safe
-          router.push("/subscribe?setup=true");
-          setIsLoading(false);
-          return;
-        }
-      } catch {
-        console.log(
-          "Cloud mode: Failed to check subscription, redirecting to subscribe"
-        );
-        router.push("/subscribe?setup=true");
-        setIsLoading(false);
-        return;
-      }
-    }
-
     // Default: redirect to dashboard
     router.push("/");
     setIsLoading(false);
@@ -376,6 +356,8 @@ function SignUpPageContent() {
       inviteToken={inviteToken}
       onCaptchaToken={handleCaptchaToken}
       captchaRef={captchaRef}
+      isSelfHosted={isSelfHosted}
+      shouldShowLegalFooter={shouldShowLegalFooter}
     />
   );
 }

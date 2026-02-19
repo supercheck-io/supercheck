@@ -6,6 +6,7 @@ import { useState, useEffect } from "react";
 import { Loader2 } from "lucide-react";
 import { GitHubIcon, GoogleIcon } from "./social-icons";
 import { Badge } from "@/components/ui/badge";
+import { useAppConfig } from "@/hooks/use-app-config";
 
 interface SocialAuthButtonsProps {
   callbackUrl?: string;
@@ -19,6 +20,7 @@ export function SocialAuthButtons({
   const [isGithubLoading, setIsGithubLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { isGithubEnabled, isGoogleEnabled } = useAppConfig();
   
   // HYDRATION FIX: Initialize with null on server and client, then update in effect
   const [lastMethod, setLastMethod] = useState<string | null>(null);
@@ -78,6 +80,11 @@ export function SocialAuthButtons({
   const isLoading = isGithubLoading || isGoogleLoading;
   const isDisabled = disabled || isLoading;
 
+  // Don't render anything if no providers are configured
+  if (!isGoogleEnabled && !isGithubEnabled) {
+    return null;
+  }
+
   return (
     <div className="flex flex-col gap-3">
       {error && (
@@ -86,63 +93,66 @@ export function SocialAuthButtons({
         </p>
       )}
 
-      {/* Always show both OAuth buttons - they are always visible */}
       <div className="flex flex-col gap-3">
-        <div className="relative w-full">
-          {lastMethod === "google" && (
-            <Badge
-              variant="secondary"
-              className="absolute -top-1 -right-1 text-[10px] uppercase tracking-wide py-0 px-1.5 font-medium"
-              data-testid="last-used-badge"
-            >
-              Last used
-            </Badge>
-          )}
-          <Button
-            type="button"
-            variant={lastMethod === "google" ? "default" : "outline"}
-            size="lg"
-            className="w-full justify-center gap-3"
-            onClick={handleGoogleSignIn}
-            disabled={isDisabled}
-            data-testid="login-google-button"
-          >
-            {isGoogleLoading ? (
-              <Loader2 className="h-5 w-5 animate-spin" />
-            ) : (
-              <GoogleIcon className="h-5 w-5" />
+        {isGoogleEnabled && (
+          <div className="relative w-full">
+            {lastMethod === "google" && (
+              <Badge
+                variant="secondary"
+                className="absolute -top-1 -right-1 text-[10px] uppercase tracking-wide py-0 px-1.5 font-medium"
+                data-testid="last-used-badge"
+              >
+                Last used
+              </Badge>
             )}
-            <span>Continue with Google</span>
-          </Button>
-        </div>
+            <Button
+              type="button"
+              variant={lastMethod === "google" ? "default" : "outline"}
+              size="lg"
+              className="w-full justify-center gap-3"
+              onClick={handleGoogleSignIn}
+              disabled={isDisabled}
+              data-testid="login-google-button"
+            >
+              {isGoogleLoading ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <GoogleIcon className="h-5 w-5" />
+              )}
+              <span>Continue with Google</span>
+            </Button>
+          </div>
+        )}
 
-        <div className="relative w-full">
-          {lastMethod === "github" && (
-            <Badge
-              variant="secondary"
-              className="absolute -top-1 -right-1 text-[10px] uppercase tracking-wide py-0 px-1.5 font-medium"
-              data-testid="last-used-badge"
-            >
-              Last used
-            </Badge>
-          )}
-          <Button
-            type="button"
-            variant={lastMethod === "github" ? "default" : "outline"}
-            size="lg"
-            className="w-full justify-center gap-3"
-            onClick={handleGitHubSignIn}
-            disabled={isDisabled}
-            data-testid="login-github-button"
-          >
-            {isGithubLoading ? (
-              <Loader2 className="h-5 w-5 animate-spin" />
-            ) : (
-              <GitHubIcon className="h-5 w-5" />
+        {isGithubEnabled && (
+          <div className="relative w-full">
+            {lastMethod === "github" && (
+              <Badge
+                variant="secondary"
+                className="absolute -top-1 -right-1 text-[10px] uppercase tracking-wide py-0 px-1.5 font-medium"
+                data-testid="last-used-badge"
+              >
+                Last used
+              </Badge>
             )}
-            <span>Continue with GitHub</span>
-          </Button>
-        </div>
+            <Button
+              type="button"
+              variant={lastMethod === "github" ? "default" : "outline"}
+              size="lg"
+              className="w-full justify-center gap-3"
+              onClick={handleGitHubSignIn}
+              disabled={isDisabled}
+              data-testid="login-github-button"
+            >
+              {isGithubLoading ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <GitHubIcon className="h-5 w-5" />
+              )}
+              <span>Continue with GitHub</span>
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -9,6 +9,7 @@ import Link from "next/link";
 import { requestPasswordReset } from "@/utils/auth-client";
 import { TurnstileCaptcha } from "@/components/auth/turnstile-captcha";
 import { useCaptcha } from "@/hooks/use-captcha";
+import { useAppConfig } from "@/hooks/use-app-config";
 import {
   FieldGroup,
   Field,
@@ -21,6 +22,8 @@ export default function ForgotPasswordPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
+  const { isCloudHosted, isFetched, error: configError } = useAppConfig();
+  const shouldShowLegalFooter = isFetched && !configError && isCloudHosted;
 
   // CAPTCHA state management
   const {
@@ -119,12 +122,14 @@ export default function ForgotPasswordPage() {
           </div>
         </FieldGroup>
 
-        {/* Footer */}
-        <FieldDescription className="px-6 text-center">
-          By clicking continue, you agree to our{" "}
-          <Link href="https://supercheck.io/terms">Terms of Service</Link> and{" "}
-          <Link href="https://supercheck.io/privacy">Privacy Policy</Link>.
-        </FieldDescription>
+        {/* Footer (cloud mode only; hidden until config is resolved to avoid mode flicker) */}
+        {shouldShowLegalFooter && (
+          <FieldDescription className="px-6 text-center">
+            By clicking continue, you agree to our{" "}
+            <Link href="https://supercheck.io/terms">Terms of Service</Link> and{" "}
+            <Link href="https://supercheck.io/privacy">Privacy Policy</Link>.
+          </FieldDescription>
+        )}
       </div>
     );
   }
@@ -206,12 +211,14 @@ export default function ForgotPasswordPage() {
         </FieldGroup>
       </form>
 
-      {/* Footer */}
-      <FieldDescription className="px-6 text-center">
-        By clicking continue, you agree to our{" "}
-        <Link href="https://supercheck.io/terms">Terms of Service</Link> and{" "}
-        <Link href="https://supercheck.io/privacy">Privacy Policy</Link>.
-      </FieldDescription>
+      {/* Footer (cloud mode only; hidden until config is resolved to avoid mode flicker) */}
+      {shouldShowLegalFooter && (
+        <FieldDescription className="px-6 text-center">
+          By clicking continue, you agree to our{" "}
+          <Link href="https://supercheck.io/terms">Terms of Service</Link> and{" "}
+          <Link href="https://supercheck.io/privacy">Privacy Policy</Link>.
+        </FieldDescription>
+      )}
 
       {/* Invisible CAPTCHA - placed outside form to avoid any layout shift */}
       <TurnstileCaptcha

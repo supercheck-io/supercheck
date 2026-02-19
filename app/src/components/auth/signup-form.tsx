@@ -43,19 +43,18 @@ interface SignupFormProps {
   onCaptchaToken?: (token: string | null) => void;
   /** Ref to pass to the TurnstileCaptcha for on-demand token execution */
   captchaRef?: RefObject<TurnstileCaptchaRef | null>;
+  /** Whether the app is running in self-hosted mode (open registration) */
+  isSelfHosted?: boolean;
+  /** Whether legal footer links should be shown (cloud mode only, after config resolves) */
+  shouldShowLegalFooter?: boolean;
 }
 
 /**
- * SignupForm Component - INVITATION ONLY
+ * SignupForm Component
  * 
- * This form is exclusively for invited users to create an account.
- * New users without invitation use the sign-in page with social auth.
- * 
- * Key features:
- * - Email-only signup (no social buttons)
- * - Email locked to invited email address
- * - Clear invitation messaging
- * - CAPTCHA support via parent-provided ref for on-demand token execution
+ * Two modes:
+ * - Invitation mode (cloud/with invite token): Email locked to invited address, invitation messaging
+ * - Open registration (self-hosted without invite): All fields editable, standard signup form
  */
 export function SignupForm({
   className,
@@ -66,6 +65,8 @@ export function SignupForm({
   inviteToken,
   onCaptchaToken,
   captchaRef: externalCaptchaRef,
+  isSelfHosted = false,
+  shouldShowLegalFooter = false,
 }: SignupFormProps) {
   const [showPassword, setShowPassword] = useState(false);
 
@@ -103,8 +104,12 @@ export function SignupForm({
 
   const passwordValue = form.watch("password");
 
-  // Show loading state while fetching invite data
-  if (!inviteData) {
+  // Determine mode: invitation flow vs open registration (self-hosted without invite)
+  const isInviteMode = !!inviteData;
+  const isOpenRegistration = isSelfHosted && !inviteData && !inviteToken;
+
+  // Show loading state while fetching invite data (when invite token is present but data hasn't loaded)
+  if (!inviteData && !isOpenRegistration) {
     return (
       <div className={cn("flex flex-col gap-6 items-center justify-center min-h-[300px]", className)}>
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -118,7 +123,7 @@ export function SignupForm({
       <Form {...form}>
         <form onSubmit={onSubmit}>
           <FieldGroup>
-            {/* Header with invitation context */}
+            {/* Header */}
             <div className="flex flex-col items-center gap-3 text-center">
               <Link
                 href="/"
@@ -130,28 +135,38 @@ export function SignupForm({
                 <span className="sr-only">Supercheck</span>
               </Link>
               <h1 className="text-2xl font-bold">
-                Join {inviteData.organizationName}
+                {isInviteMode
+                  ? `Join ${inviteData.organizationName}`
+                  : "Create your account"}
               </h1>
               <FieldDescription>
-                You&apos;ve been invited to join as{" "}
-                <span className="font-medium text-foreground">
-                  {inviteData.role.replace(/_/g, " ")}
-                </span>
+                {isInviteMode ? (
+                  <>
+                    You&apos;ve been invited to join as{" "}
+                    <span className="font-medium text-foreground">
+                      {inviteData.role.replace(/_/g, " ")}
+                    </span>
+                  </>
+                ) : (
+                  "Sign up to get started with Supercheck"
+                )}
               </FieldDescription>
             </div>
 
-            {/* Invitation badge - shows invited email */}
-            <div className="flex items-center gap-3 p-3 rounded-lg bg-primary/5 border border-primary/10">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
-                <Mail className="h-4 w-4 text-primary" />
+            {/* Invitation badge - only show in invite mode */}
+            {isInviteMode && (
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-primary/5 border border-primary/10">
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
+                  <Mail className="h-4 w-4 text-primary" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium">Invitation for</p>
+                  <p className="text-sm text-muted-foreground truncate">
+                    {inviteData.email}
+                  </p>
+                </div>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium">Invitation for</p>
-                <p className="text-sm text-muted-foreground truncate">
-                  {inviteData.email}
-                </p>
-              </div>
-            </div>
+            )}
 
             {/* Name Field */}
             <FormField
@@ -176,7 +191,7 @@ export function SignupForm({
               )}
             />
 
-            {/* Email Field - Read-only, locked to invited email */}
+            {/* Email Field - Read-only when invited, editable for open registration */}
             <FormField
               control={form.control}
               name="email"
@@ -188,9 +203,10 @@ export function SignupForm({
                       <Input
                         id="email"
                         type="email"
+                        placeholder={isOpenRegistration ? "m@example.com" : undefined}
                         autoComplete="email"
-                        readOnly
-                        className="bg-muted/50"
+                        readOnly={isInviteMode}
+                        className={isInviteMode ? "bg-muted/50" : ""}
                         {...field}
                       />
                     </FormControl>
@@ -262,7 +278,7 @@ export function SignupForm({
             <Field>
               <Button type="submit" className="w-full" disabled={isLoading}>
                 {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Create account & join
+                {isInviteMode ? "Create account & join" : "Create account"}
               </Button>
             </Field>
 
@@ -272,7 +288,7 @@ export function SignupForm({
               <FieldDescription>
                 Already have an account?{" "}
                 <Link
-                  href={`/sign-in?invite=${inviteToken}`}
+                  href={inviteToken ? `/sign-in?invite=${inviteToken}` : "/sign-in"}
                   className="font-medium text-foreground underline underline-offset-2"
                 >
                   Sign in instead
@@ -283,12 +299,14 @@ export function SignupForm({
         </form>
       </Form>
 
-      {/* Footer */}
-      <FieldDescription className="px-6 text-center">
-        By clicking continue, you agree to our{" "}
-        <Link href="https://supercheck.io/terms">Terms of Service</Link> and{" "}
-        <Link href="https://supercheck.io/privacy">Privacy Policy</Link>.
-      </FieldDescription>
+      {/* Footer (cloud mode only; hidden until config is resolved to avoid mode flicker) */}
+      {shouldShowLegalFooter && (
+        <FieldDescription className="px-6 text-center">
+          By clicking continue, you agree to our{" "}
+          <Link href="https://supercheck.io/terms">Terms of Service</Link> and{" "}
+          <Link href="https://supercheck.io/privacy">Privacy Policy</Link>.
+        </FieldDescription>
+      )}
 
       {/* Invisible CAPTCHA - placed outside form to avoid any layout shift */}
       <TurnstileCaptcha

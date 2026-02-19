@@ -3,7 +3,8 @@ import { toNextJsHandler } from "better-auth/next-js";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { invitation } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
+import { isSelfHosted } from "@/lib/feature-flags";
 
 const betterAuthHandler = toNextJsHandler(auth);
 
@@ -12,12 +13,21 @@ export const GET = betterAuthHandler.GET;
 /**
  * POST /api/auth/sign-up/email
  * 
- * SECURITY: Email/password sign-up is INVITE-ONLY.
- * Users must have a valid pending invitation to register with email/password.
- * This is enforced at the API boundary (not just UI redirects).
+ * Cloud mode: Email/password sign-up is INVITE-ONLY.
+ *   Users must have a valid pending invitation to register with email/password.
+ *   This is enforced at the API boundary (not just UI redirects).
+ *
+ * Self-hosted mode: Open registration.
+ *   Anyone can create an account with email/password without an invitation.
+ *   This enables deployments behind corporate proxies where OAuth is unavailable.
  */
 export async function POST(request: NextRequest) {
-  // Enforce invite-only sign-up
+  // Self-hosted mode: allow open registration without invitation
+  if (isSelfHosted()) {
+    return betterAuthHandler.POST(request);
+  }
+
+  // Cloud mode: enforce invite-only sign-up
   try {
     // Clone the request so we can read the body without consuming it
     const clonedRequest = request.clone();
@@ -54,7 +64,7 @@ export async function POST(request: NextRequest) {
       .where(
         and(
           eq(invitation.id, inviteToken),
-          eq(invitation.email, email),
+          sql`LOWER(${invitation.email}) = ${email}`,
           eq(invitation.status, "pending")
         )
       )

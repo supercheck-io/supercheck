@@ -6,7 +6,7 @@ import {
   member,
   projects,
 } from "@/db/schema";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, inArray, sql } from "drizzle-orm";
 import { getUserOrgRole } from "@/lib/rbac/middleware";
 import { requireUserAuthContext, isAuthError } from "@/lib/auth-context";
 import { Role } from "@/lib/rbac/permissions";
@@ -100,10 +100,16 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const { email, role, selectedProjects } = body;
+    const normalizedEmail =
+      typeof email === "string" ? email.toLowerCase().trim() : "";
 
     // Validate request data using Zod schema
     try {
-      inviteMemberSchema.parse({ email, role, selectedProjects });
+      inviteMemberSchema.parse({
+        email: normalizedEmail,
+        role,
+        selectedProjects,
+      });
     } catch (error) {
       if (error instanceof Error) {
         const zodError = error as { errors?: { message: string }[] };
@@ -143,7 +149,7 @@ export async function POST(request: NextRequest) {
         email: userTable.email,
       })
       .from(userTable)
-      .where(eq(userTable.email, email))
+      .where(sql`LOWER(${userTable.email}) = ${normalizedEmail}`)
       .limit(1);
 
     if (existingUser.length > 0) {
@@ -202,7 +208,7 @@ export async function POST(request: NextRequest) {
       .from(invitation)
       .where(
         and(
-          eq(invitation.email, email),
+          sql`LOWER(${invitation.email}) = ${normalizedEmail}`,
           eq(invitation.organizationId, organizationId),
           eq(invitation.status, "pending")
         )
@@ -249,7 +255,7 @@ export async function POST(request: NextRequest) {
       .insert(invitation)
       .values({
         organizationId,
-        email,
+        email: normalizedEmail,
         role,
         status: "pending",
         expiresAt,
@@ -291,7 +297,7 @@ export async function POST(request: NextRequest) {
     });
 
     const emailResult = await emailService.sendEmail({
-      to: email,
+      to: normalizedEmail,
       subject: emailContent.subject,
       text: emailContent.text,
       html: emailContent.html,
@@ -299,7 +305,7 @@ export async function POST(request: NextRequest) {
 
     if (!emailResult.success) {
       console.error(
-        `Failed to send invitation email to ${email}:`,
+        `Failed to send invitation email to ${normalizedEmail}:`,
         emailResult.error
       );
       // Still return success since the invitation was created, just log the email error
@@ -308,7 +314,7 @@ export async function POST(request: NextRequest) {
       );
     } else {
       console.log(
-        `📧 Email invitation sent successfully to ${email} for organization ${orgName}`
+        `📧 Email invitation sent successfully to ${normalizedEmail} for organization ${orgName}`
       );
     }
 
@@ -320,7 +326,7 @@ export async function POST(request: NextRequest) {
       resourceId: newInvitation.id,
       metadata: {
         organizationId,
-        invitedEmail: email,
+        invitedEmail: normalizedEmail,
         role: role,
         selectedProjectsCount: selectedProjects.length,
         selectedProjects: selectedProjectDetails.map((p) => ({

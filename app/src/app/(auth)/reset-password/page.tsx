@@ -8,6 +8,7 @@ import { CheckIcon } from "@/components/logo/supercheck-logo";
 import { Loader2, Eye, EyeOff, CheckCircle } from "lucide-react";
 import { resetPassword } from "@/utils/auth-client";
 import Link from "next/link";
+import { useAppConfig } from "@/hooks/use-app-config";
 import {
   FieldGroup,
   Field,
@@ -40,6 +41,8 @@ function ResetPasswordPageContent() {
   const [error, setError] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
   const [token, setToken] = useState<string | null>(null);
+  const { isCloudHosted, isFetched, error: configError } = useAppConfig();
+  const shouldShowLegalFooter = isFetched && !configError && isCloudHosted;
 
   useEffect(() => {
     const tokenParam = searchParams.get("token");
@@ -172,12 +175,14 @@ function ResetPasswordPageContent() {
           </Field>
         </FieldGroup>
 
-        {/* Footer */}
-        <FieldDescription className="px-6 text-center">
-          By clicking continue, you agree to our{" "}
-          <Link href="https://supercheck.io/terms">Terms of Service</Link> and{" "}
-          <Link href="https://supercheck.io/privacy">Privacy Policy</Link>.
-        </FieldDescription>
+        {/* Footer (cloud mode only; hidden until config is resolved to avoid mode flicker) */}
+        {shouldShowLegalFooter && (
+          <FieldDescription className="px-6 text-center">
+            By clicking continue, you agree to our{" "}
+            <Link href="https://supercheck.io/terms">Terms of Service</Link> and{" "}
+            <Link href="https://supercheck.io/privacy">Privacy Policy</Link>.
+          </FieldDescription>
+        )}
       </div>
     );
   }
@@ -293,12 +298,14 @@ function ResetPasswordPageContent() {
         </FieldGroup>
       </form>
 
-      {/* Footer */}
-      <FieldDescription className="px-6 text-center">
-        By clicking continue, you agree to our{" "}
-        <Link href="https://supercheck.io/terms">Terms of Service</Link> and{" "}
-        <Link href="https://supercheck.io/privacy">Privacy Policy</Link>.
-      </FieldDescription>
+      {/* Footer (cloud mode only; hidden until config is resolved to avoid mode flicker) */}
+      {shouldShowLegalFooter && (
+        <FieldDescription className="px-6 text-center">
+          By clicking continue, you agree to our{" "}
+          <Link href="https://supercheck.io/terms">Terms of Service</Link> and{" "}
+          <Link href="https://supercheck.io/privacy">Privacy Policy</Link>.
+        </FieldDescription>
+      )}
     </div>
   );
 }
