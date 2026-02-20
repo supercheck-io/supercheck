@@ -68,6 +68,8 @@ export const statusPages = pgTable(
     notificationsFromEmail: varchar("notifications_from_email", { length: 255 }),
     notificationsEmailFooter: text("notifications_email_footer"),
     timezone: varchar("timezone", { length: 50 }).default("UTC"),
+    // Language for public status page UI strings (ISO 639-1 code)
+    language: varchar("language", { length: 10 }).default("en").notNull(),
     // Branding
     cssBodyBackgroundColor: varchar("css_body_background_color", {
       length: 7,
@@ -92,8 +94,10 @@ export const statusPages = pgTable(
     heroCover: varchar("hero_cover", { length: 500 }),
     customDomain: varchar("custom_domain", { length: 255 }),
     customDomainVerified: boolean("custom_domain_verified").default(false),
-    theme: jsonb("theme").default({}),
-    brandingSettings: jsonb("branding_settings").default({}),
+    theme: jsonb("theme").$type<Record<string, unknown>>().default({}),
+    brandingSettings: jsonb("branding_settings")
+      .$type<{ hidePoweredBy?: boolean }>()
+      .default({}),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },

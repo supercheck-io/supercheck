@@ -104,6 +104,7 @@ async function processEmailTemplateJob(
         result = await emailRenderer.renderStatusPageVerificationEmail({
           verificationUrl: data.verificationUrl || "",
           statusPageName: data.statusPageName || "",
+          language: data.language || "en",
         });
         break;
 
@@ -112,6 +113,7 @@ async function processEmailTemplateJob(
           statusPageName: data.statusPageName || "",
           statusPageUrl: data.statusPageUrl || "",
           unsubscribeUrl: data.unsubscribeUrl || "",
+          language: data.language || "en",
         });
         break;
 
@@ -126,6 +128,7 @@ async function processEmailTemplateJob(
           affectedComponents: data.affectedComponents || [],
           updateTimestamp: data.updateTimestamp || new Date().toISOString(),
           unsubscribeUrl: data.unsubscribeUrl || "",
+          language: data.language || "en",
         });
         break;
 

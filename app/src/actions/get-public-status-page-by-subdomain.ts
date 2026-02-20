@@ -91,6 +91,8 @@ export async function getPublicStatusPageBySubdomain(subdomain: string) {
         allowWebhookSubscribers: true,
         allowSlackSubscribers: true,
         allowRssFeed: true,
+        language: true,
+        brandingSettings: true,
         createdAt: true,
         updatedAt: true,
         // EXCLUDED: organizationId, projectId, createdByUserId, notification settings

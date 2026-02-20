@@ -17,6 +17,12 @@ import { SubscribeDialog } from "./subscribe-dialog";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { useStatusPageFavicon } from "./use-status-page-favicon";
+import {
+  getTranslations,
+  translateIncidentStatus,
+  translateIncidentImpact,
+  getLocaleForLanguage,
+} from "@/lib/status-page-translations";
 
 type ComponentStatus =
   | "operational"
@@ -48,6 +54,8 @@ type StatusPage = {
   cssReds: string | null;
   faviconLogo: string | null;
   transactionalLogo: string | null;
+  language: string | null;
+  brandingSettings?: { hidePoweredBy?: boolean } | null;
 };
 
 type Component = {
@@ -83,6 +91,7 @@ type PublicStatusPageProps = {
   idOrSubdomain: string;
   isPublicView?: boolean;
   isCustomDomain?: boolean;
+  language?: string;
 };
 
 export function PublicStatusPage({
@@ -92,9 +101,22 @@ export function PublicStatusPage({
   idOrSubdomain,
   isPublicView = false,
   isCustomDomain = false,
+  language,
 }: PublicStatusPageProps) {
   const [currentPage, setCurrentPage] = useState(1);
   const DAYS_PER_PAGE = 7;
+
+  // Get translations for the configured language
+  const activeLanguage = language || statusPage.language || "en";
+  const t = getTranslations(activeLanguage);
+  const locale = getLocaleForLanguage(activeLanguage);
+
+  const fullDateFormatter = new Intl.DateTimeFormat(locale, {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 
   // Apply custom favicon for client-side navigation
   useStatusPageFavicon(statusPage.faviconLogo);
@@ -130,43 +152,43 @@ export function PublicStatusPage({
       case "operational":
         return {
           icon: CheckCircle2,
-          text: "All Systems Operational",
-          subtext: "All services are running normally",
+          text: t.allSystemsOperational,
+          subtext: t.allServicesRunningNormally,
           bgColor: colors.green,
         };
       case "degraded_performance":
         return {
           icon: AlertTriangle,
-          text: "Degraded Performance",
-          subtext: "Some services are experiencing issues",
+          text: t.degradedPerformance,
+          subtext: t.someServicesExperiencingIssues,
           bgColor: colors.yellow,
         };
       case "partial_outage":
         return {
           icon: AlertCircle,
-          text: "Partial Outage",
-          subtext: "Some services are unavailable",
+          text: t.partialOutage,
+          subtext: t.someServicesUnavailable,
           bgColor: colors.orange,
         };
       case "major_outage":
         return {
           icon: XCircle,
-          text: "Major Outage",
-          subtext: "Services are currently unavailable",
+          text: t.majorOutage,
+          subtext: t.servicesCurrentlyUnavailable,
           bgColor: colors.red,
         };
       case "under_maintenance":
         return {
           icon: Wrench,
-          text: "Scheduled Maintenance",
-          subtext: "Services are under maintenance",
+          text: t.scheduledMaintenance,
+          subtext: t.servicesUnderMaintenance,
           bgColor: colors.blue,
         };
       default:
         return {
           icon: CheckCircle2,
-          text: "All Systems Operational",
-          subtext: "All services are running normally",
+          text: t.allSystemsOperational,
+          subtext: t.allServicesRunningNormally,
           bgColor: colors.green,
         };
     }
@@ -177,31 +199,31 @@ export function PublicStatusPage({
       case "operational":
         return {
           icon: CheckCircle2,
-          text: "Operational",
+          text: t.operational,
           color: colors.green,
         };
       case "degraded_performance":
         return {
           icon: AlertTriangle,
-          text: "Degraded Performance",
+          text: t.degradedPerformance,
           color: colors.yellow,
         };
       case "partial_outage":
         return {
           icon: AlertCircle,
-          text: "Partial Outage",
+          text: t.partialOutage,
           color: colors.orange,
         };
       case "major_outage":
         return {
           icon: XCircle,
-          text: "Major Outage",
+          text: t.majorOutage,
           color: colors.red,
         };
       case "under_maintenance":
         return {
           icon: Wrench,
-          text: "Under Maintenance",
+          text: t.underMaintenance,
           color: colors.blue,
         };
     }
@@ -374,15 +396,15 @@ export function PublicStatusPage({
             }}
           >
             <div className="font-semibold mb-2 text-white">
-              {format(data[hoveredDay].date, "EEEE, MMM d, yyyy")}
+              {fullDateFormatter.format(data[hoveredDay].date)}
             </div>
 
             {data[hoveredDay].status === "nodata" ? (
               <div className="text-gray-300 dark:text-gray-400">
-                No data available for this day.
+                {t.noDataAvailable}
               </div>
             ) : !data[hoveredDay].hasIncidents ? (
-              <div className="text-green-400">No downtime recorded</div>
+              <div className="text-green-400">{t.noDowntimeRecorded}</div>
             ) : (
               <div className="space-y-2">
                 {data[hoveredDay].dayIncidents.map((incident) => (
@@ -397,7 +419,7 @@ export function PublicStatusPage({
                       className="text-xs text-gray-400 mt-0.5"
                       style={{ whiteSpace: "nowrap" }}
                     >
-                      Impact:{" "}
+                      {t.impact}:{" "}
                       <span
                         className={
                           incident.impact === "critical"
@@ -409,10 +431,10 @@ export function PublicStatusPage({
                                 : "text-gray-400"
                         }
                       >
-                        {incident.impact}
+                        {translateIncidentImpact(incident.impact, t)}
                       </span>
                       {" · "}
-                      Status: {incident.status}
+                      {t.status}: {translateIncidentStatus(incident.status, t)}
                     </div>
                   </div>
                 ))}
@@ -456,10 +478,11 @@ export function PublicStatusPage({
             <SubscribeDialog
               statusPageId={statusPage.id}
               statusPageName={statusPage.headline || statusPage.name}
+              language={language || statusPage.language || "en"}
               trigger={
                 <Button variant="outline" className="gap-2 shadow-sm">
                   <Bell className="h-4 w-4" />
-                  Subscribe
+                  {t.subscribe}
                 </Button>
               }
             />
@@ -493,10 +516,10 @@ export function PublicStatusPage({
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-              System Status
+              {t.systemStatus}
             </h2>
             <span className="text-sm text-gray-500 dark:text-gray-400">
-              Uptime over the past 90 days
+              {t.uptimeOverPast90Days}
             </span>
           </div>
 
@@ -506,10 +529,10 @@ export function PublicStatusPage({
                 <CheckCircle2 className="h-7 w-7 text-gray-400" />
               </div>
               <p className="text-gray-500 dark:text-gray-400 font-medium">
-                No components configured yet
+                {t.noComponentsConfigured}
               </p>
               <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">
-                Components will appear here once configured
+                {t.componentsWillAppearHere}
               </p>
             </div>
           ) : (
@@ -564,9 +587,9 @@ export function PublicStatusPage({
                     <div className="space-y-2">
                       <UptimeBar data={uptimeData} />
                       <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
-                        <span>90 days ago</span>
-                        <span>{uptimePercentage}% uptime</span>
-                        <span>Today</span>
+                        <span>{t.daysAgo}</span>
+                        <span>{uptimePercentage}% {t.uptime}</span>
+                        <span>{t.today}</span>
                       </div>
                     </div>
                   </div>
@@ -579,7 +602,7 @@ export function PublicStatusPage({
         {/* Past Incidents Section */}
         <div className="space-y-6">
           <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">
-            Past Incidents
+            {t.pastIncidents}
           </h2>
 
           {(() => {
@@ -622,13 +645,13 @@ export function PublicStatusPage({
                       className="pb-5 border-b dark:border-gray-800 last:border-b-0"
                     >
                       <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-3">
-                        {format(date, "EEEE, MMM d, yyyy")}
+                        {fullDateFormatter.format(date)}
                       </h3>
 
                       {dayIncidents.length === 0 ? (
                         <p className="text-gray-500 dark:text-gray-400 text-sm">
-                          No incidents reported
-                          {isSameDay(date, new Date()) ? " today" : ""}.
+                          {t.noIncidentsReported}
+                          {isSameDay(date, new Date()) ? ` ${t.today}` : ""}.
                         </p>
                       ) : (
                         <div className="space-y-2">
@@ -688,28 +711,20 @@ export function PublicStatusPage({
                                       </p>
                                     )}
                                   </div>
-                                  <div className="flex items-center gap-2 flex-shrink-0 ml-4">
+                                  <div className="ml-4 flex max-w-[45%] flex-wrap items-center justify-end gap-2 sm:max-w-none sm:flex-nowrap">
                                     <span
-                                      className={`text-xs font-semibold px-2.5 py-1 rounded-full whitespace-nowrap ${getImpactBadgeColor(
+                                      className={`text-xs font-semibold px-2.5 py-1 rounded-full ${getImpactBadgeColor(
                                         incident.impact
                                       )}`}
                                     >
-                                      {incident.impact.charAt(0).toUpperCase() +
-                                        incident.impact.slice(1)}
+                                      {translateIncidentImpact(incident.impact, t)}
                                     </span>
                                     <span
-                                      className={`text-xs font-semibold px-2.5 py-1 rounded-full whitespace-nowrap ${getStatusColor(
+                                      className={`text-xs font-semibold px-2.5 py-1 rounded-full ${getStatusColor(
                                         incident.status
                                       )}`}
                                     >
-                                      {incident.status
-                                        .split("_")
-                                        .map(
-                                          (word) =>
-                                            word.charAt(0).toUpperCase() +
-                                            word.slice(1)
-                                        )
-                                        .join(" ")}
+                                      {translateIncidentStatus(incident.status, t)}
                                     </span>
                                   </div>
                                 </div>
@@ -734,7 +749,7 @@ export function PublicStatusPage({
                           }
                           disabled={currentPage === 1}
                           className="p-2 text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                          aria-label="Previous page"
+                          aria-label={t.previousPage}
                         >
                           <ChevronLeft className="h-4 w-4" />
                         </button>
@@ -751,35 +766,41 @@ export function PublicStatusPage({
                           }
                           disabled={currentPage === totalPages}
                           className="p-2 text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                          aria-label="Next page"
+                          aria-label={t.nextPage}
                         >
                           <ChevronRight className="h-4 w-4" />
                         </button>
                       </div>
-                      <div className="flex-1 text-right text-sm text-gray-600 dark:text-gray-400">
-                        <span>Powered by </span>
-                        <a
-                          href="https://supercheck.io"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-blue-600 dark:text-blue-400 hover:underline"
-                        >
-                          Supercheck
-                        </a>
-                      </div>
+                      {!statusPage.brandingSettings?.hidePoweredBy && (
+                        <div className="flex-1 text-right text-sm text-gray-600 dark:text-gray-400">
+                          <span>{t.poweredBy} </span>
+                          <a
+                            href="https://supercheck.io"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-600 dark:text-blue-400 hover:underline"
+                          >
+                            Supercheck
+                          </a>
+                        </div>
+                      )}
                     </>
                   ) : (
-                    <div className="w-full text-center text-sm text-gray-600 dark:text-gray-400">
-                      <span>Powered by </span>
-                      <a
-                        href="https://supercheck.io"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-600 dark:text-blue-400 hover:underline"
-                      >
-                        Supercheck
-                      </a>
-                    </div>
+                    <>
+                      {!statusPage.brandingSettings?.hidePoweredBy && (
+                        <div className="w-full text-center text-sm text-gray-600 dark:text-gray-400">
+                          <span>{t.poweredBy} </span>
+                          <a
+                            href="https://supercheck.io"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-600 dark:text-blue-400 hover:underline"
+                          >
+                            Supercheck
+                          </a>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               </>

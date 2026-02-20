@@ -12,30 +12,34 @@ import {
   Text,
 } from "@react-email/components";
 import * as React from "react";
+import { getTranslations } from "../lib/status-page-translations";
 
 interface StatusPageWelcomeEmailProps {
   statusPageName: string;
   statusPageUrl: string;
   unsubscribeUrl: string;
+  language?: string;
 }
 
 export const StatusPageWelcomeEmail = ({
   statusPageName = "Example Status Page",
   statusPageUrl = "https://example.supercheck.io",
   unsubscribeUrl = "https://example.supercheck.io/unsubscribe?token=abc123",
+  language = "en",
 }: StatusPageWelcomeEmailProps) => {
+  const t = getTranslations(language);
   return (
     <Html>
       <Head>
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <meta httpEquiv="Content-Type" content="text/html; charset=UTF-8" />
       </Head>
-      <Preview>You&apos;re now subscribed to {statusPageName}</Preview>
+      <Preview>{t.emailNowSubscribed} {statusPageName}</Preview>
       <Body style={main}>
         <Container style={container}>
           {/* Header */}
           <Section style={header}>
-            <Heading style={headerTitle}>Subscription Confirmed</Heading>
+            <Heading style={headerTitle}>{t.emailSubscriptionConfirmed}</Heading>
           </Section>
 
           {/* Success Icon */}
@@ -48,15 +52,12 @@ export const StatusPageWelcomeEmail = ({
           {/* Main Content */}
           <Section style={contentSection}>
             <Heading as="h2" style={heading}>
-              You&apos;re All Set!
+              {t.emailAllSet}
             </Heading>
 
             <Text style={paragraph}>
-              Your subscription to{" "}
-              <strong style={highlight}>{statusPageName}</strong> has been
-              confirmed successfully. You will now receive real-time
-              notifications about any service disruptions, incidents, and
-              scheduled maintenance.
+              {t.emailWelcomeMessage}{" "}
+              <strong style={highlight}>{statusPageName}</strong>.
             </Text>
           </Section>
 
@@ -66,10 +67,9 @@ export const StatusPageWelcomeEmail = ({
               <tbody>
                 <tr>
                   <td style={{ padding: "20px 24px" }}>
-                    <Text style={successTitle}>🎉 What happens next?</Text>
+                    <Text style={successTitle}>🎉 {t.emailWhatsNext}</Text>
                     <Text style={successText}>
-                      You&apos;ll receive email notifications whenever there are
-                      updates to the services you care about.
+                      {t.emailWhatsNextDescription}
                     </Text>
                   </td>
                 </tr>
@@ -84,16 +84,16 @@ export const StatusPageWelcomeEmail = ({
                 <tr>
                   <td style={{ padding: "20px 24px" }}>
                     <Text style={infoTitle}>
-                      You&apos;ll receive notifications for:
+                      {t.emailNotificationsFor}
                     </Text>
                     <Text style={listItem}>
-                      • Service incidents and outages
+                      • {t.emailNotifIncidents}
                     </Text>
                     <Text style={listItem}>
-                      • Scheduled maintenance windows
+                      • {t.emailNotifMaintenance}
                     </Text>
                     <Text style={listItem}>
-                      • Incident updates and resolutions
+                      • {t.emailNotifResolutions}
                     </Text>
                   </td>
                 </tr>
@@ -104,7 +104,7 @@ export const StatusPageWelcomeEmail = ({
           {/* CTA Button */}
           <Section style={buttonSection}>
             <Button style={ctaButton} href={statusPageUrl}>
-              View Status Page
+              {t.emailViewStatusPage}
             </Button>
           </Section>
 
@@ -117,8 +117,7 @@ export const StatusPageWelcomeEmail = ({
                 <tr>
                   <td style={{ padding: "16px 20px" }}>
                     <Text style={tipText}>
-                      <strong>💡 Pro tip:</strong> Add our email address to your
-                      contacts to ensure you never miss an important update.
+                      <strong>💡 {t.emailProTip}</strong>
                     </Text>
                   </td>
                 </tr>
@@ -134,19 +133,19 @@ export const StatusPageWelcomeEmail = ({
           {/* Footer */}
           <Section style={footer}>
             <Text style={footerText}>
-              You&apos;re now subscribed to status updates for {statusPageName}.
+              {t.emailNowSubscribed} {statusPageName}.
             </Text>
             <Text style={footerLinks}>
               <Link href={statusPageUrl} style={footerLink}>
-                View Status Page
+                {t.emailViewStatusPage}
               </Link>
               {" • "}
               <Link href={unsubscribeUrl} style={footerLink}>
-                Unsubscribe
+                {t.unsubscribe}
               </Link>
             </Text>
             <Text style={copyright}>
-              Powered by{" "}
+              {t.poweredBy}{" "}
               <Link href="https://supercheck.io" style={footerLink}>
                 Supercheck
               </Link>

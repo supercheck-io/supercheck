@@ -14,6 +14,8 @@ export interface StatusPage {
   allowPageSubscribers: boolean | null;
   customDomain: string | null;
   customDomainVerified: boolean | null;
+  language: string | null;
+  brandingSettings: Record<string, unknown> | null;
   faviconLogo: string | null;
   transactionalLogo: string | null;
   heroCover: string | null;
@@ -168,7 +170,7 @@ export function useStatusPageDetail(statusPageId: string | null) {
     staleTime: 60 * 1000,
     gcTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
-    refetchOnMount: false,
+    refetchOnMount: 'always',
     refetchOnReconnect: false,
     // Note: Removed placeholderData to ensure fresh data is shown immediately after fetch
   });

@@ -56,6 +56,7 @@ type StatusPage = {
   notificationsEmailFooter: string | null;
   customDomain: string | null;
   customDomainVerified: boolean | null;
+  language: string | null;
   cssBodyBackgroundColor: string | null;
   cssFontColor: string | null;
   cssGreens: string | null;
@@ -65,6 +66,7 @@ type StatusPage = {
   cssReds: string | null;
   faviconLogo: string | null;
   transactionalLogo: string | null;
+  brandingSettings: Record<string, unknown> | null;
   createdAt: Date | null;
   updatedAt: Date | null;
 };
@@ -102,6 +104,7 @@ type StatusPageDetailProps = {
     activeIncidents: number;
     subscribers: number;
   };
+  onDataChange?: () => void;
 };
 
 export function StatusPageDetail({
@@ -110,6 +113,7 @@ export function StatusPageDetail({
   components,
   canUpdate,
   stats,
+  onDataChange,
 }: StatusPageDetailProps) {
   const router = useRouter();
   const [isPublishing, setIsPublishing] = useState(false);
@@ -444,6 +448,7 @@ export function StatusPageDetail({
             statusPageId={statusPage.id}
             monitors={monitors}
             canUpdate={canUpdate}
+            onDataChange={onDataChange}
           />
         </TabsContent>
 
@@ -452,6 +457,7 @@ export function StatusPageDetail({
             statusPageId={statusPage.id}
             components={components.map((c) => ({ id: c.id, name: c.name }))}
             canUpdate={canUpdate}
+            onDataChange={onDataChange}
           />
         </TabsContent>
 

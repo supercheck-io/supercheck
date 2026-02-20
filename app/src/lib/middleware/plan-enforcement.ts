@@ -293,6 +293,50 @@ export async function checkProjectLimit(
 }
 
 /**
+ * Check if a status page can accept more subscribers
+ * Limits are per status page, not per organization
+ */
+export async function checkSubscriberLimit(
+  organizationId: string,
+  currentSubscriberCount: number
+) {
+  if (!isPolarEnabled()) {
+    // Unlimited for self-hosted
+    return { allowed: true };
+  }
+
+  try {
+    const plan = await subscriptionService.getOrganizationPlan(organizationId);
+
+    if (currentSubscriberCount >= plan.maxStatusPageSubscribers) {
+      return {
+        allowed: false,
+        error: `Subscriber limit reached. Your ${plan.plan} plan allows ${plan.maxStatusPageSubscribers} subscribers per status page. Please upgrade to add more.`,
+        limit: plan.maxStatusPageSubscribers,
+        currentCount: currentSubscriberCount,
+        currentPlan: plan.plan,
+        upgrade: plan.plan === "plus" ? "pro" : undefined,
+      };
+    }
+
+    return {
+      allowed: true,
+      limit: plan.maxStatusPageSubscribers,
+      currentCount: currentSubscriberCount,
+      remaining: plan.maxStatusPageSubscribers - currentSubscriberCount,
+      currentPlan: plan.plan,
+    };
+  } catch (error) {
+    return {
+      allowed: false,
+      error: error instanceof Error ? error.message : "Subscription required",
+      requiresSubscription: true,
+      availablePlans: ["plus", "pro"],
+    };
+  }
+}
+
+/**
  * Check if a feature is available for the organization's plan
  */
 export async function checkFeatureAvailability(

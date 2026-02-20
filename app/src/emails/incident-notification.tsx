@@ -12,6 +12,12 @@ import {
   Text,
 } from "@react-email/components";
 import * as React from "react";
+import {
+  getTranslations,
+  translateIncidentStatus,
+  translateIncidentImpact,
+  type TranslationKeys,
+} from "../lib/status-page-translations";
 
 interface IncidentNotificationEmailProps {
   statusPageName: string;
@@ -23,6 +29,7 @@ interface IncidentNotificationEmailProps {
   affectedComponents: string[];
   updateTimestamp: string;
   unsubscribeUrl: string;
+  language?: string;
 }
 
 /**
@@ -89,30 +96,17 @@ const getIncidentColors = (
 };
 
 /**
- * Get status display label
+ * Get status display label (translated)
  */
-const getStatusLabel = (status: string): string => {
-  const labels: Record<string, string> = {
-    investigating: "Investigating",
-    identified: "Identified",
-    monitoring: "Monitoring",
-    resolved: "Resolved",
-    scheduled: "Scheduled",
-  };
-  return labels[status.toLowerCase()] || status;
+const getStatusLabel = (status: string, t: TranslationKeys): string => {
+  return translateIncidentStatus(status.toLowerCase(), t);
 };
 
 /**
- * Get impact display label
+ * Get impact display label (translated)
  */
-const getImpactLabel = (impact: string): string => {
-  const labels: Record<string, string> = {
-    critical: "Critical",
-    major: "Major",
-    minor: "Minor",
-    none: "None",
-  };
-  return labels[impact.toLowerCase()] || impact;
+const getImpactLabel = (impact: string, t: TranslationKeys): string => {
+  return translateIncidentImpact(impact.toLowerCase(), t);
 };
 
 export const IncidentNotificationEmail = ({
@@ -125,10 +119,12 @@ export const IncidentNotificationEmail = ({
   affectedComponents = [],
   updateTimestamp = new Date().toLocaleString(),
   unsubscribeUrl = "https://status.example.com/unsubscribe",
+  language = "en",
 }: IncidentNotificationEmailProps) => {
+  const t = getTranslations(language);
   const colors = getIncidentColors(incidentStatus, incidentImpact);
-  const statusLabel = getStatusLabel(incidentStatus);
-  const impactLabel = getImpactLabel(incidentImpact);
+  const statusLabel = getStatusLabel(incidentStatus, t);
+  const impactLabel = getImpactLabel(incidentImpact, t);
   const isResolved = incidentStatus.toLowerCase() === "resolved";
 
   return (
@@ -138,7 +134,7 @@ export const IncidentNotificationEmail = ({
         <meta httpEquiv="Content-Type" content="text/html; charset=UTF-8" />
       </Head>
       <Preview>
-        {isResolved ? "✓ Resolved" : `⚠ ${impactLabel}`}: {incidentName}
+        {isResolved ? `✓ ${statusLabel}` : `⚠ ${impactLabel}`}: {incidentName}
       </Preview>
       <Body style={main}>
         <Container style={container}>
@@ -173,8 +169,8 @@ export const IncidentNotificationEmail = ({
           <Section style={contentSection}>
             <Text style={introText}>
               {isResolved
-                ? `We're happy to inform you that the incident affecting ${statusPageName} has been resolved.`
-                : `An incident has been reported affecting ${statusPageName}. We are working to resolve this issue as quickly as possible.`}
+                ? `${t.emailIncidentResolvedIntro}`
+                : `${t.emailIncidentReportedIntro}`}
             </Text>
           </Section>
 
@@ -199,7 +195,7 @@ export const IncidentNotificationEmail = ({
                       <tbody>
                         <tr>
                           <td style={{ width: "50%", verticalAlign: "top" }}>
-                            <Text style={{ ...infoLabel }}>Status</Text>
+                            <Text style={{ ...infoLabel }}>{t.status}</Text>
                             <Text
                               style={{ ...infoValue, color: colors.textColor }}
                             >
@@ -207,7 +203,7 @@ export const IncidentNotificationEmail = ({
                             </Text>
                           </td>
                           <td style={{ width: "50%", verticalAlign: "top" }}>
-                            <Text style={{ ...infoLabel }}>Impact</Text>
+                            <Text style={{ ...infoLabel }}>{t.impact}</Text>
                             <Text
                               style={{ ...infoValue, color: colors.textColor }}
                             >
@@ -225,9 +221,9 @@ export const IncidentNotificationEmail = ({
 
           {/* Description */}
           <Section style={contentSection}>
-            <Text style={sectionLabel}>Update</Text>
+            <Text style={sectionLabel}>{t.emailUpdate}</Text>
             <Text style={descriptionText}>{incidentDescription}</Text>
-            <Text style={timestampText}>Posted: {updateTimestamp}</Text>
+            <Text style={timestampText}>{t.emailPosted}: {updateTimestamp}</Text>
           </Section>
 
           {/* Affected Components */}
@@ -237,7 +233,7 @@ export const IncidentNotificationEmail = ({
                 <tbody>
                   <tr>
                     <td style={{ padding: "16px 20px" }}>
-                      <Text style={componentsTitle}>Affected Services</Text>
+                      <Text style={componentsTitle}>{t.emailAffectedServices}</Text>
                       {affectedComponents.map((component, index) => (
                         <Text key={index} style={componentItem}>
                           • {component}
@@ -253,7 +249,7 @@ export const IncidentNotificationEmail = ({
           {/* CTA Button */}
           <Section style={buttonSection}>
             <Button style={ctaButton} href={statusPageUrl}>
-              View Status Page
+              {t.emailViewStatusPage}
             </Button>
           </Section>
 
@@ -262,20 +258,19 @@ export const IncidentNotificationEmail = ({
           {/* Footer */}
           <Section style={footer}>
             <Text style={footerText}>
-              You are receiving this notification because you subscribed to
-              status updates for {statusPageName}.
+              {t.emailSubscriptionNotice} {statusPageName}.
             </Text>
             <Text style={footerLinks}>
               <Link href={statusPageUrl} style={footerLink}>
-                View Status Page
+                {t.emailViewStatusPage}
               </Link>
               {" • "}
               <Link href={unsubscribeUrl} style={footerLink}>
-                Unsubscribe
+                {t.unsubscribe}
               </Link>
             </Text>
             <Text style={copyright}>
-              Powered by{" "}
+              {t.poweredBy}{" "}
               <Link href="https://supercheck.io" style={footerLink}>
                 Supercheck
               </Link>

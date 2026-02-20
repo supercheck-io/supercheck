@@ -5,9 +5,14 @@ import Image from "next/image";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Clock } from "lucide-react";
-import { format } from "date-fns";
 import Link from "next/link";
 import { useStatusPageFavicon } from "./use-status-page-favicon";
+import {
+  getTranslations,
+  translateIncidentStatus,
+  translateIncidentImpact,
+  getLocaleForLanguage,
+} from "@/lib/status-page-translations";
 
 type IncidentStatus =
   | "investigating"
@@ -49,6 +54,7 @@ type PublicIncidentDetailProps = {
   statusPageHeadline?: string | null;
   isPublicView?: boolean;
   isCustomDomain?: boolean;
+  language?: string;
 };
 
 export function PublicIncidentDetail({
@@ -59,8 +65,21 @@ export function PublicIncidentDetail({
   statusPageHeadline,
   isPublicView = false,
   isCustomDomain = false,
+  language = "en",
 }: PublicIncidentDetailProps) {
   useStatusPageFavicon(faviconLogo);
+
+  const t = getTranslations(language);
+  const locale = getLocaleForLanguage(language);
+  const utcDateTimeFormatter = new Intl.DateTimeFormat(locale, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "UTC",
+    timeZoneName: "short",
+  });
 
   const getStatusColor = (status: IncidentStatus) => {
     switch (status) {
@@ -93,15 +112,15 @@ export function PublicIncidentDetail({
   };
 
   const formatStatus = (status: IncidentStatus) => {
-    return status.charAt(0).toUpperCase() + status.slice(1);
+    return translateIncidentStatus(status, t);
   };
 
   const formatImpact = (impact: IncidentImpact) => {
-    return impact.charAt(0).toUpperCase() + impact.slice(1);
+    return translateIncidentImpact(impact, t);
   };
 
   const statusPageName =
-    incident.statusPage?.headline || incident.statusPage?.name || "Status Page";
+    incident.statusPage?.headline || incident.statusPage?.name || t.systemStatus;
   const statusPageId = incident.statusPage?.id || idOrSubdomain;
   const statusPageHref = isPublicView
     ? isCustomDomain
@@ -116,7 +135,7 @@ export function PublicIncidentDetail({
         {transactionalLogo && (
           <Image
             src={transactionalLogo}
-            alt={statusPageHeadline || "Status Page"}
+            alt={statusPageHeadline || t.systemStatus}
             width={200}
             height={64}
             className="h-16 mb-4 object-contain object-left"
@@ -130,12 +149,12 @@ export function PublicIncidentDetail({
           <Badge
             className={`${getImpactColor(incident.impact)} text-sm px-3 py-1 font-medium border flex-shrink-0`}
           >
-            {formatImpact(incident.impact)} Impact
+            {formatImpact(incident.impact)} {t.impact}
           </Badge>
         </div>
 
         <p className="text-base text-gray-600 dark:text-gray-400">
-          Incident Report for {statusPageName}
+          {t.incidentReportFor} {statusPageName}
         </p>
       </div>
 
@@ -169,11 +188,8 @@ export function PublicIncidentDetail({
                     <Clock className="h-4 w-4" />
                     <span>
                       {update.createdAt
-                        ? format(
-                          new Date(update.createdAt),
-                          "MMM d, yyyy 'at' HH:mm 'UTC'"
-                        )
-                        : "recently"}
+                        ? utcDateTimeFormatter.format(new Date(update.createdAt))
+                        : t.recently}
                     </span>
                   </div>
                 </div>
@@ -195,17 +211,14 @@ export function PublicIncidentDetail({
               <div className="flex-1">
                 <div className="bg-white dark:bg-gray-900 border dark:border-gray-800 rounded-xl p-5 shadow-sm">
                   <p className="text-base text-gray-700 dark:text-gray-300">
-                    Incident reported.
+                    {t.incidentReported}
                   </p>
                   <div className="flex items-center gap-2 mt-4 text-sm text-gray-500 dark:text-gray-400">
                     <Clock className="h-4 w-4" />
                     <span>
                       {incident.createdAt
-                        ? format(
-                          new Date(incident.createdAt),
-                          "MMM d, yyyy 'at' HH:mm 'UTC'"
-                        )
-                        : "recently"}
+                        ? utcDateTimeFormatter.format(new Date(incident.createdAt))
+                        : t.recently}
                     </span>
                   </div>
                 </div>
@@ -219,14 +232,14 @@ export function PublicIncidentDetail({
           <Link href={statusPageHref}>
             <Button variant="outline" size="default" className="gap-2">
               <ArrowLeft className="h-4 w-4" />
-              Back to Status
+              {t.backToStatus}
             </Button>
           </Link>
         </div>
 
         {/* Footer */}
         <div className="text-center py-8 mt-8 text-sm text-gray-500 dark:text-gray-400">
-          Powered by{" "}
+          {t.poweredBy}{" "}
           <a
             href="https://supercheck.io"
             target="_blank"

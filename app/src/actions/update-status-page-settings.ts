@@ -33,6 +33,14 @@ const updateSettingsSchema = z.object({
     .or(z.literal("")),
   timezone: z.string().max(50).optional(),
 
+  // Language for public status page (ISO 639-1 code)
+  language: z
+    .string()
+    .min(2)
+    .max(10)
+    .regex(/^[a-z]{2,3}(-[A-Z]{2})?$/, "Invalid language code")
+    .optional(),
+
   // Custom domain with strict validation
   customDomain: z
     .string()
@@ -52,6 +60,13 @@ const updateSettingsSchema = z.object({
   allowSlackSubscribers: z.boolean().optional(),
   allowIncidentSubscribers: z.boolean().optional(),
   allowRssFeed: z.boolean().optional(),
+
+  // Branding settings (JSONB)
+  brandingSettings: z
+    .object({
+      hidePoweredBy: z.boolean(),
+    })
+    .optional(),
 
   // Branding colors (hex codes) - strict validation
   cssBodyBackgroundColor: z

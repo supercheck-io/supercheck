@@ -9,12 +9,13 @@ import {
   statusPageIncidentSubscriptions,
   incidents,
 } from "@/db/schema";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, inArray, isNull, isNotNull, count } from "drizzle-orm";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { EmailService } from "@/lib/email-service";
 import { renderStatusPageVerificationEmail } from "@/lib/email-renderer";
 import { generateWebhookSecret } from "@/lib/webhook-utils";
+import { checkSubscriberLimit } from "@/lib/middleware/plan-enforcement";
 
 const subscribeSchema = z.union([
   // Email subscription
@@ -133,6 +134,7 @@ async function sendVerificationEmail(params: {
   statusPageName: string;
   verificationToken: string;
   subdomain: string;
+  language?: string;
 }): Promise<{ success: boolean; error?: string }> {
   try {
     const emailService = EmailService.getInstance();
@@ -145,6 +147,7 @@ async function sendVerificationEmail(params: {
     const emailContent = await renderStatusPageVerificationEmail({
       verificationUrl,
       statusPageName: params.statusPageName,
+      language: params.language,
     });
 
     const result = await emailService.sendEmail({
@@ -167,6 +170,30 @@ async function sendVerificationEmail(params: {
       error: error instanceof Error ? error.message : "Unknown error"
     };
   }
+}
+
+async function enforceSubscriberLimit(params: {
+  statusPageId: string;
+  organizationId: string | null;
+}) {
+  if (!params.organizationId) {
+    return { allowed: true as const };
+  }
+
+  const [subscriberCountResult] = await db
+    .select({ value: count() })
+    .from(statusPageSubscribers)
+    .where(
+      and(
+        eq(statusPageSubscribers.statusPageId, params.statusPageId),
+        isNull(statusPageSubscribers.purgeAt),
+        isNotNull(statusPageSubscribers.verifiedAt)
+      )
+    );
+
+  const currentSubscriberCount = subscriberCountResult?.value ?? 0;
+
+  return checkSubscriberLimit(params.organizationId, currentSubscriberCount);
 }
 
 async function syncComponentSubscriptions(params: {
@@ -441,6 +468,20 @@ async function handleEmailSubscription(
   if (existingSubscriber) {
     // FIX: Allow resubscription if user was previously unsubscribed (purgeAt is set)
     if (existingSubscriber.purgeAt) {
+      const limitCheck = await enforceSubscriberLimit({
+        statusPageId: statusPage.id as string,
+        organizationId: statusPage.organizationId as string | null,
+      });
+
+      if (!limitCheck.allowed) {
+        return {
+          success: false,
+          message:
+            limitCheck.error ||
+            "Subscriber limit reached for this status page.",
+        };
+      }
+
       // Reactivate unsubscribed user - clear purgeAt and issue new tokens
       const newVerificationToken = generateHexToken();
       const newUnsubscribeToken = generateHexToken();
@@ -462,6 +503,7 @@ async function handleEmailSubscription(
         statusPageName: (statusPage.headline as string) || (statusPage.name as string),
         verificationToken: newVerificationToken,
         subdomain: statusPage.subdomain as string,
+        language: (statusPage.language as string) ?? "en",
       });
 
       if (!emailResult.success) {
@@ -518,6 +560,7 @@ async function handleEmailSubscription(
         statusPageName: (statusPage.headline as string) || (statusPage.name as string),
         verificationToken: newVerificationToken,
         subdomain: statusPage.subdomain as string,
+        language: (statusPage.language as string) ?? "en",
       });
 
       if (!emailResult.success) {
@@ -549,6 +592,20 @@ async function handleEmailSubscription(
         requiresVerification: true,
       };
     }
+  }
+
+  const limitCheck = await enforceSubscriberLimit({
+    statusPageId: statusPage.id as string,
+    organizationId: statusPage.organizationId as string | null,
+  });
+
+  if (!limitCheck.allowed) {
+    return {
+      success: false,
+      message:
+        limitCheck.error ||
+        "Subscriber limit reached for this status page.",
+    };
   }
 
   // Generate secure tokens
@@ -591,6 +648,7 @@ async function handleEmailSubscription(
     statusPageName: (statusPage.headline as string) || (statusPage.name as string),
     verificationToken,
     subdomain: statusPage.subdomain as string,
+    language: (statusPage.language as string) ?? "en",
   });
 
   if (!emailResult.success) {
@@ -674,6 +732,20 @@ async function handleWebhookSubscription(
         success: true,
         message: "Webhook subscription updated successfully",
         subscriberId: existingSubscriber.id,
+      };
+    }
+
+    const limitCheck = await enforceSubscriberLimit({
+      statusPageId: statusPage.id as string,
+      organizationId: statusPage.organizationId as string | null,
+    });
+
+    if (!limitCheck.allowed) {
+      return {
+        success: false,
+        message:
+          limitCheck.error ||
+          "Subscriber limit reached for this status page.",
       };
     }
 
@@ -799,6 +871,20 @@ async function handleSlackSubscription(
         success: true,
         message: "Slack subscription updated successfully",
         subscriberId: existingSubscriber.id,
+      };
+    }
+
+    const limitCheck = await enforceSubscriberLimit({
+      statusPageId: statusPage.id as string,
+      organizationId: statusPage.organizationId as string | null,
+    });
+
+    if (!limitCheck.allowed) {
+      return {
+        success: false,
+        message:
+          limitCheck.error ||
+          "Subscriber limit reached for this status page.",
       };
     }
 

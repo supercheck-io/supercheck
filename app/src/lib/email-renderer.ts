@@ -18,6 +18,11 @@ import {
   TestEmail,
   UsageNotificationEmail,
 } from "@/emails";
+import {
+  getTranslations,
+  getLocaleForLanguage,
+  translateIncidentStatus,
+} from "@/lib/status-page-translations";
 
 export interface RenderedEmail {
   subject: string;
@@ -82,11 +87,13 @@ export async function renderOrganizationInvitationEmail(params: {
 export async function renderStatusPageVerificationEmail(params: {
   verificationUrl: string;
   statusPageName: string;
+  language?: string;
 }): Promise<RenderedEmail> {
   const component = StatusPageVerificationEmail(params);
+  const t = getTranslations(params.language ?? "en");
 
   return {
-    subject: `Verify your subscription to ${params.statusPageName}`,
+    subject: `${t.emailSubjectVerify} ${params.statusPageName}`,
     html: await render(component, { pretty: false }),
     text: await render(component, { plainText: true }),
   };
@@ -99,11 +106,13 @@ export async function renderStatusPageWelcomeEmail(params: {
   statusPageName: string;
   statusPageUrl: string;
   unsubscribeUrl: string;
+  language?: string;
 }): Promise<RenderedEmail> {
   const component = StatusPageWelcomeEmail(params);
+  const t = getTranslations(params.language ?? "en");
 
   return {
-    subject: `You're now subscribed to ${params.statusPageName}`,
+    subject: `${t.emailSubjectWelcome} ${params.statusPageName}`,
     html: await render(component, { pretty: false }),
     text: await render(component, { plainText: true }),
   };
@@ -122,11 +131,16 @@ export async function renderIncidentNotificationEmail(params: {
   affectedComponents: string[];
   updateTimestamp: string;
   unsubscribeUrl: string;
+  language?: string;
 }): Promise<RenderedEmail> {
   const component = IncidentNotificationEmail(params);
+  const language = params.language ?? "en";
+  const t = getTranslations(language);
+  const locale = getLocaleForLanguage(language);
+  const translatedStatus = translateIncidentStatus(params.incidentStatus, t);
 
   return {
-    subject: `[${params.incidentStatus.toUpperCase()}] ${params.incidentName} - ${params.statusPageName}`,
+    subject: `[${translatedStatus.toLocaleUpperCase(locale)}] ${params.incidentName} - ${params.statusPageName}`,
     html: await render(component, { pretty: false }),
     text: await render(component, { plainText: true }),
   };

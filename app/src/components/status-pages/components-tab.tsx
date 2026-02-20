@@ -202,12 +202,14 @@ type ComponentsTabProps = {
   canUpdate: boolean;
   statusPageId: string;
   monitors: Monitor[];
+  onDataChange?: () => void;
 };
 
 export function ComponentsTab({
   canUpdate,
   statusPageId,
   monitors,
+  onDataChange,
 }: ComponentsTabProps) {
   const [components, setComponents] = useState<Component[]>([]);
   const [loading, setLoading] = useState(true);
@@ -280,6 +282,7 @@ export function ComponentsTab({
           prev.filter((c) => c.id !== deletingComponent.id)
         );
         toast.success("Component deleted successfully");
+        onDataChange?.();
       } else {
         toast.error("Failed to delete component", {
           description: result.message,
@@ -771,7 +774,10 @@ export function ComponentsTab({
         statusPageId={statusPageId}
         component={editingComponent}
         monitors={monitors}
-        onSuccess={loadComponents}
+        onSuccess={() => {
+          loadComponents();
+          onDataChange?.();
+        }}
       />
 
       <AlertDialog

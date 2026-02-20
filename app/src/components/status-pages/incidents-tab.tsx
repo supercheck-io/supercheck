@@ -94,12 +94,14 @@ type IncidentsTabProps = {
   statusPageId: string;
   components: Component[];
   canUpdate?: boolean;
+  onDataChange?: () => void;
 };
 
 export function IncidentsTab({
   statusPageId,
   components,
   canUpdate = true,
+  onDataChange,
 }: IncidentsTabProps) {
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(true);
@@ -168,6 +170,7 @@ export function IncidentsTab({
           prev.filter((i) => i.id !== deletingIncident.id)
         );
         toast.success("Incident deleted successfully");
+        onDataChange?.();
       } else {
         toast.error("Failed to delete incident", {
           description: result.message,
@@ -703,7 +706,10 @@ export function IncidentsTab({
         onOpenChange={setIsCreateDialogOpen}
         statusPageId={statusPageId}
         components={components}
-        onSuccess={loadIncidents}
+        onSuccess={() => {
+          loadIncidents();
+          onDataChange?.();
+        }}
       />
 
       <IncidentUpdateDialog
@@ -711,7 +717,10 @@ export function IncidentsTab({
         onOpenChange={setIsUpdateDialogOpen}
         statusPageId={statusPageId}
         incident={selectedIncident}
-        onSuccess={loadIncidents}
+        onSuccess={() => {
+          loadIncidents();
+          onDataChange?.();
+        }}
       />
 
       <AlertDialog

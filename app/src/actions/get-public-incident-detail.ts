@@ -47,7 +47,7 @@ export async function getPublicIncidentDetail(
         eq(statusPages.id, statusPageId),
         eq(statusPages.status, "published")
       ),
-      columns: { id: true },
+      columns: { id: true, language: true },
     });
 
     if (!statusPage) {
@@ -127,6 +127,7 @@ export async function getPublicIncidentDetail(
         affectedComponents: affectedComponents.map((ic) => ic.component),
         updates,
       },
+      language: statusPage.language,
     };
   } catch (error) {
     console.error("Error fetching public incident detail:", error);

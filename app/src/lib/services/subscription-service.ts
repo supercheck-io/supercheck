@@ -29,6 +29,7 @@ const FALLBACK_UNLIMITED_LIMITS = {
   maxOrganizations: 999,
   maxProjects: 999,
   maxStatusPages: 999,
+  maxStatusPageSubscribers: 999999,
   customDomains: true,
   ssoEnabled: true,
   dataRetentionDays: 30, // Raw monitor data: 30 days (high frequency)
@@ -51,6 +52,7 @@ const BLOCKED_PLAN_LIMITS = {
   maxOrganizations: 0,
   maxProjects: 0,
   maxStatusPages: 0,
+  maxStatusPageSubscribers: 0,
   customDomains: false,
   ssoEnabled: false,
   dataRetentionDays: 0,

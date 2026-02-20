@@ -5,6 +5,25 @@ All notable changes to Supercheck are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 
+## [1.3.1] - 2026-02-20
+
+### Added
+- **Multi-language support for status pages** — Localized UI strings in 20+ languages (Arabic, Chinese, Czech, Danish, Dutch, English, Finnish, French, German, Hindi, Croatian, Hungarian, Italian, Japanese, Korean, Norwegian, Polish, Portuguese, Romanian, Russian, Spanish, Swedish, Turkish, Ukrainian)
+- **Status badges** — SVG badges for embedding current system status on external websites and READMEs
+- **iCal calendar feed** — Subscribe to status page incidents in calendar applications (Google Calendar, Apple Calendar, Outlook)
+- **Status page email subscriptions** — Automated email notifications for incidents with welcome and verification emails
+- Email sign-up functionality for improved user onboarding
+
+### Changed
+- Enhanced public status page UI with improved incident details and subscription management
+- Basic auth support for sign-in page 
+- Enhanced sign-in flow with invite token verification and auto-acceptance
+- Enhanced VariableDialog to support secret value decryption and better state management
+- Updated Docker images to use SUPERCHECK_VERSION for consistent version management
+- Updated Playwright to version 1.58.2
+
+---
+
 ## [1.3.0] - 2026-02-16
 
 ### Added

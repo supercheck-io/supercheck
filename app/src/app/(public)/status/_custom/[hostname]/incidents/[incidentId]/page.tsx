@@ -79,6 +79,7 @@ export default async function CustomDomainIncidentDetailPage({
             faviconLogo={statusPage.faviconLogo}
             transactionalLogo={statusPage.transactionalLogo}
             statusPageHeadline={statusPage.headline}
+            language={result.language}
             isPublicView
             isCustomDomain
         />
