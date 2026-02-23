@@ -2240,7 +2240,7 @@ const translations: Record<string, TranslationKeys> = {
     pastIncidents: "Prethodni incidenti",
     noComponentsConfigured: "Nema konfiguriranih komponenti",
     componentsWillAppearHere: "Komponente će se pojaviti ovdje",
-    daysAgo: "dana prije",
+    daysAgo: "90 dana prije",
     uptime: "Dostupnost",
     today: "Danas",
     noDataAvailable: "Nema dostupnih podataka",

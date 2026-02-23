@@ -2281,9 +2281,9 @@ export class MonitorService {
   private readAggregatedAlertState(
     monitorConfig: MonitorConfig | null | undefined,
   ): AggregatedAlertState {
-    const rawAlertState =
-      (monitorConfig as { aggregatedAlertState?: Record<string, unknown> } | null)
-        ?.aggregatedAlertState;
+    const rawAlertState = (
+      monitorConfig as { aggregatedAlertState?: Record<string, unknown> } | null
+    )?.aggregatedAlertState;
 
     const toSafeCounter = (value: unknown): number =>
       typeof value === 'number' && Number.isFinite(value) && value >= 0
@@ -2513,7 +2513,10 @@ export class MonitorService {
       }
 
       if (!shouldSendAlert) {
-        if (consecutiveSuccessCount < ((monitorAlertConfig?.recoveryThreshold as number) || 1)) {
+        if (
+          consecutiveSuccessCount <
+          ((monitorAlertConfig?.recoveryThreshold as number) || 1)
+        ) {
           this.logger.debug(
             `[ALERT] Recovery threshold not yet met for monitor ${monitorId}: ${consecutiveSuccessCount}/${(monitorAlertConfig?.recoveryThreshold as number) || 1}`,
           );

@@ -149,10 +149,26 @@ export class HardStopNotificationService {
       const smtpUser = process.env.SMTP_USER;
       const smtpPassword = process.env.SMTP_PASSWORD;
       const smtpSecure = process.env.SMTP_SECURE === 'true';
-      const fromEmail = process.env.SMTP_FROM_EMAIL || smtpUser;
+      const hasSmtpUser = Boolean(smtpUser);
+      const hasSmtpPassword = Boolean(smtpPassword);
+      const fromEmail = process.env.SMTP_FROM_EMAIL;
 
-      if (!smtpHost || !smtpUser || !smtpPassword) {
+      if (!smtpHost) {
         this.logger.warn('[HardStop] SMTP not configured, skipping email');
+        return false;
+      }
+
+      if (hasSmtpUser !== hasSmtpPassword) {
+        this.logger.warn(
+          '[HardStop] SMTP authentication is partially configured, skipping email',
+        );
+        return false;
+      }
+
+      if (!fromEmail) {
+        this.logger.warn(
+          '[HardStop] SMTP sender not configured (missing SMTP_FROM_EMAIL), skipping email',
+        );
         return false;
       }
 
@@ -160,10 +176,14 @@ export class HardStopNotificationService {
         host: smtpHost,
         port: smtpPort,
         secure: smtpSecure,
-        auth: {
-          user: smtpUser,
-          pass: smtpPassword,
-        },
+        ...(hasSmtpUser && hasSmtpPassword
+          ? {
+              auth: {
+                user: smtpUser,
+                pass: smtpPassword,
+              },
+            }
+          : {}),
         tls: {
           rejectUnauthorized: true,
           minVersion: 'TLSv1.2' as const, // Required for ZeptoMail and security best practices

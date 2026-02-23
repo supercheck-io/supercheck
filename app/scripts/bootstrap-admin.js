@@ -14,7 +14,8 @@ const postgres = require('postgres');
 
 async function main() {
   // Prioritize CLI arg, fallback to env var
-  const adminEmail = process.argv[2] || process.env.SUPER_ADMIN_EMAIL;
+  const adminEmailInput = process.argv[2] || process.env.SUPER_ADMIN_EMAIL;
+  const adminEmail = adminEmailInput?.trim().toLowerCase();
 
   if (!adminEmail) {
     console.log('ℹ️  No email provided (via CLI or SUPER_ADMIN_EMAIL). Skipping admin bootstrap.');
@@ -24,6 +25,12 @@ async function main() {
   // Strict validation: Only allow one email
   if (adminEmail.includes(',')) {
     console.error('❌ Error: Email must be a single address, not a list.');
+    process.exit(1);
+  }
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(adminEmail)) {
+    console.error('❌ Error: Invalid email format.');
     process.exit(1);
   }
 
@@ -61,7 +68,7 @@ async function main() {
 
     // 2. Check if target user exists
     const users = await sql`
-      SELECT id FROM "user" WHERE email = ${adminEmail} LIMIT 1
+      SELECT id FROM "user" WHERE LOWER(email) = ${adminEmail} LIMIT 1
     `;
 
     if (users.length === 0) {

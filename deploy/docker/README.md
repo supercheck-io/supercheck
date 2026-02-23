@@ -72,7 +72,7 @@ OAuth (`GITHUB_*` / `GOOGLE_*`) is optional in self-hosted mode.
 |----------|-------------|---------|
 | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | Optional GitHub social sign-in | - |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Optional Google social sign-in | - |
-| `SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD` | Email notifications | - |
+| `SMTP_HOST`, `SMTP_FROM_EMAIL` (+ optional `SMTP_USER`/`SMTP_PASSWORD`) | Email notifications | - |
 | `OPENAI_API_KEY` | AI features | - |
 | `WORKER_REPLICAS` | Number of workers | `1` |
 

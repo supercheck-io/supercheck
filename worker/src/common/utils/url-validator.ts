@@ -33,13 +33,7 @@ const PRIVATE_IP_PATTERNS = [
 ];
 
 // Blocked hostnames
-const BLOCKED_HOSTNAMES = [
-  'localhost',
-  '127.0.0.1',
-  '0.0.0.0',
-  '::1',
-  '[::1]',
-];
+const BLOCKED_HOSTNAMES = ['localhost', '127.0.0.1', '0.0.0.0', '::1', '[::1]'];
 
 /**
  * Check if a hostname resolves to a private/internal IP address

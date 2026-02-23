@@ -117,15 +117,20 @@ To prevent notification spam during extended outages:
 <Tabs items={['Email', 'Slack', 'Discord', 'Telegram', 'Microsoft Teams', 'Webhook']}>
 <Tab value="Email">
 
-**Required environment variables:**
+**SMTP environment variables:**
 
 ```bash
 SMTP_HOST=smtp.resend.com
 SMTP_PORT=587
+SMTP_FROM_EMAIL=alerts@yourdomain.com
+
+# Optional: set BOTH only when SMTP authentication is required
 SMTP_USER=resend
 SMTP_PASSWORD=your-api-key
-SMTP_FROM_EMAIL=alerts@yourdomain.com
 ```
+
+If your SMTP server does not require auth, leave `SMTP_USER` and `SMTP_PASSWORD` empty,
+but keep `SMTP_FROM_EMAIL` set.
 
 **Supported providers:** Resend, SendGrid, Mailgun, Amazon SES, Gmail, Office 365
 

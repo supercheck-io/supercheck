@@ -651,14 +651,48 @@ export class NotificationService {
   ): Promise<boolean> {
     try {
       // Use environment variables for SMTP configuration
+      const smtpHost = process.env.SMTP_HOST;
+      const smtpPort = parseInt(process.env.SMTP_PORT || '587');
+      const smtpSecure = process.env.SMTP_SECURE === 'true';
+      const smtpUser = process.env.SMTP_USER;
+      const smtpPassword = process.env.SMTP_PASSWORD;
+      const hasSmtpUser = Boolean(smtpUser);
+      const hasSmtpPassword = Boolean(smtpPassword);
+      const fromEmail = process.env.SMTP_FROM_EMAIL;
+
+      if (!smtpHost) {
+        this.logger.error(
+          'SMTP environment variable not configured (missing SMTP_HOST)',
+        );
+        return false;
+      }
+
+      if (hasSmtpUser !== hasSmtpPassword) {
+        this.logger.error(
+          'SMTP authentication is partially configured (set both SMTP_USER and SMTP_PASSWORD, or leave both unset)',
+        );
+        return false;
+      }
+
+      if (!fromEmail) {
+        this.logger.error(
+          'SMTP sender not configured (missing SMTP_FROM_EMAIL)',
+        );
+        return false;
+      }
+
       const smtpConfig = {
-        host: process.env.SMTP_HOST,
-        port: parseInt(process.env.SMTP_PORT || '587'),
-        secure: process.env.SMTP_SECURE === 'true',
-        auth: {
-          user: process.env.SMTP_USER,
-          pass: process.env.SMTP_PASSWORD,
-        },
+        host: smtpHost,
+        port: smtpPort,
+        secure: smtpSecure,
+        ...(hasSmtpUser && hasSmtpPassword
+          ? {
+              auth: {
+                user: smtpUser,
+                pass: smtpPassword,
+              },
+            }
+          : {}),
         tls: {
           rejectUnauthorized: true, // Validate SSL certificates for security
           minVersion: 'TLSv1.2' as const, // Required for ZeptoMail and security best practices
@@ -667,14 +701,6 @@ export class NotificationService {
         greetingTimeout: 5000, // 5 seconds
       };
 
-      // Check if all required SMTP environment variables are present
-      if (!smtpConfig.host || !smtpConfig.auth.user || !smtpConfig.auth.pass) {
-        this.logger.error(
-          'SMTP environment variables not configured (missing SMTP_HOST, SMTP_USER, or SMTP_PASSWORD)',
-        );
-        return false;
-      }
-
       const transporter = nodemailer.createTransport(smtpConfig);
 
       // Verify SMTP connection
@@ -682,11 +708,6 @@ export class NotificationService {
       this.logger.debug('SMTP connection verified successfully');
 
       // Send to all email addresses
-      const fromEmail =
-        process.env.SMTP_FROM_EMAIL ||
-        process.env.SMTP_USER ||
-        smtpConfig.auth.user;
-
       const sendPromises = emailAddresses.map((email) =>
         transporter.sendMail({
           from: fromEmail,

@@ -205,10 +205,15 @@ OAuth is optional. If you skip OAuth, users can sign up with email/password.
     ```bash
     SMTP_HOST=smtp.gmail.com
     SMTP_PORT=587
+    SMTP_FROM_EMAIL=notifications@yourdomain.com
+
+    # Optional: set BOTH only if your SMTP provider requires authentication
     SMTP_USER=your-email@gmail.com
     SMTP_PASSWORD=your-app-password
-    SMTP_FROM_EMAIL=notifications@yourdomain.com
     ```
+
+    If your mail server allows relay without auth (for example, trusted internal Postfix),
+    you can leave `SMTP_USER` and `SMTP_PASSWORD` empty, but keep `SMTP_FROM_EMAIL` set.
 
     **Recommended providers:** [Resend](https://resend.com), [SendGrid](https://sendgrid.com), [AWS SES](https://aws.amazon.com/ses/)
   </Accordion>

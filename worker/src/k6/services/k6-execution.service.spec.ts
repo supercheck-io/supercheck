@@ -400,9 +400,8 @@ describe('K6ExecutionService', () => {
       });
 
       const beforeConsoleKeys = Object.keys(lockedConsole).sort();
-      const beforeConsoleOwnPropertyNames = Object.getOwnPropertyNames(
-        lockedConsole,
-      ).sort();
+      const beforeConsoleOwnPropertyNames =
+        Object.getOwnPropertyNames(lockedConsole).sort();
       const beforeDescriptors = Object.getOwnPropertyDescriptors(lockedConsole);
 
       const context: Record<string, unknown> = {

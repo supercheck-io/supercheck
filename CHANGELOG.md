@@ -5,7 +5,7 @@ All notable changes to Supercheck are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 
-## [1.3.1] - 2026-02-20
+## [1.3.1] - unreleased
 
 ### Added
 - **Multi-language support for status pages** — Localized UI strings in 20+ languages (Arabic, Chinese, Czech, Danish, Dutch, English, Finnish, French, German, Hindi, Croatian, Hungarian, Italian, Japanese, Korean, Norwegian, Polish, Portuguese, Romanian, Russian, Spanish, Swedish, Turkish, Ukrainian)
@@ -21,6 +21,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - Enhanced VariableDialog to support secret value decryption and better state management
 - Updated Docker images to use SUPERCHECK_VERSION for consistent version management
 - Updated Playwright to version 1.58.2
+- SMTP_USER and SMTP_PASSWORD environment variables are now optional to support email services that do not require authentication
 
 ---
 

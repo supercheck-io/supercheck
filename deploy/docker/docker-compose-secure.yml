@@ -163,8 +163,8 @@ x-common-env: &common-env # Database Configuration
   # Supports any SMTP provider including Resend SMTP, Gmail, SendGrid, etc.
   SMTP_HOST: ${SMTP_HOST:-smtp.resend.com}
   SMTP_PORT: ${SMTP_PORT:-587}
-  SMTP_USER: ${SMTP_USER:-resend}
-  SMTP_PASSWORD: ${SMTP_PASSWORD:-your-smtp-password-change-this-in-production}
+  SMTP_USER: ${SMTP_USER:-}
+  SMTP_PASSWORD: ${SMTP_PASSWORD:-}
   SMTP_SECURE: ${SMTP_SECURE:-false}
   SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-notification@example.com}
 
