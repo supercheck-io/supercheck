@@ -47,7 +47,7 @@ export async function getPublicIncidentDetail(
         eq(statusPages.id, statusPageId),
         eq(statusPages.status, "published")
       ),
-      columns: { id: true, language: true },
+      columns: { id: true, language: true, brandingSettings: true },
     });
 
     if (!statusPage) {
@@ -128,6 +128,7 @@ export async function getPublicIncidentDetail(
         updates,
       },
       language: statusPage.language,
+      brandingSettings: statusPage.brandingSettings as { hidePoweredBy?: boolean } | null,
     };
   } catch (error) {
     console.error("Error fetching public incident detail:", error);

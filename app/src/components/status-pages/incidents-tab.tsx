@@ -300,8 +300,8 @@ export function IncidentsTab({
           </Button>
         </CardHeader>
         <CardContent className="pt-0">
-          <div className="border rounded-lg">
-            <Table>
+          <div className="border rounded-lg overflow-x-auto">
+            <Table className="min-w-[800px]">
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[100px]">Incident ID</TableHead>
@@ -401,8 +401,8 @@ export function IncidentsTab({
           </div>
         ) : (
           <>
-            <div className="border rounded-lg">
-              <Table>
+            <div className="border rounded-lg overflow-x-auto">
+              <Table className="min-w-[800px]">
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-[100px]">Incident ID</TableHead>

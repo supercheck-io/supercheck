@@ -97,6 +97,7 @@ type Component = {
 
 type StatusPageDetailProps = {
   statusPage: StatusPage;
+  statusPageDomain?: string;
   monitors: StatusPageMonitor[];
   components: Component[];
   canUpdate: boolean;
@@ -109,6 +110,7 @@ type StatusPageDetailProps = {
 
 export function StatusPageDetail({
   statusPage,
+  statusPageDomain,
   monitors,
   components,
   canUpdate,
@@ -192,10 +194,10 @@ export function StatusPageDetail({
   return (
     <div className="space-y-6 p-4">
       <Tabs defaultValue="overview" className="space-y-4">
-        <div className="flex items-start justify-between mb-6">
-          <div className="flex-1">
-            <div className="flex items-center gap-3 mb-2">
-              <h1 className="text-2xl font-semibold">{statusPage.name}</h1>
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-3 mb-2 flex-wrap">
+              <h1 className="text-xl sm:text-2xl font-semibold truncate">{statusPage.name}</h1>
               <Badge
                 className={`text-xs px-2 py-1 rounded-md ${getStatusBadgeColor(
                   statusPage.status
@@ -206,31 +208,31 @@ export function StatusPageDetail({
               <StatusPageInfoPopover />
             </div>
             {statusPage.headline && (
-              <p className="text-lg text-muted-foreground mb-2">
+              <p className="text-base sm:text-lg text-muted-foreground mb-2 truncate">
                 {statusPage.headline}
               </p>
             )}
             {statusPage.pageDescription && (
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-muted-foreground line-clamp-2">
                 {statusPage.pageDescription}
               </p>
             )}
-            <div className="flex items-center gap-2 text-sm text-muted-foreground mt-3">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground mt-3 min-w-0">
               <Tally4 className="h-4 w-4 flex-shrink-0 !text-green-600" />
-              <span className="font-mono text-sm">
+              <span className="font-mono text-xs sm:text-sm truncate">
                 {getStatusPageUrl(statusPage.subdomain)}
               </span>
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-6 w-6 p-0"
+                className="h-6 w-6 p-0 flex-shrink-0"
                 onClick={handleCopyUrl}
               >
                 <Copy className="h-3 w-3" />
               </Button>
             </div>
           </div>
-          <div className="flex gap-3">
+          <div className="flex gap-2 sm:gap-3 flex-shrink-0">
             <Button
               asChild
               variant="outline"
@@ -239,7 +241,8 @@ export function StatusPageDetail({
             >
               <Link href={`/status-pages/${statusPage.id}/public`}>
                 <ExternalLink className="h-4 w-4 mr-2" />
-                Preview
+                <span className="hidden sm:inline">Preview</span>
+                <span className="sm:hidden">View</span>
               </Link>
             </Button>
             {statusPage.status === "published" ? (
@@ -466,7 +469,11 @@ export function StatusPageDetail({
         </TabsContent>
 
         <TabsContent value="settings" className="space-y-4">
-          <SettingsTab statusPage={statusPage} canUpdate={canUpdate} />
+          <SettingsTab
+            statusPage={statusPage}
+            canUpdate={canUpdate}
+            statusPageDomain={statusPageDomain}
+          />
         </TabsContent>
       </Tabs>
     </div>

@@ -103,6 +103,7 @@ export default async function PublicIncidentDetailPage({
       faviconLogo={statusPage.faviconLogo}
       transactionalLogo={statusPage.transactionalLogo}
       statusPageHeadline={statusPage.headline}
+      brandingSettings={result.brandingSettings}
       language={result.language}
       isPublicView
     />

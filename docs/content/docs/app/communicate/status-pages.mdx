@@ -22,6 +22,84 @@ Once published, your status page displays real-time system health to users:
 - **Past Incidents** — Recent incident history grouped by date
 - **Subscribe Button** — Subscribe to receive incident notifications
 
+### Status Badges
+
+Embed dynamic status badges on external websites, READMEs, or documentation to show real-time system health.
+
+**Badge URL Format:**
+```
+https://yourdomain.com/api/status-pages/[status-page-id]/badge
+```
+
+**Query Parameters:**
+- `style` — Badge style: `flat` (default) or `flat-square`
+- `label` — Left-side text (default: "status", max 64 characters)
+
+**Embedding in Markdown:**
+```markdown
+![Status](https://yourdomain.com/api/status-pages/YOUR_PAGE_ID/badge)
+![API Status](https://yourdomain.com/api/status-pages/YOUR_PAGE_ID/badge?label=API)
+![Status](https://yourdomain.com/api/status-pages/YOUR_PAGE_ID/badge?style=flat-square)
+```
+
+**Embedding in HTML:**
+```html
+<img src="https://yourdomain.com/api/status-pages/YOUR_PAGE_ID/badge" alt="System Status" />
+```
+
+**Status Colors:**
+
+| Status | Color | Default |
+|--------|-------|---------|
+| Operational | Green | #2ecc71 |
+| Degraded | Yellow | #f1c40f |
+| Partial Outage | Orange | #e67e22 |
+| Major Outage | Red | #e74c3c |
+| Maintenance | Blue | #3498db |
+
+Colors are customizable via the status page **Settings** tab under **Status Colors**.
+
+<Callout type="info">
+The badge is a public endpoint — no authentication required. It includes CORS headers for cross-origin embedding on any website.
+</Callout>
+
+<Callout type="tip">
+Badges refresh every 5 minutes (server-side cache). For real-time updates, link directly to your status page.
+</Callout>
+
+**Testing Your Badge:**
+
+Open your browser and visit the badge URL directly to preview the SVG output. Try different combinations:
+
+| URL | Result |
+|-----|--------|
+| `/api/status-pages/ID/badge` | Default flat badge with "status" label |
+| `/api/status-pages/ID/badge?style=flat-square` | Square-cornered badge |
+| `/api/status-pages/ID/badge?label=API` | Custom "API" label on the left |
+| `/api/status-pages/ID/badge?label=Uptime&style=flat-square` | Combined: custom label with square style |
+
+Replace `ID` with your status page ID (found in the URL when managing your status page).
+
+### iCal Calendar Feed
+
+Subscribe to status page incidents in any calendar application (Google Calendar, Apple Calendar, Outlook).
+
+**Feed URL:**
+```
+https://yourdomain.com/api/status-pages/[status-page-id]/ical
+```
+
+**Subscribing:**
+1. Copy the iCal feed URL for your status page
+2. In your calendar app, add a new calendar subscription
+3. Paste the URL and subscribe
+
+The feed includes the last 50 incidents with impact level, status, affected services, and links to incident details.
+
+<Callout type="info">
+The iCal feed uses the same toggle as the RSS feed. Enable **RSS Feed** in your status page settings to activate both feeds.
+</Callout>
+
 ### Incident Details
 
 Users can click any incident to view the full timeline of updates:
@@ -32,7 +110,7 @@ Users can click any incident to view the full timeline of updates:
 
 Users can subscribe to receive notifications when incidents are created, updated, or resolved.
 
-<Tabs items={['Email', 'Slack', 'Webhook', 'RSS']}>
+<Tabs items={['Email', 'Slack', 'Webhook', 'RSS', 'iCal']}>
 <Tab value="Email">
 
 ![Email Subscription](/screenshots/status-page-subscribe-email.png)
@@ -75,6 +153,17 @@ For custom integrations, subscribe via webhook:
 <Tab value="RSS">
 
 Subscribe via RSS for feed readers and monitoring tools.
+
+</Tab>
+<Tab value="iCal">
+
+Subscribe via iCal to receive incidents in your calendar application.
+
+1. Copy the iCal URL: `https://yourdomain.com/api/status-pages/[id]/ical`
+2. Add a new calendar subscription in your app
+3. Paste the URL and subscribe
+
+Supports Google Calendar, Apple Calendar, Outlook, and any app that accepts `.ics` feeds.
 
 </Tab>
 </Tabs>
@@ -296,7 +385,7 @@ flowchart LR
     <Callout type="info">
     **CNAME Target:**
     - **Cloud users:** Point to `supercheck.io`
-    - **Self-hosted:** Point to your `STATUS_PAGE_DOMAIN` value
+    - **Self-hosted:** Point to your normalized `STATUS_PAGE_DOMAIN` hostname (for example `status.example.com` or `example.com`)
     </Callout>
   </Step>
   <Step>
@@ -328,6 +417,10 @@ flowchart LR
 | "Points to wrong target" | Verify CNAME target matches your Supercheck domain |
 | "Domain already in use" | The domain is configured on another status page |
 | SSL certificate pending | Wait a few minutes after verification |
+
+<Callout type="info">
+Set `STATUS_PAGE_DOMAIN` to your base hostname (for example `example.com`). URL-like values such as `https://example.com:443` are normalized automatically, but hostname-only values are recommended.
+</Callout>
 
 <Callout type="tip">
 **Test DNS Propagation:** Use [dnschecker.org](https://dnschecker.org) to verify your CNAME record has propagated globally.

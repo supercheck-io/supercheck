@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getEffectiveStatusPageDomain } from "@/lib/status-page-domain";
 
 /**
  * Unified proxy for Next.js 16+
@@ -128,6 +129,7 @@ const PORT_PATTERN = /:\d+$/;
 // Cache for hostname parsing (simple LRU-style with max size)
 const hostnameCache = new Map<string, string>();
 const HOSTNAME_CACHE_MAX_SIZE = 100;
+let cachedStatusPageDomain: string | null | undefined = undefined;
 
 /**
  * Parse and sanitize hostname from request headers
@@ -157,15 +159,23 @@ function getCleanHostname(request: NextRequest): string {
   return cleanHostname;
 }
 
+function getStatusPageDomainForRouting(): string | null {
+  if (cachedStatusPageDomain !== undefined) {
+    return cachedStatusPageDomain;
+  }
+
+  const domain = getEffectiveStatusPageDomain();
+  cachedStatusPageDomain = domain ? domain.toLowerCase() : null;
+  return cachedStatusPageDomain;
+}
+
 // Extract subdomain from hostname (production only: uuid.supercheck.io)
 function extractSubdomain(cleanHostname: string): string | null {
   if (!cleanHostname) {
     return null;
   }
 
-  // Get status page domain from runtime env (NOT NEXT_PUBLIC_ - those are build-time only)
-  // Use regular env var which is available at runtime in middleware
-  const statusPageDomain = process.env.STATUS_PAGE_DOMAIN || "";
+  const statusPageDomain = getStatusPageDomainForRouting();
 
   if (!statusPageDomain || !cleanHostname.endsWith(statusPageDomain)) {
     return null;
@@ -201,7 +211,11 @@ function isCustomDomain(cleanHostname: string, appHostname: string): boolean {
   }
 
   // Custom domains are valid if they don't end with the status page domain
-  const statusPageDomain = process.env.STATUS_PAGE_DOMAIN || "";
+  const statusPageDomain = getStatusPageDomainForRouting();
+  if (!statusPageDomain) {
+    return true;
+  }
+
   return (
     !cleanHostname.endsWith(`.${statusPageDomain}`) &&
     !cleanHostname.endsWith(statusPageDomain)

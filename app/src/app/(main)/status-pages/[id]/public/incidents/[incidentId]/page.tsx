@@ -36,6 +36,7 @@ export default async function IncidentDetailPage({
         idOrSubdomain={resolvedParams.id}
         transactionalLogo={statusPageResult.success ? statusPageResult.statusPage?.transactionalLogo : undefined}
         statusPageHeadline={statusPageResult.success ? statusPageResult.statusPage?.headline : undefined}
+        brandingSettings={statusPageResult.success ? statusPageResult.statusPage?.brandingSettings as { hidePoweredBy?: boolean } | null : undefined}
         language={statusPageResult.success ? statusPageResult.statusPage?.language : undefined}
         isPublicView={false}
       />

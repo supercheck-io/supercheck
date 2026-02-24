@@ -64,7 +64,7 @@ OAuth (`GITHUB_*` / `GOOGLE_*`) is optional in self-hosted mode.
 |----------|-------------|
 | `APP_DOMAIN` | Your domain (e.g., `app.yourdomain.com`) |
 | `ACME_EMAIL` | Email for Let's Encrypt |
-| `STATUS_PAGE_DOMAIN` | Base domain for status pages |
+| `STATUS_PAGE_DOMAIN` | Base hostname for status pages (e.g., `yourdomain.com`) |
 
 ### Optional
 

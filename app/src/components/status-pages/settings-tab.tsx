@@ -51,7 +51,6 @@ import { useRouter } from "next/navigation";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useAppConfig } from "@/hooks/use-app-config";
 import { SUPPORTED_LANGUAGES } from "@/lib/status-page-translations";
 import { useQueryClient } from "@tanstack/react-query";
 import type { StatusPageDetailResponse } from "@/hooks/use-status-pages";
@@ -87,6 +86,7 @@ type StatusPage = {
 type SettingsTabProps = {
   statusPage: StatusPage;
   canUpdate: boolean;
+  statusPageDomain?: string;
 };
 
 const settingsSchema = z.object({
@@ -132,12 +132,15 @@ const settingsSchema = z.object({
 
 type SettingsFormValues = z.infer<typeof settingsSchema>;
 
-export function SettingsTab({ statusPage, canUpdate }: SettingsTabProps) {
+export function SettingsTab({
+  statusPage,
+  canUpdate,
+  statusPageDomain = "supercheck.io",
+}: SettingsTabProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [isResetting, setIsResetting] = useState(false);
   const [isVerifyingDNS, setIsVerifyingDNS] = useState(false);
-  const { statusPageDomain } = useAppConfig();
 
   // Upload states
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
@@ -570,14 +573,14 @@ export function SettingsTab({ statusPage, canUpdate }: SettingsTabProps) {
                     <div className="space-y-1">
                       <div>• Add a CNAME record in your DNS provider</div>
                       <div>
-                        • Record Name:{" "}
+                        • Record Name / Host:{" "}
                         <code className="bg-muted px-1 py-0.5 rounded text-sm">
-                          status
+                          your-subdomain
                         </code>{" "}
-                        (for status.{statusPageDomain})
+                        (example: <code className="bg-muted px-1 py-0.5 rounded text-sm">status</code> for <code className="bg-muted px-1 py-0.5 rounded text-sm">status.{statusPageDomain}</code>)
                       </div>
                       <div>
-                        • Points to:{" "}
+                        • Points to / Target:{" "}
                         <code className="bg-muted px-1 py-0.5 rounded text-sm">
                           {statusPageDomain}
                         </code>

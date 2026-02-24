@@ -135,6 +135,7 @@ export interface StatusPageDetailResponse {
     notificationsFromEmail?: string | null;
     notificationsEmailFooter?: string | null;
   };
+  statusPageDomain?: string;
   components: StatusPageComponent[];
   monitors: StatusPageMonitor[];
   canUpdate: boolean;
@@ -185,6 +186,7 @@ export function useStatusPageDetail(statusPageId: string | null) {
     statusPage: query.data?.statusPage ?? null,
     components: query.data?.components ?? [],
     monitors: query.data?.monitors ?? [],
+    statusPageDomain: query.data?.statusPageDomain,
     canUpdate: query.data?.canUpdate ?? false,
     stats: query.data?.stats ?? {
       activeIncidents: 0,

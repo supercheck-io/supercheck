@@ -364,11 +364,11 @@ export function PublicStatusPage({
 
     return (
       <div className="relative">
-        <div className="flex gap-[2px] sm:gap-1 items-center">
+        <div className="flex gap-px sm:gap-[2px] md:gap-1 items-center">
           {data.map((day, index) => (
             <div
               key={index}
-              className="h-8 sm:h-10 min-w-[2px] flex-1 relative cursor-pointer transition-all duration-200 hover:opacity-80 rounded-[1px]"
+              className="h-6 sm:h-8 md:h-10 flex-1 relative cursor-pointer transition-all duration-200 hover:opacity-80 rounded-[1px]"
               style={{
                 backgroundColor:
                   day.status === "nodata" ? "#9ca3af" : getBarColor(day),
@@ -382,15 +382,15 @@ export function PublicStatusPage({
         {/* Tooltip positioned below the bar */}
         {hoveredDay !== null && (
           <div
-            className="absolute mt-3 px-4 py-3 bg-gray-900 dark:bg-gray-800 text-white rounded-lg shadow-2xl border border-gray-700"
+            className="absolute mt-2 sm:mt-3 px-3 sm:px-4 py-2 sm:py-3 bg-gray-900 dark:bg-gray-800 text-white rounded-lg shadow-2xl border border-gray-700"
             style={{
               top: "100%",
               left: `${Math.min(Math.max((hoveredDay / data.length) * 100, 15), 85)}%`,
               transform: "translateX(-50%)",
-              minWidth: "220px",
-              maxWidth: "320px",
+              minWidth: "180px",
+              maxWidth: "280px",
               width: "auto",
-              fontSize: "13px",
+              fontSize: "12px",
               zIndex: 9999,
               pointerEvents: "none",
             }}
@@ -452,8 +452,8 @@ export function PublicStatusPage({
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
       {/* Header */}
-      <div className="max-w-5xl mx-auto px-6 py-8">
-        <div className="flex items-start justify-between gap-6">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 sm:gap-6">
           <div className="flex-1 min-w-0">
             {statusPage.transactionalLogo && (
               <Image
@@ -461,15 +461,15 @@ export function PublicStatusPage({
                 alt={statusPage.headline || statusPage.name}
                 width={200}
                 height={64}
-                className="h-16 mb-4 object-contain object-left"
+                className="h-12 sm:h-16 mb-3 sm:mb-4 object-contain object-left"
                 unoptimized
               />
             )}
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">
               {statusPage.headline || statusPage.name}
             </h1>
             {statusPage.pageDescription && (
-              <p className="text-gray-600 dark:text-gray-400 mt-2 max-w-2xl">
+              <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400 mt-1.5 sm:mt-2 max-w-2xl">
                 {statusPage.pageDescription}
               </p>
             )}
@@ -491,21 +491,21 @@ export function PublicStatusPage({
       </div>
 
       {/* Main Content */}
-      <div className="max-w-5xl mx-auto px-6 pb-12 space-y-8">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 pb-8 sm:pb-12 space-y-6 sm:space-y-8">
         {/* Current Status Banner */}
         <div
-          className="rounded-xl p-6 shadow-sm"
+          className="rounded-xl p-4 sm:p-6 shadow-sm"
           style={{ backgroundColor: statusDisplay.bgColor }}
         >
-          <div className="flex items-center gap-4">
-            <div className="flex items-center justify-center w-12 h-12 rounded-full bg-white/20">
-              <StatusIcon className="h-6 w-6 text-white" />
+          <div className="flex items-center gap-3 sm:gap-4">
+            <div className="flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-white/20 flex-shrink-0">
+              <StatusIcon className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
             </div>
-            <div>
-              <h2 className="text-2xl font-semibold text-white">
+            <div className="min-w-0">
+              <h2 className="text-lg sm:text-2xl font-semibold text-white truncate">
                 {statusDisplay.text}
               </h2>
-              <p className="text-white/80 text-sm mt-0.5">
+              <p className="text-white/80 text-xs sm:text-sm mt-0.5 truncate">
                 {statusDisplay.subtext}
               </p>
             </div>
@@ -514,11 +514,11 @@ export function PublicStatusPage({
 
         {/* Components Section */}
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-gray-100">
               {t.systemStatus}
             </h2>
-            <span className="text-sm text-gray-500 dark:text-gray-400">
+            <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 text-right flex-shrink-0">
               {t.uptimeOverPast90Days}
             </span>
           </div>
@@ -557,36 +557,41 @@ export function PublicStatusPage({
                     : "0.0";
 
                 return (
-                  <div key={component.id} className="p-5">
-                    <div className="flex items-start justify-between mb-3">
+                  <div key={component.id} className="p-3 sm:p-5">
+                    <div className="flex items-start justify-between gap-2 mb-3">
                       <div className="flex-1 min-w-0">
-                        <h3 className="font-semibold text-gray-900 dark:text-gray-100">
+                        <h3 className="font-semibold text-sm sm:text-base text-gray-900 dark:text-gray-100 truncate">
                           {component.name}
                         </h3>
                         {component.description && (
-                          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                          <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-1 sm:line-clamp-none">
                             {component.description}
                           </p>
                         )}
                       </div>
                       <div
-                        className="flex items-center gap-1.5 text-sm font-medium px-2.5 py-1 rounded-full"
+                        className="flex items-center gap-1 sm:gap-1.5 text-xs sm:text-sm font-medium px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full flex-shrink-0 whitespace-nowrap"
                         style={{
                           color: componentStatus.color,
                           backgroundColor: `${componentStatus.color}15`,
                         }}
                       >
                         {React.createElement(componentStatus.icon, {
-                          className: "h-3.5 w-3.5",
+                          className: "h-3 w-3 sm:h-3.5 sm:w-3.5",
                         })}
-                        <span>{componentStatus.text}</span>
+                        <span className="hidden sm:inline">{componentStatus.text}</span>
+                        <span className="sm:hidden">
+                          {componentStatus.text === t.operational
+                            ? t.operational
+                            : componentStatus.text}
+                        </span>
                       </div>
                     </div>
 
                     {/* 90-day uptime bar */}
-                    <div className="space-y-2">
+                    <div className="space-y-1.5 sm:space-y-2">
                       <UptimeBar data={uptimeData} />
-                      <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+                      <div className="flex items-center justify-between text-[10px] sm:text-xs text-gray-500 dark:text-gray-400">
                         <span>{t.daysAgo}</span>
                         <span>{uptimePercentage}% {t.uptime}</span>
                         <span>{t.today}</span>
@@ -601,7 +606,7 @@ export function PublicStatusPage({
 
         {/* Past Incidents Section */}
         <div className="space-y-6">
-          <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">
+          <h2 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">
             {t.pastIncidents}
           </h2>
 
@@ -644,7 +649,7 @@ export function PublicStatusPage({
                       key={format(date, "yyyy-MM-dd")}
                       className="pb-5 border-b dark:border-gray-800 last:border-b-0"
                     >
-                      <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-3">
+                      <h3 className="text-sm sm:text-base font-semibold text-gray-900 dark:text-gray-100 mb-3">
                         {fullDateFormatter.format(date)}
                       </h3>
 
@@ -698,29 +703,29 @@ export function PublicStatusPage({
                               <Link
                                 key={incident.id}
                                 href={`${incidentLinkBase}/${incident.id}`}
-                                className="block px-4 py-3 rounded-lg bg-white dark:bg-gray-900 border dark:border-gray-800 transition-all duration-200 hover:shadow-md hover:border-gray-300 dark:hover:border-gray-700"
+                                className="block px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg bg-white dark:bg-gray-900 border dark:border-gray-800 transition-all duration-200 hover:shadow-md hover:border-gray-300 dark:hover:border-gray-700"
                               >
-                                <div className="flex items-start justify-between gap-3">
+                                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-3">
                                   <div className="flex-1 min-w-0">
-                                    <h4 className="font-semibold text-gray-900 dark:text-gray-100 truncate">
+                                    <h4 className="font-semibold text-sm sm:text-base text-gray-900 dark:text-gray-100 truncate">
                                       {incident.name}
                                     </h4>
                                     {incident.latestUpdate && (
-                                      <p className="text-sm text-gray-500 dark:text-gray-400 line-clamp-2 mt-1">
+                                      <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 line-clamp-1 sm:line-clamp-2 mt-0.5 sm:mt-1">
                                         {incident.latestUpdate.body}
                                       </p>
                                     )}
                                   </div>
-                                  <div className="ml-4 flex max-w-[45%] flex-wrap items-center justify-end gap-2 sm:max-w-none sm:flex-nowrap">
+                                  <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 sm:flex-nowrap sm:flex-shrink-0">
                                     <span
-                                      className={`text-xs font-semibold px-2.5 py-1 rounded-full ${getImpactBadgeColor(
+                                      className={`text-[10px] sm:text-xs font-semibold px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full ${getImpactBadgeColor(
                                         incident.impact
                                       )}`}
                                     >
                                       {translateIncidentImpact(incident.impact, t)}
                                     </span>
                                     <span
-                                      className={`text-xs font-semibold px-2.5 py-1 rounded-full ${getStatusColor(
+                                      className={`text-[10px] sm:text-xs font-semibold px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full ${getStatusColor(
                                         incident.status
                                       )}`}
                                     >
@@ -738,10 +743,10 @@ export function PublicStatusPage({
                 </div>
 
                 {/* Pagination with footer */}
-                <div className="flex items-center justify-between pt-6">
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-6">
                   {totalPages > 1 ? (
                     <>
-                      <div className="flex-1"></div>
+                      <div className="hidden sm:block flex-1"></div>
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() =>
@@ -772,7 +777,7 @@ export function PublicStatusPage({
                         </button>
                       </div>
                       {!statusPage.brandingSettings?.hidePoweredBy && (
-                        <div className="flex-1 text-right text-sm text-gray-600 dark:text-gray-400">
+                        <div className="sm:flex-1 text-center sm:text-right text-xs sm:text-sm text-gray-600 dark:text-gray-400">
                           <span>{t.poweredBy} </span>
                           <a
                             href="https://supercheck.io"

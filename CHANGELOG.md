@@ -11,17 +11,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - **Multi-language support for status pages** — Localized UI strings in 20+ languages (Arabic, Chinese, Czech, Danish, Dutch, English, Finnish, French, German, Hindi, Croatian, Hungarian, Italian, Japanese, Korean, Norwegian, Polish, Portuguese, Romanian, Russian, Spanish, Swedish, Turkish, Ukrainian)
 - **Status badges** — SVG badges for embedding current system status on external websites and READMEs
 - **iCal calendar feed** — Subscribe to status page incidents in calendar applications (Google Calendar, Apple Calendar, Outlook)
-- **Status page email subscriptions** — Automated email notifications for incidents with welcome and verification emails
 - Email sign-up functionality for improved user onboarding
 
 ### Changed
 - Enhanced public status page UI with improved incident details and subscription management
+- Improved mobile responsiveness across status page components and public views
 - Basic auth support for sign-in page 
-- Enhanced sign-in flow with invite token verification and auto-acceptance
+- Enhanced sign-in flow with invite token verification, auto-acceptance of invitations, and clearer social auth requirements
+- Streamlined sign-up process with improved invitation handling
+- Improved SMTP configuration handling
 - Enhanced VariableDialog to support secret value decryption and better state management
 - Updated Docker images to use SUPERCHECK_VERSION for consistent version management
 - Updated Playwright to version 1.58.2
 - SMTP_USER and SMTP_PASSWORD environment variables are now optional to support email services that do not require authentication
+
+### Security
+- Fixed vulnerability in fast-xml-parser
+- Added hex color validation for status badge SVG generation to prevent injection
 
 ---
 

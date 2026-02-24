@@ -77,7 +77,7 @@ GITHUB_CLIENT_SECRET=
 # Uncomment and set these for production with domain
 # APP_DOMAIN=app.yourdomain.com
 # ACME_EMAIL=admin@yourdomain.com
-# STATUS_PAGE_DOMAIN=yourdomain.com
+# STATUS_PAGE_DOMAIN=yourdomain.com  # Base hostname only (no protocol/path)
 
 # ────────────────────────────────────────────────────────────
 # AUTO-GENERATED: Security Secrets (do not modify)

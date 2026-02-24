@@ -12,6 +12,7 @@ import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import { generateProxyUrl } from "@/lib/asset-proxy";
 import { logAuditEvent } from "@/lib/audit-logger";
+import { getEffectiveStatusPageDomain } from "@/lib/status-page-domain";
 import { z } from "zod";
 
 // UUID validation schema
@@ -162,6 +163,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
         createdAt: statusPage.createdAt?.toISOString() ?? null,
         updatedAt: statusPage.updatedAt?.toISOString() ?? null,
       },
+      statusPageDomain: getEffectiveStatusPageDomain(),
       components: componentsWithMonitors,
       monitors: projectMonitors,
       canUpdate,

@@ -22,6 +22,14 @@ import { z } from "zod";
 
 const uuidSchema = z.string().uuid();
 
+/** Common headers for all SVG badge responses */
+const SVG_HEADERS = {
+  "Content-Type": "image/svg+xml",
+  "X-Content-Type-Options": "nosniff",
+  "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'",
+  "Access-Control-Allow-Origin": "*",
+} as const;
+
 type BadgeConfig = {
   label: string;
   message: string;
@@ -89,6 +97,19 @@ function escapeXml(text: string): string {
     .replace(/'/g, "&apos;");
 }
 
+const HEX_COLOR_REGEX = /^#[0-9a-fA-F]{6}$/;
+
+/**
+ * Validate that a string is a valid 6-digit hex color code.
+ * Returns the color if valid, or the fallback otherwise.
+ */
+function sanitizeColor(color: string | null | undefined, fallback: string): string {
+  if (color && HEX_COLOR_REGEX.test(color)) {
+    return color;
+  }
+  return fallback;
+}
+
 /**
  * Determine overall system status from component statuses
  */
@@ -142,7 +163,7 @@ export async function GET(
         {
           status: 400,
           headers: {
-            "Content-Type": "image/svg+xml",
+            ...SVG_HEADERS,
             "Cache-Control": "no-cache",
           },
         }
@@ -175,7 +196,7 @@ export async function GET(
         {
           status: 404,
           headers: {
-            "Content-Type": "image/svg+xml",
+            ...SVG_HEADERS,
             "Cache-Control": "no-cache",
           },
         }
@@ -193,18 +214,18 @@ export async function GET(
     const componentStatuses = pageComponents.map((c) => c.status);
     const { message, color } = calculateOverallStatus(componentStatuses);
 
-    // Use custom colors from the status page if available
+    // Use custom colors from the status page if available (validated)
     let badgeColor = color;
-    if (message === "operational" && statusPage.cssGreens)
-      badgeColor = statusPage.cssGreens;
-    if (message === "major outage" && statusPage.cssReds)
-      badgeColor = statusPage.cssReds;
-    if (message === "partial outage" && statusPage.cssOranges)
-      badgeColor = statusPage.cssOranges;
-    if (message === "degraded" && statusPage.cssYellows)
-      badgeColor = statusPage.cssYellows;
-    if (message === "maintenance" && statusPage.cssBlues)
-      badgeColor = statusPage.cssBlues;
+    if (message === "operational")
+      badgeColor = sanitizeColor(statusPage.cssGreens, color);
+    if (message === "major outage")
+      badgeColor = sanitizeColor(statusPage.cssReds, color);
+    if (message === "partial outage")
+      badgeColor = sanitizeColor(statusPage.cssOranges, color);
+    if (message === "degraded")
+      badgeColor = sanitizeColor(statusPage.cssYellows, color);
+    if (message === "maintenance")
+      badgeColor = sanitizeColor(statusPage.cssBlues, color);
 
     const svg = generateBadgeSvg(
       { label, message, color: badgeColor },
@@ -214,9 +235,8 @@ export async function GET(
     return new NextResponse(svg, {
       status: 200,
       headers: {
-        "Content-Type": "image/svg+xml",
+        ...SVG_HEADERS,
         "Cache-Control": "public, max-age=300, s-maxage=300",
-        "X-Content-Type-Options": "nosniff",
       },
     });
   } catch (error) {
@@ -229,7 +249,7 @@ export async function GET(
       {
         status: 500,
         headers: {
-          "Content-Type": "image/svg+xml",
+          ...SVG_HEADERS,
           "Cache-Control": "no-cache",
         },
       }

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { isCloudHosted } from "@/lib/feature-flags";
+import { getEffectiveStatusPageDomain } from "@/lib/status-page-domain";
 
 /**
  * GET /api/config/app
@@ -54,8 +55,8 @@ export async function GET() {
     // Status page configuration
     statusPage: {
       // Domain used for CNAME target in custom domain setup
-      // Self-hosted users should set STATUS_PAGE_DOMAIN to their own domain
-      domain: process.env.STATUS_PAGE_DOMAIN || "supercheck.io",
+      // Cloud mode is fixed to supercheck.io; self-hosted should set STATUS_PAGE_DOMAIN
+      domain: getEffectiveStatusPageDomain(),
     },
   });
 }

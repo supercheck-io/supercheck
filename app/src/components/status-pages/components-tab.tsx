@@ -411,8 +411,8 @@ export function ComponentsTab({
           </Button>
         </CardHeader>
         <CardContent className="pt-0">
-          <div className="border rounded-lg">
-            <Table>
+          <div className="border rounded-lg overflow-x-auto">
+            <Table className="min-w-[800px]">
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[100px]">Component ID</TableHead>
@@ -498,8 +498,8 @@ export function ComponentsTab({
             </div>
           ) : (
             <>
-              <div className="border rounded-lg">
-                <Table>
+              <div className="border rounded-lg overflow-x-auto">
+                <Table className="min-w-[800px]">
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-[100px]">Component ID</TableHead>
