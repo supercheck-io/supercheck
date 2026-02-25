@@ -366,28 +366,13 @@ Use your own domain (e.g., `status.yourcompany.com`) instead of the default subd
 
 ```mermaid
 flowchart LR
-    A[Add CNAME] --> B[Configure in Settings] --> C[Verify DNS] --> D[✅ Active]
+    A[Configure Domain] --> B[Add CNAME Record] --> C[Verify DNS] --> D[✅ Active]
     style D fill:#10b981,stroke:#047857,color:#fff
 ```
 
 #### Step-by-Step Setup
 
 <Steps>
-  <Step>
-    **Add DNS Record**
-    
-    Log in to your DNS provider (e.g., Cloudflare, GoDaddy, Namecheap) and add a CNAME record:
-
-    | Type | Name | Target |
-    |------|------|--------|
-    | CNAME | `status` | Your Supercheck domain* |
-
-    <Callout type="info">
-    **CNAME Target:**
-    - **Cloud users:** Point to `supercheck.io`
-    - **Self-hosted:** Point to your normalized `STATUS_PAGE_DOMAIN` hostname (for example `status.example.com` or `example.com`)
-    </Callout>
-  </Step>
   <Step>
     **Configure in Supercheck**
     
@@ -396,34 +381,73 @@ flowchart LR
     3. Click **Save**
   </Step>
   <Step>
-    **Verify DNS**
+    **Add DNS Record**
     
-    1. Wait 5-15 minutes for DNS propagation
-    2. Click **Verify DNS** button
-    3. Once verified, your custom domain is active
+    Log in to your DNS provider (e.g., Cloudflare, GoDaddy, Namecheap) and add a CNAME record.
+
+    For example, if your custom domain is `status.yourcompany.com`:
+
+    | Type | Name | Target |
+    |------|------|--------|
+    | CNAME | `status` | `supercheck.io` |
+
+    The **Name** is the subdomain part of your custom domain (the part before your root domain). The **Target** is shown in the Settings tab after you save your domain.
+
+    <Callout type="info">
+    **CNAME Target:**
+    - **Cloud users:** Point to `supercheck.io`
+    - **Self-hosted:** Point to your `STATUS_PAGE_DOMAIN` hostname (e.g., `yourdomain.com`)
+    </Callout>
+
+    <Callout type="warn">
+    **Cloudflare users:** Set the proxy status to **DNS only** (grey cloud icon) during initial verification. You can re-enable the proxy after the domain is verified.
+    </Callout>
   </Step>
   <Step>
-    **SSL Certificate**
+    **Verify DNS**
     
-    An SSL certificate is automatically provisioned via Let's Encrypt. Your custom domain will serve HTTPS traffic within minutes of verification.
+    1. Wait for DNS propagation (typically 5–30 minutes, can take up to 48 hours)
+    2. Return to the **Settings** tab and click **Verify DNS**
+    3. Once verified, your custom domain is active and serving HTTPS traffic
   </Step>
 </Steps>
+
+#### HTTPS / SSL
+
+How HTTPS is handled depends on your deployment:
+
+| Deployment | HTTPS Handling |
+|------------|---------------|
+| **Supercheck Cloud** | HTTPS is enabled automatically — no action required |
+| **Self-hosted (Docker Compose)** | Traefik provisions Let's Encrypt certificates for configured routes. Ensure your reverse proxy is configured to accept traffic for your custom domain. |
+| **Behind Cloudflare proxy** | Cloudflare handles SSL at the edge. Set SSL/TLS mode to **Full** or **Full (Strict)** in your Cloudflare dashboard. |
+| **Other reverse proxies** | Configure TLS termination in your reverse proxy (nginx, Caddy, etc.) |
+
+<Callout type="warn">
+**Cloudflare SSL/TLS mode:** If using Cloudflare proxy with your custom domain, set the SSL/TLS encryption mode to **Full** or **Full (Strict)** in Cloudflare dashboard → SSL/TLS. The **Flexible** mode can cause redirect loops.
+</Callout>
+
+#### Removing a Custom Domain
+
+To remove a custom domain, clear the domain field in **Settings** and save. The default subdomain URL will continue to work.
 
 #### Troubleshooting
 
 | Issue | Solution |
 |-------|----------|
-| "CNAME not found" | Wait 15-30 minutes for DNS propagation |
-| "Points to wrong target" | Verify CNAME target matches your Supercheck domain |
-| "Domain already in use" | The domain is configured on another status page |
-| SSL certificate pending | Wait a few minutes after verification |
+| "CNAME not found" | Wait 15–30 minutes for DNS propagation, then try again |
+| "Points to wrong target" | Verify your CNAME target matches the value shown in Settings |
+| "Domain already in use" | The domain is configured on another status page — remove it there first |
+| Verification fails with Cloudflare | Disable the Cloudflare proxy (use "DNS only" / grey cloud) and retry |
+| Redirect loops with Cloudflare | Set Cloudflare SSL/TLS mode to **Full** or **Full (Strict)** |
+| HTTPS not working (self-hosted) | Ensure your reverse proxy is configured to accept traffic for your custom domain and handle TLS |
 
 <Callout type="info">
-Set `STATUS_PAGE_DOMAIN` to your base hostname (for example `example.com`). URL-like values such as `https://example.com:443` are normalized automatically, but hostname-only values are recommended.
+**Self-hosted configuration:** Set `STATUS_PAGE_DOMAIN` to your base hostname (e.g., `example.com`). URL-like values such as `https://example.com:443` are normalized automatically, but plain hostnames are recommended.
 </Callout>
 
 <Callout type="tip">
-**Test DNS Propagation:** Use [dnschecker.org](https://dnschecker.org) to verify your CNAME record has propagated globally.
+**Test DNS Propagation:** Use [dnschecker.org](https://dnschecker.org) to verify your CNAME record has propagated globally before clicking Verify DNS.
 </Callout>
 
 </Tab>

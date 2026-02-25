@@ -131,7 +131,7 @@ export function LoginForm({
                       {(inviteData.role ?? "member").replace(/_/g, " ")}
                     </span>
                     <br />
-                    <span className="text-xs">
+                    <span className="text-sm">
                       Don&apos;t have an account?{" "}
                       <Link
                         href={`/sign-up?invite=${inviteToken}`}
@@ -142,7 +142,7 @@ export function LoginForm({
                     </span>
                   </>
                 ) : isSelfHosted ? (
-                  <span className="text-xs text-muted-foreground">
+                  <span className="text-sm text-muted-foreground">
                     Don&apos;t have an account?{" "}
                     <Link
                       href="/sign-up"

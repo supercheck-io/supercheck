@@ -305,16 +305,20 @@ export async function POST(request: NextRequest) {
 
     if (!emailResult.success) {
       console.error(
-        `Failed to send invitation email to ${normalizedEmail}:`,
+        "Failed to send invitation email to %s:",
+        normalizedEmail,
         emailResult.error
       );
       // Still return success since the invitation was created, just log the email error
       console.log(
-        `📧 Email failed, but invitation created. Manual link: ${inviteUrl}`
+        "Email failed, but invitation created. Manual link: %s",
+        inviteUrl
       );
     } else {
       console.log(
-        `📧 Email invitation sent successfully to ${normalizedEmail} for organization ${orgName}`
+        "Email invitation sent successfully to %s for organization %s",
+        normalizedEmail,
+        orgName
       );
     }
 

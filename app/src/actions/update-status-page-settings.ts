@@ -183,6 +183,11 @@ export async function updateStatusPageSettings(data: UpdateSettingsInput) {
       }
     }
 
+    // Normalize empty domain to null for proper DB storage (unique constraint compatibility)
+    if (updatePayload.customDomain === "") {
+      updatePayload.customDomain = null;
+    }
+
     // Update status page
     await db
       .update(statusPages)
