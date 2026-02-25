@@ -284,12 +284,12 @@ export function SignupForm({
 
 
             {/* Link to sign-in for existing users */}
-            <div className="text-center">
+            <div className="text-center text-sm">
               <FieldDescription>
                 Already have an account?{" "}
                 <Link
                   href={inviteToken ? `/sign-in?invite=${inviteToken}` : "/sign-in"}
-                  className="font-medium text-foreground underline underline-offset-2"
+                  className="font-medium underline underline-offset-2"
                 >
                   Sign in instead
                 </Link>

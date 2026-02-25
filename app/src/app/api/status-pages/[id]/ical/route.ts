@@ -44,23 +44,60 @@ function generateUid(incidentId: string, domain: string): string {
 
 /**
  * Fold long lines per RFC 5545 (max 75 octets per line)
+ * Uses byte length (TextEncoder) to correctly handle multibyte UTF-8 characters
  */
 function foldLine(line: string): string {
-  const maxLen = 75;
-  if (line.length <= maxLen) return line;
+  const maxBytes = 75;
+  const encoder = new TextEncoder();
+  const encoded = encoder.encode(line);
+
+  if (encoded.length <= maxBytes) return line;
 
   const parts: string[] = [];
-  parts.push(line.substring(0, maxLen));
-  let remaining = line.substring(maxLen);
+  let offset = 0;
 
-  while (remaining.length > 0) {
-    // Continuation lines start with a space, so max content is 74
-    const chunk = remaining.substring(0, maxLen - 1);
-    parts.push(` ${chunk}`);
-    remaining = remaining.substring(maxLen - 1);
+  // First line: up to 75 bytes
+  let end = findUtf8SplitPoint(line, offset, maxBytes);
+  parts.push(line.substring(offset, end));
+  offset = end;
+
+  // Continuation lines: space prefix counts as 1 byte, so 74 bytes of content
+  while (offset < line.length) {
+    end = findUtf8SplitPoint(line, offset, maxBytes - 1);
+    parts.push(` ${line.substring(offset, end)}`);
+    offset = end;
   }
 
   return parts.join("\r\n");
+}
+
+/**
+ * Find the maximum character index from `start` such that the UTF-8 byte
+ * length of line.substring(start, index) does not exceed `maxBytes`.
+ */
+function findUtf8SplitPoint(
+  line: string,
+  start: number,
+  maxBytes: number
+): number {
+  const encoder = new TextEncoder();
+  let lo = start;
+  let hi = Math.min(start + maxBytes, line.length); // char count never exceeds byte count for ASCII+
+  // Binary search for the largest `hi` that fits
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi + 1) / 2);
+    if (mid > line.length) {
+      hi = mid - 1;
+      continue;
+    }
+    if (encoder.encode(line.substring(start, mid)).length <= maxBytes) {
+      lo = mid;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  // Ensure we make progress (at least one character)
+  return lo > start ? lo : Math.min(start + 1, line.length);
 }
 
 export async function GET(

@@ -20,7 +20,7 @@ export function SocialAuthButtons({
   const [isGithubLoading, setIsGithubLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { isGithubEnabled, isGoogleEnabled } = useAppConfig();
+  const { isGithubEnabled, isGoogleEnabled, isLoading: isConfigLoading } = useAppConfig();
   
   // HYDRATION FIX: Initialize with null on server and client, then update in effect
   const [lastMethod, setLastMethod] = useState<string | null>(null);
@@ -80,8 +80,8 @@ export function SocialAuthButtons({
   const isLoading = isGithubLoading || isGoogleLoading;
   const isDisabled = disabled || isLoading;
 
-  // Don't render anything if no providers are configured
-  if (!isGoogleEnabled && !isGithubEnabled) {
+  // Don't render anything if no providers are configured (but wait for config to load first)
+  if (!isConfigLoading && !isGoogleEnabled && !isGithubEnabled) {
     return null;
   }
 

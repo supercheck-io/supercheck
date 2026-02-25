@@ -54,6 +54,12 @@ import { z } from "zod";
 import { SUPPORTED_LANGUAGES } from "@/lib/status-page-translations";
 import { useQueryClient } from "@tanstack/react-query";
 import type { StatusPageDetailResponse } from "@/hooks/use-status-pages";
+import { useAppConfig } from "@/hooks/use-app-config";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 
 type StatusPage = {
   id: string;
@@ -139,6 +145,7 @@ export function SettingsTab({
 }: SettingsTabProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { isSelfHosted } = useAppConfig();
   const [isResetting, setIsResetting] = useState(false);
   const [isVerifyingDNS, setIsVerifyingDNS] = useState(false);
 
@@ -190,7 +197,7 @@ export function SettingsTab({
         headline: data.headline || undefined,
         pageDescription: data.pageDescription || undefined,
         supportUrl: data.supportUrl || undefined,
-        customDomain: data.customDomain || undefined,
+        customDomain: data.customDomain,
         language: data.language,
         brandingSettings: { hidePoweredBy: data.hidePoweredBy },
       });
@@ -500,8 +507,7 @@ export function SettingsTab({
                 Custom Domain
               </h4>
               <p className="text-sm text-muted-foreground">
-                Use your own domain for your status page. SSL certificates are
-                automatically provisioned and renewed.
+                Use your own domain for your status page.
               </p>
               <div className="flex gap-2 mt-5">
                 <Input
@@ -552,44 +558,77 @@ export function SettingsTab({
                     Domain verified and active
                   </div>
                 )}
-              {!statusPage.customDomainVerified &&
-                customDomainValue &&
-                customDomainValue === statusPage.customDomain && (
-                  <div className="flex items-center gap-2 text-sm text-amber-600 bg-amber-50 dark:bg-amber-950 p-2 rounded">
-                    <AlertTriangle className="h-4 w-4" />
-                    <span>Waiting for DNS verification...</span>
-                  </div>
-                )}
 
-              <div className="space-y-1.5 mt-6 text-sm text-muted-foreground bg-muted/30 rounded-md p-3 border">
-                <div className="flex items-start gap-2">
-                  <Info className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
-                  <div className="space-y-3">
-                    <div>
-                      <span className="font-medium text-foreground/80">
-                        Setup instructions:
-                      </span>
-                    </div>
-                    <div className="space-y-1">
-                      <div>• Add a CNAME record in your DNS provider</div>
-                      <div>
-                        • Record Name / Host:{" "}
-                        <code className="bg-muted px-1 py-0.5 rounded text-sm">
-                          your-subdomain
-                        </code>{" "}
-                        (example: <code className="bg-muted px-1 py-0.5 rounded text-sm">status</code> for <code className="bg-muted px-1 py-0.5 rounded text-sm">status.{statusPageDomain}</code>)
-                      </div>
-                      <div>
-                        • Points to / Target:{" "}
-                        <code className="bg-muted px-1 py-0.5 rounded text-sm">
-                          {statusPageDomain}
-                        </code>
-                      </div>
-                      <div>• Wait 15-30 minutes for DNS propagation</div>
-                      <div>• Click &quot;Verify DNS&quot; to confirm the setup</div>
-                    </div>
-                  </div>
+
+              <div className="space-y-3 mt-6 text-sm text-muted-foreground bg-muted/30 rounded-md p-3 border">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-foreground/80">
+                    {customDomainValue ? "DNS Configuration" : "How to set up a custom domain"}
+                  </span>
+                  {customDomainValue && (
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <button type="button" className="text-muted-foreground hover:text-foreground transition-colors">
+                          <Info className="h-3.5 w-3.5" />
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent side="top" align="start" className="w-80 text-xs space-y-2">
+                        <p className="font-medium text-sm">DNS Verification Tips</p>
+                        <ul className="list-disc list-inside space-y-1 text-muted-foreground">
+                          <li><strong>Cloudflare:</strong> Set proxy to &quot;DNS only&quot; (grey cloud) during verification. Re-enable after.</li>
+                          <li><strong>Cloudflare SSL:</strong> Use <strong>Full</strong> or <strong>Full (Strict)</strong> mode to avoid redirect loops.</li>
+                          {isSelfHosted && (
+                            <li><strong>Self-hosted:</strong> Ensure your reverse proxy (Traefik, nginx, Caddy) accepts traffic for this domain.</li>
+                          )}
+                          <li>DNS changes can take 5–30 minutes to propagate.</li>
+                        </ul>
+                      </PopoverContent>
+                    </Popover>
+                  )}
                 </div>
+
+                {customDomainValue ? (
+                  <div className="space-y-3 pl-5.5">
+                    <p>Add the following CNAME record with your DNS provider:</p>
+                    <div className="rounded-md border overflow-hidden">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="border-b bg-muted/50">
+                            <th className="text-left px-3 py-1.5 font-medium">Type</th>
+                            <th className="text-left px-3 py-1.5 font-medium">Name / Host</th>
+                            <th className="text-left px-3 py-1.5 font-medium">Target / Points to</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr>
+                            <td className="px-3 py-1.5 font-mono">CNAME</td>
+                            <td className="px-3 py-1.5 font-mono">
+                              {(() => {
+                                const parts = customDomainValue.split(".");
+                                return parts.length > 2 ? parts.slice(0, -2).join(".") : "@";
+                              })()}
+                            </td>
+                            <td className="px-3 py-1.5 font-mono">{statusPageDomain}</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                    <ol className="list-decimal list-inside space-y-1">
+                      <li>Add the CNAME record above with your DNS provider</li>
+                      <li>Wait for DNS propagation (typically 5–30 minutes)</li>
+                      <li>Click <strong>Verify DNS</strong></li>
+                    </ol>
+                  </div>
+                ) : (
+                  <ol className="list-decimal list-inside space-y-1 pl-5.5">
+                    <li>Enter your custom domain above (e.g., status.yourcompany.com)</li>
+                    <li>Save your changes</li>
+                    <li>Add a CNAME record pointing to{" "}
+                      <code className="bg-muted px-1 py-0.5 rounded text-xs">{statusPageDomain}</code>
+                    </li>
+                    <li>Click <strong>Verify DNS</strong> to confirm the setup</li>
+                  </ol>
+                )}
               </div>
 
               {/* Language */}
@@ -599,7 +638,7 @@ export function SettingsTab({
                   Status Page Language
                 </h4>
                 <p className="text-sm text-muted-foreground">
-                  Language for all public-facing UI text and subscriber emails
+                  Language for public-facing text and subscriber emails
                 </p>
                 <Controller
                   control={control}
@@ -1105,8 +1144,10 @@ export function SettingsTab({
             </div>
           </div>
 
+          <Separator />
+
           {/* Hide Powered By */}
-          <div className="pt-4 border-t">
+          <div>
             <div className="flex items-center justify-between p-3 border rounded-lg hover:bg-accent/50 transition-colors">
               <div className="flex items-center gap-3 flex-1">
                 <div className="p-1.5 bg-gray-500/10 rounded">
@@ -1117,7 +1158,7 @@ export function SettingsTab({
                     Hide &quot;Powered by Supercheck&quot;
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    Remove the branding footer from your public status page
+                    Remove the branding footer from your public status and incident pages
                   </div>
                 </div>
               </div>
@@ -1135,6 +1176,8 @@ export function SettingsTab({
               />
             </div>
           </div>
+
+
         </CardContent>
       </Card>
     </div>
