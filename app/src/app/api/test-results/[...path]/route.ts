@@ -183,7 +183,7 @@ export async function GET(request: Request) {
 
   try {
     // Query the reports table to get the s3Url for this entity
-    const reportRows = await db
+    let reportRows = await db
       .select({
         s3Url: reports.s3Url,
         reportPath: reports.reportPath,
@@ -194,6 +194,8 @@ export async function GET(request: Request) {
       .from(reports)
       .where(eq(reports.entityId, entityId))
       .orderBy(desc(reports.updatedAt));
+
+    let effectiveEntityId = entityId;
 
     if (!reportRows.length) {
       // If no report found, check if it's a run that was cancelled or failed
@@ -277,6 +279,38 @@ export async function GET(request: Request) {
             { status: 202 }
           );
         }
+
+        // Report is stored by test id (playground) or job id (job run), not run id. Resolve it.
+        if (status === "passed" || status === "failed") {
+          const resolveId =
+            run.jobId ? run.jobId
+            : (run.metadata && typeof run.metadata === "object" && "testId" in run.metadata && typeof (run.metadata as Record<string, unknown>).testId === "string")
+              ? (run.metadata as Record<string, unknown>).testId as string
+              : null;
+          if (resolveId) {
+            const byEntity = await db
+              .select({
+                s3Url: reports.s3Url,
+                reportPath: reports.reportPath,
+                entityType: reports.entityType,
+                status: reports.status,
+                updatedAt: reports.updatedAt,
+              })
+              .from(reports)
+              .where(eq(reports.entityId, resolveId))
+              .orderBy(desc(reports.updatedAt));
+            if (byEntity.length > 0) {
+              reportRows = byEntity;
+              effectiveEntityId = resolveId;
+            } else {
+              return notFound();
+            }
+          } else {
+            return notFound();
+          }
+        } else {
+          return notFound();
+        }
       }
 
       return notFound();
@@ -289,7 +323,7 @@ export async function GET(request: Request) {
     const permissionResource = getPermissionResource(reportResult.entityType);
     let accessContext = await resolveAccessContext(
       reportResult.entityType,
-      entityId
+      effectiveEntityId
     );
 
     // Fallback for ad-hoc playground tests that don’t have a persisted test record
@@ -467,14 +501,14 @@ export async function GET(request: Request) {
       const normalizedBase = storedReportPath.replace(/\/+$/, "");
       s3Key = `${normalizedBase}/${targetFile}`;
     } else {
-      const entityIdIndex = pathParts.indexOf(entityId);
+      const entityIdIndex = pathParts.indexOf(effectiveEntityId);
       if (entityIdIndex !== -1) {
         const prefix = pathParts
           .slice(entityIdIndex, pathParts.length - 1)
           .join("/");
         s3Key = `${prefix}/${targetFile}`;
       } else {
-        s3Key = `${entityId}/report/${targetFile}`;
+        s3Key = `${effectiveEntityId}/report/${targetFile}`;
       }
     }
 
