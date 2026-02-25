@@ -8,18 +8,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ## [1.3.1] - 2026-02-25
 
 ### Added
-- **Multi-language support for status pages** — Localized UI strings in 20+ languages (Arabic, Chinese, Czech, Danish, Dutch, English, Finnish, French, German, Hindi, Croatian, Hungarian, Italian, Japanese, Korean, Norwegian, Polish, Portuguese, Romanian, Russian, Spanish, Swedish, Turkish, Ukrainian) (see #237)
+- **Multi-language support for status pages** — Localized UI strings in 20+ languages (Arabic, Chinese, Czech, Danish, Dutch, English, Finnish, French, German, Hindi, Croatian, Hungarian, Italian, Japanese, Korean, Norwegian, Polish, Portuguese, Romanian, Russian, Spanish, Swedish, Turkish, Ukrainian) ([#237](https://github.com/supercheck-io/supercheck/issues/237))
 - **Status badges** — SVG badges for embedding current system status on external websites and READMEs
 - **iCal calendar feed** — Subscribe to status page incidents in calendar applications (Google Calendar, Apple Calendar, Outlook)
-- Email sign-up functionality for improved user onboarding (see #241)
+- Email sign-up functionality for improved user onboarding ([#241](https://github.com/supercheck-io/supercheck/issues/241))
 
 ### Changed
 - Enhanced public status page UI with improved incident details and subscription management
 - Improved custom domain setup instructions with dynamic DNS record table, numbered steps, and Cloudflare proxy warning
 - Improved mobile responsiveness across status page components and public views
-- Basic auth support for sign-in page (see #241)
+- Basic auth support for sign-in page ([#241](https://github.com/supercheck-io/supercheck/issues/241))
 - Streamlined sign-up process with improved invitation handling
-- Improved SMTP configuration handling (see #238)
+- Improved SMTP configuration handling ([#238](https://github.com/supercheck-io/supercheck/issues/238))
 - Enhanced VariableDialog to support secret value decryption and better state management
 - Updated Docker images to use SUPERCHECK_VERSION for consistent version management
 - Updated Playwright to version 1.58.2
