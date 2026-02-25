@@ -66,6 +66,8 @@ export async function getPublicStatusPage(id: string) {
         allowWebhookSubscribers: true,
         allowSlackSubscribers: true,
         allowRssFeed: true,
+        language: true,
+        brandingSettings: true,
         createdAt: true,
         updatedAt: true,
       },

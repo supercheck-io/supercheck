@@ -1,20 +1,27 @@
 /**
  * Revoke Super Admin Privileges
  * 
- * This script downgrades a super_admin to a regular user (project_viewer).
+ * This script removes super_admin privileges and downgrades to admin.
  * 
  * Usage: 
  *   node scripts/revoke-admin.js <email>
  */
 
+require('dotenv').config();
 const postgres = require('postgres');
 
 async function main() {
-  const email = process.argv[2];
+  const email = process.argv[2]?.trim().toLowerCase();
 
   if (!email) {
     console.error('❌ Error: Email address required.');
     console.log('   Usage: node scripts/revoke-admin.js <email>');
+    process.exit(1);
+  }
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    console.error('❌ Error: Invalid email format.');
     process.exit(1);
   }
 
@@ -33,7 +40,7 @@ async function main() {
   try {
     // Check if user exists and is actually an admin
     const users = await sql`
-      SELECT id, role FROM "user" WHERE email = ${email} LIMIT 1
+      SELECT id, role FROM "user" WHERE LOWER(email) = ${email} LIMIT 1
     `;
 
     if (users.length === 0) {

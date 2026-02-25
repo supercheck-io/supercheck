@@ -68,6 +68,7 @@ export interface EmailTemplateData {
   incidentDescription?: string;
   affectedComponents?: string[];
   updateTimestamp?: string;
+  language?: string;
 
   // Authentication
   resetUrl?: string;

@@ -10,6 +10,7 @@ import {
   unsubscribeFromStatusPage,
   getSubscriberByToken,
 } from "@/actions/unsubscribe-from-status-page";
+import { getTranslations } from "@/lib/status-page-translations";
 
 export function UnsubscribeContent({ token }: { token: string }) {
   const [loadingState, setLoadingState] = useState<"loading" | "loaded" | "error">("loading");
@@ -21,7 +22,7 @@ export function UnsubscribeContent({ token }: { token: string }) {
     email: string | null;
     statusPageId: string;
     purgeAt: Date | null;
-    statusPage?: { name: string };
+    statusPage?: { name: string; language?: string | null };
   } | null>(null);
   const [feedback, setFeedback] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -45,6 +46,8 @@ export function UnsubscribeContent({ token }: { token: string }) {
 
     loadSubscriber();
   }, [token]);
+
+  const t = getTranslations(subscriber?.statusPage?.language || "en");
 
   const handleUnsubscribe = async () => {
     setIsSubmitting(true);
@@ -73,8 +76,8 @@ export function UnsubscribeContent({ token }: { token: string }) {
     return (
       <div className="text-center py-12">
         <Loader2 className="h-16 w-16 text-muted-foreground mx-auto mb-4 animate-spin" />
-        <h2 className="text-2xl font-semibold mb-2">Loading...</h2>
-        <p className="text-muted-foreground">Please wait while we load your subscription details.</p>
+        <h2 className="text-2xl font-semibold mb-2">{t.loading}</h2>
+        <p className="text-muted-foreground">{t.pleaseWait}</p>
       </div>
     );
   }
@@ -83,12 +86,12 @@ export function UnsubscribeContent({ token }: { token: string }) {
     return (
       <div className="text-center py-12">
         <XCircle className="h-16 w-16 text-red-600 mx-auto mb-4" />
-        <h2 className="text-2xl font-semibold mb-2">Invalid Link</h2>
+        <h2 className="text-2xl font-semibold mb-2">{t.invalidUnsubscribeLink}</h2>
         <p className="text-muted-foreground mb-6">
-          This unsubscribe link is invalid or has expired.
+          {t.invalidUnsubscribeLinkDescription}
         </p>
         <Button asChild variant="outline">
-          <Link href="/status-pages">Back to Status Pages</Link>
+          <Link href="/status-pages">{t.returnToStatusPage}</Link>
         </Button>
       </div>
     );
@@ -99,18 +102,18 @@ export function UnsubscribeContent({ token }: { token: string }) {
       <div className="text-center py-12">
         <CheckCircle2 className="h-16 w-16 text-green-600 mx-auto mb-4" />
         <h2 className="text-2xl font-semibold mb-2">
-          {unsubscribeState === "success" ? "Successfully Unsubscribed" : "Already Unsubscribed"}
+          {unsubscribeState === "success" ? t.successfullyUnsubscribed : t.alreadyUnsubscribed}
         </h2>
         <p className="text-muted-foreground mb-2">
-          {subscriber?.email} will no longer receive notifications from this status page.
+          {subscriber?.email} {t.unsubscribeNoLongerReceive}
         </p>
         <p className="text-sm text-muted-foreground mb-6">
-          You can resubscribe at any time by visiting the status page.
+          {t.unsubscribeResubscribeAnytime}
         </p>
         {subscriber?.statusPageId && (
           <Button asChild variant="outline">
             <Link href={`/status/${subscriber.statusPageId}`}>
-              View Status Page
+              {t.viewStatusPage}
             </Link>
           </Button>
         )}
@@ -122,18 +125,18 @@ export function UnsubscribeContent({ token }: { token: string }) {
     return (
       <div className="text-center py-12">
         <XCircle className="h-16 w-16 text-red-600 mx-auto mb-4" />
-        <h2 className="text-2xl font-semibold mb-2">Unsubscribe Failed</h2>
+        <h2 className="text-2xl font-semibold mb-2">{t.unsubscribeError}</h2>
         <p className="text-muted-foreground mb-6">
-          An error occurred while unsubscribing. Please try again.
+          {t.unsubscribeErrorDescription}
         </p>
         <Button onClick={handleUnsubscribe} disabled={isSubmitting}>
           {isSubmitting ? (
             <>
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              Retrying...
+              {t.unsubscribing}
             </>
           ) : (
-            "Try Again"
+            t.unsubscribe
           )}
         </Button>
       </div>
@@ -144,9 +147,9 @@ export function UnsubscribeContent({ token }: { token: string }) {
     <div className="max-w-2xl mx-auto py-8">
       <div className="text-center mb-8">
         <Mail className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-        <h2 className="text-2xl font-semibold mb-2">Unsubscribe from Updates</h2>
+        <h2 className="text-2xl font-semibold mb-2">{t.unsubscribeFromUpdates}</h2>
         <p className="text-muted-foreground">
-          Are you sure you want to unsubscribe from notifications?
+          {t.unsubscribeConfirmation}
         </p>
       </div>
 
@@ -155,14 +158,14 @@ export function UnsubscribeContent({ token }: { token: string }) {
           <AlertCircle className="h-5 w-5 text-muted-foreground flex-shrink-0 mt-0.5" />
           <div className="text-sm">
             <p className="font-medium mb-1">
-              Subscription Details
+              {t.subscriptionDetailsTitle}
             </p>
             <p className="text-muted-foreground">
-              <strong>Email:</strong> {subscriber?.email}
+              <strong>{t.emailLabel}</strong> {subscriber?.email}
             </p>
             {subscriber?.statusPage && (
               <p className="text-muted-foreground">
-                <strong>Status Page:</strong> {subscriber.statusPage.name}
+                <strong>{t.statusPageLabel}</strong> {subscriber.statusPage.name}
               </p>
             )}
           </div>
@@ -172,17 +175,17 @@ export function UnsubscribeContent({ token }: { token: string }) {
       <div className="space-y-4 mb-6">
         <div>
           <Label htmlFor="feedback" className="text-base font-medium mb-2">
-            Why are you unsubscribing? (Optional)
+            {t.feedback}
           </Label>
           <Textarea
             id="feedback"
-            placeholder="Help us improve by letting us know why you're unsubscribing..."
+            placeholder={t.feedbackPlaceholder}
             value={feedback}
             onChange={(e) => setFeedback(e.target.value)}
             className="min-h-[100px]"
           />
           <p className="text-xs text-muted-foreground mt-1">
-            Your feedback helps us improve our service.
+            {t.feedbackHelperText}
           </p>
         </div>
       </div>
@@ -197,16 +200,16 @@ export function UnsubscribeContent({ token }: { token: string }) {
           {isSubmitting ? (
             <>
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              Unsubscribing...
+              {t.unsubscribing}
             </>
           ) : (
-            "Confirm Unsubscribe"
+            t.unsubscribe
           )}
         </Button>
         {subscriber?.statusPageId && (
           <Button asChild variant="outline" size="lg">
             <Link href={`/status/${subscriber.statusPageId}`}>
-              Keep Subscription
+              {t.returnToStatusPage}
             </Link>
           </Button>
         )}

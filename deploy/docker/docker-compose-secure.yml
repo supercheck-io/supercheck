@@ -7,7 +7,7 @@
 #   1. Clone the repository
 #   2. Configure DNS: app.yourdomain.com → Server IP
 #   3. Run ./init-secrets.sh to generate secure secrets
-#   4. Edit .env with your domain and OAuth credentials
+#   4. Edit .env with your domain (OAuth optional)
 #   5. Run: docker compose -f docker-compose-secure.yml up -d
 #   6. Access: https://app.yourdomain.com
 #
@@ -19,8 +19,6 @@
 # Required .env variables:
 #   APP_DOMAIN       - Your domain (e.g., app.yourdomain.com)
 #   ACME_EMAIL       - Email for Let's Encrypt notifications
-#   GITHUB_CLIENT_ID - GitHub OAuth App Client ID
-#   GITHUB_CLIENT_SECRET - GitHub OAuth App Client Secret
 #
 # IMPORTANT - Let's Encrypt Requirements:
 #   - Port 80 must be accessible from the internet (for HTTP-01 challenge)
@@ -165,8 +163,8 @@ x-common-env: &common-env # Database Configuration
   # Supports any SMTP provider including Resend SMTP, Gmail, SendGrid, etc.
   SMTP_HOST: ${SMTP_HOST:-smtp.resend.com}
   SMTP_PORT: ${SMTP_PORT:-587}
-  SMTP_USER: ${SMTP_USER:-resend}
-  SMTP_PASSWORD: ${SMTP_PASSWORD:-your-smtp-password-change-this-in-production}
+  SMTP_USER: ${SMTP_USER:-}
+  SMTP_PASSWORD: ${SMTP_PASSWORD:-}
   SMTP_SECURE: ${SMTP_SECURE:-false}
   SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-notification@example.com}
 
@@ -259,8 +257,9 @@ x-common-env: &common-env # Database Configuration
   GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
   GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
 
-  # CAPTCHA Configuration (optional - Cloudflare Turnstile)
-  # CAPTCHA is automatically enabled when both keys are set
+  # CAPTCHA Configuration (Cloudflare Turnstile)
+  # NOTE: CAPTCHA is disabled in self-hosted mode even if keys are provided
+  # (enabled only in cloud mode when both keys are set)
   # Get keys from https://dash.cloudflare.com/?to=/:account/turnstile
   TURNSTILE_SITE_KEY: ${TURNSTILE_SITE_KEY:-}
   TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:-}

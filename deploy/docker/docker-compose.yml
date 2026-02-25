@@ -5,7 +5,7 @@
 #
 # Quick Start:
 #   1. Clone the repository
-#   2. Create .env with OAuth credentials (see docs)
+#   2. Create .env with generated secrets (optional integrations can be added later)
 #   3. Run: docker compose up -d
 #   4. Access: http://localhost:3000
 #
@@ -162,8 +162,8 @@ x-common-env: &common-env # Database Configuration
   # Supports any SMTP provider including Resend SMTP, Gmail, SendGrid, etc.
   SMTP_HOST: ${SMTP_HOST:-smtp.resend.com}
   SMTP_PORT: ${SMTP_PORT:-587}
-  SMTP_USER: ${SMTP_USER:-resend}
-  SMTP_PASSWORD: ${SMTP_PASSWORD:-your-smtp-password-change-this-in-production}
+  SMTP_USER: ${SMTP_USER:-}
+  SMTP_PASSWORD: ${SMTP_PASSWORD:-}
   SMTP_SECURE: ${SMTP_SECURE:-false}
   SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-notification@example.com}
 
@@ -254,8 +254,9 @@ x-common-env: &common-env # Database Configuration
   GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
   GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
 
-  # CAPTCHA Configuration (optional - Cloudflare Turnstile)
-  # CAPTCHA is automatically enabled when both keys are set
+  # CAPTCHA Configuration (Cloudflare Turnstile)
+  # NOTE: CAPTCHA is disabled in self-hosted mode even if keys are provided
+  # (enabled only in cloud mode when both keys are set)
   # Get keys from https://dash.cloudflare.com/?to=/:account/turnstile
   TURNSTILE_SITE_KEY: ${TURNSTILE_SITE_KEY:-}
   TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:-}
@@ -367,7 +368,7 @@ services:
   postgres:
     image: postgres:18
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     environment:
       - POSTGRES_USER=${DB_USER:-postgres}
       - POSTGRES_PASSWORD=${DB_PASSWORD:-postgres}
@@ -396,7 +397,7 @@ services:
   redis:
     image: redis:8
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     environment:
       - REDIS_PASSWORD=${REDIS_PASSWORD:-supersecure-redis-password-change-this}
     command: sh -c "rm -rf /data/* && redis-server --requirepass \"${REDIS_PASSWORD:-supersecure-redis-password-change-this}\" --maxmemory 256mb --maxmemory-policy noeviction --save '' --appendonly no --protected-mode yes --bind 0.0.0.0"
@@ -431,8 +432,8 @@ services:
   minio:
     image: minio/minio:latest
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
     environment:
       - MINIO_ROOT_USER=${AWS_ACCESS_KEY_ID:-minioadmin}
       - MINIO_ROOT_PASSWORD=${AWS_SECRET_ACCESS_KEY:-minioadmin}

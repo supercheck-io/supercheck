@@ -16,6 +16,13 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Loader2,
   Save,
   RotateCcw,
@@ -31,6 +38,8 @@ import {
   Webhook,
   MessageSquare,
   Rss,
+  Languages,
+  EyeOff,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -42,7 +51,9 @@ import { useRouter } from "next/navigation";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useAppConfig } from "@/hooks/use-app-config";
+import { SUPPORTED_LANGUAGES } from "@/lib/status-page-translations";
+import { useQueryClient } from "@tanstack/react-query";
+import type { StatusPageDetailResponse } from "@/hooks/use-status-pages";
 
 type StatusPage = {
   id: string;
@@ -59,6 +70,7 @@ type StatusPage = {
   allowRssFeed: boolean | null;
   customDomain: string | null;
   customDomainVerified: boolean | null;
+  language: string | null;
   cssBodyBackgroundColor: string | null;
   cssFontColor: string | null;
   cssGreens: string | null;
@@ -68,11 +80,13 @@ type StatusPage = {
   cssReds: string | null;
   faviconLogo: string | null;
   transactionalLogo: string | null;
+  brandingSettings: Record<string, unknown> | null;
 };
 
 type SettingsTabProps = {
   statusPage: StatusPage;
   canUpdate: boolean;
+  statusPageDomain?: string;
 };
 
 const settingsSchema = z.object({
@@ -112,15 +126,21 @@ const settingsSchema = z.object({
   cssOranges: z.string().regex(/^#[0-9A-Fa-f]{6}$/, "Invalid color format"),
   cssBlues: z.string().regex(/^#[0-9A-Fa-f]{6}$/, "Invalid color format"),
   cssReds: z.string().regex(/^#[0-9A-Fa-f]{6}$/, "Invalid color format"),
+  language: z.string().min(2).max(10).optional(),
+  hidePoweredBy: z.boolean(),
 });
 
 type SettingsFormValues = z.infer<typeof settingsSchema>;
 
-export function SettingsTab({ statusPage, canUpdate }: SettingsTabProps) {
+export function SettingsTab({
+  statusPage,
+  canUpdate,
+  statusPageDomain = "supercheck.io",
+}: SettingsTabProps) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [isResetting, setIsResetting] = useState(false);
   const [isVerifyingDNS, setIsVerifyingDNS] = useState(false);
-  const { statusPageDomain } = useAppConfig();
 
   // Upload states
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
@@ -134,6 +154,7 @@ export function SettingsTab({ statusPage, canUpdate }: SettingsTabProps) {
     control,
     watch,
     setValue,
+    reset,
     formState: { isSubmitting, isDirty, errors },
   } = useForm<SettingsFormValues>({
     resolver: zodResolver(settingsSchema),
@@ -154,6 +175,8 @@ export function SettingsTab({ statusPage, canUpdate }: SettingsTabProps) {
       cssOranges: statusPage.cssOranges || "#e67e22",
       cssBlues: statusPage.cssBlues || "#3498db",
       cssReds: statusPage.cssReds || "#e74c3c",
+      language: statusPage.language || "en",
+      hidePoweredBy: !!(statusPage.brandingSettings as Record<string, unknown>)?.hidePoweredBy,
     },
   });
 
@@ -168,10 +191,38 @@ export function SettingsTab({ statusPage, canUpdate }: SettingsTabProps) {
         pageDescription: data.pageDescription || undefined,
         supportUrl: data.supportUrl || undefined,
         customDomain: data.customDomain || undefined,
+        language: data.language,
+        brandingSettings: { hidePoweredBy: data.hidePoweredBy },
       });
 
       if (result.success) {
+        const normalizedLanguage = data.language || "en";
+
+        queryClient.setQueryData<StatusPageDetailResponse>(
+          ["statusPage", statusPage.id, "detail"],
+          (current) => {
+            if (!current) return current;
+
+            return {
+              ...current,
+              statusPage: {
+                ...current.statusPage,
+                language: normalizedLanguage,
+                brandingSettings: {
+                  hidePoweredBy: data.hidePoweredBy,
+                },
+              },
+            };
+          }
+        );
+
+        await queryClient.invalidateQueries({
+          queryKey: ["statusPage", statusPage.id, "detail"],
+          refetchType: "active",
+        });
+
         toast.success("Settings saved successfully");
+        reset({ ...data, language: normalizedLanguage });
         router.refresh();
       } else {
         toast.error("Failed to save settings", {
@@ -522,14 +573,14 @@ export function SettingsTab({ statusPage, canUpdate }: SettingsTabProps) {
                     <div className="space-y-1">
                       <div>• Add a CNAME record in your DNS provider</div>
                       <div>
-                        • Record Name:{" "}
+                        • Record Name / Host:{" "}
                         <code className="bg-muted px-1 py-0.5 rounded text-sm">
-                          status
+                          your-subdomain
                         </code>{" "}
-                        (for status.{statusPageDomain})
+                        (example: <code className="bg-muted px-1 py-0.5 rounded text-sm">status</code> for <code className="bg-muted px-1 py-0.5 rounded text-sm">status.{statusPageDomain}</code>)
                       </div>
                       <div>
-                        • Points to:{" "}
+                        • Points to / Target:{" "}
                         <code className="bg-muted px-1 py-0.5 rounded text-sm">
                           {statusPageDomain}
                         </code>
@@ -539,6 +590,39 @@ export function SettingsTab({ statusPage, canUpdate }: SettingsTabProps) {
                     </div>
                   </div>
                 </div>
+              </div>
+
+              {/* Language */}
+              <div className="space-y-3 mt-6">
+                <h4 className="text-sm font-semibold flex items-center gap-2">
+                  <Languages className="h-4 w-4 text-muted-foreground" />
+                  Status Page Language
+                </h4>
+                <p className="text-sm text-muted-foreground">
+                  Language for all public-facing UI text and subscriber emails
+                </p>
+                <Controller
+                  control={control}
+                  name="language"
+                  render={({ field }) => (
+                    <Select
+                      value={field.value || "en"}
+                      onValueChange={field.onChange}
+                      disabled={!canUpdate}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select language" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {SUPPORTED_LANGUAGES.map((lang) => (
+                          <SelectItem key={lang.code} value={lang.code}>
+                            {lang.nativeLabel} ({lang.label})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
               </div>
             </div>
 
@@ -1018,6 +1102,37 @@ export function SettingsTab({ statusPage, canUpdate }: SettingsTabProps) {
                   </p>
                 )}
               </div>
+            </div>
+          </div>
+
+          {/* Hide Powered By */}
+          <div className="pt-4 border-t">
+            <div className="flex items-center justify-between p-3 border rounded-lg hover:bg-accent/50 transition-colors">
+              <div className="flex items-center gap-3 flex-1">
+                <div className="p-1.5 bg-gray-500/10 rounded">
+                  <EyeOff className="h-4 w-4 text-gray-500" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium">
+                    Hide &quot;Powered by Supercheck&quot;
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    Remove the branding footer from your public status page
+                  </div>
+                </div>
+              </div>
+              <Controller
+                control={control}
+                name="hidePoweredBy"
+                render={({ field }) => (
+                  <Switch
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                    disabled={!canUpdate}
+                    className="ml-3"
+                  />
+                )}
+              />
             </div>
           </div>
         </CardContent>

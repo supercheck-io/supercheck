@@ -45,6 +45,9 @@ export const planLimits = pgTable('plan_limits', {
   maxOrganizations: integer('max_organizations').notNull(),
   maxProjects: integer('max_projects').notNull(),
   maxStatusPages: integer('max_status_pages').notNull(),
+  maxStatusPageSubscribers: integer('max_status_page_subscribers')
+    .notNull()
+    .default(500), // Per status page subscriber limit
 
   // Feature flags
   customDomains: boolean('custom_domains').default(false).notNull(),

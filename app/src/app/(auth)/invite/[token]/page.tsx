@@ -19,6 +19,7 @@ import { CheckIcon } from "@/components/logo/supercheck-logo";
 import { FieldGroup, Field, FieldDescription } from "@/components/ui/field";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { useAppConfig } from "@/hooks/use-app-config";
 
 interface InvitationData {
   organizationName: string;
@@ -48,6 +49,8 @@ export default function InvitePage({
   const [accepting, setAccepting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
+  const { isCloudHosted, isFetched, error: configError } = useAppConfig();
+  const shouldShowLegalFooter = isFetched && !configError && isCloudHosted;
 
   // Get token from params
   useEffect(() => {
@@ -96,14 +99,15 @@ export default function InvitePage({
           router.push("/");
         }, 3000);
       } else {
+        const errorMessage = String(data.error ?? "").toLowerCase();
         if (
-          data.error &&
-          (data.error.includes("sign in") ||
-            data.error.includes("sign up") ||
-            data.error.includes("authenticate"))
+          errorMessage.includes("sign in") ||
+          errorMessage.includes("sign up") ||
+          errorMessage.includes("authenticate")
         ) {
-          // User needs to authenticate - redirect to sign-up with invitation token
-          // Sign-up is preferred since most invited users are new
+          // User needs to authenticate.
+          // Prefer sign-up first for invite flows so first-time invitees can
+          // create an account directly without seeing sign-in errors.
           router.push(`/sign-up?invite=${token}`);
         } else {
           setError(data.error || "Failed to accept invitation");
@@ -350,12 +354,14 @@ export default function InvitePage({
           </Field>
         </FieldGroup>
 
-        {/* Footer */}
-        <FieldDescription className="px-6 text-center">
-          By accepting, you agree to our{" "}
-          <Link href="https://supercheck.io/terms">Terms of Service</Link> and{" "}
-          <Link href="https://supercheck.io/privacy">Privacy Policy</Link>.
-        </FieldDescription>
+        {/* Footer (cloud mode only; hidden until config is resolved to avoid mode flicker) */}
+        {shouldShowLegalFooter && (
+          <FieldDescription className="px-6 text-center">
+            By accepting, you agree to our{" "}
+            <Link href="https://supercheck.io/terms">Terms of Service</Link> and{" "}
+            <Link href="https://supercheck.io/privacy">Privacy Policy</Link>.
+          </FieldDescription>
+        )}
       </div>
     );
   }

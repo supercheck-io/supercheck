@@ -747,11 +747,12 @@ describe('MonitorService', () => {
 
       expect(result.alertSent).toBe(false);
       expect(mockAlertService.sendNotification).not.toHaveBeenCalled();
-      expect(mockDbService.db.query.monitorResults.findFirst).not.toHaveBeenCalled();
+      expect(
+        mockDbService.db.query.monitorResults.findFirst,
+      ).not.toHaveBeenCalled();
       expect(mockDbService.db.update).toHaveBeenCalled();
 
-      const firstUpdateCall = (mockDbService.db.update as jest.Mock).mock
-        .results[0]?.value;
+      const firstUpdateCall = mockDbService.db.update.mock.results[0]?.value;
       expect(firstUpdateCall?.set).toHaveBeenCalledWith(
         expect.objectContaining({
           config: expect.objectContaining({

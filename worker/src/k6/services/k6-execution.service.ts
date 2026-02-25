@@ -1152,7 +1152,9 @@ globalThis.getSecret = function getSecret(key, options = {}) {
 
     try {
       const pattern = new RegExp(
-        uniqueSecrets.map((secret) => this.escapeRegexPattern(secret)).join('|'),
+        uniqueSecrets
+          .map((secret) => this.escapeRegexPattern(secret))
+          .join('|'),
         'g',
       );
       return text.replace(pattern, '[SECRET]');

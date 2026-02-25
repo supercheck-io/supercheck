@@ -53,7 +53,12 @@ cat > "$ENV_FILE" << EOF
 # ============================================================
 
 # ────────────────────────────────────────────────────────────
-# REQUIRED: OAuth Provider (at least one)
+# MODE: Self-hosted
+# ────────────────────────────────────────────────────────────
+SELF_HOSTED=true
+
+# ────────────────────────────────────────────────────────────
+# OPTIONAL: OAuth Provider (GitHub / Google)
 # ────────────────────────────────────────────────────────────
 # GitHub OAuth (https://github.com/settings/developers)
 # - Homepage URL: http://localhost:3000 (or your domain)
@@ -72,7 +77,7 @@ GITHUB_CLIENT_SECRET=
 # Uncomment and set these for production with domain
 # APP_DOMAIN=app.yourdomain.com
 # ACME_EMAIL=admin@yourdomain.com
-# STATUS_PAGE_DOMAIN=yourdomain.com
+# STATUS_PAGE_DOMAIN=yourdomain.com  # Base hostname only (no protocol/path)
 
 # ────────────────────────────────────────────────────────────
 # AUTO-GENERATED: Security Secrets (do not modify)
@@ -183,14 +188,15 @@ echo -e "${GREEN}✅ Created .env file at: ${ENV_FILE}${NC}"
 echo ""
 echo -e "${YELLOW}📋 Next steps:${NC}"
 echo ""
-echo -e "   1. Configure OAuth (required):"
+echo -e "   1. Review optional integrations in .env (SMTP, AI, OAuth):"
 echo -e "      ${BLUE}nano .env${NC}"
-echo -e "      Add your GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET"
+echo -e "      Set up SMTP for email notifications, AI provider for AI features, or OAuth for social login.${NC}"
 echo ""
 echo -e "   2. Start Supercheck:"
 echo -e "      ${BLUE}docker compose up -d${NC}"
 echo ""
 echo -e "   3. Access at:"
 echo -e "      ${BLUE}http://localhost:3000${NC}"
+echo -e "      Create your first account with email/password"
 echo ""
 echo -e "${GREEN}═══════════════════════════════════════════════════════════════${NC}"

@@ -19,14 +19,26 @@ async function verifyStatusPageOwnership(
   statusPageId: string,
   organizationId: string,
   projectId: string
-): Promise<{ id: string; name: string; headline: string | null; subdomain: string } | null> {
+): Promise<{
+  id: string;
+  name: string;
+  headline: string | null;
+  subdomain: string;
+  language: string;
+} | null> {
   const statusPage = await db.query.statusPages.findFirst({
     where: and(
       eq(statusPages.id, statusPageId),
       eq(statusPages.organizationId, organizationId),
       eq(statusPages.projectId, projectId)
     ),
-    columns: { id: true, name: true, headline: true, subdomain: true },
+    columns: {
+      id: true,
+      name: true,
+      headline: true,
+      subdomain: true,
+      language: true,
+    },
   });
   return statusPage ?? null;
 }
@@ -250,6 +262,7 @@ export async function resendVerificationEmail(subscriberId: string) {
       const emailContent = await renderStatusPageVerificationEmail({
         verificationUrl,
         statusPageName: statusPage.headline || statusPage.name,
+        language: statusPage.language,
       });
 
       const result = await emailService.sendEmail({

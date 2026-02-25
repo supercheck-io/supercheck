@@ -10,6 +10,7 @@ import { useEffect, useState } from "react";
 import { SocialAuthButtons } from "./social-auth-buttons";
 import { TurnstileCaptcha } from "./turnstile-captcha";
 import { useCaptcha } from "@/hooks/use-captcha";
+import { useAppConfig } from "@/hooks/use-app-config";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
@@ -59,6 +60,17 @@ export function LoginForm({
   onCaptchaToken,
 }: LoginFormProps) {
   const [showPassword, setShowPassword] = useState(false);
+  const {
+    isSelfHosted,
+    isCloudHosted,
+    isGithubEnabled,
+    isGoogleEnabled,
+    isFetched,
+    error: configError,
+  } = useAppConfig();
+  const hasSocialAuth = isGithubEnabled || isGoogleEnabled;
+  const shouldShowSocialAuth = !inviteData && (hasSocialAuth || !isFetched || !!configError);
+  const shouldShowLegalFooter = isFetched && !configError && isCloudHosted;
 
   // CAPTCHA state management
   const {
@@ -129,6 +141,16 @@ export function LoginForm({
                       </Link>
                     </span>
                   </>
+                ) : isSelfHosted ? (
+                  <span className="text-xs text-muted-foreground">
+                    Don&apos;t have an account?{" "}
+                    <Link
+                      href="/sign-up"
+                      className="underline underline-offset-2"
+                    >
+                      Sign up
+                    </Link>
+                  </span>
                 ) : (
                   <span className="text-xs text-muted-foreground">
                     New here? Sign in with GitHub or Google to get started
@@ -167,9 +189,10 @@ export function LoginForm({
               </div>
             )}
 
-            {/* Social Auth - Only show when NOT from an invitation */}
+            {/* Social Auth - Only show when NOT from an invitation and providers are available or config is unresolved */}
             {/* For invitations, user must sign in with the invited email address */}
-            {!inviteData && (
+            {/* Social auth may use a different email, which would fail the email match check */}
+            {shouldShowSocialAuth && (
               <>
                 <SocialAuthButtons
                   callbackUrl={inviteToken ? `/invite/${inviteToken}` : "/"}
@@ -177,7 +200,7 @@ export function LoginForm({
                 />
 
                 {/* Separator */}
-                <FieldSeparator>Or sign in with email (invited members)</FieldSeparator>
+                <FieldSeparator>Or sign in with email</FieldSeparator>
               </>
             )}
 
@@ -283,12 +306,14 @@ export function LoginForm({
         </form>
       </Form>
 
-      {/* Footer */}
-      <FieldDescription className="px-6 text-center">
-        By clicking continue, you agree to our{" "}
-        <Link href="https://supercheck.io/terms">Terms of Service</Link> and{" "}
-        <Link href="https://supercheck.io/privacy">Privacy Policy</Link>.
-      </FieldDescription>
+      {/* Footer (cloud mode only; hidden until config is resolved to avoid mode flicker) */}
+      {shouldShowLegalFooter && (
+        <FieldDescription className="px-6 text-center">
+          By clicking continue, you agree to our{" "}
+          <Link href="https://supercheck.io/terms">Terms of Service</Link> and{" "}
+          <Link href="https://supercheck.io/privacy">Privacy Policy</Link>.
+        </FieldDescription>
+      )}
 
       {/* Invisible CAPTCHA - placed outside form to avoid any layout shift */}
       <TurnstileCaptcha

@@ -36,15 +36,33 @@ export class EmailService {
       const smtpUser = process.env.SMTP_USER;
       const smtpPassword = process.env.SMTP_PASSWORD;
       const smtpSecure = process.env.SMTP_SECURE === "true";
+      const hasSmtpUser = Boolean(smtpUser);
+      const hasSmtpPassword = Boolean(smtpPassword);
       const fromEmail = process.env.SMTP_FROM_EMAIL;
 
       // Validate SMTP configuration
-      if (!smtpHost || !smtpUser || !smtpPassword || !fromEmail) {
+      if (!smtpHost) {
+        return {
+          success: false,
+          message: "",
+          error: "SMTP not configured (missing environment variable: SMTP_HOST)",
+        };
+      }
+
+      if (hasSmtpUser !== hasSmtpPassword) {
         return {
           success: false,
           message: "",
           error:
-            "SMTP not configured (missing environment variables: SMTP_HOST, SMTP_USER, SMTP_PASSWORD, SMTP_FROM_EMAIL)",
+            "SMTP authentication is partially configured (set both SMTP_USER and SMTP_PASSWORD, or leave both unset)",
+        };
+      }
+
+      if (!fromEmail) {
+        return {
+          success: false,
+          message: "",
+          error: "SMTP sender not configured (missing SMTP_FROM_EMAIL)",
         };
       }
 
@@ -53,10 +71,14 @@ export class EmailService {
         host: smtpHost,
         port: smtpPort,
         secure: smtpSecure,
-        auth: {
-          user: smtpUser,
-          pass: smtpPassword,
-        },
+        ...(hasSmtpUser && hasSmtpPassword
+          ? {
+              auth: {
+                user: smtpUser,
+                pass: smtpPassword,
+              },
+            }
+          : {}),
         tls: {
           rejectUnauthorized: true,
           minVersion: "TLSv1.2" as const, // Required for ZeptoMail and security best practices
@@ -64,6 +86,9 @@ export class EmailService {
         connectionTimeout: 10000,
         greetingTimeout: 5000,
       });
+
+      // Verify SMTP connection before sending
+      await transporter.verify();
 
       // Send email with configured from address
       await transporter.sendMail({

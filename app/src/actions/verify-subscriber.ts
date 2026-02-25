@@ -1,9 +1,10 @@
 "use server";
 
 import { db } from "@/utils/db";
-import { statusPageSubscribers } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { statusPageSubscribers, statusPages } from "@/db/schema";
+import { eq, and, isNull, isNotNull, count } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { checkSubscriberLimit } from "@/lib/middleware/plan-enforcement";
 
 export async function verifySubscriber(token: string) {
   try {
@@ -28,11 +29,17 @@ export async function verifySubscriber(token: string) {
 
     // Check if already verified
     if (subscriber.verifiedAt) {
+      // Pre-fetch language for already-verified case
+      const sp = await db.query.statusPages.findFirst({
+        where: eq(statusPages.id, subscriber.statusPageId),
+        columns: { language: true },
+      });
       return {
         success: true,
         alreadyVerified: true,
         message: "Your subscription has already been verified",
         statusPageId: subscriber.statusPageId,
+        language: sp?.language ?? "en",
       };
     }
 
@@ -52,6 +59,44 @@ export async function verifySubscriber(token: string) {
       };
     }
 
+    // Enforce subscriber limits at activation time (verified subscribers only)
+    const statusPage = await db.query.statusPages.findFirst({
+      where: eq(statusPages.id, subscriber.statusPageId),
+      columns: {
+        organizationId: true,
+        language: true,
+      },
+    });
+
+    if (statusPage?.organizationId) {
+      const [subscriberCountResult] = await db
+        .select({ value: count() })
+        .from(statusPageSubscribers)
+        .where(
+          and(
+            eq(statusPageSubscribers.statusPageId, subscriber.statusPageId),
+            isNull(statusPageSubscribers.purgeAt),
+            isNotNull(statusPageSubscribers.verifiedAt)
+          )
+        );
+
+      const currentSubscriberCount = subscriberCountResult?.value ?? 0;
+
+      const limitCheck = await checkSubscriberLimit(
+        statusPage.organizationId,
+        currentSubscriberCount
+      );
+
+      if (!limitCheck.allowed) {
+        return {
+          success: false,
+          message:
+            limitCheck.error ||
+            "Subscriber limit reached for this status page.",
+        };
+      }
+    }
+
     // Verify the subscriber
     await db
       .update(statusPageSubscribers)
@@ -69,6 +114,7 @@ export async function verifySubscriber(token: string) {
       success: true,
       message: "Your subscription has been verified successfully!",
       statusPageId: subscriber.statusPageId,
+      language: statusPage?.language ?? "en",
     };
   } catch (error) {
     console.error("Error verifying subscriber:", error);

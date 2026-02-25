@@ -54,12 +54,7 @@ Choose your deployment type:
     bash init-secrets.sh
     ```
 
-    Edit `.env` and add your [OAuth credentials](#oauth-setup):
-
-    ```bash
-    GITHUB_CLIENT_ID=your-github-client-id
-    GITHUB_CLIENT_SECRET=your-github-client-secret
-    ```
+    Edit `.env` only if you want optional integrations (SMTP, AI, or OAuth).
 
     ### 3. Deploy
 
@@ -69,7 +64,8 @@ Choose your deployment type:
 
     ### 4. Access
 
-    Open `http://localhost:3000` and sign in with OAuth.
+    Open `http://localhost:3000` and create your first account with email/password.
+    If OAuth is configured, you can also sign in with GitHub/Google.
 
     **Create Super Admin (Optional):**
     ```bash
@@ -138,10 +134,16 @@ Choose your deployment type:
     ACME_EMAIL=admin@yourdomain.com
     STATUS_PAGE_DOMAIN=yourdomain.com
 
-    # OAuth (required)
-    GITHUB_CLIENT_ID=your-github-client-id
-    GITHUB_CLIENT_SECRET=your-github-client-secret
+    # Optional OAuth (GitHub/Google)
+    # GITHUB_CLIENT_ID=your-github-client-id
+    # GITHUB_CLIENT_SECRET=your-github-client-secret
+    # GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+    # GOOGLE_CLIENT_SECRET=your-google-client-secret
     ```
+
+    <Callout type="info">
+    Set `STATUS_PAGE_DOMAIN` to the base hostname only (for example `yourdomain.com`).
+    </Callout>
 
     ### 4. Deploy
 
@@ -151,7 +153,8 @@ Choose your deployment type:
 
     ### 5. Access
 
-    Open `https://app.yourdomain.com` and sign in with OAuth.
+    Open `https://app.yourdomain.com` and create your first account with email/password.
+    If OAuth is configured, you can also sign in with GitHub/Google.
 
     **Create Super Admin (Optional):**
     ```bash
@@ -162,10 +165,10 @@ Choose your deployment type:
 
 ---
 
-## OAuth Setup
+## Optional: OAuth Setup
 
-<Callout type="warning">
-At least one OAuth provider (GitHub or Google) is required.
+<Callout type="info">
+OAuth is optional. If you skip OAuth, users can sign up with email/password.
 </Callout>
 
 <Accordions>
@@ -206,10 +209,15 @@ At least one OAuth provider (GitHub or Google) is required.
     ```bash
     SMTP_HOST=smtp.gmail.com
     SMTP_PORT=587
+    SMTP_FROM_EMAIL=notifications@yourdomain.com
+
+    # Optional: set BOTH only if your SMTP provider requires authentication
     SMTP_USER=your-email@gmail.com
     SMTP_PASSWORD=your-app-password
-    SMTP_FROM_EMAIL=notifications@yourdomain.com
     ```
+
+    If your mail server allows relay without auth (for example, trusted internal Postfix),
+    you can leave `SMTP_USER` and `SMTP_PASSWORD` empty, but keep `SMTP_FROM_EMAIL` set.
 
     **Recommended providers:** [Resend](https://resend.com), [SendGrid](https://sendgrid.com), [AWS SES](https://aws.amazon.com/ses/)
   </Accordion>

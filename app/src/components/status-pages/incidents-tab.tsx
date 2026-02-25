@@ -94,12 +94,14 @@ type IncidentsTabProps = {
   statusPageId: string;
   components: Component[];
   canUpdate?: boolean;
+  onDataChange?: () => void;
 };
 
 export function IncidentsTab({
   statusPageId,
   components,
   canUpdate = true,
+  onDataChange,
 }: IncidentsTabProps) {
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(true);
@@ -168,6 +170,7 @@ export function IncidentsTab({
           prev.filter((i) => i.id !== deletingIncident.id)
         );
         toast.success("Incident deleted successfully");
+        onDataChange?.();
       } else {
         toast.error("Failed to delete incident", {
           description: result.message,
@@ -297,8 +300,8 @@ export function IncidentsTab({
           </Button>
         </CardHeader>
         <CardContent className="pt-0">
-          <div className="border rounded-lg">
-            <Table>
+          <div className="border rounded-lg overflow-x-auto">
+            <Table className="min-w-[800px]">
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[100px]">Incident ID</TableHead>
@@ -398,8 +401,8 @@ export function IncidentsTab({
           </div>
         ) : (
           <>
-            <div className="border rounded-lg">
-              <Table>
+            <div className="border rounded-lg overflow-x-auto">
+              <Table className="min-w-[800px]">
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-[100px]">Incident ID</TableHead>
@@ -703,7 +706,10 @@ export function IncidentsTab({
         onOpenChange={setIsCreateDialogOpen}
         statusPageId={statusPageId}
         components={components}
-        onSuccess={loadIncidents}
+        onSuccess={() => {
+          loadIncidents();
+          onDataChange?.();
+        }}
       />
 
       <IncidentUpdateDialog
@@ -711,7 +717,10 @@ export function IncidentsTab({
         onOpenChange={setIsUpdateDialogOpen}
         statusPageId={statusPageId}
         incident={selectedIncident}
-        onSuccess={loadIncidents}
+        onSuccess={() => {
+          loadIncidents();
+          onDataChange?.();
+        }}
       />
 
       <AlertDialog

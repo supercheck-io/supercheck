@@ -9,6 +9,7 @@ import { revalidatePath } from "next/cache";
 import { resolveCname } from "node:dns/promises";
 import { z } from "zod";
 import { logAuditEvent } from "@/lib/audit-logger";
+import { getEffectiveStatusPageDomain } from "@/lib/status-page-domain";
 
 // UUID validation schema
 const uuidSchema = z.string().uuid("Invalid status page ID");
@@ -60,10 +61,10 @@ export async function verifyStatusPageDomain(statusPageId: string) {
     try {
       const cnames = await resolveCname(statusPage.customDomain);
 
-      // Get valid CNAME targets from environment
-      // STATUS_PAGE_DOMAIN is the base domain for status pages
-      // Self-hosted users should set this to their own domain
-      const baseDomain = process.env.STATUS_PAGE_DOMAIN || "supercheck.io";
+      // Get valid CNAME targets from runtime config
+      // Cloud mode is fixed to supercheck.io
+      // Self-hosted users should set STATUS_PAGE_DOMAIN
+      const baseDomain = getEffectiveStatusPageDomain();
 
       // Accept the base domain and common CNAME subdomains
       const validTargets = [

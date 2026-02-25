@@ -10,6 +10,7 @@ import {
 import { eq, and, isNull } from "drizzle-orm";
 import { EmailService } from "@/lib/email-service";
 import { renderIncidentNotificationEmail } from "@/lib/email-renderer";
+import { getTranslations } from "@/lib/status-page-translations";
 import { format } from "date-fns";
 
 /**
@@ -114,8 +115,11 @@ export async function sendIncidentNotifications(
     const statusPageUrl = `${baseUrl}/status/${statusPageId}`;
 
     // Build email parameters template (per-subscriber unsubscribe URL will be added when sending)
+    const language = statusPage.language ?? "en";
+    const t = getTranslations(language);
+
     const formatIncidentTimestamp = (date: Date | null) => {
-      return date ? format(date, "PPpp") : "Just now";
+      return date ? format(date, "PPpp") : t.emailJustNow;
     };
 
     const emailParamsTemplate = {
@@ -124,9 +128,10 @@ export async function sendIncidentNotifications(
       incidentName: incident.name,
       incidentStatus: incident.status,
       incidentImpact: incident.impact,
-      incidentDescription: incident.body || "No additional details provided.",
+      incidentDescription: incident.body || t.emailNoDetails,
       affectedComponents,
       updateTimestamp: formatIncidentTimestamp(incident.createdAt),
+      language,
     };
 
     // Send emails to all subscribers

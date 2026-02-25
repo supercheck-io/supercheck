@@ -14,6 +14,8 @@ export interface StatusPage {
   allowPageSubscribers: boolean | null;
   customDomain: string | null;
   customDomainVerified: boolean | null;
+  language: string | null;
+  brandingSettings: Record<string, unknown> | null;
   faviconLogo: string | null;
   transactionalLogo: string | null;
   heroCover: string | null;
@@ -133,6 +135,7 @@ export interface StatusPageDetailResponse {
     notificationsFromEmail?: string | null;
     notificationsEmailFooter?: string | null;
   };
+  statusPageDomain?: string;
   components: StatusPageComponent[];
   monitors: StatusPageMonitor[];
   canUpdate: boolean;
@@ -168,7 +171,7 @@ export function useStatusPageDetail(statusPageId: string | null) {
     staleTime: 60 * 1000,
     gcTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
-    refetchOnMount: false,
+    refetchOnMount: 'always',
     refetchOnReconnect: false,
     // Note: Removed placeholderData to ensure fresh data is shown immediately after fetch
   });
@@ -183,6 +186,7 @@ export function useStatusPageDetail(statusPageId: string | null) {
     statusPage: query.data?.statusPage ?? null,
     components: query.data?.components ?? [],
     monitors: query.data?.monitors ?? [],
+    statusPageDomain: query.data?.statusPageDomain,
     canUpdate: query.data?.canUpdate ?? false,
     stats: query.data?.stats ?? {
       activeIncidents: 0,

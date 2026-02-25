@@ -68,6 +68,7 @@ const PLAN_LIMITS_SEED = [
     maxOrganizations: 2,
     maxProjects: 10,
     maxStatusPages: 3,
+    maxStatusPageSubscribers: 500,
     customDomains: true,
     ssoEnabled: true,
     dataRetentionDays: 7,
@@ -87,6 +88,7 @@ const PLAN_LIMITS_SEED = [
     maxOrganizations: 10,
     maxProjects: 50,
     maxStatusPages: 15,
+    maxStatusPageSubscribers: 5000,
     customDomains: true,
     ssoEnabled: true,
     dataRetentionDays: 7,
@@ -106,6 +108,7 @@ const PLAN_LIMITS_SEED = [
     maxOrganizations: 999,
     maxProjects: 999,
     maxStatusPages: 999,
+    maxStatusPageSubscribers: 999999,
     customDomains: true,
     ssoEnabled: true,
     dataRetentionDays: 7, // Raw monitor data: 7 days (high frequency, keep lean)
@@ -183,7 +186,7 @@ async function seedPlanLimits(client) {
           id, plan, max_monitors, min_check_interval_minutes,
           playwright_minutes_included, k6_vu_minutes_included, ai_credits_included,
           running_capacity, queued_capacity, max_team_members,
-          max_organizations, max_projects, max_status_pages,
+          max_organizations, max_projects, max_status_pages, max_status_page_subscribers,
           custom_domains, sso_enabled, data_retention_days, aggregated_data_retention_days, job_data_retention_days,
           created_at, updated_at
         )
@@ -191,7 +194,7 @@ async function seedPlanLimits(client) {
           gen_random_uuid(), ${plan.plan}, ${plan.maxMonitors}, ${plan.minCheckIntervalMinutes},
           ${plan.playwrightMinutesIncluded}, ${plan.k6VuMinutesIncluded}, ${plan.aiCreditsIncluded},
           ${plan.runningCapacity}, ${plan.queuedCapacity}, ${plan.maxTeamMembers},
-          ${plan.maxOrganizations}, ${plan.maxProjects}, ${plan.maxStatusPages},
+          ${plan.maxOrganizations}, ${plan.maxProjects}, ${plan.maxStatusPages}, ${plan.maxStatusPageSubscribers},
           ${plan.customDomains}, ${plan.ssoEnabled}, ${plan.dataRetentionDays}, ${plan.aggregatedDataRetentionDays}, ${plan.jobDataRetentionDays},
           NOW(), NOW()
         )
@@ -207,6 +210,7 @@ async function seedPlanLimits(client) {
           max_organizations = EXCLUDED.max_organizations,
           max_projects = EXCLUDED.max_projects,
           max_status_pages = EXCLUDED.max_status_pages,
+          max_status_page_subscribers = EXCLUDED.max_status_page_subscribers,
           custom_domains = EXCLUDED.custom_domains,
           sso_enabled = EXCLUDED.sso_enabled,
           data_retention_days = EXCLUDED.data_retention_days,

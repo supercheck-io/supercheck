@@ -12,28 +12,33 @@ import {
   Text,
 } from "@react-email/components";
 import * as React from "react";
+import { getTranslations } from "../lib/status-page-translations";
 
 interface StatusPageVerificationEmailProps {
   verificationUrl: string;
   statusPageName: string;
+  language?: string;
 }
 
 export const StatusPageVerificationEmail = ({
   verificationUrl = "https://supercheck.io/verify?token=abc123",
   statusPageName = "Example Status Page",
+  language = "en",
 }: StatusPageVerificationEmailProps) => {
+  const t = getTranslations(language);
+
   return (
     <Html>
       <Head>
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <meta httpEquiv="Content-Type" content="text/html; charset=UTF-8" />
       </Head>
-      <Preview>Verify your subscription to {statusPageName}</Preview>
+      <Preview>{t.emailSubjectVerify} {statusPageName}</Preview>
       <Body style={main}>
         <Container style={container}>
           {/* Header */}
           <Section style={header}>
-            <Heading style={headerTitle}>Verify Your Subscription</Heading>
+            <Heading style={headerTitle}>{t.emailVerifySubscription}</Heading>
           </Section>
 
           {/* Icon */}
@@ -46,33 +51,30 @@ export const StatusPageVerificationEmail = ({
           {/* Main Content */}
           <Section style={contentSection}>
             <Heading as="h2" style={heading}>
-              Confirm Your Email Address
+              {t.emailConfirmAddress}
             </Heading>
 
             <Text style={paragraph}>
-              Thank you for subscribing to status updates for{" "}
+              {t.emailVerifyThankYou}{" "}
               <strong style={highlight}>{statusPageName}</strong>.
             </Text>
 
             <Text style={paragraph}>
-              To complete your subscription and start receiving real-time
-              notifications about service incidents, scheduled maintenance, and
-              status updates, please verify your email address by clicking the
-              button below.
+              {t.emailVerifyInstructions}
             </Text>
           </Section>
 
           {/* CTA Button */}
           <Section style={buttonSection}>
             <Button style={ctaButton} href={verificationUrl}>
-              Verify Email Address
+              {t.emailVerifyButton}
             </Button>
           </Section>
 
           {/* Alternative Link */}
           <Section style={contentSection}>
             <Text style={alternativeText}>
-              Or copy and paste this link into your browser:
+              {t.emailVerifyAlternative}
             </Text>
             <table style={urlBox} cellPadding="0" cellSpacing="0">
               <tbody>
@@ -95,10 +97,9 @@ export const StatusPageVerificationEmail = ({
               <tbody>
                 <tr>
                   <td style={{ padding: "16px 20px" }}>
-                    <Text style={noticeTitle}>⏰ Link expires in 24 hours</Text>
+                    <Text style={noticeTitle}>⏰ {t.emailVerifyExpiry}</Text>
                     <Text style={noticeText}>
-                      If you didn&apos;t request this subscription, you can
-                      safely ignore this email.
+                      {t.emailVerifyIgnore}
                     </Text>
                   </td>
                 </tr>
@@ -114,11 +115,10 @@ export const StatusPageVerificationEmail = ({
           {/* Footer */}
           <Section style={footer}>
             <Text style={footerText}>
-              This email was sent because someone subscribed to status updates
-              for {statusPageName}.
+              {t.emailVerifySentNotice} {statusPageName}.
             </Text>
             <Text style={copyright}>
-              Powered by{" "}
+              {t.poweredBy}{" "}
               <Link href="https://supercheck.io" style={footerLink}>
                 Supercheck
               </Link>

@@ -127,6 +127,7 @@ describe('NotificationService', () => {
     process.env.SMTP_PORT = '587';
     process.env.SMTP_USER = 'user@example.com';
     process.env.SMTP_PASSWORD = 'password';
+    process.env.SMTP_FROM_EMAIL = 'notifications@example.com';
     process.env.APP_URL = 'https://app.example.com';
 
     // Default fetch mock
@@ -155,6 +156,7 @@ describe('NotificationService', () => {
     delete process.env.SMTP_PORT;
     delete process.env.SMTP_USER;
     delete process.env.SMTP_PASSWORD;
+    delete process.env.SMTP_FROM_EMAIL;
     delete process.env.APP_URL;
   });
 
@@ -821,6 +823,7 @@ describe('NotificationService', () => {
           process.env.SMTP_HOST = 'smtp.test.com';
           process.env.SMTP_USER = 'test';
           process.env.SMTP_PASSWORD = 'pass';
+          process.env.SMTP_FROM_EMAIL = 'notifications@example.com';
         }
       }
 

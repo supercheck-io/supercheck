@@ -321,8 +321,8 @@ export function SubscribersTab({ statusPageId }: SubscribersTabProps) {
             </div>
           </div>
           {/* Table with loading spinner */}
-          <div className="border rounded-lg">
-            <Table>
+          <div className="border rounded-lg overflow-x-auto">
+            <Table className="min-w-[700px]">
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[100px]">Subscriber ID</TableHead>
@@ -445,8 +445,8 @@ export function SubscribersTab({ statusPageId }: SubscribersTabProps) {
           </div>
         ) : (
           <>
-            <div className="border rounded-lg">
-              <Table>
+            <div className="border rounded-lg overflow-x-auto">
+              <Table className="min-w-[700px]">
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-[100px]">Subscriber ID</TableHead>

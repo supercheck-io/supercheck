@@ -11,7 +11,7 @@ cd supercheck/deploy/docker
 # Generate secure secrets
 bash init-secrets.sh
 
-# Edit .env with your OAuth credentials
+# Edit .env for optional integrations (SMTP, AI, OAuth)
 nano .env
 
 # Start (local testing)
@@ -50,12 +50,13 @@ docker compose version
 
 Use `./init-secrets.sh` to generate secure defaults, then configure:
 
-### Required
+### Base (all deployments)
 
 | Variable | Description |
 |----------|-------------|
-| `GITHUB_CLIENT_ID` | GitHub OAuth client ID |
-| `GITHUB_CLIENT_SECRET` | GitHub OAuth client secret |
+| `SELF_HOSTED` | Self-hosted mode toggle (default: `true`) |
+
+OAuth (`GITHUB_*` / `GOOGLE_*`) is optional in self-hosted mode.
 
 ### Production (docker-compose-secure.yml)
 
@@ -63,13 +64,15 @@ Use `./init-secrets.sh` to generate secure defaults, then configure:
 |----------|-------------|
 | `APP_DOMAIN` | Your domain (e.g., `app.yourdomain.com`) |
 | `ACME_EMAIL` | Email for Let's Encrypt |
-| `STATUS_PAGE_DOMAIN` | Base domain for status pages |
+| `STATUS_PAGE_DOMAIN` | Base hostname for status pages (e.g., `yourdomain.com`) |
 
 ### Optional
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD` | Email notifications | - |
+| `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | Optional GitHub social sign-in | - |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Optional Google social sign-in | - |
+| `SMTP_HOST`, `SMTP_FROM_EMAIL` (+ optional `SMTP_USER`/`SMTP_PASSWORD`) | Email notifications | - |
 | `OPENAI_API_KEY` | AI features | - |
 | `WORKER_REPLICAS` | Number of workers | `1` |
 

@@ -204,7 +204,15 @@ export class StalledJobHandlerService implements OnModuleInit {
           // Group runs by job ID
           const runsByJob = new Map<
             string,
-            Array<'pending' | 'running' | 'passed' | 'failed' | 'error' | 'queued' | 'blocked'>
+            Array<
+              | 'pending'
+              | 'running'
+              | 'passed'
+              | 'failed'
+              | 'error'
+              | 'queued'
+              | 'blocked'
+            >
           >();
           for (const jobRun of allJobRuns) {
             if (jobRun.jobId) {

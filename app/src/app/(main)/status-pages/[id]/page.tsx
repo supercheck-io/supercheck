@@ -24,7 +24,18 @@ export default function StatusPagePage() {
   );
 
   // Use React Query hook for status page data (cached, handles loading/error)
-  const { statusPage, components, monitors, canUpdate, stats, isLoading, isRestoring, error } =
+  const {
+    statusPage,
+    statusPageDomain,
+    components,
+    monitors,
+    canUpdate,
+    stats,
+    isLoading,
+    isRestoring,
+    error,
+    invalidate,
+  } =
     useStatusPageDetail(statusPageId);
   const hasData = statusPage !== undefined && statusPage !== null;
 
@@ -105,6 +116,7 @@ export default function StatusPagePage() {
     notificationsEmailFooter: statusPage.notificationsEmailFooter ?? null,
     customDomain: statusPage.customDomain,
     customDomainVerified: statusPage.customDomainVerified,
+    language: statusPage.language ?? null,
     cssBodyBackgroundColor: statusPage.cssBodyBackgroundColor ?? null,
     cssFontColor: statusPage.cssFontColor ?? null,
     cssGreens: statusPage.cssGreens ?? null,
@@ -114,6 +126,7 @@ export default function StatusPagePage() {
     cssReds: statusPage.cssReds ?? null,
     faviconLogo: statusPage.faviconLogo,
     transactionalLogo: statusPage.transactionalLogo,
+    brandingSettings: (statusPage.brandingSettings as Record<string, unknown>) ?? null,
     createdAt: statusPage.createdAt ? new Date(statusPage.createdAt) : null,
     updatedAt: statusPage.updatedAt ? new Date(statusPage.updatedAt) : null,
   };
@@ -131,10 +144,12 @@ export default function StatusPagePage() {
         <CardContent className="p-0">
           <StatusPageDetail
             statusPage={statusPageForDetail}
+            statusPageDomain={statusPageDomain}
             monitors={monitors}
             components={componentsForDetail}
             canUpdate={canUpdate}
             stats={stats}
+            onDataChange={invalidate}
           />
         </CardContent>
       </Card>
