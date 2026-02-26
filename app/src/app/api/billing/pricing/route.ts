@@ -253,7 +253,7 @@ export async function GET() {
       {
         question: "What happens if I exceed my limits?",
         answer:
-          "Usage-based billing automatically applies. Overage charges are billed monthly. You'll receive email alerts at 80% and 100% of quota.",
+          "For Playwright minutes and K6 VU minutes, usage-based overage billing automatically applies at the rates shown above. AI credits have a hard monthly limit — upgrade your plan for more. You'll receive email alerts at 80% and 100% of quota.",
       },
       {
         question: "Can I change plans?",
@@ -267,7 +267,7 @@ export async function GET() {
       {
         question: "Is there a free trial?",
         answer:
-          "We don't offer a free tier for cloud-hosted, but you can start with the Plus plan ($49/month) with no long-term commitment.",
+          "We don't offer a free tier for cloud-hosted, but you can start with the Plus plan ($49/month) with no long-term commitment. Cancel anytime.",
       },
     ];
 

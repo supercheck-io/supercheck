@@ -141,11 +141,11 @@ export function PricingComparisonTable({
             <TableCell className="py-3 pl-6 text-sm font-medium">
               AI Credits
             </TableCell>
-            <TableCell className="text-center py-3 text-sm font-medium">
-              {formatPrice(pricing.plus.aiCredits, "credit")}
+            <TableCell className="text-center py-3 text-sm text-muted-foreground">
+              Hard limit (no overage)
             </TableCell>
-            <TableCell className="text-center py-3 text-sm font-medium">
-              {formatPrice(pricing.pro.aiCredits, "credit")}
+            <TableCell className="text-center py-3 text-sm text-muted-foreground">
+              Hard limit (no overage)
             </TableCell>
           </TableRow>
         </TableBody>

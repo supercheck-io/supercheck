@@ -18,6 +18,7 @@ interface PricingTierCardProps {
   ctaVariant?: "default" | "outline";
   onCtaClick: () => void;
   loading?: boolean;
+  disabled?: boolean;
   highlighted?: boolean;
 }
 
@@ -33,6 +34,7 @@ export function PricingTierCard({
   ctaVariant = "outline",
   onCtaClick,
   loading = false,
+  disabled = false,
   highlighted = false,
 }: PricingTierCardProps) {
   return (
@@ -103,7 +105,7 @@ export function PricingTierCard({
           size="lg"
           variant={ctaVariant}
           onClick={onCtaClick}
-          disabled={loading}
+          disabled={loading || disabled}
         >
           {loading ? (
             <>

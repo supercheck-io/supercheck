@@ -173,7 +173,7 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
     setOpeningPortal(true);
     try {
 
-      const result = await (authClient as any).customer.portal();
+      const result = await authClient.customer.portal();
       if (result?.data?.url) {
         toast.success("Opening Polar customer portal...", {
           description: "You'll be redirected to manage your subscription.",

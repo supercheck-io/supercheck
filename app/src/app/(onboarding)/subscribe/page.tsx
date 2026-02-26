@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,6 +16,7 @@ import { toast } from "sonner";
 import { authClient } from "@/utils/auth-client";
 import { PricingTierCard } from "@/components/billing/pricing-tier-card";
 import { PricingComparisonTable } from "@/components/billing/pricing-comparison-table";
+import { Shield, RefreshCw, AlertCircle } from "lucide-react";
 
 interface PricingPlan {
   id: string;
@@ -89,7 +91,7 @@ const defaultFaqs = [
   {
     question: "What happens if I exceed my limits?",
     answer:
-      "Usage-based billing automatically applies. Overage charges are billed monthly. You'll receive email alerts at 80% and 100% of quota.",
+      "For Playwright minutes and K6 VU minutes, usage-based overage billing automatically applies at the rates shown above. AI credits have a hard monthly limit — upgrade your plan for more. You'll receive email alerts at 80% and 100% of quota.",
   },
   {
     question: "Can I change plans?",
@@ -124,26 +126,48 @@ const defaultFaqs = [
 ];
 
 export default function SubscribePage() {
+  return (
+    <Suspense fallback={<SubscribeSkeleton />}>
+      <SubscribePageContent />
+    </Suspense>
+  );
+}
+
+function SubscribePageContent() {
+  const searchParams = useSearchParams();
+  const isRequired = searchParams.get("required") === "true";
   const [pricingData, setPricingData] = useState<PricingData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [subscribing, setSubscribing] = useState<string | null>(null);
 
-  useEffect(() => {
-    // NOTE: Organization setup is handled by SetupChecker in the layout
-    // Do not call setup-defaults here to avoid race conditions
-
-    // Fetch pricing data
+  const fetchPricing = useCallback(() => {
+    setLoading(true);
+    setError(false);
     fetch("/api/billing/pricing")
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to fetch pricing");
+        return res.json();
+      })
       .then((data) => setPricingData(data))
-      .catch((error) => {
-        console.error("Error fetching pricing:", error);
+      .catch((err) => {
+        console.error("Error fetching pricing:", err);
+        setError(true);
         toast.error("Failed to load pricing information");
       })
       .finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+    // NOTE: Organization setup is handled by SetupChecker in the layout
+    // Do not call setup-defaults here to avoid race conditions
+    fetchPricing();
+  }, [fetchPricing]);
+
   const handleSubscribe = async (planSlug: string) => {
+    // Prevent double-click: if already subscribing, ignore
+    if (subscribing) return;
+    
     setSubscribing(planSlug);
     try {
       // IMPORTANT: Ensure organization exists before checkout
@@ -168,8 +192,7 @@ export default function SubscribePage() {
       }
 
       // Use Better Auth Polar checkout client method with referenceId
-
-      await (authClient as any).checkout({
+      await authClient.checkout({
         slug: planSlug,
         referenceId: organizationId, // Link subscription to organization
       });
@@ -184,19 +207,52 @@ export default function SubscribePage() {
     return <SubscribeSkeleton />;
   }
 
-  const plans = pricingData?.plans || [];
-  const faqs = pricingData?.faqs?.length ? pricingData.faqs : defaultFaqs;
+  if (error || !pricingData) {
+    return (
+      <div className="max-w-md mx-auto py-16 px-4 text-center space-y-4">
+        <AlertCircle className="h-12 w-12 text-muted-foreground mx-auto" />
+        <h2 className="text-xl font-semibold">Unable to load pricing</h2>
+        <p className="text-sm text-muted-foreground">
+          We couldn&apos;t load the pricing information. Please check your connection and try again.
+        </p>
+        <Button variant="outline" onClick={fetchPricing}>
+          <RefreshCw className="h-4 w-4 mr-2" />
+          Retry
+        </Button>
+      </div>
+    );
+  }
+
+  const plans = pricingData.plans || [];
+  const faqs = pricingData.faqs?.length ? pricingData.faqs : defaultFaqs;
 
   return (
     <div className="max-w-7xl mx-auto py-6 md:py-8 px-4 space-y-10 md:space-y-12">
+      {/* Subscription Required Banner */}
+      {isRequired && (
+        <div className="max-w-2xl mx-auto bg-muted/50 border rounded-lg px-4 py-3 text-center text-sm text-muted-foreground">
+          A subscription is required to access the dashboard. Choose a plan below to get started.
+        </div>
+      )}
+
       {/* Hero Section */}
-      <section className="text-center space-y-2 pt-2">
+      <section className="text-center space-y-3 pt-2">
         <h1 className="text-3xl md:text-4xl font-bold tracking-tight">
           Choose your plan
         </h1>
         <p className="text-base text-muted-foreground max-w-2xl mx-auto">
-          Select the perfect plan for your team. Upgrade or downgrade anytime.
+          Powerful monitoring and testing for your team. Upgrade or downgrade anytime.
         </p>
+        <div className="flex items-center justify-center gap-4 text-xs text-muted-foreground pt-1">
+          <span className="flex items-center gap-1.5">
+            <Shield className="h-3.5 w-3.5" />
+            Secure payment via Polar
+          </span>
+          <span>·</span>
+          <span>Cancel anytime</span>
+          <span>·</span>
+          <span>No hidden fees</span>
+        </div>
       </section>
 
       {/* Pricing Tier Cards */}
@@ -223,11 +279,12 @@ export default function SubscribePage() {
                   ? "Custom domains"
                   : "Standard domains",
               ]}
-              overageText={`Overage: $${plan.overagePricing.playwrightMinutes}/min · $${plan.overagePricing.k6VuMinutes}/VU-min · $${plan.overagePricing.aiCredits}/credit`}
+              overageText={`Overage: $${plan.overagePricing.playwrightMinutes}/min Playwright · $${plan.overagePricing.k6VuMinutes}/VU-min K6 · AI credits: hard limit`}
               ctaText={`Get Started with ${plan.name}`}
               ctaVariant={plan.id === "pro" ? "default" : "outline"}
               onCtaClick={() => handleSubscribe(plan.id)}
               loading={subscribing === plan.id}
+              disabled={subscribing !== null && subscribing !== plan.id}
               highlighted={plan.id === "pro"}
             />
           ))}
@@ -235,7 +292,7 @@ export default function SubscribePage() {
 
         {/* Self-hosted mention */}
         <p className="text-center text-sm text-muted-foreground mt-6">
-          Want unlimited usage?{" "}
+          Need unlimited usage?{" "}
           <a
             href="https://github.com/supercheck-io/supercheck"
             target="_blank"
