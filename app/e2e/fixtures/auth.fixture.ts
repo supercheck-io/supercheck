@@ -163,17 +163,7 @@ export function createTaggedTest(
   return testFn.extend({});
 }
 
-/**
- * Wait for auth callback after OAuth
- * @param page - Playwright page
- */
-export async function waitForAuthCallback(page: Page): Promise<void> {
-  await page.waitForURL(/auth-callback/, { timeout: 30000 });
-  // Wait for callback to process and redirect
-  await page.waitForURL((url) => !url.pathname.includes('auth-callback'), {
-    timeout: 30000,
-  });
-}
+
 
 /**
  * Check if page is authenticated (not on sign-in page)

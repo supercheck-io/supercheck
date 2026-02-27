@@ -144,7 +144,6 @@ export const routes = {
   forgotPassword: '/forgot-password',
   resetPassword: '/reset-password',
   verifyEmail: '/verify-email',
-  authCallback: '/auth-callback',
   invite: (token: string) => `/invite/${token}`,
 
   // Main routes

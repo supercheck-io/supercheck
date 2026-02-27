@@ -44,12 +44,9 @@ export function SocialAuthButtons({
       setError(null);
       setIsGithubLoading(true);
 
-      // Encode the final callback URL as a query parameter
-      const authCallbackUrl = `/auth-callback?callbackUrl=${encodeURIComponent(callbackUrl)}`;
-
       await signIn.social({
         provider: "github",
-        callbackURL: authCallbackUrl,
+        callbackURL: callbackUrl,
       });
     } catch (err) {
       console.error("GitHub sign in error:", err);
@@ -63,12 +60,9 @@ export function SocialAuthButtons({
       setError(null);
       setIsGoogleLoading(true);
 
-      // Encode the final callback URL as a query parameter
-      const authCallbackUrl = `/auth-callback?callbackUrl=${encodeURIComponent(callbackUrl)}`;
-
       await signIn.social({
         provider: "google",
-        callbackURL: authCallbackUrl,
+        callbackURL: callbackUrl,
       });
     } catch (err) {
       console.error("Google sign in error:", err);

@@ -136,7 +136,7 @@ test('AUTH-003: Invitation flow email signup @critical @positive', async ({ page
 2. Click "Sign up with GitHub"
 3. If prompted, enter GitHub credentials
 4. Authorize the app
-5. Wait for callback to `/auth-callback`
+5. Wait for redirect to dashboard `/`
 6. User is redirected to dashboard
 
 **Expected Result**:
@@ -221,9 +221,8 @@ await page.fill('#login_field', env.oauth.github.username);
 await page.fill('#password', env.oauth.github.password);
 await page.click('[type="submit"]');
 
-// Wait for callback
-await page.waitForURL(/auth-callback/);
-await page.waitForURL('/'); // Final redirect
+// Wait for redirect to dashboard
+await page.waitForURL('/'); // Direct redirect to dashboard
 ```
 
 ---

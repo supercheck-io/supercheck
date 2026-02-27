@@ -8,7 +8,6 @@ export {
   test as authTest,
   expect,
   annotations,
-  waitForAuthCallback,
   isAuthenticated,
   saveAuthState,
 } from './auth.fixture';

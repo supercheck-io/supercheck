@@ -1,10 +1,16 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
 import { useAppConfig } from "@/hooks/use-app-config";
 import { useQuery } from "@tanstack/react-query";
+
+// Hydration-safe mounted check using useSyncExternalStore
+const emptySubscribe = () => () => {};
+function useHydrated() {
+  return useSyncExternalStore(emptySubscribe, () => true, () => false);
+}
 
 // Routes that don't require subscription
 const ALLOWED_ROUTES_WITHOUT_SUBSCRIPTION = [
@@ -40,11 +46,11 @@ export async function fetchSubscriptionStatus(): Promise<{ isActive: boolean; pl
 /**
  * SubscriptionGuard - Client component that checks subscription status
  * 
- * PERFORMANCE OPTIMIZATION:
- * - Uses React Query for subscription status (cached for 5 minutes)
- * - Uses cached useAppConfig hook for hosting mode (React Query cached)
- * - Does NOT block rendering for cached data - instant navigation
- * - Self-hosted mode bypasses all subscription checks immediately
+ * HYDRATION SAFETY:
+ * Always renders {children} to preserve the React tree shape across server and
+ * client renders (prevents hydration mismatch with Next.js Suspense boundaries).
+ * Loading/blocking UI is shown as an overlay on top of children.
+ * The useEffect handles redirects for missing subscriptions in cloud mode.
  * 
  * In cloud mode:
  * - Redirects users without active subscription to billing page
@@ -56,9 +62,8 @@ export async function fetchSubscriptionStatus(): Promise<{ isActive: boolean; pl
 export function SubscriptionGuard({ children }: SubscriptionGuardProps) {
   const router = useRouter();
   const pathname = usePathname();
+  const hydrated = useHydrated();
 
-  // isSelfHosted starts as true, allowing immediate render
-  // When real config loads, if cloud mode, subscription check triggers
   const { isSelfHosted, isFetched: isConfigFetched } = useAppConfig();
 
   // Check if current route is allowed without subscription
@@ -67,10 +72,9 @@ export function SubscriptionGuard({ children }: SubscriptionGuardProps) {
   );
 
   // DataPrefetcher may have already populated this cache
-  const { data: subscriptionStatus, isLoading: isSubscriptionLoading, isFetched } = useQuery({
+  const { data: subscriptionStatus, isFetched, isError } = useQuery({
     queryKey: SUBSCRIPTION_STATUS_QUERY_KEY,
     queryFn: fetchSubscriptionStatus,
-    // Uses global defaults: staleTime (30min), gcTime (24h)
     refetchOnMount: false,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
@@ -80,75 +84,39 @@ export function SubscriptionGuard({ children }: SubscriptionGuardProps) {
 
   // Handle redirect for users without subscription
   useEffect(() => {
-    // Skip if allowed route
     if (isAllowedRoute) return;
-
-    // initialData gives us self-hosted=true, but we need real config
     if (!isConfigFetched) return;
-
-    // Skip if self-hosted mode (no subscription required)
     if (isSelfHosted) return;
-
-    // Skip if subscription check hasn't completed yet
     if (!isFetched) return;
 
-    // If subscription is not active, redirect to subscribe page
+    if (isError) {
+      router.push('/subscribe?required=true');
+      return;
+    }
+
     if (subscriptionStatus && !subscriptionStatus.isActive) {
-      console.log('No active subscription, redirecting to subscribe');
       router.push('/subscribe?required=true');
     }
-  }, [isConfigFetched, isSelfHosted, isAllowedRoute, isFetched, subscriptionStatus, router]);
+  }, [isConfigFetched, isSelfHosted, isAllowedRoute, isFetched, isError, subscriptionStatus, router]);
 
-  // Allowed routes: always allow access immediately
-  if (isAllowedRoute) {
-    return <>{children}</>;
-  }
+  // Determine if we need to show a loading overlay (only after hydration)
+  const needsOverlay = hydrated && !isAllowedRoute && !isSelfHosted && (
+    !isConfigFetched || (!isFetched && !subscriptionStatus?.isActive)
+  );
 
-  // SECURITY: Must wait for config to be fetched before making decisions
-  // This prevents briefly showing content in cloud mode before we know hosting mode
-  // Self-hosted: isSelfHosted stays true, renders immediately
-  // Cloud: Initially isSelfHosted=true from initialData, renders immediately
-  //        When real config loads, isSelfHosted=false, subscription check triggers redirect
-  if (!isConfigFetched && !isSelfHosted) {
-    return (
-      <div className="flex min-h-[calc(100vh-200px)] items-center justify-center p-4">
-        <SuperCheckLoading size="md" message="Loading configuration..." />
-      </div>
-    );
-  }
+  const loadingMessage = !isConfigFetched ? "Loading configuration..." : "Checking access...";
 
-  // Config is fetched - now we know the real hosting mode
-
-  // Self-hosted mode: always allow access (no subscription required)
-  if (isSelfHosted) {
-    return <>{children}</>;
-  }
-
-  // Cloud mode: Need to verify subscription
-
-  if (subscriptionStatus?.isActive) {
-    return <>{children}</>;
-  }
-
-  // Subscription data loading or not yet fetched
-  if (!isFetched || isSubscriptionLoading) {
-    return (
-      <div className="flex min-h-[calc(100vh-200px)] items-center justify-center p-4">
-        <SuperCheckLoading size="md" message="Checking access..." />
-      </div>
-    );
-  }
-
-  // Subscription check completed but not active - show loading while redirect happens
-  // This prevents briefly exposing protected content
-  if (!subscriptionStatus?.isActive) {
-    return (
-      <div className="flex min-h-[calc(100vh-200px)] items-center justify-center p-4">
-        <SuperCheckLoading size="md" message="Checking access..." />
-      </div>
-    );
-  }
-
-  // Fallback while waiting for data
-  return null;
+  // Always render children to prevent hydration mismatch.
+  // Show a full-screen overlay when loading in cloud mode.
+  // All API routes have their own server-side auth/subscription checks.
+  return (
+    <>
+      {needsOverlay && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background">
+          <SuperCheckLoading size="md" message={loadingMessage} />
+        </div>
+      )}
+      {children}
+    </>
+  );
 }

@@ -5,10 +5,15 @@ import {
   adminClient,
   lastLoginMethodClient,
 } from "better-auth/client/plugins";
-import { polarClient } from "@polar-sh/better-auth";
 
 /**
  * Better Auth client for browser-side authentication.
+ *
+ * IMPORTANT: Do NOT import polarClient from @polar-sh/better-auth here.
+ * That package bundles server-side code (better-auth/api, better-auth/plugins)
+ * which references node: modules (e.g. node:async_hooks) that are unavailable
+ * in the browser. Polar checkout and customer portal are handled via direct
+ * fetch calls to the Better Auth API endpoints instead.
  *
  * PERFORMANCE OPTIMIZATION:
  * Session options are configured to minimize refetch triggers that can cause
@@ -29,8 +34,6 @@ export const authClient = createAuthClient({
     }),
     // Track last login method to show "Last used" badge on sign-in page
     lastLoginMethodClient(),
-    // Polar client plugin for checkout and customer portal
-    polarClient(),
   ],
   // PERFORMANCE: Reduce session refetch triggers to prevent blocking
   fetchOptions: {

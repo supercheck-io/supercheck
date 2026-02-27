@@ -18,7 +18,6 @@ import {
   Tally4,
   CreditCard,
 } from "lucide-react";
-import { authClient } from "@/utils/auth-client";
 import { toast } from "sonner";
 import { SpendingLimits } from "@/components/billing/spending-limits";
 import { HardStopAlert } from "@/components/billing/hard-stop-alert";
@@ -173,13 +172,23 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
     setOpeningPortal(true);
     try {
 
-      const result = await authClient.customer.portal();
-      if (result?.data?.url) {
+      // Call the Better Auth Polar customer portal endpoint directly
+      // (polarClient is not used on the client to avoid bundling server-side node: modules)
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || '';
+      const portalRes = await fetch(`${baseUrl}/api/auth/customer/portal`, {
+        method: 'GET',
+        credentials: 'include',
+      });
+      if (!portalRes.ok) {
+        throw new Error('Failed to fetch portal URL');
+      }
+      const portalData = await portalRes.json();
+      if (portalData?.url) {
         toast.success("Opening Polar customer portal...", {
           description: "You'll be redirected to manage your subscription.",
           duration: 3000,
         });
-        window.location.href = result.data.url;
+        window.location.href = portalData.url;
       } else {
         toast.error("Failed to open subscription portal", {
           description: "No portal URL returned. Please try again.",

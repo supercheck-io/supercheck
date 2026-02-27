@@ -13,7 +13,6 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
-import { authClient } from "@/utils/auth-client";
 import { PricingTierCard } from "@/components/billing/pricing-tier-card";
 import { PricingComparisonTable } from "@/components/billing/pricing-comparison-table";
 import { Shield, RefreshCw, AlertCircle } from "lucide-react";
@@ -191,11 +190,28 @@ function SubscribePageContent() {
         throw new Error("No organization found. Please try refreshing the page.");
       }
 
-      // Use Better Auth Polar checkout client method with referenceId
-      await authClient.checkout({
-        slug: planSlug,
-        referenceId: organizationId, // Link subscription to organization
+      // Call the Better Auth Polar checkout endpoint directly
+      // (polarClient is not used on the client to avoid bundling server-side node: modules)
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || '';
+      const checkoutRes = await fetch(`${baseUrl}/api/auth/checkout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          slug: planSlug,
+          referenceId: organizationId,
+        }),
       });
+      if (!checkoutRes.ok) {
+        const errData = await checkoutRes.json().catch(() => ({}));
+        throw new Error(errData?.message || 'Checkout request failed');
+      }
+      const checkoutData = await checkoutRes.json();
+      if (checkoutData?.url) {
+        window.location.href = checkoutData.url;
+      } else {
+        throw new Error('No checkout URL returned');
+      }
     } catch (error) {
       console.error("Checkout error:", error);
       toast.error("Failed to start checkout. Please try again.");
