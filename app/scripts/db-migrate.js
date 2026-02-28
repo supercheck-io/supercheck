@@ -5,7 +5,6 @@
  * Handles all migration scenarios in a clean, predictable way
  */
 
-const { drizzle } = require("drizzle-orm/postgres-js");
 const postgres = require("postgres");
 const fs = require("fs");
 const path = require("path");
@@ -20,9 +19,75 @@ const DB_PORT = process.env.DB_PORT || "5432";
 const DB_USER = process.env.DB_USER || "postgres";
 const DB_PASSWORD = process.env.DB_PASSWORD || "postgres";
 const DB_NAME = process.env.DB_NAME || "supercheck";
+const HAS_EXPLICIT_DATABASE_URL =
+  typeof process.env.DATABASE_URL === "string" &&
+  process.env.DATABASE_URL.trim().length > 0;
 const DATABASE_URL =
   process.env.DATABASE_URL ||
   `postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}`;
+
+function getConnectionTargets(connectionString) {
+  if (!HAS_EXPLICIT_DATABASE_URL) {
+    return {
+      targetConnectionString: connectionString,
+      adminConnectionString: `postgres://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/postgres`,
+      databaseName: DB_NAME,
+    };
+  }
+
+  try {
+    const targetUrl = new URL(connectionString);
+    const adminUrl = new URL(connectionString);
+    const databaseName =
+      decodeURIComponent(targetUrl.pathname.replace(/^\/+/, "")) || DB_NAME;
+
+    adminUrl.pathname = "/postgres";
+    adminUrl.search = targetUrl.search;
+
+    return {
+      targetConnectionString: targetUrl.toString(),
+      adminConnectionString: adminUrl.toString(),
+      databaseName,
+    };
+  } catch {
+    return {
+      targetConnectionString: connectionString,
+      adminConnectionString: `postgres://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/postgres`,
+      databaseName: DB_NAME,
+    };
+  }
+}
+
+function parseBooleanEnv(value) {
+  if (typeof value !== "string") return undefined;
+
+  const normalized = value.trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(normalized)) return true;
+  if (["0", "false", "no", "off"].includes(normalized)) return false;
+  return undefined;
+}
+
+const {
+  targetConnectionString: TARGET_DATABASE_URL,
+  adminConnectionString: ADMIN_DATABASE_URL,
+  databaseName: TARGET_DB_NAME,
+} = getConnectionTargets(DATABASE_URL);
+const IS_SELF_HOSTED = parseBooleanEnv(process.env.SELF_HOSTED) === true;
+const EXPLICIT_SKIP_ADMIN_OPERATIONS = parseBooleanEnv(
+  process.env.DB_SKIP_ADMIN_OPERATIONS
+);
+
+// If deployment is cloud-hosted (SELF_HOSTED is not true), treat DB as managed.
+const IS_CLOUD_DB =
+  EXPLICIT_SKIP_ADMIN_OPERATIONS !== undefined
+    ? EXPLICIT_SKIP_ADMIN_OPERATIONS
+    : !IS_SELF_HOSTED;
+const CLOUD_MODE_SOURCE =
+  EXPLICIT_SKIP_ADMIN_OPERATIONS !== undefined
+    ? "DB_SKIP_ADMIN_OPERATIONS override"
+    : IS_SELF_HOSTED
+      ? "SELF_HOSTED=true"
+      : "SELF_HOSTED is not true (cloud mode)";
 
 // Logging functions
 function log(message) {
@@ -41,67 +106,103 @@ function logWarning(message) {
   console.log(`[${new Date().toISOString()}] [WARNING] ${message}`);
 }
 
+function isMissingDatabaseError(error) {
+  if (!error) return false;
+
+  const errorCode = String(error.code || "").toUpperCase();
+  if (errorCode === "3D000") return true;
+
+  const message = String(error.message || "").toLowerCase();
+  return (
+    message.includes("does not exist") ||
+    message.includes("unknown database") ||
+    message.includes("invalid catalog name")
+  );
+}
+
 // Function to wait for database to be ready
-async function waitForDatabase() {
-  log("Waiting for database to be ready...");
+async function waitForConnection(connectionString, connectionLabel, options = {}) {
+  const {
+    maxRetries = MAX_RETRIES,
+    retryDelayMs = RETRY_DELAY,
+    stopOnMissingDatabase = false,
+  } = options;
 
-  const adminConnectionString = `postgres://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/postgres`;
+  log(`Waiting for ${connectionLabel} to be ready...`);
 
-  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-    log(`Attempt ${attempt}/${MAX_RETRIES}: Checking database connection...`);
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    log(`Attempt ${attempt}/${maxRetries}: Checking ${connectionLabel}...`);
+
+    let client;
 
     try {
-      const client = postgres(adminConnectionString);
+      client = postgres(connectionString);
       await client`SELECT 1`;
-      await client.end();
-      logSuccess("Database is ready");
+      logSuccess(`${connectionLabel} is ready`);
       return true;
     } catch (err) {
-      log(`Database not ready: ${err.message}`);
+      log(`${connectionLabel} not ready: ${err.message}`);
 
-      if (attempt < MAX_RETRIES) {
-        log(`Waiting ${RETRY_DELAY}ms before next attempt...`);
-        await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY));
+      if (stopOnMissingDatabase && isMissingDatabaseError(err)) {
+        logWarning(
+          `${connectionLabel} appears to be missing. Skipping further retries.`
+        );
+        return false;
+      }
+
+      if (attempt < maxRetries) {
+        log(`Waiting ${retryDelayMs}ms before next attempt...`);
+        await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+      }
+    } finally {
+      if (client) {
+        try {
+          await client.end();
+        } catch {
+          // Best-effort cleanup for failed connection attempts.
+        }
       }
     }
   }
 
-  logError("Database failed to become ready after maximum attempts");
+  logError(`${connectionLabel} failed to become ready after maximum attempts`);
   return false;
+}
+
+async function waitForDatabase() {
+  return waitForConnection(ADMIN_DATABASE_URL, "database");
 }
 
 // Function to create database if it doesn't exist
 async function createDatabaseIfNotExists() {
-  log(`Checking if database '${DB_NAME}' exists...`);
-
-  const targetConnectionString = `postgres://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}`;
-  const adminConnectionString = `postgres://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/postgres`;
+  log(`Checking if database '${TARGET_DB_NAME}' exists...`);
 
   try {
     // Try to connect to the target database
-    const targetClient = postgres(targetConnectionString);
+    const targetClient = postgres(TARGET_DATABASE_URL);
     await targetClient`SELECT 1`;
     await targetClient.end();
-    logSuccess(`Database '${DB_NAME}' exists and is accessible`);
+    logSuccess(`Database '${TARGET_DB_NAME}' exists and is accessible`);
     return true;
   } catch (err) {
-    if (err.message.includes("does not exist")) {
-      log(`Database '${DB_NAME}' does not exist, creating it...`);
+    if (isMissingDatabaseError(err)) {
+      log(`Database '${TARGET_DB_NAME}' does not exist, creating it...`);
 
       try {
-        const adminClient = postgres(adminConnectionString);
-        await adminClient`CREATE DATABASE ${adminClient.unsafe(DB_NAME)}`;
+        const adminClient = postgres(ADMIN_DATABASE_URL);
+        const quotedName = `"${TARGET_DB_NAME.replace(/"/g, '""')}"`;  
+        await adminClient.unsafe(`CREATE DATABASE ${quotedName}`);
         await adminClient.end();
-        logSuccess(`Database '${DB_NAME}' created successfully`);
+        logSuccess(`Database '${TARGET_DB_NAME}' created successfully`);
         return true;
       } catch (createErr) {
         logError(
-          `Failed to create database '${DB_NAME}': ${createErr.message}`
+          `Failed to create database '${TARGET_DB_NAME}': ${createErr.message}`
         );
         return false;
       }
     } else {
-      logError(`Database connection error: ${err.message}`);
+      logError(`Database connection error: ${String(err.message || err)}`);
       return false;
     }
   }
@@ -113,8 +214,7 @@ async function runMigrations() {
 
   try {
     // Connect to the database
-    const client = postgres(DATABASE_URL);
-    const db = drizzle(client);
+    const client = postgres(TARGET_DATABASE_URL);
 
     // Get the migrations directory
     const migrationsDir = path.join(process.cwd(), "src", "db", "migrations");
@@ -262,7 +362,7 @@ async function ensurePolarColumns() {
   log("Ensuring Polar billing columns exist...");
 
   try {
-    const client = postgres(DATABASE_URL);
+    const client = postgres(TARGET_DATABASE_URL);
 
     // Check if organization table exists
     const orgTableExists = await client`
@@ -339,7 +439,7 @@ async function verifyMigrations() {
   log("Verifying migrations...");
 
   try {
-    const client = postgres(DATABASE_URL);
+    const client = postgres(TARGET_DATABASE_URL);
 
     // Check if key tables exist
     const tables = ["user", "organization", "tests", "jobs", "runs"];
@@ -380,7 +480,7 @@ async function runSeeds() {
 
   try {
     const seedModule = require("./db-seed.js");
-    const client = postgres(DATABASE_URL);
+    const client = postgres(TARGET_DATABASE_URL);
 
     // Run plan_limits seeding
     if (!(await seedModule.seedPlanLimits(client))) {
@@ -410,7 +510,7 @@ async function verifyPlanLimitsSeeded() {
   log("Verifying plan_limits table has required data...");
 
   try {
-    const client = postgres(DATABASE_URL);
+    const client = postgres(TARGET_DATABASE_URL);
 
     // Check if plan_limits table exists
     const tableExists = await client`
@@ -463,15 +563,61 @@ async function main() {
   try {
     log("Starting database migration process...");
     log(`Database URL: ${DATABASE_URL.replace(/:[^:@]*@/, ":***@")}`);
+    log(`Cloud database mode: ${IS_CLOUD_DB} (${CLOUD_MODE_SOURCE})`);
+    log(`Target database: ${TARGET_DB_NAME}`);
 
-    // Step 1: Wait for database to be ready
-    if (!(await waitForDatabase())) {
-      process.exit(1);
+    let shouldSkipAdminOperations = IS_CLOUD_DB;
+    let targetConnectionVerified = false;
+
+    // In auto mode with DATABASE_URL, verify target connectivity first.
+    // If target DB is already reachable, admin operations are unnecessary.
+    if (
+      !shouldSkipAdminOperations &&
+      EXPLICIT_SKIP_ADMIN_OPERATIONS === undefined &&
+      HAS_EXPLICIT_DATABASE_URL
+    ) {
+      log(
+        "Auto mode with DATABASE_URL detected. Probing target database before admin operations..."
+      );
+      if (
+        await waitForConnection(TARGET_DATABASE_URL, "target database connection", {
+          maxRetries: 3,
+          stopOnMissingDatabase: true,
+        })
+      ) {
+        shouldSkipAdminOperations = true;
+        targetConnectionVerified = true;
+        logSuccess(
+          "Target database is reachable. Skipping admin DB wait/create steps."
+        );
+      }
     }
 
-    // Step 2: Create database if it doesn't exist
-    if (!(await createDatabaseIfNotExists())) {
-      process.exit(1);
+    if (shouldSkipAdminOperations) {
+      if (!targetConnectionVerified) {
+        // In cloud mode, DB is assumed managed/provisioned.
+        // Skip admin DB wait/create and only verify connectivity.
+        log("Cloud database detected. Verifying connection with retries...");
+        if (
+          !(await waitForConnection(
+            TARGET_DATABASE_URL,
+            "cloud database connection"
+          ))
+        ) {
+          process.exit(1);
+        }
+      }
+    } else {
+      // Self-hosted/admin-access path: wait for admin database and create target if needed
+      // Step 1: Wait for database to be ready
+      if (!(await waitForDatabase())) {
+        process.exit(1);
+      }
+
+      // Step 2: Create database if it doesn't exist
+      if (!(await createDatabaseIfNotExists())) {
+        process.exit(1);
+      }
     }
 
     // Step 3: Run migrations

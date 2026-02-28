@@ -22,21 +22,12 @@ import { TableBadge } from "@/components/ui/table-badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
   Users,
   Crown,
   Building2,
   FolderOpen,
   LayoutDashboard,
   ListOrdered,
-  UserPlus,
   UserCheck,
   CalendarClock,
   Code,
@@ -45,17 +36,9 @@ import {
   RefreshCw,
   AlertCircle,
 } from "lucide-react";
-import { toast } from "sonner";
 import { useBreadcrumbs } from "@/components/breadcrumb-context";
 import { TabLoadingSpinner } from "@/components/ui/table-skeleton";
 import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
-import { Loader2 } from "lucide-react";
-import { FormInput } from "@/components/ui/form-input";
-import {
-  createUserSchema,
-  type CreateUserFormData,
-} from "@/lib/validations/user";
-import { z } from "zod";
 
 export default function AdminDashboard() {
   const { setBreadcrumbs } = useBreadcrumbs();
@@ -84,10 +67,6 @@ export default function AdminDashboard() {
     : "overview";
 
   const [activeTab, setActiveTab] = useState(safeTab);
-
-  const [showCreateUserDialog, setShowCreateUserDialog] = useState(false);
-  const [creatingUser, setCreatingUser] = useState(false);
-  const [newUser, setNewUser] = useState({ name: "", email: "", password: "", role: "project_viewer" });
 
   // Bull Dashboard iframe state
   const [iframeLoaded, setIframeLoaded] = useState(false);
@@ -158,61 +137,6 @@ export default function AdminDashboard() {
     iframeTimeoutRef.current = setTimeout(() => {
       if (!iframeLoadedRef.current) setIframeError(true);
     }, 15000);
-  };
-
-  const handleCreateUser = async () => {
-    // Validate form data with Zod
-    const userData: CreateUserFormData = {
-      name: newUser.name.trim(),
-      email: newUser.email.trim(),
-      password: newUser.password,
-    };
-
-    try {
-      createUserSchema.parse(userData);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        if (error.errors && error.errors.length > 0) {
-          toast.error(error.errors[0].message);
-          return;
-        }
-      }
-      toast.error("Please fix the form errors");
-      return;
-    }
-
-    setCreatingUser(true);
-    try {
-      const response = await fetch("/api/admin/users", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          name: userData.name,
-          email: userData.email,
-          password: userData.password,
-          role: newUser.role,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
-        toast.success("User created successfully");
-        setShowCreateUserDialog(false);
-        setNewUser({ name: "", email: "", password: "", role: "project_viewer" });
-        invalidateUsers();
-        invalidateStats();
-      } else {
-        toast.error(data.error || "Failed to create user");
-      }
-    } catch (error) {
-      console.error("Error creating user:", error);
-      toast.error("Failed to create user");
-    } finally {
-      setCreatingUser(false);
-    }
   };
 
   if (isInitialLoading) {
@@ -410,88 +334,6 @@ export default function AdminDashboard() {
 
             <TabsContent value="users" className="space-y-4">
 
-              {/* Create User Dialog */}
-              <Dialog
-                open={showCreateUserDialog}
-                onOpenChange={setShowCreateUserDialog}
-              >
-                <DialogContent className="sm:max-w-md">
-                  <DialogHeader>
-                    <DialogTitle className="flex items-center gap-2">
-                      <UserPlus className="h-5 w-5" />
-                      Create New User
-                    </DialogTitle>
-                    <DialogDescription>
-                      Add a new user to the system. They will receive an email
-                      with login instructions.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <div className="space-y-4 py-4">
-                    <FormInput
-                      id="name"
-                      label="Name"
-                      value={newUser.name}
-                      onChange={(e) =>
-                        setNewUser({ ...newUser, name: e.target.value })
-                      }
-                      placeholder="Enter full name"
-                      maxLength={100}
-                      showCharacterCount={false}
-                    />
-                    <FormInput
-                      id="email"
-                      label="Email"
-                      type="email"
-                      value={newUser.email}
-                      onChange={(e) =>
-                        setNewUser({ ...newUser, email: e.target.value })
-                      }
-                      placeholder="user@example.com"
-                      maxLength={255}
-                      showCharacterCount={false}
-                    />
-                    <FormInput
-                      id="password"
-                      label="Password"
-                      type="password"
-                      value={newUser.password}
-                      onChange={(e) =>
-                        setNewUser({ ...newUser, password: e.target.value })
-                      }
-                      placeholder="Min 8 chars, uppercase, lowercase, number"
-                      maxLength={128}
-                      showCharacterCount={false}
-                    />
-                  </div>
-                  <DialogFooter className="gap-2 sm:gap-0">
-                    <Button
-                      variant="outline"
-                      onClick={() => setShowCreateUserDialog(false)}
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      onClick={handleCreateUser}
-                      disabled={
-                        creatingUser ||
-                        !newUser.name.trim() ||
-                        !newUser.email.trim() ||
-                        !newUser.password.trim()
-                      }
-                    >
-                      {creatingUser ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Creating...
-                        </>
-                      ) : (
-                        "Create User"
-                      )}
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-
               {usersLoading && users.length === 0 ? (
                 <TabLoadingSpinner message="Loading users..." />
               ) : (
@@ -501,7 +343,6 @@ export default function AdminDashboard() {
                     invalidateUsers();
                     invalidateStats();
                   }}
-                  onCreateUser={() => setShowCreateUserDialog(true)}
                 />
               )}
             </TabsContent>

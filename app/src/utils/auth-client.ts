@@ -66,7 +66,6 @@ export const {
   // Admin methods
   admin: {
     listUsers: listAllUsers,
-    createUser: createUserAsAdmin,
     // setUserRole: setUserRole, // Not available in client
     banUser: banUser,
     unbanUser: unbanUser,

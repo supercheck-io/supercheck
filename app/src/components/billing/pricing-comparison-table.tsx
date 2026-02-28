@@ -14,6 +14,7 @@ export interface FeatureRow {
   name: string;
   plus: string | boolean | number;
   pro: string | boolean | number;
+  enterprise?: string | boolean | number;
   selfHosted?: string | boolean | number;
 }
 
@@ -63,14 +64,17 @@ export function PricingComparisonTable({
       <Table>
         <TableHeader className="bg-muted/50 sticky top-0 z-10">
           <TableRow className="hover:bg-muted/50 border-b">
-            <TableHead className="font-semibold text-foreground w-2/5 min-w-[200px] py-3">
+            <TableHead className="font-semibold text-foreground w-1/4 min-w-[180px] py-3">
               Feature
             </TableHead>
-            <TableHead className="text-center font-semibold text-foreground min-w-[140px] py-3">
+            <TableHead className="text-center font-semibold text-foreground min-w-[120px] py-3">
               Plus
             </TableHead>
-            <TableHead className="text-center font-semibold text-foreground min-w-[140px] py-3">
+            <TableHead className="text-center font-semibold text-foreground min-w-[120px] py-3">
               Pro
+            </TableHead>
+            <TableHead className="text-center font-semibold text-foreground min-w-[120px] py-3">
+              Enterprise
             </TableHead>
           </TableRow>
         </TableHeader>
@@ -82,7 +86,7 @@ export function PricingComparisonTable({
               className="bg-muted/50 hover:bg-muted/50 border-l-2 border-l-primary/50"
             >
               <TableCell
-                colSpan={3}
+                colSpan={4}
                 className="font-semibold text-xs uppercase tracking-wider py-3 text-muted-foreground"
               >
                 {category.category}
@@ -103,13 +107,16 @@ export function PricingComparisonTable({
                 <TableCell className="text-center py-3 text-sm">
                   <PricingFeatureCell value={feature.pro} />
                 </TableCell>
+                <TableCell className="text-center py-3 text-sm">
+                  <PricingFeatureCell value={feature.enterprise ?? "Custom"} />
+                </TableCell>
               </TableRow>
             )),
           ])}
           {/* Overage Pricing Section */}
           <TableRow className="bg-muted/50 hover:bg-muted/50 border-l-2 border-l-primary/50 border-t-2">
             <TableCell
-              colSpan={3}
+              colSpan={4}
               className="font-semibold text-xs uppercase tracking-wider py-3 text-muted-foreground"
             >
               Overage Pricing
@@ -125,6 +132,9 @@ export function PricingComparisonTable({
             <TableCell className="text-center py-3 text-sm font-medium">
               {formatPrice(pricing.pro.playwrightMinutes, "min")}
             </TableCell>
+            <TableCell className="text-center py-3 text-sm text-muted-foreground">
+              Custom
+            </TableCell>
           </TableRow>
           <TableRow className="hover:bg-muted/30 transition-colors">
             <TableCell className="py-3 pl-6 text-sm font-medium">
@@ -136,6 +146,9 @@ export function PricingComparisonTable({
             <TableCell className="text-center py-3 text-sm font-medium">
               {formatPrice(pricing.pro.k6VuMinutes, "VU-min")}
             </TableCell>
+            <TableCell className="text-center py-3 text-sm text-muted-foreground">
+              Custom
+            </TableCell>
           </TableRow>
           <TableRow className="hover:bg-muted/30 transition-colors border-b">
             <TableCell className="py-3 pl-6 text-sm font-medium">
@@ -146,6 +159,9 @@ export function PricingComparisonTable({
             </TableCell>
             <TableCell className="text-center py-3 text-sm text-muted-foreground">
               Hard limit (no overage)
+            </TableCell>
+            <TableCell className="text-center py-3 text-sm text-muted-foreground">
+              Custom
             </TableCell>
           </TableRow>
         </TableBody>

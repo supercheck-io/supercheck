@@ -30,7 +30,12 @@ export default async function OnboardingLayout({
 
   return (
     <QueryProvider>
-      <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
+      <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/30 relative overflow-hidden">
+        {/* Decorative background elements */}
+        <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+          <div className="absolute -top-40 right-0 h-[500px] w-[500px] rounded-full bg-emerald-500/[0.03] blur-3xl" />
+          <div className="absolute top-1/3 -left-32 h-[400px] w-[400px] rounded-full bg-emerald-500/[0.02] blur-3xl" />
+        </div>
         {/* Header */}
         <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
           <div className="container mx-auto px-4 py-4 flex items-center justify-between">

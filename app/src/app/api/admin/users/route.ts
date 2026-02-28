@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAllUsers, requireAdmin } from '@/lib/admin';
-import { createUserAsAdmin } from '@/utils/auth-client';
 import { db } from '@/utils/db';
 import { user, session } from '@/db/schema';
 import { eq } from 'drizzle-orm';
@@ -31,49 +30,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       { success: false, error: 'Failed to fetch users' },
       { status: error instanceof Error && error.message === 'Admin privileges required' ? 403 : 500 }
-    );
-  }
-}
-
-export async function POST(request: NextRequest) {
-  try {
-    await requireAdmin();
-    
-    const body = await request.json();
-    const { name, email, password, role = 'user' } = body;
-    
-    if (!name || !email || !password) {
-      return NextResponse.json(
-        { success: false, error: 'Name, email, and password are required' },
-        { status: 400 }
-      );
-    }
-    
-    // Use Better Auth admin client to create user
-    const newUser = await createUserAsAdmin({
-      name,
-      email,
-      password,
-      role
-    });
-    
-    // Set email as verified for admin-created users
-    if ('user' in newUser && newUser.user && typeof newUser.user === 'object' && 'id' in newUser.user) {
-      await db
-        .update(user)
-        .set({ emailVerified: true })
-        .where(eq(user.id, newUser.user.id as string));
-    }
-    
-    return NextResponse.json({
-      success: true,
-      data: newUser
-    });
-  } catch (error) {
-    console.error('Admin users POST error:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to create user' },
-      { status: 500 }
     );
   }
 }

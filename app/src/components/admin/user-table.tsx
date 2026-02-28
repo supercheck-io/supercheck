@@ -8,10 +8,9 @@ import { createUserColumns, AdminUser } from "./user-columns";
 interface UserTableProps {
   users: AdminUser[];
   onUserUpdate: () => void;
-  onCreateUser?: () => void;
 }
 
-export function UserTable({ users, onUserUpdate, onCreateUser }: UserTableProps) {
+export function UserTable({ users, onUserUpdate }: UserTableProps) {
   const columns = React.useMemo(
     () => createUserColumns(onUserUpdate),
     [onUserUpdate]
@@ -36,9 +35,9 @@ export function UserTable({ users, onUserUpdate, onCreateUser }: UserTableProps)
    
   const CustomToolbar = React.useCallback(
     ({ table }: { table: any }) => (
-      <UserTableToolbar table={table} organizations={uniqueOrganizations} onCreateUser={onCreateUser} />
+      <UserTableToolbar table={table} organizations={uniqueOrganizations} />
     ),
-    [uniqueOrganizations, onCreateUser]
+    [uniqueOrganizations]
   );
 
   return (

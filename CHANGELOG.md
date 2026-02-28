@@ -5,6 +5,18 @@ All notable changes to Supercheck are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 
+## [1.3.2] - Unreleased
+
+### Added
+- Enhanced database migration script with optimized auto-probe logic and security improvements
+
+### Changed
+- Streamlined admin interface by removing unused user creation functionality
+
+### Fixed
+- Database migration script performance optimization for self-hosted deployments
+- SQL injection prevention in database creation commands
+
 ## [1.3.1] - 2026-02-25
 
 ### Added

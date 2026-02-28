@@ -11,11 +11,10 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { PricingTierCard } from "@/components/billing/pricing-tier-card";
 import { PricingComparisonTable } from "@/components/billing/pricing-comparison-table";
-import { Shield, RefreshCw, AlertCircle } from "lucide-react";
+import { RefreshCw, AlertCircle, ExternalLink, ArrowRight, Mail } from "lucide-react";
 
 interface PricingPlan {
   id: string;
@@ -53,6 +52,7 @@ interface FeatureRow {
   name: string;
   plus: string | boolean | number;
   pro: string | boolean | number;
+  enterprise?: string | boolean | number;
   selfHosted?: string | boolean | number;
 }
 
@@ -110,7 +110,7 @@ const defaultFaqs = [
   {
     question: "Is there a free trial?",
     answer:
-      "We don't offer a free trial, but you can start with our Plus plan and upgrade or downgrade at any time based on your needs.",
+      "Try our free demo at demo.supercheck.dev — no signup required. When you're ready, choose a plan to get started.",
   },
   {
     question: "Can I cancel my subscription?",
@@ -252,28 +252,25 @@ function SubscribePageContent() {
       )}
 
       {/* Hero Section */}
-      <section className="text-center space-y-3 pt-2">
-        <h1 className="text-3xl md:text-4xl font-bold tracking-tight">
-          Choose your plan
+      <section className="text-center space-y-4 pt-4">
+        <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold tracking-tight">
+          Simple, transparent pricing
         </h1>
-        <p className="text-base text-muted-foreground max-w-2xl mx-auto">
-          Powerful monitoring and testing for your team. Upgrade or downgrade anytime.
+        <p className="text-base md:text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed">
+          Open-Source Testing, Monitoring, and Reliability — as Code
         </p>
-        <div className="flex items-center justify-center gap-4 text-xs text-muted-foreground pt-1">
-          <span className="flex items-center gap-1.5">
-            <Shield className="h-3.5 w-3.5" />
-            Secure payment via Polar
-          </span>
-          <span>·</span>
+        <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs text-muted-foreground pt-1">
           <span>Cancel anytime</span>
-          <span>·</span>
+          <span className="hidden sm:inline">·</span>
           <span>No hidden fees</span>
+          <span className="hidden sm:inline">·</span>
+          <span>Usage-based overage</span>
         </div>
       </section>
 
       {/* Pricing Tier Cards */}
-      <section className="max-w-5xl mx-auto">
-        <div className="grid gap-6 md:grid-cols-2 max-w-4xl mx-auto">
+      <section className="max-w-6xl mx-auto">
+        <div className="grid gap-6 lg:grid-cols-3 md:grid-cols-2 max-w-6xl mx-auto">
           {plans.map((plan) => (
             <PricingTierCard
               key={plan.id}
@@ -304,74 +301,106 @@ function SubscribePageContent() {
               highlighted={plan.id === "pro"}
             />
           ))}
+
+          {/* Enterprise Card */}
+          <PricingTierCard
+            name="Enterprise"
+            price="Custom"
+            tagline="For large organizations with custom requirements"
+            badge="Tailored"
+            keyFeatures={[
+              "Unlimited uptime monitors",
+              "Unlimited Playwright & K6 minutes",
+              "Unlimited AI credits",
+              "Unlimited team members & projects",
+              "Custom data retention policies",
+              "Dedicated account manager",
+              "Custom SLA & priority support",
+              "SSO/SAML & advanced security",
+              "Onboarding & training",
+            ]}
+            ctaText="Contact Sales"
+            ctaVariant="outline"
+            ctaHref="mailto:hello@supercheck.io"
+          />
         </div>
 
-        {/* Self-hosted mention */}
-        <p className="text-center text-sm text-muted-foreground mt-6">
-          Need unlimited usage?{" "}
+        {/* Self-hosted & demo links */}
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mt-8 text-sm">
+          <a
+            href="https://demo.supercheck.dev"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Try free demo
+            <ExternalLink className="h-3.5 w-3.5" />
+          </a>
+          <span className="hidden sm:inline text-muted-foreground/40">|</span>
           <a
             href="https://github.com/supercheck-io/supercheck"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-primary hover:underline font-medium"
+            className="inline-flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
           >
-            Self-host Supercheck for free
+            Self-host for free
+            <ArrowRight className="h-3.5 w-3.5" />
           </a>
-        </p>
+        </div>
       </section>
-
-      <Separator className="my-8" />
 
       {/* Feature Comparison Table */}
       <section className="max-w-7xl mx-auto">
-        <div className="text-center space-y-1.5 mb-6">
-          <h2 className="text-2xl font-bold">Full feature comparison</h2>
-          <p className="text-sm text-muted-foreground">
-            All the details you need to make the right choice
-          </p>
+        <div className="rounded-2xl border bg-card p-6 md:p-8">
+          <div className="text-center space-y-1.5 mb-6">
+            <h2 className="text-2xl font-bold">Compare plans in detail</h2>
+            <p className="text-sm text-muted-foreground">
+              Everything included at a glance
+            </p>
+          </div>
+          {pricingData && (
+            <PricingComparisonTable
+              categories={pricingData.featureComparison}
+              overagePricing={pricingData.overagePricing}
+            />
+          )}
         </div>
-        {pricingData && (
-          <PricingComparisonTable
-            categories={pricingData.featureComparison}
-            overagePricing={pricingData.overagePricing}
-          />
-        )}
       </section>
-
-      <Separator className="my-8" />
 
       {/* FAQ Section */}
       <section className="max-w-3xl mx-auto">
-        <div className="text-center space-y-1.5 mb-6">
-          <h2 className="text-2xl font-bold">Frequently asked questions</h2>
-          <p className="text-sm text-muted-foreground">
-            Everything you need to know about pricing
-          </p>
+        <div className="rounded-2xl border bg-card p-6 md:p-8">
+          <div className="text-center space-y-1.5 mb-6">
+            <h2 className="text-2xl font-bold">Frequently asked questions</h2>
+            <p className="text-sm text-muted-foreground">
+              Everything you need to know about pricing
+            </p>
+          </div>
+          <Accordion type="single" collapsible className="w-full">
+            {faqs.map((faq, index) => (
+              <AccordionItem key={index} value={`item-${index}`}>
+                <AccordionTrigger className="text-left text-sm font-medium py-4 hover:no-underline">
+                  {faq.question}
+                </AccordionTrigger>
+                <AccordionContent className="text-sm text-muted-foreground pb-4">
+                  {faq.answer}
+                </AccordionContent>
+              </AccordionItem>
+            ))}
+          </Accordion>
         </div>
-        <Accordion type="single" collapsible className="w-full">
-          {faqs.map((faq, index) => (
-            <AccordionItem key={index} value={`item-${index}`}>
-              <AccordionTrigger className="text-left text-sm font-medium py-4 hover:no-underline">
-                {faq.question}
-              </AccordionTrigger>
-              <AccordionContent className="text-sm text-muted-foreground pb-4">
-                {faq.answer}
-              </AccordionContent>
-            </AccordionItem>
-          ))}
-        </Accordion>
       </section>
 
-      {/* Contact Sales CTA */}
-      <section className="text-center space-y-3 max-w-xl mx-auto pb-4">
-        <h3 className="text-lg font-semibold">
-          Need a custom enterprise plan?
-        </h3>
+      {/* Bottom contact */}
+      <section className="text-center pb-6 space-y-3">
         <p className="text-sm text-muted-foreground">
-          Contact us for volume discounts, custom SLAs, and dedicated support.
+          Have more questions? We&apos;d love to help.
         </p>
-        <Button size="default" asChild>
-          <a href="mailto:hello@supercheck.io">Contact Sales</a>
+        <Button variant="outline" size="sm" asChild>
+          <a href="mailto:hello@supercheck.io">
+            <Mail className="h-4 w-4 mr-2" />
+            Contact Us
+          </a>
         </Button>
       </section>
     </div>
@@ -382,14 +411,15 @@ function SubscribeSkeleton() {
   return (
     <div className="max-w-7xl mx-auto py-6 md:py-8 px-4 space-y-10 md:space-y-12">
       {/* Hero Skeleton */}
-      <div className="text-center space-y-2 pt-2">
-        <Skeleton className="h-9 w-64 mx-auto" />
+      <div className="text-center space-y-3 pt-4">
+        <Skeleton className="h-10 w-80 mx-auto" />
         <Skeleton className="h-5 w-96 mx-auto max-w-full" />
+        <Skeleton className="h-4 w-64 mx-auto" />
       </div>
 
       {/* Pricing Cards Skeleton */}
-      <div className="grid gap-6 md:grid-cols-2 max-w-4xl mx-auto">
-        {[1, 2].map((i) => (
+      <div className="grid gap-6 lg:grid-cols-3 md:grid-cols-2 max-w-6xl mx-auto">
+        {[1, 2, 3].map((i) => (
           <Card key={i} className="p-6 border">
             {/* Plan name and tagline */}
             <Skeleton className="h-8 w-24 mb-1" />
@@ -416,11 +446,10 @@ function SubscribeSkeleton() {
       </div>
 
       {/* Self-hosted link skeleton */}
-      <div className="text-center">
-        <Skeleton className="h-4 w-72 mx-auto" />
+      <div className="flex justify-center gap-4">
+        <Skeleton className="h-4 w-28" />
+        <Skeleton className="h-4 w-32" />
       </div>
-
-      <Skeleton className="h-px w-full" />
 
       {/* Table Skeleton */}
       <div className="space-y-4 max-w-7xl mx-auto">
@@ -441,8 +470,6 @@ function SubscribeSkeleton() {
         </div>
       </div>
 
-      <Skeleton className="h-px w-full" />
-
       {/* FAQ Skeleton */}
       <div className="space-y-4 max-w-3xl mx-auto">
         <div className="text-center space-y-1.5 mb-6">
@@ -454,13 +481,6 @@ function SubscribeSkeleton() {
             <Skeleton key={i} className="h-14 w-full rounded-lg" />
           ))}
         </div>
-      </div>
-
-      {/* Contact Sales Skeleton */}
-      <div className="text-center space-y-3 max-w-xl mx-auto pb-4">
-        <Skeleton className="h-6 w-64 mx-auto" />
-        <Skeleton className="h-4 w-80 mx-auto" />
-        <Skeleton className="h-10 w-32 mx-auto" />
       </div>
     </div>
   );

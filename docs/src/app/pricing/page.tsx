@@ -42,7 +42,7 @@ const plans = [
             'Email support',
         ],
         cta: 'Get Started',
-        ctaLink: 'https://demo.supercheck.io/sign-up',
+        ctaLink: 'https://app.supercheck.io/sign-up',
         highlighted: false,
     },
     {
@@ -62,8 +62,27 @@ const plans = [
             'Priority support',
         ],
         cta: 'Get Started',
-        ctaLink: 'https://demo.supercheck.io/sign-up',
+        ctaLink: 'https://app.supercheck.io/sign-up',
         highlighted: true,
+    },
+    {
+        name: 'Enterprise',
+        price: 'Custom',
+        description: 'For large organizations',
+        features: [
+            'Unlimited monitors',
+            'Unlimited Playwright & K6 minutes',
+            'Unlimited AI credits',
+            'Unlimited team members & projects',
+            'Custom data retention policies',
+            'Dedicated account manager',
+            'Custom SLA & priority support',
+            'SSO/SAML & advanced security',
+            'Onboarding & training',
+        ],
+        cta: 'Contact Sales',
+        ctaLink: 'mailto:hello@supercheck.io',
+        highlighted: false,
     },
 ];
 
@@ -111,6 +130,10 @@ const comparisonFeatures = [
 
 const faqs = [
     {
+        question: 'Can I try Supercheck before subscribing?',
+        answer: 'Yes! Try our free demo at demo.supercheck.dev \u2014 no signup required. When you\u2019re ready, choose a plan to get started.',
+    },
+    {
         question: 'Do unused minutes roll over?',
         answer: 'No, plan quotas reset monthly on your billing date.',
     },
@@ -125,6 +148,10 @@ const faqs = [
     {
         question: 'Is the self-hosted version really free?',
         answer: 'Yes. Supercheck is open source. Self-host on your infrastructure with unlimited usage at no cost.',
+    },
+    {
+        question: 'Do you offer enterprise plans?',
+        answer: 'Yes! Enterprise plans include unlimited usage, custom SLAs, dedicated account managers, and personalized onboarding. Contact hello@supercheck.io to discuss your needs.',
     },
 ];
 
@@ -166,7 +193,7 @@ export default function PricingPage() {
                 </div>
 
                 {/* Pricing Cards */}
-                <div className="grid md:grid-cols-3 gap-8 mb-20">
+                <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8 mb-20">
                     {plans.map((plan) => (
                         <div
                             key={plan.name}
@@ -257,13 +284,14 @@ export default function PricingPage() {
                                         <th className="text-center px-6 py-3 text-sm font-medium">Self-Hosted</th>
                                         <th className="text-center px-6 py-3 text-sm font-medium">Plus</th>
                                         <th className="text-center px-6 py-3 text-sm font-medium">Pro</th>
+                                        <th className="text-center px-6 py-3 text-sm font-medium">Enterprise</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {comparisonFeatures.map((category) => (
                                         <React.Fragment key={category.category}>
                                             <tr className="bg-fd-muted/50 border-l-2 border-l-fd-primary/50">
-                                                <td colSpan={4} className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-fd-muted-foreground">
+                                                <td colSpan={5} className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-fd-muted-foreground">
                                                     {category.category}
                                                 </td>
                                             </tr>
@@ -273,6 +301,7 @@ export default function PricingPage() {
                                                     <td className="px-6 py-3 text-sm text-center">{item.selfHosted}</td>
                                                     <td className="px-6 py-3 text-sm text-center">{item.plus}</td>
                                                     <td className="px-6 py-3 text-sm text-center">{item.pro}</td>
+                                                    <td className="px-6 py-3 text-sm text-center">{(item as Record<string, string>).enterprise ?? 'Custom'}</td>
                                                 </tr>
                                             ))}
                                         </React.Fragment>
