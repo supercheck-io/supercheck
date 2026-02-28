@@ -13,6 +13,7 @@ import {
 import { prepareJobTestScripts } from "@/lib/job-execution-utils";
 import { validateK6Script } from "@/lib/k6-validator";
 import { subscriptionService } from "@/lib/services/subscription-service";
+import { polarUsageService } from "@/lib/services/polar-usage.service";
 import {
   apiKeyRateLimiter,
   parseRateLimitConfig,
@@ -276,6 +277,15 @@ export async function POST(
         `[Job Trigger] Polar customer validation failed for org ${job.organizationId.substring(0, 8)}...`
       );
       return NextResponse.json({ error: errorMessage }, { status: 402 });
+    }
+
+    // BILLING: Check spending limit hard-stop before allowing execution
+    const spendingBlock = await polarUsageService.shouldBlockUsage(job.organizationId);
+    if (spendingBlock.blocked) {
+      console.warn(
+        `[Job Trigger] Spending limit reached for org ${job.organizationId.substring(0, 8)}...`
+      );
+      return NextResponse.json({ error: spendingBlock.reason }, { status: 402 });
     }
 
     // Check subscription plan limits

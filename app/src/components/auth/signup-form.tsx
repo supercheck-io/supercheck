@@ -11,6 +11,7 @@ import { TurnstileCaptcha, type TurnstileCaptchaRef } from "./turnstile-captcha"
 import { useCaptcha } from "@/hooks/use-captcha";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { Building2 } from "lucide-react";
 import {
   FieldGroup,
   Field,
@@ -163,6 +164,19 @@ export function SignupForm({
                   <p className="text-sm font-medium">Invitation for</p>
                   <p className="text-sm text-muted-foreground truncate">
                     {inviteData.email}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Open registration callout - only show in self-hosted open registration */}
+            {isOpenRegistration && (
+              <div className="flex items-start gap-3 p-3 rounded-lg bg-muted/50 border border-border/50 text-sm">
+                <Building2 className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="font-medium text-foreground">Joining an existing team?</p>
+                  <p className="text-muted-foreground mt-0.5">
+                    Ask your admin for an invite to join their organization instead of creating a new one.
                   </p>
                 </div>
               </div>

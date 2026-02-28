@@ -894,15 +894,19 @@ export async function handleOrderPaid(payload: PolarWebhookPayload) {
     const plan = getPlanFromProductId(productId);
 
     // Get subscription ID from order's subscription reference if available
+    // IMPORTANT: Do NOT fall back to orderId - using an order ID as a subscription ID
+    // causes mismatches when the real subscription webhook arrives later
     const subscriptionId =
       (payload.data as any).subscription?.id ||  
       (payload.data as any).subscriptionId ||  
-      orderId; // Fallback to order ID
+      null;
 
     await subscriptionService.updateSubscription(org.id, {
       subscriptionPlan: plan,
       subscriptionStatus: "active",
-      subscriptionId: subscriptionId, // Now properly sets subscription ID
+      // Only set subscriptionId if we have a real one from the order payload.
+      // If null, omit it to avoid overwriting a valid ID set by subscription.active webhook.
+      ...(subscriptionId ? { subscriptionId } : {}),
       polarCustomerId: customerId,
     });
     console.log(
@@ -1109,13 +1113,15 @@ export async function handleCustomerDeleted(payload: PolarWebhookPayload) {
   }
 
   // CRITICAL: Revoke subscription immediately
-  // Set subscription to 'none' status and clear customer ID
+  // Set subscription to 'none' status and clear the plan
+  // Consistent with handleSubscriptionRevoked which also clears the plan
   await db
     .update(organization)
     .set({
       subscriptionStatus: "none",
-      // Keep polarCustomerId for audit trail, but mark as deleted
-      // The validatePolarCustomer check will fail since customer doesn't exist in Polar
+      subscriptionPlan: null, // Clear plan on customer deletion (matches revocation behavior)
+      // Keep polarCustomerId for audit trail
+      // The validatePolarCustomer check will also fail since customer doesn't exist in Polar
     })
     .where(eq(organization.id, org.id));
 

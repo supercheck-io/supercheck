@@ -1,12 +1,16 @@
 /**
  * Polar Usage Service
  * 
- * Handles usage-based billing integration with Polar:
- * - Event ingestion for usage tracking
- * - Customer meter management
- * - Usage synchronization
+ * Handles usage metrics, spending limits, and Polar sync retry for billing:
+ * - Usage metrics calculation (overage, costs)
+ * - Spending limit enforcement (hard-stop checks)
+ * - Batch retry of failed Polar event syncs (cron-driven)
  * 
- * Uses the Better Auth Polar plugin's usage functionality
+ * ARCHITECTURE NOTE:
+ * - The worker's UsageTrackerService handles real-time usage tracking and
+ *   immediate Polar sync after each execution.
+ * - This service provides: metrics queries, spending limit checks for
+ *   API-level enforcement, and batch retry of failed syncs via cron.
  */
 
 import { db } from "@/utils/db";
@@ -16,21 +20,9 @@ import {
   billingSettings,
   overagePricing
 } from "@/db/schema";
-import { eq, and, sql, gte, lte } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { isPolarEnabled, getPolarConfig } from "@/lib/feature-flags";
 import type { Polar } from "@polar-sh/sdk";
-
-// Event types for usage tracking
-export type UsageEventType = "playwright_execution" | "k6_execution" | "monitor_execution" | "ai_usage";
-
-export interface UsageIngestionParams {
-  organizationId: string;
-  eventType: UsageEventType;
-  eventName: string;
-  units: number;
-  unitType: "minutes" | "vu_minutes" | "credits";
-  metadata?: Record<string, unknown>;
-}
 
 export interface UsageMetrics {
   playwrightMinutes: {
@@ -102,90 +94,6 @@ class PolarUsageService {
     } catch (error) {
       console.error("[PolarUsage] Failed to initialize Polar client:", error);
       return null;
-    }
-  }
-
-  /**
-   * Ingest a usage event
-   * Records locally and syncs to Polar for billing
-   */
-  async ingestUsageEvent(params: UsageIngestionParams): Promise<{ success: boolean; eventId?: string; error?: string }> {
-    const { organizationId, eventType, eventName, units, unitType, metadata } = params;
-
-    try {
-      // Get organization details
-      const org = await db.query.organization.findFirst({
-        where: eq(organization.id, organizationId),
-      });
-
-      if (!org) {
-        return { success: false, error: "Organization not found" };
-      }
-
-      // Get billing period
-      const periodStart = org.usagePeriodStart || new Date();
-      const periodEnd = org.usagePeriodEnd || this.getNextMonthDate(periodStart);
-
-      // Check spending limit before allowing usage
-      const spendingStatus = await this.getSpendingStatus(organizationId);
-      if (spendingStatus.limitEnabled && spendingStatus.hardStopEnabled && spendingStatus.isAtLimit) {
-        return { 
-          success: false, 
-          error: "Spending limit reached. Please increase your limit or disable hard stop to continue." 
-        };
-      }
-
-      // Record usage event locally
-      const [usageEvent] = await db.insert(usageEvents).values({
-        organizationId,
-        eventType,
-        eventName,
-        units: units.toString(),
-        unitType,
-        metadata: metadata ?? null,
-        billingPeriodStart: periodStart,
-        billingPeriodEnd: periodEnd,
-        syncedToPolar: false,
-      }).returning();
-
-      // Update organization usage counters
-      if (unitType === "minutes") {
-        await db
-          .update(organization)
-          .set({
-            playwrightMinutesUsed: sql`COALESCE(${organization.playwrightMinutesUsed}, 0) + ${Math.ceil(units)}`,
-          })
-          .where(eq(organization.id, organizationId));
-      } else if (unitType === "vu_minutes") {
-        await db
-          .update(organization)
-          .set({
-            k6VuMinutesUsed: sql`COALESCE(${organization.k6VuMinutesUsed}, 0) + ${units}`,
-          })
-          .where(eq(organization.id, organizationId));
-      } else if (unitType === "credits") {
-        await db
-          .update(organization)
-          .set({
-            aiCreditsUsed: sql`COALESCE(${organization.aiCreditsUsed}, 0) + ${Math.ceil(units)}`,
-          })
-          .where(eq(organization.id, organizationId));
-      }
-
-      // Sync to Polar if enabled
-      if (isPolarEnabled() && org.polarCustomerId) {
-        await this.syncEventToPolar(usageEvent.id);
-      }
-
-      console.log(`[PolarUsage] Ingested ${units} ${unitType} for org ${organizationId}`);
-
-      return { success: true, eventId: usageEvent.id };
-    } catch (error) {
-      console.error("[PolarUsage] Failed to ingest usage event:", error);
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : "Unknown error" 
-      };
     }
   }
 
@@ -458,50 +366,6 @@ class PolarUsageService {
   }
 
   /**
-   * Get usage events for a billing period
-   */
-  async getUsageEvents(
-    organizationId: string,
-    periodStart: Date,
-    periodEnd: Date,
-    options?: { limit?: number; offset?: number; eventType?: UsageEventType }
-  ) {
-    const conditions = [
-      eq(usageEvents.organizationId, organizationId),
-      gte(usageEvents.billingPeriodStart, periodStart),
-      lte(usageEvents.billingPeriodEnd, periodEnd),
-    ];
-
-    if (options?.eventType) {
-      conditions.push(eq(usageEvents.eventType, options.eventType));
-    }
-
-    return db.query.usageEvents.findMany({
-      where: and(...conditions),
-      limit: options?.limit || 100,
-      offset: options?.offset || 0,
-      orderBy: (events, { desc }) => [desc(events.createdAt)],
-    });
-  }
-
-  /**
-   * Helper to calculate billing period end (30 days from start)
-   * Uses 30-day intervals instead of calendar months for consistency
-   */
-  private getNextBillingPeriodEnd(from: Date): Date {
-    const next = new Date(from);
-    next.setDate(next.getDate() + 30);
-    return next;
-  }
-
-  /**
-   * @deprecated Use getNextBillingPeriodEnd instead
-   */
-  private getNextMonthDate(from: Date): Date {
-    return this.getNextBillingPeriodEnd(from);
-  }
-
-  /**
    * Sync all pending usage events to Polar
    * Should be called periodically via scheduled job (e.g., every 5 minutes)
    */
@@ -584,45 +448,6 @@ class PolarUsageService {
         errors: [error instanceof Error ? error.message : 'Unknown error'] 
       };
     }
-  }
-
-  /**
-   * Retry failed Polar syncs
-   * Should be called periodically via cron job
-   */
-  async retryFailedSyncs(maxRetries: number = 3): Promise<{ processed: number; succeeded: number; failed: number }> {
-    const failedEvents = await db.query.usageEvents.findMany({
-      where: and(
-        eq(usageEvents.syncedToPolar, false),
-        sql`${usageEvents.syncAttempts} < ${maxRetries}`
-      ),
-      limit: 100,
-    });
-
-    let succeeded = 0;
-    let failed = 0;
-
-    for (const event of failedEvents) {
-      try {
-        const org = await db.query.organization.findFirst({
-          where: eq(organization.id, event.organizationId),
-        });
-
-        if (org?.polarCustomerId) {
-          const synced = await this.syncEventToPolar(event.id);
-          if (synced) {
-            succeeded++;
-          } else {
-            failed++;
-          }
-        }
-      } catch (error) {
-        failed++;
-        console.error(`[PolarUsage] Retry failed for event ${event.id}:`, error);
-      }
-    }
-
-    return { processed: failedEvents.length, succeeded, failed };
   }
 }
 

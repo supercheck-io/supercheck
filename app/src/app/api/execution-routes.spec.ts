@@ -68,6 +68,12 @@ jest.mock("@/lib/services/subscription-service", () => ({
   })),
 }));
 
+jest.mock("@/lib/services/polar-usage.service", () => ({
+  polarUsageService: {
+    shouldBlockUsage: jest.fn().mockResolvedValue({ blocked: false }),
+  },
+}));
+
 import { GET as getTriggerInfo, POST as postTrigger } from "./jobs/[id]/trigger/route";
 import { POST as executeSingleTest } from "./tests/[id]/execute/route";
 

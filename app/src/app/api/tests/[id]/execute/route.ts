@@ -14,7 +14,7 @@ import { validateK6Script } from "@/lib/k6-validator";
 import { resolveProjectVariables } from "@/lib/variable-resolver";
 import { randomUUID } from "crypto";
 import { SubscriptionService } from "@/lib/services/subscription-service";
-
+import { polarUsageService } from "@/lib/services/polar-usage.service";
 declare const Buffer: {
   from(data: string, encoding: string): { toString(encoding: string): string };
 };
@@ -63,6 +63,15 @@ export async function POST(request: NextRequest, context: ExecuteContext) {
       );
     }
 
+    // BILLING: Check spending limit hard-stop before allowing execution
+    const spendingBlock = await polarUsageService.shouldBlockUsage(organizationId);
+    if (spendingBlock.blocked) {
+      return NextResponse.json(
+        { error: spendingBlock.reason },
+        { status: 402 }
+      );
+    }
+
     // Fetch test
     const test = await db.query.tests.findFirst({
       where: eq(tests.id, testId),
@@ -82,7 +91,11 @@ export async function POST(request: NextRequest, context: ExecuteContext) {
 
     // Parse request body for location (k6 tests only)
     const normalizeLocation = (value?: string): K6Location => {
-      const lower = value?.toLowerCase();
+      // No location provided — default silently (normal for Playwright tests)
+      if (value === undefined || value === null) {
+        return "global";
+      }
+      const lower = value.toLowerCase();
       // Accept kebab-case format matching K6Location type: "us-east" | "eu-central" | "asia-pacific" | "global"
       if (
         lower === "us-east" ||
@@ -92,7 +105,7 @@ export async function POST(request: NextRequest, context: ExecuteContext) {
       ) {
         return lower;
       }
-      // Default to global for any other value with warning
+      // Only warn when an explicit but invalid value was provided
       console.warn(
         `[LOCATION WARNING] Invalid location "${value}" received, defaulting to "global". Valid locations: us-east, eu-central, asia-pacific, global`
       );

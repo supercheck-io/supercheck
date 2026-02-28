@@ -16,6 +16,7 @@ import { logAuditEvent } from '@/lib/audit-logger';
 import { applyVariablesToTestScripts, decodeTestScript } from "@/lib/job-execution-utils";
 import { validateK6Script } from "@/lib/k6-validator";
 import { subscriptionService } from "@/lib/services/subscription-service";
+import { polarUsageService } from "@/lib/services/polar-usage.service";
 
 const DEFAULT_K6_LOCATION: K6Location = "eu-central";
 
@@ -124,6 +125,15 @@ export async function POST(request: Request) {
           : "Subscription validation failed";
       return NextResponse.json(
         { error: errorMessage },
+        { status: 402 }
+      );
+    }
+
+    // BILLING: Check spending limit hard-stop before allowing execution
+    const spendingBlock = await polarUsageService.shouldBlockUsage(organizationId);
+    if (spendingBlock.blocked) {
+      return NextResponse.json(
+        { error: spendingBlock.reason },
         { status: 402 }
       );
     }

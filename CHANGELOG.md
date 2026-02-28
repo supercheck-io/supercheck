@@ -8,12 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ## [1.3.2] - Unreleased
 
 ### Added
+- Added a UI callout on the self-hosted sign-up page to inform users about organization invitations
 - Enhanced database migration script with optimized auto-probe logic and security improvements
 
 ### Changed
 - Streamlined admin interface by removing unused user creation functionality
 
 ### Fixed
+- Fixed Playwright report loading performance
+- Implemented report caching across Playground, Runs, and Monitor views to prevent unnecessary re-fetching on tab switches
 - Database migration script performance optimization for self-hosted deployments
 - SQL injection prevention in database creation commands
 

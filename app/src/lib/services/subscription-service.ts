@@ -181,11 +181,14 @@ export class SubscriptionService {
         throw fetchError;
       }
     } catch (error) {
-      // Handle timeout specifically
+      // Handle timeout specifically - fail OPEN to avoid blocking legitimate users
+      // during transient network issues. The subscription status in our DB is validated
+      // separately, so a temporary inability to reach Polar shouldn't revoke access.
       if (error instanceof Error && error.name === "AbortError") {
         console.error(
-          "[SubscriptionService] Polar API timeout - treating as invalid for safety"
+          "[SubscriptionService] Polar API timeout - failing open to avoid blocking legitimate users"
         );
+        return true;
       } else {
         console.error(
           "[SubscriptionService] Error validating Polar customer:",
@@ -193,7 +196,8 @@ export class SubscriptionService {
         );
       }
       // Don't cache errors - allow retry on next request
-      return false;
+      // Fail open on unexpected errors to avoid blocking users due to Polar outages
+      return true;
     }
   }
 

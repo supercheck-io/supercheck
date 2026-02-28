@@ -15,7 +15,10 @@
 export const PLAYWRIGHT_QUEUE = 'playwright-global';
 
 // Timeouts
-export const JOB_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes that should match the frontend settings
+// NOTE: The canonical timeout values are in common/constants/timeouts.constants.ts
+// Use TIMEOUTS.JOB_EXECUTION_DEFAULT_MS (60 min) for job timeouts.
+// This constant is kept for backward compatibility but should not be used directly.
+export const JOB_TIMEOUT_MS = 60 * 60 * 1000; // 60 minutes - matches TIMEOUTS.JOB_EXECUTION_DEFAULT_MS
 
 // Capacity limits (per-organization)
 export const RUNNING_CAPACITY = parseInt(

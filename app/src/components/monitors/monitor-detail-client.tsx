@@ -1384,7 +1384,7 @@ export function MonitorDetailClient({
 
                                         if (runTestId) {
                                           // Use API proxy route like playground does
-                                          const apiUrl = `/api/test-results/${runTestId}/report/index.html?t=${Date.now()}&forceIframe=true`;
+                                          const apiUrl = `/api/test-results/${runTestId}/report/index.html?forceIframe=true`;
                                           setSelectedReportUrl(apiUrl);
                                           setReportModalOpen(true);
                                         } else {

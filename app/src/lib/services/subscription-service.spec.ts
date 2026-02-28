@@ -830,14 +830,15 @@ describe("SubscriptionService", () => {
       });
 
       describe("Edge Cases", () => {
-        it("should handle Polar API timeout", async () => {
+        it("should handle Polar API timeout by failing open", async () => {
           mockFetch.mockRejectedValue(
             Object.assign(new Error("Timeout"), { name: "AbortError" })
           );
 
+          // Should NOT throw - fails open to avoid blocking legitimate users
           await expect(
             service.requireValidPolarCustomer(testOrgId)
-          ).rejects.toThrow("Polar customer not found");
+          ).resolves.not.toThrow();
         });
 
         it("should handle Polar API server error", async () => {
@@ -889,17 +890,18 @@ describe("SubscriptionService", () => {
         expect(mockFetch).toHaveBeenCalledTimes(1);
       });
 
-      it("should not cache API errors", async () => {
+      it("should not cache API errors and should fail open", async () => {
         mockFetch.mockRejectedValueOnce(new Error("Network error"));
 
+        // Should NOT throw - fails open on network errors
         await expect(
           service.requireValidPolarCustomer(testOrgId)
-        ).rejects.toThrow();
+        ).resolves.not.toThrow();
 
         // Reset fetch to succeed
         mockFetch.mockResolvedValue({ ok: true, status: 200 });
 
-        // Should retry API
+        // Should retry API (error was not cached)
         await service.requireValidPolarCustomer(testOrgId);
         expect(mockFetch).toHaveBeenCalledTimes(2);
       });

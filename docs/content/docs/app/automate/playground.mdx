@@ -44,15 +44,15 @@ sequenceDiagram
 Cancel a running test at any time. The container is immediately stopped and resources are released.
 </Callout>
 
-<Callout type="warning">
+<Callout type="warn">
 **Tests must pass before saving.** Only successfully executed tests can be saved. If your test fails, fix the issues and run it again until it passes.
 </Callout>
 
 ## AI Create
 
-Generate complete, working test scripts from plain English descriptions. AI Create uses GPT-4o-mini to understand your requirements and produce well-structured Playwright code.
+Generate complete, working test scripts from plain English descriptions. AI Create uses your configured AI provider to understand your requirements and produce well-structured Playwright code.
 
-<Callout type="warning">
+<Callout type="warn">
 **Beta Feature**: AI-generated browser tests may require refinement. For best results, **record your test first** using Playwright's codegen, then use AI Create to enhance or modify it. Review all generated code before running.
 </Callout>
 

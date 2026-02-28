@@ -107,7 +107,6 @@ export function ReportViewer({
   );
   const [isValidationError, setIsValidationError] = useState(false);
   const [showFullscreen, setShowFullscreen] = useState(false);
-  const [preCheckComplete, setPreCheckComplete] = useState(false);
   const [timeoutInfo, setTimeoutInfo] = useState<TimeoutErrorInfo | null>(null);
   const [cancellationInfo, setCancellationInfo] =
     useState<CancellationErrorInfo | null>(null);
@@ -115,10 +114,20 @@ export function ReportViewer({
   const fullscreenIframeRef = useRef<HTMLIFrameElement>(null);
   const prevReportUrl = useRef<string | null>(undefined as unknown as string | null);
 
+  // Extract base URL (without query params) for comparison to detect actual report changes
+  const getBaseUrl = useCallback((url: string | null): string | null => {
+    if (!url) return null;
+    return url.split("?")[0];
+  }, []);
+
   // Update URL when prop changes - deferred to avoid synchronous setState
   useEffect(() => {
-    // Only run when reportUrl actually changes
-    if (reportUrl === prevReportUrl.current) {
+    // Only run when reportUrl actually changes (ignore query param differences like ?t=)
+    // This prevents refetching the same report on component remounts (e.g., tab switches)
+    const prevBase = getBaseUrl(prevReportUrl.current);
+    const currentBase = getBaseUrl(reportUrl);
+
+    if (currentBase === prevBase) {
       return;
     }
     prevReportUrl.current = reportUrl;
@@ -126,85 +135,22 @@ export function ReportViewer({
     if (reportUrl) {
       // Defer all state updates to avoid synchronous setState in effect
       setTimeout(() => {
-        // Always ensure we have a timestamp parameter to prevent caching issues
-        const finalUrl = reportUrl.includes("?")
-          ? `${reportUrl}&t=${Date.now()}`
-          : `${reportUrl}?t=${Date.now()}`;
-
-        setCurrentReportUrl(finalUrl);
+        // Use the URL as-is from the caller — browser caching is managed by
+        // Cache-Control headers on the server (public, max-age=300).
+        // Do NOT append a cache-busting timestamp here; it defeats browser
+        // caching and causes a full S3 round-trip on every tab switch / remount.
+        setCurrentReportUrl(reportUrl);
         setIsReportLoading(true);
         setIframeError(false);
         setReportError(null);
         setTimeoutInfo(null);
         setCancellationInfo(null);
-        setPreCheckComplete(false);
-
-        // Pre-check the URL to detect cancellation or timeout errors early
-        // Use GET instead of HEAD to get the response body for error details
-        fetch(finalUrl, { method: "GET" })
-          .then(async (response) => {
-            if (!response.ok) {
-              // Try to parse the response body for error details
-              try {
-                const contentType = response.headers.get("content-type");
-                if (contentType?.includes("application/json")) {
-                  const errorData = await response.json();
-
-                  // Check if this is a cancellation error
-                  if (errorData.cancellationInfo?.isCancelled) {
-                    setCancellationInfo(errorData.cancellationInfo);
-                    setIframeError(true);
-                    setIsReportLoading(false);
-                    return;
-                  }
-
-                  // Check if this is a timeout error
-                  if (errorData.timeoutInfo?.isTimeout) {
-                    setTimeoutInfo(errorData.timeoutInfo);
-                    setIframeError(true);
-                    setIsReportLoading(false);
-                    return;
-                  }
-
-                  // Generic error with message
-                  if (errorData.error || errorData.message) {
-                    setReportError(errorData.message || errorData.error);
-                    setIframeError(true);
-                    setIsReportLoading(false);
-                    return;
-                  }
-                }
-              } catch {
-                // Failed to parse JSON, continue with generic error
-              }
-
-              if (response.status === 404) {
-                setIsReportLoading(false);
-                setIframeError(true);
-                setReportError("The test report could not be found.");
-              }
-            } else {
-              // Pre-check passed, allow iframe to load
-              setPreCheckComplete(true);
-            }
-          })
-          .catch((error) => {
-            console.error(
-              "ReportViewer: Error pre-checking report URL:",
-              error
-            );
-            setIsReportLoading(false);
-            setIframeError(true);
-            setReportError(
-              "Failed to load test report. The report server might be unreachable."
-            );
-          });
       }, 0);
     } else {
       // Defer to avoid synchronous setState in effect
       setTimeout(() => setCurrentReportUrl(null), 0);
     }
-  }, [reportUrl]);
+  }, [reportUrl, getBaseUrl]);
 
   // Hide external link button in Playwright trace viewer
   // This prevents users from opening snapshots in a new tab outside of SuperCheck
@@ -381,28 +327,13 @@ export function ReportViewer({
             "Report loading timed out. The report server might be unreachable."
           );
         }
-      }, 10000); // 10 second timeout
+      }, 30000); // 30 second timeout (accounts for S3/R2 network latency in production)
 
       return () => {
         clearTimeout(safetyTimeout);
       };
     }
   }, [isReportLoading, currentReportUrl, iframeError]);
-
-  // Add new effect to force retry if report is stuck loading
-  useEffect(() => {
-    if (isReportLoading && currentReportUrl) {
-      // Set a shorter timeout for initial retry
-      const retryTimeout = setTimeout(() => {
-        // Add timestamp to force reload and bypass cache
-        const refreshedUrl = `${currentReportUrl.split("?")[0]
-          }?retry=true&t=${Date.now()}`;
-        setCurrentReportUrl(refreshedUrl);
-      }, 5000); // 5 second timeout before retry
-
-      return () => clearTimeout(retryTimeout);
-    }
-  }, [isReportLoading, currentReportUrl]);
 
   // Loading state when the test is running - prioritize this check
   if (isRunning) {
@@ -516,7 +447,7 @@ export function ReportViewer({
           <iframe
             ref={iframeRef}
             key={currentReportUrl}
-            src={preCheckComplete ? currentReportUrl : undefined}
+            src={currentReportUrl || undefined}
             className={`${iframeClassName} ${isReportLoading ? "opacity-0 pointer-events-none" : "opacity-100"
               } ${isValidationError ? "h-4/5 flex-grow" : "h-full"} ${!isK6Report ? "bg-card" : ""}`}
             sandbox="allow-same-origin allow-scripts allow-forms allow-downloads"
@@ -621,8 +552,30 @@ export function ReportViewer({
                   }
                 }
 
-                // Always clear loading state, even if we think there might be an issue
-                setIsReportLoading(false);
+                // Wait for the Playwright report's Service Worker to activate before
+                // showing the report. The SW serves trace viewer files (trace/index.html)
+                // and trace data (data/<hash>.zip) from inline data embedded in the report.
+                // Without this wait, clicking a trace link before SW activation causes
+                // "Object not found" because the files don't exist in S3.
+                const waitForServiceWorker = async () => {
+                  try {
+                    const sw = iframe.contentWindow?.navigator?.serviceWorker;
+                    if (sw) {
+                      // Wait for SW to be ready, bounded by 3s timeout so non-SW reports
+                      // (like K6) aren't blocked indefinitely
+                      await Promise.race([
+                        sw.ready,
+                        new Promise((resolve) => setTimeout(resolve, 3000)),
+                      ]);
+                    }
+                  } catch {
+                    // SW not available (e.g., K6 reports) — continue normally
+                  }
+                };
+
+                waitForServiceWorker().then(() => {
+                  setIsReportLoading(false);
+                });
               } catch (loadError) {
                 console.error(
                   "ReportViewer: Error in onLoad event:",
@@ -691,7 +644,7 @@ export function ReportViewer({
             <div className="flex-grow overflow-hidden">
               <iframe
                 ref={fullscreenIframeRef}
-                src={preCheckComplete ? currentReportUrl : undefined}
+                src={currentReportUrl || undefined}
                 className="w-full h-full border-0"
                 sandbox="allow-same-origin allow-scripts allow-forms allow-downloads"
                 title="Fullscreen Report"

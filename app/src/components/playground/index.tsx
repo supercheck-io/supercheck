@@ -106,7 +106,7 @@ const normalizePriorityValue = (value: unknown): TestPriority =>
     : ("medium" as TestPriority);
 
 const buildReportViewerUrl = (entityId: string): string =>
-  `/api/test-results/${encodeURIComponent(entityId)}/report/index.html?t=${Date.now()}&forceIframe=true`;
+  `/api/test-results/${encodeURIComponent(entityId)}/report/index.html?forceIframe=true`;
 
 // Define our own TestCaseFormData interface
 interface TestCaseFormData {
@@ -1549,7 +1549,8 @@ const Playground: React.FC<PlaygroundProps> = ({
                     </TabsContent>
                     <TabsContent
                       value="report"
-                      className="h-full border-0 p-0 mt-0"
+                      forceMount
+                      className={`h-full border-0 p-0 mt-0 ${activeTab !== "report" ? "hidden" : ""}`}
                     >
                       {executionTestType === "performance" &&
                         performanceRunId ? (

@@ -134,13 +134,11 @@ export function RunDetails({
   useEffect(() => {
     if (run.reportUrl) {
       // Use the API proxy with direct UUID format instead of /jobs/ prefix
-      const apiUrl = `/api/test-results/${run.id
-        }/report/index.html?t=${Date.now()}`;
+      const apiUrl = `/api/test-results/${run.id}/report/index.html`;
       setReportUrl(apiUrl);
     } else {
       // If no report URL, still try to use the test-results API with direct UUID
-      const apiUrl = `/api/test-results/${run.id
-        }/report/index.html?t=${Date.now()}`;
+      const apiUrl = `/api/test-results/${run.id}/report/index.html`;
       setReportUrl(apiUrl);
     }
 
@@ -217,8 +215,7 @@ export function RunDetails({
 
       if (newReportUrl) {
         // Regardless of the reportUrl from SSE, use our API proxy with direct UUID
-        const apiUrl = `/api/test-results/${run.id
-          }/report/index.html?t=${Date.now()}`;
+        const apiUrl = `/api/test-results/${run.id}/report/index.html`;
         setReportUrl(apiUrl);
       }
 
