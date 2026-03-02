@@ -41,7 +41,7 @@ function SignUpPageContent() {
   const [isLoading, setIsLoading] = useState(false);
   const [inviteData, setInviteData] = useState<InviteData | null>(null);
   // Use cached hosting mode from useAppConfig (React Query cached)
-  const { isCloudHosted, isSelfHosted, isFetched, error: configError } = useAppConfig();
+  const { isCloudHosted, isSelfHosted, isFetched, error: configError, isSignupEnabled, allowedEmailDomains } = useAppConfig();
   const shouldShowLegalFooter = isFetched && !configError && isCloudHosted;
   // CAPTCHA ref for on-demand token execution (each auth call needs a fresh token)
   const captchaRef = useRef<TurnstileCaptchaRef>(null);
@@ -57,6 +57,12 @@ function SignUpPageContent() {
     // Cloud mode: invitation-only sign-up. Redirect if no invite token.
     // Self-hosted mode: open registration, no invite token required.
     if (canApplyHostingRules && !inviteToken && isCloudHosted) {
+      router.replace("/sign-in");
+      return;
+    }
+
+    // Self-hosted: when signup is disabled and no invite token, redirect to sign-in
+    if (canApplyHostingRules && !inviteToken && isSelfHosted && !isSignupEnabled) {
       router.replace("/sign-in");
       return;
     }
@@ -88,7 +94,7 @@ function SignUpPageContent() {
       };
       fetchInviteData();
     }
-  }, [inviteToken, router, isCloudHosted, isFetched, configError]);
+  }, [inviteToken, router, isCloudHosted, isSelfHosted, isSignupEnabled, isFetched, configError]);
 
   /**
    * Helper: get fresh CAPTCHA headers for a single auth API call.
@@ -358,6 +364,8 @@ function SignUpPageContent() {
       captchaRef={captchaRef}
       isSelfHosted={isSelfHosted}
       shouldShowLegalFooter={shouldShowLegalFooter}
+      isSignupEnabled={isSignupEnabled}
+      allowedEmailDomains={allowedEmailDomains}
     />
   );
 }

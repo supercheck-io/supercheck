@@ -248,6 +248,9 @@ x-common-env: &common-env # Database Configuration
   # Self-Hosted Mode (set to 'true' for unlimited features)
   # Client-side code fetches this from /api/config/hosting-mode at runtime
   SELF_HOSTED: ${SELF_HOSTED:-true}
+  # Registration controls for email/password signup
+  SIGNUP_ENABLED: ${SIGNUP_ENABLED:-true}
+  ALLOWED_EMAIL_DOMAINS: ${ALLOWED_EMAIL_DOMAINS:-}
 
   # OAuth Configuration (optional - enable social login)
   # Social auth buttons are automatically shown when client ID and secret are configured

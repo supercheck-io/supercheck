@@ -65,6 +65,7 @@ export function LoginForm({
     isCloudHosted,
     isGithubEnabled,
     isGoogleEnabled,
+    isSignupEnabled,
     isFetched,
     error: configError,
   } = useAppConfig();
@@ -141,7 +142,7 @@ export function LoginForm({
                       </Link>
                     </span>
                   </>
-                ) : isSelfHosted ? (
+                ) : isSelfHosted && isSignupEnabled ? (
                   <span className="text-sm text-muted-foreground">
                     Don&apos;t have an account?{" "}
                     <Link
@@ -150,6 +151,10 @@ export function LoginForm({
                     >
                       Sign up
                     </Link>
+                  </span>
+                ) : isSelfHosted && !isSignupEnabled ? (
+                  <span className="text-xs text-muted-foreground">
+                    Contact your administrator for an account
                   </span>
                 ) : (
                   <span className="text-xs text-muted-foreground">

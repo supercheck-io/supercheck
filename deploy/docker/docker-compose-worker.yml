@@ -20,7 +20,9 @@
 #
 # Environment Variables Required:
 #   DATABASE_URL - PostgreSQL connection string to main server
-#   REDIS_URL - Redis connection string to main server
+#   REDIS_HOST - Redis hostname (main server IP or hostname)
+#   REDIS_PORT - Redis port (default: 6379)
+#   REDIS_PASSWORD - Redis password from main server
 #   S3_ENDPOINT - MinIO/S3 endpoint URL (main server or cloud)
 #   WORKER_LOCATION - This worker's region: us-east | eu-central | asia-pacific
 #   AWS_ACCESS_KEY_ID - S3 credentials
@@ -29,7 +31,9 @@
 # Example .env file:
 # ----------------------------------------
 # DATABASE_URL=postgresql://user:pass@main-server.example.com:5432/supercheck
-# REDIS_URL=redis://:password@main-server.example.com:6379
+# REDIS_HOST=main-server.example.com
+# REDIS_PORT=6379
+# REDIS_PASSWORD=your-redis-password
 # S3_ENDPOINT=http://main-server.example.com:9000
 # AWS_ACCESS_KEY_ID=minioadmin
 # AWS_SECRET_ACCESS_KEY=minioadmin
@@ -48,8 +52,8 @@ services:
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required - PostgreSQL connection to main server}
 
       # Redis connection (required)
-      REDIS_URL: ${REDIS_URL:?REDIS_URL is required - Redis connection to main server}
-      REDIS_HOST: ${REDIS_HOST:-}
+      # The worker uses REDIS_HOST/PORT/PASSWORD directly (not REDIS_URL)
+      REDIS_HOST: ${REDIS_HOST:?REDIS_HOST is required - Redis hostname or IP of main server}
       REDIS_PORT: ${REDIS_PORT:-6379}
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
 
@@ -79,6 +83,10 @@ services:
 
       # Execution configuration
       NODE_ENV: ${NODE_ENV:-production}
+      # Registration controls are app-side only; included for shared .env parity
+      SIGNUP_ENABLED: ${SIGNUP_ENABLED:-true}
+      ALLOWED_EMAIL_DOMAINS: ${ALLOWED_EMAIL_DOMAINS:-}
+      # Keep RUNNING_CAPACITY aligned with WORKER_REPLICAS for consistent concurrency semantics.
       RUNNING_CAPACITY: ${RUNNING_CAPACITY:-1}
       QUEUED_CAPACITY: ${QUEUED_CAPACITY:-10}
       CONTAINER_CPU_LIMIT: ${CONTAINER_CPU_LIMIT:-1.5}

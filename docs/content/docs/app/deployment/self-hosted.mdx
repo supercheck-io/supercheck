@@ -1,5 +1,5 @@
 ---
-title: Single Location
+title: Single-Location Deployment
 description: Docker Compose deployment on a single server
 icon: Container
 ---
@@ -203,6 +203,29 @@ OAuth is optional. If you skip OAuth, users can sign up with email/password.
 ## Optional Configuration
 
 <Accordions>
+  <Accordion title="Registration Controls">
+    Control who can sign up for your self-hosted instance.
+
+    ```bash
+    # Disable new user registration (default: true)
+    # Set to false after creating your initial account to lock down signup
+    # Invited users can still register even when disabled
+    SIGNUP_ENABLED=false
+
+    # Restrict registration to specific email domains (comma-separated)
+    # Leave empty or unset to allow all domains
+    ALLOWED_EMAIL_DOMAINS=acme.com,acme.org
+    ```
+
+    | Variable | Default | Description |
+    |----------|---------|-------------|
+    | `SIGNUP_ENABLED` | `true` | Set to `false` to disable open registration |
+    | `ALLOWED_EMAIL_DOMAINS` | *(empty)* | Comma-separated list of allowed email domains |
+
+    <Callout type="info">
+    When `SIGNUP_ENABLED=false`, users can still register via invitation links. This allows admins to control access while still inviting team members.
+    </Callout>
+  </Accordion>
   <Accordion title="Email (SMTP)">
     Required for alerts and team invitations.
 
@@ -304,15 +327,23 @@ Enable AI-powered test creation, fixes, and performance analysis. Choose your pr
 
 ### Scaling Workers
 
-Workers run Playwright and k6 tests in isolated Docker containers.
+Workers execute Playwright and k6 workloads in isolated Docker containers.
+
+<Callout type="info">
+Single-location deployments should keep `WORKER_LOCATION=local` (the default). This makes each worker process all regional queues on that server.
+</Callout>
+
+<Callout type="info">
+Use `RUNNING_CAPACITY` as the source-of-truth term for concurrency. In Docker Compose self-hosted deployments, keep `RUNNING_CAPACITY` equal to `WORKER_REPLICAS`.
+</Callout>
 
 ```bash
 # Scale to 2 workers
 WORKER_REPLICAS=2 RUNNING_CAPACITY=2 docker compose up -d
 ```
 
-| Configuration | Workers | Concurrent Tests | Minimum Server |
-|---------------|---------|------------------|----------------|
+| Configuration | `WORKER_REPLICAS` | `RUNNING_CAPACITY` (Concurrent Executions) | Minimum Server |
+|---------------|-------------------|--------------------------------------------|----------------|
 | **Small** | 1 | 1 | 2 vCPU / 4GB |
 | **Medium** | 2 | 2 | 4 vCPU / 8GB |
 | **Large** | 4 | 4 | 8 vCPU / 16GB |

@@ -35,6 +35,7 @@ import {
   ClipboardList,
   Terminal,
   Mail,
+  Pencil,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AuditLogsTable } from "@/components/admin/audit-logs-table";
@@ -56,11 +57,13 @@ import {
   canCreateProjects,
   canInviteMembers,
   canManageProject,
+  canManageOrganization,
 } from "@/lib/rbac/client-permissions";
 import { normalizeRole, roleToDisplayName } from "@/lib/rbac/role-normalizer";
 import { z } from "zod";
 import { useAppConfig } from "@/hooks/use-app-config";
 import { cn } from "@/lib/utils";
+import { updateOrganizationNameSchema } from "@/lib/validations/organization";
 // Use React Query hooks for cached data fetching
 import {
   useOrgStats,
@@ -174,7 +177,7 @@ function OrgAdminDashboardContent() {
   const { details: orgDetails, isLoading: detailsLoading } = useOrgDetails();
   const { members, invitations, currentUserRole, isLoading: membersLoading } = useOrgMembers();
   const { projects: orgProjects, isLoading: projectsLoading } = useOrgProjects();
-  const { invalidateStats, invalidateMembers, invalidateProjects } = useOrgDataInvalidation();
+  const { invalidateStats, invalidateMembers, invalidateProjects, invalidateDetails } = useOrgDataInvalidation();
 
   const hasData = orgStats !== null && orgDetails !== null;
   const isInitialLoading = !isMounted || (!hasData && (statsLoading || detailsLoading));
@@ -211,6 +214,9 @@ function OrgAdminDashboardContent() {
   const [updatingProject, setUpdatingProject] = useState(false);
   const [newProject, setNewProject] = useState({ name: "", description: "", isDefault: false });
   const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [showRenameOrgDialog, setShowRenameOrgDialog] = useState(false);
+  const [newOrgName, setNewOrgName] = useState("");
+  const [renamingOrg, setRenamingOrg] = useState(false);
 
   useEffect(() => {
     setBreadcrumbs([
@@ -240,6 +246,49 @@ function OrgAdminDashboardContent() {
 
     const nextUrl = params.toString() ? `${pathname}?${params.toString()}` : pathname;
     router.replace(nextUrl, { scroll: false });
+  };
+
+  const handleRenameOrganization = async () => {
+    if (!orgDetails) return;
+
+    const trimmedName = newOrgName.trim();
+
+    try {
+      updateOrganizationNameSchema.parse({ name: trimmedName });
+    } catch (error) {
+      if (error instanceof z.ZodError && error.errors.length > 0) {
+        toast.error(error.errors[0].message);
+        return;
+      }
+      toast.error("Please enter a valid organization name");
+      return;
+    }
+
+    setRenamingOrg(true);
+    try {
+      const response = await fetch(`/api/organizations/${orgDetails.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: trimmedName }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        toast.success("Organization renamed successfully");
+        setShowRenameOrgDialog(false);
+        setNewOrgName("");
+        invalidateDetails();
+        invalidateStats();
+      } else {
+        toast.error(data.error || "Failed to rename organization");
+      }
+    } catch (error) {
+      console.error("Error renaming organization:", error);
+      toast.error("Failed to rename organization");
+    } finally {
+      setRenamingOrg(false);
+    }
   };
 
   const handleCreateProject = async (formData?: CreateProjectFormData) => {
@@ -429,6 +478,8 @@ function OrgAdminDashboardContent() {
       })
     : "No pending invites";
 
+  const userCanRenameOrg = canManageOrganization(normalizeRole(currentUserRole));
+
   return (
     <div className="overflow-hidden">
       <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 m-4">
@@ -440,10 +491,26 @@ function OrgAdminDashboardContent() {
                 Manage your organization&apos;s projects, members, and security audit data.
               </p>
             </div>
-            <TableBadge tone="info" className="max-w-[320px]">
-              <Building2 className="mr-1.5 h-3.5 w-3.5" />
-              <span className="truncate">{orgDetails.name}</span>
-            </TableBadge>
+            <div className="flex items-center gap-2">
+              <TableBadge tone="info" className="max-w-[320px]">
+                <Building2 className="mr-1.5 h-3.5 w-3.5" />
+                <span className="truncate">{orgDetails.name}</span>
+              </TableBadge>
+              {userCanRenameOrg && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7"
+                  onClick={() => {
+                    setNewOrgName(orgDetails.name);
+                    setShowRenameOrgDialog(true);
+                  }}
+                  title="Rename organization"
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </Button>
+              )}
+            </div>
           </div>
 
           <Tabs
@@ -882,6 +949,60 @@ function OrgAdminDashboardContent() {
           </Tabs>
         </CardContent>
       </Card>
+
+      {/* Rename Organization Dialog */}
+      <Dialog
+        open={showRenameOrgDialog}
+        onOpenChange={setShowRenameOrgDialog}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Building2 className="h-5 w-5" />
+              Rename Organization
+            </DialogTitle>
+            <DialogDescription>
+              Update your organization&apos;s display name. This change is visible to all members.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <FormInput
+              id="org-name"
+              label="Organization Name"
+              value={newOrgName}
+              onChange={(e) => setNewOrgName(e.target.value)}
+              placeholder="Enter organization name"
+              maxLength={50}
+              showCharacterCount={true}
+            />
+          </div>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setShowRenameOrgDialog(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleRenameOrganization}
+              disabled={
+                renamingOrg ||
+                !newOrgName.trim() ||
+                newOrgName.trim() === orgDetails?.name
+              }
+            >
+              {renamingOrg ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Renaming...
+                </>
+              ) : (
+                "Rename"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

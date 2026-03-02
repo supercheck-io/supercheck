@@ -55,6 +55,8 @@ Use `./init-secrets.sh` to generate secure defaults, then configure:
 | Variable | Description |
 |----------|-------------|
 | `SELF_HOSTED` | Self-hosted mode toggle (default: `true`) |
+| `SIGNUP_ENABLED` | Toggle open email/password signup (default: `true`) |
+| `ALLOWED_EMAIL_DOMAINS` | Optional comma-separated signup allowlist (default: empty = allow all) |
 
 OAuth (`GITHUB_*` / `GOOGLE_*`) is optional in self-hosted mode.
 
@@ -75,15 +77,22 @@ OAuth (`GITHUB_*` / `GOOGLE_*`) is optional in self-hosted mode.
 | `SMTP_HOST`, `SMTP_FROM_EMAIL` (+ optional `SMTP_USER`/`SMTP_PASSWORD`) | Email notifications (disabled if SMTP_HOST not set) | - |
 | `OPENAI_API_KEY` | AI features | - |
 | `WORKER_REPLICAS` | Number of workers | `1` |
+| `RUNNING_CAPACITY` | Max concurrent executions (keep equal to `WORKER_REPLICAS`) | `1` |
+| `WORKER_LOCATION` | Worker queue mode (`local`, `us-east`, `eu-central`, `asia-pacific`) | `local` |
 
 ---
 
 ## Scaling Workers
 
 ```bash
-# Scale to 2 workers
-WORKER_REPLICAS=2 docker compose up -d
+# Scale to 2 worker replicas (2 concurrent executions)
+WORKER_REPLICAS=2 RUNNING_CAPACITY=2 docker compose up -d
 ```
+
+Use `RUNNING_CAPACITY` as the source-of-truth concurrency setting.
+For self-hosted Docker Compose deployments, keep `RUNNING_CAPACITY` equal to `WORKER_REPLICAS`.
+
+For single-server deployments, keep `WORKER_LOCATION=local` so one worker processes all regional queues.
 
 ---
 

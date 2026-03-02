@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { isCloudHosted } from "@/lib/feature-flags";
+import { isCloudHosted, isSignupEnabled, getAllowedEmailDomains } from "@/lib/feature-flags";
 import { getEffectiveStatusPageDomain } from "@/lib/status-page-domain";
 
 /**
@@ -28,6 +28,12 @@ export async function GET() {
       google: {
         enabled: !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
       },
+    },
+
+    // Registration settings
+    registration: {
+      signupEnabled: isSignupEnabled(),
+      allowedEmailDomains: getAllowedEmailDomains(),
     },
 
     // Demo mode flag

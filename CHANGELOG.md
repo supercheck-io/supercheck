@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ## [1.3.2] - Unreleased
 
 ### Added
+- **Registration controls for self-hosted deployments** — New `SIGNUP_ENABLED` environment variable to enable/disable new user registration, and `ALLOWED_EMAIL_DOMAINS` to restrict signup to specific email domains ([#246](https://github.com/supercheck-io/supercheck/issues/246))
+- **Organization rename** — Organization owners and admins can now rename their organization from the Organization Admin page ([#247](https://github.com/supercheck-io/supercheck/issues/247))
 - Added a UI callout on the self-hosted sign-up page to inform users about organization invitations
 - Enhanced database migration script with optimized auto-probe logic and security improvements
 
@@ -19,6 +21,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - Implemented report caching across Playground, Runs, and Monitor views to prevent unnecessary re-fetching on tab switches
 - Database migration script performance optimization for self-hosted deployments
 - SQL injection prevention in database creation commands
+- Fixed worker Redis documentation to use correct `REDIS_HOST`, `REDIS_PORT`, and `REDIS_PASSWORD` variables instead of `REDIS_URL` for multi-location deployments ([#252](https://github.com/supercheck-io/supercheck/issues/252))
 
 ## [1.3.1] - 2026-02-25
 
