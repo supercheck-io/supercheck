@@ -145,6 +145,14 @@ Choose your deployment type:
     Set `STATUS_PAGE_DOMAIN` to the base hostname only (for example `yourdomain.com`).
     </Callout>
 
+    <Callout type="warn">
+    The `STATUS_PAGE_DOMAIN` namespace is reserved for default status page URLs (`[uuid].STATUS_PAGE_DOMAIN`). Do not set a status page custom domain to `STATUS_PAGE_DOMAIN` itself or one of its subdomains.
+    </Callout>
+
+    <Callout type="info">
+    **Custom domains for status pages** work out of the box. The default Traefik configuration includes a catch-all route that automatically provisions Let's Encrypt certificates for any custom domain pointed at your server via CNAME.
+    </Callout>
+
     ### 4. Deploy
 
     ```bash

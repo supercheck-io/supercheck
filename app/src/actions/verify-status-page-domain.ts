@@ -9,7 +9,10 @@ import { revalidatePath } from "next/cache";
 import { resolveCname } from "node:dns/promises";
 import { z } from "zod";
 import { logAuditEvent } from "@/lib/audit-logger";
-import { getEffectiveStatusPageDomain } from "@/lib/status-page-domain";
+import {
+  getEffectiveStatusPageDomain,
+  isReservedStatusPageHostname,
+} from "@/lib/status-page-domain";
 
 // UUID validation schema
 const uuidSchema = z.string().uuid("Invalid status page ID");
@@ -57,6 +60,14 @@ export async function verifyStatusPageDomain(statusPageId: string) {
       };
     }
 
+    const baseDomain = getEffectiveStatusPageDomain();
+    if (isReservedStatusPageHostname(statusPage.customDomain, baseDomain)) {
+      return {
+        success: false,
+        message: `Custom domain cannot use ${baseDomain} or its subdomains. Use a separate hostname and point its CNAME to ${baseDomain}.`,
+      };
+    }
+
     // Verify DNS
     try {
       const cnames = await resolveCname(statusPage.customDomain);
@@ -64,8 +75,6 @@ export async function verifyStatusPageDomain(statusPageId: string) {
       // Get valid CNAME targets from runtime config
       // Cloud mode is fixed to supercheck.io
       // Self-hosted users should set STATUS_PAGE_DOMAIN
-      const baseDomain = getEffectiveStatusPageDomain();
-
       // Accept the base domain and common CNAME subdomains
       const validTargets = [
         baseDomain, // e.g., "supercheck.io" or "yourdomain.com"
@@ -95,7 +104,8 @@ export async function verifyStatusPageDomain(statusPageId: string) {
           .where(
             and(
               eq(statusPages.id, statusPageId),
-              eq(statusPages.organizationId, organizationId)
+              eq(statusPages.organizationId, organizationId),
+              eq(statusPages.projectId, project.id)
             )
           );
 

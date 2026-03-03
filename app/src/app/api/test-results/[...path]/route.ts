@@ -10,16 +10,117 @@ import {
   tests,
   projects,
 } from "@/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, or, sql } from "drizzle-orm";
 import { fetchFromS3 } from "@/lib/s3-proxy";
 import { notFound } from "next/navigation";
 import { hasPermissionForUser } from "@/lib/rbac/middleware";
 import { requireAuthContext, requireUserAuthContext, isAuthError } from "@/lib/auth-context";
+import {
+  buildTimeoutResponse,
+  isCancellationError,
+  resolveExecutionErrorDetails,
+} from "@/lib/report-results-utils";
+
+const DEFAULT_REPORT_ASSET_MAX_RETRIES = 2;
+const DEFAULT_REPORT_ASSET_RETRY_DELAY_MS = 250;
 
 type AccessContext = {
   organizationId: string | null;
   projectId: string | null;
 };
+
+function getReportAssetRetryConfig() {
+  const maxRetries = Number.parseInt(
+    process.env.REPORT_ASSET_MAX_RETRIES ??
+      `${DEFAULT_REPORT_ASSET_MAX_RETRIES}`,
+    10
+  );
+  const retryDelayMs = Number.parseInt(
+    process.env.REPORT_ASSET_RETRY_DELAY_MS ??
+      `${DEFAULT_REPORT_ASSET_RETRY_DELAY_MS}`,
+    10
+  );
+
+  return {
+    maxRetries: Number.isFinite(maxRetries) && maxRetries >= 0 ? maxRetries : 0,
+    retryDelayMs:
+      Number.isFinite(retryDelayMs) && retryDelayMs >= 0 ? retryDelayMs : 0,
+  };
+}
+
+function sleep(ms: number) {
+  if (ms <= 0) {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+async function isObjectNotFoundResponse(response: Response): Promise<boolean> {
+  if (response.status !== 404) {
+    return false;
+  }
+
+  const contentType =
+    response.headers.get("content-type") || response.headers.get("Content-Type");
+  if (!contentType?.toLowerCase().includes("json")) {
+    return false;
+  }
+
+  try {
+    const body = (await response.clone().text()).toLowerCase();
+    return body.includes("object not found");
+  } catch {
+    return false;
+  }
+}
+
+function toTraceDataFallbackKey(s3Key: string): string | null {
+  if (!s3Key.includes("/trace/data/")) {
+    return null;
+  }
+
+  return s3Key.replace("/trace/data/", "/data/");
+}
+
+async function fetchReportAssetWithRecovery(
+  bucket: string,
+  s3Key: string
+): Promise<Response> {
+  const { maxRetries, retryDelayMs } = getReportAssetRetryConfig();
+  let retries = 0;
+  let currentKey = s3Key;
+  let fallbackApplied = false;
+
+  while (true) {
+    const response = await fetchFromS3(bucket, currentKey);
+
+    if (response.ok) {
+      return response;
+    }
+
+    const isObjectNotFound = await isObjectNotFoundResponse(response);
+
+    if (isObjectNotFound && !fallbackApplied) {
+      const fallbackKey = toTraceDataFallbackKey(currentKey);
+      if (fallbackKey && fallbackKey !== currentKey) {
+        fallbackApplied = true;
+        currentKey = fallbackKey;
+        continue;
+      }
+    }
+
+    if (isObjectNotFound && retries < maxRetries) {
+      retries += 1;
+      await sleep(retryDelayMs);
+      continue;
+    }
+
+    return response;
+  }
+}
 
 function getPermissionResource(entityType: string): "test" | "monitor" | "run" | null {
   if (entityType === "test") return "test";
@@ -200,6 +301,7 @@ export async function GET(request: Request) {
       // This handles cases where execution stopped before report generation
       const runRecord = await db
         .select({
+          id: runs.id,
           status: runs.status,
           errorDetails: runs.errorDetails,
           projectId: runs.projectId,
@@ -207,48 +309,60 @@ export async function GET(request: Request) {
           metadata: runs.metadata,
         })
         .from(runs)
-        .where(eq(runs.id, entityId))
+        .where(
+          or(
+            eq(runs.id, entityId),
+            sql`${runs.metadata}->>'testId' = ${entityId}`
+          )
+        )
+        .orderBy(desc(runs.createdAt))
         .limit(1);
 
       if (runRecord.length > 0) {
         const run = runRecord[0];
-        
+
         // Check permissions for this run
+        let organizationId: string | null = null;
         try {
-          // Determine organizationId (need to fetch from project or job)
-          let organizationId: string | null = null;
-          
           if (run.projectId) {
-             const project = await db.query.projects.findFirst({
-               where: eq(projects.id, run.projectId),
-               columns: { organizationId: true }
-             });
-             if (project) organizationId = project.organizationId;
-          }
-          
-          if (organizationId && run.projectId) {
-            const authorized = await hasPermissionForUser(userId, "run", "view", {
-              organizationId,
-              projectId: run.projectId,
+            const project = await db.query.projects.findFirst({
+              where: eq(projects.id, run.projectId),
+              columns: { organizationId: true },
             });
-            
-            if (!authorized) {
-               return NextResponse.json(
-                { error: "Insufficient permissions" },
-                { status: 403 }
-              );
+            if (project) {
+              organizationId = project.organizationId;
             }
           }
         } catch (e) {
-          // Ignore permission check errors here, fall through to 404 if critical
+          console.error("Error resolving project context for missing report run:", e);
+          return notFound();
+        }
+
+        if (!organizationId || !run.projectId) {
+          return notFound();
+        }
+
+        try {
+          const authorized = await hasPermissionForUser(userId, "run", "view", {
+            organizationId,
+            projectId: run.projectId,
+          });
+
+          if (!authorized) {
+            return NextResponse.json(
+              { error: "Insufficient permissions" },
+              { status: 403 }
+            );
+          }
+        } catch (e) {
           console.error("Error checking permissions for missing report run:", e);
+          return notFound();
         }
 
         // Check for cancellation
-        const isCancellation = 
-          (run.status as string) === "cancelled" || 
-          (run.errorDetails?.toLowerCase().includes("cancellation") ?? false) ||
-          (run.errorDetails?.toLowerCase().includes("cancelled") ?? false);
+        const isCancellation =
+          (run.status as string) === "cancelled" ||
+          isCancellationError(run.errorDetails);
 
         if (isCancellation) {
           return NextResponse.json(
@@ -275,6 +389,24 @@ export async function GET(request: Request) {
               details: "The test is still running. Please wait for it to complete.",
             },
             { status: 202 }
+          );
+        }
+
+        const timeoutResponse = buildTimeoutResponse(run.jobId ? "job" : "test", run.errorDetails);
+        if (timeoutResponse) {
+          return timeoutResponse;
+        }
+
+        if (status === "failed" || status === "error") {
+          return NextResponse.json(
+            {
+              error: "Execution failed",
+              message: "The execution failed without generating a report",
+              details: run.errorDetails || "The execution completed but no report was generated",
+              entityType: run.jobId ? "job" : "test",
+              status,
+            },
+            { status: 500 }
           );
         }
       }
@@ -338,43 +470,14 @@ export async function GET(request: Request) {
 
       // Check for error status (includes cancellation) or failed status
       if (reportResult.status === "error" || reportResult.status === "failed") {
-        // Check if this is a cancellation by looking up the run's errorDetails
-        let isCancellation = false;
-        let errorDetails: string | null = null;
-        
-        if (reportResult.entityType === "job") {
-          const runRecord = await db
-            .select({ errorDetails: runs.errorDetails })
-            .from(runs)
-            .where(eq(runs.id, entityId))
-            .limit(1);
-          
-          if (runRecord.length > 0) {
-            errorDetails = runRecord[0].errorDetails;
-            isCancellation = errorDetails?.toLowerCase().includes("cancellation") ||
-                            errorDetails?.toLowerCase().includes("cancelled") || false;
-          }
-        } else if (reportResult.entityType === "test") {
-          // For playground tests, check the report_metadata table for cancellation
-          // The status will be 'error' and we can check if it was a cancellation
-          // by looking at the status - 'error' status with no report typically means cancellation
-          isCancellation = reportResult.status === "error";
-          if (isCancellation) {
-            errorDetails = "Cancellation requested by user";
-          }
-        } else if (reportResult.entityType === "k6_test" || reportResult.entityType === "k6_job") {
-          const k6Record = await db
-            .select({ errorDetails: k6PerformanceRuns.errorDetails })
-            .from(k6PerformanceRuns)
-            .where(eq(k6PerformanceRuns.runId, entityId))
-            .limit(1);
-          
-          if (k6Record.length > 0) {
-            errorDetails = k6Record[0].errorDetails;
-            isCancellation = errorDetails?.toLowerCase().includes("cancellation") ||
-                            errorDetails?.toLowerCase().includes("cancelled") || false;
-          }
-        }
+        const failureContext = await resolveExecutionErrorDetails(
+          reportResult.entityType,
+          entityId
+        );
+        const errorDetails = failureContext.errorDetails;
+        const isCancellation =
+          failureContext.status === "cancelled" ||
+          isCancellationError(errorDetails);
         
         // Return cancellation-specific response
         if (isCancellation) {
@@ -392,42 +495,13 @@ export async function GET(request: Request) {
             { status: 499 } // 499 Client Closed Request (commonly used for cancellations)
           );
         }
-        
-        // For non-cancelled failed executions, check for timeout
-        if (reportResult.entityType === "test" || reportResult.entityType === "k6_test") {
-          return NextResponse.json(
-            {
-              error: "Test execution timeout",
-              message: "Test execution timed out after 5 minutes",
-              details: "Execution timed out after 5 minutes",
-              timeoutInfo: {
-                isTimeout: true,
-                timeoutType: "test",
-                timeoutDurationMs: 300000, // 5 minutes
-                timeoutDurationMinutes: 5,
-              },
-              entityType: reportResult.entityType,
-              status: reportResult.status,
-            },
-            { status: 408 }
-          ); // 408 Request Timeout
-        } else if (reportResult.entityType === "job" || reportResult.entityType === "k6_job") {
-          return NextResponse.json(
-            {
-              error: "Job execution timeout",
-              message: "Job execution timed out after 60 minutes",
-              details: "Execution timed out after 60 minutes",
-              timeoutInfo: {
-                isTimeout: true,
-                timeoutType: "job",
-                timeoutDurationMs: 3600000, // 60 minutes (1 hour)
-                timeoutDurationMinutes: 60,
-              },
-              entityType: reportResult.entityType,
-              status: reportResult.status,
-            },
-            { status: 408 }
-          ); // 408 Request Timeout
+
+        const timeoutResponse = buildTimeoutResponse(
+          reportResult.entityType,
+          errorDetails
+        );
+        if (timeoutResponse) {
+          return timeoutResponse;
         }
 
         // Return general failed execution error for other entity types
@@ -454,7 +528,11 @@ export async function GET(request: Request) {
     const bucket = pathParts[0];
 
     // Determine the file path based on what's being requested
-    const targetFile = reportFile || "index.html";
+    // Sanitize path segments to prevent directory traversal attempts
+    const targetFile = (reportFile || "index.html")
+      .split("/")
+      .filter((seg) => seg !== ".." && seg !== ".")
+      .join("/");
 
     // Prefer the stored reportPath when available
     const storedReportPath = reportResult.reportPath
@@ -485,8 +563,8 @@ export async function GET(request: Request) {
       .replace(/\/*$/, "");
 
     try {
-      // Use the shared S3 proxy utility
-      const s3Response = await fetchFromS3(bucket, s3Key);
+      // Retry transient S3 misses and apply trace/data fallback when needed.
+      const s3Response = await fetchReportAssetWithRecovery(bucket, s3Key);
 
       // Convert Response to NextResponse
       const headers: Record<string, string> = {};
@@ -494,11 +572,17 @@ export async function GET(request: Request) {
         headers[key] = value;
       });
 
-      // Override cache control for test results
-      headers["Cache-Control"] = "public, max-age=300";
+      // Cache successful report assets briefly, but never cache error responses.
+      // Caching 404/500 here can make freshly-uploaded reports appear missing.
+      headers["Cache-Control"] = s3Response.ok
+        ? "public, max-age=300"
+        : "no-store, no-cache, must-revalidate";
 
       // Only include Content-Disposition for downloads if not forcing iframe display
-      const contentType = headers["Content-Type"] || "application/octet-stream";
+      const contentType =
+        headers["content-type"] ||
+        headers["Content-Type"] ||
+        "application/octet-stream";
       if (
         !forceIframe &&
         contentType.includes("application/") &&

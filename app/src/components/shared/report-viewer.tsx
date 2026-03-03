@@ -81,6 +81,18 @@ interface ReportViewerProps {
   isK6Report?: boolean;
 }
 
+const MAX_TRANSIENT_RETRIES = 3;
+const RETRY_BASE_DELAY_MS = 1200;
+
+const isTransientReportError = (message: string): boolean => {
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("report not ready") ||
+    normalized.includes("still running") ||
+    normalized.includes("object not found")
+  );
+};
+
 export function ReportViewer({
   reportUrl,
   isRunning = false,
@@ -110,15 +122,58 @@ export function ReportViewer({
   const [timeoutInfo, setTimeoutInfo] = useState<TimeoutErrorInfo | null>(null);
   const [cancellationInfo, setCancellationInfo] =
     useState<CancellationErrorInfo | null>(null);
+  const [retryAttempt, setRetryAttempt] = useState(0);
+  const [retryNonce, setRetryNonce] = useState(0);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const fullscreenIframeRef = useRef<HTMLIFrameElement>(null);
-  const prevReportUrl = useRef<string | null>(undefined as unknown as string | null);
+  const prevReportUrl = useRef<string | null>(null);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Extract base URL (without query params) for comparison to detect actual report changes
   const getBaseUrl = useCallback((url: string | null): string | null => {
     if (!url) return null;
     return url.split("?")[0];
   }, []);
+
+  const clearRetryTimer = useCallback(() => {
+    if (retryTimerRef.current) {
+      clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
+  }, []);
+
+  const scheduleTransientRetry = useCallback((): boolean => {
+    if (!currentReportUrl || retryAttempt >= MAX_TRANSIENT_RETRIES) {
+      return false;
+    }
+
+    const nextAttempt = retryAttempt + 1;
+    setRetryAttempt(nextAttempt);
+    setIframeError(false);
+    setReportError(null);
+    setTimeoutInfo(null);
+    setCancellationInfo(null);
+    setIsReportLoading(true);
+
+    clearRetryTimer();
+    retryTimerRef.current = setTimeout(() => {
+      setRetryNonce(Date.now());
+      retryTimerRef.current = null;
+    }, RETRY_BASE_DELAY_MS * nextAttempt);
+
+    return true;
+  }, [clearRetryTimer, currentReportUrl, retryAttempt]);
+
+  const iframeSrc = useMemo(() => {
+    if (!currentReportUrl) {
+      return undefined;
+    }
+    if (retryNonce === 0) {
+      return currentReportUrl;
+    }
+    const separator = currentReportUrl.includes("?") ? "&" : "?";
+    return `${currentReportUrl}${separator}rvRetry=${retryNonce}`;
+  }, [currentReportUrl, retryNonce]);
 
   // Update URL when prop changes - deferred to avoid synchronous setState
   useEffect(() => {
@@ -132,9 +187,10 @@ export function ReportViewer({
     }
     prevReportUrl.current = reportUrl;
 
-    if (reportUrl) {
-      // Defer all state updates to avoid synchronous setState in effect
-      setTimeout(() => {
+    clearRetryTimer();
+
+    const pendingUpdate = setTimeout(() => {
+      if (reportUrl) {
         // Use the URL as-is from the caller — browser caching is managed by
         // Cache-Control headers on the server (public, max-age=300).
         // Do NOT append a cache-busting timestamp here; it defeats browser
@@ -145,12 +201,25 @@ export function ReportViewer({
         setReportError(null);
         setTimeoutInfo(null);
         setCancellationInfo(null);
-      }, 0);
-    } else {
-      // Defer to avoid synchronous setState in effect
-      setTimeout(() => setCurrentReportUrl(null), 0);
-    }
-  }, [reportUrl, getBaseUrl]);
+        setRetryAttempt(0);
+        setRetryNonce(0);
+      } else {
+        setCurrentReportUrl(null);
+        setRetryAttempt(0);
+        setRetryNonce(0);
+      }
+    }, 0);
+
+    return () => {
+      clearTimeout(pendingUpdate);
+    };
+  }, [clearRetryTimer, reportUrl, getBaseUrl]);
+
+  useEffect(() => {
+    return () => {
+      clearRetryTimer();
+    };
+  }, [clearRetryTimer]);
 
   // Hide external link button in Playwright trace viewer
   // This prevents users from opening snapshots in a new tab outside of SuperCheck
@@ -318,10 +387,13 @@ export function ReportViewer({
   useEffect(() => {
     if (isReportLoading) {
       const safetyTimeout = setTimeout(() => {
-        setIsReportLoading(false);
-
         // If the iframe failed silently, set error state
         if (currentReportUrl && !iframeError) {
+          if (scheduleTransientRetry()) {
+            return;
+          }
+
+          setIsReportLoading(false);
           setIframeError(true);
           setReportError(
             "Report loading timed out. The report server might be unreachable."
@@ -333,7 +405,7 @@ export function ReportViewer({
         clearTimeout(safetyTimeout);
       };
     }
-  }, [isReportLoading, currentReportUrl, iframeError]);
+  }, [isReportLoading, currentReportUrl, iframeError, scheduleTransientRetry]);
 
   // Loading state when the test is running - prioritize this check
   if (isRunning) {
@@ -446,8 +518,8 @@ export function ReportViewer({
         {!isRunning && currentReportUrl && (
           <iframe
             ref={iframeRef}
-            key={currentReportUrl}
-            src={currentReportUrl || undefined}
+            key={iframeSrc}
+            src={iframeSrc}
             className={`${iframeClassName} ${isReportLoading ? "opacity-0 pointer-events-none" : "opacity-100"
               } ${isValidationError ? "h-4/5 flex-grow" : "h-full"} ${!isK6Report ? "bg-card" : ""}`}
             sandbox="allow-same-origin allow-scripts allow-forms allow-downloads"
@@ -524,6 +596,12 @@ export function ReportViewer({
                         errorData.error ||
                         "Unknown error";
 
+                      if (isTransientReportError(errorMessage)) {
+                        if (scheduleTransientRetry()) {
+                          return;
+                        }
+                      }
+
                       // Check if this is a cancellation error
                       if (
                         errorData.cancellationInfo &&
@@ -591,11 +669,13 @@ export function ReportViewer({
             }}
             onError={(e) => {
               console.error("ReportViewer: iframe onError triggered", e);
-              setIsReportLoading(false);
-              setReportError(
-                "Failed to load test report. The report server might be unreachable."
-              );
-              setIframeError(true);
+              if (!scheduleTransientRetry()) {
+                setIsReportLoading(false);
+                setReportError(
+                  "Failed to load test report. The report server might be unreachable."
+                );
+                setIframeError(true);
+              }
             }}
           />
         )}
@@ -644,7 +724,7 @@ export function ReportViewer({
             <div className="flex-grow overflow-hidden">
               <iframe
                 ref={fullscreenIframeRef}
-                src={currentReportUrl || undefined}
+                src={iframeSrc}
                 className="w-full h-full border-0"
                 sandbox="allow-same-origin allow-scripts allow-forms allow-downloads"
                 title="Fullscreen Report"

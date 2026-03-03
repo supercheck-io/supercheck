@@ -35,7 +35,7 @@ import {
   ClipboardList,
   Terminal,
   Mail,
-  Pencil,
+  EllipsisVertical,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AuditLogsTable } from "@/components/admin/audit-logs-table";
@@ -507,7 +507,7 @@ function OrgAdminDashboardContent() {
                   }}
                   title="Rename organization"
                 >
-                  <Pencil className="h-3.5 w-3.5" />
+                  <EllipsisVertical className="h-3.5 w-3.5" />
                 </Button>
               )}
             </div>
