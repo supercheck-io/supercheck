@@ -27,6 +27,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - SQL injection prevention in database creation commands
 - Fixed worker Redis documentation to use correct `REDIS_HOST`, `REDIS_PORT`, and `REDIS_PASSWORD` variables instead of `REDIS_URL` for multi-location deployments ([#252](https://github.com/supercheck-io/supercheck/issues/252))
 
+### Security
+- Fixed DoS vulnerability in underscore via unlimited recursion in `_.flatten` and `_.isEqual` (patched to 1.13.8)
+- Fixed DoS vulnerabilities in multer via resource exhaustion and incomplete cleanup (patched to 2.1.0)
+- Fixed RCE vulnerability in serialize-javascript via `RegExp.flags` and `Date.prototype.toISOString()` (patched to 7.0.3)
+- Fixed stack overflow vulnerability in fast-xml-parser `XMLBuilder` with `preserveOrder` (patched to 5.3.8)
+- Fixed ReDoS vulnerability in minimatch via combinatorial backtracking in `matchOne()` with non-adjacent GLOBSTAR segments (patched via dependency overrides)
+
 ## [1.3.1] - 2026-02-25
 
 ### Added
