@@ -45,3 +45,24 @@ export function getEffectiveStatusPageDomain(): string {
     LOCAL_STATUS_PAGE_DOMAIN
   );
 }
+
+/**
+ * The status page base domain namespace is reserved for default UUID routes
+ * (e.g. <uuid>.supercheck.io). Custom domains must be outside this namespace.
+ */
+export function isReservedStatusPageHostname(
+  hostname: string | null | undefined,
+  baseDomain = getEffectiveStatusPageDomain()
+): boolean {
+  const normalizedHostname = normalizeStatusPageDomain(hostname ?? undefined);
+  const normalizedBaseDomain = normalizeStatusPageDomain(baseDomain);
+
+  if (!normalizedHostname || !normalizedBaseDomain) {
+    return false;
+  }
+
+  return (
+    normalizedHostname === normalizedBaseDomain ||
+    normalizedHostname.endsWith(`.${normalizedBaseDomain}`)
+  );
+}

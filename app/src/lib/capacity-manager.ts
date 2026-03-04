@@ -86,6 +86,39 @@ export function setCapacityLogger(l: typeof logger): void {
 }
 
 // =============================================================================
+// TRANSIENT ERROR DETECTION
+// =============================================================================
+
+/**
+ * Maximum number of retries for transient Redis errors in reserveSlot.
+ * Covers typical Sentinel failover windows (~10-30s detection + promotion).
+ */
+const RESERVE_SLOT_MAX_RETRIES = 3;
+
+/** Base delay between retries (multiplied by attempt number for backoff) */
+const RESERVE_SLOT_RETRY_DELAY_MS = 500;
+
+/**
+ * Detect transient Redis errors that may resolve after a short retry.
+ * These occur during Sentinel failover, network blips, or master promotion.
+ */
+function isTransientRedisError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const msg = error.message;
+  return (
+    msg.includes('ECONNREFUSED') ||
+    msg.includes('READONLY') ||
+    msg.includes('LOADING') ||
+    msg.includes('CLUSTERDOWN') ||
+    msg.includes('MOVED') ||
+    msg.includes('Connection is closed') ||
+    msg.includes('connect ETIMEDOUT') ||
+    msg.includes("Stream isn't writeable") ||
+    msg.includes('ERR EXECABORT')
+  );
+}
+
+// =============================================================================
 // CAPACITY MANAGER CLASS
 // =============================================================================
 
@@ -107,6 +140,21 @@ export class CapacityManager {
     this.redis = redis;
   }
 
+  /**
+   * Get the Redis connection, refreshing it if the current one is permanently dead.
+   * ioredis handles transient reconnection automatically via retryStrategy,
+   * but if the connection reaches "end" state (quit() was called or retries
+   * exhausted), we need a fresh connection.
+   */
+  private async getRedis(): Promise<Redis> {
+    if (this.redis.status === 'end') {
+      logger.warn({}, "CapacityManager Redis connection is dead, refreshing");
+      const { getRedisConnection } = await import('./queue');
+      this.redis = await getRedisConnection();
+    }
+    return this.redis;
+  }
+
   // ===========================================================================
   // MAIN API - Called when run button is clicked
   // ===========================================================================
@@ -115,59 +163,86 @@ export class CapacityManager {
    * Check capacity and reserve a slot for a new job
    * 
    * Atomic Lua script ensures no race conditions between concurrent requests.
+   * Retries on transient Redis errors (e.g., during Sentinel failover) and
+   * fails open (allows job) if all retries are exhausted — capacity is a rate
+   * limiter, so allowing one extra job is preferable to rejecting the user.
    * 
    * @param organizationId - Organization ID for plan-specific limits
    * @returns 0 = queue full (reject), 1 = can run immediately, 2 = must queue
    */
   async reserveSlot(organizationId: string = 'global'): Promise<number> {
-    try {
-      const limits = await checkCapacityLimits(organizationId);
-      const runningKey = KEYS.running(organizationId);
-      const queuedKey = KEYS.queued(organizationId);
+    // Atomic Lua script for capacity check
+    // Returns: 0 = full, 1 = immediate, 2 = queued
+    const luaScript = `
+      local runningKey = KEYS[1]
+      local queuedKey = KEYS[2]
+      local runningCapacity = tonumber(ARGV[1])
+      local queuedCapacity = tonumber(ARGV[2])
+      local ttl = tonumber(ARGV[3])
+      
+      local running = tonumber(redis.call('GET', runningKey) or '0')
+      local queued = redis.call('ZCARD', queuedKey)
+      
+      -- Check if queue is full
+      if queued >= queuedCapacity then
+        return 0
+      end
+      
+      -- Check if can run immediately
+      if running < runningCapacity then
+        redis.call('INCR', runningKey)
+        redis.call('EXPIRE', runningKey, ttl)
+        return 1
+      end
+      
+      -- Must wait in queue
+      return 2
+    `;
 
-      // Atomic Lua script for capacity check
-      // Returns: 0 = full, 1 = immediate, 2 = queued
-      const luaScript = `
-        local runningKey = KEYS[1]
-        local queuedKey = KEYS[2]
-        local runningCapacity = tonumber(ARGV[1])
-        local queuedCapacity = tonumber(ARGV[2])
-        local ttl = tonumber(ARGV[3])
-        
-        local running = tonumber(redis.call('GET', runningKey) or '0')
-        local queued = redis.call('ZCARD', queuedKey)
-        
-        -- Check if queue is full
-        if queued >= queuedCapacity then
-          return 0
-        end
-        
-        -- Check if can run immediately
-        if running < runningCapacity then
-          redis.call('INCR', runningKey)
-          redis.call('EXPIRE', runningKey, ttl)
-          return 1
-        end
-        
-        -- Must wait in queue
-        return 2
-      `;
+    for (let attempt = 1; attempt <= RESERVE_SLOT_MAX_RETRIES; attempt++) {
+      try {
+        const redis = await this.getRedis();
+        const limits = await checkCapacityLimits(organizationId);
+        const runningKey = KEYS.running(organizationId);
+        const queuedKey = KEYS.queued(organizationId);
 
-      const result = await this.redis.eval(
-        luaScript,
-        2,
-        runningKey,
-        queuedKey,
-        limits.runningCapacity,
-        limits.queuedCapacity,
-        KEY_TTL
-      ) as number;
+        const result = await redis.eval(
+          luaScript,
+          2,
+          runningKey,
+          queuedKey,
+          limits.runningCapacity,
+          limits.queuedCapacity,
+          KEY_TTL
+        ) as number;
 
-      return result;
-    } catch (error) {
-      logger.error({ err: error, organizationId }, "Failed to reserve capacity slot");
-      return 0; // Fail closed
+        return result;
+      } catch (error) {
+        if (isTransientRedisError(error) && attempt < RESERVE_SLOT_MAX_RETRIES) {
+          logger.warn(
+            { err: error, organizationId, attempt, maxRetries: RESERVE_SLOT_MAX_RETRIES },
+            "Transient Redis error in reserveSlot, retrying"
+          );
+          await new Promise(resolve => setTimeout(resolve, RESERVE_SLOT_RETRY_DELAY_MS * attempt));
+          continue;
+        }
+
+        // Transient error after all retries: fail open (allow the job)
+        if (isTransientRedisError(error)) {
+          logger.warn(
+            { err: error, organizationId, attempt },
+            "All retries exhausted for transient Redis error in reserveSlot, failing open"
+          );
+          return 1;
+        }
+
+        // Non-transient error: fail closed
+        logger.error({ err: error, organizationId }, "Failed to reserve capacity slot");
+        return 0;
+      }
     }
+
+    return 0; // Unreachable, satisfies TypeScript
   }
 
   /**
@@ -175,12 +250,13 @@ export class CapacityManager {
    */
   async addToQueue(organizationId: string, jobData: QueuedJobData): Promise<number> {
     try {
+      const redis = await this.getRedis();
       const queuedKey = KEYS.queued(organizationId);
       const jobDataKey = KEYS.jobData(jobData.jobId);
       const jobOrgKey = KEYS.jobOrg(jobData.jobId);
 
       // Use pipeline for atomic multi-key operations
-      const pipeline = this.redis.pipeline();
+      const pipeline = redis.pipeline();
       
       // Add to sorted set with timestamp as score (FIFO)
       pipeline.zadd(queuedKey, jobData.queuedAt, jobData.jobId);
@@ -195,7 +271,7 @@ export class CapacityManager {
       await pipeline.exec();
 
       // Return queue position
-      const position = await this.redis.zrank(queuedKey, jobData.jobId);
+      const position = await redis.zrank(queuedKey, jobData.jobId);
       return (position ?? 0) + 1;
     } catch (error) {
       logger.error({ err: error, jobId: jobData.jobId }, "Failed to add job to queue");
@@ -212,13 +288,14 @@ export class CapacityManager {
    */
   async releaseRunningSlot(organizationId: string = 'global', jobId?: string): Promise<void> {
     try {
+      const redis = await this.getRedis();
       const runningKey = KEYS.running(organizationId);
       
       // If no jobId provided, just decrement (legacy behavior for edge cases)
       if (!jobId) {
-        const result = await this.redis.decr(runningKey);
+        const result = await redis.decr(runningKey);
         if (result <= 0) {
-          await this.redis.del(runningKey);
+          await redis.del(runningKey);
         }
         return;
       }
@@ -251,7 +328,7 @@ export class CapacityManager {
         end
       `;
       
-      const result = await this.redis.eval(
+      const result = await redis.eval(
         luaScript,
         2,
         releasedKey,
@@ -280,8 +357,9 @@ export class CapacityManager {
    */
   async removeFromQueuedSet(organizationId: string, jobId: string): Promise<boolean> {
     try {
+      const redis = await this.getRedis();
       const queuedKey = KEYS.queued(organizationId);
-      const removed = await this.redis.zrem(queuedKey, jobId);
+      const removed = await redis.zrem(queuedKey, jobId);
       if (removed > 0) {
         // Clean up the job data since job is cancelled
         await this.cleanupJobData(jobId);
@@ -309,9 +387,10 @@ export class CapacityManager {
       const runningKey = KEYS.running(organizationId);
       const queuedKey = KEYS.queued(organizationId);
 
+      const redis = await this.getRedis();
       const [running, queued] = await Promise.all([
-        this.redis.get(runningKey).then(val => parseInt(val || '0')),
-        this.redis.zcard(queuedKey),
+        redis.get(runningKey).then(val => parseInt(val || '0')),
+        redis.zcard(queuedKey),
       ]);
 
       return {
@@ -378,11 +457,12 @@ export class CapacityManager {
    */
   async processQueuedJobs(): Promise<void> {
     try {
+      const redis = await this.getRedis();
       // Find all organizations with queued jobs using SCAN (non-blocking)
       const keys: string[] = [];
       let cursor = '0';
       do {
-        const [nextCursor, batch] = await this.redis.scan(
+        const [nextCursor, batch] = await redis.scan(
           cursor, 'MATCH', 'capacity:queued:*', 'COUNT', 100
         );
         cursor = nextCursor;
@@ -403,12 +483,13 @@ export class CapacityManager {
    */
   private async processOrganizationQueue(organizationId: string): Promise<void> {
     try {
+      const redis = await this.getRedis();
       const limits = await checkCapacityLimits(organizationId);
       const runningKey = KEYS.running(organizationId);
       const queuedKey = KEYS.queued(organizationId);
 
       // Get current running count
-      const running = parseInt(await this.redis.get(runningKey) || '0');
+      const running = parseInt(await redis.get(runningKey) || '0');
       const availableSlots = limits.runningCapacity - running;
 
       if (availableSlots <= 0) {
@@ -416,7 +497,7 @@ export class CapacityManager {
       }
 
       // Get jobs to promote (oldest first)
-      const jobIds = await this.redis.zrange(queuedKey, 0, availableSlots - 1);
+      const jobIds = await redis.zrange(queuedKey, 0, availableSlots - 1);
 
       for (const jobId of jobIds) {
         await this.promoteJob(organizationId, jobId);
@@ -463,8 +544,9 @@ export class CapacityManager {
     `;
 
     try {
+      const redis = await this.getRedis();
       const limits = await checkCapacityLimits(organizationId);
-      const result = await this.redis.eval(
+      const result = await redis.eval(
         luaScript,
         2,
         runningKey,
@@ -476,7 +558,7 @@ export class CapacityManager {
 
       if (result === 1) {
         // Job promoted, now add to BullMQ
-        const jobDataStr = await this.redis.get(jobDataKey);
+        const jobDataStr = await redis.get(jobDataKey);
         if (jobDataStr) {
           const jobData = JSON.parse(jobDataStr) as QueuedJobData;
           await this.addJobToBullMQ(jobData);
@@ -565,7 +647,8 @@ export class CapacityManager {
    */
   private async cleanupJobData(jobId: string): Promise<void> {
     try {
-      const pipeline = this.redis.pipeline();
+      const redis = await this.getRedis();
+      const pipeline = redis.pipeline();
       pipeline.del(KEYS.jobData(jobId));
       pipeline.del(KEYS.jobOrg(jobId));
       await pipeline.exec();
@@ -579,7 +662,8 @@ export class CapacityManager {
    */
   async trackJobOrganization(jobId: string, organizationId: string = 'global'): Promise<void> {
     try {
-      await this.redis.set(KEYS.jobOrg(jobId), organizationId, 'EX', JOB_DATA_TTL);
+      const redis = await this.getRedis();
+      await redis.set(KEYS.jobOrg(jobId), organizationId, 'EX', JOB_DATA_TTL);
     } catch (error) {
       logger.error({ err: error, jobId, organizationId }, "Failed to track job organization");
     }
@@ -590,7 +674,8 @@ export class CapacityManager {
    */
   async getJobOrganization(jobId: string): Promise<string | undefined> {
     try {
-      const orgId = await this.redis.get(KEYS.jobOrg(jobId));
+      const redis = await this.getRedis();
+      const orgId = await redis.get(KEYS.jobOrg(jobId));
       return orgId || undefined;
     } catch (error) {
       logger.error({ err: error, jobId }, "Failed to get job organization");
@@ -603,11 +688,12 @@ export class CapacityManager {
    */
   async setRunningCounter(value: number, organizationId: string = 'global'): Promise<void> {
     try {
+      const redis = await this.getRedis();
       const key = KEYS.running(organizationId);
       if (value <= 0) {
-        await this.redis.del(key);
+        await redis.del(key);
       } else {
-        await this.redis.set(key, value.toString(), 'EX', KEY_TTL);
+        await redis.set(key, value.toString(), 'EX', KEY_TTL);
       }
     } catch (error) {
       logger.error({ err: error, organizationId, value }, "Failed to set running counter");
@@ -619,13 +705,14 @@ export class CapacityManager {
    */
   async resetCounters(organizationId?: string): Promise<void> {
     try {
+      const redis = await this.getRedis();
       const pattern = organizationId ? `capacity:*:${organizationId}` : 'capacity:*';
       
       // Use SCAN for non-blocking key discovery
       const keys: string[] = [];
       let cursor = '0';
       do {
-        const [nextCursor, batch] = await this.redis.scan(
+        const [nextCursor, batch] = await redis.scan(
           cursor, 'MATCH', pattern, 'COUNT', 100
         );
         cursor = nextCursor;
@@ -633,7 +720,7 @@ export class CapacityManager {
       } while (cursor !== '0');
       
       if (keys.length > 0) {
-        await this.redis.del(...keys);
+        await redis.del(...keys);
         logger.info({ organizationId, deletedKeys: keys.length }, "Reset capacity counters");
       }
     } catch (error) {

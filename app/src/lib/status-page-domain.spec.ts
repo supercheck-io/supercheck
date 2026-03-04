@@ -74,4 +74,73 @@ describe("status page domain utilities", () => {
       expect(getEffectiveStatusPageDomain()).toBe("localhost");
     });
   });
+
+  describe("isReservedStatusPageHostname", () => {
+    it("returns true when hostname matches base domain", async () => {
+      const { isReservedStatusPageHostname } = await import(
+        "./status-page-domain"
+      );
+
+      expect(
+        isReservedStatusPageHostname("status.example.com", "status.example.com")
+      ).toBe(true);
+    });
+
+    it("returns true when hostname is a subdomain of base domain", async () => {
+      const { isReservedStatusPageHostname } = await import(
+        "./status-page-domain"
+      );
+
+      expect(
+        isReservedStatusPageHostname(
+          "foo.status.example.com",
+          "status.example.com"
+        )
+      ).toBe(true);
+    });
+
+    it("returns false for external custom domains", async () => {
+      const { isReservedStatusPageHostname } = await import(
+        "./status-page-domain"
+      );
+
+      expect(
+        isReservedStatusPageHostname("status.customer.com", "status.example.com")
+      ).toBe(false);
+    });
+
+    it("returns false for null or undefined inputs", async () => {
+      const { isReservedStatusPageHostname } = await import(
+        "./status-page-domain"
+      );
+
+      expect(isReservedStatusPageHostname(null, "example.com")).toBe(false);
+      expect(isReservedStatusPageHostname(undefined, "example.com")).toBe(false);
+      expect(isReservedStatusPageHostname("", "example.com")).toBe(false);
+    });
+
+    it("is case-insensitive", async () => {
+      const { isReservedStatusPageHostname } = await import(
+        "./status-page-domain"
+      );
+
+      expect(
+        isReservedStatusPageHostname("Status.Example.COM", "status.example.com")
+      ).toBe(true);
+      expect(
+        isReservedStatusPageHostname("ABC.STATUS.EXAMPLE.COM", "status.example.com")
+      ).toBe(true);
+    });
+
+    it("does not match partial suffix overlaps", async () => {
+      const { isReservedStatusPageHostname } = await import(
+        "./status-page-domain"
+      );
+
+      // "notexample.com" should NOT match base domain "example.com"
+      expect(
+        isReservedStatusPageHostname("notexample.com", "example.com")
+      ).toBe(false);
+    });
+  });
 });

@@ -58,7 +58,7 @@ x-common-env: &common-env # Database Configuration - External PostgreSQL
   BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-CHANGE_THIS_GENERATE_32_CHAR_HEX}
   NODE_ENV: ${NODE_ENV:-production}
   SHOW_COMMUNITY_LINKS: ${SHOW_COMMUNITY_LINKS:-true}
-  RUNNING_CAPACITY: ${RUNNING_CAPACITY:-1} # 1 worker replica × 1 concurrent run (keep in sync with replicas)
+  RUNNING_CAPACITY: ${RUNNING_CAPACITY:-1} # 1 worker replica × 1 concurrent execution (keep in sync with replicas)
   QUEUED_CAPACITY: ${QUEUED_CAPACITY:-10} # Queue size for single worker
   # Note: MAX_CONCURRENT_EXECUTIONS is hardcoded to 1 in worker code. Scale via worker replicas instead.
   # Container limits for 2 vCPU / 4GB servers
@@ -228,8 +228,8 @@ x-common-env: &common-env # Database Configuration - External PostgreSQL
   OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
 
   # Worker Location for geo-distributed monitoring and load testing
-  # Options: local (for local dev - processes all regions) | us-east | eu-central | asia-pacific (for production)
-  WORKER_LOCATION: ${WORKER_LOCATION:-global}
+  # Options: local (processes all regional queues) | us-east | eu-central | asia-pacific
+  WORKER_LOCATION: ${WORKER_LOCATION:-local}
 
   # Traefik/HTTPS Configuration
   APP_DOMAIN: ${APP_DOMAIN}
@@ -238,6 +238,9 @@ x-common-env: &common-env # Database Configuration - External PostgreSQL
   # Self-Hosted Mode (set to 'true' for unlimited features)
   # Client-side code fetches this from /api/config/hosting-mode at runtime
   SELF_HOSTED: ${SELF_HOSTED:-true}
+  # Registration controls for email/password signup
+  SIGNUP_ENABLED: ${SIGNUP_ENABLED:-true}
+  ALLOWED_EMAIL_DOMAINS: ${ALLOWED_EMAIL_DOMAINS:-}
 
   # OAuth Configuration (optional - enable social login)
   # Social auth buttons are automatically shown when client ID and secret are configured
@@ -343,6 +346,30 @@ services:
       - "traefik.http.routers.status-pages-http.entrypoints=web"
       - "traefik.http.routers.status-pages-http.middlewares=app-https-redirect"
       - "traefik.http.routers.status-pages-http.service=app"
+
+      # Custom domains for status pages (catch-all)
+      # Routes any hostname not matched above to the app, which handles
+      # custom domain lookup via proxy.ts. Priority is lowest so it only
+      # catches traffic that doesn't match APP_DOMAIN or STATUS_PAGE_DOMAIN.
+      #
+      # TLS behavior:
+      #   • Default: Let's Encrypt provisions certs on-demand via HTTP-01 challenge
+      #   • Cloudflare proxy: Works as-is — Cloudflare passes ACME challenges through.
+      #     Set Cloudflare SSL mode to "Full" or "Full (Strict)".
+      #   • Custom certs: Replace certresolver with tls.certificates in a Traefik
+      #     dynamic config file, or use a wildcard cert.
+      - "traefik.http.routers.status-custom.rule=PathPrefix(`/`)"
+      - "traefik.http.routers.status-custom.priority=1"
+      - "traefik.http.routers.status-custom.entrypoints=websecure"
+      - "traefik.http.routers.status-custom.tls.certresolver=myresolver"
+      - "traefik.http.routers.status-custom.service=app"
+
+      # HTTP → HTTPS redirect for custom domains (catch-all)
+      - "traefik.http.routers.status-custom-http.rule=PathPrefix(`/`)"
+      - "traefik.http.routers.status-custom-http.priority=1"
+      - "traefik.http.routers.status-custom-http.entrypoints=web"
+      - "traefik.http.routers.status-custom-http.middlewares=app-https-redirect"
+      - "traefik.http.routers.status-custom-http.service=app"
 
       # Redirect middleware & service config
       - "traefik.http.middlewares.app-https-redirect.redirectscheme.scheme=https"

@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ## [1.3.2] - Unreleased
 
 ### Added
+- **Registration controls for self-hosted deployments** — New `SIGNUP_ENABLED` environment variable to enable/disable new user registration, and `ALLOWED_EMAIL_DOMAINS` to restrict signup to specific email domains ([#246](https://github.com/supercheck-io/supercheck/issues/246))
+- **Organization rename** — Organization owners and admins can now rename their organization from the Organization Admin page ([#247](https://github.com/supercheck-io/supercheck/issues/247))
 - Added a UI callout on the self-hosted sign-up page to inform users about organization invitations
 - Enhanced database migration script with optimized auto-probe logic and security improvements
 
@@ -17,8 +19,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ### Fixed
 - Fixed Playwright report loading performance
 - Implemented report caching across Playground, Runs, and Monitor views to prevent unnecessary re-fetching on tab switches
+- Hardened report-viewer transient retry handling for "report not ready" and temporary object-availability errors in Playwright/K6 report loading
+- Prevented caching of error responses from report proxy to avoid stale missing-report states after uploads complete
+- Prevented setting a status page custom domain to `STATUS_PAGE_DOMAIN` or its subdomains, which would silently fail to route ([#253](https://github.com/supercheck-io/supercheck/issues/253))
+- Added catch-all Traefik routers to `docker-compose-secure.yml` and `docker-compose-external.yml` for custom domain support on status pages
+- Fixed false "Queue capacity limit reached" errors during Redis Sentinel failover
+- Fixed Redis connections being permanently killed during Sentinel failover 
 - Database migration script performance optimization for self-hosted deployments
 - SQL injection prevention in database creation commands
+- Fixed worker Redis documentation to use correct `REDIS_HOST`, `REDIS_PORT`, and `REDIS_PASSWORD` variables instead of `REDIS_URL` for multi-location deployments ([#252](https://github.com/supercheck-io/supercheck/issues/252))
+
+### Security
+- Fixed DoS vulnerability in underscore via unlimited recursion in `_.flatten` and `_.isEqual` (patched to 1.13.8)
+- Fixed DoS vulnerabilities in multer via resource exhaustion and incomplete cleanup (patched to 2.1.0)
+- Fixed RCE vulnerability in serialize-javascript via `RegExp.flags` and `Date.prototype.toISOString()` (patched to 7.0.3)
+- Fixed stack overflow vulnerability in fast-xml-parser `XMLBuilder` with `preserveOrder` (patched to 5.3.8)
+- Fixed ReDoS vulnerability in minimatch via combinatorial backtracking in `matchOne()` with non-adjacent GLOBSTAR segments (patched via dependency overrides)
 
 ## [1.3.1] - 2026-02-25
 

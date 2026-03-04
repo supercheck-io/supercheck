@@ -138,6 +138,27 @@ const settingsSchema = z.object({
 
 type SettingsFormValues = z.infer<typeof settingsSchema>;
 
+const normalizeHostname = (value: string): string => {
+  return value.trim().toLowerCase().replace(/\.$/, "");
+};
+
+// Client-side equivalent of isReservedStatusPageHostname from status-page-domain.ts.
+// Cannot import the server module directly because it pulls in process.env-dependent
+// feature-flag helpers that are unavailable in the browser runtime.
+const isReservedCustomDomain = (
+  customDomain: string,
+  statusPageDomain: string
+): boolean => {
+  const hostname = normalizeHostname(customDomain);
+  const baseDomain = normalizeHostname(statusPageDomain);
+
+  if (!hostname || !baseDomain) {
+    return false;
+  }
+
+  return hostname === baseDomain || hostname.endsWith(`.${baseDomain}`);
+};
+
 export function SettingsTab({
   statusPage,
   canUpdate,
@@ -188,9 +209,22 @@ export function SettingsTab({
   });
 
   const customDomainValue = watch("customDomain");
+  const hasReservedCustomDomain =
+    !!customDomainValue &&
+    isReservedCustomDomain(customDomainValue, statusPageDomain);
 
   const onSubmit = async (data: SettingsFormValues) => {
     try {
+      if (
+        data.customDomain &&
+        isReservedCustomDomain(data.customDomain, statusPageDomain)
+      ) {
+        toast.error("Invalid custom domain", {
+          description: `Custom domains cannot use ${statusPageDomain} or its subdomains. Use a separate hostname and point its CNAME to ${statusPageDomain}.`,
+        });
+        return;
+      }
+
       const result = await updateStatusPageSettings({
         statusPageId: statusPage.id,
         ...data,
@@ -535,7 +569,9 @@ export function SettingsTab({
                       size="sm"
                       variant="outline"
                       onClick={handleVerifyDNS}
-                      disabled={isVerifyingDNS || !canUpdate}
+                      disabled={
+                        isVerifyingDNS || !canUpdate || hasReservedCustomDomain
+                      }
                     >
                       {isVerifyingDNS ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
@@ -548,6 +584,17 @@ export function SettingsTab({
               {errors.customDomain && (
                 <p className="text-sm text-red-500">
                   {errors.customDomain.message}
+                </p>
+              )}
+
+              {hasReservedCustomDomain && (
+                <p className="text-sm text-amber-600">
+                  This domain is reserved for default status page routing.
+                  Use a different hostname and point its CNAME to{" "}
+                  <code className="bg-muted px-1 py-0.5 rounded text-xs">
+                    {statusPageDomain}
+                  </code>
+                  .
                 </p>
               )}
 
@@ -618,6 +665,10 @@ export function SettingsTab({
                       <li>Wait for DNS propagation (typically 5–30 minutes)</li>
                       <li>Click <strong>Verify DNS</strong></li>
                     </ol>
+                    <p>
+                      Do not use <code>{statusPageDomain}</code> or any of its
+                      subdomains as the custom domain value.
+                    </p>
                   </div>
                 ) : (
                   <ol className="list-decimal list-inside space-y-1 pl-5.5">
@@ -627,6 +678,7 @@ export function SettingsTab({
                       <code className="bg-muted px-1 py-0.5 rounded text-xs">{statusPageDomain}</code>
                     </li>
                     <li>Click <strong>Verify DNS</strong> to confirm the setup</li>
+                    <li>Do not set the custom domain to <code>{statusPageDomain}</code> or its subdomains</li>
                   </ol>
                 )}
               </div>

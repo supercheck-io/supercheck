@@ -8,6 +8,10 @@ import { requireProjectContext } from "@/lib/project-context";
 import { requirePermissions } from "@/lib/rbac/middleware";
 import { revalidatePath } from "next/cache";
 import { logAuditEvent } from "@/lib/audit-logger";
+import {
+  getEffectiveStatusPageDomain,
+  isReservedStatusPageHostname,
+} from "@/lib/status-page-domain";
 
 // Validation schema with strict input sanitization
 const updateSettingsSchema = z.object({
@@ -166,6 +170,14 @@ export async function updateStatusPageSettings(data: UpdateSettingsInput) {
       updatePayload.customDomainVerified = false;
 
       if (settings.customDomain) {
+        const baseDomain = getEffectiveStatusPageDomain();
+        if (isReservedStatusPageHostname(settings.customDomain, baseDomain)) {
+          return {
+            success: false,
+            message: `Custom domain cannot use ${baseDomain} or its subdomains. Use a separate hostname and point its CNAME to ${baseDomain}.`,
+          };
+        }
+
         const existingDomain = await db.query.statusPages.findFirst({
           where: and(
             eq(statusPages.customDomain, settings.customDomain),
@@ -195,7 +207,8 @@ export async function updateStatusPageSettings(data: UpdateSettingsInput) {
       .where(
         and(
           eq(statusPages.id, statusPageId),
-          eq(statusPages.organizationId, organizationId)
+          eq(statusPages.organizationId, organizationId),
+          eq(statusPages.projectId, project.id)
         )
       );
 

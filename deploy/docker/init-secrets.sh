@@ -57,6 +57,13 @@ cat > "$ENV_FILE" << EOF
 # ────────────────────────────────────────────────────────────
 SELF_HOSTED=true
 
+# Registration Controls (email/password)
+# Set to false to allow signup by invitation only
+SIGNUP_ENABLED=true
+# Optional allowlist for signup domains (comma-separated)
+# ALLOWED_EMAIL_DOMAINS=acme.com,acme.org
+ALLOWED_EMAIL_DOMAINS=
+
 # ────────────────────────────────────────────────────────────
 # OPTIONAL: OAuth Provider (GitHub / Google)
 # ────────────────────────────────────────────────────────────

@@ -9,6 +9,10 @@ export interface AppConfig {
     github: { enabled: boolean };
     google: { enabled: boolean };
   };
+  registration: {
+    signupEnabled: boolean;
+    allowedEmailDomains: string[];
+  };
   demoMode: boolean;
   showCommunityLinks: boolean;
   limits: {
@@ -26,6 +30,10 @@ const DEFAULT_CONFIG: AppConfig = {
   authProviders: {
     github: { enabled: false },
     google: { enabled: false },
+  },
+  registration: {
+    signupEnabled: true,
+    allowedEmailDomains: [],
   },
   demoMode: false,
   showCommunityLinks: false,
@@ -79,6 +87,8 @@ export function useAppConfig() {
     showCommunityLinks: effectiveConfig.showCommunityLinks ?? false,
     isGithubEnabled: effectiveConfig.authProviders?.github?.enabled ?? false,
     isGoogleEnabled: effectiveConfig.authProviders?.google?.enabled ?? false,
+    isSignupEnabled: effectiveConfig.registration?.signupEnabled ?? true,
+    allowedEmailDomains: effectiveConfig.registration?.allowedEmailDomains ?? [],
     maxJobNotificationChannels: effectiveConfig.limits?.maxJobNotificationChannels ?? 10,
     maxMonitorNotificationChannels: effectiveConfig.limits?.maxMonitorNotificationChannels ?? 10,
     recentMonitorResultsLimit: effectiveConfig.limits?.recentMonitorResultsLimit,

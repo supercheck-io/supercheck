@@ -48,6 +48,10 @@ interface SignupFormProps {
   isSelfHosted?: boolean;
   /** Whether legal footer links should be shown (cloud mode only, after config resolves) */
   shouldShowLegalFooter?: boolean;
+  /** Whether new signups are enabled (default: true) */
+  isSignupEnabled?: boolean;
+  /** List of allowed email domains for registration (empty = all allowed) */
+  allowedEmailDomains?: string[];
 }
 
 /**
@@ -68,6 +72,8 @@ export function SignupForm({
   captchaRef: externalCaptchaRef,
   isSelfHosted = false,
   shouldShowLegalFooter = false,
+  isSignupEnabled = true,
+  allowedEmailDomains = [],
 }: SignupFormProps) {
   const [showPassword, setShowPassword] = useState(false);
 
@@ -108,6 +114,41 @@ export function SignupForm({
   // Determine mode: invitation flow vs open registration (self-hosted without invite)
   const isInviteMode = !!inviteData;
   const isOpenRegistration = isSelfHosted && !inviteData && !inviteToken;
+  const hasEmailDomainRestriction = allowedEmailDomains.length > 0;
+
+  // If signup is disabled and there's no invite, show a closed registration message
+  if (!isSignupEnabled && !inviteData && !inviteToken) {
+    return (
+      <div className={cn("flex flex-col gap-6", className)}>
+        <div className="flex flex-col items-center gap-3 text-center">
+          <Link
+            href="/"
+            className="flex flex-col items-center gap-3 font-medium"
+          >
+            <div className="flex size-14 items-center justify-center rounded-md">
+              <SupercheckLogo className="size-12" />
+            </div>
+            <span className="sr-only">Supercheck</span>
+          </Link>
+          <h1 className="text-2xl font-bold">Registration Closed</h1>
+          <p className="text-sm text-muted-foreground max-w-[300px]">
+            New account registration is currently disabled. Please contact your administrator for access.
+          </p>
+          <div className="mt-4 text-center text-sm">
+            <p className="text-muted-foreground">
+              Already have an account?{" "}
+              <Link
+                href="/sign-in"
+                className="font-medium underline underline-offset-2"
+              >
+                Sign in instead
+              </Link>
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // Show loading state while fetching invite data (when invite token is present but data hasn't loaded)
   if (!inviteData && !isOpenRegistration) {
@@ -224,6 +265,11 @@ export function SignupForm({
                         {...field}
                       />
                     </FormControl>
+                    {hasEmailDomainRestriction && !isInviteMode && (
+                      <p className="text-xs text-muted-foreground">
+                        Allowed domains: {allowedEmailDomains.join(", ")}
+                      </p>
+                    )}
                     <FormMessage />
                   </Field>
                 </FormItem>

@@ -199,17 +199,26 @@ export function buildRedisOptions(
 
 /**
  * Get or create Redis connection using environment variables.
+ *
+ * IMPORTANT: This connection is shared by the CapacityManager, BullMQ queues,
+ * and other consumers. We must NOT call quit() on a connection that is merely
+ * reconnecting — ioredis's retryStrategy handles transient disconnections
+ * (e.g., Sentinel failover). Calling quit() permanently closes the connection
+ * for ALL holders of that reference, causing "Connection is closed" errors.
+ *
+ * We only replace the client when its status is "end" (quit() was already
+ * called externally, or ioredis gave up reconnecting).
  */
 export async function getRedisConnection(): Promise<Redis> {
-  if (redisClient && redisClient.status === "ready") {
+  if (redisClient && redisClient.status !== "end") {
     return redisClient;
   }
 
   if (redisClient) {
     try {
-      await redisClient.quit();
+      redisClient.disconnect();
     } catch (e) {
-      queueLogger.error({ err: e }, "Error quitting old Redis client");
+      queueLogger.error({ err: e }, "Error disconnecting old Redis client");
     }
     redisClient = null;
   }

@@ -5,6 +5,16 @@ import { db } from '@/utils/db';
 import { organization, member, projects } from '@/db/schema';
 import { eq, and, count } from 'drizzle-orm';
 import { Role } from '@/lib/rbac/permissions';
+import { z } from 'zod';
+
+/**
+ * Validation schema for organization name updates.
+ * Matches the client-side schema in lib/validations/organization.ts.
+ * trim() is applied first so whitespace-only strings are rejected by min(2).
+ */
+const updateOrgNameSchema = z.object({
+  name: z.string().trim().min(2).max(50),
+});
 
 /**
  * GET /api/organizations/[id]
@@ -116,7 +126,7 @@ export async function PUT(
     }
     
     const body = await request.json();
-    const { name, slug, logo, metadata } = body;
+    const { name } = body;
     
     if (!name) {
       return NextResponse.json(
@@ -124,16 +134,44 @@ export async function PUT(
         { status: 400 }
       );
     }
+
+    // Validate organization name
+    const nameValidation = updateOrgNameSchema.safeParse({ name });
+    if (!nameValidation.success) {
+      const firstError = nameValidation.error.errors[0];
+      return NextResponse.json(
+        { error: firstError?.message || 'Invalid organization name' },
+        { status: 400 }
+      );
+    }
+
+    const updateData: {
+      name: string;
+      slug?: string | null;
+      logo?: string | null;
+      metadata?: unknown;
+    } = {
+      name: nameValidation.data.name,
+    };
+
+    if (Object.prototype.hasOwnProperty.call(body, 'slug')) {
+      const rawSlug = body.slug;
+      updateData.slug = typeof rawSlug === 'string' && rawSlug.trim() ? rawSlug : null;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body, 'logo')) {
+      const rawLogo = body.logo;
+      updateData.logo = typeof rawLogo === 'string' && rawLogo.trim() ? rawLogo : null;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body, 'metadata')) {
+      updateData.metadata = body.metadata ?? null;
+    }
     
     // Update organization
     const [updatedOrg] = await db
       .update(organization)
-      .set({
-        name,
-        slug: slug || null,
-        logo: logo || null,
-        metadata: metadata || null
-      })
+      .set(updateData)
       .where(eq(organization.id, organizationId))
       .returning();
     

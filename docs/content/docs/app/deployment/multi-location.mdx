@@ -1,5 +1,5 @@
 ---
-title: Multi-Location Workers
+title: Multi-Location
 description: Deploy workers in multiple geographic regions for true global coverage
 icon: MapPin
 ---
@@ -54,7 +54,7 @@ flowchart TB
 ```
 
 <Callout type="info">
-**Key Insight**: Each worker only processes jobs for its designated region. A US worker only handles `us-east` jobs, an EU worker only handles `eu-central` jobs.
+**Key Insight**: Queue routing is mixed by workload type. Regional workers process `playwright-global`, their regional K6 queue plus `k6-global`, and only their regional monitor queue.
 </Callout>
 
 ---
@@ -67,6 +67,10 @@ flowchart TB
 | `us-east` | `playwright-global`, `k6-us-east`, `k6-global`, `monitor-us-east` | US East regional worker |
 | `eu-central` | `playwright-global`, `k6-eu-central`, `k6-global`, `monitor-eu-central` | EU Central regional worker |
 | `asia-pacific` | `playwright-global`, `k6-asia-pacific`, `k6-global`, `monitor-asia-pacific` | Asia Pacific regional worker |
+
+<Callout type="warn">
+At least one worker must run with `WORKER_LOCATION=eu-central` for K6 **job** executions. K6 jobs are intentionally pinned to the `k6-eu-central` queue for consistent analytics baselines.
+</Callout>
 
 ---
 
@@ -187,8 +191,11 @@ For true geographic distribution, deploy workers in each region.
     # Database connection (get password from main server's .env file)
     DATABASE_URL=postgresql://postgres:YOUR_DB_PASSWORD@MAIN_SERVER_IP:5432/supercheck
     
-    # Redis connection (get password from main server's .env file)
-    REDIS_URL=redis://:YOUR_REDIS_PASSWORD@MAIN_SERVER_IP:6379
+    # Redis connection
+    # The worker uses REDIS_HOST, REDIS_PORT, and REDIS_PASSWORD directly
+    REDIS_HOST=MAIN_SERVER_IP
+    REDIS_PORT=6379
+    REDIS_PASSWORD=YOUR_REDIS_PASSWORD
     
     # S3/MinIO connection (use main server's MinIO credentials)
     S3_ENDPOINT=http://MAIN_SERVER_IP:9000
@@ -200,6 +207,10 @@ For true geographic distribution, deploy workers in each region.
     # ─────────────────────────────────────────────────────────────────
     WORKER_LOCATION=us-east
     ```
+    
+    <Callout type="warn">
+    **Important**: The worker connects to Redis using `REDIS_HOST`, `REDIS_PORT`, and `REDIS_PASSWORD` — not `REDIS_URL`. Make sure all three are set correctly.
+    </Callout>
     
     <Callout type="tip">
     Find your main server credentials in the `.env` file at `supercheck/deploy/docker/.env`.
@@ -219,9 +230,9 @@ For true geographic distribution, deploy workers in each region.
 
 | Server | Region | `WORKER_LOCATION` | Queues Processed |
 |--------|--------|-------------------|------------------|
-| Main Server | Europe | `eu-central` | EU Central only |
-| Remote VPS 1 | US | `us-east` | US East only |
-| Remote VPS 2 | Asia | `asia-pacific` | Asia Pacific only |
+| Main Server | Europe | `eu-central` | `playwright-global`, `k6-eu-central`, `k6-global`, `monitor-eu-central` |
+| Remote VPS 1 | US | `us-east` | `playwright-global`, `k6-us-east`, `k6-global`, `monitor-us-east` |
+| Remote VPS 2 | Asia | `asia-pacific` | `playwright-global`, `k6-asia-pacific`, `k6-global`, `monitor-asia-pacific` |
 
 ### Main Server `.env`:
 ```bash
@@ -235,7 +246,9 @@ WORKER_LOCATION=us-east
 
 # Connection to main server (replace with your values)
 DATABASE_URL=postgresql://postgres:YOUR_DB_PASSWORD@YOUR_MAIN_SERVER_IP:5432/supercheck
-REDIS_URL=redis://:YOUR_REDIS_PASSWORD@YOUR_MAIN_SERVER_IP:6379
+REDIS_HOST=YOUR_MAIN_SERVER_IP
+REDIS_PORT=6379
+REDIS_PASSWORD=YOUR_REDIS_PASSWORD
 S3_ENDPOINT=http://YOUR_MAIN_SERVER_IP:9000
 AWS_ACCESS_KEY_ID=YOUR_MINIO_ACCESS_KEY
 AWS_SECRET_ACCESS_KEY=YOUR_MINIO_SECRET_KEY
@@ -248,7 +261,9 @@ WORKER_LOCATION=asia-pacific
 
 # Connection to main server (replace with your values)
 DATABASE_URL=postgresql://postgres:YOUR_DB_PASSWORD@YOUR_MAIN_SERVER_IP:5432/supercheck
-REDIS_URL=redis://:YOUR_REDIS_PASSWORD@YOUR_MAIN_SERVER_IP:6379
+REDIS_HOST=YOUR_MAIN_SERVER_IP
+REDIS_PORT=6379
+REDIS_PASSWORD=YOUR_REDIS_PASSWORD
 S3_ENDPOINT=http://YOUR_MAIN_SERVER_IP:9000
 AWS_ACCESS_KEY_ID=YOUR_MINIO_ACCESS_KEY
 AWS_SECRET_ACCESS_KEY=YOUR_MINIO_SECRET_KEY
@@ -260,8 +275,10 @@ AWS_SECRET_ACCESS_KEY=YOUR_MINIO_SECRET_KEY
 
 ```bash
 # Scale to 2 workers per location
-WORKER_REPLICAS=2 docker compose up -d
+WORKER_REPLICAS=2 RUNNING_CAPACITY=2 docker compose up -d
 ```
+
+Use `RUNNING_CAPACITY` as the source-of-truth concurrency setting. Keep it equal to `WORKER_REPLICAS` in the same deployment so configured capacity matches available worker replicas.
 
 ---
 
@@ -287,10 +304,20 @@ docker run --rm -it postgres:18 psql "$DATABASE_URL" -c "SELECT 1"
 
 **Worker can't connect to Redis:**
 ```bash
-docker run --rm -it redis:8 redis-cli -u "$REDIS_URL" ping
+docker run --rm -it redis:8 redis-cli -h MAIN_SERVER_IP -p 6379 -a YOUR_REDIS_PASSWORD ping
 ```
+
+<Callout type="warn">
+The worker uses `REDIS_HOST`, `REDIS_PORT`, and `REDIS_PASSWORD` environment variables — **not** `REDIS_URL`. If the worker logs show it connecting to `127.0.0.1` or `localhost`, check that `REDIS_HOST` is set to your main server&apos;s IP address.
+</Callout>
 
 **Verify worker location:**
 ```bash
 docker compose logs worker | grep "WORKER_LOCATION"
+```
+
+**K6 jobs stuck in queued state:**
+```bash
+# Ensure at least one worker is subscribed to k6-eu-central
+docker compose logs worker | grep "K6Module initialized"
 ```

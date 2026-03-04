@@ -35,6 +35,8 @@ jest.mock("@/db/schema", () => ({
 
 jest.mock("@/lib/feature-flags", () => ({
   isSelfHosted: jest.fn(() => false),
+  isSignupEnabled: jest.fn(() => true),
+  isEmailDomainAllowed: jest.fn(() => true),
 }));
 
 import { POST } from "./route";
@@ -54,16 +56,20 @@ const { db: mockDb } = jest.requireMock("@/utils/db") as {
   };
 };
 
-const { isSelfHosted: mockIsSelfHosted } = jest.requireMock(
+const { isSelfHosted: mockIsSelfHosted, isSignupEnabled: mockIsSignupEnabled, isEmailDomainAllowed: mockIsEmailDomainAllowed } = jest.requireMock(
   "@/lib/feature-flags",
 ) as {
   isSelfHosted: jest.Mock;
+  isSignupEnabled: jest.Mock;
+  isEmailDomainAllowed: jest.Mock;
 };
 
 describe("Email sign-up invite enforcement", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockIsSelfHosted.mockReturnValue(false);
+    mockIsSignupEnabled.mockReturnValue(true);
+    mockIsEmailDomainAllowed.mockReturnValue(true);
     mockBetterAuthHandlers.POST.mockResolvedValue(
       NextResponse.json({ ok: true }, { status: 200 }),
     );
@@ -244,6 +250,216 @@ describe("Email sign-up invite enforcement", () => {
       await POST(request);
 
       expect(mockDb.select).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("registration controls", () => {
+    describe("SIGNUP_ENABLED=false", () => {
+      beforeEach(() => {
+        mockIsSignupEnabled.mockReturnValue(false);
+      });
+
+      it("rejects sign-up when signup is disabled and no invite token", async () => {
+        const request = new NextRequest("http://localhost/api/auth/sign-up/email", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            email: "user@example.com",
+            name: "Test User",
+            password: "Secret123",
+          }),
+        });
+
+        const response = await POST(request);
+        const body = await response.json();
+
+        expect(response.status).toBe(403);
+        expect(body.code).toBe("SIGNUP_DISABLED");
+        expect(mockBetterAuthHandlers.POST).not.toHaveBeenCalled();
+      });
+
+      it("allows sign-up when signup is disabled but invite token is present", async () => {
+        const invitationQuery = {
+          from: jest.fn().mockReturnValue({
+            where: jest.fn().mockReturnValue({
+              limit: jest.fn().mockResolvedValue([
+                {
+                  id: "invite-1",
+                  expiresAt: new Date(Date.now() + 60_000),
+                },
+              ]),
+            }),
+          }),
+        };
+        mockDb.select.mockReturnValue(invitationQuery);
+
+        const request = new NextRequest("http://localhost/api/auth/sign-up/email", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-invite-token": "invite-token-1",
+          },
+          body: JSON.stringify({
+            email: "user@example.com",
+            name: "Test User",
+            password: "Secret123",
+          }),
+        });
+
+        const response = await POST(request);
+
+        expect(response.status).toBe(200);
+        expect(mockBetterAuthHandlers.POST).toHaveBeenCalledTimes(1);
+      });
+
+      it("allows self-hosted sign-up when signup is disabled but invite token is present", async () => {
+        mockIsSelfHosted.mockReturnValue(true);
+        const invitationQuery = {
+          from: jest.fn().mockReturnValue({
+            where: jest.fn().mockReturnValue({
+              limit: jest.fn().mockResolvedValue([
+                {
+                  id: "invite-1",
+                  expiresAt: new Date(Date.now() + 60_000),
+                },
+              ]),
+            }),
+          }),
+        };
+        mockDb.select.mockReturnValue(invitationQuery);
+
+        const request = new NextRequest("http://localhost/api/auth/sign-up/email", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-invite-token": "invite-token-1",
+          },
+          body: JSON.stringify({
+            email: "user@example.com",
+            name: "Test User",
+            password: "Secret123",
+          }),
+        });
+
+        const response = await POST(request);
+
+        expect(response.status).toBe(200);
+        expect(mockBetterAuthHandlers.POST).toHaveBeenCalledTimes(1);
+      });
+
+      it("rejects self-hosted sign-up when signup is disabled and invite token is invalid", async () => {
+        mockIsSelfHosted.mockReturnValue(true);
+        const invitationQuery = {
+          from: jest.fn().mockReturnValue({
+            where: jest.fn().mockReturnValue({
+              limit: jest.fn().mockResolvedValue([]),
+            }),
+          }),
+        };
+        mockDb.select.mockReturnValue(invitationQuery);
+
+        const request = new NextRequest("http://localhost/api/auth/sign-up/email", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-invite-token": "not-a-real-invite",
+          },
+          body: JSON.stringify({
+            email: "user@example.com",
+            name: "Test User",
+            password: "Secret123",
+          }),
+        });
+
+        const response = await POST(request);
+        const body = await response.json();
+
+        expect(response.status).toBe(403);
+        expect(body.code).toBe("INVITE_REQUIRED");
+        expect(mockBetterAuthHandlers.POST).not.toHaveBeenCalled();
+      });
+    });
+
+    describe("ALLOWED_EMAIL_DOMAINS restriction", () => {
+      it("rejects sign-up when email domain is not allowed", async () => {
+        mockIsEmailDomainAllowed.mockReturnValue(false);
+        mockIsSelfHosted.mockReturnValue(true);
+
+        const request = new NextRequest("http://localhost/api/auth/sign-up/email", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            email: "user@evil.com",
+            name: "Test User",
+            password: "Secret123",
+          }),
+        });
+
+        const response = await POST(request);
+        const body = await response.json();
+
+        expect(response.status).toBe(403);
+        expect(body.code).toBe("EMAIL_DOMAIN_NOT_ALLOWED");
+        expect(mockBetterAuthHandlers.POST).not.toHaveBeenCalled();
+      });
+
+      it("allows sign-up when email domain is allowed", async () => {
+        mockIsEmailDomainAllowed.mockReturnValue(true);
+        mockIsSelfHosted.mockReturnValue(true);
+
+        const request = new NextRequest("http://localhost/api/auth/sign-up/email", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            email: "user@acme.com",
+            name: "Test User",
+            password: "Secret123",
+          }),
+        });
+
+        const response = await POST(request);
+
+        expect(response.status).toBe(200);
+        expect(mockBetterAuthHandlers.POST).toHaveBeenCalledTimes(1);
+      });
+
+      it("domain check applies even to invited users in cloud mode", async () => {
+        mockIsEmailDomainAllowed.mockReturnValue(false);
+
+        const invitationQuery = {
+          from: jest.fn().mockReturnValue({
+            where: jest.fn().mockReturnValue({
+              limit: jest.fn().mockResolvedValue([
+                {
+                  id: "invite-1",
+                  expiresAt: new Date(Date.now() + 60_000),
+                },
+              ]),
+            }),
+          }),
+        };
+        mockDb.select.mockReturnValue(invitationQuery);
+
+        const request = new NextRequest("http://localhost/api/auth/sign-up/email", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-invite-token": "invite-token-1",
+          },
+          body: JSON.stringify({
+            email: "user@evil.com",
+            name: "Test User",
+            password: "Secret123",
+          }),
+        });
+
+        const response = await POST(request);
+        const body = await response.json();
+
+        expect(response.status).toBe(403);
+        expect(body.code).toBe("EMAIL_DOMAIN_NOT_ALLOWED");
+        expect(mockBetterAuthHandlers.POST).not.toHaveBeenCalled();
+      });
     });
   });
 });
