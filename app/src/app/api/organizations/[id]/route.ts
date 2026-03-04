@@ -10,9 +10,10 @@ import { z } from 'zod';
 /**
  * Validation schema for organization name updates.
  * Matches the client-side schema in lib/validations/organization.ts.
+ * trim() is applied first so whitespace-only strings are rejected by min(2).
  */
 const updateOrgNameSchema = z.object({
-  name: z.string().min(1).min(2).max(50).trim(),
+  name: z.string().trim().min(2).max(50),
 });
 
 /**

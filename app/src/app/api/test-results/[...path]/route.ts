@@ -106,8 +106,12 @@ async function fetchReportAssetWithRecovery(
     if (isObjectNotFound && !fallbackApplied) {
       const fallbackKey = toTraceDataFallbackKey(currentKey);
       if (fallbackKey && fallbackKey !== currentKey) {
+        // Switch to the migrated path and reset retries so the full retry
+        // budget applies to the fallback key (transient S3 consistency issues
+        // can affect the new path just as they can the original).
         fallbackApplied = true;
         currentKey = fallbackKey;
+        retries = 0;
         continue;
       }
     }

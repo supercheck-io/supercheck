@@ -83,9 +83,6 @@ services:
 
       # Execution configuration
       NODE_ENV: ${NODE_ENV:-production}
-      # Registration controls are app-side only; included for shared .env parity
-      SIGNUP_ENABLED: ${SIGNUP_ENABLED:-true}
-      ALLOWED_EMAIL_DOMAINS: ${ALLOWED_EMAIL_DOMAINS:-}
       # Keep RUNNING_CAPACITY aligned with WORKER_REPLICAS for consistent concurrency semantics.
       RUNNING_CAPACITY: ${RUNNING_CAPACITY:-1}
       QUEUED_CAPACITY: ${QUEUED_CAPACITY:-10}

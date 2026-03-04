@@ -102,18 +102,9 @@ export async function POST(request: NextRequest) {
 
   const selfHosted = isSelfHosted();
 
-  // Check email domain restriction
-  if (!isEmailDomainAllowed(email)) {
-    return NextResponse.json(
-      {
-        code: "EMAIL_DOMAIN_NOT_ALLOWED",
-        message: "Registration is restricted to specific email domains. Please use an allowed email address.",
-      },
-      { status: 403 }
-    );
-  }
-
-  // When signup is disabled, only users with a valid pending invite can register.
+  // SIGNUP_ENABLED is the master gate: check it first so a globally-disabled
+  // deployment does not reveal domain-restriction configuration to callers.
+  // When disabled, only users with a valid pending invite can register.
   if (!isSignupEnabled()) {
     if (!inviteToken) {
       return NextResponse.json(
@@ -135,6 +126,17 @@ export async function POST(request: NextRequest) {
         { status: 403 }
       );
     }
+  }
+
+  // Check email domain restriction (applies to all registrations, including invited users).
+  if (!isEmailDomainAllowed(email)) {
+    return NextResponse.json(
+      {
+        code: "EMAIL_DOMAIN_NOT_ALLOWED",
+        message: "Registration is restricted to specific email domains. Please use an allowed email address.",
+      },
+      { status: 403 }
+    );
   }
 
   // Self-hosted mode: allow open registration without invitation
