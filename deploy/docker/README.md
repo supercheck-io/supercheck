@@ -77,7 +77,7 @@ OAuth (`GITHUB_*` / `GOOGLE_*`) is optional in self-hosted mode.
 | `SMTP_HOST`, `SMTP_FROM_EMAIL` (+ optional `SMTP_USER`/`SMTP_PASSWORD`) | Email notifications (disabled if SMTP_HOST not set) | - |
 | `OPENAI_API_KEY` | AI features | - |
 | `WORKER_REPLICAS` | Number of workers | `1` |
-| `RUNNING_CAPACITY` | Max concurrent executions (keep equal to `WORKER_REPLICAS`) | `1` |
+| `RUNNING_CAPACITY` | App-side gate: max concurrent test runs (set equal to `WORKER_REPLICAS`) | `1` |
 | `WORKER_LOCATION` | Worker queue mode (`local`, `us-east`, `eu-central`, `asia-pacific`) | `local` |
 
 ---
@@ -89,8 +89,7 @@ OAuth (`GITHUB_*` / `GOOGLE_*`) is optional in self-hosted mode.
 WORKER_REPLICAS=2 RUNNING_CAPACITY=2 docker compose up -d
 ```
 
-Use `RUNNING_CAPACITY` as the source-of-truth concurrency setting.
-For self-hosted Docker Compose deployments, keep `RUNNING_CAPACITY` equal to `WORKER_REPLICAS`.
+`RUNNING_CAPACITY` is an **App-side** setting — the App uses it to decide how many test runs can be in `running` state at once, acting as a gate before jobs reach the queue. Set it to the total number of worker replicas so the gate matches actual execution throughput.
 
 For single-server deployments, keep `WORKER_LOCATION=local` so one worker processes all regional queues.
 

@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/utils/db';
-import { invitation, member, organization, projects, projectMembers, user as userTable } from '@/db/schema';
-import { eq, and, inArray } from 'drizzle-orm';
+import { invitation, member, organization, projects, projectMembers, session, user as userTable } from '@/db/schema';
+import { eq, and, inArray, desc } from 'drizzle-orm';
 import { requireUserAuthContext, isAuthError } from '@/lib/auth-context';
 import { getCurrentUser } from '@/lib/session';
+import { auth } from '@/utils/auth';
+import { headers } from 'next/headers';
 
 export async function GET(
   request: NextRequest,
@@ -285,6 +287,61 @@ export async function POST(
         .set({ status: 'accepted' })
         .where(eq(invitation.id, token));
     });
+
+    // Set the invited org's first project as active in the user's session so that
+    // subsequent requests (SSE streams, API calls) don't hit "No active project found".
+    // This follows the same pattern as setup-defaults/route.ts.
+    try {
+      const sessionData = await auth.api.getSession({
+        headers: await headers(),
+      });
+
+      if (sessionData?.session?.token) {
+        // Follow existing RBAC patterns:
+        // - project_admin / project_editor: must have explicit project_members assignment
+        // - org_admin / org_owner / project_viewer: org membership can use any active project
+        const role = (invite.role ?? '').toLowerCase();
+        const isProjectScopedRole = role === 'project_admin' || role === 'project_editor';
+
+        const firstProject = isProjectScopedRole
+          ? await db
+              .select({ id: projects.id })
+              .from(projects)
+              .innerJoin(projectMembers, and(
+                eq(projectMembers.projectId, projects.id),
+                eq(projectMembers.userId, currentUser.id)
+              ))
+              .where(and(
+                eq(projects.organizationId, invite.organizationId),
+                eq(projects.status, 'active')
+              ))
+              .orderBy(desc(projects.isDefault))
+              .limit(1)
+          : await db
+              .select({ id: projects.id })
+              .from(projects)
+              .innerJoin(member, and(
+                eq(member.organizationId, invite.organizationId),
+                eq(member.userId, currentUser.id)
+              ))
+              .where(and(
+                eq(projects.organizationId, invite.organizationId),
+                eq(projects.status, 'active')
+              ))
+              .orderBy(desc(projects.isDefault))
+              .limit(1);
+
+        if (firstProject.length > 0) {
+          await db
+            .update(session)
+            .set({ activeProjectId: firstProject[0].id })
+            .where(eq(session.token, sessionData.session.token));
+        }
+      }
+    } catch (sessionError) {
+      // Non-fatal: the session will be fixed on next page load via setDefaultProjectInSession
+      console.warn('⚠️ Failed to set active project in session after invitation acceptance:', sessionError);
+    }
 
     return NextResponse.json({
       success: true,

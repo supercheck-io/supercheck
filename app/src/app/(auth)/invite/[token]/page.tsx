@@ -105,10 +105,10 @@ export default function InvitePage({
           errorMessage.includes("sign up") ||
           errorMessage.includes("authenticate")
         ) {
-          // User needs to authenticate.
-          // Prefer sign-up first for invite flows so first-time invitees can
-          // create an account directly without seeing sign-in errors.
-          router.push(`/sign-up?invite=${token}`);
+          // User needs to authenticate — redirect to sign-in so existing
+          // users can log in directly; new users follow the "Create one"
+          // link on the sign-in page to reach sign-up with the invite token.
+          router.push(`/sign-in?invite=${token}`);
         } else {
           setError(data.error || "Failed to accept invitation");
         }

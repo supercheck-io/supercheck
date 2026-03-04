@@ -53,9 +53,11 @@ x-common-env: &common-env # Database Configuration
   BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-CHANGE_THIS_GENERATE_32_CHAR_HEX}
   NODE_ENV: ${NODE_ENV:-production}
   SHOW_COMMUNITY_LINKS: ${SHOW_COMMUNITY_LINKS:-true}
-  # Scaling Configuration
-  # Default: 1 worker for single-server self-hosted deployments
-  # Scale by setting WORKER_REPLICAS and RUNNING_CAPACITY to the same value
+  # App-Side Capacity Settings
+  # RUNNING_CAPACITY controls how many test runs the App allows into "running" state simultaneously.
+  # It is NOT a worker setting — the App reads this to gate submissions before they reach the queue.
+  # Keep RUNNING_CAPACITY equal to the total number of worker replicas (WORKER_REPLICAS) so the
+  # queue gate matches actual execution throughput.
   #
   # Scaling Examples:
   #   Single Server (4GB/4CPU): WORKER_REPLICAS=1 RUNNING_CAPACITY=1 (default)
@@ -64,9 +66,8 @@ x-common-env: &common-env # Database Configuration
   #
   # Usage: WORKER_REPLICAS=2 RUNNING_CAPACITY=2 docker compose up -d
 
-  RUNNING_CAPACITY: ${RUNNING_CAPACITY:-1} # 1 worker replica × 1 concurrent execution (keep in sync with replicas)
-  QUEUED_CAPACITY: ${QUEUED_CAPACITY:-10} # Queue size for single worker
-  # Note: MAX_CONCURRENT_EXECUTIONS is hardcoded to 1 in worker code. Scale via WORKER_REPLICAS instead.
+  RUNNING_CAPACITY: ${RUNNING_CAPACITY:-1} # App-side gate: max concurrent test runs (keep equal to WORKER_REPLICAS)
+  QUEUED_CAPACITY: ${QUEUED_CAPACITY:-10} # App-side gate: max runs allowed to queue before new submissions are rejected
   # Container limits for 2 vCPU / 4GB servers
   CONTAINER_CPU_LIMIT: ${CONTAINER_CPU_LIMIT:-1.5}
   CONTAINER_MEMORY_LIMIT_MB: ${CONTAINER_MEMORY_LIMIT_MB:-2048}

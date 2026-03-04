@@ -269,14 +269,25 @@ AWS_SECRET_ACCESS_KEY=YOUR_MINIO_SECRET_KEY
 
 ## Scaling Workers
 
+`RUNNING_CAPACITY` is an **App-side** setting — the App uses it as a gate to control how many test runs can be in `running` state simultaneously. It is **not** a worker setting and does not need to be set on remote worker hosts.
+
+`WORKER_REPLICAS` controls how many worker containers start on a given host.
+
+For multi-host deployments, set `RUNNING_CAPACITY` on the **main server (App)** equal to the **total number of workers across all hosts**:
+
 ```bash
-# Scale to 2 workers per location
-WORKER_REPLICAS=2 RUNNING_CAPACITY=2 docker compose up -d
+# Main server: total of 3 workers across all hosts (1 + 1 + 1)
+RUNNING_CAPACITY=3 docker compose up -d
+
+# Remote worker host: scale replicas on that host only
+WORKER_REPLICAS=1 docker compose -f docker-compose-worker.yml up -d
 ```
 
-<Callout type="info">
-Use `RUNNING_CAPACITY` as the source-of-truth term for concurrency. In Docker Compose self-hosted deployments, keep `RUNNING_CAPACITY` equal to `WORKER_REPLICAS`.
-</Callout>
+| Host | Role | Setting |
+|------|------|---------|
+| Main server (App + Worker) | App + 1 worker | `RUNNING_CAPACITY=3` (total), `WORKER_REPLICAS=1` |
+| Remote VPS 1 | Worker only | `WORKER_REPLICAS=1` (no `RUNNING_CAPACITY` needed) |
+| Remote VPS 2 | Worker only | `WORKER_REPLICAS=1` (no `RUNNING_CAPACITY` needed) |
 
 ---
 

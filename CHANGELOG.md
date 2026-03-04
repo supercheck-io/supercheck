@@ -15,6 +15,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Changed
 - Streamlined admin interface by removing unused user creation functionality
+- Clarified self-hosted scaling semantics across deployment docs and compose templates: `RUNNING_CAPACITY` is now documented as an App-side execution gate, while worker scaling remains controlled by `WORKER_REPLICAS`
+- Documentation navigation update: the Monitor section is now a direct sidebar entry (no redundant single-item dropdown)
 
 ### Fixed
 - Fixed Playwright report loading performance
@@ -28,6 +30,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - Database migration script performance optimization for self-hosted deployments
 - SQL injection prevention in database creation commands
 - Fixed worker Redis documentation to use correct `REDIS_HOST`, `REDIS_PORT`, and `REDIS_PASSWORD` variables instead of `REDIS_URL` for multi-location deployments ([#252](https://github.com/supercheck-io/supercheck/issues/252))
+- Fixed invitation flow: unauthenticated invitees are now redirected to sign-in instead of sign-up, and `activeProjectId` is set in the session after acceptance to prevent transient "No active project found" errors ([#254](https://github.com/supercheck-io/supercheck/issues/254))
+- Fixed admin user deletion to safely handle all user-owned foreign key references within a transaction ([#254](https://github.com/supercheck-io/supercheck/issues/254))
 
 ### Security
 - Fixed DoS vulnerability in underscore via unlimited recursion in `_.flatten` and `_.isEqual` (patched to 1.13.8)

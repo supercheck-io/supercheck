@@ -156,8 +156,8 @@ S3_ENDPOINT=http://minio:9000
 # ────────────────────────────────────────────────────────────
 # OPTIONAL: Worker Scaling
 # ────────────────────────────────────────────────────────────
-# WORKER_REPLICAS=1
-# RUNNING_CAPACITY=1
+# WORKER_REPLICAS=1            # Number of worker containers (docker compose only)
+# RUNNING_CAPACITY=1           # App-side gate: max concurrent test runs (set equal to WORKER_REPLICAS)
 # ────────────────────────────────────────────────────────────
 # OPTIONAL: Customer Support (Cloud Only)
 # ────────────────────────────────────────────────────────────

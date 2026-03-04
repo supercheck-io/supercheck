@@ -32,7 +32,9 @@ x-common-env: &common-env # Database Configuration
   NODE_ENV: production
   SHOW_COMMUNITY_LINKS: ${SHOW_COMMUNITY_LINKS:-true}
 
-  # Parallel Execution Capacity
+  # App-Side Capacity Settings
+  # RUNNING_CAPACITY controls how many test runs the App allows into "running" state simultaneously.
+  # It is NOT a worker setting. Keep it equal to the total number of worker replicas.
   RUNNING_CAPACITY: ${RUNNING_CAPACITY:-2}
   QUEUED_CAPACITY: ${QUEUED_CAPACITY:-10}
 
