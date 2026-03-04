@@ -47,7 +47,7 @@ const mockRedisZrange = jest.fn();
 const mockRedisZrem = jest.fn();
 const mockRedisZrank = jest.fn();
 
-const mockRedis: unknown = {
+const mockRedis: Record<string, unknown> = {
   eval: mockRedisEval,
   get: mockRedisGet,
   set: mockRedisSet,
@@ -63,6 +63,7 @@ const mockRedis: unknown = {
   zrange: mockRedisZrange,
   zrem: mockRedisZrem,
   zrank: mockRedisZrank,
+  status: 'ready',
 };
 
 // Mock logger
@@ -85,7 +86,8 @@ describe('CapacityManager', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    capacityManager = new CapacityManager(mockRedis as import('ioredis').default);
+    mockRedis.status = 'ready';
+    capacityManager = new CapacityManager(mockRedis as unknown as import('ioredis').default);
     
     // Inject mock logger
     setCapacityLogger(mockLogger);
@@ -204,13 +206,45 @@ describe('CapacityManager', () => {
           expect(result).toBe(0);
         });
 
-        it('should fail closed on Redis error', async () => {
+        it('should fail closed on non-transient Redis error', async () => {
           mockRedisEval.mockRejectedValue(new Error('Redis connection failed'));
           
           const result = await capacityManager.reserveSlot(testOrgId);
           
           expect(result).toBe(0);
           expect(mockLogger.error).toHaveBeenCalled();
+        });
+
+        it('should fail open after retries on transient Redis error (ECONNREFUSED)', async () => {
+          mockRedisEval.mockRejectedValue(new Error('connect ECONNREFUSED 10.43.0.1:6379'));
+          
+          const result = await capacityManager.reserveSlot(testOrgId);
+          
+          // Fail open: allow the job through
+          expect(result).toBe(1);
+          // Should have retried 3 times (3 calls to eval)
+          expect(mockRedisEval).toHaveBeenCalledTimes(3);
+          expect(mockLogger.warn).toHaveBeenCalled();
+        });
+
+        it('should fail open after retries on transient Redis error (READONLY)', async () => {
+          mockRedisEval.mockRejectedValue(new Error('READONLY You can\'t write against a read only replica'));
+          
+          const result = await capacityManager.reserveSlot(testOrgId);
+          
+          expect(result).toBe(1);
+          expect(mockRedisEval).toHaveBeenCalledTimes(3);
+        });
+
+        it('should succeed on retry when transient error resolves', async () => {
+          mockRedisEval
+            .mockRejectedValueOnce(new Error('connect ECONNREFUSED 10.43.0.1:6379'))
+            .mockResolvedValueOnce(1); // Second attempt succeeds
+          
+          const result = await capacityManager.reserveSlot(testOrgId);
+          
+          expect(result).toBe(1);
+          expect(mockRedisEval).toHaveBeenCalledTimes(2);
         });
 
         it('should fail closed on capacity check error', async () => {
@@ -596,6 +630,44 @@ describe('CapacityManager', () => {
         await capacityManager.releaseRunningSlot(testOrgId);
         
         expect(mockRedisDel).toHaveBeenCalled();
+      });
+    });
+
+    describe('Connection Recovery', () => {
+      it('should refresh dead Redis connection when status is end', async () => {
+        mockRedisEval.mockResolvedValue(1);
+        // Simulate dead connection (e.g. after quit() or ioredis gave up)
+        mockRedis.status = 'end';
+
+        const result = await capacityManager.reserveSlot(testOrgId);
+
+        expect(result).toBe(1);
+        // Should have called getRedisConnection to get a fresh connection
+        expect(mockGetRedisConnection).toHaveBeenCalled();
+        expect(mockLogger.warn).toHaveBeenCalledWith(
+          {},
+          "CapacityManager Redis connection is dead, refreshing"
+        );
+      });
+
+      it('should not refresh connection when status is ready', async () => {
+        mockRedisEval.mockResolvedValue(1);
+        mockRedis.status = 'ready';
+
+        await capacityManager.reserveSlot(testOrgId);
+
+        // Should NOT call getRedisConnection - connection is fine
+        expect(mockGetRedisConnection).not.toHaveBeenCalled();
+      });
+
+      it('should not refresh connection when status is reconnecting', async () => {
+        mockRedisEval.mockResolvedValue(1);
+        mockRedis.status = 'reconnecting';
+
+        await capacityManager.reserveSlot(testOrgId);
+
+        // ioredis handles reconnection internally - should not refresh
+        expect(mockGetRedisConnection).not.toHaveBeenCalled();
       });
     });
   });

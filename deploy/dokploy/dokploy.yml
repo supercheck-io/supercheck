@@ -3,7 +3,8 @@
 # https://github.com/supercheck-io/supercheck
 
 # YAML anchors for shared configuration
-x-common-env: &common-env # Database Configuration
+x-common-env: &common-env
+  # Database Configuration
   DATABASE_URL: postgresql://${POSTGRES_USER:-supercheck}:${POSTGRES_PASSWORD:-supercheck-db-password}@postgres:5432/${POSTGRES_DB:-supercheck}
   DB_HOST: postgres
   DB_PORT: 5432
@@ -122,6 +123,10 @@ x-common-env: &common-env # Database Configuration
 
   # Self-Hosted Mode
   SELF_HOSTED: true
+
+  # Registration Controls
+  SIGNUP_ENABLED: ${SIGNUP_ENABLED:-true}
+  ALLOWED_EMAIL_DOMAINS: ${ALLOWED_EMAIL_DOMAINS:-}
 
   # OAuth Configuration (Optional)
   GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
