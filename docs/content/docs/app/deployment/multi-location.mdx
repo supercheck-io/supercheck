@@ -305,9 +305,6 @@ docker run --rm -it postgres:18 psql "$DATABASE_URL" -c "SELECT 1"
 docker run --rm -it redis:8 redis-cli -h MAIN_SERVER_IP -p 6379 -a YOUR_REDIS_PASSWORD ping
 ```
 
-<Callout type="warn">
-The worker uses `REDIS_HOST`, `REDIS_PORT`, and `REDIS_PASSWORD` environment variables — **not** `REDIS_URL`. If the worker logs show it connecting to `127.0.0.1` or `localhost`, check that `REDIS_HOST` is set to your main server&apos;s IP address.
-</Callout>
 
 **Verify worker location:**
 ```bash
