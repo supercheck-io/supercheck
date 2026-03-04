@@ -40,6 +40,7 @@ x-common-env: &common-env # Database Configuration
 
   # App Configuration
   NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+  APP_URL: ${APP_URL:-http://localhost:3000}
   BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
 
   # Status Page Domain Configuration
@@ -219,7 +220,9 @@ x-common-env: &common-env # Database Configuration
   # Self-Hosted Mode (set to 'true' for unlimited features)
   # Client-side code fetches this from /api/config/hosting-mode at runtime
   SELF_HOSTED: ${SELF_HOSTED:-true}
-  # Registration controls for email/password signup
+  # Registration Controls
+  # SIGNUP_ENABLED=false disables open registration (invited users can still register via invitation links)
+  # ALLOWED_EMAIL_DOMAINS restricts signup to specific email domains, e.g. 'acme.com,acme.org' (empty = allow all)
   SIGNUP_ENABLED: ${SIGNUP_ENABLED:-true}
   ALLOWED_EMAIL_DOMAINS: ${ALLOWED_EMAIL_DOMAINS:-}
 
@@ -229,12 +232,6 @@ x-common-env: &common-env # Database Configuration
   GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
   GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
   GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
-
-  # CAPTCHA Configuration (optional - Cloudflare Turnstile)
-  # CAPTCHA is automatically enabled when both keys are set
-  # Get keys from https://dash.cloudflare.com/?to=/:account/turnstile
-  TURNSTILE_SITE_KEY: ${TURNSTILE_SITE_KEY:-}
-  TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:-}
 
   # Queue Alerting Configuration (optional)
   QUEUE_ALERTING_ENABLED: ${QUEUE_ALERTING_ENABLED:-true}

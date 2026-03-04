@@ -79,10 +79,6 @@ x-common-env: &common-env # Database Configuration
   # Valid values: local, us-east, eu-central, asia-pacific
   WORKER_LOCATION: ${WORKER_LOCATION:-local}
 
-  # Customer Support (Cloud Only - not used in self-hosted mode)
-  CHATWOOT_BASE_URL: ${CHATWOOT_BASE_URL:-}
-  CHATWOOT_WEBSITE_TOKEN: ${CHATWOOT_WEBSITE_TOKEN:-}
-
   # AWS S3 / MinIO Configuration
   AWS_REGION: ${AWS_REGION:-us-east-1}
   AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-minioadmin}
@@ -246,7 +242,9 @@ x-common-env: &common-env # Database Configuration
   # Self-Hosted Mode (set to 'true' for unlimited features)
   # Client-side code fetches this from /api/config/hosting-mode at runtime
   SELF_HOSTED: ${SELF_HOSTED:-true}
-  # Registration controls for email/password signup
+  # Registration Controls
+  # SIGNUP_ENABLED=false disables open registration (invited users can still register via invitation links)
+  # ALLOWED_EMAIL_DOMAINS restricts signup to specific email domains, e.g. 'acme.com,acme.org' (empty = allow all)
   SIGNUP_ENABLED: ${SIGNUP_ENABLED:-true}
   ALLOWED_EMAIL_DOMAINS: ${ALLOWED_EMAIL_DOMAINS:-}
 
@@ -256,13 +254,6 @@ x-common-env: &common-env # Database Configuration
   GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
   GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
   GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
-
-  # CAPTCHA Configuration (Cloudflare Turnstile)
-  # NOTE: CAPTCHA is disabled in self-hosted mode even if keys are provided
-  # (enabled only in cloud mode when both keys are set)
-  # Get keys from https://dash.cloudflare.com/?to=/:account/turnstile
-  TURNSTILE_SITE_KEY: ${TURNSTILE_SITE_KEY:-}
-  TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:-}
 
   # Queue Alerting Configuration (optional)
   QUEUE_ALERTING_ENABLED: ${QUEUE_ALERTING_ENABLED:-true}

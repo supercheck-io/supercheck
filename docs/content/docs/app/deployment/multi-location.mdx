@@ -208,10 +208,6 @@ For true geographic distribution, deploy workers in each region.
     WORKER_LOCATION=us-east
     ```
     
-    <Callout type="warn">
-    **Important**: The worker connects to Redis using `REDIS_HOST`, `REDIS_PORT`, and `REDIS_PASSWORD` — not `REDIS_URL`. Make sure all three are set correctly.
-    </Callout>
-    
     <Callout type="tip">
     Find your main server credentials in the `.env` file at `supercheck/deploy/docker/.env`.
     </Callout>
@@ -228,9 +224,9 @@ For true geographic distribution, deploy workers in each region.
 
 ## Complete 3-Region Example
 
-| Server | Region | `WORKER_LOCATION` | Queues Processed |
-|--------|--------|-------------------|------------------|
-| Main Server | Europe | `eu-central` | `playwright-global`, `k6-eu-central`, `k6-global`, `monitor-eu-central` |
+| Server       | Region   | `WORKER_LOCATION` | Queues Processed |
+|--------------|----------|-------------------|------------------|
+| Main Server  | Europe | `eu-central` | `playwright-global`, `k6-eu-central`, `k6-global`, `monitor-eu-central` |
 | Remote VPS 1 | US | `us-east` | `playwright-global`, `k6-us-east`, `k6-global`, `monitor-us-east` |
 | Remote VPS 2 | Asia | `asia-pacific` | `playwright-global`, `k6-asia-pacific`, `k6-global`, `monitor-asia-pacific` |
 
@@ -278,7 +274,9 @@ AWS_SECRET_ACCESS_KEY=YOUR_MINIO_SECRET_KEY
 WORKER_REPLICAS=2 RUNNING_CAPACITY=2 docker compose up -d
 ```
 
-Use `RUNNING_CAPACITY` as the source-of-truth concurrency setting. Keep it equal to `WORKER_REPLICAS` in the same deployment so configured capacity matches available worker replicas.
+<Callout type="info">
+Use `RUNNING_CAPACITY` as the source-of-truth term for concurrency. In Docker Compose self-hosted deployments, keep `RUNNING_CAPACITY` equal to `WORKER_REPLICAS`.
+</Callout>
 
 ---
 
