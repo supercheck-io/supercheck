@@ -183,6 +183,9 @@ export async function POST(
     // to prevent partial state (e.g., member added but projects not assigned,
     // or operations succeed but invitation not marked as accepted).
     await db.transaction(async (tx) => {
+      const role = (invite.role ?? '').toLowerCase();
+      const requiresProjectAssignments = role === 'project_admin' || role === 'project_editor';
+
       // 1. Add user to organization
       try {
         await tx
@@ -205,80 +208,82 @@ export async function POST(
       }
 
       // 2. Assign user to selected projects
-      if (invite.selectedProjects) {
-        // Parse selectedProjects — handles both jsonb arrays and legacy JSON-stringified arrays
-        let selectedProjectIds: string[] | null = null;
-        const rawProjects = invite.selectedProjects;
-        if (typeof rawProjects === "string") {
-          try {
-            const parsed = JSON.parse(rawProjects);
-            selectedProjectIds = Array.isArray(parsed) ? parsed : null;
-          } catch {
-            selectedProjectIds = null;
+      // Parse selectedProjects — handles both jsonb arrays and legacy JSON-stringified arrays
+      let selectedProjectIds: string[] = [];
+      const rawProjects = invite.selectedProjects;
+      if (typeof rawProjects === "string") {
+        try {
+          const parsed = JSON.parse(rawProjects);
+          if (Array.isArray(parsed)) {
+            selectedProjectIds = parsed;
           }
-        } else if (Array.isArray(rawProjects)) {
-          selectedProjectIds = rawProjects as string[];
+        } catch {
+          selectedProjectIds = [];
+        }
+      } else if (Array.isArray(rawProjects)) {
+        selectedProjectIds = rawProjects as string[];
+      }
+
+      const normalizedSelectedProjectIds = Array.from(
+        new Set(
+          selectedProjectIds
+            .filter(
+              (projectId): projectId is string => typeof projectId === "string"
+            )
+            .map((projectId) => projectId.trim())
+            .filter((projectId) => projectId.length > 0)
+        )
+      );
+
+      if (requiresProjectAssignments && normalizedSelectedProjectIds.length === 0) {
+        throw new Error("INVITE_PROJECT_SCOPE_MISMATCH");
+      }
+
+      if (normalizedSelectedProjectIds.length > 0) {
+        // SECURITY: Filter by organization ID to prevent cross-org project assignment
+        const selectedProjectsList = await tx
+          .select({
+            id: projects.id,
+            name: projects.name
+          })
+          .from(projects)
+          .where(and(
+            inArray(projects.id, normalizedSelectedProjectIds),
+            eq(projects.status, 'active'),
+            eq(projects.organizationId, invite.organizationId)
+          ));
+
+        // SECURITY: Require an exact project match. If any selected project is missing
+        // (wrong org, inactive, or invalid), abort and roll back the invitation acceptance.
+        if (selectedProjectsList.length !== normalizedSelectedProjectIds.length) {
+          throw new Error("INVITE_PROJECT_SCOPE_MISMATCH");
         }
 
-        if (Array.isArray(selectedProjectIds) && selectedProjectIds.length > 0) {
-          const normalizedSelectedProjectIds = Array.from(
-            new Set(
-              selectedProjectIds.filter(
-                (projectId): projectId is string =>
-                  typeof projectId === "string" && projectId.trim().length > 0
-              )
-            )
-          );
-
-          if (normalizedSelectedProjectIds.length === 0) {
-            throw new Error("INVITE_PROJECT_SCOPE_MISMATCH");
-          }
-
-          // SECURITY: Filter by organization ID to prevent cross-org project assignment
-          const selectedProjectsList = await tx
-            .select({
-              id: projects.id,
-              name: projects.name
-            })
-            .from(projects)
-            .where(and(
-              inArray(projects.id, normalizedSelectedProjectIds),
-              eq(projects.status, 'active'),
-              eq(projects.organizationId, invite.organizationId)
-            ));
-
-          // SECURITY: Require an exact project match. If any selected project is missing
-          // (wrong org, inactive, or invalid), abort and roll back the invitation acceptance.
-          if (selectedProjectsList.length !== normalizedSelectedProjectIds.length) {
-            throw new Error("INVITE_PROJECT_SCOPE_MISMATCH");
-          }
-
-          for (const project of selectedProjectsList) {
-            try {
-              await tx
-                .insert(projectMembers)
-                .values({
-                  userId: currentUser.id,
-                  projectId: project.id,
-                  role: invite.role as 'org_owner' | 'org_admin' | 'project_admin' | 'project_editor' | 'project_viewer',
-                  createdAt: new Date()
-                });
-            } catch (error: unknown) {
-              const dbError = error as { constraint?: string; code?: string; message?: string };
-              if (dbError?.constraint === 'project_members_uniqueUserProject' || 
-                  dbError?.code === '23505' || 
-                  dbError?.message?.includes('duplicate key')) {
-                console.log(`ℹ️ User ${currentUser.email} was already assigned to project "${project.name}" - skipping`);
-              } else {
-                // In a transaction, non-duplicate errors should cause rollback
-                throw error;
-              }
+        for (const project of selectedProjectsList) {
+          try {
+            await tx
+              .insert(projectMembers)
+              .values({
+                userId: currentUser.id,
+                projectId: project.id,
+                role: invite.role as 'org_owner' | 'org_admin' | 'project_admin' | 'project_editor' | 'project_viewer',
+                createdAt: new Date()
+              });
+          } catch (error: unknown) {
+            const dbError = error as { constraint?: string; code?: string; message?: string };
+            if (dbError?.constraint === 'project_members_uniqueUserProject' || 
+                dbError?.code === '23505' || 
+                dbError?.message?.includes('duplicate key')) {
+              console.log(`ℹ️ User ${currentUser.email} was already assigned to project "${project.name}" - skipping`);
+            } else {
+              // In a transaction, non-duplicate errors should cause rollback
+              throw error;
             }
           }
-          
-          const projectNames = selectedProjectsList.map(p => p.name);
-          console.log(`✅ Assigned user ${currentUser.email} to projects: ${projectNames.join(', ')} in organization "${invite.orgName}"`);
         }
+
+        const projectNames = selectedProjectsList.map(p => p.name);
+        console.log(`✅ Assigned user ${currentUser.email} to projects: ${projectNames.join(', ')} in organization "${invite.orgName}"`);
       }
 
       // 3. Mark invitation as accepted (inside transaction)
@@ -298,8 +303,9 @@ export async function POST(
 
       if (sessionData?.session?.token) {
         // Follow existing RBAC patterns:
-        // - project_admin / project_editor: must have explicit project_members assignment
-        // - org_admin / org_owner / project_viewer: org membership can use any active project
+        // - project_admin / project_editor: need explicit project_members rows
+        // - org_admin / org_owner / project_viewer: org membership grants access
+        //   to any active project (project_viewer is intentionally org-wide read-only)
         const role = (invite.role ?? '').toLowerCase();
         const isProjectScopedRole = role === 'project_admin' || role === 'project_editor';
 

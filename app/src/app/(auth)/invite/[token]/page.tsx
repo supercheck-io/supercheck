@@ -101,14 +101,16 @@ export default function InvitePage({
       } else {
         const errorMessage = String(data.error ?? "").toLowerCase();
         if (
+          response.status === 401 ||
           errorMessage.includes("sign in") ||
           errorMessage.includes("sign up") ||
           errorMessage.includes("authenticate")
         ) {
-          // User needs to authenticate — redirect to sign-in so existing
-          // users can log in directly; new users follow the "Create one"
-          // link on the sign-in page to reach sign-up with the invite token.
-          router.push(`/sign-in?invite=${token}`);
+          // User needs to authenticate — redirect to sign-up so first-time
+          // invitees can create an account directly. The sign-up page handles
+          // existing users by detecting the 422 "already exists" response and
+          // redirecting them to /sign-in?invite=token automatically.
+          router.push(`/sign-up?invite=${token}`);
         } else {
           setError(data.error || "Failed to accept invitation");
         }

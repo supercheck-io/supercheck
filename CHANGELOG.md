@@ -30,8 +30,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - Database migration script performance optimization for self-hosted deployments
 - SQL injection prevention in database creation commands
 - Fixed worker Redis documentation to use correct `REDIS_HOST`, `REDIS_PORT`, and `REDIS_PASSWORD` variables instead of `REDIS_URL` for multi-location deployments ([#252](https://github.com/supercheck-io/supercheck/issues/252))
-- Fixed invitation flow: unauthenticated invitees are now redirected to sign-in instead of sign-up, and `activeProjectId` is set in the session after acceptance to prevent transient "No active project found" errors ([#254](https://github.com/supercheck-io/supercheck/issues/254))
-- Fixed admin user deletion to safely handle all user-owned foreign key references within a transaction ([#254](https://github.com/supercheck-io/supercheck/issues/254))
+- Fixed invitation onboarding UX by redirecting unauthenticated invitees to `/sign-up?invite=...` (with automatic fallback to sign-in for existing accounts), and by hardening invite-page auth detection to use HTTP 401 status checks
+- Fixed invitation acceptance and RBAC edge cases by preserving `project_viewer` organization-wide semantics in session initialization, adding fast-path role fallback for viewer access, and normalizing selected project IDs during acceptance
+- Fixed invitation creation hardening gaps: only organization owners can invite `org_admin` members, duplicate checks now ignore expired pending invitations, and selected project IDs are normalized/deduplicated before validation and storage
+- Fixed admin user deletion to safely handle all user-owned foreign key references within a transaction
 
 ### Security
 - Fixed DoS vulnerability in underscore via unlimited recursion in `_.flatten` and `_.isEqual` (patched to 1.13.8)
