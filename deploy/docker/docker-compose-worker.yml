@@ -28,6 +28,10 @@
 #   AWS_ACCESS_KEY_ID - S3 credentials
 #   AWS_SECRET_ACCESS_KEY - S3 credentials
 #
+# NOTE: RUNNING_CAPACITY and QUEUED_CAPACITY are App-side settings.
+#   Set them only on the main server's App service, not here.
+#   WORKER_REPLICAS (set below or via env) controls how many worker containers run.
+#
 # Example .env file:
 # ----------------------------------------
 # DATABASE_URL=postgresql://user:pass@main-server.example.com:5432/supercheck
@@ -38,6 +42,7 @@
 # AWS_ACCESS_KEY_ID=minioadmin
 # AWS_SECRET_ACCESS_KEY=minioadmin
 # WORKER_LOCATION=us-east
+# WORKER_REPLICAS=1
 # ----------------------------------------
 
 services:
@@ -83,9 +88,8 @@ services:
 
       # Execution configuration
       NODE_ENV: ${NODE_ENV:-production}
-      # Keep RUNNING_CAPACITY aligned with WORKER_REPLICAS for consistent concurrency semantics.
-      RUNNING_CAPACITY: ${RUNNING_CAPACITY:-1}
-      QUEUED_CAPACITY: ${QUEUED_CAPACITY:-10}
+      # Note: RUNNING_CAPACITY and QUEUED_CAPACITY are App-side settings only.
+      # Set RUNNING_CAPACITY on the App (main server) equal to total WORKER_REPLICAS across all hosts.
       CONTAINER_CPU_LIMIT: ${CONTAINER_CPU_LIMIT:-1.5}
       CONTAINER_MEMORY_LIMIT_MB: ${CONTAINER_MEMORY_LIMIT_MB:-2048}
       TEST_EXECUTION_TIMEOUT_MS: ${TEST_EXECUTION_TIMEOUT_MS:-300000}

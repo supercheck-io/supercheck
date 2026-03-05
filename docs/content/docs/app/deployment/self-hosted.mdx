@@ -215,7 +215,7 @@ OAuth is optional. If you skip OAuth, users can sign up with email/password.
     Control who can sign up for your self-hosted instance.
 
     ```bash
-    # Disable new user registration (default: true)
+    # Disable new user registration
     # Set to false after creating your initial account to lock down signup
     # Invited users can still register even when disabled
     SIGNUP_ENABLED=false
@@ -342,16 +342,19 @@ Single-location deployments should keep `WORKER_LOCATION=local` (the default). T
 </Callout>
 
 <Callout type="info">
-Use `RUNNING_CAPACITY` as the source-of-truth term for concurrency. In Docker Compose self-hosted deployments, keep `RUNNING_CAPACITY` equal to `WORKER_REPLICAS`.
+**Where each setting lives:**
+- `WORKER_REPLICAS` — controls how many worker containers Docker starts. **Docker Compose / worker side.**
+- `RUNNING_CAPACITY` — controls the maximum number of test runs the App allows into `running` state simultaneously. **App-side setting only.** Set it equal to the total number of workers so the queue gate matches actual execution throughput.
+- `QUEUED_CAPACITY` — controls the maximum number of queued runs the App accepts before returning capacity-limit errors. **App-side setting only.**
 </Callout>
 
 ```bash
 # Scale to 2 workers
-WORKER_REPLICAS=2 RUNNING_CAPACITY=2 docker compose up -d
+WORKER_REPLICAS=2 RUNNING_CAPACITY=2 QUEUED_CAPACITY=20 docker compose up -d
 ```
 
-| Configuration | `WORKER_REPLICAS` | `RUNNING_CAPACITY`  | Minimum Server |
-|---------------|-------------------|---------------------|----------------|
+| Configuration | `WORKER_REPLICAS` | `RUNNING_CAPACITY` | Minimum Server |
+|---------------|-------------------|--------------------|----------------|
 | **Small** | 1 | 1 | 2 vCPU / 4GB |
 | **Medium** | 2 | 2 | 4 vCPU / 8GB |
 | **Large** | 4 | 4 | 8 vCPU / 16GB |

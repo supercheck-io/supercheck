@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/utils/db';
-import { invitation, member, organization, projects, projectMembers, user as userTable } from '@/db/schema';
-import { eq, and, inArray } from 'drizzle-orm';
+import { invitation, member, organization, projects, projectMembers, session, user as userTable } from '@/db/schema';
+import { eq, and, inArray, desc } from 'drizzle-orm';
 import { requireUserAuthContext, isAuthError } from '@/lib/auth-context';
 import { getCurrentUser } from '@/lib/session';
+import { auth } from '@/utils/auth';
+import { headers } from 'next/headers';
 
 export async function GET(
   request: NextRequest,
@@ -181,6 +183,9 @@ export async function POST(
     // to prevent partial state (e.g., member added but projects not assigned,
     // or operations succeed but invitation not marked as accepted).
     await db.transaction(async (tx) => {
+      const role = (invite.role ?? '').toLowerCase();
+      const requiresProjectAssignments = role === 'project_admin' || role === 'project_editor';
+
       // 1. Add user to organization
       try {
         await tx
@@ -203,80 +208,82 @@ export async function POST(
       }
 
       // 2. Assign user to selected projects
-      if (invite.selectedProjects) {
-        // Parse selectedProjects — handles both jsonb arrays and legacy JSON-stringified arrays
-        let selectedProjectIds: string[] | null = null;
-        const rawProjects = invite.selectedProjects;
-        if (typeof rawProjects === "string") {
-          try {
-            const parsed = JSON.parse(rawProjects);
-            selectedProjectIds = Array.isArray(parsed) ? parsed : null;
-          } catch {
-            selectedProjectIds = null;
+      // Parse selectedProjects — handles both jsonb arrays and legacy JSON-stringified arrays
+      let selectedProjectIds: string[] = [];
+      const rawProjects = invite.selectedProjects;
+      if (typeof rawProjects === "string") {
+        try {
+          const parsed = JSON.parse(rawProjects);
+          if (Array.isArray(parsed)) {
+            selectedProjectIds = parsed;
           }
-        } else if (Array.isArray(rawProjects)) {
-          selectedProjectIds = rawProjects as string[];
+        } catch {
+          selectedProjectIds = [];
+        }
+      } else if (Array.isArray(rawProjects)) {
+        selectedProjectIds = rawProjects as string[];
+      }
+
+      const normalizedSelectedProjectIds = Array.from(
+        new Set(
+          selectedProjectIds
+            .filter(
+              (projectId): projectId is string => typeof projectId === "string"
+            )
+            .map((projectId) => projectId.trim())
+            .filter((projectId) => projectId.length > 0)
+        )
+      );
+
+      if (requiresProjectAssignments && normalizedSelectedProjectIds.length === 0) {
+        throw new Error("INVITE_PROJECT_SCOPE_MISMATCH");
+      }
+
+      if (normalizedSelectedProjectIds.length > 0) {
+        // SECURITY: Filter by organization ID to prevent cross-org project assignment
+        const selectedProjectsList = await tx
+          .select({
+            id: projects.id,
+            name: projects.name
+          })
+          .from(projects)
+          .where(and(
+            inArray(projects.id, normalizedSelectedProjectIds),
+            eq(projects.status, 'active'),
+            eq(projects.organizationId, invite.organizationId)
+          ));
+
+        // SECURITY: Require an exact project match. If any selected project is missing
+        // (wrong org, inactive, or invalid), abort and roll back the invitation acceptance.
+        if (selectedProjectsList.length !== normalizedSelectedProjectIds.length) {
+          throw new Error("INVITE_PROJECT_SCOPE_MISMATCH");
         }
 
-        if (Array.isArray(selectedProjectIds) && selectedProjectIds.length > 0) {
-          const normalizedSelectedProjectIds = Array.from(
-            new Set(
-              selectedProjectIds.filter(
-                (projectId): projectId is string =>
-                  typeof projectId === "string" && projectId.trim().length > 0
-              )
-            )
-          );
-
-          if (normalizedSelectedProjectIds.length === 0) {
-            throw new Error("INVITE_PROJECT_SCOPE_MISMATCH");
-          }
-
-          // SECURITY: Filter by organization ID to prevent cross-org project assignment
-          const selectedProjectsList = await tx
-            .select({
-              id: projects.id,
-              name: projects.name
-            })
-            .from(projects)
-            .where(and(
-              inArray(projects.id, normalizedSelectedProjectIds),
-              eq(projects.status, 'active'),
-              eq(projects.organizationId, invite.organizationId)
-            ));
-
-          // SECURITY: Require an exact project match. If any selected project is missing
-          // (wrong org, inactive, or invalid), abort and roll back the invitation acceptance.
-          if (selectedProjectsList.length !== normalizedSelectedProjectIds.length) {
-            throw new Error("INVITE_PROJECT_SCOPE_MISMATCH");
-          }
-
-          for (const project of selectedProjectsList) {
-            try {
-              await tx
-                .insert(projectMembers)
-                .values({
-                  userId: currentUser.id,
-                  projectId: project.id,
-                  role: invite.role as 'org_owner' | 'org_admin' | 'project_admin' | 'project_editor' | 'project_viewer',
-                  createdAt: new Date()
-                });
-            } catch (error: unknown) {
-              const dbError = error as { constraint?: string; code?: string; message?: string };
-              if (dbError?.constraint === 'project_members_uniqueUserProject' || 
-                  dbError?.code === '23505' || 
-                  dbError?.message?.includes('duplicate key')) {
-                console.log(`ℹ️ User ${currentUser.email} was already assigned to project "${project.name}" - skipping`);
-              } else {
-                // In a transaction, non-duplicate errors should cause rollback
-                throw error;
-              }
+        for (const project of selectedProjectsList) {
+          try {
+            await tx
+              .insert(projectMembers)
+              .values({
+                userId: currentUser.id,
+                projectId: project.id,
+                role: invite.role as 'org_owner' | 'org_admin' | 'project_admin' | 'project_editor' | 'project_viewer',
+                createdAt: new Date()
+              });
+          } catch (error: unknown) {
+            const dbError = error as { constraint?: string; code?: string; message?: string };
+            if (dbError?.constraint === 'project_members_uniqueUserProject' || 
+                dbError?.code === '23505' || 
+                dbError?.message?.includes('duplicate key')) {
+              console.log(`ℹ️ User ${currentUser.email} was already assigned to project "${project.name}" - skipping`);
+            } else {
+              // In a transaction, non-duplicate errors should cause rollback
+              throw error;
             }
           }
-          
-          const projectNames = selectedProjectsList.map(p => p.name);
-          console.log(`✅ Assigned user ${currentUser.email} to projects: ${projectNames.join(', ')} in organization "${invite.orgName}"`);
         }
+
+        const projectNames = selectedProjectsList.map(p => p.name);
+        console.log(`✅ Assigned user ${currentUser.email} to projects: ${projectNames.join(', ')} in organization "${invite.orgName}"`);
       }
 
       // 3. Mark invitation as accepted (inside transaction)
@@ -285,6 +292,62 @@ export async function POST(
         .set({ status: 'accepted' })
         .where(eq(invitation.id, token));
     });
+
+    // Set the invited org's first project as active in the user's session so that
+    // subsequent requests (SSE streams, API calls) don't hit "No active project found".
+    // This follows the same pattern as setup-defaults/route.ts.
+    try {
+      const sessionData = await auth.api.getSession({
+        headers: await headers(),
+      });
+
+      if (sessionData?.session?.token) {
+        // Follow existing RBAC patterns:
+        // - project_admin / project_editor: need explicit project_members rows
+        // - org_admin / org_owner / project_viewer: org membership grants access
+        //   to any active project (project_viewer is intentionally org-wide read-only)
+        const role = (invite.role ?? '').toLowerCase();
+        const isProjectScopedRole = role === 'project_admin' || role === 'project_editor';
+
+        const firstProject = isProjectScopedRole
+          ? await db
+              .select({ id: projects.id })
+              .from(projects)
+              .innerJoin(projectMembers, and(
+                eq(projectMembers.projectId, projects.id),
+                eq(projectMembers.userId, currentUser.id)
+              ))
+              .where(and(
+                eq(projects.organizationId, invite.organizationId),
+                eq(projects.status, 'active')
+              ))
+              .orderBy(desc(projects.isDefault))
+              .limit(1)
+          : await db
+              .select({ id: projects.id })
+              .from(projects)
+              .innerJoin(member, and(
+                eq(member.organizationId, invite.organizationId),
+                eq(member.userId, currentUser.id)
+              ))
+              .where(and(
+                eq(projects.organizationId, invite.organizationId),
+                eq(projects.status, 'active')
+              ))
+              .orderBy(desc(projects.isDefault))
+              .limit(1);
+
+        if (firstProject.length > 0) {
+          await db
+            .update(session)
+            .set({ activeProjectId: firstProject[0].id })
+            .where(eq(session.token, sessionData.session.token));
+        }
+      }
+    } catch (sessionError) {
+      // Non-fatal: the session will be fixed on next page load via setDefaultProjectInSession
+      console.warn('⚠️ Failed to set active project in session after invitation acceptance:', sessionError);
+    }
 
     return NextResponse.json({
       success: true,

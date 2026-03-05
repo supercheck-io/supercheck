@@ -20,18 +20,7 @@ export const PLAYWRIGHT_QUEUE = 'playwright-global';
 // This constant is kept for backward compatibility but should not be used directly.
 export const JOB_TIMEOUT_MS = 60 * 60 * 1000; // 60 minutes - matches TIMEOUTS.JOB_EXECUTION_DEFAULT_MS
 
-// Capacity limits (per-organization)
-export const RUNNING_CAPACITY = parseInt(
-  process.env.RUNNING_CAPACITY || '2',
-  10,
-);
-
-/**
- * QUEUED_CAPACITY defines the maximum number of jobs that can be in the queue.
- * The API layer will reject new job submissions once this limit is reached.
- * This is a safety measure to prevent overwhelming the queue with too many jobs.
- */
-export const QUEUED_CAPACITY = parseInt(
-  process.env.QUEUED_CAPACITY || '10',
-  10,
-);
+// Note: RUNNING_CAPACITY and QUEUED_CAPACITY are App-side settings only.
+// The App uses them to gate how many test runs can enter the queue.
+// Workers simply execute whatever jobs BullMQ dispatches to them.
+// Scale execution throughput via WORKER_REPLICAS, not capacity constants.

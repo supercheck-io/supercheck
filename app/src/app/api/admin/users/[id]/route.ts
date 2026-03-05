@@ -1,7 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/utils/db';
-import { user, session } from '@/db/schema';
+import {
+  user, session, apikey,
+  tests, jobs, monitors, reports, tags,
+  projectVariables,
+  notificationProviders, notifications,
+  statusPages, incidents, incidentUpdates, incidentTemplates, postmortems,
+  auditLogs,
+} from '@/db/schema';
 import { requireAdmin } from '@/lib/admin';
+import { getCurrentUser } from '@/lib/session';
 import { auth } from '@/utils/auth';
 import { headers } from 'next/headers';
 import { eq } from 'drizzle-orm';
@@ -83,18 +91,58 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
   const resolvedParams = await params;
   try {
     await requireAdmin();
-    
-    const [deletedUser] = await db
-      .delete(user)
+
+    // Prevent self-deletion
+    const currentAdmin = await getCurrentUser();
+    if (currentAdmin && resolvedParams.id === currentAdmin.id) {
+      return NextResponse.json(
+        { success: false, error: 'Cannot delete your own account' },
+        { status: 400 }
+      );
+    }
+
+    // Verify user exists before attempting deletion
+    const [targetUser] = await db
+      .select({ id: user.id })
+      .from(user)
       .where(eq(user.id, resolvedParams.id))
-      .returning();
-    
-    if (!deletedUser) {
+      .limit(1);
+
+    if (!targetUser) {
       return NextResponse.json(
         { success: false, error: 'User not found' },
         { status: 404 }
       );
     }
+
+    const userId = resolvedParams.id;
+
+    await db.transaction(async (tx) => {
+      // 1. Delete API keys (onDelete: "no action" would block user deletion)
+      await tx.delete(apikey).where(eq(apikey.userId, userId));
+
+      // 2. Nullify created_by_user_id references so owned resources persist
+      await tx.update(tests).set({ createdByUserId: null }).where(eq(tests.createdByUserId, userId));
+      await tx.update(jobs).set({ createdByUserId: null }).where(eq(jobs.createdByUserId, userId));
+      await tx.update(monitors).set({ createdByUserId: null }).where(eq(monitors.createdByUserId, userId));
+      await tx.update(reports).set({ createdByUserId: null }).where(eq(reports.createdByUserId, userId));
+      await tx.update(tags).set({ createdByUserId: null }).where(eq(tags.createdByUserId, userId));
+      await tx.update(notificationProviders).set({ createdByUserId: null }).where(eq(notificationProviders.createdByUserId, userId));
+      await tx.update(statusPages).set({ createdByUserId: null }).where(eq(statusPages.createdByUserId, userId));
+      await tx.update(incidents).set({ createdByUserId: null }).where(eq(incidents.createdByUserId, userId));
+      await tx.update(incidentUpdates).set({ createdByUserId: null }).where(eq(incidentUpdates.createdByUserId, userId));
+      await tx.update(incidentTemplates).set({ createdByUserId: null }).where(eq(incidentTemplates.createdByUserId, userId));
+      await tx.update(postmortems).set({ createdByUserId: null }).where(eq(postmortems.createdByUserId, userId));
+      await tx.update(projectVariables).set({ createdByUserId: null }).where(eq(projectVariables.createdByUserId, userId));
+
+      // 3. Delete notifications and audit logs owned by the user
+      await tx.delete(notifications).where(eq(notifications.userId, userId));
+      await tx.delete(auditLogs).where(eq(auditLogs.userId, userId));
+
+      // 4. Delete user — CASCADE handles: session, account, member,
+      //    project_members, invitation.inviterId
+      await tx.delete(user).where(eq(user.id, userId));
+    });
     
     return NextResponse.json({
       success: true,

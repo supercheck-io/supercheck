@@ -76,8 +76,9 @@ OAuth (`GITHUB_*` / `GOOGLE_*`) is optional in self-hosted mode.
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Optional Google social sign-in | - |
 | `SMTP_HOST`, `SMTP_FROM_EMAIL` (+ optional `SMTP_USER`/`SMTP_PASSWORD`) | Email notifications (disabled if SMTP_HOST not set) | - |
 | `OPENAI_API_KEY` | AI features | - |
-| `WORKER_REPLICAS` | Number of workers | `1` |
-| `RUNNING_CAPACITY` | Max concurrent executions (keep equal to `WORKER_REPLICAS`) | `1` |
+| `WORKER_REPLICAS` | Number of worker containers (worker-side scaling knob) | `1` |
+| `RUNNING_CAPACITY` | App-side gate: max concurrent test runs (set equal to `WORKER_REPLICAS`) | `1` |
+| `QUEUED_CAPACITY` | App-side gate: max queued test runs before new submissions are rejected | `10` |
 | `WORKER_LOCATION` | Worker queue mode (`local`, `us-east`, `eu-central`, `asia-pacific`) | `local` |
 
 ---
@@ -86,11 +87,10 @@ OAuth (`GITHUB_*` / `GOOGLE_*`) is optional in self-hosted mode.
 
 ```bash
 # Scale to 2 worker replicas (2 concurrent executions)
-WORKER_REPLICAS=2 RUNNING_CAPACITY=2 docker compose up -d
+WORKER_REPLICAS=2 RUNNING_CAPACITY=2 QUEUED_CAPACITY=20 docker compose up -d
 ```
 
-Use `RUNNING_CAPACITY` as the source-of-truth concurrency setting.
-For self-hosted Docker Compose deployments, keep `RUNNING_CAPACITY` equal to `WORKER_REPLICAS`.
+`RUNNING_CAPACITY` and `QUEUED_CAPACITY` are **App-side** settings. The App uses them to gate how many runs can be in `running` and `queued` states before submissions are throttled or rejected. Keep `RUNNING_CAPACITY` aligned with total worker replicas so the gate matches actual execution throughput.
 
 For single-server deployments, keep `WORKER_LOCATION=local` so one worker processes all regional queues.
 

@@ -176,7 +176,7 @@ For true geographic distribution, deploy workers in each region.
     **2. Download Worker Compose:**
     ```bash
     mkdir -p ~/supercheck-worker && cd ~/supercheck-worker
-    curl -o docker-compose.yml https://raw.githubusercontent.com/supercheck-io/supercheck/main/deploy/docker/docker-compose-worker.yml
+    curl -o docker-compose-worker.yml https://raw.githubusercontent.com/supercheck-io/supercheck/main/deploy/docker/docker-compose-worker.yml
     ```
 
     **3. Create `.env`:**
@@ -214,8 +214,8 @@ For true geographic distribution, deploy workers in each region.
 
     **4. Start Worker:**
     ```bash
-    docker compose up -d
-    docker compose logs -f  # Verify connection
+    docker compose -f docker-compose-worker.yml up -d
+    docker compose -f docker-compose-worker.yml logs -f  # Verify connection
     ```
   </Step>
 </Steps>
@@ -269,14 +269,26 @@ AWS_SECRET_ACCESS_KEY=YOUR_MINIO_SECRET_KEY
 
 ## Scaling Workers
 
+<Callout type="info">
+**Scaling Configuration**:
+- `RUNNING_CAPACITY`: App-side gate for maximum concurrent runs in `running` state. Set on main server to total workers across all hosts.
+- `QUEUED_CAPACITY`: App-side gate for maximum queued runs before new submissions are rejected.
+- `WORKER_REPLICAS`: Controls worker containers per host. Set individually on each worker host.
+</Callout>
+
 ```bash
-# Scale to 2 workers per location
-WORKER_REPLICAS=2 RUNNING_CAPACITY=2 docker compose up -d
+# Main server: total of 3 workers across all hosts (1 + 1 + 1)
+RUNNING_CAPACITY=3 QUEUED_CAPACITY=30 docker compose up -d
+
+# Remote worker host: scale replicas on that host only
+WORKER_REPLICAS=1 docker compose -f docker-compose-worker.yml up -d
 ```
 
-<Callout type="info">
-Use `RUNNING_CAPACITY` as the source-of-truth term for concurrency. In Docker Compose self-hosted deployments, keep `RUNNING_CAPACITY` equal to `WORKER_REPLICAS`.
-</Callout>
+| Host | Role | Setting |
+|------|------|---------|
+| Main server (App + Worker) | App + 1 worker | `RUNNING_CAPACITY=3` (total), `WORKER_REPLICAS=1` |
+| Remote VPS 1 | Worker only | `WORKER_REPLICAS=1` (no `RUNNING_CAPACITY` needed) |
+| Remote VPS 2 | Worker only | `WORKER_REPLICAS=1` (no `RUNNING_CAPACITY` needed) |
 
 ---
 

@@ -6,7 +6,7 @@ import {
   member,
   projects,
 } from "@/db/schema";
-import { eq, and, inArray, sql } from "drizzle-orm";
+import { eq, and, inArray, sql, gte } from "drizzle-orm";
 import { getUserOrgRole } from "@/lib/rbac/middleware";
 import { requireUserAuthContext, isAuthError } from "@/lib/auth-context";
 import { Role } from "@/lib/rbac/permissions";
@@ -102,13 +102,35 @@ export async function POST(request: NextRequest) {
     const { email, role, selectedProjects } = body;
     const normalizedEmail =
       typeof email === "string" ? email.toLowerCase().trim() : "";
+    const normalizedSelectedProjects = Array.isArray(selectedProjects)
+      ? Array.from(
+          new Set(
+            selectedProjects
+              .filter(
+                (projectId: unknown): projectId is string =>
+                  typeof projectId === "string"
+              )
+              .map((projectId: string) => projectId.trim())
+              .filter((projectId: string) => projectId.length > 0)
+          )
+        )
+      : [];
+
+    // Only organization owners can invite org_admin members.
+    // Keep invite permissions aligned with role update permissions.
+    if (role === "org_admin" && orgRole !== Role.ORG_OWNER) {
+      return NextResponse.json(
+        { error: "Only organization owners can invite org_admin members" },
+        { status: 403 }
+      );
+    }
 
     // Validate request data using Zod schema
     try {
       inviteMemberSchema.parse({
         email: normalizedEmail,
         role,
-        selectedProjects,
+        selectedProjects: normalizedSelectedProjects,
       });
     } catch (error) {
       if (error instanceof Error) {
@@ -210,7 +232,8 @@ export async function POST(request: NextRequest) {
         and(
           sql`LOWER(${invitation.email}) = ${normalizedEmail}`,
           eq(invitation.organizationId, organizationId),
-          eq(invitation.status, "pending")
+          eq(invitation.status, "pending"),
+          gte(invitation.expiresAt, new Date())
         )
       )
       .limit(1);
@@ -224,7 +247,7 @@ export async function POST(request: NextRequest) {
 
     // SECURITY: Validate selected projects belong to this organization BEFORE creating invitation
     let selectedProjectDetails: { id: string; name: string }[] = [];
-    if (selectedProjects && selectedProjects.length > 0) {
+    if (normalizedSelectedProjects.length > 0) {
       selectedProjectDetails = await db
         .select({
           id: projects.id,
@@ -233,13 +256,13 @@ export async function POST(request: NextRequest) {
         .from(projects)
         .where(
           and(
-            inArray(projects.id, selectedProjects),
+            inArray(projects.id, normalizedSelectedProjects),
             eq(projects.status, "active"),
             eq(projects.organizationId, organizationId)
           )
         );
 
-      if (selectedProjectDetails.length !== selectedProjects.length) {
+      if (selectedProjectDetails.length !== normalizedSelectedProjects.length) {
         return NextResponse.json(
           { error: "One or more selected projects do not belong to this organization" },
           { status: 400 }
@@ -260,7 +283,7 @@ export async function POST(request: NextRequest) {
         status: "pending",
         expiresAt,
         inviterId: userId,
-        selectedProjects: selectedProjects,
+        selectedProjects: normalizedSelectedProjects,
       })
       .returning();
 
@@ -332,7 +355,7 @@ export async function POST(request: NextRequest) {
         organizationId,
         invitedEmail: normalizedEmail,
         role: role,
-        selectedProjectsCount: selectedProjects.length,
+        selectedProjectsCount: normalizedSelectedProjects.length,
         selectedProjects: selectedProjectDetails.map((p) => ({
           id: p.id,
           name: p.name,

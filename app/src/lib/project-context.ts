@@ -456,7 +456,8 @@ export async function requireProjectContext(): Promise<{
     effectiveRole = ctx.projectRole;
   } else if (
     ctx.organizationRole === "project_admin" ||
-    ctx.organizationRole === "project_editor"
+    ctx.organizationRole === "project_editor" ||
+    ctx.organizationRole === "project_viewer"
   ) {
     effectiveRole = "project_viewer";
   }
