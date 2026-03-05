@@ -13,23 +13,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - Added a UI callout on the self-hosted sign-up page to inform users about organization invitations
 
 ### Changed
-- Streamlined admin interface by removing unused user creation functionality
+- Streamlined admin interface by removing unused user creation functionality ([#245](https://github.com/supercheck-io/supercheck/issues/245))
 - Clarified self-hosted scaling semantics across deployment docs and compose templates: `RUNNING_CAPACITY` and `QUEUED_CAPACITY` are App-side gating controls, while `WORKER_REPLICAS` remains the worker-side scaling knob
-- Documentation navigation update: the Monitor section is now a direct sidebar entry (no redundant single-item dropdown)
 
 ### Fixed
-- Fixed Playwright report loading performance
-- Implemented report caching across Playground, Runs, and Monitor views to prevent unnecessary re-fetching on tab switches
-- Hardened report-viewer transient retry handling for "report not ready" and temporary object-availability errors in Playwright/K6 report loading
+- Fixed Playwright report loading performance. Implemented report caching across Playground, Runs, and Monitor views to prevent unnecessary re-fetching on tab switches
 - Prevented caching of error responses from report proxy to avoid stale missing-report states after uploads complete
 - Prevented setting a status page custom domain to `STATUS_PAGE_DOMAIN` or its subdomains, which would silently fail to route ([#253](https://github.com/supercheck-io/supercheck/issues/253))
 - Added catch-all Traefik routers to `docker-compose-secure.yml` and `docker-compose-external.yml` for custom domain support on status pages
 - Fixed false "Queue capacity limit reached" errors during Redis Sentinel failover
-- Fixed Redis connections being permanently killed during Sentinel failover
 - Improved self-hosted migration script performance and hardened database creation commands against SQL injection
 - Fixed worker Redis documentation to use correct `REDIS_HOST`, `REDIS_PORT`, and `REDIS_PASSWORD` variables instead of `REDIS_URL` for multi-location deployments ([#252](https://github.com/supercheck-io/supercheck/issues/252))
-- Improved invitation onboarding flow and RBAC/session initialization: unauthenticated invitees now redirect to `/sign-up?invite=...` (with sign-in fallback for existing users), project selections are normalized and project-scope validated, `org_admin` invitations are restricted to org owners, expired pending invites are ignored in duplicate checks, and acceptance now initializes an active project context
-- Hardened admin user deletion to handle dependent user-owned foreign key references inside a transaction
+- Improved invitation onboarding flow and RBAC/session initialization: unauthenticated invitees now redirect to `/sign-up?invite=...` (with sign-in fallback for existing users), project selections are normalized and project-scope validated, `org_admin` invitations are restricted to org owners, expired pending invites are ignored in duplicate checks, and acceptance now initializes an active project context ([#254](https://github.com/supercheck-io/supercheck/issues/254))
+- Hardened admin user deletion to handle dependent user-owned foreign key references inside a transaction ([#254](https://github.com/supercheck-io/supercheck/issues/254))
 
 ### Security
 - Fixed DoS vulnerability in underscore via unlimited recursion in `_.flatten` and `_.isEqual` (patched to 1.13.8)
