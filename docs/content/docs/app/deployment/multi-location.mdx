@@ -270,22 +270,22 @@ AWS_SECRET_ACCESS_KEY=YOUR_MINIO_SECRET_KEY
 ## Scaling Workers
 
 <Callout type="info">
-**Scaling Configuration**:
-- `RUNNING_CAPACITY`: App-side gate for maximum concurrent runs in `running` state. Set on main server to total workers across all hosts.
-- `QUEUED_CAPACITY`: App-side gate for maximum queued runs before new submissions are rejected.
-- `WORKER_REPLICAS`: Controls worker containers per host. Set individually on each worker host.
+**Configuration Settings:**
+- `WORKER_REPLICAS`: Controls the number of worker containers per server. **Worker-side setting.** Set individually on each worker server.
+- `RUNNING_CAPACITY`: Maximum concurrent test runs in running state. **App-side setting.** Set on main server to total workers across all servers.
+- `QUEUED_CAPACITY`: Maximum queued test runs before rejecting submissions. **App-side setting.** Set on the main server.
 </Callout>
 
 ```bash
-# Main server: total of 3 workers across all hosts (1 + 1 + 1)
+# Main server: total of 3 workers across all servers (1 + 1 + 1)
 RUNNING_CAPACITY=3 QUEUED_CAPACITY=30 docker compose up -d
 
-# Remote worker host: scale replicas on that host only
+# Remote worker server: scale replicas on that server only
 WORKER_REPLICAS=1 docker compose -f docker-compose-worker.yml up -d
 ```
 
-| Host | Role | Setting |
-|------|------|---------|
+| Server | Role | Setting |
+|--------|------|---------|
 | Main server (App + Worker) | App + 1 worker | `RUNNING_CAPACITY=3` (total), `WORKER_REPLICAS=1` |
 | Remote VPS 1 | Worker only | `WORKER_REPLICAS=1` (no `RUNNING_CAPACITY` needed) |
 | Remote VPS 2 | Worker only | `WORKER_REPLICAS=1` (no `RUNNING_CAPACITY` needed) |
