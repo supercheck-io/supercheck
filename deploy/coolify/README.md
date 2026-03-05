@@ -83,7 +83,8 @@ For the **latest stable version**, simply redeploy.
 | `SMTP_HOST` | SMTP Server Host | - |
 | `SMTP_FROM_EMAIL` | Sender Email Address | - |
 | `OPENAI_API_KEY` | OpenAI API Key for AI features | - |
-| `RUNNING_CAPACITY` | App-side gate: max concurrent test runs (set equal to `WORKER_REPLICAS`) | `2` |
+| `RUNNING_CAPACITY` | App-side gate: max concurrent test runs (set equal to total worker replicas configured in Coolify) | `2` |
+| `QUEUED_CAPACITY` | App-side gate: max queued test runs before new submissions are rejected | `10` |
 
 ---
 

@@ -176,7 +176,7 @@ For true geographic distribution, deploy workers in each region.
     **2. Download Worker Compose:**
     ```bash
     mkdir -p ~/supercheck-worker && cd ~/supercheck-worker
-    curl -o docker-compose.yml https://raw.githubusercontent.com/supercheck-io/supercheck/main/deploy/docker/docker-compose-worker.yml
+    curl -o docker-compose-worker.yml https://raw.githubusercontent.com/supercheck-io/supercheck/main/deploy/docker/docker-compose-worker.yml
     ```
 
     **3. Create `.env`:**
@@ -214,8 +214,8 @@ For true geographic distribution, deploy workers in each region.
 
     **4. Start Worker:**
     ```bash
-    docker compose up -d
-    docker compose logs -f  # Verify connection
+    docker compose -f docker-compose-worker.yml up -d
+    docker compose -f docker-compose-worker.yml logs -f  # Verify connection
     ```
   </Step>
 </Steps>
@@ -271,21 +271,14 @@ AWS_SECRET_ACCESS_KEY=YOUR_MINIO_SECRET_KEY
 
 <Callout type="info">
 **Scaling Configuration**:
-- `RUNNING_CAPACITY`: App-side setting controlling concurrent test runs. Set on main server to total workers across all hosts.
+- `RUNNING_CAPACITY`: App-side gate for maximum concurrent runs in `running` state. Set on main server to total workers across all hosts.
+- `QUEUED_CAPACITY`: App-side gate for maximum queued runs before new submissions are rejected.
 - `WORKER_REPLICAS`: Controls worker containers per host. Set individually on each worker host.
 </Callout>
 
 ```bash
 # Main server: total of 3 workers across all hosts (1 + 1 + 1)
-RUNNING_CAPACITY=3 docker compose up -d
-
-# Remote worker host: scale replicas on that host only
-WORKER_REPLICAS=1 docker compose -f docker-compose-worker.yml up -d
-```
-
-```bash
-# Main server: total of 3 workers across all hosts (1 + 1 + 1)
-RUNNING_CAPACITY=3 docker compose up -d
+RUNNING_CAPACITY=3 QUEUED_CAPACITY=30 docker compose up -d
 
 # Remote worker host: scale replicas on that host only
 WORKER_REPLICAS=1 docker compose -f docker-compose-worker.yml up -d

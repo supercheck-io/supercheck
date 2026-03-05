@@ -11,11 +11,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - **Registration controls for self-hosted deployments** — New `SIGNUP_ENABLED` environment variable to enable/disable new user registration, and `ALLOWED_EMAIL_DOMAINS` to restrict signup to specific email domains ([#246](https://github.com/supercheck-io/supercheck/issues/246))
 - **Organization rename** — Organization owners and admins can now rename their organization from the Organization Admin page ([#247](https://github.com/supercheck-io/supercheck/issues/247))
 - Added a UI callout on the self-hosted sign-up page to inform users about organization invitations
-- Enhanced database migration script with optimized auto-probe logic and security improvements
 
 ### Changed
 - Streamlined admin interface by removing unused user creation functionality
-- Clarified self-hosted scaling semantics across deployment docs and compose templates: `RUNNING_CAPACITY` is now documented as an App-side execution gate, while worker scaling remains controlled by `WORKER_REPLICAS`
+- Clarified self-hosted scaling semantics across deployment docs and compose templates: `RUNNING_CAPACITY` and `QUEUED_CAPACITY` are App-side gating controls, while `WORKER_REPLICAS` remains the worker-side scaling knob
 - Documentation navigation update: the Monitor section is now a direct sidebar entry (no redundant single-item dropdown)
 
 ### Fixed
@@ -26,14 +25,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - Prevented setting a status page custom domain to `STATUS_PAGE_DOMAIN` or its subdomains, which would silently fail to route ([#253](https://github.com/supercheck-io/supercheck/issues/253))
 - Added catch-all Traefik routers to `docker-compose-secure.yml` and `docker-compose-external.yml` for custom domain support on status pages
 - Fixed false "Queue capacity limit reached" errors during Redis Sentinel failover
-- Fixed Redis connections being permanently killed during Sentinel failover 
-- Database migration script performance optimization for self-hosted deployments
-- SQL injection prevention in database creation commands
+- Fixed Redis connections being permanently killed during Sentinel failover
+- Improved self-hosted migration script performance and hardened database creation commands against SQL injection
 - Fixed worker Redis documentation to use correct `REDIS_HOST`, `REDIS_PORT`, and `REDIS_PASSWORD` variables instead of `REDIS_URL` for multi-location deployments ([#252](https://github.com/supercheck-io/supercheck/issues/252))
-- Fixed invitation onboarding UX by redirecting unauthenticated invitees to `/sign-up?invite=...` (with automatic fallback to sign-in for existing accounts), and by hardening invite-page auth detection to use HTTP 401 status checks
-- Fixed invitation acceptance and RBAC edge cases by preserving `project_viewer` organization-wide semantics in session initialization, adding fast-path role fallback for viewer access, and normalizing selected project IDs during acceptance
-- Fixed invitation creation hardening gaps: only organization owners can invite `org_admin` members, duplicate checks now ignore expired pending invitations, and selected project IDs are normalized/deduplicated before validation and storage
-- Fixed admin user deletion to safely handle all user-owned foreign key references within a transaction
+- Improved invitation onboarding flow and RBAC/session initialization: unauthenticated invitees now redirect to `/sign-up?invite=...` (with sign-in fallback for existing users), project selections are normalized and project-scope validated, `org_admin` invitations are restricted to org owners, expired pending invites are ignored in duplicate checks, and acceptance now initializes an active project context
+- Hardened admin user deletion to handle dependent user-owned foreign key references inside a transaction
 
 ### Security
 - Fixed DoS vulnerability in underscore via unlimited recursion in `_.flatten` and `_.isEqual` (patched to 1.13.8)
