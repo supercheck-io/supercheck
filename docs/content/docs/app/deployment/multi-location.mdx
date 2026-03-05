@@ -270,10 +270,9 @@ AWS_SECRET_ACCESS_KEY=YOUR_MINIO_SECRET_KEY
 ## Scaling Workers
 
 <Callout type="info">
-**Configuration Settings:**
-- `WORKER_REPLICAS`: Controls the number of worker containers per server. **Worker-side setting.** Set individually on each worker server.
-- `RUNNING_CAPACITY`: Maximum concurrent test runs in running state. **App-side setting.** Set on main server to total workers across all servers.
-- `QUEUED_CAPACITY`: Maximum queued test runs before rejecting submissions. **App-side setting.** Set on the main server.
+- `WORKER_REPLICAS`: Controls the number of worker containers. Set individually on each worker server.
+- `RUNNING_CAPACITY`: Maximum concurrent test runs in running state. Set on the app server equal to total worker replicas across all servers.
+- `QUEUED_CAPACITY`: Maximum queued test runs before rejecting submissions. Set on the app server based on your desired queue length.
 </Callout>
 
 ```bash

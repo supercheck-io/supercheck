@@ -342,10 +342,9 @@ Single-location deployments should keep `WORKER_LOCATION=local` (the default). T
 </Callout>
 
 <Callout type="info">
-**Configuration Settings:**
-- `WORKER_REPLICAS`: Controls the number of worker containers. **Worker-side setting.** Set in Docker Compose environment.
-- `RUNNING_CAPACITY`: Maximum concurrent test runs in running state. **App-side setting.** Set equal to total worker replicas.
-- `QUEUED_CAPACITY`: Maximum queued test runs before rejecting submissions. **App-side setting.** Set on the app server.
+- `WORKER_REPLICAS`: Controls the number of worker containers. Set individually on each worker server.
+- `RUNNING_CAPACITY`: Maximum concurrent test runs in running state. Set on the app server equal to total worker replicas across all servers.
+- `QUEUED_CAPACITY`: Maximum queued test runs before rejecting submissions. Set on the app server based on your desired queue length.
 </Callout>
 
 ```bash
