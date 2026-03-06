@@ -2,6 +2,7 @@ import { PublicStatusPage } from "@/components/status-pages/public-status-page";
 import { getStatusPage } from "@/actions/get-status-page";
 import { getComponents } from "@/actions/get-components";
 import { getIncidents } from "@/actions/get-incidents";
+import { isStatusPageBrandingHidden } from "@/lib/feature-flags";
 import { redirect } from "next/navigation";
 import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
 
@@ -39,6 +40,7 @@ export default async function PublicStatusPagePage({
         components={componentsResult.components}
         incidents={incidentsResult.incidents}
         idOrSubdomain={resolvedParams.id}
+        hideBranding={isStatusPageBrandingHidden()}
         isPublicView={false}
       />
     </>

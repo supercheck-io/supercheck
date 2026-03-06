@@ -12,6 +12,10 @@ import {
   getEffectiveStatusPageDomain,
   isReservedStatusPageHostname,
 } from "@/lib/status-page-domain";
+import {
+  normalizeStatusPageSupportContact,
+  statusPageSupportContactSchema,
+} from "@/lib/status-page-support";
 
 // Validation schema with strict input sanitization
 const updateSettingsSchema = z.object({
@@ -29,12 +33,7 @@ const updateSettingsSchema = z.object({
     .max(2000, "Description too long")
     .trim()
     .optional(),
-  supportUrl: z
-    .string()
-    .url("Invalid URL format")
-    .max(500)
-    .optional()
-    .or(z.literal("")),
+  supportUrl: statusPageSupportContactSchema.optional(),
   timezone: z.string().max(50).optional(),
 
   // Language for public status page (ISO 639-1 code)
@@ -64,13 +63,6 @@ const updateSettingsSchema = z.object({
   allowSlackSubscribers: z.boolean().optional(),
   allowIncidentSubscribers: z.boolean().optional(),
   allowRssFeed: z.boolean().optional(),
-
-  // Branding settings (JSONB)
-  brandingSettings: z
-    .object({
-      hidePoweredBy: z.boolean(),
-    })
-    .optional(),
 
   // Branding colors (hex codes) - strict validation
   cssBodyBackgroundColor: z
@@ -198,6 +190,20 @@ export async function updateStatusPageSettings(data: UpdateSettingsInput) {
     // Normalize empty domain to null for proper DB storage (unique constraint compatibility)
     if (updatePayload.customDomain === "") {
       updatePayload.customDomain = null;
+    }
+
+    if (updatePayload.headline === "") {
+      updatePayload.headline = null;
+    }
+
+    if (updatePayload.pageDescription === "") {
+      updatePayload.pageDescription = null;
+    }
+
+    if (settings.supportUrl !== undefined) {
+      updatePayload.supportUrl = normalizeStatusPageSupportContact(
+        settings.supportUrl
+      );
     }
 
     // Update status page

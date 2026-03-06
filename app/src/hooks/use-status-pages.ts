@@ -15,7 +15,6 @@ export interface StatusPage {
   customDomain: string | null;
   customDomainVerified: boolean | null;
   language: string | null;
-  brandingSettings: Record<string, unknown> | null;
   faviconLogo: string | null;
   transactionalLogo: string | null;
   heroCover: string | null;

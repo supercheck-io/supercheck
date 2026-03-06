@@ -32,7 +32,7 @@ import {
 } from "@/actions/publish-status-page";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
-import { getStatusPageUrl } from "@/lib/domain-utils";
+import { getPublicStatusPageUrl } from "@/lib/domain-utils";
 import { DataTable } from "@/components/monitors/data-table";
 import { statusPageColumns } from "@/components/monitors/status-page-columns";
 import type { Monitor } from "@/components/monitors/schema";
@@ -66,7 +66,6 @@ type StatusPage = {
   cssReds: string | null;
   faviconLogo: string | null;
   transactionalLogo: string | null;
-  brandingSettings: Record<string, unknown> | null;
   createdAt: Date | null;
   updatedAt: Date | null;
 };
@@ -119,12 +118,16 @@ export function StatusPageDetail({
 }: StatusPageDetailProps) {
   const router = useRouter();
   const [isPublishing, setIsPublishing] = useState(false);
+  const publicStatusPageUrl = getPublicStatusPageUrl({
+    subdomain: statusPage.subdomain,
+    customDomain: statusPage.customDomain,
+    customDomainVerified: statusPage.customDomainVerified,
+  });
 
   const handleCopyUrl = () => {
-    const url = getStatusPageUrl(statusPage.subdomain);
-    navigator.clipboard.writeText(url);
+    navigator.clipboard.writeText(publicStatusPageUrl);
     toast.success("URL copied to clipboard", {
-      description: url,
+      description: publicStatusPageUrl,
     });
   };
 
@@ -134,9 +137,7 @@ export function StatusPageDetail({
       const result = await publishStatusPage(statusPage.id);
       if (result.success) {
         toast.success("Status page published successfully", {
-          description: `Your status page is now publicly accessible at ${getStatusPageUrl(
-            statusPage.subdomain
-          )}`,
+          description: `Your status page is now publicly accessible at ${publicStatusPageUrl}`,
         });
         router.refresh();
       } else {
@@ -220,7 +221,7 @@ export function StatusPageDetail({
             <div className="flex items-center gap-2 text-sm text-muted-foreground mt-3 min-w-0">
               <Tally4 className="h-4 w-4 flex-shrink-0 !text-green-600" />
               <span className="font-mono text-xs sm:text-sm truncate">
-                {getStatusPageUrl(statusPage.subdomain)}
+                {publicStatusPageUrl}
               </span>
               <Button
                 variant="ghost"

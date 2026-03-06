@@ -9,6 +9,11 @@
  * This ensures cloud deployments work by default without extra configuration.
  */
 
+const isExplicitlyEnabled = (value?: string): boolean => {
+  const normalized = value?.trim().toLowerCase();
+  return normalized === "true" || normalized === "1";
+};
+
 /**
  * Check if the application is running in cloud-hosted mode
  *
@@ -24,9 +29,8 @@
  * Cloud installations require a subscription (Plus or Pro plan).
  */
 export const isCloudHosted = (): boolean => {
-  const selfHosted = process.env.SELF_HOSTED?.toLowerCase();
   // Cloud mode is default - only self-hosted when explicitly set to "true" or "1"
-  return selfHosted !== "true" && selfHosted !== "1";
+  return !isExplicitlyEnabled(process.env.SELF_HOSTED);
 };
 
 /**
@@ -35,6 +39,19 @@ export const isCloudHosted = (): boolean => {
  */
 export const isSelfHosted = (): boolean => {
   return !isCloudHosted();
+};
+
+/**
+ * Check whether public status page branding should be hidden globally.
+ *
+ * Controlled by the `STATUS_PAGE_HIDE_BRANDING` environment variable:
+ * - Not set, empty, or any value other than "true"/"1" -> branding is shown (default)
+ * - "true" or "1" (case-insensitive)                    -> branding is hidden
+ *
+ * This is a deployment-wide setting and intentionally not configurable per status page.
+ */
+export const isStatusPageBrandingHidden = (): boolean => {
+  return isExplicitlyEnabled(process.env.STATUS_PAGE_HIDE_BRANDING);
 };
 
 /**

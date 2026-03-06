@@ -12,6 +12,7 @@ import { EmailService } from "@/lib/email-service";
 import { renderIncidentNotificationEmail } from "@/lib/email-renderer";
 import { getTranslations } from "@/lib/status-page-translations";
 import { format } from "date-fns";
+import { getPublicStatusPageUrl } from "@/lib/domain-utils";
 
 /**
  * Send incident notification emails to all verified subscribers
@@ -112,7 +113,12 @@ export async function sendIncidentNotifications(
     // Construct notification URLs
     const baseUrl =
       process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || "http://localhost:3000";
-    const statusPageUrl = `${baseUrl}/status/${statusPageId}`;
+    const statusPageUrl = getPublicStatusPageUrl({
+      subdomain: statusPage.subdomain,
+      customDomain: statusPage.customDomain,
+      customDomainVerified: statusPage.customDomainVerified,
+      appUrl: baseUrl,
+    });
 
     // Build email parameters template (per-subscriber unsubscribe URL will be added when sending)
     const language = statusPage.language ?? "en";
@@ -131,6 +137,7 @@ export async function sendIncidentNotifications(
       incidentDescription: incident.body || t.emailNoDetails,
       affectedComponents,
       updateTimestamp: formatIncidentTimestamp(incident.createdAt),
+      supportUrl: statusPage.supportUrl,
       language,
     };
 

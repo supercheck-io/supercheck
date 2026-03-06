@@ -31,6 +31,8 @@
 # NOTE: RUNNING_CAPACITY and QUEUED_CAPACITY are App-side settings.
 #   Set them only on the main server's App service, not here.
 #   WORKER_REPLICAS (set below or via env) controls how many worker containers run.
+# NOTE: STATUS_PAGE_HIDE_BRANDING is also App-side only.
+#   Set it on the main App deployment if you want to hide the public branding footer globally.
 #
 # Example .env file:
 # ----------------------------------------

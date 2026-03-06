@@ -13,6 +13,7 @@ import {
   shouldQuarantine,
   type SlackIncidentEvent,
 } from "@/lib/slack-delivery.service";
+import { getPublicStatusPageUrl } from "@/lib/domain-utils";
 
 /**
  * Send Slack notifications to all verified Slack subscribers
@@ -131,7 +132,12 @@ export async function sendSlackNotifications(
     // Construct notification URLs
     const baseUrl =
       process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || "http://localhost:3000";
-    const statusPageUrl = `${baseUrl}/status/${statusPageId}`;
+    const statusPageUrl = getPublicStatusPageUrl({
+      subdomain: statusPage.subdomain,
+      customDomain: statusPage.customDomain,
+      customDomainVerified: statusPage.customDomainVerified,
+      appUrl: baseUrl,
+    });
 
     // Prepare Slack event payload
     const slackEvent: SlackIncidentEvent = {

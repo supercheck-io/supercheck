@@ -39,7 +39,6 @@ import {
   MessageSquare,
   Rss,
   Languages,
-  EyeOff,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -55,6 +54,11 @@ import { SUPPORTED_LANGUAGES } from "@/lib/status-page-translations";
 import { useQueryClient } from "@tanstack/react-query";
 import type { StatusPageDetailResponse } from "@/hooks/use-status-pages";
 import { useAppConfig } from "@/hooks/use-app-config";
+import {
+  getStatusPageSupportContactInputValue,
+  normalizeStatusPageSupportContact,
+  statusPageSupportContactSchema,
+} from "@/lib/status-page-support";
 import {
   Popover,
   PopoverContent,
@@ -86,7 +90,6 @@ type StatusPage = {
   cssReds: string | null;
   faviconLogo: string | null;
   transactionalLogo: string | null;
-  brandingSettings: Record<string, unknown> | null;
 };
 
 type SettingsTabProps = {
@@ -107,11 +110,7 @@ const settingsSchema = z.object({
     .max(2000, "Description is too long")
     .trim()
     .optional(),
-  supportUrl: z
-    .string()
-    .url("Please enter a valid URL")
-    .optional()
-    .or(z.literal("")),
+  supportUrl: statusPageSupportContactSchema.optional(),
   customDomain: z
     .string()
     .max(255)
@@ -133,7 +132,6 @@ const settingsSchema = z.object({
   cssBlues: z.string().regex(/^#[0-9A-Fa-f]{6}$/, "Invalid color format"),
   cssReds: z.string().regex(/^#[0-9A-Fa-f]{6}$/, "Invalid color format"),
   language: z.string().min(2).max(10).optional(),
-  hidePoweredBy: z.boolean(),
 });
 
 type SettingsFormValues = z.infer<typeof settingsSchema>;
@@ -190,7 +188,7 @@ export function SettingsTab({
       name: statusPage.name,
       headline: statusPage.headline || "",
       pageDescription: statusPage.pageDescription || "",
-      supportUrl: statusPage.supportUrl || "",
+      supportUrl: getStatusPageSupportContactInputValue(statusPage.supportUrl),
       customDomain: statusPage.customDomain || "",
       allowPageSubscribers: statusPage.allowPageSubscribers ?? true,
       allowEmailSubscribers: statusPage.allowEmailSubscribers ?? true,
@@ -204,7 +202,6 @@ export function SettingsTab({
       cssBlues: statusPage.cssBlues || "#3498db",
       cssReds: statusPage.cssReds || "#e74c3c",
       language: statusPage.language || "en",
-      hidePoweredBy: !!(statusPage.brandingSettings as Record<string, unknown>)?.hidePoweredBy,
     },
   });
 
@@ -215,9 +212,14 @@ export function SettingsTab({
 
   const onSubmit = async (data: SettingsFormValues) => {
     try {
+      const submittedHeadline = data.headline?.trim() ?? "";
+      const submittedDescription = data.pageDescription?.trim() ?? "";
+      const submittedSupportUrl = data.supportUrl?.trim() ?? "";
+      const submittedCustomDomain = data.customDomain?.trim() ?? "";
+
       if (
-        data.customDomain &&
-        isReservedCustomDomain(data.customDomain, statusPageDomain)
+        submittedCustomDomain &&
+        isReservedCustomDomain(submittedCustomDomain, statusPageDomain)
       ) {
         toast.error("Invalid custom domain", {
           description: `Custom domains cannot use ${statusPageDomain} or its subdomains. Use a separate hostname and point its CNAME to ${statusPageDomain}.`,
@@ -228,16 +230,24 @@ export function SettingsTab({
       const result = await updateStatusPageSettings({
         statusPageId: statusPage.id,
         ...data,
-        headline: data.headline || undefined,
-        pageDescription: data.pageDescription || undefined,
-        supportUrl: data.supportUrl || undefined,
-        customDomain: data.customDomain,
+        headline: submittedHeadline,
+        pageDescription: submittedDescription,
+        supportUrl: submittedSupportUrl,
+        customDomain: submittedCustomDomain,
         language: data.language,
-        brandingSettings: { hidePoweredBy: data.hidePoweredBy },
       });
 
       if (result.success) {
         const normalizedLanguage = data.language || "en";
+        const normalizedHeadline = submittedHeadline || null;
+        const normalizedDescription = submittedDescription || null;
+        const normalizedSupportUrl = normalizeStatusPageSupportContact(
+          submittedSupportUrl
+        );
+        const supportUrlInputValue = getStatusPageSupportContactInputValue(
+          normalizedSupportUrl
+        );
+        const normalizedCustomDomain = submittedCustomDomain || null;
 
         queryClient.setQueryData<StatusPageDetailResponse>(
           ["statusPage", statusPage.id, "detail"],
@@ -248,10 +258,12 @@ export function SettingsTab({
               ...current,
               statusPage: {
                 ...current.statusPage,
+                name: data.name,
+                headline: normalizedHeadline,
+                pageDescription: normalizedDescription,
                 language: normalizedLanguage,
-                brandingSettings: {
-                  hidePoweredBy: data.hidePoweredBy,
-                },
+                supportUrl: normalizedSupportUrl,
+                customDomain: normalizedCustomDomain,
               },
             };
           }
@@ -263,7 +275,14 @@ export function SettingsTab({
         });
 
         toast.success("Settings saved successfully");
-        reset({ ...data, language: normalizedLanguage });
+        reset({
+          ...data,
+          headline: normalizedHeadline ?? "",
+          pageDescription: normalizedDescription ?? "",
+          supportUrl: supportUrlInputValue,
+          customDomain: normalizedCustomDomain ?? "",
+          language: normalizedLanguage,
+        });
         router.refresh();
       } else {
         toast.error("Failed to save settings", {
@@ -509,13 +528,13 @@ export function SettingsTab({
               {/* Support URL */}
               <div className="space-y-2">
                 <Label htmlFor="supportUrl" className="text-sm font-medium">
-                  Support URL
+                  Support contact
                 </Label>
                 <Input
                   id="supportUrl"
-                  type="url"
+                  type="text"
                   {...register("supportUrl")}
-                  placeholder="https://support.example.com"
+                  placeholder="support@example.com or https://support.example.com"
                   disabled={!canUpdate}
                 />
                 {errors.supportUrl && (
@@ -524,7 +543,7 @@ export function SettingsTab({
                   </p>
                 )}
                 <p className="text-sm text-muted-foreground">
-                  Link to your support page or contact info
+                  Add an email address or support website. Email addresses open the visitor&apos;s default mail app.
                 </p>
               </div>
             </div>
@@ -1197,37 +1216,6 @@ export function SettingsTab({
           </div>
 
           <Separator />
-
-          {/* Hide Powered By */}
-          <div>
-            <div className="flex items-center justify-between p-3 border rounded-lg hover:bg-accent/50 transition-colors">
-              <div className="flex items-center gap-3 flex-1">
-                <div className="p-1.5 bg-gray-500/10 rounded">
-                  <EyeOff className="h-4 w-4 text-gray-500" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium">
-                    Hide &quot;Powered by Supercheck&quot;
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    Remove the branding footer from your public status and incident pages
-                  </div>
-                </div>
-              </div>
-              <Controller
-                control={control}
-                name="hidePoweredBy"
-                render={({ field }) => (
-                  <Switch
-                    checked={field.value}
-                    onCheckedChange={field.onChange}
-                    disabled={!canUpdate}
-                    className="ml-3"
-                  />
-                )}
-              />
-            </div>
-          </div>
 
 
         </CardContent>

@@ -22,6 +22,7 @@ export interface AppConfig {
   };
   statusPage?: {
     domain: string;
+    hideBranding: boolean;
   };
 }
 
@@ -44,6 +45,7 @@ const DEFAULT_CONFIG: AppConfig = {
   },
   statusPage: {
     domain: "supercheck.io",
+    hideBranding: false,
   },
 };
 
@@ -93,6 +95,7 @@ export function useAppConfig() {
     maxMonitorNotificationChannels: effectiveConfig.limits?.maxMonitorNotificationChannels ?? 10,
     recentMonitorResultsLimit: effectiveConfig.limits?.recentMonitorResultsLimit,
     statusPageDomain: effectiveConfig.statusPage?.domain ?? "supercheck.io",
+    hideStatusPageBranding: effectiveConfig.statusPage?.hideBranding ?? false,
   };
 }
 

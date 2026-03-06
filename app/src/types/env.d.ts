@@ -26,6 +26,7 @@ declare namespace NodeJS {
     JOB_EXECUTION_TIMEOUT_MS: string;
     K6_TEST_EXECUTION_TIMEOUT_MS: string;
     K6_JOB_EXECUTION_TIMEOUT_MS: string;
+    STATUS_PAGE_HIDE_BRANDING?: string;
 
     // Playwright Config
     PLAYWRIGHT_RETRIES: string;

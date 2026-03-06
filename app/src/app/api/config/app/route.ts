@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
-import { isCloudHosted, isSignupEnabled, getAllowedEmailDomains } from "@/lib/feature-flags";
+import {
+  getAllowedEmailDomains,
+  isCloudHosted,
+  isSignupEnabled,
+  isStatusPageBrandingHidden,
+} from "@/lib/feature-flags";
 import { getEffectiveStatusPageDomain } from "@/lib/status-page-domain";
 
 /**
@@ -63,6 +68,7 @@ export async function GET() {
       // Domain used for CNAME target in custom domain setup
       // Cloud mode is fixed to supercheck.io; self-hosted should set STATUS_PAGE_DOMAIN
       domain: getEffectiveStatusPageDomain(),
+      hideBranding: isStatusPageBrandingHidden(),
     },
   });
 }

@@ -2,6 +2,7 @@ import { PublicStatusPage } from "@/components/status-pages/public-status-page";
 import { getPublicStatusPageByCustomDomain } from "@/actions/get-public-status-page-by-custom-domain";
 import { getPublicComponents } from "@/actions/get-public-components";
 import { getPublicIncidents } from "@/actions/get-public-incidents";
+import { isStatusPageBrandingHidden } from "@/lib/feature-flags";
 import { notFound } from "next/navigation";
 import { Metadata } from "next";
 
@@ -97,6 +98,7 @@ export default async function CustomDomainStatusPage({
             components={componentsResult.components}
             incidents={incidentsResult.incidents}
             idOrSubdomain={hostname}
+            hideBranding={isStatusPageBrandingHidden()}
             isPublicView
             isCustomDomain
         />

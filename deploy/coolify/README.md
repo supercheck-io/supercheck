@@ -85,6 +85,7 @@ For the **latest stable version**, simply redeploy.
 | `OPENAI_API_KEY` | OpenAI API Key for AI features | - |
 | `RUNNING_CAPACITY` | App-side gate: max concurrent test runs (set equal to total worker replicas configured in Coolify) | `2` |
 | `QUEUED_CAPACITY` | App-side gate: max queued test runs before new submissions are rejected | `10` |
+| `STATUS_PAGE_HIDE_BRANDING` | Hide the `Powered by Supercheck` footer on every public status and incident page | `false` |
 
 ---
 

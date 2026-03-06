@@ -11,10 +11,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - **Registration controls for self-hosted deployments** — New `SIGNUP_ENABLED` environment variable to enable/disable new user registration, and `ALLOWED_EMAIL_DOMAINS` to restrict signup to specific email domains ([#246](https://github.com/supercheck-io/supercheck/issues/246))
 - **Organization rename** — Organization owners and admins can now rename their organization from the Organization Admin page ([#247](https://github.com/supercheck-io/supercheck/issues/247))
 - Added a UI callout on the self-hosted sign-up page to inform users about organization invitations
+- **Status page support contact CTA** — Public status pages and incident notifications can now expose a `Get in touch` action backed by either an email address or a support URL ([#263](https://github.com/supercheck-io/supercheck/issues/263))
 
 ### Changed
 - Streamlined admin interface by removing unused user creation functionality ([#245](https://github.com/supercheck-io/supercheck/issues/245))
 - Clarified self-hosted scaling semantics across deployment docs and compose templates: `RUNNING_CAPACITY` and `QUEUED_CAPACITY` are App-side gating controls, while `WORKER_REPLICAS` remains the worker-side scaling knob
+- Improved admin impersonation handling and session management flows
+- Moved public status page branding suppression to a deployment-wide `STATUS_PAGE_HIDE_BRANDING` environment variable, removed the per-status-page settings toggle, and defaulted branding to visible unless the env var is explicitly enabled
+- Updated public status page branding to use the Supercheck logo
 
 ### Fixed
 - Fixed Playwright report loading performance. Implemented report caching across Playground, Runs, and Monitor views to prevent unnecessary re-fetching on tab switches
@@ -26,6 +30,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - Fixed worker Redis documentation to use correct `REDIS_HOST`, `REDIS_PORT`, and `REDIS_PASSWORD` variables instead of `REDIS_URL` for multi-location deployments ([#252](https://github.com/supercheck-io/supercheck/issues/252))
 - Improved invitation onboarding flow and RBAC/session initialization: unauthenticated invitees now redirect to `/sign-up?invite=...` (with sign-in fallback for existing users), project selections are normalized and project-scope validated, `org_admin` invitations are restricted to org owners, expired pending invites are ignored in duplicate checks, and acceptance now initializes an active project context ([#254](https://github.com/supercheck-io/supercheck/issues/254))
 - Hardened admin user deletion to handle dependent user-owned foreign key references inside a transaction ([#254](https://github.com/supercheck-io/supercheck/issues/254))
+- Fixed status page support contact UX so `Get in touch` matches the `Subscribe` button styling, stays in the top action area on incident pages, and handles `mailto:` links consistently across public views and emails ([#263](https://github.com/supercheck-io/supercheck/issues/263))
+- Fixed status page settings persistence so support contact, headline, and description can be cleared reliably and reflect immediately after save
 
 ### Security
 - Fixed DoS vulnerability in underscore via unlimited recursion in `_.flatten` and `_.isEqual` (patched to 1.13.8)

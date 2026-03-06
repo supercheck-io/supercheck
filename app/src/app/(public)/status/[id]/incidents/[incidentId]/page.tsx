@@ -2,6 +2,7 @@ import { getPublicIncidentDetail } from "@/actions/get-public-incident-detail";
 import { getPublicStatusPage } from "@/actions/get-public-status-page";
 import { getPublicStatusPageBySubdomain } from "@/actions/get-public-status-page-by-subdomain";
 import { PublicIncidentDetail } from "@/components/status-pages/public-incident-detail";
+import { isStatusPageBrandingHidden } from "@/lib/feature-flags";
 import { notFound } from "next/navigation";
 import { Metadata } from "next";
 
@@ -103,7 +104,8 @@ export default async function PublicIncidentDetailPage({
       faviconLogo={statusPage.faviconLogo}
       transactionalLogo={statusPage.transactionalLogo}
       statusPageHeadline={statusPage.headline}
-      brandingSettings={result.brandingSettings}
+      supportUrl={statusPage.supportUrl}
+      hideBranding={isStatusPageBrandingHidden()}
       language={result.language}
       isPublicView
     />

@@ -1,0 +1,1 @@
+ALTER TABLE "status_pages" DROP COLUMN "branding_settings";

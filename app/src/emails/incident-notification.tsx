@@ -18,6 +18,10 @@ import {
   translateIncidentImpact,
   type TranslationKeys,
 } from "../lib/status-page-translations";
+import {
+  getStatusPageSupportContact,
+  getStatusPageSupportCtaLabel,
+} from "../lib/status-page-support";
 
 interface IncidentNotificationEmailProps {
   statusPageName: string;
@@ -29,6 +33,7 @@ interface IncidentNotificationEmailProps {
   affectedComponents: string[];
   updateTimestamp: string;
   unsubscribeUrl: string;
+  supportUrl?: string | null;
   language?: string;
 }
 
@@ -119,6 +124,7 @@ export const IncidentNotificationEmail = ({
   affectedComponents = [],
   updateTimestamp = new Date().toLocaleString(),
   unsubscribeUrl = "https://status.example.com/unsubscribe",
+  supportUrl,
   language = "en",
 }: IncidentNotificationEmailProps) => {
   const t = getTranslations(language);
@@ -126,6 +132,8 @@ export const IncidentNotificationEmail = ({
   const statusLabel = getStatusLabel(incidentStatus, t);
   const impactLabel = getImpactLabel(incidentImpact, t);
   const isResolved = incidentStatus.toLowerCase() === "resolved";
+  const supportContact = getStatusPageSupportContact(supportUrl);
+  const supportCtaLabel = getStatusPageSupportCtaLabel(language);
 
   return (
     <Html>
@@ -251,6 +259,14 @@ export const IncidentNotificationEmail = ({
             <Button style={ctaButton} href={statusPageUrl}>
               {t.emailViewStatusPage}
             </Button>
+            {supportContact && (
+              <>
+                <div style={buttonSpacer} />
+                <Button style={secondaryButton} href={supportContact.href}>
+                  {supportCtaLabel}
+                </Button>
+              </>
+            )}
           </Section>
 
           <Hr style={divider} />
@@ -434,6 +450,23 @@ const ctaButton = {
   textAlign: "center" as const,
   display: "inline-block",
   padding: "12px 28px",
+};
+
+const buttonSpacer = {
+  height: "12px",
+};
+
+const secondaryButton = {
+  backgroundColor: "#ffffff",
+  borderRadius: "8px",
+  color: "#18181b",
+  fontSize: "14px",
+  fontWeight: "600" as const,
+  textDecoration: "none",
+  textAlign: "center" as const,
+  display: "inline-block",
+  padding: "12px 28px",
+  border: "1px solid #d4d4d8",
 };
 
 const divider = {

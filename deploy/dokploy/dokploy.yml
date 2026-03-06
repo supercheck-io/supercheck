@@ -27,6 +27,7 @@ x-common-env: &common-env
   NODE_ENV: production
   SHOW_COMMUNITY_LINKS: ${SHOW_COMMUNITY_LINKS:-true}
   STATUS_PAGE_DOMAIN: ${STATUS_PAGE_DOMAIN:-}
+  STATUS_PAGE_HIDE_BRANDING: ${STATUS_PAGE_HIDE_BRANDING:-false}
 
   # App-Side Capacity Settings
   # RUNNING_CAPACITY controls how many test runs the App allows into "running" state simultaneously.
