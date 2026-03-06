@@ -32,7 +32,7 @@ export function useImpersonationStatus() {
     staleTime: 0,
     gcTime: 5 * 60 * 1000, // 5 minutes - short cache for security
     refetchOnWindowFocus: false,
-    refetchOnMount: true, // Always refetch on mount to catch impersonation state changes
+    refetchOnMount: "always", // Always refetch on mount to catch impersonation state changes
     refetchOnReconnect: false,
     retry: 1,
   });

@@ -182,8 +182,18 @@ export async function POST(
     // SECURITY: Wrap all invitation acceptance operations in a transaction
     // to prevent partial state (e.g., member added but projects not assigned,
     // or operations succeed but invitation not marked as accepted).
+    // SECURITY: Runtime role validation to prevent privilege escalation.
+    // The TypeScript `as` cast on invite.role provides no runtime safety.
+    const VALID_INVITE_ROLES = ['org_admin', 'project_admin', 'project_editor', 'project_viewer'];
+    if (!invite.role || !VALID_INVITE_ROLES.includes(invite.role.toLowerCase())) {
+      return NextResponse.json(
+        { error: 'Invalid invitation role' },
+        { status: 400 }
+      );
+    }
+
     await db.transaction(async (tx) => {
-      const role = (invite.role ?? '').toLowerCase();
+      const role = invite.role!.toLowerCase();
       const requiresProjectAssignments = role === 'project_admin' || role === 'project_editor';
 
       // 1. Add user to organization
