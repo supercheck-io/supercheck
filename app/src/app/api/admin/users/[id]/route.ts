@@ -121,6 +121,11 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
       // 1. Delete API keys (onDelete: "no action" would block user deletion)
       await tx.delete(apikey).where(eq(apikey.userId, userId));
 
+      // 1b. Delete sessions where this user is the impersonating admin.
+      // impersonatedBy is a text column (non-FK), so these rows would otherwise survive.
+      // Deleting them prevents orphaned impersonation sessions after admin removal.
+      await tx.delete(session).where(eq(session.impersonatedBy, userId));
+
       // 2. Nullify created_by_user_id references so owned resources persist
       await tx.update(tests).set({ createdByUserId: null }).where(eq(tests.createdByUserId, userId));
       await tx.update(jobs).set({ createdByUserId: null }).where(eq(jobs.createdByUserId, userId));

@@ -1,8 +1,6 @@
 "use client";
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { UserX, User } from 'lucide-react';
@@ -14,13 +12,14 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar';
 import { useImpersonationStatus } from '@/hooks/use-impersonation-status';
+import { clearQueryCache } from '@/lib/query-provider';
+import { clearProjectsCache } from '@/hooks/use-project-context';
+import { clearAuthSession } from '@/components/auth-guard';
 
 export function ImpersonationCard() {
-  const queryClient = useQueryClient();
-  const { isImpersonating, impersonatedUser, invalidate } = useImpersonationStatus();
+  const { isImpersonating, impersonatedUser } = useImpersonationStatus();
   const [stopping, setStopping] = useState(false);
   const { state } = useSidebar();
-  const router = useRouter();
 
   const stopImpersonation = async () => {
     setStopping(true);
@@ -33,14 +32,11 @@ export function ImpersonationCard() {
 
       if (data.success) {
         toast.success('Returned to admin account');
-        // Clear ALL React Query cache - critical for user context switch
-        // This ensures dashboard and all pages fetch fresh data for the admin user
-        queryClient.clear();
-        invalidate();
-        router.push('/');
-        setTimeout(() => {
-          window.location.reload();
-        }, 300);
+        // Clear all caches including localStorage to prevent stale impersonation data
+        clearAuthSession();
+        clearProjectsCache();
+        clearQueryCache();
+        window.location.href = '/';
       } else {
         toast.error(data.error || 'Failed to stop impersonation');
       }

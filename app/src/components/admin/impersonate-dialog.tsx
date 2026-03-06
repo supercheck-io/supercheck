@@ -24,6 +24,9 @@ import {
   Info,
 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { clearQueryCache } from "@/lib/query-provider";
+import { clearProjectsCache } from "@/hooks/use-project-context";
+import { clearAuthSession } from "@/components/auth-guard";
 
 interface OrganizationRole {
   organizationId: string;
@@ -107,6 +110,11 @@ export function ImpersonateDialog({
 
         toast.success(message);
         onOpenChange(false);
+        // Clear all caches before navigating to prevent stale admin status
+        // from being restored from localStorage (sidebar would show wrong links)
+        clearAuthSession();
+        clearProjectsCache();
+        clearQueryCache();
         window.location.href = "/";
       } else {
         toast.error(data.error || "Failed to impersonate user");

@@ -38,8 +38,11 @@ export function useAdminStatus() {
     queryKey: ADMIN_STATUS_QUERY_KEY,
     queryFn: fetchAdminStatus,
     // Admin status needs fresh data on mount to ensure consistent sidebar visibility
+    // refetchOnMount: "always" overrides the global refetchOnMount: false,
+    // ensuring fresh data after impersonation or session changes
     staleTime: 0,
     gcTime: 5 * 60 * 1000,
+    refetchOnMount: "always",
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
     retry: 1,
