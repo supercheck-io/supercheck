@@ -141,6 +141,7 @@ export interface StatusPageDetailResponse {
   stats?: {
     activeIncidents: number;
     subscribers: number;
+    failedMonitors: number;
   };
 }
 
@@ -190,6 +191,7 @@ export function useStatusPageDetail(statusPageId: string | null) {
     stats: query.data?.stats ?? {
       activeIncidents: 0,
       subscribers: 0,
+      failedMonitors: 0,
     },
     isLoading: isInitialLoading,
     isRestoring,

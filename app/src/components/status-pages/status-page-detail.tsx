@@ -18,6 +18,7 @@ import {
   Users,
   LayoutDashboard,
   Settings2,
+  AlertTriangle,
 } from "lucide-react";
 import Link from "next/link";
 import { ComponentsTab } from "./components-tab";
@@ -103,6 +104,7 @@ type StatusPageDetailProps = {
   stats?: {
     activeIncidents: number;
     subscribers: number;
+    failedMonitors: number;
   };
   onDataChange?: () => void;
 };
@@ -307,7 +309,7 @@ export function StatusPageDetail({
 
         <TabsContent value="overview" className="space-y-4">
           {/* Stats Cards */}
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-4">
             <Card className="overflow-hidden">
               <CardContent className="p-6">
                 <div className="flex items-center gap-4">
@@ -350,6 +352,29 @@ export function StatusPageDetail({
                     <div className="text-2xl font-bold">{stats?.subscribers ?? 0}</div>
                     <div className="text-sm text-muted-foreground">
                       Subscribers
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="overflow-hidden">
+              <CardContent className="p-6">
+                <div className="flex items-center gap-4">
+                  <div className={`flex items-center justify-center w-12 h-12 rounded-lg ${
+                    (stats?.failedMonitors ?? 0) > 0
+                      ? "bg-red-100 dark:bg-red-900/50"
+                      : "bg-gray-100 dark:bg-gray-800/50"
+                  }`}>
+                    <AlertTriangle className={`h-6 w-6 ${
+                      (stats?.failedMonitors ?? 0) > 0
+                        ? "text-red-600 dark:text-red-400"
+                        : "text-gray-400 dark:text-gray-500"
+                    }`} />
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold">{stats?.failedMonitors ?? 0}</div>
+                    <div className="text-sm text-muted-foreground">
+                      Failed Monitors
                     </div>
                   </div>
                 </div>

@@ -19,6 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - Improved admin impersonation handling and session management flows
 - Moved public status page branding suppression to a deployment-wide `STATUS_PAGE_HIDE_BRANDING` environment variable, removed the per-status-page settings toggle, and defaulted branding to visible unless the env var is explicitly enabled
 - Updated public status page branding to use the Supercheck logo
+- Reduced the monitor form name minimum from 10 to 3 characters to better support short operational labels ([#259](https://github.com/supercheck-io/supercheck/discussions/259))
 
 ### Fixed
 - Fixed Playwright report loading performance. Implemented report caching across Playground, Runs, and Monitor views to prevent unnecessary re-fetching on tab switches
@@ -32,6 +33,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - Hardened admin user deletion to handle dependent user-owned foreign key references inside a transaction ([#254](https://github.com/supercheck-io/supercheck/issues/254))
 - Fixed status page support contact UX so `Get in touch` matches the `Subscribe` button styling, stays in the top action area on incident pages, and handles `mailto:` links consistently across public views and emails ([#263](https://github.com/supercheck-io/supercheck/issues/263))
 - Fixed status page settings persistence so support contact, headline, and description can be cleared reliably and reflect immediately after save
+- Added a failed linked monitors overview card on status pages so operators can see linked monitor failures without paging through the full monitor table ([#259](https://github.com/supercheck-io/supercheck/discussions/259))
 
 ### Security
 - Fixed DoS vulnerability in underscore via unlimited recursion in `_.flatten` and `_.isEqual` (patched to 1.13.8)
