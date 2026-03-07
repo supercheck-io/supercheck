@@ -88,6 +88,43 @@ export function getStatusPageUrl(
   return `${protocol}://${subdomain}.${baseDomain}`;
 }
 
+type PublicStatusPageUrlOptions = {
+  subdomain: string;
+  customDomain?: string | null;
+  customDomainVerified?: boolean | null;
+  requestHostname?: string;
+  appUrl?: string;
+};
+
+function getPreferredStatusPageProtocol(appUrl?: string): string {
+  if (appUrl) {
+    try {
+      return new URL(appUrl).protocol.replace(":", "") || "https";
+    } catch {
+      // Fall through to environment-based inference.
+    }
+  }
+
+  const baseDomain = getStatusPageBaseDomain();
+  return baseDomain === "localhost" ? "http" : "https";
+}
+
+export function getPublicStatusPageUrl({
+  subdomain,
+  customDomain,
+  customDomainVerified,
+  requestHostname,
+  appUrl,
+}: PublicStatusPageUrlOptions): string {
+  if (customDomainVerified && customDomain) {
+    const protocol = getPreferredStatusPageProtocol(appUrl);
+    const normalizedHostname = customDomain.trim().toLowerCase().replace(/\.$/, "");
+    return `${protocol}://${normalizedHostname}`;
+  }
+
+  return getStatusPageUrl(subdomain, requestHostname);
+}
+
 /**
  * Extracts subdomain from a hostname
  * @param hostname The full hostname (e.g., "abc123.supercheck.io")

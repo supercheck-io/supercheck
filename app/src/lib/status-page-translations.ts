@@ -13,8 +13,6 @@
  * 2. Add translations to the `translations` object with the ISO 639-1 code as key
  */
 
-export type SupportedLanguage = keyof typeof translations;
-
 /**
  * List of supported languages with display labels for the settings dropdown.
  * Sorted alphabetically by English name.
@@ -45,6 +43,12 @@ export const SUPPORTED_LANGUAGES = [
   { code: "uk", label: "Ukrainian", nativeLabel: "Українська" },
   { code: "zh", label: "Chinese (Simplified)", nativeLabel: "中文" },
 ] as const;
+
+export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number]["code"];
+
+const SUPPORTED_LANGUAGE_CODES = new Set<SupportedLanguage>(
+  SUPPORTED_LANGUAGES.map(({ code }) => code)
+);
 
 /**
  * Translation keys used across status page components.
@@ -307,7 +311,7 @@ export type TranslationKeys = {
   webhookDescriptionPlaceholder: string;
 };
 
-const translations: Record<string, TranslationKeys> = {
+const translations: Record<SupportedLanguage, TranslationKeys> = {
   en: {
     allSystemsOperational: "All Systems Operational",
     allServicesRunningNormally: "All services are running normally",
@@ -5404,7 +5408,16 @@ const translations: Record<string, TranslationKeys> = {
  * Falls back to English if the language is not supported.
  */
 export function getTranslations(language: string): TranslationKeys {
-  return translations[language] || translations.en;
+  const normalizedLanguage = language.split("-")[0]?.toLowerCase();
+
+  if (
+    normalizedLanguage &&
+    SUPPORTED_LANGUAGE_CODES.has(normalizedLanguage as SupportedLanguage)
+  ) {
+    return translations[normalizedLanguage as SupportedLanguage];
+  }
+
+  return translations.en;
 }
 
 const LANGUAGE_LOCALE_MAP: Record<string, string> = {

@@ -95,9 +95,6 @@ export const statusPages = pgTable(
     customDomain: varchar("custom_domain", { length: 255 }),
     customDomainVerified: boolean("custom_domain_verified").default(false),
     theme: jsonb("theme").$type<Record<string, unknown>>().default({}),
-    brandingSettings: jsonb("branding_settings")
-      .$type<{ hidePoweredBy?: boolean }>()
-      .default({}),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },

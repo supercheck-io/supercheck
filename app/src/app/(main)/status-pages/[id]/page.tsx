@@ -126,7 +126,6 @@ export default function StatusPagePage() {
     cssReds: statusPage.cssReds ?? null,
     faviconLogo: statusPage.faviconLogo,
     transactionalLogo: statusPage.transactionalLogo,
-    brandingSettings: (statusPage.brandingSettings as Record<string, unknown>) ?? null,
     createdAt: statusPage.createdAt ? new Date(statusPage.createdAt) : null,
     updatedAt: statusPage.updatedAt ? new Date(statusPage.updatedAt) : null,
   };

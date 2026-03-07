@@ -23,6 +23,8 @@ import {
   translateIncidentImpact,
   getLocaleForLanguage,
 } from "@/lib/status-page-translations";
+import { SupportContactButton } from "./support-contact-button";
+import { StatusPageBranding } from "./status-page-branding";
 
 type ComponentStatus =
   | "operational"
@@ -45,6 +47,7 @@ type StatusPage = {
   status: string;
   pageDescription: string | null;
   headline: string | null;
+  supportUrl: string | null;
   createdAt: Date | null;
   updatedAt: Date | null;
   cssGreens: string | null;
@@ -55,7 +58,6 @@ type StatusPage = {
   faviconLogo: string | null;
   transactionalLogo: string | null;
   language: string | null;
-  brandingSettings?: { hidePoweredBy?: boolean } | null;
 };
 
 type Component = {
@@ -89,6 +91,7 @@ type PublicStatusPageProps = {
   components: Component[];
   incidents: Incident[];
   idOrSubdomain: string;
+  hideBranding?: boolean;
   isPublicView?: boolean;
   isCustomDomain?: boolean;
   language?: string;
@@ -99,6 +102,7 @@ export function PublicStatusPage({
   components,
   incidents,
   idOrSubdomain,
+  hideBranding = false,
   isPublicView = false,
   isCustomDomain = false,
   language,
@@ -474,13 +478,20 @@ export function PublicStatusPage({
               </p>
             )}
           </div>
-          <div className="flex items-center gap-3 flex-shrink-0">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full sm:w-auto sm:justify-end">
+            <SupportContactButton
+              supportUrl={statusPage.supportUrl}
+              language={activeLanguage}
+            />
             <SubscribeDialog
               statusPageId={statusPage.id}
               statusPageName={statusPage.headline || statusPage.name}
               language={language || statusPage.language || "en"}
               trigger={
-                <Button variant="outline" className="gap-2 shadow-sm">
+                <Button
+                  variant="outline"
+                  className="gap-2 shadow-sm w-full sm:w-auto"
+                >
                   <Bell className="h-4 w-4" />
                   {t.subscribe}
                 </Button>
@@ -776,34 +787,20 @@ export function PublicStatusPage({
                           <ChevronRight className="h-4 w-4" />
                         </button>
                       </div>
-                      {!statusPage.brandingSettings?.hidePoweredBy && (
-                        <div className="sm:flex-1 text-center sm:text-right text-xs sm:text-sm text-gray-600 dark:text-gray-400">
-                          <span>{t.poweredBy} </span>
-                          <a
-                            href="https://supercheck.io"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-blue-600 dark:text-blue-400 hover:underline"
-                          >
-                            Supercheck
-                          </a>
-                        </div>
+                      {!hideBranding && (
+                        <StatusPageBranding
+                          poweredByLabel={t.poweredBy}
+                          className="sm:flex-1 justify-center sm:justify-end"
+                        />
                       )}
                     </>
                   ) : (
                     <>
-                      {!statusPage.brandingSettings?.hidePoweredBy && (
-                        <div className="w-full text-center text-sm text-gray-600 dark:text-gray-400">
-                          <span>{t.poweredBy} </span>
-                          <a
-                            href="https://supercheck.io"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-blue-600 dark:text-blue-400 hover:underline"
-                          >
-                            Supercheck
-                          </a>
-                        </div>
+                      {!hideBranding && (
+                        <StatusPageBranding
+                          poweredByLabel={t.poweredBy}
+                          className="w-full"
+                        />
                       )}
                     </>
                   )}

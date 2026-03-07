@@ -13,6 +13,8 @@ import {
   translateIncidentImpact,
   getLocaleForLanguage,
 } from "@/lib/status-page-translations";
+import { SupportContactButton } from "./support-contact-button";
+import { StatusPageBranding } from "./status-page-branding";
 
 type IncidentStatus =
   | "investigating"
@@ -52,7 +54,8 @@ type PublicIncidentDetailProps = {
   faviconLogo?: string | null;
   transactionalLogo?: string | null;
   statusPageHeadline?: string | null;
-  brandingSettings?: { hidePoweredBy?: boolean } | null;
+  supportUrl?: string | null;
+  hideBranding?: boolean;
   isPublicView?: boolean;
   isCustomDomain?: boolean;
   language?: string;
@@ -64,7 +67,8 @@ export function PublicIncidentDetail({
   faviconLogo,
   transactionalLogo,
   statusPageHeadline,
-  brandingSettings,
+  supportUrl,
+  hideBranding = false,
   isPublicView = false,
   isCustomDomain = false,
   language = "en",
@@ -144,20 +148,28 @@ export function PublicIncidentDetail({
             unoptimized
           />
         )}
-        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-4 mb-3">
-          <h1 className="text-xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100 tracking-tight break-words">
-            {incident.name}
-          </h1>
-          <Badge
-            className={`${getImpactColor(incident.impact)} text-xs sm:text-sm px-2.5 sm:px-3 py-0.5 sm:py-1 font-medium border flex-shrink-0 w-fit`}
-          >
-            {formatImpact(incident.impact)} {t.impact}
-          </Badge>
-        </div>
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 sm:gap-6">
+          <div className="flex-1 min-w-0">
+            <h1 className="text-xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100 tracking-tight break-words">
+              {incident.name}
+            </h1>
+            <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400 mt-2">
+              {t.incidentReportFor} {statusPageName}
+            </p>
+          </div>
 
-        <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400">
-          {t.incidentReportFor} {statusPageName}
-        </p>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full sm:w-auto sm:justify-end">
+            <SupportContactButton
+              supportUrl={supportUrl}
+              language={language}
+            />
+            <Badge
+              className={`${getImpactColor(incident.impact)} text-xs sm:text-sm px-2.5 sm:px-3 py-0.5 sm:py-1 font-medium border w-fit`}
+            >
+              {formatImpact(incident.impact)} {t.impact}
+            </Badge>
+          </div>
+        </div>
       </div>
 
       {/* Main Content */}
@@ -229,30 +241,23 @@ export function PublicIncidentDetail({
           )}
         </div>
 
-        {/* Back to Status Button */}
-        <div className="mt-10 pt-6 border-t dark:border-gray-800">
-          <Link href={statusPageHref}>
-            <Button variant="outline" size="default" className="gap-2">
-              <ArrowLeft className="h-4 w-4" />
-              {t.backToStatus}
-            </Button>
-          </Link>
-        </div>
-
         {/* Footer */}
-        {!brandingSettings?.hidePoweredBy && (
-          <div className="text-center py-6 sm:py-8 mt-6 sm:mt-8 text-xs sm:text-sm text-gray-500 dark:text-gray-400">
-            {t.poweredBy}{" "}
-            <a
-              href="https://supercheck.io"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-blue-600 dark:text-blue-400 hover:underline"
-            >
-              Supercheck
-            </a>
+        <div className="mt-10 pt-6 border-t dark:border-gray-800">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+            <Link href={statusPageHref}>
+              <Button variant="outline" size="default" className="gap-2">
+                <ArrowLeft className="h-4 w-4" />
+                {t.backToStatus}
+              </Button>
+            </Link>
+            {!hideBranding && (
+              <StatusPageBranding
+                poweredByLabel={t.poweredBy}
+                className="justify-center sm:justify-end"
+              />
+            )}
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

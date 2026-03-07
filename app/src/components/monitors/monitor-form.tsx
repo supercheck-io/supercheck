@@ -111,7 +111,7 @@ const formSchema = z
   .object({
     name: z
       .string()
-      .min(10, "Name must be at least 10 characters")
+      .min(3, "Name must be at least 3 characters")
       .max(100, "Name must be 100 characters or less"),
     target: z.string().optional(),
     type: z.enum(

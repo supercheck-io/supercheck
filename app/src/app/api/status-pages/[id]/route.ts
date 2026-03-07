@@ -3,11 +3,12 @@ import { db } from "@/utils/db";
 import {
   statusPages,
   statusPageComponents,
+  statusPageComponentMonitors,
   monitors,
   incidents,
   statusPageSubscribers,
 } from "@/db/schema";
-import { eq, and, ne, isNull, sql } from "drizzle-orm";
+import { eq, and, ne, isNull, inArray, sql } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import { generateProxyUrl } from "@/lib/asset-proxy";
@@ -132,6 +133,25 @@ export async function GET(request: NextRequest, context: RouteContext) {
         )
       );
 
+    // Count distinct monitors linked to this status page that are in a failed state
+    const [failedMonitorsResult] = await db
+      .select({ count: sql<number>`count(distinct ${monitors.id})` })
+      .from(statusPageComponentMonitors)
+      .innerJoin(
+        statusPageComponents,
+        eq(statusPageComponentMonitors.componentId, statusPageComponents.id)
+      )
+      .innerJoin(
+        monitors,
+        eq(statusPageComponentMonitors.monitorId, monitors.id)
+      )
+      .where(
+        and(
+          eq(statusPageComponents.statusPageId, id),
+          inArray(monitors.status, ["down", "error"])
+        )
+      );
+
     // Transform components data
     const componentsWithMonitors = components.map((component) => {
       const linkedMonitors = component.monitors
@@ -170,6 +190,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
       stats: {
         activeIncidents: Number(activeIncidentsResult?.count ?? 0),
         subscribers: Number(subscribersResult?.count ?? 0),
+        failedMonitors: Number(failedMonitorsResult?.count ?? 0),
       },
     });
   } catch (error) {

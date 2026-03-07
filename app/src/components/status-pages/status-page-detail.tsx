@@ -18,6 +18,7 @@ import {
   Users,
   LayoutDashboard,
   Settings2,
+  AlertTriangle,
 } from "lucide-react";
 import Link from "next/link";
 import { ComponentsTab } from "./components-tab";
@@ -32,7 +33,7 @@ import {
 } from "@/actions/publish-status-page";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
-import { getStatusPageUrl } from "@/lib/domain-utils";
+import { getPublicStatusPageUrl } from "@/lib/domain-utils";
 import { DataTable } from "@/components/monitors/data-table";
 import { statusPageColumns } from "@/components/monitors/status-page-columns";
 import type { Monitor } from "@/components/monitors/schema";
@@ -66,7 +67,6 @@ type StatusPage = {
   cssReds: string | null;
   faviconLogo: string | null;
   transactionalLogo: string | null;
-  brandingSettings: Record<string, unknown> | null;
   createdAt: Date | null;
   updatedAt: Date | null;
 };
@@ -104,6 +104,7 @@ type StatusPageDetailProps = {
   stats?: {
     activeIncidents: number;
     subscribers: number;
+    failedMonitors: number;
   };
   onDataChange?: () => void;
 };
@@ -119,12 +120,16 @@ export function StatusPageDetail({
 }: StatusPageDetailProps) {
   const router = useRouter();
   const [isPublishing, setIsPublishing] = useState(false);
+  const publicStatusPageUrl = getPublicStatusPageUrl({
+    subdomain: statusPage.subdomain,
+    customDomain: statusPage.customDomain,
+    customDomainVerified: statusPage.customDomainVerified,
+  });
 
   const handleCopyUrl = () => {
-    const url = getStatusPageUrl(statusPage.subdomain);
-    navigator.clipboard.writeText(url);
+    navigator.clipboard.writeText(publicStatusPageUrl);
     toast.success("URL copied to clipboard", {
-      description: url,
+      description: publicStatusPageUrl,
     });
   };
 
@@ -134,9 +139,7 @@ export function StatusPageDetail({
       const result = await publishStatusPage(statusPage.id);
       if (result.success) {
         toast.success("Status page published successfully", {
-          description: `Your status page is now publicly accessible at ${getStatusPageUrl(
-            statusPage.subdomain
-          )}`,
+          description: `Your status page is now publicly accessible at ${publicStatusPageUrl}`,
         });
         router.refresh();
       } else {
@@ -220,7 +223,7 @@ export function StatusPageDetail({
             <div className="flex items-center gap-2 text-sm text-muted-foreground mt-3 min-w-0">
               <Tally4 className="h-4 w-4 flex-shrink-0 !text-green-600" />
               <span className="font-mono text-xs sm:text-sm truncate">
-                {getStatusPageUrl(statusPage.subdomain)}
+                {publicStatusPageUrl}
               </span>
               <Button
                 variant="ghost"
@@ -306,7 +309,7 @@ export function StatusPageDetail({
 
         <TabsContent value="overview" className="space-y-4">
           {/* Stats Cards */}
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-4">
             <Card className="overflow-hidden">
               <CardContent className="p-6">
                 <div className="flex items-center gap-4">
@@ -349,6 +352,29 @@ export function StatusPageDetail({
                     <div className="text-2xl font-bold">{stats?.subscribers ?? 0}</div>
                     <div className="text-sm text-muted-foreground">
                       Subscribers
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="overflow-hidden">
+              <CardContent className="p-6">
+                <div className="flex items-center gap-4">
+                  <div className={`flex items-center justify-center w-12 h-12 rounded-lg ${
+                    (stats?.failedMonitors ?? 0) > 0
+                      ? "bg-red-100 dark:bg-red-900/50"
+                      : "bg-gray-100 dark:bg-gray-800/50"
+                  }`}>
+                    <AlertTriangle className={`h-6 w-6 ${
+                      (stats?.failedMonitors ?? 0) > 0
+                        ? "text-red-600 dark:text-red-400"
+                        : "text-gray-400 dark:text-gray-500"
+                    }`} />
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold">{stats?.failedMonitors ?? 0}</div>
+                    <div className="text-sm text-muted-foreground">
+                      Failed Monitors
                     </div>
                   </div>
                 </div>

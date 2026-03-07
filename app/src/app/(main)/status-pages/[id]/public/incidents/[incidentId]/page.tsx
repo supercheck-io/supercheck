@@ -2,6 +2,7 @@ import { getIncidentDetail } from "@/actions/get-incident-detail";
 import { getStatusPage } from "@/actions/get-status-page";
 import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
 import { PublicIncidentDetail } from "@/components/status-pages/public-incident-detail";
+import { isStatusPageBrandingHidden } from "@/lib/feature-flags";
 import { redirect } from "next/navigation";
 
 type IncidentDetailPageProps = {
@@ -36,7 +37,8 @@ export default async function IncidentDetailPage({
         idOrSubdomain={resolvedParams.id}
         transactionalLogo={statusPageResult.success ? statusPageResult.statusPage?.transactionalLogo : undefined}
         statusPageHeadline={statusPageResult.success ? statusPageResult.statusPage?.headline : undefined}
-        brandingSettings={statusPageResult.success ? statusPageResult.statusPage?.brandingSettings as { hidePoweredBy?: boolean } | null : undefined}
+        supportUrl={statusPageResult.success ? statusPageResult.statusPage?.supportUrl : undefined}
+        hideBranding={isStatusPageBrandingHidden()}
         language={statusPageResult.success ? statusPageResult.statusPage?.language : undefined}
         isPublicView={false}
       />

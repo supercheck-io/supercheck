@@ -131,6 +131,7 @@ export async function renderIncidentNotificationEmail(params: {
   affectedComponents: string[];
   updateTimestamp: string;
   unsubscribeUrl: string;
+  supportUrl?: string | null;
   language?: string;
 }): Promise<RenderedEmail> {
   const component = IncidentNotificationEmail(params);

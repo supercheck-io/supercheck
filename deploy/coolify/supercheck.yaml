@@ -31,6 +31,7 @@ x-common-env: &common-env # Database Configuration
   BETTER_AUTH_SECRET: ${SERVICE_BASE64_64_AUTH:-supercheck-auth-secret-change-me-in-production-32chars}
   NODE_ENV: production
   SHOW_COMMUNITY_LINKS: ${SHOW_COMMUNITY_LINKS:-true}
+  STATUS_PAGE_HIDE_BRANDING: ${STATUS_PAGE_HIDE_BRANDING:-false}
 
   # App-Side Capacity Settings
   # RUNNING_CAPACITY controls how many test runs the App allows into "running" state simultaneously.

@@ -15,7 +15,6 @@ export interface StatusPage {
   customDomain: string | null;
   customDomainVerified: boolean | null;
   language: string | null;
-  brandingSettings: Record<string, unknown> | null;
   faviconLogo: string | null;
   transactionalLogo: string | null;
   heroCover: string | null;
@@ -142,6 +141,7 @@ export interface StatusPageDetailResponse {
   stats?: {
     activeIncidents: number;
     subscribers: number;
+    failedMonitors: number;
   };
 }
 
@@ -191,6 +191,7 @@ export function useStatusPageDetail(statusPageId: string | null) {
     stats: query.data?.stats ?? {
       activeIncidents: 0,
       subscribers: 0,
+      failedMonitors: 0,
     },
     isLoading: isInitialLoading,
     isRestoring,

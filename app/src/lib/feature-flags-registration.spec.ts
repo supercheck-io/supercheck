@@ -86,6 +86,43 @@ describe("Registration Feature Flags", () => {
     });
   });
 
+  describe("isStatusPageBrandingHidden", () => {
+    it("returns false when STATUS_PAGE_HIDE_BRANDING is not set", async () => {
+      delete process.env.STATUS_PAGE_HIDE_BRANDING;
+
+      const { isStatusPageBrandingHidden } = await import("./feature-flags");
+      expect(isStatusPageBrandingHidden()).toBe(false);
+    });
+
+    it("returns false when STATUS_PAGE_HIDE_BRANDING is empty", async () => {
+      process.env.STATUS_PAGE_HIDE_BRANDING = "";
+
+      const { isStatusPageBrandingHidden } = await import("./feature-flags");
+      expect(isStatusPageBrandingHidden()).toBe(false);
+    });
+
+    it("returns true when STATUS_PAGE_HIDE_BRANDING is true", async () => {
+      process.env.STATUS_PAGE_HIDE_BRANDING = "true";
+
+      const { isStatusPageBrandingHidden } = await import("./feature-flags");
+      expect(isStatusPageBrandingHidden()).toBe(true);
+    });
+
+    it("returns true when STATUS_PAGE_HIDE_BRANDING is 1", async () => {
+      process.env.STATUS_PAGE_HIDE_BRANDING = "1";
+
+      const { isStatusPageBrandingHidden } = await import("./feature-flags");
+      expect(isStatusPageBrandingHidden()).toBe(true);
+    });
+
+    it("returns false when STATUS_PAGE_HIDE_BRANDING is false", async () => {
+      process.env.STATUS_PAGE_HIDE_BRANDING = "false";
+
+      const { isStatusPageBrandingHidden } = await import("./feature-flags");
+      expect(isStatusPageBrandingHidden()).toBe(false);
+    });
+  });
+
   describe("getAllowedEmailDomains", () => {
     it("returns empty array when ALLOWED_EMAIL_DOMAINS is not set", async () => {
       delete process.env.ALLOWED_EMAIL_DOMAINS;

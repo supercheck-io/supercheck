@@ -3,6 +3,7 @@ import { getPublicStatusPage } from "@/actions/get-public-status-page";
 import { getPublicStatusPageBySubdomain } from "@/actions/get-public-status-page-by-subdomain";
 import { getPublicComponents } from "@/actions/get-public-components";
 import { getPublicIncidents } from "@/actions/get-public-incidents";
+import { isStatusPageBrandingHidden } from "@/lib/feature-flags";
 import { notFound } from "next/navigation";
 import { Metadata } from "next";
 
@@ -111,6 +112,7 @@ export default async function PublicStatusPagePage({
       components={componentsResult.components}
       incidents={incidentsResult.incidents}
       idOrSubdomain={resolvedParams.id}
+      hideBranding={isStatusPageBrandingHidden()}
       isPublicView
     />
   );
