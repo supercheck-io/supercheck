@@ -127,9 +127,11 @@ describe("status page support utilities", () => {
       );
 
       expect(getStatusPageSupportCtaLabel("hr")).toBe("Javite nam se");
+      expect(getStatusPageSupportCtaLabel("pl")).toBe("Skontaktuj się");
       expect(getStatusPageSupportCtaLabel("pt-BR")).toBe(
         "Entrar em contato"
       );
+      expect(getStatusPageSupportCtaLabel("tr")).toBe("İletişime geçin");
       expect(getStatusPageSupportCtaLabel("xx")).toBe("Get in touch");
     });
   });

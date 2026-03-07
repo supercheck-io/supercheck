@@ -57,7 +57,7 @@ Use `./init-secrets.sh` to generate secure defaults, then configure:
 | `SELF_HOSTED` | Self-hosted mode toggle (default: `true`) |
 | `SIGNUP_ENABLED` | Toggle open email/password signup (default: `true`) |
 | `ALLOWED_EMAIL_DOMAINS` | Optional comma-separated signup allowlist (default: empty = allow all) |
-| `STATUS_PAGE_HIDE_BRANDING` | Hide the `Powered by Supercheck` footer on all public status and incident pages (default: `false`) |
+| `STATUS_PAGE_HIDE_BRANDING` | Hide the `Powered by Supercheck` footer on all public status and incident pages when set to `true` (default: `false`) |
 
 OAuth (`GITHUB_*` / `GOOGLE_*`) is optional in self-hosted mode.
 

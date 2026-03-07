@@ -50,7 +50,7 @@ x-common-env: &common-env # Database Configuration
 
   # Status Page Domain Configuration
   STATUS_PAGE_DOMAIN: ${STATUS_PAGE_DOMAIN:-localhost}
-  # Hide the public status page branding footer globally when set to true/1.
+  # Hide the public status page branding footer globally when set to true.
   STATUS_PAGE_HIDE_BRANDING: ${STATUS_PAGE_HIDE_BRANDING:-false}
   BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-CHANGE_THIS_GENERATE_32_CHAR_HEX}
   NODE_ENV: ${NODE_ENV:-production}

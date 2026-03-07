@@ -1,3 +1,4 @@
+import type { SupportedLanguage } from "./status-page-translations";
 import { z } from "zod";
 
 export type StatusPageSupportContact = {
@@ -6,32 +7,32 @@ export type StatusPageSupportContact = {
   value: string;
 };
 
-const SUPPORT_CTA_LABELS: Record<string, string> = {
+const SUPPORT_CTA_LABELS = {
   en: "Get in touch",
   ar: "تواصل معنا",
-  cs: "Kontaktujte nas",
+  cs: "Kontaktujte nás",
   da: "Kontakt os",
   de: "Kontakt aufnehmen",
   es: "Ponte en contacto",
-  fi: "Ota yhteytta",
+  fi: "Ota yhteyttä",
   fr: "Nous contacter",
   hi: "संपर्क करें",
   hr: "Javite nam se",
-  hu: "Kapcsolatfelvetel",
+  hu: "Kapcsolatfelvétel",
   it: "Contattaci",
   ja: "お問い合わせ",
   ko: "문의하기",
   nl: "Neem contact op",
   no: "Ta kontakt",
-  pl: "Skontaktuj sie",
+  pl: "Skontaktuj się",
   pt: "Entrar em contato",
-  ro: "Contactati-ne",
+  ro: "Contactați-ne",
   ru: "Связаться с нами",
   sv: "Kontakta oss",
-  tr: "Iletisime gecin",
+  tr: "İletişime geçin",
   uk: "Зв'яжіться з нами",
   zh: "联系我们",
-};
+} satisfies Record<SupportedLanguage, string>;
 
 const SUPPORT_CONTACT_ERROR =
   "Please enter a valid support website URL or email address";
@@ -107,8 +108,13 @@ export function getStatusPageSupportContactInputValue(
 }
 
 export function getStatusPageSupportCtaLabel(language?: string | null): string {
-  const normalizedLanguage = language?.split("-")[0]?.toLowerCase() || "en";
-  return SUPPORT_CTA_LABELS[normalizedLanguage] || SUPPORT_CTA_LABELS.en;
+  const normalizedLanguage = language?.split("-")[0]?.toLowerCase();
+
+  if (normalizedLanguage && normalizedLanguage in SUPPORT_CTA_LABELS) {
+    return SUPPORT_CTA_LABELS[normalizedLanguage as SupportedLanguage];
+  }
+
+  return SUPPORT_CTA_LABELS.en;
 }
 
 export const statusPageSupportContactSchema = z

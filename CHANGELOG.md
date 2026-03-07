@@ -17,7 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - Streamlined admin interface by removing unused user creation functionality ([#245](https://github.com/supercheck-io/supercheck/issues/245))
 - Clarified self-hosted scaling semantics across deployment docs and compose templates: `RUNNING_CAPACITY` and `QUEUED_CAPACITY` are App-side gating controls, while `WORKER_REPLICAS` remains the worker-side scaling knob
 - Improved admin impersonation handling and session management flows
-- Moved public status page branding suppression to a deployment-wide `STATUS_PAGE_HIDE_BRANDING` environment variable, removed the per-status-page settings toggle, and defaulted branding to visible unless the env var is explicitly enabled
+- Moved public status page branding suppression to a deployment-wide `STATUS_PAGE_HIDE_BRANDING` environment variable, removed the per-status-page settings toggle, and defaulted branding to visible unless the env var is set to `true`
 - Updated public status page branding to use the Supercheck logo
 - Reduced the monitor form name minimum from 10 to 3 characters to better support short operational labels ([#259](https://github.com/supercheck-io/supercheck/discussions/259))
 
