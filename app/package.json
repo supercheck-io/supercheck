@@ -38,7 +38,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint . --max-warnings 0",
-    "test": "jest",
+    "test": "jest --detectOpenHandles",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "e2e": "cd e2e && npx playwright test",

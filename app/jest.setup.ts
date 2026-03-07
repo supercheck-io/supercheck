@@ -242,6 +242,7 @@ beforeAll(() => {
       'PDF appears to be image-based',
       'Error extracting DOCX text:',
       '[PDF Extraction]',
+      'Error resolving project context for missing report run',
     ];
     if (suppressedPatterns.some(pattern => message.includes(pattern))) {
       return;
@@ -260,6 +261,9 @@ beforeAll(() => {
       '\\[JobScheduler\\]',
       '\\[AI Extraction\\]',
       '\\[PDF Extraction\\]',
+      'Created queued test run record',
+      'Playwright job queued',
+      'Job .* triggered successfully via API key',
     ];
     if (suppressedPatterns.some(pattern => new RegExp(pattern).test(message))) {
       return;
