@@ -560,11 +560,11 @@ export function SettingsTab({
                 Custom Domain
               </h4>
               <p className="text-sm text-muted-foreground">
-                Use your own domain for your status page.
+                Use a subdomain you control, such as <code>status.yourcompany.com</code>.
               </p>
               <div className="flex gap-2 mt-5">
                 <Input
-                  placeholder={`status.${statusPageDomain}`}
+                  placeholder="status.yourcompany.com"
                   {...register("customDomain")}
                   disabled={!canUpdate}
                   className="font-mono text-sm"
@@ -646,6 +646,7 @@ export function SettingsTab({
                           {isSelfHosted && (
                             <li><strong>Self-hosted:</strong> Ensure your reverse proxy (Traefik, nginx, Caddy) accepts traffic for this domain.</li>
                           )}
+                          <li><strong>Use a subdomain:</strong> Root/apex domains may use DNS flattening and can fail CNAME-based verification.</li>
                           <li>DNS changes can take 5–30 minutes to propagate.</li>
                         </ul>
                       </PopoverContent>
@@ -655,7 +656,10 @@ export function SettingsTab({
 
                 {customDomainValue ? (
                   <div className="space-y-3 pl-5.5">
-                    <p>Add the following CNAME record with your DNS provider:</p>
+                    <p>
+                      Add the following CNAME record with your DNS provider.
+                      Use the full hostname unless your provider specifically asks for a label relative to your DNS zone.
+                    </p>
                     <div className="rounded-md border overflow-hidden">
                       <table className="w-full text-xs">
                         <thead>
@@ -668,12 +672,7 @@ export function SettingsTab({
                         <tbody>
                           <tr>
                             <td className="px-3 py-1.5 font-mono">CNAME</td>
-                            <td className="px-3 py-1.5 font-mono">
-                              {(() => {
-                                const parts = customDomainValue.split(".");
-                                return parts.length > 2 ? parts.slice(0, -2).join(".") : "@";
-                              })()}
-                            </td>
+                            <td className="px-3 py-1.5 font-mono">{customDomainValue}</td>
                             <td className="px-3 py-1.5 font-mono">{statusPageDomain}</td>
                           </tr>
                         </tbody>
@@ -685,18 +684,22 @@ export function SettingsTab({
                       <li>Click <strong>Verify DNS</strong></li>
                     </ol>
                     <p>
+                      If your DNS provider asks for a shorter host value, use the label relative to your zone instead of the full hostname.
+                    </p>
+                    <p>
                       Do not use <code>{statusPageDomain}</code> or any of its
                       subdomains as the custom domain value.
                     </p>
                   </div>
                 ) : (
                   <ol className="list-decimal list-inside space-y-1 pl-5.5">
-                    <li>Enter your custom domain above (e.g., status.yourcompany.com)</li>
+                    <li>Enter a subdomain you control above (e.g., status.yourcompany.com)</li>
                     <li>Save your changes</li>
                     <li>Add a CNAME record pointing to{" "}
                       <code className="bg-muted px-1 py-0.5 rounded text-xs">{statusPageDomain}</code>
                     </li>
                     <li>Click <strong>Verify DNS</strong> to confirm the setup</li>
+                    <li>Use the full hostname in your DNS provider unless it explicitly asks for a relative host label</li>
                     <li>Do not set the custom domain to <code>{statusPageDomain}</code> or its subdomains</li>
                   </ol>
                 )}

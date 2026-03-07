@@ -12,6 +12,7 @@ import { logAuditEvent } from "@/lib/audit-logger";
 import {
   getEffectiveStatusPageDomain,
   isReservedStatusPageHostname,
+  normalizeStatusPageDomain,
 } from "@/lib/status-page-domain";
 
 // UUID validation schema
@@ -81,6 +82,15 @@ export async function verifyStatusPageDomain(statusPageId: string) {
         `cname.${baseDomain}`, // e.g., "cname.supercheck.io"
         `ingress.${baseDomain}`, // e.g., "ingress.supercheck.io"
       ];
+
+      // Also accept APP_DOMAIN as a valid CNAME target for self-hosted setups
+      // where the custom domain points directly to the app server
+      const appDomain =
+        normalizeStatusPageDomain(process.env.APP_DOMAIN || undefined) ||
+        normalizeStatusPageDomain(process.env.APP_URL || undefined);
+      if (appDomain && appDomain !== baseDomain) {
+        validTargets.push(appDomain);
+      }
 
       // SECURITY: Use exact canonical hostname matching (case-insensitive, trailing-dot normalized)
       // DNS CNAME records may include a trailing dot (e.g., "supercheck.io.")

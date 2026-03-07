@@ -33,6 +33,11 @@ x-common-env: &common-env # Database Configuration
   SHOW_COMMUNITY_LINKS: ${SHOW_COMMUNITY_LINKS:-true}
   STATUS_PAGE_HIDE_BRANDING: ${STATUS_PAGE_HIDE_BRANDING:-false}
 
+  # Custom domain for status pages (used for UUID subdomain routing and DNS CNAME targets).
+  # Set to your app domain or a dedicated status page domain. If unset, derived from APP_URL.
+  # Example: STATUS_PAGE_DOMAIN=status.yourdomain.com
+  STATUS_PAGE_DOMAIN: ${STATUS_PAGE_DOMAIN:-}
+
   # App-Side Capacity Settings
   # RUNNING_CAPACITY controls how many test runs the App allows into "running" state simultaneously.
   # It is NOT a worker setting. Keep it equal to the total number of worker replicas.

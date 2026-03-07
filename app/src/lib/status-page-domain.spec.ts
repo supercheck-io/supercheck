@@ -66,12 +66,52 @@ describe("status page domain utilities", () => {
     it("falls back to localhost in self-hosted mode when unset", async () => {
       process.env.SELF_HOSTED = "true";
       delete process.env.STATUS_PAGE_DOMAIN;
+      delete process.env.APP_DOMAIN;
+      delete process.env.APP_URL;
 
       const { getEffectiveStatusPageDomain } = await import(
         "./status-page-domain"
       );
 
       expect(getEffectiveStatusPageDomain()).toBe("localhost");
+    });
+
+    it("falls back to APP_DOMAIN when STATUS_PAGE_DOMAIN is unset", async () => {
+      process.env.SELF_HOSTED = "true";
+      delete process.env.STATUS_PAGE_DOMAIN;
+      process.env.APP_DOMAIN = "app.example.com";
+      delete process.env.APP_URL;
+
+      const { getEffectiveStatusPageDomain } = await import(
+        "./status-page-domain"
+      );
+
+      expect(getEffectiveStatusPageDomain()).toBe("app.example.com");
+    });
+
+    it("falls back to APP_URL hostname when STATUS_PAGE_DOMAIN and APP_DOMAIN are unset", async () => {
+      process.env.SELF_HOSTED = "true";
+      delete process.env.STATUS_PAGE_DOMAIN;
+      delete process.env.APP_DOMAIN;
+      process.env.APP_URL = "https://myapp.example.com:443/path";
+
+      const { getEffectiveStatusPageDomain } = await import(
+        "./status-page-domain"
+      );
+
+      expect(getEffectiveStatusPageDomain()).toBe("myapp.example.com");
+    });
+
+    it("prefers STATUS_PAGE_DOMAIN over APP_DOMAIN", async () => {
+      process.env.SELF_HOSTED = "true";
+      process.env.STATUS_PAGE_DOMAIN = "status.custom.com";
+      process.env.APP_DOMAIN = "app.example.com";
+
+      const { getEffectiveStatusPageDomain } = await import(
+        "./status-page-domain"
+      );
+
+      expect(getEffectiveStatusPageDomain()).toBe("status.custom.com");
     });
   });
 

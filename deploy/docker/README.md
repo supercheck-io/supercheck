@@ -97,6 +97,20 @@ For single-server deployments, keep `WORKER_LOCATION=local` so one worker proces
 
 ---
 
+## Custom Domain Status Pages
+
+To serve status pages on custom domains (e.g., `status.yourcompany.com`):
+
+1. **Set `STATUS_PAGE_DOMAIN`** — the base hostname used for UUID-based subdomain routing. If unset, Supercheck falls back to `APP_DOMAIN` and then `APP_URL`.
+2. **Create a CNAME record** pointing the custom domain to your `APP_DOMAIN` (or `STATUS_PAGE_DOMAIN`).
+3. **Verify DNS** in the Supercheck status page settings.
+
+Use a subdomain such as `status.yourcompany.com` for the most reliable setup. Root/apex domains may use DNS flattening and can fail CNAME-based verification.
+
+The `docker-compose-secure.yml` and `docker-compose-external.yml` templates include a catch-all Traefik router that forwards custom domain requests to the app. If you use an external proxy (nginx, Caddy, Coolify, etc.), ensure your proxy routes the custom domain to the Supercheck app container.
+
+---
+
 ## Backups
 
 ```bash

@@ -33,7 +33,11 @@ export function normalizeStatusPageDomain(
  * Returns the effective status page base domain for runtime usage.
  *
  * Cloud mode always uses the canonical domain.
- * Self-hosted mode can override via STATUS_PAGE_DOMAIN.
+ * Self-hosted mode resolves in order:
+ *   1. STATUS_PAGE_DOMAIN (explicit override)
+ *   2. APP_DOMAIN (main app domain – common in single-domain self-hosted setups)
+ *   3. APP_URL hostname (derived from the application URL)
+ *   4. "localhost" (development fallback)
  */
 export function getEffectiveStatusPageDomain(): string {
   if (isCloudHosted()) {
@@ -42,6 +46,8 @@ export function getEffectiveStatusPageDomain(): string {
 
   return (
     normalizeStatusPageDomain(process.env.STATUS_PAGE_DOMAIN) ||
+    normalizeStatusPageDomain(process.env.APP_DOMAIN) ||
+    normalizeStatusPageDomain(process.env.APP_URL) ||
     LOCAL_STATUS_PAGE_DOMAIN
   );
 }

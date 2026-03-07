@@ -25,6 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - Fixed Playwright report loading performance. Implemented report caching across Playground, Runs, and Monitor views to prevent unnecessary re-fetching on tab switches
 - Prevented caching of error responses from report proxy to avoid stale missing-report states after uploads complete
 - Prevented setting a status page custom domain to `STATUS_PAGE_DOMAIN` or its subdomains, which would silently fail to route ([#253](https://github.com/supercheck-io/supercheck/issues/253))
+- Fixed status page custom domains returning 404 in self-hosted deployments. Tightened proxy subdomain matching to only recognize UUID-format subdomains (32 hex chars), fixed domain-suffix boundary check that could misroute custom domains, improved `getEffectiveStatusPageDomain` fallback chain to derive from `APP_DOMAIN`/`APP_URL` when `STATUS_PAGE_DOMAIN` is not set, and added `APP_DOMAIN` as an accepted CNAME target for DNS verification ([#253](https://github.com/supercheck-io/supercheck/issues/253))
 - Added catch-all Traefik routers to `docker-compose-secure.yml` and `docker-compose-external.yml` for custom domain support on status pages
 - Fixed false "Queue capacity limit reached" errors during Redis Sentinel failover
 - Improved self-hosted migration script performance and hardened database creation commands against SQL injection

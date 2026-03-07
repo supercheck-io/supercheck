@@ -377,7 +377,7 @@ flowchart LR
     **Configure in Supercheck**
     
     1. Go to your status page → **Settings** tab
-    2. Enter your custom domain (e.g., `status.yourcompany.com`)
+    2. Enter a subdomain you control (e.g., `status.yourcompany.com`)
     3. Click **Save**
   </Step>
   <Step>
@@ -389,18 +389,22 @@ flowchart LR
 
     | Type | Name | Target |
     |------|------|--------|
-    | CNAME | `status` | `supercheck.io` |
+    | CNAME | `status.yourcompany.com` | `supercheck.io` |
 
-    The **Name** is the subdomain part of your custom domain (the part before your root domain). The **Target** is shown in the Settings tab after you save your domain.
+    Use the full hostname unless your DNS provider explicitly asks for a label relative to your zone. The **Target** is shown in the Settings tab after you save your domain.
 
     <Callout type="info">
     **CNAME Target:**
     - **Cloud users:** Point to `supercheck.io`
-    - **Self-hosted:** Point to your `STATUS_PAGE_DOMAIN` hostname (e.g., `yourdomain.com`)
+    - **Self-hosted:** Point to the hostname shown in **Settings**. This is typically `STATUS_PAGE_DOMAIN`, or `APP_DOMAIN` / `APP_URL` when `STATUS_PAGE_DOMAIN` is not set.
     </Callout>
 
     <Callout type="warn">
     **Reserved domain namespace:** Do not set your custom domain to `STATUS_PAGE_DOMAIN` itself or any of its subdomains. That namespace is reserved for default UUID URLs (`[uuid].STATUS_PAGE_DOMAIN`). Use a separate hostname and point its CNAME to the target shown in Settings.
+    </Callout>
+
+    <Callout type="warn">
+    **Use a subdomain:** Root/apex domains may use DNS flattening and can fail CNAME-based verification. Use a subdomain such as `status.yourcompany.com` for the most reliable setup.
     </Callout>
 
     <Callout type="warn">
@@ -444,12 +448,13 @@ To remove a custom domain, clear the domain field in **Settings** and save. The 
 | "Points to wrong target" | Verify your CNAME target matches the value shown in Settings |
 | "Domain already in use" | The domain is configured on another status page — remove it there first |
 | 404 on custom domain | Ensure the configured custom domain is not `STATUS_PAGE_DOMAIN` (or one of its subdomains) |
+| Verification fails on an apex/root domain | Use a subdomain such as `status.example.com` instead of the zone apex |
 | Verification fails with Cloudflare | Disable the Cloudflare proxy (use "DNS only" / grey cloud) and retry |
 | Redirect loops with Cloudflare | Set Cloudflare SSL/TLS mode to **Full** or **Full (Strict)** |
 | HTTPS not working (self-hosted) | The default Docker Compose config handles this automatically via Let's Encrypt. If behind Cloudflare, ensure SSL mode is **Full** or **Full (Strict)**. If using custom certs, update the Traefik `status-custom` router TLS config. |
 
 <Callout type="info">
-**Self-hosted configuration:** Set `STATUS_PAGE_DOMAIN` to your base hostname (e.g., `example.com`). URL-like values such as `https://example.com:443` are normalized automatically, but plain hostnames are recommended.
+**Self-hosted configuration:** Set `STATUS_PAGE_DOMAIN` to the base hostname used for default UUID status page URLs (for example `example.com`). If omitted, Supercheck falls back to `APP_DOMAIN` and then `APP_URL`. URL-like values such as `https://example.com:443` are normalized automatically, but plain hostnames are recommended.
 </Callout>
 
 <Callout type="tip">

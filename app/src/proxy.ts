@@ -123,7 +123,9 @@ function handleCors(request: NextRequest): NextResponse | null {
 // ============================================================================
 
 // Pre-compile regex patterns for performance
-const VALID_SUBDOMAIN_PATTERN = /^[a-zA-Z0-9-]{1,63}$/;
+// Status page subdomains are always UUID v4 without hyphens (32 hex chars)
+// e.g., "f134b5f9f2b048069deaf7cfb924a0b3"
+const VALID_SUBDOMAIN_PATTERN = /^[a-f0-9]{32}$/i;
 const PORT_PATTERN = /:\d+$/;
 
 // Cache for hostname parsing (simple LRU-style with max size)
@@ -210,16 +212,24 @@ function isCustomDomain(cleanHostname: string, appHostname: string): boolean {
     return false;
   }
 
-  // Custom domains are valid if they don't end with the status page domain
+  // Custom domains are valid if they don't belong to the status page domain namespace
   const statusPageDomain = getStatusPageDomainForRouting();
-  if (!statusPageDomain) {
+  if (!statusPageDomain || statusPageDomain === "localhost") {
     return true;
   }
 
-  return (
-    !cleanHostname.endsWith(`.${statusPageDomain}`) &&
-    !cleanHostname.endsWith(statusPageDomain)
-  );
+  // Reject if this IS the status page domain itself
+  if (cleanHostname === statusPageDomain) {
+    return false;
+  }
+
+  // Reject if this is a subdomain of the status page domain
+  // Use dot-boundary to avoid false matches (e.g., "notexample.com" vs "example.com")
+  if (cleanHostname.endsWith(`.${statusPageDomain}`)) {
+    return false;
+  }
+
+  return true;
 }
 
 /**
@@ -349,6 +359,11 @@ function addSecurityHeaders(response: NextResponse): void {
   response.headers.set("Pragma", "no-cache");
   response.headers.set("Expires", "0");
 }
+
+export const __testUtils = {
+  extractSubdomain,
+  isCustomDomain,
+};
 
 export const config = {
   matcher: [
