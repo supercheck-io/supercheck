@@ -1,89 +1,81 @@
 /**
- * Domain utility functions for status page subdomain routing
+ * Client-safe domain utility functions for status page URL generation.
  *
- * Architecture:
- * - ALL subdomains except NEXT_PUBLIC_APP_URL are treated as status pages
- * - Cloudflare handles routing for specific subdomains (www, api, cdn, etc.)
- * - Simple and production-ready
+ * These functions are safe to import in both server and client (browser) code.
+ * They deliberately avoid importing server-only modules like feature-flags.
+ *
+ * The canonical status page domain is resolved server-side by
+ * `getEffectiveStatusPageDomain()` in status-page-domain.ts and served to the
+ * client via `/api/config/app` → `useAppConfig().statusPageDomain`.
+ *
+ * All public URL builders require an explicit `statusPageDomain` parameter so
+ * they never fall back to guessing from `window.location` or env vars.
  */
 
 /**
- * Extracts the base domain from NEXT_PUBLIC_APP_URL or current window location
- * @returns The base domain (e.g., "supercheck.io" from "https://demo.supercheck.io")
+ * Normalize a hostname or URL-like value to a canonical lowercase hostname.
+ * Strips protocol, port, path, and trailing dot.
+ *
+ * Shared across client and server code – also used by settings-tab.tsx for
+ * reserved-domain checks.
  */
-export function getBaseDomain(requestHostname?: string): string {
-  // On client side, use the actual window location as source of truth
-  if (typeof window !== "undefined") {
-    const hostname = window.location.hostname;
-    const parts = hostname.split(".");
-
-    if (parts.length >= 2) {
-      // Return the last two parts (e.g., "supercheck.io")
-      return parts.slice(-2).join(".");
-    }
-    return hostname;
+export function normalizeHostname(value?: string | null): string | null {
+  if (!value) {
+    return null;
   }
 
-  // On server side, if request hostname is provided, use it
-  if (requestHostname) {
-    const parts = requestHostname.split(".");
-    if (parts.length >= 2) {
-      return parts.slice(-2).join(".");
-    }
-    return requestHostname;
+  const trimmed = value.trim().toLowerCase();
+  if (!trimmed) {
+    return null;
   }
 
-  // Fallback to NEXT_PUBLIC_APP_URL
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const withoutProtocol = trimmed.replace(/^https?:\/\//, "");
+  const hostname = withoutProtocol
+    .split("/")[0]
+    .replace(/:\d+$/, "")
+    .replace(/\.$/, "");
 
-  try {
-    const url = new URL(appUrl);
-    const hostname = url.hostname;
-    const parts = hostname.split(".");
-
-    if (parts.length >= 2) {
-      return parts.slice(-2).join(".");
-    }
-    return hostname;
-  } catch (error) {
-    console.error("Invalid NEXT_PUBLIC_APP_URL:", appUrl, error);
-    return "localhost";
-  }
+  return hostname || null;
 }
 
 /**
- * Gets the base domain specifically for status pages
- * This uses the STATUS_PAGE_DOMAIN environment variable if available,
- * otherwise falls back to the standard base domain detection
+ * Client-safe check: is `hostname` the status page base domain or one of its
+ * subdomains?  Mirrors `isReservedStatusPageHostname` from status-page-domain.ts
+ * but works in the browser without importing server-only modules.
  */
-export function getStatusPageBaseDomain(requestHostname?: string): string {
-  // Use STATUS_PAGE_DOMAIN for consistency across the codebase
-  if (process.env.STATUS_PAGE_DOMAIN) {
-    return process.env.STATUS_PAGE_DOMAIN;
+export function isReservedStatusPageHostnameClient(
+  hostname: string | null | undefined,
+  statusPageDomain: string
+): boolean {
+  const normalizedHostname = normalizeHostname(hostname ?? undefined);
+  const normalizedBaseDomain = normalizeHostname(statusPageDomain);
+
+  if (!normalizedHostname || !normalizedBaseDomain) {
+    return false;
   }
 
-  if (requestHostname) {
-    const parts = requestHostname.split(".");
-    if (parts.length >= 2) {
-      return parts.slice(-2).join(".");
-    }
-    return requestHostname;
-  }
-
-  return getBaseDomain();
+  return (
+    normalizedHostname === normalizedBaseDomain ||
+    normalizedHostname.endsWith(`.${normalizedBaseDomain}`)
+  );
 }
 
+// ---------------------------------------------------------------------------
+// URL construction
+// ---------------------------------------------------------------------------
+
 /**
- * Constructs a status page URL using the base domain
- * @param subdomain The subdomain for the status page
- * @param requestHostname Optional hostname from the request
- * @returns The full status page URL
+ * Constructs a status page URL: `https://<subdomain>.<statusPageDomain>`.
+ *
+ * `statusPageDomain` must be provided explicitly by callers (from the server
+ * config API or env vars).  There is intentionally no browser-based fallback
+ * to avoid generating links using the wrong domain.
  */
 export function getStatusPageUrl(
   subdomain: string,
-  requestHostname?: string
+  statusPageDomain: string
 ): string {
-  const baseDomain = getStatusPageBaseDomain(requestHostname);
+  const baseDomain = normalizeHostname(statusPageDomain) || "localhost";
   const protocol = baseDomain === "localhost" ? "http" : "https";
   return `${protocol}://${subdomain}.${baseDomain}`;
 }
@@ -92,82 +84,43 @@ type PublicStatusPageUrlOptions = {
   subdomain: string;
   customDomain?: string | null;
   customDomainVerified?: boolean | null;
-  requestHostname?: string;
+  /** The authoritative status page base domain (required). */
+  statusPageDomain?: string;
+  /** Used only for protocol inference (http vs https). */
   appUrl?: string;
 };
 
-function getPreferredStatusPageProtocol(appUrl?: string): string {
+function getPreferredProtocol(
+  appUrl?: string,
+  statusPageDomain?: string
+): string {
   if (appUrl) {
     try {
       return new URL(appUrl).protocol.replace(":", "") || "https";
     } catch {
-      // Fall through to environment-based inference.
+      // Fall through
     }
   }
 
-  const baseDomain = getStatusPageBaseDomain();
+  const baseDomain = normalizeHostname(statusPageDomain);
   return baseDomain === "localhost" ? "http" : "https";
 }
 
+/**
+ * Returns the public URL for a status page, preferring verified custom domains.
+ */
 export function getPublicStatusPageUrl({
   subdomain,
   customDomain,
   customDomainVerified,
-  requestHostname,
+  statusPageDomain,
   appUrl,
 }: PublicStatusPageUrlOptions): string {
   if (customDomainVerified && customDomain) {
-    const protocol = getPreferredStatusPageProtocol(appUrl);
-    const normalizedHostname = customDomain.trim().toLowerCase().replace(/\.$/, "");
-    return `${protocol}://${normalizedHostname}`;
+    const protocol = getPreferredProtocol(appUrl, statusPageDomain);
+    const normalized = normalizeHostname(customDomain) || customDomain.trim().toLowerCase();
+    return `${protocol}://${normalized}`;
   }
 
-  return getStatusPageUrl(subdomain, requestHostname);
-}
-
-/**
- * Extracts subdomain from a hostname
- * @param hostname The full hostname (e.g., "abc123.supercheck.io")
- * @returns The subdomain or null if not found
- */
-export function extractSubdomain(hostname: string): string | null {
-  if (!hostname || typeof hostname !== "string") {
-    return null;
-  }
-
-  // Remove port if present (e.g., "localhost:3000" -> "localhost")
-  const cleanHostname = hostname.split(":")[0];
-  const parts = cleanHostname.split(".");
-
-  // Handle localhost specially - demo.localhost has 2 parts
-  if (parts.length === 2 && parts[1] === "localhost") {
-    const subdomain = parts[0];
-    // Validate subdomain format (alphanumeric with optional hyphens)
-    return /^[a-zA-Z0-9-]{1,63}$/.test(subdomain) ? subdomain : null;
-  }
-
-  // For production domains, require 3+ parts (subdomain.example.com)
-  if (parts.length >= 3) {
-    const subdomain = parts[0];
-    // Validate subdomain format (alphanumeric with optional hyphens, 1-63 chars per DNS spec)
-    return /^[a-zA-Z0-9-]{1,63}$/.test(subdomain) ? subdomain : null;
-  }
-
-  return null;
-}
-
-/**
- * Gets the main app subdomain from NEXT_PUBLIC_APP_URL
- * @returns The main app subdomain or null if not applicable
- */
-export function getMainAppSubdomain(): string | null {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-
-  try {
-    const url = new URL(appUrl);
-    return extractSubdomain(url.hostname);
-  } catch (error) {
-    console.error("Invalid NEXT_PUBLIC_APP_URL:", appUrl, error);
-    return null;
-  }
+  return getStatusPageUrl(subdomain, statusPageDomain || "localhost");
 }

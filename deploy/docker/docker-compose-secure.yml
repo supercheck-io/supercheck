@@ -63,7 +63,10 @@ x-common-env: &common-env # Database Configuration
   APP_DOMAIN: ${APP_DOMAIN:-demo.supercheck.dev}
   NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-https://${APP_DOMAIN:-demo.supercheck.dev}}
   APP_URL: ${APP_URL:-https://${APP_DOMAIN:-demo.supercheck.dev}}
-  STATUS_PAGE_DOMAIN: ${STATUS_PAGE_DOMAIN:-supercheck.dev}
+  # Status page subdomain routing domain. Defaults to APP_DOMAIN if not set.
+  # Only set this if you want status pages on a DIFFERENT domain than your app.
+  # Example: APP_DOMAIN=app.example.com  STATUS_PAGE_DOMAIN=status.example.com
+  STATUS_PAGE_DOMAIN: ${STATUS_PAGE_DOMAIN:-}
   # Hide the public status page branding footer globally when set to true
   STATUS_PAGE_HIDE_BRANDING: ${STATUS_PAGE_HIDE_BRANDING:-false}
   BETTER_AUTH_URL: ${BETTER_AUTH_URL:-https://${APP_DOMAIN:-demo.supercheck.dev}}
@@ -330,9 +333,9 @@ services:
       - "traefik.http.routers.app.tls.certresolver=letsencrypt"
       - "traefik.http.routers.app.service=app"
 
-      # Status pages — wildcard subdomain (extracts base domain from APP_DOMAIN)
-      # Note: For status pages, configure STATUS_PAGE_DOMAIN in environment
-      - "traefik.http.routers.status-pages.rule=HostRegexp(`[a-zA-Z0-9-]+\\.${STATUS_PAGE_DOMAIN:-supercheck.dev}`)"
+      # Status pages — wildcard subdomain routing
+      # Uses STATUS_PAGE_DOMAIN if set, otherwise derives from APP_DOMAIN
+      - "traefik.http.routers.status-pages.rule=HostRegexp(`[a-zA-Z0-9-]+\\.${STATUS_PAGE_DOMAIN:-${APP_DOMAIN:-demo.supercheck.dev}}`)"
       - "traefik.http.routers.status-pages.priority=50"
       - "traefik.http.routers.status-pages.entrypoints=websecure"
       - "traefik.http.routers.status-pages.tls.certresolver=letsencrypt"
@@ -345,7 +348,7 @@ services:
       - "traefik.http.routers.app-http.service=app"
 
       # HTTP → HTTPS redirect for status pages
-      - "traefik.http.routers.status-pages-http.rule=HostRegexp(`[a-zA-Z0-9-]+\\.${STATUS_PAGE_DOMAIN:-supercheck.dev}`)"
+      - "traefik.http.routers.status-pages-http.rule=HostRegexp(`[a-zA-Z0-9-]+\\.${STATUS_PAGE_DOMAIN:-${APP_DOMAIN:-demo.supercheck.dev}}`)"
       - "traefik.http.routers.status-pages-http.entrypoints=web"
       - "traefik.http.routers.status-pages-http.middlewares=app-https-redirect"
       - "traefik.http.routers.status-pages-http.service=app"

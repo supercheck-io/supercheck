@@ -54,12 +54,13 @@ import { useQueryClient } from "@tanstack/react-query";
 import { deleteStatusPage } from "@/actions/delete-status-page";
 import { CreateStatusPageForm } from "./create-status-page-form";
 import { useProjectContext } from "@/hooks/use-project-context";
+import { useAppConfig } from "@/hooks/use-app-config";
 import { normalizeRole } from "@/lib/rbac/role-normalizer";
 import {
   canCreateStatusPages,
   canDeleteStatusPages,
 } from "@/lib/rbac/client-permissions";
-import { getStatusPageUrl, getBaseDomain } from "@/lib/domain-utils";
+import { getPublicStatusPageUrl } from "@/lib/domain-utils";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 import { useStatusPages, getStatusPagesListQueryKey } from "@/hooks/use-status-pages";
 import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
@@ -77,6 +78,8 @@ type StatusPage = {
   status: string;
   pageDescription: string | null;
   headline: string | null;
+  customDomain: string | null;
+  customDomainVerified: boolean | null;
   createdAt: Date | null;
   updatedAt: Date | null;
   [key: string]: unknown; // Allow extra fields from DB
@@ -92,6 +95,7 @@ export default function StatusPagesList() {
   const { statusPages: rawStatusPages, isLoading, isRestoring } = useStatusPages();
   const hasData = rawStatusPages !== undefined && rawStatusPages.length >= 0;
   const queryClient = useQueryClient();
+  const { statusPageDomain } = useAppConfig();
 
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -249,8 +253,17 @@ export default function StatusPagesList() {
     }
   };
 
-  const handleCopyUrl = async (subdomain: string) => {
-    const url = getStatusPageUrl(subdomain);
+  const getPublicUrl = (page: Pick<StatusPage, "subdomain" | "customDomain" | "customDomainVerified">) => {
+    return getPublicStatusPageUrl({
+      subdomain: page.subdomain,
+      customDomain: page.customDomain,
+      customDomainVerified: page.customDomainVerified,
+      statusPageDomain,
+    });
+  };
+
+  const handleCopyUrl = async (page: Pick<StatusPage, "subdomain" | "customDomain" | "customDomainVerified">) => {
+    const url = getPublicUrl(page);
     try {
       await navigator.clipboard.writeText(url);
       toast.success("URL copied to clipboard");
@@ -401,6 +414,8 @@ export default function StatusPagesList() {
             {statusPages.map((page) => {
               const statusConfig = getStatusConfig(page.status);
               const StatusIcon = statusConfig.icon;
+              const publicStatusPageUrl = getPublicUrl(page);
+              const publicStatusPageHost = publicStatusPageUrl.replace(/^https?:\/\//, "");
 
               return (
                 <Card
@@ -456,7 +471,7 @@ export default function StatusPagesList() {
                             </DropdownMenuItem>
                             <DropdownMenuItem asChild>
                               <a
-                                href={getStatusPageUrl(page.subdomain)}
+                                href={publicStatusPageUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="cursor-pointer"
@@ -466,7 +481,7 @@ export default function StatusPagesList() {
                               </a>
                             </DropdownMenuItem>
                             <DropdownMenuItem
-                              onClick={() => handleCopyUrl(page.subdomain)}
+                              onClick={() => handleCopyUrl(page)}
                               className="cursor-pointer"
                             >
                               <Copy className="h-4 w-4 mr-2" />
@@ -490,13 +505,13 @@ export default function StatusPagesList() {
                     <div className="flex items-center gap-2 p-2.5 rounded-lg bg-muted/50 mb-3">
                       <Globe className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                       <code className="text-sm text-muted-foreground truncate flex-1 font-mono">
-                        {page.subdomain}.{getBaseDomain()}
+                        {publicStatusPageHost}
                       </code>
                       <Button
                         variant="ghost"
                         size="sm"
                         className="h-6 w-6 p-0 hover:bg-background"
-                        onClick={() => handleCopyUrl(page.subdomain)}
+                        onClick={() => handleCopyUrl(page)}
                         title="Copy URL"
                       >
                         <Copy className="h-3 w-3" />
@@ -523,7 +538,7 @@ export default function StatusPagesList() {
                         className="flex-1 h-9"
                       >
                         <a
-                          href={getStatusPageUrl(page.subdomain)}
+                          href={publicStatusPageUrl}
                           target="_blank"
                           rel="noopener noreferrer"
                         >

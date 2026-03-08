@@ -44,7 +44,7 @@ const DEFAULT_CONFIG: AppConfig = {
     recentMonitorResultsLimit: undefined,
   },
   statusPage: {
-    domain: "supercheck.io",
+    domain: "localhost",
     hideBranding: false,
   },
 };
@@ -94,7 +94,7 @@ export function useAppConfig() {
     maxJobNotificationChannels: effectiveConfig.limits?.maxJobNotificationChannels ?? 10,
     maxMonitorNotificationChannels: effectiveConfig.limits?.maxMonitorNotificationChannels ?? 10,
     recentMonitorResultsLimit: effectiveConfig.limits?.recentMonitorResultsLimit,
-    statusPageDomain: effectiveConfig.statusPage?.domain ?? "supercheck.io",
+    statusPageDomain: effectiveConfig.statusPage?.domain ?? "localhost",
     hideStatusPageBranding: effectiveConfig.statusPage?.hideBranding ?? false,
   };
 }

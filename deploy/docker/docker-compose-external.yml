@@ -53,7 +53,9 @@ x-common-env: &common-env # Database Configuration - External PostgreSQL
   # App Configuration
   APP_URL: ${APP_URL}
   NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL}
-  STATUS_PAGE_DOMAIN: ${STATUS_PAGE_DOMAIN}
+  # Status page subdomain routing domain. Defaults to APP_DOMAIN if not set.
+  # Only set this if you want status pages on a DIFFERENT domain than your app.
+  STATUS_PAGE_DOMAIN: ${STATUS_PAGE_DOMAIN:-}
   # Hide the public status page branding footer globally when set to true
   STATUS_PAGE_HIDE_BRANDING: ${STATUS_PAGE_HIDE_BRANDING:-false}
   BETTER_AUTH_URL: ${BETTER_AUTH_URL}
@@ -325,8 +327,9 @@ services:
       - "traefik.http.routers.app.tls.certresolver=myresolver"
       - "traefik.http.routers.app.service=app"
 
-      # Status pages — wildcard subdomain
-      - "traefik.http.routers.status-pages.rule=HostRegexp(`[a-zA-Z0-9-]+\\.${STATUS_PAGE_DOMAIN}`)"
+      # Status pages — wildcard subdomain routing
+      # Uses STATUS_PAGE_DOMAIN if set, otherwise derives from APP_DOMAIN
+      - "traefik.http.routers.status-pages.rule=HostRegexp(`[a-zA-Z0-9-]+\\.${STATUS_PAGE_DOMAIN:-${APP_DOMAIN}}`)"
       - "traefik.http.routers.status-pages.priority=50"
       - "traefik.http.routers.status-pages.entrypoints=websecure"
       - "traefik.http.routers.status-pages.tls.certresolver=myresolver"
@@ -339,7 +342,7 @@ services:
       - "traefik.http.routers.app-http.service=app"
 
       # HTTP → HTTPS redirect for status pages
-      - "traefik.http.routers.status-pages-http.rule=HostRegexp(`[a-zA-Z0-9-]+\\.${STATUS_PAGE_DOMAIN}`)"
+      - "traefik.http.routers.status-pages-http.rule=HostRegexp(`[a-zA-Z0-9-]+\\.${STATUS_PAGE_DOMAIN:-${APP_DOMAIN}}`)"
       - "traefik.http.routers.status-pages-http.entrypoints=web"
       - "traefik.http.routers.status-pages-http.middlewares=app-https-redirect"
       - "traefik.http.routers.status-pages-http.service=app"

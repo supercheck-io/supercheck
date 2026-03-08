@@ -13,6 +13,7 @@ import { renderIncidentNotificationEmail } from "@/lib/email-renderer";
 import { getTranslations } from "@/lib/status-page-translations";
 import { format } from "date-fns";
 import { getPublicStatusPageUrl } from "@/lib/domain-utils";
+import { getEffectiveStatusPageDomain } from "@/lib/status-page-domain";
 
 /**
  * Send incident notification emails to all verified subscribers
@@ -110,14 +111,16 @@ export async function sendIncidentNotifications(
       };
     }
 
-    // Construct notification URLs
-    const baseUrl =
+    // Construct notification URLs using the authoritative status page domain
+    const statusPageDomain = getEffectiveStatusPageDomain();
+    const appUrl =
       process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || "http://localhost:3000";
     const statusPageUrl = getPublicStatusPageUrl({
       subdomain: statusPage.subdomain,
       customDomain: statusPage.customDomain,
       customDomainVerified: statusPage.customDomainVerified,
-      appUrl: baseUrl,
+      statusPageDomain,
+      appUrl,
     });
 
     // Build email parameters template (per-subscriber unsubscribe URL will be added when sending)
@@ -157,7 +160,7 @@ export async function sendIncidentNotifications(
 
         // Use per-subscriber unsubscribe token
         const unsubscribeUrl = subscriber.unsubscribeToken
-          ? `${baseUrl}/status/unsubscribe/${subscriber.unsubscribeToken}`
+          ? `${appUrl}/status/unsubscribe/${subscriber.unsubscribeToken}`
           : "";
 
         const emailParams = {

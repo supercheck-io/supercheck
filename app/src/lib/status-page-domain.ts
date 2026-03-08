@@ -1,4 +1,5 @@
 import { isCloudHosted } from "@/lib/feature-flags";
+import { normalizeHostname } from "@/lib/domain-utils";
 
 export const CLOUD_STATUS_PAGE_DOMAIN = "supercheck.io";
 
@@ -6,28 +7,14 @@ const LOCAL_STATUS_PAGE_DOMAIN = "localhost";
 
 /**
  * Normalize a domain-like value into a canonical hostname.
- * Accepts hostnames or URL-like values (e.g. https://example.com:443/path).
+ *
+ * Re-exports the shared `normalizeHostname` from domain-utils under the
+ * legacy name so existing callers (verify-status-page-domain.ts, etc.)
+ * continue to work without changes.
  */
-export function normalizeStatusPageDomain(
+export const normalizeStatusPageDomain = (
   value: string | undefined
-): string | null {
-  if (!value) {
-    return null;
-  }
-
-  const trimmed = value.trim().toLowerCase();
-  if (!trimmed) {
-    return null;
-  }
-
-  const withoutProtocol = trimmed.replace(/^https?:\/\//, "");
-  const hostname = withoutProtocol
-    .split("/")[0]
-    .replace(/:\d+$/, "")
-    .replace(/\.$/, "");
-
-  return hostname || null;
-}
+): string | null => normalizeHostname(value);
 
 /**
  * Returns the effective status page base domain for runtime usage.

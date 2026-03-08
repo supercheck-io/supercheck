@@ -54,6 +54,7 @@ import { SUPPORTED_LANGUAGES } from "@/lib/status-page-translations";
 import { useQueryClient } from "@tanstack/react-query";
 import type { StatusPageDetailResponse } from "@/hooks/use-status-pages";
 import { useAppConfig } from "@/hooks/use-app-config";
+import { isReservedStatusPageHostnameClient } from "@/lib/domain-utils";
 import {
   getStatusPageSupportContactInputValue,
   normalizeStatusPageSupportContact,
@@ -136,31 +137,10 @@ const settingsSchema = z.object({
 
 type SettingsFormValues = z.infer<typeof settingsSchema>;
 
-const normalizeHostname = (value: string): string => {
-  return value.trim().toLowerCase().replace(/\.$/, "");
-};
-
-// Client-side equivalent of isReservedStatusPageHostname from status-page-domain.ts.
-// Cannot import the server module directly because it pulls in process.env-dependent
-// feature-flag helpers that are unavailable in the browser runtime.
-const isReservedCustomDomain = (
-  customDomain: string,
-  statusPageDomain: string
-): boolean => {
-  const hostname = normalizeHostname(customDomain);
-  const baseDomain = normalizeHostname(statusPageDomain);
-
-  if (!hostname || !baseDomain) {
-    return false;
-  }
-
-  return hostname === baseDomain || hostname.endsWith(`.${baseDomain}`);
-};
-
 export function SettingsTab({
   statusPage,
   canUpdate,
-  statusPageDomain = "supercheck.io",
+  statusPageDomain = "localhost",
 }: SettingsTabProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -208,7 +188,7 @@ export function SettingsTab({
   const customDomainValue = watch("customDomain");
   const hasReservedCustomDomain =
     !!customDomainValue &&
-    isReservedCustomDomain(customDomainValue, statusPageDomain);
+    isReservedStatusPageHostnameClient(customDomainValue, statusPageDomain);
 
   const onSubmit = async (data: SettingsFormValues) => {
     try {
@@ -219,7 +199,7 @@ export function SettingsTab({
 
       if (
         submittedCustomDomain &&
-        isReservedCustomDomain(submittedCustomDomain, statusPageDomain)
+        isReservedStatusPageHostnameClient(submittedCustomDomain, statusPageDomain)
       ) {
         toast.error("Invalid custom domain", {
           description: `Custom domains cannot use ${statusPageDomain} or its subdomains. Use a separate hostname and point its CNAME to ${statusPageDomain}.`,
