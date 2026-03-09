@@ -63,8 +63,12 @@ x-common-env: &common-env # Database Configuration
   APP_DOMAIN: ${APP_DOMAIN:-demo.supercheck.dev}
   NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-https://${APP_DOMAIN:-demo.supercheck.dev}}
   APP_URL: ${APP_URL:-https://${APP_DOMAIN:-demo.supercheck.dev}}
-  # Status page subdomain routing domain. Defaults to APP_DOMAIN if not set.
-  # Only set this if you want status pages on a DIFFERENT domain than your app.
+  # Optional explicit wildcard domain for default status page URLs.
+  # When unset, self-hosted instances use path-based URLs under APP_URL:
+  #   https://app.example.com/status/<status-page-id>
+  # When set, default status page URLs use wildcard subdomains and require DNS
+  # for *.STATUS_PAGE_DOMAIN to point at this server:
+  #   https://<status-page-id>.STATUS_PAGE_DOMAIN
   # Example: APP_DOMAIN=app.example.com  STATUS_PAGE_DOMAIN=status.example.com
   STATUS_PAGE_DOMAIN: ${STATUS_PAGE_DOMAIN:-}
   # Hide the public status page branding footer globally when set to true

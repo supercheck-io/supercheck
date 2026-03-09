@@ -2,8 +2,11 @@ import { isCloudHosted } from "@/lib/feature-flags";
 import { normalizeHostname } from "@/lib/domain-utils";
 
 export const CLOUD_STATUS_PAGE_DOMAIN = "supercheck.io";
+const LOCAL_APP_URL = "http://localhost:3000";
 
 const LOCAL_STATUS_PAGE_DOMAIN = "localhost";
+
+export type StatusPageRouteMode = "subdomain" | "path";
 
 /**
  * Normalize a domain-like value into a canonical hostname.
@@ -37,6 +40,37 @@ export function getEffectiveStatusPageDomain(): string {
     normalizeStatusPageDomain(process.env.APP_URL) ||
     LOCAL_STATUS_PAGE_DOMAIN
   );
+}
+
+/**
+ * Returns how default public status page URLs should be generated.
+ *
+ * Cloud always uses wildcard subdomains (`<uuid>.supercheck.io`).
+ * Self-hosted defaults to path routing (`/status/<uuid>`) unless the operator
+ * explicitly configures `STATUS_PAGE_DOMAIN`, which opts into wildcard DNS.
+ */
+export function getStatusPageRouteMode(): StatusPageRouteMode {
+  if (isCloudHosted()) {
+    return "subdomain";
+  }
+
+  return normalizeStatusPageDomain(process.env.STATUS_PAGE_DOMAIN)
+    ? "subdomain"
+    : "path";
+}
+
+/**
+ * Returns the canonical application origin used for path-based public URLs.
+ */
+export function getEffectiveAppUrl(): string {
+  const configuredAppUrl =
+    process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || LOCAL_APP_URL;
+
+  try {
+    return new URL(configuredAppUrl).origin;
+  } catch {
+    return LOCAL_APP_URL;
+  }
 }
 
 /**

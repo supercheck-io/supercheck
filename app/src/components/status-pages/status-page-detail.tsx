@@ -34,6 +34,7 @@ import {
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { getPublicStatusPageUrl } from "@/lib/domain-utils";
+import { useAppConfig } from "@/hooks/use-app-config";
 import { DataTable } from "@/components/monitors/data-table";
 import { statusPageColumns } from "@/components/monitors/status-page-columns";
 import type { Monitor } from "@/components/monitors/schema";
@@ -119,12 +120,15 @@ export function StatusPageDetail({
   onDataChange,
 }: StatusPageDetailProps) {
   const router = useRouter();
+  const { statusPageAppUrl, statusPageRouteMode } = useAppConfig();
   const [isPublishing, setIsPublishing] = useState(false);
   const publicStatusPageUrl = getPublicStatusPageUrl({
     subdomain: statusPage.subdomain,
     customDomain: statusPage.customDomain,
     customDomainVerified: statusPage.customDomainVerified,
     statusPageDomain,
+    routeMode: statusPageRouteMode,
+    appUrl: statusPageAppUrl,
   });
 
   const handleCopyUrl = () => {

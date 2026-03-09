@@ -86,9 +86,23 @@ type PublicStatusPageUrlOptions = {
   customDomainVerified?: boolean | null;
   /** The authoritative status page base domain (required). */
   statusPageDomain?: string;
+  /** Whether default routes should use wildcard subdomains or /status/<id>. */
+  routeMode?: "subdomain" | "path";
   /** Used only for protocol inference (http vs https). */
   appUrl?: string;
 };
+
+function getAppOrigin(appUrl?: string): string {
+  if (appUrl) {
+    try {
+      return new URL(appUrl).origin;
+    } catch {
+      // Fall through
+    }
+  }
+
+  return "http://localhost:3000";
+}
 
 function getPreferredProtocol(
   appUrl?: string,
@@ -114,12 +128,18 @@ export function getPublicStatusPageUrl({
   customDomain,
   customDomainVerified,
   statusPageDomain,
+  routeMode,
   appUrl,
 }: PublicStatusPageUrlOptions): string {
   if (customDomainVerified && customDomain) {
     const protocol = getPreferredProtocol(appUrl, statusPageDomain);
     const normalized = normalizeHostname(customDomain) || customDomain.trim().toLowerCase();
     return `${protocol}://${normalized}`;
+  }
+
+  if (routeMode === "path") {
+    const appOrigin = getAppOrigin(appUrl);
+    return `${appOrigin}/status/${subdomain}`;
   }
 
   return getStatusPageUrl(subdomain, statusPageDomain || "localhost");

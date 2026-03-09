@@ -34,6 +34,8 @@ describe("useAppConfig", () => {
     });
 
     expect(result.current.statusPageDomain).toBe("localhost");
+    expect(result.current.statusPageRouteMode).toBe("path");
+    expect(result.current.statusPageAppUrl).toBe("http://localhost:3000");
     expect(result.current.hideStatusPageBranding).toBe(false);
   });
 
@@ -66,6 +68,8 @@ describe("useAppConfig", () => {
         },
         statusPage: {
           domain: "supercheck.io",
+          routeMode: "subdomain",
+          appUrl: "https://app.supercheck.io",
           hideBranding: true,
         },
       }),
@@ -80,5 +84,7 @@ describe("useAppConfig", () => {
     });
 
     expect(result.current.hideStatusPageBranding).toBe(true);
+    expect(result.current.statusPageRouteMode).toBe("subdomain");
+    expect(result.current.statusPageAppUrl).toBe("https://app.supercheck.io");
   });
 });

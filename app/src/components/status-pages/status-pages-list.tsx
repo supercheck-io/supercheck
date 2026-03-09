@@ -95,7 +95,7 @@ export default function StatusPagesList() {
   const { statusPages: rawStatusPages, isLoading, isRestoring } = useStatusPages();
   const hasData = rawStatusPages !== undefined && rawStatusPages.length >= 0;
   const queryClient = useQueryClient();
-  const { statusPageDomain } = useAppConfig();
+  const { statusPageDomain, statusPageRouteMode, statusPageAppUrl } = useAppConfig();
 
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -259,6 +259,8 @@ export default function StatusPagesList() {
       customDomain: page.customDomain,
       customDomainVerified: page.customDomainVerified,
       statusPageDomain,
+      routeMode: statusPageRouteMode,
+      appUrl: statusPageAppUrl,
     });
   };
 

@@ -27,6 +27,44 @@ describe("status page proxy routing", () => {
     expect(__testUtils.extractSubdomain("status.example.com")).toBeNull();
   });
 
+  it("rewrites explicit wildcard status page hosts to the public status route", async () => {
+    const { proxy } = await import("./proxy");
+
+    const request = new NextRequest(
+      "https://f134b5f9f2b048069deaf7cfb924a0b3.example.com/",
+      {
+        headers: {
+          host: "f134b5f9f2b048069deaf7cfb924a0b3.example.com",
+        },
+      }
+    );
+
+    const response = proxy(request);
+
+    expect(response.headers.get("x-middleware-rewrite")).toContain(
+      "/status/f134b5f9f2b048069deaf7cfb924a0b3"
+    );
+  });
+
+  it("preserves nested paths when rewriting explicit wildcard status page hosts", async () => {
+    const { proxy } = await import("./proxy");
+
+    const request = new NextRequest(
+      "https://f134b5f9f2b048069deaf7cfb924a0b3.example.com/incidents/incident-1",
+      {
+        headers: {
+          host: "f134b5f9f2b048069deaf7cfb924a0b3.example.com",
+        },
+      }
+    );
+
+    const response = proxy(request);
+
+    expect(response.headers.get("x-middleware-rewrite")).toContain(
+      "/status/f134b5f9f2b048069deaf7cfb924a0b3/incidents/incident-1"
+    );
+  });
+
   it("does not reject unrelated external domains with overlapping suffixes", async () => {
     const { __testUtils } = await import("./proxy");
 

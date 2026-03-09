@@ -22,6 +22,8 @@ export interface AppConfig {
   };
   statusPage?: {
     domain: string;
+    routeMode: "subdomain" | "path";
+    appUrl: string;
     hideBranding: boolean;
   };
 }
@@ -45,6 +47,8 @@ const DEFAULT_CONFIG: AppConfig = {
   },
   statusPage: {
     domain: "localhost",
+    routeMode: "path",
+    appUrl: "http://localhost:3000",
     hideBranding: false,
   },
 };
@@ -95,6 +99,8 @@ export function useAppConfig() {
     maxMonitorNotificationChannels: effectiveConfig.limits?.maxMonitorNotificationChannels ?? 10,
     recentMonitorResultsLimit: effectiveConfig.limits?.recentMonitorResultsLimit,
     statusPageDomain: effectiveConfig.statusPage?.domain ?? "localhost",
+    statusPageRouteMode: effectiveConfig.statusPage?.routeMode ?? "path",
+    statusPageAppUrl: effectiveConfig.statusPage?.appUrl ?? "http://localhost:3000",
     hideStatusPageBranding: effectiveConfig.statusPage?.hideBranding ?? false,
   };
 }

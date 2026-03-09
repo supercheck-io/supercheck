@@ -53,8 +53,9 @@ x-common-env: &common-env # Database Configuration - External PostgreSQL
   # App Configuration
   APP_URL: ${APP_URL}
   NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL}
-  # Status page subdomain routing domain. Defaults to APP_DOMAIN if not set.
-  # Only set this if you want status pages on a DIFFERENT domain than your app.
+  # Optional explicit wildcard domain for default status page URLs.
+  # When unset, self-hosted instances use path-based URLs under APP_URL.
+  # When set, wildcard DNS for *.STATUS_PAGE_DOMAIN must point at this server.
   STATUS_PAGE_DOMAIN: ${STATUS_PAGE_DOMAIN:-}
   # Hide the public status page branding footer globally when set to true
   STATUS_PAGE_HIDE_BRANDING: ${STATUS_PAGE_HIDE_BRANDING:-false}

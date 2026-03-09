@@ -5,7 +5,11 @@ import {
   isSignupEnabled,
   isStatusPageBrandingHidden,
 } from "@/lib/feature-flags";
-import { getEffectiveStatusPageDomain } from "@/lib/status-page-domain";
+import {
+  getEffectiveAppUrl,
+  getEffectiveStatusPageDomain,
+  getStatusPageRouteMode,
+} from "@/lib/status-page-domain";
 
 /**
  * GET /api/config/app
@@ -65,9 +69,12 @@ export async function GET() {
 
     // Status page configuration
     statusPage: {
-      // Domain used for CNAME target in custom domain setup
-      // Cloud mode is fixed to supercheck.io; self-hosted should set STATUS_PAGE_DOMAIN
+      // Domain used for custom domain verification / wildcard routing.
       domain: getEffectiveStatusPageDomain(),
+      // Default public URL strategy for non-custom status pages.
+      routeMode: getStatusPageRouteMode(),
+      // Canonical app origin used when routeMode=path.
+      appUrl: getEffectiveAppUrl(),
       hideBranding: isStatusPageBrandingHidden(),
     },
   });

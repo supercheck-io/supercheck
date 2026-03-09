@@ -186,5 +186,31 @@ describe("domain utils", () => {
         })
       ).toBe("http://abc123.localhost");
     });
+
+    it("uses path-based URLs for self-hosted defaults when routeMode is path", async () => {
+      const { getPublicStatusPageUrl } = await import("./domain-utils");
+
+      expect(
+        getPublicStatusPageUrl({
+          subdomain: "ac494a3720634224a845178b2422efe7",
+          routeMode: "path",
+          appUrl: "https://demo.supercheck.dev",
+          statusPageDomain: "demo.supercheck.dev",
+        })
+      ).toBe("https://demo.supercheck.dev/status/ac494a3720634224a845178b2422efe7");
+    });
+
+    it("uses uuid.domain URLs when explicit wildcard routing is enabled", async () => {
+      const { getPublicStatusPageUrl } = await import("./domain-utils");
+
+      expect(
+        getPublicStatusPageUrl({
+          subdomain: "ac494a3720634224a845178b2422efe7",
+          routeMode: "subdomain",
+          statusPageDomain: "status.example.com",
+          appUrl: "https://app.example.com",
+        })
+      ).toBe("https://ac494a3720634224a845178b2422efe7.status.example.com");
+    });
   });
 });
