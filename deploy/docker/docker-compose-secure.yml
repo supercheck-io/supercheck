@@ -350,29 +350,6 @@ services:
       - "traefik.http.routers.status-pages-http.middlewares=app-https-redirect"
       - "traefik.http.routers.status-pages-http.service=app"
 
-      # Custom domains for status pages (catch-all)
-      # Routes any hostname not matched above to the app, which handles
-      # custom domain lookup via proxy.ts. Priority is lowest so it only
-      # catches traffic that doesn't match APP_DOMAIN or STATUS_PAGE_DOMAIN.
-      # TLS behavior:
-      #   • Default: Let's Encrypt provisions certs on-demand via HTTP-01 challenge
-      #   • Cloudflare proxy: Works as-is — Cloudflare passes ACME challenges through.
-      #     Set Cloudflare SSL mode to "Full" or "Full (Strict)".
-      #   • Custom certs: Replace certresolver with tls.certificates in a Traefik
-      #     dynamic config file, or use a wildcard cert.
-      - "traefik.http.routers.status-custom.rule=PathPrefix(`/`)"
-      - "traefik.http.routers.status-custom.priority=1"
-      - "traefik.http.routers.status-custom.entrypoints=websecure"
-      - "traefik.http.routers.status-custom.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.status-custom.service=app"
-
-      # HTTP → HTTPS redirect for custom domains (catch-all)
-      - "traefik.http.routers.status-custom-http.rule=PathPrefix(`/`)"
-      - "traefik.http.routers.status-custom-http.priority=1"
-      - "traefik.http.routers.status-custom-http.entrypoints=web"
-      - "traefik.http.routers.status-custom-http.middlewares=app-https-redirect"
-      - "traefik.http.routers.status-custom-http.service=app"
-
       # Redirect middleware & service config
       - "traefik.http.middlewares.app-https-redirect.redirectscheme.scheme=https"
       - "traefik.http.services.app.loadbalancer.server.port=3000"
