@@ -11,21 +11,20 @@ import type { MonitoringLocation } from '../common/location/location.service';
  * Architecture:
  * - Monitors MUST run in their specified location for accurate latency data
  * - Each regional worker processes ONLY its regional queue
- * - No global/fallback queue - location accuracy is critical
+ * - No global/fallback queue — location accuracy is critical
+ * - Queue names are dynamic: `monitor-{locationCode}` (from DB locations table)
  */
 
-// Available regions for monitor execution
+/** @deprecated Use dynamic location codes from the locations DB table instead */
 export const REGIONS = ['us-east', 'eu-central', 'asia-pacific'] as const;
-
-// Queue names for each region
-export const MONITOR_QUEUES = {
-  US_EAST: 'monitor-us-east',
-  EU_CENTRAL: 'monitor-eu-central',
-  ASIA_PACIFIC: 'monitor-asia-pacific',
-};
 
 // Job name used when adding monitor jobs to queues
 export const EXECUTE_MONITOR_JOB_NAME = 'executeMonitorJob';
+
+/** Build a monitor queue name from a location code */
+export function monitorQueueName(locationCode: string): string {
+  return `monitor-${locationCode}`;
+}
 
 // Worker location from environment (optional - only set in production)
 export const WORKER_LOCATION =

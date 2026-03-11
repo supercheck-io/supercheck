@@ -3,7 +3,18 @@ import { ConfigService } from '@nestjs/config';
 import { DbService } from '../execution/services/db.service';
 import { RedisService } from '../execution/services/redis.service';
 import { ErrorHandler } from '../common/utils/error-handler';
+import { HeartbeatService } from '../common/heartbeat/heartbeat.service';
 import { user } from '../db/schema';
+import { PLAYWRIGHT_QUEUE } from '../execution/constants';
+import {
+  K6_QUEUE,
+  k6QueueName,
+  REGIONS as K6_REGIONS,
+} from '../k6/k6.constants';
+import {
+  monitorQueueName,
+  REGIONS as MONITOR_REGIONS,
+} from '../monitor/monitor.constants';
 
 export interface HealthStatus {
   status: 'healthy' | 'unhealthy' | 'degraded';
@@ -32,6 +43,7 @@ export class HealthService {
     private readonly dbService: DbService,
     private readonly redisService: RedisService,
     private readonly configService: ConfigService,
+    private readonly heartbeatService: HeartbeatService,
   ) {}
 
   async getHealthStatus(): Promise<HealthStatus> {
@@ -132,31 +144,33 @@ export class HealthService {
     const startTime = Date.now();
 
     try {
-      // Basic queue health check - verify we can get queue info
-      // Use actual queue names from the system (not legacy names)
-      const queueNames = [
-        'playwright-global', // Main playwright execution queue
-        'k6-global', // K6 load testing queue
-      ];
-      const results = await Promise.allSettled(
-        queueNames.map((name) => this.redisService.getQueueHealth(name)),
+      const queueNames = this.getQueueNames();
+      const results = await Promise.all(
+        queueNames.map(async (name) => ({
+          name,
+          ok: await this.redisService.getQueueHealth(name),
+        })),
       );
 
-      const failures = results.filter((result) => result.status === 'rejected');
+      const failures = results.filter((result) => !result.ok);
 
       if (failures.length === 0) {
         return {
           status: 'healthy',
           responseTime: Date.now() - startTime,
           message: 'All queues accessible',
-          details: { queueCount: queueNames.length },
+          details: { queueCount: queueNames.length, queues: queueNames },
         };
       } else {
         return {
           status: 'unhealthy',
           responseTime: Date.now() - startTime,
           message: `${failures.length}/${queueNames.length} queues inaccessible`,
-          details: { failureCount: failures.length },
+          details: {
+            failureCount: failures.length,
+            failedQueues: failures.map((result) => result.name),
+            queues: queueNames,
+          },
         };
       }
     } catch (error) {
@@ -168,6 +182,34 @@ export class HealthService {
         message: ErrorHandler.extractMessage(error),
       };
     }
+  }
+
+  private getQueueNames(): string[] {
+    const heartbeatQueues = this.heartbeatService.getQueues();
+    if (heartbeatQueues.length > 0) {
+      return Array.from(new Set(heartbeatQueues)).sort();
+    }
+
+    const workerLocation = (
+      this.configService.get<string>('WORKER_LOCATION', 'local') || 'local'
+    ).toLowerCase();
+    const queueNames = new Set<string>([PLAYWRIGHT_QUEUE, K6_QUEUE]);
+
+    if (workerLocation === 'local') {
+      queueNames.add(k6QueueName('local'));
+      queueNames.add(monitorQueueName('local'));
+      for (const region of K6_REGIONS) {
+        queueNames.add(k6QueueName(region));
+      }
+      for (const region of MONITOR_REGIONS) {
+        queueNames.add(monitorQueueName(region));
+      }
+    } else {
+      queueNames.add(k6QueueName(workerLocation));
+      queueNames.add(monitorQueueName(workerLocation));
+    }
+
+    return Array.from(queueNames).sort();
   }
 
   private determineOverallStatus(

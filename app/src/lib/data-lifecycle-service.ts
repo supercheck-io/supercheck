@@ -2491,8 +2491,9 @@ export class AuditLogsCleanupStrategy implements ICleanupStrategy {
         ];
 
         if (lastSeenCreatedAt && lastSeenId) {
+          const cursorTs = lastSeenCreatedAt.toISOString();
           conditions.push(
-            sql`(${auditLogs.createdAt} > ${lastSeenCreatedAt} OR (${auditLogs.createdAt} = ${lastSeenCreatedAt} AND ${auditLogs.id} > ${lastSeenId}))`
+            sql`(${auditLogs.createdAt} > ${cursorTs}::timestamptz OR (${auditLogs.createdAt} = ${cursorTs}::timestamptz AND ${auditLogs.id} > ${lastSeenId}))`
           );
         }
 

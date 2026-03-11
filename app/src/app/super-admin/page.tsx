@@ -35,10 +35,12 @@ import {
   Globe,
   RefreshCw,
   AlertCircle,
+  MapPin,
 } from "lucide-react";
 import { useBreadcrumbs } from "@/components/breadcrumb-context";
 import { TabLoadingSpinner } from "@/components/ui/table-skeleton";
 import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
+import { LocationsTable } from "@/components/admin/locations-table";
 
 export default function AdminDashboard() {
   const { setBreadcrumbs } = useBreadcrumbs();
@@ -60,7 +62,7 @@ export default function AdminDashboard() {
   const hasData = stats !== null;
   const isInitialLoading = !isMounted || (!hasData && statsLoading);
 
-  const allowedTabs = ["overview", "users", "organizations", "queues"];
+  const allowedTabs = ["overview", "users", "organizations", "locations", "queues"];
   const requestedTab = searchParams.get("tab");
   const safeTab = requestedTab && allowedTabs.includes(requestedTab)
     ? requestedTab
@@ -181,7 +183,7 @@ export default function AdminDashboard() {
             className="space-y-4"
             onValueChange={handleTabChange}
           >
-            <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:inline-flex">
+            <TabsList className="grid w-full grid-cols-5 lg:w-auto lg:inline-flex">
               <TabsTrigger value="overview" className="flex items-center gap-2">
                 <LayoutDashboard className="h-4 w-4" />
                 <span className="hidden sm:inline">Overview</span>
@@ -196,6 +198,10 @@ export default function AdminDashboard() {
               >
                 <Building2 className="h-4 w-4" />
                 <span className="hidden sm:inline">Organizations</span>
+              </TabsTrigger>
+              <TabsTrigger value="locations" className="flex items-center gap-2">
+                <MapPin className="h-4 w-4" />
+                <span className="hidden sm:inline">Locations</span>
               </TabsTrigger>
               <TabsTrigger value="queues" className="flex items-center gap-2">
                 <ListOrdered className="h-4 w-4" />
@@ -353,6 +359,10 @@ export default function AdminDashboard() {
               ) : (
                 <OrgTable organizations={organizations} />
               )}
+            </TabsContent>
+
+            <TabsContent value="locations" className="space-y-4">
+              <LocationsTable />
             </TabsContent>
 
             <TabsContent value="queues">

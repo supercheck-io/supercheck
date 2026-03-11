@@ -2,6 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { hasPermissionForUser } from '@/lib/rbac/middleware';
 import { getUserProjectRole } from '@/lib/session';
 import { requireUserAuthContext, isAuthError } from '@/lib/auth-context';
+import { createLogger } from "@/lib/logger/index";
+
+const logger = createLogger({ module: "monitor-permissions-api" }) as {
+  debug: (data: unknown, msg?: string) => void;
+  info: (data: unknown, msg?: string) => void;
+  warn: (data: unknown, msg?: string) => void;
+  error: (data: unknown, msg?: string) => void;
+};
 import { db } from '@/utils/db';
 import { monitors } from '@/db/schema';
 import { eq } from 'drizzle-orm';
@@ -87,7 +95,7 @@ export async function GET(
       );
     }
 
-    console.error('Error fetching monitor permissions:', error);
+    logger.error({ err: error }, "Error fetching monitor permissions");
     
     if (error instanceof Error) {
       if (error.message === 'Authentication required') {

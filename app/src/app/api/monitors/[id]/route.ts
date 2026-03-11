@@ -18,6 +18,14 @@ import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { createS3CleanupService, type ReportDeletionInput } from "@/lib/s3-cleanup";
+import { createLogger } from "@/lib/logger/index";
+
+const logger = createLogger({ module: "monitor-detail-api" }) as {
+  debug: (data: unknown, msg?: string) => void;
+  info: (data: unknown, msg?: string) => void;
+  warn: (data: unknown, msg?: string) => void;
+  error: (data: unknown, msg?: string) => void;
+};
 
 // Hardcoded limit for charts and metrics display
 // This is NOT for the table - table uses paginated /results endpoint
@@ -92,7 +100,7 @@ export async function GET(
         { status: 401 }
       );
     }
-    console.error(`Error fetching monitor ${id}:`, error);
+    logger.error({ err: error, monitorId: id }, "Error fetching monitor");
     return NextResponse.json(
       { error: "Failed to fetch monitor data" },
       { status: 500 }
@@ -304,7 +312,13 @@ export async function PUT(
         const [updated] = await tx
           .update(monitors)
           .set(updatePayload)
-          .where(eq(monitors.id, id))
+          .where(
+            and(
+              eq(monitors.id, id),
+              eq(monitors.projectId, authCtx.project.id),
+              eq(monitors.organizationId, authCtx.organizationId)
+            )
+          )
           .returning();
 
         if (!updated) {
@@ -377,6 +391,7 @@ export async function PUT(
 
     const jobData: MonitorJobData = {
       monitorId: updatedMonitor.id,
+      projectId: authCtx.project.id,
       type: updatedMonitor.type as MonitorJobData["type"],
       target: updatedMonitor.target,
       config: updatedMonitor.config as Record<string, unknown>,
@@ -385,13 +400,11 @@ export async function PUT(
 
     // Handle status changes (pause/resume)
     if (oldStatus !== newStatus) {
-      console.log(
-        `Monitor ${id} status changed from ${oldStatus} to ${newStatus}`
-      );
+      logger.debug({ monitorId: id, oldStatus, newStatus }, "Monitor status changed");
 
       if (newStatus === "paused") {
         // Pause monitor - remove from scheduler and clear scheduledJobId
-        console.log(`Pausing monitor ${id} - removing from scheduler`);
+        logger.debug({ monitorId: id }, "Pausing monitor - removing from scheduler");
 
         // Try both the stored scheduledJobId and the monitor ID
         let deleteSuccess = false;
@@ -409,16 +422,20 @@ export async function PUT(
         await db
           .update(monitors)
           .set({ scheduledJobId: null })
-          .where(eq(monitors.id, id));
+          .where(
+            and(
+              eq(monitors.id, id),
+              eq(monitors.projectId, authCtx.project.id),
+              eq(monitors.organizationId, authCtx.organizationId)
+            )
+          );
       } else if (
         oldStatus === "paused" &&
         (newStatus === "up" || newStatus === "down")
       ) {
         // Resume monitor - add to scheduler if it has valid frequency
         if (newFrequency && newFrequency > 0) {
-          console.log(
-            `Resuming monitor ${id} - adding to scheduler with ${newFrequency} minute frequency`
-          );
+          logger.debug({ monitorId: id, frequencyMinutes: newFrequency }, "Resuming monitor - adding to scheduler");
           const schedulerId = await scheduleMonitor({
             monitorId: id,
             frequencyMinutes: newFrequency,
@@ -430,7 +447,13 @@ export async function PUT(
           await db
             .update(monitors)
             .set({ scheduledJobId: schedulerId })
-            .where(eq(monitors.id, id));
+            .where(
+              and(
+                eq(monitors.id, id),
+                eq(monitors.projectId, authCtx.project.id),
+                eq(monitors.organizationId, authCtx.organizationId)
+              )
+            );
         }
       }
     }
@@ -457,13 +480,11 @@ export async function PUT(
       newStatus !== "paused"
     ) {
       // Always remove the old schedule first
-      console.log(
-        `Rescheduling monitor ${id} due to changes - frequency: ${oldFrequency} -> ${newFrequency}, config: ${configChanged}, target: ${targetChanged}, type: ${typeChanged}`
-      );
+      logger.debug({ monitorId: id, oldFrequency, newFrequency, configChanged, targetChanged, typeChanged }, "Rescheduling monitor due to changes");
       await deleteScheduledMonitor(id);
 
       if (newFrequency && newFrequency > 0) {
-        console.log(`Scheduling monitor ${id} with updated configuration`);
+        logger.debug({ monitorId: id }, "Scheduling monitor with updated configuration");
         const schedulerId = await scheduleMonitor({
           monitorId: id,
           frequencyMinutes: newFrequency,
@@ -475,16 +496,26 @@ export async function PUT(
         await db
           .update(monitors)
           .set({ scheduledJobId: schedulerId })
-          .where(eq(monitors.id, id));
+          .where(
+            and(
+              eq(monitors.id, id),
+              eq(monitors.projectId, authCtx.project.id),
+              eq(monitors.organizationId, authCtx.organizationId)
+            )
+          );
       } else {
-        console.log(
-          `Monitor ${id} frequency set to ${newFrequency}, not scheduling.`
-        );
+        logger.debug({ monitorId: id, frequency: newFrequency }, "Monitor frequency cleared, not scheduling");
         // Clear scheduler ID if frequency is 0 or null
         await db
           .update(monitors)
           .set({ scheduledJobId: null })
-          .where(eq(monitors.id, id));
+          .where(
+            and(
+              eq(monitors.id, id),
+              eq(monitors.projectId, authCtx.project.id),
+              eq(monitors.organizationId, authCtx.organizationId)
+            )
+          );
       }
     }
 
@@ -548,7 +579,7 @@ export async function PUT(
         { status: 401 }
       );
     }
-    console.error(`Error updating monitor ${id}:`, error);
+    logger.error({ err: error, monitorId: id }, "Error updating monitor");
     return NextResponse.json(
       { error: "Failed to update monitor" },
       { status: 500 }
@@ -661,7 +692,13 @@ export async function PATCH(
     const [updatedMonitor] = await db
       .update(monitors)
       .set(updatePayload)
-      .where(eq(monitors.id, id))
+      .where(
+        and(
+          eq(monitors.id, id),
+          eq(monitors.projectId, authCtx.project.id),
+          eq(monitors.organizationId, authCtx.organizationId)
+        )
+      )
       .returning();
 
     if (!updatedMonitor) {
@@ -673,13 +710,11 @@ export async function PATCH(
 
     // Handle pause/resume logic when status changes
     if (rawData.status && rawData.status !== currentMonitor.status) {
-      console.log(
-        `Monitor ${id} status changed from ${currentMonitor.status} to ${rawData.status}`
-      );
+      logger.debug({ monitorId: id, oldStatus: currentMonitor.status, newStatus: rawData.status }, "Monitor status changed (PATCH)");
 
       if (rawData.status === "paused") {
         // Pause monitor - remove from scheduler and clear scheduledJobId
-        console.log(`[PATCH] Pausing monitor ${id} - removing from scheduler`);
+        logger.debug({ monitorId: id }, "Pausing monitor (PATCH) - removing from scheduler");
 
         // Try both the stored scheduledJobId and the monitor ID
         let deleteSuccess = false;
@@ -697,7 +732,13 @@ export async function PATCH(
         await db
           .update(monitors)
           .set({ scheduledJobId: null })
-          .where(eq(monitors.id, id));
+          .where(
+            and(
+              eq(monitors.id, id),
+              eq(monitors.projectId, authCtx.project.id),
+              eq(monitors.organizationId, authCtx.organizationId)
+            )
+          );
       } else if (
         currentMonitor.status === "paused" &&
         (rawData.status === "up" || rawData.status === "down")
@@ -707,12 +748,11 @@ export async function PATCH(
           updatedMonitor.frequencyMinutes &&
           updatedMonitor.frequencyMinutes > 0
         ) {
-          console.log(
-            `Resuming monitor ${id} - adding to scheduler with ${updatedMonitor.frequencyMinutes} minute frequency`
-          );
+          logger.debug({ monitorId: id, frequencyMinutes: updatedMonitor.frequencyMinutes }, "Resuming monitor (PATCH) - adding to scheduler");
 
           const jobData: MonitorJobData = {
             monitorId: updatedMonitor.id,
+            projectId: authCtx.project.id,
             type: updatedMonitor.type as MonitorJobData["type"],
             target: updatedMonitor.target,
             config: updatedMonitor.config as Record<string, unknown>,
@@ -730,7 +770,13 @@ export async function PATCH(
           await db
             .update(monitors)
             .set({ scheduledJobId: schedulerId })
-            .where(eq(monitors.id, id));
+            .where(
+              and(
+                eq(monitors.id, id),
+                eq(monitors.projectId, authCtx.project.id),
+                eq(monitors.organizationId, authCtx.organizationId)
+              )
+            );
         }
       }
     }
@@ -764,7 +810,7 @@ export async function PATCH(
         { status: 401 }
       );
     }
-    console.error(`Error partially updating monitor ${id}:`, error);
+    logger.error({ err: error, monitorId: id }, "Error partially updating monitor");
     return NextResponse.json(
       { error: "Failed to update monitor" },
       { status: 500 }
@@ -850,7 +896,7 @@ export async function DELETE(
     try {
       await deleteScheduledMonitor(id);
     } catch (err) {
-      console.warn(`Failed to unschedule monitor ${id}:`, err);
+      logger.warn({ err, monitorId: id }, "Failed to unschedule monitor");
     }
 
     // S3 cleanup (fire-and-forget)
@@ -860,7 +906,7 @@ export async function DELETE(
           const s3 = createS3CleanupService();
           await s3.deleteReports(transactionResult.reportInputs);
         } catch (err) {
-          console.warn(`S3 cleanup failed for monitor ${id}:`, err);
+          logger.warn({ err, monitorId: id }, "S3 cleanup failed for monitor");
         }
       })();
     }
@@ -888,7 +934,7 @@ export async function DELETE(
         { status: 401 }
       );
     }
-    console.error("Error deleting monitor:", error);
+    logger.error({ err: error }, "Error deleting monitor");
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

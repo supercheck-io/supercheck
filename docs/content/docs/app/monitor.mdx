@@ -147,45 +147,51 @@ Set synthetic monitor intervals longer than your test execution time to prevent 
 
 📚 [Playwright Documentation](https://playwright.dev/docs/intro) — Learn more about writing browser tests
 
-## Multi-Region Monitoring
+## Multi-Location Monitoring
 
 Run checks from multiple geographic locations to detect regional outages and measure latency from different parts of the world.
 
-![Multi-Location Selector](/screenshots/create-monitor-mutilocation-selector.png)
+<Callout type="info">
+**Dynamic Locations**: Available locations are managed by your administrator through the Super Admin panel. Add new locations to enable multi-region monitoring from any geographic area.
+</Callout>
 
-### Available Regions
+### Default Locations
 
-| Region | Location |
-|--------|----------|
-| **US East** | Ashburn, Virginia, USA |
-| **EU Central** | Nuremberg, Germany |
-| **Asia Pacific** | Singapore |
+| Region | Location | Notes |
+|--------|----------|-------|
+| **Local** | Your server location | Default for self-hosted deployments |
 
-### How Multi-Region Works
+Cloud deployments may include additional regions such as US East (Ashburn), EU Central (Nuremberg), and Asia Pacific (Singapore). Check your Super Admin panel for available locations.
 
-When you enable multiple regions, checks run independently from each location and results are aggregated to determine overall status.
+### How Multi-Location Works
+
+When multiple locations are configured, checks run independently from each location and results are aggregated to determine overall status.
+
+<Callout type="info">
+**Single Location**: When only one location is available, the multi-location configuration UI is automatically hidden. Location settings appear dynamically when additional locations are added via the Super Admin panel.
+</Callout>
 
 ```mermaid
 sequenceDiagram
     participant App
-    participant US as US East
-    participant EU as EU Central
-    participant AP as Asia Pacific
+    participant L1 as Location 1
+    participant L2 as Location 2
+    participant L3 as Location 3
     participant DB as Database
 
-    App->>US: Queue check
-    App->>EU: Queue check
-    App->>AP: Queue check
-    US->>DB: Save result
-    EU->>DB: Save result
-    AP->>DB: Save result
+    App->>L1: Queue check
+    App->>L2: Queue check
+    App->>L3: Queue check
+    L1->>DB: Save result
+    L2->>DB: Save result
+    L3->>DB: Save result
     DB->>App: Aggregate status
 ```
 
 **Status calculation:** Once all locations report, the system calculates overall status. A monitor is "Up" if the majority of locations report success.
 
 <Callout type="info">
-**Self-Hosted Deployments**: In self-hosted mode, all region selections execute from your single worker location. The multi-region selector is available for configuration consistency, but checks run sequentially from one location. For true geographic distribution, deploy workers in multiple regions.
+**Self-Hosted Deployments**: By default, self-hosted instances have a single `local` location. All checks execute from your worker. For true geographic distribution, deploy additional workers in different regions and add the corresponding locations via the Super Admin panel.
 </Callout>
 
 ## Alert Configuration

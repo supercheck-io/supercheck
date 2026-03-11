@@ -3,6 +3,14 @@ import { db } from "@/utils/db";
 import { monitors, monitorResults } from "@/db/schema";
 import { eq, desc, and, gte, lte, sql } from "drizzle-orm";
 import { requireAuthContext, isAuthError } from '@/lib/auth-context';
+import { createLogger } from "@/lib/logger/index";
+
+const logger = createLogger({ module: "monitor-results-api" }) as {
+  debug: (data: unknown, msg?: string) => void;
+  info: (data: unknown, msg?: string) => void;
+  warn: (data: unknown, msg?: string) => void;
+  error: (data: unknown, msg?: string) => void;
+};
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { isMonitoringLocation } from "@/lib/location-service";
 import type { MonitoringLocation } from "@/lib/location-service";
@@ -122,7 +130,7 @@ export async function GET(
         { status: 401 }
       );
     }
-    console.error(`Error fetching paginated monitor results for ${id}:`, error);
+    logger.error({ err: error, monitorId: id }, "Error fetching paginated monitor results");
     return NextResponse.json({ error: "Failed to fetch monitor results" }, { status: 500 });
   }
 }

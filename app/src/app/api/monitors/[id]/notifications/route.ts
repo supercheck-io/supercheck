@@ -10,6 +10,14 @@ import {
   hasPermissionForUser,
 } from "@/lib/rbac/middleware";
 import { requireUserAuthContext } from "@/lib/auth-context";
+import { createLogger } from "@/lib/logger/index";
+
+const logger = createLogger({ module: "monitor-notifications-api" }) as {
+  debug: (data: unknown, msg?: string) => void;
+  info: (data: unknown, msg?: string) => void;
+  warn: (data: unknown, msg?: string) => void;
+  error: (data: unknown, msg?: string) => void;
+};
 
 export async function GET(
   request: NextRequest,
@@ -72,10 +80,7 @@ export async function GET(
 
     return NextResponse.json(linkedProviders);
   } catch (error) {
-    console.error(
-      `Error fetching notification settings for monitor ${id}:`,
-      error
-    );
+    logger.error({ err: error, monitorId: id }, "Error fetching notification settings");
     return NextResponse.json(
       { error: "Failed to fetch notification settings" },
       { status: 500 }
@@ -178,10 +183,7 @@ export async function POST(
 
     return NextResponse.json(newLink, { status: 201 });
   } catch (error) {
-    console.error(
-      `Error linking notification provider to monitor ${id}:`,
-      error
-    );
+    logger.error({ err: error, monitorId: id }, "Error linking notification provider");
     return NextResponse.json(
       { error: "Failed to link notification provider" },
       { status: 500 }
@@ -258,10 +260,7 @@ export async function DELETE(
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error(
-      `Error unlinking notification provider from monitor ${id}:`,
-      error
-    );
+    logger.error({ err: error, monitorId: id }, "Error unlinking notification provider");
     return NextResponse.json(
       { error: "Failed to unlink notification provider" },
       { status: 500 }

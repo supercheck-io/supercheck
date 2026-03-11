@@ -52,6 +52,7 @@ import {
   PerformanceLocation,
 } from "./location-selection-dialog";
 import { TemplateDialog } from "./template-dialog";
+import { useAvailableLocations } from "@/hooks/use-locations";
 import type { TestPriority, TestType } from "@/db/schema/types";
 import { notifyExecutionsChanged } from "@/hooks/use-executions";
 import { useSession } from "@/utils/auth-client";
@@ -193,6 +194,11 @@ const Playground: React.FC<PlaygroundProps> = ({
     useState<PerformanceLocation>(initialPerformanceLocation ?? "global");
   const [locationDialogOpen, setLocationDialogOpen] = useState(false);
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
+
+  // Fetch dynamic locations to determine if location dialog should be shown
+  const { locations: dynamicLocations, hasRestrictions, isLoading: locationsLoading } = useAvailableLocations();
+  const hasMultipleLocations = dynamicLocations.length > 1;
+  const defaultAvailableLocation = dynamicLocations[0]?.code;
   // Only set testId from initialTestId if we're on a specific test page
   // Always ensure testId is null when on the main playground page
   const [testId, setTestId] = useState<string | null>(initialTestId || null);
@@ -535,12 +541,14 @@ const Playground: React.FC<PlaygroundProps> = ({
         type: typeToSet,
         location:
           typeToSet === "performance"
-            ? (performanceLocation ?? prev.location ?? "global")
+            ? (performanceLocation ?? prev.location ?? defaultAvailableLocation ?? "global")
             : null,
       }));
 
       if (typeToSet === "performance" && !performanceLocation) {
-        setPerformanceLocation("global");
+        setPerformanceLocation(
+          hasRestrictions ? (defaultAvailableLocation ?? "global") : "global"
+        );
       }
 
       // Load sample script when:
@@ -568,7 +576,14 @@ const Playground: React.FC<PlaygroundProps> = ({
       };
       loadScriptForType();
     }
-  }, [searchParams, initialTestId, performanceLocation, testCase.type]);
+  }, [
+    searchParams,
+    initialTestId,
+    performanceLocation,
+    testCase.type,
+    defaultAvailableLocation,
+    hasRestrictions,
+  ]);
 
   // Handle initialTestData when provided from server-side
   useEffect(() => {
@@ -586,13 +601,15 @@ const Playground: React.FC<PlaygroundProps> = ({
         createdAt: initialTestData.createdAt || undefined,
         location:
           resolvedType === "performance"
-            ? ((initialTestData.location as PerformanceLocation) ?? "global")
+            ? ((initialTestData.location as PerformanceLocation) ??
+              (hasRestrictions ? (defaultAvailableLocation ?? "global") : "global"))
             : null,
       });
 
       if (resolvedType === "performance") {
         const resolvedLocation: PerformanceLocation =
-          (initialTestData.location as PerformanceLocation) ?? "global";
+          (initialTestData.location as PerformanceLocation) ??
+          (hasRestrictions ? (defaultAvailableLocation ?? "global") : "global");
         setPerformanceLocation(resolvedLocation);
         setTestCase((prev) => ({
           ...prev,
@@ -600,7 +617,25 @@ const Playground: React.FC<PlaygroundProps> = ({
         }));
       }
     }
-  }, [initialTestData]);
+  }, [defaultAvailableLocation, hasRestrictions, initialTestData]);
+
+  useEffect(() => {
+    if (!hasRestrictions) {
+      return;
+    }
+
+    if (!defaultAvailableLocation) {
+      return;
+    }
+
+    if (performanceLocation === "global") {
+      setPerformanceLocation(defaultAvailableLocation);
+      setTestCase((prev) => ({
+        ...prev,
+        location: defaultAvailableLocation,
+      }));
+    }
+  }, [defaultAvailableLocation, hasRestrictions, performanceLocation]);
 
   // Force Monaco editor to initialize on client side even with script params
   useEffect(() => {
@@ -1069,7 +1104,24 @@ const Playground: React.FC<PlaygroundProps> = ({
     }
 
     if (isPerformanceMode) {
-      setLocationDialogOpen(true);
+      // Wait for location data to load before deciding whether to show
+      // the picker or auto-select. On cold page load, locations=[] and
+      // hasRestrictions=false, which would incorrectly bypass the dialog
+      // and route to "global" even for restricted projects.
+      if (locationsLoading) {
+        toast.info("Loading locations…", {
+          description: "Please wait a moment and try again.",
+          duration: 2000,
+        });
+        return;
+      }
+      if (hasMultipleLocations) {
+        setLocationDialogOpen(true);
+        return;
+      }
+      const singleLocation =
+        hasRestrictions || !defaultAvailableLocation ? defaultAvailableLocation ?? "global" : "global";
+      await handleLocationSelect(singleLocation);
       return;
     }
 

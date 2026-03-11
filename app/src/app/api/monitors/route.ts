@@ -16,6 +16,15 @@ import {
 } from "@/lib/input-sanitizer";
 import { checkMonitorLimit } from "@/lib/middleware/plan-enforcement";
 import { subscriptionService } from "@/lib/services/subscription-service";
+import { getProjectAvailableLocationCodes } from "@/lib/location-registry";
+import { createLogger } from "@/lib/logger/index";
+
+const logger = createLogger({ module: "monitors-api" }) as {
+  debug: (data: unknown, msg?: string) => void;
+  info: (data: unknown, msg?: string) => void;
+  warn: (data: unknown, msg?: string) => void;
+  error: (data: unknown, msg?: string) => void;
+};
 
 export async function GET(request: Request) {
   try {
@@ -123,7 +132,7 @@ export async function GET(request: Request) {
         { status: 401 }
       );
     }
-    console.error("Error fetching monitors:", error);
+    logger.error({ err: error }, "Error fetching monitors");
     return NextResponse.json(
       { error: "Failed to fetch monitors" },
       { status: 500 }
@@ -165,7 +174,7 @@ export async function POST(req: NextRequest) {
     await subscriptionService.requireValidPolarCustomer(organizationId);
 
     const rawData = await req.json();
-    console.log("[MONITOR_CREATE] Raw data received:", rawData);
+    logger.debug({ type: rawData.type, name: rawData.name }, "[MONITOR_CREATE] Raw data received");
 
     // Sanitize input data
     rawData.name = sanitizeString(rawData.name);
@@ -209,9 +218,9 @@ export async function POST(req: NextRequest) {
 
     // Special logging for heartbeat monitors
     if (rawData.type === "heartbeat") {
-      console.log(
-        "[MONITOR_CREATE] Processing heartbeat monitor with config:",
-        rawData.config
+      logger.debug(
+        { config: rawData.config },
+        "[MONITOR_CREATE] Processing heartbeat monitor"
       );
     }
 
@@ -293,9 +302,9 @@ export async function POST(req: NextRequest) {
         rawData.config.testTitle = test.title;
       }
 
-      console.log(
-        "[MONITOR_CREATE] Creating synthetic monitor for test:",
-        test.title
+      logger.debug(
+        { testTitle: test.title },
+        "[MONITOR_CREATE] Creating synthetic monitor for test"
       );
     } else if (rawData.type !== "heartbeat" && !rawData.target) {
       return NextResponse.json(
@@ -339,12 +348,27 @@ export async function POST(req: NextRequest) {
             ? rawData.alertConfig.customMessage
             : "",
       };
-      console.log("[MONITOR_CREATE] Processed alert config:", alertConfig);
+      logger.debug({ alertEnabled: alertConfig?.enabled }, "[MONITOR_CREATE] Processed alert config");
     }
 
     // Construct the config object (for monitor-specific settings, not alerts)
     const finalConfig = rawData.config || {};
-    console.log("[MONITOR_CREATE] Final config:", finalConfig);
+
+    // Validate locationConfig.locations against enabled locations in DB
+    if (finalConfig.locationConfig?.locations?.length > 0) {
+      const enabledCodes = await getProjectAvailableLocationCodes(project.id);
+      const invalidLocations = (finalConfig.locationConfig.locations as string[]).filter(
+        (loc: string) => !enabledCodes.includes(loc)
+      );
+      if (invalidLocations.length > 0) {
+        return NextResponse.json(
+          { error: `Invalid location codes: ${invalidLocations.join(", ")}` },
+          { status: 400 }
+        );
+      }
+    }
+
+    logger.debug({ finalConfig }, "[MONITOR_CREATE] Final config");
 
     // Use current project context
     const targetProjectId = project.id;
@@ -370,8 +394,9 @@ export async function POST(req: NextRequest) {
       Number(countResult[0]?.count || 0)
     );
     if (!limitCheck.allowed) {
-      console.warn(
-        `Monitor limit reached for organization ${organizationId}: ${limitCheck.error}`
+      logger.warn(
+        { organizationId },
+        `Monitor limit reached: ${limitCheck.error}`
       );
       return NextResponse.json(
         {
@@ -474,18 +499,19 @@ export async function POST(req: NextRequest) {
       );
 
       if (invalidProviderIds.length > 0) {
-        console.warn(
-          `[MONITOR_CREATE] Skipping ${invalidProviderIds.length} invalid/unauthorized notification provider(s)`
+        logger.warn(
+          { invalidProviderIds },
+          `Skipping ${invalidProviderIds.length} invalid/unauthorized notification provider(s)`
         );
       }
 
       if (validProviderIds.size > 0) {
         const normalizedProviderIds = Array.from(validProviderIds);
 
-        console.log(
-          "[MONITOR_CREATE] Linking notification providers:",
-          normalizedProviderIds
-        );
+        logger.debug(
+        { providerIds: normalizedProviderIds },
+        "[MONITOR_CREATE] Linking notification providers"
+      );
 
         await db
           .insert(monitorNotificationSettings)
@@ -520,9 +546,9 @@ export async function POST(req: NextRequest) {
       success: true,
     });
 
-    console.log(
-      "[MONITOR_CREATE] Successfully created monitor:",
-      newMonitor.id
+    logger.info(
+      { monitorId: newMonitor.id },
+      "[MONITOR_CREATE] Successfully created monitor"
     );
     return NextResponse.json(newMonitor, { status: 201 });
   } catch (error) {
@@ -532,7 +558,7 @@ export async function POST(req: NextRequest) {
         { status: 401 }
       );
     }
-    console.error("[MONITOR_CREATE] Error creating monitor:", error);
+    logger.error({ err: error }, "Error creating monitor");
     return NextResponse.json(
       { error: "Failed to create monitor" },
       { status: 500 }
@@ -639,9 +665,9 @@ export async function PUT(req: NextRequest) {
         rawData.config.testTitle = test.title;
       }
 
-      console.log(
-        "[MONITOR_UPDATE] Updating synthetic monitor for test:",
-        test.title
+      logger.debug(
+        { testTitle: test.title },
+        "[MONITOR_UPDATE] Updating synthetic monitor for test"
       );
     }
 
@@ -683,6 +709,20 @@ export async function PUT(req: NextRequest) {
     }
 
     // Use the monitor service to update the monitor
+    // Validate locationConfig.locations against enabled locations in DB
+    if (updateData.config?.locationConfig?.locations?.length > 0) {
+      const enabledCodes = await getProjectAvailableLocationCodes(project.id);
+      const invalidLocations = (updateData.config.locationConfig.locations as string[]).filter(
+        (loc: string) => !enabledCodes.includes(loc)
+      );
+      if (invalidLocations.length > 0) {
+        return NextResponse.json(
+          { error: `Invalid location codes: ${invalidLocations.join(", ")}` },
+          { status: 400 }
+        );
+      }
+    }
+
     const monitorUpdateData = {
       name: updateData.name,
       description: updateData.description,
@@ -815,7 +855,7 @@ export async function PUT(req: NextRequest) {
         { status: 401 }
       );
     }
-    console.error("Error updating monitor:", error);
+    logger.error({ err: error }, "Error updating monitor");
     return NextResponse.json(
       { error: "Failed to update monitor" },
       { status: 500 }

@@ -18,22 +18,18 @@ Run k6 performance tests to validate your application under load. Execute from m
 
 ## Multi-Location Testing
 
-Run tests from multiple regions simultaneously to measure global performance.
+Run tests from different geographic locations to measure global performance.
 
-![Multi-Location Selector](/screenshots/performance-test-mutilocation-selector.png)
-
-| Region | Location |
-|--------|----------|
-| **US East** | Ashburn, USA |
-| **EU Central** | Nuremberg, Germany |
-| **Asia Pacific** | Singapore |
+<Callout type="info">
+**Dynamic Locations**: Available execution locations are managed through the Super Admin panel. When only one location is available, the location selector is automatically hidden and tests run from the default location.
+</Callout>
 
 <Callout type="info">
 **Execution Context**: 
-- **Playground**: Select specific location (US East, EU Central, or Asia Pacific) for manual test runs
-- **Jobs**: Use global queue—tests execute from any available worker regardless of location
+- **Playground**: When multiple project-available locations are available, select a specific location. The "Global" option is shown only when the project is not restricted to specific locations. When only one location exists, tests run automatically without a location prompt.
+- **Jobs**: K6 jobs execute from the project's requested location when provided, otherwise they fall back to the project's default available location.
 
-**Self-Hosted Deployments**: In self-hosted mode, all region selections execute from your single worker instance. You can still select multiple regions for configuration purposes, but tests run from one location. To enable true multi-region testing, deploy workers in each target region.
+**Self-Hosted Deployments**: By default, self-hosted instances have a single `local` location. Tests execute from your worker. To enable multi-location testing, deploy additional workers and add locations via the Super Admin panel.
 </Callout>
 
 ## Example Script

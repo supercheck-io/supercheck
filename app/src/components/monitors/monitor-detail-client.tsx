@@ -80,7 +80,7 @@ import {
   getLocationMetadata,
   calculateAggregatedStatus,
   isMonitoringLocation,
-  MONITORING_LOCATIONS,
+  buildLocationMetadataMap,
 } from "@/lib/location-service";
 import type {
   MonitoringLocation,
@@ -95,6 +95,7 @@ import {
 } from "@/hooks/use-monitor-details";
 import { useQueryClient } from "@tanstack/react-query";
 import { MONITORS_QUERY_KEY } from "@/hooks/use-monitors";
+import { useLocations } from "@/hooks/use-locations";
 
 export interface MonitorResultItem {
   id: string;
@@ -198,6 +199,23 @@ export function MonitorDetailClient({
     canToggle: canToggleMonitor,
     isLoading: permissionsLoading,
   } = useMonitorPermissions(monitor.id);
+
+  // Dynamic location metadata
+  const { locations: dynamicLocations } = useLocations();
+  const dynamicMetadataMap = React.useMemo(() => {
+    if (dynamicLocations.length > 0) {
+      return buildLocationMetadataMap(dynamicLocations);
+    }
+    return null;
+  }, [dynamicLocations]);
+
+  const getMetadataForLocation = React.useCallback(
+    (code: string) => {
+      if (dynamicMetadataMap) return dynamicMetadataMap[code];
+      return getLocationMetadata(code);
+    },
+    [dynamicMetadataMap]
+  );
 
 
 
@@ -363,7 +381,7 @@ export function MonitorDetailClient({
         const locationCode = r.location;
         const metadata =
           locationCode && isMonitoringLocation(locationCode)
-            ? getLocationMetadata(locationCode as MonitoringLocation)
+            ? getMetadataForLocation(locationCode)
             : undefined;
 
         return {
@@ -380,9 +398,7 @@ export function MonitorDetailClient({
       .reverse(); // Show chronologically (oldest first)
 
     return chartData;
-  }, [monitor.recentResults, selectedLocation]);
-
-  // Use stats from API for accurate 24h and 30d metrics
+  }, [monitor.recentResults, selectedLocation, getMetadataForLocation]);
   const calculatedMetrics = useMemo(() => {
     if (!monitorStats) {
       return {
@@ -485,7 +501,7 @@ export function MonitorDetailClient({
       effectiveLocationsFromConfig ??
       (locationsFromResults.length > 0
         ? locationsFromResults
-        : [MONITORING_LOCATIONS.EU_CENTRAL]);
+        : ["local"]);
 
     // Get latest result for each location
     const latestByLocation: Record<MonitoringLocation, boolean> = {} as Record<
@@ -559,7 +575,7 @@ export function MonitorDetailClient({
           typeof r.checkedAt === "string" ? parseISO(r.checkedAt) : r.checkedAt;
         const locationCode = r.location ?? null;
         const locationMetadata = locationCode
-          ? getLocationMetadata(locationCode as MonitoringLocation)
+          ? getMetadataForLocation(locationCode)
           : undefined;
 
         return {
@@ -572,7 +588,7 @@ export function MonitorDetailClient({
         };
       })
       .reverse();
-  }, [monitor.recentResults, selectedLocation]);
+  }, [monitor.recentResults, selectedLocation, getMetadataForLocation]);
 
   // Extract SSL certificate info for website monitors
   const sslCertificateInfo = useMemo(() => {
@@ -1295,9 +1311,7 @@ export function MonitorDetailClient({
                         paginatedTableResults.length > 0 ? (
                         paginatedTableResults.map((result) => {
                           const locationMetadata = result.location
-                            ? getLocationMetadata(
-                              result.location as MonitoringLocation
-                            )
+                            ? getMetadataForLocation(result.location)
                             : null;
                           // For synthetic tests: show report only if test failed, otherwise show N/A
                           const syntheticTestHasFailed =

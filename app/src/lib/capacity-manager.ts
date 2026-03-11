@@ -601,7 +601,13 @@ export class CapacityManager {
         }, { jobId: jobData.runId });
       } else {
         const location = (jobData.taskData.location as string) || 'global';
-        const queue = queues.k6Queues[location] || queues.k6Queues['global'];
+        const queue = queues.k6Queues[location];
+        if (!queue) {
+          const available = Object.keys(queues.k6Queues).join(', ');
+          throw new Error(
+            `No K6 queue found for location "${location}". Available queues: [${available}]`
+          );
+        }
         await queue.add(jobData.runId, {
           ...jobData.taskData,
           _capacityStatus: 'promoted',
@@ -633,6 +639,22 @@ export class CapacityManager {
       // If job was added, it will release slot via completed/failed events
       if (!jobAddedToBullMQ) {
         await this.releaseRunningSlot(jobData.organizationId, jobData.jobId);
+
+        // Mark the run as failed so it doesn't stay in 'queued' status forever.
+        // This can happen when a location queue disappears between enqueue and promotion
+        // (e.g., admin disables/removes a location while jobs are queued for it).
+        try {
+          const { db } = await import('@/utils/db');
+          const { runs } = await import('@/db/schema');
+          const { eq } = await import('drizzle-orm');
+          await db.update(runs).set({
+            status: 'failed',
+            completedAt: new Date(),
+          }).where(eq(runs.id, jobData.runId));
+          logger.warn({ runId: jobData.runId }, "Marked orphaned run as failed after promotion failure");
+        } catch (dbError) {
+          logger.error({ err: dbError, runId: jobData.runId }, "Failed to mark run as failed after promotion error");
+        }
       }
       throw error;
     }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { tests, runs, type K6Location } from "@/db/schema";
+import { resolveProjectK6Location } from "@/lib/location-registry";
 import { eq } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
@@ -89,29 +90,7 @@ export async function POST(request: NextRequest, context: ExecuteContext) {
       return NextResponse.json({ error: "Test not found" }, { status: 404 });
     }
 
-    // Parse request body for location (k6 tests only)
-    const normalizeLocation = (value?: string): K6Location => {
-      // No location provided — default silently (normal for Playwright tests)
-      if (value === undefined || value === null) {
-        return "global";
-      }
-      const lower = value.toLowerCase();
-      // Accept kebab-case format matching K6Location type: "us-east" | "eu-central" | "asia-pacific" | "global"
-      if (
-        lower === "us-east" ||
-        lower === "eu-central" ||
-        lower === "asia-pacific" ||
-        lower === "global"
-      ) {
-        return lower;
-      }
-      // Only warn when an explicit but invalid value was provided
-      console.warn(
-        `[LOCATION WARNING] Invalid location "${value}" received, defaulting to "global". Valid locations: us-east, eu-central, asia-pacific, global`
-      );
-      return "global";
-    };
-
+    // Parse request body (may contain location for k6 tests)
     let requestedLocation: string | undefined;
     try {
       const body = await request.json();
@@ -121,10 +100,23 @@ export async function POST(request: NextRequest, context: ExecuteContext) {
       // Body might be empty, use default
     }
 
-    const resolvedLocation: K6Location = normalizeLocation(requestedLocation);
-
-    // Validate k6 script if it's a performance test
+    // Resolve location and validate k6 script only for performance tests
+    let resolvedLocation: K6Location | undefined;
     if (test.type === "performance") {
+      try {
+        resolvedLocation = (await resolveProjectK6Location(
+          project.id,
+          requestedLocation
+        )) as K6Location;
+      } catch (error) {
+        return NextResponse.json(
+          {
+            error:
+              error instanceof Error ? error.message : "Invalid location requested",
+          },
+          { status: 400 }
+        );
+      }
       try {
         const decodedScript = Buffer.from(test.script, "base64").toString(
           "utf-8"

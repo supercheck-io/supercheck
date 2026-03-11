@@ -15,14 +15,15 @@ import {
 } from "@/components/ui/select";
 import { MapPin } from "lucide-react";
 import {
-  MONITORING_LOCATIONS,
   LOCATION_METADATA,
   DEFAULT_LOCATION_CONFIG,
+  buildLocationMetadataMap,
 } from "@/lib/location-service";
 import type {
   LocationConfig,
   MonitoringLocation,
 } from "@/lib/location-service";
+import { useAvailableLocations } from "@/hooks/use-locations";
 import { geoGraticule10, geoNaturalEarth1, geoPath } from "d3-geo";
 import { feature } from "topojson-client";
 import type { Feature, FeatureCollection, Geometry } from "geojson";
@@ -107,18 +108,69 @@ function LocationConfigSectionComponent({
   onChange,
   disabled = false,
 }: LocationConfigSectionProps) {
+  // Fetch dynamic locations from API
+  const { locations: dynamicLocations } = useAvailableLocations();
+
+  // Build metadata lookup: dynamic if available, else static fallback
+  const metadataMap = React.useMemo(() => {
+    if (dynamicLocations.length > 0) {
+      return buildLocationMetadataMap(dynamicLocations);
+    }
+    return LOCATION_METADATA;
+  }, [dynamicLocations]);
+
+  // All available location codes
+  const availableLocationCodes = React.useMemo(
+    () => Object.keys(metadataMap),
+    [metadataMap]
+  );
+
   // Use value prop directly (fully controlled component)
   const config = value || DEFAULT_LOCATION_CONFIG;
+
+  // Filter selected locations to only include codes that actually exist
+  // in the available set. This prevents stale/migrated location codes
+  // from inflating the count (e.g. config has ["us-east","eu-central"]
+  // but only "local" is available).
+  const validSelectedLocations = React.useMemo(
+    () =>
+      (config.locations || []).filter((loc) =>
+        availableLocationCodes.includes(loc)
+      ),
+    [config.locations, availableLocationCodes]
+  );
+
+  // Auto-clean stale locations from config when the available set changes.
+  // If the config has ghost locations that no longer exist, persist the
+  // cleaned version so the DB config stays in sync.
+  React.useEffect(() => {
+    const raw = config.locations || [];
+    if (
+      config.enabled &&
+      raw.length > 0 &&
+      validSelectedLocations.length !== raw.length
+    ) {
+      const cleaned =
+        validSelectedLocations.length > 0
+          ? validSelectedLocations
+          : [availableLocationCodes[0] || "local"];
+      onChange({ ...config, locations: cleaned });
+    }
+    // Only run when available locations or raw config locations change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [availableLocationCodes.join(",")]);
+
+  const selectedLocationCount = validSelectedLocations.length;
 
   const handleEnabledChange = (enabled: boolean) => {
     const currentConfig = value || DEFAULT_LOCATION_CONFIG;
     const newConfig = { ...currentConfig, enabled };
-    // If enabling and no locations selected, default to US East
+    // If enabling and no locations selected, default to first available
     if (
       enabled &&
       (!currentConfig.locations || currentConfig.locations.length === 0)
     ) {
-      newConfig.locations = [MONITORING_LOCATIONS.EU_CENTRAL];
+      newConfig.locations = [availableLocationCodes[0] || "local"];
     }
     onChange(newConfig);
   };
@@ -153,13 +205,8 @@ function LocationConfigSectionComponent({
     onChange(newConfig);
   };
 
-  const selectedLocationCount = config.locations?.length || 0;
   const upRequired = Math.ceil(
     (selectedLocationCount * config.threshold) / 100
-  );
-  const selectedLocations = React.useMemo(
-    () => config.locations || [],
-    [config.locations]
   );
 
   return (
@@ -199,13 +246,13 @@ function LocationConfigSectionComponent({
             {/* Location Selection */}
             <div className="space-y-3">
               <Label className="text-sm font-medium">
-                Select Locations ({selectedLocationCount} selected)
+                Locations ({selectedLocationCount} selected)
               </Label>
               <div className="flex flex-col gap-4 lg:flex-row">
                 <div className="flex-1">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                    {Object.values(MONITORING_LOCATIONS).map((location) => {
-                      const metadata = LOCATION_METADATA[location];
+                    {availableLocationCodes.map((location) => {
+                      const metadata = metadataMap[location];
                       const isSelected =
                         config.locations?.includes(location) || false;
 
@@ -247,64 +294,89 @@ function LocationConfigSectionComponent({
                       );
                     })}
                   </div>
-                  {/* Aggregation Strategy moved under selection cards */}
-                  <div className="space-y-3 mt-8">
-                    <Label className="text-sm font-medium">
-                      Aggregation Strategy
-                    </Label>
-                    <Select
-                      value={config.strategy || "majority"}
-                      onValueChange={(value) =>
-                        handleStrategyChange(
-                          value as "all" | "majority" | "any"
-                        )
-                      }
-                      disabled={disabled}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">
-                          All Locations Up - Status is UP only if all locations
-                          are up
-                        </SelectItem>
-                        <SelectItem value="majority">
-                          Majority Up - Status is UP if more than 50% are up
-                        </SelectItem>
-                        <SelectItem value="any">
-                          Any Location Up - Status is UP if at least one
-                          location is up
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  {/* Aggregation Strategy — only relevant with 2+ selected locations */}
+                  {selectedLocationCount > 1 && (
+                    <div className="space-y-3 mt-8">
+                      <Label className="text-sm font-medium">
+                        Aggregation Strategy
+                      </Label>
+                      <Select
+                        value={config.strategy || "majority"}
+                        onValueChange={(value) =>
+                          handleStrategyChange(
+                            value as "all" | "majority" | "any"
+                          )
+                        }
+                        disabled={disabled}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">
+                            All Locations Up - Status is UP only if all locations
+                            are up
+                          </SelectItem>
+                          <SelectItem value="majority">
+                            Majority Up - Status is UP if more than 50% are up
+                          </SelectItem>
+                          <SelectItem value="any">
+                            Any Location Up - Status is UP if at least one
+                            location is up
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
 
-                  {/* Summary moved here to reduce empty space */}
-                  <div className="rounded-lg bg-muted/50 p-4 space-y-2 mt-8">
-                    <h4 className="text-sm font-medium">
-                      Configuration Summary
-                    </h4>
-                    <ul className="text-xs text-muted-foreground space-y-1">
-                      <li>
-                        • Monitoring from{" "}
-                        <strong>{selectedLocationCount}</strong> location
-                        {selectedLocationCount !== 1 ? "s" : ""}
-                      </li>
-                      <li>
-                        • Status &quot;UP&quot; requires{" "}
-                        <strong>
-                          {upRequired}/{selectedLocationCount}
-                        </strong>{" "}
-                        locations reporting UP
-                      </li>
-                      <li>
-                        • Each location check runs independently in parallel
-                      </li>
-                    </ul>
-                  </div>
+                  {/* Single-location hint */}
+                  {selectedLocationCount === 1 && (
+                    <div className="rounded-lg border border-dashed border-muted-foreground/25 p-4 mt-8">
+                      <div className="flex items-start gap-3">
+                        <MapPin className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+                        <div className="space-y-1">
+                          <p className="text-sm font-medium text-muted-foreground">
+                            Single Location Monitoring
+                          </p>
+                          <p className="text-xs text-muted-foreground/80">
+                            Select two or more locations to enable aggregation
+                            strategies and multi-region reliability. With
+                            multiple locations, you can configure how location
+                            results are combined to determine overall monitor
+                            status.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Configuration Summary — only shown with 2+ selected locations */}
+                  {selectedLocationCount > 1 && (
+                    <div className="rounded-lg bg-muted/50 p-4 space-y-2 mt-8">
+                      <h4 className="text-sm font-medium">
+                        Configuration Summary
+                      </h4>
+                      <ul className="text-xs text-muted-foreground space-y-1">
+                        <li>
+                          • Monitoring from{" "}
+                          <strong>{selectedLocationCount}</strong> location
+                          {selectedLocationCount !== 1 ? "s" : ""}
+                        </li>
+                        <li>
+                          • Status &quot;UP&quot; requires{" "}
+                          <strong>
+                            {upRequired}/{selectedLocationCount}
+                          </strong>{" "}
+                          locations reporting UP
+                        </li>
+                        <li>
+                          • Each location check runs independently in parallel
+                        </li>
+                      </ul>
+                    </div>
+                  )}
                 </div>
-                <LocationGlobe locations={selectedLocations} />
+                <LocationGlobe locations={validSelectedLocations} metadataMap={metadataMap} />
               </div>
             </div>
           </div>
@@ -334,7 +406,7 @@ type GlobeMarker = {
   flag?: string;
 };
 
-function LocationGlobe({ locations }: { locations: MonitoringLocation[] }) {
+function LocationGlobe({ locations, metadataMap }: { locations: MonitoringLocation[]; metadataMap: Record<string, { code: string; name: string; region: string; coordinates?: { lat: number; lon: number }; flag?: string }> }) {
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const [globeSize, setGlobeSize] = React.useState(400);
 
@@ -352,7 +424,6 @@ function LocationGlobe({ locations }: { locations: MonitoringLocation[] }) {
       if (!width) {
         return;
       }
-      // Expand the globe to occupy available width while keeping bounds predictable
       const constrained = Math.min(Math.max(width, 320), 700);
       setGlobeSize(Math.floor(constrained));
     };
@@ -365,7 +436,7 @@ function LocationGlobe({ locations }: { locations: MonitoringLocation[] }) {
   const markers = React.useMemo(() => {
     return locations
       .map((location) => {
-        const metadata = LOCATION_METADATA[location];
+        const metadata = metadataMap[location];
         if (!metadata?.coordinates) {
           return null;
         }
@@ -378,7 +449,7 @@ function LocationGlobe({ locations }: { locations: MonitoringLocation[] }) {
         };
       })
       .filter(Boolean) as GlobeMarker[];
-  }, [locations]);
+  }, [locations, metadataMap]);
 
   const projectedMarkers = React.useMemo(() => {
     return markers

@@ -8,6 +8,14 @@ import {
   monitorAggregationService,
   calculatePercentile,
 } from "@/lib/monitor-aggregation-service";
+import { createLogger } from "@/lib/logger/index";
+
+const logger = createLogger({ module: "monitor-stats-api" }) as {
+  debug: (data: unknown, msg?: string) => void;
+  info: (data: unknown, msg?: string) => void;
+  warn: (data: unknown, msg?: string) => void;
+  error: (data: unknown, msg?: string) => void;
+};
 
 /**
  * GET /api/monitors/[id]/stats
@@ -181,9 +189,7 @@ export async function GET(
 
     // Fallback: Query raw data for new monitors without aggregates
     // This ensures new monitors still show stats before the first aggregation run
-    console.log(
-      `[STATS] Monitor ${id.substring(0, 8)}: No aggregates found, falling back to raw query`
-    );
+    logger.debug({ monitorId: id }, "No aggregates found, falling back to raw query");
 
     // Build base conditions for raw queries
     const baseConditions24h = locationFilter
@@ -320,7 +326,7 @@ export async function GET(
         { status: 401 }
       );
     }
-    console.error(`Error fetching monitor stats for ${id}:`, error);
+    logger.error({ err: error, monitorId: id }, "Error fetching monitor stats");
     return NextResponse.json(
       { error: "Failed to fetch monitor stats" },
       { status: 500 }

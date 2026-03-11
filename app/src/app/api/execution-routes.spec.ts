@@ -74,6 +74,13 @@ jest.mock("@/lib/services/polar-usage.service", () => ({
   },
 }));
 
+jest.mock("@/lib/location-registry", () => ({
+  normalizeK6Location: jest.fn().mockResolvedValue("local"),
+  resolveProjectK6Location: jest.fn().mockResolvedValue("local"),
+  getAllEnabledLocationCodes: jest.fn().mockResolvedValue(["local"]),
+  getFirstDefaultLocationCode: jest.fn().mockResolvedValue("local"),
+}));
+
 import { GET as getTriggerInfo, POST as postTrigger } from "./jobs/[id]/trigger/route";
 import { POST as executeSingleTest } from "./tests/[id]/execute/route";
 

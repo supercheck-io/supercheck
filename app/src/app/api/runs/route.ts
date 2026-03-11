@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { runs, jobs, reports, TestRunStatus } from "@/db/schema";
-import { desc, eq, and, sql } from "drizzle-orm";
+import { desc, eq, and, sql, inArray } from "drizzle-orm";
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { requireAuthContext, isAuthError } from '@/lib/auth-context';
 
@@ -102,7 +102,7 @@ export async function GET(request: NextRequest) {
           reports,
           and(
             sql`${reports.entityId} = ${runs.id}::text`,
-            eq(reports.entityType, 'job')
+            inArray(reports.entityType, ['job', 'k6_job'])
           )
         )
         .where(whereCondition)

@@ -8,29 +8,90 @@
 
 import { Job } from 'bullmq';
 import crypto from 'crypto';
-import { getQueues, queueLogger, type MonitorRegion } from '@/lib/queue';
+import { getQueues, queueLogger } from '@/lib/queue';
 import type { LocationConfig, MonitorConfig, MonitoringLocation } from '@/db/schema';
 import { EXECUTE_MONITOR_JOB_NAME } from './constants';
+import { getDefaultLocationCodes, getAllEnabledLocationCodes, getFirstDefaultLocationCode, getProjectAvailableLocationCodes, hasProjectLocationRestrictions } from '@/lib/location-registry';
 
 const logger = queueLogger;
 
-// Default locations for multi-region monitoring
-const DEFAULT_LOCATIONS: MonitoringLocation[] = ['us-east', 'eu-central', 'asia-pacific'];
-
 /**
- * Get effective locations based on location config
+ * Get effective locations based on location config.
+ * Validates configured locations against the DB and falls back
+ * to defaults if none of the configured locations are still enabled.
+ * When projectId is provided, further restricts to project-allowed locations.
+ * Always returns at least one location to prevent silent monitor failures.
  */
-function getEffectiveLocations(locationConfig: LocationConfig | null): MonitoringLocation[] {
+async function getEffectiveLocations(locationConfig: LocationConfig | null, projectId?: string): Promise<string[]> {
   if (!locationConfig) {
-    return DEFAULT_LOCATIONS;
+    return getDefaultLocationsWithFallback(projectId);
   }
   
   const { locations } = locationConfig;
   if (!locations || locations.length === 0) {
-    return DEFAULT_LOCATIONS;
+    return getDefaultLocationsWithFallback(projectId);
   }
   
-  return locations as MonitoringLocation[];
+  // Validate configured locations against enabled locations in DB
+  const enabledCodes = await getAllEnabledLocationCodes();
+  let validLocations = locations.filter(l => enabledCodes.includes(l));
+
+  // Further restrict to project-allowed locations if projectId is provided
+  if (projectId && validLocations.length > 0) {
+    const projectCodes = await getProjectAvailableLocationCodes(projectId);
+    validLocations = validLocations.filter(l => projectCodes.includes(l));
+  }
+
+  if (validLocations.length === 0) {
+    // All explicitly configured locations are disabled/deleted or restricted.
+    // Throw instead of silently falling back to defaults, which would
+    // execute the monitor from unintended regions and report misleading
+    // latency/availability data.
+    throw new Error(
+      `Monitor has locations explicitly configured [${locations.join(', ')}] ` +
+      `but none are currently enabled${projectId ? ' for this project' : ''}. ` +
+      `Re-enable the locations or update the monitor's location configuration.`
+    );
+  }
+  
+  return validLocations;
+}
+
+/**
+ * Get default location codes with a safety fallback.
+ * getDefaultLocationCodes() can return [] if no location has isDefault=true.
+ * When projectId is provided and the project has explicit restrictions,
+ * filters the resolved defaults to only project-allowed codes.
+ * This function ensures we always return at least one location.
+ */
+async function getDefaultLocationsWithFallback(projectId?: string): Promise<string[]> {
+  const defaults = await getDefaultLocationCodes();
+  let resolved: string[];
+  if (defaults.length > 0) {
+    resolved = defaults;
+  } else {
+    // No defaults — try all enabled locations
+    const enabled = await getAllEnabledLocationCodes();
+    if (enabled.length > 0) {
+      resolved = enabled;
+    } else {
+      // Ultimate fallback — getFirstDefaultLocationCode() always returns "local"
+      const fallback = await getFirstDefaultLocationCode();
+      resolved = [fallback];
+    }
+  }
+
+  // Only filter by project restrictions if the project has explicit restriction rows.
+  // Without this check, getProjectAvailableLocationCodes returns ALL enabled locations
+  // for unrestricted projects, which would turn single-region defaults into multi-location.
+  if (projectId && await hasProjectLocationRestrictions(projectId)) {
+    const projectCodes = await getProjectAvailableLocationCodes(projectId);
+    const filtered = resolved.filter(l => projectCodes.includes(l));
+    if (filtered.length > 0) return filtered;
+    if (projectCodes.length > 0) return projectCodes;
+  }
+
+  return resolved;
 }
 
 /**
@@ -38,6 +99,7 @@ function getEffectiveLocations(locationConfig: LocationConfig | null): Monitorin
  */
 export interface MonitorJobData {
   monitorId: string;
+  projectId?: string;
   type: 'http_request' | 'website' | 'ping_host' | 'port_check';
   target: string;
   config?: MonitorConfig;
@@ -61,23 +123,14 @@ export async function processScheduledMonitor(
 ): Promise<{ success: boolean }> {
   const monitorId = job.data.monitorId;
 
-  try {
-    const data = job.data;
-    // Handle nested jobData structure from some trigger paths
-    const executionJobData = data.jobData ?? data;
-    const retryLimit = data.retryLimit || 3;
+  const data = job.data;
+  // Handle nested jobData structure from some trigger paths
+  const executionJobData = data.jobData ?? data;
+  const retryLimit = data.retryLimit || 3;
 
-    await enqueueMonitorExecutionJobs(executionJobData, retryLimit);
+  await enqueueMonitorExecutionJobs(executionJobData, retryLimit);
 
-    // INFO logging removed to reduce log pollution
-    return { success: true };
-  } catch (error) {
-    logger.error(
-      { monitorId, error },
-      'Failed to process scheduled monitor trigger'
-    );
-    return { success: false };
-  }
+  return { success: true };
 }
 
 /**
@@ -90,9 +143,9 @@ async function enqueueMonitorExecutionJobs(
   const monitorConfig = jobData.config;
   const locationConfig = monitorConfig?.locationConfig as LocationConfig | null ?? null;
 
-  // Get effective locations (multi-location monitoring)
-  const effectiveLocations = getEffectiveLocations(locationConfig);
-  const expectedLocations = Array.from(new Set(effectiveLocations)) as MonitoringLocation[];
+  // Get effective locations (multi-location monitoring) - now async
+  const effectiveLocations = await getEffectiveLocations(locationConfig, jobData.projectId);
+  const expectedLocations = Array.from(new Set(effectiveLocations));
 
   // Create execution group ID for tracking related executions
   const executionGroupId = `${jobData.monitorId}-${Date.now()}-${crypto
@@ -102,9 +155,50 @@ async function enqueueMonitorExecutionJobs(
   // Get queue instances
   const queues = await getQueues();
 
+  // First pass: determine which locations have active queues
+  const enqueuedLocations: string[] = [];
+  const skippedLocations: string[] = [];
+
+  for (const location of expectedLocations) {
+    const queue = queues.monitorExecutionQueue[location];
+    if (queue) {
+      enqueuedLocations.push(location);
+    } else {
+      skippedLocations.push(location);
+      logger.warn(
+        { location, monitorId: jobData.monitorId },
+        `No monitor queue for location "${location}", skipping`
+      );
+    }
+  }
+
+  if (enqueuedLocations.length === 0 && expectedLocations.length > 0) {
+    throw new Error(
+      `Monitor ${jobData.monitorId}: no jobs enqueued — none of the expected locations ` +
+      `[${expectedLocations.join(', ')}] have active queues. Check location configuration.`
+    );
+  }
+
+  if (skippedLocations.length > 0) {
+    logger.warn(
+      {
+        monitorId: jobData.monitorId,
+        skippedLocations,
+        enqueuedLocations,
+        executionGroupId,
+      },
+      `Monitor ${jobData.monitorId}: ${skippedLocations.length} location(s) skipped ` +
+      `due to missing queues. Aggregation will proceed with ${enqueuedLocations.length} location(s).`
+    );
+  }
+
+  // Second pass: enqueue jobs to available locations.
+  // Use enqueuedLocations (not the full expectedLocations) so the worker
+  // aggregation count matches actual workers and doesn't stall waiting for
+  // locations that have no DB result row.
   await Promise.all(
-    expectedLocations.map((location) => {
-      const queue = getQueueForLocation(queues.monitorExecutionQueue, location);
+    enqueuedLocations.map((location) => {
+      const queue = queues.monitorExecutionQueue[location]!;
 
       return queue.add(
         EXECUTE_MONITOR_JOB_NAME,
@@ -112,7 +206,7 @@ async function enqueueMonitorExecutionJobs(
           ...jobData,
           executionLocation: location,
           executionGroupId,
-          expectedLocations,
+          expectedLocations: enqueuedLocations,
         },
         {
           jobId: `${jobData.monitorId}:${executionGroupId}:${location}`,
@@ -128,26 +222,4 @@ async function enqueueMonitorExecutionJobs(
   // INFO logging removed to reduce log pollution - monitors trigger very frequently
 }
 
-/**
- * Get the appropriate queue for a monitor location.
- * Monitors MUST run in their specified location - no fallback.
- * Location accuracy is critical for meaningful monitoring data.
- */
-function getQueueForLocation(
-  monitorQueues: Record<MonitorRegion, import('bullmq').Queue>,
-  location: MonitoringLocation
-): import('bullmq').Queue {
-  const queue = monitorQueues[location as MonitorRegion];
-  
-  if (!queue) {
-    // No fallback - monitors must run in their specified location
-    throw new Error(
-      `Invalid monitor location: "${location}". ` +
-      `Valid locations are: us-east, eu-central, asia-pacific. ` +
-      `Monitors cannot fall back to a different location as this would produce inaccurate results.`
-    );
-  }
-  
-  return queue;
-}
 

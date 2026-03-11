@@ -25,6 +25,16 @@ let bullBoardInitialized = false;
 let cachedState: NextBullBoardAdapterState | null = null;
 let initializationPromise: Promise<NextBullBoardAdapterState> | null = null;
 
+/**
+ * Invalidate Bull Board so it re-initializes with updated queues.
+ * Called when locations are added/removed/changed.
+ */
+export function invalidateBullBoard(): void {
+  bullBoardInitialized = false;
+  cachedState = null;
+  initializationPromise = null;
+}
+
 class HttpError extends Error {
   statusCode: number;
 

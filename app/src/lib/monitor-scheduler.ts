@@ -153,6 +153,7 @@ export async function initializeMonitorSchedulers(): Promise<{ success: boolean;
             
             const jobDataPayload: MonitorJobData = {
               monitorId: monitor.id,
+              projectId: monitor.projectId ?? undefined,
               type: monitor.type as MonitorJobData['type'],
               target: monitor.target,
               config: monitor.config as MonitorConfig,

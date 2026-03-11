@@ -1,13 +1,9 @@
-import { Module, DynamicModule, Logger, Type } from '@nestjs/common';
+import { Module, DynamicModule, Logger } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { HttpModule } from '@nestjs/axios';
 import { MonitorService } from './monitor.service';
-import {
-  MonitorProcessorUSEast,
-  MonitorProcessorEUCentral,
-  MonitorProcessorAsiaPacific,
-} from './monitor.processor';
-import { MONITOR_QUEUES } from './monitor.constants';
+import { MonitorDynamicWorkerService } from './processors/monitor-dynamic-worker.service';
+import { monitorQueueName, REGIONS } from './monitor.constants';
 import { DbModule } from '../db/db.module';
 import { NotificationModule } from '../notification/notification.module';
 import { ExecutionModule } from '../execution.module';
@@ -21,26 +17,24 @@ import { LocationModule } from '../common/location/location.module';
 import { VariableResolverService } from '../common/services/variable-resolver.service';
 
 // Define job options for monitor execution queues
-// Monitor checks are typically short-lived (< 1 minute), but we set reasonable limits
 const monitorJobOptions = {
-  removeOnComplete: { count: 500, age: 24 * 3600 }, // Keep completed jobs for 24 hours (500 max)
-  removeOnFail: { count: 1000, age: 7 * 24 * 3600 }, // Keep failed jobs for 7 days (1000 max)
-  attempts: 2, // Retry up to 2 times for transient failures
+  removeOnComplete: { count: 500, age: 24 * 3600 },
+  removeOnFail: { count: 1000, age: 7 * 24 * 3600 },
+  attempts: 2,
   backoff: {
     type: 'exponential' as const,
-    delay: 2000, // Start with 2 second delay, then 4s
+    delay: 2000,
   },
 };
 
-// Queue settings with proper timeout for monitor checks
 const monitorQueueSettings = {
   ...monitorJobOptions,
-  lockDuration: 5 * 60 * 1000, // 5 minutes - must be >= max execution time for monitor checks
-  stallInterval: 30000, // Check for stalled jobs every 30 seconds
-  maxStalledCount: 2, // Move job back to waiting max 2 times before failing
+  lockDuration: 5 * 60 * 1000,
+  stallInterval: 30000,
+  maxStalledCount: 2,
 };
 
-// Common providers that all configurations need
+// Common providers
 const commonProviders = [
   MonitorService,
   MonitorAlertService,
@@ -53,80 +47,38 @@ const commonProviders = [
 ];
 
 /**
- * Valid WORKER_LOCATION values:
- * - 'local': Development mode - processes ALL queues on a single worker
- * - 'us-east': US East regional worker - processes us-east queue only
- * - 'eu-central': EU Central regional worker - processes eu-central queue only
- * - 'asia-pacific': Asia Pacific regional worker - processes asia-pacific queue only
+ * MonitorModule with dynamic location-aware worker registration.
  *
- * NOTE: Monitors MUST run in their specified location for accurate results.
- * There is no global/fallback queue - each monitor runs only in its designated region.
- */
-const VALID_LOCATIONS = [
-  'local',
-  'us-east',
-  'eu-central',
-  'asia-pacific',
-] as const;
-type WorkerLocation = (typeof VALID_LOCATIONS)[number];
-
-function isValidLocation(location: string): location is WorkerLocation {
-  return VALID_LOCATIONS.includes(location as WorkerLocation);
-}
-
-/**
- * MonitorModule with location-aware processor registration
+ * WORKER_LOCATION accepts any value:
+ * - 'local': Development mode — processes all default region monitor queues
+ * - Any location code (e.g. 'us-east', 'brazil'): processes monitor-{code} only
  *
- * Architecture:
- * - Each regional worker processes ONLY its regional queue
- * - Monitors must run in their specified location for meaningful latency data
- * - No global/fallback queue - this ensures location accuracy
+ * Monitors MUST run in their specified location for accurate latency data.
+ * There is no global/fallback queue for monitors.
  *
- * Queue distribution per worker:
- * - local: monitor-us-east + monitor-eu-central + monitor-asia-pacific (all regions)
- * - us-east: monitor-us-east only
- * - eu-central: monitor-eu-central only
- * - asia-pacific: monitor-asia-pacific only
+ * Dynamic BullMQ Workers are created at runtime by MonitorDynamicWorkerService,
+ * replacing the compile-time @Processor subclasses.
  */
 @Module({})
 export class MonitorModule {
   private static readonly logger = new Logger('MonitorModule');
 
   static forRoot(): DynamicModule {
-    const workerLocation = process.env.WORKER_LOCATION || 'local';
-    const nodeEnv = process.env.NODE_ENV || 'development';
+    const workerLocation = (
+      process.env.WORKER_LOCATION || 'local'
+    ).toLowerCase();
 
-    // Validate WORKER_LOCATION - fail fast in production to prevent misconfiguration
-    if (!isValidLocation(workerLocation)) {
-      const errorMessage =
-        `Invalid WORKER_LOCATION="${workerLocation}". ` +
-        `Valid values: ${VALID_LOCATIONS.join(', ')}`;
-
-      if (nodeEnv === 'production') {
-        throw new Error(
-          `${errorMessage}. This error is fatal in production to prevent queue misrouting.`,
-        );
-      }
-      MonitorModule.logger.warn(
-        `${errorMessage}. Defaulting to 'local' mode in development.`,
-      );
-    }
-
-    const effectiveLocation = isValidLocation(workerLocation)
-      ? workerLocation
-      : 'local';
-    const { queues, processors } =
-      MonitorModule.getQueuesAndProcessors(effectiveLocation);
+    const queueNames = MonitorModule.getQueueNames(workerLocation);
 
     MonitorModule.logger.log(
-      `MonitorModule initialized [${effectiveLocation}]: ${queues.map((q) => q.name).join(', ')}`,
+      `MonitorModule initialized [${workerLocation}]: ${queueNames.join(', ')}`,
     );
 
     return {
       module: MonitorModule,
       imports: [
         BullModule.registerQueue(
-          ...queues.map((q) => ({ ...q, ...monitorQueueSettings })),
+          ...queueNames.map((name) => ({ name, ...monitorQueueSettings })),
         ),
         HttpModule,
         DbModule,
@@ -134,52 +86,23 @@ export class MonitorModule {
         ExecutionModule,
         LocationModule,
       ],
-      providers: [...commonProviders, ...processors],
+      providers: [...commonProviders, MonitorDynamicWorkerService],
       exports: [MonitorService],
     };
   }
 
   /**
-   * Get queues and processors based on worker location.
-   * Each worker processes ONLY its regional queue (no global fallback).
+   * Build queue names based on worker location.
+   * No global queue for monitors — all are location-specific.
    */
-  private static getQueuesAndProcessors(location: WorkerLocation): {
-    queues: { name: string }[];
-    processors: Type[];
-  } {
-    switch (location) {
-      case 'local':
-        // Development: register ALL regional queues for single-worker testing
-        return {
-          queues: [
-            { name: MONITOR_QUEUES.US_EAST },
-            { name: MONITOR_QUEUES.EU_CENTRAL },
-            { name: MONITOR_QUEUES.ASIA_PACIFIC },
-          ],
-          processors: [
-            MonitorProcessorUSEast,
-            MonitorProcessorEUCentral,
-            MonitorProcessorAsiaPacific,
-          ],
-        };
-
-      case 'us-east':
-        return {
-          queues: [{ name: MONITOR_QUEUES.US_EAST }],
-          processors: [MonitorProcessorUSEast],
-        };
-
-      case 'eu-central':
-        return {
-          queues: [{ name: MONITOR_QUEUES.EU_CENTRAL }],
-          processors: [MonitorProcessorEUCentral],
-        };
-
-      case 'asia-pacific':
-        return {
-          queues: [{ name: MONITOR_QUEUES.ASIA_PACIFIC }],
-          processors: [MonitorProcessorAsiaPacific],
-        };
+  private static getQueueNames(location: string): string[] {
+    if (location === 'local') {
+      // Development: local + all default region queues (backward compat)
+      return [
+        monitorQueueName('local'),
+        ...REGIONS.map((r) => monitorQueueName(r)),
+      ];
     }
+    return [monitorQueueName(location)];
   }
 }

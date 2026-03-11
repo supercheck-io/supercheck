@@ -9,7 +9,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { MapPin } from "lucide-react";
-import { getLocationMetadata, type MonitoringLocation } from "@/lib/location-service";
+import { getLocationMetadata, buildLocationMetadataMap, type MonitoringLocation } from "@/lib/location-service";
+import { useLocations } from "@/hooks/use-locations";
 
 interface LocationFilterDropdownProps {
   selectedLocation: "all" | string;
@@ -24,6 +25,19 @@ export function LocationFilterDropdown({
   onLocationChange,
   className = "",
 }: LocationFilterDropdownProps) {
+  const { locations: dynamicLocations } = useLocations();
+  const metadataMap = React.useMemo(() => {
+    if (dynamicLocations.length > 0) {
+      return buildLocationMetadataMap(dynamicLocations);
+    }
+    return null;
+  }, [dynamicLocations]);
+
+  const getMetadata = (code: string) => {
+    if (metadataMap) return metadataMap[code];
+    return getLocationMetadata(code);
+  };
+
   if (availableLocations.length <= 1) {
     return null; // Don't show dropdown if only one location
   }
@@ -47,7 +61,7 @@ export function LocationFilterDropdown({
           </div>
         </SelectItem>
         {availableLocations.map((location) => {
-          const metadata = getLocationMetadata(location as MonitoringLocation);
+          const metadata = getMetadata(location);
           return (
             <SelectItem key={location} value={location}>
               <div className="flex items-center gap-2">

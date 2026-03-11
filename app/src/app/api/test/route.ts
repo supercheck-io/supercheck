@@ -15,6 +15,7 @@ import { resolveProjectVariables, extractVariableNames, type VariableResolutionR
 import { isK6Script, validateK6Script } from "@/lib/k6-validator";
 import { db } from "@/utils/db";
 import { runs, type K6Location } from "@/db/schema";
+import { resolveProjectK6Location } from "@/lib/location-registry";
 
 function buildReportProxyUrl(entityId: string): string {
   return `/api/test-results/${encodeURIComponent(entityId)}/report/index.html?forceIframe=true`;
@@ -84,20 +85,25 @@ export async function POST(request: NextRequest) {
     const isPerformanceTest = isK6Script(code);
     const testType = isPerformanceTest ? "performance" : "browser";
 
-    const normalizeLocation = (value?: string): K6Location => {
-          const lower = value?.toLowerCase();
-          // Accept kebab-case format matching K6Location type: "us-east" | "eu-central" | "asia-pacific" | "global"
-          if (lower === "us-east" || lower === "eu-central" || lower === "asia-pacific" || lower === "global") {
-            return lower;
-          }
-          // Default to global for any other value with warning
-          console.warn(`[LOCATION WARNING] Invalid location "${value}" received, defaulting to "global". Valid locations: us-east, eu-central, asia-pacific, global`);
-          return "global";
-        };
-
-    const executionLocation: K6Location | undefined = isPerformanceTest
-      ? normalizeLocation(requestedLocation)
-      : undefined;
+    let executionLocation: K6Location | undefined;
+    if (isPerformanceTest) {
+      try {
+        executionLocation = (await resolveProjectK6Location(
+          project.id,
+          requestedLocation
+        )) as K6Location;
+      } catch (error) {
+        return NextResponse.json(
+          {
+            error:
+              error instanceof Error
+                ? error.message
+                : "Invalid location requested",
+          },
+          { status: 400 }
+        );
+      }
+    }
 
     let runIdForQueue: string | null = null;
 

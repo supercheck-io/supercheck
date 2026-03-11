@@ -8,7 +8,7 @@ import { headers } from "next/headers";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { db } from "@/utils/db";
 import { runs, jobs, reports } from "@/db/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, inArray } from "drizzle-orm";
 import { getS3FileContentFromUrl, getS3FileContent } from "@/lib/s3-proxy";
 
 
@@ -134,7 +134,7 @@ export async function POST(request: NextRequest) {
         reports,
         and(
           sql`${reports.entityId} = ${runs.id}::text`,
-          eq(reports.entityType, "job")
+          inArray(reports.entityType, ["job", "k6_job"])
         )
       )
       .where(eq(runs.id, runId))

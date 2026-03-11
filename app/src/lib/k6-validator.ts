@@ -273,8 +273,8 @@ export default function() {
 }
 
 /**
- * Location metadata for k6 execution
- * Uses kebab-case for internal representation
+ * @deprecated Legacy static location metadata. Use `useLocations()` hook or
+ * `getAllLocations()` from location-registry for dynamic, DB-driven locations.
  */
 export const K6_LOCATIONS = {
   US_EAST: {

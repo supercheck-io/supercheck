@@ -7,17 +7,20 @@ import type {
   MonitoringLocation,
 } from "@/db/schema";
 import type { JobType as SchemaJobType } from "@/db/schema";
-import {
-  getEffectiveLocations,
-  isMonitoringLocation,
-} from "./location-service";
 import { createLogger } from "./logger/index";
+import {
+  getAllEnabledLocationCodes,
+  getDefaultLocationCodes,
+  getFirstDefaultLocationCode,
+  getProjectAvailableLocationCodes,
+  hasProjectLocationRestrictions,
+} from "./location-registry";
 
 // Local interface for cleanup queues (separate from capacity management)
 interface CleanupQueues {
   playwrightQueues: Record<string, Queue>;
   k6Queues: Record<string, Queue>;
-  monitorExecution: Record<MonitorRegion, Queue>;
+  monitorExecution: Record<string, Queue>;
   jobSchedulerQueue: Queue;
   k6JobSchedulerQueue: Queue;
   monitorSchedulerQueue: Queue;
@@ -70,6 +73,7 @@ export interface JobExecutionTask {
 // Interface for Monitor Job Data (mirroring DTO in runner)
 export interface MonitorJobData {
   monitorId: string;
+  projectId?: string;
   type: "http_request" | "website" | "ping_host" | "port_check";
   target: string;
   config?: unknown; // Using unknown for config for now, can be refined with shared MonitorConfig type
@@ -94,7 +98,7 @@ export interface K6ExecutionTask {
 }
 
 // Constants for queue names and Redis keys
-// Note: Monitor queues are created dynamically from MONITOR_REGIONS (monitor-{region})
+// Note: Monitor and K6 queues are created dynamically from enabled locations in the DB
 
 // Scheduler-related queues
 export const JOB_SCHEDULER_QUEUE = "job-scheduler";
@@ -117,22 +121,7 @@ export const REDIS_EVENT_KEY_TTL = 24 * 60 * 60; // 24 hours for events/stats
 export const REDIS_METRICS_TTL = 48 * 60 * 60; // 48 hours for metrics data
 export const REDIS_CLEANUP_BATCH_SIZE = 100; // Process keys in smaller batches to reduce memory pressure
 
-// Regions for K6 performance tests (includes global option for any location)
-export type Region = "us-east" | "eu-central" | "asia-pacific" | "global";
-export const REGIONS: Region[] = [
-  "us-east",
-  "eu-central",
-  "asia-pacific",
-  "global",
-];
 
-// Monitor regions using kebab-case for queue names (no GLOBAL - monitors run from specific locations)
-export type MonitorRegion = "us-east" | "eu-central" | "asia-pacific";
-export const MONITOR_REGIONS: MonitorRegion[] = [
-  "us-east",
-  "eu-central",
-  "asia-pacific",
-];
 
 // Singleton instances
 let redisClient: Redis | null = null;
@@ -141,14 +130,14 @@ let redisClient: Redis | null = null;
 const playwrightQueues: Record<string, Queue> = {};
 const k6Queues: Record<string, Queue> = {};
 
-let monitorExecution: Record<MonitorRegion, Queue> | null = null;
+let monitorExecution: Record<string, Queue> | null = null;
 let jobSchedulerQueue: Queue | null = null;
 let k6JobSchedulerQueue: Queue | null = null;
 let monitorSchedulerQueue: Queue | null = null;
 let emailTemplateQueue: Queue | null = null;
 let dataLifecycleCleanupQueue: Queue | null = null;
 
-let monitorExecutionEvents: Record<MonitorRegion, QueueEvents> | null = null;
+let monitorExecutionEvents: Record<string, QueueEvents> | null = null;
 let executionQueueEvents: QueueEvents[] = [];
 
 // Store initialization promise to prevent race conditions
@@ -269,7 +258,7 @@ export async function getRedisConnection(): Promise<Redis> {
 export async function getQueues(): Promise<{
   playwrightQueues: Record<string, Queue>;
   k6Queues: Record<string, Queue>;
-  monitorExecutionQueue: Record<MonitorRegion, Queue>;
+  monitorExecutionQueue: Record<string, Queue>;
   jobSchedulerQueue: Queue;
   k6JobSchedulerQueue: Queue;
   monitorSchedulerQueue: Queue;
@@ -321,31 +310,30 @@ export async function getQueues(): Promise<{
         );
         playwrightQueues["global"] = playwrightQueue;
 
-        // K6 - Regional queues (keep existing)
-        for (const region of REGIONS) {
-          const k6QueueName = `k6-${region}`;
+        // K6 - Dynamic regional queues from DB + "global" for any-location routing
+        const locationCodes = await getAllEnabledLocationCodes();
+        const k6Locations = [...locationCodes, "global"];
+        for (const loc of k6Locations) {
+          const k6QueueName = `k6-${loc}`;
           const k6Queue = new Queue(k6QueueName, queueSettings);
           k6Queue.on("error", (error) =>
-            queueLogger.error({ err: error }, `k6 Queue (${region}) Error`)
+            queueLogger.error({ err: error }, `k6 Queue (${loc}) Error`)
           );
-          k6Queues[region] = k6Queue;
+          k6Queues[loc] = k6Queue;
         }
 
-        // Monitor Execution - Regional queues using kebab-case (no GLOBAL)
-        const monitorQueues: Record<MonitorRegion, Queue> = {} as Record<
-          MonitorRegion,
-          Queue
-        >;
-        for (const region of MONITOR_REGIONS) {
-          const monitorQueueName = `monitor-${region}`;
+        // Monitor Execution - Dynamic regional queues from DB (no global - monitors are location-specific)
+        const monitorQueues: Record<string, Queue> = {};
+        for (const loc of locationCodes) {
+          const monitorQueueName = `monitor-${loc}`;
           const monitorQueue = new Queue(monitorQueueName, queueSettings);
           monitorQueue.on("error", (error) =>
-            queueLogger.error({ err: error }, `Monitor Queue (${region}) Error`)
+            queueLogger.error({ err: error }, `Monitor Queue (${loc}) Error`)
           );
-          monitorQueues[region] = monitorQueue;
+          monitorQueues[loc] = monitorQueue;
         }
 
-        monitorExecution = monitorQueues; // Store all monitor queues
+        monitorExecution = monitorQueues;
 
         // Schedulers
         jobSchedulerQueue = new Queue(JOB_SCHEDULER_QUEUE, queueSettings);
@@ -364,16 +352,11 @@ export async function getQueues(): Promise<{
           queueSettings
         );
 
-        // Monitor Execution Events - Regional (no GLOBAL)
-        const monitorEvents: Record<MonitorRegion, QueueEvents> = {} as Record<
-          MonitorRegion,
-          QueueEvents
-        >;
-        for (const region of MONITOR_REGIONS) {
+        // Monitor Execution Events - Dynamic regional (no global)
+        const monitorEvents: Record<string, QueueEvents> = {};
+        for (const loc of locationCodes) {
           const eventsConnection = redisClient!.duplicate();
-          // ioredis connects automatically by default, so we don't need to call connect()
-          // unless lazyConnect: true is set in options (which it isn't)
-          monitorEvents[region] = new QueueEvents(`monitor-${region}`, {
+          monitorEvents[loc] = new QueueEvents(`monitor-${loc}`, {
             connection: eventsConnection,
           });
         }
@@ -386,8 +369,8 @@ export async function getQueues(): Promise<{
         });
 
         const k6Events: Record<string, QueueEvents> = {};
-        for (const region of REGIONS) {
-          k6Events[region] = new QueueEvents(`k6-${region}`, {
+        for (const loc of k6Locations) {
+          k6Events[loc] = new QueueEvents(`k6-${loc}`, {
             connection: redisClient!.duplicate(),
           });
         }
@@ -398,18 +381,18 @@ export async function getQueues(): Promise<{
           ...Object.values(k6Events),
         ];
 
-        // Add error listeners for regional monitor queues
-        for (const region of MONITOR_REGIONS) {
-          monitorExecution[region].on("error", (error: Error) =>
+        // Add error listeners for dynamic monitor queues
+        for (const loc of locationCodes) {
+          monitorExecution[loc].on("error", (error: Error) =>
             queueLogger.error(
-              { err: error, region },
-              `Monitor Queue (${region}) Error`
+              { err: error, region: loc },
+              `Monitor Queue (${loc}) Error`
             )
           );
-          monitorExecutionEvents[region].on("error", (error: Error) =>
+          monitorExecutionEvents[loc].on("error", (error: Error) =>
             queueLogger.error(
-              { err: error, region },
-              `Monitor Events (${region}) Error`
+              { err: error, region: loc },
+              `Monitor Events (${loc}) Error`
             )
           );
         }
@@ -505,11 +488,9 @@ export async function getQueues(): Promise<{
 
   if (
     Object.keys(playwrightQueues).length !== 1 || // Single GLOBAL queue
-    Object.keys(k6Queues).length !== REGIONS.length || // Regional queues
-    !monitorExecution ||
-    Object.keys(monitorExecution).length !== MONITOR_REGIONS.length || // Regional monitor queues (US, EU, APAC)
-    !monitorExecutionEvents ||
-    Object.keys(monitorExecutionEvents).length !== MONITOR_REGIONS.length || // Regional monitor events
+    Object.keys(k6Queues).length === 0 || // Dynamic location queues + global
+    !monitorExecution || // Must be initialized (can be empty if no locations)
+    !monitorExecutionEvents || // Must be initialized (can be empty if no locations)
     !jobSchedulerQueue ||
     !k6JobSchedulerQueue ||
     !monitorSchedulerQueue ||
@@ -519,6 +500,13 @@ export async function getQueues(): Promise<{
   ) {
     throw new Error(
       "One or more queues or event listeners could not be initialized."
+    );
+  }
+
+  if (Object.keys(monitorExecution).length === 0) {
+    queueLogger.warn(
+      {},
+      "No monitor execution queues initialized (no enabled locations). Monitors will not execute until locations are configured."
     );
   }
   return {
@@ -766,17 +754,14 @@ function getQueue(
     }
     return queue;
   } else {
-    // K6 uses regional queues with kebab-case names
+    // K6 uses regional queues — "global" only when explicitly requested or omitted
     const regionStr = (location || "global").toLowerCase();
 
-    const effectiveRegion = REGIONS.includes(regionStr as Region)
-      ? regionStr
-      : "global";
-
-    const queue = queues.k6Queues[effectiveRegion];
+    const queue = queues.k6Queues[regionStr];
     if (!queue) {
       throw new Error(
-        "K6 execution queue is not available for the requested region"
+        `K6 execution queue "${regionStr}" is not available. ` +
+        `Available queues: ${Object.keys(queues.k6Queues).join(", ") || "none"}`
       );
     }
     return queue;
@@ -1039,8 +1024,9 @@ export async function addK6TestToQueue(
 /**
  * Add a k6 performance job execution task to the dedicated queue.
  *
- * K6 jobs always execute from EU Central for consistent performance comparison.
- * This ensures that the K6 Job Analytics comparison feature shows meaningful deltas.
+ * Respects the caller-provided `task.location` (already resolved by the API route
+ * via `resolveProjectK6Location()` which enforces project location restrictions).
+ * Falls back to the instance's first default location only when no location is specified.
  *
  * @returns Promise resolving to { runId, status } where status is 'running' or 'queued'
  */
@@ -1055,8 +1041,9 @@ export async function addK6JobToQueue(
   const runId = task.runId;
   const orgId = task.organizationId || "global";
 
-  // K6 jobs always execute from EU Central for consistent performance comparison
-  const K6_JOB_LOCATION = "eu-central" as const;
+  // Respect the caller-provided location (already validated by resolveProjectK6Location);
+  // fall back to the instance default only when no location was specified.
+  const k6JobLocation = task.location || await getFirstDefaultLocationCode();
 
   try {
     const { getCapacityManager } = await import("./capacity-manager");
@@ -1078,13 +1065,13 @@ export async function addK6JobToQueue(
         await capacityManager.trackJobOrganization(runId, orgId);
 
         const queues = await getQueues();
-        const queue = getQueue(queues, "k6", K6_JOB_LOCATION);
+        const queue = getQueue(queues, "k6", k6JobLocation);
 
         await queue.add(
           jobName,
           {
             ...task,
-            location: K6_JOB_LOCATION,
+            location: k6JobLocation,
             _capacityStatus: "immediate",
           },
           { jobId: runId }
@@ -1108,7 +1095,7 @@ export async function addK6JobToQueue(
       taskData: {
         ...task,
         _jobName: jobName,
-        location: K6_JOB_LOCATION,
+        location: k6JobLocation,
       } as unknown as Record<string, unknown>,
       queuedAt: Date.now(),
     };
@@ -1133,6 +1120,87 @@ export async function addK6JobToQueue(
 
 // Removed verifyQueueCapacityOrThrow - capacity management is now handled directly in add*ToQueue functions
 // Remove dead code: CapacityResult type moved to capacity-manager.ts
+
+/**
+ * Invalidate queue maps so they get rebuilt from the DB on next getQueues() call.
+ * Call this after location CRUD operations (create, update, delete).
+ *
+ * Closes all Queue and QueueEvents instances (dynamic + static) so the init block
+ * can recreate them cleanly. Preserves the Redis connection, cleanup intervals,
+ * scheduler workers, and capacity manager since those are long-lived singletons.
+ */
+export async function invalidateQueueMaps(): Promise<void> {
+  // Wait for any in-flight initialization first
+  if (initPromise) {
+    try {
+      await initPromise;
+    } catch {
+      // Ignore — we're resetting anyway
+    }
+  }
+
+  const closePromises: Promise<void>[] = [];
+
+  // Close all Queue instances (dynamic + static)
+  for (const [key, queue] of Object.entries(playwrightQueues)) {
+    closePromises.push(queue.close().catch((err) =>
+      queueLogger.warn({ err, queue: `playwright-${key}` }, "Error closing queue during invalidation")
+    ));
+    delete playwrightQueues[key];
+  }
+  for (const [key, queue] of Object.entries(k6Queues)) {
+    closePromises.push(queue.close().catch((err) =>
+      queueLogger.warn({ err, queue: `k6-${key}` }, "Error closing queue during invalidation")
+    ));
+    delete k6Queues[key];
+  }
+  if (monitorExecution) {
+    for (const queue of Object.values(monitorExecution)) {
+      closePromises.push(queue.close().catch(() => {}));
+    }
+    monitorExecution = null;
+  }
+  if (jobSchedulerQueue) { closePromises.push(jobSchedulerQueue.close().catch(() => {})); jobSchedulerQueue = null; }
+  if (k6JobSchedulerQueue) { closePromises.push(k6JobSchedulerQueue.close().catch(() => {})); k6JobSchedulerQueue = null; }
+  if (monitorSchedulerQueue) { closePromises.push(monitorSchedulerQueue.close().catch(() => {})); monitorSchedulerQueue = null; }
+  if (emailTemplateQueue) { closePromises.push(emailTemplateQueue.close().catch(() => {})); emailTemplateQueue = null; }
+  if (dataLifecycleCleanupQueue) { closePromises.push(dataLifecycleCleanupQueue.close().catch(() => {})); dataLifecycleCleanupQueue = null; }
+
+  // Close all QueueEvents
+  if (monitorExecutionEvents) {
+    for (const events of Object.values(monitorExecutionEvents)) {
+      closePromises.push(events.close().catch(() => {}));
+    }
+    monitorExecutionEvents = null;
+  }
+  for (const events of executionQueueEvents) {
+    closePromises.push(events.close().catch(() => {}));
+  }
+  executionQueueEvents = [];
+
+  await Promise.allSettled(closePromises);
+
+  // Reset initPromise so next getQueues() call re-initializes all queues from fresh DB data.
+  // We intentionally keep: redisClient, cleanupSetupComplete, cleanup/reconcile intervals,
+  // capacity manager, and scheduler workers — those are long-lived and will work with the
+  // new queue objects once they're created.
+  initPromise = null;
+
+  // Notify workers via Redis Pub/Sub so they can discover and subscribe to new queues.
+  // Include enabled location codes in the message so workers can construct queue names
+  // deterministically — SCAN-based discovery may miss new queues whose :meta key hasn't
+  // been created yet (BullMQ only writes :meta on the first queue operation).
+  try {
+    const { getAllEnabledLocationCodes } = await import("@/lib/location-registry");
+    const locationCodes = await getAllEnabledLocationCodes();
+    const redis = await getRedisConnection();
+    await redis.publish("supercheck:queue-refresh", JSON.stringify({ timestamp: Date.now(), locationCodes }));
+  } catch (err) {
+    queueLogger.warn({ err }, "Failed to publish queue-refresh notification (non-fatal)");
+  }
+
+  queueLogger.info({}, "Queue maps invalidated — will rebuild on next getQueues() call");
+}
 
 /**
  * Close queue connections (useful for graceful shutdown).
@@ -1260,6 +1328,89 @@ export async function setQueueCapacityLimit(limit: number): Promise<void> {
 }
 
 /**
+ * Resolve effective monitor locations from DB, with multi-tier fallback.
+ * Validates configured locations against enabled locations in the DB,
+ * falling back to defaults → all enabled → "local" if none are valid.
+ * When projectId is provided, further restricts to project-allowed locations.
+ *
+ * Shared logic aligns with monitor-scheduler's getEffectiveLocations.
+ */
+async function resolveMonitorLocations(
+  locationConfig: LocationConfig | null,
+  projectId?: string
+): Promise<string[]> {
+  if (!locationConfig || !locationConfig.enabled) {
+    return resolveDefaultMonitorLocations(projectId);
+  }
+
+  const configuredLocations = locationConfig.locations;
+  if (!configuredLocations || configuredLocations.length === 0) {
+    return resolveDefaultMonitorLocations(projectId);
+  }
+
+  // Validate configured locations against what's actually enabled in DB
+  const enabledCodes = await getAllEnabledLocationCodes();
+  let validLocations = configuredLocations.filter((loc) =>
+    enabledCodes.includes(loc)
+  );
+
+  // Further restrict to project-allowed locations if projectId is provided
+  if (projectId && validLocations.length > 0) {
+    const projectCodes = await getProjectAvailableLocationCodes(projectId);
+    validLocations = validLocations.filter((loc) => projectCodes.includes(loc));
+  }
+
+  if (validLocations.length === 0) {
+    // All explicitly configured locations are disabled/deleted or restricted.
+    // Throw instead of silently falling back to defaults, which would
+    // execute the monitor from unintended regions and report misleading
+    // latency/availability data. This matches the scheduler's behavior.
+    throw new Error(
+      `Monitor has locations explicitly configured [${configuredLocations.join(', ')}] ` +
+      `but none are currently enabled${projectId ? ' for this project' : ''}. ` +
+      `Re-enable the locations or update the monitor's location configuration.`
+    );
+  }
+
+  return validLocations;
+}
+
+/**
+ * Get default monitor locations with a safety fallback chain:
+ * default locations → all enabled → "local"
+ * When projectId is provided and the project has explicit restrictions,
+ * filters the resolved defaults to only project-allowed codes.
+ */
+async function resolveDefaultMonitorLocations(projectId?: string): Promise<string[]> {
+  const defaults = await getDefaultLocationCodes();
+  let resolved: string[];
+  if (defaults.length > 0) {
+    resolved = defaults;
+  } else {
+    const enabled = await getAllEnabledLocationCodes();
+    if (enabled.length > 0) {
+      resolved = enabled;
+    } else {
+      const fallback = await getFirstDefaultLocationCode();
+      resolved = [fallback];
+    }
+  }
+
+  // Only filter by project restrictions if the project has explicit restriction rows.
+  // Without this check, getProjectAvailableLocationCodes returns ALL enabled locations
+  // for unrestricted projects, which would turn single-region defaults into multi-location.
+  if (projectId && await hasProjectLocationRestrictions(projectId)) {
+    const projectCodes = await getProjectAvailableLocationCodes(projectId);
+    const filtered = resolved.filter((loc) => projectCodes.includes(loc));
+    if (filtered.length > 0) return filtered;
+    // If none of the defaults are in the project's allowed set, return project codes
+    if (projectCodes.length > 0) return projectCodes;
+  }
+
+  return resolved;
+}
+
+/**
  * Add a monitor execution task to regional queues.
  * Monitors are distributed to their specified locations for accurate latency measurement.
  */
@@ -1271,32 +1422,45 @@ export async function addMonitorExecutionJobToQueue(
   try {
     const { monitorExecutionQueue } = await getQueues();
 
-    // Multi-location execution is the default behavior
+    // Resolve effective locations using DB-validated logic (same as monitor-scheduler)
     const monitorConfig =
       (task.config as MonitorConfig | undefined) ?? undefined;
     const locationConfig =
       (monitorConfig?.locationConfig as LocationConfig | null) ?? null;
-    const effectiveLocations = getEffectiveLocations(locationConfig);
+    const effectiveLocations = await resolveMonitorLocations(locationConfig, task.projectId);
 
-    const expectedLocations = Array.from(
-      new Set(
-        effectiveLocations.filter((location) => isMonitoringLocation(location))
-      )
-    ) as MonitoringLocation[];
+    // Filter to locations that have active queues — fail if none match
+    const availableQueueLocations = Object.keys(monitorExecutionQueue);
+    const validLocations = effectiveLocations.filter((loc) =>
+      availableQueueLocations.includes(loc)
+    );
+
+    if (validLocations.length === 0) {
+      const missing = effectiveLocations.join(", ");
+      const available = availableQueueLocations.join(", ") || "none";
+      throw new Error(
+        `No monitor execution queues available for configured locations [${missing}]. ` +
+        `Available queues: [${available}]. ` +
+        `Ensure workers are running in the required regions.`
+      );
+    }
+    const locationsToSchedule = validLocations;
 
     const executionGroupId = `${task.monitorId}-${Date.now()}-${Buffer.from(
       crypto.randomBytes(6)
     ).toString("hex")}`;
 
-    const locationsToSchedule =
-      expectedLocations.length > 0
-        ? expectedLocations
-        : getEffectiveLocations(null);
-
     await Promise.all(
       locationsToSchedule.map(async (location) => {
-        // Location is already uppercase MonitorRegion string
-        const monitorQueue = monitorExecutionQueue[location as MonitorRegion];
+        const monitorQueue = monitorExecutionQueue[location];
+
+        if (!monitorQueue) {
+          queueLogger.warn(
+            { location, monitorId: task.monitorId },
+            `No monitor queue for location "${location}", skipping`
+          );
+          return;
+        }
 
         return monitorQueue.add(
           "executeMonitorJob",

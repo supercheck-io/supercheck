@@ -48,6 +48,7 @@ interface ExecutionsCacheEntry {
 // Cache keyed by projectId
 const executionsCache: Record<string, ExecutionsCacheEntry> = {};
 const CACHE_TTL = 5000;
+const POLL_INTERVAL = 15000; // 15s periodic poll as safety net
 
 let pendingFetch: Promise<{
   running: ExecutionItem[];
@@ -169,8 +170,11 @@ export async function getExecutionsData(projectId?: string | null): Promise<{
   const fetchExecutions = useCallback(async (forceRefresh = false) => {
     if (!mountedRef.current) return;
 
-    if (forceRefresh && executionsCache[cacheKey]) {
-      executionsCache[cacheKey].timestamp = 0;
+    if (forceRefresh) {
+      // Delete cache entry entirely to guarantee a fresh fetch
+      delete executionsCache[cacheKey];
+      // Clear any in-flight request so we don't reuse stale data
+      pendingFetch = null;
     }
 
     try {
@@ -268,10 +272,19 @@ export async function getExecutionsData(projectId?: string | null): Promise<{
     };
     window.addEventListener(EXECUTIONS_CHANGED_EVENT, handleExecutionsChanged);
 
+    // Periodic poll as safety net — if SSE events are missed or cache
+    // deduplication returns stale data, this self-corrects within 15 seconds.
+    const pollInterval = setInterval(() => {
+      if (mountedRef.current && document.visibilityState === "visible") {
+        fetchExecutions(true);
+      }
+    }, POLL_INTERVAL);
+
     return () => {
       mountedRef.current = false;
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener(EXECUTIONS_CHANGED_EVENT, handleExecutionsChanged);
+      clearInterval(pollInterval);
 
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);

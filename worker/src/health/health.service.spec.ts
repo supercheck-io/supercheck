@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { HealthService } from './health.service';
 import { DbService } from '../execution/services/db.service';
 import { RedisService } from '../execution/services/redis.service';
+import { HeartbeatService } from '../common/heartbeat/heartbeat.service';
 
 describe('HealthService', () => {
   let service: HealthService;
@@ -27,6 +28,14 @@ describe('HealthService', () => {
     get: jest.fn(),
   };
 
+  const mockHeartbeatService = {
+    getQueues: jest.fn().mockReturnValue([
+      'playwright-global',
+      'k6-global',
+      'monitor-local',
+    ]),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -34,6 +43,7 @@ describe('HealthService', () => {
         { provide: DbService, useValue: mockDbService },
         { provide: RedisService, useValue: mockRedisService },
         { provide: ConfigService, useValue: mockConfigService },
+        { provide: HeartbeatService, useValue: mockHeartbeatService },
       ],
     }).compile();
 
@@ -65,7 +75,7 @@ describe('HealthService', () => {
       expect(result.checks.queues.status).toBe('healthy');
     });
 
-    it('should check ONLY the correct global queues', async () => {
+    it('should check the queues registered for this worker', async () => {
       mockRedisService.getQueueHealth.mockResolvedValue({
         status: 'healthy',
         message: 'Queue is healthy',
@@ -78,13 +88,8 @@ describe('HealthService', () => {
         'playwright-global',
       );
       expect(mockRedisService.getQueueHealth).toHaveBeenCalledWith('k6-global');
-
-      // Verify NOT called with removed or regional queues
-      expect(mockRedisService.getQueueHealth).not.toHaveBeenCalledWith(
-        'monitor-global',
-      );
-      expect(mockRedisService.getQueueHealth).not.toHaveBeenCalledWith(
-        'monitor-us-east',
+      expect(mockRedisService.getQueueHealth).toHaveBeenCalledWith(
+        'monitor-local',
       );
     });
 

@@ -121,7 +121,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   async getQueueHealth(queueName: string): Promise<boolean> {
     try {
       // Try to get basic queue info
-      const key = `bull:${queueName}:waiting`;
+      const key = `bull:${queueName}:wait`;
       await this.redisClient.llen(key);
       return true;
     } catch (error) {

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { runs, reports, jobs, jobTests, projects } from "@/db/schema";
-import { eq, and, count, sql } from "drizzle-orm";
+import { eq, and, count, sql, inArray } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import { logAuditEvent } from "@/lib/audit-logger";
@@ -53,7 +53,7 @@ export async function GET(
         reports,
         and(
           sql`${reports.entityId} = ${runs.id}::text`,
-          eq(reports.entityType, "job")
+          inArray(reports.entityType, ["job", "k6_job"])
         )
       )
       .where(

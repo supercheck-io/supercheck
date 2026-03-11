@@ -14,8 +14,9 @@ export type RequirementCreatedBy = "ai" | "user";
 export type RequirementCoverageStatus = "covered" | "failing" | "missing";
 export type RequirementDocumentType = "pdf" | "docx" | "md" | "text";
 
-// K6 Performance Testing types (includes global option for any location)
-export type K6Location = "us-east" | "eu-central" | "asia-pacific" | "global";
+// K6 Performance Testing types
+/** @deprecated Use locations table via location-registry.ts instead of hardcoded union types */
+export type K6Location = string;
 
 // Job types
 export type JobType = "playwright" | "k6";
@@ -81,17 +82,19 @@ export type MonitorResultDetails = {
 };
 
 // Monitoring locations
+/** @deprecated Use locations table via location-registry.ts */
 export const MONITORING_LOCATIONS = {
   US_EAST: "us-east",
   EU_CENTRAL: "eu-central",
   ASIA_PACIFIC: "asia-pacific",
 } as const;
 
-export type MonitoringLocation =
-  (typeof MONITORING_LOCATIONS)[keyof typeof MONITORING_LOCATIONS];
+/** @deprecated Use string type and validate against locations table */
+export type MonitoringLocation = string;
 
+/** @deprecated Use Location type from location-registry.ts */
 export type LocationMetadata = {
-  code: MonitoringLocation;
+  code: string;
   name: string;
   region: string;
   coordinates?: { lat: number; lon: number };
@@ -100,7 +103,7 @@ export type LocationMetadata = {
 
 export type LocationConfig = {
   enabled: boolean;
-  locations: MonitoringLocation[];
+  locations: string[];
   threshold: number;
   strategy?: "all" | "majority" | "any";
 };

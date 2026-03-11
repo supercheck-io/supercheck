@@ -81,7 +81,7 @@ const testCaseSchema = testsInsertSchema
       }
     ),
     location: z
-      .enum(["us-east", "eu-central", "asia-pacific", "global"] as const)
+      .string()
       .optional()
       .nullable(),
     updatedAt: z.string().nullable().optional(),

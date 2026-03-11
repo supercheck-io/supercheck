@@ -3,6 +3,8 @@ import { Injectable, Logger } from '@nestjs/common';
 /**
  * Available monitoring locations for multi-location monitoring.
  * Internal format uses kebab-case (us-east, eu-central, asia-pacific)
+ * @deprecated Locations are now dynamic — managed via the `locations` DB table.
+ * These constants are kept as defaults for backward compatibility.
  */
 export const MONITORING_LOCATIONS = {
   US_EAST: 'us-east',
@@ -10,14 +12,14 @@ export const MONITORING_LOCATIONS = {
   ASIA_PACIFIC: 'asia-pacific',
 } as const;
 
-export type MonitoringLocation =
-  (typeof MONITORING_LOCATIONS)[keyof typeof MONITORING_LOCATIONS];
+/** @deprecated Use `string` — locations are now dynamic, not a fixed union. */
+export type MonitoringLocation = string;
 
 /**
  * Location metadata including display name and geographic information.
  */
 export type LocationMetadata = {
-  code: MonitoringLocation;
+  code: string;
   name: string;
   region: string;
   coordinates?: { lat: number; lon: number };
@@ -28,7 +30,7 @@ export type LocationMetadata = {
  */
 export type LocationConfig = {
   enabled: boolean;
-  locations: MonitoringLocation[];
+  locations: string[];
   threshold: number;
   strategy?: 'all' | 'majority' | 'any';
 };
@@ -41,10 +43,13 @@ export class LocationService {
    * Location metadata for all available monitoring locations.
    * Provides display names and geographic information for UI presentation.
    */
-  private readonly locationMetadata: Record<
-    MonitoringLocation,
-    LocationMetadata
-  > = {
+  private readonly locationMetadata: Record<string, LocationMetadata> = {
+    local: {
+      code: 'local',
+      name: 'Local',
+      region: 'Default',
+      coordinates: { lat: 49.4521, lon: 11.0767 },
+    },
     [MONITORING_LOCATIONS.US_EAST]: {
       code: MONITORING_LOCATIONS.US_EAST,
       name: 'US East',
@@ -76,7 +81,7 @@ export class LocationService {
    * Get metadata for a specific location.
    */
   getLocationMetadata(
-    location: MonitoringLocation,
+    location: string,
   ): LocationMetadata | undefined {
     return this.locationMetadata[location];
   }
@@ -84,7 +89,7 @@ export class LocationService {
   /**
    * Get display name for a location.
    */
-  getLocationDisplayName(location: MonitoringLocation): string {
+  getLocationDisplayName(location: string): string {
     return this.locationMetadata[location]?.name || location;
   }
 
@@ -133,21 +138,21 @@ export class LocationService {
   /**
    * Get the effective locations for a monitor (handles legacy and multi-location configs).
    */
-  getEffectiveLocations(config?: LocationConfig | null): MonitoringLocation[] {
+  getEffectiveLocations(config?: LocationConfig | null): string[] {
     if (!config || !config.enabled) {
       // Single location mode - use default primary location
-      return [MONITORING_LOCATIONS.EU_CENTRAL];
+      return ['local'];
     }
 
     // Normalize legacy uppercase locations to kebab-case
-    const locations = config.locations || [MONITORING_LOCATIONS.EU_CENTRAL];
+    const locations = config.locations || ['local'];
     return locations.map((loc) => this.normalizeLegacyLocation(loc));
   }
 
   /**
    * Normalize legacy uppercase location values to kebab-case
    */
-  private normalizeLegacyLocation(location: string): MonitoringLocation {
+  private normalizeLegacyLocation(location: string): string {
     const upperLocation = location.trim().toUpperCase();
 
     switch (upperLocation) {
@@ -167,8 +172,8 @@ export class LocationService {
       case 'ASIA PACIFIC':
         return MONITORING_LOCATIONS.ASIA_PACIFIC;
       default:
-        // Already in correct format or default to EU Central
-        return location as MonitoringLocation;
+        // Already in correct format or unknown — return as-is
+        return location;
     }
   }
 
@@ -176,7 +181,7 @@ export class LocationService {
    * Calculate the overall status based on location results and threshold.
    */
   calculateAggregatedStatus(
-    locationStatuses: Record<MonitoringLocation, boolean>,
+    locationStatuses: Record<string, boolean>,
     config: LocationConfig,
   ): 'up' | 'down' | 'partial' {
     const rawLocations = config.locations || [];
@@ -189,10 +194,23 @@ export class LocationService {
       this.normalizeLegacyLocation(loc),
     );
 
-    const upCount = locations.filter(
+    // If none of the configured locations exist in the actual results,
+    // fall back to using the result locations directly. This handles
+    // cases where monitor config has stale location codes that no longer
+    // match any running worker (e.g., cloud locations after migration to local).
+    const resultKeys = Object.keys(locationStatuses);
+    const hasOverlap = locations.some((loc) => resultKeys.includes(loc));
+    const effectiveLocations = hasOverlap ? locations : resultKeys;
+    if (!hasOverlap && resultKeys.length > 0) {
+      this.logger.warn(
+        `Config locations [${locations.join(', ')}] don't match result locations [${resultKeys.join(', ')}]. Using result locations for aggregation.`,
+      );
+    }
+
+    const upCount = effectiveLocations.filter(
       (loc) => locationStatuses[loc] === true,
     ).length;
-    const totalCount = locations.length;
+    const totalCount = effectiveLocations.length;
     const upPercentage = (upCount / totalCount) * 100;
     const threshold =
       typeof config.threshold === 'number' ? config.threshold : 50;

@@ -5,6 +5,14 @@ import { eq } from "drizzle-orm";
 import { requireUserAuthContext } from "@/lib/auth-context";
 import { hasPermissionForUser } from '@/lib/rbac/middleware';
 import { logAuditEvent } from "@/lib/audit-logger";
+import { createLogger } from "@/lib/logger/index";
+
+const logger = createLogger({ module: "monitor-status-api" }) as {
+  debug: (data: unknown, msg?: string) => void;
+  info: (data: unknown, msg?: string) => void;
+  warn: (data: unknown, msg?: string) => void;
+  error: (data: unknown, msg?: string) => void;
+};
 
 export async function PATCH(
   request: NextRequest,
@@ -108,7 +116,7 @@ export async function PATCH(
     });
     
   } catch (error) {
-    console.error("Error updating monitor status:", error);
+    logger.error({ err: error }, "Error updating monitor status");
     return NextResponse.json(
       { error: "Failed to update monitor status" },
       { status: 500 }

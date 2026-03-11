@@ -58,7 +58,7 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
     job: Job<K6Task>,
   ): Promise<{ success: boolean; timedOut?: boolean; error?: string }> {
     const processStartTime = Date.now();
-    const requestedLocation = job.data.location || 'eu-central';
+    const requestedLocation = job.data.location || 'local';
     const normalizedJobLocation = requestedLocation.toLowerCase();
     const jobLocationIsWildcard = this.isWildcardLocation(
       normalizedJobLocation,
@@ -643,85 +643,6 @@ export class K6ExecutionProcessor extends BaseK6ExecutionProcessor {
     this.logger.error(
       `[Event:error] k6 worker encountered an error: ${error.message}`,
       error.stack,
-    );
-  }
-}
-
-@Processor('k6-us-east', { concurrency: 1 })
-export class K6ExecutionProcessorUS extends K6ExecutionProcessor {
-  constructor(
-    k6ExecutionService: K6ExecutionService,
-    dbService: DbService,
-    configService: ConfigService,
-    jobNotificationService: JobNotificationService,
-    usageTrackerService: UsageTrackerService,
-    hardStopNotificationService: HardStopNotificationService,
-    cancellationService: CancellationService,
-  ) {
-    super(
-      k6ExecutionService,
-      dbService,
-      configService,
-      jobNotificationService,
-      usageTrackerService,
-      hardStopNotificationService,
-      cancellationService,
-    );
-    // Override logger name
-    (this as unknown as { logger: Logger }).logger = new Logger(
-      'K6ExecutionProcessorUSEast',
-    );
-  }
-}
-
-@Processor('k6-eu-central', { concurrency: 1 })
-export class K6ExecutionProcessorEU extends K6ExecutionProcessor {
-  constructor(
-    k6ExecutionService: K6ExecutionService,
-    dbService: DbService,
-    configService: ConfigService,
-    jobNotificationService: JobNotificationService,
-    usageTrackerService: UsageTrackerService,
-    hardStopNotificationService: HardStopNotificationService,
-    cancellationService: CancellationService,
-  ) {
-    super(
-      k6ExecutionService,
-      dbService,
-      configService,
-      jobNotificationService,
-      usageTrackerService,
-      hardStopNotificationService,
-      cancellationService,
-    );
-    (this as unknown as { logger: Logger }).logger = new Logger(
-      'K6ExecutionProcessorEUCentral',
-    );
-  }
-}
-
-@Processor('k6-asia-pacific', { concurrency: 1 })
-export class K6ExecutionProcessorAPAC extends K6ExecutionProcessor {
-  constructor(
-    k6ExecutionService: K6ExecutionService,
-    dbService: DbService,
-    configService: ConfigService,
-    jobNotificationService: JobNotificationService,
-    usageTrackerService: UsageTrackerService,
-    hardStopNotificationService: HardStopNotificationService,
-    cancellationService: CancellationService,
-  ) {
-    super(
-      k6ExecutionService,
-      dbService,
-      configService,
-      jobNotificationService,
-      usageTrackerService,
-      hardStopNotificationService,
-      cancellationService,
-    );
-    (this as unknown as { logger: Logger }).logger = new Logger(
-      'K6ExecutionProcessorAsiaPacific',
     );
   }
 }

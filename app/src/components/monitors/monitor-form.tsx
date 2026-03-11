@@ -68,6 +68,7 @@ import { canCreateMonitors } from "@/lib/rbac/client-permissions";
 import { normalizeRole } from "@/lib/rbac/role-normalizer";
 import { useProjectContext } from "@/hooks/use-project-context";
 import { useAppConfig } from "@/hooks/use-app-config";
+import { useAvailableLocations } from "@/hooks/use-locations";
 import { useQueryClient } from "@tanstack/react-query";
 import { MONITORS_QUERY_KEY } from "@/hooks/use-monitors";
 import { useTest } from "@/hooks/use-tests";
@@ -393,6 +394,7 @@ interface MonitorFormProps {
   title?: string;
   description?: string;
   hideAlerts?: boolean;
+  nextStepLabel?: string;
   onSave?: (data: Record<string, unknown>) => void;
   onCancel?: () => void;
   alertConfig?: AlertConfiguration | null; // Use proper type
@@ -408,6 +410,7 @@ export function MonitorForm({
   title,
   description,
   hideAlerts = false,
+  nextStepLabel,
   onSave,
   onCancel,
   alertConfig: initialAlertConfig,
@@ -419,6 +422,10 @@ export function MonitorForm({
   const searchParams = useSearchParams();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { maxMonitorNotificationChannels } = useAppConfig();
+
+  // Check if multiple locations are available — hide location settings when only one
+  const { locations: dynamicLocations } = useAvailableLocations();
+  const hasMultipleLocations = dynamicLocations.length > 1;
 
   // Get user permissions
   const { currentProject } = useProjectContext();
@@ -1168,16 +1175,18 @@ export function MonitorForm({
           </div>
           {editMode && (
             <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setShowLocationSettings(true)}
-                disabled={isSubmitting}
-                className="flex items-center gap-2"
-              >
-                <MapPin className="h-4 w-4" />
-                Configure Locations
-              </Button>
+              {hasMultipleLocations && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setShowLocationSettings(true)}
+                  disabled={isSubmitting}
+                  className="flex items-center gap-2"
+                >
+                  <MapPin className="h-4 w-4" />
+                  Configure Locations
+                </Button>
+              )}
               <Button
                 type="button"
                 variant="outline"
@@ -2393,7 +2402,7 @@ export function MonitorForm({
                     !hideAlerts && <SaveIcon className="mr-2 h-4 w-4" />
                   )}
                   {hideAlerts
-                    ? "Next: Location Settings"
+                    ? (nextStepLabel ?? "Next: Location Settings")
                     : editMode
                       ? "Update Monitor"
                       : "Create"}

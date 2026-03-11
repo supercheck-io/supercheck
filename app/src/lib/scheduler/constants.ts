@@ -12,6 +12,3 @@ export const MONITOR_SCHEDULER_QUEUE = 'monitor-scheduler';
 
 // Monitor job name
 export const EXECUTE_MONITOR_JOB_NAME = 'executeMonitorJob';
-
-// Default location for K6 jobs
-export const DEFAULT_K6_LOCATION = 'eu-central';

@@ -22,22 +22,7 @@ import {
 import { verifyApiKey } from "@/lib/security/api-key-hash";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
-
-const DEFAULT_K6_LOCATION: K6Location = "eu-central";
-
-const normalizeK6Location = (value?: string): K6Location => {
-  const lower = value?.toLowerCase();
-  // Accept kebab-case format matching K6Location type: "us-east" | "eu-central" | "asia-pacific" | "global"
-  if (
-    lower === "us-east" ||
-    lower === "eu-central" ||
-    lower === "asia-pacific" ||
-    lower === "global"
-  ) {
-    return lower;
-  }
-  return DEFAULT_K6_LOCATION;
-};
+import { resolveProjectK6Location } from "@/lib/location-registry";
 
 // POST /api/jobs/[id]/trigger - Trigger job remotely via API key
 export async function POST(
@@ -317,9 +302,25 @@ export async function POST(
     const locationParam = isPerformanceJob
       ? (request.nextUrl.searchParams.get("location") ?? undefined)
       : undefined;
-    const resolvedLocation = isPerformanceJob
-      ? normalizeK6Location(locationParam)
-      : null;
+    let resolvedLocation: K6Location | null = null;
+    if (isPerformanceJob) {
+      try {
+        resolvedLocation = (await resolveProjectK6Location(
+          job.projectId!,
+          locationParam
+        )) as K6Location;
+      } catch (error) {
+        return NextResponse.json(
+          {
+            error:
+              error instanceof Error
+                ? error.message
+                : "Invalid location requested",
+          },
+          { status: 400 }
+        );
+      }
+    }
 
     // Parse optional request body for additional parameters (currently not used but reserved for future features)
     try {
@@ -482,7 +483,7 @@ export async function POST(
           })),
           organizationId: job.organizationId ?? "",
           projectId: job.projectId ?? "",
-          location: resolvedLocation ?? DEFAULT_K6_LOCATION,
+          location: resolvedLocation ?? "global",
         };
 
         const queueResult = await addK6JobToQueue(k6Task, "k6-job-execution");

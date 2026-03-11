@@ -17,17 +17,7 @@ import { applyVariablesToTestScripts, decodeTestScript } from "@/lib/job-executi
 import { validateK6Script } from "@/lib/k6-validator";
 import { subscriptionService } from "@/lib/services/subscription-service";
 import { polarUsageService } from "@/lib/services/polar-usage.service";
-
-const DEFAULT_K6_LOCATION: K6Location = "eu-central";
-
-const normalizeK6Location = (value?: string): K6Location => {
-  const lower = value?.toLowerCase();
-  // Accept kebab-case format matching K6Location type: "us-east" | "eu-central" | "asia-pacific" | "global"
-  if (lower === "us-east" || lower === "eu-central" || lower === "asia-pacific" || lower === "global") {
-    return lower;
-  }
-  return DEFAULT_K6_LOCATION;
-};
+import { resolveProjectK6Location } from "@/lib/location-registry";
 
 export async function POST(request: Request) {
   let jobId: string | null = null;
@@ -146,9 +136,25 @@ export async function POST(request: Request) {
     const requestedLocation = typeof data.location === "string" ? (data.location as string) : undefined;
     
     // Normalize location if needed (mainly for k6, but useful for consistency)
-    const resolvedLocation = isPerformanceJob
-      ? normalizeK6Location(requestedLocation)
-      : undefined;
+    let resolvedLocation: K6Location | undefined;
+    if (isPerformanceJob) {
+      try {
+        resolvedLocation = (await resolveProjectK6Location(
+          project.id,
+          requestedLocation
+        )) as K6Location;
+      } catch (error) {
+        return NextResponse.json(
+          {
+            error:
+              error instanceof Error
+                ? error.message
+                : "Invalid location requested",
+          },
+          { status: 400 }
+        );
+      }
+    }
 
     runId = crypto.randomUUID();
     const startTime = new Date();
@@ -351,7 +357,7 @@ export async function POST(request: Request) {
           })),
           organizationId: jobRecord?.organizationId ?? "",
           projectId: jobRecord?.projectId ?? "",
-          location: resolvedLocation ?? DEFAULT_K6_LOCATION,
+          location: resolvedLocation ?? "global",
           jobType,
         };
 

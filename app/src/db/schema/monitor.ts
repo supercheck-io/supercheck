@@ -100,7 +100,7 @@ export const monitorResults = pgTable(
     location: varchar("location", { length: 50 })
       .$type<MonitoringLocation>()
       .notNull()
-      .default("eu-central"), // Default location
+      .default("local"), // Default location
     status: varchar("status", { length: 50 })
       .$type<MonitorResultStatus>()
       .notNull(),

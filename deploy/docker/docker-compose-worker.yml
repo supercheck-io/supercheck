@@ -24,7 +24,7 @@
 #   REDIS_PORT - Redis port (default: 6379)
 #   REDIS_PASSWORD - Redis password from main server
 #   S3_ENDPOINT - MinIO/S3 endpoint URL (main server or cloud)
-#   WORKER_LOCATION - This worker's region: us-east | eu-central | asia-pacific
+#   WORKER_LOCATION - This worker's region (must match a location code in Super Admin, e.g. local, us-east, eu-central)
 #   AWS_ACCESS_KEY_ID - S3 credentials
 #   AWS_SECRET_ACCESS_KEY - S3 credentials
 #
@@ -65,9 +65,11 @@ services:
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
 
       # Worker location (required)
-      # This determines which regional queue this worker processes
-      # Options: us-east | eu-central | asia-pacific
-      WORKER_LOCATION: ${WORKER_LOCATION:?WORKER_LOCATION is required - set to us-east, eu-central, or asia-pacific}
+      # This determines which regional queue this worker processes.
+      # Must match an enabled location code configured in Super Admin.
+      # Built-in locations: local (self-hosted default), us-east, eu-central, asia-pacific (cloud defaults)
+      # Custom locations can be added via Super Admin panel.
+      WORKER_LOCATION: ${WORKER_LOCATION:?WORKER_LOCATION is required - set to an enabled location code from Super Admin (e.g. local, us-east)}
 
       # S3/MinIO storage (required)
       S3_ENDPOINT: ${S3_ENDPOINT:?S3_ENDPOINT is required - MinIO/S3 endpoint URL}

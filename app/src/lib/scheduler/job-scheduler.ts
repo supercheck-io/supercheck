@@ -14,7 +14,7 @@ import { eq, and } from 'drizzle-orm';
 import { addJobToQueue, addK6JobToQueue, JobExecutionTask, K6ExecutionTask, queueLogger } from '@/lib/queue';
 import { prepareJobTestScripts } from '@/lib/job-execution-utils';
 import { getNextRunDate } from './cron-utils';
-import { DEFAULT_K6_LOCATION } from './constants';
+import { resolveProjectK6Location } from '@/lib/location-registry';
 
 const logger = queueLogger;
 
@@ -90,11 +90,13 @@ export async function processScheduledJob(
     const jobRecord = jobData[0];
     const jobType = jobRecord.jobType ?? 'playwright';
     const isK6Job = jobType === 'k6';
-    const resolvedLocation = isK6Job ? DEFAULT_K6_LOCATION : null;
 
     const runId = crypto.randomUUID();
     const projectId = jobRecord.projectId || data.projectId;
     const organizationId = jobRecord.organizationId || data.organizationId;
+
+    // Resolve location using project-aware logic (respects project location restrictions)
+    const resolvedLocation = isK6Job ? await resolveProjectK6Location(projectId) : null;
 
     // Create run record with 'queued' status - capacity manager will update to 'running'
     await db.insert(runs).values({

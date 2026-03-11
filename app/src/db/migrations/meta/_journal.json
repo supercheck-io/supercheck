@@ -43,6 +43,34 @@
       "when": 1772803791821,
       "tag": "0005_thankful_blackheart",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1773100800000,
+      "tag": "0006_dynamic_locations",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1773187200000,
+      "tag": "0007_locations_local_default",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1773273600000,
+      "tag": "0008_migrate_monitor_locations",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1773170109404,
+      "tag": "0009_mixed_sugar_man",
+      "breakpoints": true
     }
   ]
 }

@@ -9,10 +9,18 @@ import {
   hasPermissionForUser,
 } from "@/lib/rbac/middleware";
 import { requireUserAuthContext } from "@/lib/auth-context";
+import { createLogger } from "@/lib/logger/index";
 import type {
   MonitorResultStatus,
   MonitoringLocation,
 } from "@/db/schema";
+
+const logger = createLogger({ module: "monitor-location-stats-api" }) as {
+  debug: (data: unknown, msg?: string) => void;
+  info: (data: unknown, msg?: string) => void;
+  warn: (data: unknown, msg?: string) => void;
+  error: (data: unknown, msg?: string) => void;
+};
 
 type LocationSummary = {
   location: MonitoringLocation;
@@ -183,10 +191,7 @@ export async function GET(
       },
     });
   } catch (error) {
-    console.error(
-      `Error fetching location stats for monitor ${id}:`,
-      error
-    );
+    logger.error({ err: error, monitorId: id }, "Error fetching location stats");
     return NextResponse.json(
       { error: "Failed to fetch location statistics" },
       { status: 500 }

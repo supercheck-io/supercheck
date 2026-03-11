@@ -338,7 +338,11 @@ Enable AI-powered test creation, fixes, and performance analysis. Choose your pr
 Workers execute Playwright and k6 workloads in isolated Docker containers.
 
 <Callout type="info">
-Single-location deployments should keep `WORKER_LOCATION=local` (the default). This makes each worker process all regional queues on that server.
+Single-location deployments should keep `WORKER_LOCATION=local` (the default). This makes each worker process all regional queues on that server. When only one location is configured, the UI automatically skips location selection dialogs in monitor configuration, K6 tests, and job creation.
+</Callout>
+
+<Callout type="info">
+Locations are managed by the Super Admin. To expand to multiple regions later, see [Multi-Location Workers](/docs/app/deployment/multi-location). You can add new locations via the Super Admin panel without modifying worker configuration.
 </Callout>
 
 <Callout type="info">

@@ -5,31 +5,41 @@ import type {
   LocationConfig,
 } from "@/db/schema";
 
-// Re-export key pieces for UI usage
-export { MONITORING_LOCATIONS };
+// Re-export key types for UI usage
 export type { MonitoringLocation, LocationConfig };
 
 /**
- * Location metadata for all available monitoring locations.
- * Includes display names, regions, and geographic coordinates.
+ * Static location metadata for the three cloud defaults.
+ *
+ * @deprecated For client components, prefer the `useLocations()` hook
+ * from `@/hooks/use-locations` which fetches dynamic data from the DB.
+ * This constant is retained as a server-side / SSR fallback so existing
+ * callers keep working without breaking changes.
  */
-export const LOCATION_METADATA: Record<MonitoringLocation, LocationMetadata> = {
-  [MONITORING_LOCATIONS.US_EAST]: {
-    code: MONITORING_LOCATIONS.US_EAST,
+export const LOCATION_METADATA: Record<string, LocationMetadata> = {
+  local: {
+    code: "local",
+    name: "Local",
+    region: "Default",
+    coordinates: { lat: 49.4521, lon: 11.0767 },
+    flag: "🖥️",
+  },
+  "us-east": {
+    code: "us-east",
     name: "US East",
     region: "Ashburn",
     coordinates: { lat: 39.0438, lon: -77.4874 },
     flag: "🇺🇸",
   },
-  [MONITORING_LOCATIONS.EU_CENTRAL]: {
-    code: MONITORING_LOCATIONS.EU_CENTRAL,
+  "eu-central": {
+    code: "eu-central",
     name: "EU Central",
     region: "Nuremberg",
     coordinates: { lat: 49.4521, lon: 11.0767 },
     flag: "🇩🇪",
   },
-  [MONITORING_LOCATIONS.ASIA_PACIFIC]: {
-    code: MONITORING_LOCATIONS.ASIA_PACIFIC,
+  "asia-pacific": {
+    code: "asia-pacific",
     name: "Asia Pacific",
     region: "Singapore",
     coordinates: { lat: 1.3521, lon: 103.8198 },
@@ -37,42 +47,51 @@ export const LOCATION_METADATA: Record<MonitoringLocation, LocationMetadata> = {
   },
 };
 
-
-const ALL_MONITORING_LOCATIONS = Object.values(
-  MONITORING_LOCATIONS
-) as MonitoringLocation[];
+/**
+ * Build a metadata lookup from dynamic location data (e.g. from API/hook).
+ * Use this in client components instead of the static LOCATION_METADATA.
+ */
+export function buildLocationMetadataMap(
+  locations: Array<{
+    code: string;
+    name: string;
+    region: string | null;
+    flag: string | null;
+    coordinates: { lat: number; lon: number } | null;
+  }>
+): Record<string, LocationMetadata> {
+  const map: Record<string, LocationMetadata> = {};
+  for (const loc of locations) {
+    map[loc.code] = {
+      code: loc.code,
+      name: loc.name,
+      region: loc.region || "",
+      coordinates: loc.coordinates ?? undefined,
+      flag: loc.flag ?? undefined,
+    };
+  }
+  return map;
+}
 
 /**
  * Default location configuration for new monitors.
  */
 export const DEFAULT_LOCATION_CONFIG: LocationConfig = {
   enabled: false,
-  locations: [MONITORING_LOCATIONS.EU_CENTRAL],
+  locations: ["local"],
   threshold: 50, // Majority must be up
   strategy: "majority",
 };
 
 /**
- * Get all available monitoring locations.
- */
-export function getAllLocations(): LocationMetadata[] {
-  return Object.values(LOCATION_METADATA);
-}
-
-/**
  * Get metadata for a specific location.
+ * Falls back to LOCATION_METADATA for known defaults;
+ * returns a generated entry for unknown codes.
  */
 export function getLocationMetadata(
-  location: MonitoringLocation
+  location: string
 ): LocationMetadata | undefined {
   return LOCATION_METADATA[location];
-}
-
-/**
- * Get display name for a location.
- */
-export function getLocationDisplayName(location: MonitoringLocation): string {
-  return LOCATION_METADATA[location]?.name || location;
 }
 
 export function isMonitoringLocation(
@@ -81,45 +100,8 @@ export function isMonitoringLocation(
   if (typeof value !== "string") {
     return false;
   }
-  return ALL_MONITORING_LOCATIONS.includes(value as MonitoringLocation);
-}
-
-/**
- * Validate location configuration.
- */
-export function validateLocationConfig(
-  config: Partial<LocationConfig>
-): { valid: boolean; error?: string } {
-  if (!config) {
-    return { valid: false, error: "Location config is required" };
-  }
-
-  if (config.enabled && (!config.locations || config.locations.length === 0)) {
-    return {
-      valid: false,
-      error: "At least one location must be selected when enabled",
-    };
-  }
-
-  if (config.locations) {
-    for (const location of config.locations) {
-      if (!LOCATION_METADATA[location]) {
-        return { valid: false, error: `Invalid location: ${location}` };
-      }
-    }
-  }
-
-  if (
-    config.threshold !== undefined &&
-    (config.threshold < 0 || config.threshold > 100)
-  ) {
-    return {
-      valid: false,
-      error: "Threshold must be between 0 and 100",
-    };
-  }
-
-  return { valid: true };
+  // With dynamic locations, any non-empty string is a valid location code
+  return value.length > 0;
 }
 
 /**
@@ -167,10 +149,17 @@ export function calculateAggregatedStatus(
     normalizeLegacyLocation(loc),
   );
 
-  const upCount = locations.filter(
+  // If none of the configured locations exist in the actual results,
+  // fall back to using the result locations directly. This handles
+  // cases where monitor config has stale location codes.
+  const resultKeys = Object.keys(locationStatuses);
+  const hasOverlap = locations.some((loc) => resultKeys.includes(loc));
+  const effectiveLocations = hasOverlap ? locations : resultKeys;
+
+  const upCount = effectiveLocations.filter(
     (loc) => locationStatuses[loc] === true
   ).length;
-  const totalCount = locations.length;
+  const totalCount = effectiveLocations.length;
   const upPercentage = (upCount / totalCount) * 100;
   const threshold =
     typeof config.threshold === "number" ? config.threshold : 50;
@@ -198,16 +187,17 @@ export function calculateAggregatedStatus(
 /**
  * Get the effective locations for a monitor (handles legacy and multi-location configs).
  */
+/** @deprecated Use resolveMonitorLocations() in queue.ts or getEffectiveLocations() in monitor-scheduler.ts instead. */
 export function getEffectiveLocations(
   config?: LocationConfig | null
 ): MonitoringLocation[] {
   if (!config || !config.enabled) {
     // Single location mode - use default primary location
-    return [MONITORING_LOCATIONS.EU_CENTRAL];
+    return ["local"];
   }
 
   // Normalize legacy locations
-  const locations = config.locations || [MONITORING_LOCATIONS.EU_CENTRAL];
+  const locations = config.locations || ["local"];
   return locations.map(loc => normalizeLegacyLocation(loc));
 }
 

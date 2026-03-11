@@ -3,8 +3,6 @@ import { Queue, QueueEvents } from "bullmq";
 import { eq } from "drizzle-orm";
 import {
   getQueues,
-  REGIONS,
-  MONITOR_REGIONS,
 } from "@/lib/queue";
 import { db } from "@/utils/db";
 import { runs } from "@/db/schema";
@@ -99,21 +97,21 @@ class QueueEventHub extends EventEmitter {
         queue: playwrightQueues["global"],
       });
       
-      // Add k6 queues for all regions
-      for (const region of REGIONS) {
+      // Add k6 queues for all dynamic locations
+      for (const [region, queue] of Object.entries(k6Queues)) {
         sources.push({
-          category: "job", // K6 queues are typically for jobs
+          category: "job",
           queueName: `k6-${region}`,
-          queue: k6Queues[region],
+          queue,
         });
       }
 
-      // Add monitor queues for all regions
-      for (const region of MONITOR_REGIONS) {
+      // Add monitor queues for all dynamic locations
+      for (const [region, queue] of Object.entries(monitorExecutionQueue)) {
         sources.push({
           category: "monitor",
           queueName: `monitor-${region}`,
-          queue: monitorExecutionQueue[region],
+          queue,
         });
       }
 
@@ -202,8 +200,19 @@ class QueueEventHub extends EventEmitter {
     }
     this.closing = true;
 
+    await this.closeQueueEvents();
+  }
+
+  /**
+   * Close all QueueEvents connections without setting the `closing` flag.
+   * Used by both `closeAll()` (permanent shutdown) and `refresh()` (re-initialization).
+   */
+  private async closeQueueEvents(): Promise<void> {
+    const toClose = [...this.queueEvents];
+    this.queueEvents = [];
+
     await Promise.all(
-      this.queueEvents.map(async (events) => {
+      toClose.map(async (events) => {
         try {
           await events.close();
         } catch (error) {
@@ -213,6 +222,34 @@ class QueueEventHub extends EventEmitter {
         }
       })
     );
+  }
+
+  /**
+   * Refresh the event hub to pick up newly added or removed locations.
+   * Closes existing QueueEvents and re-initializes from fresh getQueues() data.
+   * Called after admin location CRUD operations.
+   */
+  async refresh(): Promise<void> {
+    if (this.closing) {
+      return;
+    }
+
+    eventHubLogger.info({}, "Refreshing queue event sources for updated locations");
+
+    // Close existing QueueEvents without setting closing flag
+    await this.closeQueueEvents();
+
+    // Clear meta cache — stale entries won't match new queue layout
+    this.runMetaCache.clear();
+
+    // Allow re-initialization
+    this.initialized = false;
+    this.readyPromise = this.initialize().catch((error) => {
+      eventHubLogger.error({ err: error }, "Failed to refresh queue event sources");
+      throw error;
+    });
+
+    await this.readyPromise;
   }
 
   private async normalizeEvent(
@@ -414,4 +451,15 @@ export function getQueueEventHub(): QueueEventHub {
     globalThis.__SUPER_CHECK_QUEUE_EVENT_HUB__ = new QueueEventHub();
   }
   return globalThis.__SUPER_CHECK_QUEUE_EVENT_HUB__;
+}
+
+/**
+ * Refresh the queue event hub to pick up newly added or removed locations.
+ * Call after location CRUD operations alongside invalidateQueueMaps().
+ * No-op if the hub hasn't been created yet.
+ */
+export async function invalidateQueueEventHub(): Promise<void> {
+  if (globalThis.__SUPER_CHECK_QUEUE_EVENT_HUB__) {
+    await globalThis.__SUPER_CHECK_QUEUE_EVENT_HUB__.refresh();
+  }
 }

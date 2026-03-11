@@ -38,7 +38,6 @@ import { ResourceManagerService } from '../common/resources/resource-manager.ser
 import {
   LocationService,
   MonitoringLocation,
-  MONITORING_LOCATIONS,
 } from '../common/location/location.service';
 
 // Import shared constants
@@ -101,7 +100,7 @@ export class MonitorService {
 
   async executeMonitor(
     jobData: MonitorJobDataDto,
-    location: MonitoringLocation = MONITORING_LOCATIONS.EU_CENTRAL,
+    location: MonitoringLocation = "local",
   ): Promise<MonitorExecutionResult | null> {
     // Removed log - only log warnings, errors, and status changes
 

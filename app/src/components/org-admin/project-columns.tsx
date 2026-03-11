@@ -4,7 +4,7 @@ import { ColumnDef } from "@tanstack/react-table";
 import { Button } from "@/components/ui/button";
 import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
 
-import { Edit3, FolderOpen, Users, Calendar } from "lucide-react";
+import { Edit3, FolderOpen, Users, Calendar, MapPin } from "lucide-react";
 import { toast } from "sonner";
 import { DataTableColumnHeader } from "@/components/tests/data-table-column-header";
 import { UUIDField } from "@/components/ui/uuid-field";
@@ -57,7 +57,8 @@ const formatDate = (dateString: string) => {
 
 export function createProjectColumns(
   onEditProject?: (project: Project) => void,
-  canManageProject?: boolean
+  canManageProject?: boolean,
+  onManageLocations?: (project: Project) => void
 ): ColumnDef<Project>[] {
   return [
     {
@@ -238,7 +239,18 @@ export function createProjectColumns(
         }
 
         return (
-          <div className="flex items-center h-10">
+          <div className="flex items-center h-10 gap-1">
+            {onManageLocations && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 w-8 p-0 bg-gray-50 hover:bg-gray-100 text-gray-600 hover:text-gray-700 border-gray-200 hover:border-gray-300 transition-all duration-200 rounded-md shadow-sm"
+                onClick={() => onManageLocations(project)}
+                title="Location restrictions"
+              >
+                <MapPin className="h-4 w-4" />
+              </Button>
+            )}
             <Button
               variant="outline"
               size="sm"

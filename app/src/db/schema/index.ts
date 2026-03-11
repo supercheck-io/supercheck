@@ -51,3 +51,6 @@ export * from "./plan-limits";
 
 // Billing and usage tracking
 export * from "./billing";
+
+// Location management (instance-wide locations + per-project restrictions)
+export * from "./locations";

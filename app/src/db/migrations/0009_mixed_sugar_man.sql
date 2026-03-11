@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "locations_single_default_idx" ON "locations" USING btree ("is_default") WHERE is_default = true;

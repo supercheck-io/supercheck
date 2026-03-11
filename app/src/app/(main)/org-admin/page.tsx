@@ -42,6 +42,7 @@ import { AuditLogsTable } from "@/components/admin/audit-logs-table";
 import { CliTokensTable } from "@/components/admin/cli-tokens-table";
 import { MembersTable } from "@/components/org-admin/members-table";
 import { ProjectsTable } from "@/components/org-admin/projects-table";
+import { ProjectLocationsDialog } from "@/components/org-admin/project-locations-dialog";
 import { SubscriptionTab } from "@/components/org-admin/subscription-tab";
 import { MemberAccessDialog } from "@/components/members/MemberAccessDialog";
 import { FormInput } from "@/components/ui/form-input";
@@ -356,6 +357,12 @@ function OrgAdminDashboardContent() {
       isDefault: project.isDefault,
     });
     setShowEditProjectDialog(true);
+  };
+
+  const [locationProject, setLocationProject] = useState<Project | null>(null);
+
+  const handleManageLocations = (project: Project) => {
+    setLocationProject(project);
   };
 
   const handleUpdateProject = async () => {
@@ -701,6 +708,7 @@ function OrgAdminDashboardContent() {
                   projects={projects}
                   onCreateProject={() => setShowCreateProjectDialog(true)}
                   onEditProject={handleEditProject}
+                  onManageLocations={handleManageLocations}
                   canCreateProjects={canCreateProjects(
                     normalizeRole(currentUserRole)
                   )}
@@ -851,6 +859,18 @@ function OrgAdminDashboardContent() {
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
+
+              {/* Project Location Restrictions Dialog */}
+              {locationProject && (
+                <ProjectLocationsDialog
+                  open={!!locationProject}
+                  onOpenChange={(open) => {
+                    if (!open) setLocationProject(null);
+                  }}
+                  projectId={locationProject.id}
+                  projectName={locationProject.name}
+                />
+              )}
             </TabsContent>
 
             <TabsContent value="members" className="space-y-4">

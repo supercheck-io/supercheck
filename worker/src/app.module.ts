@@ -12,6 +12,7 @@ import { HealthModule } from './health/health.module';
 import { EmailTemplateModule } from './email-template/email-template.module';
 import { LoggerModule } from './logger/logger.module';
 import { QueueAlertingModule } from './queue-alerting/queue-alerting.module';
+import { HeartbeatModule } from './common/heartbeat/heartbeat.module';
 
 @Module({
   imports: [
@@ -60,6 +61,7 @@ import { QueueAlertingModule } from './queue-alerting/queue-alerting.module';
     HealthModule,
     EmailTemplateModule,
     QueueAlertingModule,
+    HeartbeatModule,
   ],
   controllers: [AppController],
   providers: [AppService],

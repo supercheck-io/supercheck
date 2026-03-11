@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { runs, reports, jobs, ReportType } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 
@@ -61,7 +61,7 @@ export async function GET(
     const reportResult = await db.query.reports.findFirst({
       where: and(
         eq(reports.entityId, runId),
-        eq(reports.entityType, 'job' as ReportType)
+        inArray(reports.entityType, ['job', 'k6_job'] as ReportType[])
       ),
       columns: {
         s3Url: true

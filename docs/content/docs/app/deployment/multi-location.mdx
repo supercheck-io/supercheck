@@ -61,6 +61,14 @@ flowchart TB
 
 ## Architecture Overview
 
+Queue names now follow a dynamic pattern derived from enabled locations in Super Admin:
+
+- Playwright: `playwright-global`
+- K6: `k6-global` plus `k6-{location-code}`
+- Monitors: `monitor-{location-code}`
+
+The examples below use the built-in `us-east`, `eu-central`, and `asia-pacific` location codes, but any enabled custom location follows the same routing pattern.
+
 | `WORKER_LOCATION` | Queues Processed | Use Case |
 |-------------------|-----------------|----------|
 | `local` | **All queues** (regional + global) | Local development, single-server |
@@ -68,9 +76,58 @@ flowchart TB
 | `eu-central` | `playwright-global`, `k6-eu-central`, `k6-global`, `monitor-eu-central` | EU Central regional worker |
 | `asia-pacific` | `playwright-global`, `k6-asia-pacific`, `k6-global`, `monitor-asia-pacific` | Asia Pacific regional worker |
 
-<Callout type="warn">
-At least one worker must run with `WORKER_LOCATION=eu-central` for K6 **job** executions. K6 jobs are intentionally pinned to the `k6-eu-central` queue for consistent analytics baselines.
+<Callout type="info">
+K6 **job** executions are automatically routed to the default location configured in the Super Admin panel. Ensure at least one worker is running for that location. Playground K6 tests respect the user's location selection.
 </Callout>
+
+---
+
+## Managing Locations
+
+Locations are managed through the **Super Admin** panel.
+
+### Adding a Location
+
+1. Navigate to **Super Admin → Locations** tab.
+2. Click **Add Location**.
+3. Fill in the required fields:
+   - **Code** — Unique identifier used in queue names (e.g. `us-east`). Must be lowercase, 2–63 characters, letters/digits/hyphens only, no consecutive hyphens. Reserved codes (`global`, `all`, `default`, `none`, `any`) are blocked.
+   - **Name** — Human-readable display name (e.g. "US East").
+   - **Region** — Optional description (e.g. "Ashburn, Virginia").
+   - **Flag** — Optional emoji flag for the UI (e.g. 🇺🇸).
+   - **Coordinates** — Optional latitude/longitude for the map visualization.
+4. Toggle **Default** if this should be the default location for K6 job executions. Only one location can be default at a time — setting a new default automatically clears the previous one.
+5. Toggle **Enabled** to activate the location. Disabling a location removes its queues.
+
+### Location Table Columns
+
+| Column | Description |
+|--------|-------------|
+| Flag | Emoji flag for the region |
+| Name | Display name |
+| Code | Queue identifier (immutable after creation) |
+| Region | Geographic description |
+| Workers | Number of active workers (from heartbeat data) |
+| Status | **Active** (has workers), **Offline** (no workers), **Disabled** (toggled off) |
+| Default | Whether this is the default K6 job location |
+| Enabled | Whether queues are created for this location |
+
+### Setting the Default Location
+
+The default location determines where K6 **job** executions run. Only one location can be default. When you toggle a location as default via the UI or API, all other locations are automatically cleared.
+
+---
+
+## Project Location Restrictions
+
+Organization admins can restrict which locations a specific project is allowed to use. This is useful for compliance, data residency, or cost control.
+
+1. Navigate to **Settings → Admin** (requires Org Admin or Org Owner role).
+2. Find the project in the projects table and open the **Project Locations** dialog.
+3. Select the locations this project is allowed to use.
+4. An **empty selection means no restrictions** — the project can use all enabled locations.
+
+When a project has location restrictions, only the allowed locations appear in location pickers (monitor configuration, K6 test settings, etc.). The `useAvailableLocations()` hook automatically filters locations based on the active project's restrictions.
 
 ---
 
@@ -203,7 +260,7 @@ For true geographic distribution, deploy workers in each region.
     AWS_SECRET_ACCESS_KEY=YOUR_MINIO_SECRET_KEY
     
     # ─────────────────────────────────────────────────────────────────
-    # Worker Location (choose one: us-east, eu-central, asia-pacific)
+    # Worker Location (must match an enabled location code in Super Admin)
     # ─────────────────────────────────────────────────────────────────
     WORKER_LOCATION=us-east
     ```
@@ -324,6 +381,14 @@ docker compose logs worker | grep "WORKER_LOCATION"
 
 **K6 jobs stuck in queued state:**
 ```bash
-# Ensure at least one worker is subscribed to k6-eu-central
+# Ensure at least one worker is subscribed to your default K6 location queue
 docker compose logs worker | grep "K6Module initialized"
 ```
+
+**K6 execution fails with "queue not available" error:**
+
+This means the requested regional queue (e.g. `k6-us-east`) does not exist yet. This happens when no worker has registered for that location. Ensure a worker with the matching `WORKER_LOCATION` is running and has subscribed to the queue.
+
+**Monitor execution fails with "No monitor execution queues available":**
+
+This means none of the monitor's configured locations have active worker queues. Verify that workers are running in the required regions, and that the location codes in the monitor configuration match the `WORKER_LOCATION` values of your deployed workers.

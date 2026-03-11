@@ -79,7 +79,8 @@ x-common-env: &common-env # Database Configuration
   K6_JOB_EXECUTION_TIMEOUT_MS: ${K6_JOB_EXECUTION_TIMEOUT_MS:-3600000}
 
   # Worker Location for geo-distributed deployments
-  # Valid values: local, us-east, eu-central, asia-pacific
+  # Must match an enabled location code in Super Admin (e.g. local, us-east, eu-central, asia-pacific)
+  # Custom locations can be created via Super Admin panel
   WORKER_LOCATION: ${WORKER_LOCATION:-local}
 
   # AWS S3 / MinIO Configuration

@@ -74,6 +74,7 @@ export async function createMonitorHandler(data: MonitorApiData) {
     // Use validatedData.enabled here
     const jobDataPayload: MonitorJobData = {
       monitorId: newMonitor.id,
+      projectId: newMonitor.projectId ?? undefined,
       type: newMonitor.type as MonitorJobData["type"],
       target: newMonitor.target,
       config: newMonitor.config as MonitorConfig,
@@ -184,6 +185,7 @@ export async function updateMonitorHandler(
     ) {
       const jobDataPayload: MonitorJobData = {
         monitorId: updatedMonitor.id,
+        projectId: updatedMonitor.projectId ?? undefined,
         type: updatedMonitor.type as MonitorJobData["type"],
         target: updatedMonitor.target,
         config: updatedMonitor.config as MonitorConfig,
@@ -289,6 +291,7 @@ export async function triggerImmediateMonitorExecution(monitorId: string) {
 
     const jobDataPayload: MonitorJobData = {
       monitorId: monitor.id,
+      projectId: monitor.projectId ?? undefined,
       type: monitor.type as MonitorJobData["type"],
       target: monitor.target,
       config: monitor.config as MonitorConfig,
