@@ -6,6 +6,10 @@ import path from "path";
 import ejs from "ejs";
 
 import { NextBullBoardAdapter } from "@/lib/bull-board/next-adapter";
+import {
+  getBullBoardState,
+  setBullBoardState,
+} from "@/lib/bull-board/state";
 import { getQueues } from "@/lib/queue";
 import { getCurrentUser } from "@/lib/session";
 import { Role } from "@/lib/rbac/permissions";
@@ -20,20 +24,6 @@ const INIT_TIMEOUT_MS = 30000; // 30 second timeout for initialization
 const serverAdapter = new NextBullBoardAdapter().setBasePath(
   BULL_BOARD_BASE_PATH
 );
-
-let bullBoardInitialized = false;
-let cachedState: NextBullBoardAdapterState | null = null;
-let initializationPromise: Promise<NextBullBoardAdapterState> | null = null;
-
-/**
- * Invalidate Bull Board so it re-initializes with updated queues.
- * Called when locations are added/removed/changed.
- */
-export function invalidateBullBoard(): void {
-  bullBoardInitialized = false;
-  cachedState = null;
-  initializationPromise = null;
-}
 
 class HttpError extends Error {
   statusCode: number;
@@ -50,18 +40,20 @@ class HttpError extends Error {
  * Uses a promise-based mutex to prevent race conditions during initialization.
  */
 const ensureBullBoard = async (): Promise<NextBullBoardAdapterState> => {
+  const state = getBullBoardState();
+
   // Return cached state if already initialized
-  if (bullBoardInitialized && cachedState) {
-    return cachedState;
+  if (state.bullBoardInitialized && state.cachedState) {
+    return state.cachedState;
   }
 
   // If initialization is in progress, wait for it
-  if (initializationPromise) {
-    return initializationPromise;
+  if (state.initializationPromise) {
+    return state.initializationPromise;
   }
 
   // Start initialization with timeout
-  initializationPromise = Promise.race([
+  const promise = Promise.race([
     initializeBullBoard(),
     new Promise<never>((_, reject) =>
       setTimeout(
@@ -71,11 +63,13 @@ const ensureBullBoard = async (): Promise<NextBullBoardAdapterState> => {
     ),
   ]).catch((error) => {
     // Reset initialization promise on failure
-    initializationPromise = null;
+    setBullBoardState({ initializationPromise: null });
     throw error;
   });
 
-  return initializationPromise;
+  setBullBoardState({ initializationPromise: promise });
+
+  return promise;
 };
 
 /**
@@ -136,11 +130,14 @@ const initializeBullBoard = async (): Promise<NextBullBoardAdapterState> => {
     },
   });
 
-  cachedState = serverAdapter.getState();
-  bullBoardInitialized = true;
-  initializationPromise = null;
+  const result = serverAdapter.getState();
+  setBullBoardState({
+    cachedState: result,
+    bullBoardInitialized: true,
+    initializationPromise: null,
+  });
 
-  return cachedState;
+  return result;
 };
 
 const createNotFoundResponse = () =>

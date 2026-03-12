@@ -90,7 +90,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
     try {
       const { invalidateBullBoard } = await import(
-        "@/app/api/admin/queues/[[...path]]/route"
+        "@/lib/bull-board/state"
       );
       invalidateBullBoard();
     } catch {
@@ -212,7 +212,7 @@ export async function DELETE(_request: NextRequest, { params }: RouteParams) {
 
     try {
       const { invalidateBullBoard } = await import(
-        "@/app/api/admin/queues/[[...path]]/route"
+        "@/lib/bull-board/state"
       );
       invalidateBullBoard();
     } catch {

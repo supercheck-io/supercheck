@@ -147,7 +147,7 @@ export async function POST(request: NextRequest) {
     // Invalidate Bull Dashboard so new queues appear
     try {
       const { invalidateBullBoard } = await import(
-        "@/app/api/admin/queues/[[...path]]/route"
+        "@/lib/bull-board/state"
       );
       invalidateBullBoard();
     } catch {
