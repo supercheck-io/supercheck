@@ -13,7 +13,6 @@ import { Button } from "@/components/ui/button";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import {
-  PERFORMANCE_LOCATION_OPTIONS,
   buildPerformanceLocationOptions,
   getPerformanceLocationOption,
   type PerformanceLocation,
@@ -43,14 +42,15 @@ export function LocationSelectionDialog({
   // Fetch dynamic locations from API
   const { locations: dynamicLocations, hasRestrictions } = useAvailableLocations();
 
-  // Build options from dynamic data, falling back to static defaults
+  // Build options from dynamic data
   const locationOptions = useMemo(() => {
     if (dynamicLocations.length > 0) {
       return buildPerformanceLocationOptions(dynamicLocations, {
         includeGlobal: !hasRestrictions,
       });
     }
-    return PERFORMANCE_LOCATION_OPTIONS;
+    // Minimal fallback while loading
+    return buildPerformanceLocationOptions([], { includeGlobal: true });
   }, [dynamicLocations, hasRestrictions]);
 
   const fallbackLocation = useMemo(() => {

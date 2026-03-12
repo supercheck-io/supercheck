@@ -65,12 +65,14 @@ npm run generate-docs
 - `/app/src/lib/rbac/permissions.ts` integrates Better Auth (`createAccessControl`) and is server-only.
 
 ### Queue constants must stay aligned
-- Keep queue names synchronized between:
+- Queue names are dynamically generated from the `locations` database table (format: `k6-{code}`, `monitor-{code}`).
+- The fixed queue names (`playwright-global`, scheduler queues) must stay synchronized between:
   - `/app/src/lib/queue.ts`
   - `/worker/src/execution/constants.ts`
   - `/worker/src/k6/k6.constants.ts`
   - `/worker/src/monitor/monitor.constants.ts`
 - Do not rename queue constants in one place only.
+- After any location CRUD, call `invalidateLocationCache()`, `invalidateQueueMaps()`, `invalidateQueueEventHub()`, and `invalidateBullBoard()` (from `@/lib/bull-board/state`).
 
 ### Execution and scaling behavior
 - Per-process concurrency is intentionally low/hardcoded (`@Processor(..., { concurrency: 1 })`, plus `MAX_CONCURRENT_EXECUTIONS: 1` in worker memory constants); scale by running more worker replicas.

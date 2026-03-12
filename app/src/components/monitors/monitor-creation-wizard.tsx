@@ -42,7 +42,8 @@ export function MonitorCreationWizard() {
   const { maxMonitorNotificationChannels } = useAppConfig();
 
   // Check if multiple locations are available — skip location step when only one
-  const { locations: dynamicLocations } = useAvailableLocations();
+  const { locations: dynamicLocations, isLoading: locationsLoading } =
+    useAvailableLocations();
   const hasMultipleLocations = dynamicLocations.length > 1;
 
   // Track if component is mounted to avoid state updates after unmount
@@ -193,8 +194,13 @@ export function MonitorCreationWizard() {
 
   // Sync URL with current step
   useEffect(() => {
-    // Skip location step if only 1 location is available
-    if (currentStep === "location" && !hasMultipleLocations) {
+    // Skip location step if only 1 location is available.
+    // Wait until locations have loaded to avoid premature skip.
+    if (
+      currentStep === "location" &&
+      !locationsLoading &&
+      !hasMultipleLocations
+    ) {
       const timeoutId = window.setTimeout(() => {
         setCurrentStep("alerts");
       }, 0);
@@ -210,7 +216,7 @@ export function MonitorCreationWizard() {
       ? `?${params.toString()}`
       : window.location.pathname;
     router.replace(newUrl, { scroll: false });
-  }, [currentStep, hasMultipleLocations, router]);
+  }, [currentStep, locationsLoading, hasMultipleLocations, router]);
 
   // Clear draft data
   const clearDraft = useCallback(() => {
@@ -257,7 +263,7 @@ export function MonitorCreationWizard() {
     // locationConfig to the actual available location instead of relying
     // on DEFAULT_LOCATION_CONFIG which hardcodes "local". This prevents
     // a 400 error when the only available location isn't "local".
-    if (!hasMultipleLocations && dynamicLocations.length === 1) {
+    if (!locationsLoading && !hasMultipleLocations && dynamicLocations.length === 1) {
       setLocationConfig({
         enabled: false,
         locations: [dynamicLocations[0].code],
@@ -266,7 +272,9 @@ export function MonitorCreationWizard() {
       });
     }
 
-    setCurrentStep(hasMultipleLocations ? "location" : "alerts");
+    setCurrentStep(
+      locationsLoading || hasMultipleLocations ? "location" : "alerts"
+    );
   };
 
   const handleLocationNext = () => {

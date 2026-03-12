@@ -3,7 +3,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { K6ExecutionService } from './services/k6-execution.service';
 import { K6ExecutionProcessor } from './processors/k6-execution.processor';
 import { K6DynamicWorkerService } from './processors/k6-dynamic-worker.service';
-import { K6_QUEUE, k6QueueName, REGIONS } from './k6.constants';
+import { K6_QUEUE, k6QueueName } from './k6.constants';
 import { ExecutionModule } from '../execution.module';
 import { SecurityModule } from '../common/security/security.module';
 import { DbModule } from '../db/db.module';
@@ -78,13 +78,9 @@ export class K6Module {
    */
   private static getQueueNames(location: string): string[] {
     if (location === 'local') {
-      // Development: global + local + all default region queues (backward compat)
-      const names = new Set<string>([K6_QUEUE]);
-      names.add(k6QueueName('local'));
-      for (const region of REGIONS) {
-        names.add(k6QueueName(region));
-      }
-      return Array.from(names);
+      // Development: global + local queue
+      // Dynamic regional queues are discovered at runtime by K6DynamicWorkerService
+      return [K6_QUEUE, k6QueueName('local')];
     }
 
     // Production: location-specific queue + global queue

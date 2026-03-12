@@ -9,11 +9,9 @@ import { PLAYWRIGHT_QUEUE } from '../execution/constants';
 import {
   K6_QUEUE,
   k6QueueName,
-  REGIONS as K6_REGIONS,
 } from '../k6/k6.constants';
 import {
   monitorQueueName,
-  REGIONS as MONITOR_REGIONS,
 } from '../monitor/monitor.constants';
 
 export interface HealthStatus {
@@ -198,12 +196,6 @@ export class HealthService {
     if (workerLocation === 'local') {
       queueNames.add(k6QueueName('local'));
       queueNames.add(monitorQueueName('local'));
-      for (const region of K6_REGIONS) {
-        queueNames.add(k6QueueName(region));
-      }
-      for (const region of MONITOR_REGIONS) {
-        queueNames.add(monitorQueueName(region));
-      }
     } else {
       queueNames.add(k6QueueName(workerLocation));
       queueNames.add(monitorQueueName(workerLocation));

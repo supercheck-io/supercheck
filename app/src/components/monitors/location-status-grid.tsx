@@ -6,7 +6,6 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Globe, TrendingUp, TrendingDown, Activity, Clock } from "lucide-react";
 import {
-  getLocationMetadata,
   getLocationHealthColor,
   buildLocationMetadataMap,
 } from "@/lib/location-service";
@@ -48,20 +47,17 @@ export function LocationStatusGrid({
   const [error, setError] = useState<string | null>(null);
   const { locations: dynamicLocations } = useLocations();
 
-  // Build a metadata map from dynamic locations with static fallback
+  // Build a metadata map from dynamic locations
   const metadataMap = React.useMemo(() => {
     if (dynamicLocations.length > 0) {
       return buildLocationMetadataMap(dynamicLocations);
     }
-    return null; // null signals to fall back to getLocationMetadata
+    return {};
   }, [dynamicLocations]);
 
   const getMetadata = React.useCallback(
     (code: string) => {
-      if (metadataMap) {
-        return metadataMap[code];
-      }
-      return getLocationMetadata(code);
+      return metadataMap[code];
     },
     [metadataMap]
   );

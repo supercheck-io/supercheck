@@ -72,6 +72,43 @@ Monitor BullMQ queues for test execution, monitoring, and background jobs. View 
 
 ![BullMQ Queues](/screenshots/super-admin-bullmq-queues.png)
 
+## Locations
+
+Manage geographic locations for multi-region monitoring and performance testing. Locations determine where workers run and which queues are created.
+
+### Adding a Location
+
+1. Navigate to **Super Admin → Locations** tab
+2. Click **Add Location**
+3. Fill in the required fields:
+   - **Code** — Unique identifier used in queue names (e.g. `us-east`). Lowercase, 2–63 characters, letters/digits/hyphens only.
+   - **Name** — Human-readable display name (e.g. "US East")
+   - **Region** — Optional geographic description (e.g. "Ashburn, Virginia")
+   - **Flag** — Optional emoji flag for the UI (e.g. 🇺🇸)
+   - **Coordinates** — Optional latitude/longitude for map visualization
+4. Toggle **Default** to set as the default K6 job execution location
+5. Toggle **Enabled** to activate the location and create its queues
+
+### Location Status
+
+| Status | Meaning |
+|--------|---------|
+| **Active** | Location is enabled and has workers connected (heartbeat detected) |
+| **Offline** | Location is enabled but no workers are currently connected |
+| **Disabled** | Location is toggled off — no queues are created |
+
+<Callout type="info">
+Worker presence is detected automatically via heartbeat. Deploy a worker with the matching `WORKER_LOCATION` to bring a location online. See [Multi-Location Deployment](/docs/app/deployment/multi-location) for setup instructions.
+</Callout>
+
+### Default Location
+
+The default location determines where K6 **job** executions run. Only one location can be default at a time — toggling a new default automatically clears the previous one.
+
+### Project Restrictions
+
+Organization admins can restrict which locations a project is allowed to use. See [Project Location Restrictions](/docs/app/deployment/multi-location#project-location-restrictions) for details.
+
 ## Capabilities
 
 | Feature | Description |
@@ -82,6 +119,7 @@ Monitor BullMQ queues for test execution, monitoring, and background jobs. View 
 | **Impersonation** | Log in as any user for troubleshooting |
 | **Scheduler Control** | Initialize schedulers, view status, manually trigger jobs |
 | **Queue Monitoring** | Real-time BullMQ queue stats via Bull Dashboard |
+| **Location Management** | Add, edit, enable/disable geographic locations for multi-region deployments |
 
 ## User Management
 

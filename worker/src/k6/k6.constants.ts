@@ -15,11 +15,6 @@
 // K6 global queue - processed by all regional workers for load balancing
 export const K6_QUEUE = 'k6-global';
 
-/** @deprecated Use dynamic location codes from the locations DB table instead */
-export const REGIONS = ['us-east', 'eu-central', 'asia-pacific'] as const;
-/** @deprecated Use dynamic location codes */
-export type Region = (typeof REGIONS)[number];
-
 /** Build a K6 queue name from a location code */
 export function k6QueueName(locationCode: string): string {
   return `k6-${locationCode}`;

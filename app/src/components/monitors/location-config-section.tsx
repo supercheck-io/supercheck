@@ -15,7 +15,6 @@ import {
 } from "@/components/ui/select";
 import { MapPin } from "lucide-react";
 import {
-  LOCATION_METADATA,
   DEFAULT_LOCATION_CONFIG,
   buildLocationMetadataMap,
 } from "@/lib/location-service";
@@ -109,14 +108,15 @@ function LocationConfigSectionComponent({
   disabled = false,
 }: LocationConfigSectionProps) {
   // Fetch dynamic locations from API
-  const { locations: dynamicLocations } = useAvailableLocations();
+  const { locations: dynamicLocations, isLoading: locationsLoading } =
+    useAvailableLocations();
 
-  // Build metadata lookup: dynamic if available, else static fallback
+  // Build metadata lookup from dynamic locations
   const metadataMap = React.useMemo(() => {
     if (dynamicLocations.length > 0) {
       return buildLocationMetadataMap(dynamicLocations);
     }
-    return LOCATION_METADATA;
+    return {};
   }, [dynamicLocations]);
 
   // All available location codes
@@ -143,7 +143,11 @@ function LocationConfigSectionComponent({
   // Auto-clean stale locations from config when the available set changes.
   // If the config has ghost locations that no longer exist, persist the
   // cleaned version so the DB config stays in sync.
+  // IMPORTANT: Skip while locations are still loading — the empty pending
+  // state would incorrectly wipe valid locations.
   React.useEffect(() => {
+    if (locationsLoading || availableLocationCodes.length === 0) return;
+
     const raw = config.locations || [];
     if (
       config.enabled &&
@@ -158,7 +162,7 @@ function LocationConfigSectionComponent({
     }
     // Only run when available locations or raw config locations change
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [availableLocationCodes.join(",")]);
+  }, [locationsLoading, availableLocationCodes.join(",")]);
 
   const selectedLocationCount = validSelectedLocations.length;
 

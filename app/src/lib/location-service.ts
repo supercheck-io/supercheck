@@ -1,4 +1,3 @@
-import { MONITORING_LOCATIONS } from "@/db/schema";
 import type {
   MonitoringLocation,
   LocationMetadata,
@@ -9,47 +8,7 @@ import type {
 export type { MonitoringLocation, LocationConfig };
 
 /**
- * Static location metadata for the three cloud defaults.
- *
- * @deprecated For client components, prefer the `useLocations()` hook
- * from `@/hooks/use-locations` which fetches dynamic data from the DB.
- * This constant is retained as a server-side / SSR fallback so existing
- * callers keep working without breaking changes.
- */
-export const LOCATION_METADATA: Record<string, LocationMetadata> = {
-  local: {
-    code: "local",
-    name: "Local",
-    region: "Default",
-    coordinates: { lat: 49.4521, lon: 11.0767 },
-    flag: "🖥️",
-  },
-  "us-east": {
-    code: "us-east",
-    name: "US East",
-    region: "Ashburn",
-    coordinates: { lat: 39.0438, lon: -77.4874 },
-    flag: "🇺🇸",
-  },
-  "eu-central": {
-    code: "eu-central",
-    name: "EU Central",
-    region: "Nuremberg",
-    coordinates: { lat: 49.4521, lon: 11.0767 },
-    flag: "🇩🇪",
-  },
-  "asia-pacific": {
-    code: "asia-pacific",
-    name: "Asia Pacific",
-    region: "Singapore",
-    coordinates: { lat: 1.3521, lon: 103.8198 },
-    flag: "🇸🇬",
-  },
-};
-
-/**
  * Build a metadata lookup from dynamic location data (e.g. from API/hook).
- * Use this in client components instead of the static LOCATION_METADATA.
  */
 export function buildLocationMetadataMap(
   locations: Array<{
@@ -83,17 +42,6 @@ export const DEFAULT_LOCATION_CONFIG: LocationConfig = {
   strategy: "majority",
 };
 
-/**
- * Get metadata for a specific location.
- * Falls back to LOCATION_METADATA for known defaults;
- * returns a generated entry for unknown codes.
- */
-export function getLocationMetadata(
-  location: string
-): LocationMetadata | undefined {
-  return LOCATION_METADATA[location];
-}
-
 export function isMonitoringLocation(
   value: unknown
 ): value is MonitoringLocation {
@@ -102,34 +50,6 @@ export function isMonitoringLocation(
   }
   // With dynamic locations, any non-empty string is a valid location code
   return value.length > 0;
-}
-
-/**
- * Normalize legacy uppercase location values to kebab-case
- */
-export function normalizeLegacyLocation(location: string): MonitoringLocation {
-  const upperLocation = location.trim().toUpperCase();
-
-  switch (upperLocation) {
-    case 'US':
-    case 'US_EAST':
-    case 'US-EAST':
-    case 'US EAST':
-      return MONITORING_LOCATIONS.US_EAST;
-    case 'EU':
-    case 'EU_CENTRAL':
-    case 'EU-CENTRAL':
-    case 'EU CENTRAL':
-      return MONITORING_LOCATIONS.EU_CENTRAL;
-    case 'APAC':
-    case 'ASIA_PACIFIC':
-    case 'ASIA-PACIFIC':
-    case 'ASIA PACIFIC':
-      return MONITORING_LOCATIONS.ASIA_PACIFIC;
-    default:
-      // Already in correct format or default to EU Central
-      return location as MonitoringLocation;
-  }
 }
 
 /**
@@ -144,10 +64,8 @@ export function calculateAggregatedStatus(
     return "down";
   }
 
-  // Normalize locations to ensure they match the keys in locationStatuses
-  const locations = rawLocations.map((loc) =>
-    normalizeLegacyLocation(loc),
-  );
+  // Use location codes as-is (dynamic locations, no legacy normalization needed)
+  const locations = rawLocations;
 
   // If none of the configured locations exist in the actual results,
   // fall back to using the result locations directly. This handles
@@ -182,23 +100,6 @@ export function calculateAggregatedStatus(
       }
       return anyUp ? "partial" : "down";
   }
-}
-
-/**
- * Get the effective locations for a monitor (handles legacy and multi-location configs).
- */
-/** @deprecated Use resolveMonitorLocations() in queue.ts or getEffectiveLocations() in monitor-scheduler.ts instead. */
-export function getEffectiveLocations(
-  config?: LocationConfig | null
-): MonitoringLocation[] {
-  if (!config || !config.enabled) {
-    // Single location mode - use default primary location
-    return ["local"];
-  }
-
-  // Normalize legacy locations
-  const locations = config.locations || ["local"];
-  return locations.map(loc => normalizeLegacyLocation(loc));
 }
 
 /**

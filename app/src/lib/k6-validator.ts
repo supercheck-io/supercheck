@@ -271,30 +271,3 @@ export default function() {
   sleep(1);
 }`;
 }
-
-/**
- * @deprecated Legacy static location metadata. Use `useLocations()` hook or
- * `getAllLocations()` from location-registry for dynamic, DB-driven locations.
- */
-export const K6_LOCATIONS = {
-  US_EAST: {
-    code: 'us-east' as const,
-    name: 'US East',
-    region: 'Ashburn',
-    flag: '🇺🇸',
-  },
-  EU_CENTRAL: {
-    code: 'eu-central' as const,
-    name: 'EU Central',
-    region: 'Nuremberg',
-    flag: '🇩🇪',
-  },
-  ASIA_PACIFIC: {
-    code: 'asia-pacific' as const,
-    name: 'Asia Pacific',
-    region: 'Singapore',
-    flag: '🇸🇬',
-  },
-} as const;
-
-export type K6LocationCode = keyof typeof K6_LOCATIONS;

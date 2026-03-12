@@ -77,7 +77,6 @@ import { SupercheckLogo } from "@/components/logo/supercheck-logo";
 import { Home } from "lucide-react";
 import { TruncatedTextWithTooltip } from "@/components/ui/truncated-text-with-tooltip";
 import {
-  getLocationMetadata,
   calculateAggregatedStatus,
   isMonitoringLocation,
   buildLocationMetadataMap,
@@ -206,13 +205,12 @@ export function MonitorDetailClient({
     if (dynamicLocations.length > 0) {
       return buildLocationMetadataMap(dynamicLocations);
     }
-    return null;
+    return {};
   }, [dynamicLocations]);
 
   const getMetadataForLocation = React.useCallback(
     (code: string) => {
-      if (dynamicMetadataMap) return dynamicMetadataMap[code];
-      return getLocationMetadata(code);
+      return dynamicMetadataMap[code];
     },
     [dynamicMetadataMap]
   );

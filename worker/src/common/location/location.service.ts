@@ -1,18 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 
-/**
- * Available monitoring locations for multi-location monitoring.
- * Internal format uses kebab-case (us-east, eu-central, asia-pacific)
- * @deprecated Locations are now dynamic — managed via the `locations` DB table.
- * These constants are kept as defaults for backward compatibility.
- */
-export const MONITORING_LOCATIONS = {
-  US_EAST: 'us-east',
-  EU_CENTRAL: 'eu-central',
-  ASIA_PACIFIC: 'asia-pacific',
-} as const;
-
-/** @deprecated Use `string` — locations are now dynamic, not a fixed union. */
+/** Location codes are dynamic strings from the locations DB table. */
 export type MonitoringLocation = string;
 
 /**
@@ -40,99 +28,11 @@ export class LocationService {
   private readonly logger = new Logger(LocationService.name);
 
   /**
-   * Location metadata for all available monitoring locations.
-   * Provides display names and geographic information for UI presentation.
-   */
-  private readonly locationMetadata: Record<string, LocationMetadata> = {
-    local: {
-      code: 'local',
-      name: 'Local',
-      region: 'Default',
-      coordinates: { lat: 49.4521, lon: 11.0767 },
-    },
-    [MONITORING_LOCATIONS.US_EAST]: {
-      code: MONITORING_LOCATIONS.US_EAST,
-      name: 'US East',
-      region: 'Ashburn',
-      coordinates: { lat: 39.0438, lon: -77.4874 },
-    },
-    [MONITORING_LOCATIONS.EU_CENTRAL]: {
-      code: MONITORING_LOCATIONS.EU_CENTRAL,
-      name: 'EU Central',
-      region: 'Nuremberg',
-      coordinates: { lat: 49.4521, lon: 11.0767 },
-    },
-    [MONITORING_LOCATIONS.ASIA_PACIFIC]: {
-      code: MONITORING_LOCATIONS.ASIA_PACIFIC,
-      name: 'Asia Pacific',
-      region: 'Singapore',
-      coordinates: { lat: 1.3521, lon: 103.8198 },
-    },
-  };
-
-  /**
-   * Get all available monitoring locations.
-   */
-  getAllLocations(): LocationMetadata[] {
-    return Object.values(this.locationMetadata);
-  }
-
-  /**
-   * Get metadata for a specific location.
-   */
-  getLocationMetadata(
-    location: string,
-  ): LocationMetadata | undefined {
-    return this.locationMetadata[location];
-  }
-
-  /**
    * Get display name for a location.
+   * Returns the location code as-is since display names come from the DB.
    */
   getLocationDisplayName(location: string): string {
-    return this.locationMetadata[location]?.name || location;
-  }
-
-  /**
-   * Validate location configuration.
-   */
-  validateLocationConfig(config: Partial<LocationConfig>): {
-    valid: boolean;
-    error?: string;
-  } {
-    if (!config) {
-      return { valid: false, error: 'Location config is required' };
-    }
-
-    if (
-      config.enabled &&
-      (!config.locations || config.locations.length === 0)
-    ) {
-      return {
-        valid: false,
-        error: 'At least one location must be selected when enabled',
-      };
-    }
-
-    if (config.locations) {
-      for (const location of config.locations) {
-        if (!this.locationMetadata[location]) {
-          return { valid: false, error: `Invalid location: ${location}` };
-        }
-      }
-    }
-
-    if (
-      config.threshold !== undefined &&
-      (config.threshold < 0 || config.threshold > 100)
-    ) {
-      return {
-        valid: false,
-        error: 'Threshold must be between 0 and 100',
-      };
-    }
-
-    return { valid: true };
+    return location;
   }
 
   /**
@@ -144,37 +44,7 @@ export class LocationService {
       return ['local'];
     }
 
-    // Normalize legacy uppercase locations to kebab-case
-    const locations = config.locations || ['local'];
-    return locations.map((loc) => this.normalizeLegacyLocation(loc));
-  }
-
-  /**
-   * Normalize legacy uppercase location values to kebab-case
-   */
-  private normalizeLegacyLocation(location: string): string {
-    const upperLocation = location.trim().toUpperCase();
-
-    switch (upperLocation) {
-      case 'US':
-      case 'US_EAST':
-      case 'US-EAST':
-      case 'US EAST':
-        return MONITORING_LOCATIONS.US_EAST;
-      case 'EU':
-      case 'EU_CENTRAL':
-      case 'EU-CENTRAL':
-      case 'EU CENTRAL':
-        return MONITORING_LOCATIONS.EU_CENTRAL;
-      case 'APAC':
-      case 'ASIA_PACIFIC':
-      case 'ASIA-PACIFIC':
-      case 'ASIA PACIFIC':
-        return MONITORING_LOCATIONS.ASIA_PACIFIC;
-      default:
-        // Already in correct format or unknown — return as-is
-        return location;
-    }
+    return config.locations || ['local'];
   }
 
   /**
@@ -189,10 +59,8 @@ export class LocationService {
       return 'down';
     }
 
-    // Normalize locations to ensure they match the keys in locationStatuses
-    const locations = rawLocations.map((loc) =>
-      this.normalizeLegacyLocation(loc),
-    );
+    // Use location codes as-is (dynamic locations, no legacy normalization needed)
+    const locations = rawLocations;
 
     // If none of the configured locations exist in the actual results,
     // fall back to using the result locations directly. This handles

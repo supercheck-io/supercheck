@@ -17,7 +17,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { HttpService } from '@nestjs/axios';
 import { of } from 'rxjs';
-import { MONITORING_LOCATIONS } from '../common/location/location.service';
 
 // Mock problematic dependencies before import
 jest.mock('execa', () => ({
@@ -128,12 +127,12 @@ describe('MonitorService', () => {
   const mockLocationService = {
     getCurrentLocation: jest
       .fn()
-      .mockReturnValue(MONITORING_LOCATIONS.EU_CENTRAL),
+      .mockReturnValue('eu-central'),
     getLocationName: jest.fn().mockReturnValue('EU Central'),
     getLocationDisplayName: jest.fn().mockReturnValue('EU Central'),
     getEffectiveLocations: jest
       .fn()
-      .mockReturnValue([MONITORING_LOCATIONS.EU_CENTRAL]),
+      .mockReturnValue(['eu-central']),
     calculateAggregatedStatus: jest.fn().mockReturnValue('up'),
   };
 
@@ -346,14 +345,6 @@ describe('MonitorService', () => {
   // ==========================================================================
 
   describe('Monitoring Location', () => {
-    it('should have default location defined', () => {
-      expect(MONITORING_LOCATIONS.EU_CENTRAL).toBeDefined();
-    });
-
-    it('should have US_EAST location defined', () => {
-      expect(MONITORING_LOCATIONS.US_EAST).toBeDefined();
-    });
-
     it('should have location service', () => {
       expect(service['locationService']).toBeDefined();
     });
@@ -738,9 +729,9 @@ describe('MonitorService', () => {
         reason: 'Monitor is down in 2/3 locations',
         metadata: {
           locationResults: [
-            { location: MONITORING_LOCATIONS.EU_CENTRAL, isUp: false },
-            { location: MONITORING_LOCATIONS.US_EAST, isUp: false },
-            { location: MONITORING_LOCATIONS.ASIA_PACIFIC, isUp: true },
+            { location: 'eu-central', isUp: false },
+            { location: 'us-east', isUp: false },
+            { location: 'asia-pacific', isUp: true },
           ],
         },
       });

@@ -8,9 +8,10 @@ import type { GeometryObject, Topology } from "topojson-specification";
 import land110m from "world-atlas/land-110m.json";
 import { cn } from "@/lib/utils";
 import {
-  LOCATION_METADATA,
+  buildLocationMetadataMap,
   type MonitoringLocation,
 } from "@/lib/location-service";
+import { useLocations } from "@/hooks/use-locations";
 
 const MAP_VIEWBOX_WIDTH = 960;
 const MAP_VIEWBOX_HEIGHT = 520;
@@ -111,6 +112,15 @@ export function LocationMapCard({
     size === "compact" ? 320 : 400
   );
 
+  // Dynamic location metadata from DB
+  const { locations: dynamicLocations } = useLocations();
+  const metadataMap = React.useMemo(() => {
+    if (dynamicLocations.length > 0) {
+      return buildLocationMetadataMap(dynamicLocations);
+    }
+    return {};
+  }, [dynamicLocations]);
+
   React.useEffect(() => {
     if (typeof window === "undefined") {
       return;
@@ -138,7 +148,7 @@ export function LocationMapCard({
 
   const markers = locations
     .map((location) => {
-      const metadata = LOCATION_METADATA[location];
+      const metadata = metadataMap[location];
       if (!metadata?.coordinates) {
         return null;
       }

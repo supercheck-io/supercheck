@@ -1,5 +1,3 @@
-import type { MonitoringLocation } from '../common/location/location.service';
-
 /**
  * Monitor Queue Constants
  *
@@ -15,9 +13,6 @@ import type { MonitoringLocation } from '../common/location/location.service';
  * - Queue names are dynamic: `monitor-{locationCode}` (from DB locations table)
  */
 
-/** @deprecated Use dynamic location codes from the locations DB table instead */
-export const REGIONS = ['us-east', 'eu-central', 'asia-pacific'] as const;
-
 // Job name used when adding monitor jobs to queues
 export const EXECUTE_MONITOR_JOB_NAME = 'executeMonitorJob';
 
@@ -27,5 +22,4 @@ export function monitorQueueName(locationCode: string): string {
 }
 
 // Worker location from environment (optional - only set in production)
-export const WORKER_LOCATION =
-  (process.env.WORKER_LOCATION as MonitoringLocation | undefined) || undefined;
+export const WORKER_LOCATION = process.env.WORKER_LOCATION || undefined;

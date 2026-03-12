@@ -11,7 +11,7 @@ import { Worker, Job } from 'bullmq';
 import Redis from 'ioredis';
 import { K6ExecutionTask } from '../services/k6-execution.service';
 import { K6ExecutionProcessor } from './k6-execution.processor';
-import { K6_QUEUE, k6QueueName, REGIONS } from '../k6.constants';
+import { K6_QUEUE, k6QueueName } from '../k6.constants';
 import { HeartbeatService } from '../../common/heartbeat/heartbeat.service';
 import { DbService } from '../../db/db.service';
 import { sql } from 'drizzle-orm';
@@ -67,6 +67,12 @@ export class K6DynamicWorkerService implements OnModuleInit, OnModuleDestroy {
     // Subscribe to queue-refresh notifications so we pick up newly added locations
     if (this.workerLocation === 'local') {
       this.subscribeToQueueRefresh();
+
+      // Always schedule a discovery retry in local mode. Even if Redis SCAN
+      // found some queues, the DB may have been temporarily unreachable,
+      // leaving the worker with an incomplete subset. The retry is a no-op
+      // when handleQueueRefresh() finds nothing new to add.
+      this.scheduleDiscoveryRetry();
     }
   }
 
@@ -202,6 +208,46 @@ export class K6DynamicWorkerService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Schedule a delayed re-discovery attempt.
+   * Covers transient DB/Redis failures during startup: the worker starts with
+   * only the local fallback queue but should pick up the real location queues
+   * once infrastructure recovers.
+   */
+  private scheduleDiscoveryRetry(): void {
+    const RETRY_DELAY_MS = 30_000;
+    const MAX_RETRIES = 5;
+    let retries = 0;
+    const prevSize = this.activeQueueNames.size;
+
+    const attempt = () => {
+      retries++;
+      this.logger.log(
+        `Discovery retry ${retries}/${MAX_RETRIES}: re-scanning for regional K6 queues (active: ${this.activeQueueNames.size})…`,
+      );
+      this.handleQueueRefresh()
+        .then(() => {
+          // Stop retrying once we've registered at least one new queue
+          // or we've exhausted our retries.
+          const grew = this.activeQueueNames.size > prevSize;
+          if (!grew && retries < MAX_RETRIES) {
+            setTimeout(attempt, RETRY_DELAY_MS);
+          } else if (grew) {
+            this.logger.log(
+              `Discovery retry succeeded: now have ${this.activeQueueNames.size} K6 queue(s)`,
+            );
+          }
+        })
+        .catch(() => {
+          if (retries < MAX_RETRIES) {
+            setTimeout(attempt, RETRY_DELAY_MS);
+          }
+        });
+    };
+
+    setTimeout(attempt, RETRY_DELAY_MS);
+  }
+
+  /**
    * Delegate to K6ExecutionProcessor.handleProcess() which handles the full lifecycle:
    * cancellation checks, billing blocks, run status updates, k6_performance_runs insert,
    * usage tracking, job status updates, and notifications.
@@ -234,10 +280,9 @@ export class K6DynamicWorkerService implements OnModuleInit, OnModuleDestroy {
         }
       }
 
-      // 3. Legacy fallback if nothing discovered
+      // 3. Fallback if nothing discovered from Redis or DB
       if (queueNames.size === 0) {
         queueNames.add(k6QueueName('local'));
-        for (const r of REGIONS) queueNames.add(k6QueueName(r));
       }
 
       return Array.from(queueNames);

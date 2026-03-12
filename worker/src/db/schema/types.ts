@@ -19,8 +19,7 @@ export type RequirementCreatedBy = 'ai' | 'user';
 export type RequirementCoverageStatus = 'covered' | 'failing' | 'missing';
 export type RequirementDocumentType = 'pdf' | 'docx' | 'md' | 'text';
 
-// K6 Performance Testing types — now dynamic from locations DB table
-/** @deprecated Location codes are now dynamic strings from the locations table */
+// K6 Performance Testing types — location codes are dynamic strings from the locations table
 export type K6Location = string;
 
 // Job types
@@ -92,7 +91,7 @@ export type MonitorResultDetails = {
   [key: string]: unknown;
 };
 
-/** @deprecated Location codes are now dynamic strings from the locations table */
+// Monitoring locations — location codes are dynamic strings from the locations table
 export type MonitoringLocation = string;
 
 export type LocationMetadata = {

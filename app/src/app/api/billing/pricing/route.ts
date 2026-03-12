@@ -3,6 +3,7 @@ import { db } from "@/utils/db";
 import { planLimits, overagePricing } from "@/db/schema";
 import { eq, or } from "drizzle-orm";
 import { PLAN_PRICING } from "@/lib/feature-flags";
+import { getEnabledLocations } from "@/lib/location-registry";
 
 const PLAN_LIMIT_FALLBACKS = {
   plus: {
@@ -29,11 +30,21 @@ const PLAN_LIMIT_FALLBACKS = {
  */
 export async function GET() {
   try {
-    // Fetch plan limits for Plus and Pro
-    const plans = await db
-      .select()
-      .from(planLimits)
-      .where(or(eq(planLimits.plan, "plus"), eq(planLimits.plan, "pro")));
+    // Fetch plan limits — location lookup is best-effort; a missing
+    // locations table (pre-migration) or transient DB error must not
+    // take the entire pricing page down.
+    const [plans, enabledLocations] = await Promise.all([
+      db
+        .select()
+        .from(planLimits)
+        .where(or(eq(planLimits.plan, "plus"), eq(planLimits.plan, "pro"))),
+      getEnabledLocations().catch(() => [] as Awaited<ReturnType<typeof getEnabledLocations>>),
+    ]);
+
+    const locationsSummary =
+      enabledLocations.length > 0
+        ? `${enabledLocations.length} (${enabledLocations.map((l) => l.name).join(", ")})`
+        : "1 (Local)";
 
     // Validate that we have the required plans
     if (plans.length === 0) {
@@ -103,7 +114,7 @@ export async function GET() {
             support:
               planType === "pro" ? "Priority email support" : "Email support",
             checkInterval: "1 min (Synthetic: 5 min)",
-            monitoringLocations: "3 (US, EU, APAC)",
+            monitoringLocations: locationsSummary,
           },
           overagePricing: overage
             ? {
@@ -139,9 +150,9 @@ export async function GET() {
           },
           {
             name: "Monitoring Locations",
-            plus: "All 3 (US, EU, APAC)",
-            pro: "All 3 (US, EU, APAC)",
-            enterprise: "All 3 (US, EU, APAC)",
+            plus: locationsSummary,
+            pro: locationsSummary,
+            enterprise: locationsSummary,
           },
         ],
       },

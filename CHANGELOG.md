@@ -4,8 +4,16 @@ All notable changes to Supercheck are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
+## [1.3.3] - [Unreleased]
 
-## [1.3.2] - Unreleased
+### Added
+- **Dynamic locations system** — Locations are now managed via the database instead of hardcoded constants. Super Admins can add, edit, and enable/disable locations from the admin dashboard. Workers dynamically discover regional queues from Redis and DB. Per-project location restrictions are available. Old hardcoded location constants (`MONITORING_LOCATIONS`, `REGIONS`, `K6_LOCATIONS`, `LOCATION_METADATA`) have been removed ([#248](https://github.com/supercheck-io/supercheck/issues/248), [#249](https://github.com/supercheck-io/supercheck/issues/249), [#250](https://github.com/supercheck-io/supercheck/issues/250))
+
+### Fixed
+- Fixed email notification test connection only sending to the first email address when multiple addresses are configured ([#269](https://github.com/supercheck-io/supercheck/issues/269))
+
+
+## [1.3.2] - 2026-03-12
 
 ### Added
 - **Registration controls for self-hosted deployments** — New `SIGNUP_ENABLED` environment variable to enable/disable new user registration, and `ALLOWED_EMAIL_DOMAINS` to restrict signup to specific email domains ([#246](https://github.com/supercheck-io/supercheck/issues/246))

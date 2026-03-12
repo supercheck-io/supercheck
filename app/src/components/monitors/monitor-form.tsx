@@ -424,8 +424,10 @@ export function MonitorForm({
   const { maxMonitorNotificationChannels } = useAppConfig();
 
   // Check if multiple locations are available — hide location settings when only one
-  const { locations: dynamicLocations } = useAvailableLocations();
-  const hasMultipleLocations = dynamicLocations.length > 1;
+  const { locations: dynamicLocations, isLoading: locationsLoading } =
+    useAvailableLocations();
+  const hasMultipleLocations =
+    locationsLoading || dynamicLocations.length > 1;
 
   // Get user permissions
   const { currentProject } = useProjectContext();

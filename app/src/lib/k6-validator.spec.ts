@@ -2,7 +2,6 @@ import {
   isK6Script,
   validateK6Script,
   getK6ScriptTemplate,
-  K6_LOCATIONS,
 } from './k6-validator';
 
 describe('K6Validator', () => {
@@ -424,37 +423,4 @@ describe('K6Validator', () => {
     });
   });
 
-  describe('K6_LOCATIONS', () => {
-    // Tests location configuration constants
-
-    it('should have US_EAST location', () => {
-      expect(K6_LOCATIONS.US_EAST).toBeDefined();
-      expect(K6_LOCATIONS.US_EAST.code).toBe('us-east');
-      expect(K6_LOCATIONS.US_EAST.name).toBe('US East');
-    });
-
-    it('should have EU_CENTRAL location', () => {
-      expect(K6_LOCATIONS.EU_CENTRAL).toBeDefined();
-      expect(K6_LOCATIONS.EU_CENTRAL.code).toBe('eu-central');
-      expect(K6_LOCATIONS.EU_CENTRAL.name).toBe('EU Central');
-    });
-
-    it('should have ASIA_PACIFIC location', () => {
-      expect(K6_LOCATIONS.ASIA_PACIFIC).toBeDefined();
-      expect(K6_LOCATIONS.ASIA_PACIFIC.code).toBe('asia-pacific');
-      expect(K6_LOCATIONS.ASIA_PACIFIC.name).toBe('Asia Pacific');
-    });
-
-    it('should have region information for each location', () => {
-      expect(K6_LOCATIONS.US_EAST.region).toBeDefined();
-      expect(K6_LOCATIONS.EU_CENTRAL.region).toBeDefined();
-      expect(K6_LOCATIONS.ASIA_PACIFIC.region).toBeDefined();
-    });
-
-    it('should have flag emoji for each location', () => {
-      expect(K6_LOCATIONS.US_EAST.flag).toBeDefined();
-      expect(K6_LOCATIONS.EU_CENTRAL.flag).toBeDefined();
-      expect(K6_LOCATIONS.ASIA_PACIFIC.flag).toBeDefined();
-    });
-  });
 });

@@ -3,7 +3,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { HttpModule } from '@nestjs/axios';
 import { MonitorService } from './monitor.service';
 import { MonitorDynamicWorkerService } from './processors/monitor-dynamic-worker.service';
-import { monitorQueueName, REGIONS } from './monitor.constants';
+import { monitorQueueName } from './monitor.constants';
 import { DbModule } from '../db/db.module';
 import { NotificationModule } from '../notification/notification.module';
 import { ExecutionModule } from '../execution.module';
@@ -97,11 +97,9 @@ export class MonitorModule {
    */
   private static getQueueNames(location: string): string[] {
     if (location === 'local') {
-      // Development: local + all default region queues (backward compat)
-      return [
-        monitorQueueName('local'),
-        ...REGIONS.map((r) => monitorQueueName(r)),
-      ];
+      // Development: local queue only
+      // Dynamic regional queues are discovered at runtime by MonitorDynamicWorkerService
+      return [monitorQueueName('local')];
     }
     return [monitorQueueName(location)];
   }

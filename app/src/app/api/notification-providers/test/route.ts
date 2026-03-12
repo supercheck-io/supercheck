@@ -94,13 +94,13 @@ async function testEmailConnection(config: NotificationProviderConfig) {
       }
     }
 
-    // Test SMTP connection
-    const smtpResult = await testSMTPConnection(emailList[0]);
+    // Test SMTP connection — send to ALL configured addresses so users can verify
+    const smtpResult = await testSMTPConnection(emailList);
 
     if (smtpResult.success) {
       return NextResponse.json({
         success: true,
-        message: `Email connection successful via SMTP. Test email sent to ${emailList[0]}.`,
+        message: smtpResult.message || `Email connection successful via SMTP. Test email sent to ${emailList.length} recipient(s).`,
         details: smtpResult,
       });
     } else {
@@ -125,7 +125,7 @@ async function testEmailConnection(config: NotificationProviderConfig) {
 }
 
 async function testSMTPConnection(
-  testEmail: string
+  testEmails: string[]
 ): Promise<{ success: boolean; message: string; error: string }> {
   try {
     // Use centralized EmailService
@@ -137,17 +137,56 @@ async function testSMTPConnection(
         "This is a test email to verify your SMTP configuration is working correctly.",
     });
 
-    const result = await emailService.sendEmail({
-      to: testEmail,
-      subject: emailContent.subject,
-      text: emailContent.text,
-      html: emailContent.html,
-    });
+    // Send to all configured email addresses
+    const results = await Promise.allSettled(
+      testEmails.map((email) =>
+        emailService.sendEmail({
+          to: email,
+          subject: emailContent.subject,
+          text: emailContent.text,
+          html: emailContent.html,
+        })
+      )
+    );
+
+    const successes = results.filter(
+      (r) => r.status === "fulfilled" && r.value.success
+    );
+    const failures = results.filter(
+      (r) => r.status === "rejected" || (r.status === "fulfilled" && !r.value.success)
+    );
+
+    // All failed — SMTP config is likely wrong
+    if (successes.length === 0) {
+      const firstError = failures[0];
+      const errorMsg = firstError
+        ? firstError.status === "rejected"
+          ? (firstError.reason instanceof Error ? firstError.reason.message : String(firstError.reason))
+          : (firstError.status === "fulfilled" ? firstError.value.error || "Send failed" : "Unknown error")
+        : "Send failed";
+      return {
+        success: false,
+        message: "",
+        error: `Failed to send to all ${testEmails.length} recipient(s): ${errorMsg}`,
+      };
+    }
+
+    // Some succeeded, some failed — SMTP works but individual addresses may be bad
+    if (failures.length > 0) {
+      const failedAddresses = failures
+        .map((f, i) => testEmails[results.indexOf(f)] ?? `recipient ${i + 1}`)
+        .join(", ");
+      return {
+        success: true,
+        message: `SMTP connection verified. Sent to ${successes.length}/${testEmails.length} recipient(s). Failed for: ${failedAddresses}`,
+        error: "",
+      };
+    }
 
     return {
-      success: result.success,
-      message: result.message,
-      error: result.error || "",
+      success: true,
+      message: `Test email sent to ${testEmails.length} recipient(s)`,
+      error: "",
     };
   } catch (error) {
     return {
