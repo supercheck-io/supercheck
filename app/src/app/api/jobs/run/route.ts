@@ -357,7 +357,7 @@ export async function POST(request: Request) {
           })),
           organizationId: jobRecord?.organizationId ?? "",
           projectId: jobRecord?.projectId ?? "",
-          location: resolvedLocation ?? "global",
+          location: resolvedLocation,
           jobType,
         };
 

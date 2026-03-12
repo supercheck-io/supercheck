@@ -111,6 +111,17 @@ export const EMAIL_TEMPLATE_QUEUE = "email-template-render";
 // Data lifecycle cleanup queue
 export const DATA_LIFECYCLE_CLEANUP_QUEUE = "data-lifecycle-cleanup";
 
+// Queue name builders — must stay aligned with worker constants:
+// worker/src/k6/k6.constants.ts and worker/src/monitor/monitor.constants.ts
+export const PLAYWRIGHT_QUEUE = "playwright-global";
+export const K6_GLOBAL_QUEUE = "k6-global";
+export function k6QueueName(locationCode: string): string {
+  return `k6-${locationCode}`;
+}
+export function monitorQueueName(locationCode: string): string {
+  return `monitor-${locationCode}`;
+}
+
 // Redis capacity limit keys
 export const RUNNING_CAPACITY_LIMIT_KEY = "supercheck:capacity:running";
 export const QUEUE_CAPACITY_LIMIT_KEY = "supercheck:capacity:queued";
@@ -304,7 +315,7 @@ export async function getQueues(): Promise<{
         };
 
         // Playwright - single GLOBAL queue for all tests and jobs
-        const playwrightQueue = new Queue("playwright-global", queueSettings);
+        const playwrightQueue = new Queue(PLAYWRIGHT_QUEUE, queueSettings);
         playwrightQueue.on("error", (error) =>
           queueLogger.error({ err: error }, "Playwright Queue Error")
         );
@@ -314,8 +325,8 @@ export async function getQueues(): Promise<{
         const locationCodes = await getAllEnabledLocationCodes();
         const k6Locations = [...locationCodes, "global"];
         for (const loc of k6Locations) {
-          const k6QueueName = `k6-${loc}`;
-          const k6Queue = new Queue(k6QueueName, queueSettings);
+          const queueName = k6QueueName(loc);
+          const k6Queue = new Queue(queueName, queueSettings);
           k6Queue.on("error", (error) =>
             queueLogger.error({ err: error }, `k6 Queue (${loc}) Error`)
           );
@@ -325,8 +336,8 @@ export async function getQueues(): Promise<{
         // Monitor Execution - Dynamic regional queues from DB (no global - monitors are location-specific)
         const monitorQueues: Record<string, Queue> = {};
         for (const loc of locationCodes) {
-          const monitorQueueName = `monitor-${loc}`;
-          const monitorQueue = new Queue(monitorQueueName, queueSettings);
+          const queueName = monitorQueueName(loc);
+          const monitorQueue = new Queue(queueName, queueSettings);
           monitorQueue.on("error", (error) =>
             queueLogger.error({ err: error }, `Monitor Queue (${loc}) Error`)
           );
@@ -356,7 +367,7 @@ export async function getQueues(): Promise<{
         const monitorEvents: Record<string, QueueEvents> = {};
         for (const loc of locationCodes) {
           const eventsConnection = redisClient!.duplicate();
-          monitorEvents[loc] = new QueueEvents(`monitor-${loc}`, {
+          monitorEvents[loc] = new QueueEvents(monitorQueueName(loc), {
             connection: eventsConnection,
           });
         }
@@ -364,13 +375,13 @@ export async function getQueues(): Promise<{
 
         // Create QueueEvents for execution queues
         const playwrightEvents: Record<string, QueueEvents> = {};
-        playwrightEvents["global"] = new QueueEvents("playwright-global", {
+        playwrightEvents["global"] = new QueueEvents(PLAYWRIGHT_QUEUE, {
           connection: redisClient!.duplicate(),
         });
 
         const k6Events: Record<string, QueueEvents> = {};
         for (const loc of k6Locations) {
-          k6Events[loc] = new QueueEvents(`k6-${loc}`, {
+          k6Events[loc] = new QueueEvents(k6QueueName(loc), {
             connection: redisClient!.duplicate(),
           });
         }
@@ -636,12 +647,12 @@ async function performQueueCleanup(connection: Redis): Promise<void> {
       queue,
     })),
     ...Object.entries(k6Queues).map(([region, queue]) => ({
-      name: `k6-${region}`,
+      name: k6QueueName(region),
       queue,
     })),
     // Add regional monitor queues
     ...Object.entries(monitorExecution || {}).map(([region, queue]) => ({
-      name: `monitor-${region}`,
+      name: monitorQueueName(region),
       queue,
     })),
   ];
@@ -950,6 +961,9 @@ export async function addK6TestToQueue(
   const runId = task.runId;
   const orgId = task.organizationId || "global";
 
+  // Resolve the queue location: use caller-provided location, or fall back to DB default.
+  const k6TestLocation = task.location || await getFirstDefaultLocationCode();
+
   try {
     const { getCapacityManager } = await import("./capacity-manager");
     const capacityManager = await getCapacityManager();
@@ -970,12 +984,13 @@ export async function addK6TestToQueue(
         await capacityManager.trackJobOrganization(runId, orgId);
 
         const queues = await getQueues();
-        const queue = getQueue(queues, "k6", task.location);
+        const queue = getQueue(queues, "k6", k6TestLocation);
 
         await queue.add(
           jobName,
           {
             ...task,
+            location: k6TestLocation,
             _capacityStatus: "immediate",
           },
           { jobId: runId }
@@ -996,7 +1011,7 @@ export async function addK6TestToQueue(
       runId,
       organizationId: orgId,
       projectId: task.projectId || "",
-      taskData: { ...task, _jobName: jobName } as unknown as Record<
+      taskData: { ...task, _jobName: jobName, location: k6TestLocation } as unknown as Record<
         string,
         unknown
       >,
@@ -1150,7 +1165,7 @@ export async function invalidateQueueMaps(): Promise<void> {
   }
   for (const [key, queue] of Object.entries(k6Queues)) {
     closePromises.push(queue.close().catch((err) =>
-      queueLogger.warn({ err, queue: `k6-${key}` }, "Error closing queue during invalidation")
+      queueLogger.warn({ err, queue: k6QueueName(key) }, "Error closing queue during invalidation")
     ));
     delete k6Queues[key];
   }

@@ -157,8 +157,7 @@ const Playground: React.FC<PlaygroundProps> = ({
 
   const initialPerformanceLocation: PerformanceLocation | null =
     initialResolvedType === "performance" && initialTestData
-      ? ((initialTestData.location as PerformanceLocation) ??
-        ("global" as PerformanceLocation))
+      ? ((initialTestData.location as PerformanceLocation) ?? null)
       : null;
 
   // Suppress Monaco editor cancellation errors (harmless during component lifecycle)
@@ -543,12 +542,12 @@ const Playground: React.FC<PlaygroundProps> = ({
           typeToSet === "performance"
             ? (performanceLocation ?? prev.location ?? defaultAvailableLocation ?? "global")
             : null,
+        // Note: "global" is a safe static fallback before locations load;
+        // the sync effect will replace it with the DB default once available.
       }));
 
       if (typeToSet === "performance" && !performanceLocation) {
-        setPerformanceLocation(
-          hasRestrictions ? (defaultAvailableLocation ?? "global") : "global"
-        );
+        setPerformanceLocation(defaultAvailableLocation ?? "global");
       }
 
       // Load sample script when:
@@ -607,6 +606,12 @@ const Playground: React.FC<PlaygroundProps> = ({
       });
 
       if (resolvedType === "performance") {
+        // Saved tests don't persist location (TestForm.handleSubmit strips it),
+        // so initialTestData.location is typically null for reopened tests.
+        // - Restricted projects: resolve to their first available location
+        //   ("global" is invalid — it doesn't map to an allowed queue).
+        // - Unrestricted projects: keep "global" (k6-global, any-worker routing)
+        //   to preserve the broadest execution behavior.
         const resolvedLocation: PerformanceLocation =
           (initialTestData.location as PerformanceLocation) ??
           (hasRestrictions ? (defaultAvailableLocation ?? "global") : "global");
@@ -620,14 +625,14 @@ const Playground: React.FC<PlaygroundProps> = ({
   }, [defaultAvailableLocation, hasRestrictions, initialTestData]);
 
   useEffect(() => {
-    if (!hasRestrictions) {
+    if (!defaultAvailableLocation || !hasRestrictions) {
       return;
     }
 
-    if (!defaultAvailableLocation) {
-      return;
-    }
-
+    // For restricted projects, "global" is not a valid queue target.
+    // Replace it with the project's first available location.
+    // Unrestricted projects keep "global" untouched — it maps to k6-global
+    // (any-worker routing) and may have been explicitly chosen by the user.
     if (performanceLocation === "global") {
       setPerformanceLocation(defaultAvailableLocation);
       setTestCase((prev) => ({
@@ -853,6 +858,7 @@ const Playground: React.FC<PlaygroundProps> = ({
           const fallbackLocation =
             (result.location as PerformanceLocation) ||
             options?.location ||
+            defaultAvailableLocation ||
             ("global" as PerformanceLocation);
           setPerformanceLocation(fallbackLocation);
           setTestCase((prev) => ({
@@ -1119,8 +1125,9 @@ const Playground: React.FC<PlaygroundProps> = ({
         setLocationDialogOpen(true);
         return;
       }
-      const singleLocation =
-        hasRestrictions || !defaultAvailableLocation ? defaultAvailableLocation ?? "global" : "global";
+      // Single location (or none): use the available location directly.
+      // "global" is only meaningful when multiple locations exist and user explicitly picks it.
+      const singleLocation = defaultAvailableLocation ?? "global";
       await handleLocationSelect(singleLocation);
       return;
     }

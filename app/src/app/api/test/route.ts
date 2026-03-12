@@ -158,8 +158,10 @@ export async function POST(request: NextRequest) {
     let resolvedLocation: K6Location | null = null;
 
     try {
+      // executionLocation is already resolved by resolveProjectK6Location (always returns a
+      // valid string). The null branch covers non-performance tests.
       resolvedLocation = isPerformanceTest
-        ? executionLocation ?? "global"
+        ? (executionLocation ?? null)
         : null;
 
       if (isPerformanceTest) {
@@ -217,7 +219,7 @@ export async function POST(request: NextRequest) {
           tests: [{ id: testId, script: code }],
           organizationId,
           projectId: project.id,
-          location: resolvedLocation ?? "global",
+          location: resolvedLocation,
         };
 
         const queueResult = await addK6TestToQueue(performanceTask, 'k6-playground-execution');

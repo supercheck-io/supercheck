@@ -3,6 +3,9 @@ import { Queue, QueueEvents } from "bullmq";
 import { eq } from "drizzle-orm";
 import {
   getQueues,
+  PLAYWRIGHT_QUEUE,
+  k6QueueName,
+  monitorQueueName,
 } from "@/lib/queue";
 import { db } from "@/utils/db";
 import { runs } from "@/db/schema";
@@ -93,7 +96,7 @@ class QueueEventHub extends EventEmitter {
       // Add playwright global queue
       sources.push({
         category: "test", // Playwright queues handle both test and job execution
-        queueName: "playwright-global",
+        queueName: PLAYWRIGHT_QUEUE,
         queue: playwrightQueues["global"],
       });
       
@@ -101,7 +104,7 @@ class QueueEventHub extends EventEmitter {
       for (const [region, queue] of Object.entries(k6Queues)) {
         sources.push({
           category: "job",
-          queueName: `k6-${region}`,
+          queueName: k6QueueName(region),
           queue,
         });
       }
@@ -110,7 +113,7 @@ class QueueEventHub extends EventEmitter {
       for (const [region, queue] of Object.entries(monitorExecutionQueue)) {
         sources.push({
           category: "monitor",
-          queueName: `monitor-${region}`,
+          queueName: monitorQueueName(region),
           queue,
         });
       }

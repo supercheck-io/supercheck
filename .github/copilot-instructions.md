@@ -39,8 +39,8 @@ npm run generate-docs
 - Execution flow is: UI/API request -> App API route creates/updates DB run rows -> App enqueues BullMQ jobs in Redis -> Worker processors execute and update statuses/artifacts -> results are stored in Postgres + S3/MinIO.
 - Queue topology is intentionally mixed:
   - Playwright: single global queue (`playwright-global`)
-  - k6: global queue (`k6-global`) plus regional queues (`k6-us-east`, `k6-eu-central`, `k6-asia-pacific`)
-  - Monitor: regional-only queues (`monitor-us-east`, `monitor-eu-central`, `monitor-asia-pacific`)
+  - k6: global queue (`k6-global`) plus per-location queues (e.g., `k6-local`, `k6-us-east`) — dynamically created from `locations` DB table
+  - Monitor: per-location queues only (e.g., `monitor-local`, `monitor-us-east`) — dynamically created from `locations` DB table
 - Worker location routing is controlled by `WORKER_LOCATION` in `/worker/src/k6/k6.module.ts` and `/worker/src/monitor/monitor.module.ts`.
 - Scheduling now runs in the App side (see worker `AppModule` comment: scheduler module removed from worker).
 
@@ -66,7 +66,12 @@ npm run generate-docs
 
 ### Queue constants must stay aligned
 - Queue names are dynamically generated from the `locations` database table (format: `k6-{code}`, `monitor-{code}`).
-- The fixed queue names (`playwright-global`, scheduler queues) must stay synchronized between:
+- **Use the queue name builder functions** from `/app/src/lib/queue.ts` instead of inline template strings:
+  - `PLAYWRIGHT_QUEUE` (`"playwright-global"`)
+  - `K6_GLOBAL_QUEUE` (`"k6-global"`)
+  - `k6QueueName(locationCode)` → `"k6-{code}"`
+  - `monitorQueueName(locationCode)` → `"monitor-{code}"`
+- The fixed queue names (scheduler queues) must stay synchronized between:
   - `/app/src/lib/queue.ts`
   - `/worker/src/execution/constants.ts`
   - `/worker/src/k6/k6.constants.ts`

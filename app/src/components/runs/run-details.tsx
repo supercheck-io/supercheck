@@ -98,16 +98,22 @@ export function RunDetails({
     return map;
   }, [dynamicLocations]);
 
-  // Helper function to format location display with flag and name
+  // Helper function to format location display with flag and name.
+  // "global" means "any available worker" (legacy or explicit selection).
+  // null/undefined means location was not tracked (e.g. Playwright tests).
   const formatLocationDisplay = (
     location: string | null
   ): { flag: string; name: string } => {
-    if (
-      !location ||
-      location.toLowerCase() === "local" ||
-      location.toLowerCase() === "global"
-    ) {
+    if (!location) {
       return { flag: "🌍", name: "Global" };
+    }
+
+    const lower = location.toLowerCase();
+    if (lower === "global") {
+      return { flag: "🌍", name: "Global" };
+    }
+    if (lower === "local") {
+      return { flag: "🏠", name: "Local" };
     }
 
     return locationLookup[location] || { flag: "📍", name: location };

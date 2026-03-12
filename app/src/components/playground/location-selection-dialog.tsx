@@ -27,6 +27,7 @@ interface LocationSelectionDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSelect: (location: PerformanceLocation) => void;
+  /** Pre-selected location. Falls back to the first available option when not provided. */
   defaultLocation?: PerformanceLocation;
 }
 
@@ -34,10 +35,10 @@ export function LocationSelectionDialog({
   open,
   onOpenChange,
   onSelect,
-  defaultLocation = "global",
+  defaultLocation,
 }: LocationSelectionDialogProps) {
   const [selected, setSelected] =
-    useState<PerformanceLocation>(defaultLocation);
+    useState<PerformanceLocation>(defaultLocation ?? "global");
 
   // Fetch dynamic locations from API
   const { locations: dynamicLocations, hasRestrictions } = useAvailableLocations();
@@ -54,11 +55,15 @@ export function LocationSelectionDialog({
   }, [dynamicLocations, hasRestrictions]);
 
   const fallbackLocation = useMemo(() => {
-    if (locationOptions.some((option) => option.value === defaultLocation)) {
+    // If the caller provided a default and it exists in options, use it.
+    if (defaultLocation && locationOptions.some((option) => option.value === defaultLocation)) {
       return defaultLocation;
     }
 
-    return locationOptions[0]?.value ?? "global";
+    // Otherwise, prefer the first *non-global* option (a real location),
+    // falling back to the first option (which may be "global").
+    const firstReal = locationOptions.find((o) => o.value !== "global");
+    return firstReal?.value ?? locationOptions[0]?.value ?? "global";
   }, [defaultLocation, locationOptions]);
 
   // Non-global location codes for the map

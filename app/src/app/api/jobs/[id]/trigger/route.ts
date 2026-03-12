@@ -483,7 +483,7 @@ export async function POST(
           })),
           organizationId: job.organizationId ?? "",
           projectId: job.projectId ?? "",
-          location: resolvedLocation ?? "global",
+          location: resolvedLocation,
         };
 
         const queueResult = await addK6JobToQueue(k6Task, "k6-job-execution");
