@@ -82,6 +82,7 @@ npm run generate-docs
 ### Execution and scaling behavior
 - Per-process concurrency is intentionally low/hardcoded (`@Processor(..., { concurrency: 1 })`, plus `MAX_CONCURRENT_EXECUTIONS: 1` in worker memory constants); scale by running more worker replicas.
 - `SELF_HOSTED === "true"` gates behavior in AI/security flows (`/app/src/lib/ai/*`).
+- **Docker vs local dev paths**: `ContainerExecutorService` exposes `resolveWorkerDir()` (`/worker` in Docker, `process.cwd()` locally) and `resolveBrowsersPath()` (`/ms-playwright` in Docker, `undefined` locally). Use these instead of hardcoding Docker paths.
 
 ### E2E auth convention
 - E2E tests use `loginIfNeeded()` in each test file's `beforeEach` (see `/app/e2e/playwright.config.ts` and `/app/e2e/tests/**`); no shared Playwright storage-state auth file.

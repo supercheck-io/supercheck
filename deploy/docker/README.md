@@ -8,8 +8,8 @@ Production-ready Docker Compose files for self-hosting Supercheck.
 git clone https://github.com/supercheck-io/supercheck.git
 cd supercheck/deploy/docker
 
-# Generate secure secrets
-bash init-secrets.sh
+# Generate secrets and install gVisor automatically
+sudo bash init-secrets.sh
 
 # Edit .env for optional integrations (SMTP, AI, OAuth)
 nano .env
@@ -94,6 +94,32 @@ WORKER_REPLICAS=2 RUNNING_CAPACITY=2 QUEUED_CAPACITY=20 docker compose up -d
 `RUNNING_CAPACITY` and `QUEUED_CAPACITY` are **App-side** settings. The App uses them to gate how many runs can be in `running` and `queued` states before submissions are throttled or rejected. Keep `RUNNING_CAPACITY` aligned with total worker replicas so the gate matches actual execution throughput.
 
 For single-server deployments, keep `WORKER_LOCATION=local` so one worker processes all regional queues.
+
+---
+
+## gVisor Sandbox (Required)
+
+The worker containers run under [gVisor](https://gvisor.dev/) (`runtime: runsc`) for syscall-level isolation. All child processes (Playwright, k6, monitors) inherit the gVisor sandbox automatically — no Docker-in-Docker or socket mounting required.
+
+### Automatic Installation
+
+The `init-secrets.sh` script automatically installs gVisor during setup. If you run it with `sudo`, gVisor is installed without any extra steps:
+
+```bash
+sudo bash init-secrets.sh
+```
+
+If you ran `init-secrets.sh` without `sudo`, it will prompt for your password to install gVisor.
+
+### Manual Installation
+
+If auto-install fails (e.g., Docker Desktop on macOS/Windows), install manually:
+
+```bash
+sudo bash setup-gvisor.sh
+```
+
+> **Docker Desktop note:** Docker Desktop runs containers inside a Linux VM. gVisor must be installed inside that VM. See [gVisor with Docker Desktop](https://dev.to/rimelek/using-gvisors-container-runtime-in-docker-desktop-374m) for instructions. For production, use Docker Engine on Linux where gVisor works natively.
 
 ---
 

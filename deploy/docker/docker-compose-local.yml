@@ -281,8 +281,8 @@ services:
           cpus: "0.5"
           memory: 1G
 
-  # Worker (NestJS Runner) - Container-based test execution
-  # Tests run in isolated Docker containers (Playwright/K6), not inside worker
+  # Worker (NestJS Runner) - Executes Playwright/K6 tests as child processes
+  # gVisor (runsc) provides syscall-level sandbox isolation at the runtime level
   # Playwright Docker best practices: https://playwright.dev/docs/docker
   worker:
     build:
@@ -291,14 +291,14 @@ services:
     image: supercheck-worker:latest
     # init: Use tini as PID 1 to avoid zombie processes (Playwright recommendation)
     init: true
+    # gVisor sandbox: all worker execution runs under runsc
+    # Install gVisor: sudo bash setup-gvisor.sh
+    runtime: runsc
     environment:
       <<: *common-env
       WORKER_IMAGE: supercheck-worker:latest
       # Note: MAX_CONCURRENT_EXECUTIONS=1 is hardcoded in worker code (scale via replicas)
     volumes:
-      # Mount Docker socket for container-based execution
-      # Worker spawns isolated containers for Playwright and K6 tests
-      - /var/run/docker.sock:/var/run/docker.sock:ro # Read-only for security
       - worker-playwright-reports:/worker/playwright-reports
       - worker-k6-reports:/worker/k6-reports
       - worker-reports:/worker/report

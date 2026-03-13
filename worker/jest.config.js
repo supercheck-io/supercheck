@@ -23,6 +23,6 @@ module.exports = {
   testTimeout: 10000,
   // Transform ESM modules that Jest can't parse by default
   transformIgnorePatterns: [
-    'node_modules/(?!(execa|strip-final-newline|npm-run-path|path-key|onetime|mimic-fn|human-signals|is-stream|get-stream|signal-exit)/)',
+    'node_modules/(?!(execa|strip-final-newline|npm-run-path|path-key|onetime|mimic-fn|human-signals|is-stream|get-stream|signal-exit|@kubernetes/client-node|tar|minipass|minizlib|mkdirp|yallist)/)',
   ],
 };

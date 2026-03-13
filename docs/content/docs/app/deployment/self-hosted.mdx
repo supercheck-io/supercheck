@@ -50,8 +50,8 @@ Choose your deployment type:
     git clone https://github.com/supercheck-io/supercheck.git
     cd supercheck/deploy/docker
 
-    # Generate secure secrets
-    bash init-secrets.sh
+    # Generate secrets and install gVisor automatically
+    sudo bash init-secrets.sh
     ```
 
     Edit `.env` only if you want optional integrations (SMTP, AI, or OAuth).
@@ -122,8 +122,8 @@ Choose your deployment type:
     git clone https://github.com/supercheck-io/supercheck.git
     cd supercheck/deploy/docker
 
-    # Generate secure secrets
-    bash init-secrets.sh
+    # Generate secrets and install gVisor automatically
+    sudo bash init-secrets.sh
     ```
 
     Edit `.env`:
@@ -335,7 +335,11 @@ Enable AI-powered test creation, fixes, and performance analysis. Choose your pr
 
 ### Scaling Workers
 
-Workers execute Playwright and k6 workloads in isolated Docker containers.
+Workers execute Playwright and k6 workloads via `child_process.spawn`, sandboxed by gVisor at the runtime level.
+
+<Callout type="info">
+**gVisor Sandbox:** The `init-secrets.sh` script automatically installs [gVisor](https://gvisor.dev) during setup. All worker containers run under `runtime: runsc` for kernel-level syscall isolation. If auto-install failed (e.g., Docker Desktop), run `sudo bash setup-gvisor.sh` manually before starting.
+</Callout>
 
 <Callout type="info">
 Single-location deployments should keep `WORKER_LOCATION=local` (the default). This makes each worker process all regional queues on that server. When only one location is configured, the UI automatically skips location selection dialogs in monitor configuration, K6 tests, and job creation.

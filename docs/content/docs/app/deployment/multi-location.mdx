@@ -230,13 +230,18 @@ For true geographic distribution, deploy workers in each region.
       </Tab>
     </Tabs>
 
-    **2. Download Worker Compose:**
+    **2. Install gVisor (required):**
+    ```bash
+    curl -fsSL https://raw.githubusercontent.com/supercheck-io/supercheck/main/deploy/docker/setup-gvisor.sh | sudo bash
+    ```
+
+    **3. Download Worker Compose:**
     ```bash
     mkdir -p ~/supercheck-worker && cd ~/supercheck-worker
     curl -o docker-compose-worker.yml https://raw.githubusercontent.com/supercheck-io/supercheck/main/deploy/docker/docker-compose-worker.yml
     ```
 
-    **3. Create `.env`:**
+    **4. Create `.env`:**
     
     Create a `.env` file with the following configuration. Replace the placeholder values with your actual credentials from the main server:
     
@@ -269,7 +274,7 @@ For true geographic distribution, deploy workers in each region.
     Find your main server credentials in the `.env` file at `supercheck/deploy/docker/.env`.
     </Callout>
 
-    **4. Start Worker:**
+    **5. Start Worker:**
     ```bash
     docker compose -f docker-compose-worker.yml up -d
     docker compose -f docker-compose-worker.yml logs -f  # Verify connection

@@ -208,8 +208,8 @@ export class ExecutionService implements OnModuleDestroy {
     this.playwrightConfigPath = configPath;
 
     // Container-only execution: No host directories needed for test files
-    // Test scripts are passed inline to containers
-    // Reports are written to /tmp inside containers and extracted via docker cp
+    // Test scripts are passed inline to the executor
+    // Reports are written to /tmp and extracted via fs.cp
     this.logger.log(
       `Execution mode: Container-only (no host filesystem dependencies)`,
     );
@@ -1136,13 +1136,20 @@ export class ExecutionService implements OnModuleDestroy {
     // For single tests, target specific file
     const containerTestPath = isJob ? '/tmp/' : `/tmp/${testScript.fileName}`;
 
-    // Reports go to /tmp inside container (NOT mounted, extracted via docker cp)
+    // Reports go to /tmp inside execution sandbox (extracted via fs.cp)
     const containerReportsDir = '/tmp/playwright-reports';
     const containerHtmlReport = path.join(containerReportsDir, 'html');
     const containerJsonResults = path.join(containerReportsDir, 'results.json');
 
     // Create a unique ID for this execution to prevent conflicts in parallel runs
     const executionId = crypto.randomUUID().substring(0, 8);
+
+    // Resolve working directory: /worker in Docker, process.cwd() locally
+    const workerDir =
+      await this.containerExecutorService.resolveWorkerDir();
+    // Resolve browsers path: /ms-playwright in Docker, system default locally
+    const browsersPath =
+      await this.containerExecutorService.resolveBrowsersPath();
 
     try {
       this.logger.log(
@@ -1156,7 +1163,7 @@ export class ExecutionService implements OnModuleDestroy {
         PLAYWRIGHT_JSON_OUTPUT: containerJsonResults, // JSON results in container /tmp
         CI: 'true',
         PLAYWRIGHT_EXECUTION_ID: executionId,
-        NODE_PATH: '/worker/node_modules',
+        NODE_PATH: `${workerDir}/node_modules`,
         PLAYWRIGHT_OUTPUT_DIR: containerReportsDir,
         // All artifacts and reports go to container /tmp (unmounted, extracted later)
         PLAYWRIGHT_ARTIFACTS_DIR: `${containerReportsDir}/artifacts-${executionId}`,
@@ -1167,8 +1174,9 @@ export class ExecutionService implements OnModuleDestroy {
         TMPDIR: '/tmp',
         // Add timestamp to prevent caching issues
         PLAYWRIGHT_TIMESTAMP: Date.now().toString(),
-        // Set browsers path to pre-installed location in Docker image
-        PLAYWRIGHT_BROWSERS_PATH: '/ms-playwright',
+        // Set browsers path to pre-installed location in Docker image;
+        // omit when running locally so Playwright uses system default
+        ...(browsersPath ? { PLAYWRIGHT_BROWSERS_PATH: browsersPath } : {}),
         ...(runtimeEnvOverrides ?? {}),
       };
 
@@ -1184,23 +1192,20 @@ export class ExecutionService implements OnModuleDestroy {
         'playwright',
         'test',
         containerTestPath, // Test file path inside container /tmp
-        '--config=/worker/playwright.config.js', // Config baked into worker image
+        `--config=${workerDir}/playwright.config.js`, // Config in worker directory
         `--output=${containerReportsDir}/output-${executionId}`, // Output to container /tmp
       ];
 
       // Execute in container with inline script and report extraction
       const execResult = await this.executeCommandSafely(command, args, {
-        env: {
-          ...process.env,
-          ...envVars,
-        },
-        cwd: '/worker', // Not used in inline mode, but set for consistency
+        env: envVars,
+        cwd: workerDir,
         shell: false,
         timeout: isJob
           ? this.jobExecutionTimeoutMs
           : this.testExecutionTimeoutMs,
         scriptPath: null, // No host path to mount - using inline script
-        workingDir: '/worker',
+        workingDir: workerDir,
         runId, // Pass runId for cancellation tracking
         // Inline script execution mode
         inlineScriptContent: testScript.scriptContent,
@@ -1659,6 +1664,11 @@ export class ExecutionService implements OnModuleDestroy {
       };
     }
 
+    // Resolve working directory: /worker in Docker, process.cwd() locally
+    const resolvedWorkingDir =
+      options.workingDir ||
+      (await this.containerExecutorService.resolveWorkerDir());
+
     this.logger.debug(
       `[Container] Executing in container: ${command} ${args.join(' ')}`,
     );
@@ -1672,7 +1682,7 @@ export class ExecutionService implements OnModuleDestroy {
           timeoutMs: options.timeout,
           runId: options.runId, // Pass runId for cancellation tracking
           env: options.env as Record<string, string>,
-          workingDir: options.workingDir || '/worker',
+          workingDir: resolvedWorkingDir,
           memoryLimitMb: this.containerMemoryLimitMb,
           cpuLimit: this.containerCpuLimit,
           networkMode: 'bridge', // Allow network for Playwright

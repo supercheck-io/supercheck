@@ -86,6 +86,7 @@ For the **latest stable version**, simply redeploy.
 | `RUNNING_CAPACITY` | App-side gate: max concurrent test runs (set equal to total worker replicas configured in Coolify) | `2` |
 | `QUEUED_CAPACITY` | App-side gate: max queued test runs before new submissions are rejected | `10` |
 | `STATUS_PAGE_HIDE_BRANDING` | Hide the `Powered by Supercheck` footer on every public status and incident page when set to `true` | `false` |
+| `WORKER_RUNTIME` | Docker runtime for the worker container. Set to `runsc` to enable [gVisor](https://gvisor.dev/) syscall-level sandboxing (requires gVisor installed on the host). | `runc` |
 
 ---
 

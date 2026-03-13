@@ -3,12 +3,6 @@
   "collection": "@nestjs/schematics",
   "sourceRoot": "src",
   "compilerOptions": {
-    "deleteOutDir": true,
-    "assets": [
-      {
-        "include": "common/security/seccomp_profile.json",
-        "outDir": "dist/src"
-      }
-    ]
+    "deleteOutDir": true
   }
 }

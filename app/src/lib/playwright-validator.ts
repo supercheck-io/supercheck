@@ -264,8 +264,8 @@ export class PlaywrightValidationService {
     }
 
     // 2. Screenshot operations are now allowed
-    // Screenshots are extracted from isolated containers via docker cp
-    // and stored in S3, making them safe in the container-based execution model.
+    // Screenshots are extracted from the execution sandbox via fs.cp
+    // and stored in S3, making them safe in the sandboxed execution model.
     // This enables visual validation and CI/CD reporting alongside trace debugging.
 
     // 3. Enhanced dangerous patterns detection with balanced approach (formerly step 3)

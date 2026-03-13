@@ -253,13 +253,27 @@ Debug logs include:
 - Resource usage
 - Cleanup operations
 
-### Cleanup Orphaned Containers
+### Cleanup Orphaned Processes
+
+The service automatically cleans up child processes via SIGTERM → SIGKILL grace period, but you can also manually check:
+
+```bash
+# Check for any orphaned execution processes
+ps aux | grep playwright
+```
+
+## Performance Considerations
+
+### Execution Overhead
+
+- **Spawn time**: ~100-500ms (child_process.spawn)
+- **gVisor overhead**: ~50-100ms additional syscall interception", "oldString": "### Cleanup Orphaned Containers
 
 The service automatically cleans up orphaned containers, but you can also manually clean:
 
 ```bash
 # Remove all supercheck execution containers
-docker rm -f $(docker ps -a --filter "name=supercheck-exec-*" -q)
+docker rm -f $(docker ps -a --filter \"name=supercheck-exec-*\" -q)
 ```
 
 ## Performance Considerations

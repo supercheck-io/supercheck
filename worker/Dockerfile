@@ -14,9 +14,9 @@ RUN go install go.k6.io/xk6/cmd/xk6@v1.2.3
 RUN xk6 build --with github.com/grafana/xk6-dashboard@v0.8.0
 RUN chmod +x k6
 
-# Get Docker CLI - pin to specific version for reproducible builds
-FROM docker:27.4.1-cli AS docker-cli
-
+# NOTE: Docker CLI removed — execution uses child_process.spawn directly.
+# gVisor (runsc) sandboxing is at the container runtime level (Docker/K8s),
+# so all child processes inherit the sandbox automatically.
 
 # Build stage with dev dependencies
 FROM base AS builder
@@ -48,9 +48,8 @@ COPY --from=k6-builder /go/k6 /usr/local/bin/k6
 RUN chmod +x /usr/local/bin/k6
 ENV K6_BIN_PATH=/usr/local/bin/k6
 
-# Copy Docker CLI
-COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
-RUN chmod +x /usr/local/bin/docker
+# NOTE: Docker CLI removed — execution uses child_process.spawn directly.
+# gVisor (runsc) sandboxing is at the container runtime level.
 
 # Create app user
 # Note: Playwright image includes 'pwuser' (UID 1000) for secure non-root execution

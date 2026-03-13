@@ -254,10 +254,12 @@ services:
     init: true
     environment:
       <<: *common-env
-      # WORKER_IMAGE tells the worker which Docker image to use when spawning test execution containers
       WORKER_IMAGE: ghcr.io/supercheck-io/supercheck/worker:${SUPERCHECK_VERSION:-latest}
+    # gVisor sandbox: set WORKER_RUNTIME=runsc after installing gVisor on the host.
+    # Defaults to runc so one-click deploys work without host preparation.
+    # Install gVisor: https://gvisor.dev/docs/user_guide/install/
+    runtime: ${WORKER_RUNTIME:-runc}
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
       - supercheck-worker-reports:/worker/report
     depends_on:
       supercheck-db:

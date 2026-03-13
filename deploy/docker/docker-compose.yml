@@ -299,8 +299,8 @@ services:
           cpus: "0.5"
           memory: 1G
 
-  # Worker (NestJS Runner) - Container-based test execution
-  # Tests run in isolated Docker containers (Playwright/K6), not inside worker
+  # Worker (NestJS Runner) - Executes Playwright/K6 tests as child processes
+  # gVisor (runsc) provides syscall-level sandbox isolation at the runtime level
   # Playwright Docker best practices: https://playwright.dev/docs/docker
   worker:
     image: ghcr.io/supercheck-io/supercheck/worker:${SUPERCHECK_VERSION:-1.3.0}
@@ -310,12 +310,11 @@ services:
       <<: *common-env
       # Worker-specific configuration (inherits all common env vars)
       # Note: MAX_CONCURRENT_EXECUTIONS=1 is hardcoded in worker code (scale via replicas)
-      # WORKER_IMAGE tells the worker which Docker image to use when spawning test execution containers
       WORKER_IMAGE: ghcr.io/supercheck-io/supercheck/worker:${SUPERCHECK_VERSION:-1.3.0}
+    # gVisor sandbox: all worker execution runs under runsc
+    # Install gVisor: sudo bash setup-gvisor.sh
+    runtime: runsc
     volumes:
-      # Mount Docker socket for container-based execution
-      # Worker spawns isolated containers for Playwright and K6 tests
-      - /var/run/docker.sock:/var/run/docker.sock
       - worker-playwright-reports:/worker/playwright-reports
       - worker-k6-reports:/worker/k6-reports
       - worker-reports:/worker/report
@@ -356,11 +355,11 @@ services:
         delay: 15s
         window: 120s
 
-    # Security constraints for Docker-in-Docker
+    # Security constraints for gVisor-sandboxed execution
     security_opt:
       - no-new-privileges:true # Prevent privilege escalation
-    # Note: Running as root with docker socket access requires careful capability management
-    # We do NOT drop all caps because docker socket access needs some privileges
+    # Note: gVisor runtime provides kernel-level syscall interception
+    # All child processes inherit the sandbox automatically
 
   # PostgreSQL Database
   postgres:
