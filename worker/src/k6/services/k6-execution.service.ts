@@ -14,6 +14,7 @@ import {
   findFirstFileByNames,
   pathExists,
 } from '../../common/utils/file-search';
+import { filterFileVariablesToUsedKeys } from '../../common/utils/script-analysis';
 
 // Utility function to safely get error message
 function getErrorMessage(error: unknown): string {
@@ -39,6 +40,7 @@ export interface K6ExecutionTask {
   script: string; // Decoded k6 script
   variables?: Record<string, string>; // Resolved variables for runtime helper injection
   secrets?: Record<string, string>; // Resolved secrets for runtime helper injection
+  files?: Record<string, { storagePath: string; fileName: string; mimeType: string; fileSize: number }>; // File variable metadata
   jobId?: string | null;
   tests: Array<{ id: string; script: string }>;
   location?: string; // Execution location
@@ -289,6 +291,12 @@ export class K6ExecutionService {
 
       const preparedScript = this.injectK6VariableRuntimeHelpers(script);
 
+      // Filter file variables to only those referenced by getFile() in the script,
+      // then download from S3
+      const filteredFiles = filterFileVariablesToUsedKeys(task.files ?? {}, [script]);
+      const { additionalFiles: fileAdditionalFiles, filePaths } =
+        await this.s3Service.prepareFileVariables(filteredFiles);
+
       const args = [
         'run',
         '--summary-export',
@@ -328,7 +336,7 @@ export class K6ExecutionService {
           K6_WEB_DASHBOARD_PORT: dashboardPort.toString(), // Use unique port
           K6_WEB_DASHBOARD_ADDR: this.dashboardBindAddress,
           K6_NO_COLOR: '1', // Disable ANSI colors in output
-          ...this.buildVariableRuntimeEnv(runtimeVariables, runtimeSecrets),
+          ...this.buildVariableRuntimeEnv(runtimeVariables, runtimeSecrets, filePaths),
         };
 
         try {
@@ -341,6 +349,9 @@ export class K6ExecutionService {
             k6EnvOverrides,
             executionTimeoutMs,
             dashboardPort,
+            Object.keys(fileAdditionalFiles).length > 0
+              ? fileAdditionalFiles
+              : undefined,
           );
         } finally {
           if (this.useDashboardPortPool) {
@@ -731,6 +742,7 @@ export class K6ExecutionService {
     overrideEnv: Record<string, string> = {},
     timeoutMs?: number,
     dashboardPort?: number,
+    additionalFiles?: Record<string, string>,
   ): Promise<{
     exitCode: number;
     stdout: string;
@@ -794,6 +806,7 @@ export class K6ExecutionService {
             runId, // Pass runId for cancellation tracking
             inlineScriptContent: scriptContent,
             inlineScriptFileName: scriptFileName,
+            additionalFiles, // File variables for data files
             ensureDirectories: Array.from(directoriesToEnsure),
             extractFromContainer: this.K6_OUTPUT_DIR, // Only extract K6 output dir (avoids node-compile-cache and other junk)
             extractToHost: extractToHost, // To OS temp directory
@@ -982,15 +995,20 @@ export class K6ExecutionService {
   private buildVariableRuntimeEnv(
     variables: Record<string, string>,
     secrets: Record<string, string>,
+    filePaths?: Record<string, string>,
   ): Record<string, string> {
-    return {
+    const env: Record<string, string> = {
       SUPERCHECK_VARIABLES_B64: Buffer.from(
         JSON.stringify(variables ?? {}),
       ).toString('base64'),
       SUPERCHECK_SECRETS_B64: Buffer.from(
         JSON.stringify(secrets ?? {}),
       ).toString('base64'),
+      SUPERCHECK_FILES_B64: Buffer.from(
+        JSON.stringify(filePaths ?? {}),
+      ).toString('base64'),
     };
+    return env;
   }
 
   private decodeSecretsFromRuntimeEnv(
@@ -1115,6 +1133,17 @@ globalThis.getSecret = function getSecret(key, options = {}) {
   }
 
   return value;
+};
+
+const __scFiles = __scParseMap('SUPERCHECK_FILES_B64');
+const __scTmpDir = (__scEnv.TMPDIR || __scEnv.TMP || '/tmp').replace(/\\/+$/, '');
+
+globalThis.getFile = function getFile(key) {
+  const filePath = __scFiles[key];
+  if (filePath === undefined) {
+    throw new Error(\`File variable '\${key}' is not defined. Define it in Project Settings > Variables as a File type variable.\`);
+  }
+  return __scTmpDir + '/' + filePath;
 };
 `;
 

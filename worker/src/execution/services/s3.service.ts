@@ -5,10 +5,12 @@ import {
   PutObjectCommand,
   ListObjectsV2Command,
   CreateBucketCommand,
+  GetObjectCommand,
 } from '@aws-sdk/client-s3';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { getContentType } from '../services/execution.service';
+import { MEMORY_LIMITS } from '../../common/constants/memory.constants';
 
 // Utility function to safely get error message
 function getErrorMessage(error: unknown): string {
@@ -42,7 +44,8 @@ export type S3EntityType =
   | 'k6_test'
   | 'k6_job'
   | 'status'
-  | 'requirements';
+  | 'requirements'
+  | 'project_data_files';
 
 @Injectable()
 export class S3Service implements OnModuleInit {
@@ -63,6 +66,9 @@ export class S3Service implements OnModuleInit {
 
   // Requirements bucket
   private readonly requirementsBucketName: string;
+
+  // Project data files bucket (file-type variables)
+  private readonly projectDataFilesBucketName: string;
 
   private readonly s3Endpoint: string;
   private readonly maxRetries: number;
@@ -103,6 +109,12 @@ export class S3Service implements OnModuleInit {
     this.requirementsBucketName = this.configService.get<string>(
       'S3_REQUIREMENTS_BUCKET_NAME',
       'test-requirement-artifacts',
+    );
+
+    // Project data files bucket
+    this.projectDataFilesBucketName = this.configService.get<string>(
+      'S3_PROJECT_DATA_FILES_BUCKET_NAME',
+      'project-data-files',
     );
 
     this.s3Endpoint = this.configService.get<string>(
@@ -152,6 +164,8 @@ export class S3Service implements OnModuleInit {
         this.ensureBucketExists(this.statusBucketName),
         // Requirements bucket
         this.ensureBucketExists(this.requirementsBucketName),
+        // Project data files bucket
+        this.ensureBucketExists(this.projectDataFilesBucketName),
       ]);
 
       this.logger.log('S3 buckets initialized successfully');
@@ -193,6 +207,10 @@ export class S3Service implements OnModuleInit {
       // Requirements bucket
       case 'requirements':
         return this.requirementsBucketName;
+
+      // Project data files bucket
+      case 'project_data_files':
+        return this.projectDataFilesBucketName;
 
       // Default to job bucket for unknown entity types
       default:
@@ -343,6 +361,88 @@ export class S3Service implements OnModuleInit {
   // Format a path for report storage using the entity ID directly without nested folders
   formatReportPath(entityId: string, reportPath: string = 'report'): string {
     return `${entityId}/${reportPath}`;
+  }
+
+  /**
+   * Download a file from S3 and return its content as a Buffer
+   * Used for downloading file-type variables for test execution
+   */
+  async downloadFileToBuffer(
+    s3Key: string,
+    bucket: string,
+  ): Promise<Buffer> {
+    try {
+      const response = await this.withRetry(
+        () =>
+          this.s3Client.send(
+            new GetObjectCommand({
+              Bucket: bucket,
+              Key: s3Key,
+            }),
+          ),
+        `Download file ${s3Key}`,
+      );
+
+      if (!response.Body) {
+        throw new Error(`Empty response body for S3 key: ${s3Key}`);
+      }
+
+      const chunks: Uint8Array[] = [];
+      const stream = response.Body as AsyncIterable<Uint8Array>;
+      for await (const chunk of stream) {
+        chunks.push(chunk);
+      }
+      return Buffer.concat(chunks);
+    } catch (error) {
+      this.logger.error(
+        `Error downloading file from S3 key ${s3Key}: ${getErrorMessage(error)}`,
+        getErrorStack(error),
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Prepare file variables for container execution by downloading from S3.
+   * Returns additionalFiles (containerPath -> content) and filePaths (key -> containerPath).
+   */
+  async prepareFileVariables(
+    files: Record<string, { storagePath: string; fileName: string; mimeType: string; fileSize: number }>,
+  ): Promise<{ additionalFiles: Record<string, string>; filePaths: Record<string, string> }> {
+    const additionalFiles: Record<string, string> = {};
+    const filePaths: Record<string, string> = {};
+
+    if (!files || Object.keys(files).length === 0) {
+      return { additionalFiles, filePaths };
+    }
+
+    const totalBytes = Object.values(files).reduce((sum, m) => sum + m.fileSize, 0);
+    if (totalBytes > MEMORY_LIMITS.MAX_TOTAL_FILE_VARIABLES_BYTES) {
+      const totalMB = (totalBytes / (1024 * 1024)).toFixed(1);
+      const limitMB = (MEMORY_LIMITS.MAX_TOTAL_FILE_VARIABLES_BYTES / (1024 * 1024)).toFixed(0);
+      throw new Error(
+        `Total file variable size (${totalMB} MB) exceeds the ${limitMB} MB per-run limit. ` +
+        `Remove unused file variables or reduce file sizes.`,
+      );
+    }
+
+    const bucket = this.getBucketForEntityType('project_data_files');
+
+    for (const [key, meta] of Object.entries(files)) {
+      const buffer = await this.downloadFileToBuffer(meta.storagePath, bucket);
+      // Sanitize filename to prevent path traversal (e.g. ../../etc/passwd)
+      const sanitizedFileName = meta.fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const containerFileName = `data/${key}/${sanitizedFileName}`;
+      // Preserve original bytes via base64 to avoid UTF-8 re-encoding corruption
+      // (e.g. Windows-1252 CSV files). buildShellScript detects the prefix
+      // and skips the double-encode.
+      additionalFiles[containerFileName] = `base64:${buffer.toString('base64')}`;
+      // Store relative path — the runtime helper resolves it against TMPDIR
+      // (which buildKubernetesEnv sets to the per-run workspace root).
+      filePaths[key] = containerFileName;
+    }
+
+    return { additionalFiles, filePaths };
   }
 
   async uploadDirectory(

@@ -2029,6 +2029,51 @@ export default function() {
   sleep(1); // Pause between requests to simulate user think time
 }`,
   },
+  {
+    id: "pw-data-driven-file",
+    name: "Data-Driven Test (File Variable)",
+    description: "Read test data from a file variable (CSV/JSON) for parameterized testing",
+    category: "Data-Driven",
+    testType: "browser",
+    tags: ["playwright", "file", "csv", "data-driven"],
+    code: `/**
+ * Data-driven Playwright test using file variables.
+ *
+ * Prerequisites:
+ * 1. Go to Project Settings > Variables
+ * 2. Create a File-type variable named "TEST_DATA" and upload a CSV file with columns: url,expectedTitle
+ *    Example CSV content:
+ *      url,expectedTitle
+ *      https://playwright.dev,Playwright
+ *      https://example.com,Example Domain
+ *
+ * The getFile() helper returns the container path where the file is available at runtime.
+ * Use fs.readFileSync() to read the file content and parse it in your test.
+ */
+
+import { test, expect } from '@playwright/test';
+import * as fs from 'fs';
+
+// Read and parse the CSV file variable
+const filePath = getFile('TEST_DATA');
+const csvContent = fs.readFileSync(filePath, 'utf-8');
+const rows = csvContent
+  .trim()
+  .split('\\n')
+  .slice(1) // skip header row
+  .map((line) => {
+    const [url, expectedTitle] = line.split(',');
+    return { url: url.trim(), expectedTitle: expectedTitle.trim() };
+  });
+
+for (const { url, expectedTitle } of rows) {
+  test(\`page title contains "\${expectedTitle}" for \${url}\`, async ({ page }) => {
+    await page.goto(url);
+    await expect(page).toHaveTitle(new RegExp(expectedTitle));
+  });
+}
+`,
+  },
 ];
 
 // Helper function to get templates by test type

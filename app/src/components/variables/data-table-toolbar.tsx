@@ -65,8 +65,10 @@ export function DataTableToolbar<TData>({
   // Track if we've handled the initial URL-based open
   const initialOpenHandled = useRef(false);
 
-  // Compute default secret state from URL params
-  const defaultIsSecret = searchParams.get("type") === "secret";
+  // Compute default type from URL params
+  const urlType = searchParams.get("type");
+  const defaultIsSecret = urlType === "secret";
+  const defaultType = (urlType === "secret" || urlType === "file") ? urlType : undefined;
 
   // Handle subsequent URL changes (not initial mount)
   useEffect(() => {
@@ -103,11 +105,15 @@ export function DataTableToolbar<TData>({
   const typeOptions = [
     {
       label: "Variable",
-      value: "false", // Maps to isSecret: false
+      value: "variable",
     },
     {
       label: "Secret",
-      value: "true", // Maps to isSecret: true
+      value: "secret",
+    },
+    {
+      label: "File",
+      value: "file",
     },
   ];
 
@@ -127,7 +133,7 @@ export function DataTableToolbar<TData>({
                 <div className="space-y-3">
                   <div>
                     <h3 className="font-medium text-sm">
-                      Variables & Secrets Usage
+                      Variables, Secrets & Files Usage
                     </h3>
                     <p className="text-xs text-muted-foreground">
                       Access methods in Playground for Playwright and k6
@@ -144,15 +150,17 @@ export function DataTableToolbar<TData>({
 const baseUrl = getVariable('BASE_URL');
 // Secrets
 const apiKey = getSecret('API_KEY');
+// Files (returns file path)
+const dataPath = getFile('TEST_DATA');
 
 // In Playwright
 await page.goto(baseUrl);
-await page.fill('#password', apiKey);
+const data = JSON.parse(
+  fs.readFileSync(dataPath, 'utf-8')
+);
 
 // In k6
-  http.get(\`\${baseUrl}/protected\`, {
-    headers: { Authorization: \`Bearer \${apiKey}\` }
-})`}
+const data = open(dataPath);`}
                         </pre>
                         <Button
                           size="sm"
@@ -165,14 +173,17 @@ const baseUrl = getVariable('BASE_URL');
 // Secrets
 const apiKey = getSecret('API_KEY');
 
+// Files (returns file path)
+const dataPath = getFile('TEST_DATA');
+
 // In Playwright
 await page.goto(baseUrl);
-await page.fill('#password', apiKey);
+const data = JSON.parse(
+  fs.readFileSync(dataPath, 'utf-8')
+);
 
 // In k6
-  http.get(\`\${baseUrl}/protected\`, {
-    headers: { Authorization: \`Bearer \${apiKey}\` }
-}`)
+const data = open(dataPath);`)
                           }
                         >
                           {copiedCode ===
@@ -182,14 +193,17 @@ const baseUrl = getVariable('BASE_URL');
 // Secrets
 const apiKey = getSecret('API_KEY');
 
+// Files (returns file path)
+const dataPath = getFile('TEST_DATA');
+
 // In Playwright
 await page.goto(baseUrl);
-await page.fill('#password', apiKey);
+const data = JSON.parse(
+  fs.readFileSync(dataPath, 'utf-8')
+);
 
 // In k6
-  http.get(\`\${baseUrl}/protected\`, {
-    headers: { Authorization: \`Bearer \${apiKey}\` }
-})` ? (
+const data = open(dataPath);` ? (
                             <Check className="h-3 w-3 text-green-500" />
                           ) : (
                             <Copy className="h-3 w-3" />
@@ -200,7 +214,7 @@ await page.fill('#password', apiKey);
 
                     <div className="text-xs text-muted-foreground">
                       <strong>Tip:</strong> Use variables for config, secrets
-                      for sensitive data. These helpers are available wherever
+                      for sensitive data, and files for test datasets (CSV, JSON, etc.). These helpers are available wherever
                       your Playground scripts run.
                     </div>
                   </div>
@@ -209,7 +223,7 @@ await page.fill('#password', apiKey);
             </Popover>
           </div>
           <p className="text-muted-foreground text-sm">
-            Manage configuration values and secrets
+            Manage configuration values, secrets and file datasets
           </p>
         </div>
       </div>
@@ -221,9 +235,9 @@ await page.fill('#password', apiKey);
           onChange={(event) => table.setGlobalFilter(event.target.value)}
           className="h-8 w-[150px] lg:w-[250px]"
         />
-        {table.getColumn("isSecret") && (
+        {table.getColumn("type") && (
           <DataTableFacetedFilter
-            column={table.getColumn("isSecret")}
+            column={table.getColumn("type")}
             title="Type"
             options={typeOptions}
           />
@@ -258,6 +272,7 @@ await page.fill('#password', apiKey);
                   handleDialogOpenChange(false);
                 }}
                 defaultIsSecret={defaultIsSecret}
+                defaultType={defaultType as "variable" | "secret" | "file" | undefined}
               />
             )}
           </>

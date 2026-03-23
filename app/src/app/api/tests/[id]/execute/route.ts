@@ -180,6 +180,7 @@ export async function POST(request: NextRequest, context: ExecuteContext) {
         script: decodedScript,
         variables: variableResolution.variables,
         secrets: variableResolution.secrets,
+        files: variableResolution.files,
         tests: [
           {
             id: test.id,
@@ -200,6 +201,7 @@ export async function POST(request: NextRequest, context: ExecuteContext) {
         code: decodedScript,
         variables: variableResolution.variables,
         secrets: variableResolution.secrets,
+        files: variableResolution.files,
         runId: run.id,
         organizationId: test.organizationId ?? "",
         projectId: test.projectId ?? "",

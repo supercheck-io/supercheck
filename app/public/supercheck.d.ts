@@ -1341,6 +1341,42 @@ declare function getSecret<T = string>(
   : T extends boolean ? boolean
   : string;
 
+// === File Variables ===
+
+/**
+ * Returns the container file path for a file-type variable.
+ *
+ * File variables allow you to upload CSV, JSON, or text files as project
+ * variables and access them at runtime in your test scripts. The file is
+ * downloaded from storage and placed in the execution container before the
+ * test runs.
+ *
+ * @param key - The variable key (case-sensitive, matches the key defined in Project Settings > Variables)
+ * @returns The absolute path to the file inside the execution container
+ * @throws Error if the file variable key is not defined
+ *
+ * @example Basic usage - read a CSV file
+ * ```typescript
+ * import * as fs from 'fs';
+ *
+ * const filePath = getFile('TEST_DATA');
+ * const csvContent = fs.readFileSync(filePath, 'utf-8');
+ * const rows = csvContent.split('\n').slice(1); // skip header
+ * ```
+ *
+ * @example Parse a JSON data file
+ * ```typescript
+ * import * as fs from 'fs';
+ *
+ * const filePath = getFile('CONFIG');
+ * const config = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+ * ```
+ *
+ * @see {@link getVariable} For plain-text configuration values
+ * @see {@link getSecret} For sensitive values like passwords and API keys
+ */
+declare function getFile(key: string): string;
+
 // === Async Utilities ===
 
 /**

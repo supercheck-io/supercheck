@@ -241,6 +241,26 @@ export const MonacoEditorClient = memo(
                       },
                     ],
                   },
+                  getFile: {
+                    contents: [
+                      {
+                        value:
+                          "**getFile(key: string): string**",
+                      },
+                      {
+                        value:
+                          "Returns the file path for a file-type variable. Use fs.readFileSync() to read the content.",
+                      },
+                      {
+                        value:
+                          "\\n**Usage:** Upload a CSV/JSON file as a File variable in Project Settings > Variables, then reference it by key.",
+                      },
+                      {
+                        value:
+                          "\\n**Example:**\\n```typescript\\nimport * as fs from 'fs';\\nconst filePath = getFile('TEST_DATA');\\nconst data = fs.readFileSync(filePath, 'utf-8');\\n```",
+                      },
+                    ],
+                  },
                 };
 
                 const content =

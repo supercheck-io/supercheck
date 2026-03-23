@@ -359,6 +359,34 @@ describe('Variable Resolver', () => {
         expect(result).toContain('function getVariable');
         expect(result).toContain('function getSecret');
       });
+
+      it('should generate getFile function with file entries', () => {
+        const files = { 
+          TEST_DATA: '/tmp/data/TEST_DATA/data.csv',
+          CONFIG: '/tmp/data/CONFIG/settings.json',
+        };
+        
+        const result = generateVariableFunctions({}, {}, files);
+        
+        expect(result).toContain('function getFile');
+        expect(result).toContain('TEST_DATA');
+        expect(result).toContain('/tmp/data/TEST_DATA/data.csv');
+        expect(result).toContain('CONFIG');
+        expect(result).toContain('/tmp/data/CONFIG/settings.json');
+      });
+
+      it('should generate getFile function even without files', () => {
+        const result = generateVariableFunctions({}, {});
+        
+        expect(result).toContain('function getFile');
+      });
+
+      it('should generate getFile that throws for unknown keys', () => {
+        const result = generateVariableFunctions({}, {}, {});
+        
+        expect(result).toContain("throw new Error");
+        expect(result).toContain("File variable");
+      });
     });
 
     describe('Variable Function Behavior', () => {

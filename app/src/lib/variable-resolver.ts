@@ -8,9 +8,17 @@ export interface ResolvedVariable {
   value: string;
 }
 
+export interface FileVariableMetadata {
+  storagePath: string;
+  fileName: string;
+  mimeType: string;
+  fileSize: number;
+}
+
 export interface VariableResolutionResult {
   variables: Record<string, string>;
   secrets: Record<string, string>;
+  files: Record<string, FileVariableMetadata>;
   errors?: string[];
 }
 
@@ -30,10 +38,29 @@ export async function resolveProjectVariables(
 
     const resolvedVariables: Record<string, string> = {};
     const resolvedSecrets: Record<string, string> = {};
+    const resolvedFiles: Record<string, FileVariableMetadata> = {};
     const errors: string[] = [];
 
     for (const variable of variables) {
       try {
+        const varType = variable.type || (variable.isSecret ? 'secret' : 'variable');
+
+        if (varType === 'file') {
+          if (variable.storagePath && variable.fileName) {
+            resolvedFiles[variable.key] = {
+              storagePath: variable.storagePath,
+              fileName: variable.fileName,
+              mimeType: variable.mimeType || 'application/octet-stream',
+              fileSize: variable.fileSize || 0,
+            };
+          } else {
+            errors.push(
+              `File variable '${variable.key}' is missing storage path or file name`
+            );
+          }
+          continue;
+        }
+
         let value: string;
 
         if (variable.isSecret) {
@@ -63,14 +90,15 @@ export async function resolveProjectVariables(
     }
 
     console.log(
-      `Resolved ${Object.keys(resolvedVariables).length} variables and ${
+      `Resolved ${Object.keys(resolvedVariables).length} variables, ${
         Object.keys(resolvedSecrets).length
-      } secrets for project ${projectId}`
+      } secrets, and ${Object.keys(resolvedFiles).length} files for project ${projectId}`
     );
 
     return {
       variables: resolvedVariables,
       secrets: resolvedSecrets,
+      files: resolvedFiles,
       errors: errors.length > 0 ? errors : undefined,
     };
   } catch (error) {
@@ -81,6 +109,7 @@ export async function resolveProjectVariables(
     return {
       variables: {},
       secrets: {},
+      files: {},
       errors: [
         `Failed to resolve variables: ${
           error instanceof Error ? error.message : String(error)
@@ -97,8 +126,8 @@ export async function resolveProjectVariables(
 export function extractVariableNames(script: string): string[] {
   const variableNames: string[] = [];
 
-  // Regex to match both getVariable() and getSecret() calls
-  const regex = /(?:getVariable|getSecret)\s*\(\s*['"`]([^'"`]+)['"`]/g;
+  // Regex to match getVariable(), getSecret(), and getFile() calls
+  const regex = /(?:getVariable|getSecret|getFile)\s*\(\s*['"`]([^'"`]+)['"`]/g;
   let match;
 
   while ((match = regex.exec(script)) !== null) {
@@ -112,19 +141,18 @@ export function extractVariableNames(script: string): string[] {
 }
 
 /**
- * Generate both getVariable and getSecret function implementations for test execution
+ * Generate getVariable, getSecret, and getFile function implementations for test execution
  */
 export function generateVariableFunctions(
   variables: Record<string, string>,
-  secrets: Record<string, string>
+  secrets: Record<string, string>,
+  files?: Record<string, string>, // key -> file path in container
 ): string {
   // Use JSON.stringify for both keys and values to prevent injection attacks
   // JSON.stringify properly escapes backslashes, quotes, and control characters
   const variableEntries = Object.entries(variables)
     .map(
       ([key, value]) => {
-        // Use JSON.stringify for the full key-value pair construction
-        // This properly handles all special characters including backslashes
         const safeKey = JSON.stringify(key);
         const safeValue = JSON.stringify(value);
         return `${safeKey}: ${safeValue}`;
@@ -141,6 +169,16 @@ export function generateVariableFunctions(
       }
     )
     .join(", ");
+
+  const fileEntries = files
+    ? Object.entries(files)
+        .map(([key, path]) => {
+          const safeKey = JSON.stringify(key);
+          const safePath = JSON.stringify(path);
+          return `${safeKey}: ${safePath}`;
+        })
+        .join(", ")
+    : "";
 
   return `
 function getVariable(key, options = {}) {
@@ -209,6 +247,18 @@ function getSecret(key, options = {}) {
   // Security note: secrets are already embedded in the script at execution time,
   // so returning the raw value doesn't introduce additional exposure
   return value;
+}
+
+function getFile(key) {
+  const files = {${fileEntries}};
+  
+  const filePath = files[key];
+  
+  if (filePath === undefined) {
+    throw new Error(\`File variable '\${key}' is not defined. Make sure you have created a file-type variable with this key.\`);
+  }
+  
+  return filePath;
 }
 `;
 }

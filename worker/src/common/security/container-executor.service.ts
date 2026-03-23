@@ -1809,7 +1809,11 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       for (const [filePath, content] of Object.entries(
         options.additionalFiles,
       )) {
-        const encodedContent = Buffer.from(content).toString('base64');
+        // Values prefixed with "base64:" are already base64-encoded (binary files
+        // from S3 that must not be re-encoded through UTF-8).
+        const encodedContent = content.startsWith('base64:')
+          ? content.slice(7)
+          : Buffer.from(content).toString('base64');
         const targetPath = path.posix.join(ws, filePath);
         const escapedTarget = targetPath.replace(/'/g, "'\\''");
         // Ensure parent directory exists for nested files

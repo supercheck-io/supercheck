@@ -216,6 +216,7 @@ export async function processScheduledJob(
         script: primaryScript,
         variables: variableResolution.variables,
         secrets: variableResolution.secrets,
+        files: variableResolution.files,
         jobId,
         tests: processedTestScripts.map((script) => ({
           id: script.id,
@@ -260,6 +261,7 @@ export async function processScheduledJob(
         projectId,
         variables: variableResolution.variables,
         secrets: variableResolution.secrets,
+        files: variableResolution.files,
         jobType: 'playwright',
       };
 

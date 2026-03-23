@@ -26,6 +26,8 @@ export interface S3Config {
   k6TestBucketName: string;
   k6JobBucketName: string;
   statusBucketName: string;
+  requirementsBucketName: string;
+  projectDataFilesBucketName: string;
   maxRetries?: number;
   operationTimeout?: number;
 }
@@ -614,6 +616,12 @@ export function createS3CleanupService(): S3CleanupService {
     // Status page bucket
     statusBucketName:
       process.env.S3_STATUS_BUCKET_NAME || "status-page-artifacts",
+    // Requirements bucket
+    requirementsBucketName:
+      process.env.S3_REQUIREMENTS_BUCKET_NAME || "test-requirement-artifacts",
+    // Project data files bucket (file-type variables)
+    projectDataFilesBucketName:
+      process.env.S3_PROJECT_DATA_FILES_BUCKET_NAME || "project-data-files",
     maxRetries: process.env.S3_MAX_RETRIES
       ? parseInt(process.env.S3_MAX_RETRIES, 10)
       : 3,

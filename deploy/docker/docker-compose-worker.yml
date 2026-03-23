@@ -100,6 +100,8 @@ services:
       S3_STATUS_BUCKET_NAME: ${S3_STATUS_BUCKET_NAME:-status-page-artifacts}
       # Requirements bucket
       S3_REQUIREMENTS_BUCKET_NAME: ${S3_REQUIREMENTS_BUCKET_NAME:-test-requirement-artifacts}
+      # Project data files bucket (file-type variables)
+      S3_PROJECT_DATA_FILES_BUCKET_NAME: ${S3_PROJECT_DATA_FILES_BUCKET_NAME:-project-data-files}
 
       # Execution configuration
       NODE_ENV: ${NODE_ENV:-production}

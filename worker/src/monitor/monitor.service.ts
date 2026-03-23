@@ -2730,6 +2730,7 @@ export class MonitorService {
       // to prevent ReferenceError when user's script calls getVariable/getSecret
       let resolvedVariables: Record<string, string> = {};
       let resolvedSecrets: Record<string, string> = {};
+      let resolvedFiles: Record<string, { storagePath: string; fileName: string; mimeType: string; fileSize: number }> = {};
       const projectId = test.projectId;
 
       if (projectId) {
@@ -2747,9 +2748,10 @@ export class MonitorService {
 
           resolvedVariables = variableResolution.variables;
           resolvedSecrets = variableResolution.secrets;
+          resolvedFiles = variableResolution.files ?? {};
 
           this.logger.debug(
-            `[${monitorId}] Resolved ${Object.keys(resolvedVariables).length} variables and ${Object.keys(resolvedSecrets).length} secrets`,
+            `[${monitorId}] Resolved ${Object.keys(resolvedVariables).length} variables, ${Object.keys(resolvedSecrets).length} secrets, and ${Object.keys(resolvedFiles).length} files`,
           );
         } catch (varError) {
           // Log the error but continue with empty variables/secrets
@@ -2760,16 +2762,10 @@ export class MonitorService {
         }
       }
 
-      // ALWAYS prepend getVariable/getSecret function implementations
-      // This ensures the functions are defined even if there are no variables configured
-      const variableFunctionCode =
-        this.variableResolverService.generateVariableFunctions(
-          resolvedVariables,
-          resolvedSecrets,
-        );
-      decodedScript = variableFunctionCode + '\n' + decodedScript;
-
       // 4. Execute test using existing ExecutionService
+      // Pass variables, secrets, and files through the task object so that
+      // runSingleTest's prependVariableRuntimeHelpers handles all injection
+      // uniformly (via base64-encoded env vars) including file variable downloads.
       this.logger.log(
         `[${monitorId}] Executing Playwright test: ${test.title}`,
       );
@@ -2778,6 +2774,9 @@ export class MonitorService {
         {
           testId: test.id,
           code: decodedScript,
+          variables: resolvedVariables,
+          secrets: resolvedSecrets,
+          files: resolvedFiles,
         },
         true,
         true,

@@ -23,6 +23,7 @@
 #   If using restricted IAM policies, pre-create these buckets:
 #   - playwright-test-artifacts, playwright-job-artifacts, playwright-monitor-artifacts
 #   - k6-test-artifacts, k6-job-artifacts, status-page-artifacts, test-requirement-artifacts
+#   - project-data-files
 #
 # Documentation: https://supercheck.io/docs/app/deployment/self-hosted
 # ============================================================================
@@ -91,6 +92,8 @@ x-common-env: &common-env # Database Configuration - External PostgreSQL
   S3_STATUS_BUCKET_NAME: ${S3_STATUS_BUCKET_NAME:-status-page-artifacts}
   # Requirements bucket
   S3_REQUIREMENTS_BUCKET_NAME: ${S3_REQUIREMENTS_BUCKET_NAME:-test-requirement-artifacts}
+  # Project data files bucket (file-type variables)
+  S3_PROJECT_DATA_FILES_BUCKET_NAME: ${S3_PROJECT_DATA_FILES_BUCKET_NAME:-project-data-files}
   S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-true}
   S3_OPERATION_TIMEOUT: ${S3_OPERATION_TIMEOUT:-10000}
   S3_MAX_RETRIES: ${S3_MAX_RETRIES:-3}

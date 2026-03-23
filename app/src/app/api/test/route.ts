@@ -128,6 +128,7 @@ export async function POST(request: NextRequest) {
     let variableResolution: VariableResolutionResult = {
       variables: {},
       secrets: {},
+      files: {},
       errors: [],
     };
     let usedVariables: string[] = [];
@@ -216,6 +217,7 @@ export async function POST(request: NextRequest) {
           script: code,
           variables: variableResolution.variables,
           secrets: variableResolution.secrets,
+          files: variableResolution.files,
           tests: [{ id: testId, script: code }],
           organizationId,
           projectId: project.id,
@@ -237,6 +239,7 @@ export async function POST(request: NextRequest) {
           code: scriptToExecute,
           variables: variableResolution.variables,
           secrets: variableResolution.secrets,
+          files: variableResolution.files,
           runId: runIdForQueue || testId,
           organizationId,
           projectId: project.id,
