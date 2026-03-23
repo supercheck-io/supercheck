@@ -235,8 +235,8 @@ The Docker Compose production deployment runs on a **dedicated Hetzner server** 
 # Check current running versions
 ssh root@88.198.125.135 "docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}'"
 
-# Update version
-ssh root@88.198.125.135 "sed -i 's/SUPERCHECK_VERSION=.*/SUPERCHECK_VERSION=1.3.3/' /root/supercheck/deploy/docker/.env"
+# Update version (supports semver, canary, rc tags — e.g. 1.3.3, 1.3.3-canary.1, 1.4.0-rc.2)
+ssh root@88.198.125.135 "sed -i 's/SUPERCHECK_VERSION=.*/SUPERCHECK_VERSION=<new_version>/' /root/supercheck/deploy/docker/.env"
 
 # Pull new images and redeploy
 ssh root@88.198.125.135 "cd /root/supercheck/deploy/docker && docker compose -f docker-compose-secure.yml pull app worker && docker compose -f docker-compose-secure.yml up -d app worker"
@@ -244,17 +244,19 @@ ssh root@88.198.125.135 "cd /root/supercheck/deploy/docker && docker compose -f 
 # Verify deployment
 ssh root@88.198.125.135 "docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}'"
 
-# View logs
-ssh root@88.198.125.135 "cd /root/supercheck/deploy/docker && docker compose -f docker-compose-secure.yml logs -f app"
-ssh root@88.198.125.135 "cd /root/supercheck/deploy/docker && docker compose -f docker-compose-secure.yml logs -f worker"
+# View logs (tail 30 lines of both services)
+ssh root@88.198.125.135 "cd /root/supercheck/deploy/docker && docker compose -f docker-compose-secure.yml logs --tail=30 app worker"
 ```
 
 ### Version Upgrade Procedure
 
-1. Update `.env` on the server: `SUPERCHECK_VERSION=<new_version>`
+1. Update `.env` on the server: `SUPERCHECK_VERSION=<new_version>` (supports stable, canary, rc tags)
 2. Pull images: `docker compose -f docker-compose-secure.yml pull app worker`
 3. Redeploy: `docker compose -f docker-compose-secure.yml up -d app worker`
 4. Verify: `docker ps` — confirm all containers show new version and `(healthy)`
+5. Check logs: `docker compose -f docker-compose-secure.yml logs --tail=30 app worker` — confirm no errors
+
+**Note on version tags:** Canary and RC releases follow the pattern `<version>-canary.<n>` and `<version>-rc.<n>` (e.g. `1.3.3-canary.1`). These are deployable like stable releases. When bumping compose file defaults locally, also update the `${SUPERCHECK_VERSION:-...}` fallback in all 4 compose files.
 
 **Important:** Do NOT run Docker Compose locally. The demo/production Docker Compose environment is on this server.
 

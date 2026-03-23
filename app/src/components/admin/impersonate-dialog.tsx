@@ -197,7 +197,7 @@ export function ImpersonateDialog({
 
         <Separator className="my-1" />
 
-        <div className="space-y-4 py-2">
+        <div className="space-y-4 py-2 overflow-hidden">
           <Alert
             variant="default"
             className="border-amber-200 bg-amber-50 dark:border-amber-900/50 dark:bg-amber-900/20"
@@ -265,8 +265,8 @@ export function ImpersonateDialog({
                         >
                           <Building2 className="h-4 w-4" />
                         </div>
-                        <div>
-                          <p className="font-medium text-sm">
+                        <div className="min-w-0 flex-1">
+                          <p className="font-medium text-sm truncate">
                             {org.organizationName}
                           </p>
                           <div className="flex items-center gap-1.5 mt-0.5">

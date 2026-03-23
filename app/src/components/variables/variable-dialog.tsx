@@ -572,7 +572,7 @@ export function VariableDialog({
               <Info className="h-4 w-4" />
               <AlertDescription className="text-sm">
                 {isFileType ? (
-                  <>Files are stored securely and accessed using <code className="px-1 py-0.5 bg-muted rounded text-xs">getFile(&apos;{formData.key || 'KEY'}&apos;)</code> in tests, which returns the file path. You can then read the file content in your test script.</>
+                  <>Files are stored securely and accessed using <code className="px-1 py-0.5 bg-muted rounded text-xs">readFile(&apos;{formData.key || 'KEY'}&apos;)</code> in tests to read contents, or <code className="px-1 py-0.5 bg-muted rounded text-xs">getFile(&apos;{formData.key || 'KEY'}&apos;)</code> for the file path (k6).</>
                 ) : isSecretType ? (
                   <>Secrets are encrypted and accessed using <code className="px-1 py-0.5 bg-muted rounded text-xs">getSecret(&apos;{formData.key || 'KEY'}&apos;)</code> in tests. Avoid intentional logging; execution output redaction is applied as an additional protection layer.</>
                 ) : (

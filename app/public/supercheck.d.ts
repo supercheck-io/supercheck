@@ -1355,27 +1355,50 @@ declare function getSecret<T = string>(
  * @returns The absolute path to the file inside the execution container
  * @throws Error if the file variable key is not defined
  *
- * @example Basic usage - read a CSV file
+ * @example Use with readFile() to get the file contents
  * ```typescript
- * import * as fs from 'fs';
+ * // Preferred: use readFile() to get contents directly
+ * const csvContent = readFile('TEST_DATA');
+ * const rows = csvContent.split('\n').slice(1);
+ * ```
  *
- * const filePath = getFile('TEST_DATA');
- * const csvContent = fs.readFileSync(filePath, 'utf-8');
+ * @example Use with k6's open() for performance tests
+ * ```typescript
+ * // k6 reads files at init time using open()
+ * const data = open(getFile('TEST_DATA'));
+ * ```
+ *
+ * @see {@link readFile} For reading file contents directly
+ * @see {@link getVariable} For plain-text configuration values
+ * @see {@link getSecret} For sensitive values like passwords and API keys
+ */
+declare function getFile(key: string): string;
+
+/**
+ * Returns the contents of a file-type variable as a string.
+ *
+ * Reads the uploaded file and returns its contents directly. The `fs` module
+ * is never exposed to user scripts — this helper handles the I/O internally.
+ *
+ * @param key - The variable key (case-sensitive, matches the key defined in Project Settings > Variables)
+ * @param encoding - Optional encoding (default: 'utf-8')
+ * @returns The file contents as a string
+ * @throws Error if the file variable key is not defined
+ *
+ * @example Read a CSV file
+ * ```typescript
+ * const csvContent = readFile('TEST_DATA');
  * const rows = csvContent.split('\n').slice(1); // skip header
  * ```
  *
  * @example Parse a JSON data file
  * ```typescript
- * import * as fs from 'fs';
- *
- * const filePath = getFile('CONFIG');
- * const config = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+ * const config = JSON.parse(readFile('CONFIG'));
  * ```
  *
- * @see {@link getVariable} For plain-text configuration values
- * @see {@link getSecret} For sensitive values like passwords and API keys
+ * @see {@link getFile} For getting the raw file path (k6 usage)
  */
-declare function getFile(key: string): string;
+declare function readFile(key: string, encoding?: string): string;
 
 // === Async Utilities ===
 

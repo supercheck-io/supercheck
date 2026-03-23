@@ -22,6 +22,12 @@ const ALLOWED_MODULES = new Set([
   "k6/net/grpc", // gRPC networking
   "k6/execution", // Execution context (VU, scenario info)
 
+  // File System — fs modules are intentionally BLOCKED.
+  // getFile() returns file contents directly; user scripts never need raw fs.
+  // Allowing fs would let scripts read /proc/self/environ and exfiltrate secrets.
+  "path", // Path manipulation utilities
+  "node:path", // Node.js URL-style path import
+
   // Database Clients
   "mssql", // MSSQL database client
   "mysql2", // Improved MySQL client
@@ -76,9 +82,7 @@ const BLOCKED_IDENTIFIERS = new Set([
   "Atomics",
   "WebAssembly",
 
-  // File System
-  "fs",
-  "path",
+  // File System (fs and path are allowed — see ALLOWED_MODULES)
   "os",
   "net",
   "http",

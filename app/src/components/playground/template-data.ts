@@ -2047,16 +2047,14 @@ export default function() {
  *      https://playwright.dev,Playwright
  *      https://example.com,Example Domain
  *
- * The getFile() helper returns the container path where the file is available at runtime.
- * Use fs.readFileSync() to read the file content and parse it in your test.
+ * Use readFile(key) to read the file contents directly — no fs import needed.
+ * Use getFile(key) in k6 tests with open() to read files at init time.
  */
 
 import { test, expect } from '@playwright/test';
-import * as fs from 'fs';
 
-// Read and parse the CSV file variable
-const filePath = getFile('TEST_DATA');
-const csvContent = fs.readFileSync(filePath, 'utf-8');
+// readFile() returns the file contents as a string directly
+const csvContent = readFile('TEST_DATA');
 const rows = csvContent
   .trim()
   .split('\\n')

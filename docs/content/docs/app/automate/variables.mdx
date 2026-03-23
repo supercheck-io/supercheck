@@ -32,7 +32,7 @@ Variables let you store configuration values, sensitive credentials, and data fi
 - **Storage:** S3/MinIO object storage
 - **Max Size:** 5 MB
 - **Supported Types:** CSV, JSON, YAML, XML, TSV, plain text
-- **Access:** `getFile(key)` returns the file path inside the container
+- **Access:** `readFile(key)` returns the file contents; `getFile(key)` returns the file path (for k6’s `open()`)
 - **Use For:** Test data sets, configuration files, fixtures
 
 </Tab>
@@ -82,7 +82,7 @@ Secret values are masked by default in the UI. Users with secret-view permission
 7. Click **Add Variable**
 
 <Callout type="info">
-File variables are stored in S3/MinIO and made available inside the test execution container at runtime. Use `getFile(key)` to get the file path, then read it with standard file I/O.
+File variables are stored in S3/MinIO and made available inside the test execution container at runtime. Use `readFile(key)` to read the file contents directly (no `fs` import needed), or `getFile(key)` to get the path for k6’s `open()` function.
 </Callout>
 
 </Tab>
@@ -142,20 +142,17 @@ const dbPassword = getSecret('DB_PASSWORD');
 Use for data files uploaded as file variables:
 
 ```javascript
-import fs from 'fs';
-
 /**
  * File variables are uploaded via the Variables page.
- * getFile() returns the absolute path to the file inside the container.
- * Read the file using standard Node.js fs module.
+ * readFile(key) returns the file contents as a string directly — no fs import needed.
+ * getFile(key) returns the file path, used with k6's open().
  */
 
-// Get path to the uploaded CSV file
-const csvPath = getFile('TEST_DATA');
+// Playwright: readFile() returns contents directly
+const csvContent = readFile('TEST_DATA');
 
-// Read and parse CSV
-const content = fs.readFileSync(csvPath, 'utf-8');
-const rows = content.split('\n').map(row => row.split(','));
+// Parse CSV
+const rows = csvContent.split('\n').map(row => row.split(','));
 const headers = rows[0];
 const data = rows.slice(1).filter(row => row.length === headers.length);
 

@@ -249,15 +249,15 @@ export const MonacoEditorClient = memo(
                       },
                       {
                         value:
-                          "Returns the file path for a file-type variable. Use fs.readFileSync() to read the content.",
+                          "Returns the container file path for a file-type variable. Use `readFile(key)` to get the file contents directly.",
                       },
                       {
                         value:
-                          "\\n**Usage:** Upload a CSV/JSON file as a File variable in Project Settings > Variables, then reference it by key.",
+                          "\n**Usage:** Upload a CSV/JSON file as a File variable in Project Settings > Variables, then reference it by key.",
                       },
                       {
                         value:
-                          "\\n**Example:**\\n```typescript\\nimport * as fs from 'fs';\\nconst filePath = getFile('TEST_DATA');\\nconst data = fs.readFileSync(filePath, 'utf-8');\\n```",
+                          "\n**Example:**\n```typescript\n// Use readFile() to get contents (no fs import needed)\nconst data = readFile('TEST_DATA');\n\n// Or use getFile() with k6\'s open()\nconst k6Data = open(getFile('TEST_DATA'));\n```",
                       },
                     ],
                   },

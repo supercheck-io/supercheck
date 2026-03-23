@@ -364,7 +364,7 @@ export function MemberAccessDialog({
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-5 py-4">
+        <div className="space-y-5 py-4 overflow-hidden">
           {/* Email Input - only for invite mode */}
           {mode === "invite" && (
             <div className="space-y-2">

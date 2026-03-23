@@ -2214,6 +2214,18 @@ export class ExecutionService implements OnModuleDestroy {
 
     return __scTmpDir + '/' + filePath;
   };
+
+  globalThis.readFile = function readFile(key, encoding) {
+    const filePath = __scFiles[key];
+
+    if (filePath === undefined) {
+      throw new Error(\`File variable '\${key}' is not defined. Make sure you have created a file-type variable with this key.\`);
+    }
+
+    const fullPath = __scTmpDir + '/' + filePath;
+    const fs = require('fs');
+    return fs.readFileSync(fullPath, encoding || 'utf-8');
+  };
 })();
 `;
 

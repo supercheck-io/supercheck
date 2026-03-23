@@ -129,81 +129,40 @@ export function DataTableToolbar<TData>({
                   <Info className="h-4 w-4 text-muted-foreground" />
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-[430px]" side="bottom" align="start">
+              <PopoverContent className="w-[480px]" side="bottom" align="start">
                 <div className="space-y-3">
                   <div>
                     <h3 className="font-medium text-sm">
-                      Variables, Secrets & Files Usage
+                      Variables, Secrets & Files
                     </h3>
                     <p className="text-xs text-muted-foreground">
-                      Access methods in Playground for Playwright and k6
+                      Three helper functions available in Playwright and k6
                       scripts.
                     </p>
                   </div>
 
                   <div className="space-y-3">
-                    <div className="space-y-2">
-                      <h4 className="text-xs font-medium">Example Usage</h4>
-                      <div className="relative bg-muted p-3 rounded border border-muted-foreground/20">
-                        <pre className="font-mono text-xs overflow-auto max-h-40 text-foreground pr-8 leading-relaxed">
-                          {`// Variables
-const baseUrl = getVariable('BASE_URL');
-// Secrets
-const apiKey = getSecret('API_KEY');
-// Files (returns file path)
-const dataPath = getFile('TEST_DATA');
-
-// In Playwright
-await page.goto(baseUrl);
-const data = JSON.parse(
-  fs.readFileSync(dataPath, 'utf-8')
-);
-
-// In k6
-const data = open(dataPath);`}
-                        </pre>
+                    <div className="space-y-1.5">
+                      <h4 className="text-xs font-medium text-blue-500">getVariable(key, options?)</h4>
+                      <p className="text-xs text-muted-foreground">
+                        Plain-text config — URLs, timeouts, feature flags.
+                      </p>
+                      <div className="relative bg-muted p-2.5 rounded border border-muted-foreground/20">
+                        <pre className="font-mono text-[11px] overflow-auto text-foreground pr-7 leading-relaxed">{`const baseUrl = getVariable('BASE_URL');
+const timeout = getVariable('TIMEOUT', {
+  type: 'number', default: 5000
+});
+await page.goto(baseUrl);`}</pre>
                         <Button
                           size="sm"
                           variant="ghost"
-                          className="absolute top-2 right-2 h-6 w-6 p-0"
+                          className="absolute top-1.5 right-1.5 h-5 w-5 p-0"
                           onClick={() =>
-                            handleCopyCode(`// Variables
-const baseUrl = getVariable('BASE_URL');
-
-// Secrets
-const apiKey = getSecret('API_KEY');
-
-// Files (returns file path)
-const dataPath = getFile('TEST_DATA');
-
-// In Playwright
-await page.goto(baseUrl);
-const data = JSON.parse(
-  fs.readFileSync(dataPath, 'utf-8')
-);
-
-// In k6
-const data = open(dataPath);`)
+                            handleCopyCode(`const baseUrl = getVariable('BASE_URL');\nconst timeout = getVariable('TIMEOUT', { type: 'number', default: 5000 });\nawait page.goto(baseUrl);`)
                           }
                         >
                           {copiedCode ===
-                            `// Variables
-const baseUrl = getVariable('BASE_URL');
-
-// Secrets
-const apiKey = getSecret('API_KEY');
-
-// Files (returns file path)
-const dataPath = getFile('TEST_DATA');
-
-// In Playwright
-await page.goto(baseUrl);
-const data = JSON.parse(
-  fs.readFileSync(dataPath, 'utf-8')
-);
-
-// In k6
-const data = open(dataPath);` ? (
+                            `const baseUrl = getVariable('BASE_URL');\nconst timeout = getVariable('TIMEOUT', { type: 'number', default: 5000 });\nawait page.goto(baseUrl);` ? (
                             <Check className="h-3 w-3 text-green-500" />
                           ) : (
                             <Copy className="h-3 w-3" />
@@ -212,10 +171,70 @@ const data = open(dataPath);` ? (
                       </div>
                     </div>
 
-                    <div className="text-xs text-muted-foreground">
-                      <strong>Tip:</strong> Use variables for config, secrets
-                      for sensitive data, and files for test datasets (CSV, JSON, etc.). These helpers are available wherever
-                      your Playground scripts run.
+                    <div className="space-y-1.5">
+                      <h4 className="text-xs font-medium text-amber-500">getSecret(key, options?)</h4>
+                      <p className="text-xs text-muted-foreground">
+                        Encrypted values — API keys, passwords, tokens. Output is auto-redacted.
+                      </p>
+                      <div className="relative bg-muted p-2.5 rounded border border-muted-foreground/20">
+                        <pre className="font-mono text-[11px] overflow-auto text-foreground pr-7 leading-relaxed">{`const password = getSecret('PASSWORD');
+const apiKey = getSecret('API_KEY');
+await page.fill('[name="password"]', password);
+await page.setExtraHTTPHeaders({
+  Authorization: \`Bearer \${apiKey}\`
+});`}</pre>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="absolute top-1.5 right-1.5 h-5 w-5 p-0"
+                          onClick={() =>
+                            handleCopyCode(`const password = getSecret('PASSWORD');\nconst apiKey = getSecret('API_KEY');\nawait page.fill('[name=\"password\"]', password);\nawait page.setExtraHTTPHeaders({\n  Authorization: \`Bearer \${apiKey}\`\n});`)
+                          }
+                        >
+                          {copiedCode ===
+                            `const password = getSecret('PASSWORD');\nconst apiKey = getSecret('API_KEY');\nawait page.fill('[name=\"password\"]', password);\nawait page.setExtraHTTPHeaders({\n  Authorization: \`Bearer \${apiKey}\`\n});` ? (
+                            <Check className="h-3 w-3 text-green-500" />
+                          ) : (
+                            <Copy className="h-3 w-3" />
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <h4 className="text-xs font-medium text-emerald-500">getFile(key) / readFile(key)</h4>
+                      <p className="text-xs text-muted-foreground">
+                        <code className="text-[10px] bg-background px-1 rounded">readFile(key)</code> returns file contents directly (Playwright). <code className="text-[10px] bg-background px-1 rounded">getFile(key)</code> returns the path for k6&apos;s <code className="text-[10px] bg-background px-1 rounded">open()</code>.
+                      </p>
+                      <div className="relative bg-muted p-2.5 rounded border border-muted-foreground/20">
+                        <pre className="font-mono text-[11px] overflow-auto text-foreground pr-7 leading-relaxed">{`// Playwright — readFile() returns contents directly
+const csvContent = readFile('USERS_CSV');
+const rows = csvContent.trim().split('\\n').slice(1);
+
+// k6 — open() reads files at init time
+const data = open(getFile('TEST_DATA'));`}</pre>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="absolute top-1.5 right-1.5 h-5 w-5 p-0"
+                          onClick={() =>
+                            handleCopyCode(`// Playwright — readFile() returns contents directly\nconst csvContent = readFile('USERS_CSV');\nconst rows = csvContent.trim().split('\\n').slice(1);\n\n// k6 — open() reads files at init time\nconst data = open(getFile('TEST_DATA'));`)
+                          }
+                        >
+                          {copiedCode ===
+                            `// Playwright — readFile() returns contents directly\nconst csvContent = readFile('USERS_CSV');\nconst rows = csvContent.trim().split('\\n').slice(1);\n\n// k6 — open() reads files at init time\nconst data = open(getFile('TEST_DATA'));` ? (
+                            <Check className="h-3 w-3 text-green-500" />
+                          ) : (
+                            <Copy className="h-3 w-3" />
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="text-xs text-muted-foreground border-t pt-2">
+                      <strong>Tip:</strong> Variables for config, secrets
+                      for sensitive data, files for test datasets. Secrets are
+                      encrypted at rest and redacted from execution output.
                     </div>
                   </div>
                 </div>

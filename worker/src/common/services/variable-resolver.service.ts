@@ -258,7 +258,7 @@ function getSecret(key, options = {}) {
           .join(', ')
       : '';
 
-    const getFileFunction = `
+const getFileFunction = `
 function getFile(key) {
   const files = {${fileEntries}};
   
@@ -269,6 +269,19 @@ function getFile(key) {
   }
   
   return filePath;
+}
+
+function readFile(key, encoding) {
+  const files = {${fileEntries}};
+  
+  const filePath = files[key];
+  
+  if (filePath === undefined) {
+    throw new Error(\`File variable '\${key}' is not defined. Make sure you have created a file-type variable with this key.\`);
+  }
+  
+  const fs = require('fs');
+  return fs.readFileSync(filePath, encoding || 'utf-8');
 }
 `;
 

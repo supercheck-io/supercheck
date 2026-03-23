@@ -105,10 +105,12 @@ const DANGEROUS_PATTERNS = {
     /\bReflect\.setPrototypeOf\s*\(/gi,
   ],
 
-  // Dangerous imports
+  // Dangerous imports (fs/path BLOCKED — getFile() reads files internally)
   dangerousImports: [
     /\brequire\s*\(\s*['"`]fs['"`]\s*\)/gi,
+    /\brequire\s*\(\s*['"`]node:fs['"`]\s*\)/gi,
     /\brequire\s*\(\s*['"`]fs\/promises['"`]\s*\)/gi,
+    /\brequire\s*\(\s*['"`]node:fs\/promises['"`]\s*\)/gi,
     /\brequire\s*\(\s*['"`]child_process['"`]\s*\)/gi,
     /\brequire\s*\(\s*['"`]net['"`]\s*\)/gi,
     /\brequire\s*\(\s*['"`]dgram['"`]\s*\)/gi,
@@ -117,6 +119,9 @@ const DANGEROUS_PATTERNS = {
     /\brequire\s*\(\s*['"`]worker_threads['"`]\s*\)/gi,
     /\brequire\s*\(\s*['"`]crypto['"`]\s*\)/gi,
     /\bimport\s+.*from\s+['"`]fs['"`]/gi,
+    /\bimport\s+.*from\s+['"`]node:fs['"`]/gi,
+    /\bimport\s+.*from\s+['"`]fs\/promises['"`]/gi,
+    /\bimport\s+.*from\s+['"`]node:fs\/promises['"`]/gi,
     /\bimport\s+.*from\s+['"`]child_process['"`]/gi,
     /\bimport\s+.*from\s+['"`]net['"`]/gi,
     /\bimport\s+.*from\s+['"`]vm['"`]/gi,
@@ -129,16 +134,19 @@ const DANGEROUS_PATTERNS = {
     /\bWebSocket\s*\(\s*['"`](?!wss?:\/\/localhost|wss?:\/\/127\.0\.0\.1)/gi,
   ],
 
-  // Filesystem access patterns
+  // Filesystem access patterns (all fs operations blocked — getFile() handles reads internally)
   filesystemAccess: [
     /\bfs\.readFileSync\s*\(/gi,
+    /\bfs\.readFile\s*\(/gi,
     /\bfs\.writeFileSync\s*\(/gi,
+    /\bfs\.writeFile\s*\(/gi,
     /\bfs\.unlinkSync\s*\(/gi,
     /\bfs\.rmdirSync\s*\(/gi,
     /\bfs\.mkdirSync\s*\(/gi,
-    /\bfs\.promises\b/gi,
-    /\bfs\.readFile\s*\(/gi,
-    /\bfs\.writeFile\s*\(/gi,
+    /\bfs\.readdirSync\s*\(/gi,
+    /\bfs\.readdir\s*\(/gi,
+    /\bfs\.statSync\s*\(/gi,
+    /\bfs\.existsSync\s*\(/gi,
   ],
 
   // Obfuscation indicators

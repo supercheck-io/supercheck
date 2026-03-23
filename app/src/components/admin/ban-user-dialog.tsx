@@ -148,7 +148,7 @@ export function BanUserDialog({
 
         <Separator className="my-1" />
 
-        <div className="space-y-4 py-2">
+        <div className="space-y-4 py-2 overflow-hidden">
           <Alert
             variant="destructive"
             className="border-red-200 bg-red-50 dark:border-red-900/50 dark:bg-red-900/20"
