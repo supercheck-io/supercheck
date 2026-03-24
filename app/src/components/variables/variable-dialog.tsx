@@ -390,7 +390,7 @@ export function VariableDialog({
             <DialogDescription className="text-left">
               {isEditing
                 ? 'Update the variable details below.'
-                : 'Variables store configuration values for your tests. Regular variables use getVariable(), secrets use getSecret(), and files use getFile().'
+                : 'Variables store configuration values for your tests. Regular variables use getVariable(), secrets use getSecret(), and file variables use framework-specific file helpers.'
               }
             </DialogDescription>
           </DialogHeader>
@@ -572,7 +572,7 @@ export function VariableDialog({
               <Info className="h-4 w-4" />
               <AlertDescription className="text-sm">
                 {isFileType ? (
-                  <>Files are stored securely and accessed using <code className="px-1 py-0.5 bg-muted rounded text-xs">readFile(&apos;{formData.key || 'KEY'}&apos;)</code> in tests to read contents, or <code className="px-1 py-0.5 bg-muted rounded text-xs">getFile(&apos;{formData.key || 'KEY'}&apos;)</code> for the file path (k6).</>
+                  <>Files are stored securely. In Playwright, use <code className="px-1 py-0.5 bg-muted rounded text-xs">readFile(&apos;{formData.key || 'KEY'}&apos;)</code> to read contents directly. In k6, use <code className="px-1 py-0.5 bg-muted rounded text-xs">open(getFile(&apos;{formData.key || 'KEY'}&apos;))</code> during init context.</>
                 ) : isSecretType ? (
                   <>Secrets are encrypted and accessed using <code className="px-1 py-0.5 bg-muted rounded text-xs">getSecret(&apos;{formData.key || 'KEY'}&apos;)</code> in tests. Avoid intentional logging; execution output redaction is applied as an additional protection layer.</>
                 ) : (

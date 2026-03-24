@@ -329,9 +329,13 @@ describe('K6ExecutionService', () => {
 
     it('should decode UTF-8 secrets correctly when using atob path', () => {
       const utf8Secret = 'pässwörd-東京';
-      const script = (service as any).injectK6VariableRuntimeHelpers(
+      let script = (service as any).injectK6VariableRuntimeHelpers(
         'globalThis.__decodedSecret = getSecret("API_TOKEN");',
       );
+
+      // Strip the k6/encoding import (not available in Node VM) —
+      // provide __scB64Decode via context instead.
+      script = script.replace(/^import\s.*from\s+'k6\/encoding';\n?/, '');
 
       const context: Record<string, unknown> = {
         __ENV: {
@@ -340,6 +344,8 @@ describe('K6ExecutionService', () => {
             JSON.stringify({ API_TOKEN: utf8Secret }),
           ).toString('base64'),
         },
+        __scB64Decode: (value: string, encoding: string, format: string) =>
+          Buffer.from(value, 'base64').toString('utf8'),
         Buffer: undefined,
         atob: (value: string) =>
           Buffer.from(value, 'base64').toString('binary'),
@@ -362,9 +368,12 @@ describe('K6ExecutionService', () => {
     });
 
     it('should not mutate or pollute non-writable console host methods in k6 runtime', () => {
-      const script = (service as any).injectK6VariableRuntimeHelpers(
+      let script = (service as any).injectK6VariableRuntimeHelpers(
         'globalThis.__runtimeOk = getVariable("ENV", { default: "ok" });',
       );
+
+      // Strip the k6/encoding import (not available in Node VM).
+      script = script.replace(/^import\s.*from\s+'k6\/encoding';\n?/, '');
 
       const lockedConsole: Record<string, unknown> = {};
       const lockedLog = jest.fn();
@@ -411,6 +420,8 @@ describe('K6ExecutionService', () => {
           ).toString('base64'),
           SUPERCHECK_SECRETS_B64: Buffer.from('{}').toString('base64'),
         },
+        __scB64Decode: (value: string, encoding: string, format: string) =>
+          Buffer.from(value, 'base64').toString('utf8'),
         console: lockedConsole,
       };
 

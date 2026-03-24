@@ -120,14 +120,15 @@ export async function resolveProjectVariables(
 }
 
 /**
- * Parse script to find getVariable() and getSecret() calls and extract variable names
+ * Parse script to find variable helper calls and extract variable names.
  * This is used for validation and optimization
  */
 export function extractVariableNames(script: string): string[] {
   const variableNames: string[] = [];
 
-  // Regex to match getVariable(), getSecret(), and getFile() calls
-  const regex = /(?:getVariable|getSecret|getFile)\s*\(\s*['"`]([^'"`]+)['"`]/g;
+  // Match standalone helper calls only, not methods like fs.readFile().
+  const regex =
+    /(?<![.\w])(?:getVariable|getSecret|getFile|readFile)\s*\(\s*['"`]([^'"`]+)['"`]/g;
   let match;
 
   while ((match = regex.exec(script)) !== null) {

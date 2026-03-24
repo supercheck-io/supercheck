@@ -361,7 +361,7 @@ export class ExecutionService implements OnModuleDestroy {
     const runtimeSecrets = task.secrets ?? {};
     const runtimeFiles = task.files ?? {};
 
-    // Filter file variables to only those referenced by getFile() in the script,
+    // Filter file variables to only those referenced by getFile()/readFile() in the script,
     // then download from S3 and prepare container paths
     const filteredFiles = filterFileVariablesToUsedKeys(runtimeFiles, [code]);
     const { additionalFiles: fileAdditionalFiles, filePaths } =
@@ -876,9 +876,9 @@ export class ExecutionService implements OnModuleDestroy {
           additionalFiles[fileName] = content;
         });
 
-      // Filter file variables to only those referenced by getFile() in the scripts.
+      // Filter file variables to only those referenced by getFile()/readFile() in the scripts.
       // Use raw decoded scripts (before runtime helper injection) to avoid
-      // false-positive detection from the injected getFile() helper definition.
+      // false-positive detection from the injected getFile()/readFile() helper definitions.
       const filteredJobFiles = filterFileVariablesToUsedKeys(task.files ?? {}, rawDecodedScripts);
       const { additionalFiles: fileAdditionalFiles, filePaths } =
         await this.prepareFileVariables(filteredJobFiles);

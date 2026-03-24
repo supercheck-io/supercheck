@@ -249,7 +249,7 @@ export const MonacoEditorClient = memo(
                       },
                       {
                         value:
-                          "Returns the container file path for a file-type variable. Use `readFile(key)` to get the file contents directly.",
+                          "Returns the container file path for a file-type variable. In k6, pair it with `open()` during init context.",
                       },
                       {
                         value:
@@ -257,7 +257,27 @@ export const MonacoEditorClient = memo(
                       },
                       {
                         value:
-                          "\n**Example:**\n```typescript\n// Use readFile() to get contents (no fs import needed)\nconst data = readFile('TEST_DATA');\n\n// Or use getFile() with k6\'s open()\nconst k6Data = open(getFile('TEST_DATA'));\n```",
+                          "\n**Example:**\n```typescript\n// k6: read file contents during init\nconst k6CsvContent = open(getFile('TEST_DATA'));\n\n// Playwright: get the resolved path if another helper needs it\nconst filePath = getFile('TEST_DATA');\n```",
+                      },
+                    ],
+                  },
+                  readFile: {
+                    contents: [
+                      {
+                        value:
+                          "**readFile(key: string, encoding?: string): string**",
+                      },
+                      {
+                        value:
+                          "Returns the contents of a file-type variable as a string in Playwright tests. k6 scripts should use `open(getFile(key))` instead.",
+                      },
+                      {
+                        value:
+                          "\n**Usage:** Upload a CSV/JSON file as a File variable in Project Settings > Variables, then read its contents directly in Playwright.",
+                      },
+                      {
+                        value:
+                          "\n**Example:**\n```typescript\nconst playwrightCsvContent = readFile('TEST_DATA');\nconst rows = playwrightCsvContent.split('\\\\n').slice(1);\n\nconst config = JSON.parse(readFile('CONFIG'));\n```",
                       },
                     ],
                   },

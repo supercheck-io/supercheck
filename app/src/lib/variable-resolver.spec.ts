@@ -254,6 +254,18 @@ describe('Variable Resolver', () => {
         const count = result.filter(name => name === 'API_URL').length;
         expect(count).toBe(1);
       });
+
+      it('should extract getFile and readFile calls', () => {
+        const script = `
+          const filePath = getFile('USER_DATA');
+          const csv = readFile('CSV_DATA');
+        `;
+
+        const result = extractVariableNames(script);
+
+        expect(result).toContain('USER_DATA');
+        expect(result).toContain('CSV_DATA');
+      });
     });
 
     describe('Negative Cases', () => {
@@ -275,6 +287,20 @@ describe('Variable Resolver', () => {
         
         expect(result).not.toContain('NOT_A_VAR');
         expect(result).not.toContain('NOT_A_SECRET');
+      });
+
+      it('should not match method calls or prefixed helper names', () => {
+        const script = `
+          fs.readFile('LOCAL_FILE');
+          page.getFile('NOT_SUPERCHECK');
+          customreadFile('NOT_A_VAR');
+        `;
+
+        const result = extractVariableNames(script);
+
+        expect(result).not.toContain('LOCAL_FILE');
+        expect(result).not.toContain('NOT_SUPERCHECK');
+        expect(result).not.toContain('NOT_A_VAR');
       });
     });
 

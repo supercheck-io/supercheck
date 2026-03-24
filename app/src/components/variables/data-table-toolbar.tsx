@@ -202,27 +202,26 @@ await page.setExtraHTTPHeaders({
                     </div>
 
                     <div className="space-y-1.5">
-                      <h4 className="text-xs font-medium text-emerald-500">getFile(key) / readFile(key)</h4>
+                      <h4 className="text-xs font-medium text-emerald-500">File Helpers</h4>
                       <p className="text-xs text-muted-foreground">
-                        <code className="text-[10px] bg-background px-1 rounded">readFile(key)</code> returns file contents directly (Playwright). <code className="text-[10px] bg-background px-1 rounded">getFile(key)</code> returns the path for k6&apos;s <code className="text-[10px] bg-background px-1 rounded">open()</code>.
+                        Use <code className="text-[10px] bg-background px-1 rounded">readFile(key)</code> in Playwright, or <code className="text-[10px] bg-background px-1 rounded">open(getFile(key))</code> in k6 init context.
                       </p>
                       <div className="relative bg-muted p-2.5 rounded border border-muted-foreground/20">
-                        <pre className="font-mono text-[11px] overflow-auto text-foreground pr-7 leading-relaxed">{`// Playwright — readFile() returns contents directly
-const csvContent = readFile('USERS_CSV');
-const rows = csvContent.trim().split('\\n').slice(1);
+                        <pre className="font-mono text-[11px] overflow-auto text-foreground pr-7 leading-relaxed">{`// Playwright
+const playwrightCsvContent = readFile('USERS_CSV');
 
-// k6 — open() reads files at init time
-const data = open(getFile('TEST_DATA'));`}</pre>
+// k6 (init context)
+const k6CsvContent = open(getFile('USERS_CSV'));`}</pre>
                         <Button
                           size="sm"
                           variant="ghost"
                           className="absolute top-1.5 right-1.5 h-5 w-5 p-0"
                           onClick={() =>
-                            handleCopyCode(`// Playwright — readFile() returns contents directly\nconst csvContent = readFile('USERS_CSV');\nconst rows = csvContent.trim().split('\\n').slice(1);\n\n// k6 — open() reads files at init time\nconst data = open(getFile('TEST_DATA'));`)
+                            handleCopyCode(`// Playwright\nconst playwrightCsvContent = readFile('USERS_CSV');\n\n// k6 (init context)\nconst k6CsvContent = open(getFile('USERS_CSV'));`)
                           }
                         >
                           {copiedCode ===
-                            `// Playwright — readFile() returns contents directly\nconst csvContent = readFile('USERS_CSV');\nconst rows = csvContent.trim().split('\\n').slice(1);\n\n// k6 — open() reads files at init time\nconst data = open(getFile('TEST_DATA'));` ? (
+                            `// Playwright\nconst playwrightCsvContent = readFile('USERS_CSV');\n\n// k6 (init context)\nconst k6CsvContent = open(getFile('USERS_CSV'));` ? (
                             <Check className="h-3 w-3 text-green-500" />
                           ) : (
                             <Copy className="h-3 w-3" />

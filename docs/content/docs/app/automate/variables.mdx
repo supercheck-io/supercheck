@@ -32,7 +32,7 @@ Variables let you store configuration values, sensitive credentials, and data fi
 - **Storage:** S3/MinIO object storage
 - **Max Size:** 5 MB
 - **Supported Types:** CSV, JSON, YAML, XML, TSV, plain text
-- **Access:** `readFile(key)` returns the file contents; `getFile(key)` returns the file path (for k6’s `open()`)
+- **Access:** Playwright can use `readFile(key)`; k6 should use `open(getFile(key))` in init context
 - **Use For:** Test data sets, configuration files, fixtures
 
 </Tab>
@@ -82,7 +82,7 @@ Secret values are masked by default in the UI. Users with secret-view permission
 7. Click **Add Variable**
 
 <Callout type="info">
-File variables are stored in S3/MinIO and made available inside the test execution container at runtime. Use `readFile(key)` to read the file contents directly (no `fs` import needed), or `getFile(key)` to get the path for k6’s `open()` function.
+File variables are stored in S3/MinIO and made available inside the test execution container at runtime. In Playwright, use `readFile(key)` to read the contents directly. In k6, use `open(getFile(key))` during init context, and prefer `SharedArray` for datasets shared across VUs.
 </Callout>
 
 </Tab>
@@ -144,15 +144,15 @@ Use for data files uploaded as file variables:
 ```javascript
 /**
  * File variables are uploaded via the Variables page.
- * readFile(key) returns the file contents as a string directly — no fs import needed.
- * getFile(key) returns the file path, used with k6's open().
+ * Playwright can read contents directly with readFile(key).
+ * k6 should use open(getFile(key)) in init context.
  */
 
-// Playwright: readFile() returns contents directly
-const csvContent = readFile('TEST_DATA');
+// Playwright
+const playwrightCsvContent = readFile('TEST_DATA');
 
 // Parse CSV
-const rows = csvContent.split('\n').map(row => row.split(','));
+const rows = playwrightCsvContent.split('\n').map(row => row.split(','));
 const headers = rows[0];
 const data = rows.slice(1).filter(row => row.length === headers.length);
 
@@ -162,6 +162,9 @@ for (const row of data) {
   await page.fill('#email', row[1]);
   await page.click('button[type="submit"]');
 }
+
+// k6
+const k6CsvContent = open(getFile('TEST_DATA'));
 ```
 
 </Tab>
@@ -269,6 +272,7 @@ if (featureEnabled) {
 /**
  * Using variables in k6 load tests.
  * Variables are injected at runtime.
+ * For uploaded file datasets, use open(getFile('KEY')) during init context.
  * @see https://grafana.com/docs/k6/latest/using-k6/http-requests/
  */
 import http from 'k6/http';
@@ -287,14 +291,12 @@ export default function () {
 <Tab value="Data-Driven (File)">
 
 ```javascript
-import fs from 'fs';
-
 /**
- * Data-driven testing using a CSV file variable.
+ * Playwright data-driven testing using a CSV file variable.
  * Upload your test data CSV via Variables page as a file variable.
+ * For k6, use open(getFile('USER_DATA')) inside SharedArray.
  */
-const csvPath = getFile('USER_DATA');
-const csv = fs.readFileSync(csvPath, 'utf-8');
+const csv = readFile('USER_DATA');
 const users = csv
   .split('\n')
   .slice(1) // Skip header row

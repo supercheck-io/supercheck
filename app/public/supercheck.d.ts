@@ -1355,30 +1355,33 @@ declare function getSecret<T = string>(
  * @returns The absolute path to the file inside the execution container
  * @throws Error if the file variable key is not defined
  *
- * @example Use with readFile() to get the file contents
+ * @example Use with k6's open() in init context
  * ```typescript
- * // Preferred: use readFile() to get contents directly
- * const csvContent = readFile('TEST_DATA');
- * const rows = csvContent.split('\n').slice(1);
+ * const k6CsvContent = open(getFile('TEST_DATA'));
+ * const rows = k6CsvContent.split('\n').slice(1);
  * ```
  *
- * @example Use with k6's open() for performance tests
+ * @example Pass the resolved path to another helper
  * ```typescript
- * // k6 reads files at init time using open()
- * const data = open(getFile('TEST_DATA'));
+ * const filePath = getFile('TEST_DATA');
  * ```
  *
- * @see {@link readFile} For reading file contents directly
+ * @see {@link readFile} For Playwright convenience reads
  * @see {@link getVariable} For plain-text configuration values
  * @see {@link getSecret} For sensitive values like passwords and API keys
  */
 declare function getFile(key: string): string;
 
 /**
- * Returns the contents of a file-type variable as a string.
+ * Returns the contents of a file-type variable as a string in Playwright tests.
  *
  * Reads the uploaded file and returns its contents directly. The `fs` module
- * is never exposed to user scripts — this helper handles the I/O internally.
+ * is never exposed to Playwright user scripts — this helper handles the I/O
+ * internally.
+ *
+ * k6 performance scripts should use `open(getFile(key))` during init context
+ * instead, and wrap parsed datasets in `SharedArray` when multiple VUs reuse
+ * the same file.
  *
  * @param key - The variable key (case-sensitive, matches the key defined in Project Settings > Variables)
  * @param encoding - Optional encoding (default: 'utf-8')
@@ -1387,8 +1390,8 @@ declare function getFile(key: string): string;
  *
  * @example Read a CSV file
  * ```typescript
- * const csvContent = readFile('TEST_DATA');
- * const rows = csvContent.split('\n').slice(1); // skip header
+ * const playwrightCsvContent = readFile('TEST_DATA');
+ * const rows = playwrightCsvContent.split('\n').slice(1); // skip header
  * ```
  *
  * @example Parse a JSON data file
@@ -1396,7 +1399,7 @@ declare function getFile(key: string): string;
  * const config = JSON.parse(readFile('CONFIG'));
  * ```
  *
- * @see {@link getFile} For getting the raw file path (k6 usage)
+ * @see {@link getFile} For getting the raw file path
  */
 declare function readFile(key: string, encoding?: string): string;
 

@@ -22,9 +22,10 @@ const ALLOWED_MODULES = new Set([
   "k6/net/grpc", // gRPC networking
   "k6/execution", // Execution context (VU, scenario info)
 
-  // File System — fs modules are intentionally BLOCKED.
-  // getFile() returns file contents directly; user scripts never need raw fs.
-  // Allowing fs would let scripts read /proc/self/environ and exfiltrate secrets.
+  // File System — fs modules are intentionally blocked.
+  // File variables should be accessed through Supercheck helpers instead of
+  // raw filesystem APIs. Allowing fs would let scripts read /proc/self/environ
+  // and exfiltrate secrets from the sandbox.
   "path", // Path manipulation utilities
   "node:path", // Node.js URL-style path import
 
