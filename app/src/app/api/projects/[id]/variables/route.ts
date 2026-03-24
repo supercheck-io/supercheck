@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
-import { projectVariables, projects } from "@/db/schema";
+import { projectVariables } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
-import { hasPermissionForUser } from "@/lib/rbac/middleware";
+import { resolveProjectPermissionContext, checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireUserAuthContext, isAuthError } from "@/lib/auth-context";
 import { createVariableSchema, createFileVariableSchema, MAX_FILE_SIZE, resolveFileMimeType, type VariableType } from "@/lib/validations/variable";
 import { encryptValue } from "@/lib/encryption";
@@ -12,47 +12,29 @@ import { z } from "zod";
 
 const FILE_VARIABLES_BUCKET = process.env.S3_PROJECT_DATA_FILES_BUCKET_NAME || "project-data-files";
 
-export async function GET(request: NextRequest) {
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
     const { userId } = await requireUserAuthContext();
-    const url = new URL(request.url);
-    const projectId =
-      url.pathname.split("/projects/")[1]?.split("/")[0] || "";
+    const resolvedParams = await params;
+    const projectId = resolvedParams.id;
 
-    // Verify project exists
-    const project = await db
-      .select({ id: projects.id, organizationId: projects.organizationId })
-      .from(projects)
-      .where(eq(projects.id, projectId))
-      .limit(1);
-
-    if (!project.length) {
+    // Resolve permission context (2-3 DB queries total, reused for all checks)
+    const permCtx = await resolveProjectPermissionContext(userId, projectId);
+    if (!permCtx) {
       return NextResponse.json(
         { error: "Project not found" },
         { status: 404 }
       );
     }
 
-    const organizationId = project[0].organizationId;
-
-    const [canView, canCreate, canDelete, canViewSecrets] = await Promise.all([
-      hasPermissionForUser(userId, "variable", "view", {
-        organizationId,
-        projectId,
-      }),
-      hasPermissionForUser(userId, "variable", "create", {
-        organizationId,
-        projectId,
-      }),
-      hasPermissionForUser(userId, "variable", "delete", {
-        organizationId,
-        projectId,
-      }),
-      hasPermissionForUser(userId, "variable", "view_secrets", {
-        organizationId,
-        projectId,
-      }),
-    ]);
+    // All permission checks are O(1) sync operations
+    const canView = checkPermissionWithContext("variable", "view", permCtx);
+    const canCreate = checkPermissionWithContext("variable", "create", permCtx);
+    const canDelete = checkPermissionWithContext("variable", "delete", permCtx);
+    const canViewSecrets = checkPermissionWithContext("variable", "view_secrets", permCtx);
 
     if (!canView) {
       return NextResponse.json(
@@ -112,32 +94,26 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function POST(request: NextRequest) {
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    const url = new URL(request.url);
-    const projectId = url.pathname.split("/projects/")[1]?.split("/")[0] || "";
+    const resolvedParams = await params;
+    const projectId = resolvedParams.id;
 
     const { userId } = await requireUserAuthContext();
 
-    // Verify project exists and user has permission to create variables
-    const project = await db
-      .select({ id: projects.id, organizationId: projects.organizationId })
-      .from(projects)
-      .where(eq(projects.id, projectId))
-      .limit(1);
-
-    if (!project.length) {
+    // Resolve permission context (2-3 DB queries, replaces separate project + permission lookups)
+    const permCtx = await resolveProjectPermissionContext(userId, projectId);
+    if (!permCtx) {
       return NextResponse.json(
         { error: "Project not found" },
         { status: 404 }
       );
     }
 
-    const canCreate = await hasPermissionForUser(userId, "variable", "create", {
-      organizationId: project[0].organizationId,
-      projectId,
-    });
-    if (!canCreate) {
+    if (!checkPermissionWithContext("variable", "create", permCtx)) {
       return NextResponse.json(
         { error: "Insufficient permissions to create variables" },
         { status: 403 }
@@ -165,16 +141,16 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const validatedData = createVariableSchema.parse(body);
-      const effectiveType: VariableType = validatedData.isSecret ? "secret" : (validatedData.type || "variable");
-
-      // File-type variables must be created via multipart/form-data upload, not JSON
-      if (effectiveType === "file") {
+      // Reject file-type variables sent as JSON — they must use multipart/form-data
+      if (body && body.type === "file") {
         return NextResponse.json(
-          { error: "File-type variables must be created using file upload (multipart/form-data), not JSON" },
+          { error: "File variables must be created using multipart/form-data upload" },
           { status: 400 }
         );
       }
+
+      const validatedData = createVariableSchema.parse(body);
+      const effectiveType: VariableType = validatedData.isSecret ? "secret" : "variable";
 
       // Check if variable key already exists for this project
       const existingVariable = await db
@@ -237,7 +213,7 @@ export async function POST(request: NextRequest) {
     } catch (error) {
       if (error instanceof z.ZodError) {
         return NextResponse.json(
-          { error: "Validation error", details: error.errors },
+          { error: "Invalid input. Please check the variable name, value, and type." },
           { status: 400 }
         );
       }
@@ -320,7 +296,7 @@ async function handleFileVariableCreate(
 
   if (!validated.success) {
     return NextResponse.json(
-      { error: "Validation error", details: validated.error.errors },
+      { error: "Invalid input. Please check the file name, key, and file type." },
       { status: 400 }
     );
   }

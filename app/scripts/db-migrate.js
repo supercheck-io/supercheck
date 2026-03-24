@@ -325,7 +325,7 @@ async function runMigrations() {
               (errorMsg.includes("constraint") &&
                 errorMsg.includes("already exists"))
             ) {
-              log(`Skipping statement (already exists): ${stmtErr.message}`);
+              log(`Skipping statement (idempotent): ${stmtErr.message}`);
             } else {
               // Re-throw unexpected errors
               throw stmtErr;

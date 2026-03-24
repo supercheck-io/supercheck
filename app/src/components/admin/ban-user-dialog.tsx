@@ -138,7 +138,7 @@ export function BanUserDialog({
             </div>
             <span>Ban User</span>
           </DialogTitle>
-          <DialogDescription className="pt-1.5">
+          <DialogDescription className="pt-1.5 break-words">
             You are about to ban{" "}
             <strong className="text-foreground">{userName}</strong>{" "}
             <span className="text-muted-foreground">({userEmail})</span>. This

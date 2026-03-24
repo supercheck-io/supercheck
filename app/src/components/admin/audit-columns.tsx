@@ -445,7 +445,7 @@ function ActionsCell({ log }: { log: AuditLog }) {
                     <p className="text-xs font-medium text-muted-foreground mb-1">
                       User Email
                     </p>
-                    <span className="text-sm">{log.user.email}</span>
+                    <span className="text-sm truncate block">{log.user.email}</span>
                   </div>
                 )}
               </div>

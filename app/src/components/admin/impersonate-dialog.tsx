@@ -188,7 +188,7 @@ export function ImpersonateDialog({
             </div>
             <span>Impersonate User</span>
           </DialogTitle>
-          <DialogDescription className="pt-1.5">
+          <DialogDescription className="pt-1.5 break-words">
             Sign in as <strong className="text-foreground">{userName}</strong>{" "}
             <span className="text-muted-foreground">({userEmail})</span> to test
             their permissions.

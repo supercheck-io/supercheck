@@ -17,23 +17,9 @@ import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import { encryptValue, decryptValue } from "@/lib/encryption";
 import { getS3Client } from "@/lib/s3-proxy";
 import { DeleteObjectCommand } from "@aws-sdk/client-s3";
-import { z } from "zod";
+import { updateVariableSchema } from "@/lib/validations/variable";
 
 const FILE_VARIABLES_BUCKET = process.env.S3_PROJECT_DATA_FILES_BUCKET_NAME || "project-data-files";
-
-const updateVariableSchema = z.object({
-  key: z
-    .string()
-    .min(4, "Variable name must be at least 4 characters")
-    .max(20, "Variable name must be at most 20 characters")
-    .regex(/^[A-Z][A-Z0-9_]*$/, "Variable name must start with a letter and contain only uppercase letters, numbers, and underscores")
-    .refine((key) => !key.startsWith('SUPERCHECK_'), "Variable names cannot start with SUPERCHECK_ (reserved)")
-    .refine((key) => !['PATH', 'HOME', 'USER', 'NODE_ENV', 'PORT'].includes(key), "Cannot use system reserved variable names")
-    .optional(),
-  value: z.string().max(10000).optional(),
-  isSecret: z.boolean().optional(),
-  description: z.string().max(300).optional(),
-});
 
 export async function GET(
   _request: NextRequest,
@@ -137,17 +123,17 @@ export async function PUT(
     const validation = updateVariableSchema.safeParse(body);
     if (!validation.success) {
       return NextResponse.json(
-        { error: "Validation error", details: validation.error.issues },
+        { error: "Invalid input. Check variable fields and try again." },
         { status: 400 }
       );
     }
 
     const { key, value, isSecret, description } = validation.data;
 
-    // File-type variables cannot be updated via JSON — use the UI multipart endpoint
+    // File-type variables require multipart/form-data (available in project UI)
     if (existing.type === "file") {
       return NextResponse.json(
-        { error: "File-type variables cannot be updated via this endpoint. Use the project variables UI or multipart API." },
+        { error: "File-type variables must be updated using multipart/form-data" },
         { status: 400 }
       );
     }

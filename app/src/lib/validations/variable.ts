@@ -43,7 +43,7 @@ export function resolveFileMimeType(file: { name: string; type: string }): strin
   return null;
 }
 
-const keySchema = z
+export const keySchema = z
   .string()
   .min(4, "Variable name must be at least 4 characters")
   .max(20, "Variable name must be at most 20 characters")
@@ -62,7 +62,6 @@ export const createVariableSchema = z.object({
     .max(300, "Description must be at most 300 characters")
     .optional(),
   isSecret: z.boolean().default(false),
-  type: z.enum(variableTypes).default("variable"),
 });
 
 /** Schema for creating a file-type variable (validated separately since file comes via FormData) */
@@ -93,7 +92,6 @@ export const updateVariableSchema = z.object({
     .max(300, "Description must be at most 300 characters")
     .optional(),
   isSecret: z.boolean().optional(),
-  type: z.enum(variableTypes).optional(),
 });
 
 export type CreateVariableFormData = z.infer<typeof createVariableSchema>;

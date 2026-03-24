@@ -236,370 +236,97 @@ export async function hasPermissionForUser(
 }
 
 // ============================================================================
-// VARIABLE PERMISSIONS - Using unified role-based model (same as tests/jobs)
+// PROJECT PERMISSION CONTEXT RESOLUTION
 // ============================================================================
 
 /**
- * Check if user can view project variables
- * Admin+ roles can always view, editors+ can view in assigned projects, viewers can view
+ * Permission context returned by resolveProjectPermissionContext.
+ * Compatible with checkPermissionWithContext() for O(1) sync permission checks.
  */
-export async function canViewVariables(
-  userId: string,
-  projectId: string
-): Promise<boolean> {
-  try {
-    const userRole = await getUserRole(userId);
-    const permissionContext: PermissionContext = {
-      userId,
-      role: userRole,
-      projectId,
-      assignedProjectIds: await getUserAssignedProjects(userId),
-    };
-    return checkPermission(permissionContext, "variable", "view");
-  } catch {
-    return false;
-  }
+export interface ProjectPermissionContext {
+  userId: string;
+  organizationId: string;
+  project: { id: string; userRole: string };
 }
 
 /**
- * Check if user can create variables
- * Editors+ (ORG_ADMIN, ORG_OWNER, PROJECT_ADMIN, PROJECT_EDITOR) can create
- */
-export async function canCreateVariables(
-  userId: string,
-  projectId: string
-): Promise<boolean> {
-  try {
-    const userRole = await getUserRole(userId);
-    const permissionContext: PermissionContext = {
-      userId,
-      role: userRole,
-      projectId,
-      assignedProjectIds: await getUserAssignedProjects(userId),
-    };
-    return checkPermission(permissionContext, "variable", "create");
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Check if user can update variables
- * Editors+ can update in assigned projects or for org-level roles
- */
-export async function canUpdateVariables(
-  userId: string,
-  projectId: string
-): Promise<boolean> {
-  try {
-    const userRole = await getUserRole(userId);
-    const permissionContext: PermissionContext = {
-      userId,
-      role: userRole,
-      projectId,
-      assignedProjectIds: await getUserAssignedProjects(userId),
-    };
-    return checkPermission(permissionContext, "variable", "update");
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Check if user can delete variables
- * Only PROJECT_ADMIN+ and org-level admins can delete
- */
-export async function canDeleteVariables(
-  userId: string,
-  projectId: string
-): Promise<boolean> {
-  try {
-    const userRole = await getUserRole(userId);
-    const permissionContext: PermissionContext = {
-      userId,
-      role: userRole,
-      projectId,
-      assignedProjectIds: await getUserAssignedProjects(userId),
-    };
-    return checkPermission(permissionContext, "variable", "delete");
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Check if user can view secret values
- * Only PROJECT_ADMIN+ and org-level admins can view secrets
- */
-export async function canViewSecretVariables(
-  userId: string,
-  projectId: string
-): Promise<boolean> {
-  try {
-    const userRole = await getUserRole(userId);
-    const permissionContext: PermissionContext = {
-      userId,
-      role: userRole,
-      projectId,
-      assignedProjectIds: await getUserAssignedProjects(userId),
-    };
-    return checkPermission(permissionContext, "variable", "view_secrets");
-  } catch {
-    return false;
-  }
-}
-
-// ============================================================================
-// ORGANIZATION-AWARE VARIABLE PERMISSIONS
-// These are the correct functions to use in API routes as they get org context
-// ============================================================================
-
-/**
- * Check if user can create variables in a project (with organization context)
- * Used in API routes to ensure proper role checking with organization context
+ * Resolve user's permission context for a specific project in 2-3 DB queries.
  *
- * Permission rules:
- * - ORG_OWNER/ORG_ADMIN can create in any project of their organization
- * - PROJECT_ADMIN/PROJECT_EDITOR can create in their assigned projects
- * - PROJECT_VIEWER cannot create
- */
-export async function canCreateVariableInProject(
-  userId: string,
-  projectId: string
-): Promise<boolean> {
-  try {
-    const project = await db
-      .select()
-      .from(projects)
-      .where(eq(projects.id, projectId))
-      .limit(1);
-
-    if (!project.length) {
-      return false;
-    }
-
-    // Check organization role first
-    const userRole = await getUserOrgRole(userId, project[0].organizationId);
-    if (userRole === Role.ORG_OWNER || userRole === Role.ORG_ADMIN) {
-      return true; // Org-level admins can create in any project
-    }
-
-    // For other roles, check project-level membership
-    const projectMember = await db
-      .select({ role: projectMembers.role })
-      .from(projectMembers)
-      .where(
-        and(
-          eq(projectMembers.projectId, projectId),
-          eq(projectMembers.userId, userId)
-        )
-      )
-      .limit(1);
-
-    if (!projectMember.length) {
-      return false; // User is not a member of this project
-    }
-
-    const projectRole = projectMember[0].role;
-    return (
-      projectRole === Role.PROJECT_ADMIN || projectRole === Role.PROJECT_EDITOR
-    );
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Check if user can update variables in a project (with organization context)
- * Used in API routes to ensure proper role checking with organization context
+ * This replaces the N+1 pattern of calling hasPermissionForUser() multiple times
+ * (each doing 3-4 DB queries). After calling this once, all subsequent permission
+ * checks via checkPermissionWithContext() are O(1) sync operations.
  *
- * Permission rules:
- * - ORG_OWNER/ORG_ADMIN can update in any project of their organization
- * - PROJECT_ADMIN/PROJECT_EDITOR can update in their assigned projects
- * - PROJECT_VIEWER cannot update
- */
-export async function canUpdateVariableInProject(
-  userId: string,
-  projectId: string
-): Promise<boolean> {
-  try {
-    const project = await db
-      .select()
-      .from(projects)
-      .where(eq(projects.id, projectId))
-      .limit(1);
-
-    if (!project.length) {
-      return false;
-    }
-
-    // Check organization role first
-    const userRole = await getUserOrgRole(userId, project[0].organizationId);
-    if (userRole === Role.ORG_OWNER || userRole === Role.ORG_ADMIN) {
-      return true; // Org-level admins can update in any project
-    }
-
-    // For other roles, check project-level membership
-    const projectMember = await db
-      .select({ role: projectMembers.role })
-      .from(projectMembers)
-      .where(
-        and(
-          eq(projectMembers.projectId, projectId),
-          eq(projectMembers.userId, userId)
-        )
-      )
-      .limit(1);
-
-    if (!projectMember.length) {
-      return false; // User is not a member of this project
-    }
-
-    const projectRole = projectMember[0].role;
-    return (
-      projectRole === Role.PROJECT_ADMIN || projectRole === Role.PROJECT_EDITOR
-    );
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Check if user can delete variables in a project (with organization context)
- * Used in API routes to ensure proper role checking with organization context
+ * DB queries:
+ *   1. Project lookup (verifies existence, gets organizationId)
+ *   2. Super admin check OR org membership + role
+ *   3. Project membership (only for project-limited org roles)
  *
- * Permission rules:
- * - ORG_OWNER/ORG_ADMIN can delete in any project of their organization
- * - PROJECT_ADMIN can delete in their assigned projects
- * - PROJECT_EDITOR and PROJECT_VIEWER cannot delete
- */
-export async function canDeleteVariableInProject(
-  userId: string,
-  projectId: string
-): Promise<boolean> {
-  try {
-    const project = await db
-      .select()
-      .from(projects)
-      .where(eq(projects.id, projectId))
-      .limit(1);
-
-    if (!project.length) {
-      return false;
-    }
-
-    // Check organization role first
-    const userRole = await getUserOrgRole(userId, project[0].organizationId);
-    if (userRole === Role.ORG_OWNER || userRole === Role.ORG_ADMIN) {
-      return true; // Org-level admins can delete in any project
-    }
-
-    // For other roles, check project-level membership
-    const projectMember = await db
-      .select({ role: projectMembers.role })
-      .from(projectMembers)
-      .where(
-        and(
-          eq(projectMembers.projectId, projectId),
-          eq(projectMembers.userId, userId)
-        )
-      )
-      .limit(1);
-
-    if (!projectMember.length) {
-      return false; // User is not a member of this project
-    }
-
-    const projectRole = projectMember[0].role;
-    return projectRole === Role.PROJECT_ADMIN; // Only PROJECT_ADMIN can delete
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Check if user can view secret variables in a project (with organization context)
- * Used in API routes to ensure proper role checking with organization context
+ * Role resolution follows the same logic as requireProjectContext() in project-context.ts:
+ *   - SUPER_ADMIN: full access
+ *   - ORG_OWNER / ORG_ADMIN: org-level role used directly
+ *   - Regular org member: project-level role from projectMembers table, or
+ *     degraded to project_viewer if not assigned to the specific project
  *
- * Permission rules:
- * - ORG_OWNER/ORG_ADMIN can view secrets in any project of their organization
- * - PROJECT_ADMIN/PROJECT_EDITOR can view secrets in their assigned projects
- * - PROJECT_VIEWER cannot view secrets
+ * @returns Context for checkPermissionWithContext(), or null if project doesn't
+ *          exist or user isn't an organization member (and not a super admin).
  */
-export async function canViewSecretVariableInProject(
+export async function resolveProjectPermissionContext(
   userId: string,
-  projectId: string
-): Promise<boolean> {
-  try {
-    const project = await db
-      .select()
-      .from(projects)
-      .where(eq(projects.id, projectId))
-      .limit(1);
+  projectId: string,
+): Promise<ProjectPermissionContext | null> {
+  // 1. Verify project exists and get org ID (1 DB query)
+  const [project] = await db
+    .select({ id: projects.id, organizationId: projects.organizationId })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1);
 
-    if (!project.length) {
-      return false;
-    }
+  if (!project) return null;
 
-    // Check organization role first
-    const userRole = await getUserOrgRole(userId, project[0].organizationId);
-    if (userRole === Role.ORG_OWNER || userRole === Role.ORG_ADMIN) {
-      return true; // Org-level admins can view secrets in any project
-    }
-
-    // For other roles, check project-level membership
-    const projectMember = await db
-      .select({ role: projectMembers.role })
-      .from(projectMembers)
-      .where(
-        and(
-          eq(projectMembers.projectId, projectId),
-          eq(projectMembers.userId, userId)
-        )
-      )
-      .limit(1);
-
-    if (!projectMember.length) {
-      return false; // User is not a member of this project
-    }
-
-    const projectRole = projectMember[0].role;
-    return (
-      projectRole === Role.PROJECT_ADMIN || projectRole === Role.PROJECT_EDITOR
-    );
-  } catch {
-    return false;
+  // 2. Check super admin status (1 DB query)
+  const isSA = await isSuperAdmin(userId);
+  if (isSA) {
+    return {
+      userId,
+      organizationId: project.organizationId,
+      project: { id: projectId, userRole: Role.SUPER_ADMIN },
+    };
   }
-}
 
-/**
- * DEPRECATED: Use canDeleteVariables instead
- */
-export async function canManageProjectVariables(
-  userId: string,
-  projectId: string
-): Promise<boolean> {
-  return canDeleteVariables(userId, projectId);
-}
+  // 3. Check org membership and get org-level role (1 DB query)
+  const orgRole = await getUserOrgRole(userId, project.organizationId);
+  if (!orgRole) return null; // Not an org member — deny all access
 
-/**
- * DEPRECATED: Use canCreateVariables instead
- */
-export async function canCreateEditProjectVariables(
-  userId: string,
-  projectId: string
-): Promise<boolean> {
-  return canCreateVariables(userId, projectId);
-}
+  // 4. For org-wide roles, use directly (no project membership check needed)
+  if (orgRole === Role.ORG_OWNER || orgRole === Role.ORG_ADMIN) {
+    return {
+      userId,
+      organizationId: project.organizationId,
+      project: { id: projectId, userRole: orgRole },
+    };
+  }
 
-/**
- * DEPRECATED: Use canDeleteVariables instead
- */
-export async function canDeleteProjectVariables(
-  userId: string,
-  projectId: string
-): Promise<boolean> {
-  return canDeleteVariables(userId, projectId);
+  // 5. For project-limited org roles, resolve project-level role (1 DB query)
+  const [projectMember] = await db
+    .select({ role: projectMembers.role })
+    .from(projectMembers)
+    .where(
+      and(
+        eq(projectMembers.projectId, projectId),
+        eq(projectMembers.userId, userId),
+      ),
+    )
+    .limit(1);
+
+  const effectiveRole = projectMember
+    ? normalizeRole(projectMember.role)
+    : Role.PROJECT_VIEWER; // Degrade to viewer if not assigned
+
+  return {
+    userId,
+    organizationId: project.organizationId,
+    project: { id: projectId, userRole: effectiveRole },
+  };
 }
 
 // ============================================================================

@@ -207,7 +207,7 @@ export function ApiKeyDialog({ jobId, onApiKeyCreated }: ApiKeyDialogProps) {
                 <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">
                   Name
                 </p>
-                <p className="text-sm font-medium">
+                <p className="text-sm font-medium truncate">
                   {createdKey.name}
                 </p>
               </div>

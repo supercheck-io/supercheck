@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
-import { projectVariables, projects } from "@/db/schema";
+import { projectVariables } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
-import { hasPermissionForUser } from "@/lib/rbac/middleware";
+import { resolveProjectPermissionContext, checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireUserAuthContext, isAuthError } from "@/lib/auth-context";
-import { updateVariableSchema, createFileVariableSchema, MAX_FILE_SIZE, ALLOWED_FILE_MIME_TYPES, resolveFileMimeType, type VariableType } from "@/lib/validations/variable";
+import { updateVariableSchema, createFileVariableSchema, keySchema, MAX_FILE_SIZE, ALLOWED_FILE_MIME_TYPES, resolveFileMimeType, type VariableType } from "@/lib/validations/variable";
 import { encryptValue, decryptValue } from "@/lib/encryption";
 import { getS3Client } from "@/lib/s3-proxy";
 import { PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
@@ -23,26 +23,15 @@ export async function GET(
 
     const { userId } = await requireUserAuthContext();
 
-    // Get project info for organization ID
-    const project = await db
-      .select({ id: projects.id, organizationId: projects.organizationId })
-      .from(projects)
-      .where(eq(projects.id, projectId))
-      .limit(1);
-
-    if (!project.length) {
+    const permCtx = await resolveProjectPermissionContext(userId, projectId);
+    if (!permCtx) {
       return NextResponse.json(
         { error: "Project not found" },
         { status: 404 }
       );
     }
 
-    const canView = await hasPermissionForUser(userId, "variable", "view", {
-      organizationId: project[0].organizationId,
-      projectId,
-    });
-
-    if (!canView) {
+    if (!checkPermissionWithContext("variable", "view", permCtx)) {
       return NextResponse.json(
         { error: "Insufficient permissions to view variables" },
         { status: 403 }
@@ -135,25 +124,15 @@ export async function PUT(
 
     const { userId } = await requireUserAuthContext();
 
-    // Get project info for organization ID
-    const project = await db
-      .select({ id: projects.id, organizationId: projects.organizationId })
-      .from(projects)
-      .where(eq(projects.id, projectId))
-      .limit(1);
-
-    if (!project.length) {
+    const permCtx = await resolveProjectPermissionContext(userId, projectId);
+    if (!permCtx) {
       return NextResponse.json(
         { error: "Project not found" },
         { status: 404 }
       );
     }
 
-    const canUpdate = await hasPermissionForUser(userId, "variable", "update", {
-      organizationId: project[0].organizationId,
-      projectId,
-    });
-    if (!canUpdate) {
+    if (!checkPermissionWithContext("variable", "update", permCtx)) {
       return NextResponse.json(
         { error: "Insufficient permissions to update variables" },
         { status: 403 }
@@ -222,10 +201,10 @@ export async function PUT(
 
       const effectiveIsSecret = validatedData.isSecret ?? existingVariable.isSecret;
 
-      // Prevent type changes to/from file via JSON update
+      // File-type variables require multipart/form-data upload
       if (existingVariable.type === "file") {
         return NextResponse.json(
-          { error: "File-type variables can only be updated via file upload" },
+          { error: "File-type variables must be updated using multipart/form-data" },
           { status: 400 }
         );
       }
@@ -320,7 +299,7 @@ export async function PUT(
     } catch (error) {
       if (error instanceof z.ZodError) {
         return NextResponse.json(
-          { error: "Validation error", details: error.errors },
+          { error: "Invalid input. Check variable fields and try again." },
           { status: 400 }
         );
       }
@@ -358,25 +337,15 @@ export async function DELETE(
 
     const { userId } = await requireUserAuthContext();
 
-    // Get project info for organization ID
-    const project = await db
-      .select({ id: projects.id, organizationId: projects.organizationId })
-      .from(projects)
-      .where(eq(projects.id, projectId))
-      .limit(1);
-
-    if (!project.length) {
+    const permCtx = await resolveProjectPermissionContext(userId, projectId);
+    if (!permCtx) {
       return NextResponse.json(
         { error: "Project not found" },
         { status: 404 }
       );
     }
 
-    const canDelete = await hasPermissionForUser(userId, "variable", "delete", {
-      organizationId: project[0].organizationId,
-      projectId,
-    });
-    if (!canDelete) {
+    if (!checkPermissionWithContext("variable", "delete", permCtx)) {
       return NextResponse.json(
         { error: "Insufficient permissions to delete variables" },
         { status: 403 }
@@ -498,29 +467,11 @@ async function handleFileVariableUpdate(
 
   // Persist key changes for file variables (same as text/secret variables)
   if (key !== null && key !== existingVariable.key) {
-    // Validate key format
-    const keyRegex = /^[A-Z][A-Z0-9_]*$/;
-    if (key.length < 4 || key.length > 20) {
+    // Validate key format using shared schema
+    const keyResult = keySchema.safeParse(key);
+    if (!keyResult.success) {
       return NextResponse.json(
-        { error: "Variable name must be between 4 and 20 characters" },
-        { status: 400 }
-      );
-    }
-    if (!keyRegex.test(key)) {
-      return NextResponse.json(
-        { error: "Variable name must start with a letter and contain only uppercase letters, numbers, and underscores" },
-        { status: 400 }
-      );
-    }
-    if (key.startsWith('SUPERCHECK_')) {
-      return NextResponse.json(
-        { error: "Variable names cannot start with SUPERCHECK_ (reserved)" },
-        { status: 400 }
-      );
-    }
-    if (['PATH', 'HOME', 'USER', 'NODE_ENV', 'PORT'].includes(key)) {
-      return NextResponse.json(
-        { error: "Cannot use system reserved variable names" },
+        { error: keyResult.error.errors[0]?.message || "Invalid variable name" },
         { status: 400 }
       );
     }

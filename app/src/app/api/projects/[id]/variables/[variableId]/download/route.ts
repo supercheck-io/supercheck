@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
-import { projectVariables, projects } from "@/db/schema";
+import { projectVariables } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
-import { hasPermissionForUser } from "@/lib/rbac/middleware";
+import { resolveProjectPermissionContext, checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireUserAuthContext, isAuthError } from "@/lib/auth-context";
 import { getS3Client } from "@/lib/s3-proxy";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
+import { ALLOWED_FILE_MIME_TYPES } from "@/lib/validations/variable";
 
 const FILE_VARIABLES_BUCKET = process.env.S3_PROJECT_DATA_FILES_BUCKET_NAME || "project-data-files";
 
@@ -20,26 +21,15 @@ export async function GET(
 
     const { userId } = await requireUserAuthContext();
 
-    // Verify project exists
-    const project = await db
-      .select({ id: projects.id, organizationId: projects.organizationId })
-      .from(projects)
-      .where(eq(projects.id, projectId))
-      .limit(1);
-
-    if (!project.length) {
+    const permCtx = await resolveProjectPermissionContext(userId, projectId);
+    if (!permCtx) {
       return NextResponse.json(
         { error: "Project not found" },
         { status: 404 }
       );
     }
 
-    const canView = await hasPermissionForUser(userId, "variable", "view", {
-      organizationId: project[0].organizationId,
-      projectId,
-    });
-
-    if (!canView) {
+    if (!checkPermissionWithContext("variable", "view", permCtx)) {
       return NextResponse.json(
         { error: "Insufficient permissions" },
         { status: 403 }
@@ -87,29 +77,32 @@ export async function GET(
       );
     }
 
-    // Convert the response body to a buffer
-    const chunks: Uint8Array[] = [];
-    const reader = s3Response.Body.transformToWebStream().getReader();
-    let done = false;
-    while (!done) {
-      const result = await reader.read();
-      done = result.done;
-      if (result.value) {
-        chunks.push(result.value);
-      }
+    // Validate MIME type — serve safe fallback if stored type is unexpected
+    let contentType = variable.mimeType || "application/octet-stream";
+    if (
+      variable.mimeType &&
+      !(ALLOWED_FILE_MIME_TYPES as readonly string[]).includes(variable.mimeType)
+    ) {
+      console.warn(
+        `Variable ${variableId}: stored mimeType "${variable.mimeType}" not in allowed list, serving as application/octet-stream`
+      );
+      contentType = "application/octet-stream";
     }
-    const buffer = Buffer.concat(chunks);
+
+    // Stream the S3 response directly instead of buffering in memory
+    const stream = s3Response.Body.transformToWebStream();
 
     const fileName = variable.fileName || "file";
     const encodedFileName = encodeURIComponent(fileName);
-    return new NextResponse(buffer, {
-      status: 200,
-      headers: {
-        "Content-Type": variable.mimeType || "application/octet-stream",
-        "Content-Disposition": `attachment; filename="${encodedFileName}"; filename*=UTF-8''${encodedFileName}`,
-        "Content-Length": String(buffer.length),
-      },
-    });
+    const headers: Record<string, string> = {
+      "Content-Type": contentType,
+      "Content-Disposition": `attachment; filename="${encodedFileName}"; filename*=UTF-8''${encodedFileName}`,
+    };
+    if (s3Response.ContentLength !== undefined) {
+      headers["Content-Length"] = String(s3Response.ContentLength);
+    }
+
+    return new NextResponse(stream, { status: 200, headers });
   } catch (error) {
     if (isAuthError(error)) {
       return NextResponse.json(

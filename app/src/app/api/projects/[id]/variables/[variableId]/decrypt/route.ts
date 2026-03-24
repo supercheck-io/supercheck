@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
-import { projectVariables, projects } from "@/db/schema";
+import { projectVariables } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import {
-  hasPermissionForUser,
+  resolveProjectPermissionContext,
+  checkPermissionWithContext,
   withRateLimit,
 } from "@/lib/rbac/middleware";
 import { requireUserAuthContext, isAuthError } from "@/lib/auth-context";
@@ -19,40 +20,34 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string; variableId: string }> }
 ) {
-  return rateLimitedHandler(request, async (req, { userId }) => {
+  return rateLimitedHandler(request, async (req, _rateLimitCtx) => {
     let projectId: string | undefined;
     let variableId: string | undefined;
-    let project: { id: string; organizationId: string }[] = [];
+    let organizationId: string | undefined;
+    let userId: string | undefined;
 
     try {
-      const { userId: authUserId } = await requireUserAuthContext();
+      // Use requireUserAuthContext() instead of withRateLimit's built-in
+      // requireAuth() so that CLI Bearer-token requests are supported.
+      ({ userId } = await requireUserAuthContext());
+
       const resolvedParams = await params;
       projectId = resolvedParams.id;
       variableId = resolvedParams.variableId;
 
-      // Get project info for organization ID
-      project = await db
-        .select()
-        .from(projects)
-        .where(eq(projects.id, projectId))
-        .limit(1);
-
-      if (!project.length) {
+      const permCtx = await resolveProjectPermissionContext(userId, projectId);
+      if (!permCtx) {
         return NextResponse.json(
           { error: "Project not found" },
           { status: 404 }
         );
       }
+      organizationId = permCtx.organizationId;
 
-      // Check if user has permission to view secret variables using centralized function
-      const canViewSecrets = await hasPermissionForUser(authUserId, "variable", "view_secrets", {
-        organizationId: project[0].organizationId,
-        projectId,
-      });
-
-      if (!canViewSecrets) {
+      // Check if user has permission to view secret variables
+      if (!checkPermissionWithContext("variable", "view_secrets", permCtx)) {
         await logAuditEvent({
-          userId: authUserId,
+          userId: userId,
           action: "secret_decrypt_unauthorized",
           resource: "project_variable",
           resourceId: variableId,
@@ -92,13 +87,13 @@ export async function POST(
       // Ensure the variable is actually a secret
       if (!existingVariable.isSecret) {
         await logAuditEvent({
-          userId: authUserId,
+          userId: userId,
           action: "secret_decrypt_non_secret",
           resource: "project_variable",
           resourceId: variableId,
           metadata: {
             projectId,
-            organizationId: project[0].organizationId,
+            organizationId: organizationId,
             variableKey: existingVariable.key,
             reason: "variable_not_secret",
           },
@@ -116,13 +111,13 @@ export async function POST(
       // Check if encrypted value exists
       if (!existingVariable.encryptedValue) {
         await logAuditEvent({
-          userId: authUserId,
+          userId: userId,
           action: "secret_decrypt_no_value",
           resource: "project_variable",
           resourceId: variableId,
           metadata: {
             projectId,
-            organizationId: project[0].organizationId,
+            organizationId: organizationId,
             variableKey: existingVariable.key,
             reason: "no_encrypted_value",
           },
@@ -148,13 +143,13 @@ export async function POST(
         console.error("Failed to decrypt secret:", variableId, decryptError);
 
         await logAuditEvent({
-          userId: authUserId,
+          userId: userId,
           action: "secret_decrypt_failed",
           resource: "project_variable",
           resourceId: variableId,
           metadata: {
             projectId,
-            organizationId: project[0].organizationId,
+            organizationId: organizationId,
             variableKey: existingVariable.key,
             error: "decryption_failed",
           },
@@ -171,13 +166,13 @@ export async function POST(
 
       // Log successful secret decryption
       await logAuditEvent({
-        userId: authUserId,
+        userId: userId,
         action: "secret_decrypt_success",
         resource: "project_variable",
         resourceId: variableId,
         metadata: {
           projectId,
-          organizationId: project[0].organizationId,
+          organizationId: organizationId,
           variableKey: existingVariable.key,
         },
         success: true,
@@ -210,7 +205,7 @@ export async function POST(
           resourceId: variableId,
           metadata: {
             projectId,
-            organizationId: project[0]?.organizationId,
+            organizationId: organizationId,
             error: error instanceof Error ? error.message : "Unknown error",
           },
           success: false,
