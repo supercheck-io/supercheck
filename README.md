@@ -171,7 +171,7 @@ Community-built tools and extensions that extend Supercheck:
 
 | Integration | Description |
 |-------------|-------------|
-| [Supercheck for Azure DevOps](https://marketplace.visualstudio.com/items?itemName=ClinicalSupportSystems.supercheck-integration) | Azure DevOps pipeline tasks (Trigger Job, Deploy Config, Health Check, Pause/Resume Monitors) and a dashboard widget |
+| [Azure DevOps](https://marketplace.visualstudio.com/items?itemName=ClinicalSupportSystems.supercheck-integration) | Azure DevOps pipeline tasks (Trigger Job, Deploy Config, Health Check, Pause/Resume Monitors) and a dashboard widget |
 
 This extension is community-built and maintained outside the core Supercheck repository.
 
