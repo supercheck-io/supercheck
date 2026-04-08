@@ -2,16 +2,31 @@ import { db } from "@/utils/db";
 import { projectVariables } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { decryptValue } from "@/lib/encryption";
+import { createLogger } from "@/lib/logger/pino-config";
+
+const logger = createLogger({ module: "variable-resolver" });
 
 export interface ResolvedVariable {
   key: string;
   value: string;
 }
 
+export interface FileVariableMetadata {
+  storagePath: string;
+  fileName: string;
+  mimeType: string;
+  fileSize: number | null;
+}
+
 export interface VariableResolutionResult {
   variables: Record<string, string>;
   secrets: Record<string, string>;
+  files: Record<string, FileVariableMetadata>;
   errors?: string[];
+}
+
+function normalizeFileSize(fileSize: number | null | undefined): number | null {
+  return typeof fileSize === "number" && fileSize > 0 ? fileSize : null;
 }
 
 /**
@@ -30,10 +45,31 @@ export async function resolveProjectVariables(
 
     const resolvedVariables: Record<string, string> = {};
     const resolvedSecrets: Record<string, string> = {};
+    const resolvedFiles: Record<string, FileVariableMetadata> = {};
     const errors: string[] = [];
 
     for (const variable of variables) {
       try {
+        const varType = variable.type || (variable.isSecret ? 'secret' : 'variable');
+
+        if (varType === 'file') {
+          if (variable.storagePath && variable.fileName) {
+            resolvedFiles[variable.key] = {
+              storagePath: variable.storagePath,
+              fileName: variable.fileName,
+              mimeType: variable.mimeType || 'application/octet-stream',
+              // Legacy rows created before file_size was backfilled may still exist.
+              // The worker validates the actual object size before buffering it.
+              fileSize: normalizeFileSize(variable.fileSize),
+            };
+          } else {
+            errors.push(
+              `File variable '${variable.key}' is missing storage path or file name`
+            );
+          }
+          continue;
+        }
+
         let value: string;
 
         if (variable.isSecret) {
@@ -53,7 +89,7 @@ export async function resolveProjectVariables(
           resolvedVariables[variable.key] = value;
         }
       } catch (error) {
-        console.error(`Failed to resolve variable '${variable.key}':`, error);
+        logger.warn({ key: variable.key, err: error }, "Failed to resolve variable");
         errors.push(
           `Failed to resolve variable '${variable.key}': ${
             error instanceof Error ? error.message : String(error)
@@ -62,25 +98,21 @@ export async function resolveProjectVariables(
       }
     }
 
-    console.log(
-      `Resolved ${Object.keys(resolvedVariables).length} variables and ${
-        Object.keys(resolvedSecrets).length
-      } secrets for project ${projectId}`
-    );
-
     return {
       variables: resolvedVariables,
       secrets: resolvedSecrets,
+      files: resolvedFiles,
       errors: errors.length > 0 ? errors : undefined,
     };
   } catch (error) {
-    console.error(
-      `Failed to resolve variables for project ${projectId}:`,
-      error
+    logger.error(
+      { projectId, err: error },
+      "Failed to resolve variables for project"
     );
     return {
       variables: {},
       secrets: {},
+      files: {},
       errors: [
         `Failed to resolve variables: ${
           error instanceof Error ? error.message : String(error)
@@ -91,14 +123,15 @@ export async function resolveProjectVariables(
 }
 
 /**
- * Parse script to find getVariable() and getSecret() calls and extract variable names
+ * Parse script to find variable helper calls and extract variable names.
  * This is used for validation and optimization
  */
 export function extractVariableNames(script: string): string[] {
   const variableNames: string[] = [];
 
-  // Regex to match both getVariable() and getSecret() calls
-  const regex = /(?:getVariable|getSecret)\s*\(\s*['"`]([^'"`]+)['"`]/g;
+  // Match standalone helper calls only, not methods like fs.readFile().
+  const regex =
+    /(?<![.\w])(?:getVariable|getSecret|getFile|readFile)\s*\(\s*['"`]([^'"`]+)['"`]/g;
   let match;
 
   while ((match = regex.exec(script)) !== null) {
@@ -112,19 +145,18 @@ export function extractVariableNames(script: string): string[] {
 }
 
 /**
- * Generate both getVariable and getSecret function implementations for test execution
+ * Generate getVariable, getSecret, and getFile function implementations for test execution
  */
 export function generateVariableFunctions(
   variables: Record<string, string>,
-  secrets: Record<string, string>
+  secrets: Record<string, string>,
+  files?: Record<string, string>, // key -> file path in container
 ): string {
   // Use JSON.stringify for both keys and values to prevent injection attacks
   // JSON.stringify properly escapes backslashes, quotes, and control characters
   const variableEntries = Object.entries(variables)
     .map(
       ([key, value]) => {
-        // Use JSON.stringify for the full key-value pair construction
-        // This properly handles all special characters including backslashes
         const safeKey = JSON.stringify(key);
         const safeValue = JSON.stringify(value);
         return `${safeKey}: ${safeValue}`;
@@ -141,6 +173,16 @@ export function generateVariableFunctions(
       }
     )
     .join(", ");
+
+  const fileEntries = files
+    ? Object.entries(files)
+        .map(([key, path]) => {
+          const safeKey = JSON.stringify(key);
+          const safePath = JSON.stringify(path);
+          return `${safeKey}: ${safePath}`;
+        })
+        .join(", ")
+    : "";
 
   return `
 function getVariable(key, options = {}) {
@@ -209,6 +251,31 @@ function getSecret(key, options = {}) {
   // Security note: secrets are already embedded in the script at execution time,
   // so returning the raw value doesn't introduce additional exposure
   return value;
+}
+
+function getFile(key) {
+  const files = {${fileEntries}};
+  
+  const filePath = files[key];
+  
+  if (filePath === undefined) {
+    throw new Error(\`File variable '\${key}' is not defined. Make sure you have created a file-type variable with this key.\`);
+  }
+  
+  return filePath;
+}
+
+function readFile(key, encoding) {
+  const files = {${fileEntries}};
+  
+  const filePath = files[key];
+  
+  if (filePath === undefined) {
+    throw new Error(\`File variable '\${key}' is not defined. Make sure you have created a file-type variable with this key.\`);
+  }
+  
+  const fs = require('fs');
+  return fs.readFileSync(filePath, encoding || 'utf-8');
 }
 `;
 }

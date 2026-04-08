@@ -179,7 +179,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
   private static readonly SAFE_FILENAME_RE = /^[\w.\-]+$/;
   private readonly defaultImage: string;
   private readonly executionNamespace: string;
-  private readonly executionRuntimeClassName: string;
+  private readonly executionRuntimeClassName: string | undefined;
   private readonly executionNodeSelector?: Record<string, string>;
   private readonly executionTolerations?: k8s.V1Toleration[];
   private readonly executionDnsNameservers?: string[];
@@ -205,10 +205,11 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       'EXECUTION_NAMESPACE',
       'supercheck-execution',
     );
+    const runtimeClass = this.configService
+      .get<string>('EXECUTION_RUNTIME_CLASS_NAME', 'gvisor')
+      ?.trim();
     this.executionRuntimeClassName =
-      this.configService
-        .get<string>('EXECUTION_RUNTIME_CLASS_NAME', 'gvisor')
-        ?.trim() || 'gvisor';
+      runtimeClass === 'none' || runtimeClass === '' ? undefined : (runtimeClass || 'gvisor');
     this.executionNodeSelector = this.parseExecutionNodeSelector(
       this.configService.get<string>('EXECUTION_NODE_SELECTOR'),
     );
@@ -226,8 +227,15 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     this.logger.log(`Execution namespace: ${this.executionNamespace}`);
     this.logger.log(`Default execution image: ${this.defaultImage}`);
     this.logger.log(
-      `Execution runtimeClassName: ${this.executionRuntimeClassName}`,
+      `Execution runtimeClassName: ${this.executionRuntimeClassName ?? 'none (default runtime)'}`,
     );
+    if (!this.executionRuntimeClassName) {
+      this.logger.warn(
+        'Sandbox isolation is DISABLED (EXECUTION_RUNTIME_CLASS_NAME=none). ' +
+          'User-submitted code will run without gVisor protection. ' +
+          'Do NOT use this setting in production.',
+      );
+    }
     if (this.executionNodeSelector) {
       this.logger.log(
         `Execution nodeSelector: ${JSON.stringify(this.executionNodeSelector)}`,
@@ -507,6 +515,29 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     this.execClient = new k8sModule.Exec(kubeConfig);
   }
 
+  private static readonly CONTAINER_WORKER_DIR = '/worker';
+
+  /**
+   * Rewrites host-local worker paths to the container-internal `/worker` path.
+   * When the worker process runs on the host (local dev), `resolveWorkerDir()`
+   * returns `process.cwd()` (e.g. `/Users/x/Code/supercheck/worker`). These
+   * host paths leak into command args and env vars passed by callers. Inside
+   * the K8s execution container, all worker files live at `/worker`.
+   */
+  private rewriteHostPathsForContainer(
+    value: string,
+    hostWorkerDir: string,
+  ): string {
+    if (
+      !hostWorkerDir ||
+      hostWorkerDir === ContainerExecutorService.CONTAINER_WORKER_DIR
+    ) {
+      return value;
+    }
+    // Replace all occurrences of the host worker dir with /worker
+    return value.split(hostWorkerDir).join(ContainerExecutorService.CONTAINER_WORKER_DIR);
+  }
+
   private async executeInKubernetes(
     command: string[],
     options: ContainerExecutionOptions,
@@ -514,12 +545,36 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
   ): Promise<ContainerExecutionResult> {
     const startTime = Date.now();
     const workspace = this.buildWorkspacePath(options.runId);
+
+    // The K8s container image always has worker files at /worker.
+    // When running locally, callers pass host-local paths (e.g. process.cwd())
+    // which must be rewritten to /worker for the container.
+    const hostWorkerDir = options.workingDir || ContainerExecutorService.CONTAINER_WORKER_DIR;
+    const workingDir = ContainerExecutorService.CONTAINER_WORKER_DIR;
+
+    // Rewrite host-local paths in command args
+    const containerCommand = command.map((arg) =>
+      this.rewriteHostPathsForContainer(arg, hostWorkerDir),
+    );
+
+    // Rewrite host-local paths in env vars
+    const containerOptions = { ...options, workingDir };
+    if (options.env) {
+      const rewrittenEnv: Record<string, string> = {};
+      for (const [key, value] of Object.entries(options.env)) {
+        rewrittenEnv[key] = this.rewriteHostPathsForContainer(
+          value,
+          hostWorkerDir,
+        );
+      }
+      containerOptions.env = rewrittenEnv;
+    }
+
     const shellScript = this.buildShellScript(
-      { ...options, _workspace: workspace },
-      command,
+      { ...containerOptions, _workspace: workspace },
+      containerCommand,
     );
     const jobName = this.buildExecutionJobName(options.runId);
-    const workingDir = options.workingDir || '/worker';
 
     let podName: string | null = null;
     let logAbort: AbortController | null = null;
@@ -540,7 +595,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
         shellScript,
         workingDir,
         limits,
-        options,
+        options: containerOptions,
       });
 
       await this.batchApi!.createNamespacedJob({
@@ -736,7 +791,9 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
             },
           },
           spec: {
-            runtimeClassName: this.executionRuntimeClassName,
+            ...(this.executionRuntimeClassName
+              ? { runtimeClassName: this.executionRuntimeClassName }
+              : {}),
             restartPolicy: 'Never',
             automountServiceAccountToken: false,
             enableServiceLinks: false,
@@ -1809,7 +1866,11 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       for (const [filePath, content] of Object.entries(
         options.additionalFiles,
       )) {
-        const encodedContent = Buffer.from(content).toString('base64');
+        // Values prefixed with "base64:" are already base64-encoded (binary files
+        // from S3 that must not be re-encoded through UTF-8).
+        const encodedContent = content.startsWith('base64:')
+          ? content.slice(7)
+          : Buffer.from(content).toString('base64');
         const targetPath = path.posix.join(ws, filePath);
         const escapedTarget = targetPath.replace(/'/g, "'\\''");
         // Ensure parent directory exists for nested files

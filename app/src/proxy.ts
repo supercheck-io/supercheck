@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getAllowedCorsOriginPatterns, isCorsOriginAllowed } from "@/lib/cors";
 import { getEffectiveStatusPageDomain } from "@/lib/status-page-domain";
 
 /**
@@ -41,40 +42,6 @@ import { getEffectiveStatusPageDomain } from "@/lib/status-page-domain";
 // ============================================================================
 
 /**
- * Get allowed origins for CORS
- * Includes development, production, and configurable origins
- */
-const getAllowedOrigins = (): string[] => {
-  const origins = [
-    // Development
-    'http://localhost:3000',
-    // Production docs
-    'https://demo.supercheck.dev',
-    'https://supercheck.io',
-    'https://supercheck.pages.dev',
-    'https://docs.supercheck.io',
-    'https://www.supercheck.io',
-    // Future production
-    'https://app.supercheck.io'
-  ];
-  
-  // Add APP_URL if set
-  const appUrl = process.env.APP_URL;
-  if (appUrl) {
-    origins.push(appUrl);
-  }
-  
-  // Add TRUSTED_ORIGINS if set
-  const trustedOrigins = process.env.TRUSTED_ORIGINS;
-  if (trustedOrigins) {
-    const trusted = trustedOrigins.split(',').map(o => o.trim()).filter(Boolean);
-    origins.push(...trusted);
-  }
-  
-  return origins;
-};
-
-/**
  * Handle CORS for API routes
  * Returns a response if CORS handling is complete, null if request should continue
  */
@@ -87,21 +54,24 @@ function handleCors(request: NextRequest): NextResponse | null {
     return null;
   }
   
-  const allowedOrigins = getAllowedOrigins();
-  const isAllowedOrigin = origin && allowedOrigins.includes(origin);
+  const allowedOrigins = getAllowedCorsOriginPatterns();
+  const allowed = origin ? isCorsOriginAllowed(origin, allowedOrigins) : false;
   
   // Handle preflight requests (OPTIONS)
   if (request.method === 'OPTIONS') {
     const response = new NextResponse(null, { status: 204 });
     
-    if (isAllowedOrigin) {
+    if (allowed && origin) {
       response.headers.set('Access-Control-Allow-Origin', origin);
       response.headers.set('Access-Control-Allow-Credentials', 'true');
     }
     response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-    response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    response.headers.set('Access-Control-Allow-Headers', 'Authorization, Content-Type, Accept');
     response.headers.set('Access-Control-Max-Age', '86400'); // Cache preflight for 24 hours
-    response.headers.set('Vary', 'Origin');
+    response.headers.set(
+      'Vary',
+      'Origin, Access-Control-Request-Method, Access-Control-Request-Headers'
+    );
     
     return response;
   }
@@ -109,7 +79,7 @@ function handleCors(request: NextRequest): NextResponse | null {
   // For actual API requests, add CORS headers and pass through
   const response = NextResponse.next();
   
-  if (isAllowedOrigin) {
+  if (allowed && origin) {
     response.headers.set('Access-Control-Allow-Origin', origin);
     response.headers.set('Access-Control-Allow-Credentials', 'true');
   }

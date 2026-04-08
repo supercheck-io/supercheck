@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
     const existingKeys = await db
       .select()
       .from(apikey)
-      .where(eq(apikey.userId, userId));
+      .where(eq(apikey.referenceId, userId));
 
     const existingExtensionKey = existingKeys.find(
       (k) => k.name?.includes("Recorder") || k.name?.includes("Extension")
@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
     const [newKey] = await db
       .insert(apikey)
       .values({
-        userId,
+        referenceId: userId,
         name: data.name,
         start: apiKeyStart,
         prefix: "ext",
@@ -155,7 +155,7 @@ export async function DELETE(request: NextRequest) {
     const existingKeys = await db
       .select()
       .from(apikey)
-      .where(eq(apikey.userId, userId));
+      .where(eq(apikey.referenceId, userId));
 
     const extensionKeys = existingKeys.filter(
       (k) => k.name?.includes("Recorder") || k.name?.includes("Extension")

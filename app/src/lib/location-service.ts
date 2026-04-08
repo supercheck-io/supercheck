@@ -72,12 +72,11 @@ export function calculateAggregatedStatus(
   // Use location codes as-is (dynamic locations, no legacy normalization needed)
   const locations = rawLocations;
 
-  // If none of the configured locations exist in the actual results,
-  // fall back to using the result locations directly. This handles
-  // cases where monitor config has stale location codes.
+  // Only aggregate over locations that actually have results.
+  // When some locations are disabled (no workers), their results won't exist
+  // and they should not count as "down" in the aggregation.
   const resultKeys = Object.keys(locationStatuses);
-  const hasOverlap = locations.some((loc) => resultKeys.includes(loc));
-  const effectiveLocations = hasOverlap ? locations : resultKeys;
+  const effectiveLocations = resultKeys.length > 0 ? resultKeys : locations;
 
   const upCount = effectiveLocations.filter(
     (loc) => locationStatuses[loc] === true

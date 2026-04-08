@@ -17,9 +17,17 @@ import { decryptSecret, type SecretEnvelope } from '../security/secret-crypto';
 // Encrypted value format used by the app
 const ENCRYPTED_PREFIX = 'enc:v1:';
 
+export interface FileVariableMetadata {
+  storagePath: string;
+  fileName: string;
+  mimeType: string;
+  fileSize: number | null;
+}
+
 export interface VariableResolutionResult {
   variables: Record<string, string>;
   secrets: Record<string, string>;
+  files: Record<string, FileVariableMetadata>;
   errors?: string[];
 }
 
@@ -46,6 +54,10 @@ function decryptValue(encryptedValue: string, projectId: string): string {
   return decryptSecret(envelope, { context: projectId });
 }
 
+function normalizeFileSize(fileSize: number | null | undefined): number | null {
+  return typeof fileSize === 'number' && fileSize > 0 ? fileSize : null;
+}
+
 @Injectable()
 export class VariableResolverService {
   private readonly logger = new Logger(VariableResolverService.name);
@@ -68,11 +80,32 @@ export class VariableResolverService {
 
       const resolvedVariables: Record<string, string> = {};
       const resolvedSecrets: Record<string, string> = {};
+      const resolvedFiles: Record<string, FileVariableMetadata> = {};
       const errors: string[] = [];
 
       for (const variable of variables) {
         try {
-          if (variable.isSecret) {
+          const varType = variable.type || (variable.isSecret ? 'secret' : 'variable');
+
+          if (varType === 'file') {
+            if (variable.storagePath && variable.fileName) {
+              resolvedFiles[variable.key] = {
+                storagePath: variable.storagePath,
+                fileName: variable.fileName,
+                mimeType: variable.mimeType || 'application/octet-stream',
+                // Legacy rows may not have persisted file_size metadata yet.
+                // The download layer validates the actual object size.
+                fileSize: normalizeFileSize(variable.fileSize),
+              };
+            } else {
+              errors.push(
+                `File variable '${variable.key}' is missing storage path or file name`,
+              );
+            }
+            continue;
+          }
+
+          if (variable.isSecret || varType === 'secret') {
             // Decrypt secret variables
             if (variable.encryptedValue) {
               const value = decryptValue(variable.encryptedValue, projectId);
@@ -96,12 +129,13 @@ export class VariableResolverService {
       }
 
       this.logger.log(
-        `Resolved ${Object.keys(resolvedVariables).length} variables and ${Object.keys(resolvedSecrets).length} secrets for project ${projectId}`,
+        `Resolved ${Object.keys(resolvedVariables).length} variables, ${Object.keys(resolvedSecrets).length} secrets, and ${Object.keys(resolvedFiles).length} files for project ${projectId}`,
       );
 
       return {
         variables: resolvedVariables,
         secrets: resolvedSecrets,
+        files: resolvedFiles,
         errors: errors.length > 0 ? errors : undefined,
       };
     } catch (error) {
@@ -111,6 +145,7 @@ export class VariableResolverService {
       return {
         variables: {},
         secrets: {},
+        files: {},
         errors: [
           `Failed to resolve variables: ${error instanceof Error ? error.message : 'Unknown error'}`,
         ],
@@ -131,6 +166,7 @@ export class VariableResolverService {
   generateVariableFunctions(
     variables: Record<string, string>,
     secrets: Record<string, string>,
+    files?: Record<string, string>, // key -> file path in container
   ): string {
     // Use JSON.stringify for both keys and values to prevent injection attacks
     // JSON.stringify properly escapes backslashes, quotes, and control characters
@@ -150,7 +186,7 @@ export class VariableResolverService {
       })
       .join(', ');
 
-    return `
+    const variableFunctions = `
 function getVariable(key, options = {}) {
   const variables = {${variableEntries}};
   
@@ -213,11 +249,48 @@ function getSecret(key, options = {}) {
   }
   
   // Return the actual string value directly
-  // This allows secrets to work with template literals, HTTP headers, form fills, etc.
-  // Security note: secrets are already embedded in the script at execution time,
-  // so returning the raw value doesn't introduce additional exposure
   return value;
 }
 `;
+
+    // Generate getFile function if files are provided
+    const fileEntries = files
+      ? Object.entries(files)
+          .map(([key, path]) => {
+            const safeKey = JSON.stringify(key);
+            const safePath = JSON.stringify(path);
+            return `${safeKey}: ${safePath}`;
+          })
+          .join(', ')
+      : '';
+
+const getFileFunction = `
+function getFile(key) {
+  const files = {${fileEntries}};
+  
+  const filePath = files[key];
+  
+  if (filePath === undefined) {
+    throw new Error(\`File variable '\${key}' is not defined. Make sure you have created a file-type variable with this key.\`);
+  }
+  
+  return filePath;
+}
+
+function readFile(key, encoding) {
+  const files = {${fileEntries}};
+  
+  const filePath = files[key];
+  
+  if (filePath === undefined) {
+    throw new Error(\`File variable '\${key}' is not defined. Make sure you have created a file-type variable with this key.\`);
+  }
+  
+  const fs = require('fs');
+  return fs.readFileSync(filePath, encoding || 'utf-8');
+}
+`;
+
+    return variableFunctions + getFileFunction;
   }
 }

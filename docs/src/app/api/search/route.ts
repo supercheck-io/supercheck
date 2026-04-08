@@ -1,4 +1,4 @@
-import { source } from '@/lib/source';
+import { source } from '../../../lib/source';
 import { createFromSource } from 'fumadocs-core/search/server';
 
 // Pre-render the search index at build time for static export

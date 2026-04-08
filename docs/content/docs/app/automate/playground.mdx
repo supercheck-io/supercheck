@@ -224,12 +224,13 @@ The Playwright Trace Viewer lets you:
 
 ## Using Variables
 
-Access project-level configuration and secrets in your tests:
+Access project-level configuration, secrets, and file-backed test data in your tests:
 
 ```javascript
 /**
  * Variables and secrets for test configuration.
  * Variables are plain text, secrets are encrypted.
+ * File variables can be read with readFile() in Playwright.
  * @see /docs/app/automate/variables for setup instructions
  */
 
@@ -241,12 +242,15 @@ const timeout = getVariable('TIMEOUT');
 const apiKey = getSecret('API_KEY');
 const password = getSecret('DB_PASSWORD');
 
+// File-backed test data
+const usersCsv = readFile('USERS_CSV');
+
 // Using in Playwright
 await page.goto(baseUrl);
 await page.fill('#password', password);
 ```
 
-Variables are resolved server-side before execution. Secrets are encrypted and execution output is redacted before persistence/return.
+Variables are resolved server-side before execution. Secrets are encrypted and execution output is redacted before persistence/return. File variables are intended for reusable, non-sensitive fixtures and datasets.
 
 See [Variables](/docs/app/automate/variables) for setup instructions.
 

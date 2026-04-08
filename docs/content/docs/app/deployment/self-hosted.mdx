@@ -197,6 +197,21 @@ All services run on a single Linux server managed by Docker Compose. Workers con
 ## Optional Configuration
 
 <Accordions>
+  <Accordion title="Browser Integrations (CORS)">
+    Browser-based integrations such as Azure DevOps dashboard widgets, Grafana panels, or custom embedded views need CORS enabled on the App service.
+
+    Add this to your `.env` when you want browser clients from those domains to call Supercheck APIs directly:
+
+    ```bash
+    CORS_ALLOWED_ORIGINS=https://dev.azure.com,https://*.visualstudio.com
+    ```
+
+    <Callout type="info">
+    `CORS_ALLOWED_ORIGINS` is optional and empty by default. This preserves the secure default for self-hosted deployments. Only enable it for trusted browser-based integrations.
+    </Callout>
+
+  </Accordion>
+
   <Accordion title="OAuth (GitHub / Google)">
     <Tabs items={['GitHub', 'Google']}>
       <Tab value="GitHub">

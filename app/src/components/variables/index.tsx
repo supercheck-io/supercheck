@@ -13,6 +13,11 @@ interface VariableApiResponse {
   key: string;
   value?: string;
   isSecret: boolean; // API returns boolean
+  type?: "variable" | "secret" | "file";
+  fileName?: string | null;
+  fileSize?: number | null;
+  mimeType?: string | null;
+  storagePath?: string | null;
   description?: string;
   createdAt: string;
   updatedAt: string;
@@ -80,7 +85,9 @@ export default function Variables() {
         // Transform data to ensure faceted filtering works correctly
         const transformedVariables = (data.data || []).map((variable: VariableApiResponse): Variable => ({
           ...variable,
-          isSecret: String(variable.isSecret) // Convert boolean to string for faceted filtering
+          isSecret: String(variable.isSecret), // Convert boolean to string for faceted filtering
+          // Normalize type: legacy CLI-created secrets have type="variable" + isSecret=true
+          type: (variable.isSecret && variable.type !== "secret" && variable.type !== "file") ? "secret" : (variable.type || "variable"),
         }));
         // Sort by createdAt descending (newest first)
         transformedVariables.sort((a: Variable, b: Variable) => {

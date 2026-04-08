@@ -199,6 +199,43 @@ describe('K6Validator', () => {
     });
 
     describe('forbidden modules', () => {
+      it('should reject readFile helper usage', () => {
+        const script = `
+          import http from 'k6/http';
+          const csv = readFile('USERS_CSV');
+          export default function() {}
+        `;
+        const result = validateK6Script(script);
+        expect(result.errors).toContain(
+          "k6 does not support readFile(). Use open(getFile('KEY')) in init context, and wrap shared datasets in SharedArray when multiple VUs reuse them."
+        );
+      });
+
+      it('should allow user-defined readFile helpers', () => {
+        const script = `
+          import http from 'k6/http';
+          import { check } from 'k6';
+
+          export const options = { vus: 1, iterations: 1 };
+
+          function readFile(path) {
+            return open(path);
+          }
+
+          export default function() {
+            const csv = readFile('/tmp/users.csv');
+            const response = http.get('https://test.k6.io');
+            check(response, { 'status is 200': (r) => r.status === 200 });
+            return csv;
+          }
+        `;
+        const result = validateK6Script(script);
+        expect(result.valid).toBe(true);
+        expect(result.errors).not.toContain(
+          "k6 does not support readFile(). Use open(getFile('KEY')) in init context, and wrap shared datasets in SharedArray when multiple VUs reuse them."
+        );
+      });
+
       it('should reject fs module', () => {
         // Node.js fs module is not available in k6
         const script = `

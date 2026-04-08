@@ -79,6 +79,11 @@ export class DbService {
       value: string;
       encryptedValue: string | null;
       isSecret: boolean;
+      type: string | null;
+      fileName: string | null;
+      fileSize: number | null;
+      mimeType: string | null;
+      storagePath: string | null;
     }[]
   > {
     try {
@@ -89,6 +94,11 @@ export class DbService {
           value: true,
           encryptedValue: true,
           isSecret: true,
+          type: true,
+          fileName: true,
+          fileSize: true,
+          mimeType: true,
+          storagePath: true,
         },
       });
       return variables;

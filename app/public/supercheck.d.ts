@@ -1341,6 +1341,68 @@ declare function getSecret<T = string>(
   : T extends boolean ? boolean
   : string;
 
+// === File Variables ===
+
+/**
+ * Returns the container file path for a file-type variable.
+ *
+ * File variables allow you to upload CSV, JSON, or text files as project
+ * variables and access them at runtime in your test scripts. The file is
+ * downloaded from storage and placed in the execution container before the
+ * test runs.
+ *
+ * @param key - The variable key (case-sensitive, matches the key defined in Project Settings > Variables)
+ * @returns The absolute path to the file inside the execution container
+ * @throws Error if the file variable key is not defined
+ *
+ * @example Use with k6's open() in init context
+ * ```typescript
+ * const k6CsvContent = open(getFile('TEST_DATA'));
+ * const rows = k6CsvContent.split('\n').slice(1);
+ * ```
+ *
+ * @example Pass the resolved path to another helper
+ * ```typescript
+ * const filePath = getFile('TEST_DATA');
+ * ```
+ *
+ * @see {@link readFile} For Playwright convenience reads
+ * @see {@link getVariable} For plain-text configuration values
+ * @see {@link getSecret} For sensitive values like passwords and API keys
+ */
+declare function getFile(key: string): string;
+
+/**
+ * Returns the contents of a file-type variable as a string in Playwright tests.
+ *
+ * Reads the uploaded file and returns its contents directly. The `fs` module
+ * is never exposed to Playwright user scripts — this helper handles the I/O
+ * internally.
+ *
+ * k6 performance scripts should use `open(getFile(key))` during init context
+ * instead, and wrap parsed datasets in `SharedArray` when multiple VUs reuse
+ * the same file.
+ *
+ * @param key - The variable key (case-sensitive, matches the key defined in Project Settings > Variables)
+ * @param encoding - Optional encoding (default: 'utf-8')
+ * @returns The file contents as a string
+ * @throws Error if the file variable key is not defined
+ *
+ * @example Read a CSV file
+ * ```typescript
+ * const playwrightCsvContent = readFile('TEST_DATA');
+ * const rows = playwrightCsvContent.split('\n').slice(1); // skip header
+ * ```
+ *
+ * @example Parse a JSON data file
+ * ```typescript
+ * const config = JSON.parse(readFile('CONFIG'));
+ * ```
+ *
+ * @see {@link getFile} For getting the raw file path
+ */
+declare function readFile(key: string, encoding?: string): string;
+
 // === Async Utilities ===
 
 /**

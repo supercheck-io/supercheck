@@ -206,7 +206,8 @@ export const projectMembers = pgTable(
 );
 
 /**
- * Stores variables and secrets for projects
+ * Stores variables, secrets, and file-type variables for projects.
+ * Type field follows the GitLab CI/CD pattern: Variable | Secret | File.
  */
 export const projectVariables = pgTable(
   'project_variables',
@@ -218,9 +219,18 @@ export const projectVariables = pgTable(
       .notNull()
       .references(() => projects.id, { onDelete: 'cascade' }),
     key: varchar('key', { length: 255 }).notNull(),
-    value: text('value').notNull(), // Encrypted for secrets
+    value: text('value').notNull(), // Encrypted for secrets, empty string for files
     encryptedValue: text('encrypted_value'), // Base64 encrypted value for secrets
     isSecret: boolean('is_secret').default(false).notNull(),
+    type: varchar('type', { length: 20 })
+      .$type<'variable' | 'secret' | 'file'>()
+      .default('variable')
+      .notNull(),
+    // File-type variable fields
+    fileName: varchar('file_name', { length: 255 }), // Original upload filename
+    fileSize: integer('file_size'), // File size in bytes
+    mimeType: varchar('mime_type', { length: 255 }), // MIME type of uploaded file
+    storagePath: text('storage_path'), // S3 storage path for file content
     description: text('description'),
     createdByUserId: uuid('created_by_user_id').references(() => user.id),
     createdAt: timestamp('created_at').defaultNow().notNull(),

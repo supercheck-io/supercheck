@@ -17,18 +17,7 @@ import { eq, and } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import { encryptValue } from "@/lib/encryption";
-import { z } from "zod";
-
-const createVariableSchema = z.object({
-  key: z
-    .string()
-    .min(1, "Key is required")
-    .max(100, "Key must be less than 100 characters")
-    .regex(/^[A-Za-z_][A-Za-z0-9_]*$/, "Key must be a valid identifier"),
-  value: z.string().min(1, "Value is required").max(10000, "Value must be less than 10000 characters"),
-  isSecret: z.boolean().default(false),
-  description: z.string().max(500).optional(),
-});
+import { createVariableSchema } from "@/lib/validations/variable";
 
 export async function GET() {
   try {
@@ -95,7 +84,7 @@ export async function POST(request: NextRequest) {
     const validation = createVariableSchema.safeParse(body);
     if (!validation.success) {
       return NextResponse.json(
-        { error: "Validation error", details: validation.error.issues },
+        { error: "Invalid input. Check variable fields and try again." },
         { status: 400 }
       );
     }
@@ -125,6 +114,7 @@ export async function POST(request: NextRequest) {
       projectId: context.project.id,
       key,
       isSecret,
+      type: isSecret ? "secret" : "variable",
       description: description || null,
       createdByUserId: context.userId,
       value: "",

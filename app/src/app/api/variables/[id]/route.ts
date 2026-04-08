@@ -15,19 +15,11 @@ import { eq, and } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import { encryptValue, decryptValue } from "@/lib/encryption";
-import { z } from "zod";
+import { getS3Client } from "@/lib/s3-proxy";
+import { DeleteObjectCommand } from "@aws-sdk/client-s3";
+import { updateVariableSchema } from "@/lib/validations/variable";
 
-const updateVariableSchema = z.object({
-  key: z
-    .string()
-    .min(1)
-    .max(100)
-    .regex(/^[A-Za-z_][A-Za-z0-9_]*$/)
-    .optional(),
-  value: z.string().max(10000).optional(),
-  isSecret: z.boolean().optional(),
-  description: z.string().max(500).optional(),
-});
+const FILE_VARIABLES_BUCKET = process.env.S3_PROJECT_DATA_FILES_BUCKET_NAME || "project-data-files";
 
 export async function GET(
   _request: NextRequest,
@@ -131,12 +123,21 @@ export async function PUT(
     const validation = updateVariableSchema.safeParse(body);
     if (!validation.success) {
       return NextResponse.json(
-        { error: "Validation error", details: validation.error.issues },
+        { error: "Invalid input. Check variable fields and try again." },
         { status: 400 }
       );
     }
 
     const { key, value, isSecret, description } = validation.data;
+
+    // File-type variables require multipart/form-data (available in project UI)
+    if (existing.type === "file") {
+      return NextResponse.json(
+        { error: "File-type variables must be updated using multipart/form-data" },
+        { status: 400 }
+      );
+    }
+
     const effectiveIsSecret = isSecret ?? existing.isSecret;
 
     // Check for duplicate key if renaming
@@ -166,7 +167,11 @@ export async function PUT(
 
     if (key !== undefined) updateData.key = key;
     if (description !== undefined) updateData.description = description;
-    if (isSecret !== undefined) updateData.isSecret = isSecret;
+    if (isSecret !== undefined) {
+      updateData.isSecret = isSecret;
+      // Keep type column in sync with isSecret flag
+      updateData.type = isSecret ? "secret" : "variable";
+    }
 
     // Only update value/encryptedValue when a new value is provided
     if (value !== undefined) {
@@ -246,7 +251,11 @@ export async function DELETE(
 
     // Verify variable exists and belongs to project
     const [existing] = await db
-      .select({ id: projectVariables.id })
+      .select({
+        id: projectVariables.id,
+        type: projectVariables.type,
+        storagePath: projectVariables.storagePath,
+      })
       .from(projectVariables)
       .where(
         and(
@@ -263,9 +272,24 @@ export async function DELETE(
       );
     }
 
+    // Delete DB row first, then best-effort S3 cleanup
     await db
       .delete(projectVariables)
       .where(eq(projectVariables.id, variableId));
+
+    if (existing.type === "file" && existing.storagePath) {
+      try {
+        const s3 = getS3Client();
+        await s3.send(
+          new DeleteObjectCommand({
+            Bucket: FILE_VARIABLES_BUCKET,
+            Key: existing.storagePath,
+          })
+        );
+      } catch (s3Error) {
+        console.error("Failed to delete file from S3:", s3Error);
+      }
+    }
 
     return NextResponse.json({ success: true, message: "Variable deleted" });
   } catch (error) {

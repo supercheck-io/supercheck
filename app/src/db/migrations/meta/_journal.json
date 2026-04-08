@@ -71,6 +71,20 @@
       "when": 1773170109404,
       "tag": "0009_mixed_sugar_man",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1774253003054,
+      "tag": "0010_robust_pet_avengers",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1775643822189,
+      "tag": "0011_deep_hellcat",
+      "breakpoints": true
     }
   ]
 }

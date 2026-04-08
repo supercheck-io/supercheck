@@ -27,7 +27,9 @@ import {
   Eye,
   EyeOff,
   CalendarIcon,
-  ClockIcon
+  ClockIcon,
+  FileText,
+  Download
 } from "lucide-react";
 import { Variable } from "./schema";
 import { DataTableColumnHeader } from "@/components/ui/data-table-column-header";
@@ -138,27 +140,41 @@ export const columns: ColumnDef<Variable>[] = [
     },
   },
   {
-    accessorKey: "isSecret",
+    accessorKey: "type",
     header: ({ column }) => (
       <DataTableColumnHeader column={column} title="Type" />
     ),
     cell: ({ row }) => {
-      const isSecret = row.getValue("isSecret") as string;
-      const isSecretBool = isSecret === "true";
+      const type = (row.getValue("type") as string) || "variable";
+      const badgeConfig: Record<string, { label: string; className: string }> = {
+        secret: {
+          label: "Secret",
+          className: "border-red-300 text-red-600 bg-red-100 dark:border-red-400 dark:text-red-400 dark:bg-red-900/20",
+        },
+        file: {
+          label: "File",
+          className: "border-green-300 text-green-600 bg-green-100 dark:border-green-400 dark:text-green-400 dark:bg-green-900/20",
+        },
+        variable: {
+          label: "Variable",
+          className: "dark:bg-gray-600 dark:text-gray-200",
+        },
+      };
+      const config = badgeConfig[type] || badgeConfig.variable;
       return (
         <div className="flex items-center w-[120px]">
           <Badge 
-            variant={isSecretBool ? "outline" : "secondary"} 
-            className={`text-xs ${isSecretBool ? "border-red-300 text-red-600 bg-red-100 dark:border-red-400 dark:text-red-400 dark:bg-red-900/20" : "dark:bg-gray-600 dark:text-gray-200"}`}
+            variant={type === "variable" ? "secondary" : "outline"} 
+            className={`text-xs ${config.className}`}
           >
-            {isSecretBool ? "Secret" : "Variable"}
+            {config.label}
           </Badge>
         </div>
       );
     },
     filterFn: (row, id, value) => {
-      const isSecret = row.getValue(id) as string;
-      return value.includes(isSecret);
+      const type = (row.getValue(id) as string) || "variable";
+      return value.includes(type);
     },
   },
   {
@@ -167,8 +183,8 @@ export const columns: ColumnDef<Variable>[] = [
       <DataTableColumnHeader column={column} title="Value" />
     ),
     cell: ({ row, table }) => {
-      const isSecret = row.getValue("isSecret") as string;
-      const isSecretBool = isSecret === "true";
+      const type = (row.original.type as string) || "variable";
+      const isSecretBool = type === "secret";
       const value = row.getValue("value") as string;
       const variable = row.original;
       const meta = table.options.meta as {
@@ -177,6 +193,20 @@ export const columns: ColumnDef<Variable>[] = [
       };
       const isVisible = meta?.secretVisibility?.[variable.id] || false;
       const decryptedValue = meta?.decryptedValues?.[variable.id];
+
+      if (type === "file") {
+        return (
+          <div className="flex items-center gap-1.5">
+            <FileText className="h-4 w-4 text-green-500 shrink-0" />
+            <span className="text-sm font-mono truncate max-w-[200px]">{variable.fileName || "file"}</span>
+            {variable.fileSize && (
+              <span className="text-xs text-muted-foreground">
+                ({Number(variable.fileSize) < 1024 ? `${variable.fileSize} B` : Number(variable.fileSize) < 1024 * 1024 ? `${(Number(variable.fileSize) / 1024).toFixed(1)} KB` : `${(Number(variable.fileSize) / (1024 * 1024)).toFixed(1)} MB`})
+              </span>
+            )}
+          </div>
+        );
+      }
 
       return (
         <ValueWithPopover
@@ -289,8 +319,9 @@ export const columns: ColumnDef<Variable>[] = [
       const canCreateEdit = meta?.canCreateEdit || false;
       const canDelete = meta?.canDelete || false;
       const canViewSecrets = meta?.canViewSecrets || false;
-      const isSecret = row.getValue("isSecret") as string;
-      const isSecretBool = isSecret === "true";
+      const variableType = (variable.type as string) || "variable";
+      const isSecretBool = variableType === "secret";
+      const isFileType = variableType === "file";
       const editDialogOpen = meta?.editDialogState?.[variable.id] || false;
       const decryptedValue = canViewSecrets
         ? meta?.decryptedValues?.[variable.id]
@@ -353,6 +384,16 @@ export const columns: ColumnDef<Variable>[] = [
                       Show Value
                     </>
                   )}
+                </DropdownMenuItem>
+              )}
+              {isFileType && meta?.projectId && (
+                <DropdownMenuItem
+                  onClick={() => {
+                    window.open(`/api/projects/${meta.projectId}/variables/${variable.id}/download`, '_blank');
+                  }}
+                >
+                  <Download className="mr-2 h-4 w-4" />
+                  Download File
                 </DropdownMenuItem>
               )}
               <DropdownMenuItem

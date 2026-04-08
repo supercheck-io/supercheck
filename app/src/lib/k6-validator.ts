@@ -4,6 +4,7 @@
    Validates k6 performance test scripts for common issues
 =================================== */
 
+import { hasUnboundHelperCall } from "./helper-call-analysis";
 import { transpileTypeScript } from "./ts-transpiler";
 
 export interface K6ValidationResult {
@@ -194,6 +195,12 @@ export function validateK6Script(
   ) {
     errors.push(
       "Playwright modules are not supported in k6 performance scripts. Split Playwright tests into a Browser test."
+    );
+  }
+
+  if (hasUnboundHelperCall(jsCode, "readFile")) {
+    errors.push(
+      "k6 does not support readFile(). Use open(getFile('KEY')) in init context, and wrap shared datasets in SharedArray when multiple VUs reuse them."
     );
   }
 

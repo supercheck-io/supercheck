@@ -23,6 +23,7 @@
 #   If using restricted IAM policies, pre-create these buckets:
 #   - playwright-test-artifacts, playwright-job-artifacts, playwright-monitor-artifacts
 #   - k6-test-artifacts, k6-job-artifacts, status-page-artifacts, test-requirement-artifacts
+#   - project-data-files
 #
 # Documentation: https://supercheck.io/docs/app/deployment/self-hosted
 # ============================================================================
@@ -61,6 +62,11 @@ x-common-env: &common-env # Database Configuration - External PostgreSQL
   BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-CHANGE_THIS_GENERATE_32_CHAR_HEX}
   NODE_ENV: ${NODE_ENV:-production}
   SHOW_COMMUNITY_LINKS: ${SHOW_COMMUNITY_LINKS:-true}
+
+  # CORS: Allow browser-based integrations (Azure DevOps widgets, Grafana panels, etc.)
+  # Comma-separated origins. Supports wildcard subdomains (e.g., https://*.visualstudio.com)
+  # Leave empty to keep the default secure behavior (no extra browser-facing CORS allowlist).
+  CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
   # App-Side Capacity Settings
   # RUNNING_CAPACITY controls how many test runs the App allows into "running" state simultaneously.
   # It is NOT a worker setting — the App reads this to gate submissions before they reach the queue.
@@ -91,6 +97,8 @@ x-common-env: &common-env # Database Configuration - External PostgreSQL
   S3_STATUS_BUCKET_NAME: ${S3_STATUS_BUCKET_NAME:-status-page-artifacts}
   # Requirements bucket
   S3_REQUIREMENTS_BUCKET_NAME: ${S3_REQUIREMENTS_BUCKET_NAME:-test-requirement-artifacts}
+  # Project data files bucket (file-type variables)
+  S3_PROJECT_DATA_FILES_BUCKET_NAME: ${S3_PROJECT_DATA_FILES_BUCKET_NAME:-project-data-files}
   S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-true}
   S3_OPERATION_TIMEOUT: ${S3_OPERATION_TIMEOUT:-10000}
   S3_MAX_RETRIES: ${S3_MAX_RETRIES:-3}

@@ -14,6 +14,7 @@ import {
   findFirstFileByNames,
   pathExists,
 } from '../../common/utils/file-search';
+import { filterFileVariablesToUsedKeys } from '../../common/utils/script-analysis';
 
 // Utility function to safely get error message
 function getErrorMessage(error: unknown): string {
@@ -39,6 +40,7 @@ export interface K6ExecutionTask {
   script: string; // Decoded k6 script
   variables?: Record<string, string>; // Resolved variables for runtime helper injection
   secrets?: Record<string, string>; // Resolved secrets for runtime helper injection
+  files?: Record<string, { storagePath: string; fileName: string; mimeType: string; fileSize: number | null }>; // File variable metadata
   jobId?: string | null;
   tests: Array<{ id: string; script: string }>;
   location?: string; // Execution location
@@ -289,6 +291,12 @@ export class K6ExecutionService {
 
       const preparedScript = this.injectK6VariableRuntimeHelpers(script);
 
+      // Filter file variables to only those referenced by getFile() in the script,
+      // then download from S3
+      const filteredFiles = filterFileVariablesToUsedKeys(task.files ?? {}, [script]);
+      const { additionalFiles: fileAdditionalFiles, filePaths } =
+        await this.s3Service.prepareFileVariables(filteredFiles);
+
       const args = [
         'run',
         '--summary-export',
@@ -328,7 +336,7 @@ export class K6ExecutionService {
           K6_WEB_DASHBOARD_PORT: dashboardPort.toString(), // Use unique port
           K6_WEB_DASHBOARD_ADDR: this.dashboardBindAddress,
           K6_NO_COLOR: '1', // Disable ANSI colors in output
-          ...this.buildVariableRuntimeEnv(runtimeVariables, runtimeSecrets),
+          ...this.buildVariableRuntimeEnv(runtimeVariables, runtimeSecrets, filePaths),
         };
 
         try {
@@ -341,6 +349,9 @@ export class K6ExecutionService {
             k6EnvOverrides,
             executionTimeoutMs,
             dashboardPort,
+            Object.keys(fileAdditionalFiles).length > 0
+              ? fileAdditionalFiles
+              : undefined,
           );
         } finally {
           if (this.useDashboardPortPool) {
@@ -731,6 +742,7 @@ export class K6ExecutionService {
     overrideEnv: Record<string, string> = {},
     timeoutMs?: number,
     dashboardPort?: number,
+    additionalFiles?: Record<string, string>,
   ): Promise<{
     exitCode: number;
     stdout: string;
@@ -794,6 +806,7 @@ export class K6ExecutionService {
             runId, // Pass runId for cancellation tracking
             inlineScriptContent: scriptContent,
             inlineScriptFileName: scriptFileName,
+            additionalFiles, // File variables for data files
             ensureDirectories: Array.from(directoriesToEnsure),
             extractFromContainer: this.K6_OUTPUT_DIR, // Only extract K6 output dir (avoids node-compile-cache and other junk)
             extractToHost: extractToHost, // To OS temp directory
@@ -802,7 +815,11 @@ export class K6ExecutionService {
               ...overrideEnv,
               K6_NO_COLOR: '1', // Disable ANSI colors
             },
-            workingDir: '/tmp',
+            // Do NOT set workingDir here — the container executor defaults to
+            // /worker which is correct.  Setting '/tmp' would cause
+            // rewriteHostPathsForContainer() to treat every /tmp/… path as a
+            // host-local worker path and rewrite it to /worker/…, breaking
+            // all script and output paths.
             memoryLimitMb: 1536, // 1.5GB for k6 (reduced for 2 concurrent executions)
             cpuLimit: 1.0, // 1.0 CPU for load testing on Medium instances
             networkMode: 'bridge', // k6 needs network access
@@ -982,15 +999,20 @@ export class K6ExecutionService {
   private buildVariableRuntimeEnv(
     variables: Record<string, string>,
     secrets: Record<string, string>,
+    filePaths?: Record<string, string>,
   ): Record<string, string> {
-    return {
+    const env: Record<string, string> = {
       SUPERCHECK_VARIABLES_B64: Buffer.from(
         JSON.stringify(variables ?? {}),
       ).toString('base64'),
       SUPERCHECK_SECRETS_B64: Buffer.from(
         JSON.stringify(secrets ?? {}),
       ).toString('base64'),
+      SUPERCHECK_FILES_B64: Buffer.from(
+        JSON.stringify(filePaths ?? {}),
+      ).toString('base64'),
     };
+    return env;
   }
 
   private decodeSecretsFromRuntimeEnv(
@@ -1025,6 +1047,8 @@ export class K6ExecutionService {
   }
 
   private injectK6VariableRuntimeHelpers(script: string): string {
+    // k6/encoding import is injected at the top of the script (see bottom of method)
+    // so __scB64Decode is available as the native k6 base64 decoder.
     const helperCode = `
 const __scEnv = (typeof __ENV !== 'undefined' && __ENV)
   ? __ENV
@@ -1041,7 +1065,14 @@ function __scParseMap(key) {
 }
 
 function __scBase64Decode(value) {
-  if (typeof Buffer !== 'undefined') {
+  // k6 native encoding (most reliable in k6's Sobek/GoJA runtime).
+  // The import 'k6/encoding' is injected at the top of the script.
+  if (typeof __scB64Decode === 'function') {
+    return __scB64Decode(value, 'std', 's');
+  }
+
+  // Node.js Buffer — skip in k6 runtime where a non-functional polyfill may exist.
+  if (typeof __ENV === 'undefined' && typeof Buffer !== 'undefined') {
     return Buffer.from(value, 'base64').toString('utf8');
   }
 
@@ -1116,7 +1147,23 @@ globalThis.getSecret = function getSecret(key, options = {}) {
 
   return value;
 };
+
+const __scFiles = __scParseMap('SUPERCHECK_FILES_B64');
+const __scTmpDir = (__scEnv.TMPDIR || __scEnv.TMP || '/tmp').replace(/\\/+$/, '');
+
+globalThis.getFile = function getFile(key) {
+  const filePath = __scFiles[key];
+  if (filePath === undefined) {
+    throw new Error(\`File variable '\${key}' is not defined. Make sure you have created a file-type variable with this key.\`);
+  }
+  return __scTmpDir + '/' + filePath;
+};
 `;
+
+    // Inject k6/encoding import for reliable base64 decoding in k6's Sobek runtime.
+    // k6 v1.x exposes a non-functional Buffer polyfill that silently breaks
+    // Buffer.from(value, 'base64'), so we use k6's native b64decode instead.
+    const k6EncodingImport = `import { b64decode as __scB64Decode } from 'k6/encoding';\n`;
 
     const importBlockRegex = /^(\s*import[\s\S]*?;\s*)+/;
     const importBlock = script.match(importBlockRegex);
@@ -1124,10 +1171,10 @@ globalThis.getSecret = function getSecret(key, options = {}) {
     if (importBlock && importBlock.index === 0) {
       const imports = importBlock[0];
       const rest = script.slice(imports.length);
-      return `${imports}\n${helperCode}\n${rest}`;
+      return `${k6EncodingImport}${imports}\n${helperCode}\n${rest}`;
     }
 
-    return `${helperCode}\n${script}`;
+    return `${k6EncodingImport}${helperCode}\n${script}`;
   }
 
   private redactSecretsFromText(

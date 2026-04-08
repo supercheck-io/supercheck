@@ -77,15 +77,11 @@ import { SupercheckLogo } from "@/components/logo/supercheck-logo";
 import { Home } from "lucide-react";
 import { TruncatedTextWithTooltip } from "@/components/ui/truncated-text-with-tooltip";
 import {
-  calculateAggregatedStatus,
   isMonitoringLocation,
   buildLocationMetadataMap,
 } from "@/lib/location-service";
-import type {
-  MonitoringLocation,
-  LocationConfig,
-} from "@/lib/location-service";
-import type { MonitorConfig } from "@/db/schema";
+import type { MonitoringLocation } from "@/lib/location-service";
+import { resolveMonitorDetailStatus } from "@/lib/monitor-detail-status";
 import { useAppConfig } from "@/hooks/use-app-config";
 import {
   useMonitorStats,
@@ -450,101 +446,11 @@ export function MonitorDetailClient({
   const latestResult =
     filteredLatestResults.length > 0 ? filteredLatestResults[0] : null;
 
-  // Calculate current status, respecting aggregation strategy for multi-location setups
-  const getAggregatedStatus = () => {
-    if (!monitor.recentResults || monitor.recentResults.length === 0) {
-      return monitor.status;
-    }
-
-    // When viewing a specific location, use that location's latest status
-    if (selectedLocation !== "all") {
-      const locationResults = monitor.recentResults.filter(
-        (r) => r.location === selectedLocation
-      );
-      if (locationResults.length > 0) {
-        return locationResults[0].isUp ? "up" : "down";
-      }
-      return monitor.status;
-    }
-
-    // When viewing all locations, aggregate based on strategy
-    const monitorConfig = (monitor.config ?? null) as MonitorConfig | null;
-    const locationConfig = monitorConfig?.locationConfig ?? null;
-
-    // For single-location or non-multi-location monitors, use the most recent result
-    if (!locationConfig || !locationConfig.enabled) {
-      // Simply use the most recent result's status
-      return monitor.recentResults[0].isUp ? "up" : "down";
-    }
-
-    const effectiveLocationsFromConfig =
-      locationConfig.enabled &&
-        Array.isArray(locationConfig.locations) &&
-        locationConfig.locations.length > 0
-        ? locationConfig.locations
-        : null;
-
-    const locationsFromResults = Array.from(
-      new Set(
-        (monitor.recentResults ?? [])
-          .map((result) => result.location)
-          .filter(
-            (location): location is MonitoringLocation =>
-              typeof location === "string" && isMonitoringLocation(location)
-          )
-      )
-    );
-
-    const effectiveLocations =
-      effectiveLocationsFromConfig ??
-      (locationsFromResults.length > 0
-        ? locationsFromResults
-        : dynamicLocations.length > 0
-          ? [dynamicLocations[0].code]
-          : []);
-
-    // Get latest result for each location
-    const latestByLocation: Record<MonitoringLocation, boolean> = {} as Record<
-      MonitoringLocation,
-      boolean
-    >;
-    for (const location of effectiveLocations) {
-      const locationResult = monitor.recentResults.find(
-        (r) => r.location === location
-      );
-      latestByLocation[location] = locationResult?.isUp ?? false;
-    }
-
-    // Apply aggregation strategy based on effective locations and config
-    const aggregationConfig: LocationConfig =
-      locationConfig && locationConfig.enabled
-        ? {
-          ...locationConfig,
-          locations:
-            locationConfig.locations && locationConfig.locations.length > 0
-              ? locationConfig.locations
-              : effectiveLocations,
-          threshold:
-            typeof locationConfig.threshold === "number"
-              ? locationConfig.threshold
-              : 50,
-          strategy: locationConfig.strategy ?? "majority",
-        }
-        : {
-          enabled: false,
-          locations: effectiveLocations,
-          threshold: 50,
-          strategy: "majority",
-        };
-
-    const aggregated = calculateAggregatedStatus(
-      latestByLocation,
-      aggregationConfig
-    );
-    return aggregated === "partial" ? "down" : aggregated;
-  };
-
-  const currentActualStatus = getAggregatedStatus();
+  const currentActualStatus = resolveMonitorDetailStatus(
+    monitor.status,
+    monitor.recentResults,
+    selectedLocation
+  );
 
   const statusInfo = monitorStatuses.find(
     (s) => s.value === currentActualStatus

@@ -65,8 +65,10 @@ export function DataTableToolbar<TData>({
   // Track if we've handled the initial URL-based open
   const initialOpenHandled = useRef(false);
 
-  // Compute default secret state from URL params
-  const defaultIsSecret = searchParams.get("type") === "secret";
+  // Compute default type from URL params
+  const urlType = searchParams.get("type");
+  const defaultIsSecret = urlType === "secret";
+  const defaultType = (urlType === "secret" || urlType === "file") ? urlType : undefined;
 
   // Handle subsequent URL changes (not initial mount)
   useEffect(() => {
@@ -103,11 +105,15 @@ export function DataTableToolbar<TData>({
   const typeOptions = [
     {
       label: "Variable",
-      value: "false", // Maps to isSecret: false
+      value: "variable",
     },
     {
       label: "Secret",
-      value: "true", // Maps to isSecret: true
+      value: "secret",
+    },
+    {
+      label: "File",
+      value: "file",
     },
   ];
 
@@ -123,73 +129,40 @@ export function DataTableToolbar<TData>({
                   <Info className="h-4 w-4 text-muted-foreground" />
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-[430px]" side="bottom" align="start">
+              <PopoverContent className="w-[480px]" side="bottom" align="start">
                 <div className="space-y-3">
                   <div>
                     <h3 className="font-medium text-sm">
-                      Variables & Secrets Usage
+                      Variables, Secrets & Files
                     </h3>
                     <p className="text-xs text-muted-foreground">
-                      Access methods in Playground for Playwright and k6
+                      Four helper functions available in Playwright and k6
                       scripts.
                     </p>
                   </div>
 
                   <div className="space-y-3">
-                    <div className="space-y-2">
-                      <h4 className="text-xs font-medium">Example Usage</h4>
-                      <div className="relative bg-muted p-3 rounded border border-muted-foreground/20">
-                        <pre className="font-mono text-xs overflow-auto max-h-40 text-foreground pr-8 leading-relaxed">
-                          {`// Variables
-const baseUrl = getVariable('BASE_URL');
-// Secrets
-const apiKey = getSecret('API_KEY');
-
-// In Playwright
-await page.goto(baseUrl);
-await page.fill('#password', apiKey);
-
-// In k6
-  http.get(\`\${baseUrl}/protected\`, {
-    headers: { Authorization: \`Bearer \${apiKey}\` }
-})`}
-                        </pre>
+                    <div className="space-y-1.5">
+                      <h4 className="text-xs font-medium text-blue-500">getVariable(key, options?)</h4>
+                      <p className="text-xs text-muted-foreground">
+                        Plain-text config — URLs, timeouts, feature flags.
+                      </p>
+                      <div className="relative bg-muted p-2.5 rounded border border-muted-foreground/20">
+                        <pre className="font-mono text-[11px] overflow-auto text-foreground pr-7 leading-relaxed">{`const baseUrl = getVariable('BASE_URL');
+const timeout = getVariable('TIMEOUT', {
+  type: 'number', default: 5000
+});
+await page.goto(baseUrl);`}</pre>
                         <Button
                           size="sm"
                           variant="ghost"
-                          className="absolute top-2 right-2 h-6 w-6 p-0"
+                          className="absolute top-1.5 right-1.5 h-5 w-5 p-0"
                           onClick={() =>
-                            handleCopyCode(`// Variables
-const baseUrl = getVariable('BASE_URL');
-
-// Secrets
-const apiKey = getSecret('API_KEY');
-
-// In Playwright
-await page.goto(baseUrl);
-await page.fill('#password', apiKey);
-
-// In k6
-  http.get(\`\${baseUrl}/protected\`, {
-    headers: { Authorization: \`Bearer \${apiKey}\` }
-}`)
+                            handleCopyCode(`const baseUrl = getVariable('BASE_URL');\nconst timeout = getVariable('TIMEOUT', { type: 'number', default: 5000 });\nawait page.goto(baseUrl);`)
                           }
                         >
                           {copiedCode ===
-                            `// Variables
-const baseUrl = getVariable('BASE_URL');
-
-// Secrets
-const apiKey = getSecret('API_KEY');
-
-// In Playwright
-await page.goto(baseUrl);
-await page.fill('#password', apiKey);
-
-// In k6
-  http.get(\`\${baseUrl}/protected\`, {
-    headers: { Authorization: \`Bearer \${apiKey}\` }
-})` ? (
+                            `const baseUrl = getVariable('BASE_URL');\nconst timeout = getVariable('TIMEOUT', { type: 'number', default: 5000 });\nawait page.goto(baseUrl);` ? (
                             <Check className="h-3 w-3 text-green-500" />
                           ) : (
                             <Copy className="h-3 w-3" />
@@ -198,10 +171,69 @@ await page.fill('#password', apiKey);
                       </div>
                     </div>
 
-                    <div className="text-xs text-muted-foreground">
-                      <strong>Tip:</strong> Use variables for config, secrets
-                      for sensitive data. These helpers are available wherever
-                      your Playground scripts run.
+                    <div className="space-y-1.5">
+                      <h4 className="text-xs font-medium text-amber-500">getSecret(key, options?)</h4>
+                      <p className="text-xs text-muted-foreground">
+                        Encrypted values — API keys, passwords, tokens. Output is auto-redacted.
+                      </p>
+                      <div className="relative bg-muted p-2.5 rounded border border-muted-foreground/20">
+                        <pre className="font-mono text-[11px] overflow-auto text-foreground pr-7 leading-relaxed">{`const password = getSecret('PASSWORD');
+const apiKey = getSecret('API_KEY');
+await page.fill('[name="password"]', password);
+await page.setExtraHTTPHeaders({
+  Authorization: \`Bearer \${apiKey}\`
+});`}</pre>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="absolute top-1.5 right-1.5 h-5 w-5 p-0"
+                          onClick={() =>
+                            handleCopyCode(`const password = getSecret('PASSWORD');\nconst apiKey = getSecret('API_KEY');\nawait page.fill('[name=\"password\"]', password);\nawait page.setExtraHTTPHeaders({\n  Authorization: \`Bearer \${apiKey}\`\n});`)
+                          }
+                        >
+                          {copiedCode ===
+                            `const password = getSecret('PASSWORD');\nconst apiKey = getSecret('API_KEY');\nawait page.fill('[name=\"password\"]', password);\nawait page.setExtraHTTPHeaders({\n  Authorization: \`Bearer \${apiKey}\`\n});` ? (
+                            <Check className="h-3 w-3 text-green-500" />
+                          ) : (
+                            <Copy className="h-3 w-3" />
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <h4 className="text-xs font-medium text-emerald-500">File Helpers</h4>
+                      <p className="text-xs text-muted-foreground">
+                        Use <code className="text-[10px] bg-background px-1 rounded">readFile(key)</code> in Playwright, or <code className="text-[10px] bg-background px-1 rounded">open(getFile(key))</code> in k6 init context.
+                      </p>
+                      <div className="relative bg-muted p-2.5 rounded border border-muted-foreground/20">
+                        <pre className="font-mono text-[11px] overflow-auto text-foreground pr-7 leading-relaxed">{`// Playwright
+const playwrightCsvContent = readFile('USERS_CSV');
+
+// k6 (init context)
+const k6CsvContent = open(getFile('USERS_CSV'));`}</pre>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="absolute top-1.5 right-1.5 h-5 w-5 p-0"
+                          onClick={() =>
+                            handleCopyCode(`// Playwright\nconst playwrightCsvContent = readFile('USERS_CSV');\n\n// k6 (init context)\nconst k6CsvContent = open(getFile('USERS_CSV'));`)
+                          }
+                        >
+                          {copiedCode ===
+                            `// Playwright\nconst playwrightCsvContent = readFile('USERS_CSV');\n\n// k6 (init context)\nconst k6CsvContent = open(getFile('USERS_CSV'));` ? (
+                            <Check className="h-3 w-3 text-green-500" />
+                          ) : (
+                            <Copy className="h-3 w-3" />
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="text-xs text-muted-foreground border-t pt-2">
+                      <strong>Tip:</strong> Variables for config, secrets
+                      for sensitive data, files for test datasets. Secrets are
+                      encrypted at rest and redacted from execution output.
                     </div>
                   </div>
                 </div>
@@ -209,7 +241,7 @@ await page.fill('#password', apiKey);
             </Popover>
           </div>
           <p className="text-muted-foreground text-sm">
-            Manage configuration values and secrets
+            Manage configuration values, secrets and file datasets
           </p>
         </div>
       </div>
@@ -221,9 +253,9 @@ await page.fill('#password', apiKey);
           onChange={(event) => table.setGlobalFilter(event.target.value)}
           className="h-8 w-[150px] lg:w-[250px]"
         />
-        {table.getColumn("isSecret") && (
+        {table.getColumn("type") && (
           <DataTableFacetedFilter
-            column={table.getColumn("isSecret")}
+            column={table.getColumn("type")}
             title="Type"
             options={typeOptions}
           />
@@ -258,6 +290,7 @@ await page.fill('#password', apiKey);
                   handleDialogOpenChange(false);
                 }}
                 defaultIsSecret={defaultIsSecret}
+                defaultType={defaultType as "variable" | "secret" | "file" | undefined}
               />
             )}
           </>

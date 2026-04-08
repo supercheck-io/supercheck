@@ -138,6 +138,64 @@ describe('Variable Resolver', () => {
     });
 
     describe('Negative Cases', () => {
+      it('should preserve legacy file variables when file size metadata is missing', async () => {
+        mockWhere.mockResolvedValue([
+          {
+            key: 'BROKEN_FILE',
+            value: '',
+            isSecret: false,
+            encryptedValue: null,
+            projectId: testProjectId,
+            type: 'file',
+            storagePath: 'variables/project-123/BROKEN_FILE',
+            fileName: 'data.csv',
+            fileSize: null,
+            mimeType: 'text/csv',
+          },
+        ]);
+
+        const result = await resolveProjectVariables(testProjectId);
+
+        expect(result.files).toEqual({
+          BROKEN_FILE: {
+            storagePath: 'variables/project-123/BROKEN_FILE',
+            fileName: 'data.csv',
+            mimeType: 'text/csv',
+            fileSize: null,
+          },
+        });
+        expect(result.errors).toBeUndefined();
+      });
+
+      it('should treat non-positive file size metadata as unknown instead of dropping the file', async () => {
+        mockWhere.mockResolvedValue([
+          {
+            key: 'BROKEN_FILE',
+            value: '',
+            isSecret: false,
+            encryptedValue: null,
+            projectId: testProjectId,
+            type: 'file',
+            storagePath: 'variables/project-123/BROKEN_FILE',
+            fileName: 'data.csv',
+            fileSize: 0,
+            mimeType: 'text/csv',
+          },
+        ]);
+
+        const result = await resolveProjectVariables(testProjectId);
+
+        expect(result.files).toEqual({
+          BROKEN_FILE: {
+            storagePath: 'variables/project-123/BROKEN_FILE',
+            fileName: 'data.csv',
+            mimeType: 'text/csv',
+            fileSize: null,
+          },
+        });
+        expect(result.errors).toBeUndefined();
+      });
+
       it('should handle decryption failure gracefully', async () => {
         mockDecryptValue.mockImplementation(() => {
           throw new Error('Decryption failed');
@@ -254,6 +312,18 @@ describe('Variable Resolver', () => {
         const count = result.filter(name => name === 'API_URL').length;
         expect(count).toBe(1);
       });
+
+      it('should extract getFile and readFile calls', () => {
+        const script = `
+          const filePath = getFile('USER_DATA');
+          const csv = readFile('CSV_DATA');
+        `;
+
+        const result = extractVariableNames(script);
+
+        expect(result).toContain('USER_DATA');
+        expect(result).toContain('CSV_DATA');
+      });
     });
 
     describe('Negative Cases', () => {
@@ -275,6 +345,20 @@ describe('Variable Resolver', () => {
         
         expect(result).not.toContain('NOT_A_VAR');
         expect(result).not.toContain('NOT_A_SECRET');
+      });
+
+      it('should not match method calls or prefixed helper names', () => {
+        const script = `
+          fs.readFile('LOCAL_FILE');
+          page.getFile('NOT_SUPERCHECK');
+          customreadFile('NOT_A_VAR');
+        `;
+
+        const result = extractVariableNames(script);
+
+        expect(result).not.toContain('LOCAL_FILE');
+        expect(result).not.toContain('NOT_SUPERCHECK');
+        expect(result).not.toContain('NOT_A_VAR');
       });
     });
 
@@ -358,6 +442,34 @@ describe('Variable Resolver', () => {
         
         expect(result).toContain('function getVariable');
         expect(result).toContain('function getSecret');
+      });
+
+      it('should generate getFile function with file entries', () => {
+        const files = { 
+          TEST_DATA: '/tmp/data/TEST_DATA/data.csv',
+          CONFIG: '/tmp/data/CONFIG/settings.json',
+        };
+        
+        const result = generateVariableFunctions({}, {}, files);
+        
+        expect(result).toContain('function getFile');
+        expect(result).toContain('TEST_DATA');
+        expect(result).toContain('/tmp/data/TEST_DATA/data.csv');
+        expect(result).toContain('CONFIG');
+        expect(result).toContain('/tmp/data/CONFIG/settings.json');
+      });
+
+      it('should generate getFile function even without files', () => {
+        const result = generateVariableFunctions({}, {});
+        
+        expect(result).toContain('function getFile');
+      });
+
+      it('should generate getFile that throws for unknown keys', () => {
+        const result = generateVariableFunctions({}, {}, {});
+        
+        expect(result).toContain("throw new Error");
+        expect(result).toContain("File variable");
       });
     });
 

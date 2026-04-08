@@ -4,14 +4,12 @@
 FROM mcr.microsoft.com/playwright:v1.58.2-noble AS base
 
 # Build k6 with xk6-dashboard extension
-# Note: xk6 v1.3.0+ requires Go 1.25 which isn't publicly released yet.
-# Pin to v1.2.3 which works with Go 1.24.x
 # Pin golang to specific patch version for reproducible builds
-FROM golang:1.24.3-alpine AS k6-builder
+FROM golang:1.25.8-alpine AS k6-builder
 RUN apk add --no-cache git
-RUN go install go.k6.io/xk6/cmd/xk6@v1.2.3
-# Pin xk6-dashboard to v0.8.0 (latest stable as of Dec 2024)
-RUN xk6 build --with github.com/grafana/xk6-dashboard@v0.8.0
+RUN go install go.k6.io/xk6/cmd/xk6@v1.3.6
+# Pin k6 to v1.6.1 and xk6-dashboard to v0.8.1 for reproducible builds
+RUN xk6 build v1.6.1 --with github.com/grafana/xk6-dashboard@v0.8.1
 RUN chmod +x k6
 
 # NOTE: Docker CLI removed — execution is orchestrated through Kubernetes Jobs.

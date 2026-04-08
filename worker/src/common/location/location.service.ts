@@ -45,12 +45,14 @@ export class LocationService {
   getEffectiveLocations(config?: LocationConfig | null): string[] {
     if (!config || !config.enabled) {
       // Use the worker's actual location instead of hardcoding 'local'
-      const workerLocation = process.env.WORKER_LOCATION?.toLowerCase() || 'local';
+      const workerLocation =
+        process.env.WORKER_LOCATION?.toLowerCase() || 'local';
       return [workerLocation];
     }
 
     if (!config.locations || config.locations.length === 0) {
-      const workerLocation = process.env.WORKER_LOCATION?.toLowerCase() || 'local';
+      const workerLocation =
+        process.env.WORKER_LOCATION?.toLowerCase() || 'local';
       return [workerLocation];
     }
 
@@ -72,16 +74,15 @@ export class LocationService {
     // Use location codes as-is (dynamic locations, no legacy normalization needed)
     const locations = rawLocations;
 
-    // If none of the configured locations exist in the actual results,
-    // fall back to using the result locations directly. This handles
-    // cases where monitor config has stale location codes that no longer
-    // match any running worker (e.g., cloud locations after migration to local).
+    // Only aggregate over locations that actually have results.
+    // When some locations are disabled (no workers), their results won't exist
+    // and they should not count as "down" in the aggregation.
     const resultKeys = Object.keys(locationStatuses);
-    const hasOverlap = locations.some((loc) => resultKeys.includes(loc));
-    const effectiveLocations = hasOverlap ? locations : resultKeys;
-    if (!hasOverlap && resultKeys.length > 0) {
-      this.logger.warn(
-        `Config locations [${locations.join(', ')}] don't match result locations [${resultKeys.join(', ')}]. Using result locations for aggregation.`,
+    const effectiveLocations = resultKeys.length > 0 ? resultKeys : locations;
+    if (resultKeys.length > 0 && resultKeys.length < locations.length) {
+      this.logger.debug(
+        `Aggregating over ${resultKeys.length}/${locations.length} locations with results: [${resultKeys.join(', ')}]. ` +
+          `Locations without results (disabled/offline): [${locations.filter((l) => !resultKeys.includes(l)).join(', ')}].`,
       );
     }
 

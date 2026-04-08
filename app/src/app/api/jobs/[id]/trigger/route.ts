@@ -89,7 +89,7 @@ export async function POST(
         enabled: apikey.enabled,
         expiresAt: apikey.expiresAt,
         jobId: apikey.jobId,
-        userId: apikey.userId,
+        userId: apikey.referenceId,
         lastRequest: apikey.lastRequest,
         requestCount: apikey.requestCount,
         rateLimitEnabled: apikey.rateLimitEnabled,
@@ -477,6 +477,7 @@ export async function POST(
           script: primaryScript,
           variables: variableResolution.variables,
           secrets: variableResolution.secrets,
+          files: variableResolution.files,
           tests: processedTestScripts.map((script) => ({
             id: script.id,
             script: script.script,
@@ -507,6 +508,7 @@ export async function POST(
           projectId: job.projectId || "",
           variables: variableResolution.variables,
           secrets: variableResolution.secrets,
+          files: variableResolution.files,
           jobType,
         };
 

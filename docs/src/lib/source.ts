@@ -1,4 +1,4 @@
-import { docs } from '@/.source';
+import { docs } from '../../.source';
 import { type InferPageType, loader } from 'fumadocs-core/source';
 import { createElement, type ComponentType } from 'react';
 import { openapiPlugin } from 'fumadocs-openapi/server';

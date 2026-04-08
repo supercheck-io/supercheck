@@ -1985,6 +1985,83 @@ test.describe('GitHub integration tests', () => {
 `,
   },
   {
+    id: "k6-data-driven-file",
+    name: "Data-Driven Performance Test (File Variable)",
+    description: "Read test data from a CSV file variable for parameterized k6 load testing",
+    category: "Data-Driven",
+    testType: "performance",
+    tags: ["k6", "file", "csv", "data-driven"],
+    code: `/**
+ * Data-driven k6 performance test using file variables.
+ *
+ * Prerequisites:
+ * 1. Go to Project Settings > Variables
+ * 2. Create a File-type variable named "USERS_CSV" and upload a CSV file
+ *    Example CSV content:
+ *      username,password
+ *      user1@example.com,pass123
+ *      user2@example.com,pass456
+ *      user3@example.com,pass789
+ *
+ * Use getFile(key) with k6's open() in init context.
+ * For shared datasets, parse the file inside SharedArray so VUs reuse memory.
+ */
+
+import http from 'k6/http';
+import { check, sleep } from 'k6';
+import { SharedArray } from 'k6/data';
+
+// Parse CSV into a SharedArray for efficient memory usage across VUs
+const users = new SharedArray('users', function () {
+  const usersCsvContent = open(getFile('USERS_CSV'));
+
+  return usersCsvContent
+    .trim()
+    .split('\\n')
+    .slice(1) // skip header row
+    .map((line) => {
+      const [username, password] = line.split(',');
+      return { username: username.trim(), password: password.trim() };
+    });
+});
+
+export const options = {
+  vus: users.length,          // One VU per user row
+  duration: '30s',
+  thresholds: {
+    http_req_duration: ['p(95)<500'],
+    http_req_failed: ['rate<0.1'],
+  },
+};
+
+export default function () {
+  // Each VU picks its own row based on VU ID
+  const user = users[__VU - 1];
+
+  const payload = JSON.stringify({
+    username: user.username,
+    password: user.password,
+  });
+
+  const params = {
+    headers: { 'Content-Type': 'application/json' },
+  };
+
+  const response = http.post(
+    'https://test-api.k6.io/auth/token/login/',
+    payload,
+    params,
+  );
+
+  check(response, {
+    'login status is 200': (r) => r.status === 200,
+    'response time < 500ms': (r) => r.timings.duration < 500,
+  });
+
+  sleep(1);
+}`,
+  },
+  {
     id: "k6-basic",
     name: "Basic Performance Test",
     description: "Simple load test with virtual users and thresholds",
@@ -2028,6 +2105,49 @@ export default function() {
 
   sleep(1); // Pause between requests to simulate user think time
 }`,
+  },
+  {
+    id: "pw-data-driven-file",
+    name: "Data-Driven Test (File Variable)",
+    description: "Read test data from a file variable (CSV/JSON) for parameterized testing",
+    category: "Data-Driven",
+    testType: "browser",
+    tags: ["playwright", "file", "csv", "data-driven"],
+    code: `/**
+ * Data-driven Playwright test using file variables.
+ *
+ * Prerequisites:
+ * 1. Go to Project Settings > Variables
+ * 2. Create a File-type variable named "TEST_DATA" and upload a CSV file with columns: url,expectedTitle
+ *    Example CSV content:
+ *      url,expectedTitle
+ *      https://playwright.dev,Playwright
+ *      https://example.com,Example Domain
+ *
+ * Use readFile(key) to read the file contents directly in Playwright.
+ * k6 tests should use open(getFile(key)) in init context instead.
+ */
+
+import { test, expect } from '@playwright/test';
+
+// readFile() returns the file contents as a string directly
+const playwrightCsvContent = readFile('TEST_DATA');
+const rows = playwrightCsvContent
+  .trim()
+  .split('\\n')
+  .slice(1) // skip header row
+  .map((line) => {
+    const [url, expectedTitle] = line.split(',');
+    return { url: url.trim(), expectedTitle: expectedTitle.trim() };
+  });
+
+for (const { url, expectedTitle } of rows) {
+  test(\`page title contains "\${expectedTitle}" for \${url}\`, async ({ page }) => {
+    await page.goto(url);
+    await expect(page).toHaveTitle(new RegExp(expectedTitle));
+  });
+}
+`,
   },
 ];
 

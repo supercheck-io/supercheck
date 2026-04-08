@@ -33,6 +33,8 @@
 # NOTE: RUNNING_CAPACITY and QUEUED_CAPACITY are App-side settings.
 #   Set them only on the main server's App service, not here.
 #   WORKER_REPLICAS (set below or via env) controls how many worker containers run.
+# NOTE: CORS_ALLOWED_ORIGINS is also App-side only.
+#   Set it on the main App deployment if browser-based integrations need API access.
 # NOTE: STATUS_PAGE_HIDE_BRANDING is also App-side only.
 #   Set it on the main App deployment if you want to hide the public branding footer globally.
 #
@@ -100,6 +102,8 @@ services:
       S3_STATUS_BUCKET_NAME: ${S3_STATUS_BUCKET_NAME:-status-page-artifacts}
       # Requirements bucket
       S3_REQUIREMENTS_BUCKET_NAME: ${S3_REQUIREMENTS_BUCKET_NAME:-test-requirement-artifacts}
+      # Project data files bucket (file-type variables)
+      S3_PROJECT_DATA_FILES_BUCKET_NAME: ${S3_PROJECT_DATA_FILES_BUCKET_NAME:-project-data-files}
 
       # Execution configuration
       NODE_ENV: ${NODE_ENV:-production}

@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { and, eq } from 'drizzle-orm';
-import { DbService } from 'src/db/db.service';
+import { DbService } from '../../db/db.service';
 import * as schema from '../../db/schema';
 import {
   AlertType,
@@ -12,7 +12,7 @@ import {
   NotificationService,
   NotificationPayload,
   NotificationProvider,
-} from 'src/notification/notification.service';
+} from '../../notification/notification.service';
 import { decryptNotificationProviderConfig } from '../../common/notification-provider-crypto';
 
 type ProviderRow = {

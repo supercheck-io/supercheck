@@ -13,6 +13,7 @@ import { statusPages, incidents } from "@/db/schema";
 import { eq, desc, and } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { buildContentDisposition } from "@/lib/content-disposition";
 
 const uuidSchema = z.string().uuid();
 
@@ -242,7 +243,10 @@ export async function GET(
       status: 200,
       headers: {
         "Content-Type": "text/calendar; charset=utf-8",
-        "Content-Disposition": `inline; filename="${statusPage.subdomain}-status.ics"`,
+        "Content-Disposition": buildContentDisposition(
+          `${statusPage.subdomain}-status.ics`,
+          "inline"
+        ),
         "Cache-Control": "public, max-age=300, s-maxage=300",
         "X-Content-Type-Options": "nosniff",
       },

@@ -59,7 +59,7 @@ export async function GET() {
         createdByName: user.name,
       })
       .from(apikey)
-      .leftJoin(user, eq(apikey.userId, user.id))
+      .leftJoin(user, eq(apikey.referenceId, user.id))
       .where(
         and(
           eq(apikey.projectId, context.project.id),
@@ -198,7 +198,7 @@ export async function POST(request: NextRequest) {
           start: tokenStart,
           prefix: "cli",
           key: tokenHash,
-          userId: context.userId,
+          referenceId: context.userId,
           projectId: context.project.id,
           jobId: null, // CLI tokens are not job-scoped
           enabled: true,

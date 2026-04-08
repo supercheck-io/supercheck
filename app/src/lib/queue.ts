@@ -41,11 +41,19 @@ export const queueLogger = createLogger({ module: "queue-client" }) as {
 };
 
 // Interfaces matching those in the worker service
+export interface FileVariableInfo {
+  storagePath: string;
+  fileName: string;
+  mimeType: string;
+  fileSize: number | null;
+}
+
 export interface TestExecutionTask {
   testId: string;
   code: string; // Pass code directly
   variables?: Record<string, string>; // Resolved variables for the test
   secrets?: Record<string, string>; // Resolved secrets for the test
+  files?: Record<string, FileVariableInfo>; // File variable metadata for the test
   runId?: string | null;
   organizationId?: string;
   projectId?: string;
@@ -67,6 +75,7 @@ export interface JobExecutionTask {
   projectId: string; // Required for RBAC filtering
   variables?: Record<string, string>; // Resolved variables for job execution
   secrets?: Record<string, string>; // Resolved secrets for job execution
+  files?: Record<string, FileVariableInfo>; // File variable metadata for job execution
   jobType?: SchemaJobType;
   location?: string | null;
 }
@@ -92,6 +101,7 @@ export interface K6ExecutionTask {
   script: string;
   variables?: Record<string, string>; // Resolved variables for k6 execution
   secrets?: Record<string, string>; // Resolved secrets for k6 execution
+  files?: Record<string, FileVariableInfo>; // File variable metadata for k6 execution
   jobId?: string | null;
   tests: Array<{ id: string; script: string }>;
   location?: string | null;

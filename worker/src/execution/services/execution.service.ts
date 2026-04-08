@@ -12,6 +12,7 @@ import { ReportUploadService } from '../../common/services/report-upload.service
 import { ContainerExecutorService } from '../../common/security/container-executor.service';
 import { CancellationService } from '../../common/services/cancellation.service';
 import { RequirementCoverageService } from './requirement-coverage.service';
+import { filterFileVariablesToUsedKeys } from '../../common/utils/script-analysis';
 import {
   TestResult,
   TestExecutionResult,
@@ -358,9 +359,18 @@ export class ExecutionService implements OnModuleDestroy {
     const { testId, code } = task;
     const runtimeVariables = task.variables ?? {};
     const runtimeSecrets = task.secrets ?? {};
+    const runtimeFiles = task.files ?? {};
+
+    // Filter file variables to only those referenced by getFile()/readFile() in the script,
+    // then download from S3 and prepare container paths
+    const filteredFiles = filterFileVariablesToUsedKeys(runtimeFiles, [code]);
+    const { additionalFiles: fileAdditionalFiles, filePaths } =
+      await this.prepareFileVariables(filteredFiles);
+
     const runtimeEnv = this.buildVariableRuntimeEnv(
       runtimeVariables,
       runtimeSecrets,
+      filePaths,
     );
 
     // Check concurrency limits (unless bypassed for monitors)
@@ -455,7 +465,9 @@ export class ExecutionService implements OnModuleDestroy {
         testScript,
         extractedReportsDir,
         false,
-        undefined, // No additional files for single test
+        Object.keys(fileAdditionalFiles).length > 0
+          ? fileAdditionalFiles
+          : undefined,
         task.runId || undefined, // Pass runId for cancellation tracking
         runtimeEnv,
       );
@@ -749,6 +761,7 @@ export class ExecutionService implements OnModuleDestroy {
       );
 
       const preparedScripts: Record<string, string> = {}; // filename -> content
+      const rawDecodedScripts: string[] = []; // original scripts before helper injection
       let mainTestFile: string | null = null;
 
       for (let i = 0; i < testScripts.length; i++) {
@@ -801,6 +814,11 @@ export class ExecutionService implements OnModuleDestroy {
             );
             // Continue with original script if decoding fails
           }
+
+          // Track raw decoded script for file variable analysis
+          // (before injecting runtime helpers, which define getFile() and
+          // would cause false-positive detection — see P1 bug fix)
+          rawDecodedScripts.push(decodedScript);
 
           // Ensure the script has proper trace configuration
           const script = ensureProperTraceConfiguration(
@@ -858,6 +876,14 @@ export class ExecutionService implements OnModuleDestroy {
           additionalFiles[fileName] = content;
         });
 
+      // Filter file variables to only those referenced by getFile()/readFile() in the scripts.
+      // Use raw decoded scripts (before runtime helper injection) to avoid
+      // false-positive detection from the injected getFile()/readFile() helper definitions.
+      const filteredJobFiles = filterFileVariablesToUsedKeys(task.files ?? {}, rawDecodedScripts);
+      const { additionalFiles: fileAdditionalFiles, filePaths } =
+        await this.prepareFileVariables(filteredJobFiles);
+      Object.assign(additionalFiles, fileAdditionalFiles);
+
       // Check for cancellation signal before executing Playwright
       if (await this.cancellationService.isCancelled(runId)) {
         this.logger.warn(
@@ -875,7 +901,7 @@ export class ExecutionService implements OnModuleDestroy {
         true,
         additionalFiles, // Pass additional test files to execute in container
         runId, // Pass runId for cancellation tracking
-        this.buildVariableRuntimeEnv(task.variables ?? {}, task.secrets ?? {}),
+        this.buildVariableRuntimeEnv(task.variables ?? {}, task.secrets ?? {}, filePaths),
       );
 
       const taskSecrets = task.secrets ?? {};
@@ -2047,9 +2073,20 @@ export class ExecutionService implements OnModuleDestroy {
     return Math.floor(durationMs / 1000);
   }
 
+  /**
+   * Prepares file variables for container execution by downloading from S3
+   * and creating the file content map + path map for runtime helpers.
+   */
+  private async prepareFileVariables(
+    files: Record<string, { storagePath: string; fileName: string; mimeType: string; fileSize: number | null }>,
+  ): Promise<{ additionalFiles: Record<string, string>; filePaths: Record<string, string> }> {
+    return this.s3Service.prepareFileVariables(files);
+  }
+
   private buildVariableRuntimeEnv(
     variables: Record<string, string>,
     secrets: Record<string, string>,
+    filePaths?: Record<string, string>, // key -> container file path
   ): Record<string, string> {
     return {
       SUPERCHECK_VARIABLES_B64: Buffer.from(
@@ -2057,6 +2094,9 @@ export class ExecutionService implements OnModuleDestroy {
       ).toString('base64'),
       SUPERCHECK_SECRETS_B64: Buffer.from(
         JSON.stringify(secrets ?? {}),
+      ).toString('base64'),
+      SUPERCHECK_FILES_B64: Buffer.from(
+        JSON.stringify(filePaths ?? {}),
       ).toString('base64'),
     };
   }
@@ -2161,6 +2201,31 @@ export class ExecutionService implements OnModuleDestroy {
 
     return value;
   };
+
+  const __scFiles = parseMap('SUPERCHECK_FILES_B64');
+  const __scTmpDir = (env.TMPDIR || env.TMP || '/tmp').replace(/\\/+$/, '');
+
+  globalThis.getFile = function getFile(key) {
+    const filePath = __scFiles[key];
+
+    if (filePath === undefined) {
+      throw new Error(\`File variable '\${key}' is not defined. Make sure you have created a file-type variable with this key.\`);
+    }
+
+    return __scTmpDir + '/' + filePath;
+  };
+
+  globalThis.readFile = function readFile(key, encoding) {
+    const filePath = __scFiles[key];
+
+    if (filePath === undefined) {
+      throw new Error(\`File variable '\${key}' is not defined. Make sure you have created a file-type variable with this key.\`);
+    }
+
+    const fullPath = __scTmpDir + '/' + filePath;
+    const fs = require('fs');
+    return fs.readFileSync(fullPath, encoding || 'utf-8');
+  };
 })();
 `;
 
@@ -2183,12 +2248,26 @@ export class ExecutionService implements OnModuleDestroy {
       return text;
     }
 
-    let redacted = text;
-    for (const secret of secretValues) {
-      redacted = redacted.split(secret).join('[SECRET]');
-    }
+    // Deduplicate and sort longest-first to avoid partial matches
+    const uniqueSecrets = Array.from(new Set(secretValues)).sort(
+      (first, second) => second.length - first.length,
+    );
 
-    return redacted;
+    try {
+      const pattern = new RegExp(
+        uniqueSecrets
+          .map((secret) => secret.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+          .join('|'),
+        'g',
+      );
+      return text.replace(pattern, '[SECRET]');
+    } catch {
+      let redacted = text;
+      for (const secret of uniqueSecrets) {
+        redacted = redacted.split(secret).join('[SECRET]');
+      }
+      return redacted;
+    }
   }
 
   private decodeRuntimeSecretsFromEnv(

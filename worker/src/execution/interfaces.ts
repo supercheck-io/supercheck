@@ -49,6 +49,13 @@ export interface TestExecutionResult {
   failedTests?: number;
 }
 
+export interface FileVariableInfo {
+  storagePath: string;
+  fileName: string;
+  mimeType: string;
+  fileSize: number | null;
+}
+
 // Task data for the test execution queue
 export interface TestExecutionTask {
   testId: string;
@@ -58,6 +65,7 @@ export interface TestExecutionTask {
   code: string;
   variables?: Record<string, string>; // Resolved variables for execution runtime
   secrets?: Record<string, string>; // Resolved secrets for execution runtime
+  files?: Record<string, FileVariableInfo>; // File variable metadata for execution runtime
   // testPath: string; // Original field - needs adaptation
   runId?: string | null;
   organizationId?: string;
@@ -78,6 +86,7 @@ export interface JobExecutionTask {
   projectId: string; // Required for RBAC filtering
   variables?: Record<string, string>; // Resolved variables for job execution
   secrets?: Record<string, string>; // Resolved secrets for job execution
+  files?: Record<string, FileVariableInfo>; // File variable metadata for job execution
   jobType?: JobType;
 }
 

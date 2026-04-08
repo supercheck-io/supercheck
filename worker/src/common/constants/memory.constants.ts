@@ -22,6 +22,11 @@ export const MEMORY_LIMITS = {
   // Execution limits
   MAX_CONCURRENT_EXECUTIONS: 1,
   MAX_CONCURRENT_BROWSER_CONTEXTS: 5,
+
+  // Maximum total bytes of file-type variables that may be injected into a
+  // single execution run.  Each file is downloaded from S3 and base64-encoded,
+  // so the actual memory cost is ~1.33× this value.
+  MAX_TOTAL_FILE_VARIABLES_BYTES: 50 * 1024 * 1024, // 50 MB
 } as const;
 
 export const MEMORY_LIMITS_BYTES = {

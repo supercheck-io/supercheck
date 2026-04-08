@@ -138,7 +138,7 @@ export function BanUserDialog({
             </div>
             <span>Ban User</span>
           </DialogTitle>
-          <DialogDescription className="pt-1.5">
+          <DialogDescription className="pt-1.5 break-words">
             You are about to ban{" "}
             <strong className="text-foreground">{userName}</strong>{" "}
             <span className="text-muted-foreground">({userEmail})</span>. This
@@ -148,7 +148,7 @@ export function BanUserDialog({
 
         <Separator className="my-1" />
 
-        <div className="space-y-4 py-2">
+        <div className="space-y-4 py-2 overflow-hidden">
           <Alert
             variant="destructive"
             className="border-red-200 bg-red-50 dark:border-red-900/50 dark:bg-red-900/20"

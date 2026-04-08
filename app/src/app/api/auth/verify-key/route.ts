@@ -174,7 +174,7 @@ export async function POST(request: NextRequest) {
         enabled: apikey.enabled,
         expiresAt: apikey.expiresAt,
         jobId: apikey.jobId,
-        userId: apikey.userId,
+        userId: apikey.referenceId,
         name: apikey.name,
       })
       .from(apikey)

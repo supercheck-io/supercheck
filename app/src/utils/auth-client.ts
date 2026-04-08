@@ -1,10 +1,10 @@
 import { createAuthClient } from "better-auth/react";
 import {
-  apiKeyClient,
   organizationClient,
   adminClient,
   lastLoginMethodClient,
 } from "better-auth/client/plugins";
+import { apiKeyClient } from "@better-auth/api-key/client";
 
 /**
  * Better Auth client for browser-side authentication.

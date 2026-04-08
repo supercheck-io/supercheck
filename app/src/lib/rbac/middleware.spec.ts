@@ -94,10 +94,8 @@ import {
   getUserOrgRole,
   getUserAssignedProjects,
   buildPermissionContext,
-  canCreateVariableInProject,
-  canUpdateVariableInProject,
-  canDeleteVariableInProject,
-  canViewSecretVariableInProject,
+  resolveProjectPermissionContext,
+  checkPermissionWithContext,
   getProjectIdFromUrl,
   hasPermission,
 } from "./middleware";
@@ -486,127 +484,77 @@ describe("RBAC Middleware", () => {
       );
     });
 
-    describe("canCreateVariableInProject", () => {
-      it("should allow ORG_OWNER to create in any project", async () => {
-        mockNormalizeRole.mockReturnValue(Role.ORG_OWNER);
-
-        const result = await canCreateVariableInProject(
-          testUserId,
-          testProjectId
-        );
-
-        expect(result).toBe(true);
-      });
-
-      it("should allow ORG_ADMIN to create in any project", async () => {
-        mockNormalizeRole.mockReturnValue(Role.ORG_ADMIN);
-
-        const result = await canCreateVariableInProject(
-          testUserId,
-          testProjectId
-        );
-
-        expect(result).toBe(true);
-      });
-
-      it("should allow PROJECT_ADMIN to create", async () => {
-        mockNormalizeRole.mockReturnValue(Role.PROJECT_VIEWER);
-        let callCount = 0;
-        mockDbSelect.mockImplementation(() => {
-          callCount++;
-          if (callCount === 1) {
-            return {
-              from: jest.fn().mockReturnThis(),
-              where: jest.fn().mockReturnThis(),
-              limit: jest.fn().mockResolvedValue(mockProject),
-            } as unknown;
-          }
-          return {
-            from: jest.fn().mockReturnThis(),
-            where: jest.fn().mockReturnThis(),
-            limit: jest.fn().mockResolvedValue([{ role: Role.PROJECT_ADMIN }]),
-          } as unknown;
-        });
-
-        const result = await canCreateVariableInProject(
-          testUserId,
-          testProjectId
-        );
-
-        expect(result).toBe(true);
-      });
-
-      it("should allow PROJECT_EDITOR to create", async () => {
-        mockNormalizeRole.mockReturnValue(Role.PROJECT_VIEWER);
-        let callCount = 0;
-        mockDbSelect.mockImplementation(() => {
-          callCount++;
-          if (callCount === 1) {
-            return {
-              from: jest.fn().mockReturnThis(),
-              where: jest.fn().mockReturnThis(),
-              limit: jest.fn().mockResolvedValue(mockProject),
-            } as unknown;
-          }
-          return {
-            from: jest.fn().mockReturnThis(),
-            where: jest.fn().mockReturnThis(),
-            limit: jest.fn().mockResolvedValue([{ role: Role.PROJECT_EDITOR }]),
-          } as unknown;
-        });
-
-        const result = await canCreateVariableInProject(
-          testUserId,
-          testProjectId
-        );
-
-        expect(result).toBe(true);
-      });
-
-      it("should deny PROJECT_VIEWER from creating", async () => {
-        mockNormalizeRole.mockReturnValue(Role.PROJECT_VIEWER);
-        let callCount = 0;
-        mockDbSelect.mockImplementation(() => {
-          callCount++;
-          if (callCount === 1) {
-            return {
-              from: jest.fn().mockReturnThis(),
-              where: jest.fn().mockReturnThis(),
-              limit: jest.fn().mockResolvedValue(mockProject),
-            } as unknown;
-          }
-          return {
-            from: jest.fn().mockReturnThis(),
-            where: jest.fn().mockReturnThis(),
-            limit: jest.fn().mockResolvedValue([{ role: Role.PROJECT_VIEWER }]),
-          } as unknown;
-        });
-
-        const result = await canCreateVariableInProject(
-          testUserId,
-          testProjectId
-        );
-
-        expect(result).toBe(false);
-      });
-
-      it("should return false when project not found", async () => {
+    describe("resolveProjectPermissionContext", () => {
+      it("should return null when project does not exist", async () => {
         mockDbSelect.mockReturnValue({
           from: jest.fn().mockReturnThis(),
           where: jest.fn().mockReturnThis(),
           limit: jest.fn().mockResolvedValue([]),
         } as unknown);
 
-        const result = await canCreateVariableInProject(
+        const result = await resolveProjectPermissionContext(
           testUserId,
           "non-existent"
         );
 
-        expect(result).toBe(false);
+        expect(result).toBeNull();
       });
 
-      it("should return false when user not a project member", async () => {
-        mockNormalizeRole.mockReturnValue(Role.PROJECT_VIEWER);
+      it("should return SUPER_ADMIN role for super admins", async () => {
+        mockIsSuperAdmin.mockResolvedValue(true);
+        mockDbSelect.mockReturnValue({
+          from: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          limit: jest.fn().mockResolvedValue([
+            { id: testProjectId, organizationId: testOrgId },
+          ]),
+        } as unknown);
+
+        const result = await resolveProjectPermissionContext(
+          testUserId,
+          testProjectId
+        );
+
+        expect(result).not.toBeNull();
+        expect(result!.project.userRole).toBe(Role.SUPER_ADMIN);
+        expect(result!.organizationId).toBe(testOrgId);
+      });
+
+      it("should return ORG_OWNER role for org owners", async () => {
+        mockIsSuperAdmin.mockResolvedValue(false);
+        mockNormalizeRole.mockReturnValue(Role.ORG_OWNER);
+        let callCount = 0;
+        mockDbSelect.mockImplementation(() => {
+          callCount++;
+          if (callCount === 1) {
+            // Project lookup
+            return {
+              from: jest.fn().mockReturnThis(),
+              where: jest.fn().mockReturnThis(),
+              limit: jest.fn().mockResolvedValue([
+                { id: testProjectId, organizationId: testOrgId },
+              ]),
+            } as unknown;
+          }
+          // Org membership lookup
+          return {
+            from: jest.fn().mockReturnThis(),
+            where: jest.fn().mockReturnThis(),
+            limit: jest.fn().mockResolvedValue([{ role: "owner" }]),
+          } as unknown;
+        });
+
+        const result = await resolveProjectPermissionContext(
+          testUserId,
+          testProjectId
+        );
+
+        expect(result).not.toBeNull();
+        expect(result!.project.userRole).toBe(Role.ORG_OWNER);
+      });
+
+      it("should return null when user is not an org member", async () => {
+        mockIsSuperAdmin.mockResolvedValue(false);
         let callCount = 0;
         mockDbSelect.mockImplementation(() => {
           callCount++;
@@ -614,9 +562,12 @@ describe("RBAC Middleware", () => {
             return {
               from: jest.fn().mockReturnThis(),
               where: jest.fn().mockReturnThis(),
-              limit: jest.fn().mockResolvedValue(mockProject),
+              limit: jest.fn().mockResolvedValue([
+                { id: testProjectId, organizationId: testOrgId },
+              ]),
             } as unknown;
           }
+          // No org membership
           return {
             from: jest.fn().mockReturnThis(),
             where: jest.fn().mockReturnThis(),
@@ -624,226 +575,131 @@ describe("RBAC Middleware", () => {
           } as unknown;
         });
 
-        const result = await canCreateVariableInProject(
+        const result = await resolveProjectPermissionContext(
           testUserId,
           testProjectId
         );
 
-        expect(result).toBe(false);
+        expect(result).toBeNull();
       });
 
-      it("should return false on error", async () => {
+      it("should resolve project-level role for regular org members", async () => {
+        mockIsSuperAdmin.mockResolvedValue(false);
+        mockNormalizeRole.mockReturnValueOnce(Role.PROJECT_VIEWER); // Org role
+        mockNormalizeRole.mockReturnValueOnce(Role.PROJECT_EDITOR); // Project role
+        let callCount = 0;
         mockDbSelect.mockImplementation(() => {
-          throw new Error("Database error");
+          callCount++;
+          if (callCount === 1) {
+            return {
+              from: jest.fn().mockReturnThis(),
+              where: jest.fn().mockReturnThis(),
+              limit: jest.fn().mockResolvedValue([
+                { id: testProjectId, organizationId: testOrgId },
+              ]),
+            } as unknown;
+          }
+          if (callCount === 2) {
+            // Org membership
+            return {
+              from: jest.fn().mockReturnThis(),
+              where: jest.fn().mockReturnThis(),
+              limit: jest.fn().mockResolvedValue([{ role: "member" }]),
+            } as unknown;
+          }
+          // Project membership
+          return {
+            from: jest.fn().mockReturnThis(),
+            where: jest.fn().mockReturnThis(),
+            limit: jest.fn().mockResolvedValue([{ role: "project_editor" }]),
+          } as unknown;
         });
 
-        const result = await canCreateVariableInProject(
+        const result = await resolveProjectPermissionContext(
           testUserId,
           testProjectId
         );
 
-        expect(result).toBe(false);
+        expect(result).not.toBeNull();
+        expect(result!.project.userRole).toBe(Role.PROJECT_EDITOR);
+      });
+
+      it("should degrade to PROJECT_VIEWER when user has no project assignment", async () => {
+        mockIsSuperAdmin.mockResolvedValue(false);
+        mockNormalizeRole.mockReturnValue(Role.PROJECT_VIEWER);
+        let callCount = 0;
+        mockDbSelect.mockImplementation(() => {
+          callCount++;
+          if (callCount === 1) {
+            return {
+              from: jest.fn().mockReturnThis(),
+              where: jest.fn().mockReturnThis(),
+              limit: jest.fn().mockResolvedValue([
+                { id: testProjectId, organizationId: testOrgId },
+              ]),
+            } as unknown;
+          }
+          if (callCount === 2) {
+            return {
+              from: jest.fn().mockReturnThis(),
+              where: jest.fn().mockReturnThis(),
+              limit: jest.fn().mockResolvedValue([{ role: "member" }]),
+            } as unknown;
+          }
+          // No project membership
+          return {
+            from: jest.fn().mockReturnThis(),
+            where: jest.fn().mockReturnThis(),
+            limit: jest.fn().mockResolvedValue([]),
+          } as unknown;
+        });
+
+        const result = await resolveProjectPermissionContext(
+          testUserId,
+          testProjectId
+        );
+
+        expect(result).not.toBeNull();
+        expect(result!.project.userRole).toBe(Role.PROJECT_VIEWER);
       });
     });
 
-    describe("canUpdateVariableInProject", () => {
-      it("should allow ORG_OWNER to update", async () => {
-        mockNormalizeRole.mockReturnValue(Role.ORG_OWNER);
+    describe("checkPermissionWithContext", () => {
+      it("should allow ORG_OWNER to create variables", () => {
+        const ctx = {
+          userId: testUserId,
+          organizationId: testOrgId,
+          project: { id: testProjectId, userRole: Role.ORG_OWNER },
+        };
 
-        const result = await canUpdateVariableInProject(
-          testUserId,
-          testProjectId
-        );
-
-        expect(result).toBe(true);
-      });
-
-      it("should allow PROJECT_EDITOR to update", async () => {
-        mockNormalizeRole.mockReturnValue(Role.PROJECT_VIEWER);
-        let callCount = 0;
-        mockDbSelect.mockImplementation(() => {
-          callCount++;
-          if (callCount === 1) {
-            return {
-              from: jest.fn().mockReturnThis(),
-              where: jest.fn().mockReturnThis(),
-              limit: jest.fn().mockResolvedValue(mockProject),
-            } as unknown;
-          }
-          return {
-            from: jest.fn().mockReturnThis(),
-            where: jest.fn().mockReturnThis(),
-            limit: jest.fn().mockResolvedValue([{ role: Role.PROJECT_EDITOR }]),
-          } as unknown;
-        });
-
-        const result = await canUpdateVariableInProject(
-          testUserId,
-          testProjectId
-        );
+        const result = checkPermissionWithContext("variable", "create", ctx);
 
         expect(result).toBe(true);
       });
 
-      it("should deny PROJECT_VIEWER from updating", async () => {
-        mockNormalizeRole.mockReturnValue(Role.PROJECT_VIEWER);
-        let callCount = 0;
-        mockDbSelect.mockImplementation(() => {
-          callCount++;
-          if (callCount === 1) {
-            return {
-              from: jest.fn().mockReturnThis(),
-              where: jest.fn().mockReturnThis(),
-              limit: jest.fn().mockResolvedValue(mockProject),
-            } as unknown;
-          }
-          return {
-            from: jest.fn().mockReturnThis(),
-            where: jest.fn().mockReturnThis(),
-            limit: jest.fn().mockResolvedValue([{ role: Role.PROJECT_VIEWER }]),
-          } as unknown;
-        });
+      it("should allow ORG_ADMIN to create variables", () => {
+        const ctx = {
+          userId: testUserId,
+          organizationId: testOrgId,
+          project: { id: testProjectId, userRole: Role.ORG_ADMIN },
+        };
 
-        const result = await canUpdateVariableInProject(
-          testUserId,
-          testProjectId
-        );
-
-        expect(result).toBe(false);
-      });
-    });
-
-    describe("canDeleteVariableInProject", () => {
-      it("should allow ORG_OWNER to delete", async () => {
-        mockNormalizeRole.mockReturnValue(Role.ORG_OWNER);
-
-        const result = await canDeleteVariableInProject(
-          testUserId,
-          testProjectId
-        );
+        const result = checkPermissionWithContext("variable", "create", ctx);
 
         expect(result).toBe(true);
       });
 
-      it("should allow PROJECT_ADMIN to delete", async () => {
-        mockNormalizeRole.mockReturnValue(Role.PROJECT_VIEWER);
-        let callCount = 0;
-        mockDbSelect.mockImplementation(() => {
-          callCount++;
-          if (callCount === 1) {
-            return {
-              from: jest.fn().mockReturnThis(),
-              where: jest.fn().mockReturnThis(),
-              limit: jest.fn().mockResolvedValue(mockProject),
-            } as unknown;
-          }
-          return {
-            from: jest.fn().mockReturnThis(),
-            where: jest.fn().mockReturnThis(),
-            limit: jest.fn().mockResolvedValue([{ role: Role.PROJECT_ADMIN }]),
-          } as unknown;
-        });
+      it("should check permission based on role", () => {
+        const ctx = {
+          userId: testUserId,
+          organizationId: testOrgId,
+          project: { id: testProjectId, userRole: Role.PROJECT_VIEWER },
+        };
 
-        const result = await canDeleteVariableInProject(
-          testUserId,
-          testProjectId
-        );
+        // hasPermission mock returns true by default
+        const result = checkPermissionWithContext("variable", "view", ctx);
 
         expect(result).toBe(true);
-      });
-
-      it("should deny PROJECT_EDITOR from deleting", async () => {
-        mockNormalizeRole.mockReturnValue(Role.PROJECT_VIEWER);
-        let callCount = 0;
-        mockDbSelect.mockImplementation(() => {
-          callCount++;
-          if (callCount === 1) {
-            return {
-              from: jest.fn().mockReturnThis(),
-              where: jest.fn().mockReturnThis(),
-              limit: jest.fn().mockResolvedValue(mockProject),
-            } as unknown;
-          }
-          return {
-            from: jest.fn().mockReturnThis(),
-            where: jest.fn().mockReturnThis(),
-            limit: jest.fn().mockResolvedValue([{ role: Role.PROJECT_EDITOR }]),
-          } as unknown;
-        });
-
-        const result = await canDeleteVariableInProject(
-          testUserId,
-          testProjectId
-        );
-
-        expect(result).toBe(false);
-      });
-    });
-
-    describe("canViewSecretVariableInProject", () => {
-      it("should allow ORG_ADMIN to view secrets", async () => {
-        mockNormalizeRole.mockReturnValue(Role.ORG_ADMIN);
-
-        const result = await canViewSecretVariableInProject(
-          testUserId,
-          testProjectId
-        );
-
-        expect(result).toBe(true);
-      });
-
-      it("should allow PROJECT_EDITOR to view secrets", async () => {
-        mockNormalizeRole.mockReturnValue(Role.PROJECT_VIEWER);
-        let callCount = 0;
-        mockDbSelect.mockImplementation(() => {
-          callCount++;
-          if (callCount === 1) {
-            return {
-              from: jest.fn().mockReturnThis(),
-              where: jest.fn().mockReturnThis(),
-              limit: jest.fn().mockResolvedValue(mockProject),
-            } as unknown;
-          }
-          return {
-            from: jest.fn().mockReturnThis(),
-            where: jest.fn().mockReturnThis(),
-            limit: jest.fn().mockResolvedValue([{ role: Role.PROJECT_EDITOR }]),
-          } as unknown;
-        });
-
-        const result = await canViewSecretVariableInProject(
-          testUserId,
-          testProjectId
-        );
-
-        expect(result).toBe(true);
-      });
-
-      it("should deny PROJECT_VIEWER from viewing secrets", async () => {
-        mockNormalizeRole.mockReturnValue(Role.PROJECT_VIEWER);
-        let callCount = 0;
-        mockDbSelect.mockImplementation(() => {
-          callCount++;
-          if (callCount === 1) {
-            return {
-              from: jest.fn().mockReturnThis(),
-              where: jest.fn().mockReturnThis(),
-              limit: jest.fn().mockResolvedValue(mockProject),
-            } as unknown;
-          }
-          return {
-            from: jest.fn().mockReturnThis(),
-            where: jest.fn().mockReturnThis(),
-            limit: jest.fn().mockResolvedValue([{ role: Role.PROJECT_VIEWER }]),
-          } as unknown;
-        });
-
-        const result = await canViewSecretVariableInProject(
-          testUserId,
-          testProjectId
-        );
-
-        expect(result).toBe(false);
       });
     });
   });
@@ -913,36 +769,49 @@ describe("RBAC Middleware", () => {
 
   describe("Security", () => {
     describe("Project Isolation", () => {
-      it("should not allow access to unassigned projects", async () => {
-        mockNormalizeRole.mockReturnValue(Role.PROJECT_VIEWER);
-        mockDbSelect.mockReturnValue({
-          from: jest.fn().mockReturnThis(),
-          where: jest.fn().mockReturnThis(),
-          limit: jest.fn().mockResolvedValue([]),
-        } as unknown);
+      it("should return null for unassigned projects when user is not org member", async () => {
+        mockIsSuperAdmin.mockResolvedValue(false);
+        let callCount = 0;
+        mockDbSelect.mockImplementation(() => {
+          callCount++;
+          if (callCount === 1) {
+            return {
+              from: jest.fn().mockReturnThis(),
+              where: jest.fn().mockReturnThis(),
+              limit: jest.fn().mockResolvedValue([
+                { id: "other-project", organizationId: "other-org" },
+              ]),
+            } as unknown;
+          }
+          // No org membership
+          return {
+            from: jest.fn().mockReturnThis(),
+            where: jest.fn().mockReturnThis(),
+            limit: jest.fn().mockResolvedValue([]),
+          } as unknown;
+        });
 
-        const result = await canCreateVariableInProject(
+        const result = await resolveProjectPermissionContext(
           testUserId,
           "other-project"
         );
 
-        expect(result).toBe(false);
+        expect(result).toBeNull();
       });
 
-      it("should verify project exists before checking permissions", async () => {
-        mockNormalizeRole.mockReturnValue(Role.PROJECT_VIEWER);
+      it("should return null when project does not exist", async () => {
         mockDbSelect.mockReturnValue({
           from: jest.fn().mockReturnThis(),
           where: jest.fn().mockReturnThis(),
           limit: jest.fn().mockResolvedValue([]),
         } as unknown);
 
-        const result = await canCreateVariableInProject(
+        const result = await resolveProjectPermissionContext(
           testUserId,
           "non-existent"
         );
 
-        expect(result).toBe(false);
+        expect(result).toBeNull();
       });
     });
 
@@ -982,44 +851,26 @@ describe("RBAC Middleware", () => {
     });
 
     describe("Role Hierarchy", () => {
-      it("should recognize ORG_OWNER as highest org role", async () => {
-        mockNormalizeRole.mockReturnValue(Role.ORG_OWNER);
+      it("should recognize ORG_OWNER as highest org role", () => {
+        const ctx = {
+          userId: testUserId,
+          organizationId: testOrgId,
+          project: { id: testProjectId, userRole: Role.ORG_OWNER },
+        };
 
-        const result = await canDeleteVariableInProject(
-          testUserId,
-          testProjectId
-        );
+        const result = checkPermissionWithContext("variable", "delete", ctx);
 
         expect(result).toBe(true);
       });
 
-      it("should recognize PROJECT_ADMIN can delete in projects", async () => {
-        mockNormalizeRole.mockReturnValue(Role.PROJECT_VIEWER);
-        let callCount = 0;
-        mockDbSelect.mockImplementation(() => {
-          callCount++;
-          if (callCount === 1) {
-            return {
-              from: jest.fn().mockReturnThis(),
-              where: jest.fn().mockReturnThis(),
-              limit: jest
-                .fn()
-                .mockResolvedValue([
-                  { id: testProjectId, organizationId: testOrgId },
-                ]),
-            } as unknown;
-          }
-          return {
-            from: jest.fn().mockReturnThis(),
-            where: jest.fn().mockReturnThis(),
-            limit: jest.fn().mockResolvedValue([{ role: Role.PROJECT_ADMIN }]),
-          } as unknown;
-        });
+      it("should recognize PROJECT_ADMIN can delete in projects", () => {
+        const ctx = {
+          userId: testUserId,
+          organizationId: testOrgId,
+          project: { id: testProjectId, userRole: Role.PROJECT_ADMIN },
+        };
 
-        const result = await canDeleteVariableInProject(
-          testUserId,
-          testProjectId
-        );
+        const result = checkPermissionWithContext("variable", "delete", ctx);
 
         expect(result).toBe(true);
       });
@@ -1052,9 +903,9 @@ describe("RBAC Middleware", () => {
           limit: jest.fn().mockResolvedValue([]),
         } as unknown);
 
-        const result = await canCreateVariableInProject(testUserId, "");
+        const result = await resolveProjectPermissionContext(testUserId, "");
 
-        expect(result).toBe(false);
+        expect(result).toBeNull();
       });
     });
 
@@ -1091,31 +942,48 @@ describe("RBAC Middleware", () => {
         expect(result2).toBeDefined();
       });
 
-      it("should handle concurrent permission checks", async () => {
+      it("should handle concurrent permission context resolutions", async () => {
+        mockIsSuperAdmin.mockResolvedValue(false);
         mockNormalizeRole.mockReturnValue(Role.ORG_OWNER);
+        let callCount = 0;
+        mockDbSelect.mockImplementation(() => {
+          callCount++;
+          // Alternate between project lookup and org role
+          if (callCount % 2 === 1) {
+            return {
+              from: jest.fn().mockReturnThis(),
+              where: jest.fn().mockReturnThis(),
+              limit: jest.fn().mockResolvedValue([
+                { id: testProjectId, organizationId: testOrgId },
+              ]),
+            } as unknown;
+          }
+          return {
+            from: jest.fn().mockReturnThis(),
+            where: jest.fn().mockReturnThis(),
+            limit: jest.fn().mockResolvedValue([{ role: "owner" }]),
+          } as unknown;
+        });
 
         const promises = Array.from({ length: 5 }, () =>
-          canCreateVariableInProject(testUserId, testProjectId)
+          resolveProjectPermissionContext(testUserId, testProjectId)
         );
 
         const results = await Promise.all(promises);
 
-        expect(results.every((r) => r === true)).toBe(true);
+        expect(results.every((r) => r !== null)).toBe(true);
       });
     });
 
     describe("Error Recovery", () => {
-      it("should return false on database error in variable permission check", async () => {
+      it("should throw on database error in permission context resolution", async () => {
         mockDbSelect.mockImplementation(() => {
           throw new Error("Database unavailable");
         });
 
-        const result = await canCreateVariableInProject(
-          testUserId,
-          testProjectId
-        );
-
-        expect(result).toBe(false);
+        await expect(
+          resolveProjectPermissionContext(testUserId, testProjectId)
+        ).rejects.toThrow("Database unavailable");
       });
     });
   });

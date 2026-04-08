@@ -1,16 +1,20 @@
 ---
 title: Variables
-description: Store configuration and secrets securely
+description: Store configuration, secrets, and data files securely
 icon: Variable
 ---
 
-Variables let you store configuration values and sensitive credentials that your tests can access at runtime. Use variables for URLs, timeouts, and settings. Use secrets for API keys, passwords, and tokens that need encryption.
+Variables let you store configuration values, sensitive credentials, and reusable test data that your tests can access at runtime. Use variables for URLs, timeouts, and settings. Use secrets for API keys, passwords, and tokens that need encryption. Use file variables for CSV datasets, JSON fixtures, YAML/XML configuration, and other text-based test assets.
 
 ![Variables List](/screenshots/variables-list.png)
 
-## Variables vs Secrets
+<Callout type="info">
+Use file variables for non-sensitive test data and fixtures. Keep passwords, API keys, and tokens in **Secrets**, not inside uploaded files.
+</Callout>
 
-<Tabs items={['Variables', 'Secrets']}>
+## Variables vs Secrets vs Files
+
+<Tabs items={['Variables', 'Secrets', 'Files']}>
 <Tab value="Variables">
 
 - **Storage:** Plain text
@@ -27,19 +31,29 @@ Variables let you store configuration values and sensitive credentials that your
 - **Use For:** API keys, passwords, tokens
 
 </Tab>
+<Tab value="Files">
+
+- **Storage:** S3/MinIO object storage
+- **Max Size:** 5 MB
+- **Supported Types:** CSV, JSON, YAML, XML, TSV, plain text
+- **Access:** Playwright can use `readFile(key)`; k6 should use `open(getFile(key))` in init context
+- **Use For:** Test data sets, configuration files, fixtures, parameterized test inputs
+
+</Tab>
 </Tabs>
 
 ## Creating Variables
 
-<Tabs items={['Add Variable', 'Add Secret']}>
+<Tabs items={['Add Variable', 'Add Secret', 'Add File']}>
 <Tab value="Add Variable">
 
 1. Go to your project's **Variables** page
 2. Click **Add Variable**
-3. Enter a **key** (e.g., `BASE_URL`)
-4. Enter the **value** (e.g., `https://staging.example.com`)
-5. Optionally add a **description** for your team
-6. Click **Save**
+3. Select the **Variable** type (default)
+4. Enter a **key** (e.g., `BASE_URL`)
+5. Enter the **value** (e.g., `https://staging.example.com`)
+6. Optionally add a **description** for your team
+7. Click **Add Variable**
 
 ![Add Variable](/screenshots/add-variable.png)
 
@@ -48,15 +62,31 @@ Variables let you store configuration values and sensitive credentials that your
 
 1. Go to your project's **Variables** page
 2. Click **Add Variable**
-3. Enter a **key** (e.g., `API_KEY`)
-4. Enter the **value**
-5. Check the **Secret** checkbox
-6. Click **Save**
+3. Select the **Secret** type from the Type dropdown
+4. Enter a **key** (e.g., `API_KEY`)
+5. Enter the **value**
+6. Optionally add a **description**
+7. Click **Add Variable**
 
 ![Add Secret](/screenshots/add-secret.png)
 
 <Callout type="info">
 Secret values are masked by default in the UI. Users with secret-view permission can explicitly reveal a value via the dedicated action.
+</Callout>
+
+</Tab>
+<Tab value="Add File">
+
+1. Go to your project's **Variables** page
+2. Click **Add Variable**
+3. Select the **File** type
+4. Enter a **key** (e.g., `TEST_DATA`)
+5. Upload a file (CSV, JSON, YAML, XML, TSV, or plain text — max 5 MB)
+6. Optionally add a **description**
+7. Click **Add Variable**
+
+<Callout type="info">
+File variables are stored in S3/MinIO and made available inside the test execution container at runtime. In Playwright, use `readFile(key)` to read the contents directly. In k6, use `open(getFile(key))` during init context, and prefer `SharedArray` for datasets reused across VUs. To rotate a dataset without changing scripts, keep the same variable key and upload a replacement file.
 </Callout>
 
 </Tab>
@@ -66,7 +96,7 @@ Secret values are masked by default in the UI. Users with secret-view permission
 
 Access variables and secrets in your test code using the built-in functions:
 
-<Tabs items={['getVariable()', 'getSecret()']}>
+<Tabs items={['getVariable()', 'getSecret()', 'readFile()', 'getFile()']}>
 <Tab value="getVariable()">
 
 Use for non-sensitive configuration:
@@ -111,7 +141,54 @@ const dbPassword = getSecret('DB_PASSWORD');
 ```
 
 </Tab>
+<Tab value="readFile()">
+
+Use in Playwright and other Node.js-based test execution when you want the uploaded file contents as a string:
+
+```javascript
+/**
+ * readFile() returns the contents of a file variable directly.
+ * This is the simplest option for Playwright fixtures and datasets.
+ */
+const playwrightCsvContent = readFile('TEST_DATA');
+
+const rows = playwrightCsvContent
+  .split('\n')
+  .slice(1)
+  .filter(Boolean)
+  .map((row) => row.split(','));
+
+for (const [name, email] of rows) {
+  await page.fill('#name', name);
+  await page.fill('#email', email);
+}
+```
+
+</Tab>
+<Tab value="getFile()">
+
+Use in k6 when you need the resolved file path and want k6 to load the file during init context:
+
+```javascript
+/**
+ * File variables are uploaded via the Variables page.
+ * k6 should use open(getFile(key)) in init context.
+ * Playwright can also call getFile(key) when another helper needs the file path.
+ */
+
+// k6
+const k6CsvContent = open(getFile('TEST_DATA'));
+
+// Playwright path-based usage
+const configPath = getFile('CONFIG_FILE');
+```
+
+</Tab>
 </Tabs>
+
+<Callout type="warn">
+`readFile()` is for Playwright and other Node.js-based execution. k6 does not support `readFile()`. For k6, always use `open(getFile('KEY'))` during init context.
+</Callout>
 
 ### Secret Protection
 
@@ -138,7 +215,7 @@ const actualKey = getSecret('API_KEY');
 
 ## Common Patterns
 
-<Tabs items={['Environment-Based', 'API Testing', 'Database Testing', 'Feature Flags', 'k6 Performance']}>
+<Tabs items={['Environment-Based', 'API Testing', 'Database Testing', 'Feature Flags', 'k6 Performance', 'Data-Driven (File)']}>
 <Tab value="Environment-Based">
 
 ```javascript
@@ -215,6 +292,7 @@ if (featureEnabled) {
 /**
  * Using variables in k6 load tests.
  * Variables are injected at runtime.
+ * For uploaded file datasets, use open(getFile('KEY')) during init context.
  * @see https://grafana.com/docs/k6/latest/using-k6/http-requests/
  */
 import http from 'k6/http';
@@ -230,7 +308,46 @@ export default function () {
 ```
 
 </Tab>
+<Tab value="Data-Driven (File)">
+
+```javascript
+/**
+ * Playwright data-driven testing using a CSV file variable.
+ * Upload your test data CSV via Variables page as a file variable.
+ * For k6, use open(getFile('USER_DATA')) inside SharedArray.
+ */
+const csv = readFile('USER_DATA');
+const users = csv
+  .split('\n')
+  .slice(1) // Skip header row
+  .filter(line => line.trim())
+  .map(line => {
+    const [name, email, role] = line.split(',');
+    return { name, email, role };
+  });
+
+// Test each user from the data file
+for (const user of users) {
+  await page.goto(getVariable('BASE_URL') + '/admin/users');
+  await page.click('button:has-text("Add User")');
+  await page.fill('#name', user.name);
+  await page.fill('#email', user.email);
+  await page.selectOption('#role', user.role);
+  await page.click('button[type="submit"]');
+  await expect(page.locator('.toast-success')).toBeVisible();
+}
+```
+
+</Tab>
 </Tabs>
+
+## File Variable Best Practices
+
+- Use file variables for reusable datasets and fixtures, not secrets or credentials
+- Keep files small and text-based; split large datasets or generate them dynamically when needed
+- Prefer JSON for nested structured data and CSV/TSV for tabular records
+- Validate and parse uploaded content defensively before using it in tests
+- Avoid logging full dataset contents in CI or shared environments unless you explicitly need that output
 
 ## Variable Naming Conventions
 
@@ -259,7 +376,7 @@ Use clear, consistent naming for your variables:
 <Tabs items={['Encryption', 'Access Control', 'Audit Trail']}>
 <Tab value="Encryption">
 
-- Secrets are encrypted using **AES-128-GCM** with authenticated encryption
+- Secrets are encrypted using **AES-128-GCM** authenticated encryption (Node.js `crypto`)
 - Encryption keys are derived per-project using HKDF-SHA256
 - Values are encrypted at rest in the database
 

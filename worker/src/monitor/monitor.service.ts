@@ -107,7 +107,7 @@ export class MonitorService {
     // Check if monitor is paused before execution
     try {
       const monitor = await this.dbService.db.query.monitors.findFirst({
-        where: (monitors, { eq }) => eq(monitors.id, jobData.monitorId),
+        where: eq(schema.monitors.id, jobData.monitorId),
       });
 
       if (!monitor) {
@@ -343,7 +343,7 @@ export class MonitorService {
     jobData: MonitorJobDataDto,
   ): Promise<MonitorExecutionResult[]> {
     const monitor = await this.dbService.db.query.monitors.findFirst({
-      where: (monitors, { eq }) => eq(monitors.id, jobData.monitorId),
+      where: eq(schema.monitors.id, jobData.monitorId),
     });
 
     if (!monitor) {
@@ -1907,7 +1907,7 @@ export class MonitorService {
 
   async getMonitorById(monitorId: string): Promise<Monitor | undefined> {
     return this.dbService.db.query.monitors.findFirst({
-      where: (monitors, { eq }) => eq(monitors.id, monitorId),
+      where: eq(schema.monitors.id, monitorId),
     }) as Promise<Monitor | undefined>;
   }
 
@@ -1921,7 +1921,7 @@ export class MonitorService {
     try {
       // Get current monitor config from database to check SSL last checked timestamp
       const monitor = await this.dbService.db.query.monitors.findFirst({
-        where: (monitors, { eq }) => eq(monitors.id, monitorId),
+        where: eq(schema.monitors.id, monitorId),
       });
 
       if (!monitor || !monitor.config) {
@@ -1986,7 +1986,7 @@ export class MonitorService {
   private async updateSslLastChecked(monitorId: string): Promise<void> {
     try {
       const monitor = await this.dbService.db.query.monitors.findFirst({
-        where: (monitors, { eq }) => eq(monitors.id, monitorId),
+        where: eq(schema.monitors.id, monitorId),
       });
 
       if (!monitor) {
@@ -2106,12 +2106,11 @@ export class MonitorService {
   private async getLastSslAlert(monitorId: string): Promise<Date | null> {
     try {
       const lastAlert = await this.dbService.db.query.alertHistory.findFirst({
-        where: (alertHistory, { eq, and }) =>
-          and(
-            eq(alertHistory.monitorId, monitorId),
-            eq(alertHistory.type, 'ssl_expiring'),
-          ),
-        orderBy: (alertHistory, { desc }) => [desc(alertHistory.sentAt)],
+        where: and(
+          eq(schema.alertHistory.monitorId, monitorId),
+          eq(schema.alertHistory.type, 'ssl_expiring'),
+        ),
+        orderBy: [desc(schema.alertHistory.sentAt)],
       });
 
       return lastAlert?.sentAt ? new Date(lastAlert.sentAt) : null;
@@ -2130,7 +2129,7 @@ export class MonitorService {
   private async recordSslAlert(monitorId: string): Promise<void> {
     try {
       const monitor = await this.dbService.db.query.monitors.findFirst({
-        where: (monitors, { eq }) => eq(monitors.id, monitorId),
+        where: eq(schema.monitors.id, monitorId),
       });
 
       if (!monitor) {
@@ -2373,7 +2372,7 @@ export class MonitorService {
    */
   private async evaluateAndSendAlert(options: {
     monitorId: string;
-    monitor: Awaited<ReturnType<typeof this.getMonitorById>>;
+    monitor: Monitor | undefined;
     previousStatus: string;
     currentStatus: 'up' | 'down';
     reason: string;
@@ -2730,6 +2729,7 @@ export class MonitorService {
       // to prevent ReferenceError when user's script calls getVariable/getSecret
       let resolvedVariables: Record<string, string> = {};
       let resolvedSecrets: Record<string, string> = {};
+      let resolvedFiles: Record<string, { storagePath: string; fileName: string; mimeType: string; fileSize: number | null }> = {};
       const projectId = test.projectId;
 
       if (projectId) {
@@ -2747,9 +2747,10 @@ export class MonitorService {
 
           resolvedVariables = variableResolution.variables;
           resolvedSecrets = variableResolution.secrets;
+          resolvedFiles = variableResolution.files ?? {};
 
           this.logger.debug(
-            `[${monitorId}] Resolved ${Object.keys(resolvedVariables).length} variables and ${Object.keys(resolvedSecrets).length} secrets`,
+            `[${monitorId}] Resolved ${Object.keys(resolvedVariables).length} variables, ${Object.keys(resolvedSecrets).length} secrets, and ${Object.keys(resolvedFiles).length} files`,
           );
         } catch (varError) {
           // Log the error but continue with empty variables/secrets
@@ -2760,16 +2761,10 @@ export class MonitorService {
         }
       }
 
-      // ALWAYS prepend getVariable/getSecret function implementations
-      // This ensures the functions are defined even if there are no variables configured
-      const variableFunctionCode =
-        this.variableResolverService.generateVariableFunctions(
-          resolvedVariables,
-          resolvedSecrets,
-        );
-      decodedScript = variableFunctionCode + '\n' + decodedScript;
-
       // 4. Execute test using existing ExecutionService
+      // Pass variables, secrets, and files through the task object so that
+      // runSingleTest's prependVariableRuntimeHelpers handles all injection
+      // uniformly (via base64-encoded env vars) including file variable downloads.
       this.logger.log(
         `[${monitorId}] Executing Playwright test: ${test.title}`,
       );
@@ -2778,6 +2773,9 @@ export class MonitorService {
         {
           testId: test.id,
           code: decodedScript,
+          variables: resolvedVariables,
+          secrets: resolvedSecrets,
+          files: resolvedFiles,
         },
         true,
         true,
@@ -2789,7 +2787,7 @@ export class MonitorService {
 
       // 5. Track Playwright usage for billing (synthetic monitors count as Playwright execution)
       const monitor = await this.dbService.db.query.monitors.findFirst({
-        where: (monitors, { eq }) => eq(monitors.id, monitorId),
+        where: eq(schema.monitors.id, monitorId),
       });
 
       if (monitor?.organizationId) {

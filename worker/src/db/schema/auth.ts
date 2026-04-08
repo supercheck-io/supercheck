@@ -143,11 +143,14 @@ export const apikey = pgTable(
     id: uuid('id')
       .primaryKey()
       .$defaultFn(() => sql`uuidv7()`),
+    // @better-auth/api-key v1.6.0 renamed userId -> referenceId.
+    // The DB column stays as 'user_id' for backward compatibility.
+    configId: text('config_id').notNull().default('default'),
     name: text('name'),
     start: text('start'),
     prefix: text('prefix'),
     key: text('key').notNull().unique(),
-    userId: uuid('user_id')
+    referenceId: uuid('user_id')
       .notNull()
       .references(() => user.id, { onDelete: 'no action' }),
     jobId: uuid('job_id').references(() => jobs.id, { onDelete: 'cascade' }),
@@ -173,8 +176,10 @@ export const apikey = pgTable(
   (table) => ({
     // Index on key for API key authentication
     keyIdx: index('apikey_key_idx').on(table.key),
-    // Index on user_id for listing user's API keys
-    userIdIdx: index('apikey_user_id_idx').on(table.userId),
+    // Index on config_id for api-key plugin lookups
+    configIdIdx: index('apikey_config_id_idx').on(table.configId),
+    // Index on user_id (referenceId) for listing user's API keys
+    userIdIdx: index('apikey_user_id_idx').on(table.referenceId),
     // Index on project_id for project-scoped API keys
     projectIdIdx: index('apikey_project_id_idx').on(table.projectId),
     // Index on job_id for job-specific API keys

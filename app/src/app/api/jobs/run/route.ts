@@ -351,6 +351,7 @@ export async function POST(request: Request) {
           script: primaryScript,
           variables: variableResolution.variables,
           secrets: variableResolution.secrets,
+          files: variableResolution.files,
           tests: processedTestScripts.map((script) => ({
             id: script.id,
             script: script.script,
@@ -380,6 +381,7 @@ export async function POST(request: Request) {
           projectId: jobRecord?.projectId || "",
           variables: variableResolution.variables,
           secrets: variableResolution.secrets,
+          files: variableResolution.files,
           jobType,
         };
 
