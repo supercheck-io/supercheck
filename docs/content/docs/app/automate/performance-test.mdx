@@ -140,7 +140,17 @@ thresholds: {
 /**
  * Using project variables and secrets in k6 tests.
  * Secrets are resolved at runtime and redacted from logs.
+ * For uploaded datasets, load them in init context with open(getFile()).
  */
+import { SharedArray } from 'k6/data';
+
+const users = new SharedArray('users', () =>
+  open(getFile('USERS_CSV'))
+    .split('\n')
+    .slice(1)
+    .filter(Boolean)
+);
+
 export default function () {
   const baseUrl = getVariable('API_URL');
   const apiKey = getSecret('API_KEY');

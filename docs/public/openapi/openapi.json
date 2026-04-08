@@ -2352,7 +2352,7 @@
       "get": {
         "operationId": "listVariables",
         "summary": "List variables",
-        "description": "List all environment variables for the current project. Secret values are redacted in the response.",
+        "description": "List all project variables for the current project. Secret values are redacted in the response. File-type variables include metadata such as type, fileName, fileSize, and mimeType.",
         "tags": [
           "Variables"
         ],
@@ -2378,7 +2378,7 @@
       "post": {
         "operationId": "createVariable",
         "summary": "Create a variable",
-        "description": "Create a new project environment variable. Variables are available to all test executions in the project.",
+        "description": "Create a new text or secret project variable. File-type variables are managed through the project UI upload workflow rather than this public JSON endpoint.",
         "tags": [
           "Variables"
         ],
@@ -2446,7 +2446,7 @@
       "get": {
         "operationId": "getVariable",
         "summary": "Get a variable",
-        "description": "Retrieve a single variable. Secret values are redacted.",
+        "description": "Retrieve a single variable. Secret values are redacted, and file-type variables return metadata rather than file contents.",
         "tags": [
           "Variables"
         ],
@@ -2472,7 +2472,7 @@
       "put": {
         "operationId": "updateVariable",
         "summary": "Update a variable",
-        "description": "Update an existing variable's key, value, or secret flag.",
+        "description": "Update an existing text or secret variable's key, value, secret flag, or description. File-type variables must be managed through the project UI upload workflow.",
         "tags": [
           "Variables"
         ],
@@ -4325,12 +4325,25 @@
             "type": "string",
             "format": "uuid"
           },
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
           "key": {
             "type": "string"
           },
+          "type": {
+            "type": "string",
+            "enum": [
+              "variable",
+              "secret",
+              "file"
+            ],
+            "description": "Variable type. File variables expose metadata in API responses; file contents are not returned."
+          },
           "value": {
             "type": "string",
-            "description": "Redacted for secrets"
+            "description": "Plaintext for regular variables, redacted for secrets, and empty for file variables"
           },
           "isSecret": {
             "type": "boolean"
@@ -4339,9 +4352,26 @@
             "type": "string",
             "nullable": true
           },
+          "fileName": {
+            "type": "string",
+            "nullable": true
+          },
+          "fileSize": {
+            "type": "integer",
+            "nullable": true
+          },
+          "mimeType": {
+            "type": "string",
+            "nullable": true
+          },
           "createdAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
           }
         }
       },

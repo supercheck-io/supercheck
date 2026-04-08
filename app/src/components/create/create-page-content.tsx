@@ -2,7 +2,7 @@
 import React, { useState, useCallback } from "react";
 import { CreateCard } from "./create-card";
 import { useRouter } from "next/navigation";
-import { Video, Variable, Shield, Tally4, Chrome } from "lucide-react";
+import { Video, Variable, Shield, Tally4, Chrome, FileText } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -95,6 +95,11 @@ export function CreatePageContent() {
       icon: <Shield size={20} className="text-red-500" />,
       title: "Secret",
       onClick: () => router.push("/variables?create=true&type=secret"),
+    },
+    {
+      icon: <FileText size={20} className="text-green-500" />,
+      title: "File",
+      onClick: () => router.push("/variables?create=true&type=file"),
     },
   ];
 
@@ -246,9 +251,9 @@ export function CreatePageContent() {
       </div>
 
       <div className="mt-6 mb-3 pl-1">
-        <h2 className="text-md font-semibold">Create Variables & Secrets</h2>
+        <h2 className="text-md font-semibold">Create Variable</h2>
         <p className="text-muted-foreground text-sm mt-0.5">
-          Configure environment variables and secure secrets
+          Create a variable, secret, or file for your project
         </p>
       </div>
 

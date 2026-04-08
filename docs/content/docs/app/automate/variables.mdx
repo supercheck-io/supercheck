@@ -4,9 +4,13 @@ description: Store configuration, secrets, and data files securely
 icon: Variable
 ---
 
-Variables let you store configuration values, sensitive credentials, and data files that your tests can access at runtime. Use variables for URLs, timeouts, and settings. Use secrets for API keys, passwords, and tokens that need encryption. Use file variables for CSV data, JSON fixtures, and configuration files.
+Variables let you store configuration values, sensitive credentials, and reusable test data that your tests can access at runtime. Use variables for URLs, timeouts, and settings. Use secrets for API keys, passwords, and tokens that need encryption. Use file variables for CSV datasets, JSON fixtures, YAML/XML configuration, and other text-based test assets.
 
 ![Variables List](/screenshots/variables-list.png)
+
+<Callout type="info">
+Use file variables for non-sensitive test data and fixtures. Keep passwords, API keys, and tokens in **Secrets**, not inside uploaded files.
+</Callout>
 
 ## Variables vs Secrets vs Files
 
@@ -33,7 +37,7 @@ Variables let you store configuration values, sensitive credentials, and data fi
 - **Max Size:** 5 MB
 - **Supported Types:** CSV, JSON, YAML, XML, TSV, plain text
 - **Access:** Playwright can use `readFile(key)`; k6 should use `open(getFile(key))` in init context
-- **Use For:** Test data sets, configuration files, fixtures
+- **Use For:** Test data sets, configuration files, fixtures, parameterized test inputs
 
 </Tab>
 </Tabs>
@@ -82,7 +86,7 @@ Secret values are masked by default in the UI. Users with secret-view permission
 7. Click **Add Variable**
 
 <Callout type="info">
-File variables are stored in S3/MinIO and made available inside the test execution container at runtime. In Playwright, use `readFile(key)` to read the contents directly. In k6, use `open(getFile(key))` during init context, and prefer `SharedArray` for datasets shared across VUs.
+File variables are stored in S3/MinIO and made available inside the test execution container at runtime. In Playwright, use `readFile(key)` to read the contents directly. In k6, use `open(getFile(key))` during init context, and prefer `SharedArray` for datasets reused across VUs. To rotate a dataset without changing scripts, keep the same variable key and upload a replacement file.
 </Callout>
 
 </Tab>
@@ -92,7 +96,7 @@ File variables are stored in S3/MinIO and made available inside the test executi
 
 Access variables and secrets in your test code using the built-in functions:
 
-<Tabs items={['getVariable()', 'getSecret()', 'getFile()']}>
+<Tabs items={['getVariable()', 'getSecret()', 'readFile()', 'getFile()']}>
 <Tab value="getVariable()">
 
 Use for non-sensitive configuration:
@@ -137,38 +141,54 @@ const dbPassword = getSecret('DB_PASSWORD');
 ```
 
 </Tab>
+<Tab value="readFile()">
+
+Use in Playwright and other Node.js-based test execution when you want the uploaded file contents as a string:
+
+```javascript
+/**
+ * readFile() returns the contents of a file variable directly.
+ * This is the simplest option for Playwright fixtures and datasets.
+ */
+const playwrightCsvContent = readFile('TEST_DATA');
+
+const rows = playwrightCsvContent
+  .split('\n')
+  .slice(1)
+  .filter(Boolean)
+  .map((row) => row.split(','));
+
+for (const [name, email] of rows) {
+  await page.fill('#name', name);
+  await page.fill('#email', email);
+}
+```
+
+</Tab>
 <Tab value="getFile()">
 
-Use for data files uploaded as file variables:
+Use in k6 when you need the resolved file path and want k6 to load the file during init context:
 
 ```javascript
 /**
  * File variables are uploaded via the Variables page.
- * Playwright can read contents directly with readFile(key).
  * k6 should use open(getFile(key)) in init context.
+ * Playwright can also call getFile(key) when another helper needs the file path.
  */
-
-// Playwright
-const playwrightCsvContent = readFile('TEST_DATA');
-
-// Parse CSV
-const rows = playwrightCsvContent.split('\n').map(row => row.split(','));
-const headers = rows[0];
-const data = rows.slice(1).filter(row => row.length === headers.length);
-
-// Use data in tests
-for (const row of data) {
-  await page.fill('#name', row[0]);
-  await page.fill('#email', row[1]);
-  await page.click('button[type="submit"]');
-}
 
 // k6
 const k6CsvContent = open(getFile('TEST_DATA'));
+
+// Playwright path-based usage
+const configPath = getFile('CONFIG_FILE');
 ```
 
 </Tab>
 </Tabs>
+
+<Callout type="warn">
+`readFile()` is for Playwright and other Node.js-based execution. k6 does not support `readFile()`. For k6, always use `open(getFile('KEY'))` during init context.
+</Callout>
 
 ### Secret Protection
 
@@ -320,6 +340,14 @@ for (const user of users) {
 
 </Tab>
 </Tabs>
+
+## File Variable Best Practices
+
+- Use file variables for reusable datasets and fixtures, not secrets or credentials
+- Keep files small and text-based; split large datasets or generate them dynamically when needed
+- Prefer JSON for nested structured data and CSV/TSV for tabular records
+- Validate and parse uploaded content defensively before using it in tests
+- Avoid logging full dataset contents in CI or shared environments unless you explicitly need that output
 
 ## Variable Naming Conventions
 

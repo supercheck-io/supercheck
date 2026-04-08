@@ -13,7 +13,6 @@
     "outDir": "./dist",
     "rootDir": ".",
     "types": ["node"],
-    "baseUrl": ".",
     "paths": {
       "@fixtures/*": ["./fixtures/*"],
       "@pages/*": ["./pages/*"],

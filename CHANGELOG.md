@@ -4,6 +4,17 @@ All notable changes to Supercheck are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
+## [Unreleased]
+
+### Added
+- Configurable API CORS allowlist for self-hosted deployments via `CORS_ALLOWED_ORIGINS`, including support for browser-based integrations such as Azure DevOps dashboard widgets and wildcard subdomains like `https://*.visualstudio.com`
+- Community Integrations section in the README with the public Azure DevOps extension link and setup guidance
+- **File variables for reusable test data** — Project variables can now store text-based files such as CSV, JSON, YAML, XML, TSV, and plain-text fixtures for runtime use in Playwright and k6 tests
+
+### Changed
+- Self-hosted Docker Compose variants now expose `CORS_ALLOWED_ORIGINS` consistently on App deployments while keeping the default value empty for secure-by-default behavior
+- Deployment documentation now explains when browser integrations require CORS and clarifies that pipeline tasks do not
+
 ## [1.3.3] - 2026-03-22
 
 > **⚠️ Breaking Change — New Execution Model**

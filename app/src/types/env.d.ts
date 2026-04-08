@@ -20,6 +20,9 @@ declare namespace NodeJS {
     S3_MAX_RETRIES: string;
 
     // App Config
+    APP_URL?: string;
+    TRUSTED_ORIGINS?: string;
+    CORS_ALLOWED_ORIGINS?: string;
     RUNNING_CAPACITY: string;
     QUEUED_CAPACITY: string;
     TEST_EXECUTION_TIMEOUT_MS: string;
