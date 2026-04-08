@@ -2078,7 +2078,7 @@ export class ExecutionService implements OnModuleDestroy {
    * and creating the file content map + path map for runtime helpers.
    */
   private async prepareFileVariables(
-    files: Record<string, { storagePath: string; fileName: string; mimeType: string; fileSize: number }>,
+    files: Record<string, { storagePath: string; fileName: string; mimeType: string; fileSize: number | null }>,
   ): Promise<{ additionalFiles: Record<string, string>; filePaths: Record<string, string> }> {
     return this.s3Service.prepareFileVariables(files);
   }

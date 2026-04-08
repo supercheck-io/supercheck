@@ -40,7 +40,7 @@ export interface K6ExecutionTask {
   script: string; // Decoded k6 script
   variables?: Record<string, string>; // Resolved variables for runtime helper injection
   secrets?: Record<string, string>; // Resolved secrets for runtime helper injection
-  files?: Record<string, { storagePath: string; fileName: string; mimeType: string; fileSize: number }>; // File variable metadata
+  files?: Record<string, { storagePath: string; fileName: string; mimeType: string; fileSize: number | null }>; // File variable metadata
   jobId?: string | null;
   tests: Array<{ id: string; script: string }>;
   location?: string; // Execution location

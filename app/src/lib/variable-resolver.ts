@@ -2,6 +2,9 @@ import { db } from "@/utils/db";
 import { projectVariables } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { decryptValue } from "@/lib/encryption";
+import { createLogger } from "@/lib/logger/pino-config";
+
+const logger = createLogger({ module: "variable-resolver" });
 
 export interface ResolvedVariable {
   key: string;
@@ -12,7 +15,7 @@ export interface FileVariableMetadata {
   storagePath: string;
   fileName: string;
   mimeType: string;
-  fileSize: number;
+  fileSize: number | null;
 }
 
 export interface VariableResolutionResult {
@@ -20,6 +23,10 @@ export interface VariableResolutionResult {
   secrets: Record<string, string>;
   files: Record<string, FileVariableMetadata>;
   errors?: string[];
+}
+
+function normalizeFileSize(fileSize: number | null | undefined): number | null {
+  return typeof fileSize === "number" && fileSize > 0 ? fileSize : null;
 }
 
 /**
@@ -51,7 +58,9 @@ export async function resolveProjectVariables(
               storagePath: variable.storagePath,
               fileName: variable.fileName,
               mimeType: variable.mimeType || 'application/octet-stream',
-              fileSize: variable.fileSize || 0,
+              // Legacy rows created before file_size was backfilled may still exist.
+              // The worker validates the actual object size before buffering it.
+              fileSize: normalizeFileSize(variable.fileSize),
             };
           } else {
             errors.push(
@@ -80,7 +89,7 @@ export async function resolveProjectVariables(
           resolvedVariables[variable.key] = value;
         }
       } catch (error) {
-        console.error(`Failed to resolve variable '${variable.key}':`, error);
+        logger.warn({ key: variable.key, err: error }, "Failed to resolve variable");
         errors.push(
           `Failed to resolve variable '${variable.key}': ${
             error instanceof Error ? error.message : String(error)
@@ -89,12 +98,6 @@ export async function resolveProjectVariables(
       }
     }
 
-    console.log(
-      `Resolved ${Object.keys(resolvedVariables).length} variables, ${
-        Object.keys(resolvedSecrets).length
-      } secrets, and ${Object.keys(resolvedFiles).length} files for project ${projectId}`
-    );
-
     return {
       variables: resolvedVariables,
       secrets: resolvedSecrets,
@@ -102,9 +105,9 @@ export async function resolveProjectVariables(
       errors: errors.length > 0 ? errors : undefined,
     };
   } catch (error) {
-    console.error(
-      `Failed to resolve variables for project ${projectId}:`,
-      error
+    logger.error(
+      { projectId, err: error },
+      "Failed to resolve variables for project"
     );
     return {
       variables: {},

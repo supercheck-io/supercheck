@@ -79,7 +79,7 @@ export async function GET(
         createdByName: user.name,
       })
       .from(apikey)
-      .leftJoin(user, eq(apikey.userId, user.id))
+      .leftJoin(user, eq(apikey.referenceId, user.id))
       .where(eq(apikey.jobId, jobId))
       .orderBy(apikey.id); // UUIDv7 is time-ordered (PostgreSQL 18+)
 
@@ -246,7 +246,7 @@ export async function POST(
       start: apiKeyStart,
       prefix: "job",
       key: apiKeyHash, // Store hash instead of plain text
-      userId,
+      referenceId: userId,
       jobId: jobId,
       enabled: true,
       expiresAt: expiresAt,

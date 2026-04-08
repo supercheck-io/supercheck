@@ -2,12 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/utils/db";
 import { tests, projects, apikey } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { subscriptionService } from "@/lib/services/subscription-service";
 import { getUserRole, getUserAssignedProjects } from "@/lib/rbac/middleware";
 import { hasPermission as checkPermission } from "@/lib/rbac/permissions";
-import { verifyApiKey } from "@/lib/security/api-key-hash";
+import { hashApiKey } from "@/lib/security/api-key-hash";
 import { createLogger } from "@/lib/logger/pino-config";
 
 const logger = createLogger({ module: "recordings" });
@@ -57,25 +57,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Use SuperCheck's hash-based verification pattern
-    const allKeys = await db
+    const inputHash = hashApiKey(apiKeyHeader.trim());
+
+    const matchingKeys = await db
       .select({
         id: apikey.id,
         key: apikey.key,
-        userId: apikey.userId,
+        userId: apikey.referenceId,
         enabled: apikey.enabled,
         expiresAt: apikey.expiresAt,
+        permissions: apikey.permissions,
+        prefix: apikey.prefix,
       })
       .from(apikey)
-      .where(eq(apikey.enabled, true));
+      .where(and(eq(apikey.key, inputHash), eq(apikey.enabled, true)))
+      .limit(1);
 
-    let matchedKey = null;
-    for (const key of allKeys) {
-      if (verifyApiKey(apiKeyHeader, key.key)) {
-        matchedKey = key;
-        break;
-      }
-    }
+    const matchedKey = matchingKeys[0] ?? null;
 
     if (!matchedKey) {
       logger.warn(
@@ -92,6 +90,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { success: false, error: "API key expired" },
         { status: 401 }
+      );
+    }
+
+    const hasRecorderPermission = Array.isArray(matchedKey.permissions)
+      && matchedKey.permissions.includes("recorder:save");
+    const isExtensionKey = matchedKey.prefix === "ext";
+
+    if (!hasRecorderPermission && !isExtensionKey) {
+      logger.warn(
+        { keyId: matchedKey.id, prefix: matchedKey.prefix },
+        "Non-recorder API key attempted to access recordings endpoint"
+      );
+      return NextResponse.json(
+        {
+          success: false,
+          error: "API key is not authorized for recorder uploads",
+        },
+        { status: 403 }
       );
     }
 

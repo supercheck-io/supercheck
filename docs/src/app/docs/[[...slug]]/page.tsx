@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
-import { source } from '@/lib/source';
-import { getMDXComponents } from '@/mdx-components';
+import { source } from '../../../lib/source';
+import { getMDXComponents } from '../../../mdx-components';
 import { notFound, redirect } from 'next/navigation';
 import { createRelativeLink } from 'fumadocs-ui/mdx';
 import {
@@ -9,7 +9,7 @@ import {
   DocsPage,
   DocsTitle,
 } from 'fumadocs-ui/page';
-import { GitHubIcon } from '@/lib/layout.shared';
+import { GitHubIcon } from '../../../lib/layout.shared';
 import Link from 'next/link';
 
 export const revalidate = false;

@@ -5,6 +5,7 @@ import { eq, and } from "drizzle-orm";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { fetchFromS3 } from "@/lib/s3-proxy";
+import { buildContentDisposition } from "@/lib/content-disposition";
 
 const BUCKET_NAME = process.env.S3_REQUIREMENTS_BUCKET_NAME || "test-requirement-artifacts";
 
@@ -62,7 +63,7 @@ export async function GET(
 
     // Fetch from S3 and stream to client
     return fetchFromS3(BUCKET_NAME, doc.storagePath, {
-      contentDisposition: `attachment; filename="${doc.name}"`,
+      contentDisposition: buildContentDisposition(doc.name),
     });
   } catch (error) {
     if (isAuthError(error)) {

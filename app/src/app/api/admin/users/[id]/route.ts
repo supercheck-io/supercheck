@@ -119,7 +119,7 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
 
     await db.transaction(async (tx) => {
       // 1. Delete API keys (onDelete: "no action" would block user deletion)
-      await tx.delete(apikey).where(eq(apikey.userId, userId));
+      await tx.delete(apikey).where(eq(apikey.referenceId, userId));
 
       // 1b. Delete sessions where this user is the impersonating admin.
       // impersonatedBy is a text column (non-FK), so these rows would otherwise survive.

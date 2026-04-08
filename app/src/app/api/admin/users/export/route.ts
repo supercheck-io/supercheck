@@ -3,6 +3,7 @@ import { db } from "@/utils/db";
 import { user, member, organization } from "@/db/schema";
 import { desc, eq, inArray } from "drizzle-orm";
 import { requireAdmin } from "@/lib/admin";
+import { buildContentDisposition } from "@/lib/content-disposition";
 
 // Batch size for fetching users - keeps memory usage low
 const BATCH_SIZE = 100;
@@ -166,7 +167,7 @@ export async function GET() {
     return new Response(stream, {
       headers: {
         "Content-Type": "text/csv; charset=utf-8",
-        "Content-Disposition": `attachment; filename="${filename}"`,
+        "Content-Disposition": buildContentDisposition(filename),
         "Cache-Control": "no-cache, no-store, must-revalidate",
       },
     });

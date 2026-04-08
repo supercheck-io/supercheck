@@ -21,7 +21,7 @@ export interface FileVariableMetadata {
   storagePath: string;
   fileName: string;
   mimeType: string;
-  fileSize: number;
+  fileSize: number | null;
 }
 
 export interface VariableResolutionResult {
@@ -52,6 +52,10 @@ function decryptValue(encryptedValue: string, projectId: string): string {
 
   const envelope = decodeEnvelope(encryptedValue);
   return decryptSecret(envelope, { context: projectId });
+}
+
+function normalizeFileSize(fileSize: number | null | undefined): number | null {
+  return typeof fileSize === 'number' && fileSize > 0 ? fileSize : null;
 }
 
 @Injectable()
@@ -89,7 +93,9 @@ export class VariableResolverService {
                 storagePath: variable.storagePath,
                 fileName: variable.fileName,
                 mimeType: variable.mimeType || 'application/octet-stream',
-                fileSize: variable.fileSize || 0,
+                // Legacy rows may not have persisted file_size metadata yet.
+                // The download layer validates the actual object size.
+                fileSize: normalizeFileSize(variable.fileSize),
               };
             } else {
               errors.push(

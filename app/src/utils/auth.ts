@@ -2,7 +2,8 @@ import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { db } from "@/utils/db";
 import { authSchema } from "@/db/schema";
-import { apiKey, organization, admin, lastLoginMethod, captcha } from "better-auth/plugins";
+import { organization, admin, lastLoginMethod, captcha } from "better-auth/plugins";
+import { apiKey } from "@better-auth/api-key";
 import { ac, roles, Role } from "@/lib/rbac/permissions";
 import { EmailService } from "@/lib/email-service";
 import {

@@ -136,7 +136,7 @@ export function DataTableToolbar<TData>({
                       Variables, Secrets & Files
                     </h3>
                     <p className="text-xs text-muted-foreground">
-                      Three helper functions available in Playwright and k6
+                      Four helper functions available in Playwright and k6
                       scripts.
                     </p>
                   </div>

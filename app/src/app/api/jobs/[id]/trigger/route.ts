@@ -89,7 +89,7 @@ export async function POST(
         enabled: apikey.enabled,
         expiresAt: apikey.expiresAt,
         jobId: apikey.jobId,
-        userId: apikey.userId,
+        userId: apikey.referenceId,
         lastRequest: apikey.lastRequest,
         requestCount: apikey.requestCount,
         rateLimitEnabled: apikey.rateLimitEnabled,

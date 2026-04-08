@@ -120,7 +120,7 @@ async function authenticateCliToken(token: string): Promise<AuthContext | null> 
     .select({
       id: apikey.id,
       key: apikey.key,
-      userId: apikey.userId,
+      userId: apikey.referenceId,
       projectId: apikey.projectId,
       enabled: apikey.enabled,
       expiresAt: apikey.expiresAt,

@@ -138,6 +138,64 @@ describe('Variable Resolver', () => {
     });
 
     describe('Negative Cases', () => {
+      it('should preserve legacy file variables when file size metadata is missing', async () => {
+        mockWhere.mockResolvedValue([
+          {
+            key: 'BROKEN_FILE',
+            value: '',
+            isSecret: false,
+            encryptedValue: null,
+            projectId: testProjectId,
+            type: 'file',
+            storagePath: 'variables/project-123/BROKEN_FILE',
+            fileName: 'data.csv',
+            fileSize: null,
+            mimeType: 'text/csv',
+          },
+        ]);
+
+        const result = await resolveProjectVariables(testProjectId);
+
+        expect(result.files).toEqual({
+          BROKEN_FILE: {
+            storagePath: 'variables/project-123/BROKEN_FILE',
+            fileName: 'data.csv',
+            mimeType: 'text/csv',
+            fileSize: null,
+          },
+        });
+        expect(result.errors).toBeUndefined();
+      });
+
+      it('should treat non-positive file size metadata as unknown instead of dropping the file', async () => {
+        mockWhere.mockResolvedValue([
+          {
+            key: 'BROKEN_FILE',
+            value: '',
+            isSecret: false,
+            encryptedValue: null,
+            projectId: testProjectId,
+            type: 'file',
+            storagePath: 'variables/project-123/BROKEN_FILE',
+            fileName: 'data.csv',
+            fileSize: 0,
+            mimeType: 'text/csv',
+          },
+        ]);
+
+        const result = await resolveProjectVariables(testProjectId);
+
+        expect(result.files).toEqual({
+          BROKEN_FILE: {
+            storagePath: 'variables/project-123/BROKEN_FILE',
+            fileName: 'data.csv',
+            mimeType: 'text/csv',
+            fileSize: null,
+          },
+        });
+        expect(result.errors).toBeUndefined();
+      });
+
       it('should handle decryption failure gracefully', async () => {
         mockDecryptValue.mockImplementation(() => {
           throw new Error('Decryption failed');

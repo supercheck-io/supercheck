@@ -7,6 +7,7 @@ import { requireUserAuthContext, isAuthError } from "@/lib/auth-context";
 import { getS3Client } from "@/lib/s3-proxy";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { ALLOWED_FILE_MIME_TYPES } from "@/lib/validations/variable";
+import { buildContentDisposition } from "@/lib/content-disposition";
 
 const FILE_VARIABLES_BUCKET = process.env.S3_PROJECT_DATA_FILES_BUCKET_NAME || "project-data-files";
 
@@ -92,11 +93,9 @@ export async function GET(
     // Stream the S3 response directly instead of buffering in memory
     const stream = s3Response.Body.transformToWebStream();
 
-    const fileName = variable.fileName || "file";
-    const encodedFileName = encodeURIComponent(fileName);
     const headers: Record<string, string> = {
       "Content-Type": contentType,
-      "Content-Disposition": `attachment; filename="${encodedFileName}"; filename*=UTF-8''${encodedFileName}`,
+      "Content-Disposition": buildContentDisposition(variable.fileName || "file"),
     };
     if (s3Response.ContentLength !== undefined) {
       headers["Content-Length"] = String(s3Response.ContentLength);

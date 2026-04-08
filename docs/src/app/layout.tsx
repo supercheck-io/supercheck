@@ -1,7 +1,7 @@
-import '@/app/global.css';
+import './global.css';
 import { RootProvider } from 'fumadocs-ui/provider/next';
 import { Inter } from 'next/font/google';
-import SearchDialogWrapper from '@/components/search';
+import SearchDialogWrapper from '../components/search';
 import type { Metadata } from 'next';
 
 const inter = Inter({

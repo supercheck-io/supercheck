@@ -53,7 +53,7 @@ export interface FileVariableInfo {
   storagePath: string;
   fileName: string;
   mimeType: string;
-  fileSize: number;
+  fileSize: number | null;
 }
 
 // Task data for the test execution queue

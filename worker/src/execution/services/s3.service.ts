@@ -370,6 +370,7 @@ export class S3Service implements OnModuleInit {
   async downloadFileToBuffer(
     s3Key: string,
     bucket: string,
+    maxBytes?: number,
   ): Promise<Buffer> {
     try {
       const response = await this.withRetry(
@@ -387,9 +388,30 @@ export class S3Service implements OnModuleInit {
         throw new Error(`Empty response body for S3 key: ${s3Key}`);
       }
 
+      if (
+        typeof maxBytes === 'number' &&
+        typeof response.ContentLength === 'number' &&
+        response.ContentLength > maxBytes
+      ) {
+        throw new Error(
+          `File ${s3Key} exceeds the remaining ${Math.floor(
+            maxBytes / (1024 * 1024),
+          )} MB file-variable budget.`,
+        );
+      }
+
       const chunks: Uint8Array[] = [];
+      let totalBytes = 0;
       const stream = response.Body as AsyncIterable<Uint8Array>;
       for await (const chunk of stream) {
+        totalBytes += chunk.byteLength;
+        if (typeof maxBytes === 'number' && totalBytes > maxBytes) {
+          throw new Error(
+            `File ${s3Key} exceeds the remaining ${Math.floor(
+              maxBytes / (1024 * 1024),
+            )} MB file-variable budget.`,
+          );
+        }
         chunks.push(chunk);
       }
       return Buffer.concat(chunks);
@@ -407,7 +429,7 @@ export class S3Service implements OnModuleInit {
    * Returns additionalFiles (containerPath -> content) and filePaths (key -> containerPath).
    */
   async prepareFileVariables(
-    files: Record<string, { storagePath: string; fileName: string; mimeType: string; fileSize: number }>,
+    files: Record<string, { storagePath: string; fileName: string; mimeType: string; fileSize: number | null }>,
   ): Promise<{ additionalFiles: Record<string, string>; filePaths: Record<string, string> }> {
     const additionalFiles: Record<string, string> = {};
     const filePaths: Record<string, string> = {};
@@ -416,7 +438,10 @@ export class S3Service implements OnModuleInit {
       return { additionalFiles, filePaths };
     }
 
-    const totalBytes = Object.values(files).reduce((sum, m) => sum + m.fileSize, 0);
+    const totalBytes = Object.values(files).reduce(
+      (sum, m) => sum + (typeof m.fileSize === 'number' && m.fileSize > 0 ? m.fileSize : 0),
+      0,
+    );
     if (totalBytes > MEMORY_LIMITS.MAX_TOTAL_FILE_VARIABLES_BYTES) {
       const totalMB = (totalBytes / (1024 * 1024)).toFixed(1);
       const limitMB = (MEMORY_LIMITS.MAX_TOTAL_FILE_VARIABLES_BYTES / (1024 * 1024)).toFixed(0);
@@ -427,9 +452,52 @@ export class S3Service implements OnModuleInit {
     }
 
     const bucket = this.getBucketForEntityType('project_data_files');
+    let downloadedBytes = 0;
 
     for (const [key, meta] of Object.entries(files)) {
-      const buffer = await this.downloadFileToBuffer(meta.storagePath, bucket);
+      const remainingBudget =
+        MEMORY_LIMITS.MAX_TOTAL_FILE_VARIABLES_BYTES - downloadedBytes;
+
+      if (remainingBudget <= 0) {
+        throw new Error('Total file variable size exceeds the per-run limit.');
+      }
+
+      if (typeof meta.fileSize === 'number' && meta.fileSize > remainingBudget) {
+        const requestedMB = (meta.fileSize / (1024 * 1024)).toFixed(1);
+        const remainingMB = (remainingBudget / (1024 * 1024)).toFixed(1);
+        throw new Error(
+          `File variable '${key}' requires ${requestedMB} MB but only ${remainingMB} MB remains in the per-run budget.`,
+        );
+      }
+
+      const buffer = await this.downloadFileToBuffer(
+        meta.storagePath,
+        bucket,
+        remainingBudget,
+      );
+      downloadedBytes += buffer.length;
+
+      if (downloadedBytes > MEMORY_LIMITS.MAX_TOTAL_FILE_VARIABLES_BYTES) {
+        const downloadedMB = (downloadedBytes / (1024 * 1024)).toFixed(1);
+        const limitMB = (
+          MEMORY_LIMITS.MAX_TOTAL_FILE_VARIABLES_BYTES /
+          (1024 * 1024)
+        ).toFixed(0);
+        throw new Error(
+          `Total file variable size (${downloadedMB} MB) exceeds the ${limitMB} MB per-run limit. ` +
+            `Remove unused file variables or reduce file sizes.`,
+        );
+      }
+
+      if (
+        typeof meta.fileSize === 'number' &&
+        meta.fileSize > 0 &&
+        meta.fileSize !== buffer.length
+      ) {
+        this.logger.warn(
+          `File variable '${key}' size metadata (${meta.fileSize}) did not match downloaded size (${buffer.length})`,
+        );
+      }
       // Sanitize filename to prevent path traversal (e.g. ../../etc/passwd)
       const sanitizedFileName = meta.fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
       const containerFileName = `data/${key}/${sanitizedFileName}`;
