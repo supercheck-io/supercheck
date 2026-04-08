@@ -180,15 +180,18 @@ function isCustomDomain(cleanHostname: string, appHostname: string): boolean {
     return false;
   }
 
-  // Custom domains are valid if they don't end with the status page domain
+  // Custom domains are valid if they don't match or belong to the status page domain namespace
   const statusPageDomain = getStatusPageDomainForRouting();
   if (!statusPageDomain) {
     return true;
   }
 
+  // Use exact match + dot-prefix matching to avoid false negatives.
+  // Without the dot prefix, "myexample.com".endsWith("example.com") would
+  // incorrectly reject a valid custom domain.
   return (
-    !cleanHostname.endsWith(`.${statusPageDomain}`) &&
-    !cleanHostname.endsWith(statusPageDomain)
+    cleanHostname !== statusPageDomain &&
+    !cleanHostname.endsWith(`.${statusPageDomain}`)
   );
 }
 

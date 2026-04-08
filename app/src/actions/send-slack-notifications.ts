@@ -14,6 +14,7 @@ import {
   type SlackIncidentEvent,
 } from "@/lib/slack-delivery.service";
 import { getPublicStatusPageUrl } from "@/lib/domain-utils";
+import { getEffectiveStatusPageDomain } from "@/lib/status-page-domain";
 
 /**
  * Send Slack notifications to all verified Slack subscribers
@@ -137,6 +138,7 @@ export async function sendSlackNotifications(
       customDomain: statusPage.customDomain,
       customDomainVerified: statusPage.customDomainVerified,
       appUrl: baseUrl,
+      statusPageDomain: getEffectiveStatusPageDomain(),
     });
 
     // Prepare Slack event payload

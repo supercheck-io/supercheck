@@ -124,6 +124,7 @@ export function StatusPageDetail({
     subdomain: statusPage.subdomain,
     customDomain: statusPage.customDomain,
     customDomainVerified: statusPage.customDomainVerified,
+    statusPageDomain,
   });
 
   const handleCopyUrl = () => {

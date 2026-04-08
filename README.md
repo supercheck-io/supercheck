@@ -157,7 +157,7 @@ Official docs:
 - [Monitor](https://supercheck.io/docs/app/monitor)
 - [Communicate (Alerts, Status Pages)](https://supercheck.io/docs/app/communicate)
 - [Admin](https://supercheck.io/docs/app/admin)
-- [CLI Reference](https://supercheck.io/docs/app/cli)
+- [CLI Reference](https://supercheck.io/docs/cli/commands)
 
 ## Supercheck CLI
 

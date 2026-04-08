@@ -59,11 +59,17 @@ import {
   canCreateStatusPages,
   canDeleteStatusPages,
 } from "@/lib/rbac/client-permissions";
-import { getStatusPageUrl, getBaseDomain } from "@/lib/domain-utils";
+import {
+  getStatusPageHostname,
+  getStatusPageUrl,
+} from "@/lib/domain-utils";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
-import { useStatusPages, getStatusPagesListQueryKey } from "@/hooks/use-status-pages";
+import {
+  useStatusPages,
+  getStatusPagesListQueryKey,
+  type StatusPagesResponse,
+} from "@/hooks/use-status-pages";
 import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
-import type { PaginatedResponse } from "@/hooks/lib/create-data-hook";
 
 /**
  * Status page type for display purposes.
@@ -89,7 +95,12 @@ export default function StatusPagesList() {
     () => false
   );
 
-  const { statusPages: rawStatusPages, isLoading, isRestoring } = useStatusPages();
+  const {
+    statusPages: rawStatusPages,
+    statusPageDomain,
+    isLoading,
+    isRestoring,
+  } = useStatusPages();
   const hasData = rawStatusPages !== undefined && rawStatusPages.length >= 0;
   const queryClient = useQueryClient();
 
@@ -158,11 +169,12 @@ export default function StatusPagesList() {
       projectId: projectId,
     };
 
-    queryClient.setQueryData(queryKey, (oldData: PaginatedResponse<StatusPage> | undefined) => {
+    queryClient.setQueryData(queryKey, (oldData: StatusPagesResponse | undefined) => {
       if (!oldData) {
         // If no existing data, create a new response structure
         return {
           data: [newStatusPage],
+          statusPageDomain,
           pagination: { total: 1, page: 1, limit: 20, totalPages: 1 },
         };
       }
@@ -205,7 +217,7 @@ export default function StatusPagesList() {
     // Snapshot previous value for rollback on error
     const previousData = queryClient.getQueryData(queryKey);
 
-    queryClient.setQueryData(queryKey, (oldData: PaginatedResponse<StatusPage> | undefined) => {
+    queryClient.setQueryData(queryKey, (oldData: StatusPagesResponse | undefined) => {
       if (!oldData) return oldData;
       return {
         ...oldData,
@@ -249,8 +261,16 @@ export default function StatusPagesList() {
     }
   };
 
+  const getStatusPagePublicUrl = (subdomain: string): string => {
+    return getStatusPageUrl(subdomain, undefined, statusPageDomain);
+  };
+
+  const getStatusPagePublicHostname = (subdomain: string): string => {
+    return getStatusPageHostname(subdomain, undefined, statusPageDomain);
+  };
+
   const handleCopyUrl = async (subdomain: string) => {
-    const url = getStatusPageUrl(subdomain);
+    const url = getStatusPagePublicUrl(subdomain);
     try {
       await navigator.clipboard.writeText(url);
       toast.success("URL copied to clipboard");
@@ -401,6 +421,8 @@ export default function StatusPagesList() {
             {statusPages.map((page) => {
               const statusConfig = getStatusConfig(page.status);
               const StatusIcon = statusConfig.icon;
+              const publicUrl = getStatusPagePublicUrl(page.subdomain);
+              const publicHostname = getStatusPagePublicHostname(page.subdomain);
 
               return (
                 <Card
@@ -456,7 +478,7 @@ export default function StatusPagesList() {
                             </DropdownMenuItem>
                             <DropdownMenuItem asChild>
                               <a
-                                href={getStatusPageUrl(page.subdomain)}
+                                href={publicUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="cursor-pointer"
@@ -490,7 +512,7 @@ export default function StatusPagesList() {
                     <div className="flex items-center gap-2 p-2.5 rounded-lg bg-muted/50 mb-3">
                       <Globe className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                       <code className="text-sm text-muted-foreground truncate flex-1 font-mono">
-                        {page.subdomain}.{getBaseDomain()}
+                        {publicHostname}
                       </code>
                       <Button
                         variant="ghost"
@@ -523,7 +545,7 @@ export default function StatusPagesList() {
                         className="flex-1 h-9"
                       >
                         <a
-                          href={getStatusPageUrl(page.subdomain)}
+                          href={publicUrl}
                           target="_blank"
                           rel="noopener noreferrer"
                         >

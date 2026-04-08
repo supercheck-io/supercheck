@@ -1,6 +1,7 @@
 import { createDataHook, type PaginatedResponse } from "./lib/create-data-hook";
 import { useQuery, useQueryClient, useIsRestoring } from "@tanstack/react-query";
 import { useProjectContext } from "./use-project-context";
+import { useAppConfig } from "./use-app-config";
 
 export interface StatusPage {
   id: string;
@@ -24,7 +25,9 @@ export interface StatusPage {
   organizationId: string;
 }
 
-export interface StatusPagesResponse extends PaginatedResponse<StatusPage> {}
+export interface StatusPagesResponse extends PaginatedResponse<StatusPage> {
+  statusPageDomain?: string;
+}
 
 interface CreateStatusPageData {
   name: string;
@@ -66,10 +69,19 @@ export interface UseStatusPagesOptions {
 
 export function useStatusPages(options: UseStatusPagesOptions = {}) {
   const result = statusPagesHook.useList(options as UseStatusPagesOptions & { [key: string]: unknown });
+  const response = result.data as StatusPagesResponse | undefined;
+  const {
+    statusPageDomain: appConfigStatusPageDomain,
+    isFetched: isAppConfigFetched,
+  } = useAppConfig();
+  const resolvedStatusPageDomain =
+    response?.statusPageDomain ??
+    (isAppConfigFetched ? appConfigStatusPageDomain : undefined);
 
   return {
     ...result,
     statusPages: result.items,
+    statusPageDomain: resolvedStatusPageDomain,
     loading: result.isLoading,
   };
 }
@@ -200,4 +212,3 @@ export function useStatusPageDetail(statusPageId: string | null) {
     invalidate,
   };
 }
-
