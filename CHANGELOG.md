@@ -7,9 +7,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ## [Unreleased]
 
 ### Added
-- Configurable API CORS allowlist for self-hosted deployments via `CORS_ALLOWED_ORIGINS`, including support for browser-based integrations such as Azure DevOps dashboard widgets and wildcard subdomains like `https://*.visualstudio.com`
+- Configurable API CORS allowlist for self-hosted deployments via `CORS_ALLOWED_ORIGINS`, including support for browser-based integrations such as Azure DevOps dashboard widgets and wildcard subdomains like `https://*.visualstudio.com` ([#280](https://github.com/supercheck-io/supercheck/issues/280))
 - Community Integrations section in the README with the public Azure DevOps extension link and setup guidance
-- **File variables for reusable test data** — Project variables can now store text-based files such as CSV, JSON, YAML, XML, TSV, and plain-text fixtures for runtime use in Playwright and k6 tests
+- **File variables for reusable test data** — Project variables can now store text-based files such as CSV, JSON, YAML, XML, TSV, and plain-text fixtures for runtime use in Playwright and k6 tests ([#271](https://github.com/supercheck-io/supercheck/issues/271))
 - Database migration `0011_deep_hellcat.sql` adding `config_id` column to `apikey` table (required by `@better-auth/api-key` v1.6.0)
 
 ### Changed
@@ -19,8 +19,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - Renamed `apikey.userId` → `apikey.referenceId` in Drizzle schema to match the `@better-auth/api-key` v1.6.0 field rename (database column stays as `user_id` for backward compatibility)
 
 ### Fixed
+- Fixed the organization member invite dialog layout so the modal renders correctly without the previous blowout/overflow issue ([#277](https://github.com/supercheck-io/supercheck/issues/277))
 - Fixed self-hosted status page domain handling so dashboard View/Copy actions preserve the full configured `STATUS_PAGE_DOMAIN` value, including subdomains when used ([#282](https://github.com/supercheck-io/supercheck/issues/282))
-- Fixed custom-domain guidance to consistently use the full configured `STATUS_PAGE_DOMAIN` value for self-hosted CNAME targets and troubleshooting ([#253](https://github.com/supercheck-io/supercheck/issues/253))
+- Fixed self-hosted status page custom-domain routing and guidance so verified custom domains load correctly and consistently use the full configured `STATUS_PAGE_DOMAIN` value for CNAME targets and troubleshooting ([#253](https://github.com/supercheck-io/supercheck/issues/253))
 
 ### Security
 - Security upgrades and dependency patching for improved runtime, template, parser, email, and session handling safety.
