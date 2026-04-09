@@ -1,0 +1,38 @@
+---
+title: Get status page badge
+description: Returns a public SVG badge for a published status page.
+---
+
+Returns a public SVG badge that reflects the current overall status of a published status page.
+
+## Endpoint
+
+```http
+GET /api/status-pages/{id}/badge
+```
+
+## Path Parameters
+
+| Name | Type | Description |
+|------|------|-------------|
+| `id` | string | Status page UUID. The endpoint accepts the canonical UUID from the manage URL, and also accepts compact 32-character UUIDs. |
+
+## Query Parameters
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `style` | `flat` \| `flat-square` | No | Badge style. Defaults to `flat`. |
+| `label` | string | No | Left-side badge label. Defaults to `status`. Maximum 64 characters. |
+
+## Response
+
+- `200 OK`: `image/svg+xml`
+- `400 Bad Request`: Grey badge with `invalid id`
+- `404 Not Found`: Grey badge with `not found`
+- `500 Internal Server Error`: Grey badge with `error`
+
+## Notes
+
+- This is a public endpoint. No authentication is required.
+- Responses include `Access-Control-Allow-Origin: *` for cross-origin embedding.
+- Badge responses are cached for 5 minutes.

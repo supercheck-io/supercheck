@@ -51,13 +51,68 @@ export function getEffectiveStatusPageDomain(): string {
 /**
  * Returns the effective CNAME target shown for custom-domain setup.
  *
- * The CNAME target is always the same as STATUS_PAGE_DOMAIN.
- * CNAME verification also accepts common prefixed variants
- * (cname.DOMAIN, ingress.DOMAIN) so users can point custom domains
- * at whichever hostname routes to the app.
+ * User-facing configuration is driven by STATUS_PAGE_DOMAIN only.
+ * In self-hosted deployments, we derive a stable custom-domain target from it
+ * (`cname.STATUS_PAGE_DOMAIN`) when the reserved namespace differs from the
+ * main app hostname. This keeps the supported env surface small while matching
+ * the DNS layout used by the HTTPS Compose/K8s examples.
+ *
+ * STATUS_PAGE_CNAME_TARGET remains as an undocumented compatibility fallback
+ * for deployments that already started using it before this was simplified.
  */
 export function getEffectiveStatusPageCnameTarget(): string {
-  return getEffectiveStatusPageDomain();
+  const compatibilityTarget = normalizeStatusPageDomain(
+    process.env.STATUS_PAGE_CNAME_TARGET
+  );
+
+  if (compatibilityTarget) {
+    return compatibilityTarget;
+  }
+
+  const baseDomain = getEffectiveStatusPageDomain();
+
+  if (isCloudHosted()) {
+    return baseDomain;
+  }
+
+  if (!isPublicStatusPageHostname(baseDomain)) {
+    return baseDomain;
+  }
+
+  const appHostname = normalizeStatusPageDomain(
+    process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL
+  );
+
+  if (
+    appHostname === baseDomain ||
+    baseDomain.startsWith("cname.") ||
+    baseDomain.startsWith("ingress.")
+  ) {
+    return baseDomain;
+  }
+
+  return `cname.${baseDomain}`;
+}
+
+/**
+ * Returns all CNAME targets accepted during custom-domain verification.
+ *
+ * The UI should display getEffectiveStatusPageCnameTarget() as the primary
+ * value to use. Legacy/self-managed deployments may still rely on the
+ * reserved base domain or common prefixed hostnames.
+ */
+export function getStatusPageDomainVerificationTargets(): string[] {
+  const baseDomain = getEffectiveStatusPageDomain();
+  const cnameTarget = getEffectiveStatusPageCnameTarget();
+
+  return Array.from(
+    new Set([
+      cnameTarget,
+      baseDomain,
+      `cname.${baseDomain}`,
+      `ingress.${baseDomain}`,
+    ])
+  );
 }
 
 /**

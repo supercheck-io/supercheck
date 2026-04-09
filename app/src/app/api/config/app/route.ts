@@ -75,7 +75,9 @@ export async function GET() {
     statusPage: {
       // Reserved domain namespace for default public status-page URLs.
       domain: getEffectiveStatusPageDomain(),
-      // CNAME target shown to users for custom-domain setup.
+      // Primary target shown to users for custom-domain setup. This may differ
+      // from the reserved namespace when deployments use a dedicated ingress
+      // hostname such as cname.example.com.
       customDomainTarget: getEffectiveStatusPageCnameTarget(),
       hideBranding: isStatusPageBrandingHidden(),
     },

@@ -340,7 +340,8 @@ export async function resetBrandingToDefaults(statusPageId: string) {
       .where(
         and(
           eq(statusPages.id, statusPageId),
-          eq(statusPages.organizationId, organizationId)
+          eq(statusPages.organizationId, organizationId),
+          eq(statusPages.projectId, project.id)
         )
       );
 

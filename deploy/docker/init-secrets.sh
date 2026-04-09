@@ -84,7 +84,7 @@ GITHUB_CLIENT_SECRET=
 # Uncomment and set these for production with domain
 # APP_DOMAIN=app.yourdomain.com
 # ACME_EMAIL=admin@yourdomain.com
-# STATUS_PAGE_DOMAIN=yourdomain.com  # Base hostname only (no protocol/path); also the CNAME target for custom domains
+# STATUS_PAGE_DOMAIN=yourdomain.com        # Reserved namespace for default status page URLs ([uuid].STATUS_PAGE_DOMAIN)
 # STATUS_PAGE_HIDE_BRANDING=false    # Set to true to hide the public status page branding footer globally
 
 # ────────────────────────────────────────────────────────────

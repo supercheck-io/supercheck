@@ -1,0 +1,32 @@
+---
+title: Get status page iCal feed
+description: Returns a public iCalendar feed for a published status page.
+---
+
+Returns a public iCalendar (`.ics`) feed for incidents on a published status page.
+
+## Endpoint
+
+```http
+GET /api/status-pages/{id}/ical
+```
+
+## Path Parameters
+
+| Name | Type | Description |
+|------|------|-------------|
+| `id` | string | Status page UUID. The endpoint accepts the canonical UUID from the manage URL, and also accepts compact 32-character UUIDs. |
+
+## Response
+
+- `200 OK`: `text/calendar; charset=utf-8`
+- `400 Bad Request`: Invalid status page ID
+- `403 Forbidden`: Calendar feed is disabled for the page
+- `404 Not Found`: Status page not found or not published
+- `500 Internal Server Error`: Failed to generate iCal feed
+
+## Notes
+
+- This is a public endpoint. No authentication is required.
+- The iCal feed uses the same `allowRssFeed` toggle as RSS.
+- Responses are cached for 5 minutes.

@@ -87,7 +87,7 @@ describe("status page domain utilities", () => {
       expect(getEffectiveStatusPageCnameTarget()).toBe("supercheck.io");
     });
 
-    it("returns STATUS_PAGE_DOMAIN in self-hosted mode", async () => {
+    it("derives a dedicated target from STATUS_PAGE_DOMAIN in self-hosted mode", async () => {
       process.env.SELF_HOSTED = "true";
       process.env.STATUS_PAGE_DOMAIN = "status.example.com";
 
@@ -95,7 +95,35 @@ describe("status page domain utilities", () => {
         "./status-page-domain"
       );
 
+      expect(getEffectiveStatusPageCnameTarget()).toBe(
+        "cname.status.example.com"
+      );
+    });
+
+    it("returns STATUS_PAGE_DOMAIN when it already matches the app hostname", async () => {
+      process.env.SELF_HOSTED = "true";
+      process.env.STATUS_PAGE_DOMAIN = "status.example.com";
+      process.env.APP_URL = "https://status.example.com";
+
+      const { getEffectiveStatusPageCnameTarget } = await import(
+        "./status-page-domain"
+      );
+
       expect(getEffectiveStatusPageCnameTarget()).toBe("status.example.com");
+    });
+
+    it("continues honoring legacy STATUS_PAGE_CNAME_TARGET for compatibility", async () => {
+      process.env.SELF_HOSTED = "true";
+      process.env.STATUS_PAGE_DOMAIN = "status.example.com";
+      process.env.STATUS_PAGE_CNAME_TARGET = "cname.status.example.com";
+
+      const { getEffectiveStatusPageCnameTarget } = await import(
+        "./status-page-domain"
+      );
+
+      expect(getEffectiveStatusPageCnameTarget()).toBe(
+        "cname.status.example.com"
+      );
     });
 
     it("falls back to localhost when STATUS_PAGE_DOMAIN is localhost", async () => {
@@ -141,7 +169,9 @@ describe("status page domain utilities", () => {
         "./status-page-domain"
       );
 
-      expect(getStatusPageCustomDomainConfigError()).toContain("localhost");
+      expect(getStatusPageCustomDomainConfigError()).toBe(
+        "Custom domains require a publicly reachable hostname. Set STATUS_PAGE_DOMAIN to a real DNS hostname instead of localhost."
+      );
     });
 
     it("returns null when STATUS_PAGE_DOMAIN is a public hostname", async () => {
@@ -153,6 +183,23 @@ describe("status page domain utilities", () => {
       );
 
       expect(getStatusPageCustomDomainConfigError()).toBeNull();
+    });
+  });
+
+  describe("getStatusPageDomainVerificationTargets", () => {
+    it("includes the primary target and legacy aliases", async () => {
+      process.env.SELF_HOSTED = "true";
+      process.env.STATUS_PAGE_DOMAIN = "status.example.com";
+
+      const { getStatusPageDomainVerificationTargets } = await import(
+        "./status-page-domain"
+      );
+
+      expect(getStatusPageDomainVerificationTargets()).toEqual([
+        "cname.status.example.com",
+        "status.example.com",
+        "ingress.status.example.com",
+      ]);
     });
   });
 

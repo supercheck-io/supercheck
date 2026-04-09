@@ -78,7 +78,7 @@ Open your browser and visit the badge URL directly to preview the SVG output. Tr
 | `/api/status-pages/ID/badge?label=API` | Custom "API" label on the left |
 | `/api/status-pages/ID/badge?label=Uptime&style=flat-square` | Combined: custom label with square style |
 
-Replace `ID` with your status page ID (found in the URL when managing your status page).
+Replace `ID` with your status page ID from the manage page URL or API response. If the badge shows `invalid id`, the path parameter is not the status page UUID.
 
 ### iCal Calendar Feed
 
@@ -389,18 +389,27 @@ flowchart LR
 
     | Type | Hostname | Target |
     |------|----------|--------|
-    | CNAME | `status.yourcompany.com` | `supercheck.io` |
+    | CNAME | `status.yourcompany.com` | `target shown in Settings` |
 
     The Settings tab shows the full hostname and the required CNAME target. Some DNS providers expect the full hostname, while others expect only the label relative to your zone. Use the same target either way.
 
     <Callout type="info">
     **CNAME Target:**
-    - **Cloud users:** Point to `supercheck.io`
-    - **Self-hosted:** Point to `STATUS_PAGE_DOMAIN`.
+    - **Cloud users:** Point to the hostname shown in Settings.
+    - **Self-hosted Docker/Kubernetes examples:** The UI typically shows a target derived from `STATUS_PAGE_DOMAIN`, usually `cname.STATUS_PAGE_DOMAIN`.
+    - **Advanced/self-managed deployments:** Always use the exact target shown in Settings.
     </Callout>
 
     <Callout type="warn">
     **Reserved domain namespace:** Do not set your custom domain to `STATUS_PAGE_DOMAIN` itself or any of its subdomains. That namespace is reserved for default UUID URLs (`[uuid].STATUS_PAGE_DOMAIN`). Use a separate hostname and point its CNAME to the target shown in Settings.
+    </Callout>
+
+    <Callout type="info">
+    **Do not add both record types on the same hostname:** Your customer-facing hostname should be a CNAME (or your provider's equivalent ALIAS/ANAME). The target hostname shown in Settings may itself resolve through A/AAAA or wildcard DNS records, and that is normal.
+    </Callout>
+
+    <Callout type="info">
+    **Target hostname must already be live:** Verification checks that the hostname shown in Settings is publicly resolvable before activating the custom domain. Do not add A/AAAA records on your customer-facing hostname to satisfy that check. Instead, make sure the target hostname itself is already backed by your ingress, proxy, wildcard DNS, or other origin DNS setup.
     </Callout>
 
     <Callout type="warn">
@@ -443,14 +452,16 @@ To remove a custom domain, clear the domain field in **Settings** and save. The 
 |-------|----------|
 | "CNAME not found" | Wait 15–30 minutes for DNS propagation, then try again |
 | "Points to wrong target" | Verify your CNAME target matches the value shown in Settings |
+| "Target hostname is not publicly resolvable yet" | Keep your customer-facing hostname as a CNAME only. The target shown in Settings must already resolve publicly, often via A/AAAA or wildcard DNS records on the target side. |
 | "Domain already in use" | The domain is configured on another status page — remove it there first |
-| 404 on custom domain | Ensure the status page is published, the domain is verified, and the configured custom domain is not `STATUS_PAGE_DOMAIN` (or one of its subdomains). Also verify the CNAME record points to the target shown in Settings (`STATUS_PAGE_DOMAIN`). |
+| 404 on custom domain | Ensure the status page is published, the domain is verified, and the configured custom domain is not `STATUS_PAGE_DOMAIN` (or one of its subdomains). Also verify the CNAME record points to the exact target shown in Settings. |
 | Verification fails with Cloudflare | Cloudflare proxy flattens CNAME records into A/AAAA records, making the CNAME invisible to verification. Temporarily set the record to **DNS only** (grey cloud), click **Verify DNS**, then re-enable the proxy. |
+| DNS dashboard shows an A/AAAA record too | That is normal for the target hostname shown in Settings. Keep the customer-facing hostname as a CNAME only; do not add both a CNAME and A/AAAA on the same hostname. |
 | Redirect loops with Cloudflare | Set Cloudflare SSL/TLS mode to **Full** or **Full (Strict)** |
 | HTTPS not working (self-hosted) | The default Docker Compose config routes verified custom domains to the app, but you must terminate TLS for those hostnames separately. If behind Cloudflare, ensure SSL mode is **Full** or **Full (Strict)**. If using Traefik directly, provide matching certificates via dynamic TLS config or a wildcard/custom certificate. |
 
 <Callout type="info">
-**Self-hosted configuration:** Set `STATUS_PAGE_DOMAIN` to the full hostname you want to reserve for default status page URLs (`[uuid].STATUS_PAGE_DOMAIN`). This hostname is also the CNAME target shown in the UI for custom domains. CNAME verification accepts `STATUS_PAGE_DOMAIN`, `cname.STATUS_PAGE_DOMAIN`, and `ingress.STATUS_PAGE_DOMAIN` as valid targets. URL-like values such as `https://supercheck.example.com:443` are normalized automatically, but plain hostnames are recommended.
+**Self-hosted configuration:** Set `STATUS_PAGE_DOMAIN` to the full hostname you want to reserve for default status page URLs (`[uuid].STATUS_PAGE_DOMAIN`). Supercheck derives the primary custom-domain target from it automatically and, in the Docker/Kubernetes examples, that is usually `cname.STATUS_PAGE_DOMAIN`. If `STATUS_PAGE_DOMAIN` is already the ingress hostname, the UI will reuse it directly. CNAME verification accepts the primary derived target plus `STATUS_PAGE_DOMAIN`, `cname.STATUS_PAGE_DOMAIN`, and `ingress.STATUS_PAGE_DOMAIN` as valid targets. URL-like values such as `https://supercheck.example.com:443` are normalized automatically, but plain hostnames are recommended.
 </Callout>
 
 <Callout type="info">

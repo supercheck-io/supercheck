@@ -13,8 +13,10 @@ import {
   getStatusPageCustomDomainConfigError,
   getEffectiveStatusPageCnameTarget,
   getEffectiveStatusPageDomain,
+  getStatusPageDomainVerificationTargets,
   isReservedStatusPageHostname,
 } from "@/lib/status-page-domain";
+import { getStatusPageCustomDomainTargetResolutionError } from "@/lib/status-page-domain-guidance";
 
 // UUID validation schema
 const uuidSchema = z.string().uuid("Invalid status page ID");
@@ -82,19 +84,7 @@ export async function verifyStatusPageDomain(statusPageId: string) {
     // Verify DNS
     try {
       const cnames = await resolveCname(statusPage.customDomain);
-
-      // Build valid CNAME targets from runtime config.
-      // Apply cname./ingress. prefixes only to baseDomain to avoid
-      // nonsensical combinations like cname.cname.yourdomain.com when
-      // customDomainCnameTarget already carries a prefix.
-      const validTargets = Array.from(
-        new Set([
-          baseDomain,
-          `cname.${baseDomain}`,
-          `ingress.${baseDomain}`,
-          customDomainCnameTarget,
-        ])
-      );
+      const validTargets = getStatusPageDomainVerificationTargets();
 
       // SECURITY: Use exact canonical hostname matching (case-insensitive, trailing-dot normalized)
       // DNS CNAME records may include a trailing dot (e.g., "supercheck.io.")
@@ -132,7 +122,9 @@ export async function verifyStatusPageDomain(statusPageId: string) {
         if (!hasReachableTarget) {
           return {
             success: false,
-            message: `CNAME points to ${matchedTargets.join(", ")}, but that target does not resolve to any A/AAAA records yet. Ensure the target hostname is live and publicly resolvable, then wait for DNS propagation before verifying again.`,
+            message: getStatusPageCustomDomainTargetResolutionError(
+              matchedTargets
+            ),
           };
         }
 

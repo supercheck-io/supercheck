@@ -64,6 +64,10 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  getStatusPageCustomDomainTargetResolutionHint,
+  STATUS_PAGE_CUSTOM_DOMAIN_RECORD_TYPE_GUIDANCE,
+} from "@/lib/status-page-domain-guidance";
 
 type StatusPage = {
   id: string;
@@ -238,6 +242,8 @@ export function SettingsTab({
       appConfigStatusPageCnameTarget ||
       effectiveStatusPageDomain
   );
+  const customDomainTargetUsesDedicatedHost =
+    effectiveStatusPageCnameTarget !== effectiveStatusPageDomain;
   const customDomainConfigMessage =
     isSelfHosted && !isPublicHostnameCandidate(effectiveStatusPageCnameTarget)
       ? `Custom domains require a publicly reachable hostname. Set STATUS_PAGE_DOMAIN to a real DNS hostname instead of ${effectiveStatusPageCnameTarget}.`
@@ -600,7 +606,7 @@ export function SettingsTab({
               </p>
               <div className="flex gap-2 mt-5">
                 <Input
-                  placeholder={`status.${effectiveStatusPageDomain}`}
+                  placeholder="status.yourcompany.com"
                   {...register("customDomain")}
                   disabled={!canUpdate}
                   className="font-mono text-sm"
@@ -688,6 +694,7 @@ export function SettingsTab({
                         <ul className="list-disc list-inside space-y-1 text-muted-foreground">
                           <li><strong>Cloudflare:</strong> Set proxy to &quot;DNS only&quot; (grey cloud) during verification and initial HTTPS checks. Only re-enable the proxy after the origin serves the custom hostname correctly.</li>
                           <li><strong>Cloudflare SSL:</strong> Use <strong>Full</strong> or <strong>Full (Strict)</strong> mode once origin TLS is working for the custom hostname.</li>
+                          <li><strong>DNS record type:</strong> Keep your custom hostname as a CNAME only. It is normal for the target hostname itself to resolve through A/AAAA or wildcard records.</li>
                           {isSelfHosted && (
                             <li><strong>Self-hosted:</strong> Docker Compose secure/external deployments route verified custom domains to the app automatically. Origin HTTPS for those hostnames still requires matching certificates via Traefik, Cloudflare, or another reverse proxy.</li>
                           )}
@@ -705,9 +712,13 @@ export function SettingsTab({
                       resolves a public hostname for status-page routing.
                     </p>
                     <p>
-                      Set <code>STATUS_PAGE_DOMAIN</code> to a real DNS hostname
-                      first. In the Docker Compose templates, setting{" "}
-                      <code>APP_DOMAIN</code> usually does this automatically.
+                      Set <code>STATUS_PAGE_DOMAIN</code> to a real DNS
+                      hostname first. In the Docker Compose secure and external
+                      examples, the target shown here is derived automatically
+                      from it, usually as{" "}
+                      <code>cname.STATUS_PAGE_DOMAIN</code>. Setting{" "}
+                      <code>APP_DOMAIN</code> usually handles the reserved
+                      namespace automatically in those templates.
                     </p>
                   </div>
                 ) : customDomainValue ? (
@@ -736,12 +747,31 @@ export function SettingsTab({
                       <li>Wait for DNS propagation (typically 5–30 minutes)</li>
                       <li>Click <strong>Verify DNS</strong></li>
                     </ol>
+                    {customDomainTargetUsesDedicatedHost && (
+                      <p>
+                        Default status page URLs stay under{" "}
+                        <code>{effectiveStatusPageDomain}</code>, while custom
+                        domains point to the dedicated target{" "}
+                        <code>{effectiveStatusPageCnameTarget}</code>.
+                      </p>
+                    )}
                     <p>
                       DNS providers differ: some expect the full hostname (for
                       example, <code>{customDomainValue}</code>), while others
                       expect only the label relative to your DNS zone (for
                       example, <code>status</code>). Use the same CNAME target
                       either way.
+                    </p>
+                    <p>
+                      {STATUS_PAGE_CUSTOM_DOMAIN_RECORD_TYPE_GUIDANCE} The
+                      target host <code>{effectiveStatusPageCnameTarget}</code>{" "}
+                      may itself resolve via A/AAAA or wildcard DNS records,
+                      and that is normal.
+                    </p>
+                    <p>
+                      {getStatusPageCustomDomainTargetResolutionHint(
+                        effectiveStatusPageCnameTarget
+                      )}
                     </p>
                     <p>
                       Do not use <code>{effectiveStatusPageDomain}</code> or any
@@ -756,6 +786,12 @@ export function SettingsTab({
                     <li>Save your changes</li>
                     <li>Add a CNAME record pointing to{" "}
                       <code className="bg-muted px-1 py-0.5 rounded text-xs">{effectiveStatusPageCnameTarget}</code>
+                    </li>
+                    <li>{STATUS_PAGE_CUSTOM_DOMAIN_RECORD_TYPE_GUIDANCE}</li>
+                    <li>
+                      Make sure <code>{effectiveStatusPageCnameTarget}</code>{" "}
+                      is already live and publicly resolvable. It may itself
+                      resolve via A/AAAA or wildcard DNS records.
                     </li>
                     <li>Click <strong>Verify DNS</strong> to confirm the setup</li>
                     <li>Publish the status page before testing the public or custom URL</li>

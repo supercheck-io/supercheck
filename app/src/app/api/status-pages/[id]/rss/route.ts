@@ -9,8 +9,9 @@
 
 import { db } from "@/utils/db";
 import { statusPages, incidents } from "@/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
+import { normalizePublicStatusPageId } from "@/lib/public-status-page-id";
 
 /**
  * Escape XML special characters
@@ -39,11 +40,21 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const statusPageId = (await params).id;
+    const statusPageId = normalizePublicStatusPageId((await params).id);
 
-    // Fetch status page
+    if (!statusPageId) {
+      return NextResponse.json(
+        { error: "Invalid status page ID" },
+        { status: 400 }
+      );
+    }
+
+    // Fetch published status page
     const statusPage = await db.query.statusPages.findFirst({
-      where: eq(statusPages.id, statusPageId),
+      where: and(
+        eq(statusPages.id, statusPageId),
+        eq(statusPages.status, "published")
+      ),
     });
 
     if (!statusPage) {
@@ -58,14 +69,6 @@ export async function GET(
       return NextResponse.json(
         { error: "RSS feed is disabled for this status page" },
         { status: 403 }
-      );
-    }
-
-    // Only published status pages should have public RSS feeds
-    if (statusPage.status !== "published") {
-      return NextResponse.json(
-        { error: "Status page is not published" },
-        { status: 404 }
       );
     }
 
@@ -153,10 +156,7 @@ ${rssItems}
   } catch (error) {
     console.error("[RSS Feed] Error generating feed:", error);
     return NextResponse.json(
-      {
-        error: "Failed to generate RSS feed",
-        details: error instanceof Error ? error.message : String(error),
-      },
+      { error: "Failed to generate RSS feed" },
       { status: 500 }
     );
   }
