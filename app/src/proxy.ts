@@ -95,6 +95,7 @@ function handleCors(request: NextRequest): NextResponse | null {
 // Pre-compile regex patterns for performance
 const VALID_SUBDOMAIN_PATTERN = /^[a-zA-Z0-9-]{1,63}$/;
 const PORT_PATTERN = /:\d+$/;
+const IPV4_PATTERN = /^(?:\d{1,3}\.){3}\d{1,3}$/;
 
 // Cache for hostname parsing (simple LRU-style with max size)
 const hostnameCache = new Map<string, string>();
@@ -180,15 +181,29 @@ function isCustomDomain(cleanHostname: string, appHostname: string): boolean {
     return false;
   }
 
-  // Custom domains are valid if they don't end with the status page domain
+  // Ignore hosts that are not plausible public DNS hostnames.
+  // This prevents requests addressed to raw IPs or single-label hostnames from
+  // being treated as custom-domain traffic.
+  if (
+    IPV4_PATTERN.test(cleanHostname) ||
+    cleanHostname.includes(":") ||
+    !cleanHostname.includes(".")
+  ) {
+    return false;
+  }
+
+  // Custom domains are valid if they don't match or belong to the status page domain namespace
   const statusPageDomain = getStatusPageDomainForRouting();
   if (!statusPageDomain) {
     return true;
   }
 
+  // Use exact match + dot-prefix matching to avoid false negatives.
+  // Without the dot prefix, "myexample.com".endsWith("example.com") would
+  // incorrectly reject a valid custom domain.
   return (
-    !cleanHostname.endsWith(`.${statusPageDomain}`) &&
-    !cleanHostname.endsWith(statusPageDomain)
+    cleanHostname !== statusPageDomain &&
+    !cleanHostname.endsWith(`.${statusPageDomain}`)
   );
 }
 
@@ -276,19 +291,19 @@ export function proxy(request: NextRequest) {
     const safeHostname = hostname.replace(/[^a-zA-Z0-9.-]/g, "");
 
     if (pathname === "/") {
-      url.pathname = `/status/_custom/${safeHostname}`;
+      url.pathname = `/status/custom-domain/${safeHostname}`;
       const response = NextResponse.rewrite(url);
       addSecurityHeaders(response);
       return response;
     }
 
-    if (pathname.startsWith(`/status/_custom/${safeHostname}`)) {
+    if (pathname.startsWith(`/status/custom-domain/${safeHostname}`)) {
       const response = NextResponse.next();
       addSecurityHeaders(response);
       return response;
     }
 
-    url.pathname = `/status/_custom/${safeHostname}${pathname}`;
+    url.pathname = `/status/custom-domain/${safeHostname}${pathname}`;
     const response = NextResponse.rewrite(url);
     addSecurityHeaders(response);
     return response;

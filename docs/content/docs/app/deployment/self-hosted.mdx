@@ -156,7 +156,11 @@ All services run on a single Linux server managed by Docker Compose. Workers con
         ```
 
         <Callout type="info">
-        `STATUS_PAGE_DOMAIN` is used for default status page URLs (`[uuid].STATUS_PAGE_DOMAIN`). Custom domains work automatically via Traefik's catch-all Let's Encrypt route.
+        `STATUS_PAGE_DOMAIN` is the reserved namespace for default status page URLs (`[uuid].STATUS_PAGE_DOMAIN`) and the CNAME target shown in the UI for custom domains.
+        </Callout>
+
+        <Callout type="warn">
+        Set `STATUS_PAGE_DOMAIN` to a publicly reachable hostname first. In the Docker Compose templates, setting `APP_DOMAIN` usually does this automatically.
         </Callout>
       </Step>
 

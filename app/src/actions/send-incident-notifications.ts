@@ -13,6 +13,7 @@ import { renderIncidentNotificationEmail } from "@/lib/email-renderer";
 import { getTranslations } from "@/lib/status-page-translations";
 import { format } from "date-fns";
 import { getPublicStatusPageUrl } from "@/lib/domain-utils";
+import { getEffectiveStatusPageDomain } from "@/lib/status-page-domain";
 
 /**
  * Send incident notification emails to all verified subscribers
@@ -118,6 +119,7 @@ export async function sendIncidentNotifications(
       customDomain: statusPage.customDomain,
       customDomainVerified: statusPage.customDomainVerified,
       appUrl: baseUrl,
+      statusPageDomain: getEffectiveStatusPageDomain(),
     });
 
     // Build email parameters template (per-subscriber unsubscribe URL will be added when sending)

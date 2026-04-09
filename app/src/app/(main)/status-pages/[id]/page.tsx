@@ -27,6 +27,7 @@ export default function StatusPagePage() {
   const {
     statusPage,
     statusPageDomain,
+    statusPageCnameTarget,
     components,
     monitors,
     canUpdate,
@@ -144,6 +145,7 @@ export default function StatusPagePage() {
           <StatusPageDetail
             statusPage={statusPageForDetail}
             statusPageDomain={statusPageDomain}
+            statusPageCnameTarget={statusPageCnameTarget}
             monitors={monitors}
             components={componentsForDetail}
             canUpdate={canUpdate}

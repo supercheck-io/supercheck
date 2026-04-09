@@ -52,40 +52,90 @@ export function getBaseDomain(requestHostname?: string): string {
 }
 
 /**
- * Gets the base domain specifically for status pages
- * This uses the STATUS_PAGE_DOMAIN environment variable if available,
- * otherwise falls back to the standard base domain detection
+ * Normalize a domain value by stripping protocol, port, path, and trailing dot.
+ * Lightweight client-safe equivalent of normalizeStatusPageDomain() from
+ * status-page-domain.ts (which depends on server-only feature-flag helpers).
  */
-export function getStatusPageBaseDomain(requestHostname?: string): string {
-  // Use STATUS_PAGE_DOMAIN for consistency across the codebase
-  if (process.env.STATUS_PAGE_DOMAIN) {
-    return process.env.STATUS_PAGE_DOMAIN;
+function normalizeDomainValue(value: string | undefined): string | null {
+  if (!value) return null;
+  const trimmed = value.trim().toLowerCase();
+  if (!trimmed) return null;
+  const withoutProtocol = trimmed.replace(/^https?:\/\//, "");
+  const hostname = withoutProtocol
+    .split("/")[0]
+    .replace(/:\d+$/, "")
+    .replace(/\.$/, "");
+  return hostname || null;
+}
+
+/**
+ * Gets the base domain specifically for status pages.
+ *
+ * Resolution order:
+ * 1. Explicit `statusPageDomain` override (preferred for client components
+ *    that obtain the domain from useAppConfig().statusPageDomain)
+ * 2. STATUS_PAGE_DOMAIN environment variable (available server-side only)
+ * 3. Fallback to getBaseDomain() (legacy; may strip subdomains on client)
+ *
+ * Client components should always pass `statusPageDomain` to avoid the
+ * getBaseDomain() fallback, which only keeps the last two hostname labels
+ * and therefore strips multi-level subdomains like "supercheck.example.com".
+ */
+export function getStatusPageBaseDomain(
+  requestHostname?: string,
+  statusPageDomain?: string,
+): string {
+  // 1. Explicit override – always preferred
+  if (statusPageDomain) {
+    return normalizeDomainValue(statusPageDomain) || statusPageDomain;
   }
 
-  if (requestHostname) {
-    const parts = requestHostname.split(".");
-    if (parts.length >= 2) {
-      return parts.slice(-2).join(".");
-    }
-    return requestHostname;
+  // 2. Server-side env var (not available in the browser)
+  const envDomain = normalizeDomainValue(process.env.STATUS_PAGE_DOMAIN);
+  if (envDomain) {
+    return envDomain;
   }
 
-  return getBaseDomain();
+  // 3. Legacy fallback – kept for backward compatibility
+  return getBaseDomain(requestHostname);
+}
+
+/**
+ * Constructs a status page hostname using the base domain.
+ * @param subdomain The subdomain for the status page
+ * @param requestHostname Optional hostname from the request
+ * @param statusPageDomain Optional explicit domain override (from useAppConfig or getEffectiveStatusPageDomain)
+ * @returns The full status page hostname
+ */
+export function getStatusPageHostname(
+  subdomain: string,
+  requestHostname?: string,
+  statusPageDomain?: string,
+): string {
+  const baseDomain = getStatusPageBaseDomain(requestHostname, statusPageDomain);
+  return `${subdomain}.${baseDomain}`;
 }
 
 /**
  * Constructs a status page URL using the base domain
  * @param subdomain The subdomain for the status page
  * @param requestHostname Optional hostname from the request
+ * @param statusPageDomain Optional explicit domain override (from useAppConfig or getEffectiveStatusPageDomain)
  * @returns The full status page URL
  */
 export function getStatusPageUrl(
   subdomain: string,
-  requestHostname?: string
+  requestHostname?: string,
+  statusPageDomain?: string,
 ): string {
-  const baseDomain = getStatusPageBaseDomain(requestHostname);
+  const hostname = getStatusPageHostname(
+    subdomain,
+    requestHostname,
+    statusPageDomain,
+  );
+  const baseDomain = getStatusPageBaseDomain(requestHostname, statusPageDomain);
   const protocol = baseDomain === "localhost" ? "http" : "https";
-  return `${protocol}://${subdomain}.${baseDomain}`;
+  return `${protocol}://${hostname}`;
 }
 
 type PublicStatusPageUrlOptions = {
@@ -94,9 +144,11 @@ type PublicStatusPageUrlOptions = {
   customDomainVerified?: boolean | null;
   requestHostname?: string;
   appUrl?: string;
+  /** Explicit status page domain override (from useAppConfig or getEffectiveStatusPageDomain) */
+  statusPageDomain?: string;
 };
 
-function getPreferredStatusPageProtocol(appUrl?: string): string {
+function getPreferredStatusPageProtocol(appUrl?: string, statusPageDomain?: string): string {
   if (appUrl) {
     try {
       return new URL(appUrl).protocol.replace(":", "") || "https";
@@ -105,7 +157,7 @@ function getPreferredStatusPageProtocol(appUrl?: string): string {
     }
   }
 
-  const baseDomain = getStatusPageBaseDomain();
+  const baseDomain = getStatusPageBaseDomain(undefined, statusPageDomain);
   return baseDomain === "localhost" ? "http" : "https";
 }
 
@@ -115,14 +167,15 @@ export function getPublicStatusPageUrl({
   customDomainVerified,
   requestHostname,
   appUrl,
+  statusPageDomain,
 }: PublicStatusPageUrlOptions): string {
   if (customDomainVerified && customDomain) {
-    const protocol = getPreferredStatusPageProtocol(appUrl);
+    const protocol = getPreferredStatusPageProtocol(appUrl, statusPageDomain);
     const normalizedHostname = customDomain.trim().toLowerCase().replace(/\.$/, "");
     return `${protocol}://${normalizedHostname}`;
   }
 
-  return getStatusPageUrl(subdomain, requestHostname);
+  return getStatusPageUrl(subdomain, requestHostname, statusPageDomain);
 }
 
 /**

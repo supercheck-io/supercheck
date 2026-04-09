@@ -4,6 +4,10 @@ import { statusPages } from "@/db/schema";
 import { desc, eq, and, sql } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
+import {
+  getEffectiveStatusPageCnameTarget,
+  getEffectiveStatusPageDomain,
+} from "@/lib/status-page-domain";
 
 /**
  * GET /api/status-pages
@@ -80,6 +84,8 @@ export async function GET(request: NextRequest) {
     // Return standardized response format for React Query hooks
     return NextResponse.json({
       data: formattedPages,
+      statusPageDomain: getEffectiveStatusPageDomain(),
+      statusPageCnameTarget: getEffectiveStatusPageCnameTarget(),
       pagination: {
         total,
         page,

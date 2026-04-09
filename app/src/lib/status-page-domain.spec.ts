@@ -75,6 +75,87 @@ describe("status page domain utilities", () => {
     });
   });
 
+  describe("getEffectiveStatusPageCnameTarget", () => {
+    it("returns cloud default when SELF_HOSTED is not true", async () => {
+      delete process.env.SELF_HOSTED;
+      process.env.STATUS_PAGE_DOMAIN = "status.example.com";
+
+      const { getEffectiveStatusPageCnameTarget } = await import(
+        "./status-page-domain"
+      );
+
+      expect(getEffectiveStatusPageCnameTarget()).toBe("supercheck.io");
+    });
+
+    it("returns STATUS_PAGE_DOMAIN in self-hosted mode", async () => {
+      process.env.SELF_HOSTED = "true";
+      process.env.STATUS_PAGE_DOMAIN = "status.example.com";
+
+      const { getEffectiveStatusPageCnameTarget } = await import(
+        "./status-page-domain"
+      );
+
+      expect(getEffectiveStatusPageCnameTarget()).toBe("status.example.com");
+    });
+
+    it("falls back to localhost when STATUS_PAGE_DOMAIN is localhost", async () => {
+      process.env.SELF_HOSTED = "true";
+      process.env.STATUS_PAGE_DOMAIN = "localhost";
+
+      const { getEffectiveStatusPageCnameTarget } = await import(
+        "./status-page-domain"
+      );
+
+      expect(getEffectiveStatusPageCnameTarget()).toBe("localhost");
+    });
+  });
+
+  describe("isPublicStatusPageHostname", () => {
+    it("returns false for loopback and single-label hostnames", async () => {
+      const { isPublicStatusPageHostname } = await import(
+        "./status-page-domain"
+      );
+
+      expect(isPublicStatusPageHostname("localhost")).toBe(false);
+      expect(isPublicStatusPageHostname("127.0.0.1")).toBe(false);
+      expect(isPublicStatusPageHostname("preview")).toBe(false);
+    });
+
+    it("returns true for public multi-label hostnames", async () => {
+      const { isPublicStatusPageHostname } = await import(
+        "./status-page-domain"
+      );
+
+      expect(isPublicStatusPageHostname("cname.status.example.com")).toBe(
+        true
+      );
+    });
+  });
+
+  describe("getStatusPageCustomDomainConfigError", () => {
+    it("returns an error when self-hosted defaults still point to localhost", async () => {
+      process.env.SELF_HOSTED = "true";
+      process.env.STATUS_PAGE_DOMAIN = "localhost";
+
+      const { getStatusPageCustomDomainConfigError } = await import(
+        "./status-page-domain"
+      );
+
+      expect(getStatusPageCustomDomainConfigError()).toContain("localhost");
+    });
+
+    it("returns null when STATUS_PAGE_DOMAIN is a public hostname", async () => {
+      process.env.SELF_HOSTED = "true";
+      process.env.STATUS_PAGE_DOMAIN = "status.example.com";
+
+      const { getStatusPageCustomDomainConfigError } = await import(
+        "./status-page-domain"
+      );
+
+      expect(getStatusPageCustomDomainConfigError()).toBeNull();
+    });
+  });
+
   describe("isReservedStatusPageHostname", () => {
     it("returns true when hostname matches base domain", async () => {
       const { isReservedStatusPageHostname } = await import(

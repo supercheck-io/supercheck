@@ -58,6 +58,8 @@ type PublicIncidentDetailProps = {
   hideBranding?: boolean;
   isPublicView?: boolean;
   isCustomDomain?: boolean;
+  /** URL prefix for custom-domain links. Empty string for proxy-rewritten requests, full internal path for direct access. */
+  customDomainRoutePrefix?: string;
   language?: string;
 };
 
@@ -71,6 +73,7 @@ export function PublicIncidentDetail({
   hideBranding = false,
   isPublicView = false,
   isCustomDomain = false,
+  customDomainRoutePrefix = "",
   language = "en",
 }: PublicIncidentDetailProps) {
   useStatusPageFavicon(faviconLogo);
@@ -130,7 +133,7 @@ export function PublicIncidentDetail({
   const statusPageId = incident.statusPage?.id || idOrSubdomain;
   const statusPageHref = isPublicView
     ? isCustomDomain
-      ? `/status/_custom/${idOrSubdomain}`
+      ? customDomainRoutePrefix || "/"
       : `/status/${idOrSubdomain}`
     : `/status-pages/${statusPageId}/public`;
 

@@ -43,6 +43,7 @@ function makeAppConfig(overrides: Partial<ReturnType<typeof useAppConfig>> = {})
       },
       statusPage: {
         domain: "supercheck.io",
+        customDomainTarget: "supercheck.io",
         hideBranding: false,
       },
     },
@@ -61,6 +62,7 @@ function makeAppConfig(overrides: Partial<ReturnType<typeof useAppConfig>> = {})
     maxMonitorNotificationChannels: 10,
     recentMonitorResultsLimit: undefined,
     statusPageDomain: "supercheck.io",
+    statusPageCnameTarget: "supercheck.io",
     hideStatusPageBranding: false,
     ...overrides,
   };
