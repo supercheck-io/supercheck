@@ -348,11 +348,12 @@ services:
       - "traefik.http.routers.status-pages.service=app"
 
       # Verified custom domains — lower priority than APP_DOMAIN and reserved
-      # STATUS_PAGE_DOMAIN subdomains, so the app can resolve them by hostname.
-      - "traefik.http.routers.status-custom.rule=HostRegexp(`[a-zA-Z0-9.-]+`) && !Host(`${APP_DOMAIN:-demo.supercheck.dev}`)"
+      # STATUS_PAGE_DOMAIN subdomains. Matches public multi-label hostnames only;
+      # provide custom-domain TLS separately (Traefik file provider, wildcard cert, etc.).
+      - "traefik.http.routers.status-custom.rule=HostRegexp(`^[a-zA-Z0-9-]+(\\.[a-zA-Z0-9-]+)+$`) && !HostRegexp(`^[0-9]+(\\.[0-9]+){3}$`) && !Host(`${APP_DOMAIN:-demo.supercheck.dev}`)"
       - "traefik.http.routers.status-custom.priority=10"
       - "traefik.http.routers.status-custom.entrypoints=websecure"
-      - "traefik.http.routers.status-custom.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.status-custom.tls=true"
       - "traefik.http.routers.status-custom.service=app"
 
       # HTTP → HTTPS redirect for main app
@@ -368,7 +369,7 @@ services:
       - "traefik.http.routers.status-pages-http.service=app"
 
       # HTTP → HTTPS redirect for verified custom domains
-      - "traefik.http.routers.status-custom-http.rule=HostRegexp(`[a-zA-Z0-9.-]+`) && !Host(`${APP_DOMAIN:-demo.supercheck.dev}`)"
+      - "traefik.http.routers.status-custom-http.rule=HostRegexp(`^[a-zA-Z0-9-]+(\\.[a-zA-Z0-9-]+)+$`) && !HostRegexp(`^[0-9]+(\\.[0-9]+){3}$`) && !Host(`${APP_DOMAIN:-demo.supercheck.dev}`)"
       - "traefik.http.routers.status-custom-http.priority=10"
       - "traefik.http.routers.status-custom-http.entrypoints=web"
       - "traefik.http.routers.status-custom-http.middlewares=app-https-redirect"

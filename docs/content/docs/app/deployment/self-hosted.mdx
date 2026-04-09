@@ -156,11 +156,11 @@ All services run on a single Linux server managed by Docker Compose. Workers con
         ```
 
         <Callout type="info">
-        `STATUS_PAGE_DOMAIN` is the reserved namespace for default status page URLs (`[uuid].STATUS_PAGE_DOMAIN`) and the CNAME target shown in the UI for custom domains. CNAME verification accepts `STATUS_PAGE_DOMAIN`, `cname.STATUS_PAGE_DOMAIN`, and `ingress.STATUS_PAGE_DOMAIN` as valid targets. The secure and external Docker Compose variants also include a lower-priority catch-all Traefik router so verified custom domains outside the reserved namespace work automatically.
+        `STATUS_PAGE_DOMAIN` is the reserved namespace for default status page URLs (`[uuid].STATUS_PAGE_DOMAIN`) and the CNAME target shown in the UI for custom domains.
         </Callout>
 
         <Callout type="warn">
-        While `STATUS_PAGE_DOMAIN` still points at `localhost`, `127.0.0.1`, or another non-public placeholder, Supercheck intentionally keeps custom domains unavailable. Set `STATUS_PAGE_DOMAIN` to a publicly reachable hostname first. In the Docker Compose templates, setting `APP_DOMAIN` usually does this automatically.
+        Set `STATUS_PAGE_DOMAIN` to a publicly reachable hostname first. In the Docker Compose templates, setting `APP_DOMAIN` usually does this automatically.
         </Callout>
       </Step>
 

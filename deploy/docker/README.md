@@ -74,7 +74,7 @@ OAuth (`GITHUB_*` / `GOOGLE_*`) is optional in self-hosted mode.
 | `ACME_EMAIL` | Email for Let's Encrypt |
 | `STATUS_PAGE_DOMAIN` | Base hostname for status pages and CNAME target for custom domains (e.g., `yourdomain.com`) |
 
-`STATUS_PAGE_DOMAIN` reserves the default status-page namespace (`[uuid].STATUS_PAGE_DOMAIN`) and is also the CNAME target shown for custom-domain setup. CNAME verification accepts `STATUS_PAGE_DOMAIN`, `cname.STATUS_PAGE_DOMAIN`, and `ingress.STATUS_PAGE_DOMAIN` as valid targets. The HTTPS Compose variants also include a lower-priority Traefik catch-all router so verified custom domains outside the reserved namespace are forwarded to the app automatically. When fronting custom domains with Cloudflare, keep the record on DNS-only until the origin serves HTTPS for that hostname.
+`STATUS_PAGE_DOMAIN` reserves the default status-page namespace (`[uuid].STATUS_PAGE_DOMAIN`) and is also the CNAME target shown for custom-domain setup. CNAME verification accepts `STATUS_PAGE_DOMAIN`, `cname.STATUS_PAGE_DOMAIN`, and `ingress.STATUS_PAGE_DOMAIN` as valid targets. The HTTPS Compose variants also include a lower-priority Traefik catch-all router so verified custom domains outside the reserved namespace are forwarded to the app automatically. For origin HTTPS on those custom hostnames, provide certificates separately via Traefik dynamic TLS config, a wildcard/custom certificate, Cloudflare, or another reverse proxy. When fronting custom domains with Cloudflare, keep the record on DNS-only until the origin serves HTTPS for that hostname.
 
 ### Optional
 

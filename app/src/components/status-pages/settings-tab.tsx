@@ -689,7 +689,7 @@ export function SettingsTab({
                           <li><strong>Cloudflare:</strong> Set proxy to &quot;DNS only&quot; (grey cloud) during verification and initial HTTPS checks. Only re-enable the proxy after the origin serves the custom hostname correctly.</li>
                           <li><strong>Cloudflare SSL:</strong> Use <strong>Full</strong> or <strong>Full (Strict)</strong> mode once origin TLS is working for the custom hostname.</li>
                           {isSelfHosted && (
-                            <li><strong>Self-hosted:</strong> Docker Compose secure/external deployments handle verified custom domains automatically. Other reverse proxies must accept the hostname and forward it to the app.</li>
+                            <li><strong>Self-hosted:</strong> Docker Compose secure/external deployments route verified custom domains to the app automatically. Origin HTTPS for those hostnames still requires matching certificates via Traefik, Cloudflare, or another reverse proxy.</li>
                           )}
                           <li>DNS changes can take 5–30 minutes to propagate.</li>
                         </ul>

@@ -396,7 +396,7 @@ flowchart LR
     <Callout type="info">
     **CNAME Target:**
     - **Cloud users:** Point to `supercheck.io`
-    - **Self-hosted:** Point to `STATUS_PAGE_DOMAIN`. CNAME verification also accepts `cname.STATUS_PAGE_DOMAIN` and `ingress.STATUS_PAGE_DOMAIN`.
+    - **Self-hosted:** Point to `STATUS_PAGE_DOMAIN`.
     </Callout>
 
     <Callout type="warn">
@@ -424,9 +424,9 @@ How HTTPS is handled depends on your deployment:
 | Deployment | HTTPS Handling |
 |------------|---------------|
 | **Supercheck Cloud** | HTTPS is enabled automatically — no action required |
-| **Self-hosted (Docker Compose)** | The default `docker-compose-secure.yml` includes a catch-all Traefik route for verified custom domains and can provision Let's Encrypt certificates when the hostname resolves to your server for ACME validation. |
+| **Self-hosted (Docker Compose)** | The default `docker-compose-secure.yml` includes a catch-all Traefik route for verified custom domains and forwards those hostnames to the app. Provide TLS certificates for those hostnames separately via Traefik dynamic TLS config, a wildcard/custom certificate, Cloudflare, or another reverse proxy. |
 | **Behind Cloudflare proxy** | Keep the record on **DNS only** until the origin serves HTTPS correctly for the custom hostname. If you later enable the proxy, use SSL/TLS mode **Full** or **Full (Strict)** in your Cloudflare dashboard. |
-| **Custom / self-managed certificates** | Replace the `certresolver=letsencrypt` label on the `status-custom` Traefik router with your own TLS configuration (e.g. mounted certificates via a Traefik dynamic config file, or a wildcard cert). |
+| **Custom / self-managed certificates** | Keep the `status-custom` Traefik router and attach your own TLS configuration for the hostname (for example mounted certificates via a Traefik dynamic config file, or a wildcard/custom certificate). |
 | **Other reverse proxies (nginx, Caddy)** | Configure your reverse proxy to accept traffic for the custom domain and terminate TLS. Forward to the app on port 3000. |
 
 <Callout type="warn">
@@ -447,7 +447,7 @@ To remove a custom domain, clear the domain field in **Settings** and save. The 
 | 404 on custom domain | Ensure the status page is published, the domain is verified, and the configured custom domain is not `STATUS_PAGE_DOMAIN` (or one of its subdomains). Also verify the CNAME record points to the target shown in Settings (`STATUS_PAGE_DOMAIN`). |
 | Verification fails with Cloudflare | Cloudflare proxy flattens CNAME records into A/AAAA records, making the CNAME invisible to verification. Temporarily set the record to **DNS only** (grey cloud), click **Verify DNS**, then re-enable the proxy. |
 | Redirect loops with Cloudflare | Set Cloudflare SSL/TLS mode to **Full** or **Full (Strict)** |
-| HTTPS not working (self-hosted) | The default Docker Compose config handles this automatically via Let's Encrypt. If behind Cloudflare, ensure SSL mode is **Full** or **Full (Strict)**. If using custom certs, update the Traefik `status-custom` router TLS config. |
+| HTTPS not working (self-hosted) | The default Docker Compose config routes verified custom domains to the app, but you must terminate TLS for those hostnames separately. If behind Cloudflare, ensure SSL mode is **Full** or **Full (Strict)**. If using Traefik directly, provide matching certificates via dynamic TLS config or a wildcard/custom certificate. |
 
 <Callout type="info">
 **Self-hosted configuration:** Set `STATUS_PAGE_DOMAIN` to the full hostname you want to reserve for default status page URLs (`[uuid].STATUS_PAGE_DOMAIN`). This hostname is also the CNAME target shown in the UI for custom domains. CNAME verification accepts `STATUS_PAGE_DOMAIN`, `cname.STATUS_PAGE_DOMAIN`, and `ingress.STATUS_PAGE_DOMAIN` as valid targets. URL-like values such as `https://supercheck.example.com:443` are normalized automatically, but plain hostnames are recommended.

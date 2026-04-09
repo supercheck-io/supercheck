@@ -15,6 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ### Changed
 - Self-hosted Docker Compose variants now expose `CORS_ALLOWED_ORIGINS` consistently on App deployments while keeping the default value empty for secure-by-default behavior
 - Deployment documentation now explains when browser integrations require CORS and clarifies that pipeline tasks do not
+- Self-hosted custom-domain deployment guidance now clarifies that the Traefik catch-all router preserves routing for verified hostnames, while TLS certificates for arbitrary custom domains must be provided explicitly
 - Upgraded `better-auth` from v1.4.5 to v1.6.0 and migrated the api-key plugin to standalone `@better-auth/api-key` package
 - Renamed `apikey.userId` → `apikey.referenceId` in Drizzle schema to match the `@better-auth/api-key` v1.6.0 field rename (database column stays as `user_id` for backward compatibility)
 
