@@ -9,6 +9,8 @@ import { requirePermissions } from "@/lib/rbac/middleware";
 import { revalidatePath } from "next/cache";
 import { logAuditEvent } from "@/lib/audit-logger";
 import {
+  getStatusPageCustomDomainConfigError,
+  getEffectiveStatusPageCnameTarget,
   getEffectiveStatusPageDomain,
   isReservedStatusPageHostname,
 } from "@/lib/status-page-domain";
@@ -162,11 +164,21 @@ export async function updateStatusPageSettings(data: UpdateSettingsInput) {
       updatePayload.customDomainVerified = false;
 
       if (settings.customDomain) {
+        const customDomainConfigError =
+          getStatusPageCustomDomainConfigError();
+        if (customDomainConfigError) {
+          return {
+            success: false,
+            message: customDomainConfigError,
+          };
+        }
+
         const baseDomain = getEffectiveStatusPageDomain();
+        const customDomainCnameTarget = getEffectiveStatusPageCnameTarget();
         if (isReservedStatusPageHostname(settings.customDomain, baseDomain)) {
           return {
             success: false,
-            message: `Custom domain cannot use ${baseDomain} or its subdomains. Use a separate hostname and point its CNAME to ${baseDomain}.`,
+            message: `Custom domain cannot use ${baseDomain} or its subdomains. Use a separate hostname and point its CNAME to ${customDomainCnameTarget}.`,
           };
         }
 

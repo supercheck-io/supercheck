@@ -96,6 +96,7 @@ type SettingsTabProps = {
   statusPage: StatusPage;
   canUpdate: boolean;
   statusPageDomain?: string;
+  statusPageCnameTarget?: string;
 };
 
 const settingsSchema = z.object({
@@ -157,14 +158,37 @@ const isReservedCustomDomain = (
   return hostname === baseDomain || hostname.endsWith(`.${baseDomain}`);
 };
 
+const isPublicHostnameCandidate = (hostname: string): boolean => {
+  const normalizedHostname = normalizeHostname(hostname);
+
+  if (
+    !normalizedHostname ||
+    normalizedHostname === "localhost" ||
+    normalizedHostname === "127.0.0.1" ||
+    normalizedHostname === "::1" ||
+    /^(?:\d{1,3}\.){3}\d{1,3}$/.test(normalizedHostname) ||
+    normalizedHostname.includes(":") ||
+    !normalizedHostname.includes(".")
+  ) {
+    return false;
+  }
+
+  return true;
+};
+
 export function SettingsTab({
   statusPage,
   canUpdate,
-  statusPageDomain = "supercheck.io",
+  statusPageDomain,
+  statusPageCnameTarget,
 }: SettingsTabProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { isSelfHosted } = useAppConfig();
+  const {
+    isSelfHosted,
+    statusPageDomain: appConfigStatusPageDomain,
+    statusPageCnameTarget: appConfigStatusPageCnameTarget,
+  } = useAppConfig();
   const [isResetting, setIsResetting] = useState(false);
   const [isVerifyingDNS, setIsVerifyingDNS] = useState(false);
 
@@ -206,9 +230,21 @@ export function SettingsTab({
   });
 
   const customDomainValue = watch("customDomain");
+  const effectiveStatusPageDomain = normalizeHostname(
+    statusPageDomain || appConfigStatusPageDomain || "supercheck.io"
+  );
+  const effectiveStatusPageCnameTarget = normalizeHostname(
+    statusPageCnameTarget ||
+      appConfigStatusPageCnameTarget ||
+      effectiveStatusPageDomain
+  );
+  const customDomainConfigMessage =
+    isSelfHosted && !isPublicHostnameCandidate(effectiveStatusPageCnameTarget)
+      ? `Custom domains require a publicly reachable hostname. Set STATUS_PAGE_DOMAIN to a real DNS hostname instead of ${effectiveStatusPageCnameTarget}.`
+      : null;
   const hasReservedCustomDomain =
     !!customDomainValue &&
-    isReservedCustomDomain(customDomainValue, statusPageDomain);
+    isReservedCustomDomain(customDomainValue, effectiveStatusPageDomain);
 
   const onSubmit = async (data: SettingsFormValues) => {
     try {
@@ -219,10 +255,10 @@ export function SettingsTab({
 
       if (
         submittedCustomDomain &&
-        isReservedCustomDomain(submittedCustomDomain, statusPageDomain)
+        isReservedCustomDomain(submittedCustomDomain, effectiveStatusPageDomain)
       ) {
         toast.error("Invalid custom domain", {
-          description: `Custom domains cannot use ${statusPageDomain} or its subdomains. Use a separate hostname and point its CNAME to ${statusPageDomain}.`,
+          description: `Custom domains cannot use ${effectiveStatusPageDomain} or its subdomains. Use a separate hostname and point its CNAME to ${effectiveStatusPageCnameTarget}.`,
         });
         return;
       }
@@ -564,7 +600,7 @@ export function SettingsTab({
               </p>
               <div className="flex gap-2 mt-5">
                 <Input
-                  placeholder={`status.${statusPageDomain}`}
+                  placeholder={`status.${effectiveStatusPageDomain}`}
                   {...register("customDomain")}
                   disabled={!canUpdate}
                   className="font-mono text-sm"
@@ -589,7 +625,10 @@ export function SettingsTab({
                       variant="outline"
                       onClick={handleVerifyDNS}
                       disabled={
-                        isVerifyingDNS || !canUpdate || hasReservedCustomDomain
+                        isVerifyingDNS ||
+                        !canUpdate ||
+                        hasReservedCustomDomain ||
+                        Boolean(customDomainConfigMessage)
                       }
                     >
                       {isVerifyingDNS ? (
@@ -606,12 +645,18 @@ export function SettingsTab({
                 </p>
               )}
 
+              {customDomainConfigMessage && (
+                <p className="text-sm text-amber-600">
+                  {customDomainConfigMessage}
+                </p>
+              )}
+
               {hasReservedCustomDomain && (
                 <p className="text-sm text-amber-600">
                   This domain is reserved for default status page routing.
                   Use a different hostname and point its CNAME to{" "}
                   <code className="bg-muted px-1 py-0.5 rounded text-xs">
-                    {statusPageDomain}
+                    {effectiveStatusPageCnameTarget}
                   </code>
                   .
                 </p>
@@ -641,10 +686,10 @@ export function SettingsTab({
                       <PopoverContent side="top" align="start" className="w-80 text-xs space-y-2">
                         <p className="font-medium text-sm">DNS Verification Tips</p>
                         <ul className="list-disc list-inside space-y-1 text-muted-foreground">
-                          <li><strong>Cloudflare:</strong> Set proxy to &quot;DNS only&quot; (grey cloud) during verification. Re-enable after.</li>
-                          <li><strong>Cloudflare SSL:</strong> Use <strong>Full</strong> or <strong>Full (Strict)</strong> mode to avoid redirect loops.</li>
+                          <li><strong>Cloudflare:</strong> Set proxy to &quot;DNS only&quot; (grey cloud) during verification and initial HTTPS checks. Only re-enable the proxy after the origin serves the custom hostname correctly.</li>
+                          <li><strong>Cloudflare SSL:</strong> Use <strong>Full</strong> or <strong>Full (Strict)</strong> mode once origin TLS is working for the custom hostname.</li>
                           {isSelfHosted && (
-                            <li><strong>Self-hosted:</strong> Ensure your reverse proxy (Traefik, nginx, Caddy) accepts traffic for this domain.</li>
+                            <li><strong>Self-hosted:</strong> Docker Compose secure/external deployments handle verified custom domains automatically. Other reverse proxies must accept the hostname and forward it to the app.</li>
                           )}
                           <li>DNS changes can take 5–30 minutes to propagate.</li>
                         </ul>
@@ -653,7 +698,19 @@ export function SettingsTab({
                   )}
                 </div>
 
-                {customDomainValue ? (
+                {customDomainConfigMessage ? (
+                  <div className="space-y-2 pl-5.5">
+                    <p>
+                      Custom domains stay unavailable until your deployment
+                      resolves a public hostname for status-page routing.
+                    </p>
+                    <p>
+                      Set <code>STATUS_PAGE_DOMAIN</code> to a real DNS hostname
+                      first. In the Docker Compose templates, setting{" "}
+                      <code>APP_DOMAIN</code> usually does this automatically.
+                    </p>
+                  </div>
+                ) : customDomainValue ? (
                   <div className="space-y-3 pl-5.5">
                     <p>Add the following CNAME record with your DNS provider:</p>
                     <div className="rounded-md border overflow-hidden">
@@ -661,20 +718,15 @@ export function SettingsTab({
                         <thead>
                           <tr className="border-b bg-muted/50">
                             <th className="text-left px-3 py-1.5 font-medium">Type</th>
-                            <th className="text-left px-3 py-1.5 font-medium">Name / Host</th>
+                            <th className="text-left px-3 py-1.5 font-medium">Hostname</th>
                             <th className="text-left px-3 py-1.5 font-medium">Target / Points to</th>
                           </tr>
                         </thead>
                         <tbody>
                           <tr>
                             <td className="px-3 py-1.5 font-mono">CNAME</td>
-                            <td className="px-3 py-1.5 font-mono">
-                              {(() => {
-                                const parts = customDomainValue.split(".");
-                                return parts.length > 2 ? parts.slice(0, -2).join(".") : "@";
-                              })()}
-                            </td>
-                            <td className="px-3 py-1.5 font-mono">{statusPageDomain}</td>
+                            <td className="px-3 py-1.5 font-mono">{customDomainValue}</td>
+                            <td className="px-3 py-1.5 font-mono">{effectiveStatusPageCnameTarget}</td>
                           </tr>
                         </tbody>
                       </table>
@@ -685,19 +737,29 @@ export function SettingsTab({
                       <li>Click <strong>Verify DNS</strong></li>
                     </ol>
                     <p>
-                      Do not use <code>{statusPageDomain}</code> or any of its
+                      DNS providers differ: some expect the full hostname (for
+                      example, <code>{customDomainValue}</code>), while others
+                      expect only the label relative to your DNS zone (for
+                      example, <code>status</code>). Use the same CNAME target
+                      either way.
+                    </p>
+                    <p>
+                      Do not use <code>{effectiveStatusPageDomain}</code> or any
+                      of its
                       subdomains as the custom domain value.
                     </p>
+                    <p>Only published status pages are served on public and custom domains.</p>
                   </div>
                 ) : (
                   <ol className="list-decimal list-inside space-y-1 pl-5.5">
                     <li>Enter your custom domain above (e.g., status.yourcompany.com)</li>
                     <li>Save your changes</li>
                     <li>Add a CNAME record pointing to{" "}
-                      <code className="bg-muted px-1 py-0.5 rounded text-xs">{statusPageDomain}</code>
+                      <code className="bg-muted px-1 py-0.5 rounded text-xs">{effectiveStatusPageCnameTarget}</code>
                     </li>
                     <li>Click <strong>Verify DNS</strong> to confirm the setup</li>
-                    <li>Do not set the custom domain to <code>{statusPageDomain}</code> or its subdomains</li>
+                    <li>Publish the status page before testing the public or custom URL</li>
+                    <li>Do not set the custom domain to <code>{effectiveStatusPageDomain}</code> or its subdomains</li>
                   </ol>
                 )}
               </div>

@@ -27,6 +27,7 @@ export interface StatusPage {
 
 export interface StatusPagesResponse extends PaginatedResponse<StatusPage> {
   statusPageDomain?: string;
+  statusPageCnameTarget?: string;
 }
 
 interface CreateStatusPageData {
@@ -72,16 +73,21 @@ export function useStatusPages(options: UseStatusPagesOptions = {}) {
   const response = result.data as StatusPagesResponse | undefined;
   const {
     statusPageDomain: appConfigStatusPageDomain,
+    statusPageCnameTarget: appConfigStatusPageCnameTarget,
     isFetched: isAppConfigFetched,
   } = useAppConfig();
   const resolvedStatusPageDomain =
     response?.statusPageDomain ??
     (isAppConfigFetched ? appConfigStatusPageDomain : undefined);
+  const resolvedStatusPageCnameTarget =
+    response?.statusPageCnameTarget ??
+    (isAppConfigFetched ? appConfigStatusPageCnameTarget : undefined);
 
   return {
     ...result,
     statusPages: result.items,
     statusPageDomain: resolvedStatusPageDomain,
+    statusPageCnameTarget: resolvedStatusPageCnameTarget,
     loading: result.isLoading,
   };
 }
@@ -147,6 +153,7 @@ export interface StatusPageDetailResponse {
     notificationsEmailFooter?: string | null;
   };
   statusPageDomain?: string;
+  statusPageCnameTarget?: string;
   components: StatusPageComponent[];
   monitors: StatusPageMonitor[];
   canUpdate: boolean;
@@ -162,6 +169,11 @@ export function useStatusPageDetail(statusPageId: string | null) {
   const { currentProject } = useProjectContext();
   const projectId = currentProject?.id ?? null;
   const isRestoring = useIsRestoring();
+  const {
+    statusPageDomain: appConfigStatusPageDomain,
+    statusPageCnameTarget: appConfigStatusPageCnameTarget,
+    isFetched: isAppConfigFetched,
+  } = useAppConfig();
 
   const queryKey = [...STATUS_PAGE_QUERY_KEY, statusPageId, "detail"];
 
@@ -192,13 +204,20 @@ export function useStatusPageDetail(statusPageId: string | null) {
     queryClient.invalidateQueries({ queryKey, refetchType: 'all' });
 
   const isInitialLoading = query.isPending && query.isFetching && !isRestoring;
+  const resolvedStatusPageDomain =
+    query.data?.statusPageDomain ??
+    (isAppConfigFetched ? appConfigStatusPageDomain : undefined);
+  const resolvedStatusPageCnameTarget =
+    query.data?.statusPageCnameTarget ??
+    (isAppConfigFetched ? appConfigStatusPageCnameTarget : undefined);
 
   return {
     data: query.data,
     statusPage: query.data?.statusPage ?? null,
     components: query.data?.components ?? [],
     monitors: query.data?.monitors ?? [],
-    statusPageDomain: query.data?.statusPageDomain,
+    statusPageDomain: resolvedStatusPageDomain,
+    statusPageCnameTarget: resolvedStatusPageCnameTarget,
     canUpdate: query.data?.canUpdate ?? false,
     stats: query.data?.stats ?? {
       activeIncidents: 0,

@@ -64,7 +64,7 @@ x-common-env: &common-env # Database Configuration
   APP_DOMAIN: ${APP_DOMAIN:-demo.supercheck.dev}
   NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-https://${APP_DOMAIN:-demo.supercheck.dev}}
   APP_URL: ${APP_URL:-https://${APP_DOMAIN:-demo.supercheck.dev}}
-  STATUS_PAGE_DOMAIN: ${STATUS_PAGE_DOMAIN:-supercheck.dev}
+  STATUS_PAGE_DOMAIN: ${STATUS_PAGE_DOMAIN:-${APP_DOMAIN:-demo.supercheck.dev}}
   # Hide the public status page branding footer globally when set to true
   STATUS_PAGE_HIDE_BRANDING: ${STATUS_PAGE_HIDE_BRANDING:-false}
   BETTER_AUTH_URL: ${BETTER_AUTH_URL:-https://${APP_DOMAIN:-demo.supercheck.dev}}
@@ -339,13 +339,21 @@ services:
       - "traefik.http.routers.app.tls.certresolver=letsencrypt"
       - "traefik.http.routers.app.service=app"
 
-      # Status pages — wildcard subdomain (extracts base domain from APP_DOMAIN)
-      # Note: For status pages, configure STATUS_PAGE_DOMAIN in environment
-      - "traefik.http.routers.status-pages.rule=HostRegexp(`[a-zA-Z0-9-]+\\.${STATUS_PAGE_DOMAIN:-supercheck.dev}`)"
+      # Status pages — wildcard subdomain namespace.
+      # Defaults to APP_DOMAIN when STATUS_PAGE_DOMAIN is not explicitly set.
+      - "traefik.http.routers.status-pages.rule=HostRegexp(`[a-zA-Z0-9-]+\\.${STATUS_PAGE_DOMAIN:-${APP_DOMAIN:-demo.supercheck.dev}}`)"
       - "traefik.http.routers.status-pages.priority=50"
       - "traefik.http.routers.status-pages.entrypoints=websecure"
       - "traefik.http.routers.status-pages.tls.certresolver=letsencrypt"
       - "traefik.http.routers.status-pages.service=app"
+
+      # Verified custom domains — lower priority than APP_DOMAIN and reserved
+      # STATUS_PAGE_DOMAIN subdomains, so the app can resolve them by hostname.
+      - "traefik.http.routers.status-custom.rule=HostRegexp(`[a-zA-Z0-9.-]+`) && !Host(`${APP_DOMAIN:-demo.supercheck.dev}`)"
+      - "traefik.http.routers.status-custom.priority=10"
+      - "traefik.http.routers.status-custom.entrypoints=websecure"
+      - "traefik.http.routers.status-custom.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.status-custom.service=app"
 
       # HTTP → HTTPS redirect for main app
       - "traefik.http.routers.app-http.rule=Host(`${APP_DOMAIN:-demo.supercheck.dev}`)"
@@ -354,10 +362,17 @@ services:
       - "traefik.http.routers.app-http.service=app"
 
       # HTTP → HTTPS redirect for status pages
-      - "traefik.http.routers.status-pages-http.rule=HostRegexp(`[a-zA-Z0-9-]+\\.${STATUS_PAGE_DOMAIN:-supercheck.dev}`)"
+      - "traefik.http.routers.status-pages-http.rule=HostRegexp(`[a-zA-Z0-9-]+\\.${STATUS_PAGE_DOMAIN:-${APP_DOMAIN:-demo.supercheck.dev}}`)"
       - "traefik.http.routers.status-pages-http.entrypoints=web"
       - "traefik.http.routers.status-pages-http.middlewares=app-https-redirect"
       - "traefik.http.routers.status-pages-http.service=app"
+
+      # HTTP → HTTPS redirect for verified custom domains
+      - "traefik.http.routers.status-custom-http.rule=HostRegexp(`[a-zA-Z0-9.-]+`) && !Host(`${APP_DOMAIN:-demo.supercheck.dev}`)"
+      - "traefik.http.routers.status-custom-http.priority=10"
+      - "traefik.http.routers.status-custom-http.entrypoints=web"
+      - "traefik.http.routers.status-custom-http.middlewares=app-https-redirect"
+      - "traefik.http.routers.status-custom-http.service=app"
 
       # Redirect middleware & service config
       - "traefik.http.middlewares.app-https-redirect.redirectscheme.scheme=https"

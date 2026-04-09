@@ -6,6 +6,11 @@ import { getPublicIncidents } from "@/actions/get-public-incidents";
 import { isStatusPageBrandingHidden } from "@/lib/feature-flags";
 import { notFound } from "next/navigation";
 import { Metadata } from "next";
+import { cache } from "react";
+
+// Public status pages depend on mutable runtime state such as publication,
+// components, incidents, and custom-domain verification. Avoid prerender cache.
+export const dynamic = "force-dynamic";
 
 type PublicStatusPagePageProps = {
   params: Promise<{
@@ -22,7 +27,7 @@ type PublicStatusPagePageProps = {
  * - https://subdomain.supercheck.io → /status/subdomain
  * - https://app.supercheck.io/status/uuid → Direct ID access
  */
-async function getStatusPageData(idOrSubdomain: string) {
+const getStatusPageData = cache(async (idOrSubdomain: string) => {
   // FIX: Only treat as UUID if it matches the full UUID pattern
   // Previous logic incorrectly treated any string with hyphen as UUID
   const looksLikeUUID =
@@ -43,7 +48,7 @@ async function getStatusPageData(idOrSubdomain: string) {
     return idResult.statusPage;
   }
   return null;
-}
+});
 export async function generateMetadata({
   params,
 }: PublicStatusPagePageProps): Promise<Metadata> {

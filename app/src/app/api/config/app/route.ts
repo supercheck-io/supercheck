@@ -5,7 +5,15 @@ import {
   isSignupEnabled,
   isStatusPageBrandingHidden,
 } from "@/lib/feature-flags";
-import { getEffectiveStatusPageDomain } from "@/lib/status-page-domain";
+import {
+  getEffectiveStatusPageCnameTarget,
+  getEffectiveStatusPageDomain,
+} from "@/lib/status-page-domain";
+
+// This endpoint exposes runtime configuration sourced from environment
+// variables. Force dynamic evaluation so Compose env changes are reflected
+// without a rebuild.
+export const dynamic = "force-dynamic";
 
 /**
  * GET /api/config/app
@@ -65,11 +73,11 @@ export async function GET() {
 
     // Status page configuration
     statusPage: {
-      // Domain used for CNAME target in custom domain setup
-      // Cloud mode is fixed to supercheck.io; self-hosted should set STATUS_PAGE_DOMAIN
+      // Reserved domain namespace for default public status-page URLs.
       domain: getEffectiveStatusPageDomain(),
+      // CNAME target shown to users for custom-domain setup.
+      customDomainTarget: getEffectiveStatusPageCnameTarget(),
       hideBranding: isStatusPageBrandingHidden(),
     },
   });
 }
-

@@ -5,6 +5,11 @@ import { PublicIncidentDetail } from "@/components/status-pages/public-incident-
 import { isStatusPageBrandingHidden } from "@/lib/feature-flags";
 import { notFound } from "next/navigation";
 import { Metadata } from "next";
+import { cache } from "react";
+
+// Incident detail pages should reflect current publication and incident data on
+// every request rather than serving stale prerendered results.
+export const dynamic = "force-dynamic";
 
 type PublicIncidentDetailPageProps = {
   params: Promise<{
@@ -18,7 +23,7 @@ type PublicIncidentDetailPageProps = {
  * 1. Try subdomain lookup first (from middleware rewrites)
  * 2. Fallback to ID lookup (for direct access or backward compatibility)
  */
-async function getStatusPageData(idOrSubdomain: string) {
+const getStatusPageData = cache(async (idOrSubdomain: string) => {
   // FIX: Only treat as UUID if it matches the full UUID pattern
   // Previous logic incorrectly treated any string with hyphen as UUID
   const looksLikeUUID =
@@ -43,7 +48,7 @@ async function getStatusPageData(idOrSubdomain: string) {
   }
 
   return null;
-}
+});
 
 export async function generateMetadata({
   params,

@@ -133,8 +133,10 @@ REDIS_PASSWORD=password
 | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | GitHub OAuth |
 | `SIGNUP_ENABLED` | `true` — disable to block registration |
 | `ALLOWED_EMAIL_DOMAINS` | Comma-separated allowlist (empty = all) |
-| `STATUS_PAGE_DOMAIN` | Base domain for status pages |
+| `STATUS_PAGE_DOMAIN` | Base domain for status pages and CNAME target for custom domains |
 | `STATUS_PAGE_HIDE_BRANDING` | `true` or `1` — hide footer branding |
+
+`STATUS_PAGE_DOMAIN` reserves the default status-page namespace (`[uuid].STATUS_PAGE_DOMAIN`) and is the CNAME target shown for custom-domain setup. CNAME verification accepts `STATUS_PAGE_DOMAIN`, `cname.STATUS_PAGE_DOMAIN`, and `ingress.STATUS_PAGE_DOMAIN` as valid targets. The HTTPS Compose variants also define a lower-priority catch-all Traefik router so verified custom domains outside that namespace route to the app without extra manual host entries. If Cloudflare fronts the custom hostname, leave it on DNS-only until the origin serves HTTPS for that hostname.
 
 ## Service Architecture
 

@@ -6,10 +6,12 @@ import { eq, and } from "drizzle-orm";
 import { requireProjectContext } from "@/lib/project-context";
 import { requirePermissions } from "@/lib/rbac/middleware";
 import { revalidatePath } from "next/cache";
-import { resolveCname } from "node:dns/promises";
+import { resolve4, resolve6, resolveCname } from "node:dns/promises";
 import { z } from "zod";
 import { logAuditEvent } from "@/lib/audit-logger";
 import {
+  getStatusPageCustomDomainConfigError,
+  getEffectiveStatusPageCnameTarget,
   getEffectiveStatusPageDomain,
   isReservedStatusPageHostname,
 } from "@/lib/status-page-domain";
@@ -60,11 +62,20 @@ export async function verifyStatusPageDomain(statusPageId: string) {
       };
     }
 
+    const customDomainConfigError = getStatusPageCustomDomainConfigError();
+    if (customDomainConfigError) {
+      return {
+        success: false,
+        message: customDomainConfigError,
+      };
+    }
+
     const baseDomain = getEffectiveStatusPageDomain();
+    const customDomainCnameTarget = getEffectiveStatusPageCnameTarget();
     if (isReservedStatusPageHostname(statusPage.customDomain, baseDomain)) {
       return {
         success: false,
-        message: `Custom domain cannot use ${baseDomain} or its subdomains. Use a separate hostname and point its CNAME to ${baseDomain}.`,
+        message: `Custom domain cannot use ${baseDomain} or its subdomains. Use a separate hostname and point its CNAME to ${customDomainCnameTarget}.`,
       };
     }
 
@@ -72,28 +83,59 @@ export async function verifyStatusPageDomain(statusPageId: string) {
     try {
       const cnames = await resolveCname(statusPage.customDomain);
 
-      // Get valid CNAME targets from runtime config
-      // Cloud mode is fixed to supercheck.io
-      // Self-hosted users should set STATUS_PAGE_DOMAIN
-      // Accept the base domain and common CNAME subdomains
-      const validTargets = [
-        baseDomain, // e.g., "supercheck.io" or "yourdomain.com"
-        `cname.${baseDomain}`, // e.g., "cname.supercheck.io"
-        `ingress.${baseDomain}`, // e.g., "ingress.supercheck.io"
-      ];
+      // Build valid CNAME targets from runtime config.
+      // Apply cname./ingress. prefixes only to baseDomain to avoid
+      // nonsensical combinations like cname.cname.yourdomain.com when
+      // customDomainCnameTarget already carries a prefix.
+      const validTargets = Array.from(
+        new Set([
+          baseDomain,
+          `cname.${baseDomain}`,
+          `ingress.${baseDomain}`,
+          customDomainCnameTarget,
+        ])
+      );
 
       // SECURITY: Use exact canonical hostname matching (case-insensitive, trailing-dot normalized)
       // DNS CNAME records may include a trailing dot (e.g., "supercheck.io.")
       const normalizeDnsName = (name: string) =>
         name.toLowerCase().replace(/\.$/, "");
 
-      const isValid = cnames.some((cname) =>
+      const matchedTargets = cnames.filter((cname) =>
         validTargets.some(
           (target) => normalizeDnsName(cname) === normalizeDnsName(target)
         )
       );
 
-      if (isValid) {
+      const targetHasAddress = async (hostname: string): Promise<boolean> => {
+        const normalizedHostname = normalizeDnsName(hostname);
+        const [aRecordResult, aaaaRecordResult] = await Promise.allSettled([
+          resolve4(normalizedHostname),
+          resolve6(normalizedHostname),
+        ]);
+
+        const hasIpv4 =
+          aRecordResult.status === "fulfilled" && aRecordResult.value.length > 0;
+        const hasIpv6 =
+          aaaaRecordResult.status === "fulfilled" &&
+          aaaaRecordResult.value.length > 0;
+
+        return hasIpv4 || hasIpv6;
+      };
+
+      if (matchedTargets.length > 0) {
+        const targetResolutionChecks = await Promise.all(
+          matchedTargets.map((target) => targetHasAddress(target))
+        );
+        const hasReachableTarget = targetResolutionChecks.some(Boolean);
+
+        if (!hasReachableTarget) {
+          return {
+            success: false,
+            message: `CNAME points to ${matchedTargets.join(", ")}, but that target does not resolve to any A/AAAA records yet. Ensure the target hostname is live and publicly resolvable, then wait for DNS propagation before verifying again.`,
+          };
+        }
+
         // Update status page with ownership check
         await db
           .update(statusPages)
@@ -132,11 +174,39 @@ export async function verifyStatusPageDomain(statusPageId: string) {
       } else {
         return {
           success: false,
-          message: `CNAME record found but points to ${cnames.join(", ")}. It should point to ${baseDomain}`,
+          message: `CNAME record found but points to ${cnames.join(", ")}. It should point to ${customDomainCnameTarget}`,
         };
       }
-    } catch (error) {
-      console.error("DNS resolution error:", error);
+    } catch (cnameError) {
+      // CNAME resolution failed — this commonly happens when a CDN or DNS
+      // provider (e.g. Cloudflare with proxy enabled) flattens the CNAME
+      // into A/AAAA records. Detect this case and give the user a specific,
+      // actionable error message instead of the generic "not propagated" one.
+      try {
+        const [aResult, aaaaResult] = await Promise.allSettled([
+          resolve4(statusPage.customDomain),
+          resolve6(statusPage.customDomain),
+        ]);
+
+        const hasAddressRecords =
+          (aResult.status === "fulfilled" && aResult.value.length > 0) ||
+          (aaaaResult.status === "fulfilled" && aaaaResult.value.length > 0);
+
+        if (hasAddressRecords) {
+          return {
+            success: false,
+            message:
+              `The domain resolves but the CNAME record is not visible. ` +
+              `This typically happens when a CDN or proxy (like Cloudflare) flattens the record. ` +
+              `Temporarily set your DNS record to "DNS only" (grey cloud in Cloudflare), ` +
+              `click Verify DNS again, then re-enable the proxy afterwards.`,
+          };
+        }
+      } catch {
+        // A/AAAA lookup also failed — fall through to generic message
+      }
+
+      console.error("DNS resolution error:", cnameError);
       return {
         success: false,
         message:

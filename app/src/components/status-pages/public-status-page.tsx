@@ -94,6 +94,8 @@ type PublicStatusPageProps = {
   hideBranding?: boolean;
   isPublicView?: boolean;
   isCustomDomain?: boolean;
+  /** URL prefix for custom-domain links. Empty string for proxy-rewritten requests, full internal path for direct access. */
+  customDomainRoutePrefix?: string;
   language?: string;
 };
 
@@ -105,6 +107,7 @@ export function PublicStatusPage({
   hideBranding = false,
   isPublicView = false,
   isCustomDomain = false,
+  customDomainRoutePrefix = "",
   language,
 }: PublicStatusPageProps) {
   const [currentPage, setCurrentPage] = useState(1);
@@ -706,7 +709,7 @@ export function PublicStatusPage({
 
                             const incidentLinkBase = isPublicView
                               ? isCustomDomain
-                                ? `/status/_custom/${idOrSubdomain}/incidents`
+                                ? `${customDomainRoutePrefix}/incidents`
                                 : `/status/${idOrSubdomain}/incidents`
                               : `/status-pages/${statusPage.id}/public/incidents`;
 

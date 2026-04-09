@@ -98,6 +98,7 @@ type Component = {
 type StatusPageDetailProps = {
   statusPage: StatusPage;
   statusPageDomain?: string;
+  statusPageCnameTarget?: string;
   monitors: StatusPageMonitor[];
   components: Component[];
   canUpdate: boolean;
@@ -112,6 +113,7 @@ type StatusPageDetailProps = {
 export function StatusPageDetail({
   statusPage,
   statusPageDomain,
+  statusPageCnameTarget,
   monitors,
   components,
   canUpdate,
@@ -500,6 +502,7 @@ export function StatusPageDetail({
             statusPage={statusPage}
             canUpdate={canUpdate}
             statusPageDomain={statusPageDomain}
+            statusPageCnameTarget={statusPageCnameTarget}
           />
         </TabsContent>
       </Tabs>

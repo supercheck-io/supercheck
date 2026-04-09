@@ -339,6 +339,14 @@ services:
       - "traefik.http.routers.status-pages.tls.certresolver=myresolver"
       - "traefik.http.routers.status-pages.service=app"
 
+      # Verified custom domains — lower priority than APP_DOMAIN and reserved
+      # STATUS_PAGE_DOMAIN subdomains, so the app can resolve them by hostname.
+      - "traefik.http.routers.status-custom.rule=HostRegexp(`[a-zA-Z0-9.-]+`) && !Host(`${APP_DOMAIN}`)"
+      - "traefik.http.routers.status-custom.priority=10"
+      - "traefik.http.routers.status-custom.entrypoints=websecure"
+      - "traefik.http.routers.status-custom.tls.certresolver=myresolver"
+      - "traefik.http.routers.status-custom.service=app"
+
       # HTTP → HTTPS redirect for main app
       - "traefik.http.routers.app-http.rule=Host(`${APP_DOMAIN}`)"
       - "traefik.http.routers.app-http.entrypoints=web"
@@ -350,6 +358,13 @@ services:
       - "traefik.http.routers.status-pages-http.entrypoints=web"
       - "traefik.http.routers.status-pages-http.middlewares=app-https-redirect"
       - "traefik.http.routers.status-pages-http.service=app"
+
+      # HTTP → HTTPS redirect for verified custom domains
+      - "traefik.http.routers.status-custom-http.rule=HostRegexp(`[a-zA-Z0-9.-]+`) && !Host(`${APP_DOMAIN}`)"
+      - "traefik.http.routers.status-custom-http.priority=10"
+      - "traefik.http.routers.status-custom-http.entrypoints=web"
+      - "traefik.http.routers.status-custom-http.middlewares=app-https-redirect"
+      - "traefik.http.routers.status-custom-http.service=app"
 
       # Redirect middleware & service config
       - "traefik.http.middlewares.app-https-redirect.redirectscheme.scheme=https"
