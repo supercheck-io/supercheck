@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { InferAPI } from "better-auth";
-import { apiKey } from "@better-auth/api-key";
+import type { apiKey } from "@better-auth/api-key";
 import { z } from "zod";
 import { auth } from "@/utils/auth";
 import { headers } from "next/headers";

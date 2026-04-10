@@ -218,6 +218,64 @@ describe("status page domain utilities", () => {
         "ingress.status.example.com",
       ]);
     });
+
+    it("does not produce double-prefixed targets when baseDomain starts with cname.", async () => {
+      process.env.SELF_HOSTED = "true";
+      process.env.STATUS_PAGE_DOMAIN = "cname.example.com";
+      process.env.APP_URL = "https://cname.example.com";
+
+      const { getStatusPageDomainVerificationTargets } = await import(
+        "./status-page-domain"
+      );
+
+      const targets = getStatusPageDomainVerificationTargets();
+      expect(targets).not.toContain("cname.cname.example.com");
+      expect(targets).toContain("cname.example.com");
+    });
+
+    it("does not produce double-prefixed targets when baseDomain starts with ingress.", async () => {
+      process.env.SELF_HOSTED = "true";
+      process.env.STATUS_PAGE_DOMAIN = "ingress.example.com";
+      process.env.APP_URL = "https://ingress.example.com";
+
+      const { getStatusPageDomainVerificationTargets } = await import(
+        "./status-page-domain"
+      );
+
+      const targets = getStatusPageDomainVerificationTargets();
+      expect(targets).not.toContain("ingress.ingress.example.com");
+      expect(targets).toContain("ingress.example.com");
+    });
+  });
+
+  describe("getStatusPageRuntimeConfig - host normalization", () => {
+    it("extracts the first host from comma-separated x-forwarded-host", async () => {
+      process.env.SELF_HOSTED = "true";
+      process.env.STATUS_PAGE_DOMAIN = "status.example.com";
+
+      const { getStatusPageRuntimeConfig } = await import(
+        "./status-page-domain"
+      );
+
+      expect(
+        getStatusPageRuntimeConfig("localhost:3000, proxy.example.com")
+      ).toEqual({
+        domain: "localhost",
+        customDomainTarget: "localhost",
+      });
+    });
+
+    it("handles single-value host header without commas", async () => {
+      process.env.SELF_HOSTED = "true";
+      process.env.STATUS_PAGE_DOMAIN = "status.example.com";
+
+      const { getStatusPageRuntimeConfig } = await import(
+        "./status-page-domain"
+      );
+
+      const result = getStatusPageRuntimeConfig("app.example.com");
+      expect(result.domain).toBe("status.example.com");
+    });
   });
 
   describe("isReservedStatusPageHostname", () => {

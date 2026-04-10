@@ -111,10 +111,23 @@ export function getEffectiveStatusPageCnameTarget(): string {
   return `cname.${baseDomain}`;
 }
 
+/**
+ * Extracts the first hostname from a potentially comma-separated header value
+ * (e.g. x-forwarded-host in multi-proxy chains) and trims whitespace.
+ */
+function extractFirstHost(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const first = value.split(",")[0].trim();
+  return first || null;
+}
+
 export function getStatusPageRuntimeConfig(
   requestHost?: string | null
 ): { domain: string; customDomainTarget: string } {
-  if (isLocalStatusPageHostname(requestHost)) {
+  // Normalize: x-forwarded-host can be comma-separated in proxy chains.
+  const normalizedHost = extractFirstHost(requestHost);
+
+  if (isLocalStatusPageHostname(normalizedHost)) {
     return {
       domain: LOCAL_STATUS_PAGE_DOMAIN,
       customDomainTarget: LOCAL_STATUS_PAGE_DOMAIN,
@@ -138,14 +151,18 @@ export function getStatusPageDomainVerificationTargets(): string[] {
   const baseDomain = getEffectiveStatusPageDomain();
   const cnameTarget = getEffectiveStatusPageCnameTarget();
 
-  return Array.from(
-    new Set([
-      cnameTarget,
-      baseDomain,
-      `cname.${baseDomain}`,
-      `ingress.${baseDomain}`,
-    ])
-  );
+  const targets = [cnameTarget, baseDomain];
+
+  // Only add prefixed variants when baseDomain is not already prefixed,
+  // otherwise we produce nonsensical targets like cname.cname.example.com.
+  if (!baseDomain.startsWith("cname.")) {
+    targets.push(`cname.${baseDomain}`);
+  }
+  if (!baseDomain.startsWith("ingress.")) {
+    targets.push(`ingress.${baseDomain}`);
+  }
+
+  return Array.from(new Set(targets));
 }
 
 /**
