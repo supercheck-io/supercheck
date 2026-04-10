@@ -2,29 +2,19 @@
 
 import { NextRequest } from "next/server";
 
-jest.mock("@/utils/db", () => ({
-  db: {
-    select: jest.fn(),
-    insert: jest.fn(),
-  },
-}));
-
 jest.mock("@/utils/auth", () => ({
   auth: {
     api: {
       getSession: jest.fn(),
+      listApiKeys: jest.fn(),
+      createApiKey: jest.fn(),
+      updateApiKey: jest.fn(),
     },
   },
 }));
 
 jest.mock("next/headers", () => ({
   headers: jest.fn(async () => new Headers()),
-}));
-
-jest.mock("@/lib/security/api-key-hash", () => ({
-  generateApiKey: jest.fn(() => "sck_trigger_1234567890abcdef1234567890abcdef"),
-  hashApiKey: jest.fn(() => "hashed-extension-key"),
-  getApiKeyPrefix: jest.fn(() => "sck_trigger_1234..."),
 }));
 
 jest.mock("@/lib/logger/pino-config", () => {
@@ -41,17 +31,13 @@ jest.mock("@/lib/logger/pino-config", () => {
 
 import { POST } from "./route";
 
-const { db: mockDb } = jest.requireMock("@/utils/db") as {
-  db: {
-    select: jest.Mock;
-    insert: jest.Mock;
-  };
-};
-
 const { auth: mockAuth } = jest.requireMock("@/utils/auth") as {
   auth: {
     api: {
       getSession: jest.Mock;
+      listApiKeys: jest.Mock;
+      createApiKey: jest.Mock;
+      updateApiKey: jest.Mock;
     };
   };
 };
@@ -61,7 +47,7 @@ describe("Extension auth route", () => {
     jest.clearAllMocks();
   });
 
-  it("creates extension API keys with an explicit id", async () => {
+  it("returns success when the extension is already connected", async () => {
     mockAuth.api.getSession.mockResolvedValue({
       user: {
         id: "user-1",
@@ -70,16 +56,19 @@ describe("Extension auth route", () => {
       },
     });
 
-    const existingKeysQuery = {
-      from: jest.fn().mockReturnThis(),
-      where: jest.fn().mockResolvedValue([]),
-    };
-
-    const returning = jest.fn().mockResolvedValue([{ id: "key-1" }]);
-    const values = jest.fn().mockReturnValue({ returning });
-
-    mockDb.select.mockReturnValue(existingKeysQuery);
-    mockDb.insert.mockReturnValue({ values });
+    mockAuth.api.listApiKeys.mockResolvedValue({
+      apiKeys: [
+        {
+          id: "key-1",
+          name: "SuperCheck Recorder Extension",
+          prefix: "ext",
+          enabled: true,
+        },
+      ],
+      total: 1,
+      limit: undefined,
+      offset: undefined,
+    });
 
     const request = new NextRequest("http://localhost/api/extension/auth", {
       method: "POST",
@@ -94,15 +83,114 @@ describe("Extension auth route", () => {
 
     expect(response.status).toBe(200);
     expect(body.success).toBe(true);
-    expect(body.data.apiKey).toBe("sck_trigger_1234567890abcdef1234567890abcdef");
-    expect(values).toHaveBeenCalledWith(
-      expect.objectContaining({
-        id: expect.any(String),
-        referenceId: "user-1",
+    expect(body.data.message).toBe("Extension already connected");
+    expect(mockAuth.api.listApiKeys).toHaveBeenCalledWith({
+      headers: expect.any(Headers),
+      query: {
+        configId: "default",
+        limit: 1000,
+      },
+    });
+    expect(mockAuth.api.createApiKey).not.toHaveBeenCalled();
+  });
+
+  it("does not treat non-extension keys with similar names as the recorder integration", async () => {
+    mockAuth.api.getSession.mockResolvedValue({
+      user: {
+        id: "user-1",
+        email: "user@example.com",
+        name: "User One",
+      },
+    });
+
+    mockAuth.api.listApiKeys.mockResolvedValue({
+      apiKeys: [
+        {
+          id: "key-legacy",
+          name: "Extension Helper",
+          prefix: "cli",
+          enabled: true,
+          permissions: null,
+        },
+      ],
+      total: 1,
+      limit: undefined,
+      offset: undefined,
+    });
+
+    mockAuth.api.createApiKey.mockResolvedValue({
+      id: "key-2",
+      key: "extABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+      name: "SuperCheck Recorder Extension",
+      prefix: "ext",
+      enabled: true,
+    });
+
+    const request = new NextRequest("http://localhost/api/extension/auth", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "SuperCheck Recorder Extension",
+      }),
+    });
+
+    const response = await POST(request);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.data.apiKey).toBe("extABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789");
+    expect(mockAuth.api.createApiKey).toHaveBeenCalledTimes(1);
+  });
+
+  it("creates a new extension API key through Better Auth when none exists", async () => {
+    mockAuth.api.getSession.mockResolvedValue({
+      user: {
+        id: "user-1",
+        email: "user@example.com",
+        name: "User One",
+      },
+    });
+
+    mockAuth.api.listApiKeys.mockResolvedValue({
+      apiKeys: [],
+      total: 0,
+      limit: undefined,
+      offset: undefined,
+    });
+
+    mockAuth.api.createApiKey.mockResolvedValue({
+      id: "key-2",
+      key: "extABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+      name: "SuperCheck Recorder Extension",
+      prefix: "ext",
+      enabled: true,
+    });
+
+    const request = new NextRequest("http://localhost/api/extension/auth", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "SuperCheck Recorder Extension",
+      }),
+    });
+
+    const response = await POST(request);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.data.apiKey).toBe("extABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789");
+    expect(mockAuth.api.createApiKey).toHaveBeenCalledWith({
+      headers: expect.any(Headers),
+      body: {
+        configId: "default",
+        name: "SuperCheck Recorder Extension",
         prefix: "ext",
-        key: "hashed-extension-key",
-        permissions: ["recorder:save"],
-      })
-    );
+        permissions: {
+          recorder: ["save"],
+        },
+      },
+    });
   });
 });

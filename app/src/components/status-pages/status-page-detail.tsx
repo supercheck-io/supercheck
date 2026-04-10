@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -122,14 +122,28 @@ export function StatusPageDetail({
 }: StatusPageDetailProps) {
   const router = useRouter();
   const [isPublishing, setIsPublishing] = useState(false);
-  const publicStatusPageUrl = getPublicStatusPageUrl({
-    subdomain: statusPage.subdomain,
-    customDomain: statusPage.customDomain,
-    customDomainVerified: statusPage.customDomainVerified,
-    statusPageDomain,
-  });
+  const [appUrl, setAppUrl] = useState<string>();
+
+  useEffect(() => {
+    setAppUrl(window.location.origin);
+  }, []);
+
+  const shouldDeferPublicUrl = statusPageDomain === "localhost" && !appUrl;
+  const publicStatusPageUrl = shouldDeferPublicUrl
+    ? null
+    : getPublicStatusPageUrl({
+        subdomain: statusPage.subdomain,
+        customDomain: statusPage.customDomain,
+        customDomainVerified: statusPage.customDomainVerified,
+        appUrl,
+        statusPageDomain,
+      });
 
   const handleCopyUrl = () => {
+    if (!publicStatusPageUrl) {
+      return;
+    }
+
     navigator.clipboard.writeText(publicStatusPageUrl);
     toast.success("URL copied to clipboard", {
       description: publicStatusPageUrl,
@@ -142,7 +156,9 @@ export function StatusPageDetail({
       const result = await publishStatusPage(statusPage.id);
       if (result.success) {
         toast.success("Status page published successfully", {
-          description: `Your status page is now publicly accessible at ${publicStatusPageUrl}`,
+          description: publicStatusPageUrl
+            ? `Your status page is now publicly accessible at ${publicStatusPageUrl}`
+            : "Your status page is now publicly accessible",
         });
         router.refresh();
       } else {
@@ -223,20 +239,22 @@ export function StatusPageDetail({
                 {statusPage.pageDescription}
               </p>
             )}
-            <div className="flex items-center gap-2 text-sm text-muted-foreground mt-3 min-w-0">
-              <Tally4 className="h-4 w-4 flex-shrink-0 !text-green-600" />
-              <span className="font-mono text-xs sm:text-sm truncate">
-                {publicStatusPageUrl}
-              </span>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 w-6 p-0 flex-shrink-0"
-                onClick={handleCopyUrl}
-              >
-                <Copy className="h-3 w-3" />
-              </Button>
-            </div>
+            {publicStatusPageUrl ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground mt-3 min-w-0">
+                <Tally4 className="h-4 w-4 flex-shrink-0 !text-green-600" />
+                <span className="font-mono text-xs sm:text-sm truncate">
+                  {publicStatusPageUrl}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 w-6 p-0 flex-shrink-0"
+                  onClick={handleCopyUrl}
+                >
+                  <Copy className="h-3 w-3" />
+                </Button>
+              </div>
+            ) : null}
           </div>
           <div className="flex gap-2 sm:gap-3 flex-shrink-0">
             <Button

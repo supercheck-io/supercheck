@@ -76,6 +76,8 @@ OAuth (`GITHUB_*` / `GOOGLE_*`) is optional in self-hosted mode.
 
 `STATUS_PAGE_DOMAIN` reserves the default status-page namespace (`[uuid].STATUS_PAGE_DOMAIN`). In the HTTPS Compose variants, Supercheck derives the custom-domain target shown in Settings from it, usually `cname.STATUS_PAGE_DOMAIN`. In self-hosted deployments, that target must already point to your app, usually through an A/AAAA record or a wildcard record that already covers it. Keep customer-facing custom domains outside the `STATUS_PAGE_DOMAIN` namespace (for example, `status.example.net`) and point their CNAME to the exact target shown in Settings (for example, `cname.example.com`). The Compose HTTPS variants include a lower-priority Traefik catch-all router so verified custom domains route to the app automatically, but TLS for those hostnames still requires your own certificate workflow. If you use Cloudflare, keep the custom CNAME on DNS-only until verification and origin HTTPS are working.
 
+When you are running the app locally on `http://localhost:3000`, Supercheck keeps status-page preview links on `http://localhost:3000/status/[subdomain]`. It does not send local development traffic to the public `STATUS_PAGE_DOMAIN`.
+
 ### Optional
 
 | Variable | Description | Default |

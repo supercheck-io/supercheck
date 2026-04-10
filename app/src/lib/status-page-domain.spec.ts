@@ -75,6 +75,22 @@ describe("status page domain utilities", () => {
     });
   });
 
+  describe("getStatusPageRuntimeConfig", () => {
+    it("keeps localhost routing on loopback hosts", async () => {
+      process.env.SELF_HOSTED = "true";
+      process.env.STATUS_PAGE_DOMAIN = "status.example.com";
+
+      const { getStatusPageRuntimeConfig } = await import(
+        "./status-page-domain"
+      );
+
+      expect(getStatusPageRuntimeConfig("localhost:3000")).toEqual({
+        domain: "localhost",
+        customDomainTarget: "localhost",
+      });
+    });
+  });
+
   describe("getEffectiveStatusPageCnameTarget", () => {
     it("returns cloud default when SELF_HOSTED is not true", async () => {
       delete process.env.SELF_HOSTED;
@@ -146,6 +162,7 @@ describe("status page domain utilities", () => {
 
       expect(isPublicStatusPageHostname("localhost")).toBe(false);
       expect(isPublicStatusPageHostname("127.0.0.1")).toBe(false);
+      expect(isPublicStatusPageHostname("demo.localhost")).toBe(false);
       expect(isPublicStatusPageHostname("preview")).toBe(false);
     });
 

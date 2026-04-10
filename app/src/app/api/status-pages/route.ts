@@ -5,8 +5,7 @@ import { desc, eq, and, sql } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import {
-  getEffectiveStatusPageCnameTarget,
-  getEffectiveStatusPageDomain,
+  getStatusPageRuntimeConfig,
 } from "@/lib/status-page-domain";
 
 /**
@@ -16,6 +15,9 @@ import {
  */
 export async function GET(request: NextRequest) {
   try {
+    const statusPageRuntimeConfig = getStatusPageRuntimeConfig(
+      request.headers.get("x-forwarded-host") || request.headers.get("host")
+    );
     const context = await requireAuthContext();
 
     // Use current project context
@@ -84,8 +86,8 @@ export async function GET(request: NextRequest) {
     // Return standardized response format for React Query hooks
     return NextResponse.json({
       data: formattedPages,
-      statusPageDomain: getEffectiveStatusPageDomain(),
-      statusPageCnameTarget: getEffectiveStatusPageCnameTarget(),
+      statusPageDomain: statusPageRuntimeConfig.domain,
+      statusPageCnameTarget: statusPageRuntimeConfig.customDomainTarget,
       pagination: {
         total,
         page,

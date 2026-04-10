@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import {
   getAllowedEmailDomains,
   isCloudHosted,
@@ -6,8 +6,7 @@ import {
   isStatusPageBrandingHidden,
 } from "@/lib/feature-flags";
 import {
-  getEffectiveStatusPageCnameTarget,
-  getEffectiveStatusPageDomain,
+  getStatusPageRuntimeConfig,
 } from "@/lib/status-page-domain";
 
 // This endpoint exposes runtime configuration sourced from environment
@@ -23,8 +22,11 @@ export const dynamic = "force-dynamic";
  * require NEXT_PUBLIC_* environment variables (which are baked in at build time).
  * Using this endpoint allows configuration changes without rebuilding the app.
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
   const cloudHosted = isCloudHosted();
+  const statusPageRuntimeConfig = getStatusPageRuntimeConfig(
+    request.headers.get("x-forwarded-host") || request.headers.get("host")
+  );
 
   return NextResponse.json({
     // Hosting mode
@@ -74,11 +76,11 @@ export async function GET() {
     // Status page configuration
     statusPage: {
       // Reserved domain namespace for default public status-page URLs.
-      domain: getEffectiveStatusPageDomain(),
+      domain: statusPageRuntimeConfig.domain,
       // Primary target shown to users for custom-domain setup. This may differ
       // from the reserved namespace when deployments use a dedicated ingress
       // hostname such as cname.example.com.
-      customDomainTarget: getEffectiveStatusPageCnameTarget(),
+      customDomainTarget: statusPageRuntimeConfig.customDomainTarget,
       hideBranding: isStatusPageBrandingHidden(),
     },
   });

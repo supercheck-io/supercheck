@@ -76,5 +76,41 @@ describe("domain utils", () => {
         })
       ).toBe("https://status.customer.com");
     });
+
+    it("keeps localhost links on the current origin during local development", async () => {
+      const { getPublicStatusPageUrl } = await import("./domain-utils");
+
+      expect(
+        getPublicStatusPageUrl({
+          subdomain: "abc123",
+          appUrl: "http://localhost:3000",
+          statusPageDomain: "status.example.com",
+        })
+      ).toBe("http://localhost:3000/status/abc123");
+    });
+
+    it("prefers localhost previews over verified custom domains during local development", async () => {
+      const { getPublicStatusPageUrl } = await import("./domain-utils");
+
+      expect(
+        getPublicStatusPageUrl({
+          subdomain: "abc123",
+          customDomain: "status.customer.com",
+          customDomainVerified: true,
+          appUrl: "http://localhost:3000",
+          statusPageDomain: "status.example.com",
+        })
+      ).toBe("http://localhost:3000/status/abc123");
+    });
+  });
+
+  describe("formatStatusPageUrlForDisplay", () => {
+    it("shows host and path for localhost status page URLs", async () => {
+      const { formatStatusPageUrlForDisplay } = await import("./domain-utils");
+
+      expect(
+        formatStatusPageUrlForDisplay("http://localhost:3000/status/abc123")
+      ).toBe("localhost:3000/status/abc123");
+    });
   });
 });

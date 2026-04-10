@@ -197,6 +197,7 @@ export async function POST(request: NextRequest) {
         .insert(apikey)
         .values({
           id: tokenId,
+          configId: "default",
           name,
           start: tokenStart,
           prefix: "cli",

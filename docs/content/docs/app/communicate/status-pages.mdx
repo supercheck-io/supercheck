@@ -362,6 +362,10 @@ Configure branding and notification settings.
 
 Use your own domain (e.g., `status.example.net`) instead of the default subdomain.
 
+<Callout type="info">
+**Local development stays on localhost:** When you access Supercheck on `http://localhost:3000`, the **View** and **Copy URL** actions keep using `http://localhost:3000/status/[subdomain]`. Supercheck does not send local development traffic to the public `STATUS_PAGE_DOMAIN`.
+</Callout>
+
 #### How Custom Domains Work
 
 ```mermaid

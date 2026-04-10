@@ -3,6 +3,7 @@ import { isCloudHosted } from "@/lib/feature-flags";
 export const CLOUD_STATUS_PAGE_DOMAIN = "supercheck.io";
 
 const LOCAL_STATUS_PAGE_DOMAIN = "localhost";
+const LOCALHOST_SUFFIX = ".localhost";
 const LOOPBACK_HOSTS = new Set([LOCAL_STATUS_PAGE_DOMAIN, "127.0.0.1", "::1"]);
 const IPV4_PATTERN = /^(?:\d{1,3}\.){3}\d{1,3}$/;
 
@@ -26,9 +27,25 @@ export function normalizeStatusPageDomain(
   const hostname = withoutProtocol
     .split("/")[0]
     .replace(/:\d+$/, "")
+    .replace(/^\[|\]$/g, "")
     .replace(/\.$/, "");
 
   return hostname || null;
+}
+
+export function isLocalStatusPageHostname(
+  hostname: string | null | undefined
+): boolean {
+  const normalizedHostname = normalizeStatusPageDomain(hostname ?? undefined);
+
+  if (!normalizedHostname) {
+    return false;
+  }
+
+  return (
+    LOOPBACK_HOSTS.has(normalizedHostname) ||
+    normalizedHostname.endsWith(LOCALHOST_SUFFIX)
+  );
 }
 
 /**
@@ -94,6 +111,22 @@ export function getEffectiveStatusPageCnameTarget(): string {
   return `cname.${baseDomain}`;
 }
 
+export function getStatusPageRuntimeConfig(
+  requestHost?: string | null
+): { domain: string; customDomainTarget: string } {
+  if (isLocalStatusPageHostname(requestHost)) {
+    return {
+      domain: LOCAL_STATUS_PAGE_DOMAIN,
+      customDomainTarget: LOCAL_STATUS_PAGE_DOMAIN,
+    };
+  }
+
+  return {
+    domain: getEffectiveStatusPageDomain(),
+    customDomainTarget: getEffectiveStatusPageCnameTarget(),
+  };
+}
+
 /**
  * Returns all CNAME targets accepted during custom-domain verification.
  *
@@ -130,7 +163,7 @@ export function isPublicStatusPageHostname(
   }
 
   if (
-    LOOPBACK_HOSTS.has(normalizedHostname) ||
+    isLocalStatusPageHostname(normalizedHostname) ||
     IPV4_PATTERN.test(normalizedHostname) ||
     normalizedHostname.includes(":") ||
     !normalizedHostname.includes(".")

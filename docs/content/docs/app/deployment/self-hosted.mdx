@@ -170,6 +170,10 @@ All services run on a single Linux server managed by Docker Compose. Workers con
         <Callout type="warn">
         Set `STATUS_PAGE_DOMAIN` to a publicly reachable hostname. Keep customer-facing custom domains outside that reserved namespace, and keep those hostnames as CNAME records only. The target shown in Settings must already point to your app, usually via the wildcard `*` record above or a dedicated A/AAAA record for that target.
         </Callout>
+
+        <Callout type="info">
+        Local development still stays on `http://localhost:3000/status/[subdomain]`. `STATUS_PAGE_DOMAIN` is only used for public/default status-page hostnames once you access the app through that public hostname.
+        </Callout>
       </Step>
 
       <Step>

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { defaultKeyHasher } from "@better-auth/api-key";
 import { db } from "@/utils/db";
 import { apikey } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, or } from "drizzle-orm";
 import { getRedisConnection } from "@/lib/queue";
 import { createLogger } from "@/lib/logger/index";
 // hashApiKey imported dynamically in handler for indexed lookup
@@ -161,11 +162,15 @@ export async function POST(request: NextRequest) {
     }
 
     // SECURITY: Verify the API key using indexed hash lookup.
-    // Since keys are stored as SHA-256 hashes and SHA-256 is deterministic,
-    // we compute the hash of the input key and do a direct indexed lookup
-    // instead of scanning all enabled keys. This is O(1) vs O(n).
+    // Support both legacy SHA-256 hashes and Better Auth v1.6 api-key hashes
+    // so existing job/CLI keys and newer plugin-managed keys keep working.
     const { hashApiKey } = await import("@/lib/security/api-key-hash");
-    const inputHash = hashApiKey(apiKey.trim());
+    const trimmedApiKey = apiKey.trim();
+    const legacyInputHash = hashApiKey(trimmedApiKey);
+    const pluginInputHash = await defaultKeyHasher(trimmedApiKey);
+    const hashConditions = Array.from(
+      new Set([legacyInputHash, pluginInputHash])
+    ).map((inputHash) => eq(apikey.key, inputHash));
     
     const matchingKeys = await db
       .select({
@@ -178,14 +183,19 @@ export async function POST(request: NextRequest) {
         name: apikey.name,
       })
       .from(apikey)
-      .where(and(eq(apikey.key, inputHash), eq(apikey.enabled, true)))
+      .where(
+        and(
+          eq(apikey.enabled, true),
+          hashConditions.length === 1 ? hashConditions[0] : or(...hashConditions)
+        )
+      )
       .limit(1);
 
     const matchedKey = matchingKeys.length > 0 ? matchingKeys[0] : null;
 
     if (!matchedKey) {
       logger.warn(
-        { keyPrefix: apiKey.substring(0, 8), ip: clientIp },
+        { keyPrefix: trimmedApiKey.substring(0, 8), ip: clientIp },
         "Invalid API key attempted"
       );
       return NextResponse.json(
@@ -282,4 +292,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-
