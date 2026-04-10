@@ -1,5 +1,6 @@
 import {
   STATUS_PAGE_CUSTOM_DOMAIN_RECORD_TYPE_GUIDANCE,
+  STATUS_PAGE_CUSTOM_DOMAIN_TARGET_RECORD_GUIDANCE,
   getStatusPageCustomDomainTargetResolutionError,
   getStatusPageCustomDomainTargetResolutionHint,
 } from "./status-page-domain-guidance";
@@ -9,7 +10,7 @@ describe("status page domain guidance", () => {
     expect(
       getStatusPageCustomDomainTargetResolutionHint("cname.example.com")
     ).toBe(
-      "The target hostname cname.example.com must already be live and publicly resolvable before verification can succeed. It may itself resolve via A/AAAA or wildcard DNS records, and that is normal."
+      "The target hostname cname.example.com must already point to your app before verification can succeed, usually via an A/AAAA record or a wildcard record that already covers it."
     );
   });
 
@@ -17,7 +18,7 @@ describe("status page domain guidance", () => {
     expect(
       getStatusPageCustomDomainTargetResolutionError(["cname.example.com"])
     ).toBe(
-      `CNAME points to cname.example.com, but that target hostname is not publicly resolvable yet. ${STATUS_PAGE_CUSTOM_DOMAIN_RECORD_TYPE_GUIDANCE} Instead, ensure cname.example.com is live and publicly resolvable (often via A/AAAA or wildcard DNS records), then wait for DNS propagation before verifying again.`
+      `CNAME points to cname.example.com, but that target hostname is not publicly resolvable yet. ${STATUS_PAGE_CUSTOM_DOMAIN_RECORD_TYPE_GUIDANCE} ${STATUS_PAGE_CUSTOM_DOMAIN_TARGET_RECORD_GUIDANCE} Wait for DNS propagation and verify again.`
     );
   });
 
@@ -28,7 +29,7 @@ describe("status page domain guidance", () => {
         "ingress.example.com",
       ])
     ).toBe(
-      `CNAME points to cname.example.com, ingress.example.com, but those target hostnames are not publicly resolvable yet. ${STATUS_PAGE_CUSTOM_DOMAIN_RECORD_TYPE_GUIDANCE} Instead, ensure cname.example.com, ingress.example.com are live and publicly resolvable (often via A/AAAA or wildcard DNS records), then wait for DNS propagation before verifying again.`
+      `CNAME points to cname.example.com, ingress.example.com, but those target hostnames are not publicly resolvable yet. ${STATUS_PAGE_CUSTOM_DOMAIN_RECORD_TYPE_GUIDANCE} ${STATUS_PAGE_CUSTOM_DOMAIN_TARGET_RECORD_GUIDANCE} Wait for DNS propagation and verify again.`
     );
   });
 });

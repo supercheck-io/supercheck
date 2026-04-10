@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import crypto from "crypto";
 import { z } from "zod";
 import { db } from "@/utils/db";
 import { apikey } from "@/db/schema";
@@ -89,9 +90,11 @@ export async function POST(request: NextRequest) {
     const now = new Date();
 
     // Create API key record
+    const apiKeyId = crypto.randomUUID();
     const [newKey] = await db
       .insert(apikey)
       .values({
+        id: apiKeyId,
         referenceId: userId,
         name: data.name,
         start: apiKeyStart,

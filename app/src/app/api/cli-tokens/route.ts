@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import crypto from "crypto";
 import { db } from "@/utils/db";
 import { apikey, user } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
@@ -191,9 +192,11 @@ export async function POST(request: NextRequest) {
 
     let newToken;
     try {
+      const tokenId = crypto.randomUUID();
       [newToken] = await db
         .insert(apikey)
         .values({
+          id: tokenId,
           name,
           start: tokenStart,
           prefix: "cli",
