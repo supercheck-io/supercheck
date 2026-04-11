@@ -300,6 +300,9 @@ export function SettingsTab({
           (current) => {
             if (!current) return current;
 
+            const domainChanged =
+              normalizedCustomDomain !== current.statusPage.customDomain;
+
             return {
               ...current,
               statusPage: {
@@ -310,6 +313,7 @@ export function SettingsTab({
                 language: normalizedLanguage,
                 supportUrl: normalizedSupportUrl,
                 customDomain: normalizedCustomDomain,
+                ...(domainChanged ? { customDomainVerified: false } : {}),
               },
             };
           }
@@ -620,44 +624,30 @@ export function SettingsTab({
                     className="w-96 text-xs space-y-3"
                   >
                     <p className="font-medium text-sm">Custom domain setup</p>
-                    <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
-                      <li>
-                        Enter <code>{CUSTOM_DOMAIN_EXAMPLE_HOSTNAME}</code> and save.
-                      </li>
-                      {isSelfHosted && (
-                        <li>
-                          Make sure the target hostname already points to your app.
-                        </li>
-                      )}
-                      <li>Create a CNAME to the exact target shown below.</li>
-                      <li>{STATUS_PAGE_CUSTOM_DOMAIN_RECORD_TYPE_GUIDANCE}</li>
-                      <li>
-                        If you use Cloudflare, keep the record on{" "}
-                        <strong>DNS only</strong> during verification.
-                      </li>
-                    </ol>
+                    <p className="text-muted-foreground">
+                      Serve your status page from your own hostname (e.g.{" "}
+                      <code>{CUSTOM_DOMAIN_EXAMPLE_HOSTNAME}</code>) by creating a
+                      CNAME record that points to the target shown in the DNS
+                      Configuration section below. Enter the hostname, save, add
+                      the CNAME, then click <strong>Verify DNS</strong>.
+                    </p>
                     <div className="space-y-2">
                       <p className="font-medium text-foreground/90">
-                        Cloudflare example with separate DNS zones
+                        Cloudflare example
                       </p>
                       <p className="text-muted-foreground">
-                        Reserved status-page namespace:{" "}
-                        <code>{STATUS_PAGE_DOMAIN_EXAMPLE}</code>
-                      </p>
-                      <p className="text-muted-foreground">
-                        Customer-facing custom domain:{" "}
+                        Reserved namespace:{" "}
+                        <code>{STATUS_PAGE_DOMAIN_EXAMPLE}</code>{" "}
+                        &middot; Custom hostname:{" "}
                         <code>{CUSTOM_DOMAIN_EXAMPLE_HOSTNAME}</code>
                       </p>
                       {isSelfHosted && (
                         <>
-                          <p className="text-foreground/80">
-                            Target hostname (self-hosted, one-time, in{" "}
-                            <code>{STATUS_PAGE_DOMAIN_EXAMPLE}</code>)
-                          </p>
                           <div className="rounded-md border overflow-hidden">
                             <table className="w-full text-xs">
                               <thead>
                                 <tr className="border-b bg-muted/50">
+                                  <th className="text-left px-3 py-1.5 font-medium">Zone</th>
                                   <th className="text-left px-3 py-1.5 font-medium">Type</th>
                                   <th className="text-left px-3 py-1.5 font-medium">Name</th>
                                   <th className="text-left px-3 py-1.5 font-medium">Value</th>
@@ -665,64 +655,61 @@ export function SettingsTab({
                                 </tr>
                               </thead>
                               <tbody>
-                                <tr>
+                                <tr className="border-b">
+                                  <td className="px-3 py-1.5 font-mono">{STATUS_PAGE_DOMAIN_EXAMPLE}</td>
                                   <td className="px-3 py-1.5 font-mono">A / AAAA</td>
                                   <td className="px-3 py-1.5 font-mono">cname</td>
-                                  <td className="px-3 py-1.5">your app / ingress IP</td>
+                                  <td className="px-3 py-1.5">app IP</td>
+                                  <td className="px-3 py-1.5">DNS only</td>
+                                </tr>
+                                <tr>
+                                  <td className="px-3 py-1.5 font-mono">{CUSTOM_DOMAIN_EXAMPLE_ZONE}</td>
+                                  <td className="px-3 py-1.5 font-mono">CNAME</td>
+                                  <td className="px-3 py-1.5 font-mono">{CUSTOM_DOMAIN_EXAMPLE_LABEL}</td>
+                                  <td className="px-3 py-1.5 font-mono">{STATUS_PAGE_CNAME_TARGET_EXAMPLE}</td>
                                   <td className="px-3 py-1.5">DNS only</td>
                                 </tr>
                               </tbody>
                             </table>
                           </div>
                           <p className="text-muted-foreground">
-                            Skip this target record if an existing wildcard already
-                            covers <code>{STATUS_PAGE_CNAME_TARGET_EXAMPLE}</code>.
+                            Skip the target A/AAAA row if a wildcard already covers it.
+                            Use <strong>DNS only</strong> during verification.
                           </p>
                         </>
                       )}
-                      <p className="text-foreground/80">
-                        Custom hostname (per status page, in{" "}
-                        <code>{CUSTOM_DOMAIN_EXAMPLE_ZONE}</code>)
-                      </p>
-                      <div className="rounded-md border overflow-hidden">
-                        <table className="w-full text-xs">
-                          <thead>
-                            <tr className="border-b bg-muted/50">
-                              <th className="text-left px-3 py-1.5 font-medium">Type</th>
-                              <th className="text-left px-3 py-1.5 font-medium">Name</th>
-                              <th className="text-left px-3 py-1.5 font-medium">Value</th>
-                              <th className="text-left px-3 py-1.5 font-medium">Proxy</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            <tr>
-                              <td className="px-3 py-1.5 font-mono">CNAME</td>
-                              <td className="px-3 py-1.5 font-mono">
-                                {CUSTOM_DOMAIN_EXAMPLE_LABEL}
-                              </td>
-                              <td className="px-3 py-1.5 font-mono">
-                                {STATUS_PAGE_CNAME_TARGET_EXAMPLE}
-                              </td>
-                              <td className="px-3 py-1.5">DNS only</td>
-                            </tr>
-                          </tbody>
-                        </table>
-                      </div>
-                      <p className="text-muted-foreground">
-                        Some DNS providers want the full hostname{" "}
-                        <code>{CUSTOM_DOMAIN_EXAMPLE_HOSTNAME}</code> instead of{" "}
-                        <code>{CUSTOM_DOMAIN_EXAMPLE_LABEL}</code>.
-                      </p>
+                      {!isSelfHosted && (
+                        <div className="rounded-md border overflow-hidden">
+                          <table className="w-full text-xs">
+                            <thead>
+                              <tr className="border-b bg-muted/50">
+                                <th className="text-left px-3 py-1.5 font-medium">Type</th>
+                                <th className="text-left px-3 py-1.5 font-medium">Name</th>
+                                <th className="text-left px-3 py-1.5 font-medium">Value</th>
+                                <th className="text-left px-3 py-1.5 font-medium">Proxy</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              <tr>
+                                <td className="px-3 py-1.5 font-mono">CNAME</td>
+                                <td className="px-3 py-1.5 font-mono">{CUSTOM_DOMAIN_EXAMPLE_LABEL}</td>
+                                <td className="px-3 py-1.5 font-mono">{STATUS_PAGE_CNAME_TARGET_EXAMPLE}</td>
+                                <td className="px-3 py-1.5">DNS only</td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
                       <p className="text-muted-foreground">
                         The custom hostname can live in a different DNS zone than
-                        the reserved status-page namespace. Always use the exact
-                        target shown in Settings for your deployment.
+                        the reserved namespace. Always use the exact target shown
+                        in Settings.
                       </p>
                     </div>
                     {isSelfHosted && (
                       <p className="text-muted-foreground">
-                        Self-hosted routing is automatic after verification, but
-                        origin TLS still needs certificates for that hostname.
+                        Routing is automatic after verification. Origin TLS still
+                        needs certificates for the custom hostname.
                       </p>
                     )}
                   </PopoverContent>
