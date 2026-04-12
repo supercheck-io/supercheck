@@ -64,6 +64,16 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  getStatusPageCustomDomainTargetResolutionHint,
+  STATUS_PAGE_CUSTOM_DOMAIN_RECORD_TYPE_GUIDANCE,
+} from "@/lib/status-page-domain-guidance";
+
+const CUSTOM_DOMAIN_EXAMPLE_HOSTNAME = "status.example.net";
+const CUSTOM_DOMAIN_EXAMPLE_LABEL = "status";
+const CUSTOM_DOMAIN_EXAMPLE_ZONE = "example.net";
+const STATUS_PAGE_DOMAIN_EXAMPLE = "example.com";
+const STATUS_PAGE_CNAME_TARGET_EXAMPLE = "cname.example.com";
 
 type StatusPage = {
   id: string;
@@ -290,6 +300,9 @@ export function SettingsTab({
           (current) => {
             if (!current) return current;
 
+            const domainChanged =
+              normalizedCustomDomain !== current.statusPage.customDomain;
+
             return {
               ...current,
               statusPage: {
@@ -300,6 +313,7 @@ export function SettingsTab({
                 language: normalizedLanguage,
                 supportUrl: normalizedSupportUrl,
                 customDomain: normalizedCustomDomain,
+                ...(domainChanged ? { customDomainVerified: false } : {}),
               },
             };
           }
@@ -594,13 +608,119 @@ export function SettingsTab({
               <h4 className="text-sm font-semibold flex items-center gap-2">
                 <Globe className="h-4 w-4 text-muted-foreground" />
                 Custom Domain
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      className="text-muted-foreground hover:text-foreground transition-colors"
+                      aria-label="Custom domain setup help"
+                    >
+                      <Info className="h-3.5 w-3.5" />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    side="top"
+                    align="start"
+                    className="w-96 text-xs space-y-3"
+                  >
+                    <p className="font-medium text-sm">Custom domain setup</p>
+                    <p className="text-muted-foreground">
+                      Serve your status page from your own hostname (e.g.{" "}
+                      <code>{CUSTOM_DOMAIN_EXAMPLE_HOSTNAME}</code>) by creating a
+                      CNAME record that points to the target shown in the DNS
+                      Configuration section below. Enter the hostname, save, add
+                      the CNAME, then click <strong>Verify DNS</strong>.
+                    </p>
+                    <div className="space-y-2">
+                      <p className="font-medium text-foreground/90">
+                        Cloudflare example
+                      </p>
+                      <p className="text-muted-foreground">
+                        Reserved namespace:{" "}
+                        <code>{STATUS_PAGE_DOMAIN_EXAMPLE}</code>{" "}
+                        &middot; Custom hostname:{" "}
+                        <code>{CUSTOM_DOMAIN_EXAMPLE_HOSTNAME}</code>
+                      </p>
+                      {isSelfHosted && (
+                        <>
+                          <div className="rounded-md border overflow-hidden">
+                            <table className="w-full text-xs">
+                              <thead>
+                                <tr className="border-b bg-muted/50">
+                                  <th className="text-left px-3 py-1.5 font-medium">Zone</th>
+                                  <th className="text-left px-3 py-1.5 font-medium">Type</th>
+                                  <th className="text-left px-3 py-1.5 font-medium">Name</th>
+                                  <th className="text-left px-3 py-1.5 font-medium">Value</th>
+                                  <th className="text-left px-3 py-1.5 font-medium">Proxy</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                <tr className="border-b">
+                                  <td className="px-3 py-1.5 font-mono">{STATUS_PAGE_DOMAIN_EXAMPLE}</td>
+                                  <td className="px-3 py-1.5 font-mono">A / AAAA</td>
+                                  <td className="px-3 py-1.5 font-mono">cname</td>
+                                  <td className="px-3 py-1.5">app IP</td>
+                                  <td className="px-3 py-1.5">DNS only</td>
+                                </tr>
+                                <tr>
+                                  <td className="px-3 py-1.5 font-mono">{CUSTOM_DOMAIN_EXAMPLE_ZONE}</td>
+                                  <td className="px-3 py-1.5 font-mono">CNAME</td>
+                                  <td className="px-3 py-1.5 font-mono">{CUSTOM_DOMAIN_EXAMPLE_LABEL}</td>
+                                  <td className="px-3 py-1.5 font-mono">{STATUS_PAGE_CNAME_TARGET_EXAMPLE}</td>
+                                  <td className="px-3 py-1.5">DNS only</td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          </div>
+                          <p className="text-muted-foreground">
+                            Skip the target A/AAAA row if a wildcard already covers it.
+                            Use <strong>DNS only</strong> during verification.
+                          </p>
+                        </>
+                      )}
+                      {!isSelfHosted && (
+                        <div className="rounded-md border overflow-hidden">
+                          <table className="w-full text-xs">
+                            <thead>
+                              <tr className="border-b bg-muted/50">
+                                <th className="text-left px-3 py-1.5 font-medium">Type</th>
+                                <th className="text-left px-3 py-1.5 font-medium">Name</th>
+                                <th className="text-left px-3 py-1.5 font-medium">Value</th>
+                                <th className="text-left px-3 py-1.5 font-medium">Proxy</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              <tr>
+                                <td className="px-3 py-1.5 font-mono">CNAME</td>
+                                <td className="px-3 py-1.5 font-mono">{CUSTOM_DOMAIN_EXAMPLE_LABEL}</td>
+                                <td className="px-3 py-1.5 font-mono">{STATUS_PAGE_CNAME_TARGET_EXAMPLE}</td>
+                                <td className="px-3 py-1.5">DNS only</td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                      <p className="text-muted-foreground">
+                        The custom hostname can live in a different DNS zone than
+                        the reserved namespace. Always use the exact target shown
+                        in Settings.
+                      </p>
+                    </div>
+                    {isSelfHosted && (
+                      <p className="text-muted-foreground">
+                        Routing is automatic after verification. Origin TLS still
+                        needs certificates for the custom hostname.
+                      </p>
+                    )}
+                  </PopoverContent>
+                </Popover>
               </h4>
               <p className="text-sm text-muted-foreground">
                 Use your own domain for your status page.
               </p>
               <div className="flex gap-2 mt-5">
                 <Input
-                  placeholder={`status.${effectiveStatusPageDomain}`}
+                  placeholder={CUSTOM_DOMAIN_EXAMPLE_HOSTNAME}
                   {...register("customDomain")}
                   disabled={!canUpdate}
                   className="font-mono text-sm"
@@ -676,26 +796,6 @@ export function SettingsTab({
                   <span className="font-medium text-foreground/80">
                     {customDomainValue ? "DNS Configuration" : "How to set up a custom domain"}
                   </span>
-                  {customDomainValue && (
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <button type="button" className="text-muted-foreground hover:text-foreground transition-colors">
-                          <Info className="h-3.5 w-3.5" />
-                        </button>
-                      </PopoverTrigger>
-                      <PopoverContent side="top" align="start" className="w-80 text-xs space-y-2">
-                        <p className="font-medium text-sm">DNS Verification Tips</p>
-                        <ul className="list-disc list-inside space-y-1 text-muted-foreground">
-                          <li><strong>Cloudflare:</strong> Set proxy to &quot;DNS only&quot; (grey cloud) during verification and initial HTTPS checks. Only re-enable the proxy after the origin serves the custom hostname correctly.</li>
-                          <li><strong>Cloudflare SSL:</strong> Use <strong>Full</strong> or <strong>Full (Strict)</strong> mode once origin TLS is working for the custom hostname.</li>
-                          {isSelfHosted && (
-                            <li><strong>Self-hosted:</strong> Docker Compose secure/external deployments route verified custom domains to the app automatically. Origin HTTPS for those hostnames still requires matching certificates via Traefik, Cloudflare, or another reverse proxy.</li>
-                          )}
-                          <li>DNS changes can take 5–30 minutes to propagate.</li>
-                        </ul>
-                      </PopoverContent>
-                    </Popover>
-                  )}
                 </div>
 
                 {customDomainConfigMessage ? (
@@ -705,14 +805,27 @@ export function SettingsTab({
                       resolves a public hostname for status-page routing.
                     </p>
                     <p>
-                      Set <code>STATUS_PAGE_DOMAIN</code> to a real DNS hostname
-                      first. In the Docker Compose templates, setting{" "}
-                      <code>APP_DOMAIN</code> usually does this automatically.
+                      Set <code>STATUS_PAGE_DOMAIN</code> to a real DNS
+                      hostname first. In the Docker Compose secure and external
+                      examples, the target shown here is derived automatically
+                      from it, usually as{" "}
+                      <code>cname.STATUS_PAGE_DOMAIN</code>. Setting{" "}
+                      <code>APP_DOMAIN</code> usually handles the reserved
+                      namespace automatically in those templates.
                     </p>
                   </div>
                 ) : customDomainValue ? (
                   <div className="space-y-3 pl-5.5">
-                    <p>Add the following CNAME record with your DNS provider:</p>
+                    {isSelfHosted && (
+                      <p>
+                        {getStatusPageCustomDomainTargetResolutionHint(
+                          effectiveStatusPageCnameTarget
+                        )}{" "}
+                        If that hostname is already covered by your existing
+                        A/AAAA or wildcard DNS, you can reuse it.
+                      </p>
+                    )}
+                    <p>Create this customer-facing DNS record:</p>
                     <div className="rounded-md border overflow-hidden">
                       <table className="w-full text-xs">
                         <thead>
@@ -732,34 +845,27 @@ export function SettingsTab({
                       </table>
                     </div>
                     <ol className="list-decimal list-inside space-y-1">
-                      <li>Add the CNAME record above with your DNS provider</li>
-                      <li>Wait for DNS propagation (typically 5–30 minutes)</li>
-                      <li>Click <strong>Verify DNS</strong></li>
+                      <li>Add the CNAME record above</li>
+                      <li>{STATUS_PAGE_CUSTOM_DOMAIN_RECORD_TYPE_GUIDANCE}</li>
+                      <li>If you use Cloudflare, keep the record on DNS only during verification.</li>
+                      <li>Wait for DNS propagation, then click <strong>Verify DNS</strong>.</li>
+                      <li>Publish the status page before testing the URL.</li>
                     </ol>
                     <p>
-                      DNS providers differ: some expect the full hostname (for
-                      example, <code>{customDomainValue}</code>), while others
-                      expect only the label relative to your DNS zone (for
-                      example, <code>status</code>). Use the same CNAME target
-                      either way.
-                    </p>
-                    <p>
                       Do not use <code>{effectiveStatusPageDomain}</code> or any
-                      of its
-                      subdomains as the custom domain value.
+                      of its subdomains as the custom domain value.
                     </p>
-                    <p>Only published status pages are served on public and custom domains.</p>
                   </div>
                 ) : (
                   <ol className="list-decimal list-inside space-y-1 pl-5.5">
-                    <li>Enter your custom domain above (e.g., status.yourcompany.com)</li>
-                    <li>Save your changes</li>
-                    <li>Add a CNAME record pointing to{" "}
-                      <code className="bg-muted px-1 py-0.5 rounded text-xs">{effectiveStatusPageCnameTarget}</code>
+                    <li>
+                      Enter your custom domain above (for example,{" "}
+                      <code>{CUSTOM_DOMAIN_EXAMPLE_HOSTNAME}</code>)
                     </li>
-                    <li>Click <strong>Verify DNS</strong> to confirm the setup</li>
-                    <li>Publish the status page before testing the public or custom URL</li>
-                    <li>Do not set the custom domain to <code>{effectiveStatusPageDomain}</code> or its subdomains</li>
+                    <li>Save your changes</li>
+                    <li>Review the DNS records shown here</li>
+                    <li>Wait for DNS propagation, then click <strong>Verify DNS</strong></li>
+                    <li>Publish the status page before testing the URL</li>
                   </ol>
                 )}
               </div>

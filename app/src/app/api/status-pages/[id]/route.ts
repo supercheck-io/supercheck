@@ -14,8 +14,7 @@ import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import { generateProxyUrl } from "@/lib/asset-proxy";
 import { logAuditEvent } from "@/lib/audit-logger";
 import {
-  getEffectiveStatusPageCnameTarget,
-  getEffectiveStatusPageDomain,
+  getStatusPageRuntimeConfig,
 } from "@/lib/status-page-domain";
 import { z } from "zod";
 
@@ -35,6 +34,9 @@ type RouteContext = {
  */
 export async function GET(request: NextRequest, context: RouteContext) {
   try {
+    const statusPageRuntimeConfig = getStatusPageRuntimeConfig(
+      request.headers.get("x-forwarded-host") || request.headers.get("host")
+    );
     const { id } = await context.params;
 
     // Validate UUID format
@@ -186,8 +188,8 @@ export async function GET(request: NextRequest, context: RouteContext) {
         createdAt: statusPage.createdAt?.toISOString() ?? null,
         updatedAt: statusPage.updatedAt?.toISOString() ?? null,
       },
-      statusPageDomain: getEffectiveStatusPageDomain(),
-      statusPageCnameTarget: getEffectiveStatusPageCnameTarget(),
+      statusPageDomain: statusPageRuntimeConfig.domain,
+      statusPageCnameTarget: statusPageRuntimeConfig.customDomainTarget,
       components: componentsWithMonitors,
       monitors: projectMonitors,
       canUpdate,

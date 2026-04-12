@@ -7,6 +7,73 @@
  * - Simple and production-ready
  */
 
+const LOCAL_STATUS_PAGE_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
+
+type ParsedOrigin = {
+  origin: string;
+  hostname: string;
+};
+
+function parseOriginCandidate(value?: string): ParsedOrigin | null {
+  if (!value) {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const candidate = /^[a-zA-Z][a-zA-Z\d+\-.]*:\/\//.test(trimmed)
+    ? trimmed
+    : `http://${trimmed}`;
+
+  try {
+    const url = new URL(candidate);
+    return {
+      origin: url.origin,
+      hostname: url.hostname.toLowerCase().replace(/^\[|\]$/g, ""),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function isLocalStatusPageHost(hostname: string | null | undefined): boolean {
+  if (!hostname) {
+    return false;
+  }
+
+  return (
+    LOCAL_STATUS_PAGE_HOSTS.has(hostname) ||
+    hostname.endsWith(".localhost")
+  );
+}
+
+function getLocalStatusPageOrigin(
+  appUrl?: string,
+  requestHostname?: string,
+): string | null {
+  const parsedAppUrl = parseOriginCandidate(appUrl);
+  if (parsedAppUrl && isLocalStatusPageHost(parsedAppUrl.hostname)) {
+    return parsedAppUrl.origin;
+  }
+
+  const parsedRequestHostname = parseOriginCandidate(requestHostname);
+  if (
+    parsedRequestHostname &&
+    isLocalStatusPageHost(parsedRequestHostname.hostname)
+  ) {
+    return parsedRequestHostname.origin;
+  }
+
+  return null;
+}
+
+function getLocalStatusPagePath(subdomain: string): string {
+  return `/status/${encodeURIComponent(subdomain)}`;
+}
+
 /**
  * Extracts the base domain from NEXT_PUBLIC_APP_URL or current window location
  * @returns The base domain (e.g., "supercheck.io" from "https://demo.supercheck.io")
@@ -169,6 +236,11 @@ export function getPublicStatusPageUrl({
   appUrl,
   statusPageDomain,
 }: PublicStatusPageUrlOptions): string {
+  const localStatusPageOrigin = getLocalStatusPageOrigin(appUrl, requestHostname);
+  if (localStatusPageOrigin) {
+    return `${localStatusPageOrigin}${getLocalStatusPagePath(subdomain)}`;
+  }
+
   if (customDomainVerified && customDomain) {
     const protocol = getPreferredStatusPageProtocol(appUrl, statusPageDomain);
     const normalizedHostname = customDomain.trim().toLowerCase().replace(/\.$/, "");
@@ -176,6 +248,16 @@ export function getPublicStatusPageUrl({
   }
 
   return getStatusPageUrl(subdomain, requestHostname, statusPageDomain);
+}
+
+export function formatStatusPageUrlForDisplay(url: string): string {
+  try {
+    const parsedUrl = new URL(url);
+    const pathname = parsedUrl.pathname === "/" ? "" : parsedUrl.pathname;
+    return `${parsedUrl.host}${pathname}`;
+  } catch {
+    return url.replace(/^https?:\/\//, "").replace(/\/$/, "");
+  }
 }
 
 /**

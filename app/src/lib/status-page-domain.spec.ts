@@ -75,6 +75,22 @@ describe("status page domain utilities", () => {
     });
   });
 
+  describe("getStatusPageRuntimeConfig", () => {
+    it("keeps localhost routing on loopback hosts", async () => {
+      process.env.SELF_HOSTED = "true";
+      process.env.STATUS_PAGE_DOMAIN = "status.example.com";
+
+      const { getStatusPageRuntimeConfig } = await import(
+        "./status-page-domain"
+      );
+
+      expect(getStatusPageRuntimeConfig("localhost:3000")).toEqual({
+        domain: "localhost",
+        customDomainTarget: "localhost",
+      });
+    });
+  });
+
   describe("getEffectiveStatusPageCnameTarget", () => {
     it("returns cloud default when SELF_HOSTED is not true", async () => {
       delete process.env.SELF_HOSTED;
@@ -87,7 +103,7 @@ describe("status page domain utilities", () => {
       expect(getEffectiveStatusPageCnameTarget()).toBe("supercheck.io");
     });
 
-    it("returns STATUS_PAGE_DOMAIN in self-hosted mode", async () => {
+    it("derives a dedicated target from STATUS_PAGE_DOMAIN in self-hosted mode", async () => {
       process.env.SELF_HOSTED = "true";
       process.env.STATUS_PAGE_DOMAIN = "status.example.com";
 
@@ -95,7 +111,35 @@ describe("status page domain utilities", () => {
         "./status-page-domain"
       );
 
+      expect(getEffectiveStatusPageCnameTarget()).toBe(
+        "cname.status.example.com"
+      );
+    });
+
+    it("returns STATUS_PAGE_DOMAIN when it already matches the app hostname", async () => {
+      process.env.SELF_HOSTED = "true";
+      process.env.STATUS_PAGE_DOMAIN = "status.example.com";
+      process.env.APP_URL = "https://status.example.com";
+
+      const { getEffectiveStatusPageCnameTarget } = await import(
+        "./status-page-domain"
+      );
+
       expect(getEffectiveStatusPageCnameTarget()).toBe("status.example.com");
+    });
+
+    it("continues honoring legacy STATUS_PAGE_CNAME_TARGET for compatibility", async () => {
+      process.env.SELF_HOSTED = "true";
+      process.env.STATUS_PAGE_DOMAIN = "status.example.com";
+      process.env.STATUS_PAGE_CNAME_TARGET = "cname.status.example.com";
+
+      const { getEffectiveStatusPageCnameTarget } = await import(
+        "./status-page-domain"
+      );
+
+      expect(getEffectiveStatusPageCnameTarget()).toBe(
+        "cname.status.example.com"
+      );
     });
 
     it("falls back to localhost when STATUS_PAGE_DOMAIN is localhost", async () => {
@@ -118,6 +162,7 @@ describe("status page domain utilities", () => {
 
       expect(isPublicStatusPageHostname("localhost")).toBe(false);
       expect(isPublicStatusPageHostname("127.0.0.1")).toBe(false);
+      expect(isPublicStatusPageHostname("demo.localhost")).toBe(false);
       expect(isPublicStatusPageHostname("preview")).toBe(false);
     });
 
@@ -141,7 +186,9 @@ describe("status page domain utilities", () => {
         "./status-page-domain"
       );
 
-      expect(getStatusPageCustomDomainConfigError()).toContain("localhost");
+      expect(getStatusPageCustomDomainConfigError()).toBe(
+        "Custom domains require a publicly reachable hostname. Set STATUS_PAGE_DOMAIN to a real DNS hostname instead of localhost."
+      );
     });
 
     it("returns null when STATUS_PAGE_DOMAIN is a public hostname", async () => {
@@ -153,6 +200,81 @@ describe("status page domain utilities", () => {
       );
 
       expect(getStatusPageCustomDomainConfigError()).toBeNull();
+    });
+  });
+
+  describe("getStatusPageDomainVerificationTargets", () => {
+    it("includes the primary target and legacy aliases", async () => {
+      process.env.SELF_HOSTED = "true";
+      process.env.STATUS_PAGE_DOMAIN = "status.example.com";
+
+      const { getStatusPageDomainVerificationTargets } = await import(
+        "./status-page-domain"
+      );
+
+      expect(getStatusPageDomainVerificationTargets()).toEqual([
+        "cname.status.example.com",
+        "status.example.com",
+        "ingress.status.example.com",
+      ]);
+    });
+
+    it("does not produce double-prefixed targets when baseDomain starts with cname.", async () => {
+      process.env.SELF_HOSTED = "true";
+      process.env.STATUS_PAGE_DOMAIN = "cname.example.com";
+      process.env.APP_URL = "https://cname.example.com";
+
+      const { getStatusPageDomainVerificationTargets } = await import(
+        "./status-page-domain"
+      );
+
+      const targets = getStatusPageDomainVerificationTargets();
+      expect(targets).not.toContain("cname.cname.example.com");
+      expect(targets).toContain("cname.example.com");
+    });
+
+    it("does not produce double-prefixed targets when baseDomain starts with ingress.", async () => {
+      process.env.SELF_HOSTED = "true";
+      process.env.STATUS_PAGE_DOMAIN = "ingress.example.com";
+      process.env.APP_URL = "https://ingress.example.com";
+
+      const { getStatusPageDomainVerificationTargets } = await import(
+        "./status-page-domain"
+      );
+
+      const targets = getStatusPageDomainVerificationTargets();
+      expect(targets).not.toContain("ingress.ingress.example.com");
+      expect(targets).toContain("ingress.example.com");
+    });
+  });
+
+  describe("getStatusPageRuntimeConfig - host normalization", () => {
+    it("extracts the first host from comma-separated x-forwarded-host", async () => {
+      process.env.SELF_HOSTED = "true";
+      process.env.STATUS_PAGE_DOMAIN = "status.example.com";
+
+      const { getStatusPageRuntimeConfig } = await import(
+        "./status-page-domain"
+      );
+
+      expect(
+        getStatusPageRuntimeConfig("localhost:3000, proxy.example.com")
+      ).toEqual({
+        domain: "localhost",
+        customDomainTarget: "localhost",
+      });
+    });
+
+    it("handles single-value host header without commas", async () => {
+      process.env.SELF_HOSTED = "true";
+      process.env.STATUS_PAGE_DOMAIN = "status.example.com";
+
+      const { getStatusPageRuntimeConfig } = await import(
+        "./status-page-domain"
+      );
+
+      const result = getStatusPageRuntimeConfig("app.example.com");
+      expect(result.domain).toBe("status.example.com");
     });
   });
 

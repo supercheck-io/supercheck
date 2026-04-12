@@ -1,19 +1,81 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { InferAPI } from "better-auth";
+import type { apiKey } from "@better-auth/api-key";
 import { z } from "zod";
-import { db } from "@/utils/db";
-import { apikey } from "@/db/schema";
-import { eq } from "drizzle-orm";
 import { auth } from "@/utils/auth";
 import { headers } from "next/headers";
-import { generateApiKey, hashApiKey, getApiKeyPrefix } from "@/lib/security/api-key-hash";
 import { createLogger } from "@/lib/logger/pino-config";
 
 const logger = createLogger({ module: "extension-auth" });
+
+const EXTENSION_API_KEY_CONFIG_ID = "default";
+const EXTENSION_API_KEY_PREFIX = "ext";
+const EXTENSION_API_KEY_LIST_LIMIT = 1000;
+const EXTENSION_API_KEY_PERMISSIONS: Record<string, string[]> = {
+  recorder: ["save"],
+};
+const EXTENSION_PERMISSION_STATEMENT = "recorder:save";
 
 const authRequestSchema = z.object({
   name: z.string().optional().default("SuperCheck Recorder Extension"),
   extensionVersion: z.string().optional(),
 });
+
+type ApiKeyServerApi = Pick<
+  InferAPI<ReturnType<typeof apiKey>["endpoints"]>,
+  "createApiKey" | "listApiKeys" | "updateApiKey"
+>;
+type ListedApiKey = Awaited<
+  ReturnType<ApiKeyServerApi["listApiKeys"]>
+>["apiKeys"][number];
+
+const apiKeyServerApi = auth.api as typeof auth.api & ApiKeyServerApi;
+
+function getPermissionStatements(rawPermissions: unknown): string[] {
+  if (!rawPermissions) {
+    return [];
+  }
+
+  let parsedPermissions = rawPermissions;
+  if (typeof parsedPermissions === "string") {
+    try {
+      parsedPermissions = JSON.parse(parsedPermissions);
+    } catch {
+      return [String(parsedPermissions)];
+    }
+  }
+
+  if (Array.isArray(parsedPermissions)) {
+    return parsedPermissions.filter(
+      (permission): permission is string => typeof permission === "string"
+    );
+  }
+
+  if (typeof parsedPermissions !== "object") {
+    return [];
+  }
+
+  return Object.entries(parsedPermissions).flatMap(([resource, actions]) => {
+    if (!Array.isArray(actions)) {
+      return [];
+    }
+
+    return actions
+      .filter((action): action is string => typeof action === "string")
+      .map((action) => `${resource}:${action}`);
+  });
+}
+
+function isExtensionKey(
+  apiKey: Pick<ListedApiKey, "permissions" | "prefix">
+): boolean {
+  return (
+    apiKey.prefix === EXTENSION_API_KEY_PREFIX ||
+    getPermissionStatements(apiKey.permissions).includes(
+      EXTENSION_PERMISSION_STATEMENT
+    )
+  );
+}
 
 /**
  * POST /api/extension/auth
@@ -25,8 +87,9 @@ const authRequestSchema = z.object({
 export async function POST(request: NextRequest) {
   try {
     // Get session from Better Auth
+    const requestHeaders = await headers();
     const session = await auth.api.getSession({
-      headers: await headers(),
+      headers: requestHeaders,
     });
 
     if (!session?.user?.id) {
@@ -56,15 +119,15 @@ export async function POST(request: NextRequest) {
 
     const data = validation.data;
 
-    // Check if user already has an extension API key
-    const existingKeys = await db
-      .select()
-      .from(apikey)
-      .where(eq(apikey.referenceId, userId));
+    const { apiKeys } = await apiKeyServerApi.listApiKeys({
+      headers: requestHeaders,
+      query: {
+        configId: EXTENSION_API_KEY_CONFIG_ID,
+        limit: EXTENSION_API_KEY_LIST_LIMIT,
+      },
+    });
 
-    const existingExtensionKey = existingKeys.find(
-      (k) => k.name?.includes("Recorder") || k.name?.includes("Extension")
-    );
+    const existingExtensionKey = apiKeys.find(isExtensionKey);
 
     if (existingExtensionKey && existingExtensionKey.enabled) {
       // Return existing key info (but not the key itself for security)
@@ -82,28 +145,16 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Generate new API key
-    const rawApiKey = generateApiKey();
-    const hashedKey = hashApiKey(rawApiKey);
-    const apiKeyStart = getApiKeyPrefix(rawApiKey);
-    const now = new Date();
-
-    // Create API key record
-    const [newKey] = await db
-      .insert(apikey)
-      .values({
-        referenceId: userId,
+    // Create a new extension-scoped key using Better Auth's supported API key flow.
+    const newKey = await apiKeyServerApi.createApiKey({
+      headers: requestHeaders,
+      body: {
+        configId: EXTENSION_API_KEY_CONFIG_ID,
         name: data.name,
-        start: apiKeyStart,
-        prefix: "ext",
-        key: hashedKey,
-        enabled: true,
-        expiresAt: null, // Extension keys don't expire by default
-        createdAt: now,
-        updatedAt: now,
-        permissions: ["recorder:save"],
-      })
-      .returning();
+        prefix: EXTENSION_API_KEY_PREFIX,
+        permissions: EXTENSION_API_KEY_PERMISSIONS,
+      },
+    });
 
     logger.info(
       { userId, keyId: newKey.id, extensionVersion: data.extensionVersion },
@@ -113,7 +164,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       data: {
-        apiKey: rawApiKey, // Only returned once, user must save it
+        apiKey: newKey.key, // Only returned once, user must save it
         keyId: newKey.id,
         user: {
           id: session.user.id,
@@ -138,8 +189,9 @@ export async function POST(request: NextRequest) {
  */
 export async function DELETE(request: NextRequest) {
   try {
+    const requestHeaders = await headers();
     const session = await auth.api.getSession({
-      headers: await headers(),
+      headers: requestHeaders,
     });
 
     if (!session?.user?.id) {
@@ -151,28 +203,39 @@ export async function DELETE(request: NextRequest) {
 
     const userId = session.user.id;
 
-    // Find and disable extension API keys
-    const existingKeys = await db
-      .select()
-      .from(apikey)
-      .where(eq(apikey.referenceId, userId));
+    const { apiKeys } = await apiKeyServerApi.listApiKeys({
+      headers: requestHeaders,
+      query: {
+        configId: EXTENSION_API_KEY_CONFIG_ID,
+        limit: EXTENSION_API_KEY_LIST_LIMIT,
+      },
+    });
+    const extensionKeys = apiKeys.filter(isExtensionKey);
 
-    const extensionKeys = existingKeys.filter(
-      (k) => k.name?.includes("Recorder") || k.name?.includes("Extension")
-    );
+    let revokedCount = 0;
 
     for (const key of extensionKeys) {
-      await db
-        .update(apikey)
-        .set({ enabled: false })
-        .where(eq(apikey.id, key.id));
+      if (!key.enabled) {
+        continue;
+      }
+
+      await apiKeyServerApi.updateApiKey({
+        headers: requestHeaders,
+        body: {
+          configId: EXTENSION_API_KEY_CONFIG_ID,
+          keyId: key.id,
+          enabled: false,
+        },
+      });
+
+      revokedCount += 1;
     }
 
-    logger.info({ userId, keysRevoked: extensionKeys.length }, "Extension API keys revoked");
+    logger.info({ userId, keysRevoked: revokedCount }, "Extension API keys revoked");
 
     return NextResponse.json({
       success: true,
-      data: { keysRevoked: extensionKeys.length },
+      data: { keysRevoked: revokedCount },
     });
   } catch (error) {
     logger.error({ err: error }, "Failed to revoke extension API key");

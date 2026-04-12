@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { defaultKeyHasher } from "@better-auth/api-key";
 import { z } from "zod";
 import { db } from "@/utils/db";
 import { tests, projects, apikey } from "@/db/schema";
-import { and, eq } from "drizzle-orm";
+import { and, eq, or } from "drizzle-orm";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { subscriptionService } from "@/lib/services/subscription-service";
 import { getUserRole, getUserAssignedProjects } from "@/lib/rbac/middleware";
@@ -11,6 +12,42 @@ import { hashApiKey } from "@/lib/security/api-key-hash";
 import { createLogger } from "@/lib/logger/pino-config";
 
 const logger = createLogger({ module: "recordings" });
+
+function normalizeApiKeyPermissions(rawPermissions: unknown): string[] {
+  if (!rawPermissions) {
+    return [];
+  }
+
+  let parsedPermissions = rawPermissions;
+
+  if (typeof parsedPermissions !== "string") {
+    if (Array.isArray(parsedPermissions)) {
+      return parsedPermissions.filter(
+        (permission): permission is string => typeof permission === "string"
+      );
+    }
+
+    if (typeof parsedPermissions !== "object") {
+      return [];
+    }
+
+    return Object.entries(parsedPermissions).flatMap(([resource, actions]) => {
+      if (!Array.isArray(actions)) {
+        return [];
+      }
+
+      return actions
+        .filter((action): action is string => typeof action === "string")
+        .map((action) => `${resource}:${action}`);
+    });
+  }
+
+  try {
+    return normalizeApiKeyPermissions(JSON.parse(parsedPermissions));
+  } catch {
+    return [parsedPermissions];
+  }
+}
 
 const recordingSchema = z.object({
   projectId: z.string().uuid("Invalid project ID format"),
@@ -44,7 +81,7 @@ export async function POST(request: NextRequest) {
     // ========================================
     // AUTHENTICATION - API Key
     // ========================================
-    const apiKeyHeader = request.headers.get("X-API-Key");
+    const apiKeyHeader = request.headers.get("X-API-Key")?.trim();
 
     if (!apiKeyHeader) {
       return NextResponse.json(
@@ -57,7 +94,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const inputHash = hashApiKey(apiKeyHeader.trim());
+    const legacyInputHash = hashApiKey(apiKeyHeader);
+    const pluginInputHash = await defaultKeyHasher(apiKeyHeader);
+    const hashConditions = Array.from(new Set([legacyInputHash, pluginInputHash])).map((keyHash) =>
+      eq(apikey.key, keyHash)
+    );
 
     const matchingKeys = await db
       .select({
@@ -70,7 +111,12 @@ export async function POST(request: NextRequest) {
         prefix: apikey.prefix,
       })
       .from(apikey)
-      .where(and(eq(apikey.key, inputHash), eq(apikey.enabled, true)))
+      .where(
+        and(
+          eq(apikey.enabled, true),
+          hashConditions.length === 1 ? hashConditions[0] : or(...hashConditions)
+        )
+      )
       .limit(1);
 
     const matchedKey = matchingKeys[0] ?? null;
@@ -93,8 +139,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const hasRecorderPermission = Array.isArray(matchedKey.permissions)
-      && matchedKey.permissions.includes("recorder:save");
+    const normalizedPermissions = normalizeApiKeyPermissions(matchedKey.permissions);
+    const hasRecorderPermission = Array.isArray(normalizedPermissions)
+      && normalizedPermissions.includes("recorder:save");
     const isExtensionKey = matchedKey.prefix === "ext";
 
     if (!hasRecorderPermission && !isExtensionKey) {

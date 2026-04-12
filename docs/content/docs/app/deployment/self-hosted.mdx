@@ -130,7 +130,15 @@ All services run on a single Linux server managed by Docker Compose. Workers con
         | A | `*` | Your Server IP |
 
         <Callout type="info">
-        The wildcard (`*`) record enables status page subdomains like `status.yourdomain.com`.
+        The wildcard (`*`) record enables default status page URLs like `abc123.example.com`.
+        </Callout>
+
+        <Callout type="info">
+        The same wildcard usually also covers the derived custom-domain target (for example, `cname.example.com`). If the target shown in Settings is outside that wildcard or on another zone, add an A/AAAA record for that target as well.
+        </Callout>
+
+        <Callout type="info">
+        Customer-facing custom domains should stay outside the `STATUS_PAGE_DOMAIN` namespace. For example, you might reserve `example.com` for default UUID URLs and serve a status page at `status.example.net` by pointing its CNAME to `cname.example.com`.
         </Callout>
 
         <Callout type="warn">
@@ -150,17 +158,21 @@ All services run on a single Linux server managed by Docker Compose. Workers con
         Edit `.env`:
 
         ```bash
-        APP_DOMAIN=app.yourdomain.com
-        ACME_EMAIL=admin@yourdomain.com
-        STATUS_PAGE_DOMAIN=yourdomain.com
+        APP_DOMAIN=app.example.com
+        ACME_EMAIL=admin@example.com
+        STATUS_PAGE_DOMAIN=example.com
         ```
 
         <Callout type="info">
-        `STATUS_PAGE_DOMAIN` is the reserved namespace for default status page URLs (`[uuid].STATUS_PAGE_DOMAIN`) and the CNAME target shown in the UI for custom domains.
+        `STATUS_PAGE_DOMAIN` reserves the default status page namespace (`[uuid].STATUS_PAGE_DOMAIN`). In the HTTPS Compose examples, Supercheck derives the custom-domain target from it automatically, usually as `cname.STATUS_PAGE_DOMAIN`.
         </Callout>
 
         <Callout type="warn">
-        Set `STATUS_PAGE_DOMAIN` to a publicly reachable hostname first. In the Docker Compose templates, setting `APP_DOMAIN` usually does this automatically.
+        Set `STATUS_PAGE_DOMAIN` to a publicly reachable hostname. Keep customer-facing custom domains outside that reserved namespace, and keep those hostnames as CNAME records only. The target shown in Settings must already point to your app, usually via the wildcard `*` record above or a dedicated A/AAAA record for that target.
+        </Callout>
+
+        <Callout type="info">
+        Local development still stays on `http://localhost:3000/status/[subdomain]`. `STATUS_PAGE_DOMAIN` is only used for public/default status-page hostnames once you access the app through that public hostname.
         </Callout>
       </Step>
 
@@ -185,7 +197,7 @@ All services run on a single Linux server managed by Docker Compose. Workers con
       <Step>
         ### Access
 
-        Open `https://app.yourdomain.com` and create your account.
+        Open `https://app.example.com` and create your account.
 
         ```bash
         # Optional: grant super admin

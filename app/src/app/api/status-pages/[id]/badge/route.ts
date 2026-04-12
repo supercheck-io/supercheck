@@ -18,15 +18,13 @@ import {
 } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
-
-const uuidSchema = z.string().uuid();
+import { normalizePublicStatusPageId } from "@/lib/public-status-page-id";
 
 /** Common headers for all SVG badge responses */
 const SVG_HEADERS = {
   "Content-Type": "image/svg+xml",
   "X-Content-Type-Options": "nosniff",
-  "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'",
+  "Content-Security-Policy": "default-src 'none'; sandbox",
   "Access-Control-Allow-Origin": "*",
 } as const;
 
@@ -144,7 +142,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const statusPageId = (await params).id;
+    const statusPageId = normalizePublicStatusPageId((await params).id);
     const searchParams = request.nextUrl.searchParams;
     const style =
       searchParams.get("style") === "flat-square" ? "flat-square" : "flat";
@@ -152,9 +150,7 @@ export async function GET(
       (searchParams.get("label") || "status").slice(0, 64)
     ) || "status";
 
-    // Validate UUID format
-    const validationResult = uuidSchema.safeParse(statusPageId);
-    if (!validationResult.success) {
+    if (!statusPageId) {
       return new NextResponse(
         generateBadgeSvg(
           { label, message: "invalid id", color: "#9f9f9f" },

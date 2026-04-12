@@ -3,6 +3,7 @@ import { isCloudHosted } from "@/lib/feature-flags";
 export const CLOUD_STATUS_PAGE_DOMAIN = "supercheck.io";
 
 const LOCAL_STATUS_PAGE_DOMAIN = "localhost";
+const LOCALHOST_SUFFIX = ".localhost";
 const LOOPBACK_HOSTS = new Set([LOCAL_STATUS_PAGE_DOMAIN, "127.0.0.1", "::1"]);
 const IPV4_PATTERN = /^(?:\d{1,3}\.){3}\d{1,3}$/;
 
@@ -26,9 +27,25 @@ export function normalizeStatusPageDomain(
   const hostname = withoutProtocol
     .split("/")[0]
     .replace(/:\d+$/, "")
+    .replace(/^\[|\]$/g, "")
     .replace(/\.$/, "");
 
   return hostname || null;
+}
+
+export function isLocalStatusPageHostname(
+  hostname: string | null | undefined
+): boolean {
+  const normalizedHostname = normalizeStatusPageDomain(hostname ?? undefined);
+
+  if (!normalizedHostname) {
+    return false;
+  }
+
+  return (
+    LOOPBACK_HOSTS.has(normalizedHostname) ||
+    normalizedHostname.endsWith(LOCALHOST_SUFFIX)
+  );
 }
 
 /**
@@ -51,13 +68,101 @@ export function getEffectiveStatusPageDomain(): string {
 /**
  * Returns the effective CNAME target shown for custom-domain setup.
  *
- * The CNAME target is always the same as STATUS_PAGE_DOMAIN.
- * CNAME verification also accepts common prefixed variants
- * (cname.DOMAIN, ingress.DOMAIN) so users can point custom domains
- * at whichever hostname routes to the app.
+ * User-facing configuration is driven by STATUS_PAGE_DOMAIN only.
+ * In self-hosted deployments, we derive a stable custom-domain target from it
+ * (`cname.STATUS_PAGE_DOMAIN`) when the reserved namespace differs from the
+ * main app hostname. This keeps the supported env surface small while matching
+ * the DNS layout used by the HTTPS Compose/K8s examples.
+ *
+ * STATUS_PAGE_CNAME_TARGET remains as an undocumented compatibility fallback
+ * for deployments that already started using it before this was simplified.
  */
 export function getEffectiveStatusPageCnameTarget(): string {
-  return getEffectiveStatusPageDomain();
+  const compatibilityTarget = normalizeStatusPageDomain(
+    process.env.STATUS_PAGE_CNAME_TARGET
+  );
+
+  if (compatibilityTarget) {
+    return compatibilityTarget;
+  }
+
+  const baseDomain = getEffectiveStatusPageDomain();
+
+  if (isCloudHosted()) {
+    return baseDomain;
+  }
+
+  if (!isPublicStatusPageHostname(baseDomain)) {
+    return baseDomain;
+  }
+
+  const appHostname = normalizeStatusPageDomain(
+    process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL
+  );
+
+  if (
+    appHostname === baseDomain ||
+    baseDomain.startsWith("cname.") ||
+    baseDomain.startsWith("ingress.")
+  ) {
+    return baseDomain;
+  }
+
+  return `cname.${baseDomain}`;
+}
+
+/**
+ * Extracts the first hostname from a potentially comma-separated header value
+ * (e.g. x-forwarded-host in multi-proxy chains) and trims whitespace.
+ */
+function extractFirstHost(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const first = value.split(",")[0].trim();
+  return first || null;
+}
+
+export function getStatusPageRuntimeConfig(
+  requestHost?: string | null
+): { domain: string; customDomainTarget: string } {
+  // Normalize: x-forwarded-host can be comma-separated in proxy chains.
+  const normalizedHost = extractFirstHost(requestHost);
+
+  if (isLocalStatusPageHostname(normalizedHost)) {
+    return {
+      domain: LOCAL_STATUS_PAGE_DOMAIN,
+      customDomainTarget: LOCAL_STATUS_PAGE_DOMAIN,
+    };
+  }
+
+  return {
+    domain: getEffectiveStatusPageDomain(),
+    customDomainTarget: getEffectiveStatusPageCnameTarget(),
+  };
+}
+
+/**
+ * Returns all CNAME targets accepted during custom-domain verification.
+ *
+ * The UI should display getEffectiveStatusPageCnameTarget() as the primary
+ * value to use. Legacy/self-managed deployments may still rely on the
+ * reserved base domain or common prefixed hostnames.
+ */
+export function getStatusPageDomainVerificationTargets(): string[] {
+  const baseDomain = getEffectiveStatusPageDomain();
+  const cnameTarget = getEffectiveStatusPageCnameTarget();
+
+  const targets = [cnameTarget, baseDomain];
+
+  // Only add prefixed variants when baseDomain is not already prefixed,
+  // otherwise we produce nonsensical targets like cname.cname.example.com.
+  if (!baseDomain.startsWith("cname.")) {
+    targets.push(`cname.${baseDomain}`);
+  }
+  if (!baseDomain.startsWith("ingress.")) {
+    targets.push(`ingress.${baseDomain}`);
+  }
+
+  return Array.from(new Set(targets));
 }
 
 /**
@@ -75,7 +180,7 @@ export function isPublicStatusPageHostname(
   }
 
   if (
-    LOOPBACK_HOSTS.has(normalizedHostname) ||
+    isLocalStatusPageHostname(normalizedHostname) ||
     IPV4_PATTERN.test(normalizedHostname) ||
     normalizedHostname.includes(":") ||
     !normalizedHostname.includes(".")

@@ -12,10 +12,8 @@ import { db } from "@/utils/db";
 import { statusPages, incidents } from "@/db/schema";
 import { eq, desc, and } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
 import { buildContentDisposition } from "@/lib/content-disposition";
-
-const uuidSchema = z.string().uuid();
+import { normalizePublicStatusPageId } from "@/lib/public-status-page-id";
 
 /**
  * Escape special characters for iCalendar text values
@@ -106,11 +104,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const statusPageId = (await params).id;
-
-    // Validate UUID format
-    const validationResult = uuidSchema.safeParse(statusPageId);
-    if (!validationResult.success) {
+    const statusPageId = normalizePublicStatusPageId((await params).id);
+    if (!statusPageId) {
       return NextResponse.json(
         { error: "Invalid status page ID" },
         { status: 400 }

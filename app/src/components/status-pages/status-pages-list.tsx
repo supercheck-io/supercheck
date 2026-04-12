@@ -60,8 +60,8 @@ import {
   canDeleteStatusPages,
 } from "@/lib/rbac/client-permissions";
 import {
-  getStatusPageHostname,
-  getStatusPageUrl,
+  formatStatusPageUrlForDisplay,
+  getPublicStatusPageUrl,
 } from "@/lib/domain-utils";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 import {
@@ -81,6 +81,8 @@ type StatusPage = {
   name: string;
   subdomain: string;
   status: string;
+  customDomain: string | null;
+  customDomainVerified: boolean | null;
   pageDescription: string | null;
   headline: string | null;
   createdAt: Date | null;
@@ -122,6 +124,7 @@ export default function StatusPagesList() {
     createdAt: page.createdAt ? new Date(page.createdAt) : null,
     updatedAt: page.updatedAt ? new Date(page.updatedAt) : null,
   }));
+  const appUrl = isMounted ? window.location.origin : undefined;
 
   // Track if we've already processed the create query param to avoid re-opening dialog
   const hasProcessedCreateParam = useRef(false);
@@ -261,16 +264,22 @@ export default function StatusPagesList() {
     }
   };
 
-  const getStatusPagePublicUrl = (subdomain: string): string => {
-    return getStatusPageUrl(subdomain, undefined, statusPageDomain);
+  const getStatusPagePublicUrl = (page: StatusPage): string => {
+    return getPublicStatusPageUrl({
+      subdomain: page.subdomain,
+      customDomain: page.customDomain,
+      customDomainVerified: page.customDomainVerified,
+      appUrl,
+      statusPageDomain,
+    });
   };
 
-  const getStatusPagePublicHostname = (subdomain: string): string => {
-    return getStatusPageHostname(subdomain, undefined, statusPageDomain);
+  const getStatusPagePublicLabel = (page: StatusPage): string => {
+    return formatStatusPageUrlForDisplay(getStatusPagePublicUrl(page));
   };
 
-  const handleCopyUrl = async (subdomain: string) => {
-    const url = getStatusPagePublicUrl(subdomain);
+  const handleCopyUrl = async (page: StatusPage) => {
+    const url = getStatusPagePublicUrl(page);
     try {
       await navigator.clipboard.writeText(url);
       toast.success("URL copied to clipboard");
@@ -421,8 +430,8 @@ export default function StatusPagesList() {
             {statusPages.map((page) => {
               const statusConfig = getStatusConfig(page.status);
               const StatusIcon = statusConfig.icon;
-              const publicUrl = getStatusPagePublicUrl(page.subdomain);
-              const publicHostname = getStatusPagePublicHostname(page.subdomain);
+              const publicUrl = getStatusPagePublicUrl(page);
+              const publicLabel = getStatusPagePublicLabel(page);
 
               return (
                 <Card
@@ -488,7 +497,7 @@ export default function StatusPagesList() {
                               </a>
                             </DropdownMenuItem>
                             <DropdownMenuItem
-                              onClick={() => handleCopyUrl(page.subdomain)}
+                              onClick={() => handleCopyUrl(page)}
                               className="cursor-pointer"
                             >
                               <Copy className="h-4 w-4 mr-2" />
@@ -512,13 +521,13 @@ export default function StatusPagesList() {
                     <div className="flex items-center gap-2 p-2.5 rounded-lg bg-muted/50 mb-3">
                       <Globe className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                       <code className="text-sm text-muted-foreground truncate flex-1 font-mono">
-                        {publicHostname}
+                        {publicLabel}
                       </code>
                       <Button
                         variant="ghost"
                         size="sm"
                         className="h-6 w-6 p-0 hover:bg-background"
-                        onClick={() => handleCopyUrl(page.subdomain)}
+                        onClick={() => handleCopyUrl(page)}
                         title="Copy URL"
                       >
                         <Copy className="h-3 w-3" />

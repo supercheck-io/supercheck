@@ -153,17 +153,17 @@ describe("Registration Feature Flags", () => {
     });
 
     it("parses multiple comma-separated domains", async () => {
-      process.env.ALLOWED_EMAIL_DOMAINS = "acme.com,example.org,test.io";
+      process.env.ALLOWED_EMAIL_DOMAINS = "acme.com,example.org,example.net";
 
       const { getAllowedEmailDomains } = await import("./feature-flags");
-      expect(getAllowedEmailDomains()).toEqual(["acme.com", "example.org", "test.io"]);
+      expect(getAllowedEmailDomains()).toEqual(["acme.com", "example.org", "example.net"]);
     });
 
     it("trims whitespace around domains", async () => {
-      process.env.ALLOWED_EMAIL_DOMAINS = "  acme.com , example.org , test.io  ";
+      process.env.ALLOWED_EMAIL_DOMAINS = "  acme.com , example.org , example.net  ";
 
       const { getAllowedEmailDomains } = await import("./feature-flags");
-      expect(getAllowedEmailDomains()).toEqual(["acme.com", "example.org", "test.io"]);
+      expect(getAllowedEmailDomains()).toEqual(["acme.com", "example.org", "example.net"]);
     });
 
     it("lowercases domains", async () => {

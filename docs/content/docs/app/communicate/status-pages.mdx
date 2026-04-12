@@ -78,7 +78,7 @@ Open your browser and visit the badge URL directly to preview the SVG output. Tr
 | `/api/status-pages/ID/badge?label=API` | Custom "API" label on the left |
 | `/api/status-pages/ID/badge?label=Uptime&style=flat-square` | Combined: custom label with square style |
 
-Replace `ID` with your status page ID (found in the URL when managing your status page).
+Replace `ID` with your status page ID from the manage page URL or API response. If the badge shows `invalid id`, the path parameter is not the status page UUID.
 
 ### iCal Calendar Feed
 
@@ -348,7 +348,7 @@ Configure branding and notification settings.
 - **Logo** — Header logo for status page
 - **Favicon** — Browser tab icon
 - **Status Colors** — Customize colors for each status type
-- **Custom Domain** — Use your own domain (e.g., `status.yourcompany.com`)
+- **Custom Domain** — Use your own domain (e.g., `status.example.net`)
 
 </Tab>
 <Tab value="Notifications">
@@ -360,7 +360,11 @@ Configure branding and notification settings.
 </Tab>
 <Tab value="Custom Domains">
 
-Use your own domain (e.g., `status.yourcompany.com`) instead of the default subdomain.
+Use your own domain (e.g., `status.example.net`) instead of the default subdomain.
+
+<Callout type="info">
+**Local development stays on localhost:** When you access Supercheck on `http://localhost:3000`, the **View** and **Copy URL** actions keep using `http://localhost:3000/status/[subdomain]`. Supercheck does not send local development traffic to the public `STATUS_PAGE_DOMAIN`.
+</Callout>
 
 #### How Custom Domains Work
 
@@ -377,30 +381,54 @@ flowchart LR
     **Configure in Supercheck**
     
     1. Go to your status page → **Settings** tab
-    2. Enter your custom domain (e.g., `status.yourcompany.com`)
+    2. Enter your custom domain (e.g., `status.example.net`)
     3. Click **Save**
   </Step>
   <Step>
     **Add DNS Record**
     
-    Log in to your DNS provider (e.g., Cloudflare, GoDaddy, Namecheap) and add a CNAME record.
+    Log in to your DNS provider (e.g., Cloudflare, GoDaddy, Namecheap) and add the required DNS records.
 
-    For example, if your custom domain is `status.yourcompany.com`:
+    For example, if your custom domain is `status.example.net`:
 
     | Type | Hostname | Target |
     |------|----------|--------|
-    | CNAME | `status.yourcompany.com` | `supercheck.io` |
+    | CNAME | `status.example.net` | `target shown in Settings` |
 
-    The Settings tab shows the full hostname and the required CNAME target. Some DNS providers expect the full hostname, while others expect only the label relative to your zone. Use the same target either way.
+    **Example self-hosted DNS layout:**
+
+    - Reserved status-page namespace: `example.com`
+    - Target shown in Settings: `cname.example.com`
+    - Customer-facing custom domain: `status.example.net`
+
+    **Cloudflare example with separate DNS zones (self-hosted):**
+
+    | Purpose | Zone | Type | Name | Value | Proxy status |
+    |---------|------|------|------|-------|--------------|
+    | Target hostname | `example.com` | `A` / `AAAA` | `cname` | your app / ingress IP | `DNS only` |
+    | Custom hostname | `example.net` | `CNAME` | `status` | `cname.example.com` | `DNS only` during verification |
+
+    Skip the target `A` / `AAAA` record if an existing wildcard already covers `cname.example.com`.
+
+    Use the exact target shown in Settings. Some DNS providers expect the full hostname, while others expect only the label relative to your zone.
 
     <Callout type="info">
-    **CNAME Target:**
-    - **Cloud users:** Point to `supercheck.io`
-    - **Self-hosted:** Point to `STATUS_PAGE_DOMAIN`.
+    **DNS rules:**
+    - Self-hosted: the target shown in Settings must already point to your app, usually via A/AAAA or wildcard DNS.
+    - Create a CNAME for the custom hostname to that target.
+    - Do not add A/AAAA records on the custom hostname itself.
+    </Callout>
+
+    <Callout type="info">
+    **Separate zones are normal:** The target hostname shown in Settings and the customer-facing custom hostname can live in different DNS zones. That is common in self-hosted deployments and customer-managed domains.
     </Callout>
 
     <Callout type="warn">
     **Reserved domain namespace:** Do not set your custom domain to `STATUS_PAGE_DOMAIN` itself or any of its subdomains. That namespace is reserved for default UUID URLs (`[uuid].STATUS_PAGE_DOMAIN`). Use a separate hostname and point its CNAME to the target shown in Settings.
+    </Callout>
+
+    <Callout type="info">
+    **Target hostname:** The target shown in Settings may resolve through A/AAAA or wildcard DNS records. That is normal and does not change the customer-facing record, which should stay a CNAME.
     </Callout>
 
     <Callout type="warn">
@@ -443,18 +471,20 @@ To remove a custom domain, clear the domain field in **Settings** and save. The 
 |-------|----------|
 | "CNAME not found" | Wait 15–30 minutes for DNS propagation, then try again |
 | "Points to wrong target" | Verify your CNAME target matches the value shown in Settings |
+| "Target hostname is not publicly resolvable yet" | Keep your custom hostname as a CNAME only. Make sure the target shown in Settings already points to your app, usually via A/AAAA or wildcard DNS. |
 | "Domain already in use" | The domain is configured on another status page — remove it there first |
-| 404 on custom domain | Ensure the status page is published, the domain is verified, and the configured custom domain is not `STATUS_PAGE_DOMAIN` (or one of its subdomains). Also verify the CNAME record points to the target shown in Settings (`STATUS_PAGE_DOMAIN`). |
+| 404 on custom domain | Ensure the status page is published, the domain is verified, and the configured custom domain is not `STATUS_PAGE_DOMAIN` (or one of its subdomains). Also verify the CNAME record points to the exact target shown in Settings. |
 | Verification fails with Cloudflare | Cloudflare proxy flattens CNAME records into A/AAAA records, making the CNAME invisible to verification. Temporarily set the record to **DNS only** (grey cloud), click **Verify DNS**, then re-enable the proxy. |
+| DNS dashboard shows an A/AAAA record too | That is normal for the target hostname shown in Settings. Keep the customer-facing hostname as a CNAME only; do not add both a CNAME and A/AAAA on the same hostname. |
 | Redirect loops with Cloudflare | Set Cloudflare SSL/TLS mode to **Full** or **Full (Strict)** |
 | HTTPS not working (self-hosted) | The default Docker Compose config routes verified custom domains to the app, but you must terminate TLS for those hostnames separately. If behind Cloudflare, ensure SSL mode is **Full** or **Full (Strict)**. If using Traefik directly, provide matching certificates via dynamic TLS config or a wildcard/custom certificate. |
 
 <Callout type="info">
-**Self-hosted configuration:** Set `STATUS_PAGE_DOMAIN` to the full hostname you want to reserve for default status page URLs (`[uuid].STATUS_PAGE_DOMAIN`). This hostname is also the CNAME target shown in the UI for custom domains. CNAME verification accepts `STATUS_PAGE_DOMAIN`, `cname.STATUS_PAGE_DOMAIN`, and `ingress.STATUS_PAGE_DOMAIN` as valid targets. URL-like values such as `https://supercheck.example.com:443` are normalized automatically, but plain hostnames are recommended.
+**Self-hosted configuration:** Set `STATUS_PAGE_DOMAIN` to the hostname reserved for default status page URLs (`[uuid].STATUS_PAGE_DOMAIN`). Supercheck derives the custom-domain target automatically, usually `cname.STATUS_PAGE_DOMAIN`. That target must already point to your app, usually through A/AAAA or wildcard DNS.
 </Callout>
 
 <Callout type="info">
-**DNS provider input formats vary:** Some DNS providers want the full hostname (`status.example.co.uk`), while others want only the label relative to your zone (`status`). The required CNAME target stays the same in either format.
+**DNS provider input formats vary:** Some DNS providers want the full hostname (`status.example.net`), while others want only the label relative to your zone (`status`). The required CNAME target stays the same in either format.
 </Callout>
 
 <Callout type="warn">

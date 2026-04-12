@@ -72,9 +72,11 @@ OAuth (`GITHUB_*` / `GOOGLE_*`) is optional in self-hosted mode.
 |----------|-------------|
 | `APP_DOMAIN` | Your domain (e.g., `app.yourdomain.com`) |
 | `ACME_EMAIL` | Email for Let's Encrypt |
-| `STATUS_PAGE_DOMAIN` | Base hostname for status pages and CNAME target for custom domains (e.g., `yourdomain.com`) |
+| `STATUS_PAGE_DOMAIN` | Reserved hostname namespace for default status page URLs (e.g., `yourdomain.com`) |
 
-`STATUS_PAGE_DOMAIN` reserves the default status-page namespace (`[uuid].STATUS_PAGE_DOMAIN`) and is also the CNAME target shown for custom-domain setup. CNAME verification accepts `STATUS_PAGE_DOMAIN`, `cname.STATUS_PAGE_DOMAIN`, and `ingress.STATUS_PAGE_DOMAIN` as valid targets. The HTTPS Compose variants also include a lower-priority Traefik catch-all router so verified custom domains outside the reserved namespace are forwarded to the app automatically. For origin HTTPS on those custom hostnames, provide certificates separately via Traefik dynamic TLS config, a wildcard/custom certificate, Cloudflare, or another reverse proxy. When fronting custom domains with Cloudflare, keep the record on DNS-only until the origin serves HTTPS for that hostname.
+`STATUS_PAGE_DOMAIN` reserves the default status-page namespace (`[uuid].STATUS_PAGE_DOMAIN`). In the HTTPS Compose variants, Supercheck derives the custom-domain target shown in Settings from it, usually `cname.STATUS_PAGE_DOMAIN`. In self-hosted deployments, that target must already point to your app, usually through an A/AAAA record or a wildcard record that already covers it. Keep customer-facing custom domains outside the `STATUS_PAGE_DOMAIN` namespace (for example, `status.example.net`) and point their CNAME to the exact target shown in Settings (for example, `cname.example.com`). The Compose HTTPS variants include a lower-priority Traefik catch-all router so verified custom domains route to the app automatically, but TLS for those hostnames still requires your own certificate workflow. If you use Cloudflare, keep the custom CNAME on DNS-only until verification and origin HTTPS are working.
+
+When you are running the app locally on `http://localhost:3000`, Supercheck keeps status-page preview links on `http://localhost:3000/status/[subdomain]`. It does not send local development traffic to the public `STATUS_PAGE_DOMAIN`.
 
 ### Optional
 

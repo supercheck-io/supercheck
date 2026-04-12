@@ -242,6 +242,7 @@ export async function POST(
     // SECURITY: Only the hash is stored, the plain key is returned once to the user
     const newApiKey = await db.insert(apikey).values({
       id: apiKeyId,
+      configId: "default",
       name: name.trim(),
       start: apiKeyStart,
       prefix: "job",

@@ -106,6 +106,40 @@ function logWarning(message) {
   console.log(`[${new Date().toISOString()}] [WARNING] ${message}`);
 }
 
+function isIgnorableMigrationStatementError(statement, errorMessage) {
+  const normalizedStatement = statement.toLowerCase().replace(/\s+/g, " ").trim();
+
+  if (
+    errorMessage.includes("already exists") ||
+    errorMessage.includes("duplicate key value") ||
+    (errorMessage.includes("constraint") && errorMessage.includes("already exists"))
+  ) {
+    return true;
+  }
+
+  if (!errorMessage.includes("does not exist")) {
+    return false;
+  }
+
+  if (normalizedStatement.includes(" drop column ")) {
+    return errorMessage.includes("column");
+  }
+
+  if (normalizedStatement.includes(" drop constraint ")) {
+    return errorMessage.includes("constraint");
+  }
+
+  if (normalizedStatement.startsWith("drop index ")) {
+    return errorMessage.includes("index") || errorMessage.includes("relation");
+  }
+
+  if (normalizedStatement.startsWith("drop table ")) {
+    return errorMessage.includes("table") || errorMessage.includes("relation");
+  }
+
+  return false;
+}
+
 function isMissingDatabaseError(error) {
   if (!error) return false;
 
@@ -319,12 +353,7 @@ async function runMigrations() {
           } catch (stmtErr) {
             // Log but don't fail on certain expected errors
             const errorMsg = stmtErr.message.toLowerCase();
-            if (
-              errorMsg.includes("already exists") ||
-              errorMsg.includes("duplicate key value") ||
-              (errorMsg.includes("constraint") &&
-                errorMsg.includes("already exists"))
-            ) {
+            if (isIgnorableMigrationStatementError(statement, errorMsg)) {
               log(`Skipping statement (idempotent): ${stmtErr.message}`);
             } else {
               // Re-throw unexpected errors
@@ -434,6 +463,75 @@ async function ensurePolarColumns() {
   }
 }
 
+async function ensureBetterAuthApiKeyColumns() {
+  log("Ensuring Better Auth API key columns exist...");
+
+  try {
+    const client = postgres(TARGET_DATABASE_URL);
+
+    const apiKeyTableExists = await client`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_schema = 'public'
+          AND table_name = 'apikey'
+      );
+    `.then((result) => result[0]?.exists);
+
+    if (!apiKeyTableExists) {
+      log("apikey table does not exist yet, skipping Better Auth API key checks");
+      await client.end();
+      return true;
+    }
+
+    const configIdColumnExists = await client`
+      SELECT EXISTS (
+        SELECT FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'apikey'
+          AND column_name = 'config_id'
+      );
+    `.then((result) => result[0]?.exists);
+
+    if (!configIdColumnExists) {
+      log("Adding missing config_id column to apikey table");
+      await client`
+        ALTER TABLE "apikey"
+        ADD COLUMN IF NOT EXISTS "config_id" text
+      `;
+    } else {
+      log("config_id column already exists on apikey table");
+    }
+
+    await client`
+      UPDATE "apikey"
+      SET "config_id" = 'default'
+      WHERE "config_id" IS NULL
+    `;
+
+    await client`
+      ALTER TABLE "apikey"
+      ALTER COLUMN "config_id" SET DEFAULT 'default'
+    `;
+
+    await client`
+      ALTER TABLE "apikey"
+      ALTER COLUMN "config_id" SET NOT NULL
+    `;
+
+    await client`
+      CREATE INDEX IF NOT EXISTS "apikey_config_id_idx"
+      ON "apikey" USING btree ("config_id")
+    `;
+
+    await client.end();
+    logSuccess("Better Auth API key columns verified");
+    return true;
+  } catch (err) {
+    logError(`Better Auth API key column check error: ${err.message}`);
+    return false;
+  }
+}
+
 // Function to verify migrations
 async function verifyMigrations() {
   log("Verifying migrations...");
@@ -442,7 +540,7 @@ async function verifyMigrations() {
     const client = postgres(TARGET_DATABASE_URL);
 
     // Check if key tables exist
-    const tables = ["user", "organization", "tests", "jobs", "runs"];
+    const tables = ["user", "organization", "tests", "jobs", "runs", "apikey"];
     const missingTables = [];
 
     for (const table of tables) {
@@ -622,6 +720,12 @@ async function main() {
 
     // Step 3: Run migrations
     if (!(await runMigrations())) {
+      process.exit(1);
+    }
+
+    // Step 3.5: Ensure Better Auth v1.6 api-key schema drift is repaired
+    if (!(await ensureBetterAuthApiKeyColumns())) {
+      logError("Failed to ensure Better Auth API key columns exist");
       process.exit(1);
     }
 
