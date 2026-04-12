@@ -9,6 +9,10 @@ on:
         description: "Custom version tag (e.g. beta-1.0.0)"
         required: false
         type: string
+      platforms:
+        description: "Target platforms override (e.g. linux/amd64)"
+        required: false
+        type: string
       push_latest:
         description: "Also tag as latest"
         required: false
@@ -186,7 +190,7 @@ jobs:
         with:
           context: ./app
           file: ./app/Dockerfile
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ github.event.inputs.platforms || 'linux/amd64,linux/arm64' }}
           push: true
           tags: ${{ steps.app-meta.outputs.tags }}
           labels: ${{ steps.app-meta.outputs.labels }}
@@ -204,7 +208,7 @@ jobs:
         with:
           context: ./worker
           file: ./worker/Dockerfile
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ github.event.inputs.platforms || 'linux/amd64,linux/arm64' }}
           push: true
           tags: ${{ steps.worker-meta.outputs.tags }}
           labels: ${{ steps.worker-meta.outputs.labels }}
