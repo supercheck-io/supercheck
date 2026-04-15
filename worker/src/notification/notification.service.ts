@@ -123,6 +123,9 @@ interface SmtpDeliveryResult {
   errors: Record<string, string>;
 }
 
+const WEBHOOK_TEMPLATE_PATTERN = /\{\{(\w+)\}\}/g;
+const WEBHOOK_ALLOWED_METHODS = new Set(['GET', 'POST', 'PUT']);
+
 @Injectable()
 export class NotificationService {
   private readonly logger = new Logger(NotificationService.name);
@@ -884,23 +887,23 @@ export class NotificationService {
         throw new Error('Webhook URL is required');
       }
 
-      const webhookPayload = {
-        ...formatted,
-        originalPayload: payload,
-        provider: 'webhook',
-        version: '1.0',
+      const method = this.normalizeWebhookMethod(config.method);
+
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'User-Agent': 'Supercheck-Monitor/1.0',
+        ...(config.headers as Record<string, string>),
       };
+
+      const body = this.buildWebhookRequestBody(config, formatted, payload);
 
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
 
       const response = await fetch(webhookUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'User-Agent': 'Supercheck-Monitor/1.0',
-        },
-        body: JSON.stringify(webhookPayload),
+        method,
+        headers,
+        body: method === 'GET' ? undefined : body,
         signal: controller.signal,
       });
 
@@ -926,6 +929,127 @@ export class NotificationService {
       }
       return false;
     }
+  }
+
+  private normalizeWebhookMethod(method: unknown): 'GET' | 'POST' | 'PUT' {
+    if (typeof method !== 'string' || method.trim().length === 0) {
+      return 'POST';
+    }
+
+    const normalizedMethod = method.trim().toUpperCase();
+    if (!WEBHOOK_ALLOWED_METHODS.has(normalizedMethod)) {
+      throw new Error('Webhook method must be one of: GET, POST, PUT');
+    }
+
+    return normalizedMethod as 'GET' | 'POST' | 'PUT';
+  }
+
+  private buildWebhookRequestBody(
+    config: Record<string, unknown>,
+    formatted: FormattedNotification,
+    payload: NotificationPayload,
+  ): string {
+    if (!config.bodyTemplate) {
+      return JSON.stringify({
+        ...formatted,
+        originalPayload: payload,
+        provider: 'webhook',
+        version: '1.0',
+      });
+    }
+
+    const renderedTemplate = this.renderWebhookTemplateValue(
+      this.parseWebhookTemplate(config.bodyTemplate as string),
+      this.getWebhookTemplateVariables(formatted, payload),
+    );
+
+    return JSON.stringify(renderedTemplate);
+  }
+
+  private getWebhookTemplateVariables(
+    formatted: FormattedNotification,
+    payload: NotificationPayload,
+  ): Record<string, string> {
+    return {
+      title: formatted.title,
+      message: formatted.message,
+      severity: payload.severity,
+      normalizedSeverity: this.normalizeWebhookSeverity(payload.severity),
+      status: payload.metadata?.status || payload.severity,
+      monitorName: payload.targetName,
+      targetName: payload.targetName,
+      targetUrl: payload.metadata?.targetUrl || '',
+      targetId: payload.targetId,
+      timestamp: payload.timestamp.toISOString(),
+      type: payload.type,
+      projectName: payload.projectName || '',
+      projectId: payload.projectId || '',
+      responseTime: String(payload.metadata?.responseTime ?? ''),
+      errorMessage: payload.metadata?.errorMessage || '',
+      monitorType: payload.metadata?.monitorType || '',
+      dashboardUrl: payload.metadata?.dashboardUrl || '',
+    };
+  }
+
+  private normalizeWebhookSeverity(
+    severity: NotificationPayload['severity'],
+  ): 'critical' | 'error' | 'warning' | 'info' {
+    switch (severity) {
+      case 'success':
+        return 'info';
+      case 'info':
+      case 'warning':
+      case 'error':
+        return severity;
+      default: {
+        const exhaustiveCheck: never = severity;
+        return exhaustiveCheck;
+      }
+    }
+  }
+
+  private parseWebhookTemplate(template: string): unknown {
+    try {
+      return JSON.parse(template);
+    } catch {
+      throw new Error('Webhook body template must be valid JSON');
+    }
+  }
+
+  private renderWebhookTemplateValue(
+    value: unknown,
+    templateVariables: Record<string, string>,
+  ): unknown {
+    if (typeof value === 'string') {
+      return this.renderWebhookTemplateString(value, templateVariables);
+    }
+
+    if (Array.isArray(value)) {
+      return value.map((item) =>
+        this.renderWebhookTemplateValue(item, templateVariables),
+      );
+    }
+
+    if (value && typeof value === 'object') {
+      return Object.fromEntries(
+        Object.entries(value as Record<string, unknown>).map(([key, child]) => [
+          this.renderWebhookTemplateString(key, templateVariables),
+          this.renderWebhookTemplateValue(child, templateVariables),
+        ]),
+      );
+    }
+
+    return value;
+  }
+
+  private renderWebhookTemplateString(
+    value: string,
+    templateVariables: Record<string, string>,
+  ): string {
+    return value.replace(
+      WEBHOOK_TEMPLATE_PATTERN,
+      (match, key: string) => templateVariables[key] ?? match,
+    );
   }
 
   private async sendTelegramNotification(

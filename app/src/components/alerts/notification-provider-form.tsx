@@ -34,6 +34,7 @@ import {
   VALIDATION_PATTERNS,
   CHARACTER_LIMITS,
 } from "@/lib/error-utils";
+import { parseWebhookJsonTemplate } from "@/lib/notification-providers/webhook-template";
 import { notificationProviders } from "@/components/alerts/data";
 
 const notificationProviderSchema = z
@@ -119,7 +120,22 @@ const notificationProviderSchema = z
           CHARACTER_LIMITS.bodyTemplate,
           `Body template cannot exceed ${CHARACTER_LIMITS.bodyTemplate} characters`
         )
-        .optional(),
+        .optional()
+        .refine(
+          (template) => {
+            if (!template?.trim()) return true;
+
+            try {
+              parseWebhookJsonTemplate(template);
+              return true;
+            } catch {
+              return false;
+            }
+          },
+          {
+            message: "Body template must be valid JSON",
+          }
+        ),
 
       // Telegram fields
       botToken: z
@@ -583,11 +599,18 @@ export function NotificationProviderForm({
                   </FormLabel>
                   <FormControl>
                     <Textarea
-                      placeholder='{"message": "Monitor {{monitorName}} is {{status}}"}'
+                      placeholder='{"payload": {"summary": "{{title}}", "severity": "{{normalizedSeverity}}"}}'
                       disabled={isSubmitting || isTesting}
                       {...field}
                     />
                   </FormControl>
+                  <div className="text-sm text-muted-foreground">
+                    Templates must be valid JSON. Supercheck safely escapes
+                    variables like {" "}
+                    <code>{"{{title}}"}</code>, <code>{"{{status}}"}</code>,
+                    and <code>{"{{normalizedSeverity}}"}</code> when sending
+                    webhook payloads.
+                  </div>
                   <FormMessage />
                 </FormItem>
               )}

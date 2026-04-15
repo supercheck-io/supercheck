@@ -4,6 +4,15 @@ All notable changes to Supercheck are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
+## [Unreleased]
+
+### Added
+- PagerDuty and OpsGenie integration via webhook provider now supports custom JSON body templates, HTTP method, and headers for full compatibility with third-party alerting systems. See [#294](https://github.com/supercheck-io/supercheck/issues/294) for details and usage examples.
+
+### Fixed
+- Webhook body template rendering now parses and re-serializes JSON before delivery so interpolated alert values stay escaped safely
+- Webhook methods are now normalized consistently across provider validation, connection testing, and worker delivery to avoid GET requests with request bodies
+
 ## [1.3.4] - 2026-04-13
 
 ### Added

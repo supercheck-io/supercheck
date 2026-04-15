@@ -16,7 +16,10 @@ import {
   encryptNotificationProviderConfig,
   sanitizeConfigForClient,
 } from "@/lib/notification-providers/crypto";
-import { validateProviderConfig } from "@/lib/notification-providers/validation";
+import {
+  normalizeProviderConfig,
+  validateProviderConfig,
+} from "@/lib/notification-providers/validation";
 import type { NotificationProviderType } from "@/db/schema";
 
 export async function GET(
@@ -186,8 +189,13 @@ export async function PUT(
         );
       }
 
+      const normalizedConfig = normalizeProviderConfig(
+        updateData.type as NotificationProviderType,
+        plainConfig,
+      );
+
       const encryptedConfig = encryptNotificationProviderConfig(
-        plainConfig as PlainNotificationProviderConfig,
+        normalizedConfig as PlainNotificationProviderConfig,
         project.id
       );
 

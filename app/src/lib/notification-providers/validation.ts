@@ -1,5 +1,9 @@
 import type { NotificationProviderType } from "@/db/schema";
 import { validateWebhookUrlString } from "@/lib/url-validator";
+import {
+  normalizeWebhookMethod,
+  parseWebhookJsonTemplate,
+} from "@/lib/notification-providers/webhook-template";
 
 /**
  * Known-safe webhook endpoint hostnames per provider type.
@@ -94,6 +98,15 @@ export function validateProviderConfig(
         throw new Error("Webhook notification providers require a target URL.");
       }
       validateProviderWebhookUrl(config.url as string, "webhook", "Target URL");
+      if (config.method !== undefined) {
+        normalizeWebhookMethod(config.method);
+      }
+      if (
+        typeof config.bodyTemplate === "string" &&
+        config.bodyTemplate.trim().length > 0
+      ) {
+        parseWebhookJsonTemplate(config.bodyTemplate);
+      }
       break;
     case "telegram":
       if (missing("botToken") || missing("chatId")) {
@@ -121,4 +134,21 @@ export function validateProviderConfig(
     default:
       throw new Error("Unsupported notification provider type.");
   }
+}
+
+export function normalizeProviderConfig(
+  type: NotificationProviderType,
+  config: Record<string, unknown>
+): Record<string, unknown> {
+  if (type !== "webhook") {
+    return { ...config };
+  }
+
+  const normalizedConfig = { ...config };
+
+  if (config.method !== undefined) {
+    normalizedConfig.method = normalizeWebhookMethod(config.method);
+  }
+
+  return normalizedConfig;
 }

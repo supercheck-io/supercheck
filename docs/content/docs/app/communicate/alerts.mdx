@@ -181,23 +181,141 @@ Teams uses Power Automate Workflows to receive webhook notifications.
 <Tab value="Webhook">
 
 **Configuration:**
-- **URL:** Your endpoint (must accept POST)
-- **Method:** POST, PUT, or PATCH
+- **URL:** Your endpoint
+- **Method:** GET, POST, or PUT (default: POST)
+- **Body Template:** Optional custom JSON body with template variables (used for POST and PUT requests)
 
-**Payload:**
+### Default Payload
+
+When no body template is provided, Supercheck sends a JSON payload similar to the following. `fields` and `originalPayload.metadata` vary by alert type and the metadata available for that event:
 
 ```json
 {
-  "title": "Monitor Down: API Health",
-  "message": "Monitor failed after 3 consecutive failures",
+  "title": "Monitor Down - API Health",
+  "message": "Monitor \"API Health\" is down. Connection timeout",
   "fields": [
-    { "name": "Status", "value": "Down" },
-    { "name": "Response Time", "value": "5.2s" }
+    { "title": "Monitor", "value": "API Health", "short": true },
+    { "title": "Type", "value": "http_request", "short": true },
+    { "title": "Status", "value": "down", "short": true },
+    { "title": "Response Time", "value": "5200ms", "short": true }
   ],
   "color": "#dc2626",
-  "timestamp": 1705312200
+  "footer": "",
+  "timestamp": 1735689600,
+  "originalPayload": {
+    "type": "monitor_failure",
+    "title": "Monitor Down - API Health",
+    "message": "Monitor \"API Health\" is down. Connection timeout",
+    "targetName": "API Health",
+    "targetId": "...",
+    "severity": "error",
+    "timestamp": "2025-01-01T00:00:00.000Z",
+    "metadata": {
+      "responseTime": 5200,
+      "status": "down",
+      "targetUrl": "https://api.example.com/health",
+      "monitorType": "http_request",
+      "dashboardUrl": "https://app.supercheck.io/notification-monitor/..."
+    }
+  },
+  "provider": "webhook",
+  "version": "1.0"
 }
 ```
+
+### Body Template
+
+Use a custom body template to match the format required by third-party services. Templates must be valid JSON, and template variables use `{{variableName}}` syntax. Supercheck safely escapes interpolated values before sending the final JSON payload, so keep placeholders inside JSON string values such as `"summary": "{{title}}"`.
+
+**Available variables:**
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `{{title}}` | Alert title | `Monitor Down - API Health` |
+| `{{message}}` | Alert message | `Monitor "API Health" is down. Connection timeout` |
+| `{{severity}}` | Alert severity | `error`, `warning`, `success`, `info` |
+| `{{normalizedSeverity}}` | Normalized severity for APIs that do not accept `success` | `error`, `warning`, `info` |
+| `{{status}}` | Monitor or job status | `down`, `up`, `failed`, `passed` |
+| `{{monitorName}}` | Monitor or target name | `API Health` |
+| `{{targetName}}` | Same as monitorName | `API Health` |
+| `{{targetUrl}}` | Monitored URL | `https://api.example.com/health` |
+| `{{targetId}}` | Target ID | `uuid` |
+| `{{timestamp}}` | ISO 8601 timestamp | `2025-01-15T10:30:00.000Z` |
+| `{{type}}` | Alert type | `monitor_failure`, `monitor_recovery`, `job_failed` |
+| `{{projectName}}` | Project name | `My Project` |
+| `{{projectId}}` | Project ID | `uuid` |
+| `{{responseTime}}` | Response time in ms | `5200` |
+| `{{errorMessage}}` | Error details | `Connection timeout` |
+| `{{monitorType}}` | Monitor type | `http_request`, `website`, `ping_host`, `port_check` |
+| `{{dashboardUrl}}` | Link to dashboard | `https://app.supercheck.io/...` |
+
+### PagerDuty Integration
+
+Use a webhook with a body template to send alerts to the [PagerDuty Events API v2](https://developer.pagerduty.com/api-reference/368ae3d938c9e-send-an-event-to-pager-duty):
+
+1. In PagerDuty, go to **Services → Service Directory → select your service**
+2. Go to the **Integrations** tab and click **Add Integration**
+3. Search for **Events API V2** and add it
+4. Copy the **Integration Key** (also called Routing Key)
+5. In Supercheck, create a Webhook notification channel with:
+   - **URL:** `https://events.pagerduty.com/v2/enqueue`
+   - **Method:** POST
+   - **Body Template:**
+
+```json
+{
+  "routing_key": "YOUR_PAGERDUTY_INTEGRATION_KEY",
+  "event_action": "trigger",
+  "payload": {
+    "summary": "{{title}}",
+    "severity": "{{normalizedSeverity}}",
+    "source": "supercheck",
+    "component": "{{monitorName}}",
+    "custom_details": {
+      "message": "{{message}}",
+      "monitor_type": "{{monitorType}}",
+      "target_url": "{{targetUrl}}",
+      "response_time": "{{responseTime}}",
+      "dashboard_url": "{{dashboardUrl}}"
+    }
+  }
+}
+```
+
+<Callout type="info">
+PagerDuty expects `severity` to be one of `critical`, `error`, `warning`, or `info`. Use `{{normalizedSeverity}}` in PagerDuty payloads because Supercheck maps `success` alerts to `info` for services that do not accept `success`.
+</Callout>
+
+### OpsGenie Integration
+
+Use a webhook with a body template to send alerts to [OpsGenie's Alert API](https://docs.opsgenie.com/docs/alert-api):
+
+1. In OpsGenie, go to **Settings → Integration List → API**
+2. Copy the **API Key**
+3. In Supercheck, create a Webhook notification channel with:
+   - **URL:** `https://api.opsgenie.com/v2/alerts`
+   - **Method:** POST
+   - **Body Template:**
+
+```json
+{
+  "message": "{{title}}",
+  "description": "{{message}}",
+  "priority": "P2",
+  "source": "supercheck",
+  "tags": ["supercheck", "{{monitorType}}"],
+  "details": {
+    "monitor": "{{monitorName}}",
+    "status": "{{status}}",
+    "target_url": "{{targetUrl}}",
+    "response_time": "{{responseTime}}"
+  }
+}
+```
+
+<Callout type="warn">
+For OpsGenie, you must also add an `Authorization` header with your API key. Since the webhook UI does not currently support custom headers, you can use OpsGenie's [email integration](https://docs.opsgenie.com/docs/email-integration) as an alternative, or set the API key via your API endpoint proxy.
+</Callout>
 
 </Tab>
 </Tabs>
