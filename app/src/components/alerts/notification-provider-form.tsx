@@ -121,9 +121,14 @@ const notificationProviderSchema = z
           `Body template cannot exceed ${CHARACTER_LIMITS.bodyTemplate} characters`
         )
         .optional()
+        .transform((val) => {
+          if (!val) return undefined;
+          const trimmed = val.trim();
+          return trimmed.length > 0 ? trimmed : undefined;
+        })
         .refine(
           (template) => {
-            if (!template?.trim()) return true;
+            if (!template) return true;
 
             try {
               parseWebhookJsonTemplate(template);

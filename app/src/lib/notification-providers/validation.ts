@@ -150,5 +150,14 @@ export function normalizeProviderConfig(
     normalizedConfig.method = normalizeWebhookMethod(config.method);
   }
 
+  if (typeof config.bodyTemplate === "string") {
+    const trimmedBodyTemplate = config.bodyTemplate.trim();
+    if (trimmedBodyTemplate) {
+      normalizedConfig.bodyTemplate = trimmedBodyTemplate;
+    } else {
+      delete normalizedConfig.bodyTemplate;
+    }
+  }
+
   return normalizedConfig;
 }

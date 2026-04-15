@@ -949,7 +949,10 @@ export class NotificationService {
     formatted: FormattedNotification,
     payload: NotificationPayload,
   ): string {
-    if (!config.bodyTemplate) {
+    if (
+      typeof config.bodyTemplate !== 'string' ||
+      config.bodyTemplate.trim().length === 0
+    ) {
       return JSON.stringify({
         ...formatted,
         originalPayload: payload,
@@ -959,7 +962,7 @@ export class NotificationService {
     }
 
     const renderedTemplate = this.renderWebhookTemplateValue(
-      this.parseWebhookTemplate(config.bodyTemplate as string),
+      this.parseWebhookTemplate(config.bodyTemplate),
       this.getWebhookTemplateVariables(formatted, payload),
     );
 
