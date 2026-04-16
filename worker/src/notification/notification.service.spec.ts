@@ -485,6 +485,198 @@ describe('NotificationService', () => {
       expect(body.originalPayload).toBeDefined();
       expect(body.provider).toBe('webhook');
     });
+
+    it('should use custom method from config', async () => {
+      const putProvider: NotificationProvider = {
+        ...webhookProvider,
+        config: { url: 'https://api.example.com/webhook', method: 'PUT' },
+      };
+
+      await service.sendNotification(putProvider, basePayload);
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        putProvider.config.url,
+        expect.objectContaining({
+          method: 'PUT',
+        }),
+      );
+    });
+
+    it('should merge custom headers with defaults', async () => {
+      const headerProvider: NotificationProvider = {
+        ...webhookProvider,
+        config: {
+          url: 'https://api.example.com/webhook',
+          headers: { Authorization: 'Bearer test-token' },
+        },
+      };
+
+      await service.sendNotification(headerProvider, basePayload);
+
+      const callArgs = mockFetch.mock.calls[0];
+      expect(callArgs[1].headers).toEqual(
+        expect.objectContaining({
+          'Content-Type': 'application/json',
+          'User-Agent': 'Supercheck-Monitor/1.0',
+          Authorization: 'Bearer test-token',
+        }),
+      );
+    });
+
+    it('should use body template with variable substitution', async () => {
+      const templateProvider: NotificationProvider = {
+        ...webhookProvider,
+        config: {
+          url: 'https://events.pagerduty.com/v2/enqueue',
+          bodyTemplate: JSON.stringify({
+            routing_key: 'test-key',
+            event_action: 'trigger',
+            payload: {
+              summary: '{{title}}',
+              severity: '{{severity}}',
+              source: 'supercheck',
+              component: '{{monitorName}}',
+            },
+          }),
+        },
+      };
+
+      await service.sendNotification(templateProvider, basePayload);
+
+      const callArgs = mockFetch.mock.calls[0];
+      const body = JSON.parse(callArgs[1].body);
+
+      expect(body.routing_key).toBe('test-key');
+      expect(body.payload.summary).toBe('Monitor Down');
+      expect(body.payload.severity).toBe('error');
+      expect(body.payload.component).toBe('Test Monitor');
+    });
+
+    it('should safely escape interpolated values in JSON templates', async () => {
+      const templateProvider: NotificationProvider = {
+        ...webhookProvider,
+        config: {
+          url: 'https://api.example.com/webhook',
+          bodyTemplate: JSON.stringify({
+            payload: {
+              summary: '{{title}}',
+              details: '{{errorMessage}}',
+            },
+          }),
+        },
+      };
+
+      const payloadWithSpecialCharacters: NotificationPayload = {
+        ...basePayload,
+        title: 'Monitor "API"\nDown',
+        metadata: {
+          ...basePayload.metadata,
+          errorMessage: 'Socket \\ reset\nline2',
+        },
+      };
+
+      await service.sendNotification(
+        templateProvider,
+        payloadWithSpecialCharacters,
+      );
+
+      const callArgs = mockFetch.mock.calls[0];
+      const body = JSON.parse(callArgs[1].body);
+
+      expect(body.payload.summary).toBe('Monitor "API"\nDown');
+      expect(body.payload.details).toBe('Socket \\ reset\nline2');
+    });
+
+    it('should preserve unknown template variables as-is', async () => {
+      const templateProvider: NotificationProvider = {
+        ...webhookProvider,
+        config: {
+          url: 'https://api.example.com/webhook',
+          bodyTemplate: '{"unknown": "{{unknownVar}}"}',
+        },
+      };
+
+      await service.sendNotification(templateProvider, basePayload);
+
+      const callArgs = mockFetch.mock.calls[0];
+      const body = JSON.parse(callArgs[1].body);
+
+      expect(body.unknown).toBe('{{unknownVar}}');
+    });
+
+    it('should expose normalized severity for integrations that reject success', async () => {
+      const templateProvider: NotificationProvider = {
+        ...webhookProvider,
+        config: {
+          url: 'https://events.pagerduty.com/v2/enqueue',
+          bodyTemplate: JSON.stringify({
+            payload: {
+              severity: '{{normalizedSeverity}}',
+              rawSeverity: '{{severity}}',
+            },
+          }),
+        },
+      };
+
+      const successPayload: NotificationPayload = {
+        ...basePayload,
+        severity: 'success',
+      };
+
+      await service.sendNotification(templateProvider, successPayload);
+
+      const callArgs = mockFetch.mock.calls[0];
+      const body = JSON.parse(callArgs[1].body);
+
+      expect(body.payload.severity).toBe('info');
+      expect(body.payload.rawSeverity).toBe('success');
+    });
+
+    it('should not send body for GET requests', async () => {
+      const getProvider: NotificationProvider = {
+        ...webhookProvider,
+        config: { url: 'https://api.example.com/webhook', method: 'GET' },
+      };
+
+      await service.sendNotification(getProvider, basePayload);
+
+      const callArgs = mockFetch.mock.calls[0];
+      expect(callArgs[1].body).toBeUndefined();
+    });
+
+    it('should normalize lowercase methods before deciding whether to send a body', async () => {
+      const getProvider: NotificationProvider = {
+        ...webhookProvider,
+        config: {
+          url: 'https://api.example.com/webhook',
+          method: ' get ' as any,
+        },
+      };
+
+      await service.sendNotification(getProvider, basePayload);
+
+      const callArgs = mockFetch.mock.calls[0];
+      expect(callArgs[1].method).toBe('GET');
+      expect(callArgs[1].body).toBeUndefined();
+    });
+
+    it('should fail fast for invalid JSON body templates', async () => {
+      const invalidTemplateProvider: NotificationProvider = {
+        ...webhookProvider,
+        config: {
+          url: 'https://api.example.com/webhook',
+          bodyTemplate: '{"payload": {{title}}}',
+        },
+      };
+
+      const result = await service.sendNotification(
+        invalidTemplateProvider,
+        basePayload,
+      );
+
+      expect(result).toBe(false);
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
   });
 
   // ==========================================================================

@@ -4,6 +4,10 @@ import { EmailService } from "@/lib/email-service";
 import { renderTestEmail } from "@/lib/email-renderer";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
+import {
+  normalizeWebhookMethod,
+  renderWebhookJsonTemplate,
+} from "@/lib/notification-providers/webhook-template";
 
 export async function POST(req: NextRequest) {
   try {
@@ -253,21 +257,44 @@ async function testWebhookConnection(config: NotificationProviderConfig) {
       throw new Error(urlValidation.error || "Invalid webhook URL");
     }
 
-    const method = (typedConfig.method as string) || "POST";
+    const method = normalizeWebhookMethod(typedConfig.method);
     const headers = {
       "Content-Type": "application/json",
       ...(typedConfig.headers as Record<string, string>),
     };
 
-    const body = typedConfig.bodyTemplate
-      ? (typedConfig.bodyTemplate as string).replace(
-          /\{\{.*?\}\}/g,
-          "test-value"
-        )
-      : JSON.stringify({
-          test: true,
-          message: "Connection test from Supercheck",
-        });
+    const hasBodyTemplate =
+      typeof typedConfig.bodyTemplate === "string" &&
+      typedConfig.bodyTemplate.trim().length > 0;
+
+    const body =
+      hasBodyTemplate && method !== "GET"
+        ? renderWebhookJsonTemplate(
+            typedConfig.bodyTemplate as string,
+            {
+              title: 'Test "Alert"',
+              message: "Connection test from Supercheck",
+              severity: "error",
+              normalizedSeverity: "error",
+              status: "down",
+              monitorName: "Test Monitor",
+              targetName: "Test Monitor",
+              targetUrl: "https://example.com/health",
+              targetId: "test-target-id",
+              timestamp: "2025-01-15T10:30:00.000Z",
+              type: "monitor_down",
+              projectName: "Test Project",
+              projectId: "test-project-id",
+              responseTime: "5200",
+              errorMessage: 'Connection timeout on "health" check',
+              monitorType: "http_request",
+              dashboardUrl: "https://app.supercheck.io/notification-monitor/test-target-id",
+            },
+          )
+        : JSON.stringify({
+            test: true,
+            message: "Connection test from Supercheck",
+          });
 
     // Add timeout to prevent hanging connections
     const controller = new AbortController();
@@ -277,7 +304,7 @@ async function testWebhookConnection(config: NotificationProviderConfig) {
       const response = await fetch(typedConfig.url as string, {
         method,
         headers,
-        body: method !== "GET" ? body : undefined,
+        body: method === "GET" ? undefined : body,
         signal: controller.signal,
       });
 
