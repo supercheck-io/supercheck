@@ -384,11 +384,11 @@ docker compose -f docker-compose-secure.yml up -d
 ```
 
 <Callout type="error">
-**Upgrading to 1.3.3 from earlier versions** — Version 1.3.3 replaces Docker socket-based test execution with a sandboxed model powered by K3s and gVisor. Before upgrading, you must run the setup script:
+**Upgrading from pre-1.3.3 releases** — Supercheck moved from Docker socket-based test execution to a sandboxed K3s + gVisor model in `1.3.3`. Before upgrading an older deployment, you must run the setup script:
 
 ```bash
 # 1. Back up your database first
-docker compose exec postgres pg_dump -U postgres supercheck > backup-pre-133.sql
+docker compose exec postgres pg_dump -U postgres supercheck > backup-pre-k3s-migration.sql
 
 # 2. Install K3s + gVisor execution sandbox
 sudo bash setup-k3s.sh

@@ -13,7 +13,7 @@
 #
 # Upgrading:
 #   Set SUPERCHECK_VERSION in your .env file or shell environment:
-#     SUPERCHECK_VERSION=1.4.0 docker compose up -d
+#     SUPERCHECK_VERSION=<tag> docker compose up -d
 #   This updates app, worker, and WORKER_IMAGE in one place.
 #
 # For source-based local development, use docker-compose-local.yml instead.

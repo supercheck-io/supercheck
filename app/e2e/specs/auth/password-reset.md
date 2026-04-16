@@ -1,220 +1,84 @@
 # Password Reset Test Specification
 
 ## Overview
-Tests for the password reset flow including the forgot password page (`/forgot-password`) and reset password page (`/reset-password`). Covers email sending, token validation, and password update.
 
-## Pages
-- **Forgot Password Route**: `/forgot-password`
-- **Reset Password Route**: `/reset-password?token=<token>`
-- **Page Object**: `ForgotPasswordPage` from `pages/auth/forgot-password.page.ts`
+This spec covers the current password reset flow implemented in:
 
-## Test Cases
+- `app/src/app/(auth)/forgot-password/page.tsx`
+- `app/src/app/(auth)/reset-password/page.tsx`
+- `app/src/lib/session-security.ts`
+- `app/e2e/tests/auth/password-reset.spec.ts`
 
-### AUTH-009: Password reset email flow
-**Priority**: Critical | **Type**: Positive
+The flow has two pages:
 
-**Prerequisites**:
-- User account exists with verified email
+- `/forgot-password`
+- `/reset-password?token=<token>`
 
-**Steps**:
-1. Navigate to `/forgot-password`
-2. Enter email address (`[data-testid="forgot-password-email-input"]`)
-3. Click submit button (`[data-testid="forgot-password-submit"]`)
-4. Wait for success message
+## Current Behavior
 
-**Expected Result**:
-- Success message displayed: "Reset email sent" or similar
-- Email sent with secure reset token
-- Token expires after a set time (e.g., 1 hour)
+### Forgot password page
 
-**Test Code Pattern**:
-```typescript
-test('AUTH-009: Password reset email flow @critical @positive', async ({ page }) => {
-  const forgotPasswordPage = new ForgotPasswordPage(page);
-  await forgotPasswordPage.navigate();
+- Email field is required
+- Submit button is disabled until the email field is non-empty
+- Successful requests move the UI to a `Check your email` success state
+- The success state tells the user the link expires in `1 hour`
+- The back link returns to `/sign-in`
 
-  await forgotPasswordPage.requestResetAndWaitForSuccess(env.testUser.email);
-  await forgotPasswordPage.expectSuccess(/email sent|check your email/i);
-});
-```
+Password reset requests are rate-limited by `checkPasswordResetRateLimit()`:
 
----
+- `3` attempts
+- `15 minute` window
+- keyed by email or IP
 
-### AUTH-010: Password reset with invalid token
-**Priority**: High | **Type**: Negative
+### Reset password page
 
-**Prerequisites**:
-- Invalid or expired token
+- Missing token immediately shows `Invalid or missing reset token...`
+- Invalid or expired tokens may still load the page shell, but reset fails when the token is actually used
+- Password validation is client-side before submit:
+  - minimum `8` characters
+  - at least one lowercase letter
+  - at least one uppercase letter
+  - at least one number
+- Confirmation password must match
+- Successful reset shows a success state and redirects to `/sign-in` after roughly `3` seconds
 
-**Steps**:
-1. Navigate to `/reset-password?token=invalid-token`
-2. Try to submit new password
-3. Check for error
+## Automated Coverage
 
-**Expected Result**:
-- Error message: "Invalid or expired reset link"
-- User cannot reset password
-- Prompted to request new reset link
+| ID | Status | What the current E2E suite verifies |
+|----|--------|-------------------------------------|
+| `AUTH-009` | Automated | `/forgot-password` loads with email field and submit button |
+| `AUTH-009` | Skipped | Success-state request test exists but is skipped because demo-site rate limiting makes it flaky |
+| `AUTH-010` | Automated | Invalid / expired / missing token states are handled without crashing |
+| `AUTH-011` | Skipped | Full reset flow requires deterministic token provisioning and is not currently automated |
+| `AUTH-046` | Automated (best effort) | Repeated requests eventually surface rate-limit messaging when the environment enforces it |
+| `Validation helpers` | Partially skipped | Mismatch and weak-password tests exist but are skipped until valid reset tokens are available |
 
-**Test Code Pattern**:
-```typescript
-test('AUTH-010: Password reset with invalid token @high @negative', async ({ page }) => {
-  await page.goto('/reset-password?token=invalid-or-expired-token');
+## Selector Contract
 
-  // Fill password form
-  await page.fill('[data-testid="reset-password-input"]', 'NewPassword123!');
-  await page.fill('[data-testid="reset-password-confirm-input"]', 'NewPassword123!');
-  await page.click('[data-testid="reset-password-submit"]');
+### Forgot password page
 
-  // Expect error
-  await expect(page.locator('[role="alert"]')).toContainText(/invalid|expired/i);
-});
-```
+| Element | Current selector |
+|---------|------------------|
+| Email | `[data-testid="forgot-password-email-input"]` |
+| Submit | `[data-testid="forgot-password-submit"]` |
+| Error | `[data-testid="forgot-password-error"]` |
+| Success state | `[data-testid="forgot-password-success"]` |
+| Back to sign in | `[data-testid="back-to-signin-link"]` |
 
----
+### Reset password page
 
-### AUTH-011: Password reset successful
-**Priority**: High | **Type**: Positive
+The reset page does not currently expose dedicated `reset-password-*` test ids. Use the actual field ids and visible copy.
 
-**Prerequisites**:
-- Valid reset token
+| Element | Current selector |
+|---------|------------------|
+| New password | `#password` |
+| Confirm password | `#confirmPassword` |
+| Submit | `button[type="submit"]` |
+| Error | `[role="alert"]` or visible validation copy |
+| Success state | text such as `Password reset successfully` |
 
-**Steps**:
-1. Click reset email link with valid token
-2. Enter new password (`[data-testid="reset-password-input"]`)
-3. Confirm new password (`[data-testid="reset-password-confirm-input"]`)
-4. Submit form (`[data-testid="reset-password-submit"]`)
-5. Wait for redirect
+## Notes
 
-**Expected Result**:
-- Password updated successfully
-- User redirected to `/sign-in`
-- Can sign in with new password
-- Old password no longer works
-
-**Test Code Pattern**:
-```typescript
-test('AUTH-011: Password reset successful @high @positive', async ({ page }) => {
-  // This test requires a valid reset token
-  const resetToken = 'valid-test-reset-token';
-  await page.goto(`/reset-password?token=${resetToken}`);
-
-  const newPassword = 'NewSecurePassword123!';
-
-  await page.fill('[data-testid="reset-password-input"]', newPassword);
-  await page.fill('[data-testid="reset-password-confirm-input"]', newPassword);
-  await page.click('[data-testid="reset-password-submit"]');
-
-  // Expect redirect to sign-in
-  await expect(page).toHaveURL(/sign-in/);
-
-  // Verify success message (toast or on page)
-  await expect(page.locator('text=password updated')).toBeVisible();
-});
-```
-
----
-
-### AUTH-046: Rate limiting on password reset
-**Priority**: High | **Type**: Security
-
-**Prerequisites**: None
-
-**Steps**:
-1. Request password reset 5+ times for same email
-2. Check for rate limit message
-
-**Expected Result**:
-- After N attempts, rate limit kicks in
-- Message: "Too many requests, please wait"
-- Must wait before next attempt
-
-**Test Code Pattern**:
-```typescript
-test('AUTH-046: Rate limiting on password reset @high @security', async ({ page }) => {
-  const forgotPasswordPage = new ForgotPasswordPage(page);
-  await forgotPasswordPage.navigate();
-
-  // Make multiple requests
-  for (let i = 0; i < 6; i++) {
-    await forgotPasswordPage.requestReset('test@example.com');
-    await page.waitForTimeout(500); // Small delay between requests
-    await forgotPasswordPage.clearForm();
-  }
-
-  // Should see rate limit message
-  await forgotPasswordPage.expectRateLimited();
-});
-```
-
----
-
-## Validation Tests
-
-### Password validation rules
-**Priority**: Medium | **Type**: Negative
-
-Test that password reset enforces password requirements:
-- Minimum length (e.g., 8 characters)
-- Must contain uppercase
-- Must contain lowercase
-- Must contain number
-- Must contain special character
-
-```typescript
-test('Password validation on reset @medium @negative', async ({ page }) => {
-  await page.goto('/reset-password?token=valid-token');
-
-  // Test weak password
-  await page.fill('[data-testid="reset-password-input"]', 'weak');
-  await page.fill('[data-testid="reset-password-confirm-input"]', 'weak');
-  await page.click('[data-testid="reset-password-submit"]');
-
-  await expect(page.locator('[role="alert"]')).toContainText(/password must|too weak|minimum/i);
-});
-```
-
-### Password confirmation mismatch
-**Priority**: Medium | **Type**: Negative
-
-```typescript
-test('Password confirmation must match @medium @negative', async ({ page }) => {
-  await page.goto('/reset-password?token=valid-token');
-
-  await page.fill('[data-testid="reset-password-input"]', 'SecurePass123!');
-  await page.fill('[data-testid="reset-password-confirm-input"]', 'DifferentPass123!');
-  await page.click('[data-testid="reset-password-submit"]');
-
-  await expect(page.locator('[role="alert"]')).toContainText(/match|same/i);
-});
-```
-
----
-
-## Selectors Reference
-
-### Forgot Password Page
-| Element | Primary Selector | Fallback Selectors |
-|---------|------------------|-------------------|
-| Email Input | `[data-testid="forgot-password-email-input"]` | `#email`, `input[name="email"]` |
-| Submit Button | `[data-testid="forgot-password-submit"]` | `button[type="submit"]` |
-| Success Message | `[data-testid="forgot-password-success"]` | `text=email sent` |
-| Error Message | `[data-testid="forgot-password-error"]` | `[role="alert"]` |
-| Rate Limit Message | `[data-testid="rate-limit-message"]` | `text=too many` |
-| Back to Sign In | `[data-testid="back-to-signin-link"]` | `a:has-text("Sign in")` |
-
-### Reset Password Page
-| Element | Primary Selector | Fallback Selectors |
-|---------|------------------|-------------------|
-| New Password | `[data-testid="reset-password-input"]` | `#password`, `input[name="password"]` |
-| Confirm Password | `[data-testid="reset-password-confirm-input"]` | `#confirmPassword` |
-| Submit Button | `[data-testid="reset-password-submit"]` | `button[type="submit"]` |
-| Error Message | `[data-testid="reset-password-error"]` | `[role="alert"]` |
-| Success Message | `[data-testid="reset-password-success"]` | `text=updated` |
-
-## Tags
-- `@critical` - Critical priority tests
-- `@high` - High priority tests
-- `@positive` - Happy path tests
-- `@negative` - Error case tests
-- `@security` - Security tests
+- Do not document `reset-password-input` or `reset-password-confirm-input` test ids. They do not exist in the current UI.
+- The current E2E suite is intentionally conservative around full reset completion because it lacks a deterministic mail/token fixture.
+- Keep this spec aligned with the one-hour token expiry described in the success UI and with the server-side reset rate limit.

@@ -77,6 +77,8 @@ The CLI maps errors to specific exit codes for scripting and CI/CD:
 
 ```bash
 # Capture exit code before it's overwritten by subsequent commands
+export SUPERCHECK_TRIGGER_KEY="sck_trigger_..."
+export SUPERCHECK_TOKEN="sck_live_..."   # required here because --wait polls the run
 supercheck job trigger $JOB_ID --wait
 exit_code=$?
 
@@ -85,7 +87,7 @@ if [ $exit_code -eq 0 ]; then
 elif [ $exit_code -eq 1 ]; then
   echo "Tests failed"
 elif [ $exit_code -eq 2 ]; then
-  echo "Authentication issue — check SUPERCHECK_TOKEN"
+  echo "Authentication issue — check SUPERCHECK_TRIGGER_KEY and, when using --wait, SUPERCHECK_TOKEN"
 fi
 ```
 

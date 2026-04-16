@@ -15,7 +15,7 @@
 #
 # Upgrading:
 #   Set SUPERCHECK_VERSION in your .env file or shell environment:
-#     SUPERCHECK_VERSION=1.4.0 docker compose -f docker-compose-external.yml up -d
+#     SUPERCHECK_VERSION=<tag> docker compose -f docker-compose-external.yml up -d
 #   This updates app, worker in one place.
 #
 # S3 Buckets:

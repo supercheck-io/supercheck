@@ -37,16 +37,17 @@ supercheck test list
 ```
 
 <Callout type="info">
-  In CI/CD environments, set the `SUPERCHECK_TOKEN` environment variable instead of using `supercheck login`. The CLI reads it automatically.
+  In CI/CD, set `SUPERCHECK_TOKEN` for general CLI/API commands. For `supercheck job trigger`, set `SUPERCHECK_TRIGGER_KEY`, and add `SUPERCHECK_TOKEN` only when you also use `--wait`.
 </Callout>
 
 ## How It Works
 
-The CLI communicates with the Supercheck API using **CLI tokens** (`sck_live_*` prefix). These are project-scoped tokens that inherit the creating user's RBAC permissions.
+Most CLI commands use **CLI tokens** (`sck_live_*`). `supercheck job trigger` is the exception: it uses a job-specific **trigger key** (`sck_trigger_*`) and optionally a CLI token when waiting for completion.
 
 ```
 supercheck.config.ts          → Defines resources (monitoring-as-code)
 SUPERCHECK_TOKEN env var      → Authenticates API requests
+SUPERCHECK_TRIGGER_KEY env var → Authenticates job trigger requests
 supercheck deploy             → Pushes config to Supercheck API
 supercheck job trigger <id>   → Triggers jobs from CI/CD
 ```

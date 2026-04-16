@@ -24,6 +24,9 @@ sudo bash setup-k3s.sh
 
 # Start services
 KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig docker compose up -d
+
+# HTTPS
+KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig docker compose -f docker-compose-secure.yml up -d
 ```
 
 If you use browser-based integrations such as Azure DevOps dashboard widgets or Grafana panels, set `CORS_ALLOWED_ORIGINS` on the App deployment, for example `https://dev.azure.com,https://*.visualstudio.com`. Leave it empty if you do not need browser-side API access.

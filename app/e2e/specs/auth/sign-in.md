@@ -1,180 +1,80 @@
 # Sign In Test Specification
 
 ## Overview
-Tests for the sign-in page at `/sign-in`. Covers email/password authentication, OAuth providers, error handling, and session management.
 
-## Page Structure
-- **Route**: `/sign-in`
-- **Page Object**: `SignInPage` from `pages/auth/sign-in.page.ts`
-- **Fixture**: `authTest` from `fixtures/auth.fixture.ts`
+This spec tracks the current sign-in flow implemented in:
 
-## Test Cases
+- `app/src/components/auth/login-form.tsx`
+- `app/src/app/api/auth/sign-in/check/route.ts`
+- `app/e2e/tests/auth/sign-in.spec.ts`
 
-### AUTH-004: Sign in with valid credentials
-**Priority**: Critical | **Type**: Positive
+The sign-in page always supports email/password authentication. OAuth buttons are shown when the corresponding provider is enabled and the flow is not invite-restricted.
 
-**Prerequisites**:
-- User account exists and is verified
-- Valid test credentials in environment variables
+## Current Behavior
 
-**Steps**:
-1. Navigate to `/sign-in`
-2. Enter valid email in email field (`[data-testid="login-email-input"]`)
-3. Enter valid password in password field (`[data-testid="login-password-input"]`)
-4. Click the Login button (`[data-testid="login-submit-button"]`)
-5. Wait for redirect to dashboard
+### AUTH-004: Valid email/password sign-in
 
-**Expected Result**:
-- User is redirected to dashboard (`/`)
-- No error messages displayed
-- Session is created (cookies set)
+- Route: `/sign-in`
+- Successful sign-in redirects away from `/sign-in`
+- Session cookies are established by the auth layer
 
-**Test Code Pattern**:
-```typescript
-test('AUTH-004: Sign in with valid credentials @critical @positive', async ({ page }) => {
-  const signInPage = new SignInPage(page);
-  await signInPage.navigate();
-  await signInPage.signInAndWaitForDashboard(env.testUser.email, env.testUser.password);
-  await expect(page).toHaveURL('/');
-});
-```
+### AUTH-005 / AUTH-006: Invalid credentials
 
----
-
-### AUTH-005: Sign in with invalid password
-**Priority**: High | **Type**: Negative
-
-**Prerequisites**:
-- User account exists
-
-**Steps**:
-1. Navigate to `/sign-in`
-2. Enter valid email
-3. Enter incorrect password
-4. Click Login button
-5. Check for error message
-
-**Expected Result**:
-- Error message displayed: "Invalid credentials"
-- User remains on sign-in page
-- No session created
-
-**Test Code Pattern**:
-```typescript
-test('AUTH-005: Sign in with invalid password @high @negative', async ({ page }) => {
-  const signInPage = new SignInPage(page);
-  await signInPage.navigate();
-  await signInPage.signIn(env.testUser.email, 'wrong-password-123');
-  await signInPage.expectError(/invalid|incorrect/i);
-  await expect(page).toHaveURL(/sign-in/);
-});
-```
-
----
-
-### AUTH-006: Sign in with non-existent email
-**Priority**: High | **Type**: Negative
-
-**Prerequisites**: None
-
-**Steps**:
-1. Navigate to `/sign-in`
-2. Enter non-existent email
-3. Enter any password
-4. Click Login button
-5. Check for error message
-
-**Expected Result**:
-- Generic error: "Invalid credentials" (security - doesn't reveal if email exists)
-- User remains on sign-in page
-
-**Test Code Pattern**:
-```typescript
-test('AUTH-006: Sign in with non-existent email @high @negative', async ({ page }) => {
-  const signInPage = new SignInPage(page);
-  await signInPage.navigate();
-  await signInPage.signIn('nonexistent@example.com', 'any-password');
-  await signInPage.expectError(/invalid|incorrect/i);
-});
-```
-
----
-
-### AUTH-016b: Last used badge on sign-in page
-**Priority**: High | **Type**: Positive
-
-**Prerequisites**:
-- User previously signed in with GitHub OAuth
-
-**Steps**:
-1. Sign in with GitHub OAuth
-2. Sign out
-3. Navigate back to `/sign-in`
-4. Verify GitHub button shows "Last used" badge
-
-**Expected Result**:
-- GitHub OAuth button displays "Last used" badge (`[data-testid="last-used-badge"]`)
-- Badge indicates previously used authentication method
-
-**Test Code Pattern**:
-```typescript
-test('AUTH-016b: Last used badge on sign-in page @high @positive', async ({ page }) => {
-  // This test requires OAuth setup and browser storage manipulation
-  const signInPage = new SignInPage(page);
-  await signInPage.navigate();
-  // Check for last used badge on previously used OAuth provider
-  await signInPage.expectLastUsedBadge('github');
-});
-```
-
----
+- Wrong password and unknown email should both produce generic failure behavior
+- Because progressive lockout is active, the visible message may be either invalid-credentials text or a temporary lockout/rate-limit message
 
 ### AUTH-018: Sign out
-**Priority**: High | **Type**: Positive
 
-**Prerequisites**:
-- User is signed in
+- The test exists but is currently `test.skip(...)` because it is flaky on the demo environment
+- Expected behavior remains: open user menu, choose sign out, redirect to `/sign-in`, protected routes require login again
 
-**Steps**:
-1. Click user menu (`[data-testid="user-menu"]`)
-2. Click "Sign out" button (`[data-testid="sign-out-button"]`)
-3. Wait for redirect
+## Lockout and Safety Rules
 
-**Expected Result**:
-- Session destroyed
-- User redirected to `/sign-in`
-- Protected routes no longer accessible
+`/api/auth/sign-in/check` is called around sign-in attempts and implements progressive lockout for both email and client IP.
 
-**Test Code Pattern**:
-```typescript
-test('AUTH-018: Sign out @high @positive', async ({ authenticatedPage }) => {
-  // Click user menu
-  await authenticatedPage.click('[data-testid="user-menu"]');
-  // Click sign out
-  await authenticatedPage.click('[data-testid="sign-out-button"]');
-  // Verify redirect
-  await expect(authenticatedPage).toHaveURL(/sign-in/);
-});
-```
+Current thresholds from `app/src/lib/security/login-lockout.ts`:
 
----
+| Failed attempts | Lockout |
+|-----------------|---------|
+| `5` | `30s` |
+| `10` | `5m` |
+| `15` | `15m` |
+| `20` | `1h` |
 
-## Selectors Reference
+The check endpoint supports:
 
-| Element | Primary Selector | Fallback Selectors |
-|---------|------------------|-------------------|
-| Email Input | `[data-testid="login-email-input"]` | `#email`, `input[name="email"]` |
-| Password Input | `[data-testid="login-password-input"]` | `#password`, `input[name="password"]` |
-| Submit Button | `[data-testid="login-submit-button"]` | `button[type="submit"]`, `button:has-text("Login")` |
-| Error Message | `[data-testid="login-error-message"]` | `[role="alert"]`, `.text-destructive` |
-| GitHub Button | `[data-testid="login-github-button"]` | `button:has-text("GitHub")` |
-| Google Button | `[data-testid="login-google-button"]` | `button:has-text("Google")` |
-| Forgot Password Link | `[data-testid="login-forgot-password-link"]` | `a:has-text("Forgot")` |
-| Last Used Badge | `[data-testid="last-used-badge"]` | `text=Last used` |
+- `pre-check`
+- `failed`
+- `success`
 
-## Tags
-- `@critical` - Critical priority tests
-- `@high` - High priority tests
-- `@positive` - Happy path tests
-- `@negative` - Error case tests
-- `@smoke` - Include in smoke test suite
+## Automated Coverage
+
+| ID | Status | What the current E2E suite verifies |
+|----|--------|-------------------------------------|
+| `AUTH-004` | Automated | Valid credentials redirect away from `/sign-in` |
+| `AUTH-005` | Automated | Invalid password shows generic error or lockout message |
+| `AUTH-006` | Automated | Unknown email shows generic error or lockout message |
+| `AUTH-018` | Skipped | Sign-out flow exists but is skipped in the current suite |
+| `OAuth button visibility` | Automated | GitHub and Google buttons render when enabled |
+| `Form validation` | Automated | Empty fields / invalid email stay on `/sign-in` |
+| `Forgot password navigation` | Automated | Link routes to `/forgot-password` |
+
+## Selector Contract
+
+| Element | Current selector |
+|---------|------------------|
+| Email | `[data-testid="login-email-input"]` |
+| Password | `[data-testid="login-password-input"]` |
+| Submit | `[data-testid="login-submit-button"]` |
+| Error message | `[data-testid="login-error-message"]` |
+| Forgot password link | `[data-testid="login-forgot-password-link"]` |
+| GitHub OAuth | `[data-testid="login-github-button"]` |
+| Google OAuth | `[data-testid="login-google-button"]` |
+| Last used badge | `[data-testid="last-used-badge"]` |
+| Email verified alert | `[data-testid="email-verified-alert"]` |
+
+## Notes
+
+- The current submit button label is `Login`, not `Sign in`.
+- Invite-aware sign-in can prefill and lock the email field, and offers a `Create one` link back to `/sign-up?invite=<token>`.
+- Keep this spec aligned with the progressive lockout implementation instead of asserting a single fixed error string for every failed login.

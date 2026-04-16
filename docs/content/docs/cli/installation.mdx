@@ -32,6 +32,7 @@ Run the CLI in a container using the official Node.js image:
 
 ```bash
 docker run --rm \
+  -e SUPERCHECK_TRIGGER_KEY=$SUPERCHECK_TRIGGER_KEY \
   -e SUPERCHECK_TOKEN=$SUPERCHECK_TOKEN \
   node:20-slim sh -c "npm install -g @supercheck/cli && supercheck job trigger <job-id> --wait"
 ```
@@ -57,6 +58,10 @@ supercheck login --token $SUPERCHECK_TOKEN
 supercheck login --token sck_live_a1b2c3d4...
 ```
 
+<Callout type="info">
+  `supercheck job trigger` uses `SUPERCHECK_TRIGGER_KEY`, not the CLI token. Add `SUPERCHECK_TOKEN` only when you also use `--wait` or other API commands.
+</Callout>
+
 ## Self-Hosted Setup
 
 Point the CLI at your self-hosted instance:
@@ -78,6 +83,8 @@ For corporate networks, the CLI respects standard proxy environment variables:
 ```bash
 export HTTPS_PROXY="http://proxy.corp.com:8080"
 export NO_PROXY="localhost,127.0.0.1,.internal.corp.com"
+export SUPERCHECK_TRIGGER_KEY="sck_trigger_..."
+export SUPERCHECK_TOKEN="sck_live_..."
 supercheck job trigger <id> --wait
 ```
 

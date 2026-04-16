@@ -1,247 +1,86 @@
 # Sign Up Test Specification
 
 ## Overview
-Tests for the sign-up page at `/sign-up`. SuperCheck uses social-only signup (GitHub, Google) by default. Email/password signup is only available when a user has an invitation token.
 
-## Page Structure
-- **Route**: `/sign-up` (OAuth only) or `/sign-up?invite=<token>` (email form)
-- **Page Object**: `SignUpPage` from `pages/auth/sign-up.page.ts`
-- **Fixture**: `authTest` from `fixtures/auth.fixture.ts`
+This spec documents the current sign-up behavior implemented in:
 
-## Test Cases
+- `app/src/app/(auth)/sign-up/page.tsx`
+- `app/src/components/auth/signup-form.tsx`
+- `app/e2e/tests/auth/sign-up.spec.ts`
 
-### AUTH-001: Sign up with GitHub OAuth (social-only)
-**Priority**: Critical | **Type**: Positive
+Sign-up is hosting-mode dependent.
 
-**Prerequisites**: None
+- Cloud-hosted: `/sign-up` is invitation-only. Without `?invite=<token>`, the page redirects to `/sign-in`.
+- Self-hosted: `/sign-up` supports open email/password registration unless `SIGNUP_ENABLED=false`.
+- Invite flow: `/sign-up?invite=<token>` fetches invite metadata and renders the join form.
+- Invalid invite token: cloud redirects to `/sign-in`; self-hosted falls back to open `/sign-up`.
 
-**Steps**:
-1. Navigate to `/sign-up`
-2. Verify only social auth buttons shown (no email form)
-3. Click "Continue with GitHub" button (`[data-testid="signup-github-button"]`)
-4. Authorize app on GitHub
-5. Wait for callback and redirect
+## Current Behavior
 
-**Expected Result**:
-- User account created with GitHub profile
-- Email verified via OAuth
-- User redirected to dashboard
+### AUTH-001: `/sign-up` without invite follows hosting mode
 
-**Test Code Pattern**:
-```typescript
-test('AUTH-001: Sign up with GitHub OAuth @critical @positive', async ({ page }) => {
-  const signUpPage = new SignUpPage(page);
-  await signUpPage.navigate();
+- Cloud-hosted: redirect to `/sign-in`
+- Self-hosted with signup enabled: stay on `/sign-up`
+- Self-hosted with `SIGNUP_ENABLED=false`: redirect to `/sign-in`
 
-  // Verify OAuth-only mode (no email form)
-  await signUpPage.expectOAuthOnlyMode();
+### AUTH-002 / AUTH-014: OAuth entry point for new cloud users
 
-  // Click GitHub button
-  await signUpPage.clickGitHubSignUp();
+For non-invite cloud sign-up, the OAuth buttons live on `/sign-in`, not on `/sign-up`.
 
-  // Handle GitHub OAuth (external page)
-  await page.waitForURL(/github\.com/);
-  // ... OAuth flow handled by GitHub
-});
-```
+- GitHub button: `data-testid="login-github-button"`
+- Google button: `data-testid="login-google-button"`
 
----
+### AUTH-003: Invitation sign-up
 
-### AUTH-002: Sign up with Google OAuth (social-only)
-**Priority**: Critical | **Type**: Positive
+With a valid invite token:
 
-**Prerequisites**: None
+- The page loads invite metadata from `/api/invite/<token>`
+- The heading changes to `Join <organization>`
+- The invited email is prefilled and read-only
+- The submit button text is `Create account & join`
 
-**Steps**:
-1. Navigate to `/sign-up`
-2. Verify only social auth buttons shown
-3. Click "Continue with Google" button (`[data-testid="signup-google-button"]`)
-4. Authorize app on Google
-5. Wait for callback and redirect
+## Automated Coverage
 
-**Expected Result**:
-- User account created with Google profile
-- Email verified via OAuth
-- User redirected to dashboard
+| ID | Status | What the current E2E suite verifies |
+|----|--------|-------------------------------------|
+| `AUTH-001` | Automated | `/sign-up` redirects in cloud mode and remains available in self-hosted mode |
+| `AUTH-002` | Automated | GitHub OAuth button is visible on `/sign-in` when enabled |
+| `AUTH-003` | Skipped | Placeholder only; requires deterministic invite creation in test setup |
+| `AUTH-014` | Automated | Google OAuth button is visible on `/sign-in` when enabled |
+| `Invalid invite token` | Automated | Invalid invite falls back to `/sign-in` in cloud or `/sign-up` in self-hosted |
+| `OAuth error redirect` | Automated | `/sign-in?error=...` remains on the sign-in page |
 
-**Test Code Pattern**:
-```typescript
-test('AUTH-002: Sign up with Google OAuth @critical @positive', async ({ page }) => {
-  const signUpPage = new SignUpPage(page);
-  await signUpPage.navigate();
+## Selector Contract
 
-  await signUpPage.expectOAuthOnlyMode();
-  await signUpPage.clickGoogleSignUp();
+### Open registration or invite form
 
-  await page.waitForURL(/accounts\.google\.com/);
-  // ... OAuth flow handled by Google
-});
-```
+The current form component does not expose dedicated `signup-*` test ids for the fields. The stable selectors are:
 
----
+| Element | Current selector |
+|---------|------------------|
+| Name | `#name` or `input[name="name"]` |
+| Email | `#email` or `input[name="email"]` |
+| Password | `#password` or `input[name="password"]` |
+| Submit | `button[type="submit"]` |
 
-### AUTH-003: Invitation flow email signup
-**Priority**: Critical | **Type**: Positive
+### OAuth entry point for non-invite sign-up
 
-**Prerequisites**:
-- Valid invitation token exists
-- Invitation email is known
+| Element | Current selector |
+|---------|------------------|
+| GitHub | `[data-testid="login-github-button"]` |
+| Google | `[data-testid="login-google-button"]` |
+| Last used badge | `[data-testid="last-used-badge"]` |
 
-**Steps**:
-1. Click invitation link with token (e.g., `/sign-up?invite=abc123`)
-2. Verify email form is shown (locked to invited email)
-3. Fill name field (`[data-testid="signup-name-input"]`)
-4. Fill password field (`[data-testid="signup-password-input"]`)
-5. Submit form (`[data-testid="signup-submit-button"]`)
+### Invite state
 
-**Expected Result**:
-- User account created with invited email
-- User auto-joined to organization with assigned role
-- Redirected to dashboard
+The invite flow is asserted primarily by visible copy, not a dedicated `data-testid`.
 
-**Test Code Pattern**:
-```typescript
-test('AUTH-003: Invitation flow email signup @critical @positive', async ({ page }) => {
-  const signUpPage = new SignUpPage(page);
-  const inviteToken = 'test-invite-token'; // Use valid test token
+- Invite banner contains `Invitation for`
+- Invited email appears in the banner
+- Heading contains `Join <organization>`
 
-  await signUpPage.navigate(inviteToken);
+## Notes
 
-  // Verify email form mode (not OAuth-only)
-  await signUpPage.expectEmailFormMode();
-  await signUpPage.expectInvitationBadge();
-
-  // Email should be pre-filled and read-only
-  await signUpPage.expectInvitedEmail('invited@example.com');
-
-  // Fill remaining fields
-  await signUpPage.signUpWithInvite('Test User', 'SecurePassword123!');
-
-  // Wait for redirect to dashboard
-  await expect(page).toHaveURL('/');
-});
-```
-
----
-
-### AUTH-012: GitHub OAuth sign up (detailed)
-**Priority**: High | **Type**: Positive
-
-**Prerequisites**:
-- GitHub test account configured
-- OAuth app authorized
-
-**Steps**:
-1. Navigate to `/sign-up`
-2. Click "Sign up with GitHub"
-3. If prompted, enter GitHub credentials
-4. Authorize the app
-5. Wait for redirect to dashboard `/`
-6. User is redirected to dashboard
-
-**Expected Result**:
-- User account created with GitHub profile data
-- Email from GitHub profile is used
-- User is signed in automatically
-
----
-
-### AUTH-013: GitHub OAuth sign in (existing user)
-**Priority**: High | **Type**: Positive
-
-**Prerequisites**:
-- User already created via GitHub OAuth
-
-**Steps**:
-1. Navigate to `/sign-in`
-2. Click "Sign in with GitHub"
-3. Authorize (if needed)
-4. Wait for redirect
-
-**Expected Result**:
-- User signed in with existing account
-- Redirected to dashboard
-
----
-
-### AUTH-014: Google OAuth sign up
-**Priority**: High | **Type**: Positive
-
-**Prerequisites**:
-- Google test account configured
-
-**Steps**:
-1. Navigate to `/sign-up`
-2. Click "Sign up with Google"
-3. Select Google account or enter credentials
-4. Authorize the app
-5. Wait for callback
-
-**Expected Result**:
-- User account created with Google profile
-- Email verified automatically
-- Redirected to dashboard
-
----
-
-### AUTH-015: Google OAuth sign in (existing user)
-**Priority**: High | **Type**: Positive
-
-**Prerequisites**:
-- User already created via Google OAuth
-
-**Steps**:
-1. Navigate to `/sign-in`
-2. Click "Sign in with Google"
-3. Authorize
-4. Wait for redirect
-
-**Expected Result**:
-- User signed in with existing account
-- Redirected to dashboard
-
----
-
-## OAuth Testing Notes
-
-**Important**: OAuth tests require:
-1. Dedicated test OAuth apps for GitHub and Google
-2. Test accounts with known credentials
-3. Environment variables set:
-   - `E2E_GITHUB_TEST_USER`
-   - `E2E_GITHUB_TEST_PASSWORD`
-   - `E2E_GOOGLE_TEST_USER`
-   - `E2E_GOOGLE_TEST_PASSWORD`
-
-**OAuth Page Handling**:
-```typescript
-// Handle GitHub OAuth
-await page.waitForURL(/github\.com/);
-await page.fill('#login_field', env.oauth.github.username);
-await page.fill('#password', env.oauth.github.password);
-await page.click('[type="submit"]');
-
-// Wait for redirect to dashboard
-await page.waitForURL('/'); // Direct redirect to dashboard
-```
-
----
-
-## Selectors Reference
-
-| Element | Primary Selector | Fallback Selectors |
-|---------|------------------|-------------------|
-| Name Input | `[data-testid="signup-name-input"]` | `#name`, `input[name="name"]` |
-| Email Input | `[data-testid="signup-email-input"]` | `#email`, `input[name="email"]` |
-| Password Input | `[data-testid="signup-password-input"]` | `#password`, `input[name="password"]` |
-| Submit Button | `[data-testid="signup-submit-button"]` | `button[type="submit"]` |
-| GitHub Button | `[data-testid="signup-github-button"]` | `button:has-text("GitHub")` |
-| Google Button | `[data-testid="signup-google-button"]` | `button:has-text("Google")` |
-| Invitation Badge | `[data-testid="invitation-badge"]` | `text=Invited` |
-| Error Message | `[data-testid="signup-error-message"]` | `[role="alert"]` |
-
-## Tags
-- `@critical` - Critical priority tests
-- `@high` - High priority tests
-- `@positive` - Happy path tests
-- `@oauth` - OAuth-specific tests
+- Cloud mode uses a social-first new-user flow. `/sign-up` should not be documented as the normal OAuth entry point.
+- CAPTCHA headers are requested before email sign-up calls. This is relevant to the hosted auth endpoints, but there is no dedicated E2E assertion for CAPTCHA state yet.
+- Keep this spec aligned with the hosting-mode checks in `app/e2e/tests/auth/sign-up.spec.ts` and the runtime config from `/api/config/app`.

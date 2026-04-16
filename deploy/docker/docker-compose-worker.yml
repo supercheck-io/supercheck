@@ -17,7 +17,7 @@
 #
 # Upgrading:
 #   Set SUPERCHECK_VERSION in your .env file or shell environment:
-#     SUPERCHECK_VERSION=1.4.0 docker compose -f docker-compose-worker.yml up -d
+#     SUPERCHECK_VERSION=<tag> docker compose -f docker-compose-worker.yml up -d
 #   This updates the worker image and WORKER_IMAGE in one place.
 #
 # Environment Variables Required:

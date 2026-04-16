@@ -121,6 +121,8 @@ For environments behind HTTP proxies:
 ```bash
 export HTTPS_PROXY="http://proxy.corp.com:8080"
 export NO_PROXY="localhost,127.0.0.1,.internal.corp.com"
+export SUPERCHECK_TRIGGER_KEY="sck_trigger_..."
+export SUPERCHECK_TOKEN="sck_live_..."
 
 supercheck job trigger abc123 --wait
 ```

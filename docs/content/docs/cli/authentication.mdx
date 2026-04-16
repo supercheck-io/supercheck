@@ -77,17 +77,21 @@ curl -X POST https://app.supercheck.io/api/jobs/<id>/trigger \
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `SUPERCHECK_TOKEN` | Yes | CLI token for API access |
+| `SUPERCHECK_TOKEN` | Usually | CLI token for most commands and for `job trigger --wait` |
 | `SUPERCHECK_URL` | No | Base URL (default: `https://app.supercheck.io`) |
 | `SUPERCHECK_ORG` | No | Default organization slug |
 | `SUPERCHECK_PROJECT` | No | Default project slug |
-| `SUPERCHECK_TRIGGER_KEY` | No | Job-specific trigger key |
+| `SUPERCHECK_TRIGGER_KEY` | For `job trigger` | Job-specific trigger key |
 | `HTTP_PROXY` | No | Proxy URL for HTTP requests |
 | `HTTPS_PROXY` | No | Proxy URL for HTTPS requests |
 | `NO_PROXY` | No | Hosts to bypass proxy (comma-separated) |
 
 <Callout type="info">
   `SUPERCHECK_ORG` and `SUPERCHECK_PROJECT` override the corresponding fields in `supercheck.config.ts` for config resolution. However, the CLI token itself is project-scoped and determines your actual API access permissions.
+</Callout>
+
+<Callout type="info">
+  For CI/CD, use `SUPERCHECK_TRIGGER_KEY` with `supercheck job trigger`. Add `SUPERCHECK_TOKEN` only when you also use `--wait` or run other API-backed commands such as `deploy`, `diff`, or `whoami`.
 </Callout>
 
 ## Authentication Flow

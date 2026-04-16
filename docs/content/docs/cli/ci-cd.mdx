@@ -23,12 +23,15 @@ jobs:
   test:
     uses: supercheck-io/supercheck/.github/workflows/supercheck-cli.yml@main
     secrets:
+      SUPERCHECK_TRIGGER_KEY: ${{ secrets.SUPERCHECK_TRIGGER_KEY }}
       SUPERCHECK_TOKEN: ${{ secrets.SUPERCHECK_TOKEN }}
     with:
       job-id: ${{ vars.SUPERCHECK_JOB_ID }}
       wait: true
       timeout: 300
 ```
+
+`SUPERCHECK_TRIGGER_KEY` starts the run. `SUPERCHECK_TOKEN` is only needed here because the example uses `wait: true`.
 
 ### Manual Setup
 
@@ -55,6 +58,7 @@ jobs:
       - name: Run E2E Tests
         run: supercheck job trigger ${{ vars.JOB_ID }} --wait --json
         env:
+          SUPERCHECK_TRIGGER_KEY: ${{ secrets.SUPERCHECK_TRIGGER_KEY }}
           SUPERCHECK_TOKEN: ${{ secrets.SUPERCHECK_TOKEN }}
 
       - name: Deploy Config
@@ -78,6 +82,7 @@ Block deployments when tests fail:
       exit 1
     fi
   env:
+    SUPERCHECK_TRIGGER_KEY: ${{ secrets.SUPERCHECK_TRIGGER_KEY }}
     SUPERCHECK_TOKEN: ${{ secrets.SUPERCHECK_TOKEN }}
 ```
 
@@ -100,6 +105,7 @@ supercheck:
     - supercheck health
     - supercheck job trigger $SUPERCHECK_JOB_ID --wait --json
   variables:
+    SUPERCHECK_TRIGGER_KEY: $SUPERCHECK_TRIGGER_KEY
     SUPERCHECK_TOKEN: $SUPERCHECK_TOKEN
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -121,6 +127,7 @@ supercheck-test:
   script:
     - supercheck job trigger $SUPERCHECK_JOB_ID --wait
   variables:
+    SUPERCHECK_TRIGGER_KEY: $SUPERCHECK_TRIGGER_KEY
     SUPERCHECK_TOKEN: $SUPERCHECK_TOKEN
 
 supercheck-deploy:
@@ -146,6 +153,7 @@ Run the CLI in Docker using the official Node.js image:
 ```bash
 # Trigger a job
 docker run --rm \
+  -e SUPERCHECK_TRIGGER_KEY=$SUPERCHECK_TRIGGER_KEY \
   -e SUPERCHECK_TOKEN=$SUPERCHECK_TOKEN \
   node:20-slim sh -c "npm install -g @supercheck/cli && supercheck job trigger <job-id> --wait"
 
@@ -185,7 +193,8 @@ Set these in your CI/CD platform's secret management:
 
 | Secret | Description |
 |--------|-------------|
-| `SUPERCHECK_TOKEN` | CLI token (`sck_live_*`) |
+| `SUPERCHECK_TRIGGER_KEY` | Job-specific trigger key (`sck_trigger_*`) for `supercheck job trigger` |
+| `SUPERCHECK_TOKEN` | CLI token (`sck_live_*`) for general API commands and `job trigger --wait` |
 
 ### Optional Variables
 
@@ -198,6 +207,7 @@ Set these in your CI/CD platform's secret management:
 
 ```yaml
 env:
+  SUPERCHECK_TRIGGER_KEY: ${{ secrets.SUPERCHECK_TRIGGER_KEY }}
   SUPERCHECK_TOKEN: ${{ secrets.SUPERCHECK_TOKEN }}
   SUPERCHECK_URL: https://supercheck.yourdomain.com
 ```
@@ -211,7 +221,7 @@ The CLI uses specific exit codes for CI/CD scripting:
 | Code | Meaning | CI/CD Action |
 |------|---------|--------------|
 | `0` | Success | Continue pipeline |
-| `1` | Test failure | Block deployment |
+| `1` | General error (test failure, validation) | Block deployment |
 | `2` | Auth error | Check token configuration |
 | `3` | Config error | Fix `supercheck.config.ts` |
 | `4` | API error | Check connectivity |
@@ -223,6 +233,9 @@ The CLI uses specific exit codes for CI/CD scripting:
   id: tests
   continue-on-error: true
   run: supercheck job trigger $JOB_ID --wait
+  env:
+    SUPERCHECK_TRIGGER_KEY: ${{ secrets.SUPERCHECK_TRIGGER_KEY }}
+    SUPERCHECK_TOKEN: ${{ secrets.SUPERCHECK_TOKEN }}
 
 - name: Report Results
   if: steps.tests.outcome == 'failure'

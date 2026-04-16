@@ -192,4 +192,3 @@ If Supercheck is useful to your team:
 [![GitHub Discussions](https://img.shields.io/badge/GitHub-Discussions-181717?logo=github&logoColor=white)](https://github.com/supercheck-io/supercheck/discussions)
 
 
-

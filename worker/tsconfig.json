@@ -15,7 +15,8 @@
     "forceConsistentCasingInFileNames": true,
     "noImplicitAny": false,
     "strictBindCallApply": false,
-    "noFallthroughCasesInSwitch": false
+    "noFallthroughCasesInSwitch": false,
+    "types": ["node", "jest"]
   },
   "include": ["src/**/*.ts", "*.ts", "config/**/*.ts"]
 }

@@ -140,14 +140,14 @@ export async function fetchWithRetry(
   let lastStatusCode: number | undefined;
 
   for (let attempt = 0; attempt <= retryConfig.maxRetries; attempt++) {
-    try {
-      // Create abort controller for timeout
-      const controller = new AbortController();
-      const timeoutId = setTimeout(
-        () => controller.abort(),
-        retryConfig.timeoutMs,
-      );
+    // Create abort controller for timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(
+      () => controller.abort(),
+      retryConfig.timeoutMs,
+    );
 
+    try {
       // Merge abort signal with existing options
       const fetchOptions: RequestInit = {
         ...options,
@@ -191,6 +191,7 @@ export async function fetchWithRetry(
       const responseText = await response.text().catch(() => '');
       lastError = `HTTP ${response.status}: ${responseText}`;
     } catch (error) {
+      clearTimeout(timeoutId);
       const errorMessage =
         error instanceof Error ? error.message : String(error);
       lastError = errorMessage;

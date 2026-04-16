@@ -33,15 +33,18 @@ on:
         type: string
         default: 'latest'
     secrets:
-      SUPERCHECK_TOKEN:
-        description: 'CLI token (sck_live_*) for API access'
+      SUPERCHECK_TRIGGER_KEY:
+        description: 'Trigger key (sck_trigger_*) for the target job'
         required: true
+      SUPERCHECK_TOKEN:
+        description: 'CLI token (sck_live_*) used for --wait polling and other API calls'
+        required: false
     outputs:
       run-id:
         description: 'The run ID created by the job trigger'
         value: ${{ jobs.supercheck.outputs.run-id }}
       status:
-        description: 'Final run status (completed, failed, cancelled)'
+        description: 'Final run status when wait=true (empty when wait=false)'
         value: ${{ jobs.supercheck.outputs.status }}
 
 permissions:
@@ -65,7 +68,25 @@ jobs:
       - name: Install Supercheck CLI
         run: npm install -g @supercheck/cli@${{ inputs.cli-version }}
 
-      - name: Verify Authentication
+      - name: Validate Inputs
+        id: validate
+        run: |
+          if [ -n "$SUPERCHECK_TOKEN" ]; then
+            echo "has-cli-token=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has-cli-token=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [ "$INPUT_WAIT" = "true" ] && [ -z "$SUPERCHECK_TOKEN" ]; then
+            echo "SUPERCHECK_TOKEN is required when wait=true." >&2
+            exit 1
+          fi
+        env:
+          INPUT_WAIT: ${{ inputs.wait }}
+          SUPERCHECK_TOKEN: ${{ secrets.SUPERCHECK_TOKEN }}
+
+      - name: Verify CLI Token
+        if: steps.validate.outputs.has-cli-token == 'true'
         run: supercheck whoami
         env:
           SUPERCHECK_TOKEN: ${{ secrets.SUPERCHECK_TOKEN }}
@@ -93,6 +114,7 @@ jobs:
           echo "$OUTPUT"
           exit ${EXIT_CODE:-0}
         env:
+          SUPERCHECK_TRIGGER_KEY: ${{ secrets.SUPERCHECK_TRIGGER_KEY }}
           SUPERCHECK_TOKEN: ${{ secrets.SUPERCHECK_TOKEN }}
           SUPERCHECK_URL: ${{ inputs.supercheck-url }}
           INPUT_JOB_ID: ${{ inputs.job-id }}

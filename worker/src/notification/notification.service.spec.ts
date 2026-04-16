@@ -37,6 +37,7 @@ global.fetch = mockFetch;
 describe('NotificationService', () => {
   let service: NotificationService;
   let _emailTemplateService: EmailTemplateService;
+  let module: TestingModule;
 
   const mockEmailTemplateService = {
     renderMonitorAlertEmail: jest.fn().mockResolvedValue({
@@ -136,7 +137,7 @@ describe('NotificationService', () => {
       text: jest.fn().mockResolvedValue('ok'),
     });
 
-    const module: TestingModule = await Test.createTestingModule({
+    module = await Test.createTestingModule({
       providers: [
         NotificationService,
         {
@@ -151,7 +152,8 @@ describe('NotificationService', () => {
       module.get<EmailTemplateService>(EmailTemplateService);
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await module.close();
     delete process.env.SMTP_HOST;
     delete process.env.SMTP_PORT;
     delete process.env.SMTP_USER;

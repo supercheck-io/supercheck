@@ -443,16 +443,27 @@ describe("Job Scheduler", () => {
 
     describe("Negative Cases", () => {
       it("should handle database error", async () => {
+        jest.useFakeTimers();
+
         const selectChain = {
           from: jest.fn().mockReturnThis(),
           where: jest.fn().mockRejectedValue(new Error("DB error")),
         };
         mockDbModule.select.mockReturnValue(selectChain);
 
-        const result = await initializeJobSchedulers();
+        const resultPromise = initializeJobSchedulers();
+
+        // Advance past all retry backoff delays
+        for (let i = 0; i < 3; i++) {
+          await jest.advanceTimersByTimeAsync(10_000);
+        }
+
+        const result = await resultPromise;
 
         expect(result.success).toBe(false);
         expect(result.error).toBeDefined();
+
+        jest.useRealTimers();
       });
 
       it("should continue on individual job failure", async () => {
