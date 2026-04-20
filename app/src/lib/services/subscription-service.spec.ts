@@ -920,7 +920,7 @@ describe("SubscriptionService", () => {
         expect(mockDbUpdate).toHaveBeenCalled();
       });
 
-      it("should use existing subscription dates when available", async () => {
+      it("should use existing usage period dates when available", async () => {
         await service.resetUsageCounters(testOrgId);
 
         expect(mockDbUpdate).toHaveBeenCalled();
@@ -951,6 +951,45 @@ describe("SubscriptionService", () => {
         );
 
         expect(mockDbUpdate).toHaveBeenCalled();
+      });
+
+      it("should not overwrite subscription lifecycle dates", async () => {
+        const startDate = new Date("2024-02-01");
+        const endDate = new Date("2024-02-28");
+        const whereMock = jest.fn().mockResolvedValue(undefined);
+        const setMock = jest.fn().mockReturnValue({
+          where: whereMock,
+        });
+
+        mockDbUpdate.mockReturnValueOnce({
+          set: setMock,
+        });
+
+        await service.resetUsageCountersWithDates(
+          testOrgId,
+          startDate,
+          endDate
+        );
+
+        expect(setMock).toHaveBeenCalledWith(
+          expect.objectContaining({
+            playwrightMinutesUsed: 0,
+            k6VuMinutesUsed: 0,
+            aiCreditsUsed: 0,
+            usagePeriodStart: startDate,
+            usagePeriodEnd: endDate,
+          })
+        );
+        expect(setMock).toHaveBeenCalledWith(
+          expect.not.objectContaining({
+            subscriptionStartedAt: expect.any(Date),
+          })
+        );
+        expect(setMock).toHaveBeenCalledWith(
+          expect.not.objectContaining({
+            subscriptionEndsAt: expect.any(Date),
+          })
+        );
       });
 
       it("should use current date when start date is null", async () => {

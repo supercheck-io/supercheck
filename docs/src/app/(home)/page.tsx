@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import {
   ArrowRight,
   Building2,
@@ -88,30 +88,45 @@ const features = [
 
 
 export default function HomePage() {
-  const [isDark, setIsDark] = useState(false);
-  const [isMounted, setIsMounted] = useState(false);
   const [isVideoPlaying, setIsVideoPlaying] = useState(false);
+  const isMounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
+  const isDark = useSyncExternalStore(
+    (onStoreChange) => {
+      if (typeof window === "undefined") {
+        return () => {};
+      }
+
+      const observer = new MutationObserver(() => {
+        onStoreChange();
+      });
+
+      observer.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ["class"],
+      });
+      window.addEventListener("storage", onStoreChange);
+
+      return () => {
+        observer.disconnect();
+        window.removeEventListener("storage", onStoreChange);
+      };
+    },
+    () => document.documentElement.classList.contains("dark"),
+    () => false,
+  );
 
   // YouTube Video ID from the provided URL
   const YOUTUBE_VIDEO_ID = "A9CzmekuvfI";
 
-  useEffect(() => {
-    setIsMounted(true);
-    const isDarkMode = document.documentElement.classList.contains("dark");
-    setIsDark(isDarkMode);
-  }, []);
-
   const toggleTheme = () => {
     const html = document.documentElement;
-    if (isDark) {
-      html.classList.remove("dark");
-      localStorage.setItem("theme", "light");
-      setIsDark(false);
-    } else {
-      html.classList.add("dark");
-      localStorage.setItem("theme", "dark");
-      setIsDark(true);
-    }
+    const nextTheme = isDark ? "light" : "dark";
+    html.classList.toggle("dark", nextTheme === "dark");
+    localStorage.setItem("theme", nextTheme);
   };
 
   return (

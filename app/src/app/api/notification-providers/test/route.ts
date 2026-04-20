@@ -5,9 +5,33 @@ import { renderTestEmail } from "@/lib/email-renderer";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import {
+  fetchSafeExternalUrl,
+  validateWebhookUrlString,
+} from "@/lib/url-validator";
+import {
   normalizeWebhookMethod,
   renderWebhookJsonTemplate,
 } from "@/lib/notification-providers/webhook-template";
+
+const TEST_CONNECTION_TIMEOUT_MS = 10_000;
+
+async function sendSafeConnectionTestRequest(url: string, init: RequestInit) {
+  try {
+    return await fetchSafeExternalUrl(url, {
+      ...init,
+      signal: init.signal ?? AbortSignal.timeout(TEST_CONNECTION_TIMEOUT_MS),
+    });
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      (error.name === "AbortError" || error.name === "TimeoutError")
+    ) {
+      throw new Error(`Request timed out after ${TEST_CONNECTION_TIMEOUT_MS / 1000} seconds`);
+    }
+
+    throw error;
+  }
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -189,8 +213,6 @@ async function testSlackConnection(config: NotificationProviderConfig) {
       throw new Error("Webhook URL is required");
     }
 
-    // Validate URL to prevent SSRF attacks
-    const { validateWebhookUrlString } = await import("@/lib/url-validator");
     const webhookUrl = typedConfig.webhookUrl as string;
     
     // Validate URL format and ensure it's not targeting internal networks
@@ -214,7 +236,7 @@ async function testSlackConnection(config: NotificationProviderConfig) {
       throw new Error("Invalid URL format");
     }
 
-    const response = await fetch(webhookUrl, {
+    const response = await sendSafeConnectionTestRequest(webhookUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -251,8 +273,8 @@ async function testWebhookConnection(config: NotificationProviderConfig) {
       throw new Error("URL is required");
     }
 
-    const { validateWebhookUrlString } = await import("@/lib/url-validator");
-    const urlValidation = validateWebhookUrlString(typedConfig.url as string);
+    const targetUrl = typedConfig.url as string;
+    const urlValidation = validateWebhookUrlString(targetUrl);
     if (!urlValidation.valid) {
       throw new Error(urlValidation.error || "Invalid webhook URL");
     }
@@ -296,19 +318,12 @@ async function testWebhookConnection(config: NotificationProviderConfig) {
             message: "Connection test from Supercheck",
           });
 
-    // Add timeout to prevent hanging connections
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000);
-
     try {
-      const response = await fetch(typedConfig.url as string, {
+      const response = await sendSafeConnectionTestRequest(targetUrl, {
         method,
         headers,
         body: method === "GET" ? undefined : body,
-        signal: controller.signal,
       });
-
-      clearTimeout(timeout);
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -319,10 +334,6 @@ async function testWebhookConnection(config: NotificationProviderConfig) {
         message: "Webhook connection successful",
       });
     } catch (fetchError) {
-      clearTimeout(timeout);
-      if (fetchError instanceof Error && fetchError.name === 'AbortError') {
-        throw new Error("Request timed out after 10 seconds");
-      }
       throw fetchError;
     }
   } catch (error) {
@@ -392,8 +403,6 @@ async function testDiscordConnection(config: NotificationProviderConfig) {
       throw new Error("Discord webhook URL is required");
     }
 
-    // Validate URL to prevent SSRF attacks
-    const { validateWebhookUrlString } = await import("@/lib/url-validator");
     const webhookUrl = typedConfig.discordWebhookUrl as string;
     
     // Validate URL format and ensure it's not targeting internal networks
@@ -427,7 +436,7 @@ async function testDiscordConnection(config: NotificationProviderConfig) {
       throw new Error("Invalid URL format");
     }
 
-    const response = await fetch(webhookUrl, {
+    const response = await sendSafeConnectionTestRequest(webhookUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -463,8 +472,6 @@ async function testTeamsConnection(config: NotificationProviderConfig) {
       throw new Error("Teams webhook URL is required");
     }
 
-    // Validate URL to prevent SSRF attacks
-    const { validateWebhookUrlString } = await import("@/lib/url-validator");
     const webhookUrl = typedConfig.teamsWebhookUrl as string;
     
     // Validate URL format and ensure it's not targeting internal networks
@@ -541,22 +548,15 @@ async function testTeamsConnection(config: NotificationProviderConfig) {
       ],
     };
 
-    // Add timeout to prevent hanging connections
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000);
-
     try {
-      const response = await fetch(webhookUrl, {
+      const response = await sendSafeConnectionTestRequest(webhookUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "User-Agent": "Supercheck-Monitor/1.0",
         },
         body: JSON.stringify(adaptiveCardPayload),
-        signal: controller.signal,
       });
-
-      clearTimeout(timeout);
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -567,10 +567,6 @@ async function testTeamsConnection(config: NotificationProviderConfig) {
         message: "Microsoft Teams connection successful",
       });
     } catch (fetchError) {
-      clearTimeout(timeout);
-      if (fetchError instanceof Error && fetchError.name === "AbortError") {
-        throw new Error("Request timed out after 10 seconds");
-      }
       throw fetchError;
     }
   } catch (error) {

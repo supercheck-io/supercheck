@@ -9,9 +9,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ### Added
 - PagerDuty and OpsGenie integration via webhook provider now supports custom JSON body templates and configurable HTTP methods for full compatibility with third-party alerting systems. See [#294](https://github.com/supercheck-io/supercheck/issues/294) for details and usage examples.
 
+### Security
+- Patched published dependency advisories across `app`, `docs`, and `worker` by upgrading Next.js to `16.2.3`, Axios to `1.15.0`, and affected transitive dependencies to secure releases
+- Fixed SSRF bypass via hex-form IPv4-mapped IPv6 addresses (e.g. `::ffff:7f00:1`) that evaded the previous regex-based private IP checks. Replaced with proper CIDR-range checking for both IPv4 and IPv6
+- Added DNS preflight resolution with a 5-second timeout (`assertPublicDnsResolution`) so hostnames that resolve to private/reserved IPs are rejected before outbound requests are sent
+- Disabled HTTP redirects on all outbound webhook requests (`redirect: 'error'`) to prevent validated destinations from being swapped via redirect chains
+- Migrated all outbound webhook/connection-test requests to `fetchSafeExternalUrl()` which combines URL validation, DNS resolution, and redirect blocking in a single safe wrapper
+
 ### Fixed
 - Webhook body template rendering now parses and re-serializes JSON before delivery so interpolated alert values stay escaped safely
 - Webhook methods are now normalized consistently across provider validation, connection testing, and worker delivery to avoid GET requests with request bodies
+- Canceled subscriptions now retain access until the billing period ends (`subscriptionEndsAt`) instead of being blocked immediately. The grace period is enforced in both `hasActiveSubscription()` and the `/api/subscription/status` endpoint
+- Past-due subscriptions are treated as active while Polar retries payment automatically
+- Billing period usage counters now use Polar's billing cycle dates (`currentPeriodStart`/`currentPeriodEnd`) instead of lifecycle dates (`startsAt`/`endsAt`), fixing the "0 days remaining" issue that occurred when subscription creation and billing cycle dates diverged
+- Worker lint script path corrected from `"{src,apps,libs}/**/*.ts"` to `"src/**/*.ts"`
+
+### Changed
+- Upgraded `better-auth` from `1.6.0` to `1.6.5` (fixes `nextCookies()` infinite refresh loop, OAuth CSRF, `isMounted` race condition)
+- Upgraded `@polar-sh/sdk` from `0.46.7` to `0.47.0`
+- TypeScript target changed from `ES2017` to `ES2020` (required for BigInt support in IPv6 CIDR-range checking)
+- Updated Playwright Recorder links to Supercheck Recorder Chrome Web Store extension
+- Docs homepage now uses `useSyncExternalStore` instead of `useEffect` for theme detection, eliminating hydration mismatches
+- Added `dompurify` (`>=3.4.0`) and `follow-redirects` (`>=1.16.0`) security overrides
 
 ## [1.3.4] - 2026-04-13
 

@@ -10,6 +10,10 @@
  */
 
 import crypto from "crypto";
+import {
+  fetchSafeExternalUrl,
+  validateWebhookUrlString,
+} from "@/lib/url-validator";
 
 export type WebhookEvent = {
   type: "incident.created" | "incident.updated" | "incident.resolved";
@@ -92,13 +96,11 @@ export async function deliverWebhook(
   event: WebhookEvent,
   secret: string
 ): Promise<WebhookDeliveryResult> {
-  // Validate endpoint URL
-  try {
-    new URL(endpoint);
-  } catch {
+  const endpointValidation = validateWebhookUrlString(endpoint);
+  if (!endpointValidation.valid) {
     return {
       success: false,
-      error: "Invalid webhook endpoint URL",
+      error: endpointValidation.error || "Invalid webhook endpoint URL",
       retriesAttempted: 0,
     };
   }
@@ -121,7 +123,7 @@ export async function deliverWebhook(
   // Retry loop with exponential backoff
   for (let attempt = 0; attempt <= WEBHOOK_CONFIG.MAX_RETRIES; attempt++) {
     try {
-      const response = await fetch(endpoint, {
+      const response = await fetchSafeExternalUrl(endpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -164,11 +166,14 @@ export async function deliverWebhook(
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "Unknown error";
+      const errorName = error instanceof Error ? error.name : "";
       lastError = errorMessage;
 
       // Check if this is a timeout or network error that should be retried
       if (
-        errorMessage.includes("timeout") ||
+        errorName === "AbortError" ||
+        errorName === "TimeoutError" ||
+        errorMessage.toLowerCase().includes("timeout") ||
         errorMessage.includes("ECONNREFUSED") ||
         errorMessage.includes("ENOTFOUND")
       ) {

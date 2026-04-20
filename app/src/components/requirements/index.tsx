@@ -489,7 +489,18 @@ export default function RequirementsPage() {
                                                                 <Chrome className="h-4 w-4 text-sky-500 shrink-0 mt-0.5" />
                                                                 <div>
                                                                     <p className="font-medium text-foreground">Browser Tests</p>
-                                                                    <p className="text-muted-foreground">Use the Playwright Recorder to capture real user interactions for reliable, accurate tests.</p>
+                                                                    <p className="text-muted-foreground">
+                                                                        Use the{" "}
+                                                                        <a
+                                                                            href="https://chromewebstore.google.com/detail/supercheck-recorder/gfmbcelfhhfmifdkccnbgdadibdfhioe"
+                                                                            target="_blank"
+                                                                            rel="noopener noreferrer"
+                                                                            className="underline underline-offset-2 hover:text-foreground"
+                                                                        >
+                                                                            Supercheck Recorder
+                                                                        </a>{" "}
+                                                                        to capture real user interactions for reliable, accurate tests.
+                                                                    </p>
                                                                 </div>
                                                             </div>
                                                             <div className="flex gap-2">

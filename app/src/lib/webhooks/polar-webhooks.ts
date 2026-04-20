@@ -249,18 +249,30 @@ function getSubscriptionIdFromPayload(payload: PolarWebhookPayload): string {
 }
 
 /**
- * Helper to get subscription period dates from payload
- * Returns the billing cycle start and end dates from Polar
+ * Helper to get subscription dates from payload.
+ *
+ * Polar sends TWO distinct sets of dates:
+ *   1. Subscription lifecycle: `startsAt`/`endsAt` — when the subscription was
+ *      created and when it terminates (null while active).
+ *   2. Billing period: `currentPeriodStart`/`currentPeriodEnd` — the current
+ *      billing cycle window used for metered usage.
+ *
+ * We return them separately so callers can use the right set for each purpose:
+ *   - `subscriptionStartedAt`/`subscriptionEndsAt` → lifecycle dates
+ *   - `periodStart`/`periodEnd` → billing period dates (for usage counters)
  */
 function getSubscriptionDatesFromPayload(payload: PolarWebhookPayload): {
   startsAt: Date | null;
   endsAt: Date | null;
+  periodStart: Date | null;
+  periodEnd: Date | null;
 } {
-  // Try direct fields first (subscription events)
   let startsAt: Date | null = null;
   let endsAt: Date | null = null;
+  let periodStart: Date | null = null;
+  let periodEnd: Date | null = null;
 
-  // Try startsAt/endsAt (most common in subscription events)
+  // Subscription lifecycle dates
   if (payload.data.startsAt) {
     startsAt = new Date(payload.data.startsAt);
   }
@@ -268,19 +280,36 @@ function getSubscriptionDatesFromPayload(payload: PolarWebhookPayload): {
     endsAt = new Date(payload.data.endsAt);
   }
 
-  // Try currentPeriodStart/currentPeriodEnd (alternative naming)
-  if (!startsAt && payload.data.currentPeriodStart) {
-    startsAt = new Date(payload.data.currentPeriodStart);
+  // Billing period dates (preferred for usage tracking)
+  if (payload.data.currentPeriodStart) {
+    periodStart = new Date(payload.data.currentPeriodStart);
   }
-  if (!endsAt && payload.data.currentPeriodEnd) {
-    endsAt = new Date(payload.data.currentPeriodEnd);
+  if (payload.data.currentPeriodEnd) {
+    periodEnd = new Date(payload.data.currentPeriodEnd);
   }
 
-  // Validate dates are valid
+  // Also check snake_case variants from Polar
+  const snakeData = payload.data as Record<string, unknown>;
+  if (!startsAt && typeof snakeData.starts_at === 'string') {
+    startsAt = new Date(snakeData.starts_at);
+  }
+  if (!endsAt && typeof snakeData.ends_at === 'string') {
+    endsAt = new Date(snakeData.ends_at);
+  }
+  if (!periodStart && typeof snakeData.current_period_start === 'string') {
+    periodStart = new Date(snakeData.current_period_start);
+  }
+  if (!periodEnd && typeof snakeData.current_period_end === 'string') {
+    periodEnd = new Date(snakeData.current_period_end);
+  }
+
+  // Validate dates
   if (startsAt && isNaN(startsAt.getTime())) startsAt = null;
   if (endsAt && isNaN(endsAt.getTime())) endsAt = null;
+  if (periodStart && isNaN(periodStart.getTime())) periodStart = null;
+  if (periodEnd && isNaN(periodEnd.getTime())) periodEnd = null;
 
-  return { startsAt, endsAt };
+  return { startsAt, endsAt, periodStart, periodEnd };
 }
 
 /**
@@ -566,16 +595,18 @@ export async function handleSubscriptionActive(payload: PolarWebhookPayload) {
     subscriptionStatus: "active",
     subscriptionId,
     polarCustomerId: customerId,
-    // Pass Polar subscription dates for accurate billing period
+    // Lifecycle dates: when subscription was created / will terminate
     subscriptionStartedAt: subscriptionDates.startsAt,
     subscriptionEndsAt: subscriptionDates.endsAt,
   });
 
-  // Reset usage counters using Polar's subscription dates (not calendar months)
+  // Reset usage counters using Polar's BILLING PERIOD dates (not lifecycle dates).
+  // periodStart/periodEnd represent the current billing cycle window;
+  // startsAt/endsAt represent the subscription creation/termination dates.
   await subscriptionService.resetUsageCountersWithDates(
     org.id,
-    subscriptionDates.startsAt,
-    subscriptionDates.endsAt
+    subscriptionDates.periodStart || subscriptionDates.startsAt,
+    subscriptionDates.periodEnd
   );
 
   try {
@@ -674,16 +705,25 @@ export async function handleSubscriptionUpdated(payload: PolarWebhookPayload) {
     );
   }
 
-  // Update subscription with new plan and dates
+  // Update subscription with new plan, lifecycle dates, and billing period dates
   await subscriptionService.updateSubscription(org.id, {
     subscriptionPlan: newPlan,
     subscriptionStatus: status,
     subscriptionId,
     polarCustomerId: customerId,
-    // Update billing period dates if provided (important for plan changes)
+    // Lifecycle dates
     subscriptionStartedAt: subscriptionDates.startsAt,
     subscriptionEndsAt: subscriptionDates.endsAt,
   });
+
+  // If billing period dates are provided, update usage period to match
+  if (subscriptionDates.periodStart || subscriptionDates.periodEnd) {
+    await subscriptionService.updateUsagePeriod(
+      org.id,
+      subscriptionDates.periodStart,
+      subscriptionDates.periodEnd
+    );
+  }
 
   console.log(
     `[Polar] ✅ Updated ${newPlan}/${status} for org ${truncateId(org.id)}`
@@ -1058,10 +1098,19 @@ export async function handleSubscriptionUncanceled(
     subscriptionStatus: "active",
     subscriptionId,
     polarCustomerId: customerId,
-    // Update dates from payload
+    // Lifecycle dates
     subscriptionStartedAt: subscriptionDates.startsAt,
     subscriptionEndsAt: subscriptionDates.endsAt,
   });
+
+  // Update usage period with billing period dates if available
+  if (subscriptionDates.periodStart || subscriptionDates.periodEnd) {
+    await subscriptionService.updateUsagePeriod(
+      org.id,
+      subscriptionDates.periodStart,
+      subscriptionDates.periodEnd
+    );
+  }
 
   console.log(
     `[Polar] ✅ UNCANCELED subscription restored for org ${truncateId(org.id)} - ${plan} plan`

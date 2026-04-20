@@ -369,12 +369,12 @@ export function AICreateButton({
                 <AlertDescription className="text-amber-700 dark:text-amber-300 text-xs mt-0.5">
                   <strong>Recommendation:</strong> For browser tests, consider using the{" "}
                   <a
-                    href="https://chromewebstore.google.com/detail/playwright-crx/jambeljnbnfbkcpnoiaedcabbgmnnlcd"
+                    href="https://chromewebstore.google.com/detail/supercheck-recorder/gfmbcelfhhfmifdkccnbgdadibdfhioe"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="underline hover:text-amber-800 dark:hover:text-amber-200"
                   >
-                    Playwright Recorder
+                    Supercheck Recorder
                   </a>{" "}
                   to capture real interactions. Recorded tests typically produce more reliable selectors and better reflect actual user behavior.
                 </AlertDescription>

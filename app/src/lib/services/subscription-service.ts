@@ -547,6 +547,28 @@ export class SubscriptionService {
   }
 
   /**
+   * Update only the usage period dates without resetting counters.
+   * Used by subscription.updated and subscription.uncanceled webhooks when
+   * Polar provides new billing period dates but we don't want to reset usage.
+   */
+  async updateUsagePeriod(
+    organizationId: string,
+    periodStart: Date | null,
+    periodEnd: Date | null
+  ) {
+    const updates: { usagePeriodStart?: Date; usagePeriodEnd?: Date } = {};
+    if (periodStart) updates.usagePeriodStart = periodStart;
+    if (periodEnd) updates.usagePeriodEnd = periodEnd;
+
+    if (Object.keys(updates).length > 0) {
+      await db
+        .update(organization)
+        .set(updates)
+        .where(eq(organization.id, organizationId));
+    }
+  }
+
+  /**
    * Track Playwright execution minutes for an organization
    * Increments the usage counter for the current billing period
    */
@@ -690,13 +712,19 @@ export class SubscriptionService {
    * @deprecated Use resetUsageCountersWithDates instead for proper Polar billing
    */
   async resetUsageCounters(organizationId: string) {
-    // Fetch organization to get subscription dates
+    // Fetch organization to get the current billing period window
     const org = await db.query.organization.findFirst({
       where: eq(organization.id, organizationId),
     });
 
-    if (org?.subscriptionStartedAt && org?.subscriptionEndsAt) {
-      // Use existing Polar subscription dates
+    if (org?.usagePeriodStart || org?.usagePeriodEnd) {
+      await this.resetUsageCountersWithDates(
+        organizationId,
+        org.usagePeriodStart,
+        org.usagePeriodEnd
+      );
+    } else if (org?.subscriptionStartedAt || org?.subscriptionEndsAt) {
+      // Fallback for older records that only have lifecycle timestamps
       await this.resetUsageCountersWithDates(
         organizationId,
         org.subscriptionStartedAt,
@@ -722,26 +750,27 @@ export class SubscriptionService {
   }
 
   /**
-   * Reset usage counters using Polar's subscription dates
-   * This ensures billing period matches the actual subscription cycle
+   * Reset usage counters using billing period dates.
+   * This ensures the usage window matches the current billing cycle without
+   * mutating the subscription lifecycle timestamps tracked separately.
    * @param organizationId - Organization to reset
-   * @param startsAt - Subscription period start from Polar (or null to use now)
-   * @param endsAt - Subscription period end from Polar (or null to calculate 30 days)
+   * @param periodStartInput - Billing period start from Polar (or null to use now)
+   * @param periodEndInput - Billing period end from Polar (or null to calculate 30 days)
    */
   async resetUsageCountersWithDates(
     organizationId: string,
-    startsAt: Date | null,
-    endsAt: Date | null
+    periodStartInput: Date | null,
+    periodEndInput: Date | null
   ) {
     const now = new Date();
 
     // Use Polar dates if available, otherwise calculate defaults
-    const periodStart = startsAt || now;
+    const periodStart = periodStartInput || now;
 
     // If no end date from Polar, calculate 30 days from start (monthly billing)
     let periodEnd: Date;
-    if (endsAt) {
-      periodEnd = endsAt;
+    if (periodEndInput) {
+      periodEnd = periodEndInput;
     } else {
       periodEnd = new Date(periodStart);
       periodEnd.setDate(periodEnd.getDate() + 30);
@@ -755,9 +784,6 @@ export class SubscriptionService {
         aiCreditsUsed: 0,
         usagePeriodStart: periodStart,
         usagePeriodEnd: periodEnd,
-        // Also update the subscription dates for reference
-        subscriptionStartedAt: startsAt,
-        subscriptionEndsAt: endsAt,
       })
       .where(eq(organization.id, organizationId));
   }

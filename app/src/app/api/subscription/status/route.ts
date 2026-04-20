@@ -36,6 +36,7 @@ export async function GET() {
       columns: {
         subscriptionPlan: true,
         subscriptionStatus: true,
+        subscriptionEndsAt: true,
       },
     });
 
@@ -49,8 +50,26 @@ export async function GET() {
     // Cloud mode: only plus/pro are valid active plans
     const hasValidPlan =
       org.subscriptionPlan === "plus" || org.subscriptionPlan === "pro";
-    const isActive =
-      hasValidPlan && org.subscriptionStatus === "active";
+
+    // Determine if subscription is active, including grace period for canceled
+    // and past_due (Polar retries payment automatically)
+    let isActive = false;
+    if (hasValidPlan) {
+      switch (org.subscriptionStatus) {
+        case "active":
+        case "past_due":
+          isActive = true;
+          break;
+        case "canceled":
+          // Canceled subscriptions retain access until the billing period ends
+          if (org.subscriptionEndsAt) {
+            isActive = new Date() < new Date(org.subscriptionEndsAt);
+          }
+          break;
+        default:
+          isActive = false;
+      }
+    }
 
     return NextResponse.json({
       isActive,
