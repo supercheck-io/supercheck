@@ -35,10 +35,10 @@ const REDIS_CLEANUP_BATCH_SIZE = 100; // Process keys in smaller batches to redu
 export class RedisService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(RedisService.name);
   private redisClient: Redis;
-  private queueEvents: QueueEvents;
-  private queueEventsConnection: Redis;
+  private queueEvents: QueueEvents | null = null;
+  private queueEventsConnection: Redis | null = null;
   private readonly redisOptions: RedisOptions;
-  private cleanupInterval: NodeJS.Timeout;
+  private cleanupInterval: NodeJS.Timeout | null = null;
 
   constructor(
     private configService: ConfigService,
@@ -136,25 +136,27 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
    */
   private initializeQueueListeners() {
     // Set up QueueEvents
-    this.queueEventsConnection = new Redis(this.redisOptions);
-    this.queueEventsConnection.on('error', (error) =>
+    const queueEventsConnection = new Redis(this.redisOptions);
+    queueEventsConnection.on('error', (error) =>
       this.logger.error('QueueEvents connection error:', error),
     );
-    this.queueEvents = new QueueEvents(PLAYWRIGHT_QUEUE, {
-      connection: this.queueEventsConnection,
+    const queueEvents = new QueueEvents(PLAYWRIGHT_QUEUE, {
+      connection: queueEventsConnection,
     });
+    this.queueEventsConnection = queueEventsConnection;
+    this.queueEvents = queueEvents;
 
     // Queue event listeners
-    this.queueEvents.on('waiting', ({ jobId }) => {
+    queueEvents.on('waiting', ({ jobId }) => {
       this.logger.debug(`Job ${jobId} is waiting`);
     });
-    this.queueEvents.on('active', ({ jobId }) => {
+    queueEvents.on('active', ({ jobId }) => {
       this.logger.debug(`Job ${jobId} is active`);
     });
-    this.queueEvents.on('completed', ({ jobId }) => {
+    queueEvents.on('completed', ({ jobId }) => {
       this.logger.debug(`Job ${jobId} completed`);
     });
-    this.queueEvents.on('failed', ({ jobId, failedReason }) => {
+    queueEvents.on('failed', ({ jobId, failedReason }) => {
       this.logger.error(`Job ${jobId} failed: ${failedReason}`);
     });
   }
@@ -280,14 +282,17 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     // Clear the cleanup interval
     if (this.cleanupInterval) {
       clearInterval(this.cleanupInterval);
+      this.cleanupInterval = null;
     }
 
     // Clean up queue event listeners
     if (this.queueEvents) {
       await this.queueEvents.close();
+      this.queueEvents = null;
     }
     if (this.queueEventsConnection) {
       await this.queueEventsConnection.quit();
+      this.queueEventsConnection = null;
     }
 
     // Close Redis connection

@@ -157,8 +157,8 @@ export class ExecutionService implements OnModuleDestroy {
       countsTowardsLimit: boolean;
     }
   > = new Map();
-  private memoryCleanupInterval: NodeJS.Timeout;
-  private readonly gcInterval: NodeJS.Timeout;
+  private memoryCleanupInterval: NodeJS.Timeout | null = null;
+  private gcInterval: NodeJS.Timeout | null = null;
 
   constructor(
     private configService: ConfigService,
@@ -267,7 +267,7 @@ export class ExecutionService implements OnModuleDestroy {
 
     // Less aggressive garbage collection
     if (global.gc) {
-      setInterval(() => {
+      this.gcInterval = setInterval(() => {
         const memUsage = process.memoryUsage();
         const memUsageMB = Math.round(memUsage.heapUsed / 1024 / 1024);
 
@@ -2311,9 +2311,11 @@ export class ExecutionService implements OnModuleDestroy {
     // Clear intervals
     if (this.memoryCleanupInterval) {
       clearInterval(this.memoryCleanupInterval);
+      this.memoryCleanupInterval = null;
     }
     if (this.gcInterval) {
       clearInterval(this.gcInterval);
+      this.gcInterval = null;
     }
 
     // Clear active executions without killing processes

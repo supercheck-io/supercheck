@@ -27,7 +27,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { Queue } from 'bullmq';
 import { Redis } from 'ioredis';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'node:crypto';
 import {
   QueueMetrics,
   QueueAlert,
@@ -58,7 +58,7 @@ const DYNAMIC_QUEUE_PREFIXES = ['k6-', 'monitor-'];
 @Injectable()
 export class QueueAlertingService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(QueueAlertingService.name);
-  private redisClient: Redis;
+  private redisClient: Redis | null = null;
   private queues: Map<string, Queue> = new Map();
   private config: QueueAlertingConfig;
   private state: QueueAlertingState;
@@ -251,6 +251,14 @@ export class QueueAlertingService implements OnModuleInit, OnModuleDestroy {
     this.logger.log('Queue alerting Redis connection established');
   }
 
+  private getRedisClient(): Redis {
+    if (!this.redisClient) {
+      throw new Error('Queue alerting Redis client has not been initialized');
+    }
+
+    return this.redisClient;
+  }
+
   /**
    * Initialize queue connections
    */
@@ -279,7 +287,7 @@ export class QueueAlertingService implements OnModuleInit, OnModuleDestroy {
 
       try {
         const queue = new Queue(queueName, {
-          connection: this.redisClient.duplicate(),
+          connection: this.getRedisClient().duplicate(),
         });
         this.queues.set(queueName, queue);
         this.state.metricsHistory.set(queueName, []);
@@ -297,7 +305,7 @@ export class QueueAlertingService implements OnModuleInit, OnModuleDestroy {
     let cursor = '0';
 
     do {
-      const [nextCursor, keys] = await this.redisClient.scan(
+      const [nextCursor, keys] = await this.getRedisClient().scan(
         cursor,
         'MATCH',
         'bull:*:meta',
@@ -377,6 +385,7 @@ export class QueueAlertingService implements OnModuleInit, OnModuleDestroy {
 
     if (this.redisClient) {
       await this.redisClient.quit();
+      this.redisClient = null;
     }
   }
 
@@ -672,7 +681,7 @@ export class QueueAlertingService implements OnModuleInit, OnModuleDestroy {
     timestamp: Date,
   ): QueueAlert {
     return {
-      id: uuidv4(),
+      id: randomUUID(),
       queueName,
       alertType,
       severity,

@@ -11,9 +11,9 @@ import {
 export { MonitorType, MonitorConfig };
 
 export class MonitorJobDataDto {
-  monitorId: string; // From monitors.id
-  type: MonitorType; // From monitors.type
-  target: string; // From monitors.target
+  monitorId!: string; // From monitors.id
+  type!: MonitorType; // From monitors.type
+  target!: string; // From monitors.target
   config?: MonitorConfig; // From monitors.config
   frequencyMinutes?: number; // From monitors.frequencyMinutes, for scheduling decisions
   executionLocation?: MonitoringLocation;

@@ -70,8 +70,8 @@ export class ResourceManagerService extends EventEmitter {
   };
 
   // Resource cleanup intervals
-  private cleanupInterval: NodeJS.Timeout;
-  private metricsInterval: NodeJS.Timeout;
+  private cleanupInterval: NodeJS.Timeout | null = null;
+  private metricsInterval: NodeJS.Timeout | null = null;
 
   constructor() {
     super();
@@ -496,9 +496,11 @@ export class ResourceManagerService extends EventEmitter {
     // Clear intervals
     if (this.cleanupInterval) {
       clearInterval(this.cleanupInterval);
+      this.cleanupInterval = null;
     }
     if (this.metricsInterval) {
       clearInterval(this.metricsInterval);
+      this.metricsInterval = null;
     }
 
     // Cleanup all connections

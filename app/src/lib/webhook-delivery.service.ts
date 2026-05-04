@@ -83,6 +83,14 @@ export function verifyWebhookSignature(
   );
 }
 
+async function cancelUnusedResponseBody(response: Response): Promise<void> {
+  try {
+    await response.body?.cancel();
+  } catch {
+    // The status code is all delivery needs; body cleanup is best-effort.
+  }
+}
+
 /**
  * Deliver webhook to endpoint with retry logic
  *
@@ -141,6 +149,7 @@ export async function deliverWebhook(
       });
 
       lastStatusCode = response.status;
+      await cancelUnusedResponseBody(response);
 
       // Check if response was successful
       if (WEBHOOK_CONFIG.SUCCESS_STATUS_CODES.includes(response.status)) {

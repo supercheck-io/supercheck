@@ -1,5 +1,8 @@
 import { lookup } from 'node:dns/promises';
+import { request as httpRequest, type RequestOptions } from 'node:http';
+import { request as httpsRequest } from 'node:https';
 import { isIP } from 'node:net';
+import { Readable, Transform } from 'node:stream';
 
 /**
  * URL Validation Utilities for SSRF Protection.
@@ -10,6 +13,15 @@ import { isIP } from 'node:net';
  */
 
 type CidrRange = readonly [baseAddress: string, prefixLength: number];
+type ResolvedAddress = {
+  address: string;
+  family: 4 | 6;
+};
+
+type ResolvedPublicTarget = {
+  url: URL;
+  addresses: ResolvedAddress[];
+};
 
 const IPV4_BLOCKED_RANGES: readonly CidrRange[] = [
   ['0.0.0.0', 8],
@@ -62,9 +74,17 @@ function normalizeHostname(hostname: string): string {
   return hostname.toLowerCase().replace(/^\[/, '').replace(/\]$/, '').replace(/\.$/, '');
 }
 
-function extractIpv4MappedAddress(address: string): string | null {
-  const normalizedAddress = normalizeHostname(address);
+function ipv4NumberToAddress(addressNumber: number): string {
+  return [
+    (addressNumber >>> 24) & 0xff,
+    (addressNumber >>> 16) & 0xff,
+    (addressNumber >>> 8) & 0xff,
+    addressNumber & 0xff,
+  ].join('.');
+}
 
+function extractIpv4EmbeddedAddress(address: string): string | null {
+  const normalizedAddress = normalizeHostname(address);
   // Match dotted-quad form: ::ffff:127.0.0.1
   const dottedQuadMatch = normalizedAddress.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i);
   if (dottedQuadMatch) {
@@ -79,6 +99,24 @@ function extractIpv4MappedAddress(address: string): string | null {
     const high = parseInt(hexMatch[1], 16);
     const low = parseInt(hexMatch[2], 16);
     return `${(high >> 8) & 0xff}.${high & 0xff}.${(low >> 8) & 0xff}.${low & 0xff}`;
+  }
+
+  if (isIP(normalizedAddress) !== 6) {
+    return null;
+  }
+
+  const addressNumber = expandIpv6Address(normalizedAddress);
+  const last32Bits = Number(addressNumber & 0xffffffffn);
+
+  // IPv4-compatible IPv6 addresses (::/96), including Node's canonical
+  // [::127.0.0.1] -> [::7f00:1] form, must be checked as IPv4 too.
+  if ((addressNumber >> 32n) === 0n) {
+    return ipv4NumberToAddress(last32Bits);
+  }
+
+  // IPv4-mapped IPv6 addresses (::ffff:0:0/96) are also canonicalized by URL.
+  if ((addressNumber >> 32n) === 0xffffn) {
+    return ipv4NumberToAddress(last32Bits);
   }
 
   return null;
@@ -150,9 +188,9 @@ function isIpv6InRange(address: string, [baseAddress, prefixLength]: CidrRange):
 }
 
 function isPrivateIpAddress(address: string): boolean {
-  const ipv4MappedAddress = extractIpv4MappedAddress(address);
-  if (ipv4MappedAddress) {
-    return isPrivateIpAddress(ipv4MappedAddress);
+  const ipv4EmbeddedAddress = extractIpv4EmbeddedAddress(address);
+  if (ipv4EmbeddedAddress) {
+    return isPrivateIpAddress(ipv4EmbeddedAddress);
   }
 
   const family = isIP(normalizeHostname(address));
@@ -169,12 +207,18 @@ function isPrivateIpAddress(address: string): boolean {
 }
 
 const DNS_LOOKUP_TIMEOUT_MS = 5_000;
+const MAX_WEBHOOK_RESPONSE_BODY_BYTES = 1024 * 1024;
 
-async function assertPublicDnsResolution(hostname: string): Promise<void> {
+async function resolvePublicHostname(hostname: string): Promise<ResolvedAddress[]> {
   const normalizedHostname = normalizeHostname(hostname);
 
   if (isIP(normalizedHostname)) {
-    return;
+    const family = isIP(normalizedHostname);
+    if (family !== 4 && family !== 6) {
+      throw new Error('Webhook hostname could not be resolved');
+    }
+
+    return [{ address: normalizedHostname, family }];
   }
 
   let addresses: { address: string; family: number }[];
@@ -211,6 +255,15 @@ async function assertPublicDnsResolution(hostname: string): Promise<void> {
   if (addresses.some(({ address }) => isPrivateIpAddress(address))) {
     throw new Error('Webhook hostname resolves to a private or reserved IP address');
   }
+
+  return addresses.map(({ address }) => {
+    const family = isIP(normalizeHostname(address));
+    if (family !== 4 && family !== 6) {
+      throw new Error('Webhook hostname could not be resolved');
+    }
+
+    return { address, family };
+  });
 }
 
 /**
@@ -277,6 +330,12 @@ export function validateWebhookUrlString(urlString: string): { valid: boolean; e
 export async function resolveWebhookUrlForOutboundRequest(
   urlString: string | URL,
 ): Promise<URL> {
+  return (await resolveWebhookTargetForOutboundRequest(urlString)).url;
+}
+
+async function resolveWebhookTargetForOutboundRequest(
+  urlString: string | URL,
+): Promise<ResolvedPublicTarget> {
   const parsedUrl = typeof urlString === 'string' ? new URL(urlString) : new URL(urlString.toString());
   const validation = isValidWebhookUrl(parsedUrl);
 
@@ -284,9 +343,173 @@ export async function resolveWebhookUrlForOutboundRequest(
     throw new Error(validation.error || 'Invalid webhook URL');
   }
 
-  await assertPublicDnsResolution(parsedUrl.hostname);
+  const addresses = await resolvePublicHostname(parsedUrl.hostname);
+  if (addresses.length === 0) {
+    throw new Error('Webhook hostname could not be resolved');
+  }
 
-  return parsedUrl;
+  return { url: parsedUrl, addresses };
+}
+
+function headersToObject(headers: Headers): Record<string, string> {
+  const result: Record<string, string> = {};
+  headers.forEach((value, key) => {
+    result[key] = value;
+  });
+  return result;
+}
+
+async function bodyToBuffer(body: RequestInit['body']): Promise<Buffer | undefined> {
+  if (body == null) {
+    return undefined;
+  }
+
+  if (typeof body === 'string') {
+    return Buffer.from(body);
+  }
+
+  if (body instanceof URLSearchParams) {
+    return Buffer.from(body.toString());
+  }
+
+  if (body instanceof ArrayBuffer) {
+    return Buffer.from(body);
+  }
+
+  if (ArrayBuffer.isView(body)) {
+    return Buffer.from(body.buffer, body.byteOffset, body.byteLength);
+  }
+
+  if (body instanceof Blob) {
+    return Buffer.from(await body.arrayBuffer());
+  }
+
+  throw new Error('Unsupported webhook request body type');
+}
+
+function isAbortLikeError(error: unknown): boolean {
+  return (
+    error instanceof Error
+    && (error.name === 'AbortError' || error.name === 'TimeoutError')
+  );
+}
+
+function requestResolvedAddress(
+  target: ResolvedPublicTarget,
+  resolvedAddress: ResolvedAddress,
+  headers: Headers,
+  body: Buffer | undefined,
+  init: RequestInit,
+): Promise<Response> {
+  const requestOptions: RequestOptions & { servername?: string } = {
+    protocol: target.url.protocol,
+    hostname: resolvedAddress.address,
+    family: resolvedAddress.family,
+    port: target.url.port || (target.url.protocol === 'https:' ? 443 : 80),
+    path: `${target.url.pathname}${target.url.search}`,
+    method: init.method || 'GET',
+    headers: headersToObject(headers),
+    signal: init.signal as AbortSignal | undefined,
+  };
+
+  if (target.url.protocol === 'https:') {
+    requestOptions.servername = normalizeHostname(target.url.hostname);
+  }
+
+  const request = target.url.protocol === 'https:' ? httpsRequest : httpRequest;
+
+  return new Promise<Response>((resolve, reject) => {
+    const req = request(requestOptions, (res) => {
+      const responseHeaders = new Headers();
+      for (const [key, value] of Object.entries(res.headers)) {
+        if (Array.isArray(value)) {
+          value.forEach((entry) => responseHeaders.append(key, entry));
+        } else if (value !== undefined) {
+          responseHeaders.set(key, String(value));
+        }
+      }
+
+      const status = res.statusCode || 200;
+      const hasNoBody =
+        status === 204 ||
+        status === 205 ||
+        status === 304 ||
+        String(init.method || 'GET').toUpperCase() === 'HEAD';
+
+      if (hasNoBody) {
+        res.resume();
+        resolve(new Response(null, {
+          status,
+          statusText: res.statusMessage,
+          headers: responseHeaders,
+        }));
+        return;
+      }
+
+      let responseBodyBytes = 0;
+      const limitedBody = new Transform({
+        transform(chunk, _encoding, callback) {
+          responseBodyBytes += Buffer.byteLength(chunk);
+          if (responseBodyBytes > MAX_WEBHOOK_RESPONSE_BODY_BYTES) {
+            callback(new Error('Webhook response body exceeded maximum size'));
+            return;
+          }
+
+          callback(null, chunk);
+        },
+      });
+
+      res.on('error', (error) => limitedBody.destroy(error));
+      limitedBody.on('error', () => {
+        res.destroy();
+      });
+      res.pipe(limitedBody);
+
+      resolve(new Response(Readable.toWeb(limitedBody) as unknown as ReadableStream, {
+        status,
+        statusText: res.statusMessage,
+        headers: responseHeaders,
+      }));
+    });
+
+    req.on('error', reject);
+    if (body) {
+      req.write(body);
+    }
+    req.end();
+  });
+}
+
+async function requestResolvedUrl(
+  target: ResolvedPublicTarget,
+  init: RequestInit,
+): Promise<Response> {
+  const body = await bodyToBuffer(init.body);
+  const headers = new Headers(init.headers);
+
+  // The TCP/TLS connection is pinned to the vetted IP, but HTTP Host and TLS SNI
+  // stay bound to the original hostname so virtual hosting and cert checks work.
+  headers.set('host', target.url.host);
+  if (body && !headers.has('content-length')) {
+    headers.set('content-length', String(body.byteLength));
+  }
+
+  let lastError: unknown;
+  for (const resolvedAddress of target.addresses) {
+    try {
+      return await requestResolvedAddress(target, resolvedAddress, headers, body, init);
+    } catch (error) {
+      lastError = error;
+
+      if (isAbortLikeError(error)) {
+        throw error;
+      }
+    }
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error('Webhook request failed');
 }
 
 /**
@@ -297,11 +520,9 @@ export async function fetchSafeExternalUrl(
   urlString: string | URL,
   init: RequestInit = {},
 ): Promise<Response> {
-  const safeUrl = await resolveWebhookUrlForOutboundRequest(urlString);
+  const safeTarget = await resolveWebhookTargetForOutboundRequest(urlString);
 
-  // lgtm[js/request-forgery] - Destination is validated before the request, including DNS resolution to block private/reserved IPs, and redirects are disabled.
-  // codeql[js/request-forgery] - Arbitrary external webhook destinations are intentional here; fetchSafeExternalUrl rejects private/reserved targets before sending the request.
-  return fetch(safeUrl, {
+  return requestResolvedUrl(safeTarget, {
     ...init,
     redirect: 'error',
   });

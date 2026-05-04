@@ -6,7 +6,7 @@ import { statusPages } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import { requirePermissions } from "@/lib/rbac/middleware";
-import { v4 as uuidv4 } from "uuid";
+import { randomUUID } from "node:crypto";
 
 // S3 Configuration
 const s3Client = new S3Client({
@@ -115,7 +115,7 @@ export async function POST(request: Request, context: RouteContext) {
 
     // Generate unique filename
     const fileExtension = file.name.split(".").pop() || "png";
-    const uniqueId = uuidv4();
+    const uniqueId = randomUUID();
     const fileName = `${uniqueId}.${fileExtension}`;
 
     // S3 key structure: status-pages/{statusPageId}/{uploadType}/{filename}
