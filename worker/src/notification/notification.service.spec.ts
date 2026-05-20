@@ -634,6 +634,147 @@ describe('NotificationService', () => {
       expect(body.payload.rawSeverity).toBe('success');
     });
 
+    it('should expose PagerDuty lifecycle action and stable dedup key', async () => {
+      const templateProvider: NotificationProvider = {
+        ...webhookProvider,
+        config: {
+          url: 'https://events.pagerduty.com/v2/enqueue',
+          bodyTemplate: JSON.stringify({
+            routing_key: 'test-key',
+            event_action: '{{pagerDutyEventAction}}',
+            dedup_key: '{{dedupKey}}',
+            payload: {
+              summary: '{{title}}',
+              severity: '{{normalizedSeverity}}',
+              source: 'supercheck',
+            },
+          }),
+        },
+      };
+
+      await service.sendNotification(templateProvider, {
+        ...basePayload,
+        type: 'monitor_failure',
+        severity: 'error',
+      });
+
+      await service.sendNotification(templateProvider, {
+        ...basePayload,
+        type: 'monitor_recovery',
+        title: 'Monitor Recovered',
+        severity: 'success',
+        metadata: {
+          ...basePayload.metadata,
+          status: 'up',
+        },
+      });
+
+      const triggerBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+      const resolveBody = JSON.parse(mockFetch.mock.calls[1][1].body);
+
+      expect(triggerBody.event_action).toBe('trigger');
+      expect(resolveBody.event_action).toBe('resolve');
+      expect(triggerBody.dedup_key).toBe('monitor:monitor-123');
+      expect(resolveBody.dedup_key).toBe(triggerBody.dedup_key);
+      expect(resolveBody.payload.severity).toBe('info');
+    });
+
+    it('should allow metadata to override webhook dedup key', async () => {
+      const templateProvider: NotificationProvider = {
+        ...webhookProvider,
+        config: {
+          url: 'https://api.example.com/webhook',
+          bodyTemplate: JSON.stringify({
+            dedup_key: '{{dedupKey}}',
+          }),
+        },
+      };
+
+      await service.sendNotification(templateProvider, {
+        ...basePayload,
+        metadata: {
+          ...basePayload.metadata,
+          dedupKey: 'custom-dedup-key',
+        },
+      });
+
+      const callArgs = mockFetch.mock.calls[0];
+      const body = JSON.parse(callArgs[1].body);
+
+      expect(body.dedup_key).toBe('custom-dedup-key');
+    });
+
+    it('should keep SSL alerts on a separate dedup key from monitor recovery', async () => {
+      const templateProvider: NotificationProvider = {
+        ...webhookProvider,
+        config: {
+          url: 'https://events.pagerduty.com/v2/enqueue',
+          bodyTemplate: JSON.stringify({
+            event_action: '{{pagerDutyEventAction}}',
+            dedup_key: '{{dedupKey}}',
+          }),
+        },
+      };
+
+      await service.sendNotification(templateProvider, {
+        ...basePayload,
+        type: 'ssl_expiring',
+      });
+
+      await service.sendNotification(templateProvider, {
+        ...basePayload,
+        type: 'monitor_recovery',
+        severity: 'success',
+      });
+
+      const sslBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+      const recoveryBody = JSON.parse(mockFetch.mock.calls[1][1].body);
+
+      expect(sslBody.event_action).toBe('trigger');
+      expect(sslBody.dedup_key).toBe('ssl:monitor-123');
+      expect(recoveryBody.event_action).toBe('resolve');
+      expect(recoveryBody.dedup_key).toBe('monitor:monitor-123');
+    });
+
+    it('should send job success as trigger unless explicitly overridden', async () => {
+      const templateProvider: NotificationProvider = {
+        ...webhookProvider,
+        config: {
+          url: 'https://events.pagerduty.com/v2/enqueue',
+          bodyTemplate: JSON.stringify({
+            event_action: '{{pagerDutyEventAction}}',
+            dedup_key: '{{dedupKey}}',
+          }),
+        },
+      };
+
+      await service.sendNotification(templateProvider, {
+        ...basePayload,
+        type: 'job_success',
+        targetId: 'job-123',
+        severity: 'success',
+      });
+
+      await service.sendNotification(templateProvider, {
+        ...basePayload,
+        type: 'job_success',
+        targetId: 'job-123',
+        severity: 'success',
+        metadata: {
+          ...basePayload.metadata,
+          pagerDutyEventAction: 'resolve',
+        },
+      });
+
+      const successBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+      const recoveryBody = JSON.parse(mockFetch.mock.calls[1][1].body);
+
+      expect(successBody.event_action).toBe('trigger');
+      expect(successBody.dedup_key).toBe('job:job-123');
+      expect(recoveryBody.event_action).toBe('resolve');
+      expect(recoveryBody.dedup_key).toBe('job:job-123');
+    });
+
     it('should not send body for GET requests', async () => {
       const getProvider: NotificationProvider = {
         ...webhookProvider,

@@ -611,10 +611,12 @@ export function NotificationProviderForm({
                   </FormControl>
                   <div className="text-sm text-muted-foreground">
                     Templates must be valid JSON. Supercheck safely escapes
-                    variables like {" "}
+                    variables like{" "}
                     <code>{"{{title}}"}</code>, <code>{"{{status}}"}</code>,
-                    and <code>{"{{normalizedSeverity}}"}</code> when sending
-                    webhook payloads.
+                    <code>{"{{normalizedSeverity}}"}</code>,{" "}
+                    <code>{"{{pagerDutyEventAction}}"}</code>, and{" "}
+                    <code>{"{{dedupKey}}"}</code> when sending webhook
+                    payloads.
                   </div>
                   <FormMessage />
                 </FormItem>
