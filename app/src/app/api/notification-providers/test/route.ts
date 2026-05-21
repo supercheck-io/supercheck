@@ -289,6 +289,10 @@ async function testWebhookConnection(config: NotificationProviderConfig) {
               errorMessage: 'Connection timeout on "health" check',
               monitorType: "http_request",
               dashboardUrl: "https://app.supercheck.io/notification-monitor/test-target-id",
+              alertAction: "trigger",
+              eventAction: "trigger",
+              pagerDutyEventAction: "trigger",
+              dedupKey: "monitor:test-target-id",
             },
           )
         : JSON.stringify({

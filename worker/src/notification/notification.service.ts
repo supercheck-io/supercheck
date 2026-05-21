@@ -973,6 +973,8 @@ export class NotificationService {
     formatted: FormattedNotification,
     payload: NotificationPayload,
   ): Record<string, string> {
+    const alertAction = this.getWebhookAlertAction(payload);
+
     return {
       title: formatted.title,
       message: formatted.message,
@@ -991,7 +993,81 @@ export class NotificationService {
       errorMessage: payload.metadata?.errorMessage || '',
       monitorType: payload.metadata?.monitorType || '',
       dashboardUrl: payload.metadata?.dashboardUrl || '',
+      alertAction,
+      eventAction: alertAction,
+      pagerDutyEventAction: alertAction,
+      dedupKey: this.getWebhookDedupKey(payload),
     };
+  }
+
+  private getWebhookAlertAction(payload: NotificationPayload): string {
+    const explicitAction = this.getExplicitWebhookAlertAction(payload);
+    if (explicitAction) {
+      return explicitAction;
+    }
+
+    switch (payload.type) {
+      case 'monitor_recovery':
+        return 'resolve';
+      case 'monitor_failure':
+      case 'job_failed':
+      case 'job_success':
+      case 'job_timeout':
+      case 'ssl_expiring':
+        return 'trigger';
+      default:
+        // Backward compatibility for older payload names used in tests and
+        // previous monitor status paths.
+        if (payload.type === ('monitor_up' as AlertType)) {
+          return 'resolve';
+        }
+        return 'trigger';
+    }
+  }
+
+  private getExplicitWebhookAlertAction(
+    payload: NotificationPayload,
+  ): 'trigger' | 'resolve' | undefined {
+    const action =
+      payload.metadata?.pagerDutyEventAction ??
+      payload.metadata?.eventAction ??
+      payload.metadata?.alertAction;
+
+    if (typeof action !== 'string') {
+      return undefined;
+    }
+
+    const normalizedAction = action.trim().toLowerCase();
+    return normalizedAction === 'trigger' || normalizedAction === 'resolve'
+      ? normalizedAction
+      : undefined;
+  }
+
+  private getWebhookDedupKey(payload: NotificationPayload): string {
+    if (typeof payload.metadata?.dedupKey === 'string') {
+      const dedupKey = payload.metadata.dedupKey.trim();
+      if (dedupKey.length > 0) {
+        return dedupKey;
+      }
+    }
+
+    return `${this.getWebhookDedupScope(payload)}:${payload.targetId}`;
+  }
+
+  private getWebhookDedupScope(payload: NotificationPayload): string {
+    if (
+      payload.type === 'job_failed' ||
+      payload.type === 'job_success' ||
+      payload.type === 'job_timeout'
+    ) {
+      return 'job';
+    }
+
+    if (payload.type === 'ssl_expiring') {
+      return 'ssl';
+    }
+
+    return 'monitor';
   }
 
   private normalizeWebhookSeverity(

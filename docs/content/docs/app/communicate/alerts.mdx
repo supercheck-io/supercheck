@@ -248,6 +248,10 @@ Use a custom body template to match the format required by third-party services.
 | `{{errorMessage}}` | Error details | `Connection timeout` |
 | `{{monitorType}}` | Monitor type | `http_request`, `website`, `ping_host`, `port_check` |
 | `{{dashboardUrl}}` | Link to dashboard | `https://app.supercheck.io/...` |
+| `{{alertAction}}` | Lifecycle action for event APIs | `trigger`, `resolve` |
+| `{{eventAction}}` | Same as alertAction | `trigger`, `resolve` |
+| `{{pagerDutyEventAction}}` | PagerDuty Events API action | `trigger`, `resolve` |
+| `{{dedupKey}}` | Stable key for correlating related events | `monitor:uuid`, `job:uuid`, `ssl:uuid` |
 
 ### PagerDuty Integration
 
@@ -265,7 +269,8 @@ Use a webhook with a body template to send alerts to the [PagerDuty Events API v
 ```json
 {
   "routing_key": "YOUR_PAGERDUTY_INTEGRATION_KEY",
-  "event_action": "trigger",
+  "event_action": "{{pagerDutyEventAction}}",
+  "dedup_key": "{{dedupKey}}",
   "payload": {
     "summary": "{{title}}",
     "severity": "{{normalizedSeverity}}",
@@ -283,7 +288,7 @@ Use a webhook with a body template to send alerts to the [PagerDuty Events API v
 ```
 
 <Callout type="info">
-PagerDuty expects `severity` to be one of `critical`, `error`, `warning`, or `info`. Use `{{normalizedSeverity}}` in PagerDuty payloads because Supercheck maps `success` alerts to `info` for services that do not accept `success`.
+PagerDuty resolves an alert only when the resolve event has the same `dedup_key` as the original trigger event. Use `{{pagerDutyEventAction}}` and `{{dedupKey}}` together so Supercheck sends `trigger` for failures and `resolve` for recoveries using the same key. PagerDuty expects `severity` to be one of `critical`, `error`, `warning`, or `info`; `{{normalizedSeverity}}` maps Supercheck `success` alerts to `info`.
 </Callout>
 
 ### OpsGenie Integration
