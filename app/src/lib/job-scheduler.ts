@@ -1,4 +1,5 @@
 import { Job } from "bullmq";
+import type { Redis } from "ioredis";
 import { db } from "@/utils/db";
 import { jobs } from "@/db/schema";
 import { eq, isNotNull, and } from "drizzle-orm";
@@ -195,7 +196,7 @@ export async function initializeJobSchedulers() {
     try {
       // Test Redis connection first
       const { jobSchedulerQueue } = await getQueues();
-      const redisClient = await jobSchedulerQueue.client;
+      const redisClient = (await jobSchedulerQueue.client) as unknown as Redis;
       await redisClient.ping();
 
       // Acquire distributed lock to prevent multiple instances from initializing simultaneously

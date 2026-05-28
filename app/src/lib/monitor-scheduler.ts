@@ -2,6 +2,7 @@ import { db } from "@/utils/db";
 import { monitors as monitorSchemaDb, MonitorConfig } from "@/db/schema";
 import { eq, isNotNull, and, ne } from "drizzle-orm";
 import { getQueues, MonitorJobData } from "./queue";
+import type { Redis } from "ioredis";
 
 interface ScheduleMonitorOptions {
   monitorId: string;
@@ -115,7 +116,7 @@ export async function initializeMonitorSchedulers(): Promise<{ success: boolean;
     try {
       // Test Redis connection first
       const { monitorSchedulerQueue } = await getQueues();
-      const redisClient = await monitorSchedulerQueue.client;
+      const redisClient = (await monitorSchedulerQueue.client) as unknown as Redis;
       await redisClient.ping();
 
       // Acquire distributed lock to prevent multiple instances from initializing simultaneously

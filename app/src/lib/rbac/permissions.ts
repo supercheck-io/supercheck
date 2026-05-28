@@ -230,7 +230,7 @@ export const roles = {
 
 // Better Auth integration types
 export type BetterAuthStatement = typeof statement;
-export type BetterAuthRole = typeof superAdmin;
+export type BetterAuthRole = (typeof roles)[keyof typeof roles];
 
 // Utility functions for role-based checks
 export function checkRolePermissions(
@@ -244,7 +244,10 @@ export function checkRolePermissions(
 
   // Use Better Auth's checkRolePermission functionality
   for (const [resource, actions] of Object.entries(permissions)) {
-    const roleStatements = roleInstance.statements as Record<string, string[]>;
+    const roleStatements = roleInstance.statements as Record<
+      string,
+      readonly string[]
+    >;
     const roleActions = roleStatements[resource] || [];
 
     for (const action of actions) {
@@ -339,7 +342,10 @@ export function hasPermission(
   }
 
   // Check if role has the specific permission
-  const roleStatements = roleInstance.statements as Record<string, string[]>;
+  const roleStatements = roleInstance.statements as Record<
+    string,
+    readonly string[]
+  >;
   const roleActions = roleStatements[resource] || [];
 
   if (!roleActions.includes(action)) {
