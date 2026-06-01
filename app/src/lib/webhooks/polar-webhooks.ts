@@ -173,10 +173,10 @@ interface PolarWebhookPayload {
     productId?: string;
     status?: string;
     // Subscription billing period dates from Polar
-    startsAt?: string; // ISO date when subscription period starts
-    endsAt?: string; // ISO date when subscription period ends
-    currentPeriodStart?: string; // Alternative field name
-    currentPeriodEnd?: string; // Alternative field name
+    startsAt?: string | Date; // ISO date when subscription period starts
+    endsAt?: string | Date; // ISO date when subscription period ends
+    currentPeriodStart?: string | Date; // Alternative field name
+    currentPeriodEnd?: string | Date; // Alternative field name
     amount?: number;
     currency?: string;
     metadata?: {
@@ -217,10 +217,15 @@ function getWebhookEventKey(payload: PolarWebhookPayload, eventType: string): st
     String(data.id || ""),
     String(data.status || ""),
     String(data.modifiedAt || ""),
+    String(data.modified_at || ""),
     String(data.currentPeriodStart || ""),
     String(data.currentPeriodEnd || ""),
+    String(data.current_period_start || ""),
+    String(data.current_period_end || ""),
     String(data.startsAt || ""),
     String(data.endsAt || ""),
+    String(data.started_at || ""),
+    String(data.ends_at || ""),
   ];
 
   return fingerprintParts.join("|");
@@ -252,35 +257,103 @@ function getSubscriptionIdFromPayload(payload: PolarWebhookPayload): string {
  * Helper to get subscription period dates from payload
  * Returns the billing cycle start and end dates from Polar
  */
-function getSubscriptionDatesFromPayload(payload: PolarWebhookPayload): {
+export function getSubscriptionDatesFromPayload(payload: PolarWebhookPayload): {
   startsAt: Date | null;
   endsAt: Date | null;
 } {
-  // Try direct fields first (subscription events)
-  let startsAt: Date | null = null;
-  let endsAt: Date | null = null;
+  const data = payload.data as Record<string, unknown>;
+  const subscription = data.subscription as Record<string, unknown> | undefined;
 
-  // Try startsAt/endsAt (most common in subscription events)
-  if (payload.data.startsAt) {
-    startsAt = new Date(payload.data.startsAt);
-  }
-  if (payload.data.endsAt) {
-    endsAt = new Date(payload.data.endsAt);
-  }
+  const readDate = (...values: unknown[]): Date | null => {
+    for (const value of values) {
+      if (value instanceof Date) {
+        if (!Number.isNaN(value.getTime())) {
+          return new Date(value.getTime());
+        }
+        continue;
+      }
 
-  // Try currentPeriodStart/currentPeriodEnd (alternative naming)
-  if (!startsAt && payload.data.currentPeriodStart) {
-    startsAt = new Date(payload.data.currentPeriodStart);
-  }
-  if (!endsAt && payload.data.currentPeriodEnd) {
-    endsAt = new Date(payload.data.currentPeriodEnd);
-  }
+      if (typeof value !== "string" || value.length === 0) continue;
 
-  // Validate dates are valid
-  if (startsAt && isNaN(startsAt.getTime())) startsAt = null;
-  if (endsAt && isNaN(endsAt.getTime())) endsAt = null;
+      const date = new Date(value);
+      if (!Number.isNaN(date.getTime())) return date;
+    }
+    return null;
+  };
+
+  const startsAt = readDate(
+    payload.data.currentPeriodStart,
+    data.current_period_start,
+    payload.data.startsAt,
+    data.starts_at,
+    data.started_at,
+    subscription?.currentPeriodStart,
+    subscription?.current_period_start,
+    subscription?.startsAt,
+    subscription?.starts_at,
+    subscription?.started_at
+  );
+
+  const endsAt = readDate(
+    payload.data.currentPeriodEnd,
+    data.current_period_end,
+    payload.data.endsAt,
+    data.ends_at,
+    data.ended_at,
+    subscription?.currentPeriodEnd,
+    subscription?.current_period_end,
+    subscription?.endsAt,
+    subscription?.ends_at,
+    subscription?.ended_at
+  );
 
   return { startsAt, endsAt };
+}
+
+function isSameInstant(a: Date | null | undefined, b: Date | null | undefined) {
+  if (!a && !b) return true;
+  if (!a || !b) return false;
+  return new Date(a).getTime() === new Date(b).getTime();
+}
+
+function isSameBillingPeriod(
+  org: typeof organization.$inferSelect,
+  dates: { startsAt: Date | null; endsAt: Date | null }
+) {
+  return (
+    isSameInstant(org.usagePeriodStart, dates.startsAt) &&
+    isSameInstant(org.usagePeriodEnd, dates.endsAt)
+  );
+}
+
+async function resetUsageForNewBillingPeriod(
+  org: typeof organization.$inferSelect,
+  dates: { startsAt: Date | null; endsAt: Date | null },
+  eventType: string
+): Promise<boolean> {
+  // Renewal period resets must be tied to explicit Polar billing period dates.
+  // Missing dates fall back elsewhere for first activation, but should not
+  // reset usage during ambiguous update/order events.
+  if (!dates.startsAt || !dates.endsAt || isSameBillingPeriod(org, dates)) {
+    return false;
+  }
+
+  await subscriptionService.resetUsageCountersWithDates(
+    org.id,
+    dates.startsAt,
+    dates.endsAt
+  );
+
+  try {
+    await billingSettingsService.resetNotificationsForPeriod(org.id);
+  } catch {
+    // Ignore if billing_settings table doesn't exist
+  }
+
+  console.log(
+    `[Polar] ✅ Reset usage for new billing period via ${eventType} for org ${truncateId(org.id)} (${dates.startsAt.toISOString()} - ${dates.endsAt.toISOString()})`
+  );
+  return true;
 }
 
 /**
@@ -322,6 +395,21 @@ function getCustomerIdFromPayload(
   const customer = payload.data.customer as { id?: string } | undefined;
   if (customer?.id) {
     return customer.id;
+  }
+  return undefined;
+}
+
+function getSubscriptionStatusFromPayload(
+  payload: PolarWebhookPayload
+): "active" | "canceled" | "past_due" | "none" | undefined {
+  const status = payload.data.status;
+  if (
+    status === "active" ||
+    status === "canceled" ||
+    status === "past_due" ||
+    status === "none"
+  ) {
+    return status;
   }
   return undefined;
 }
@@ -501,6 +589,7 @@ export async function handleSubscriptionActive(payload: PolarWebhookPayload) {
   const productId = getProductIdFromPayload(payload);
   const orgId = getOrganizationIdFromPayload(payload);
   const userId = getUserIdFromPayload(payload);
+  const subscriptionDates = getSubscriptionDatesFromPayload(payload);
 
   // Try multiple methods to find the organization
   let org = orgId ? await findOrganizationById(orgId) : null;
@@ -544,7 +633,8 @@ export async function handleSubscriptionActive(payload: PolarWebhookPayload) {
   if (
     org.subscriptionStatus === "active" &&
     org.subscriptionId === subscriptionId &&
-    org.polarCustomerId === customerId
+    org.polarCustomerId === customerId &&
+    isSameBillingPeriod(org, subscriptionDates)
   ) {
     console.log(
       `[Polar] Subscription already active for ${truncateId(org.id)}, skipping`
@@ -559,7 +649,6 @@ export async function handleSubscriptionActive(payload: PolarWebhookPayload) {
   }
 
   const plan = getPlanFromProductId(productId);
-  const subscriptionDates = getSubscriptionDatesFromPayload(payload);
 
   await subscriptionService.updateSubscription(org.id, {
     subscriptionPlan: plan,
@@ -588,6 +677,30 @@ export async function handleSubscriptionActive(payload: PolarWebhookPayload) {
 
   // Mark webhook as successfully processed
   await updateWebhookResult(webhookEventKey, "subscription.active", "success", `Activated ${plan}`);
+}
+
+/**
+ * Handle subscription creation.
+ * Creation alone is not a paid access signal. Entitlements are granted by
+ * subscription.active or order.paid, where Polar confirms the subscription is
+ * active/paid.
+ */
+export async function handleSubscriptionCreated(payload: PolarWebhookPayload) {
+  const webhookEventKey = getWebhookEventKey(payload, "subscription.created");
+
+  if (!(await tryClaimWebhook(webhookEventKey, "subscription.created"))) {
+    console.log(
+      `[Polar] Webhook ${truncateId(webhookEventKey)} already claimed/processed, skipping`
+    );
+    return;
+  }
+
+  await updateWebhookResult(
+    webhookEventKey,
+    "subscription.created",
+    "success",
+    "Subscription created acknowledged; waiting for subscription.active or order.paid"
+  );
 }
 
 /**
@@ -658,13 +771,12 @@ export async function handleSubscriptionUpdated(payload: PolarWebhookPayload) {
     return;
   }
 
-  const status = payload.data.status as
-    | "active"
-    | "canceled"
-    | "past_due"
-    | "none"
-    | undefined;
-  const newPlan = getPlanFromProductId(productId);
+  const status = getSubscriptionStatusFromPayload(payload);
+  const newPlan: SubscriptionPlan = productId
+    ? getPlanFromProductId(productId)
+    : org.subscriptionPlan === "pro"
+      ? "pro"
+      : "plus";
   const oldPlan = org.subscriptionPlan;
 
   // Log plan change for monitoring
@@ -674,16 +786,26 @@ export async function handleSubscriptionUpdated(payload: PolarWebhookPayload) {
     );
   }
 
-  // Update subscription with new plan and dates
+  // Update subscription with new plan and dates. Only overwrite dates when
+  // Polar included them; some catch-all updates do not carry full period data.
   await subscriptionService.updateSubscription(org.id, {
     subscriptionPlan: newPlan,
-    subscriptionStatus: status,
+    ...(status ? { subscriptionStatus: status } : {}),
     subscriptionId,
-    polarCustomerId: customerId,
-    // Update billing period dates if provided (important for plan changes)
-    subscriptionStartedAt: subscriptionDates.startsAt,
-    subscriptionEndsAt: subscriptionDates.endsAt,
+    ...(customerId ? { polarCustomerId: customerId } : {}),
+    ...(subscriptionDates.startsAt
+      ? { subscriptionStartedAt: subscriptionDates.startsAt }
+      : {}),
+    ...(subscriptionDates.endsAt
+      ? { subscriptionEndsAt: subscriptionDates.endsAt }
+      : {}),
   });
+
+  await resetUsageForNewBillingPeriod(
+    org,
+    subscriptionDates,
+    "subscription.updated"
+  );
 
   console.log(
     `[Polar] ✅ Updated ${newPlan}/${status} for org ${truncateId(org.id)}`
@@ -741,11 +863,13 @@ export async function handleSubscriptionCanceled(payload: PolarWebhookPayload) {
   await subscriptionService.updateSubscription(org.id, {
     subscriptionStatus: "canceled",
     // Preserve the end date - access continues until this date
-    subscriptionEndsAt: subscriptionDates.endsAt,
+    ...(subscriptionDates.endsAt
+      ? { subscriptionEndsAt: subscriptionDates.endsAt }
+      : {}),
   });
 
   console.log(
-    `[Polar] ✅ Canceled subscription for org ${truncateId(org.id)} (access until ${subscriptionDates.endsAt?.toISOString() || "period end"})`
+    `[Polar] ✅ Canceled subscription for org ${truncateId(org.id)} (access until ${subscriptionDates.endsAt?.toISOString() || org.subscriptionEndsAt?.toISOString() || "period end"})`
   );
 
   // Mark webhook as successfully processed
@@ -835,7 +959,6 @@ export async function handleOrderCreated(payload: PolarWebhookPayload) {
  * Can be used for one-time payments or subscription renewals
  */
 export async function handleOrderPaid(payload: PolarWebhookPayload) {
-  const orderId = payload.data.id;
   const webhookEventKey = getWebhookEventKey(payload, "order.paid");
 
   // Atomic idempotency: Try to claim this webhook for processing
@@ -850,8 +973,22 @@ export async function handleOrderPaid(payload: PolarWebhookPayload) {
   const productId = getProductIdFromPayload(payload);
   const orgId = getOrganizationIdFromPayload(payload);
   const userId = getUserIdFromPayload(payload);
+  const subscriptionId =
+    (payload.data as any).subscription?.id ||
+    (payload.data as any).subscriptionId ||
+    (payload.data as any).subscription_id ||
+    null;
+  const subscriptionDates = getSubscriptionDatesFromPayload(payload);
 
-  let org = orgId ? await findOrganizationById(orgId) : null;
+  let org = subscriptionId
+    ? await db.query.organization.findFirst({
+        where: eq(organization.subscriptionId, subscriptionId),
+      })
+    : null;
+
+  if (!org && orgId) {
+    org = await findOrganizationById(orgId);
+  }
 
   // Fallback to customerId lookup
   if (!org && customerId) {
@@ -889,32 +1026,44 @@ export async function handleOrderPaid(payload: PolarWebhookPayload) {
     return;
   }
 
-  // If this is a subscription product, activate the subscription
-  if (productId) {
-    const plan = getPlanFromProductId(productId);
-
-    // Get subscription ID from order's subscription reference if available
-    // IMPORTANT: Do NOT fall back to orderId - using an order ID as a subscription ID
-    // causes mismatches when the real subscription webhook arrives later
-    const subscriptionId =
-      (payload.data as any).subscription?.id ||  
-      (payload.data as any).subscriptionId ||  
-      null;
+  // If this is a subscription product or subscription renewal, activate/sync it.
+  if (productId || subscriptionId) {
+    const plan: SubscriptionPlan | null = productId
+      ? getPlanFromProductId(productId)
+      : null;
 
     await subscriptionService.updateSubscription(org.id, {
-      subscriptionPlan: plan,
       subscriptionStatus: "active",
+      ...(plan ? { subscriptionPlan: plan } : {}),
       // Only set subscriptionId if we have a real one from the order payload.
       // If null, omit it to avoid overwriting a valid ID set by subscription.active webhook.
       ...(subscriptionId ? { subscriptionId } : {}),
-      polarCustomerId: customerId,
+      ...(customerId ? { polarCustomerId: customerId } : {}),
+      ...(subscriptionDates.startsAt
+        ? { subscriptionStartedAt: subscriptionDates.startsAt }
+        : {}),
+      ...(subscriptionDates.endsAt
+        ? { subscriptionEndsAt: subscriptionDates.endsAt }
+        : {}),
     });
+
+    const reset = await resetUsageForNewBillingPeriod(
+      org,
+      subscriptionDates,
+      "order.paid"
+    );
+
     console.log(
-      `[Polar] ✅ Order activated ${plan} for org ${truncateId(org.id)}`
+      `[Polar] ✅ Order activated ${plan || org.subscriptionPlan || "existing"} for org ${truncateId(org.id)}${reset ? " with usage reset" : ""}`
     );
 
     // Mark webhook as successfully processed
-    await updateWebhookResult(webhookEventKey, "order.paid", "success", `Order activated ${plan}`);
+    await updateWebhookResult(
+      webhookEventKey,
+      "order.paid",
+      "success",
+      `Order activated ${plan || org.subscriptionPlan || "subscription"}`
+    );
   } else {
     // No product ID - just mark as processed
     await updateWebhookResult(webhookEventKey, "order.paid", "success", "Order processed (no product)");

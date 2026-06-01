@@ -14,6 +14,24 @@ const CUSTOMER_VALIDATION_CACHE_TTL_MS = 60000; // 60 second cache TTL
 const POLAR_SANDBOX_URL = "https://sandbox-api.polar.sh";
 const POLAR_PRODUCTION_URL = "https://api.polar.sh";
 
+export interface SubscriptionAccessStatus {
+  isActive: boolean;
+  plan: "plus" | "pro" | "unlimited" | null;
+  status: "active" | "canceled" | "past_due" | "none" | null;
+  reason?:
+    | "self_hosted"
+    | "organization_not_found"
+    | "polar_customer_invalid"
+    | "missing_plan"
+    | "invalid_plan"
+    | "canceled_in_grace"
+    | "canceled_expired"
+    | "past_due"
+    | "active"
+    | "inactive";
+  subscriptionEndsAt?: Date | null;
+}
+
 // Fallback unlimited plan limits - extracted for maintainability
 const FALLBACK_UNLIMITED_LIMITS = {
   id: "fallback-unlimited",
@@ -256,8 +274,24 @@ export class SubscriptionService {
    * - status === "none" or null plan: No access
    */
   async hasActiveSubscription(organizationId: string): Promise<boolean> {
+    const access = await this.getSubscriptionAccessStatus(organizationId);
+    return access.isActive;
+  }
+
+  /**
+   * Get a normalized subscription access decision.
+   * This is the single source of truth for UI guards and API enforcement.
+   */
+  async getSubscriptionAccessStatus(
+    organizationId: string
+  ): Promise<SubscriptionAccessStatus> {
     if (!isPolarEnabled()) {
-      return true; // Self-hosted always has access
+      return {
+        isActive: true,
+        plan: "unlimited",
+        status: "active",
+        reason: "self_hosted",
+      };
     }
 
     const org = await db.query.organization.findFirst({
@@ -265,73 +299,120 @@ export class SubscriptionService {
     });
 
     if (!org) {
-      return false;
+      return {
+        isActive: false,
+        plan: null,
+        status: null,
+        reason: "organization_not_found",
+      };
     }
 
-    // If we have a Polar customer ID, validate it exists
     if (org.polarCustomerId) {
       const customerExists = await this.validatePolarCustomer(
         organizationId,
         org.polarCustomerId
       );
       if (!customerExists) {
-        // Customer doesn't exist in Polar
-        return false;
+        return {
+          isActive: false,
+          plan: null,
+          status: org.subscriptionStatus || "none",
+          reason: "polar_customer_invalid",
+          subscriptionEndsAt: org.subscriptionEndsAt,
+        };
       }
     }
 
-    // Must have a plan to have access
     if (!org.subscriptionPlan) {
-      return false;
+      return {
+        isActive: false,
+        plan: null,
+        status: org.subscriptionStatus || "none",
+        reason: "missing_plan",
+        subscriptionEndsAt: org.subscriptionEndsAt,
+      };
     }
 
-    // SECURITY: Reject unlimited plan in cloud mode
-    // This prevents orgs created in self-hosted mode from having unlimited access
-    // when the environment is switched to cloud mode
     if (org.subscriptionPlan === "unlimited") {
       console.error(
-        `[SubscriptionService] SECURITY: hasActiveSubscription rejecting unlimited plan for org ${organizationId.substring(0, 8)}... in cloud mode`
+        `[SubscriptionService] SECURITY: rejecting unlimited plan for org ${organizationId.substring(0, 8)}... in cloud mode`
       );
-      return false;
+      return {
+        isActive: false,
+        plan: null,
+        status: org.subscriptionStatus || "none",
+        reason: "invalid_plan",
+        subscriptionEndsAt: org.subscriptionEndsAt,
+      };
     }
 
-    // SECURITY: Only allow plus/pro plans in cloud mode
     if (!["plus", "pro"].includes(org.subscriptionPlan)) {
       console.error(
-        `[SubscriptionService] SECURITY: hasActiveSubscription rejecting invalid plan ${org.subscriptionPlan} for org ${organizationId.substring(0, 8)}... in cloud mode`
+        `[SubscriptionService] SECURITY: rejecting invalid plan ${org.subscriptionPlan} for org ${organizationId.substring(0, 8)}... in cloud mode`
       );
-      return false;
+      return {
+        isActive: false,
+        plan: null,
+        status: org.subscriptionStatus || "none",
+        reason: "invalid_plan",
+        subscriptionEndsAt: org.subscriptionEndsAt,
+      };
     }
 
-    // Check subscription status
     switch (org.subscriptionStatus) {
       case "active":
-        // Active subscription - full access
-        return true;
+        return {
+          isActive: true,
+          plan: org.subscriptionPlan,
+          status: "active",
+          reason: "active",
+          subscriptionEndsAt: org.subscriptionEndsAt,
+        };
 
       case "canceled":
-        // Canceled subscription - access until period end
-        // User retains access until subscriptionEndsAt date
         if (org.subscriptionEndsAt) {
-          const now = new Date();
           const endsAt = new Date(org.subscriptionEndsAt);
-          return now < endsAt;
+          if (Date.now() < endsAt.getTime()) {
+            return {
+              isActive: true,
+              plan: org.subscriptionPlan,
+              status: "canceled",
+              reason: "canceled_in_grace",
+              subscriptionEndsAt: org.subscriptionEndsAt,
+            };
+          }
+        } else {
+          console.warn(
+            `[SubscriptionService] Canceled subscription for org ${organizationId.substring(0, 8)}... has no end date`
+          );
         }
-        // If no end date set, default to no access (shouldn't happen normally)
-        console.warn(
-          `[SubscriptionService] Canceled subscription for org ${organizationId.substring(0, 8)}... has no end date`
-        );
-        return false;
+
+        return {
+          isActive: false,
+          plan: org.subscriptionPlan,
+          status: "canceled",
+          reason: "canceled_expired",
+          subscriptionEndsAt: org.subscriptionEndsAt,
+        };
 
       case "past_due":
-        // Past due - still has access while payment is being retried
-        // Polar will revoke if payment ultimately fails
-        return true;
+        return {
+          isActive: true,
+          plan: org.subscriptionPlan,
+          status: "past_due",
+          reason: "past_due",
+          subscriptionEndsAt: org.subscriptionEndsAt,
+        };
 
       case "none":
       default:
-        // No subscription or unknown status
-        return false;
+        return {
+          isActive: false,
+          plan: org.subscriptionPlan,
+          status: org.subscriptionStatus || "none",
+          reason: "inactive",
+          subscriptionEndsAt: org.subscriptionEndsAt,
+        };
     }
   }
 

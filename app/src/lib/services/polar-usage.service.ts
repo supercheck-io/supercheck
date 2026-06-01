@@ -10,10 +10,10 @@
  * - The worker's UsageTrackerService handles real-time usage tracking and
  *   immediate Polar sync after each execution.
  * - This service provides: metrics queries, spending limit checks for
- *   API-level enforcement, and batch retry of failed syncs via cron.
+ *   API-level enforcement, and batch retry of failed syncs via scheduler.
  */
 
-import { db } from "@/utils/db";
+import { db, postgresClient } from "@/utils/db";
 import {
   organization,
   usageEvents,
@@ -61,8 +61,40 @@ export interface SpendingStatus {
   remainingCents: number | null;
 }
 
+const USAGE_SYNC_ADVISORY_LOCK_KEY = 792401305;
+const FALLBACK_OVERAGE_PRICING_CENTS = {
+  plus: {
+    playwright: 3,
+    k6: 1,
+  },
+  pro: {
+    playwright: 2,
+    k6: 1,
+  },
+} as const;
+
 class PolarUsageService {
   private polarClient: InstanceType<typeof Polar> | null = null;
+
+  private async acquireSyncLock() {
+    const reserved = await postgresClient.reserve();
+
+    try {
+      const lockResult = (await reserved`
+        SELECT pg_try_advisory_lock(${USAGE_SYNC_ADVISORY_LOCK_KEY}) AS locked
+      `) as Array<{ locked: boolean }>;
+
+      if (!lockResult[0]?.locked) {
+        reserved.release();
+        return null;
+      }
+
+      return reserved;
+    } catch (error) {
+      reserved.release();
+      throw error;
+    }
+  }
 
   /**
    * Initialize Polar client if enabled
@@ -101,7 +133,10 @@ class PolarUsageService {
    * Sync a usage event to Polar using their Events Ingestion API
    * Uses Polar SDK's usage metering endpoint
    */
-  private async syncEventToPolar(eventId: string): Promise<boolean> {
+  private async syncEventToPolar(
+    eventId: string,
+    database: Pick<typeof db, "query" | "update"> = db
+  ): Promise<boolean> {
     try {
       const polar = await this.getPolarClient();
       if (!polar) {
@@ -110,7 +145,7 @@ class PolarUsageService {
       }
 
       // Fetch the usage event
-      const usageEvent = await db.query.usageEvents.findFirst({
+      const usageEvent = await database.query.usageEvents.findFirst({
         where: eq(usageEvents.id, eventId),
       });
 
@@ -120,7 +155,7 @@ class PolarUsageService {
       }
 
       // Get organization with Polar customer ID
-      const org = await db.query.organization.findFirst({
+      const org = await database.query.organization.findFirst({
         where: eq(organization.id, usageEvent.organizationId),
       });
 
@@ -188,9 +223,9 @@ class PolarUsageService {
       }
 
       const result = await response.json();
-      
+
       // Mark as synced
-      await db
+      await database
         .update(usageEvents)
         .set({
           syncedToPolar: true,
@@ -206,7 +241,7 @@ class PolarUsageService {
       console.error("[PolarUsage] Failed to sync event to Polar:", error);
       
       // Update sync status with error
-      await db
+      await database
         .update(usageEvents)
         .set({
           syncError: error instanceof Error ? error.message : "Unknown error",
@@ -246,8 +281,14 @@ class PolarUsageService {
     const k6Overage = Math.max(0, k6Used - plan.k6VuMinutesIncluded);
     const aiCreditsOverage = Math.max(0, aiCreditsUsed - plan.aiCreditsIncluded);
 
-    const playwrightOverageCost = playwrightOverage * (pricing?.playwrightMinutePriceCents || 10);
-    const k6OverageCost = Math.ceil(k6Overage * (pricing?.k6VuMinutePriceCents || 1));
+    const planForPricing = org.subscriptionPlan === "pro" ? "pro" : "plus";
+    const fallbackPricing = FALLBACK_OVERAGE_PRICING_CENTS[planForPricing];
+    const playwrightOverageCost =
+      playwrightOverage *
+      (pricing?.playwrightMinutePriceCents ?? fallbackPricing.playwright);
+    const k6OverageCost = Math.ceil(
+      k6Overage * (pricing?.k6VuMinutePriceCents ?? fallbackPricing.k6)
+    );
     // AI credits use hard-limit model (no overage billing)
     const aiCreditsOverageCost = 0;
 
@@ -367,7 +408,7 @@ class PolarUsageService {
 
   /**
    * Sync all pending usage events to Polar
-   * Should be called periodically via scheduled job (e.g., every 5 minutes)
+   * Safe to call from the app scheduler, an external cron, or manually.
    */
   async syncPendingEvents(batchSize: number = 50): Promise<{ 
     processed: number; 
@@ -380,6 +421,12 @@ class PolarUsageService {
     }
 
     const errors: string[] = [];
+    const lockConnection = await this.acquireSyncLock();
+
+    if (!lockConnection) {
+      console.log("[PolarUsage] Usage sync already running, skipping this run");
+      return { processed: 0, succeeded: 0, failed: 0, errors: [] };
+    }
 
     try {
       // Find events that haven't been synced yet
@@ -391,7 +438,7 @@ class PolarUsageService {
           sql`${usageEvents.syncAttempts} < 5`, // Max 5 retry attempts
           // Exponential backoff: only retry after appropriate delay
           sql`(
-            ${usageEvents.lastSyncAttempt} IS NULL 
+            ${usageEvents.lastSyncAttempt} IS NULL
             OR ${usageEvents.lastSyncAttempt} < NOW() - INTERVAL '1 second' * (
               CASE ${usageEvents.syncAttempts}
                 WHEN 0 THEN 0
@@ -433,20 +480,28 @@ class PolarUsageService {
         console.log(`[PolarUsage] Batch sync complete: ${succeeded}/${pendingEvents.length} succeeded, ${failed} failed`);
       }
 
-      return { 
-        processed: pendingEvents.length, 
-        succeeded, 
+      return {
+        processed: pendingEvents.length,
+        succeeded,
         failed,
-        errors 
+        errors
       };
     } catch (error) {
       console.error("[PolarUsage] Batch sync failed:", error);
-      return { 
-        processed: 0, 
-        succeeded: 0, 
-        failed: 0, 
-        errors: [error instanceof Error ? error.message : 'Unknown error'] 
+      return {
+        processed: 0,
+        succeeded: 0,
+        failed: 0,
+        errors: [error instanceof Error ? error.message : 'Unknown error']
       };
+    } finally {
+      try {
+        await lockConnection`
+          SELECT pg_advisory_unlock(${USAGE_SYNC_ADVISORY_LOCK_KEY})
+        `;
+      } finally {
+        lockConnection.release();
+      }
     }
   }
 }

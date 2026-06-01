@@ -66,9 +66,9 @@ export async function POST() {
 
     // Validate customer exists in Polar
     const config = getPolarConfig()!;
-    const polarUrl = config.server === 'sandbox' 
-      ? 'https://api.polar.sh' 
-      : 'https://api.polar.sh';
+    const polarUrl = config.server === "sandbox"
+      ? "https://sandbox-api.polar.sh"
+      : "https://api.polar.sh";
 
     try {
       const response = await fetch(`${polarUrl}/v1/customers/${org.polarCustomerId}`, {
@@ -94,7 +94,7 @@ export async function POST() {
         await db.update(organization)
           .set({ 
             polarCustomerId: null,
-            subscriptionPlan: "unlimited",
+            subscriptionPlan: null,
             subscriptionStatus: "none", 
             subscriptionId: null
           })

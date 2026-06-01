@@ -9,7 +9,7 @@ import {
   projects,
   member,
 } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { getPlanPricing } from "@/lib/feature-flags";
 
 /**
@@ -51,22 +51,27 @@ export async function GET() {
     const [monitorCount, statusPageCount, projectCount, memberCount] =
       await Promise.all([
         db
-          .select({ count: monitors.id })
+          .select({ count: sql<number>`count(*)` })
           .from(monitors)
           .where(eq(monitors.organizationId, organizationId)),
         db
-          .select({ count: statusPages.id })
+          .select({ count: sql<number>`count(*)` })
           .from(statusPages)
           .where(eq(statusPages.organizationId, organizationId)),
         db
-          .select({ count: projects.id })
+          .select({ count: sql<number>`count(*)` })
           .from(projects)
           .where(eq(projects.organizationId, organizationId)),
         db
-          .select({ count: member.userId })
+          .select({ count: sql<number>`count(*)` })
           .from(member)
           .where(eq(member.organizationId, organizationId)),
       ]);
+
+    const monitorsTotal = Number(monitorCount[0]?.count || 0);
+    const statusPagesTotal = Number(statusPageCount[0]?.count || 0);
+    const projectsTotal = Number(projectCount[0]?.count || 0);
+    const membersTotal = Number(memberCount[0]?.count || 0);
 
     // Calculate billing period
     const periodStart = org.usagePeriodStart || org.createdAt;
@@ -141,28 +146,28 @@ export async function GET() {
       },
       limits: {
         monitors: {
-          current: monitorCount.length,
+          current: monitorsTotal,
           limit: plan.maxMonitors,
-          remaining: Math.max(0, plan.maxMonitors - monitorCount.length),
-          percentage: toPercent(monitorCount.length, plan.maxMonitors),
+          remaining: Math.max(0, plan.maxMonitors - monitorsTotal),
+          percentage: toPercent(monitorsTotal, plan.maxMonitors),
         },
         statusPages: {
-          current: statusPageCount.length,
+          current: statusPagesTotal,
           limit: plan.maxStatusPages,
-          remaining: Math.max(0, plan.maxStatusPages - statusPageCount.length),
-          percentage: toPercent(statusPageCount.length, plan.maxStatusPages),
+          remaining: Math.max(0, plan.maxStatusPages - statusPagesTotal),
+          percentage: toPercent(statusPagesTotal, plan.maxStatusPages),
         },
         projects: {
-          current: projectCount.length,
+          current: projectsTotal,
           limit: plan.maxProjects,
-          remaining: Math.max(0, plan.maxProjects - projectCount.length),
-          percentage: toPercent(projectCount.length, plan.maxProjects),
+          remaining: Math.max(0, plan.maxProjects - projectsTotal),
+          percentage: toPercent(projectsTotal, plan.maxProjects),
         },
         teamMembers: {
-          current: memberCount.length,
+          current: membersTotal,
           limit: plan.maxTeamMembers,
-          remaining: Math.max(0, plan.maxTeamMembers - memberCount.length),
-          percentage: toPercent(memberCount.length, plan.maxTeamMembers),
+          remaining: Math.max(0, plan.maxTeamMembers - membersTotal),
+          percentage: toPercent(membersTotal, plan.maxTeamMembers),
         },
         capacity: {
           runningCapacity: plan.runningCapacity,
