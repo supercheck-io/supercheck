@@ -194,6 +194,11 @@ interface PolarWebhookPayload {
       id?: string;
       [key: string]: unknown;
     };
+    pendingUpdate?: {
+      productId?: string | null;
+      appliesAt?: string | Date;
+      [key: string]: unknown;
+    } | null;
     [key: string]: unknown;
   };
   [key: string]: unknown;
@@ -419,18 +424,75 @@ function getSubscriptionStatusFromPayload(
  * SECURITY: Only allows "plus" or "pro" plans in cloud mode
  * Never returns "unlimited" - that's reserved for self-hosted only
  */
-function getPlanFromProductId(productId: string): SubscriptionPlan {
+function getPlanFromProductId(productId: string | undefined | null): SubscriptionPlan | null {
+  if (!productId) {
+    return null;
+  }
+
   const plusProductId = process.env.POLAR_PLUS_PRODUCT_ID;
   const proProductId = process.env.POLAR_PRO_PRODUCT_ID;
 
   if (productId === plusProductId) return "plus";
   if (productId === proProductId) return "pro";
 
-  // SECURITY: Default to plus for unknown products - never unlimited
   console.warn(
-    `[Polar] Unknown product ID: ${productId}, defaulting to plus plan`
+    `[Polar] Unknown product ID: ${productId}, refusing to map subscription plan`
   );
-  return "plus";
+  return null;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  return value as Record<string, unknown>;
+}
+
+function getPendingUpdateFromPayload(payload: PolarWebhookPayload): {
+  productId: string | null;
+  appliesAt: Date | null;
+} {
+  const data = payload.data as Record<string, unknown>;
+  const pendingUpdate =
+    asRecord(data.pending_update) ?? asRecord(data.pendingUpdate);
+
+  if (!pendingUpdate) {
+    return { productId: null, appliesAt: null };
+  }
+
+  const productId =
+    typeof pendingUpdate.product_id === "string"
+      ? pendingUpdate.product_id
+      : typeof pendingUpdate.productId === "string"
+        ? pendingUpdate.productId
+        : null;
+
+  const rawAppliesAt = pendingUpdate.applies_at ?? pendingUpdate.appliesAt;
+  const appliesAt =
+    rawAppliesAt instanceof Date
+      ? rawAppliesAt
+      : typeof rawAppliesAt === "string" && rawAppliesAt.length > 0
+        ? new Date(rawAppliesAt)
+        : null;
+
+  return {
+    productId,
+    appliesAt: appliesAt && !Number.isNaN(appliesAt.getTime()) ? appliesAt : null,
+  };
+}
+
+function isFuturePendingProduct(
+  payload: PolarWebhookPayload,
+  productId: string | undefined | null
+): boolean {
+  const pendingUpdate = getPendingUpdateFromPayload(payload);
+  return Boolean(
+    productId &&
+      pendingUpdate.productId === productId &&
+      pendingUpdate.appliesAt &&
+      pendingUpdate.appliesAt.getTime() > Date.now()
+  );
 }
 
 /**
@@ -649,6 +711,15 @@ export async function handleSubscriptionActive(payload: PolarWebhookPayload) {
   }
 
   const plan = getPlanFromProductId(productId);
+  if (!plan) {
+    await updateWebhookResult(
+      webhookEventKey,
+      "subscription.active",
+      "error",
+      `Unknown product ID: ${productId || "missing"}`
+    );
+    return;
+  }
 
   await subscriptionService.updateSubscription(org.id, {
     subscriptionPlan: plan,
@@ -772,11 +843,24 @@ export async function handleSubscriptionUpdated(payload: PolarWebhookPayload) {
   }
 
   const status = getSubscriptionStatusFromPayload(payload);
-  const newPlan: SubscriptionPlan = productId
-    ? getPlanFromProductId(productId)
-    : org.subscriptionPlan === "pro"
-      ? "pro"
-      : "plus";
+  const mappedPlan = productId ? getPlanFromProductId(productId) : null;
+  if (productId && !mappedPlan) {
+    await updateWebhookResult(
+      webhookEventKey,
+      "subscription.updated",
+      "error",
+      `Unknown product ID: ${productId}`
+    );
+    return;
+  }
+
+  const shouldDeferPlanChange = isFuturePendingProduct(payload, productId);
+  const newPlan: SubscriptionPlan | null =
+    mappedPlan && !shouldDeferPlanChange
+      ? mappedPlan
+      : org.subscriptionPlan === "plus" || org.subscriptionPlan === "pro"
+        ? org.subscriptionPlan
+        : null;
   const oldPlan = org.subscriptionPlan;
 
   // Log plan change for monitoring
@@ -789,7 +873,7 @@ export async function handleSubscriptionUpdated(payload: PolarWebhookPayload) {
   // Update subscription with new plan and dates. Only overwrite dates when
   // Polar included them; some catch-all updates do not carry full period data.
   await subscriptionService.updateSubscription(org.id, {
-    subscriptionPlan: newPlan,
+    ...(newPlan ? { subscriptionPlan: newPlan } : {}),
     ...(status ? { subscriptionStatus: status } : {}),
     subscriptionId,
     ...(customerId ? { polarCustomerId: customerId } : {}),
@@ -808,11 +892,11 @@ export async function handleSubscriptionUpdated(payload: PolarWebhookPayload) {
   );
 
   console.log(
-    `[Polar] ✅ Updated ${newPlan}/${status} for org ${truncateId(org.id)}`
+    `[Polar] ✅ Updated ${newPlan || "existing"}/${status} for org ${truncateId(org.id)}${shouldDeferPlanChange ? " (pending plan change deferred)" : ""}`
   );
 
   // Mark webhook as successfully processed
-  await updateWebhookResult(webhookEventKey, "subscription.updated", "success", `Updated to ${newPlan}/${status}`);
+  await updateWebhookResult(webhookEventKey, "subscription.updated", "success", `Updated to ${newPlan || "existing"}/${status}`);
 }
 
 /**
@@ -874,6 +958,104 @@ export async function handleSubscriptionCanceled(payload: PolarWebhookPayload) {
 
   // Mark webhook as successfully processed
   await updateWebhookResult(webhookEventKey, "subscription.canceled", "success", "Subscription canceled");
+}
+
+/**
+ * Handle subscription past-due status.
+ * Polar sends this when renewal payment fails. Access remains available while
+ * Polar's recovery flow runs; revocation is handled by subscription.revoked.
+ */
+export async function handleSubscriptionPastDue(payload: PolarWebhookPayload) {
+  const subscriptionId = getSubscriptionIdFromPayload(payload);
+  const webhookEventKey = getWebhookEventKey(payload, "subscription.past_due");
+
+  if (!subscriptionId) {
+    console.error("[Polar] subscription.past_due missing subscription ID");
+    await updateWebhookResult(
+      webhookEventKey,
+      "subscription.past_due",
+      "error",
+      "Missing subscription ID"
+    );
+    return;
+  }
+
+  if (!(await tryClaimWebhook(webhookEventKey, "subscription.past_due"))) {
+    console.log(
+      `[Polar] Webhook ${truncateId(webhookEventKey)} already claimed/processed, skipping`
+    );
+    return;
+  }
+
+  const customerId = getCustomerIdFromPayload(payload);
+  const productId = getProductIdFromPayload(payload);
+  const subscriptionDates = getSubscriptionDatesFromPayload(payload);
+
+  let org = await db.query.organization.findFirst({
+    where: eq(organization.subscriptionId, subscriptionId),
+  });
+
+  if (!org && customerId) {
+    org = await findOrganizationByCustomerId(customerId);
+  }
+
+  if (!org) {
+    const orgId = getOrganizationIdFromPayload(payload);
+    if (orgId) {
+      org = await findOrganizationById(orgId);
+    }
+  }
+
+  if (!org) {
+    await updateWebhookResult(
+      webhookEventKey,
+      "subscription.past_due",
+      "error",
+      "Organization not found"
+    );
+    return;
+  }
+
+  const plan = getPlanFromProductId(productId);
+  if (productId && !plan) {
+    await updateWebhookResult(
+      webhookEventKey,
+      "subscription.past_due",
+      "error",
+      `Unknown product ID: ${productId}`
+    );
+    return;
+  }
+
+  await subscriptionService.updateSubscription(org.id, {
+    ...(plan ? { subscriptionPlan: plan } : {}),
+    subscriptionStatus: "past_due",
+    subscriptionId,
+    ...(customerId ? { polarCustomerId: customerId } : {}),
+    ...(subscriptionDates.startsAt
+      ? { subscriptionStartedAt: subscriptionDates.startsAt }
+      : {}),
+    ...(subscriptionDates.endsAt
+      ? { subscriptionEndsAt: subscriptionDates.endsAt }
+      : {}),
+  });
+
+  await resetUsageForNewBillingPeriod(
+    org,
+    subscriptionDates,
+    "subscription.past_due"
+  );
+
+  console.log(
+    `[Polar] ⚠️ Marked subscription past_due for org ${truncateId(org.id)}`
+  );
+
+  await updateWebhookResult(
+    webhookEventKey,
+    "subscription.past_due",
+    "success",
+    "Subscription marked past_due"
+  );
 }
 
 /**
@@ -1028,9 +1210,16 @@ export async function handleOrderPaid(payload: PolarWebhookPayload) {
 
   // If this is a subscription product or subscription renewal, activate/sync it.
   if (productId || subscriptionId) {
-    const plan: SubscriptionPlan | null = productId
-      ? getPlanFromProductId(productId)
-      : null;
+    const plan = getPlanFromProductId(productId);
+    if (productId && !plan) {
+      await updateWebhookResult(
+        webhookEventKey,
+        "order.paid",
+        "error",
+        `Unknown product ID: ${productId}`
+      );
+      return;
+    }
 
     await subscriptionService.updateSubscription(org.id, {
       subscriptionStatus: "active",
@@ -1198,6 +1387,15 @@ export async function handleSubscriptionUncanceled(
   }
 
   const plan = getPlanFromProductId(productId);
+  if (!plan) {
+    await updateWebhookResult(
+      webhookEventKey,
+      "subscription.uncanceled",
+      "error",
+      `Unknown product ID: ${productId || "missing"}`
+    );
+    return;
+  }
   const subscriptionDates = getSubscriptionDatesFromPayload(payload);
 
   // Restore subscription to active status

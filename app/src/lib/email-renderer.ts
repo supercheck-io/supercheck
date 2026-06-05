@@ -194,7 +194,7 @@ export async function renderUsageNotificationEmail(params: {
     | "usage_100_percent"
     | "spending_limit_warning"
     | "spending_limit_reached";
-  resourceType: "playwright" | "k6" | "combined" | "spending";
+  resourceType: "playwright" | "k6" | "ai" | "combined" | "spending";
   usageAmount: number;
   usageLimit: number;
   usagePercentage: number;

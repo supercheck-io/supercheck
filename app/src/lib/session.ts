@@ -50,6 +50,7 @@ export interface OrganizationWithRole {
   isActive: boolean;
   subscriptionPlan?: "plus" | "pro" | "unlimited" | null;
   subscriptionStatus?: "active" | "canceled" | "past_due" | "none" | null;
+  subscriptionEndsAt?: Date | null;
 }
 
 export interface ProjectWithRole {
@@ -242,6 +243,7 @@ export async function getUserOrganizations(
         memberRole: member.role,
         subscriptionPlan: organization.subscriptionPlan,
         subscriptionStatus: organization.subscriptionStatus,
+        subscriptionEndsAt: organization.subscriptionEndsAt,
       })
       .from(organization)
       .innerJoin(member, eq(member.organizationId, organization.id))
@@ -257,6 +259,7 @@ export async function getUserOrganizations(
       isActive: false,
       subscriptionPlan: org.subscriptionPlan,
       subscriptionStatus: org.subscriptionStatus,
+      subscriptionEndsAt: org.subscriptionEndsAt,
     }));
   } catch (error) {
     // DYNAMIC_SERVER_USAGE errors are expected during Next.js static generation

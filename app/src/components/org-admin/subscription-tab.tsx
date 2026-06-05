@@ -307,7 +307,9 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
           <div className="flex items-center gap-4">
             {/* Current Period Estimate - Minimal display */}
             <div className="text-right hidden sm:block">
-              <p className="text-xs text-muted-foreground">This Period</p>
+              <p className="text-xs text-muted-foreground">
+                Estimated This Period
+              </p>
               <p className="text-lg font-semibold">
                 ${estimatedTotal.toFixed(2)}
                 {currentOverage > 0 && (
@@ -544,4 +546,3 @@ function CompactResourceCard({
     </div>
   );
 }
-
