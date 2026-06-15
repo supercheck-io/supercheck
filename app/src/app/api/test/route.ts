@@ -16,6 +16,8 @@ import { isK6Script, validateK6Script } from "@/lib/k6-validator";
 import { db } from "@/utils/db";
 import { runs, type K6Location } from "@/db/schema";
 import { resolveProjectK6Location } from "@/lib/location-registry";
+import { polarUsageService } from "@/lib/services/polar-usage.service";
+import { buildBillingBlockedResponse } from "@/lib/billing-errors";
 
 function buildReportProxyUrl(entityId: string): string {
   return `/api/test-results/${encodeURIComponent(entityId)}/report/index.html?forceIframe=true`;
@@ -30,15 +32,23 @@ export async function POST(request: NextRequest) {
     // Check permission to run tests
     const canRunTests = checkPermissionWithContext('test', 'run', authCtx);
     
-    if (!canRunTests) {
-      console.warn(`User ${userId} attempted to run playground test without RUN_TESTS permission`);
-      return NextResponse.json(
-        { error: "Insufficient permissions to run tests. Only editors and admins can execute tests from the playground." },
-        { status: 403 }
-      );
-    }
+	    if (!canRunTests) {
+	      console.warn(`User ${userId} attempted to run playground test without RUN_TESTS permission`);
+	      return NextResponse.json(
+	        { error: "Insufficient permissions to run tests. Only editors and admins can execute tests from the playground." },
+	        { status: 403 }
+	      );
+	    }
 
-    const data = await request.json();
+	    const spendingBlock = await polarUsageService.shouldBlockUsage(organizationId);
+	    if (spendingBlock.blocked) {
+	      return NextResponse.json(
+	        buildBillingBlockedResponse(spendingBlock.reason),
+	        { status: 402 }
+	      );
+	    }
+
+	    const data = await request.json();
     const code = data.script as string;
     const requestedLocation = typeof data.location === "string" ? data.location : undefined;
 

@@ -15,7 +15,7 @@ const encoder = new TextEncoder();
 const serialize = (payload: Record<string, unknown>) =>
   `data: ${JSON.stringify(payload)}\n\n`;
 
-const terminalStatuses = new Set(["passed", "failed", "error", "completed"]);
+const terminalStatuses = new Set(["passed", "failed", "error", "completed", "blocked"]);
 
 const deriveFinalStatus = (
   queueStatus: string,
@@ -23,6 +23,10 @@ const deriveFinalStatus = (
 ): string => {
   const normalizedQueue = queueStatus.toLowerCase();
   const normalizedReport = reportStatus?.toLowerCase?.() || null;
+
+  if (normalizedQueue === "blocked") {
+    return "blocked";
+  }
 
   // Fail-fast if either source says failed/error
   if (
@@ -131,6 +135,14 @@ export async function GET(request: Request) {
           testId,
           queueJobId: event.queueJobId,
         };
+        const returnValue =
+          event.returnValue &&
+          typeof event.returnValue === "object"
+            ? (event.returnValue as Record<string, unknown>)
+            : null;
+        if (typeof returnValue?.error === "string") {
+          payload.errorDetails = returnValue.error.replace(/^BILLING_BLOCKED:\s*/, "");
+        }
 
         if (terminalStatuses.has(status)) {
           const report = await fetchEventStatusReport(
@@ -168,6 +180,7 @@ export async function GET(request: Request) {
               testId,
               reportPath: initialReport.reportPath,
               s3Url: initialReport.s3Url,
+              errorDetails: initialReport.errorDetails,
             })
           )
         );

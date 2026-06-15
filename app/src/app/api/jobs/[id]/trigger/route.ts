@@ -23,6 +23,7 @@ import { verifyApiKey } from "@/lib/security/api-key-hash";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { resolveProjectK6Location } from "@/lib/location-registry";
+import { buildBillingBlockedResponse } from "@/lib/billing-errors";
 
 // POST /api/jobs/[id]/trigger - Trigger job remotely via API key
 export async function POST(
@@ -270,7 +271,7 @@ export async function POST(
       console.warn(
         `[Job Trigger] Spending limit reached for org ${job.organizationId.substring(0, 8)}...`
       );
-      return NextResponse.json({ error: spendingBlock.reason }, { status: 402 });
+      return NextResponse.json(buildBillingBlockedResponse(spendingBlock.reason), { status: 402 });
     }
 
     // Check subscription plan limits

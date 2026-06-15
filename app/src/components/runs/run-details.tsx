@@ -15,6 +15,7 @@ import {
   CalendarDays,
   FolderOpen,
   MapPin,
+  ShieldOff,
 } from "lucide-react";
 import { canManageRuns } from "@/lib/rbac/client-permissions";
 import { Role } from "@/lib/rbac/permissions-client";
@@ -43,6 +44,8 @@ import { PerformanceTestReport } from "@/components/playground/performance-test-
 import type { K6RunStatus } from "@/lib/k6-runs";
 import { AIJobAnalyzeButton } from "./ai-job-analyze-button";
 import { useLocations } from "@/hooks/use-locations";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { formatBillingBlockedMessage, isBillingBlockedStatus } from "@/lib/billing-errors";
 
 
 // Type based on the actual API response from /api/runs/[runId]
@@ -84,6 +87,9 @@ export function RunDetails({
   const isPerformanceRun = run.jobType === "k6";
   const [headerLocation, setHeaderLocation] = useState<string | null>(
     run.location ?? null
+  );
+  const [currentErrorDetails, setCurrentErrorDetails] = useState<string | null>(
+    run.errorDetails ?? null
   );
 
   // Fetch dynamic location data for display
@@ -130,9 +136,11 @@ export function RunDetails({
         return "passed";
       case "failed":
         return "failed";
-      case "error":
-        return "error";
-      default:
+	      case "error":
+	        return "error";
+	      case "blocked":
+	        return "blocked";
+	      default:
         console.warn(`Unknown status: ${status}, defaulting to running`);
         return "running";
     }
@@ -218,11 +226,14 @@ export function RunDetails({
   };
 
   // Handle status updates from SSE - memoized to prevent unnecessary re-renders
-  const handleStatusUpdate = useCallback(
-    (status: string, newReportUrl?: string, newDuration?: string) => {
-      if (status !== currentStatus) {
-        setCurrentStatus(mapStatusForDisplay(status as TestRunStatus));
-      }
+	  const handleStatusUpdate = useCallback(
+	    (status: string, newReportUrl?: string, newDuration?: string, errorDetails?: string | null) => {
+	      if (status !== currentStatus) {
+	        setCurrentStatus(mapStatusForDisplay(status as TestRunStatus));
+	      }
+	      if (typeof errorDetails === "string") {
+	        setCurrentErrorDetails(errorDetails);
+	      }
 
       if (newReportUrl) {
         // Regardless of the reportUrl from SSE, use our API proxy with direct UUID
@@ -238,7 +249,8 @@ export function RunDetails({
     [currentStatus, run.id, duration]
   );
 
-  const statusInfo = runStatuses.find((s) => s.value === currentStatus);
+	  const statusInfo = runStatuses.find((s) => s.value === currentStatus);
+	  const isBillingBlocked = isBillingBlockedStatus(currentStatus);
 
   const handleDeleteRun = async () => {
     setIsDeleting(true);
@@ -281,9 +293,9 @@ export function RunDetails({
       {/* Status listener for real-time updates */}
       <RunStatusListener
         runId={run.id}
-        status={run.status}
-        onStatusUpdate={handleStatusUpdate}
-      />
+	        status={run.status}
+	        onStatusUpdate={handleStatusUpdate}
+	      />
 
       {/* Logo, breadcrumbs, and user nav for notification view */}
       {isNotificationView && (
@@ -539,7 +551,17 @@ export function RunDetails({
         </div>
       </div>
 
-      <div className="bg-card rounded-lg border overflow-hidden">
+	      {isBillingBlocked ? (
+	        <Alert className="mb-4 border-red-200 bg-red-50 text-red-900 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-100">
+	          <ShieldOff className="h-4 w-4" />
+	          <AlertTitle>Execution blocked by spending limit</AlertTitle>
+	          <AlertDescription>
+	            {formatBillingBlockedMessage(currentErrorDetails)}
+	          </AlertDescription>
+	        </Alert>
+	      ) : null}
+
+	      <div className="bg-card rounded-lg border overflow-hidden">
         {isPerformanceRun ? (
           <div className="h-[calc(100vh-270px)]">
             <PerformanceTestReport

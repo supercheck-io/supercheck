@@ -4,6 +4,14 @@ import { reports, runs } from "@/db/schema";
 import type { NormalizedQueueEvent } from "@/lib/queue-event-hub";
 
 type StatusReportEntityType = "test" | "k6_test";
+type InitialStatusSnapshot = {
+  status?: string | null;
+  reportPath?: string | null;
+  s3Url?: string | null;
+  errorDetails?: string | null;
+};
+
+const noReportTerminalStatuses = new Set(["blocked"]);
 
 function buildReportQuery(entityType: StatusReportEntityType, entityId: string) {
   return db.query.reports.findFirst({
@@ -43,7 +51,7 @@ export async function fetchEventStatusReport(
 export async function fetchInitialStatusReport(
   testId: string,
   projectId: string
-) {
+): Promise<InitialStatusSnapshot | null> {
   const playwrightReport = await buildReportQuery("test", testId);
   if (playwrightReport) {
     return playwrightReport;
@@ -55,14 +63,26 @@ export async function fetchInitialStatusReport(
       sql`${runs.metadata}->>'testId' = ${testId}`
     ),
     orderBy: [desc(runs.createdAt)],
-    columns: { id: true },
+    columns: { id: true, status: true, errorDetails: true },
   });
 
   if (!latestK6Run) {
     return null;
   }
 
-  return buildReportQuery("k6_test", latestK6Run.id);
+  const k6Report = await buildReportQuery("k6_test", latestK6Run.id);
+  if (k6Report) {
+    return k6Report;
+  }
+
+  if (latestK6Run.status && noReportTerminalStatuses.has(latestK6Run.status)) {
+    return {
+      status: latestK6Run.status,
+      errorDetails: latestK6Run.errorDetails,
+    };
+  }
+
+  return null;
 }
 
 export function shouldStreamTestStatusEvent(

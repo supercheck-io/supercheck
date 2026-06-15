@@ -22,6 +22,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { formatBillingBlockedMessage, isBillingBlockedStatus } from "@/lib/billing-errors";
 
 const HEARTBEAT_STALE_THRESHOLD_MS = 45_000;
 const HEARTBEAT_CHECK_INTERVAL_MS = 15_000;
@@ -93,11 +94,14 @@ export function PerformanceTestReport({
           // If test is already complete, don't set up streaming
           const isComplete = derivedStatus !== "running";
           const hasReport = details.reportS3Url || details.runReportUrl;
+          const isBlocked = isBillingBlockedStatus(derivedStatus);
 
-          if (isComplete && hasReport) {
+          if (isComplete && (hasReport || isBlocked)) {
             // Test is complete with report available - skip streaming and switch to report tab
             setShouldStream(false);
-            setActiveTab("report");
+            if (hasReport) {
+              setActiveTab("report");
+            }
             const reportHref = `/api/test-results/${encodeURIComponent(
               runId
             )}/report/report.html?forceIframe=true`;
@@ -261,7 +265,12 @@ export function PerformanceTestReport({
   );
 
   useEffect(() => {
-    if (!shouldStream && status !== "running" && consoleFetchState === "idle") {
+    if (
+      !shouldStream &&
+      status !== "running" &&
+      status !== "blocked" &&
+      consoleFetchState === "idle"
+    ) {
       void fetchCompletedConsole();
     }
   }, [shouldStream, status, consoleFetchState, fetchCompletedConsole]);
@@ -486,6 +495,11 @@ export function PerformanceTestReport({
     return `/api/test-results/${encodeURIComponent(runId)}/summary.json`;
   }, [runDetails, runId]);
 
+  const billingBlockedMessage =
+    status === "blocked"
+      ? formatBillingBlockedMessage(runDetails?.errorDetails)
+      : null;
+
   const fullscreenHeader = useMemo(() => {
     return (
       <>
@@ -563,9 +577,9 @@ export function PerformanceTestReport({
         <TabsContent value="logs" className="h-full w-full m-0 p-0">
           <div className="h-full w-full flex flex-col">
             {/* Stream Error Alert */}
-            {streamError && (
-              <div className="absolute top-16 left-4 right-4 z-10">
-                <Alert className="border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-200">
+	            {streamError && (
+	              <div className="absolute top-16 left-4 right-4 z-10">
+	                <Alert className="border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-200">
                   <WifiOff className="h-4 w-4" />
                   <AlertDescription className="flex items-center justify-between">
                     <span>{streamError}</span>
@@ -574,10 +588,23 @@ export function PerformanceTestReport({
                       <span>Reconnecting…</span>
                     </div>
                   </AlertDescription>
-                </Alert>
-              </div>
-            )}
-            {status !== "running" && consoleFetchState === "loading" ? (
+	                </Alert>
+	              </div>
+	            )}
+	            {billingBlockedMessage ? (
+	              <div className="absolute top-20 left-30 right-30 z-10">
+	                <Alert className="border-red-200 bg-red-50 text-red-900 shadow-sm dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-100">
+	                  <AlertTriangle className="h-4 w-4" />
+	                  <AlertTitle className="text-sm font-medium">
+	                    Execution blocked by spending limit
+	                  </AlertTitle>
+	                  <AlertDescription className="text-sm">
+	                    {billingBlockedMessage}
+	                  </AlertDescription>
+	                </Alert>
+	              </div>
+	            ) : null}
+	            {status !== "running" && consoleFetchState === "loading" ? (
               <div className="absolute top-20 left-30 right-30 z-10">
                 <Alert className="border-muted bg-muted/95 text-muted-foreground shadow-sm">
                   <RefreshCw className="h-4 w-4 animate-spin text-blue-500 dark:text-blue-400" />

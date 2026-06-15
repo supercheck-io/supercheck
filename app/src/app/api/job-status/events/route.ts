@@ -6,6 +6,7 @@ import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { db } from "@/utils/db";
 import { runs, jobs, tests } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { formatBillingBlockedMessage } from "@/lib/billing-errors";
 
 const encoder = new TextEncoder();
 
@@ -57,10 +58,11 @@ export async function GET(request: Request) {
           projectId: string | null;
           jobId: string | null;
           jobName: string;
-          jobType: string;
-          metadata: Record<string, unknown> | null;
-          organizationId: string | null;
-        } | null>();
+	          jobType: string;
+	          metadata: Record<string, unknown> | null;
+	          organizationId: string | null;
+	          errorDetails: string | null;
+	        } | null>();
 
         const sendEvent = async (event: NormalizedQueueEvent) => {
           if (isClosed) return;
@@ -92,10 +94,11 @@ export async function GET(request: Request) {
               // This replaces 5 separate queries with 1 JOIN query
               const result = await db
                 .select({
-                  runId: runs.id,
-                  runProjectId: runs.projectId,
-                  runJobId: runs.jobId,
-                  runMetadata: runs.metadata,
+	                  runId: runs.id,
+	                  runProjectId: runs.projectId,
+	                  runJobId: runs.jobId,
+	                  runMetadata: runs.metadata,
+	                  runErrorDetails: runs.errorDetails,
                   jobName: jobs.name,
                   jobType: jobs.jobType,
                   jobProjectId: jobs.projectId,
@@ -139,10 +142,11 @@ export async function GET(request: Request) {
                 projectId: row.runProjectId,
                 jobId: row.runJobId,
                 jobName,
-                jobType,
-                metadata,
-                organizationId: row.jobOrgId,
-              };
+	                jobType,
+	                metadata,
+	                organizationId: row.jobOrgId,
+	                errorDetails: row.runErrorDetails,
+	              };
               
               runCache.set(runId, runData);
             }
@@ -162,21 +166,35 @@ export async function GET(request: Request) {
               return;
             }
 
-            // Event is authorized, send it
-            const payload = {
-              queue: event.queue,
-              event: event.event,
-              status: event.status,
+	            const returnValue =
+	              event.returnValue && typeof event.returnValue === "object"
+	                ? (event.returnValue as Record<string, unknown>)
+	                : null;
+	            const billingBlockDetails =
+	              event.status === "blocked"
+	                ? formatBillingBlockedMessage(
+	                    typeof returnValue?.error === "string"
+	                      ? returnValue.error
+	                      : runData.errorDetails
+	                  )
+	                : undefined;
+
+	            // Event is authorized, send it
+	            const payload = {
+	              queue: event.queue,
+	              event: event.event,
+	              status: event.status,
               runId: event.queueJobId,
               jobId: event.entityId ?? event.queueJobId,
               jobName: runData.jobName,
               jobType: runData.jobType,
-              trigger: event.trigger,
-              timestamp: event.timestamp,
-              returnValue: event.returnValue,
-              failedReason: event.failedReason,
-              hasJobId: !!runData.jobId,
-            };
+	              trigger: event.trigger,
+	              timestamp: event.timestamp,
+	              returnValue: event.returnValue,
+	              failedReason: event.failedReason,
+	              errorDetails: billingBlockDetails,
+	              hasJobId: !!runData.jobId,
+	            };
 
             safeEnqueue(
               encoder.encode(`data: ${JSON.stringify(payload)}\n\n`)

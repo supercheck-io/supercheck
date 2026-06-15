@@ -7,6 +7,7 @@ import {
   PlayCircle,
   XCircle,
   AlertCircle,
+  ShieldOff,
 } from "lucide-react"
 
 export const jobStatuses = [
@@ -39,6 +40,12 @@ export const jobStatuses = [
     label: "Error",
     icon: AlertCircle,
     color: "text-orange-500",
+  },
+  {
+    value: "blocked",
+    label: "Blocked",
+    icon: ShieldOff,
+    color: "text-red-600",
   },
 ]
 

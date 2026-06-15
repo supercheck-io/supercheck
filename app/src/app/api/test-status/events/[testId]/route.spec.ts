@@ -118,4 +118,27 @@ describe("test-status event filtering", () => {
     expect(mockReportsFindFirst).toHaveBeenCalledTimes(2);
     expect(mockRunsFindFirst).toHaveBeenCalledTimes(1);
   });
+
+  it("returns a blocked run snapshot when no report will be generated", async () => {
+    mockReportsFindFirst
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(undefined);
+    mockRunsFindFirst.mockResolvedValue({
+      id: "run-3",
+      status: "blocked",
+      errorDetails:
+        "Monthly spending limit of $320.00 reached. Current spending: $320.76.",
+    });
+
+    await expect(
+      fetchInitialStatusReport("test-1", "project-1")
+    ).resolves.toEqual({
+      status: "blocked",
+      errorDetails:
+        "Monthly spending limit of $320.00 reached. Current spending: $320.76.",
+    });
+
+    expect(mockReportsFindFirst).toHaveBeenCalledTimes(2);
+    expect(mockRunsFindFirst).toHaveBeenCalledTimes(1);
+  });
 });

@@ -16,6 +16,11 @@ import { jobStatuses } from "./data";
 import { RUNS_QUERY_KEY } from "@/hooks/use-runs";
 import { getExecutionsData } from "@/hooks/use-executions";
 import { useProjectContext } from "@/hooks/use-project-context";
+import {
+  formatBillingBlockedMessage,
+  isBillingBlockedError,
+  isBillingBlockedStatus,
+} from "@/lib/billing-errors";
 interface JobStatusSSEPayload {
   status: string;
   jobId?: string;
@@ -75,10 +80,15 @@ export function JobStatusDisplay({
     }
 
     const contextStatus = getJobStatus(jobId);
-    // Use context status if available (especially for terminal statuses)
-    // Otherwise fall back to db status
-    const statusToUse = contextStatus || dbStatus;
-    return statusToUse || "pending";
+    if (contextStatus) {
+      return isBillingBlockedStatus(contextStatus) ? "blocked" : contextStatus;
+    }
+
+    if (isBillingBlockedStatus(dbStatus) || isBillingBlockedError(lastRunErrorDetails)) {
+      return "blocked";
+    }
+
+    return dbStatus || "pending";
   };
 
   const displayStatus = computeEffectiveStatus();
@@ -88,9 +98,13 @@ export function JobStatusDisplay({
     jobStatuses.find((status) => status.value === "pending");
 
   const StatusIcon = statusInfo?.icon || jobStatuses[0].icon;
+  const statusTitle =
+    displayStatus === "blocked"
+      ? formatBillingBlockedMessage(lastRunErrorDetails)
+      : statusInfo?.label || jobStatuses[0].label;
 
   return (
-    <div className="flex w-[120px] items-center">
+    <div className="flex w-[120px] items-center" title={statusTitle}>
       <StatusIcon
         className={`mr-2 h-4 w-4 ${statusInfo?.color || jobStatuses[0].color}`}
       />
@@ -150,7 +164,7 @@ export function JobProvider({ children }: { children: React.ReactNode }) {
       setIsAnyJobRunning(true);
     }
     // If status is terminal, remove from running jobs
-    else if (["passed", "failed", "error", "completed"].includes(status)) {
+    else if (["passed", "failed", "error", "completed", "blocked"].includes(status)) {
       setRunningJobs((prev) => {
         const newSet = new Set(prev);
         newSet.delete(jobId);
@@ -237,13 +251,14 @@ export function JobProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (
-        ["completed", "passed", "failed", "error"].includes(status)
+        ["completed", "passed", "failed", "error", "blocked"].includes(status)
       ) {
         setJobStatus(jobId, payload.status);
         if (activeRunsRef.current[jobId]?.runId === runId) {
           const jobName = activeRunsRef.current[jobId]?.jobName || jobId;
-          const passed = status === "completed" || status === "passed";
-          const isError = status === "error";
+	          const passed = status === "completed" || status === "passed";
+	          const isError = status === "error";
+	          const isBlocked = status === "blocked";
 
           // Remove from active runs
           setActiveRuns((prev) => {
@@ -281,7 +296,11 @@ export function JobProvider({ children }: { children: React.ReactNode }) {
               ? "All tests executed successfully."
               : "One or more tests did not complete successfully.";
 
-            if (isError) {
+	            if (isBlocked) {
+	              toastType = "error";
+	              toastTitle = "Job execution blocked";
+	              toastMessage = formatBillingBlockedMessage(payload.errorDetails);
+	            } else if (isError) {
               toastType = "info";
               toastTitle = "Job execution error";
               toastMessage = "An error occurred during execution.";

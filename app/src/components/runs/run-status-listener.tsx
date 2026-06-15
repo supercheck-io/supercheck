@@ -7,11 +7,12 @@ import { useRouter } from "next/navigation";
 interface RunStatusListenerProps {
   runId: string;
   status: string;
-  onStatusUpdate?: (
-    status: string,
-    reportUrl?: string,
-    duration?: string
-  ) => void;
+	  onStatusUpdate?: (
+	    status: string,
+	    reportUrl?: string,
+	    duration?: string,
+	    errorDetails?: string | null
+	  ) => void;
 }
 
 export function RunStatusListener({
@@ -38,9 +39,10 @@ export function RunStatusListener({
     // If the run is already in a terminal state, don't set up SSE
     if (
       status === "completed" ||
-      status === "failed" ||
-      status === "passed" ||
-      status === "error"
+	      status === "failed" ||
+	      status === "passed" ||
+	      status === "error" ||
+	      status === "blocked"
     ) {
       // Dismiss any existing loading toast
       if (loadingToastIdRef.current) {
@@ -78,17 +80,18 @@ export function RunStatusListener({
           return;
         }
 
-        // Notify parent component of status updates - now with duration
-        if (data.status && onStatusUpdate) {
-          onStatusUpdate(data.status, data.s3Url, data.duration);
-        }
+	        // Notify parent component of status updates - now with duration
+	        if (data.status && onStatusUpdate) {
+	          onStatusUpdate(data.status, data.s3Url, data.duration, data.errorDetails);
+	        }
 
         // Handle terminal statuses
         if (
           (data.status === "completed" ||
-            data.status === "failed" ||
-            data.status === "passed" ||
-            data.status === "error") &&
+	            data.status === "failed" ||
+	            data.status === "passed" ||
+	            data.status === "error" ||
+	            data.status === "blocked") &&
           !hasShownToastRef.current
         ) {
           // First dismiss the loading toast if it exists
