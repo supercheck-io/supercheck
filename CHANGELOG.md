@@ -4,14 +4,20 @@ All notable changes to Supercheck are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
-## [Unreleased]
+## [1.3.5] - 2026-06-17
 
 ### Added
 - PagerDuty and OpsGenie integration via webhook provider now supports custom JSON body templates and configurable HTTP methods for full compatibility with third-party alerting systems. See [#294](https://github.com/supercheck-io/supercheck/issues/294) for details and usage examples.
+- PagerDuty alert lifecycle actions and deduplication keys to reduce noise and support auto-resolution flows.
+- Billing spending limits with notifications and usage synchronization to prevent runaway costs.
+- Blocked job status and billing error handling for clearer visibility into quota- or payment-related execution failures.
 
 ### Fixed
-- Webhook body template rendering now parses and re-serializes JSON before delivery so interpolated alert values stay escaped safely
-- Webhook methods are now normalized consistently across provider validation, connection testing, and worker delivery to avoid GET requests with request bodies
+- Webhook body template rendering now parses and re-serializes JSON before delivery so interpolated alert values stay escaped safely.
+- Webhook methods are now normalized consistently across provider validation, connection testing, and worker delivery to avoid GET requests with request bodies.
+
+### Security
+- Updated dependencies to patch known security vulnerabilities.
 
 ## [1.3.4] - 2026-04-13
 

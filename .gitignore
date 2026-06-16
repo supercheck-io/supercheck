@@ -178,3 +178,4 @@ tasks/
 supercheck.config.local.ts
 supercheck.config.local.js
 supercheck.config.local.mjs
+.opencode
