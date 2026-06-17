@@ -133,10 +133,10 @@ function getPolarPlugin() {
            
           onSubscriptionCreated: async (payload: any) => {
             console.log("[Polar] Webhook: subscription.created");
-            const { handleSubscriptionActive } = await import(
+            const { handleSubscriptionCreated } = await import(
               "@/lib/webhooks/polar-webhooks"
             );
-            await handleSubscriptionActive(payload);
+            await handleSubscriptionCreated(payload);
           },
            
           onSubscriptionUpdated: async (payload: any) => {
@@ -214,6 +214,12 @@ function getPolarPlugin() {
           onPayload: async (payload: any) => {
             // Log all events for debugging/monitoring
             console.log("[Polar] Webhook received:", payload.type);
+            if (payload.type === "subscription.past_due") {
+              const { handleSubscriptionPastDue } = await import(
+                "@/lib/webhooks/polar-webhooks"
+              );
+              await handleSubscriptionPastDue(payload);
+            }
           },
         }),
       ],

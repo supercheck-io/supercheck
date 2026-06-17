@@ -18,6 +18,11 @@ import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { PlaywrightLogo } from "@/components/logo/playwright-logo";
 import { K6Logo } from "@/components/logo/k6-logo";
+import {
+  formatBillingBlockedMessage,
+  isBillingBlockedError,
+  isBillingBlockedStatus,
+} from "@/lib/billing-errors";
 
 // Helper to validate status is one of the allowed values
 function mapDbStatusToDisplayStatus(
@@ -29,8 +34,8 @@ function mapDbStatusToDisplayStatus(
 
   // Check if this is a billing-blocked run
   if (
-    status === "blocked" ||
-    (errorDetails && errorDetails.includes("BILLING_BLOCKED"))
+    isBillingBlockedStatus(status) ||
+    isBillingBlockedError(errorDetails)
   ) {
     return "blocked";
   }
@@ -202,11 +207,15 @@ export const createColumns = (
         <DataTableColumnHeader column={column} title="Status" />
       ),
       cell: ({ row }) => {
-        const mappedStatus = row.getValue("status") as string;
-        const statusInfo = runStatuses.find((s) => s.value === mappedStatus);
+	        const mappedStatus = row.getValue("status") as string;
+	        const statusInfo = runStatuses.find((s) => s.value === mappedStatus);
+	        const title =
+	          mappedStatus === "blocked"
+	            ? formatBillingBlockedMessage(row.original.errorDetails)
+	            : statusInfo?.label;
 
-        return (
-          <div className="flex items-center w-[100px]">
+	        return (
+	          <div className="flex items-center w-[100px]" title={title}>
             {statusInfo ? (
               <div className="flex items-center">
                 {statusInfo.icon && (

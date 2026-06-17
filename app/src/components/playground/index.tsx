@@ -58,6 +58,7 @@ import { notifyExecutionsChanged } from "@/hooks/use-executions";
 import { useSession } from "@/utils/auth-client";
 import { getRequirement } from "@/actions/requirements";
 import { RecordButton } from "@/components/recorder";
+import { formatBillingBlockedMessage, isBillingBlockedError } from "@/lib/billing-errors";
 
 const extractCodeFromResponse = (rawText: string): string => {
   if (!rawText) {
@@ -915,13 +916,16 @@ const Playground: React.FC<PlaygroundProps> = ({
                 normalizedStatus === "passed" ||
                 normalizedStatus === "failed" ||
                 normalizedStatus === "error" ||
+                normalizedStatus === "blocked" ||
                 derivedStatus === "completed" ||
                 derivedStatus === "passed" ||
                 derivedStatus === "failed" ||
                 derivedStatus === "error" ||
+                derivedStatus === "blocked" ||
                 reportStatus === "completed" ||
                 reportStatus === "failed" ||
-                reportStatus === "error";
+                reportStatus === "error" ||
+                reportStatus === "blocked";
 
               if (isTerminalStatus) {
                 setIsRunning(false);
@@ -959,15 +963,24 @@ const Playground: React.FC<PlaygroundProps> = ({
 
                 // Show appropriate toast based on status (skip cancelled - already shown by handleCancelRun)
                 if (!isCancelled) {
+                  const isBlocked =
+                    normalizedStatus === "blocked" || derivedStatus === "blocked";
                   const isSuccess = testPassed;
+                  const billingBlockDetails = formatBillingBlockedMessage(
+                    data.errorDetails
+                  );
                   toast[isSuccess ? "success" : "error"](
                     isSuccess
                       ? "Script execution passed"
-                      : "Script execution failed",
+                      : isBlocked
+                        ? "Script execution blocked"
+                        : "Script execution failed",
                     {
                       description: isSuccess
                         ? "All checks completed successfully."
-                        : "Test execution completed with failures or errors. Please review the report before saving.",
+                        : isBlocked
+                          ? billingBlockDetails
+                          : "Test execution completed with failures or errors. Please review the report before saving.",
                       duration: 10000,
                     }
                   );
@@ -1025,7 +1038,12 @@ const Playground: React.FC<PlaygroundProps> = ({
         if (result.error) {
           console.error("Script execution error:", result.error);
 
-          if (result.isValidationError) {
+          if (isBillingBlockedError(result.error) || result.code === "BILLING_BLOCKED") {
+            toast.error("Script execution blocked", {
+              description: formatBillingBlockedMessage(result.error),
+              duration: 10000,
+            });
+          } else if (result.isValidationError) {
             setValidationError(result.validationError);
             setIsValid(false);
             setHasValidated(true);

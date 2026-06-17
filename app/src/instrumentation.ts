@@ -63,6 +63,16 @@ export async function register() {
       console.error('[Instrumentation] ❌ Failed to initialize data lifecycle service:', error);
     }
 
+    // Initialize Polar usage retry sync. This is runtime-portable; database
+    // advisory locking keeps it safe with multiple app instances.
+    try {
+      console.log('[Instrumentation] Initializing usage sync scheduler...');
+      const { initializeUsageSyncScheduler } = await import('@/lib/services/usage-sync-scheduler');
+      initializeUsageSyncScheduler();
+    } catch (error) {
+      console.error('[Instrumentation] ❌ Failed to initialize usage sync scheduler:', error);
+    }
+
     // Initialize monitor schedulers (MOVED from SchedulerInitializer component)
     try {
       console.log('[Instrumentation] Initializing monitor schedulers...');

@@ -101,6 +101,28 @@ export async function PATCH(request: Request) {
     // Get current settings for audit logging
     const previousSettings = await billingSettingsService.getSettings(organizationId);
 
+    const effectiveLimitDollars =
+      data.monthlySpendingLimitDollars !== undefined
+        ? data.monthlySpendingLimitDollars
+        : previousSettings.monthlySpendingLimitDollars;
+    const effectiveLimitEnabled =
+      data.enableSpendingLimit !== undefined
+        ? data.enableSpendingLimit
+        : previousSettings.enableSpendingLimit;
+
+    if (
+      effectiveLimitEnabled &&
+      (effectiveLimitDollars === null || effectiveLimitDollars <= 0)
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "A positive monthly spending limit is required when spending limits are enabled",
+        },
+        { status: 400 }
+      );
+    }
+
     // Convert dollars to cents if provided
     const updates: Parameters<typeof billingSettingsService.updateSettings>[1] = {};
 

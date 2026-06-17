@@ -56,6 +56,9 @@ declare namespace NodeJS {
     POLAR_WEBHOOK_SECRET: string;
     POLAR_PLUS_PRODUCT_ID: string;
     POLAR_PRO_PRODUCT_ID: string;
+    USAGE_SYNC_SCHEDULER_ENABLED?: string;
+    USAGE_SYNC_INTERVAL_MS?: string;
+    USAGE_SYNC_BATCH_SIZE?: string;
 
     // Chatwoot Customer Support (Cloud Only)
     // Server-side only (no NEXT_PUBLIC_ prefix) - pattern matches TURNSTILE_* vars

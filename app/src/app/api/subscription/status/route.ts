@@ -1,9 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireUserAuthContext, isAuthError } from "@/lib/auth-context";
-import { db } from "@/utils/db";
-import { organization } from "@/db/schema";
-import { eq } from "drizzle-orm";
-import { isCloudHosted } from "@/lib/feature-flags";
+import { subscriptionService } from "@/lib/services/subscription-service";
 
 /**
  * GET /api/subscription/status
@@ -22,39 +19,23 @@ export async function GET() {
       );
     }
 
-    // Self-hosted: always active with unlimited plan
-    if (!isCloudHosted()) {
-      return NextResponse.json({
-        isActive: true,
-        plan: "unlimited",
-      });
-    }
+    const access = await subscriptionService.getSubscriptionAccessStatus(
+      organizationId
+    );
 
-    // Cloud mode: check org subscription fields (single query)
-    const org = await db.query.organization.findFirst({
-      where: eq(organization.id, organizationId),
-      columns: {
-        subscriptionPlan: true,
-        subscriptionStatus: true,
-      },
-    });
-
-    if (!org) {
+    if (access.reason === "organization_not_found") {
       return NextResponse.json(
         { error: "Organization not found" },
         { status: 404 }
       );
     }
 
-    // Cloud mode: only plus/pro are valid active plans
-    const hasValidPlan =
-      org.subscriptionPlan === "plus" || org.subscriptionPlan === "pro";
-    const isActive =
-      hasValidPlan && org.subscriptionStatus === "active";
-
     return NextResponse.json({
-      isActive,
-      plan: hasValidPlan ? org.subscriptionPlan : null,
+      isActive: access.isActive,
+      plan: access.plan,
+      status: access.status,
+      reason: access.reason,
+      subscriptionEndsAt: access.subscriptionEndsAt,
     });
   } catch (error) {
     if (isAuthError(error)) {

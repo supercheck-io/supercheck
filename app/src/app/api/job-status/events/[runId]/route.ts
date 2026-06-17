@@ -38,6 +38,8 @@ function mapEventToStatus(event: NormalizedQueueEvent): string {
       return "failed";
     case "error":
       return "error";
+    case "blocked":
+      return "blocked";
     default:
       return "running";
   }
@@ -130,7 +132,7 @@ export async function GET(request: Request) {
           trigger: event.trigger,
         };
 
-        if (status === "passed" || status === "failed" || status === "error") {
+        if (status === "passed" || status === "failed" || status === "error" || status === "blocked") {
           const runDetails = await fetchRunDetails(runId);
           if (runDetails) {
             Object.assign(basePayload, runDetails);

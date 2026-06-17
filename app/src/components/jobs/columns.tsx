@@ -33,12 +33,29 @@ import { TruncatedTextWithTooltip } from "@/components/ui/truncated-text-with-to
 import { PlaywrightLogo } from "@/components/logo/playwright-logo";
 import { K6Logo } from "@/components/logo/k6-logo";
 import { notifyExecutionsChanged } from "@/hooks/use-executions";
+import {
+  formatBillingBlockedMessage,
+  isBillingBlockedError,
+  isBillingBlockedStatus,
+} from "@/lib/billing-errors";
 
 // Type definition for the extended meta object used in this table
 interface JobsTableMeta {
   onDeleteJob?: (id: string) => void;
   globalFilterColumns?: string[];
   // Include other potential properties from the base TableMeta if needed
+}
+
+function getEffectiveJobStatus(job: Job): string {
+  if (
+    isBillingBlockedStatus(job.status) ||
+    isBillingBlockedStatus(job.lastRun?.status) ||
+    isBillingBlockedError(job.lastRun?.errorDetails)
+  ) {
+    return "blocked";
+  }
+
+  return job.status || "pending";
 }
 
 // Separate component for name with popover
@@ -164,6 +181,19 @@ function RunButton({ job }: { job: Job }) {
         if (response.status === 429) {
           errorMessage =
             "Queue capacity limit reached. Please try again later.";
+        } else if (response.status === 402) {
+          try {
+            const errorJson = JSON.parse(errorText) as {
+              code?: string;
+              error?: string;
+            };
+            errorMessage =
+              errorJson.code === "BILLING_BLOCKED"
+                ? formatBillingBlockedMessage(errorJson.error)
+                : errorJson.error || errorText;
+          } catch {
+            errorMessage = formatBillingBlockedMessage(errorText);
+          }
         } else {
           // Use the original error message but trim it to be more concise
           errorMessage = errorText.replace("Failed to run job: ", "");
@@ -488,7 +518,8 @@ export const columns: ColumnDef<Job>[] = [
     },
   },
   {
-    accessorKey: "status",
+    id: "status",
+    accessorFn: getEffectiveJobStatus,
     header: ({ column }) => (
       <DataTableColumnHeader column={column} title="Status" />
     ),

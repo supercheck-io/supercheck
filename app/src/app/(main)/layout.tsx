@@ -24,6 +24,36 @@ import { getCurrentUser, getActiveOrganization, getUserProjects } from "@/lib/se
 import { getCurrentProjectContext } from "@/lib/project-context";
 import { isSelfHosted } from "@/lib/feature-flags";
 
+function deriveInitialSubscriptionStatus(
+  org: NonNullable<Awaited<ReturnType<typeof getActiveOrganization>>>,
+  selfHosted: boolean
+): SubscriptionStatus {
+  if (selfHosted) {
+    return { isActive: true, plan: "unlimited" };
+  }
+
+  const plan =
+    org.subscriptionPlan === "plus" || org.subscriptionPlan === "pro"
+      ? org.subscriptionPlan
+      : null;
+  if (!plan) {
+    return { isActive: false, plan: null };
+  }
+
+  if (org.subscriptionStatus === "active" || org.subscriptionStatus === "past_due") {
+    return { isActive: true, plan };
+  }
+
+  if (org.subscriptionStatus === "canceled" && org.subscriptionEndsAt) {
+    return {
+      isActive: new Date(org.subscriptionEndsAt).getTime() > Date.now(),
+      plan,
+    };
+  }
+
+  return { isActive: false, plan };
+}
+
 export default async function MainLayout({
   children,
 }: Readonly<{
@@ -49,15 +79,10 @@ export default async function MainLayout({
 
   if (user && org) {
     // Derive subscription status from org data already fetched (avoids client-side API call)
-    if (initialIsSelfHosted) {
-      initialSubscriptionStatus = { isActive: true, plan: "unlimited" };
-    } else {
-      const hasValidPlan = org.subscriptionPlan === "plus" || org.subscriptionPlan === "pro";
-      initialSubscriptionStatus = {
-        isActive: hasValidPlan && org.subscriptionStatus === "active",
-        plan: hasValidPlan ? org.subscriptionPlan! : null,
-      };
-    }
+    initialSubscriptionStatus = deriveInitialSubscriptionStatus(
+      org,
+      initialIsSelfHosted
+    );
     try {
       const [projectsResult, currentProjectResult] = await Promise.all([
         getUserProjects(user.id, org.id),
@@ -147,4 +172,3 @@ export default async function MainLayout({
     </AuthGuard>
   );
 }
-

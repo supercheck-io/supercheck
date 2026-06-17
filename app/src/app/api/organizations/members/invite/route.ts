@@ -150,11 +150,14 @@ export async function POST(request: NextRequest) {
 
     // Check team member limit for the organization
     const currentMemberCount = await db
-      .select({ count: member.userId })
+      .select({ count: sql<number>`count(*)` })
       .from(member)
       .where(eq(member.organizationId, organizationId));
 
-    const limitCheck = await checkTeamMemberLimit(organizationId, currentMemberCount.length);
+    const limitCheck = await checkTeamMemberLimit(
+      organizationId,
+      Number(currentMemberCount[0]?.count || 0)
+    );
     if (!limitCheck.allowed) {
       console.warn(`Team member limit reached for organization ${organizationId}: ${limitCheck.error}`);
       return NextResponse.json(

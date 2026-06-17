@@ -1,6 +1,6 @@
 "use client";
 
-export type K6RunStatus = "running" | "passed" | "failed" | "error";
+export type K6RunStatus = "running" | "passed" | "failed" | "error" | "blocked";
 
 export type K6RunDetails = {
   status: string;
@@ -30,6 +30,7 @@ export const statusLabelMap: Record<K6RunStatus, string> = {
   passed: "Test completed",
   failed: "Test failed",
   error: "Execution error",
+  blocked: "Execution blocked",
 };
 
 export const toDisplayStatus = (
@@ -44,6 +45,9 @@ export const toDisplayStatus = (
   }
   if (normalized === "failed") {
     return "failed";
+  }
+  if (normalized === "blocked") {
+    return "blocked";
   }
   // Error status (includes cancellations which are stored as 'error')
   if (normalized === "error") {

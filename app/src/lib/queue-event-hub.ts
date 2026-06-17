@@ -28,7 +28,7 @@ export type NormalizedQueueEvent = {
   category: QueueCategory;
   queue: string;
   event: "waiting" | "active" | "completed" | "failed" | "stalled";
-  status: "running" | "passed" | "failed" | "error";
+  status: "running" | "passed" | "failed" | "error" | "blocked";
   queueJobId: string;
   entityId?: string;
   trigger?: string;
@@ -367,7 +367,9 @@ class QueueEventHub extends EventEmitter {
           errorField.toLowerCase().includes("cancelled")
         );
 
-        if (isCancellation) {
+        if (errorField?.startsWith("BILLING_BLOCKED:")) {
+          status = "blocked";
+        } else if (isCancellation) {
           // Cancellations are treated as errors (infrastructure-level failures)
           status = "error";
         } else if (hasSuccessField) {

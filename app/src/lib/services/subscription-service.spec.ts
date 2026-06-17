@@ -1007,6 +1007,86 @@ describe("SubscriptionService", () => {
     });
   });
 
+  describe("getSubscriptionAccessStatus", () => {
+    it("should allow active paid subscriptions", async () => {
+      const result = await service.getSubscriptionAccessStatus(testOrgId);
+
+      expect(result).toMatchObject({
+        isActive: true,
+        plan: "plus",
+        status: "active",
+        reason: "active",
+      });
+    });
+
+    it("should allow canceled subscriptions during grace period", async () => {
+      const futureDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      mockDbQueryOrgFindFirst.mockResolvedValue({
+        ...mockOrganization,
+        subscriptionStatus: "canceled",
+        subscriptionEndsAt: futureDate,
+      });
+
+      const result = await service.getSubscriptionAccessStatus(testOrgId);
+
+      expect(result).toMatchObject({
+        isActive: true,
+        plan: "plus",
+        status: "canceled",
+        reason: "canceled_in_grace",
+      });
+    });
+
+    it("should deny canceled subscriptions after grace period", async () => {
+      const pastDate = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      mockDbQueryOrgFindFirst.mockResolvedValue({
+        ...mockOrganization,
+        subscriptionStatus: "canceled",
+        subscriptionEndsAt: pastDate,
+      });
+
+      const result = await service.getSubscriptionAccessStatus(testOrgId);
+
+      expect(result).toMatchObject({
+        isActive: false,
+        plan: "plus",
+        status: "canceled",
+        reason: "canceled_expired",
+      });
+    });
+
+    it("should allow past_due subscriptions while payment retries", async () => {
+      mockDbQueryOrgFindFirst.mockResolvedValue({
+        ...mockOrganization,
+        subscriptionStatus: "past_due",
+      });
+
+      const result = await service.getSubscriptionAccessStatus(testOrgId);
+
+      expect(result).toMatchObject({
+        isActive: true,
+        plan: "plus",
+        status: "past_due",
+        reason: "past_due",
+      });
+    });
+
+    it("should deny invalid cloud plans", async () => {
+      mockDbQueryOrgFindFirst.mockResolvedValue({
+        ...mockOrganization,
+        subscriptionPlan: "unlimited",
+      });
+
+      const result = await service.getSubscriptionAccessStatus(testOrgId);
+
+      expect(result).toMatchObject({
+        isActive: false,
+        plan: null,
+        reason: "invalid_plan",
+      });
+    });
+  });
+
   // ==========================================================================
   // BOUNDARY AND EDGE CASES
   // ==========================================================================

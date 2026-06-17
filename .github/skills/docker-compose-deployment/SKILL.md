@@ -43,8 +43,8 @@ SuperCheck ships **five** Docker Compose files in `deploy/docker/`:
 All compose files use `SUPERCHECK_VERSION` with a fallback default:
 
 ```yaml
-image: ghcr.io/supercheck-io/supercheck/app:${SUPERCHECK_VERSION:-1.3.3}
-image: ghcr.io/supercheck-io/supercheck/worker:${SUPERCHECK_VERSION:-1.3.3}
+image: ghcr.io/supercheck-io/supercheck/app:${SUPERCHECK_VERSION:-1.3.5}
+image: ghcr.io/supercheck-io/supercheck/worker:${SUPERCHECK_VERSION:-1.3.5}
 ```
 
 ### Upgrading

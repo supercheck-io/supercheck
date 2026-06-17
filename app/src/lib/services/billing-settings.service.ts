@@ -38,6 +38,17 @@ export interface BillingSettingsResponse {
   updatedAt: Date;
 }
 
+type NotificationThreshold =
+  | "50"
+  | "80"
+  | "90"
+  | "100"
+  | "spending_warning"
+  | "spending_limit"
+  | "spending_90";
+
+type NotificationResource = "playwright" | "k6" | "ai";
+
 class BillingSettingsService {
   /**
    * Get billing settings for an organization
@@ -188,7 +199,8 @@ class BillingSettingsService {
    */
   async markNotificationSent(
     organizationId: string,
-    threshold: "50" | "80" | "90" | "100" | "spending_warning" | "spending_limit" | "spending_90"
+    threshold: NotificationThreshold,
+    resource?: NotificationResource
   ): Promise<void> {
     const settings = await db.query.billingSettings.findFirst({
       where: eq(billingSettings.organizationId, organizationId),
@@ -196,14 +208,10 @@ class BillingSettingsService {
 
     if (!settings) return;
 
-    // notificationsSentThisPeriod is now a jsonb array
+    // notificationsSentThisPeriod is a jsonb array. Positive numbers are
+    // resource-qualified usage thresholds; negative numbers are spending alerts.
     const sentThisPeriod: number[] = settings.notificationsSentThisPeriod ?? [];
-
-    // Convert threshold to number for consistency
-    const thresholdNum = threshold === 'spending_warning' ? -1 
-      : threshold === 'spending_limit' ? -2 
-      : threshold === 'spending_90' ? -3 
-      : parseInt(threshold, 10);
+    const thresholdNum = this.getNotificationSentKey(threshold, resource);
 
     if (!sentThisPeriod.includes(thresholdNum)) {
       sentThisPeriod.push(thresholdNum);
@@ -220,41 +228,41 @@ class BillingSettingsService {
   }
 
   /**
-   * Check if a notification has already been sent this period
-   * 
-   * RATE LIMITING: Also checks if enough time has passed since the last notification
-   * to prevent spam during rapid usage changes (minimum 1 hour between notifications)
+   * Check if a notification has already been sent this period.
+   * De-duplicates by threshold and resource so one meter does not suppress
+   * alerts for another meter in the same billing period.
    */
   async hasNotificationBeenSent(
     organizationId: string,
-    threshold: "50" | "80" | "90" | "100" | "spending_warning" | "spending_limit" | "spending_90"
+    threshold: NotificationThreshold,
+    resource?: NotificationResource
   ): Promise<boolean> {
-    const MIN_NOTIFICATION_INTERVAL_MS = 60 * 60 * 1000; // 1 hour minimum between any notifications
-
     const settings = await db.query.billingSettings.findFirst({
       where: eq(billingSettings.organizationId, organizationId),
     });
 
     if (!settings) return false;
 
-    // Time-based rate limit: prevent notification spam during rapid usage changes
-    if (settings.lastNotificationSentAt) {
-      const timeSinceLastNotification = Date.now() - settings.lastNotificationSentAt.getTime();
-      if (timeSinceLastNotification < MIN_NOTIFICATION_INTERVAL_MS) {
-        // Rate limited - treat as if notification was already sent
-        return true;
-      }
-    }
-
     if (!settings.notificationsSentThisPeriod) return false;
 
     // notificationsSentThisPeriod is now a jsonb array of numbers
     const sentThisPeriod: number[] = settings.notificationsSentThisPeriod;
-    const thresholdNum = threshold === 'spending_warning' ? -1 
-      : threshold === 'spending_limit' ? -2 
-      : threshold === 'spending_90' ? -3 
-      : parseInt(threshold, 10);
+    const thresholdNum = this.getNotificationSentKey(threshold, resource);
     return sentThisPeriod.includes(thresholdNum);
+  }
+
+  private getNotificationSentKey(
+    threshold: NotificationThreshold,
+    resource?: NotificationResource
+  ): number {
+    if (threshold === "spending_warning") return -1;
+    if (threshold === "spending_limit") return -2;
+    if (threshold === "spending_90") return -3;
+
+    const thresholdNum = parseInt(threshold, 10);
+    if (resource === "k6") return 1000 + thresholdNum;
+    if (resource === "ai") return 2000 + thresholdNum;
+    return thresholdNum;
   }
 
   /**

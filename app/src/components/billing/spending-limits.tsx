@@ -59,6 +59,15 @@ export function SpendingLimits({ className }: SpendingLimitsProps) {
   const [emails, setEmails] = useState<string[]>([]);
   const [newEmail, setNewEmail] = useState("");
 
+  const parsedLimitAmount = limitAmount.trim()
+    ? Number(limitAmount)
+    : null;
+  const limitAmountInvalid =
+    enableLimit &&
+    (parsedLimitAmount === null ||
+      !Number.isFinite(parsedLimitAmount) ||
+      parsedLimitAmount <= 0);
+
   useEffect(() => {
     fetchSettings();
   }, []);
@@ -92,6 +101,14 @@ export function SpendingLimits({ className }: SpendingLimitsProps) {
   };
 
   const handleSave = async () => {
+    if (limitAmountInvalid) {
+      toast.error("Spending limit is required", {
+        description: "Enter a positive monthly overage cap before saving.",
+        duration: 4000,
+      });
+      return;
+    }
+
     try {
       setSaving(true);
 
@@ -100,7 +117,7 @@ export function SpendingLimits({ className }: SpendingLimitsProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           enableSpendingLimit: enableLimit,
-          monthlySpendingLimitDollars: enableLimit && limitAmount ? parseFloat(limitAmount) : null,
+          monthlySpendingLimitDollars: enableLimit ? parsedLimitAmount : null,
           hardStopOnLimit: enableLimit, // Hard stop is always enabled when spending limit is set
           notifyAt50Percent: false,
           notifyAt80Percent: enableNotifications,
@@ -191,7 +208,11 @@ export function SpendingLimits({ className }: SpendingLimitsProps) {
                 Control overage spending and get usage alerts
               </p>
             </div>
-            <Button onClick={handleSave} disabled={saving} size="sm">
+            <Button
+              onClick={handleSave}
+              disabled={saving || limitAmountInvalid}
+              size="sm"
+            >
               {saving ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -235,16 +256,25 @@ export function SpendingLimits({ className }: SpendingLimitsProps) {
                           <DollarSign className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                           <Input
                             type="number"
-                            min="0"
+                            min="1"
                             step="1"
                             placeholder="100"
                             value={limitAmount}
                             onChange={(e) => setLimitAmount(e.target.value)}
-                            className="h-8 pl-7 text-sm"
+                            aria-invalid={limitAmountInvalid}
+                            className={cn(
+                              "h-8 pl-7 text-sm",
+                              limitAmountInvalid && "border-destructive"
+                            )}
                           />
                         </div>
                         <span className="text-xs text-muted-foreground">/month overage cap</span>
                       </div>
+                      {limitAmountInvalid && (
+                        <p className="text-xs text-destructive">
+                          Enter a positive monthly cap to enable hard stop.
+                        </p>
+                      )}
 
                       {spending && spending.limitEnabled && (
                         <div className="flex items-center gap-2 text-xs">

@@ -9,7 +9,7 @@ import { requirePermissions } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { randomUUID } from "crypto";
 import { checkStatusPageLimit } from "@/lib/middleware/plan-enforcement";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 const createStatusPageSchema = z.object({
   name: z.string().min(1, "Name is required").max(255),
@@ -53,11 +53,14 @@ export async function createStatusPage(data: CreateStatusPageData) {
 
     // Check status page limit for the organization
     const currentStatusPageCount = await db
-      .select({ count: statusPages.id })
+      .select({ count: sql<number>`count(*)` })
       .from(statusPages)
       .where(eq(statusPages.organizationId, organizationId));
 
-    const limitCheck = await checkStatusPageLimit(organizationId, currentStatusPageCount.length);
+    const limitCheck = await checkStatusPageLimit(
+      organizationId,
+      Number(currentStatusPageCount[0]?.count || 0)
+    );
     if (!limitCheck.allowed) {
       console.warn(`Status page limit reached for organization ${organizationId}: ${limitCheck.error}`);
       return {

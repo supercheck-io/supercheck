@@ -18,6 +18,7 @@ import { validateK6Script } from "@/lib/k6-validator";
 import { subscriptionService } from "@/lib/services/subscription-service";
 import { polarUsageService } from "@/lib/services/polar-usage.service";
 import { resolveProjectK6Location } from "@/lib/location-registry";
+import { buildBillingBlockedResponse } from "@/lib/billing-errors";
 
 export async function POST(request: Request) {
   let jobId: string | null = null;
@@ -123,7 +124,7 @@ export async function POST(request: Request) {
     const spendingBlock = await polarUsageService.shouldBlockUsage(organizationId);
     if (spendingBlock.blocked) {
       return NextResponse.json(
-        { error: spendingBlock.reason },
+        buildBillingBlockedResponse(spendingBlock.reason),
         { status: 402 }
       );
     }

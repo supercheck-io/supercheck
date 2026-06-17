@@ -149,6 +149,12 @@ const { subscriptionService: mockSubscriptionServiceSingleton } =
       getOrganizationPlan: jest.Mock;
     };
   };
+const { polarUsageService: mockPolarUsageService } =
+  jest.requireMock("@/lib/services/polar-usage.service") as {
+    polarUsageService: {
+      shouldBlockUsage: jest.Mock;
+    };
+  };
 
 describe("Execution route regressions", () => {
   const authCtx = {
@@ -182,10 +188,11 @@ describe("Execution route regressions", () => {
     });
     mockCreateRateLimitHeaders.mockReturnValue({});
 
-    mockSubscriptionServiceSingleton.blockUntilSubscribed.mockResolvedValue(undefined);
-    mockSubscriptionServiceSingleton.requireValidPolarCustomer.mockResolvedValue(undefined);
-    mockSubscriptionServiceSingleton.getOrganizationPlan.mockResolvedValue({ plan: "pro" });
-  });
+	    mockSubscriptionServiceSingleton.blockUntilSubscribed.mockResolvedValue(undefined);
+	    mockSubscriptionServiceSingleton.requireValidPolarCustomer.mockResolvedValue(undefined);
+	    mockSubscriptionServiceSingleton.getOrganizationPlan.mockResolvedValue({ plan: "pro" });
+	    mockPolarUsageService.shouldBlockUsage.mockResolvedValue({ blocked: false });
+	  });
 
   it("GET /api/jobs/[id]/trigger returns 401 when auth fails", async () => {
     const authError = new Error("Authentication required");
@@ -201,16 +208,16 @@ describe("Execution route regressions", () => {
     expect(response.status).toBe(401);
   });
 
-  it("POST /api/tests/[id]/execute persists and returns queue status", async () => {
+	  it("POST /api/tests/[id]/execute persists and returns queue status", async () => {
     mockDb.query.tests.findFirst.mockResolvedValue({
       id: "test-1",
       type: "playwright",
       script: Buffer.from("test('smoke', async () => {})").toString("base64"),
       projectId: "project-1",
       organizationId: "org-1",
-    });
+	  });
 
-    const insertValues = jest.fn().mockReturnValue({
+	    const insertValues = jest.fn().mockReturnValue({
       returning: jest.fn().mockResolvedValue([{ id: "run-1" }]),
     });
     mockDb.insert.mockReturnValue({ values: insertValues });
@@ -239,8 +246,36 @@ describe("Execution route regressions", () => {
     expect(insertValues).toHaveBeenCalledWith(
       expect.objectContaining({ status: "queued" }),
     );
-    expect(updateSet).toHaveBeenCalledWith({ status: "queued" });
-  });
+	    expect(updateSet).toHaveBeenCalledWith({ status: "queued" });
+	  });
+
+	  it("POST /api/tests/[id]/execute returns a billing block payload before queueing", async () => {
+	    mockPolarUsageService.shouldBlockUsage.mockResolvedValue({
+	      blocked: true,
+	      reason: "Monthly spending limit of $320.00 reached. Current spending: $320.76.",
+	    });
+
+	    const request = new NextRequest("http://localhost/api/tests/test-1/execute", {
+	      method: "POST",
+	      body: JSON.stringify({}),
+	      headers: { "content-type": "application/json" },
+	    });
+
+	    const response = await executeSingleTest(request, {
+	      params: Promise.resolve({ id: "test-1" }),
+	    });
+
+	    const json = await response.json();
+
+	    expect(response.status).toBe(402);
+	    expect(json).toEqual({
+	      error: "Monthly spending limit of $320.00 reached. Current spending: $320.76.",
+	      code: "BILLING_BLOCKED",
+	      blocked: true,
+	    });
+	    expect(mockDb.query.tests.findFirst).not.toHaveBeenCalled();
+	    expect(mockAddTestToQueue).not.toHaveBeenCalled();
+	  });
 
   it("POST /api/jobs/[id]/trigger starts queued and updates status from queue result", async () => {
     const jobId = "00000000-0000-4000-8000-000000000010";

@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { runStatuses } from "./data";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { formatBillingBlockedMessage } from "@/lib/billing-errors";
 
 interface JobStatusProps {
   runId: string;
@@ -13,7 +14,7 @@ interface JobStatusProps {
 
 export function JobStatus({ runId, initialStatus }: JobStatusProps) {
   // Initialize state based on whether initial status is terminal
-  const isTerminalStatus = ["completed", "failed", "passed", "error"].includes(
+  const isTerminalStatus = ["completed", "failed", "passed", "error", "blocked"].includes(
     initialStatus
   );
   const [status, setStatus] = useState(initialStatus);
@@ -56,10 +57,11 @@ export function JobStatus({ runId, initialStatus }: JobStatusProps) {
           // Handle status change with toast notifications
           const isTerminalStatus = [
             "completed",
-            "passed",
-            "failed",
-            "error",
-          ].includes(newStatus);
+	            "passed",
+	            "failed",
+	            "error",
+	            "blocked",
+	          ].includes(newStatus);
           const isStatusChange = lastStatusRef.current !== newStatus;
 
           // Update our tracking of last status
@@ -71,15 +73,22 @@ export function JobStatus({ runId, initialStatus }: JobStatusProps) {
             hasShownToastRef.current = true;
 
             // Determine if job passed or failed
-            const passed = newStatus === "completed" || newStatus === "passed";
+	            const passed = newStatus === "completed" || newStatus === "passed";
+	            const blocked = newStatus === "blocked";
 
             // Show toast message for status change
-            toast[passed ? "success" : "error"](
-              passed ? "Job execution passed" : "Job execution failed",
-              {
-                description: passed
-                  ? "All tests executed successfully."
-                  : `One or more tests failed. ${data.error || ""}`,
+	            toast[passed ? "success" : "error"](
+	              passed
+	                ? "Job execution passed"
+	                : blocked
+	                  ? "Job execution blocked"
+	                  : "Job execution failed",
+	              {
+	                description: passed
+	                  ? "All tests executed successfully."
+	                  : blocked
+	                    ? formatBillingBlockedMessage(data.errorDetails)
+	                    : `One or more tests failed. ${data.error || ""}`,
                 duration: 5000,
               }
             );

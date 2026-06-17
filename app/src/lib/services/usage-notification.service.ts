@@ -29,7 +29,15 @@ type NotificationType =
   | "spending_limit_warning"
   | "spending_limit_reached";
 
-type ResourceType = "playwright" | "k6" | "combined" | "spending";
+type ResourceType = "playwright" | "k6" | "ai" | "combined" | "spending";
+type NotificationThresholdKey =
+  | "50"
+  | "80"
+  | "90"
+  | "100"
+  | "spending_warning"
+  | "spending_limit"
+  | "spending_90";
 
 interface NotificationResult {
   sent: boolean;
@@ -96,6 +104,20 @@ class UsageNotificationService {
       );
       if (k6Result) results.push(k6Result);
 
+      // Check AI credit thresholds
+      const aiResult = await this.checkResourceThreshold(
+        organizationId,
+        org.name,
+        "ai",
+        metrics.aiCredits.used,
+        metrics.aiCredits.included,
+        metrics.aiCredits.percentage,
+        settings,
+        org.usagePeriodStart,
+        org.usagePeriodEnd
+      );
+      if (aiResult) results.push(aiResult);
+
       // Check spending limit
       if (settings.enableSpendingLimit && settings.monthlySpendingLimitCents) {
         const spendingResult = await this.checkSpendingThreshold(
@@ -123,7 +145,7 @@ class UsageNotificationService {
   private async checkResourceThreshold(
     organizationId: string,
     organizationName: string,
-    resourceType: "playwright" | "k6",
+    resourceType: "playwright" | "k6" | "ai",
     used: number,
     limit: number,
     percentage: number,
@@ -156,7 +178,8 @@ class UsageNotificationService {
     // Check if notification already sent this period
     const alreadySent = await billingSettingsService.hasNotificationBeenSent(
       organizationId,
-      thresholdKey
+      thresholdKey,
+      resourceType
     );
 
     if (alreadySent) {
@@ -238,7 +261,8 @@ class UsageNotificationService {
       periodEnd,
       settings.notificationEmails,
       currentSpendingCents / 100,
-      limitCents / 100
+      limitCents / 100,
+      thresholdKey
     );
   }
 
@@ -257,7 +281,8 @@ class UsageNotificationService {
     periodEnd: Date | null,
     customEmails: string[],
     currentSpendingDollars?: number,
-    spendingLimitDollars?: number
+    spendingLimitDollars?: number,
+    notificationThresholdKey?: NotificationThresholdKey
   ): Promise<NotificationResult> {
     try {
       // Get recipients
@@ -329,9 +354,18 @@ class UsageNotificationService {
       }).returning();
 
       // Mark notification as sent in billing settings
-      const thresholdKey = this.getThresholdKey(notificationType);
+      const thresholdKey =
+        notificationThresholdKey ?? this.getThresholdKey(notificationType);
       if (thresholdKey) {
-        await billingSettingsService.markNotificationSent(organizationId, thresholdKey);
+        await billingSettingsService.markNotificationSent(
+          organizationId,
+          thresholdKey,
+          resourceType === "playwright" ||
+            resourceType === "k6" ||
+            resourceType === "ai"
+            ? resourceType
+            : undefined
+        );
       }
 
       console.log(
@@ -393,7 +427,7 @@ class UsageNotificationService {
    */
   private getThresholdKey(
     notificationType: NotificationType
-  ): "50" | "80" | "90" | "100" | "spending_warning" | "spending_limit" | null {
+  ): NotificationThresholdKey | null {
     if (notificationType === "spending_limit_warning") return "spending_warning";
     if (notificationType === "spending_limit_reached") return "spending_limit";
 

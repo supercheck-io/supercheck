@@ -16,6 +16,7 @@ import { resolveProjectVariables } from "@/lib/variable-resolver";
 import { randomUUID } from "crypto";
 import { SubscriptionService } from "@/lib/services/subscription-service";
 import { polarUsageService } from "@/lib/services/polar-usage.service";
+import { buildBillingBlockedResponse } from "@/lib/billing-errors";
 declare const Buffer: {
   from(data: string, encoding: string): { toString(encoding: string): string };
 };
@@ -68,7 +69,7 @@ export async function POST(request: NextRequest, context: ExecuteContext) {
     const spendingBlock = await polarUsageService.shouldBlockUsage(organizationId);
     if (spendingBlock.blocked) {
       return NextResponse.json(
-        { error: spendingBlock.reason },
+        buildBillingBlockedResponse(spendingBlock.reason),
         { status: 402 }
       );
     }
