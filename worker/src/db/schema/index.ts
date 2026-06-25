@@ -51,3 +51,6 @@ export * from './plan-limits';
 
 // Billing and usage tracking
 export * from './billing';
+
+// AI SRE service topology, incidents, evidence, connectors, and chat
+export * from './sre';

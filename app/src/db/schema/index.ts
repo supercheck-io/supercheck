@@ -54,3 +54,6 @@ export * from "./billing";
 
 // Location management (instance-wide locations + per-project restrictions)
 export * from "./locations";
+
+// AI SRE service topology, incidents, evidence, connectors, and chat
+export * from "./sre";

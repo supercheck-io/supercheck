@@ -8,6 +8,7 @@ import {
   pgTable,
   text,
   integer,
+  numeric,
   boolean,
   timestamp,
   uuid,
@@ -35,6 +36,12 @@ export const planLimits = pgTable('plan_limits', {
   playwrightMinutesIncluded: integer('playwright_minutes_included').notNull(),
   k6VuMinutesIncluded: integer('k6_vu_minutes_included').notNull(), // Changed from hours to minutes for consistency
   aiCreditsIncluded: integer('ai_credits_included').notNull(), // AI credits for AI fix and AI create features
+  sreInvestigationUnitsIncluded: numeric('sre_investigation_units_included', {
+    precision: 10,
+    scale: 4,
+  })
+    .notNull()
+    .default('0'),
 
   // Capacity limits - concurrent and queued
   runningCapacity: integer('running_capacity').notNull(), // concurrent executions

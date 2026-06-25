@@ -46,6 +46,13 @@ export interface UsageMetrics {
     overageCostCents: number;
     percentage: number;
   };
+  sreInvestigations: {
+    used: number;
+    included: number;
+    overage: number;
+    overageCostCents: number;
+    percentage: number;
+  };
   totalOverageCostCents: number;
   periodStart: Date | null;
   periodEnd: Date | null;
@@ -66,10 +73,12 @@ const FALLBACK_OVERAGE_PRICING_CENTS = {
   plus: {
     playwright: 3,
     k6: 1,
+    sreInvestigation: 50,
   },
   pro: {
     playwright: 2,
     k6: 1,
+    sreInvestigation: 50,
   },
 } as const;
 
@@ -178,6 +187,8 @@ class PolarUsageService {
         meterName = 'k6_vu_minutes';
       } else if (usageEvent.eventType === 'ai_usage') {
         meterName = 'ai_credits';
+      } else if (usageEvent.eventType === 'sre_investigation') {
+        meterName = 'sre_investigations';
       } else {
         meterName = 'playwright_minutes';
       }
@@ -276,10 +287,13 @@ class PolarUsageService {
     const playwrightUsed = org.playwrightMinutesUsed || 0;
     const k6Used = org.k6VuMinutesUsed || 0;
     const aiCreditsUsed = org.aiCreditsUsed || 0;
+    const sreInvestigationsUsed = Number(org.sreInvestigationUnitsUsed || 0);
 
     const playwrightOverage = Math.max(0, playwrightUsed - plan.playwrightMinutesIncluded);
     const k6Overage = Math.max(0, k6Used - plan.k6VuMinutesIncluded);
     const aiCreditsOverage = Math.max(0, aiCreditsUsed - plan.aiCreditsIncluded);
+    const sreInvestigationsIncluded = Number(plan.sreInvestigationUnitsIncluded || 0);
+    const sreInvestigationsOverage = Math.max(0, sreInvestigationsUsed - sreInvestigationsIncluded);
 
     const planForPricing = org.subscriptionPlan === "pro" ? "pro" : "plus";
     const fallbackPricing = FALLBACK_OVERAGE_PRICING_CENTS[planForPricing];
@@ -291,6 +305,10 @@ class PolarUsageService {
     );
     // AI credits use hard-limit model (no overage billing)
     const aiCreditsOverageCost = 0;
+    const sreInvestigationsOverageCost = Math.ceil(
+      sreInvestigationsOverage *
+        (pricing?.sreInvestigationUnitPriceCents ?? fallbackPricing.sreInvestigation)
+    );
 
     const playwrightPercentage =
       plan.playwrightMinutesIncluded > 0
@@ -303,6 +321,10 @@ class PolarUsageService {
     const aiPercentage =
       plan.aiCreditsIncluded > 0
         ? Math.round((aiCreditsUsed / plan.aiCreditsIncluded) * 100)
+        : 100;
+    const sreInvestigationsPercentage =
+      sreInvestigationsIncluded > 0
+        ? Math.round((sreInvestigationsUsed / sreInvestigationsIncluded) * 100)
         : 100;
 
     return {
@@ -327,7 +349,14 @@ class PolarUsageService {
         overageCostCents: aiCreditsOverageCost,
         percentage: aiPercentage,
       },
-      totalOverageCostCents: playwrightOverageCost + k6OverageCost,
+      sreInvestigations: {
+        used: sreInvestigationsUsed,
+        included: sreInvestigationsIncluded,
+        overage: sreInvestigationsOverage,
+        overageCostCents: sreInvestigationsOverageCost,
+        percentage: sreInvestigationsPercentage,
+      },
+      totalOverageCostCents: playwrightOverageCost + k6OverageCost + sreInvestigationsOverageCost,
       periodStart: org.usagePeriodStart,
       periodEnd: org.usagePeriodEnd,
     };

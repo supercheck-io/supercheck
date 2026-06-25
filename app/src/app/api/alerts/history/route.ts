@@ -4,6 +4,7 @@ import { alertHistory } from "@/db/schema";
 import { sql } from "drizzle-orm";
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { requireAuthContext, isAuthError } from '@/lib/auth-context';
+import { enqueueSreAlertTriageJob } from '@/sre/lib/background-alert-triage-queue';
 
 export async function GET(request: NextRequest) {
   try {
@@ -281,6 +282,12 @@ export async function POST(request: NextRequest) {
         sentAt: new Date(),
       })
       .returning();
+
+    try {
+      await enqueueSreAlertTriageJob({ alertHistoryId: result.id });
+    } catch (error) {
+      console.error("Error enqueueing SRE alert triage job:", error);
+    }
 
     return NextResponse.json(result);
   } catch (error) {

@@ -196,6 +196,7 @@ export const incidents = pgTable('incidents', {
   backfilled: boolean('backfilled').default(false),
   monitoringAt: timestamp('monitoring_at'),
   resolvedAt: timestamp('resolved_at'),
+  sreIncidentId: uuid('sre_incident_id'),
   shortlink: varchar('shortlink', { length: 255 }),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),

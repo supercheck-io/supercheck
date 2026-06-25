@@ -85,6 +85,20 @@
       "when": 1775643822189,
       "tag": "0011_deep_hellcat",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1782060520407,
+      "tag": "0012_ancient_krista_starr",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1782115100869,
+      "tag": "0013_massive_nekra",
+      "breakpoints": true
     }
   ]
 }

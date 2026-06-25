@@ -5,6 +5,10 @@ import {
   NotificationPayload,
   NotificationService,
 } from '../../notification/notification.service';
+import {
+  type AlertHistoryTriageCandidate,
+  SreAlertTriageQueueService,
+} from '../../monitor/services/sre-alert-triage-queue.service';
 
 type SimpleResult = { success: boolean } | { status: 'passed' | 'failed' };
 
@@ -35,6 +39,7 @@ export class JobNotificationService {
   constructor(
     private readonly dbService: DbService,
     private readonly notificationService: NotificationService,
+    private readonly sreAlertTriageQueueService: SreAlertTriageQueueService,
   ) {}
 
   async handleJobNotifications({
@@ -243,18 +248,24 @@ export class JobNotificationService {
       );
 
       try {
+        const createdAlertHistoryRows: AlertHistoryTriageCandidate[] = [];
         for (const result of notificationResults.results) {
           const status: AlertStatus = result.success ? 'sent' : 'failed';
-          await this.dbService.saveAlertHistory(
-            jobId,
-            alertType,
-            result.provider.id,
-            status,
-            payload.message,
-            result.error,
-            job.name,
+          createdAlertHistoryRows.push(
+            await this.dbService.saveAlertHistory(
+              jobId,
+              alertType,
+              result.provider.id,
+              status,
+              payload.message,
+              result.error,
+              job.name,
+            ),
           );
         }
+        await this.sreAlertTriageQueueService.enqueueAlertHistoryRows(
+          createdAlertHistoryRows,
+        );
       } catch (historyError) {
         this.logger.error(
           `Failed to save alert history for job ${jobId}: ${getErrorMessage(historyError)}`,

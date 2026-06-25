@@ -14,6 +14,7 @@ import {
   NotificationProvider,
 } from '../../notification/notification.service';
 import { decryptNotificationProviderConfig } from '../../common/notification-provider-crypto';
+import { SreAlertTriageQueueService } from './sre-alert-triage-queue.service';
 
 type ProviderRow = {
   id: string;
@@ -30,6 +31,7 @@ export class MonitorAlertService {
     private readonly dbService: DbService,
     private readonly configService: ConfigService,
     private readonly notificationService: NotificationService,
+    private readonly sreAlertTriageQueueService: SreAlertTriageQueueService,
   ) {}
 
   async sendNotification(
@@ -231,7 +233,16 @@ export class MonitorAlertService {
         sentAt: new Date(),
       }));
 
-      await db.insert(schema.alertHistory).values(historyRecords);
+      const createdRows = await db
+        .insert(schema.alertHistory)
+        .values(historyRecords)
+        .returning({
+          id: schema.alertHistory.id,
+          status: schema.alertHistory.status,
+        });
+      await this.sreAlertTriageQueueService.enqueueAlertHistoryRows(
+        createdRows,
+      );
     }
   }
 
@@ -400,7 +411,16 @@ export class MonitorAlertService {
         sentAt: new Date(),
       }));
 
-      await db.insert(schema.alertHistory).values(historyRecords);
+      const createdRows = await db
+        .insert(schema.alertHistory)
+        .values(historyRecords)
+        .returning({
+          id: schema.alertHistory.id,
+          status: schema.alertHistory.status,
+        });
+      await this.sreAlertTriageQueueService.enqueueAlertHistoryRows(
+        createdRows,
+      );
     }
   }
 }

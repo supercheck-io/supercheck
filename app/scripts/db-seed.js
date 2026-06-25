@@ -62,6 +62,7 @@ const PLAN_LIMITS_SEED = [
     playwrightMinutesIncluded: 3000,
     k6VuMinutesIncluded: 20000,
     aiCreditsIncluded: 100,
+    sreInvestigationUnitsIncluded: "10.0000",
     runningCapacity: 5,
     queuedCapacity: 50,
     maxTeamMembers: 5,
@@ -82,6 +83,7 @@ const PLAN_LIMITS_SEED = [
     playwrightMinutesIncluded: 10000,
     k6VuMinutesIncluded: 75000,
     aiCreditsIncluded: 300,
+    sreInvestigationUnitsIncluded: "50.0000",
     runningCapacity: 10,
     queuedCapacity: 100,
     maxTeamMembers: 25,
@@ -102,6 +104,7 @@ const PLAN_LIMITS_SEED = [
     playwrightMinutesIncluded: 999999,
     k6VuMinutesIncluded: 999999,
     aiCreditsIncluded: 999999,
+    sreInvestigationUnitsIncluded: "999999.0000",
     runningCapacity: 999,
     queuedCapacity: 9999,
     maxTeamMembers: 999,
@@ -126,12 +129,14 @@ const OVERAGE_PRICING_SEED = [
     playwrightMinutePriceCents: 3,
     k6VuMinutePriceCents: 1,
     aiCreditPriceCents: 5,
+    sreInvestigationUnitPriceCents: 50,
   },
   {
     plan: "pro",
     playwrightMinutePriceCents: 2,
     k6VuMinutePriceCents: 1,
     aiCreditPriceCents: 3,
+    sreInvestigationUnitPriceCents: 50,
   },
 ];
 
@@ -184,7 +189,7 @@ async function seedPlanLimits(client) {
       await client`
         INSERT INTO plan_limits (
           id, plan, max_monitors, min_check_interval_minutes,
-          playwright_minutes_included, k6_vu_minutes_included, ai_credits_included,
+          playwright_minutes_included, k6_vu_minutes_included, ai_credits_included, sre_investigation_units_included,
           running_capacity, queued_capacity, max_team_members,
           max_organizations, max_projects, max_status_pages, max_status_page_subscribers,
           custom_domains, sso_enabled, data_retention_days, aggregated_data_retention_days, job_data_retention_days,
@@ -192,7 +197,7 @@ async function seedPlanLimits(client) {
         )
         VALUES (
           gen_random_uuid(), ${plan.plan}, ${plan.maxMonitors}, ${plan.minCheckIntervalMinutes},
-          ${plan.playwrightMinutesIncluded}, ${plan.k6VuMinutesIncluded}, ${plan.aiCreditsIncluded},
+          ${plan.playwrightMinutesIncluded}, ${plan.k6VuMinutesIncluded}, ${plan.aiCreditsIncluded}, ${plan.sreInvestigationUnitsIncluded},
           ${plan.runningCapacity}, ${plan.queuedCapacity}, ${plan.maxTeamMembers},
           ${plan.maxOrganizations}, ${plan.maxProjects}, ${plan.maxStatusPages}, ${plan.maxStatusPageSubscribers},
           ${plan.customDomains}, ${plan.ssoEnabled}, ${plan.dataRetentionDays}, ${plan.aggregatedDataRetentionDays}, ${plan.jobDataRetentionDays},
@@ -204,6 +209,7 @@ async function seedPlanLimits(client) {
           playwright_minutes_included = EXCLUDED.playwright_minutes_included,
           k6_vu_minutes_included = EXCLUDED.k6_vu_minutes_included,
           ai_credits_included = EXCLUDED.ai_credits_included,
+          sre_investigation_units_included = EXCLUDED.sre_investigation_units_included,
           running_capacity = EXCLUDED.running_capacity,
           queued_capacity = EXCLUDED.queued_capacity,
           max_team_members = EXCLUDED.max_team_members,
@@ -277,18 +283,19 @@ async function seedOveragePricing(client) {
     try {
       await client`
         INSERT INTO overage_pricing (
-          id, plan, playwright_minute_price_cents, k6_vu_minute_price_cents, ai_credit_price_cents,
+          id, plan, playwright_minute_price_cents, k6_vu_minute_price_cents, ai_credit_price_cents, sre_investigation_unit_price_cents,
           created_at, updated_at
         )
         VALUES (
           gen_random_uuid(), ${pricing.plan}, ${pricing.playwrightMinutePriceCents}, 
-          ${pricing.k6VuMinutePriceCents}, ${pricing.aiCreditPriceCents},
+          ${pricing.k6VuMinutePriceCents}, ${pricing.aiCreditPriceCents}, ${pricing.sreInvestigationUnitPriceCents},
           NOW(), NOW()
         )
         ON CONFLICT (plan) DO UPDATE SET
           playwright_minute_price_cents = EXCLUDED.playwright_minute_price_cents,
           k6_vu_minute_price_cents = EXCLUDED.k6_vu_minute_price_cents,
           ai_credit_price_cents = EXCLUDED.ai_credit_price_cents,
+          sre_investigation_unit_price_cents = EXCLUDED.sre_investigation_unit_price_cents,
           updated_at = NOW()
       `;
       log(`Upserted overage pricing: ${pricing.plan}`);

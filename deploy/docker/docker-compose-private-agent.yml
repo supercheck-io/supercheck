@@ -1,0 +1,57 @@
+# Private Agent Deployment
+#
+# Runs the SuperCheck worker image in outbound-only Private Agent mode.
+# Use this for SuperCheck Cloud or any deployment where the edge process must not
+# receive PostgreSQL, Redis, or S3 credentials.
+#
+# This is intentionally different from docker-compose-worker.yml:
+# - Private Agent: connector proxy, outbound HTTPS to SuperCheck API only.
+# - Worker: trusted execution worker, requires PostgreSQL/Redis/S3 access.
+#
+# Usage:
+#   1. Create a Private Agent in Settings/Admin -> Private Agents.
+#   2. Copy the one-time token and agent ID.
+#   3. Create .env next to this file with the variables below.
+#   4. Run: docker compose -f docker-compose-private-agent.yml up -d
+#
+# Required .env:
+#   SUPERCHECK_API_URL=https://app.supercheck.io
+#   PRIVATE_AGENT_ID=<agent uuid from SuperCheck>
+#   PRIVATE_AGENT_TOKEN=<short-lived registration token shown during registration/rotation>
+#
+# Optional .env:
+#   SUPERCHECK_VERSION=1.3.5
+#   PRIVATE_AGENT_LEASE_WAIT_MS=25000
+#   PRIVATE_AGENT_RETRY_INTERVAL_MS=5000
+#   PRIVATE_AGENT_HEARTBEAT_INTERVAL_MS=30000
+
+services:
+  private-agent:
+    image: ghcr.io/supercheck-io/supercheck/worker:${SUPERCHECK_VERSION:-1.3.5}
+    init: true
+    user: "1000:1000"
+    read_only: true
+    tmpfs:
+      - /tmp:size=256M,uid=1000,gid=1000,mode=1777
+      - /home/pwuser/.cache:size=128M,uid=1000,gid=1000,mode=0700
+    volumes:
+      - private-agent-state:/home/pwuser/.supercheck
+    environment:
+      NODE_ENV: production
+      SUPERCHECK_RUNTIME_MODE: private-agent
+      SUPERCHECK_API_URL: ${SUPERCHECK_API_URL:?SUPERCHECK_API_URL is required}
+      PRIVATE_AGENT_ID: ${PRIVATE_AGENT_ID:?PRIVATE_AGENT_ID is required}
+      PRIVATE_AGENT_TOKEN: ${PRIVATE_AGENT_TOKEN:?PRIVATE_AGENT_TOKEN is required}
+      PRIVATE_AGENT_CREDENTIAL_FILE: /home/pwuser/.supercheck/private-agent-token
+      PRIVATE_AGENT_VERSION: ${SUPERCHECK_VERSION:-1.3.5}
+      PRIVATE_AGENT_LEASE_WAIT_MS: ${PRIVATE_AGENT_LEASE_WAIT_MS:-25000}
+      PRIVATE_AGENT_RETRY_INTERVAL_MS: ${PRIVATE_AGENT_RETRY_INTERVAL_MS:-5000}
+      PRIVATE_AGENT_HEARTBEAT_INTERVAL_MS: ${PRIVATE_AGENT_HEARTBEAT_INTERVAL_MS:-30000}
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+volumes:
+  private-agent-state:

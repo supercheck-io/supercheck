@@ -25,9 +25,15 @@ import {
   UserCog,
   UserPlus,
   Tally4,
+  Cable,
+  LayoutDashboard,
   type LucideIcon,
   ClipboardList,
   Target,
+  Network,
+  Siren,
+  Bot,
+  FileSearch,
 } from "lucide-react";
 import { PlaywrightLogo } from "@/components/logo/playwright-logo";
 import { K6Logo } from "@/components/logo/k6-logo";
@@ -63,6 +69,35 @@ const data = {
       title: "Alerts",
       url: "/alerts",
       icon: BellRing,
+    },
+
+    {
+      title: "Incidents",
+      url: "/incidents",
+      icon: Siren,
+    },
+
+    {
+      title: "SRE AI",
+      url: "/sre-ai",
+      icon: Bot,
+      items: [
+        {
+          title: "Console",
+          url: "/sre-ai",
+          icon: Bot,
+        },
+        {
+          title: "Investigations",
+          url: "/sre-ai/investigations",
+          icon: FileSearch,
+        },
+        {
+          title: "Evidence Graph",
+          url: "/sre-ai/evidence-graph",
+          icon: Network,
+        },
+      ],
     },
 
     {
@@ -195,6 +230,11 @@ const data = {
       url: "/monitors",
       icon: Globe,
     },
+    {
+      title: "Services",
+      url: "/services",
+      icon: Network,
+    },
   ],
 
   SuperAdmin: [
@@ -209,6 +249,28 @@ const data = {
       title: "Admin",
       url: "/org-admin",
       icon: UserCog,
+      items: [
+        {
+          title: "Overview",
+          url: "/org-admin",
+          icon: LayoutDashboard,
+        },
+        {
+          title: "Connectors",
+          url: "/org-admin/connectors",
+          icon: Cable,
+        },
+        {
+          title: "Private Agents",
+          url: "/org-admin/private-agents",
+          icon: EthernetPort,
+        },
+        {
+          title: "Diagnostic Queries",
+          url: "/org-admin/diagnostic-queries",
+          icon: Database,
+        },
+      ],
     },
   ],
 

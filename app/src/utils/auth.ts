@@ -518,7 +518,6 @@ export const auth = betterAuth({
       // provides a more complete implementation with additional features.
     }),
     apiKey(),
-    nextCookies(),
     // Track last login method for better UX (shows "Last used" badge)
     lastLoginMethod(),
     // Conditionally add Polar plugin if enabled
@@ -531,6 +530,7 @@ export const auth = betterAuth({
       const captchaPlugin = getCaptchaPlugin();
       return captchaPlugin ? [captchaPlugin] : [];
     })(),
+    nextCookies(),
   ],
   advanced: {
     database: {

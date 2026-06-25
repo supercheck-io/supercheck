@@ -1,0 +1,30 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: supercheck-sre-agent-workspace-deny-by-default
+  namespace: supercheck-execution
+  labels:
+    app.kubernetes.io/managed-by: supercheck-sre
+    app.kubernetes.io/component: agent-workspace
+spec:
+  podSelector:
+    matchLabels:
+      app: sre-agent-workspace
+      app.kubernetes.io/component: agent-workspace
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress: []
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53

@@ -431,7 +431,7 @@ export class DbService implements OnModuleInit {
     message: string,
     errorMessage?: string,
     jobNameOverride?: string,
-  ): Promise<void> {
+  ): Promise<{ id: string; status: AlertStatus }> {
     try {
       let jobName = jobNameOverride;
 
@@ -441,21 +441,25 @@ export class DbService implements OnModuleInit {
         jobName = job?.name || `Job ${jobId}`;
       }
 
-      await this.db.insert(alertHistory).values({
-        jobId,
-        type,
-        provider,
-        status,
-        message,
-        sentAt: new Date(),
-        errorMessage,
-        target: jobName,
-        targetType: 'job',
-      });
+      const [created] = await this.db
+        .insert(alertHistory)
+        .values({
+          jobId,
+          type,
+          provider,
+          status,
+          message,
+          sentAt: new Date(),
+          errorMessage,
+          target: jobName,
+          targetType: 'job',
+        })
+        .returning({ id: alertHistory.id, status: alertHistory.status });
 
       this.logger.log(
         `Successfully saved alert history for job ${jobId} with status: ${status}`,
       );
+      return created;
     } catch (error) {
       this.logger.error(
         `Failed to save alert history for job ${jobId}:`,

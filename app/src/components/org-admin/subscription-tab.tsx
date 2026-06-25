@@ -58,6 +58,13 @@ interface SubscriptionData {
       overageCostCents?: number;
       percentage: number;
     };
+    sreInvestigations: {
+      used: number;
+      included: number;
+      overage: number;
+      overageCostCents?: number;
+      percentage: number;
+    };
     totalOverageCostCents?: number;
   };
   limits: {
@@ -376,6 +383,14 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
               included={data.usage.aiCredits.included}
               overage={data.usage.aiCredits.overage}
               percentage={data.usage.aiCredits.percentage}
+            />
+            <UsageProgressBar
+              icon={<AlertCircle className="h-5 w-5 text-cyan-500" />}
+              label="SRE Investigations"
+              used={data.usage.sreInvestigations.used}
+              included={data.usage.sreInvestigations.included}
+              overage={data.usage.sreInvestigations.overage}
+              percentage={data.usage.sreInvestigations.percentage}
             />
           </CardContent>
         </Card>

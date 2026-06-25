@@ -143,6 +143,15 @@ export async function GET() {
           overage: usage.aiCredits.overage,
           percentage: toPercent(usage.aiCredits.used, usage.aiCredits.included),
         },
+        sreInvestigations: {
+          used: usage.sreInvestigations.used,
+          included: usage.sreInvestigations.included,
+          overage: usage.sreInvestigations.overage,
+          percentage: toPercent(
+            usage.sreInvestigations.used,
+            usage.sreInvestigations.included
+          ),
+        },
       },
       limits: {
         monitors: {

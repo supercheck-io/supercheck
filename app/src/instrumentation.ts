@@ -101,6 +101,17 @@ export async function register() {
       console.error('[Instrumentation] ❌ Failed to initialize email template processor:', error);
     }
 
+    // Initialize SRE alert triage processor only when explicitly enabled.
+    try {
+      const { initializeSreAlertTriageProcessor } = await import('@/sre/lib/background-alert-triage-processor');
+      const initialized = await initializeSreAlertTriageProcessor();
+      if (initialized) {
+        console.log('[Instrumentation] ✅ SRE alert triage processor initialized');
+      }
+    } catch (error) {
+      console.error('[Instrumentation] ❌ Failed to initialize SRE alert triage processor:', error);
+    }
+
     console.log('[Instrumentation] ✨ Background services startup complete');
   }
 }

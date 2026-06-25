@@ -65,6 +65,28 @@ describe('RBAC Permissions', () => {
       expect(statement.variable).toContain('view');
       expect(statement.variable).toContain('view_secrets');
     });
+
+    it('should define SRE permissions', () => {
+      const sreResources = [
+        'sre_service',
+        'sre_incident',
+        'sre_investigation',
+        'sre_connector',
+        'sre_runbook',
+        'sre_evidence',
+      ] as const;
+
+      for (const resource of sreResources) {
+        expect(statement[resource]).toEqual([
+          'create',
+          'update',
+          'delete',
+          'view',
+          'investigate',
+          'configure',
+        ]);
+      }
+    });
   });
 
   describe('hasPermission', () => {
@@ -98,6 +120,12 @@ describe('RBAC Permissions', () => {
 
       it('should have access to variable secrets', () => {
         expect(hasPermission(context, 'variable', 'view_secrets')).toBe(true);
+      });
+
+      it('should have full SRE permissions', () => {
+        expect(hasPermission(context, 'sre_incident', 'investigate')).toBe(true);
+        expect(hasPermission(context, 'sre_connector', 'configure')).toBe(true);
+        expect(hasPermission(context, 'sre_evidence', 'delete')).toBe(true);
       });
     });
 
@@ -184,6 +212,12 @@ describe('RBAC Permissions', () => {
         expect(hasPermission(context, 'variable', 'delete')).toBe(true);
         expect(hasPermission(context, 'variable', 'view_secrets')).toBe(true);
       });
+
+      it('should have full SRE permissions in assigned projects', () => {
+        expect(hasPermission(context, 'sre_service', 'create')).toBe(true);
+        expect(hasPermission(context, 'sre_incident', 'investigate')).toBe(true);
+        expect(hasPermission(context, 'sre_connector', 'configure')).toBe(true);
+      });
     });
 
     describe('PROJECT_ADMIN in non-assigned projects', () => {
@@ -198,6 +232,9 @@ describe('RBAC Permissions', () => {
         expect(hasPermission(context, 'test', 'view')).toBe(true);
         expect(hasPermission(context, 'test', 'create')).toBe(false);
         expect(hasPermission(context, 'test', 'delete')).toBe(false);
+        expect(hasPermission(context, 'sre_incident', 'view')).toBe(true);
+        expect(hasPermission(context, 'sre_incident', 'investigate')).toBe(false);
+        expect(hasPermission(context, 'sre_connector', 'configure')).toBe(false);
       });
     });
 
@@ -230,6 +267,13 @@ describe('RBAC Permissions', () => {
         expect(hasPermission(context, 'project', 'create')).toBe(false);
         expect(hasPermission(context, 'project', 'update')).toBe(false);
       });
+
+      it('should investigate assigned incidents but not configure connectors', () => {
+        expect(hasPermission(context, 'sre_incident', 'investigate')).toBe(true);
+        expect(hasPermission(context, 'sre_investigation', 'create')).toBe(true);
+        expect(hasPermission(context, 'sre_connector', 'configure')).toBe(false);
+        expect(hasPermission(context, 'sre_incident', 'delete')).toBe(false);
+      });
     });
 
     describe('PROJECT_VIEWER permissions', () => {
@@ -258,6 +302,15 @@ describe('RBAC Permissions', () => {
 
       it('should NOT have variable secret access', () => {
         expect(hasPermission(context, 'variable', 'view_secrets')).toBe(false);
+      });
+
+      it('should only have view access to SRE resources', () => {
+        expect(hasPermission(context, 'sre_service', 'view')).toBe(true);
+        expect(hasPermission(context, 'sre_incident', 'view')).toBe(true);
+        expect(hasPermission(context, 'sre_investigation', 'view')).toBe(true);
+        expect(hasPermission(context, 'sre_connector', 'view')).toBe(true);
+        expect(hasPermission(context, 'sre_incident', 'investigate')).toBe(false);
+        expect(hasPermission(context, 'sre_connector', 'configure')).toBe(false);
       });
     });
 

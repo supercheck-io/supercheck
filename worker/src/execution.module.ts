@@ -17,6 +17,7 @@ import { ReportUploadService } from './common/services/report-upload.service';
 import { SecurityModule } from './common/security/security.module';
 import { CancellationModule } from './common/services/cancellation.module';
 import { DbModule } from './db/db.module';
+import { SreAlertTriageQueueService } from './monitor/services/sre-alert-triage-queue.service';
 
 // Import constants from constants file
 import { PLAYWRIGHT_QUEUE } from './execution/constants';
@@ -52,6 +53,7 @@ const defaultJobOptions = {
     DbService,
     RedisService,
     JobNotificationService,
+    SreAlertTriageQueueService,
     UsageTrackerService,
     ReportUploadService,
     HardStopNotificationService,

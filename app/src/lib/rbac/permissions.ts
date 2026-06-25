@@ -56,6 +56,12 @@ export const statement = {
   tag: ["create", "update", "delete", "view"],
   variable: ["create", "update", "delete", "view", "view_secrets"],
   requirement: ["create", "update", "delete", "view"],
+  sre_service: ["create", "update", "delete", "view", "investigate", "configure"],
+  sre_incident: ["create", "update", "delete", "view", "investigate", "configure"],
+  sre_investigation: ["create", "update", "delete", "view", "investigate", "configure"],
+  sre_connector: ["create", "update", "delete", "view", "investigate", "configure"],
+  sre_runbook: ["create", "update", "delete", "view", "investigate", "configure"],
+  sre_evidence: ["create", "update", "delete", "view", "investigate", "configure"],
 } as const;
 
 // Create Better Auth access controller
@@ -96,6 +102,12 @@ export const superAdmin = ac.newRole({
   tag: ["create", "update", "delete", "view"],
   variable: ["create", "update", "delete", "view", "view_secrets"],
   requirement: ["create", "update", "delete", "view"],
+  sre_service: ["create", "update", "delete", "view", "investigate", "configure"],
+  sre_incident: ["create", "update", "delete", "view", "investigate", "configure"],
+  sre_investigation: ["create", "update", "delete", "view", "investigate", "configure"],
+  sre_connector: ["create", "update", "delete", "view", "investigate", "configure"],
+  sre_runbook: ["create", "update", "delete", "view", "investigate", "configure"],
+  sre_evidence: ["create", "update", "delete", "view", "investigate", "configure"],
 });
 
 // ORG_OWNER: Full organization control (no system permissions)
@@ -120,6 +132,12 @@ export const orgOwner = ac.newRole({
   tag: ["create", "update", "delete", "view"],
   variable: ["create", "update", "delete", "view", "view_secrets"],
   requirement: ["create", "update", "delete", "view"],
+  sre_service: ["create", "update", "delete", "view", "investigate", "configure"],
+  sre_incident: ["create", "update", "delete", "view", "investigate", "configure"],
+  sre_investigation: ["create", "update", "delete", "view", "investigate", "configure"],
+  sre_connector: ["create", "update", "delete", "view", "investigate", "configure"],
+  sre_runbook: ["create", "update", "delete", "view", "investigate", "configure"],
+  sre_evidence: ["create", "update", "delete", "view", "investigate", "configure"],
 });
 
 // ORG_ADMIN: Organization management (cannot delete org, no system permissions)
@@ -144,6 +162,12 @@ export const orgAdmin = ac.newRole({
   tag: ["create", "update", "delete", "view"],
   variable: ["create", "update", "delete", "view", "view_secrets"],
   requirement: ["create", "update", "delete", "view"],
+  sre_service: ["create", "update", "delete", "view", "investigate", "configure"],
+  sre_incident: ["create", "update", "delete", "view", "investigate", "configure"],
+  sre_investigation: ["create", "update", "delete", "view", "investigate", "configure"],
+  sre_connector: ["create", "update", "delete", "view", "investigate", "configure"],
+  sre_runbook: ["create", "update", "delete", "view", "investigate", "configure"],
+  sre_evidence: ["create", "update", "delete", "view", "investigate", "configure"],
 });
 
 // PROJECT_ADMIN: Full project management but limited to assigned projects (no system permissions)
@@ -168,6 +192,12 @@ export const projectAdmin = ac.newRole({
   tag: ["create", "update", "delete", "view"],
   variable: ["create", "update", "delete", "view", "view_secrets"],
   requirement: ["create", "update", "delete", "view"],
+  sre_service: ["create", "update", "delete", "view", "investigate", "configure"],
+  sre_incident: ["create", "update", "delete", "view", "investigate", "configure"],
+  sre_investigation: ["create", "update", "delete", "view", "investigate", "configure"],
+  sre_connector: ["create", "update", "delete", "view", "investigate", "configure"],
+  sre_runbook: ["create", "update", "delete", "view", "investigate", "configure"],
+  sre_evidence: ["create", "update", "delete", "view", "investigate", "configure"],
 });
 
 // PROJECT_EDITOR: Can edit assigned projects only (no system permissions)
@@ -192,6 +222,12 @@ export const projectEditor = ac.newRole({
   tag: ["view", "create", "update"],
   variable: ["create", "update", "view", "view_secrets"],
   requirement: ["create", "update", "view"],
+  sre_service: ["create", "update", "view", "investigate"],
+  sre_incident: ["create", "update", "view", "investigate"],
+  sre_investigation: ["create", "update", "view", "investigate"],
+  sre_connector: ["view"],
+  sre_runbook: ["create", "update", "view"],
+  sre_evidence: ["create", "update", "view"],
 });
 
 // PROJECT_VIEWER: Read-only access (no system permissions)
@@ -216,6 +252,12 @@ export const projectViewer = ac.newRole({
   tag: ["view"],
   variable: ["view"],
   requirement: ["view"],
+  sre_service: ["view"],
+  sre_incident: ["view"],
+  sre_investigation: ["view"],
+  sre_connector: ["view"],
+  sre_runbook: ["view"],
+  sre_evidence: ["view"],
 });
 
 // Export role mapping for Better Auth integration
@@ -365,6 +407,12 @@ export function hasPermission(
       "apiKey",
       "notification",
       "requirement",
+      "sre_service",
+      "sre_incident",
+      "sre_investigation",
+      "sre_connector",
+      "sre_runbook",
+      "sre_evidence",
     ].includes(resource) &&
     context.projectId &&
     !context.assignedProjectIds?.includes(context.projectId)

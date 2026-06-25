@@ -41,6 +41,7 @@ const FALLBACK_UNLIMITED_LIMITS = {
   playwrightMinutesIncluded: 999999,
   k6VuMinutesIncluded: 999999,
   aiCreditsIncluded: 999999,
+  sreInvestigationUnitsIncluded: "999999",
   runningCapacity: 999,
   queuedCapacity: 9999,
   maxTeamMembers: 999,
@@ -64,6 +65,7 @@ const BLOCKED_PLAN_LIMITS = {
   playwrightMinutesIncluded: 0,
   k6VuMinutesIncluded: 0,
   aiCreditsIncluded: 0,
+  sreInvestigationUnitsIncluded: "0",
   runningCapacity: 0,
   queuedCapacity: 0,
   maxTeamMembers: 0,
@@ -718,6 +720,14 @@ export class SubscriptionService {
         included: plan.aiCreditsIncluded,
         overage: Math.max(0, (org.aiCreditsUsed || 0) - plan.aiCreditsIncluded),
       },
+      sreInvestigations: {
+        used: Number(org.sreInvestigationUnitsUsed || 0),
+        included: Number(plan.sreInvestigationUnitsIncluded || 0),
+        overage: Math.max(
+          0,
+          Number(org.sreInvestigationUnitsUsed || 0) - Number(plan.sreInvestigationUnitsIncluded || 0)
+        ),
+      },
       periodStart: org.usagePeriodStart,
       periodEnd: org.usagePeriodEnd,
     };
@@ -760,6 +770,14 @@ export class SubscriptionService {
         included: plan.aiCreditsIncluded,
         overage: Math.max(0, (org.aiCreditsUsed || 0) - plan.aiCreditsIncluded),
       },
+      sreInvestigations: {
+        used: Number(org.sreInvestigationUnitsUsed || 0),
+        included: Number(plan.sreInvestigationUnitsIncluded || 0),
+        overage: Math.max(
+          0,
+          Number(org.sreInvestigationUnitsUsed || 0) - Number(plan.sreInvestigationUnitsIncluded || 0)
+        ),
+      },
       periodStart: org.usagePeriodStart,
       periodEnd: org.usagePeriodEnd,
     };
@@ -795,6 +813,7 @@ export class SubscriptionService {
           playwrightMinutesUsed: 0,
           k6VuMinutesUsed: 0,
           aiCreditsUsed: 0,
+          sreInvestigationUnitsUsed: "0",
           usagePeriodStart: now,
           usagePeriodEnd: thirtyDaysLater,
         })
@@ -834,6 +853,7 @@ export class SubscriptionService {
         playwrightMinutesUsed: 0,
         k6VuMinutesUsed: 0,
         aiCreditsUsed: 0,
+        sreInvestigationUnitsUsed: "0",
         usagePeriodStart: periodStart,
         usagePeriodEnd: periodEnd,
         // Also update the subscription dates for reference

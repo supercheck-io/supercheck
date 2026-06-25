@@ -29,7 +29,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { NotificationProviderForm } from "@/components/alerts/notification-provider-form";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, BellRing, Mail } from "lucide-react";
+import { Plus, BellRing, Mail, Siren } from "lucide-react";
 import { DataTable } from "@/components/alerts/data-table";
 import { columns } from "@/components/alerts/columns";
 
@@ -52,6 +52,7 @@ import {
   type NotificationProvider,
 } from "@/hooks/use-alerts";
 import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
+import { SreAlertsView } from "@/components/alerts/sre-alerts-view";
 
 function AlertsPage() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -222,6 +223,10 @@ function AlertsPage() {
                   <BellRing className="h-4 w-4 mr-2" />
                   Alert History
                 </TabsTrigger>
+                <TabsTrigger value="sre-alerts">
+                  <Siren className="h-4 w-4 mr-2" />
+                  SRE Alerts
+                </TabsTrigger>
               </TabsList>
 
               <TabsContent value="providers" className="space-y-4">
@@ -295,6 +300,10 @@ function AlertsPage() {
                     />
                   )}
                 </div>
+              </TabsContent>
+
+              <TabsContent value="sre-alerts" className="space-y-4">
+                <SreAlertsView alerts={alertHistory} isLoading={historyLoading} />
               </TabsContent>
             </Tabs>
 

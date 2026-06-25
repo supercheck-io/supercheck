@@ -12,6 +12,7 @@ import {
   uuid,
   boolean,
   integer,
+  numeric,
   unique,
   index,
   jsonb,
@@ -59,6 +60,12 @@ export const organization = pgTable(
     playwrightMinutesUsed: integer('playwright_minutes_used').default(0),
     k6VuMinutesUsed: integer('k6_vu_minutes_used').default(0), // Changed from hours to minutes for consistency with Playwright
     aiCreditsUsed: integer('ai_credits_used').default(0), // AI credits used for AI fix and AI create features
+    sreInvestigationUnitsUsed: numeric('sre_investigation_units_used', {
+      precision: 10,
+      scale: 4,
+    })
+      .notNull()
+      .default('0'),
     usagePeriodStart: timestamp('usage_period_start'),
     usagePeriodEnd: timestamp('usage_period_end'),
   },
