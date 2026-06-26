@@ -283,6 +283,9 @@ All services run on a single Linux server managed by Docker Compose. Workers con
         AZURE_RESOURCE_NAME=your-resource-name
         AZURE_API_KEY=your-api-key
         AZURE_OPENAI_DEPLOYMENT=your-deployment-name
+        # Optional: only set if your Azure deployment supports temperature.
+        # GPT-5/reasoning deployments commonly reject this parameter.
+        AZURE_INCLUDE_TEMPERATURE=false
         ```
       </Tab>
       <Tab value="Anthropic">
