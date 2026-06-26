@@ -3,7 +3,7 @@ import {
   mergeNotificationProviderConfig,
   sanitizeConfigForClient,
 } from "./crypto";
-import type { NotificationProviderType } from "@/db/schema";
+import type { NotificationProviderType, PlainNotificationProviderConfig } from "@/db/schema";
 
 describe("notification provider crypto", () => {
   describe("getSensitiveFieldsForProviderType", () => {
@@ -30,12 +30,12 @@ describe("notification provider crypto", () => {
       const existing = {
         name: "VictorOps",
         url: "https://alert.victorops.com/secret",
-        method: "POST",
+        method: "POST" as const,
         bodyTemplate: '{"old":"template"}',
       };
       const incoming = {
         name: "VictorOps",
-        method: "POST",
+        method: "POST" as const,
         bodyTemplate: '{"new":"template"}',
       };
 
@@ -49,12 +49,12 @@ describe("notification provider crypto", () => {
       const existing = {
         name: "VictorOps",
         url: "https://alert.victorops.com/old",
-        method: "POST",
+        method: "POST" as const,
       };
       const incoming = {
         name: "VictorOps",
         url: "https://alert.victorops.com/new",
-        method: "POST",
+        method: "POST" as const,
       };
 
       const merged = mergeNotificationProviderConfig("webhook", existing, incoming);
@@ -75,13 +75,13 @@ describe("notification provider crypto", () => {
       const existing = {
         name: "Webhook",
         url: "https://example.com/webhook",
-        method: "GET",
+        method: "GET" as const,
         bodyTemplate: '{"old":"value"}',
       };
       const incoming = {
         name: "Webhook",
         url: "https://example.com/webhook",
-        method: "POST",
+        method: "POST" as const,
         bodyTemplate: '{"new":"value"}',
       };
 
@@ -95,7 +95,7 @@ describe("notification provider crypto", () => {
       const existing = {
         name: "Webhook",
         url: "https://example.com/webhook",
-        method: "POST",
+        method: "POST" as const,
         bodyTemplate: '{"keep":"me"}',
       };
       const incoming = {
@@ -116,7 +116,7 @@ describe("notification provider crypto", () => {
         name: "Webhook",
         url: "https://example.com/secret-webhook",
         headers: { Authorization: "Bearer secret" },
-        method: "POST",
+        method: "POST" as const,
       };
 
       const { sanitizedConfig, maskedFields } = sanitizeConfigForClient("webhook", config);
