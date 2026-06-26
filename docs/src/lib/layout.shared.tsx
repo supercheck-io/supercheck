@@ -59,7 +59,7 @@ export function SiteHeader({ showPricing = true, showDocs = true }: SiteHeaderPr
             rel="noopener noreferrer"
             aria-label="Supercheck CLI on npm"
           >
-            <img src="/npm.svg" alt="npm" className="size-4.5 rounded-sm" />
+            <Image src="/npm.svg" alt="npm" width={18} height={18} className="size-4.5 rounded-sm" />
             <span className="hidden md:inline">npm</span>
           </Link>
           {showPricing && (
@@ -126,4 +126,3 @@ export function baseOptions(): BaseLayoutProps {
     links: linkItems,
   };
 }
-

@@ -27,6 +27,52 @@ const ALWAYS_SENSITIVE_FIELDS = new Set([
   "teamsWebhookUrl",
 ]);
 
+const ALL_KNOWN_SENSITIVE_FIELDS = new Set([
+  ...ALWAYS_SENSITIVE_FIELDS,
+  ...Object.values(SENSITIVE_FIELDS).flat(),
+]);
+
+/**
+ * Return sensitive config fields that may appear on a provider record.
+ * Sensitive fields are preserved on partial config updates when the client
+ * omits them (e.g. CLI pull strips masked secrets before writing to disk).
+ * The list includes known fields from all provider types so stale legacy
+ * fields are still treated as secrets after provider type changes.
+ */
+export function getSensitiveFieldsForProviderType(
+  type: NotificationProviderType,
+): string[] {
+  return [
+    ...ALL_KNOWN_SENSITIVE_FIELDS,
+    ...(SENSITIVE_FIELDS[type] || []),
+  ];
+}
+
+/**
+ * Merge an incoming notification provider config over the existing config.
+ *
+ * The merge is shallow: existing fields are kept unless the incoming config
+ * explicitly overrides them. Sensitive fields (e.g. webhook URLs) that are
+ * omitted from the incoming config are explicitly preserved so that partial
+ * updates from a pulled config do not erase secrets.
+ */
+export function mergeNotificationProviderConfig(
+  type: NotificationProviderType,
+  existingConfig: PlainNotificationProviderConfig,
+  incomingConfig: PlainNotificationProviderConfig,
+): PlainNotificationProviderConfig {
+  const sensitiveFields = getSensitiveFieldsForProviderType(type);
+  const merged = { ...existingConfig, ...incomingConfig };
+
+  for (const field of sensitiveFields) {
+    if (!(field in incomingConfig)) {
+      merged[field] = existingConfig[field];
+    }
+  }
+
+  return merged;
+}
+
 export function encryptNotificationProviderConfig(
   config: PlainNotificationProviderConfig,
   context?: string,
@@ -56,7 +102,7 @@ export function sanitizeConfigForClient(
   const maskedFields: string[] = [];
 
   const fieldsToMask = new Set([
-    ...ALWAYS_SENSITIVE_FIELDS,
+    ...ALL_KNOWN_SENSITIVE_FIELDS,
     ...(SENSITIVE_FIELDS[type] || []),
   ]);
 

@@ -8,6 +8,7 @@ import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { generateText, LanguageModel } from "ai";
 import { aiRateLimiter } from "./ai-rate-limiter";
 import { isSelfHosted } from "@/lib/feature-flags";
+import { getProviderGenerationOptions } from "@/lib/ai/ai-provider";
 
 interface AIFixRequest {
   prompt: string;
@@ -456,7 +457,9 @@ EXPLANATION:
       const { text, usage } = await generateText({
         model: this.getProviderModel(),
         prompt: optimizedPrompt,
-        temperature: temperature || config.temperature,
+        ...getProviderGenerationOptions({
+          temperature: temperature || config.temperature,
+        }),
         maxRetries: config.maxRetries,
         abortSignal: AbortSignal.timeout(config.timeout),
       });

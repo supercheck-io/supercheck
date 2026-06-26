@@ -135,7 +135,7 @@ export async function POST(req: NextRequest) {
     // Transform the data to match the database schema
     // The frontend sends { type, config } but the database expects { name, type, config, organizationId, projectId, createdByUserId }
     const transformedData = {
-      name: rawData.config?.name || "Unnamed Provider",
+      name: rawData.config?.name || rawData.name || "Unnamed Provider",
       type: rawData.type,
       config: rawData.config,
       organizationId: targetOrganizationId,

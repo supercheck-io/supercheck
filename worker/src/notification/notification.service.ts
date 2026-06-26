@@ -996,8 +996,16 @@ export class NotificationService {
       alertAction,
       eventAction: alertAction,
       pagerDutyEventAction: alertAction,
+      victorOpsMessageType: this.getVictorOpsMessageType(alertAction),
+      splunkOnCallMessageType: this.getVictorOpsMessageType(alertAction),
       dedupKey: this.getWebhookDedupKey(payload),
     };
+  }
+
+  private getVictorOpsMessageType(
+    alertAction: string,
+  ): 'CRITICAL' | 'RECOVERY' {
+    return alertAction === 'resolve' ? 'RECOVERY' : 'CRITICAL';
   }
 
   private getWebhookAlertAction(payload: NotificationPayload): string {
@@ -1028,7 +1036,7 @@ export class NotificationService {
   private getExplicitWebhookAlertAction(
     payload: NotificationPayload,
   ): 'trigger' | 'resolve' | undefined {
-    const action =
+    const action: unknown =
       payload.metadata?.pagerDutyEventAction ??
       payload.metadata?.eventAction ??
       payload.metadata?.alertAction;

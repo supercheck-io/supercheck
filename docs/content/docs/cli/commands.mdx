@@ -721,7 +721,7 @@ supercheck audit --search "deploy"
 
 ### `supercheck pull`
 
-Pull remote resources into local config and files.
+Pull remote resources into local config and files. Config pulls include monitors, jobs, notification providers, variables, tags, and status pages; test pulls also write test scripts under `_supercheck_/`.
 
 ```bash
 supercheck pull
@@ -733,7 +733,7 @@ supercheck pull --config-only
 
 ### `supercheck diff`
 
-Preview changes between local config and server state.
+Preview changes between local config and server state. Notification provider changes include nested `config` fields such as webhook `bodyTemplate`.
 
 ```bash
 supercheck diff
@@ -741,7 +741,7 @@ supercheck diff
 
 ### `supercheck deploy`
 
-Push configuration to the Supercheck API.
+Push configuration to the Supercheck API, including notification provider config and webhook body templates.
 
 ```bash
 supercheck deploy
@@ -752,7 +752,7 @@ supercheck deploy --force        # Skip confirmation
 
 ### `supercheck destroy`
 
-Tear down all managed resources.
+Tear down all managed resources defined with IDs in the local config, including notification providers.
 
 ```bash
 supercheck destroy

@@ -234,6 +234,14 @@ my-project/
 | `type` | `string` | Provider type (`email`, `slack`, `webhook`, `telegram`, `discord`, `teams`) |
 | `config` | `object` | Provider-specific configuration (e.g., `webhookUrl` for Slack) |
 
+For webhook notification providers, `config.bodyTemplate` is part of the managed configuration and should be kept in source control with the rest of the provider config. `supercheck pull` exports it, `supercheck diff` reports edits to it, and `supercheck deploy` applies those edits as provider configuration changes.
+
+Secret provider fields returned by the API as masked values, such as webhook URLs or headers, are ignored during diff comparison only when they are omitted from the local config. To keep configs safe to commit, `supercheck pull` strips those masked secret fields from the written config rather than writing placeholder values. When you later `supercheck deploy`, the server preserves the existing secret values for any omitted sensitive fields, so non-secret edits (for example, `bodyTemplate` changes) round-trip safely without overwriting real webhook URLs.
+
+<Callout type="warn">
+  Pulled notification provider configs do not contain secret values. If you want to rotate a secret, add the new value to the config file before deploying; `supercheck diff` shows a redacted secret change and `supercheck deploy` sends the new value. You can also use `supercheck notification update --config` with the full replacement config.
+</Callout>
+
 ## Validate & Print
 
 ```bash
