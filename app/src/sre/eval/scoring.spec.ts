@@ -1,8 +1,34 @@
-import { getSreEvalFixture, sreEvalFixtures } from "./fixtures";
+import { getSreEvalFixture, getSreEvalFixturesByConnectorType, sreEvalFixtures, sreSeededLiveConnectorEvalFixtures, type SreEvalConnectorType } from "./fixtures";
 import { assertSreEvalGate, runSreEvalSuite } from "./harness";
 import { scoreSreEvalResult } from "./scoring";
 
 describe("SRE eval scoring", () => {
+  it("keeps seeded live connector fixture coverage for implemented expansion connectors", () => {
+    const implementedConnectorTypes: SreEvalConnectorType[] = [
+      "sentry",
+      "datadog",
+      "loki",
+      "elasticsearch",
+      "aws_cloudwatch",
+      "tempo",
+    ];
+
+    for (const connectorType of implementedConnectorTypes) {
+      expect(getSreEvalFixturesByConnectorType(connectorType).map((fixture) => fixture.id)).toHaveLength(1);
+    }
+
+    expect(sreSeededLiveConnectorEvalFixtures.map((fixture) => fixture.id)).toEqual(
+      expect.arrayContaining([
+        "connector-investigation-sentry-regression",
+        "connector-investigation-datadog-event-spike",
+        "connector-investigation-loki-error-logs",
+        "connector-investigation-elasticsearch-error-documents",
+        "connector-investigation-cloudwatch-alarm",
+        "connector-investigation-tempo-trace-latency",
+      ])
+    );
+  });
+
   it("passes a cited native-evidence answer with expected tool usage", () => {
     const fixture = getSreEvalFixture("native-evidence-monitor-timeout");
 

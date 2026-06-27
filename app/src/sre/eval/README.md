@@ -36,7 +36,29 @@ npm run test:sre-eval:live
 
 `SRE_EVAL_INCIDENT_IDS` must map eval fixture IDs to seeded SRE incident IDs in the target environment. Connector-investigation fixtures automatically request live connector usage; other fixtures do not.
 
+To run only a safe subset while preparing seed data, set a comma-separated fixture list:
+
+```bash
+SRE_EVAL_FIXTURE_IDS=connector-investigation-tempo-trace-latency,connector-investigation-cloudwatch-alarm
+```
+
 The live suite is implemented in `live-api.spec.ts` and skips unless `SRE_EVAL_LIVE_ENABLED=true`, so default CI remains offline and deterministic.
+
+### Seeded Connector Fixtures
+
+The current opt-in live connector fixtures cover:
+
+| Fixture ID | Connector coverage | Required seeded evidence |
+| --- | --- | --- |
+| `connector-investigation-prometheus-kubernetes-restarts` | Prometheus + Kubernetes | Latency spike metric and checkout restart/topology evidence. |
+| `connector-investigation-sentry-regression` | Sentry | Unresolved checkout exception/regression issue. |
+| `connector-investigation-datadog-event-spike` | Datadog | `service:checkout` event for latency/deploy/error context. |
+| `connector-investigation-loki-error-logs` | Loki | Checkout-labelled error log lines for upstream/dependency failure. |
+| `connector-investigation-elasticsearch-error-documents` | Elasticsearch/OpenSearch | Indexed checkout error document with service/severity/timestamp fields. |
+| `connector-investigation-cloudwatch-alarm` | AWS CloudWatch | Checkout alarm or metric data in the incident window. |
+| `connector-investigation-tempo-trace-latency` | Grafana Tempo | Slow checkout trace with dependency span attributes. |
+
+Seed these only in non-production tenants. Use fake/demo services, short telemetry retention, and read-only connector credentials.
 
 ## Security Rules
 

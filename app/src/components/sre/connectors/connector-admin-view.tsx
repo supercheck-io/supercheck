@@ -7,8 +7,10 @@ import { toast } from "sonner";
 import {
   disableSreConnector,
   getPrivateAgentConnectorJobResult,
+  searchSreConnectorEvidence,
   validateSreConnector,
   type SreConnectorListItem,
+  type SreConnectorSearchResult,
   type SrePrivateAgentJobResult,
   type SreConnectorSetupOptions,
 } from "@/actions/sre-connectors";
@@ -57,6 +59,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { getConnectorQueryGuide } from "./connector-query-guides";
 
 type ConnectorAdminViewProps = {
   initialConnectors: SreConnectorListItem[];
@@ -121,9 +124,15 @@ export function ConnectorAdminView({ initialConnectors, setupOptions, loadError 
   const [rotatingCredentialConnector, setRotatingCredentialConnector] = useState<SreConnectorListItem | null>(null);
   const [disablingConnector, setDisablingConnector] = useState<SreConnectorListItem | null>(null);
   const [jobResult, setJobResult] = useState<Extract<SrePrivateAgentJobResult, { success: true }>["job"] | null>(null);
+  const [searchConnector, setSearchConnector] = useState<SreConnectorListItem | null>(null);
+  const [searchServiceId, setSearchServiceId] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchTimeWindowMinutes, setSearchTimeWindowMinutes] = useState("60");
+  const [searchResult, setSearchResult] = useState<Extract<SreConnectorSearchResult, { success: true }> | null>(null);
   const [isDisabling, startDisableTransition] = useTransition();
   const [isValidating, startValidateTransition] = useTransition();
   const [isLoadingJobResult, startJobResultTransition] = useTransition();
+  const [isSearchingConnector, startSearchTransition] = useTransition();
 
   const filteredConnectors = connectors.filter((connector) => {
     const matchesStatus = statusFilter === "all" || connector.status === statusFilter;
@@ -176,6 +185,45 @@ export function ConnectorAdminView({ initialConnectors, setupOptions, loadError 
       } else {
         toast.warning(result.message);
       }
+    });
+  };
+
+  const servicesForConnector = (connector: SreConnectorListItem) => {
+    if (connector.scopedServiceIds.length === 0) {
+      return setupOptions.services;
+    }
+
+    return setupOptions.services.filter((service) => connector.scopedServiceIds.includes(service.id));
+  };
+
+  const openSearchDialog = (connector: SreConnectorListItem) => {
+    const guide = getConnectorQueryGuide(connector.type);
+    const availableServices = servicesForConnector(connector);
+    setSearchConnector(connector);
+    setSearchServiceId(availableServices[0]?.id ?? "");
+    setSearchQuery(guide.examples[0]?.query ?? "");
+    setSearchTimeWindowMinutes(String(connector.defaultTimeWindowMinutes));
+    setSearchResult(null);
+  };
+
+  const submitConnectorSearch = () => {
+    if (!searchConnector) return;
+
+    startSearchTransition(async () => {
+      const result = await searchSreConnectorEvidence({
+        id: searchConnector.id,
+        serviceId: searchServiceId,
+        query: searchQuery,
+        timeWindowMinutes: Number(searchTimeWindowMinutes),
+      });
+
+      if (!result.success) {
+        toast.error(result.error);
+        return;
+      }
+
+      setSearchResult(result);
+      toast.success(result.message);
     });
   };
 
@@ -339,34 +387,49 @@ export function ConnectorAdminView({ initialConnectors, setupOptions, loadError 
                         </div>
                       </TableCell>
                       <TableCell>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" aria-label={`Open actions for ${connector.name}`}>
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => validateConnector(connector)} disabled={isValidating}>
-                              Validate connector
-                            </DropdownMenuItem>
-                            {connector.latestPrivateAgentJob && (
-                              <DropdownMenuItem onClick={() => viewLatestJobResult(connector)} disabled={isLoadingJobResult}>
-                                View last job result
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => openSearchDialog(connector)}
+                            aria-label={`Search evidence for ${connector.name}`}
+                          >
+                            <FileSearch className="mr-2 h-4 w-4" />
+                            Search
+                          </Button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" aria-label={`Open actions for ${connector.name}`}>
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => openSearchDialog(connector)}>
+                                Search evidence
                               </DropdownMenuItem>
-                            )}
-                            <DropdownMenuItem onClick={() => setRotatingCredentialConnector(connector)} disabled={isDisabling || isValidating}>
-                              Rotate credential
-                            </DropdownMenuItem>
-                            {connector.status !== "disabled" && (
-                              <DropdownMenuItem
-                                className="text-destructive focus:text-destructive"
-                                onClick={() => setDisablingConnector(connector)}
-                              >
-                                Disable connector
+                              <DropdownMenuItem onClick={() => validateConnector(connector)} disabled={isValidating}>
+                                Validate connector
                               </DropdownMenuItem>
-                            )}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                              {connector.latestPrivateAgentJob && (
+                                <DropdownMenuItem onClick={() => viewLatestJobResult(connector)} disabled={isLoadingJobResult}>
+                                  View last job result
+                                </DropdownMenuItem>
+                              )}
+                              <DropdownMenuItem onClick={() => setRotatingCredentialConnector(connector)} disabled={isDisabling || isValidating}>
+                                Rotate credential
+                              </DropdownMenuItem>
+                              {connector.status !== "disabled" && (
+                                <DropdownMenuItem
+                                  className="text-destructive focus:text-destructive"
+                                  onClick={() => setDisablingConnector(connector)}
+                                >
+                                  Disable connector
+                                </DropdownMenuItem>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))
@@ -394,6 +457,152 @@ export function ConnectorAdminView({ initialConnectors, setupOptions, loadError 
           onSaved={handleSaved}
         />
       )}
+
+      <Dialog open={Boolean(searchConnector)} onOpenChange={(open) => !open && setSearchConnector(null)}>
+        <DialogContent className="max-h-[90vh] max-w-4xl min-w-2xl gap-3 overflow-y-auto p-5">
+          <DialogHeader>
+            <DialogTitle>Search connector evidence</DialogTitle>
+            <DialogDescription>
+              Run a bounded, read-only connector search for one service. Searches are rate-limited, audited, and redacted before AI use.
+            </DialogDescription>
+          </DialogHeader>
+
+          {searchConnector && (
+            <div className="space-y-4">
+              {(() => {
+                const guide = getConnectorQueryGuide(searchConnector.type);
+                const availableServices = servicesForConnector(searchConnector);
+
+                return (
+                  <>
+                    <div className="rounded-lg border bg-muted/20 p-3">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <p className="text-sm font-medium">{guide.label} query guide</p>
+                          <p className="text-xs text-muted-foreground">{guide.setupHint}</p>
+                        </div>
+                        <Badge variant="outline">{guide.queryLabel}</Badge>
+                      </div>
+                      <div className="mt-3 grid gap-2 md:grid-cols-2">
+                        {guide.examples.map((example) => (
+                          <button
+                            key={example.label}
+                            type="button"
+                            onClick={() => setSearchQuery(example.query)}
+                            className="rounded-md border bg-background p-2 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          >
+                            <span className="block text-xs font-medium">{example.label}</span>
+                            <code className="mt-1 block break-words rounded bg-muted px-2 py-1 font-mono text-xs">
+                              {example.query}
+                            </code>
+                            <span className="mt-1 block text-xs text-muted-foreground">{example.description}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <form
+                      className="grid gap-3 md:grid-cols-[1fr_160px]"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        submitConnectorSearch();
+                      }}
+                    >
+                      <div className="space-y-1.5">
+                        <label htmlFor="connector-search-service" className="text-sm font-medium">Service</label>
+                        <Select value={searchServiceId || undefined} onValueChange={setSearchServiceId}>
+                          <SelectTrigger id="connector-search-service">
+                            <SelectValue placeholder="Select service" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {availableServices.map((service) => (
+                              <SelectItem key={service.id} value={service.id}>
+                                {service.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <label htmlFor="connector-search-window" className="text-sm font-medium">Window</label>
+                        <Select value={searchTimeWindowMinutes} onValueChange={setSearchTimeWindowMinutes}>
+                          <SelectTrigger id="connector-search-window">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="15">15 minutes</SelectItem>
+                            <SelectItem value="60">1 hour</SelectItem>
+                            <SelectItem value="240">4 hours</SelectItem>
+                            <SelectItem value="1440">24 hours</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1.5 md:col-span-2">
+                        <label htmlFor="connector-search-query" className="text-sm font-medium">{guide.queryLabel}</label>
+                        <Input
+                          id="connector-search-query"
+                          value={searchQuery}
+                          onChange={(event) => setSearchQuery(event.target.value)}
+                          placeholder={guide.queryPlaceholder}
+                        />
+                      </div>
+                      {availableServices.length === 0 && (
+                        <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200 md:col-span-2">
+                          No matching services are available for this connector scope.
+                        </div>
+                      )}
+                      <div className="flex flex-col gap-2 md:col-span-2 md:flex-row md:items-center md:justify-between">
+                        <p className="text-xs text-muted-foreground">
+                          Results are capped by the connector limits: {searchConnector.outputLimits.maxRows} rows, {searchConnector.outputLimits.maxSeconds}s timeout.
+                        </p>
+                        <Button type="submit" disabled={isSearchingConnector || !searchServiceId || !searchQuery.trim()}>
+                          {isSearchingConnector && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                          Search evidence
+                        </Button>
+                      </div>
+                    </form>
+
+                    {searchResult && (
+                      <div className="space-y-3 rounded-lg border p-3">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                          <div>
+                            <p className="text-sm font-medium">{searchResult.message}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {searchResult.privateAgentJobId ? `Private Agent job ${searchResult.privateAgentJobId}` : `${searchResult.evidence.length} evidence item${searchResult.evidence.length === 1 ? "" : "s"}`}
+                              {searchResult.truncated ? " (truncated)" : ""}
+                            </p>
+                          </div>
+                          {searchResult.privateAgentJobId && <Badge variant="secondary">Queued</Badge>}
+                        </div>
+
+                        {searchResult.evidence.length > 0 && (
+                          <div className="space-y-2">
+                            {searchResult.evidence.map((item) => (
+                              <div key={item.id} className="rounded-md border bg-muted/20 p-2">
+                                <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+                                  <div className="min-w-0">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <p className="font-medium">{item.title}</p>
+                                      <Badge variant="outline">{item.evidenceType}</Badge>
+                                    </div>
+                                    <p className="text-sm text-muted-foreground">{item.summary}</p>
+                                    <p className="truncate text-xs text-muted-foreground">{item.sourceUri}</p>
+                                  </div>
+                                  <p className="shrink-0 font-mono text-xs text-muted-foreground">{item.resultHash.slice(0, 12)}</p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={Boolean(jobResult)} onOpenChange={(open) => !open && setJobResult(null)}>
         <DialogContent className="max-h-[90vh] max-w-4xl min-w-2xl gap-3 overflow-y-auto p-5">

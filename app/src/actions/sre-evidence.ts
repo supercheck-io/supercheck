@@ -51,6 +51,7 @@ const connectorEvidenceSourceTypes = [
   "sentry",
   "loki",
   "elasticsearch",
+  "tempo",
   "splunk",
   "slack",
   "mcp",

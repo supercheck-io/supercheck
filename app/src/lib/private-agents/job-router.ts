@@ -42,6 +42,19 @@ export type PrivateAgentSreConnectorJobSpec = {
   filters: Record<string, unknown>;
 };
 
+const privateAgentSupportedConnectorTypes = new Set<ConnectorDefinition["type"]>([
+  "github",
+  "kubernetes",
+  "prometheus",
+  "grafana",
+  "sentry",
+  "datadog",
+  "loki",
+  "elasticsearch",
+  "tempo",
+  "aws_cloudwatch",
+]);
+
 export function buildSreConnectorJobSpec(request: PrivateAgentRouteRequest): PrivateAgentSreConnectorJobSpec {
   return {
     jobClass: "sre_connector_query",
@@ -64,6 +77,14 @@ export function buildSreConnectorJobSpec(request: PrivateAgentRouteRequest): Pri
 export function routeSreConnectorQuery(request: PrivateAgentRouteRequest): PrivateAgentRouteDecision {
   if (!request.connector.privateAgentId) {
     return { routed: false, code: "direct_connector", reason: "Connector is configured for direct execution" };
+  }
+
+  if (!privateAgentSupportedConnectorTypes.has(request.connector.type)) {
+    return {
+      routed: false,
+      code: "private_agent_unsupported",
+      reason: `${request.connector.type.replace(/_/g, " ")} connector is not supported by Private Agent execution yet`,
+    };
   }
 
   const agent = request.agents.find((candidate) => candidate.id === request.connector.privateAgentId);

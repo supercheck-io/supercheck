@@ -8,6 +8,7 @@ import {
   normalizeWebhookMethod,
   renderWebhookJsonTemplate,
 } from "@/lib/notification-providers/webhook-template";
+import { normalizeWebhookHeaders } from "@/lib/notification-providers/validation";
 
 export async function POST(req: NextRequest) {
   try {
@@ -260,7 +261,7 @@ async function testWebhookConnection(config: NotificationProviderConfig) {
     const method = normalizeWebhookMethod(typedConfig.method);
     const headers = {
       "Content-Type": "application/json",
-      ...(typedConfig.headers as Record<string, string>),
+      ...normalizeWebhookHeaders(typedConfig.headers),
     };
 
     const hasBodyTemplate =

@@ -218,6 +218,84 @@ function cloudWatchSeverity(state: string) {
   return undefined;
 }
 
+function stringValue(value: unknown) {
+  if (typeof value === "string" && value.trim()) return value.trim();
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return null;
+}
+
+function tempoAttributeValue(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const attributeValue = value as Record<string, unknown>;
+  return stringValue(attributeValue.stringValue)
+    ?? stringValue(attributeValue.intValue)
+    ?? stringValue(attributeValue.doubleValue)
+    ?? stringValue(attributeValue.boolValue)
+    ?? stringValue(attributeValue.arrayValue);
+}
+
+function tempoTraceHasError(trace: unknown) {
+  const serialized = JSON.stringify(trace).toLowerCase();
+  return serialized.includes("\"status\"") && serialized.includes("error");
+}
+
+function durationSummary(durationMs: unknown) {
+  if (typeof durationMs !== "number" || !Number.isFinite(durationMs)) return null;
+  if (durationMs >= 1000) return `${(durationMs / 1000).toFixed(2)}s`;
+  return `${Math.round(durationMs)}ms`;
+}
+
+function isTraceQlQuery(query: string) {
+  const trimmed = query.trim();
+  return trimmed.startsWith("{") || trimmed.includes("&&") || trimmed.includes("||") || trimmed.includes("|");
+}
+
+function normalizeTempoSearchQuery(query: string) {
+  const trimmed = query.trim();
+  if (!trimmed || trimmed === "*") {
+    return { tags: "" };
+  }
+
+  if (isTraceQlQuery(trimmed)) {
+    return { q: trimmed };
+  }
+
+  const tags: string[] = [];
+  let minDuration: string | undefined;
+  let maxDuration: string | undefined;
+
+  for (const token of trimmed.split(/\s+/).filter(Boolean)) {
+    const separator = token.indexOf(":");
+    if (separator === -1) {
+      tags.push(token.includes("=") ? token : `service.name=${token}`);
+      continue;
+    }
+
+    const key = token.slice(0, separator).trim();
+    const value = token.slice(separator + 1).trim();
+    if (!key || !value) continue;
+
+    const normalizedKey = key.toLowerCase();
+    if (normalizedKey === "minduration") {
+      minDuration = value;
+    } else if (normalizedKey === "maxduration") {
+      maxDuration = value;
+    } else if (normalizedKey === "service") {
+      tags.push(`service.name=${value}`);
+    } else if (normalizedKey === "operation") {
+      tags.push(`name=${value}`);
+    } else {
+      tags.push(`${key}=${value}`);
+    }
+  }
+
+  return {
+    tags: tags.join(" "),
+    minDuration,
+    maxDuration,
+  };
+}
+
 abstract class BaseDirectConnector implements Connector {
   id: string;
   type: ConnectorType;
@@ -937,6 +1015,134 @@ export class ElasticsearchConnector extends BaseDirectConnector {
   }
 }
 
+export class TempoConnector extends BaseDirectConnector {
+  constructor(options: Omit<DirectConnectorOptions, "type" | "surfaces" | "evidenceTypes" | "requires">) {
+    super({
+      ...options,
+      type: "tempo",
+      surfaces: ["traces"],
+      evidenceTypes: ["trace"],
+      requires: ["network", "service_scope", "time_window", "allowlist"],
+    });
+  }
+
+  metadata(): ConnectorMetadata {
+    return {
+      id: this.id,
+      type: this.type,
+      displayName: "Grafana Tempo",
+      description: "Read-only distributed trace search evidence from Grafana Tempo.",
+      surfaces: this.surfaces,
+      evidenceTypes: this.evidenceTypes,
+      requires: this.requires,
+    };
+  }
+
+  protected validationRequest() {
+    if (!this.endpointUrl) throw new Error("Tempo endpoint URL is required");
+    return fetchOk({ url: `${this.endpointUrl}/ready`, secret: this.secret(), timeoutMs: this.timeoutMs() });
+  }
+
+  async search(params: ConnectorSearchParams): Promise<ConnectorEvidenceItem[]> {
+    if (!this.endpointUrl) throw new Error("Tempo endpoint URL is required");
+
+    const normalizedQuery = normalizeTempoSearchQuery(params.query);
+    const url = new URL(`${this.endpointUrl}/api/search`);
+    url.searchParams.set("start", String(Math.floor(params.timeWindow.start.getTime() / 1000)));
+    url.searchParams.set("end", String(Math.floor(params.timeWindow.end.getTime() / 1000)));
+    url.searchParams.set("limit", String(Math.min(params.budget.maxRows, 100)));
+
+    if (normalizedQuery.q) {
+      url.searchParams.set("q", normalizedQuery.q);
+    } else if (normalizedQuery.tags) {
+      url.searchParams.set("tags", normalizedQuery.tags);
+    }
+
+    if (normalizedQuery.minDuration) {
+      url.searchParams.set("minDuration", normalizedQuery.minDuration);
+    }
+
+    if (normalizedQuery.maxDuration) {
+      url.searchParams.set("maxDuration", normalizedQuery.maxDuration);
+    }
+
+    const payload = await fetchJson({ url: url.toString(), secret: this.secret(), timeoutMs: this.timeoutMs(params) });
+    const traces = Array.isArray((payload as { traces?: unknown[] }).traces) ? (payload as { traces: unknown[] }).traces : [];
+
+    return traces.slice(0, params.budget.maxRows).map((trace) => {
+      const item = trace as {
+        traceID?: string;
+        traceId?: string;
+        rootServiceName?: string;
+        rootTraceName?: string;
+        serviceStats?: Record<string, unknown>;
+        startTimeUnixNano?: string | number;
+        durationMs?: number;
+        spanSet?: { spans?: unknown[] };
+        spanSets?: Array<{ spans?: unknown[] }>;
+      };
+      const traceId = item.traceID ?? item.traceId ?? "unknown-trace";
+      const rootService = item.rootServiceName ?? "unknown-service";
+      const rootName = item.rootTraceName ?? "trace";
+      const sourceUri = `${this.endpointUrl}/api/traces/${encodeURIComponent(traceId)}`;
+      const serviceNames = Object.keys(item.serviceStats ?? {}).slice(0, 10);
+      const spans = [
+        ...(Array.isArray(item.spanSet?.spans) ? item.spanSet.spans : []),
+        ...(item.spanSets ?? []).flatMap((spanSet) => Array.isArray(spanSet.spans) ? spanSet.spans : []),
+      ];
+      const spanAttributes = spans
+        .flatMap((span) => {
+          if (!span || typeof span !== "object" || Array.isArray(span)) return [];
+          const attributes = (span as { attributes?: unknown[] }).attributes;
+          if (!Array.isArray(attributes)) return [];
+          return attributes
+            .map((attribute) => {
+              if (!attribute || typeof attribute !== "object" || Array.isArray(attribute)) return null;
+              const entry = attribute as { key?: unknown; value?: unknown };
+              const key = stringValue(entry.key);
+              const value = tempoAttributeValue(entry.value);
+              return key && value ? `${key}=${value}` : null;
+            })
+            .filter((attribute): attribute is string => Boolean(attribute));
+        })
+        .slice(0, 12);
+      const duration = durationSummary(item.durationMs);
+
+      return {
+        id: evidenceId(this.id, sourceUri, traceId),
+        source: "tempo",
+        sourceUri,
+        title: `Tempo trace: ${rootService} ${rootName}`,
+        summary: [
+          traceId,
+          duration ? `duration ${duration}` : null,
+          serviceNames.length ? `services ${serviceNames.join(", ")}` : null,
+        ].filter(Boolean).join(" · "),
+        rawContent: JSON.stringify({
+          traceID: traceId,
+          rootServiceName: item.rootServiceName,
+          rootTraceName: item.rootTraceName,
+          durationMs: item.durationMs,
+          startTimeUnixNano: item.startTimeUnixNano,
+          serviceStats: item.serviceStats,
+          spanAttributes,
+        }),
+        evidenceType: "trace",
+        metadata: {
+          timestamp: dateFromUnixNs(item.startTimeUnixNano, params.timeWindow.end),
+          severity: tempoTraceHasError(trace) ? "error" : undefined,
+          tags: ["tempo", "trace", rootService, ...serviceNames.map((service) => `service:${service}`), ...spanAttributes],
+        },
+        citation: {
+          connectorId: this.id,
+          query: params.query,
+          resultHash: hashConnectorPayload(trace),
+        },
+      };
+    });
+  }
+}
+
 type CloudWatchQueryShape = {
   namespace?: string;
   metricName?: string;
@@ -1250,6 +1456,8 @@ export function createDirectConnector(options: DirectConnectorOptions): Connecto
       return new LokiConnector(options);
     case "elasticsearch":
       return new ElasticsearchConnector(options);
+    case "tempo":
+      return new TempoConnector(options);
     case "aws_cloudwatch":
       return new AwsCloudWatchConnector(options);
     default:

@@ -355,6 +355,78 @@ describe("direct connectors", () => {
     );
   });
 
+  it("normalizes Tempo trace search results into trace evidence", async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        traces: [
+          {
+            traceID: "4bf92f3577b34da6a3ce929d0e0e4736",
+            rootServiceName: "checkout",
+            rootTraceName: "POST /checkout",
+            startTimeUnixNano: "1782038700000000000",
+            durationMs: 1240,
+            serviceStats: {
+              checkout: { spanCount: 8 },
+              payments: { spanCount: 3 },
+            },
+            spanSets: [
+              {
+                spans: [
+                  {
+                    attributes: [
+                      { key: "http.status_code", value: { intValue: 500 } },
+                      { key: "status", value: { stringValue: "error" } },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      }),
+    }) as unknown as typeof fetch;
+
+    const connector = createDirectConnector({
+      ...baseDefinition,
+      type: "tempo",
+      endpointUrl: "https://tempo.example.com",
+      surfaces: ["traces"],
+      evidenceTypes: ["trace"],
+      credential: { secret: "token" },
+    });
+    const evidence = await connector.search({ ...params, query: "service:checkout minDuration:100ms" });
+
+    expect(evidence[0]).toMatchObject({
+      source: "tempo",
+      title: "Tempo trace: checkout POST /checkout",
+      sourceUri: "https://tempo.example.com/api/traces/4bf92f3577b34da6a3ce929d0e0e4736",
+      evidenceType: "trace",
+      summary: "4bf92f3577b34da6a3ce929d0e0e4736 · duration 1.24s · services checkout, payments",
+      metadata: expect.objectContaining({
+        severity: "error",
+        tags: expect.arrayContaining(["tempo", "trace", "checkout", "service:checkout", "service:payments", "http.status_code=500", "status=error"]),
+      }),
+    });
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/api/search"),
+      expect.objectContaining({
+        method: "GET",
+        cache: "no-store",
+        headers: expect.objectContaining({ Authorization: "Bearer token" }),
+      })
+    );
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining("tags=service.name%3Dcheckout"),
+      expect.anything()
+    );
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining("minDuration=100ms"),
+      expect.anything()
+    );
+  });
+
   it("normalizes AWS CloudWatch alarms into metric evidence", async () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,

@@ -183,7 +183,27 @@ Teams uses Power Automate Workflows to receive webhook notifications.
 **Configuration:**
 - **URL:** Your endpoint
 - **Method:** GET, POST, or PUT (default: POST)
+- **Headers JSON:** Optional string-valued headers for provider authentication such as `Authorization`
 - **Body Template:** Optional custom JSON body with template variables (used for POST and PUT requests)
+
+Supercheck validates webhook URLs before sending outbound requests, blocks private/internal targets, encrypts provider config at rest, and masks sensitive webhook URL/header fields when returning providers to the UI.
+
+### Webhook Presets
+
+The webhook channel includes presets that fill the method, headers, and JSON body template for common SRE and incident-management tools. Selecting a preset does not merge credentials with AI SRE read-only connectors; outbound notification secrets remain scoped to the notification provider.
+
+| Preset | Use case | Setup docs |
+|--------|----------|------------|
+| Custom webhook | Default Supercheck payload or a custom JSON template | [Supercheck alerts](/app/communicate/alerts) |
+| PagerDuty Events API v2 | Trigger and resolve incidents using `{{pagerDutyEventAction}}` and `{{dedupKey}}` | [PagerDuty Events API v2](https://developer.pagerduty.com/docs/events-api-v2/overview/) |
+| Opsgenie Alert API | Create alerts with an alias and API-key auth header | [Opsgenie Alert API](https://docs.opsgenie.com/docs/alert-api) |
+| Splunk On-Call REST endpoint | Send VictorOps/Splunk On-Call trigger and resolve events | [Splunk On-Call REST Endpoint](https://help.victorops.com/knowledge-base/rest-endpoint-integration-guide/) |
+| Better Stack webhook | Forward alert context into Better Stack workflows | [Better Stack webhooks](https://betterstack.com/docs/uptime/integrations/webhooks/) |
+| incident.io alert source | Send alert-source events with deduplication context | [incident.io alert sources](https://incident.io/docs/alert-sources) |
+
+<Callout type="warn">
+Preset payloads include placeholders such as `REPLACE_WITH_PAGERDUTY_ROUTING_KEY` and `REPLACE_WITH_OPSGENIE_API_KEY`. Replace them before testing, and verify the endpoint URL in the vendor documentation because some providers generate tenant-specific webhook URLs.
+</Callout>
 
 ### Default Payload
 
@@ -300,6 +320,7 @@ Use a webhook with a body template to send alerts to [OpsGenie's Alert API](http
 3. In Supercheck, create a Webhook notification channel with:
    - **URL:** `https://api.opsgenie.com/v2/alerts`
    - **Method:** POST
+   - **Headers JSON:** `{ "Authorization": "GenieKey YOUR_OPSGENIE_API_KEY" }`
    - **Body Template:**
 
 ```json
@@ -318,8 +339,8 @@ Use a webhook with a body template to send alerts to [OpsGenie's Alert API](http
 }
 ```
 
-<Callout type="warn">
-For OpsGenie, you must also add an `Authorization` header with your API key. Since the webhook UI does not currently support custom headers, you can use OpsGenie's [email integration](https://docs.opsgenie.com/docs/email-integration) as an alternative, or set the API key via your API endpoint proxy.
+<Callout type="info">
+The webhook UI supports custom JSON headers for provider API keys. Supercheck stores these headers in the encrypted provider config and masks them when the provider is loaded for editing.
 </Callout>
 
 </Tab>

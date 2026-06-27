@@ -96,6 +96,26 @@ describe("routeSreConnectorQuery", () => {
     });
   });
 
+  it("routes expansion connector types implemented by the private agent runner", () => {
+    const decision = routeSreConnectorQuery({
+      organizationId: "org_1",
+      projectId: "project_1",
+      connector: { ...connector, type: "tempo", surfaces: ["traces"], evidenceTypes: ["trace"] },
+      params,
+      agents: [agent],
+      now: new Date("2026-06-21T10:10:00.000Z"),
+    });
+
+    expect(decision).toMatchObject({
+      routed: true,
+      jobClass: "sre_connector_query",
+      privateAgentId: "agent_1",
+    });
+    if (decision.routed) {
+      expect(decision.jobSpec.connectorType).toBe("tempo");
+    }
+  });
+
   it("rejects stale private agents", () => {
     const decision = routeSreConnectorQuery({
       organizationId: "org_1",

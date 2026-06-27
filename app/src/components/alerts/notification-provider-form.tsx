@@ -5,7 +5,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
-import { Loader2 } from "lucide-react";
+import { ExternalLink, Loader2 } from "lucide-react";
 
 import {
   Form,
@@ -36,6 +36,13 @@ import {
 } from "@/lib/error-utils";
 import { parseWebhookJsonTemplate } from "@/lib/notification-providers/webhook-template";
 import { notificationProviders } from "@/components/alerts/data";
+import {
+  WEBHOOK_PRESET_IDS,
+  WEBHOOK_PRESETS,
+  applyWebhookPresetConfig,
+  getWebhookPreset,
+  type WebhookPresetId,
+} from "@/lib/notification-providers/webhook-presets";
 
 const notificationProviderSchema = z
   .object({
@@ -95,6 +102,7 @@ const notificationProviderSchema = z
         ),
 
       // Webhook fields
+      preset: z.enum(WEBHOOK_PRESET_IDS).optional(),
       url: z
         .string()
         .optional()
@@ -231,7 +239,7 @@ const notificationProviderSchema = z
 const MASKED_FIELD_LABELS: Record<string, string> = {
   webhookUrl: "Webhook URL",
   url: "Target URL",
-  headers: "Headers",
+  headers: "Custom headers",
   botToken: "Bot Token",
   discordWebhookUrl: "Discord Webhook URL",
   teamsWebhookUrl: "Teams Webhook URL",
@@ -258,6 +266,15 @@ export function NotificationProviderForm({
 }: NotificationProviderFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
+  const [headersText, setHeadersText] = useState(() => {
+    const headers = initialData
+      ? ((initialData.config as Record<string, unknown>)
+          .headers as Record<string, string> | undefined)
+      : undefined;
+    return headers && Object.keys(headers).length > 0
+      ? JSON.stringify(headers, null, 2)
+      : "";
+  });
 
   const maskedFields = initialData?.maskedFields ?? [];
   const friendlyMaskedFields = maskedFields.map(
@@ -286,6 +303,10 @@ export function NotificationProviderForm({
           url:
             ((initialData.config as Record<string, unknown>).url as string) ||
             "",
+          preset:
+            (getWebhookPreset(
+              (initialData.config as Record<string, unknown>).preset,
+            )?.id as WebhookPresetId | undefined) || "custom",
           method:
             ((initialData.config as Record<string, unknown>).method as
               | "GET"
@@ -319,6 +340,7 @@ export function NotificationProviderForm({
           webhookUrl: "",
           channel: "",
           url: "",
+          preset: "custom",
           method: "POST",
           headers: {},
           bodyTemplate: "",
@@ -331,11 +353,100 @@ export function NotificationProviderForm({
   });
 
   const selectedType = form.watch("type");
+  const selectedPresetId = form.watch("config.preset") || "custom";
+  const selectedPreset = getWebhookPreset(selectedPresetId);
+
+  const parseHeadersText = (): Record<string, string> | undefined => {
+    const trimmed = headersText.trim();
+    if (!trimmed) {
+      return undefined;
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch {
+      throw new Error("Webhook headers must be valid JSON.");
+    }
+
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("Webhook headers must be a JSON object.");
+    }
+
+    const headers = parsed as Record<string, unknown>;
+    const invalidHeader = Object.entries(headers).find(
+      ([, value]) => typeof value !== "string",
+    );
+    if (invalidHeader) {
+      throw new Error(
+        `Webhook header "${invalidHeader[0]}" value must be a string.`,
+      );
+    }
+
+    return Object.keys(headers).length > 0
+      ? (headers as Record<string, string>)
+      : undefined;
+  };
+
+  const prepareWebhookData = (data: FormValues): FormValues => {
+    if (data.type !== "webhook") {
+      return data;
+    }
+
+    const nextConfig = { ...data.config };
+    const parsedHeaders = parseHeadersText();
+    if (parsedHeaders) {
+      nextConfig.headers = parsedHeaders;
+    } else {
+      delete nextConfig.headers;
+    }
+
+    return {
+      ...data,
+      config: nextConfig,
+    };
+  };
+
+  const handleWebhookPresetChange = (presetId: WebhookPresetId) => {
+    const currentConfig = form.getValues("config") as NotificationProviderConfig;
+    const nextConfig = applyWebhookPresetConfig(presetId, currentConfig);
+    const preset = getWebhookPreset(presetId);
+
+    form.setValue("config.preset", presetId, { shouldDirty: true });
+    form.setValue("config.method", nextConfig.method || "POST", {
+      shouldDirty: true,
+    });
+    form.setValue("config.bodyTemplate", nextConfig.bodyTemplate || "", {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+    form.setValue("config.headers", nextConfig.headers || {}, {
+      shouldDirty: true,
+    });
+    setHeadersText(
+      nextConfig.headers && Object.keys(nextConfig.headers).length > 0
+        ? JSON.stringify(nextConfig.headers, null, 2)
+        : "",
+    );
+
+    const currentUrl = form.getValues("config.url");
+    if (
+      !currentUrl &&
+      preset?.endpointPlaceholder.startsWith("https://") &&
+      !preset.endpointPlaceholder.includes("<") &&
+      !preset.endpointPlaceholder.includes("...")
+    ) {
+      form.setValue("config.url", preset.endpointPlaceholder, {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+    }
+  };
 
   const testConnection = async () => {
     setIsTesting(true);
     try {
-      const data = form.getValues();
+      const data = prepareWebhookData(form.getValues());
 
       const response = await fetch("/api/notification-providers/test", {
         method: "POST",
@@ -369,8 +480,10 @@ export function NotificationProviderForm({
   const onSubmit = async (data: FormValues) => {
     setIsSubmitting(true);
     try {
+      const preparedData = prepareWebhookData(data);
+
       // Pass the data to the parent component - parent handles toast
-      await onSuccess?.(data);
+      await onSuccess?.(preparedData);
 
       // Reset form only if not in edit mode
       if (!initialData) {
@@ -546,6 +659,68 @@ export function NotificationProviderForm({
         {selectedType === "webhook" && (
           <div className="space-y-4">
             <h3 className="text-lg font-medium">Webhook Configuration</h3>
+            <FormField
+              control={form.control}
+              name="config.preset"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Integration preset</FormLabel>
+                  <Select
+                    onValueChange={(value) =>
+                      handleWebhookPresetChange(value as WebhookPresetId)
+                    }
+                    value={field.value || "custom"}
+                    disabled={isSubmitting || isTesting}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select preset" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {WEBHOOK_PRESETS.map((preset) => (
+                        <SelectItem key={preset.id} value={preset.id}>
+                          {preset.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            {selectedPreset && (
+              <div className="rounded-md border border-border bg-muted/30 p-3 text-sm">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="space-y-1">
+                    <div className="font-medium">{selectedPreset.label}</div>
+                    <p className="text-muted-foreground">
+                      {selectedPreset.summary}
+                    </p>
+                    <p className="text-muted-foreground">
+                      Endpoint:{" "}
+                      <code className="rounded bg-background px-1 py-0.5">
+                        {selectedPreset.endpointPlaceholder}
+                      </code>
+                    </p>
+                    {selectedPreset.secretHint && (
+                      <p className="text-muted-foreground">
+                        {selectedPreset.secretHint}
+                      </p>
+                    )}
+                  </div>
+                  <a
+                    href={selectedPreset.docsUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+                  >
+                    Setup docs
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </a>
+                </div>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-4">
               <FormField
                 control={form.control}
@@ -591,6 +766,32 @@ export function NotificationProviderForm({
                 )}
               />
             </div>
+            <FormItem>
+              <FormLabel>
+                Headers JSON{" "}
+                <span className="text-xs text-muted-foreground bg-muted rounded-sm px-1.5 py-0.5">
+                  Optional
+                </span>
+              </FormLabel>
+              <FormControl>
+                <Textarea
+                  placeholder={
+                    '{\n  "Authorization": "Bearer your-token"\n}'
+                  }
+                  value={headersText}
+                  onChange={(event) => setHeadersText(event.target.value)}
+                  className="min-h-[90px] font-mono text-sm"
+                  disabled={isSubmitting || isTesting}
+                />
+              </FormControl>
+              <div className="text-sm text-muted-foreground">
+                Use this for provider API keys such as{" "}
+                <code>Authorization</code>. Supercheck validates and encrypts
+                headers, and blocks transport headers like{" "}
+                <code>Host</code>, <code>Content-Type</code>, and{" "}
+                <code>User-Agent</code>.
+              </div>
+            </FormItem>
             <FormField
               control={form.control}
               name="config.bodyTemplate"

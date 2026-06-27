@@ -32,7 +32,7 @@ import { db } from "@/utils/db";
 
 const MAX_TOOL_ROWS = 10;
 const MAX_TIME_WINDOW_MINUTES = 6 * 60;
-const supportedLiveConnectorTypes = ["github", "kubernetes", "prometheus", "grafana", "sentry", "datadog", "loki", "elasticsearch", "aws_cloudwatch"] as const;
+const supportedLiveConnectorTypes = ["github", "kubernetes", "prometheus", "grafana", "sentry", "datadog", "loki", "elasticsearch", "tempo", "aws_cloudwatch"] as const;
 type SupportedLiveConnectorType = (typeof supportedLiveConnectorTypes)[number];
 
 const connectorSearchInputSchema = z.object({

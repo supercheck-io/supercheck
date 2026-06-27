@@ -128,6 +128,19 @@ const privateAgentJobResultSchema = z.object({
   jobId: z.string().uuid(),
 });
 
+const privateAgentSupportedConnectorTypes = [
+  "github",
+  "kubernetes",
+  "prometheus",
+  "grafana",
+  "sentry",
+  "datadog",
+  "loki",
+  "elasticsearch",
+  "tempo",
+  "aws_cloudwatch",
+] as const;
+
 export type SreConnectorListItem = {
   id: string;
   name: string;
@@ -298,7 +311,11 @@ function directConnectorCredential(value: ConnectorCredentialValue | null) {
 }
 
 function supportsDirectConnectorValidation(connectorType: (typeof connectorTypes)[number]) {
-  return ["github", "kubernetes", "prometheus", "grafana", "sentry", "datadog", "loki", "elasticsearch", "aws_cloudwatch"].includes(connectorType);
+  return ["github", "kubernetes", "prometheus", "grafana", "sentry", "datadog", "loki", "elasticsearch", "tempo", "aws_cloudwatch"].includes(connectorType);
+}
+
+function supportsPrivateAgentConnector(connectorType: (typeof connectorTypes)[number]) {
+  return privateAgentSupportedConnectorTypes.includes(connectorType as (typeof privateAgentSupportedConnectorTypes)[number]);
 }
 
 function validationUrl(connectorType: (typeof connectorTypes)[number], endpointUrl: string | null) {
@@ -630,8 +647,8 @@ export async function createSreConnector(input: z.infer<typeof createConnectorSc
       }
     }
 
-    if (parsed.data.type === "aws_cloudwatch" && parsed.data.privateAgentId) {
-      return { success: false, error: "AWS CloudWatch currently supports direct execution only. Private Agent support is a follow-up task." };
+    if (parsed.data.privateAgentId && !supportsPrivateAgentConnector(parsed.data.type)) {
+      return { success: false, error: `${parsed.data.type.replace(/_/g, " ")} currently supports direct execution only. Private Agent support is a follow-up task.` };
     }
 
     const endpointUrl = normalizeEndpointUrl(parsed.data.endpointUrl);

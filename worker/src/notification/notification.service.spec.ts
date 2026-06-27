@@ -525,6 +525,24 @@ describe('NotificationService', () => {
       );
     });
 
+    it('should reject custom headers that override managed transport headers', async () => {
+      const headerProvider: NotificationProvider = {
+        ...webhookProvider,
+        config: {
+          url: 'https://api.example.com/webhook',
+          headers: { Host: 'metadata.google.internal' },
+        },
+      };
+
+      const result = await service.sendNotification(
+        headerProvider,
+        basePayload,
+      );
+
+      expect(result).toBe(false);
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
     it('should use body template with variable substitution', async () => {
       const templateProvider: NotificationProvider = {
         ...webhookProvider,

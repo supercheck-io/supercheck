@@ -4,6 +4,28 @@ import {
   normalizeWebhookMethod,
   parseWebhookJsonTemplate,
 } from "@/lib/notification-providers/webhook-template";
+import { getWebhookPreset } from "@/lib/notification-providers/webhook-presets";
+
+const WEBHOOK_HEADER_NAME_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
+const WEBHOOK_MAX_HEADERS = 20;
+const WEBHOOK_MAX_HEADER_VALUE_LENGTH = 1000;
+const WEBHOOK_BLOCKED_HEADERS = new Set([
+  "accept-encoding",
+  "connection",
+  "content-length",
+  "content-type",
+  "cookie",
+  "expect",
+  "host",
+  "keep-alive",
+  "proxy-authenticate",
+  "proxy-authorization",
+  "te",
+  "trailer",
+  "transfer-encoding",
+  "upgrade",
+  "user-agent",
+]);
 
 /**
  * Known-safe webhook endpoint hostnames per provider type.
@@ -101,6 +123,10 @@ export function validateProviderConfig(
       if (config.method !== undefined) {
         normalizeWebhookMethod(config.method);
       }
+      if (config.preset !== undefined && !getWebhookPreset(config.preset)) {
+        throw new Error("Webhook preset is not supported.");
+      }
+      validateWebhookHeaders(config.headers);
       if (
         typeof config.bodyTemplate === "string" &&
         config.bodyTemplate.trim().length > 0
@@ -136,6 +162,82 @@ export function validateProviderConfig(
   }
 }
 
+export function validateWebhookHeaders(headers: unknown): void {
+  if (headers === undefined || headers === null) {
+    return;
+  }
+
+  normalizeWebhookHeaders(headers);
+}
+
+export function normalizeWebhookHeaders(
+  headers: unknown,
+): Record<string, string> | undefined {
+  if (headers === undefined || headers === null) {
+    return undefined;
+  }
+
+  if (
+    typeof headers !== "object" ||
+    Array.isArray(headers)
+  ) {
+    throw new Error("Webhook headers must be a JSON object.");
+  }
+
+  const normalizedEntries = Object.entries(headers as Record<string, unknown>)
+    .map(([rawName, rawValue]) => {
+      const name = rawName.trim();
+      const value =
+        typeof rawValue === "string" ? rawValue.trim() : rawValue;
+      return [name, value] as const;
+    })
+    .filter(([name, value]) => {
+      return name.length > 0 || (typeof value === "string" && value.length > 0);
+    });
+
+  if (normalizedEntries.length > WEBHOOK_MAX_HEADERS) {
+    throw new Error(
+      `Webhook headers cannot exceed ${WEBHOOK_MAX_HEADERS} entries.`,
+    );
+  }
+
+  const normalizedHeaders: Record<string, string> = {};
+  const seenHeaderNames = new Set<string>();
+
+  for (const [name, value] of normalizedEntries) {
+    const lowerName = name.toLowerCase();
+
+    if (!WEBHOOK_HEADER_NAME_PATTERN.test(name)) {
+      throw new Error(`Webhook header "${name}" has an invalid name.`);
+    }
+
+    if (WEBHOOK_BLOCKED_HEADERS.has(lowerName)) {
+      throw new Error(`Webhook header "${name}" is managed by Supercheck.`);
+    }
+
+    if (seenHeaderNames.has(lowerName)) {
+      throw new Error(`Webhook header "${name}" is duplicated.`);
+    }
+
+    if (typeof value !== "string") {
+      throw new Error(`Webhook header "${name}" value must be a string.`);
+    }
+
+    if (value.length > WEBHOOK_MAX_HEADER_VALUE_LENGTH) {
+      throw new Error(
+        `Webhook header "${name}" cannot exceed ${WEBHOOK_MAX_HEADER_VALUE_LENGTH} characters.`,
+      );
+    }
+
+    seenHeaderNames.add(lowerName);
+    normalizedHeaders[name] = value;
+  }
+
+  return Object.keys(normalizedHeaders).length > 0
+    ? normalizedHeaders
+    : undefined;
+}
+
 export function normalizeProviderConfig(
   type: NotificationProviderType,
   config: Record<string, unknown>
@@ -148,6 +250,13 @@ export function normalizeProviderConfig(
 
   if (config.method !== undefined) {
     normalizedConfig.method = normalizeWebhookMethod(config.method);
+  }
+
+  const normalizedHeaders = normalizeWebhookHeaders(config.headers);
+  if (normalizedHeaders) {
+    normalizedConfig.headers = normalizedHeaders;
+  } else {
+    delete normalizedConfig.headers;
   }
 
   if (typeof config.bodyTemplate === "string") {

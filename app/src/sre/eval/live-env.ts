@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { createSreInvestigationApiEvalRunner, type SreInvestigationApiEvalRequest } from "./api-runner";
-import type { SreEvalFixture } from "./fixtures";
+import { sreEvalFixtures, type SreEvalFixture } from "./fixtures";
 
 const liveEvalIncidentMapSchema = z.record(z.string().min(1), z.string().uuid());
 
@@ -10,15 +10,17 @@ export type SreLiveEvalEnvironment = {
   baseUrl?: string;
   authToken?: string;
   incidentIdsByFixtureId: Record<string, string>;
+  fixtureIds: string[];
 };
 
 export function parseSreLiveEvalEnvironment(env: Partial<NodeJS.ProcessEnv> = process.env): SreLiveEvalEnvironment {
   const enabled = env.SRE_EVAL_LIVE_ENABLED === "true";
   const incidentIdsRaw = env.SRE_EVAL_INCIDENT_IDS?.trim();
   const incidentIdsByFixtureId = incidentIdsRaw ? liveEvalIncidentMapSchema.parse(JSON.parse(incidentIdsRaw)) : {};
+  const fixtureIds = env.SRE_EVAL_FIXTURE_IDS?.split(",").map((value) => value.trim()).filter(Boolean) ?? [];
 
   if (!enabled) {
-    return { enabled: false, incidentIdsByFixtureId };
+    return { enabled: false, incidentIdsByFixtureId, fixtureIds };
   }
 
   const baseUrl = env.SRE_EVAL_BASE_URL?.trim();
@@ -35,12 +37,33 @@ export function parseSreLiveEvalEnvironment(env: Partial<NodeJS.ProcessEnv> = pr
     throw new Error("SRE_EVAL_INCIDENT_IDS must map fixture IDs to seeded incident IDs when SRE_EVAL_LIVE_ENABLED=true");
   }
 
+  const unknownFixtureIds = fixtureIds.filter((fixtureId) => !sreEvalFixtures.some((fixture) => fixture.id === fixtureId));
+  if (unknownFixtureIds.length > 0) {
+    throw new Error(`SRE_EVAL_FIXTURE_IDS contains unknown fixture IDs: ${unknownFixtureIds.join(", ")}`);
+  }
+
   return {
     enabled: true,
     baseUrl,
     authToken,
     incidentIdsByFixtureId,
+    fixtureIds,
   };
+}
+
+export function selectSreLiveEvalFixtures(config: SreLiveEvalEnvironment, fixtures: SreEvalFixture[] = sreEvalFixtures) {
+  if (config.fixtureIds.length === 0) {
+    return fixtures;
+  }
+
+  const selected = fixtures.filter((fixture) => config.fixtureIds.includes(fixture.id));
+  if (selected.length !== config.fixtureIds.length) {
+    const foundIds = new Set(selected.map((fixture) => fixture.id));
+    const missing = config.fixtureIds.filter((fixtureId) => !foundIds.has(fixtureId));
+    throw new Error(`SRE live eval selected unknown fixture IDs: ${missing.join(", ")}`);
+  }
+
+  return selected;
 }
 
 export function buildSreLiveEvalRequest(config: SreLiveEvalEnvironment, fixture: SreEvalFixture): SreInvestigationApiEvalRequest {

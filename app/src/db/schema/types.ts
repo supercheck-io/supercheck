@@ -187,6 +187,13 @@ export type PlainNotificationProviderConfig = {
   emails?: string;
   webhookUrl?: string;
   channel?: string;
+  preset?:
+    | "custom"
+    | "pagerduty"
+    | "opsgenie"
+    | "splunk_on_call"
+    | "better_stack"
+    | "incident_io";
   url?: string;
   method?: "GET" | "POST" | "PUT";
   headers?: Record<string, string>;

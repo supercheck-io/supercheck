@@ -72,6 +72,7 @@ type SreEvidenceSourceType =
   | "sentry"
   | "loki"
   | "elasticsearch"
+  | "tempo"
   | "splunk"
   | "slack"
   | "mcp"

@@ -29,6 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { getConnectorQueryGuide } from "./connector-query-guides";
 
 type ConnectorFormDialogProps = {
   open: boolean;
@@ -48,7 +49,21 @@ const connectorTypeOptions: Array<{ value: ConnectorType; label: string; descrip
   { value: "datadog", label: "Datadog", description: "Metrics, logs, traces" },
   { value: "aws_cloudwatch", label: "AWS CloudWatch", description: "Metric alarms and CloudWatch metric data" },
   { value: "loki", label: "Loki", description: "LogQL logs" },
+  { value: "tempo", label: "Tempo", description: "Distributed traces and TraceQL search" },
   { value: "webhook", label: "Webhook", description: "Inbound operational events" },
+];
+
+const privateAgentSupportedConnectorTypes: ConnectorType[] = [
+  "github",
+  "kubernetes",
+  "prometheus",
+  "grafana",
+  "sentry",
+  "datadog",
+  "loki",
+  "elasticsearch",
+  "tempo",
+  "aws_cloudwatch",
 ];
 
 const credentialTypeOptions: Array<{ value: CredentialType; label: string }> = [
@@ -85,6 +100,8 @@ export function ConnectorFormDialog({
   const [awsSecretAccessKey, setAwsSecretAccessKey] = useState("");
   const [awsSessionToken, setAwsSessionToken] = useState("");
   const isCloudWatch = type === "aws_cloudwatch";
+  const supportsPrivateAgent = privateAgentSupportedConnectorTypes.includes(type);
+  const queryGuide = getConnectorQueryGuide(type);
 
   const toggleService = (serviceId: string) => {
     setSelectedServiceIds((current) =>
@@ -167,7 +184,7 @@ export function ConnectorFormDialog({
                 onValueChange={(value) => {
                   const nextType = value as ConnectorType;
                   setType(nextType);
-                  if (nextType === "aws_cloudwatch") {
+                  if (!privateAgentSupportedConnectorTypes.includes(nextType)) {
                     setExecutionMode("direct");
                     setPrivateAgentId(null);
                   }
@@ -226,7 +243,7 @@ export function ConnectorFormDialog({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="direct">Direct</SelectItem>
-                  <SelectItem value="private_agent" disabled={setupOptions.privateAgents.length === 0 || isCloudWatch}>
+                  <SelectItem value="private_agent" disabled={setupOptions.privateAgents.length === 0 || !supportsPrivateAgent}>
                     Private Agent
                   </SelectItem>
                 </SelectContent>
@@ -239,23 +256,51 @@ export function ConnectorFormDialog({
                 id="connector-endpoint"
                 value={endpointUrl}
                 onChange={(event) => setEndpointUrl(event.target.value)}
-                placeholder={
-                  type === "grafana"
-                    ? "https://grafana.example.com"
-                    : type === "prometheus"
-                      ? "https://prometheus.example.com"
-                      : type === "aws_cloudwatch"
-                        ? "https://monitoring.us-east-1.amazonaws.com"
-                        : "https://api.example.com"
-                }
+                placeholder={queryGuide.endpointPlaceholder}
                 aria-invalid={Boolean(firstError(fieldErrors, "endpointUrl"))}
               />
               {firstError(fieldErrors, "endpointUrl") ? (
                 <p className="text-xs text-destructive">{firstError(fieldErrors, "endpointUrl")}</p>
               ) : (
                 <p className="text-xs text-muted-foreground">
-                  Required for direct Prometheus, Grafana, Kubernetes, CloudWatch regional endpoints, and custom HTTP-style connectors. Use Private Agent for private network endpoints.
+                  Required for direct Prometheus, Grafana, Kubernetes, CloudWatch, Tempo, and custom HTTP-style connectors. Private Agent supports the implemented read-only SRE connectors for private-network access.
                 </p>
+              )}
+            </div>
+
+            <div className="space-y-3 rounded-lg border bg-background p-3 md:col-span-2">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="text-sm font-medium">{queryGuide.label} query guide</p>
+                  <p className="text-xs text-muted-foreground">{queryGuide.setupHint}</p>
+                </div>
+                <Badge variant="outline">{queryGuide.queryLabel}</Badge>
+              </div>
+              <div className="grid gap-2 md:grid-cols-2">
+                {queryGuide.examples.map((example) => (
+                  <div key={example.label} className="rounded-md border bg-muted/20 p-2">
+                    <p className="text-xs font-medium">{example.label}</p>
+                    <code className="mt-1 block break-words rounded bg-muted px-2 py-1 font-mono text-xs">
+                      {example.query}
+                    </code>
+                    <p className="mt-1 text-xs text-muted-foreground">{example.description}</p>
+                  </div>
+                ))}
+              </div>
+              {queryGuide.docs && (
+                <div className="flex flex-wrap gap-2 text-xs">
+                  {queryGuide.docs.map((doc) => (
+                    <a
+                      key={doc.href}
+                      href={doc.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary underline-offset-4 hover:underline"
+                    >
+                      {doc.label}
+                    </a>
+                  ))}
+                </div>
               )}
             </div>
 
@@ -347,8 +392,7 @@ export function ConnectorFormDialog({
                     placeholder="Optional STS session token"
                   />
                   <p className="text-xs text-muted-foreground">
-                    Use a least-privilege IAM principal with CloudWatch read-only APIs only. Credentials are encrypted server-side and redacted before AI context.
-                    Private Agent execution for CloudWatch is not enabled yet.
+                    {queryGuide.credentialHint} Credentials are encrypted server-side, scoped to the selected Private Agent when used, and redacted before AI context.
                   </p>
                 </div>
               </div>
@@ -380,7 +424,7 @@ export function ConnectorFormDialog({
                     autoComplete="new-password"
                     placeholder="Paste read-only credential"
                   />
-                  <p className="text-xs text-muted-foreground">Use read-only credentials. Leave empty to configure later.</p>
+                  <p className="text-xs text-muted-foreground">{queryGuide.credentialHint}</p>
                 </div>
               </>
             )}
