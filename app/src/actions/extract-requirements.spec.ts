@@ -73,6 +73,7 @@ jest.mock("@/lib/ai/ai-provider", () => ({
     timeout: 90000,
   })),
   getActualModelName: jest.fn(() => "gpt-4o-mini"),
+  getProviderGenerationOptions: jest.fn((options) => options),
   mapProviderError: jest.fn((e: Error) => e),
 }));
 

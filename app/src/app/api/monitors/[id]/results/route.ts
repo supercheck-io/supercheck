@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { monitors, monitorResults } from "@/db/schema";
-import { eq, desc, and, gte, lte, sql } from "drizzle-orm";
+import { eq, desc, and, gte, lt, sql } from "drizzle-orm";
 import { requireAuthContext, isAuthError } from '@/lib/auth-context';
 import { createLogger } from "@/lib/logger/index";
 
@@ -15,6 +15,68 @@ import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { isMonitoringLocation } from "@/lib/location-service";
 import type { MonitoringLocation } from "@/lib/location-service";
 
+const DATE_FILTER_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const MAX_TIMEZONE_OFFSET_MINUTES = 14 * 60;
+
+type DateRange = {
+  start: Date;
+  end: Date;
+};
+
+function parsePositiveInteger(value: string | null, fallback: number): number {
+  if (value === null) {
+    return fallback;
+  }
+
+  const parsed = Number(value);
+  return Number.isInteger(parsed) ? parsed : Number.NaN;
+}
+
+function parseTimezoneOffset(value: string | null): number | null {
+  if (value === null) {
+    return null;
+  }
+
+  const parsed = Number(value);
+  if (
+    !Number.isInteger(parsed) ||
+    parsed < -MAX_TIMEZONE_OFFSET_MINUTES ||
+    parsed > MAX_TIMEZONE_OFFSET_MINUTES
+  ) {
+    return Number.NaN;
+  }
+
+  return parsed;
+}
+
+export function buildMonitorResultsDateRange(
+  dateFilter: string,
+  timezoneOffsetMinutes: number | null = null
+): DateRange | null {
+  if (!DATE_FILTER_PATTERN.test(dateFilter)) {
+    return null;
+  }
+
+  const [year, month, day] = dateFilter.split("-").map(Number);
+  const utcStart = Date.UTC(year, month - 1, day);
+  const parsedStart = new Date(utcStart);
+
+  if (
+    parsedStart.getUTCFullYear() !== year ||
+    parsedStart.getUTCMonth() !== month - 1 ||
+    parsedStart.getUTCDate() !== day
+  ) {
+    return null;
+  }
+
+  const offsetMilliseconds =
+    (timezoneOffsetMinutes ?? 0) * 60 * 1000;
+  const start = new Date(utcStart + offsetMilliseconds);
+  const end = new Date(Date.UTC(year, month - 1, day + 1) + offsetMilliseconds);
+
+  return { start, end };
+}
+
 export async function GET(
   request: NextRequest,
   routeContext: { params: Promise<{ id: string }> }
@@ -27,9 +89,10 @@ export async function GET(
   }
 
   const { searchParams } = new URL(request.url);
-  const page = parseInt(searchParams.get('page') || '1', 10);
-  const limit = parseInt(searchParams.get('limit') || '10', 10);
+  const page = parsePositiveInteger(searchParams.get('page'), 1);
+  const limit = parsePositiveInteger(searchParams.get('limit'), 10);
   const dateFilter = searchParams.get('date'); // YYYY-MM-DD format
+  const timezoneOffset = parseTimezoneOffset(searchParams.get("timezoneOffset"));
   const locationParam = searchParams.get("location"); // Optional location filter
   const locationFilter: MonitoringLocation | null = isMonitoringLocation(
     locationParam
@@ -38,9 +101,25 @@ export async function GET(
     : null;
 
   // Validate pagination parameters
-  if (page < 1 || limit < 1 || limit > 100) {
+  if (!Number.isInteger(page) || !Number.isInteger(limit) || page < 1 || limit < 1 || limit > 100) {
     return NextResponse.json({
       error: "Invalid pagination parameters. Page must be >= 1, limit must be 1-100"
+    }, { status: 400 });
+  }
+
+  if (Number.isNaN(timezoneOffset)) {
+    return NextResponse.json({
+      error: "Invalid timezoneOffset parameter. Must be an integer between -840 and 840 minutes"
+    }, { status: 400 });
+  }
+
+  const dateRange = dateFilter
+    ? buildMonitorResultsDateRange(dateFilter, timezoneOffset)
+    : null;
+
+  if (dateFilter && !dateRange) {
+    return NextResponse.json({
+      error: "Invalid date parameter. Expected YYYY-MM-DD"
     }, { status: 400 });
   }
 
@@ -74,10 +153,10 @@ export async function GET(
     // Build where condition with optional date and location filters
     const conditions = [eq(monitorResults.monitorId, id)];
 
-    if (dateFilter) {
+    if (dateRange) {
       conditions.push(
-        gte(monitorResults.checkedAt, new Date(dateFilter + 'T00:00:00.000Z')),
-        lte(monitorResults.checkedAt, new Date(dateFilter + 'T23:59:59.999Z'))
+        gte(monitorResults.checkedAt, dateRange.start),
+        lt(monitorResults.checkedAt, dateRange.end)
       );
     }
 

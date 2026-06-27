@@ -29,6 +29,7 @@
 #   WORKER_LOCATION - This worker's region (must match an enabled Super Admin location code, e.g. us-east, eu-west, ap-south)
 #   AWS_ACCESS_KEY_ID - S3 credentials
 #   AWS_SECRET_ACCESS_KEY - S3 credentials
+#   SELF_HOSTED - true for workers connecting to a self-hosted Supercheck stack
 #
 # NOTE: RUNNING_CAPACITY and QUEUED_CAPACITY are App-side settings.
 #   Set them only on the main server's App service, not here.
@@ -49,6 +50,7 @@
 # AWS_SECRET_ACCESS_KEY=minioadmin
 # WORKER_LOCATION=us-east
 # WORKER_REPLICAS=1
+# SELF_HOSTED=true
 # ----------------------------------------
 
 services:
@@ -107,6 +109,7 @@ services:
 
       # Execution configuration
       NODE_ENV: ${NODE_ENV:-production}
+      SELF_HOSTED: ${SELF_HOSTED:-true}
       # Note: RUNNING_CAPACITY and QUEUED_CAPACITY are App-side settings only.
       # Set RUNNING_CAPACITY on the App (main server) equal to total WORKER_REPLICAS across all hosts.
       CONTAINER_CPU_LIMIT: ${CONTAINER_CPU_LIMIT:-1.5}
@@ -134,7 +137,7 @@ services:
     restart: unless-stopped
 
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/health"]
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/health/ready"]
       interval: 30s
       timeout: 10s
       retries: 3

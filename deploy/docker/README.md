@@ -49,6 +49,8 @@ curl -fsSL https://get.docker.com | sh
 | `docker-compose-worker.yml` | Remote regional worker |
 | `docker-compose-local.yml` | Source-based local development |
 
+All worker Docker definitions use the worker readiness endpoint (`/health/ready`) for healthchecks. A worker is marked unhealthy when it cannot reach required dependencies such as PostgreSQL, Redis, or its queues.
+
 ---
 
 ## Environment Variables

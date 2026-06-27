@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   ArrowRight,
   Building2,
@@ -88,29 +88,19 @@ const features = [
 
 
 export default function HomePage() {
-  const [isDark, setIsDark] = useState(false);
-  const [isMounted, setIsMounted] = useState(false);
   const [isVideoPlaying, setIsVideoPlaying] = useState(false);
 
   // YouTube Video ID from the provided URL
   const YOUTUBE_VIDEO_ID = "A9CzmekuvfI";
 
-  useEffect(() => {
-    setIsMounted(true);
-    const isDarkMode = document.documentElement.classList.contains("dark");
-    setIsDark(isDarkMode);
-  }, []);
-
   const toggleTheme = () => {
     const html = document.documentElement;
-    if (isDark) {
+    if (html.classList.contains("dark")) {
       html.classList.remove("dark");
       localStorage.setItem("theme", "light");
-      setIsDark(false);
     } else {
       html.classList.add("dark");
       localStorage.setItem("theme", "dark");
-      setIsDark(true);
     }
   };
 
@@ -181,7 +171,7 @@ export default function HomePage() {
               className="p-2 md:px-3 md:py-2 rounded-lg inline-flex items-center gap-1.5 text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition"
               aria-label="Supercheck CLI on npm"
             >
-              <img src="/npm.svg" alt="npm" className="size-4.5" />
+              <Image src="/npm.svg" alt="npm" width={18} height={18} className="size-4.5" />
               <span className="hidden md:inline">npm</span>
             </a>
             <a
@@ -208,19 +198,14 @@ export default function HomePage() {
               </svg>
               {/* <span className="hidden md:inline">Discord</span> */}
             </a>
-            {isMounted && (
-              <button
-                onClick={toggleTheme}
-                className="p-2 rounded-lg text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition"
-                aria-label="Toggle theme"
-              >
-                {isDark ? (
-                  <Sun className="size-5" />
-                ) : (
-                  <Moon className="size-5" />
-                )}
-              </button>
-            )}
+            <button
+              onClick={toggleTheme}
+              className="p-2 rounded-lg text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+              aria-label="Toggle theme"
+            >
+              <Moon className="size-5 dark:hidden" />
+              <Sun className="size-5 hidden dark:block" />
+            </button>
           </div>
         </div>
       </header>

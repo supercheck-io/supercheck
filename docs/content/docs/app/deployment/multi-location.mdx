@@ -182,6 +182,7 @@ Org admins can restrict which locations a project may use via **Settings → Adm
     ```bash
     # Worker location (must match an enabled location code in Super Admin)
     WORKER_LOCATION=us-east
+    SELF_HOSTED=true
 
     # Database
     DATABASE_URL=postgresql://postgres:YOUR_DB_PASSWORD@MAIN_SERVER_IP:5432/supercheck
@@ -228,6 +229,7 @@ WORKER_LOCATION=eu-central
 ```bash
 # Worker location
 WORKER_LOCATION=us-east
+SELF_HOSTED=true
 
 # Connection to main server (replace with your values)
 DATABASE_URL=postgresql://postgres:YOUR_DB_PASSWORD@YOUR_MAIN_SERVER_IP:5432/supercheck
@@ -243,6 +245,7 @@ AWS_SECRET_ACCESS_KEY=YOUR_MINIO_SECRET_KEY
 ```bash
 # Worker location
 WORKER_LOCATION=asia-pacific
+SELF_HOSTED=true
 
 # Connection to main server (replace with your values)
 DATABASE_URL=postgresql://postgres:YOUR_DB_PASSWORD@YOUR_MAIN_SERVER_IP:5432/supercheck
@@ -302,6 +305,7 @@ Detailed network security configuration is beyond the scope of this documentatio
 | Issue | Diagnostic Command |
 |-------|-------------------|
 | Worker can't reach DB | `docker run --rm postgres:18 psql "$DATABASE_URL" -c "SELECT 1"` |
+| Worker logs `Failed query` for every database call | Set `SELF_HOSTED=true` on remote workers that connect to the bundled self-hosted Postgres so the worker does not require PostgreSQL SSL |
 | Worker can't reach Redis | `docker run --rm redis:8 redis-cli -h MAIN_SERVER_IP -a PASSWORD ping` |
 | Verify worker location | `docker compose logs worker \| grep WORKER_LOCATION` |
 | K6 jobs stuck queued | Ensure a worker has the matching `WORKER_LOCATION` running |

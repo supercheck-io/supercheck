@@ -37,6 +37,7 @@ import {
   getProviderModel,
   getServiceConfiguration,
   getActualModelName,
+  getProviderGenerationOptions,
   mapProviderError,
 } from "@/lib/ai/ai-provider";
 
@@ -463,7 +464,7 @@ async function extractWithAI(
     const { text, usage } = await generateText({
       model: getProviderModel(),
       prompt,
-      temperature: 0.3, // Lower temperature for more consistent extraction
+      ...getProviderGenerationOptions({ temperature: 0.3 }),
       maxRetries: config.maxRetries,
       abortSignal: AbortSignal.timeout(config.timeout),
     });

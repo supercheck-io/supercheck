@@ -38,6 +38,10 @@ export interface AIServiceConfig {
   timeout: number;
 }
 
+export interface AIGenerationOptions {
+  temperature?: number;
+}
+
 /**
  * Validates that the required credentials are configured for the selected provider.
  * Throws an error if credentials are missing or invalid.
@@ -315,6 +319,25 @@ export function getServiceConfiguration(): AIServiceConfig {
       120000
     ),
   };
+}
+
+/**
+ * Builds provider-safe generation options for AI SDK calls.
+ * Azure OpenAI deployments, especially GPT-5/reasoning deployments, can reject
+ * the temperature parameter even when other providers accept it.
+ */
+export function getProviderGenerationOptions(
+  options: AIGenerationOptions = {}
+): AIGenerationOptions {
+  const provider = getAIProvider();
+
+  if (provider === "azure" && process.env.AZURE_INCLUDE_TEMPERATURE !== "true") {
+    return {};
+  }
+
+  return options.temperature === undefined
+    ? {}
+    : { temperature: options.temperature };
 }
 
 /**

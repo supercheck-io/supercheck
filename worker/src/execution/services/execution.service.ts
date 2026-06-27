@@ -879,7 +879,10 @@ export class ExecutionService implements OnModuleDestroy {
       // Filter file variables to only those referenced by getFile()/readFile() in the scripts.
       // Use raw decoded scripts (before runtime helper injection) to avoid
       // false-positive detection from the injected getFile()/readFile() helper definitions.
-      const filteredJobFiles = filterFileVariablesToUsedKeys(task.files ?? {}, rawDecodedScripts);
+      const filteredJobFiles = filterFileVariablesToUsedKeys(
+        task.files ?? {},
+        rawDecodedScripts,
+      );
       const { additionalFiles: fileAdditionalFiles, filePaths } =
         await this.prepareFileVariables(filteredJobFiles);
       Object.assign(additionalFiles, fileAdditionalFiles);
@@ -901,7 +904,11 @@ export class ExecutionService implements OnModuleDestroy {
         true,
         additionalFiles, // Pass additional test files to execute in container
         runId, // Pass runId for cancellation tracking
-        this.buildVariableRuntimeEnv(task.variables ?? {}, task.secrets ?? {}, filePaths),
+        this.buildVariableRuntimeEnv(
+          task.variables ?? {},
+          task.secrets ?? {},
+          filePaths,
+        ),
       );
 
       const taskSecrets = task.secrets ?? {};
@@ -966,7 +973,6 @@ export class ExecutionService implements OnModuleDestroy {
       const startTimeMs = new Date(timestamp).getTime();
       const durationMs = endTime.getTime() - startTimeMs;
       const durationStr = this.formatDuration(durationMs);
-      const durationSeconds = this.getDurationSeconds(durationMs);
 
       // Evaluate report contents to determine real outcome; default to failed if unknown
       const reportOutcome =
@@ -1171,8 +1177,7 @@ export class ExecutionService implements OnModuleDestroy {
     const executionId = crypto.randomUUID().substring(0, 8);
 
     // Resolve working directory: /worker in Docker, process.cwd() locally
-    const workerDir =
-      await this.containerExecutorService.resolveWorkerDir();
+    const workerDir = await this.containerExecutorService.resolveWorkerDir();
     // Resolve browsers path: /ms-playwright in Docker, system default locally
     const browsersPath =
       await this.containerExecutorService.resolveBrowsersPath();
@@ -2078,8 +2083,19 @@ export class ExecutionService implements OnModuleDestroy {
    * and creating the file content map + path map for runtime helpers.
    */
   private async prepareFileVariables(
-    files: Record<string, { storagePath: string; fileName: string; mimeType: string; fileSize: number | null }>,
-  ): Promise<{ additionalFiles: Record<string, string>; filePaths: Record<string, string> }> {
+    files: Record<
+      string,
+      {
+        storagePath: string;
+        fileName: string;
+        mimeType: string;
+        fileSize: number | null;
+      }
+    >,
+  ): Promise<{
+    additionalFiles: Record<string, string>;
+    filePaths: Record<string, string>;
+  }> {
     return this.s3Service.prepareFileVariables(files);
   }
 

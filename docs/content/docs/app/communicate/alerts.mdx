@@ -251,6 +251,8 @@ Use a custom body template to match the format required by third-party services.
 | `{{alertAction}}` | Lifecycle action for event APIs | `trigger`, `resolve` |
 | `{{eventAction}}` | Same as alertAction | `trigger`, `resolve` |
 | `{{pagerDutyEventAction}}` | PagerDuty Events API action | `trigger`, `resolve` |
+| `{{victorOpsMessageType}}` | VictorOps/Splunk On-Call lifecycle value | `CRITICAL`, `RECOVERY` |
+| `{{splunkOnCallMessageType}}` | Same as victorOpsMessageType | `CRITICAL`, `RECOVERY` |
 | `{{dedupKey}}` | Stable key for correlating related events | `monitor:uuid`, `job:uuid`, `ssl:uuid` |
 
 ### PagerDuty Integration
@@ -289,6 +291,25 @@ Use a webhook with a body template to send alerts to the [PagerDuty Events API v
 
 <Callout type="info">
 PagerDuty resolves an alert only when the resolve event has the same `dedup_key` as the original trigger event. Use `{{pagerDutyEventAction}}` and `{{dedupKey}}` together so Supercheck sends `trigger` for failures and `resolve` for recoveries using the same key. PagerDuty expects `severity` to be one of `critical`, `error`, `warning`, or `info`; `{{normalizedSeverity}}` maps Supercheck `success` alerts to `info`.
+</Callout>
+
+### VictorOps / Splunk On-Call Integration
+
+Use a webhook body template for the [Splunk On-Call REST endpoint integration](https://help.splunk.com/en/splunk-enterprise/alert-and-respond/splunk-on-call/integrations-with-splunk-on-call/rest-endpoint-integration-for-splunk-on-call). The `message_type` field controls the incident lifecycle, so use `{{victorOpsMessageType}}` or `{{splunkOnCallMessageType}}` instead of a hard-coded value.
+
+```json
+{
+  "message_type": "{{victorOpsMessageType}}",
+  "entity_id": "{{dedupKey}}",
+  "entity_display_name": "{{title}}",
+  "state_message": "{{message}}",
+  "monitoring_tool": "supercheck",
+  "timestamp": "{{timestamp}}"
+}
+```
+
+<Callout type="info">
+`{{victorOpsMessageType}}` renders `CRITICAL` for failure/trigger alerts and `RECOVERY` for monitor recovery alerts. Keep `{{dedupKey}}` in `entity_id` so Splunk On-Call can correlate the recovery with the original incident.
 </Callout>
 
 ### OpsGenie Integration

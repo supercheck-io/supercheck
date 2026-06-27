@@ -552,10 +552,10 @@ export function MonitorDetailClient({
   const currentResultsCount = paginatedTableResults.length;
   const totalResultsCount = paginationMeta?.total || 0;
 
-  // Reset page when date filter changes
+  // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [selectedDate]);
+  }, [selectedDate, selectedLocation]);
 
   const clearDateFilter = () => {
     setSelectedDate(undefined);
