@@ -344,7 +344,7 @@ describe('K6ExecutionService', () => {
             JSON.stringify({ API_TOKEN: utf8Secret }),
           ).toString('base64'),
         },
-        __scB64Decode: (value: string, encoding: string, format: string) =>
+        __scB64Decode: (value: string, _encoding: string, _format: string) =>
           Buffer.from(value, 'base64').toString('utf8'),
         Buffer: undefined,
         atob: (value: string) =>
@@ -420,7 +420,7 @@ describe('K6ExecutionService', () => {
           ).toString('base64'),
           SUPERCHECK_SECRETS_B64: Buffer.from('{}').toString('base64'),
         },
-        __scB64Decode: (value: string, encoding: string, format: string) =>
+        __scB64Decode: (value: string, _encoding: string, _format: string) =>
           Buffer.from(value, 'base64').toString('utf8'),
         console: lockedConsole,
       };

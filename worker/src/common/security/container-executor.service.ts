@@ -9,6 +9,8 @@
  *   long-lived worker control plane.
  */
 
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-misused-promises, @typescript-eslint/prefer-promise-reject-errors */
+
 import {
   Injectable,
   Logger,
@@ -150,8 +152,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
   private static readonly OUTCOME_POLL_FAST_MS = 1_000;
   private static readonly OUTCOME_POLL_MEDIUM_MS = 2_000;
   private static readonly OUTCOME_POLL_SLOW_MS = 5_000;
-  private readonly activeCancellationIntervals: Set<NodeJS.Timeout> =
-    new Set();
+  private readonly activeCancellationIntervals: Set<NodeJS.Timeout> = new Set();
 
   /** Max combined stdout+stderr size in bytes (10 MB) */
   private static readonly MAX_OUTPUT_BYTES = 10 * 1024 * 1024;
@@ -176,7 +177,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     ContainerExecutorService.GVISOR_SENTRY_OVERHEAD_MB;
 
   /** Allowed filename pattern: alphanumeric, dots, hyphens, underscores */
-  private static readonly SAFE_FILENAME_RE = /^[\w.\-]+$/;
+  private static readonly SAFE_FILENAME_RE = /^[\w.-]+$/;
   private readonly defaultImage: string;
   private readonly executionNamespace: string;
   private readonly executionRuntimeClassName: string | undefined;
@@ -209,7 +210,9 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       .get<string>('EXECUTION_RUNTIME_CLASS_NAME', 'gvisor')
       ?.trim();
     this.executionRuntimeClassName =
-      runtimeClass === 'none' || runtimeClass === '' ? undefined : (runtimeClass || 'gvisor');
+      runtimeClass === 'none' || runtimeClass === ''
+        ? undefined
+        : runtimeClass || 'gvisor';
     this.executionNodeSelector = this.parseExecutionNodeSelector(
       this.configService.get<string>('EXECUTION_NODE_SELECTOR'),
     );
@@ -266,7 +269,9 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
 
     const jobCleanup = Array.from(this.runningJobs.entries()).map(
       async ([runId, jobName]) => {
-        this.logger.warn(`Deleting orphaned execution job ${jobName} for ${runId}`);
+        this.logger.warn(
+          `Deleting orphaned execution job ${jobName} for ${runId}`,
+        );
         await this.deleteExecutionJob(jobName);
       },
     );
@@ -380,7 +385,9 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     // Validate additionalFiles keys — no path traversal, no absolute paths
     if (options.additionalFiles) {
       const sanitizedAdditionalFiles: Record<string, string> = {};
-      for (const [filePath, content] of Object.entries(options.additionalFiles)) {
+      for (const [filePath, content] of Object.entries(
+        options.additionalFiles,
+      )) {
         const normalizedFilePath = this.normalizeRelativeWorkspacePath(
           filePath,
           'additional file path',
@@ -424,7 +431,9 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
               'Ensure directory path contains invalid characters',
           };
         }
-        if (!sanitizedEnsureDirectories.includes(normalizedDirPath.normalized!)) {
+        if (
+          !sanitizedEnsureDirectories.includes(normalizedDirPath.normalized!)
+        ) {
           sanitizedEnsureDirectories.push(normalizedDirPath.normalized!);
         }
       }
@@ -460,19 +469,14 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
           duration: 0,
           timedOut: false,
           error:
-            normalizedExtractPath.error ||
-            'Invalid extractFromContainer path',
+            normalizedExtractPath.error || 'Invalid extractFromContainer path',
         };
       }
       normalizedOptions.extractFromContainer = normalizedExtractPath.normalized;
     }
 
     // Default options
-    const {
-      timeoutMs = 300000,
-      memoryLimitMb = 512,
-      cpuLimit = 0.5,
-    } = options;
+    const { timeoutMs = 300000, memoryLimitMb = 512, cpuLimit = 0.5 } = options;
 
     // Validate resource limits
     const validatedLimits = this.validateResourceLimits({
@@ -493,11 +497,21 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       };
     }
 
-    return this.executeInKubernetes(command, normalizedOptions, validatedLimits);
+    return this.executeInKubernetes(
+      command,
+      normalizedOptions,
+      validatedLimits,
+    );
   }
 
   private async ensureKubernetesClients(): Promise<void> {
-    if (this.kubeConfig && this.batchApi && this.coreApi && this.logClient && this.execClient) {
+    if (
+      this.kubeConfig &&
+      this.batchApi &&
+      this.coreApi &&
+      this.logClient &&
+      this.execClient
+    ) {
       return;
     }
 
@@ -535,7 +549,9 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       return value;
     }
     // Replace all occurrences of the host worker dir with /worker
-    return value.split(hostWorkerDir).join(ContainerExecutorService.CONTAINER_WORKER_DIR);
+    return value
+      .split(hostWorkerDir)
+      .join(ContainerExecutorService.CONTAINER_WORKER_DIR);
   }
 
   private async executeInKubernetes(
@@ -549,7 +565,8 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     // The K8s container image always has worker files at /worker.
     // When running locally, callers pass host-local paths (e.g. process.cwd())
     // which must be rewritten to /worker for the container.
-    const hostWorkerDir = options.workingDir || ContainerExecutorService.CONTAINER_WORKER_DIR;
+    const hostWorkerDir =
+      options.workingDir || ContainerExecutorService.CONTAINER_WORKER_DIR;
     const workingDir = ContainerExecutorService.CONTAINER_WORKER_DIR;
 
     // Rewrite host-local paths in command args
@@ -618,8 +635,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       podName = await this.waitForExecutionPod(jobName);
       podStartupDurationMs = Date.now() - podWaitStartedAt;
       if (
-        podStartupDurationMs >
-        ContainerExecutorService.SLOW_POD_STARTUP_WARN_MS
+        podStartupDurationMs > ContainerExecutorService.SLOW_POD_STARTUP_WARN_MS
       ) {
         this.logger.warn(
           `[${jobName}] Execution pod ${podName} became visible after ${podStartupDurationMs}ms. Slow startup usually indicates image pull, scheduling pressure, or cluster DNS/network latency.`,
@@ -644,11 +660,24 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       timedOut = outcome.timedOut;
       killed = killed || outcome.cancelled;
 
-      if (options.extractFromContainer && options.extractToHost && !timedOut && !killed) {
-        const extractSource = this.rewriteTmpPath(options.extractFromContainer, workspace);
+      if (
+        options.extractFromContainer &&
+        options.extractToHost &&
+        !timedOut &&
+        !killed
+      ) {
+        const extractSource = this.rewriteTmpPath(
+          options.extractFromContainer,
+          workspace,
+        );
         const extractionStartedAt = Date.now();
         try {
-          await this.extractPodArtifacts(podName, extractSource, options.extractToHost, workspace);
+          await this.extractPodArtifacts(
+            podName,
+            extractSource,
+            options.extractToHost,
+            workspace,
+          );
           artifactExtractionDurationMs = Date.now() - extractionStartedAt;
           this.logger.debug(
             `[${jobName}] Extracted artifacts from ${podName} in ${artifactExtractionDurationMs}ms`,
@@ -657,22 +686,26 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
           artifactExtractionDurationMs = Date.now() - extractionStartedAt;
           this.logger.error(
             `Failed to extract pod artifacts after ${artifactExtractionDurationMs}ms: ${
-              extractError instanceof Error ? extractError.message : String(extractError)
+              extractError instanceof Error
+                ? extractError.message
+                : String(extractError)
             }`,
           );
         }
       }
 
       if (!timedOut && !killed && podName) {
-        await this.signalExecutionExit(podName, workspace).catch((signalError) => {
-          this.logger.debug(
-            `Failed to signal execution pod exit for ${podName}: ${
-              signalError instanceof Error
-                ? signalError.message
-                : String(signalError)
-            }`,
-          );
-        });
+        await this.signalExecutionExit(podName, workspace).catch(
+          (signalError) => {
+            this.logger.debug(
+              `Failed to signal execution pod exit for ${podName}: ${
+                signalError instanceof Error
+                  ? signalError.message
+                  : String(signalError)
+              }`,
+            );
+          },
+        );
       }
 
       if (logAbort) {
@@ -746,7 +779,8 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     limits: ValidatedLimits;
     options: ContainerExecutionOptions;
   }): k8s.V1Job {
-    const { jobName, workspace, shellScript, workingDir, limits, options } = params;
+    const { jobName, workspace, shellScript, workingDir, limits, options } =
+      params;
     const image = options.image || this.defaultImage;
     const envVars = this.buildKubernetesEnv(options.env, workspace);
     const dnsSettings = this.buildExecutionPodDnsSettings();
@@ -754,7 +788,8 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     const resourceCpuLimit = `${Math.max(100, Math.round(limits.cpuLimit * 1000))}m`;
     const resourceCpuRequest = `${Math.max(100, Math.round(limits.cpuLimit * 500))}m`;
     // Add overhead for /dev/shm tmpfs (counts against cgroup in K8s) and gVisor Sentry
-    const effectiveMemoryMb = limits.memoryLimitMb + ContainerExecutorService.TOTAL_MEMORY_OVERHEAD_MB;
+    const effectiveMemoryMb =
+      limits.memoryLimitMb + ContainerExecutorService.TOTAL_MEMORY_OVERHEAD_MB;
     const resourceMemoryLimit = `${effectiveMemoryMb}Mi`;
     const resourceMemoryRequest = `${Math.max(128, Math.round(effectiveMemoryMb * 0.75))}Mi`;
     const exitCodeFile = this.getWorkspaceExitCodeFile(workspace);
@@ -873,9 +908,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     k8s.V1PodSpec,
     'dnsPolicy' | 'dnsConfig'
   > {
-    const options = [
-      ...ContainerExecutorService.DEFAULT_DNS_OPTIONS,
-    ];
+    const options = [...ContainerExecutorService.DEFAULT_DNS_OPTIONS];
 
     if (this.executionDnsNameservers?.length) {
       return {
@@ -987,7 +1020,9 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       await this.sleep(1000);
     }
 
-    throw new Error(`Execution pod for job ${jobName} did not appear within 120s`);
+    throw new Error(
+      `Execution pod for job ${jobName} did not appear within 120s`,
+    );
   }
 
   private createLogCollector(options: ContainerExecutionOptions): {
@@ -1003,7 +1038,9 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     let suppressLive = false;
     const stream = new Writable({
       write: (chunk, _encoding, callback) => {
-        const text = Buffer.isBuffer(chunk) ? chunk.toString('utf8') : String(chunk);
+        const text = Buffer.isBuffer(chunk)
+          ? chunk.toString('utf8')
+          : String(chunk);
         if (output.length < ContainerExecutorService.MAX_OUTPUT_BYTES) {
           output += text;
         }
@@ -1057,7 +1094,10 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
    */
   private startLogStreamWithReconnect(
     podName: string,
-    sink: Writable & { suppressLiveForwarding?: () => void; resumeLiveForwarding?: () => void },
+    sink: Writable & {
+      suppressLiveForwarding?: () => void;
+      resumeLiveForwarding?: () => void;
+    },
     jobName: string,
   ): AbortController {
     const controller = new AbortController();
@@ -1078,10 +1118,13 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       if (attempt > 0 && sink.suppressLiveForwarding) {
         sink.suppressLiveForwarding();
         // Resume after the replay window (sinceSeconds + reconnect delay buffer)
-        replayTimer = setTimeout(() => {
-          sink.resumeLiveForwarding?.();
-          replayTimer = null;
-        }, (sinceSecondsOnReconnect + 1) * 1_000);
+        replayTimer = setTimeout(
+          () => {
+            sink.resumeLiveForwarding?.();
+            replayTimer = null;
+          },
+          (sinceSecondsOnReconnect + 1) * 1_000,
+        );
       }
 
       try {
@@ -1153,7 +1196,9 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     const chunks: Buffer[] = [];
     const sink = new Writable({
       write: (chunk, _encoding, callback) => {
-        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
+        chunks.push(
+          Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)),
+        );
         callback();
       },
     });
@@ -1174,7 +1219,12 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     podName: string,
     workspace: string,
     timeoutMs: number,
-  ): Promise<{ exitCode: number; timedOut: boolean; cancelled: boolean; message?: string }> {
+  ): Promise<{
+    exitCode: number;
+    timedOut: boolean;
+    cancelled: boolean;
+    message?: string;
+  }> {
     const startedAt = Date.now();
     const timeoutAt = Date.now() + timeoutMs;
     const exitCodeFile = this.getWorkspaceExitCodeFile(workspace);
@@ -1196,8 +1246,13 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
           namespace: this.executionNamespace,
         });
       } catch (podError) {
-        const msg = podError instanceof Error ? podError.message : String(podError);
-        if (msg.includes('404') || msg.includes('NotFound') || msg.includes('not found')) {
+        const msg =
+          podError instanceof Error ? podError.message : String(podError);
+        if (
+          msg.includes('404') ||
+          msg.includes('NotFound') ||
+          msg.includes('not found')
+        ) {
           // Pod was deleted externally — most likely by the cancellation poller.
           // Treat as a user-initiated cancellation so processors record it correctly
           // instead of returning a generic exitCode=1 failure.
@@ -1214,9 +1269,9 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
         throw podError;
       }
 
-      const terminated = pod.status?.containerStatuses
-        ?.find((container) => container.name === 'execution')
-        ?.state?.terminated;
+      const terminated = pod.status?.containerStatuses?.find(
+        (container) => container.name === 'execution',
+      )?.state?.terminated;
       if (terminated) {
         const timedOut =
           terminated.reason === 'DeadlineExceeded' ||
@@ -1281,9 +1336,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
           `Exit code read via exec failed for ${podName} (will retry silently): ${msg}`,
         );
       } else {
-        this.logger.debug(
-          `Exit code read failed for ${podName}: ${msg}`,
-        );
+        this.logger.debug(`Exit code read failed for ${podName}: ${msg}`);
       }
       return '';
     });
@@ -1301,13 +1354,17 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     const stderrChunks: Buffer[] = [];
     const stdout = new Writable({
       write: (chunk, _encoding, callback) => {
-        stdoutChunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
+        stdoutChunks.push(
+          Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)),
+        );
         callback();
       },
     });
     const stderr = new Writable({
       write: (chunk, _encoding, callback) => {
-        stderrChunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
+        stderrChunks.push(
+          Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)),
+        );
         callback();
       },
     });
@@ -1356,7 +1413,9 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
   ): Promise<void> {
     const cleanSource = sourcePath.replace(/\/\.$/g, '');
     if (!this.isPathWithinBase(cleanSource, workspaceRoot)) {
-      throw new Error(`Refusing to extract artifacts outside workspace: ${cleanSource}`);
+      throw new Error(
+        `Refusing to extract artifacts outside workspace: ${cleanSource}`,
+      );
     }
 
     const archive = await this.capturePodTarStream(podName, cleanSource);
@@ -1404,7 +1463,9 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     const stderrChunks: Buffer[] = [];
     const stderr = new Writable({
       write: (chunk, _encoding, callback) => {
-        stderrChunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
+        stderrChunks.push(
+          Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)),
+        );
         callback();
       },
     });
@@ -1448,10 +1509,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     await finished(Readable.from(archive).pipe(parser));
   }
 
-  private validateTarEntry(
-    entryPath: string,
-    entry: unknown,
-  ): void {
+  private validateTarEntry(entryPath: string, entry: unknown): void {
     const normalized = entryPath.replace(/\\/g, '/');
     if (
       path.posix.isAbsolute(normalized) ||
@@ -1552,7 +1610,9 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
         !message.includes('NotFound') &&
         !message.includes('not found')
       ) {
-        this.logger.warn(`Failed to delete execution job ${jobName}: ${message}`);
+        this.logger.warn(
+          `Failed to delete execution job ${jobName}: ${message}`,
+        );
       }
     }
   }
@@ -1612,7 +1672,10 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     }
 
     const normalizedInput = path.posix.normalize(value.replace(/\\/g, '/'));
-    if (allowAbsoluteTmp && (normalizedInput === '/tmp' || normalizedInput.startsWith('/tmp/'))) {
+    if (
+      allowAbsoluteTmp &&
+      (normalizedInput === '/tmp' || normalizedInput.startsWith('/tmp/'))
+    ) {
       return {
         valid: true,
         normalized: normalizedInput,
@@ -1626,10 +1689,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       };
     }
 
-    if (
-      normalizedInput === '..' ||
-      normalizedInput.startsWith('../')
-    ) {
+    if (normalizedInput === '..' || normalizedInput.startsWith('../')) {
       return {
         valid: false,
         error: `${label} must not escape the execution workspace`,
@@ -1658,8 +1718,13 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  private resolveWorkspacePath(workspace: string, containerPath: string): string {
-    const normalizedPath = path.posix.normalize(containerPath.replace(/\\/g, '/'));
+  private resolveWorkspacePath(
+    workspace: string,
+    containerPath: string,
+  ): string {
+    const normalizedPath = path.posix.normalize(
+      containerPath.replace(/\\/g, '/'),
+    );
     if (normalizedPath === '/tmp' || normalizedPath === '/tmp/') {
       return workspace;
     }
@@ -1771,22 +1836,17 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     }
 
     const nameservers = Array.from(
-      new Set(
-        trimmed
-          .split(',')
-          .map((ns) => ns.trim()),
-      ),
-    )
-      .filter((ns) => {
-        if (!ns) return false;
-        if (!this.isValidIpv4Address(ns)) {
-          this.logger.warn(
-            `Invalid nameserver IP in EXECUTION_DNS_NAMESERVERS: "${ns}"; skipping`,
-          );
-          return false;
-        }
-        return true;
-      });
+      new Set(trimmed.split(',').map((ns) => ns.trim())),
+    ).filter((ns) => {
+      if (!ns) return false;
+      if (!this.isValidIpv4Address(ns)) {
+        this.logger.warn(
+          `Invalid nameserver IP in EXECUTION_DNS_NAMESERVERS: "${ns}"; skipping`,
+        );
+        return false;
+      }
+      return true;
+    });
 
     return nameservers.length > 0 ? nameservers : undefined;
   }

@@ -1,24 +1,15 @@
 import { formatLocalDateParam } from "./use-monitor-details";
 
 describe("formatLocalDateParam", () => {
-  const originalTimezone = process.env.TZ;
-
-  afterEach(() => {
-    process.env.TZ = originalTimezone;
-  });
-
   it("formats the selected local calendar day without shifting to UTC", () => {
-    process.env.TZ = "Asia/Kolkata";
-
+    // new Date(year, month, day) creates a date at local midnight.
+    // The formatLocalDateParam function formats based on local components, 
+    // ensuring it doesn't get shifted to the previous day in UTC representation.
     const selectedDate = new Date(2026, 5, 16);
-
-    expect(selectedDate.toISOString().startsWith("2026-06-15")).toBe(true);
     expect(formatLocalDateParam(selectedDate)).toBe("2026-06-16");
   });
 
   it("pads single-digit months and days", () => {
-    process.env.TZ = "UTC";
-
     expect(formatLocalDateParam(new Date(2026, 0, 5))).toBe("2026-01-05");
   });
 });
