@@ -52,12 +52,24 @@ export function ConnectorCredentialDialog({
   const [isPending, startTransition] = useTransition();
   const [credentialType, setCredentialType] = useState<CredentialType>("api_key");
   const [credentialValue, setCredentialValue] = useState("");
+  const [awsAccessKeyId, setAwsAccessKeyId] = useState("");
+  const [awsSecretAccessKey, setAwsSecretAccessKey] = useState("");
+  const [awsSessionToken, setAwsSessionToken] = useState("");
+  const isCloudWatch = connector.type === "aws_cloudwatch";
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const trimmedCredential = credentialValue.trim();
+    const trimmedAwsAccessKeyId = awsAccessKeyId.trim();
+    const trimmedAwsSecretAccessKey = awsSecretAccessKey.trim();
+    const trimmedAwsSessionToken = awsSessionToken.trim();
 
-    if (!trimmedCredential) {
+    if (isCloudWatch && (!trimmedAwsAccessKeyId || !trimmedAwsSecretAccessKey)) {
+      toast.error("AWS access key ID and secret access key are required");
+      return;
+    }
+
+    if (!isCloudWatch && !trimmedCredential) {
       toast.error("Credential value is required");
       return;
     }
@@ -65,8 +77,14 @@ export function ConnectorCredentialDialog({
     startTransition(async () => {
       const result = await rotateSreConnectorCredential({
         id: connector.id,
-        credentialType,
-        value: { secret: trimmedCredential },
+        credentialType: isCloudWatch ? "api_key" : credentialType,
+        value: isCloudWatch
+          ? {
+              apiKey: trimmedAwsAccessKeyId,
+              secret: trimmedAwsSecretAccessKey,
+              ...(trimmedAwsSessionToken ? { sessionToken: trimmedAwsSessionToken } : {}),
+            }
+          : { secret: trimmedCredential },
       });
 
       if (!result.success) {
@@ -79,6 +97,9 @@ export function ConnectorCredentialDialog({
       }
 
       setCredentialValue("");
+      setAwsAccessKeyId("");
+      setAwsSecretAccessKey("");
+      setAwsSessionToken("");
       toast.success(result.message);
       onOpenChange(false);
     });
@@ -95,35 +116,73 @@ export function ConnectorCredentialDialog({
         </DialogHeader>
 
         <form className="space-y-4" onSubmit={handleSubmit}>
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="rotate-credential-type">Credential type</Label>
-              <Select value={credentialType} onValueChange={(value) => setCredentialType(value as CredentialType)}>
-                <SelectTrigger id="rotate-credential-type">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {credentialTypeOptions.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          {isCloudWatch ? (
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="rotate-aws-access-key-id">AWS access key ID *</Label>
+                <Input
+                  id="rotate-aws-access-key-id"
+                  value={awsAccessKeyId}
+                  onChange={(event) => setAwsAccessKeyId(event.target.value)}
+                  type="password"
+                  autoComplete="new-password"
+                  placeholder="AKIA..."
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="rotate-aws-secret-access-key">AWS secret access key *</Label>
+                <Input
+                  id="rotate-aws-secret-access-key"
+                  value={awsSecretAccessKey}
+                  onChange={(event) => setAwsSecretAccessKey(event.target.value)}
+                  type="password"
+                  autoComplete="new-password"
+                  placeholder="Paste read-only secret"
+                />
+              </div>
+              <div className="space-y-1.5 md:col-span-2">
+                <Label htmlFor="rotate-aws-session-token">AWS session token</Label>
+                <Input
+                  id="rotate-aws-session-token"
+                  value={awsSessionToken}
+                  onChange={(event) => setAwsSessionToken(event.target.value)}
+                  type="password"
+                  autoComplete="new-password"
+                  placeholder="Optional STS session token"
+                />
+              </div>
             </div>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="rotate-credential-type">Credential type</Label>
+                <Select value={credentialType} onValueChange={(value) => setCredentialType(value as CredentialType)}>
+                  <SelectTrigger id="rotate-credential-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {credentialTypeOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="rotate-credential-value">Credential value *</Label>
-              <Input
-                id="rotate-credential-value"
-                value={credentialValue}
-                onChange={(event) => setCredentialValue(event.target.value)}
-                type="password"
-                autoComplete="new-password"
-                placeholder="Paste read-only credential"
-              />
+              <div className="space-y-1.5">
+                <Label htmlFor="rotate-credential-value">Credential value *</Label>
+                <Input
+                  id="rotate-credential-value"
+                  value={credentialValue}
+                  onChange={(event) => setCredentialValue(event.target.value)}
+                  type="password"
+                  autoComplete="new-password"
+                  placeholder="Paste read-only credential"
+                />
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="rounded-lg border bg-muted/30 p-3 text-sm text-muted-foreground">
             Rotation resets validation status. Validate the connector after saving to confirm reachability.

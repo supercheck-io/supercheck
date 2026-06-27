@@ -46,6 +46,7 @@ const connectorTypeOptions: Array<{ value: ConnectorType; label: string; descrip
   { value: "prometheus", label: "Prometheus", description: "Metrics and PromQL" },
   { value: "grafana", label: "Grafana", description: "Dashboards and panel context" },
   { value: "datadog", label: "Datadog", description: "Metrics, logs, traces" },
+  { value: "aws_cloudwatch", label: "AWS CloudWatch", description: "Metric alarms and CloudWatch metric data" },
   { value: "loki", label: "Loki", description: "LogQL logs" },
   { value: "webhook", label: "Webhook", description: "Inbound operational events" },
 ];
@@ -80,6 +81,10 @@ export function ConnectorFormDialog({
   const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
   const [credentialType, setCredentialType] = useState<CredentialType>("api_key");
   const [credentialValue, setCredentialValue] = useState("");
+  const [awsAccessKeyId, setAwsAccessKeyId] = useState("");
+  const [awsSecretAccessKey, setAwsSecretAccessKey] = useState("");
+  const [awsSessionToken, setAwsSessionToken] = useState("");
+  const isCloudWatch = type === "aws_cloudwatch";
 
   const toggleService = (serviceId: string) => {
     setSelectedServiceIds((current) =>
@@ -93,6 +98,9 @@ export function ConnectorFormDialog({
     event.preventDefault();
 
     const trimmedCredential = credentialValue.trim();
+    const trimmedAwsAccessKeyId = awsAccessKeyId.trim();
+    const trimmedAwsSecretAccessKey = awsSecretAccessKey.trim();
+    const trimmedAwsSessionToken = awsSessionToken.trim();
 
     startTransition(async () => {
       const result = await createSreConnector({
@@ -104,7 +112,16 @@ export function ConnectorFormDialog({
         serviceIds: selectedServiceIds,
         defaultTimeWindowMinutes: 60,
         outputLimits: { maxRows: 100, maxBytes: 1_048_576, maxSeconds: 10 },
-        credential: trimmedCredential
+        credential: isCloudWatch && trimmedAwsAccessKeyId && trimmedAwsSecretAccessKey
+          ? {
+              credentialType: "api_key",
+              value: {
+                apiKey: trimmedAwsAccessKeyId,
+                secret: trimmedAwsSecretAccessKey,
+                ...(trimmedAwsSessionToken ? { sessionToken: trimmedAwsSessionToken } : {}),
+              },
+            }
+          : trimmedCredential
           ? {
               credentialType,
               value: { secret: trimmedCredential },
@@ -124,6 +141,9 @@ export function ConnectorFormDialog({
 
       toast.success(result.message);
       setCredentialValue("");
+      setAwsAccessKeyId("");
+      setAwsSecretAccessKey("");
+      setAwsSessionToken("");
       onOpenChange(false);
     });
   };
@@ -142,7 +162,17 @@ export function ConnectorFormDialog({
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="connector-type">Connector type</Label>
-              <Select value={type} onValueChange={(value) => setType(value as ConnectorType)}>
+              <Select
+                value={type}
+                onValueChange={(value) => {
+                  const nextType = value as ConnectorType;
+                  setType(nextType);
+                  if (nextType === "aws_cloudwatch") {
+                    setExecutionMode("direct");
+                    setPrivateAgentId(null);
+                  }
+                }}
+              >
                 <SelectTrigger id="connector-type">
                   <SelectValue />
                 </SelectTrigger>
@@ -196,7 +226,7 @@ export function ConnectorFormDialog({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="direct">Direct</SelectItem>
-                  <SelectItem value="private_agent" disabled={setupOptions.privateAgents.length === 0}>
+                  <SelectItem value="private_agent" disabled={setupOptions.privateAgents.length === 0 || isCloudWatch}>
                     Private Agent
                   </SelectItem>
                 </SelectContent>
@@ -209,14 +239,22 @@ export function ConnectorFormDialog({
                 id="connector-endpoint"
                 value={endpointUrl}
                 onChange={(event) => setEndpointUrl(event.target.value)}
-                placeholder={type === "grafana" ? "https://grafana.example.com" : type === "prometheus" ? "https://prometheus.example.com" : "https://api.example.com"}
+                placeholder={
+                  type === "grafana"
+                    ? "https://grafana.example.com"
+                    : type === "prometheus"
+                      ? "https://prometheus.example.com"
+                      : type === "aws_cloudwatch"
+                        ? "https://monitoring.us-east-1.amazonaws.com"
+                        : "https://api.example.com"
+                }
                 aria-invalid={Boolean(firstError(fieldErrors, "endpointUrl"))}
               />
               {firstError(fieldErrors, "endpointUrl") ? (
                 <p className="text-xs text-destructive">{firstError(fieldErrors, "endpointUrl")}</p>
               ) : (
                 <p className="text-xs text-muted-foreground">
-                  Required for direct Prometheus, Grafana, Kubernetes, and custom HTTP-style connectors. Use Private Agent for private network endpoints.
+                  Required for direct Prometheus, Grafana, Kubernetes, CloudWatch regional endpoints, and custom HTTP-style connectors. Use Private Agent for private network endpoints.
                 </p>
               )}
             </div>
@@ -274,34 +312,78 @@ export function ConnectorFormDialog({
               )}
             </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="credential-type">Credential type</Label>
-              <Select value={credentialType} onValueChange={(value) => setCredentialType(value as CredentialType)}>
-                <SelectTrigger id="credential-type">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {credentialTypeOptions.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {isCloudWatch ? (
+              <div className="grid gap-4 md:col-span-2 md:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="aws-access-key-id">AWS access key ID</Label>
+                  <Input
+                    id="aws-access-key-id"
+                    value={awsAccessKeyId}
+                    onChange={(event) => setAwsAccessKeyId(event.target.value)}
+                    type="password"
+                    autoComplete="new-password"
+                    placeholder="AKIA..."
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="aws-secret-access-key">AWS secret access key</Label>
+                  <Input
+                    id="aws-secret-access-key"
+                    value={awsSecretAccessKey}
+                    onChange={(event) => setAwsSecretAccessKey(event.target.value)}
+                    type="password"
+                    autoComplete="new-password"
+                    placeholder="Paste read-only secret"
+                  />
+                </div>
+                <div className="space-y-1.5 md:col-span-2">
+                  <Label htmlFor="aws-session-token">AWS session token</Label>
+                  <Input
+                    id="aws-session-token"
+                    value={awsSessionToken}
+                    onChange={(event) => setAwsSessionToken(event.target.value)}
+                    type="password"
+                    autoComplete="new-password"
+                    placeholder="Optional STS session token"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Use a least-privilege IAM principal with CloudWatch read-only APIs only. Credentials are encrypted server-side and redacted before AI context.
+                    Private Agent execution for CloudWatch is not enabled yet.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="space-y-1.5">
+                  <Label htmlFor="credential-type">Credential type</Label>
+                  <Select value={credentialType} onValueChange={(value) => setCredentialType(value as CredentialType)}>
+                    <SelectTrigger id="credential-type">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {credentialTypeOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="credential-value">Credential value</Label>
-              <Input
-                id="credential-value"
-                value={credentialValue}
-                onChange={(event) => setCredentialValue(event.target.value)}
-                type="password"
-                autoComplete="new-password"
-                placeholder="Paste read-only credential"
-              />
-              <p className="text-xs text-muted-foreground">Use read-only credentials. Leave empty to configure later.</p>
-            </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="credential-value">Credential value</Label>
+                  <Input
+                    id="credential-value"
+                    value={credentialValue}
+                    onChange={(event) => setCredentialValue(event.target.value)}
+                    type="password"
+                    autoComplete="new-password"
+                    placeholder="Paste read-only credential"
+                  />
+                  <p className="text-xs text-muted-foreground">Use read-only credentials. Leave empty to configure later.</p>
+                </div>
+              </>
+            )}
           </div>
 
           <div className="flex flex-col gap-2 rounded-lg border bg-muted/30 p-3 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">

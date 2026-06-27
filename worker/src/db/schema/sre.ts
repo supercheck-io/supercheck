@@ -87,6 +87,7 @@ type SreEvidenceSourceType =
   | 'prometheus'
   | 'grafana'
   | 'datadog'
+  | 'aws_cloudwatch'
   | 'sentry'
   | 'loki'
   | 'elasticsearch'

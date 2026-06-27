@@ -354,4 +354,122 @@ describe("direct connectors", () => {
       expect.anything()
     );
   });
+
+  it("normalizes AWS CloudWatch alarms into metric evidence", async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => `
+        <DescribeAlarmsResponse>
+          <DescribeAlarmsResult>
+            <MetricAlarms>
+              <member>
+                <AlarmName>checkout-5xx-rate</AlarmName>
+                <AlarmArn>arn:aws:cloudwatch:us-east-1:123456789012:alarm:checkout-5xx-rate</AlarmArn>
+                <AlarmDescription>Checkout 5xx rate exceeded threshold</AlarmDescription>
+                <StateValue>ALARM</StateValue>
+                <StateReason>Threshold Crossed: 3 datapoints were greater than the threshold.</StateReason>
+                <StateUpdatedTimestamp>2026-06-21T10:55:00.000Z</StateUpdatedTimestamp>
+                <Namespace>AWS/ApplicationELB</Namespace>
+                <MetricName>HTTPCode_Target_5XX_Count</MetricName>
+                <Statistic>Sum</Statistic>
+                <Threshold>10.0</Threshold>
+                <ComparisonOperator>GreaterThanThreshold</ComparisonOperator>
+              </member>
+            </MetricAlarms>
+          </DescribeAlarmsResult>
+        </DescribeAlarmsResponse>
+      `,
+    }) as unknown as typeof fetch;
+
+    const connector = createDirectConnector({
+      ...baseDefinition,
+      type: "aws_cloudwatch",
+      endpointUrl: "https://monitoring.us-east-1.amazonaws.com",
+      surfaces: ["metrics"],
+      evidenceTypes: ["metric"],
+      credential: { apiKey: "access-key", secret: "secret-key", sessionToken: "session-token" },
+    });
+    const evidence = await connector.search({ ...params, query: "checkout-" });
+
+    expect(evidence[0]).toMatchObject({
+      source: "aws_cloudwatch",
+      title: "CloudWatch alarm: checkout-5xx-rate",
+      evidenceType: "metric",
+      metadata: expect.objectContaining({ severity: "critical", tags: expect.arrayContaining(["aws", "cloudwatch", "alarm", "ALARM"]) }),
+    });
+    expect(evidence[0].summary).toContain("AWS/ApplicationELB/HTTPCode_Target_5XX_Count");
+    expect(global.fetch).toHaveBeenCalledWith(
+      "https://monitoring.us-east-1.amazonaws.com",
+      expect.objectContaining({
+        method: "POST",
+        cache: "no-store",
+        headers: expect.objectContaining({
+          Authorization: expect.stringContaining("AWS4-HMAC-SHA256 Credential=access-key/"),
+          "X-Amz-Security-Token": "session-token",
+        }),
+        body: expect.stringContaining("Action=DescribeAlarms"),
+      })
+    );
+  });
+
+  it("normalizes AWS CloudWatch GetMetricData results into metric evidence", async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => `
+        <GetMetricDataResponse>
+          <GetMetricDataResult>
+            <MetricDataResults>
+              <member>
+                <Id>m1</Id>
+                <Label>CPUUtilization</Label>
+                <StatusCode>Complete</StatusCode>
+                <Timestamps>
+                  <member>2026-06-21T10:59:00.000Z</member>
+                </Timestamps>
+                <Values>
+                  <member>42.5</member>
+                </Values>
+              </member>
+            </MetricDataResults>
+          </GetMetricDataResult>
+        </GetMetricDataResponse>
+      `,
+    }) as unknown as typeof fetch;
+
+    const connector = createDirectConnector({
+      ...baseDefinition,
+      type: "aws_cloudwatch",
+      endpointUrl: "https://monitoring.us-east-1.amazonaws.com",
+      surfaces: ["metrics"],
+      evidenceTypes: ["metric"],
+      credential: { apiKey: "access-key", secret: "secret-key" },
+    });
+    const evidence = await connector.search({
+      ...params,
+      query: "namespace:AWS/EC2 metric:CPUUtilization dimension:InstanceId=i-123 stat:Average period:300",
+    });
+
+    expect(evidence[0]).toMatchObject({
+      source: "aws_cloudwatch",
+      title: "CloudWatch metric: CPUUtilization",
+      evidenceType: "metric",
+      summary: "1 datapoint · latest 42.5 · InstanceId=i-123",
+      metadata: expect.objectContaining({ tags: expect.arrayContaining(["aws", "cloudwatch", "metric", "AWS/EC2", "CPUUtilization", "InstanceId:i-123"]) }),
+    });
+    expect(global.fetch).toHaveBeenCalledWith(
+      "https://monitoring.us-east-1.amazonaws.com",
+      expect.objectContaining({
+        method: "POST",
+        body: expect.stringContaining("Action=GetMetricData"),
+      })
+    );
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        body: expect.stringContaining("MetricDataQueries.member.1.MetricStat.Metric.Dimensions.member.1.Name=InstanceId"),
+      })
+    );
+  });
 });

@@ -32,7 +32,7 @@ import { db } from "@/utils/db";
 
 const MAX_TOOL_ROWS = 10;
 const MAX_TIME_WINDOW_MINUTES = 6 * 60;
-const supportedLiveConnectorTypes = ["github", "kubernetes", "prometheus", "grafana", "sentry", "datadog", "loki", "elasticsearch"] as const;
+const supportedLiveConnectorTypes = ["github", "kubernetes", "prometheus", "grafana", "sentry", "datadog", "loki", "elasticsearch", "aws_cloudwatch"] as const;
 type SupportedLiveConnectorType = (typeof supportedLiveConnectorTypes)[number];
 
 const connectorSearchInputSchema = z.object({
@@ -81,8 +81,10 @@ function directConnectorCredential(value: ConnectorCredentialValue | null) {
 
   return {
     secret: credentialSecret(value),
-    apiKey: credentialString(value, ["apiKey", "api_key", "secret"]),
+    apiKey: credentialString(value, ["apiKey", "api_key", "accessKeyId", "access_key_id", "secret"]),
     applicationKey: credentialString(value, ["applicationKey", "application_key", "appKey", "app_key"]),
+    sessionToken: credentialString(value, ["sessionToken", "session_token", "awsSessionToken", "aws_session_token"]),
+    region: credentialString(value, ["region", "awsRegion", "aws_region"]),
   };
 }
 

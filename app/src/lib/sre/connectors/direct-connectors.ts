@@ -1,3 +1,5 @@
+import crypto from "node:crypto";
+
 import {
   DEFAULT_CONNECTOR_OUTPUT_LIMITS,
   hashConnectorPayload,
@@ -14,6 +16,8 @@ type DirectConnectorCredential = {
   secret?: string | null;
   apiKey?: string | null;
   applicationKey?: string | null;
+  sessionToken?: string | null;
+  region?: string | null;
 };
 
 type DirectConnectorOptions = ConnectorDefinition & {
@@ -118,6 +122,102 @@ function sourceString(source: Record<string, unknown>, keys: string[]) {
   return null;
 }
 
+function awsAmzDate(date = new Date()) {
+  return date.toISOString().replace(/[:-]|\.\d{3}/g, "");
+}
+
+function awsDateStamp(amzDate: string) {
+  return amzDate.slice(0, 8);
+}
+
+function hmac(key: crypto.BinaryLike | crypto.KeyObject, value: string) {
+  return crypto.createHmac("sha256", key).update(value).digest();
+}
+
+function sha256Hex(value: string) {
+  return crypto.createHash("sha256").update(value).digest("hex");
+}
+
+function awsEncode(value: string) {
+  return encodeURIComponent(value).replace(/[!'()*]/g, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`);
+}
+
+function cloudWatchRegion(endpointUrl: string, configuredRegion?: string | null) {
+  if (configuredRegion?.trim()) return configuredRegion.trim();
+
+  const host = new URL(endpointUrl).hostname;
+  const match = host.match(/^monitoring(?:-fips)?[.-]([a-z0-9-]+)\./);
+  return match?.[1] ?? "us-east-1";
+}
+
+function xmlDecode(value: string | undefined) {
+  if (!value) return "";
+  return value
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, "\"")
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, "&")
+    .trim();
+}
+
+function xmlText(xml: string, tag: string) {
+  const match = xml.match(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`));
+  return xmlDecode(match?.[1]);
+}
+
+function xmlBlocks(xml: string, tag: string) {
+  const openTag = `<${tag}>`;
+  const closeTag = `</${tag}>`;
+  const blocks: string[] = [];
+  let cursor = 0;
+
+  while (cursor < xml.length) {
+    const start = xml.indexOf(openTag, cursor);
+    if (start === -1) break;
+
+    let depth = 1;
+    let searchFrom = start + openTag.length;
+
+    while (depth > 0) {
+      const nextOpen = xml.indexOf(openTag, searchFrom);
+      const nextClose = xml.indexOf(closeTag, searchFrom);
+      if (nextClose === -1) break;
+
+      if (nextOpen !== -1 && nextOpen < nextClose) {
+        depth += 1;
+        searchFrom = nextOpen + openTag.length;
+        continue;
+      }
+
+      depth -= 1;
+      if (depth === 0) {
+        blocks.push(xml.slice(start + openTag.length, nextClose));
+        cursor = nextClose + closeTag.length;
+        break;
+      }
+
+      searchFrom = nextClose + closeTag.length;
+    }
+
+    if (depth > 0) break;
+  }
+
+  return blocks;
+}
+
+function xmlMemberValues(xml: string, containerTag: string) {
+  const container = xmlText(xml, containerTag) ? xmlBlocks(xml, containerTag)[0] : "";
+  return container ? xmlBlocks(container, "member").map((block) => xmlDecode(block)) : [];
+}
+
+function cloudWatchSeverity(state: string) {
+  if (state === "ALARM") return "critical";
+  if (state === "INSUFFICIENT_DATA") return "warning";
+  if (state === "OK") return "info";
+  return undefined;
+}
+
 abstract class BaseDirectConnector implements Connector {
   id: string;
   type: ConnectorType;
@@ -187,6 +287,14 @@ abstract class BaseDirectConnector implements Connector {
 
   protected applicationKey() {
     return typeof this.credential?.applicationKey === "string" ? this.credential.applicationKey : null;
+  }
+
+  protected sessionToken() {
+    return typeof this.credential?.sessionToken === "string" ? this.credential.sessionToken : null;
+  }
+
+  protected region() {
+    return typeof this.credential?.region === "string" ? this.credential.region : null;
   }
 }
 
@@ -829,6 +937,301 @@ export class ElasticsearchConnector extends BaseDirectConnector {
   }
 }
 
+type CloudWatchQueryShape = {
+  namespace?: string;
+  metricName?: string;
+  statistic: string;
+  periodSeconds: number;
+  dimensions: Array<{ name: string; value: string }>;
+  alarmPrefix?: string;
+  stateValue?: string;
+  freeText: string;
+};
+
+export class AwsCloudWatchConnector extends BaseDirectConnector {
+  constructor(options: Omit<DirectConnectorOptions, "type" | "surfaces" | "evidenceTypes" | "requires">) {
+    super({
+      ...options,
+      type: "aws_cloudwatch",
+      surfaces: ["metrics", "infra"],
+      evidenceTypes: ["metric", "event"],
+      requires: ["credentials", "network", "service_scope", "time_window", "allowlist"],
+      endpointUrl: options.endpointUrl ?? "https://monitoring.us-east-1.amazonaws.com",
+    });
+  }
+
+  metadata(): ConnectorMetadata {
+    return {
+      id: this.id,
+      type: this.type,
+      displayName: "AWS CloudWatch",
+      description: "Read-only CloudWatch alarm and metric evidence for AWS-backed services.",
+      surfaces: this.surfaces,
+      evidenceTypes: this.evidenceTypes,
+      requires: this.requires,
+    };
+  }
+
+  protected validationRequest() {
+    return this.cloudWatchRequest({
+      Action: "DescribeAlarms",
+      MaxRecords: "1",
+    });
+  }
+
+  async search(params: ConnectorSearchParams): Promise<ConnectorEvidenceItem[]> {
+    const query = this.parseQuery(params.query);
+
+    if (query.namespace && query.metricName) {
+      return this.searchMetricData(params, query);
+    }
+
+    return this.searchAlarms(params, query);
+  }
+
+  private awsCredentials() {
+    const accessKeyId = this.apiKey();
+    const secretAccessKey = this.secret();
+    if (!accessKeyId || !secretAccessKey) {
+      throw new Error("AWS CloudWatch connector requires apiKey/accessKeyId and secret/secretAccessKey credentials");
+    }
+
+    return {
+      accessKeyId,
+      secretAccessKey,
+      sessionToken: this.sessionToken() ?? this.applicationKey(),
+    };
+  }
+
+  private async cloudWatchRequest(parameters: Record<string, string>, params?: ConnectorSearchParams) {
+    if (!this.endpointUrl) throw new Error("AWS CloudWatch endpoint URL is required");
+
+    const endpoint = new URL(this.endpointUrl);
+    const region = cloudWatchRegion(this.endpointUrl, this.region());
+    const credentials = this.awsCredentials();
+    const amzDate = awsAmzDate();
+    const dateStamp = awsDateStamp(amzDate);
+    const body = new URLSearchParams({
+      Version: "2010-08-01",
+      ...parameters,
+    }).toString();
+    const payloadHash = sha256Hex(body);
+    const canonicalHeaders = [
+      "content-type:application/x-www-form-urlencoded; charset=utf-8",
+      `host:${endpoint.host}`,
+      `x-amz-date:${amzDate}`,
+      ...(credentials.sessionToken ? [`x-amz-security-token:${credentials.sessionToken}`] : []),
+    ].join("\n") + "\n";
+    const signedHeaders = ["content-type", "host", "x-amz-date", ...(credentials.sessionToken ? ["x-amz-security-token"] : [])].join(";");
+    const canonicalRequest = ["POST", endpoint.pathname || "/", "", canonicalHeaders, signedHeaders, payloadHash].join("\n");
+    const credentialScope = `${dateStamp}/${region}/monitoring/aws4_request`;
+    const stringToSign = ["AWS4-HMAC-SHA256", amzDate, credentialScope, sha256Hex(canonicalRequest)].join("\n");
+    const signingKey = hmac(hmac(hmac(hmac(`AWS4${credentials.secretAccessKey}`, dateStamp), region), "monitoring"), "aws4_request");
+    const signature = crypto.createHmac("sha256", signingKey).update(stringToSign).digest("hex");
+    const authorization = `AWS4-HMAC-SHA256 Credential=${credentials.accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
+
+    const response = await fetch(this.endpointUrl, {
+      method: "POST",
+      headers: {
+        Accept: "application/xml",
+        Authorization: authorization,
+        "Content-Type": "application/x-www-form-urlencoded; charset=utf-8",
+        "X-Amz-Date": amzDate,
+        ...(credentials.sessionToken ? { "X-Amz-Security-Token": credentials.sessionToken } : {}),
+      },
+      body,
+      signal: AbortSignal.timeout(this.timeoutMs(params)),
+      cache: "no-store",
+    });
+
+    if (response.status === 401 || response.status === 403) {
+      throw new Error(`credentials rejected with HTTP ${response.status}`);
+    }
+
+    if (!response.ok) {
+      throw new Error(`request failed with HTTP ${response.status}`);
+    }
+
+    return response.text();
+  }
+
+  private parseQuery(query: string): CloudWatchQueryShape {
+    const parsed: CloudWatchQueryShape = {
+      statistic: "Average",
+      periodSeconds: 60,
+      dimensions: [],
+      freeText: "",
+    };
+    const freeText: string[] = [];
+
+    for (const token of query.trim().split(/\s+/).filter(Boolean)) {
+      const separator = token.indexOf(":");
+      if (separator === -1) {
+        freeText.push(token);
+        continue;
+      }
+
+      const key = token.slice(0, separator).toLowerCase();
+      const value = token.slice(separator + 1).trim();
+      if (!value) continue;
+
+      if (key === "namespace" || key === "ns") parsed.namespace = value;
+      else if (key === "metric" || key === "metricname") parsed.metricName = value;
+      else if (key === "stat" || key === "statistic") parsed.statistic = value;
+      else if (key === "period" || key === "periodseconds") parsed.periodSeconds = Math.min(Math.max(Number(value) || 60, 60), 3600);
+      else if (key === "state") parsed.stateValue = value.toUpperCase();
+      else if (key === "prefix" || key === "alarmprefix") parsed.alarmPrefix = value;
+      else if (key === "dimension" || key === "dim") {
+        const equalsAt = value.indexOf("=");
+        if (equalsAt > 0) {
+          parsed.dimensions.push({ name: value.slice(0, equalsAt), value: value.slice(equalsAt + 1) });
+        }
+      } else {
+        freeText.push(token);
+      }
+    }
+
+    parsed.freeText = freeText.join(" ").trim();
+    return parsed;
+  }
+
+  private async searchAlarms(params: ConnectorSearchParams, query: CloudWatchQueryShape): Promise<ConnectorEvidenceItem[]> {
+    if (!this.endpointUrl) throw new Error("AWS CloudWatch endpoint URL is required");
+
+    const body: Record<string, string> = {
+      Action: "DescribeAlarms",
+      MaxRecords: String(Math.min(params.budget.maxRows, 100)),
+    };
+    const prefix = query.alarmPrefix ?? query.freeText;
+    if (prefix && prefix !== "*") body.AlarmNamePrefix = prefix.slice(0, 255);
+    if (query.stateValue && ["OK", "ALARM", "INSUFFICIENT_DATA"].includes(query.stateValue)) {
+      body.StateValue = query.stateValue;
+    }
+
+    const xml = await this.cloudWatchRequest(body, params);
+    const alarmsContainer = xmlBlocks(xml, "MetricAlarms")[0] ?? "";
+    const alarms = xmlBlocks(alarmsContainer, "member");
+
+    return alarms.slice(0, params.budget.maxRows).map((alarm) => {
+      const alarmName = xmlText(alarm, "AlarmName") || "CloudWatch alarm";
+      const alarmArn = xmlText(alarm, "AlarmArn");
+      const stateValue = xmlText(alarm, "StateValue");
+      const metricName = xmlText(alarm, "MetricName");
+      const namespace = xmlText(alarm, "Namespace");
+      const stateUpdatedAt = xmlText(alarm, "StateUpdatedTimestamp");
+      const title = `CloudWatch alarm: ${alarmName}`;
+      const region = cloudWatchRegion(this.endpointUrl!, this.region());
+      const sourceUri = `https://${region}.console.aws.amazon.com/cloudwatch/home?region=${awsEncode(region)}#alarmsV2:alarm/${awsEncode(alarmName)}`;
+
+      return {
+        id: evidenceId(this.id, alarmArn || sourceUri, title),
+        source: "aws_cloudwatch",
+        sourceUri,
+        title,
+        summary: [stateValue || "unknown state", namespace && metricName ? `${namespace}/${metricName}` : null, xmlText(alarm, "StateReason")]
+          .filter(Boolean)
+          .join(" · "),
+        rawContent: JSON.stringify({
+          alarmName,
+          alarmArn,
+          alarmDescription: xmlText(alarm, "AlarmDescription"),
+          stateValue,
+          stateReason: xmlText(alarm, "StateReason"),
+          namespace,
+          metricName,
+          statistic: xmlText(alarm, "Statistic") || xmlText(alarm, "ExtendedStatistic"),
+          threshold: xmlText(alarm, "Threshold"),
+          comparisonOperator: xmlText(alarm, "ComparisonOperator"),
+        }),
+        evidenceType: "metric",
+        metadata: {
+          timestamp: stateUpdatedAt ? new Date(stateUpdatedAt) : params.timeWindow.end,
+          severity: cloudWatchSeverity(stateValue),
+          tags: ["aws", "cloudwatch", "alarm", stateValue, namespace, metricName].filter((value): value is string => Boolean(value)),
+        },
+        citation: {
+          connectorId: this.id,
+          query: params.query,
+          resultHash: hashConnectorPayload(alarm),
+        },
+      };
+    });
+  }
+
+  private async searchMetricData(params: ConnectorSearchParams, query: CloudWatchQueryShape): Promise<ConnectorEvidenceItem[]> {
+    if (!this.endpointUrl || !query.namespace || !query.metricName) {
+      throw new Error("AWS CloudWatch metric queries require namespace and metric");
+    }
+
+    const body: Record<string, string> = {
+      Action: "GetMetricData",
+      StartTime: params.timeWindow.start.toISOString(),
+      EndTime: params.timeWindow.end.toISOString(),
+      MaxDatapoints: String(Math.min(Math.max(params.budget.maxRows * 2, 1), 1000)),
+      "MetricDataQueries.member.1.Id": "m1",
+      "MetricDataQueries.member.1.ReturnData": "true",
+      "MetricDataQueries.member.1.MetricStat.Metric.Namespace": query.namespace,
+      "MetricDataQueries.member.1.MetricStat.Metric.MetricName": query.metricName,
+      "MetricDataQueries.member.1.MetricStat.Period": String(query.periodSeconds),
+      "MetricDataQueries.member.1.MetricStat.Stat": query.statistic,
+    };
+
+    query.dimensions.slice(0, 10).forEach((dimension, index) => {
+      const position = index + 1;
+      body[`MetricDataQueries.member.1.MetricStat.Metric.Dimensions.member.${position}.Name`] = dimension.name;
+      body[`MetricDataQueries.member.1.MetricStat.Metric.Dimensions.member.${position}.Value`] = dimension.value;
+    });
+
+    const xml = await this.cloudWatchRequest(body, params);
+    const resultsContainer = xmlBlocks(xml, "MetricDataResults")[0] ?? "";
+    const results = xmlBlocks(resultsContainer, "member");
+    const region = cloudWatchRegion(this.endpointUrl, this.region());
+
+    return results.slice(0, params.budget.maxRows).map((result) => {
+      const label = xmlText(result, "Label") || `${query.namespace}/${query.metricName}`;
+      const values = xmlMemberValues(result, "Values").slice(0, params.budget.maxRows);
+      const timestamps = xmlMemberValues(result, "Timestamps").slice(0, params.budget.maxRows);
+      const latestValue = values[0];
+      const latestTimestamp = timestamps[0];
+      const title = `CloudWatch metric: ${label}`;
+      const sourceUri = `https://${region}.console.aws.amazon.com/cloudwatch/home?region=${awsEncode(region)}#metricsV2`;
+
+      return {
+        id: evidenceId(this.id, sourceUri, title),
+        source: "aws_cloudwatch",
+        sourceUri,
+        title,
+        summary: [
+          `${values.length} datapoint${values.length === 1 ? "" : "s"}`,
+          latestValue ? `latest ${latestValue}` : null,
+          query.dimensions.length ? query.dimensions.map((dimension) => `${dimension.name}=${dimension.value}`).join(", ") : null,
+        ].filter(Boolean).join(" · "),
+        rawContent: JSON.stringify({
+          namespace: query.namespace,
+          metricName: query.metricName,
+          statistic: query.statistic,
+          periodSeconds: query.periodSeconds,
+          dimensions: query.dimensions,
+          statusCode: xmlText(result, "StatusCode"),
+          values,
+          timestamps,
+        }),
+        evidenceType: "metric",
+        metadata: {
+          timestamp: latestTimestamp ? new Date(latestTimestamp) : params.timeWindow.end,
+          tags: ["aws", "cloudwatch", "metric", query.namespace, query.metricName, ...query.dimensions.map((dimension) => `${dimension.name}:${dimension.value}`)]
+            .filter((value): value is string => Boolean(value)),
+        },
+        citation: {
+          connectorId: this.id,
+          query: params.query,
+          resultHash: hashConnectorPayload(result),
+        },
+      };
+    });
+  }
+}
+
 export function createDirectConnector(options: DirectConnectorOptions): Connector {
   switch (options.type) {
     case "github":
@@ -847,6 +1250,8 @@ export function createDirectConnector(options: DirectConnectorOptions): Connecto
       return new LokiConnector(options);
     case "elasticsearch":
       return new ElasticsearchConnector(options);
+    case "aws_cloudwatch":
+      return new AwsCloudWatchConnector(options);
     default:
       throw new Error(`Direct connector search is not implemented for ${options.type}`);
   }

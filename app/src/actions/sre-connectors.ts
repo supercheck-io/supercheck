@@ -290,13 +290,15 @@ function directConnectorCredential(value: ConnectorCredentialValue | null) {
 
   return {
     secret: credentialSecret(value),
-    apiKey: credentialString(value, ["apiKey", "api_key", "secret"]),
+    apiKey: credentialString(value, ["apiKey", "api_key", "accessKeyId", "access_key_id", "secret"]),
     applicationKey: credentialString(value, ["applicationKey", "application_key", "appKey", "app_key"]),
+    sessionToken: credentialString(value, ["sessionToken", "session_token", "awsSessionToken", "aws_session_token"]),
+    region: credentialString(value, ["region", "awsRegion", "aws_region"]),
   };
 }
 
 function supportsDirectConnectorValidation(connectorType: (typeof connectorTypes)[number]) {
-  return ["github", "kubernetes", "prometheus", "grafana", "sentry", "datadog", "loki", "elasticsearch"].includes(connectorType);
+  return ["github", "kubernetes", "prometheus", "grafana", "sentry", "datadog", "loki", "elasticsearch", "aws_cloudwatch"].includes(connectorType);
 }
 
 function validationUrl(connectorType: (typeof connectorTypes)[number], endpointUrl: string | null) {
@@ -626,6 +628,10 @@ export async function createSreConnector(input: z.infer<typeof createConnectorSc
       if (serviceRows.length !== uniqueServiceIds.length) {
         return { success: false, error: "One or more selected services were not found" };
       }
+    }
+
+    if (parsed.data.type === "aws_cloudwatch" && parsed.data.privateAgentId) {
+      return { success: false, error: "AWS CloudWatch currently supports direct execution only. Private Agent support is a follow-up task." };
     }
 
     const endpointUrl = normalizeEndpointUrl(parsed.data.endpointUrl);
