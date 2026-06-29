@@ -11,7 +11,8 @@ export default async function SreAiPage() {
         <PageBreadcrumbs
           items={[
             { label: "Home", href: "/" },
-            { label: "SRE AI", isCurrentPage: true },
+            { label: "Investigate", href: "/sre-ai" },
+            { label: "Investigation Chat", isCurrentPage: true },
           ]}
         />
       </div>

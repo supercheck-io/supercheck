@@ -171,15 +171,15 @@ export function ConnectorFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-4xl min-w-2xl gap-3 overflow-y-auto p-5">
+      <DialogContent className="max-h-[90vh] max-w-3xl gap-3 overflow-y-auto p-5">
         <DialogHeader>
           <DialogTitle>Add connector</DialogTitle>
           <DialogDescription>
-            Configure a read-only SRE connector. Secrets are encrypted server-side and never shown to the AI model.
+            Add a read-only evidence source for investigations. Secrets stay encrypted and are never shown to the AI model.
           </DialogDescription>
         </DialogHeader>
 
-        <form className="space-y-4" onSubmit={handleSubmit}>
+        <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="connector-type">Connector type</Label>
@@ -272,7 +272,7 @@ export function ConnectorFormDialog({
               )}
             </div>
 
-            <div className="space-y-3 rounded-lg border bg-background p-3 md:col-span-2">
+            <div className="rounded-xl border bg-muted/20 p-3 md:col-span-2">
               <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <p className="text-sm font-medium">{queryGuide.label} query guide</p>
@@ -280,19 +280,21 @@ export function ConnectorFormDialog({
                 </div>
                 <Badge variant="outline">{queryGuide.queryLabel}</Badge>
               </div>
-              <div className="grid gap-2 md:grid-cols-2">
+              <div className="mt-3 grid gap-2 md:grid-cols-2">
                 {queryGuide.examples.map((example) => (
-                  <div key={example.label} className="rounded-md border bg-muted/20 p-2">
-                    <p className="text-xs font-medium">{example.label}</p>
-                    <code className="mt-1 block break-words rounded bg-muted px-2 py-1 font-mono text-xs">
+                  <div key={example.label} className="rounded-lg border bg-background p-2.5">
+                    <div className="mb-1 flex items-center justify-between gap-2">
+                      <p className="text-xs font-medium">{example.label}</p>
+                    </div>
+                    <code className="block truncate rounded bg-muted px-2 py-1 font-mono text-xs" title={example.query}>
                       {example.query}
                     </code>
-                    <p className="mt-1 text-xs text-muted-foreground">{example.description}</p>
+                    <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{example.description}</p>
                   </div>
                 ))}
               </div>
               {queryGuide.docs && (
-                <div className="flex flex-wrap gap-2 text-xs">
+                <div className="mt-3 flex flex-wrap gap-2 text-xs">
                   {queryGuide.docs.map((doc) => (
                     <a
                       key={doc.href}
@@ -434,8 +436,8 @@ export function ConnectorFormDialog({
             )}
           </div>
 
-          <div className="flex flex-col gap-2 rounded-lg border bg-muted/30 p-3 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
-            <p>Connector calls are budgeted, scoped to services, redacted, and audited before agent use.</p>
+          <div className="flex flex-col gap-2 rounded-xl border bg-muted/30 p-3 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
+            <p>Calls are read-only, budgeted, service-scoped, redacted, and audited.</p>
             <div className="flex shrink-0 flex-wrap gap-2">
               <Badge variant="outline">Read-only</Badge>
               <Badge variant="outline">No side effects</Badge>

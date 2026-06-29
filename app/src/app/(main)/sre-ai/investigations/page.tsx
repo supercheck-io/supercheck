@@ -10,8 +10,8 @@ export default async function SreInvestigationsPage() {
       <PageBreadcrumbs
         items={[
           { label: "Home", href: "/" },
-          { label: "SRE AI", href: "/sre-ai" },
-          { label: "Investigations", isCurrentPage: true },
+          { label: "Investigate", href: "/sre-ai" },
+          { label: "Investigation History", isCurrentPage: true },
         ]}
       />
       <SreInvestigationsTable

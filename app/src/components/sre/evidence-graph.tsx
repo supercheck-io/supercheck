@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
-import { Bookmark, ChevronLeft, ChevronRight, Maximize2, Network, RotateCcw, Search, Trash2, ZoomIn, ZoomOut } from "lucide-react";
+import { Bookmark, Network, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -45,10 +45,6 @@ type FocusedViewFilters = {
 const SAVED_VIEWS_STORAGE_KEY = "supercheck:sre:evidence-graph:focused-views:v1";
 const SAVED_VIEWS_EVENT = "supercheck:sre:evidence-graph:focused-views-updated";
 const MAX_SAVED_FOCUSED_VIEWS = 8;
-const GRAPH_ZOOM_MIN = 0.75;
-const GRAPH_ZOOM_MAX = 1.25;
-const GRAPH_ZOOM_STEP = 0.1;
-const GRAPH_PAN_STEP_PX = 420;
 const EMPTY_SAVED_FOCUSED_VIEWS: SavedFocusedView[] = [];
 let savedFocusedViewsCacheKey: string | null = null;
 let savedFocusedViewsCache: SavedFocusedView[] = EMPTY_SAVED_FOCUSED_VIEWS;
@@ -202,10 +198,6 @@ function getIncidentNeighborhoodNodeIds(incidentNodeId: string, edges: SreEviden
   return visited;
 }
 
-function clampGraphScale(value: number) {
-  return Math.min(GRAPH_ZOOM_MAX, Math.max(GRAPH_ZOOM_MIN, Number(value.toFixed(2))));
-}
-
 export function SreEvidenceGraph({
   graph,
   loadError = null,
@@ -217,7 +209,6 @@ export function SreEvidenceGraph({
   const [nodeType, setNodeType] = useState<SreEvidenceGraphNodeType | "all">("all");
   const [incidentFocusId, setIncidentFocusId] = useState("all");
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(graph.nodes[0]?.id ?? null);
-  const [graphScale, setGraphScale] = useState(1);
   const [sharedFocusedViews, setSharedFocusedViews] = useState(initialSharedFocusedViews);
   const [isSavingSharedView, startSavingSharedView] = useTransition();
   const [isArchivingSharedView, startArchivingSharedView] = useTransition();
@@ -259,6 +250,8 @@ export function SreEvidenceGraph({
     nodes: visibleNodes.filter((node) => node.type === type.value).slice(0, 8),
     total: visibleNodes.filter((node) => node.type === type.value).length,
   }));
+  const displayedGroups = groupedNodes.filter((group) => group.total > 0 || (nodeType !== "all" && group.type === nodeType));
+  const hasSavedViews = sharedFocusedViews.length > 0 || savedFocusedViews.length > 0;
 
   const buildFocusedViewName = () => {
     const nameParts = [
@@ -328,40 +321,6 @@ export function SreEvidenceGraph({
     });
   };
 
-  const panGraph = (delta: number) => {
-    const viewport = graphViewportRef.current;
-    if (!viewport) {
-      return;
-    }
-
-    if (typeof viewport.scrollBy === "function") {
-      viewport.scrollBy({ left: delta, behavior: "smooth" });
-      return;
-    }
-
-    viewport.scrollLeft += delta;
-  };
-
-  const resetGraphView = () => {
-    setGraphScale(1);
-    const viewport = graphViewportRef.current;
-    if (typeof viewport?.scrollTo === "function") {
-      viewport.scrollTo({ left: 0, behavior: "smooth" });
-    } else if (viewport) {
-      viewport.scrollLeft = 0;
-    }
-  };
-
-  const fitGraphView = () => {
-    setGraphScale(GRAPH_ZOOM_MIN);
-    const viewport = graphViewportRef.current;
-    if (typeof viewport?.scrollTo === "function") {
-      viewport.scrollTo({ left: 0, behavior: "smooth" });
-    } else if (viewport) {
-      viewport.scrollLeft = 0;
-    }
-  };
-
   if (loadError) {
     return (
       <Alert variant="destructive">
@@ -373,27 +332,25 @@ export function SreEvidenceGraph({
 
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-      <Card className="overflow-hidden rounded-3xl">
-        <CardHeader className="border-b bg-muted/20">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+      <Card className="overflow-hidden rounded-2xl">
+        <CardHeader className="border-b bg-muted/10">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <CardTitle className="flex items-center gap-2 text-xl">
                 <Network className="h-5 w-5" />
                 Evidence graph
               </CardTitle>
-              <CardDescription>Cross-incident links between services, incidents, investigations, evidence, and recommended fix steps.</CardDescription>
+              <CardDescription>Find relationships between services, alerts, incidents, evidence, and recommendations.</CardDescription>
             </div>
-            <div className="flex flex-wrap gap-2">
-              {NODE_TYPES.filter((type) => type.value !== "all").map((type) => (
-                <Badge key={type.value} variant="secondary" className="rounded-full">
-                  {type.label}: {graph.stats[type.value as SreEvidenceGraphNodeType]}
-                </Badge>
-              ))}
+            <div className="flex flex-wrap gap-2 text-sm">
+              <Badge variant="secondary" className="rounded-full">{visibleNodes.length} visible</Badge>
+              <Badge variant="outline" className="rounded-full">{graph.nodes.length} total nodes</Badge>
+              <Badge variant="outline" className="rounded-full">{visibleEdges.length} relationships</Badge>
             </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-4 p-4 sm:p-5">
-          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px_260px_auto_auto_auto]">
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_190px_220px_auto_auto_auto]">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search graph nodes..." className="pl-9" />
@@ -435,177 +392,128 @@ export function SreEvidenceGraph({
             </Button>
           </div>
 
-          <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(280px,360px)_minmax(280px,360px)]">
-            <div className="rounded-3xl border bg-muted/10 p-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <p className="text-sm font-medium">Incident overlay</p>
-                  <p className="text-xs text-muted-foreground">
-                    {focusedIncident
-                      ? `Showing the two-hop neighborhood around ${focusedIncident.title}.`
-                      : "Choose an incident to isolate its services, alerts, deployments, evidence, recommendations, and memory."}
+          {(focusedIncident || hasSavedViews) && (
+            <div className="rounded-2xl border bg-muted/10 p-3">
+              {focusedIncident && (
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm text-muted-foreground">
+                    Focused on <span className="font-medium text-foreground">{focusedIncident.title}</span>
                   </p>
+                  <Badge variant="outline" className="rounded-full">{visibleNodes.length} nodes</Badge>
                 </div>
-                <Badge variant="outline" className="rounded-full">{visibleNodes.length} focused nodes</Badge>
-              </div>
-            </div>
-            <div className="rounded-3xl border bg-muted/10 p-4">
-              <div className="mb-3 flex items-center justify-between gap-2">
-                <div>
-                  <p className="text-sm font-medium">Shared focused views</p>
-                  <p className="text-xs text-muted-foreground">Project-scoped handoff views available across devices.</p>
-                </div>
-                <Badge variant="outline" className="rounded-full">{sharedFocusedViews.length}</Badge>
-              </div>
-              {sharedFocusedViewsError ? (
-                <p className="text-sm text-destructive">{sharedFocusedViewsError}</p>
-              ) : sharedFocusedViews.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Apply filters, then save a shared view.</p>
-              ) : (
-                <div className="space-y-2">
-                  {sharedFocusedViews.map((view) => (
-                    <div key={view.id} className="flex items-center gap-2">
-                      <Button type="button" variant="secondary" size="sm" className="min-w-0 flex-1 justify-start" onClick={() => applyFocusedView(view)}>
-                        <span className="truncate">{view.name}</span>
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        aria-label={`Archive shared view ${view.name}`}
-                        onClick={() => archiveSharedFocusedView(view.id)}
-                        disabled={isArchivingSharedView}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+              )}
+              {hasSavedViews && (
+                <div className="space-y-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-sm font-medium">Saved views</p>
+                    {sharedFocusedViewsError && (
+                      <span className="text-xs text-muted-foreground">Shared views unavailable; browser views still work.</span>
+                    )}
+                  </div>
+                  {sharedFocusedViews.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      <span className="self-center text-xs text-muted-foreground">Shared</span>
+                      {sharedFocusedViews.map((view) => (
+                        <div key={view.id} className="flex items-center gap-2">
+                          <Button type="button" variant="secondary" size="sm" className="min-w-0 flex-1 justify-start" onClick={() => applyFocusedView(view)}>
+                            <span className="truncate">{view.name}</span>
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            aria-label={`Archive shared view ${view.name}`}
+                            onClick={() => archiveSharedFocusedView(view.id)}
+                            disabled={isArchivingSharedView}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  )}
+                  {savedFocusedViews.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      <span className="self-center text-xs text-muted-foreground">Browser</span>
+                      {savedFocusedViews.map((view) => (
+                        <div key={view.id} className="flex items-center gap-2">
+                          <Button type="button" variant="secondary" size="sm" className="min-w-0 flex-1 justify-start" onClick={() => applyFocusedView(view)}>
+                            <span className="truncate">{view.name}</span>
+                          </Button>
+                          <Button type="button" variant="ghost" size="icon" aria-label={`Delete focused view ${view.name}`} onClick={() => removeFocusedView(view.id)}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
-            <div className="rounded-3xl border bg-muted/10 p-4">
-              <div className="mb-3 flex items-center justify-between gap-2">
-                <div>
-                  <p className="text-sm font-medium">Browser focused views</p>
-                  <p className="text-xs text-muted-foreground">Private to this browser for same-workstation handoff.</p>
-                </div>
-                <Badge variant="outline" className="rounded-full">{savedFocusedViews.length}</Badge>
-              </div>
-              {savedFocusedViews.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Apply filters, then save a focused view.</p>
-              ) : (
-                <div className="space-y-2">
-                  {savedFocusedViews.map((view) => (
-                    <div key={view.id} className="flex items-center gap-2">
-                      <Button type="button" variant="secondary" size="sm" className="min-w-0 flex-1 justify-start" onClick={() => applyFocusedView(view)}>
-                        <span className="truncate">{view.name}</span>
-                      </Button>
-                      <Button type="button" variant="ghost" size="icon" aria-label={`Delete focused view ${view.name}`} onClick={() => removeFocusedView(view.id)}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
+          )}
 
-          <div className="rounded-3xl border bg-background">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-muted/20 p-3">
+          <div className="overflow-hidden rounded-2xl border bg-background">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-muted/20 px-4 py-3">
               <div>
-                <p className="text-sm font-medium">Graph controls</p>
-                <p className="text-xs text-muted-foreground">Zoom or pan the operational lanes without changing the active filters.</p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Button type="button" variant="outline" size="sm" aria-label="Pan graph left" onClick={() => panGraph(-GRAPH_PAN_STEP_PX)}>
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-                <Button type="button" variant="outline" size="sm" aria-label="Pan graph right" onClick={() => panGraph(GRAPH_PAN_STEP_PX)}>
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  aria-label="Zoom out graph"
-                  onClick={() => setGraphScale((current) => clampGraphScale(current - GRAPH_ZOOM_STEP))}
-                  disabled={graphScale <= GRAPH_ZOOM_MIN}
-                >
-                  <ZoomOut className="h-4 w-4" />
-                </Button>
-                <Badge variant="secondary" className="min-w-16 justify-center rounded-full tabular-nums">{Math.round(graphScale * 100)}%</Badge>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  aria-label="Zoom in graph"
-                  onClick={() => setGraphScale((current) => clampGraphScale(current + GRAPH_ZOOM_STEP))}
-                  disabled={graphScale >= GRAPH_ZOOM_MAX}
-                >
-                  <ZoomIn className="h-4 w-4" />
-                </Button>
-                <Button type="button" variant="outline" size="sm" onClick={fitGraphView}>
-                  <Maximize2 className="h-4 w-4" />
-                  Fit
-                </Button>
-                <Button type="button" variant="outline" size="sm" onClick={resetGraphView}>
-                  <RotateCcw className="h-4 w-4" />
-                  Reset
-                </Button>
+                <p className="text-sm font-medium">Operational lanes</p>
+                <p className="text-xs text-muted-foreground">Filter by incident or node type, then select a node for details.</p>
               </div>
             </div>
             <div
               ref={graphViewportRef}
-              className="overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+              className="overflow-x-auto"
               aria-label="Evidence graph viewport"
               tabIndex={0}
             >
               <div
-                className="grid min-h-[520px] min-w-[2100px] grid-cols-12 gap-px bg-border transition-transform duration-200 ease-out motion-reduce:transition-none"
-                style={{ transform: `scale(${graphScale})`, transformOrigin: "top left", width: `${100 / graphScale}%` }}
+                className="grid min-h-[320px] grid-flow-col auto-cols-[minmax(260px,340px)] gap-px bg-border"
               >
-                {groupedNodes.map((group) => (
-                  <div key={group.type} className="bg-muted/10 p-3">
-                    <div className="mb-3 flex items-center justify-between gap-2">
-                      <Label className="text-sm font-semibold">{NODE_TYPE_LABELS[group.type]}</Label>
-                      <Badge variant="outline" className="rounded-full">{group.total}</Badge>
-                    </div>
-                    <div className="space-y-2">
-                      {group.nodes.length === 0 ? (
-                        <div className="rounded-2xl border border-dashed p-4 text-center text-xs text-muted-foreground">No visible nodes</div>
-                      ) : (
-                        group.nodes.map((node) => (
-                          <button
-                            key={node.id}
-                            type="button"
-                            aria-label={`Select ${node.type} node ${node.title}`}
-                            onClick={() => setSelectedNodeId(node.id)}
-                            className={cn(
-                              "w-full rounded-2xl border p-3 text-left text-sm transition-colors hover:bg-background",
-                              NODE_TYPE_CLASSES[node.type],
-                              effectiveSelectedNodeId === node.id && "ring-2 ring-ring"
-                            )}
-                          >
-                            <span className="line-clamp-2 font-medium">{node.title}</span>
-                            <span className="mt-1 block truncate text-xs text-muted-foreground">{node.subtitle ?? node.status ?? "No detail"}</span>
-                          </button>
-                        ))
-                      )}
-                    </div>
+                {displayedGroups.length === 0 ? (
+                  <div className="flex min-w-full items-center justify-center bg-muted/10 p-6 text-sm text-muted-foreground">
+                    No graph nodes match the current filters.
                   </div>
-                ))}
+                ) : (
+                  displayedGroups.map((group) => (
+                    <div key={group.type} className="bg-muted/10 p-3">
+                      <div className="mb-3 flex items-center justify-between gap-2">
+                        <Label className="text-sm font-semibold">{NODE_TYPE_LABELS[group.type]}</Label>
+                        <Badge variant="outline" className="rounded-full">{group.total}</Badge>
+                      </div>
+                      <div className="space-y-2">
+                        {group.nodes.length === 0 ? (
+                          <div className="rounded-2xl border border-dashed p-4 text-center text-xs text-muted-foreground">No visible nodes</div>
+                        ) : (
+                          group.nodes.map((node) => (
+                            <button
+                              key={node.id}
+                              type="button"
+                              aria-label={`Select ${node.type} node ${node.title}`}
+                              onClick={() => setSelectedNodeId(node.id)}
+                              className={cn(
+                                "w-full rounded-2xl border p-3 text-left text-sm transition-colors hover:bg-background",
+                                NODE_TYPE_CLASSES[node.type],
+                                effectiveSelectedNodeId === node.id && "ring-2 ring-ring"
+                              )}
+                            >
+                              <span className="line-clamp-2 font-medium">{node.title}</span>
+                              <span className="mt-1 block truncate text-xs text-muted-foreground">{node.subtitle ?? node.status ?? "No detail"}</span>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           </div>
 
-          <div className="rounded-3xl border bg-muted/10 p-4">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <h3 className="text-sm font-semibold">Relationship paths</h3>
-              <Badge variant="outline" className="rounded-full">{visibleEdges.length} visible edges</Badge>
-            </div>
-            {visibleEdges.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No relationships match the current filters.</p>
-            ) : (
+          {visibleEdges.length > 0 && (
+            <div className="rounded-2xl border bg-muted/10 p-4">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-sm font-semibold">Relationship paths</h3>
+                <Badge variant="outline" className="rounded-full">{visibleEdges.length} visible edges</Badge>
+              </div>
               <div className="grid gap-2 md:grid-cols-2">
                 {visibleEdges.slice(0, 12).map((edge) => {
                   const source = nodesById.get(edge.source);
@@ -625,8 +533,8 @@ export function SreEvidenceGraph({
                   );
                 })}
               </div>
-            )}
-          </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 

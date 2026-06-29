@@ -21,6 +21,11 @@ import {
   Tally4,
   ClipboardList,
   Target,
+  Bot,
+  Cable,
+  FileSearch,
+  Network,
+  Siren,
 } from "lucide-react";
 import { PlaywrightLogo } from "@/components/logo/playwright-logo";
 import { K6Logo } from "@/components/logo/k6-logo";
@@ -65,7 +70,14 @@ export function CommandSearch({ className }: CommandSearchProps) {
         runs: "/runs",
         variables: "/variables",
         alerts: "/alerts",
+        incidents: "/incidents",
         "status-pages": "/status-pages",
+        services: "/services",
+        "investigation-chat": "/sre-ai",
+        "investigation-history": "/sre-ai/investigations",
+        "evidence-graph": "/sre-ai/evidence-graph",
+        "evidence-connectors": "/org-admin/connectors",
+        "diagnostic-queries": "/org-admin/diagnostic-queries",
 
         // Create Actions
         "create-monitor-http": "/monitors/create?type=http_request",
@@ -159,6 +171,10 @@ export function CommandSearch({ className }: CommandSearchProps) {
                   <BellRing className="mr-2 h-4 w-4 !text-amber-600" />
                   <span>Alerts</span>
                 </CommandItem>
+                <CommandItem onSelect={() => handleCommand("incidents")}>
+                  <Siren className="mr-2 h-4 w-4 !text-rose-500" />
+                  <span>Incidents</span>
+                </CommandItem>
                 <CommandItem onSelect={() => handleCommand("status-pages")}>
                   <Tally4 className="mr-2 h-4 w-4 !text-green-600" />
                   <span>Status Pages</span>
@@ -186,6 +202,35 @@ export function CommandSearch({ className }: CommandSearchProps) {
                 <CommandItem onSelect={() => handleCommand("monitors")}>
                   <Globe className="mr-2 h-4 w-4 !text-cyan-600" />
                   <span>Monitors</span>
+                </CommandItem>
+                <CommandItem onSelect={() => handleCommand("services")}>
+                  <Network className="mr-2 h-4 w-4 !text-sky-600" />
+                  <span>Service Map</span>
+                </CommandItem>
+              </CommandGroup>
+
+              <CommandSeparator />
+
+              <CommandGroup heading="Investigate">
+                <CommandItem onSelect={() => handleCommand("investigation-chat")}>
+                  <Bot className="mr-2 h-4 w-4 !text-zinc-400" />
+                  <span>Chat</span>
+                </CommandItem>
+                <CommandItem onSelect={() => handleCommand("investigation-history")}>
+                  <FileSearch className="mr-2 h-4 w-4 !text-violet-500" />
+                  <span>History</span>
+                </CommandItem>
+                <CommandItem onSelect={() => handleCommand("evidence-graph")}>
+                  <Network className="mr-2 h-4 w-4 !text-sky-500" />
+                  <span>Graph</span>
+                </CommandItem>
+                <CommandItem onSelect={() => handleCommand("evidence-connectors")}>
+                  <Cable className="mr-2 h-4 w-4 !text-emerald-500" />
+                  <span>Connectors</span>
+                </CommandItem>
+                <CommandItem onSelect={() => handleCommand("diagnostic-queries")}>
+                  <Database className="mr-2 h-4 w-4 !text-cyan-600" />
+                  <span>Queries</span>
                 </CommandItem>
               </CommandGroup>
 

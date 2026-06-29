@@ -14,7 +14,7 @@ export default async function SreEvidenceGraphPage() {
       <PageBreadcrumbs
         items={[
           { label: "Home", href: "/" },
-          { label: "SRE AI", href: "/sre-ai" },
+          { label: "Investigate", href: "/sre-ai" },
           { label: "Evidence Graph", isCurrentPage: true },
         ]}
       />

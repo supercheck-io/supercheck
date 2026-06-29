@@ -411,9 +411,9 @@ export function ConnectorAdminView({
     <div className="space-y-4 pt-6">
       <div className="mb-4 -mt-2 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex flex-col">
-          <h2 className="text-2xl font-semibold">Connectors</h2>
+          <h2 className="text-2xl font-semibold">Evidence connectors</h2>
           <p className="text-sm text-muted-foreground">
-            Manage read-only operational evidence connectors for SRE investigations
+            Connect read-only code, metrics, logs, traces, and infrastructure evidence to investigations.
           </p>
         </div>
         <Button onClick={() => setIsCreateOpen(true)}>
@@ -501,8 +501,8 @@ export function ConnectorAdminView({
       {connectors.length === 0 ? (
         <DashboardEmptyState
           className="min-h-[420px]"
-          title="No connectors configured"
-          description="Add a read-only connector to enrich incident investigations with code, metrics, infrastructure, or log evidence."
+          title="No evidence connectors yet"
+          description="Start with the local lab Prometheus, Loki, Tempo, or Grafana endpoints, or add a read-only production connector when you are ready."
           icon={<ShieldCheck className="h-10 w-10" />}
           action={
             <Button onClick={() => setIsCreateOpen(true)}>

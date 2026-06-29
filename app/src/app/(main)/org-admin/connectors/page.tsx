@@ -22,8 +22,8 @@ export default async function OrgAdminConnectorsPage() {
 
   const breadcrumbs = [
     { label: "Home", href: "/" },
-    { label: "Organization Admin", href: "/org-admin" },
-    { label: "Connectors", isCurrentPage: true },
+    { label: "Investigate", href: "/sre-ai" },
+    { label: "Evidence Connectors", isCurrentPage: true },
   ];
 
   const loadError = connectorsResult.success

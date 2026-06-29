@@ -20,7 +20,7 @@ export default async function OrgAdminDiagnosticQueriesPage() {
       <PageBreadcrumbs
         items={[
           { label: "Home", href: "/" },
-          { label: "Organization Admin", href: "/org-admin" },
+          { label: "Investigate", href: "/sre-ai" },
           { label: "Diagnostic Queries", isCurrentPage: true },
         ]}
       />

@@ -189,7 +189,7 @@ export function DiagnosticQueriesAdminView({ initialQueries, setupOptions, loadE
       <div className="mb-4 -mt-2 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h2 className="text-2xl font-semibold">Diagnostic queries</h2>
-          <p className="text-sm text-muted-foreground">Define reusable read-only query templates for connector-backed SRE investigations.</p>
+          <p className="text-sm text-muted-foreground">Prepare approved read-only recipes responders can reuse during investigations.</p>
         </div>
         <Button onClick={() => setIsCreateOpen(true)} disabled={setupOptions.connectors.length === 0}>
           <Plus className="mr-2 h-4 w-4" />
@@ -201,14 +201,14 @@ export function DiagnosticQueriesAdminView({ initialQueries, setupOptions, loadE
         <DashboardEmptyState
           className="min-h-[420px]"
           title="Connectors required"
-          description="Create a read-only connector before adding diagnostic query templates. Queries are scoped to one connector and are not executable from this screen."
+          description="Create an evidence connector first. Diagnostic queries are scoped to one connector and stay read-only."
           icon={<ShieldCheck className="h-10 w-10" />}
         />
       ) : queries.length === 0 ? (
         <DashboardEmptyState
           className="min-h-[420px]"
           title="No diagnostic queries"
-          description="Add a bounded, allowlisted query template for investigations. Execution remains gated by future investigation tooling."
+          description="Add a bounded, allowlisted query recipe for common incident questions such as 5xx spikes, slow traces, or error logs."
           icon={<Database className="h-10 w-10" />}
           action={<Button onClick={() => setIsCreateOpen(true)}><Plus className="mr-2 h-4 w-4" />Add query</Button>}
         />

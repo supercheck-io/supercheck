@@ -78,32 +78,37 @@ const data = {
     },
 
     {
-      title: "SRE AI",
-      url: "/sre-ai",
-      icon: Bot,
-      items: [
-        {
-          title: "Console",
-          url: "/sre-ai",
-          icon: Bot,
-        },
-        {
-          title: "Investigations",
-          url: "/sre-ai/investigations",
-          icon: FileSearch,
-        },
-        {
-          title: "Evidence Graph",
-          url: "/sre-ai/evidence-graph",
-          icon: Network,
-        },
-      ],
-    },
-
-    {
       title: "Status Pages",
       url: "/status-pages",
       icon: Tally4,
+    },
+  ],
+
+  Investigate: [
+    {
+      title: "Chat",
+      url: "/sre-ai",
+      icon: Bot,
+    },
+    {
+      title: "History",
+      url: "/sre-ai/investigations",
+      icon: FileSearch,
+    },
+    {
+      title: "Graph",
+      url: "/sre-ai/evidence-graph",
+      icon: Network,
+    },
+    {
+      title: "Connectors",
+      url: "/org-admin/connectors",
+      icon: Cable,
+    },
+    {
+      title: "Queries",
+      url: "/org-admin/diagnostic-queries",
+      icon: Database,
     },
   ],
 
@@ -256,19 +261,9 @@ const data = {
           icon: LayoutDashboard,
         },
         {
-          title: "Connectors",
-          url: "/org-admin/connectors",
-          icon: Cable,
-        },
-        {
           title: "Private Agents",
           url: "/org-admin/private-agents",
           icon: EthernetPort,
-        },
-        {
-          title: "Diagnostic Queries",
-          url: "/org-admin/diagnostic-queries",
-          icon: Database,
         },
       ],
     },
@@ -380,6 +375,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <NavMain groupLabel="Communicate" items={data.Communicate} />
         <NavMain groupLabel="Automate" items={data.Automate} />
         <NavMain groupLabel="Monitor" items={data.Monitor} />
+        <NavMain groupLabel="Investigate" items={data.Investigate} />
         {adminItems.length > 0 && (
           <NavMain groupLabel="Settings" items={adminItems} />
         )}

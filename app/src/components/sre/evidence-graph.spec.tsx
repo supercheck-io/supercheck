@@ -100,20 +100,13 @@ describe("SreEvidenceGraph", () => {
     expect(screen.getByText(/service: checkout; severity: sev2; error pattern: p95 latency/i)).toBeInTheDocument();
   });
 
-  it("supports graph zoom and fit controls", () => {
+  it("keeps the graph controls focused on filtering and node selection", () => {
     render(<SreEvidenceGraph graph={graph} />);
 
-    expect(screen.getByText("100%")).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: /zoom in graph/i }));
-    expect(screen.getByText("110%")).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: /fit/i }));
-    expect(screen.getByText("75%")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /zoom out graph/i })).toBeDisabled();
-
-    fireEvent.click(screen.getByRole("button", { name: /reset/i }));
-    expect(screen.getByText("100%")).toBeInTheDocument();
+    expect(screen.getByText("Operational lanes")).toBeInTheDocument();
+    expect(screen.getByText(/filter by incident or node type/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /zoom in graph/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /fit/i })).not.toBeInTheDocument();
   });
 
   it("saves and reapplies focused graph views in browser storage", () => {

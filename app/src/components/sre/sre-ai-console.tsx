@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
-import { Archive, Bot, CheckCircle2, Clock3, MessageSquare, Plus, Search, ShieldCheck } from "lucide-react";
+import { Archive, Bot, Clock3, MessageSquare, Plus, Search, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 
 import { archiveSreStandaloneChat, type SreStandaloneChatHistory } from "@/actions/sre-ai";
@@ -18,10 +18,10 @@ import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 
 const SRE_AI_SUGGESTIONS = [
-  "What should I check first for a latency incident?",
   "Build an investigation plan for checkout failures.",
-  "What evidence do I need before calling root cause?",
+  "What evidence should I collect before calling root cause?",
   "How should I verify a fix without changing production?",
+  "Summarize what to check for latency, errors, and recent deploys.",
 ];
 
 type SreAiConsoleProps = {
@@ -43,7 +43,7 @@ function getLatestProgress(events: SreInvestigationProgressEvent[]) {
 }
 
 function ThinkingRow({ isPending, events }: { isPending: boolean; events: SreInvestigationProgressEvent[] }) {
-  if (!isPending && events.length === 0) {
+  if (!isPending) {
     return null;
   }
 
@@ -51,8 +51,8 @@ function ThinkingRow({ isPending, events }: { isPending: boolean; events: SreInv
 
   return (
     <div className="mx-auto flex w-full max-w-3xl items-center gap-2 px-3 py-1 text-xs text-muted-foreground">
-      {isPending ? <Spinner className="h-3.5 w-3.5" /> : <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />}
-      <span>{isPending ? latest?.title ?? "Thinking" : "Response complete"}</span>
+      <Spinner className="h-3.5 w-3.5" />
+      <span>{latest?.title ?? "Thinking"}</span>
       {latest?.description && <span className="hidden truncate sm:inline">· {latest.description}</span>}
     </div>
   );
@@ -234,6 +234,10 @@ export function SreAiConsole({ initialHistories = [], loadError = null }: SreAiC
     <div className="flex h-full overflow-hidden bg-background">
       <aside className="hidden w-72 shrink-0 border-r bg-muted/10 md:flex md:flex-col">
         <div className="space-y-3 border-b p-3">
+          <div>
+            <p className="text-sm font-medium">Chats</p>
+            <p className="text-xs text-muted-foreground">Standalone investigation history</p>
+          </div>
           <Button type="button" className="w-full justify-start" onClick={startNewChat}>
             <Plus className="h-4 w-4" />
             New chat
@@ -243,7 +247,7 @@ export function SreAiConsole({ initialHistories = [], loadError = null }: SreAiC
             <Input
               value={historyQuery}
               onChange={(event) => setHistoryQuery(event.target.value)}
-              placeholder="Search chats"
+              placeholder="Search history"
               className="h-9 border-0 bg-muted/40 pl-8 shadow-none"
             />
           </div>
@@ -251,7 +255,7 @@ export function SreAiConsole({ initialHistories = [], loadError = null }: SreAiC
         <div className="min-h-0 flex-1 overflow-y-auto p-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {filteredHistories.length === 0 ? (
             <div className="px-2 py-8 text-center text-sm text-muted-foreground">
-              {historyQuery.trim() ? "No chats match your search." : "Chat history will appear here."}
+              {historyQuery.trim() ? "No investigation notes match your search." : "Saved investigation chats will appear here."}
             </div>
           ) : (
             <div className="space-y-1">
@@ -268,7 +272,7 @@ export function SreAiConsole({ initialHistories = [], loadError = null }: SreAiC
                       isActive && "bg-background shadow-sm ring-1 ring-border"
                     )}
                   >
-                    <span className="block truncate font-medium">{history.title ?? "SRE AI chat"}</span>
+                    <span className="block truncate font-medium">{history.title ?? "Investigation chat"}</span>
                     <span className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
                       <Clock3 className="h-3 w-3" />
                       <time dateTime={history.updatedAt}>{formatHistoryDate(history.updatedAt)}</time> · {history.messages.length} messages
@@ -282,7 +286,7 @@ export function SreAiConsole({ initialHistories = [], loadError = null }: SreAiC
         <div className="border-t p-3 text-xs text-muted-foreground">
           <div className="flex items-center gap-2">
             <ShieldCheck className="h-3.5 w-3.5" />
-            Read-only SRE guidance. Open an incident for cited evidence.
+            Read-only guidance. Open an incident when you need cited evidence.
           </div>
         </div>
       </aside>
@@ -294,11 +298,15 @@ export function SreAiConsole({ initialHistories = [], loadError = null }: SreAiC
               <Bot className="h-4 w-4" />
             </div>
             <div className="min-w-0">
-              <h1 className="truncate text-sm font-semibold">SRE AI</h1>
-              <p className="truncate text-xs text-muted-foreground">Ask, investigate, and plan verification without production writes.</p>
+              <h1 className="truncate text-sm font-semibold">Investigation Chat</h1>
+              <p className="truncate text-xs text-muted-foreground">Plan investigations and verification. Incident pages add cited evidence.</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={startNewChat} disabled={isPending}>
+              <Plus className="h-4 w-4" />
+              <span className="hidden sm:inline">New</span>
+            </Button>
             {conversationId && (
               <Button type="button" variant="ghost" size="sm" onClick={archiveCurrentChat} disabled={isArchiving || isPending}>
                 {isArchiving ? <Spinner className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
@@ -312,7 +320,7 @@ export function SreAiConsole({ initialHistories = [], loadError = null }: SreAiC
         {error && (
           <div className="shrink-0 px-3 pt-3 sm:px-5">
             <Alert variant="destructive">
-              <AlertTitle>SRE AI unavailable</AlertTitle>
+              <AlertTitle>Investigation assistant unavailable</AlertTitle>
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           </div>
@@ -322,8 +330,8 @@ export function SreAiConsole({ initialHistories = [], loadError = null }: SreAiC
           <SreChatMessageList
             messages={messages}
             emptyIcon={<MessageSquare className="h-8 w-8 text-muted-foreground" />}
-            emptyTitle="How can I help investigate?"
-            emptyDescription="Ask a reliability question, request an investigation plan, or choose a prompt below. Use incident detail for cited evidence and live connector context."
+            emptyTitle="What are you investigating?"
+            emptyDescription="Ask a reliability question or start with a prompt. For evidence citations, open an incident and use its Investigation tab."
             className="h-full rounded-none border-0 shadow-none"
             isAssistantPending={isPending}
             pendingLabel={progressEvents[progressEvents.length - 1]?.title ?? "Collecting evidence and checking tool output..."}
@@ -356,8 +364,8 @@ export function SreAiConsole({ initialHistories = [], loadError = null }: SreAiC
               onChange={setPrompt}
               onSubmit={submitPrompt}
               isPending={isPending}
-              placeholder="Message SRE AI..."
-              footer="Project chat history is saved. Incident evidence is only attached from incident pages."
+              placeholder="Ask about an incident, service, or verification plan..."
+              footer="Project history is saved. Incident evidence is attached from incident pages."
               submitLabel="Send"
             />
           </div>
