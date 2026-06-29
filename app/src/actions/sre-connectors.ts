@@ -321,6 +321,10 @@ function supportsDirectConnectorValidation(connectorType: (typeof connectorTypes
   return ["github", "kubernetes", "prometheus", "grafana", "sentry", "datadog", "loki", "elasticsearch", "tempo", "aws_cloudwatch"].includes(connectorType);
 }
 
+function isSetupOnlyConnector(connectorType: (typeof connectorTypes)[number]) {
+  return ["jira", "confluence", "notion", "slack"].includes(connectorType);
+}
+
 function supportsPrivateAgentConnector(connectorType: (typeof connectorTypes)[number]) {
   return privateAgentSupportedConnectorTypes.includes(connectorType as (typeof privateAgentSupportedConnectorTypes)[number]);
 }
@@ -850,6 +854,9 @@ export async function validateSreConnector(input: z.infer<typeof validateConnect
         const validation = await directConnector.validate();
         status = validation.status;
         outputSummary = validation.message ?? (validation.status === "valid" ? "Connector validation passed" : "Connector validation failed");
+      } else if (isSetupOnlyConnector(row.type)) {
+        status = "policy_blocked";
+        outputSummary = "Live validation is not implemented for this setup-only connector yet. Configuration is saved, and evidence search stays disabled until a read-only adapter is available.";
       } else if (!url && row.type !== "github" && row.type !== "webhook") {
         status = "policy_blocked";
         outputSummary = "Connector endpoint URL is required for direct validation";
