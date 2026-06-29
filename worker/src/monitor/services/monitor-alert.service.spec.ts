@@ -25,6 +25,12 @@ describe('MonitorAlertService', () => {
   };
 
   function createService() {
+    const valuesMock = jest.fn(() => ({
+      returning: jest.fn().mockResolvedValue([
+        { id: 'history-1', status: 'sent' },
+        { id: 'history-2', status: 'failed' },
+      ]),
+    }));
     const db = {
       query: {
         monitors: { findFirst: jest.fn().mockResolvedValue(monitor) },
@@ -45,12 +51,7 @@ describe('MonitorAlertService', () => {
         })),
       })),
       insert: jest.fn(() => ({
-        values: jest.fn(() => ({
-          returning: jest.fn().mockResolvedValue([
-            { id: 'history-1', status: 'sent' },
-            { id: 'history-2', status: 'failed' },
-          ]),
-        })),
+        values: valuesMock,
       })),
     };
     const dbService = { db };
@@ -65,7 +66,26 @@ describe('MonitorAlertService', () => {
         failed: 1,
         results: [
           { provider: { id: 'provider-1' }, success: true, error: null },
-          { provider: { id: 'provider-2' }, success: false, error: 'failed' },
+          {
+            provider: { id: 'provider-2' },
+            success: false,
+            error: 'failed',
+            deliveryMetadata: {
+              version: 1,
+              provider: { id: 'provider-2', type: 'webhook' },
+              source: {
+                alertType: 'monitor_failure',
+                targetType: 'monitor',
+                targetId: 'monitor-1',
+                projectId: 'project-1',
+                monitorId: 'monitor-1',
+              },
+              delivery: {
+                status: 'failed',
+                sentAt: '2026-06-28T00:00:00.000Z',
+              },
+            },
+          },
         ],
       }),
     };
@@ -80,14 +100,25 @@ describe('MonitorAlertService', () => {
       sreAlertTriageQueueService,
     );
 
-    return { service, db, sreAlertTriageQueueService };
+    return { service, db, valuesMock, sreAlertTriageQueueService };
   }
 
   it('enqueues created alert-history rows after monitor notifications', async () => {
-    const { service, sreAlertTriageQueueService } = createService();
+    const { service, valuesMock, sreAlertTriageQueueService } = createService();
 
     await service.sendNotification('monitor-1', 'failure', 'Timeout');
 
+    expect(valuesMock).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({
+          provider: 'provider-2',
+          deliveryMetadata: expect.objectContaining({
+            version: 1,
+            provider: { id: 'provider-2', type: 'webhook' },
+          }),
+        }),
+      ]),
+    );
     expect(
       sreAlertTriageQueueService.enqueueAlertHistoryRows,
     ).toHaveBeenCalledWith([

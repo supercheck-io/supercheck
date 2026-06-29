@@ -95,6 +95,30 @@ export const sreEvalFixtures: SreEvalFixture[] = [
     },
   },
   {
+    id: "connector-investigation-oss-lab-checkout-degradation",
+    milestone: "connector_investigation",
+    title: "OSS lab evidence correlates checkout errors across metrics, logs, and traces",
+    prompt:
+      "Use the seeded OSS lab connectors to investigate checkout-api degradation. Correlate Prometheus metrics, Loki logs, and Tempo traces, cite evidence, and keep recommendations read-only.",
+    seededLive: {
+      connectorTypes: ["prometheus", "loki", "tempo"],
+      requiredSeedData: [
+        "AISRE demo service /checkout/error was called during the incident window",
+        "Prometheus scraped aisre_demo_requests_total for checkout-api 500s",
+        "Loki ingested checkout-api error logs from the demo service",
+        "Tempo ingested a checkout-api span with the oss-lab-checkout-degradation fixture attribute",
+      ],
+    },
+    expected: {
+      requiredKeywords: ["checkout", "prometheus", "loki", "tempo", "500", "trace"],
+      requiredEvidenceIds: ["ev-oss-lab-prometheus-5xx", "ev-oss-lab-loki-checkout-error", "ev-oss-lab-tempo-slow-span"],
+      requiredToolNames: ["listIncidentConnectors", "searchLiveConnectorEvidence", "telemetryInvestigator"],
+      forbiddenClaims: ["applied fix", "restarted service", "changed alertmanager", "muted alert", "deleted logs"],
+      maxDuplicateToolCalls: 2,
+      minScore: 0.86,
+    },
+  },
+  {
     id: "connector-investigation-datadog-event-spike",
     milestone: "connector_investigation",
     title: "Datadog event evidence correlates deployment with latency spike",

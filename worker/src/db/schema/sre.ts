@@ -22,6 +22,7 @@ import {
 import { sql } from 'drizzle-orm';
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
 import { user } from './auth';
+import { notificationProviders } from './notification';
 import { organization, projects } from './organization';
 import { incidents as statusPageIncidents } from './statusPage';
 
@@ -182,6 +183,30 @@ type SreBackgroundAgentType =
 type SreBackgroundRunStatus = 'scheduled' | 'running' | 'completed' | 'failed';
 type SreChatConversationStatus = 'active' | 'archived';
 type SreChatMessageRole = 'user' | 'assistant' | 'system' | 'tool';
+type SreInvestigationReportStatus = 'active' | 'superseded';
+type SreInvestigationReportFeedbackAccuracy =
+  | 'accurate'
+  | 'partially_accurate'
+  | 'incorrect'
+  | 'needs_more_evidence';
+type SreEvidenceGraphFocusedViewStatus = 'active' | 'archived';
+type SreEvidenceGraphFocusedViewVisibility = 'project';
+type SreIntegrationKey =
+  | 'pagerduty'
+  | 'opsgenie'
+  | 'splunk_on_call'
+  | 'better_stack'
+  | 'incident_io'
+  | 'slack'
+  | 'teams'
+  | 'generic_webhook';
+type SreIntegrationCorrelationStrategy =
+  | 'dedup_key'
+  | 'alias'
+  | 'entity_id'
+  | 'incident_url'
+  | 'thread'
+  | 'custom';
 
 type ExternalConnectorType =
   | 'github'
@@ -962,6 +987,92 @@ export const externalConnectorServices = pgTable(
     organizationConnectorIdx: index(
       'external_connector_services_org_connector_idx',
     ).on(table.organizationId, table.connectorId),
+  }),
+);
+
+export const sreIntegrationBindings = pgTable(
+  'sre_integration_bindings',
+  {
+    id: uuidPk(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organization.id, { onDelete: 'cascade' }),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    integrationKey: varchar('integration_key', { length: 50 })
+      .$type<SreIntegrationKey>()
+      .notNull(),
+    notificationProviderId: uuid('notification_provider_id')
+      .notNull()
+      .references(() => notificationProviders.id, { onDelete: 'cascade' }),
+    externalConnectorId: uuid('external_connector_id')
+      .notNull()
+      .references(() => externalConnectors.id, { onDelete: 'cascade' }),
+    correlationStrategy: varchar('correlation_strategy', { length: 30 })
+      .$type<SreIntegrationCorrelationStrategy>()
+      .notNull()
+      .default('dedup_key'),
+    enabled: boolean('enabled').notNull().default(true),
+    metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}),
+    createdByUserId: uuid('created_by_user_id').references(() => user.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    projectIntegrationIdx: index(
+      'sre_integration_bindings_project_integration_idx',
+    ).on(table.projectId, table.integrationKey),
+    notificationProviderIdx: index(
+      'sre_integration_bindings_notification_provider_idx',
+    ).on(table.notificationProviderId),
+    externalConnectorIdx: index(
+      'sre_integration_bindings_external_connector_idx',
+    ).on(table.externalConnectorId),
+    activeBindingUniqueIdx: uniqueIndex(
+      'sre_integration_bindings_active_unique_idx',
+    )
+      .on(
+        table.projectId,
+        table.integrationKey,
+        table.notificationProviderId,
+        table.externalConnectorId,
+      )
+      .where(sql`enabled = true`),
+  }),
+);
+
+export const sreIntegrationBindingServices = pgTable(
+  'sre_integration_binding_services',
+  {
+    id: uuidPk(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organization.id, { onDelete: 'cascade' }),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    bindingId: uuid('binding_id')
+      .notNull()
+      .references(() => sreIntegrationBindings.id, { onDelete: 'cascade' }),
+    serviceId: uuid('service_id')
+      .notNull()
+      .references(() => sreServices.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    bindingServiceUniqueIdx: uniqueIndex(
+      'sre_integration_binding_services_binding_service_unique_idx',
+    ).on(table.bindingId, table.serviceId),
+    serviceIdx: index('sre_integration_binding_services_service_idx').on(
+      table.projectId,
+      table.serviceId,
+    ),
+    organizationBindingIdx: index(
+      'sre_integration_binding_services_org_binding_idx',
+    ).on(table.organizationId, table.bindingId),
   }),
 );
 
@@ -1754,6 +1865,150 @@ export const sreChatMessages = pgTable(
   }),
 );
 
+export const sreInvestigationReports = pgTable(
+  'sre_investigation_reports',
+  {
+    id: uuidPk(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organization.id, { onDelete: 'cascade' }),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    incidentId: uuid('incident_id').references(() => sreIncidents.id, {
+      onDelete: 'set null',
+    }),
+    investigationRunId: uuid('investigation_run_id')
+      .notNull()
+      .references(() => sreInvestigationRuns.id, { onDelete: 'cascade' }),
+    reportVersion: varchar('report_version', { length: 40 })
+      .notNull()
+      .default('sre-investigation-report.v1'),
+    title: varchar('title', { length: 300 }),
+    summary: text('summary'),
+    reportData: jsonb('report_data').$type<Record<string, unknown>>().notNull(),
+    reportHash: varchar('report_hash', { length: 64 }).notNull(),
+    status: varchar('status', { length: 20 })
+      .$type<SreInvestigationReportStatus>()
+      .notNull()
+      .default('active'),
+    createdByUserId: uuid('created_by_user_id').references(() => user.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    runCreatedAtIdx: index('sre_investigation_reports_run_created_at_idx').on(
+      table.investigationRunId,
+      table.createdAt,
+    ),
+    projectCreatedAtIdx: index(
+      'sre_investigation_reports_project_created_at_idx',
+    ).on(table.projectId, table.createdAt),
+    incidentCreatedAtIdx: index(
+      'sre_investigation_reports_incident_created_at_idx',
+    ).on(table.incidentId, table.createdAt),
+    activeRunIdx: index('sre_investigation_reports_active_run_idx').on(
+      table.investigationRunId,
+      table.status,
+    ),
+    runHashUniqueIdx: uniqueIndex(
+      'sre_investigation_reports_run_hash_unique_idx',
+    ).on(table.investigationRunId, table.reportHash),
+  }),
+);
+
+export const sreInvestigationReportFeedback = pgTable(
+  'sre_investigation_report_feedback',
+  {
+    id: uuidPk(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organization.id, { onDelete: 'cascade' }),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    reportId: uuid('report_id')
+      .notNull()
+      .references(() => sreInvestigationReports.id, { onDelete: 'cascade' }),
+    investigationRunId: uuid('investigation_run_id')
+      .notNull()
+      .references(() => sreInvestigationRuns.id, { onDelete: 'cascade' }),
+    incidentId: uuid('incident_id').references(() => sreIncidents.id, {
+      onDelete: 'set null',
+    }),
+    accuracy: varchar('accuracy', { length: 30 })
+      .$type<SreInvestigationReportFeedbackAccuracy>()
+      .notNull(),
+    rejectedHypotheses: jsonb('rejected_hypotheses')
+      .$type<string[]>()
+      .notNull()
+      .default([]),
+    notes: text('notes'),
+    createdByUserId: uuid('created_by_user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    reportUserUniqueIdx: uniqueIndex(
+      'sre_investigation_report_feedback_report_user_unique_idx',
+    ).on(table.reportId, table.createdByUserId),
+    projectUpdatedAtIdx: index(
+      'sre_investigation_report_feedback_project_updated_idx',
+    ).on(table.projectId, table.updatedAt),
+    runUpdatedAtIdx: index(
+      'sre_investigation_report_feedback_run_updated_idx',
+    ).on(table.investigationRunId, table.updatedAt),
+    accuracyIdx: index('sre_investigation_report_feedback_accuracy_idx').on(
+      table.accuracy,
+    ),
+  }),
+);
+
+export const sreEvidenceGraphFocusedViews = pgTable(
+  'sre_evidence_graph_focused_views',
+  {
+    id: uuidPk(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organization.id, { onDelete: 'cascade' }),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    name: varchar('name', { length: 160 }).notNull(),
+    query: varchar('query', { length: 200 }).notNull().default(''),
+    nodeType: varchar('node_type', { length: 30 }).notNull().default('all'),
+    incidentNodeId: varchar('incident_node_id', { length: 80 })
+      .notNull()
+      .default('all'),
+    visibility: varchar('visibility', { length: 20 })
+      .$type<SreEvidenceGraphFocusedViewVisibility>()
+      .notNull()
+      .default('project'),
+    status: varchar('status', { length: 20 })
+      .$type<SreEvidenceGraphFocusedViewStatus>()
+      .notNull()
+      .default('active'),
+    viewData: jsonb('view_data').$type<Record<string, unknown>>().notNull().default({}),
+    createdByUserId: uuid('created_by_user_id').references(() => user.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    projectStatusUpdatedIdx: index(
+      'sre_evidence_graph_focused_views_project_status_updated_idx',
+    ).on(table.projectId, table.status, table.updatedAt),
+    createdByIdx: index('sre_evidence_graph_focused_views_created_by_idx').on(
+      table.createdByUserId,
+      table.updatedAt,
+    ),
+  }),
+);
+
 const sreTables = {
   sreServices,
   sreServiceOwners,
@@ -1791,6 +2046,9 @@ const sreTables = {
   sreBackgroundAgentRuns,
   sreChatConversations,
   sreChatMessages,
+  sreInvestigationReports,
+  sreInvestigationReportFeedback,
+  sreEvidenceGraphFocusedViews,
 };
 
 export const sreInsertSchemas = Object.fromEntries(
@@ -1831,3 +2089,15 @@ export type SreChatConversationInsert =
   typeof sreChatConversations.$inferInsert;
 export type SreChatMessage = typeof sreChatMessages.$inferSelect;
 export type SreChatMessageInsert = typeof sreChatMessages.$inferInsert;
+export type SreInvestigationReport =
+  typeof sreInvestigationReports.$inferSelect;
+export type SreInvestigationReportInsert =
+  typeof sreInvestigationReports.$inferInsert;
+export type SreInvestigationReportFeedback =
+  typeof sreInvestigationReportFeedback.$inferSelect;
+export type SreInvestigationReportFeedbackInsert =
+  typeof sreInvestigationReportFeedback.$inferInsert;
+export type SreEvidenceGraphFocusedView =
+  typeof sreEvidenceGraphFocusedViews.$inferSelect;
+export type SreEvidenceGraphFocusedViewInsert =
+  typeof sreEvidenceGraphFocusedViews.$inferInsert;

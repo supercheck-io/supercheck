@@ -1,0 +1,75 @@
+---
+title: AI SRE integration lab
+description: Run an optional OSS telemetry lab for AI SRE connector and webhook testing
+icon: Activity
+---
+
+The AI SRE integration lab is an optional Docker Compose overlay for testing SRE connectors, webhook payloads, alert fire/recovery flows, and seeded live evals without using customer production systems.
+
+It adds:
+
+- A deterministic `checkout-api` demo service with success, slow, and error endpoints.
+- Prometheus and Alertmanager for metrics and alert delivery tests.
+- Grafana with provisioned Prometheus, Loki, and Tempo data sources.
+- Loki and Promtail for structured demo-service logs.
+- Tempo and OpenTelemetry Collector for trace evidence.
+- A local webhook capture service for outbound notification and Alertmanager payload inspection.
+
+<Callout type="warn">
+The lab is for controlled test environments only. Keep it behind a firewall, use short retention, and do not seed customer production data.
+</Callout>
+
+## Start the Lab
+
+Run from `deploy/docker` on a Linux host:
+
+```bash
+KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig \
+docker compose -f docker-compose.yml -f docker-compose-aisre-lab.yml \
+  --profile aisre-lab up -d
+```
+
+For a smaller run, use the scoped profiles:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose-aisre-lab.yml --profile core up -d
+docker compose -f docker-compose.yml -f docker-compose-aisre-lab.yml --profile logs up -d
+docker compose -f docker-compose.yml -f docker-compose-aisre-lab.yml --profile traces up -d
+```
+
+## Generate Test Signals
+
+```bash
+curl http://127.0.0.1:18080/checkout
+curl http://127.0.0.1:18080/checkout/slow
+curl http://127.0.0.1:18080/checkout/error
+```
+
+The error endpoint increments Prometheus counters, writes structured error logs, and emits a trace span with the `oss-lab-checkout-degradation` fixture attribute.
+
+## Local Endpoints
+
+| Service | URL |
+| --- | --- |
+| Demo service | `http://127.0.0.1:18080` |
+| Webhook capture | `http://127.0.0.1:18081` |
+| Grafana | `http://127.0.0.1:13000` |
+| Prometheus | `http://127.0.0.1:19090` |
+| Alertmanager | `http://127.0.0.1:19093` |
+| Loki | `http://127.0.0.1:13100` |
+| Tempo | `http://127.0.0.1:13200` |
+
+## Seeded Live Eval Fixture
+
+Use fixture ID `connector-investigation-oss-lab-checkout-degradation` after you create a test incident and connect the lab Prometheus, Loki, and Tempo endpoints to a non-production Supercheck project.
+
+```bash
+SRE_EVAL_LIVE_ENABLED=true
+SRE_EVAL_BASE_URL=https://your-seeded-supercheck.example
+SRE_EVAL_AUTH_TOKEN=...
+SRE_EVAL_FIXTURE_IDS=connector-investigation-oss-lab-checkout-degradation
+SRE_EVAL_INCIDENT_IDS='{"connector-investigation-oss-lab-checkout-degradation":"018f0000-0000-7000-8000-000000000001"}'
+npm run test:sre-eval:live
+```
+
+Live evals remain opt-in and should run only against seeded test tenants.

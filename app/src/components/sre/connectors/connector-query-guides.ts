@@ -246,6 +246,96 @@ const guides: Record<string, ConnectorQueryGuide> = {
       { label: "AWS IAM best practices", href: "https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html" },
     ],
   },
+  jira: {
+    label: "Jira",
+    queryLabel: "JQL",
+    queryPlaceholder: 'project = CHECKOUT AND labels = "checkout" AND updated >= -14d',
+    endpointPlaceholder: "https://your-domain.atlassian.net",
+    setupHint: "Use Jira Cloud with read-only issue/search access. Scope projects and labels to operational tickets, incidents, deploys, and changes.",
+    credentialHint: "Use a read-only API token or OAuth token with issue search permissions. Avoid administrator tokens.",
+    examples: [
+      {
+        label: "Recent service tickets",
+        query: 'project = CHECKOUT AND labels = "checkout" AND updated >= -14d',
+        description: "Find recent operational tickets for the selected service.",
+      },
+      {
+        label: "Open incidents",
+        query: 'labels = "checkout" AND status in ("Incident", "In Progress") AND updated >= -7d',
+        description: "Focus investigation on active or recently updated incident/change work.",
+      },
+    ],
+    docs: [
+      { label: "Jira advanced search", href: "https://support.atlassian.com/jira-software-cloud/docs/what-is-advanced-search-in-jira-cloud/" },
+      { label: "Jira issue search API", href: "https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-issue-search/" },
+    ],
+  },
+  confluence: {
+    label: "Confluence",
+    queryLabel: "CQL",
+    queryPlaceholder: 'space = "SRE" AND type = "page" AND text ~ "checkout"',
+    endpointPlaceholder: "https://your-domain.atlassian.net/wiki",
+    setupHint: "Use Confluence read-only search for runbooks, postmortems, architecture notes, and operational procedures.",
+    credentialHint: "Use a read-only API token or OAuth token limited to content read/search permissions.",
+    examples: [
+      {
+        label: "Service runbooks",
+        query: 'space = "SRE" AND type = "page" AND text ~ "checkout runbook"',
+        description: "Find service-specific runbooks before generating investigation recommendations.",
+      },
+      {
+        label: "Recent postmortems",
+        query: 'type = "page" AND text ~ "checkout postmortem" AND lastmodified >= now("-180d")',
+        description: "Find recent incident writeups for repeat-failure context.",
+      },
+    ],
+    docs: [
+      { label: "Confluence CQL", href: "https://developer.atlassian.com/cloud/confluence/advanced-searching-using-cql/" },
+      { label: "Confluence REST API", href: "https://developer.atlassian.com/cloud/confluence/rest/v2/" },
+    ],
+  },
+  notion: {
+    label: "Notion",
+    queryLabel: "Search query",
+    queryPlaceholder: "checkout incident runbook type:page",
+    endpointPlaceholder: "https://api.notion.com",
+    setupHint: "Use Notion search for service runbooks, incident notes, and operational knowledge bases. Share only approved pages/databases with the integration.",
+    credentialHint: "Use an internal integration token with read-only access to the required pages or databases.",
+    examples: [
+      {
+        label: "Service runbook",
+        query: "checkout incident runbook type:page",
+        description: "Find the primary runbook or operational procedure for a service.",
+      },
+      {
+        label: "Postmortem notes",
+        query: "checkout postmortem incident retrospective",
+        description: "Find prior incident notes that may explain repeat failures.",
+      },
+    ],
+    docs: [{ label: "Notion search API", href: "https://developers.notion.com/reference/post-search" }],
+  },
+  slack: {
+    label: "Slack",
+    queryLabel: "Message search",
+    queryPlaceholder: "in:#incidents checkout timeout after:2026-06-01",
+    endpointPlaceholder: "https://slack.com/api",
+    setupHint: "Use Slack read-only search for incident channels and operational discussion threads. Prefer dedicated incident channels over broad workspace search.",
+    credentialHint: "Use a token with the narrowest read/search scopes that your Slack plan and app model allow. Do not use user tokens with write scopes.",
+    examples: [
+      {
+        label: "Incident channel",
+        query: "in:#incidents checkout incident",
+        description: "Find incident discussion for the affected service.",
+      },
+      {
+        label: "Recent symptom search",
+        query: "in:#incidents checkout timeout after:2026-06-01",
+        description: "Find recent chat messages about service symptoms or mitigation.",
+      },
+    ],
+    docs: [{ label: "Slack message search API", href: "https://docs.slack.dev/reference/methods/search.messages/" }],
+  },
 };
 
 export function getConnectorQueryGuide(type: string): ConnectorQueryGuide {

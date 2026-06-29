@@ -134,6 +134,8 @@ describe('NotificationService', () => {
     // Default fetch mock
     mockFetch.mockResolvedValue({
       ok: true,
+      status: 202,
+      statusText: 'Accepted',
       text: jest.fn().mockResolvedValue('ok'),
     });
 
@@ -488,6 +490,34 @@ describe('NotificationService', () => {
       expect(body.provider).toBe('webhook');
     });
 
+    it('should preserve stored custom webhook payloads without integration lifecycle fields', async () => {
+      await service.sendNotification(webhookProvider, basePayload);
+
+      const callArgs = mockFetch.mock.calls[0];
+      const body = JSON.parse(callArgs[1].body);
+
+      expect(callArgs[1].headers).toEqual(
+        expect.objectContaining({
+          'Content-Type': 'application/json',
+          'User-Agent': 'Supercheck-Monitor/1.0',
+        }),
+      );
+      expect(body).toEqual(
+        expect.objectContaining({
+          title: 'Monitor Down',
+          message: 'Your monitor is down',
+          provider: 'webhook',
+          version: '1.0',
+          originalPayload: expect.objectContaining({
+            type: 'monitor_down',
+            targetId: 'monitor-123',
+          }),
+        }),
+      );
+      expect(body).not.toHaveProperty('event_action');
+      expect(body).not.toHaveProperty('dedup_key');
+    });
+
     it('should use custom method from config', async () => {
       const putProvider: NotificationProvider = {
         ...webhookProvider,
@@ -695,6 +725,110 @@ describe('NotificationService', () => {
       expect(triggerBody.dedup_key).toBe('monitor:monitor-123');
       expect(resolveBody.dedup_key).toBe(triggerBody.dedup_key);
       expect(resolveBody.payload.severity).toBe('info');
+    });
+
+    it('should return sanitized delivery metadata for webhook deliveries', async () => {
+      const templateProvider: NotificationProvider = {
+        ...webhookProvider,
+        config: {
+          preset: 'pagerduty',
+          url: 'https://events.pagerduty.com/v2/enqueue',
+          bodyTemplate: JSON.stringify({
+            event_action: '{{pagerDutyEventAction}}',
+            dedup_key: '{{dedupKey}}',
+          }),
+        },
+      };
+
+      const result = await service.sendNotificationToMultipleProviders(
+        [templateProvider],
+        basePayload,
+      );
+
+      expect(result.results[0].deliveryMetadata).toEqual(
+        expect.objectContaining({
+          version: 1,
+          provider: {
+            id: 'provider-webhook',
+            type: 'webhook',
+            preset: 'pagerduty',
+          },
+          source: expect.objectContaining({
+            alertType: 'monitor_down',
+            targetType: 'monitor',
+            targetId: 'monitor-123',
+            projectId: 'project-456',
+          }),
+          correlation: {
+            dedupKey: 'monitor:monitor-123',
+            eventAction: 'trigger',
+            externalIncidentKey: 'monitor:monitor-123',
+          },
+          delivery: expect.objectContaining({
+            status: 'sent',
+            attempts: 1,
+            responseStatus: 202,
+            responseHash: expect.any(String),
+          }),
+        }),
+      );
+      expect(
+        result.results[0].deliveryMetadata?.delivery.responseHash,
+      ).toHaveLength(64);
+    });
+
+    it('should record recovery lifecycle metadata for custom webhook deliveries', async () => {
+      const result = await service.sendNotificationToMultipleProviders(
+        [webhookProvider],
+        {
+          ...basePayload,
+          type: 'monitor_recovery',
+          title: 'Monitor Recovered',
+          severity: 'success',
+          metadata: {
+            ...basePayload.metadata,
+            status: 'up',
+          },
+        },
+      );
+
+      expect(result.results[0].deliveryMetadata).toEqual(
+        expect.objectContaining({
+          version: 1,
+          provider: {
+            id: 'provider-webhook',
+            type: 'webhook',
+            preset: undefined,
+          },
+          source: expect.objectContaining({
+            alertType: 'monitor_recovery',
+            targetType: 'monitor',
+            targetId: 'monitor-123',
+            projectId: 'project-456',
+          }),
+          correlation: {
+            dedupKey: 'monitor:monitor-123',
+            eventAction: 'resolve',
+          },
+          delivery: expect.objectContaining({
+            status: 'sent',
+            attempts: 1,
+            responseStatus: 202,
+            responseHash: expect.any(String),
+          }),
+        }),
+      );
+
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(body.originalPayload).toEqual(
+        expect.objectContaining({
+          type: 'monitor_recovery',
+          severity: 'success',
+          metadata: expect.objectContaining({ status: 'up' }),
+        }),
+      );
+      expect(body).not.toHaveProperty('event_action');
+      expect(body).not.toHaveProperty('dedup_key');
     });
 
     it('should allow metadata to override webhook dedup key', async () => {

@@ -24,6 +24,21 @@ describe("SRE chat UI components", () => {
     expect(screen.getByText("test-model")).toBeInTheDocument();
   });
 
+  it("renders assistant pending marker while a response is streaming", () => {
+    render(
+      <SreChatMessageList
+        messages={[{ id: "message-1", role: "user", content: "Why is checkout failing?" }]}
+        emptyTitle="No messages"
+        emptyDescription="Ask a question."
+        isAssistantPending
+        pendingLabel="Checking recent monitor evidence..."
+      />
+    );
+
+    expect(screen.getByRole("status")).toHaveTextContent("Checking recent monitor evidence...");
+    expect(screen.getByText("Working")).toBeInTheDocument();
+  });
+
   it("extracts bounded assistant evidence citations", () => {
     expect(
       extractSreEvidenceCitations(

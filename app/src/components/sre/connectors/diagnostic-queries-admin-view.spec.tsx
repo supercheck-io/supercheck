@@ -41,4 +41,25 @@ describe("DiagnosticQueriesAdminView", () => {
 
     expect(screen.queryByText("Latency by route")).not.toBeInTheDocument();
   });
+
+  it("applies connector-specific diagnostic adapter recipes", () => {
+    render(
+      <DiagnosticQueriesAdminView
+        loadError={null}
+        setupOptions={{ connectors: [{ id: "c1", name: "Prometheus", type: "prometheus", status: "valid" }] }}
+        initialQueries={[]}
+      />
+    );
+
+    fireEvent.click(screen.getAllByRole("button", { name: /add query/i })[0]);
+
+    expect(screen.getByText("Recommended diagnostic adapters")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Prometheus HTTP 5xx rate/i }));
+
+    expect(screen.getByDisplayValue("Prometheus HTTP 5xx rate")).toBeInTheDocument();
+    expect(
+      screen.getByDisplayValue('sum(rate(http_requests_total{service="$service",status=~"5.."}[$window]))')
+    ).toBeInTheDocument();
+    expect(screen.getByDisplayValue((value) => value.includes('"window"') && value.includes('"15m"'))).toBeInTheDocument();
+  });
 });

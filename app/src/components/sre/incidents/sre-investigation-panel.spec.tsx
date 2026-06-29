@@ -72,7 +72,7 @@ describe("SreInvestigationPanel", () => {
     expect(screen.getByText("What happened?")).toBeInTheDocument();
     expect(screen.getByText("Finding cites ev-monitor-timeout.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "ev-monitor-timeout" })).toHaveAttribute("href", "#sre-evidence-ev-monitor-timeout");
-    expect(screen.getByText("Verify monitor recovery")).toBeInTheDocument();
+    expect(screen.getAllByText("Verify monitor recovery").length).toBeGreaterThan(0);
     expect(screen.getByLabelText("Optional context attachment")).toBeInTheDocument();
     expect(screen.getByText("Text notes are limited to 2,000 characters. File uploads are stored separately and passed to the AI as metadata only.")).toBeInTheDocument();
     expect(screen.getByLabelText("Optional file attachment")).toBeInTheDocument();

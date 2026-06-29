@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 const VERIFICATION_KEYWORDS = /\b(verify|verification|confirm|validate|check|monitor|observe|watch|compare)\b/i;
+const DIRECT_VERIFICATION_KEYWORDS = /\b(verify|verification|confirm|validate|check|observe|watch|compare)\b/i;
 const REDACTION_PATTERNS: Array<[RegExp, string]> = [
   [/([?&](?:token|api[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token|secret|password)=)[^&#\s]+/gi, "$1[REDACTED]"],
   [/\b(Bearer\s+)[A-Za-z0-9._~+/-]+=*/gi, "$1[REDACTED]"],
@@ -28,7 +29,8 @@ export function extractSreVerificationTasks(content: string | null | undefined) 
   const tasks = new Set<string>();
   for (const rawLine of content.replace(/\\n/g, "\n").split("\n")) {
     const line = sanitizeTaskLine(rawLine);
-    if (line.length < 8 || !VERIFICATION_KEYWORDS.test(line)) {
+    const isCitationStatement = /\bcites?\b/i.test(line) && !DIRECT_VERIFICATION_KEYWORDS.test(line);
+    if (line.length < 8 || isCitationStatement || !VERIFICATION_KEYWORDS.test(line)) {
       continue;
     }
 

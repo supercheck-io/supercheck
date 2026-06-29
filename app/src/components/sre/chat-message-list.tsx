@@ -24,6 +24,8 @@ type SreChatMessageListProps = {
   emptyIcon?: ReactNode;
   className?: string;
   evidenceReferences?: SreEvidenceCitationReference[];
+  isAssistantPending?: boolean;
+  pendingLabel?: string;
   bottomRef?: Ref<HTMLDivElement>;
 };
 
@@ -53,6 +55,8 @@ export function SreChatMessageList({
   emptyIcon,
   className = "min-h-[420px]",
   evidenceReferences = [],
+  isAssistantPending = false,
+  pendingLabel = "Collecting evidence and checking tool output...",
   bottomRef,
 }: SreChatMessageListProps) {
   const evidenceById = new Map(evidenceReferences.map((evidence) => [evidence.id, evidence]));
@@ -131,6 +135,22 @@ export function SreChatMessageList({
                 </div>
               );
             })}
+            {isAssistantPending && (
+              <div role="status" aria-live="polite" className="flex gap-3">
+                <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border bg-background shadow-sm">
+                  <Bot className="h-4 w-4" />
+                </div>
+                <div className="flex-1 rounded-2xl border border-dashed bg-muted/30 px-4 py-3 text-sm leading-6">
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <Badge variant="secondary">SRE AI</Badge>
+                    <span className="text-xs text-muted-foreground">Working</span>
+                  </div>
+                  <p className="animate-shimmer bg-[linear-gradient(110deg,hsl(var(--muted-foreground))_0%,hsl(var(--foreground))_42%,hsl(var(--muted-foreground))_72%)] bg-[length:200%_100%] bg-clip-text text-sm font-medium text-transparent motion-reduce:animate-none">
+                    {pendingLabel}
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
         )}
         <div ref={bottomRef} />

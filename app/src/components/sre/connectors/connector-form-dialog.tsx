@@ -50,6 +50,10 @@ const connectorTypeOptions: Array<{ value: ConnectorType; label: string; descrip
   { value: "aws_cloudwatch", label: "AWS CloudWatch", description: "Metric alarms and CloudWatch metric data" },
   { value: "loki", label: "Loki", description: "LogQL logs" },
   { value: "tempo", label: "Tempo", description: "Distributed traces and TraceQL search" },
+  { value: "jira", label: "Jira", description: "Tickets, incident records, change context" },
+  { value: "confluence", label: "Confluence", description: "Runbooks, postmortems, operational docs" },
+  { value: "notion", label: "Notion", description: "Knowledge base, runbooks, incident notes" },
+  { value: "slack", label: "Slack", description: "Incident channels and responder discussion" },
   { value: "webhook", label: "Webhook", description: "Inbound operational events" },
 ];
 
@@ -263,7 +267,7 @@ export function ConnectorFormDialog({
                 <p className="text-xs text-destructive">{firstError(fieldErrors, "endpointUrl")}</p>
               ) : (
                 <p className="text-xs text-muted-foreground">
-                  Required for direct Prometheus, Grafana, Kubernetes, CloudWatch, Tempo, and custom HTTP-style connectors. Private Agent supports the implemented read-only SRE connectors for private-network access.
+                  Required for direct observability/source-code connectors and useful for knowledge/ticketing/chat setup. Live evidence search is available only where a read-only adapter is implemented.
                 </p>
               )}
             </div>

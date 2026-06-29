@@ -1,0 +1,24 @@
+groups:
+  - name: aisre-lab-checkout
+    rules:
+      - alert: AisreLabCheckoutErrors
+        expr: increase(aisre_demo_requests_total{service="checkout-api",route="/checkout/error",status="500"}[2m]) > 0
+        for: 0s
+        labels:
+          severity: critical
+          service: checkout-api
+          fixture: oss-lab-checkout-degradation
+        annotations:
+          summary: "AISRE lab checkout dependency errors"
+          description: "The checkout demo service emitted synthetic 500s for the OSS lab fixture."
+
+      - alert: AisreLabCheckoutSlowResponses
+        expr: increase(aisre_demo_request_duration_seconds_total{service="checkout-api",route="/checkout/slow",status="200"}[2m]) > 1
+        for: 0s
+        labels:
+          severity: warning
+          service: checkout-api
+          fixture: oss-lab-checkout-degradation
+        annotations:
+          summary: "AISRE lab checkout slow responses"
+          description: "The checkout demo service emitted slow responses for the OSS lab fixture."

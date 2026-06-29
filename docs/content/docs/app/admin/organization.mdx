@@ -109,3 +109,20 @@ The audit log captures events across these categories:
 - **Execution** — Manual test runs, job triggers
 - **Configuration** — Settings changes, integration updates
 - **Security** — Failed logins, unauthorized access attempts
+
+## Billing & Subscription
+
+Organization Owners can manage billing, subscriptions, and spending limits from the organization settings. 
+
+1. Go to **Admin → Settings**
+2. Click the **Billing** or **Subscription** tab
+
+### Spending Limits
+
+To prevent unexpected charges, you can configure hard spending limits for your organization. Once the spending limit is reached, execution is automatically halted and new jobs or tests will be marked with a **Blocked** status. 
+
+You can set up notifications to alert you when your organization reaches a certain percentage of its spending limit.
+
+### Usage Sync & Blocks
+
+Supercheck continually synchronizes your usage (e.g., execution minutes, AI credits) with the billing provider (Polar). If a payment fails or a subscription becomes past due, execution may be blocked until the billing issue is resolved. You can review detailed billing error messages directly in the run details or in the billing dashboard.

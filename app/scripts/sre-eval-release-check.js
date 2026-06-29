@@ -1,6 +1,11 @@
 #!/usr/bin/env node
 
 const { spawnSync } = require("node:child_process");
+const {
+  buildSreEvalReleasePolicy,
+  summarizeSreEvalReleasePolicy,
+  validateSreEvalReleasePolicy,
+} = require("./sre-eval-release-policy");
 
 function run(command, args) {
   const result = spawnSync(command, args, {
@@ -19,33 +24,26 @@ function run(command, args) {
   }
 }
 
-function requireLiveEvalConfig() {
-  const missing = ["SRE_EVAL_BASE_URL", "SRE_EVAL_AUTH_TOKEN", "SRE_EVAL_INCIDENT_IDS"].filter(
-    (name) => !process.env[name]?.trim()
-  );
-
-  if (missing.length > 0) {
-    throw new Error(`Live SRE eval release gate requires: ${missing.join(", ")}`);
-  }
-}
-
 function main() {
+  const policy = buildSreEvalReleasePolicy();
+  validateSreEvalReleasePolicy(policy);
+
+  console.log(`SRE eval release policy: ${summarizeSreEvalReleasePolicy(policy)}`);
   console.log("Running deterministic SRE eval release gate...");
   run("npm", ["run", "test:sre-eval"]);
 
-  const requireLive = process.env.SRE_EVAL_RELEASE_REQUIRE_LIVE === "true";
-  const liveEnabled = process.env.SRE_EVAL_LIVE_ENABLED === "true";
-
-  if (requireLive && !liveEnabled) {
-    throw new Error("SRE_EVAL_RELEASE_REQUIRE_LIVE=true requires SRE_EVAL_LIVE_ENABLED=true");
-  }
-
-  if (liveEnabled) {
-    requireLiveEvalConfig();
-    console.log("Running seeded live SRE eval release gate...");
+  if (policy.live.enabled) {
+    console.log(`Running seeded live SRE eval release gate (${policy.live.mode})...`);
     run("npm", ["run", "test:sre-eval:live"]);
   } else {
-    console.log("Skipping seeded live SRE eval release gate because SRE_EVAL_LIVE_ENABLED is not true.");
+    console.log(`Skipping seeded live SRE eval release gate (${policy.live.mode}).`);
+  }
+
+  if (policy.modelGrade.enabled) {
+    console.log(`Running model-graded SRE eval release gate (${policy.modelGrade.mode})...`);
+    run("npm", ["run", "test:sre-eval:model"]);
+  } else {
+    console.log(`Skipping model-graded SRE eval release gate (${policy.modelGrade.mode}).`);
   }
 }
 

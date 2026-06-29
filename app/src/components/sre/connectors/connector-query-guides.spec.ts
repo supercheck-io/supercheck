@@ -22,4 +22,22 @@ describe("connector query guides", () => {
     expect(guide.queryPlaceholder).toBe("Search for recent operational evidence");
     expect(guide.examples[0]?.query).toBe("error");
   });
+
+  it("provides knowledge, ticketing, and chat setup references", () => {
+    const jira = getConnectorQueryGuide("jira");
+    const confluence = getConnectorQueryGuide("confluence");
+    const notion = getConnectorQueryGuide("notion");
+    const slack = getConnectorQueryGuide("slack");
+
+    expect(jira.docs?.map((doc) => doc.href)).toEqual(
+      expect.arrayContaining(["https://support.atlassian.com/jira-software-cloud/docs/what-is-advanced-search-in-jira-cloud/"])
+    );
+    expect(confluence.docs?.map((doc) => doc.href)).toEqual(
+      expect.arrayContaining(["https://developer.atlassian.com/cloud/confluence/advanced-searching-using-cql/"])
+    );
+    expect(notion.examples[0]?.query).toContain("runbook");
+    expect(slack.docs?.map((doc) => doc.href)).toEqual(
+      expect.arrayContaining(["https://docs.slack.dev/reference/methods/search.messages/"])
+    );
+  });
 });

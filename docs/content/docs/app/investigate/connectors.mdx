@@ -1,0 +1,48 @@
+---
+title: Connectors
+description: Integrate external observability tools with AI SRE
+icon: Plug
+---
+
+Connectors bridge Supercheck's AI SRE layer to your existing operational tools. By providing the AI agent with read-only access to metrics, logs, and events, it can gather the necessary context to investigate incidents, formulate hypotheses, and suggest fixes.
+
+## Supported Connectors
+
+Supercheck currently supports a wide array of read-only direct connectors:
+
+- **Metrics & Observability**: Prometheus, Grafana, Datadog
+- **Logs & Search**: Elasticsearch, OpenSearch, Loki
+- **Cloud & Infrastructure**: Kubernetes, AWS CloudWatch
+- **Error Tracking & Tracing**: Sentry, Grafana Tempo
+- **Code & Version Control**: GitHub
+
+All connectors are strictly read-only. For example, the AWS CloudWatch connector only uses least-privilege IAM permissions like `cloudwatch:DescribeAlarms` and `cloudwatch:GetMetricData`.
+
+## Connector Execution Modes
+
+Supercheck executes connectors using two primary models, ensuring your architecture remains secure regardless of whether you self-host or use cloud infrastructure.
+
+### Direct Execution
+
+For cloud-accessible tools (e.g., GitHub, Datadog, Sentry), the Supercheck app queries these services directly, passing the necessary authentication tokens and parameters based on server-side RBAC and strict service scoping.
+
+### Private Agent Mode
+
+For internal services protected behind firewalls (e.g., on-premise Kubernetes clusters, private Elasticsearch nodes, internal Prometheus and Grafana instances, or self-hosted GitHub Enterprise), Supercheck utilizes the **Private Agent**. Currently, the private agent actively supports executing queries against **GitHub, Prometheus, Grafana, and Kubernetes** within your secure environment.
+
+The Private Agent is an outbound-only mode of the existing Supercheck worker image. 
+- It uses HTTPS long-polling to fetch query tasks from the Supercheck control plane.
+- It executes the queries locally against your internal network resources.
+- It submits bounded, sanitized evidence summaries back to the app.
+
+The Private Agent ensures that raw upstream logs, complete trace payloads, or massive Elasticsearch documents remain within your internal network. Only the relevant, summarized evidence generated from the query is transmitted back.
+
+## Connector Configuration & Governance
+
+When configuring connectors, administrators benefit from built-in governance and safety measures:
+
+- **Setup & Search UX**: Each connector provides guided setup hints, example queries, and official documentation links.
+- **Bounded Search**: Administrators can perform audited read-only searches directly from the connector configuration interface to validate queries without exposing full access.
+- **Redaction & Limits**: Time windows, row limits, byte limits, and network-level Server-Side Request Forgery (SSRF) protections apply automatically to every query.
+- **Service Scope**: Connectors can be scoped to specific services and environments to enforce least-privilege context isolation.
+- **SRE Integration Bindings (Context Links)**: Administrators can selectively link outbound notification providers (like PagerDuty or Slack) to specific read-only SRE connectors from the connector admin screen. This ensures secure cross-context references without sharing outbound notification secrets with the read-only AI agents.

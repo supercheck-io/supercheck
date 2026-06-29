@@ -185,6 +185,8 @@ Teams uses Power Automate Workflows to receive webhook notifications.
 - **Method:** GET, POST, or PUT (default: POST)
 - **Headers JSON:** Optional string-valued headers for provider authentication such as `Authorization`
 - **Body Template:** Optional custom JSON body with template variables (used for POST and PUT requests)
+- **Rendered sample payload:** Preview of the JSON body generated from sample alert values before you test or save
+- **Test diagnostics:** Redacted test results showing method, target host, sent header names, HTTP status, elapsed time, request hash, and response hash
 
 Supercheck validates webhook URLs before sending outbound requests, blocks private/internal targets, encrypts provider config at rest, and masks sensitive webhook URL/header fields when returning providers to the UI.
 
@@ -340,7 +342,7 @@ Use a webhook with a body template to send alerts to [OpsGenie's Alert API](http
 ```
 
 <Callout type="info">
-The webhook UI supports custom JSON headers for provider API keys. Supercheck stores these headers in the encrypted provider config and masks them when the provider is loaded for editing.
+The webhook UI supports custom JSON headers for provider API keys. Supercheck stores these headers in the encrypted provider config, masks them when the provider is loaded for editing, and never displays header values in the rendered payload preview or test diagnostics.
 </Callout>
 
 </Tab>
@@ -355,6 +357,11 @@ Track all alerts from **Alerts → History**:
 - Notification channels used
 - Delivery status
 - Timestamp
+- Delivery correlation metadata for AI SRE, including provider type/preset, dedup key, event action, response status, attempt count, and response hash when available
+
+<Callout type="info">
+Supercheck stores delivery metadata for correlation, not provider response bodies. Webhook test diagnostics and production deliveries represent request/response payloads with SHA-256 hashes and HTTP metadata so AI SRE can link alerts without exposing secrets or raw third-party payloads.
+</Callout>
 
 ## Alert Samples
 

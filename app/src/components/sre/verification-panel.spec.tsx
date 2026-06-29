@@ -6,6 +6,7 @@ describe("SRE verification panel", () => {
   it("extracts bounded sanitized verification tasks", () => {
     const tasks = extractSreVerificationTasks([
       "Summary without keyword",
+      "Finding cites ev-monitor-timeout.",
       "- Verify Prometheus error rate returns to baseline with token=secret-value",
       "2. Confirm Kubernetes restarts stop after the human fix",
       "Monitor checkout latency for 30 minutes",

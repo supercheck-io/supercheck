@@ -8,6 +8,7 @@ import { diagnosticQueries, externalConnectors } from "@/db/schema";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { requireProjectContext, type ProjectContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
+import { isDiagnosticQueryTypeCompatible } from "@/lib/sre/connectors/diagnostic-query-adapters";
 import { validateDiagnosticQueryParameterSchema, validateTemplatePlaceholderCoverage } from "@/lib/sre/connectors/diagnostic-query";
 import { db } from "@/utils/db";
 
@@ -178,6 +179,13 @@ export async function createSreDiagnosticQuery(input: z.infer<typeof createDiagn
 
     if (!connector) {
       return { success: false, error: "Connector not found for this project" };
+    }
+
+    if (!isDiagnosticQueryTypeCompatible(connector.type, parsed.data.queryType)) {
+      return {
+        success: false,
+        error: `${parsed.data.queryType} diagnostic queries are not supported for ${connector.type.replace(/_/g, " ")} connectors`,
+      };
     }
 
     try {

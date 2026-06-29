@@ -176,6 +176,38 @@ export type AlertType =
 
 export type AlertStatus = 'sent' | 'failed' | 'pending';
 
+export type AlertDeliveryMetadata = {
+  version: 1;
+  provider: {
+    id: string;
+    type?: NotificationProviderType;
+    preset?: string;
+  };
+  source: {
+    alertType: AlertType;
+    targetType: 'monitor' | 'job';
+    targetId: string;
+    projectId?: string;
+    monitorId?: string;
+    jobId?: string;
+    runId?: string;
+  };
+  correlation?: {
+    dedupKey?: string;
+    eventAction?: string;
+    externalIncidentKey?: string;
+    externalUrl?: string;
+  };
+  delivery: {
+    status: AlertStatus;
+    sentAt: string;
+    attempts?: number;
+    responseStatus?: number;
+    responseHash?: string;
+    errorHash?: string;
+  };
+};
+
 // Notification types
 export type NotificationProviderType =
   | 'email'

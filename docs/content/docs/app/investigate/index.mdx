@@ -1,0 +1,41 @@
+---
+title: AI SRE Overview
+description: Investigate and resolve incidents with read-only AI agents
+icon: Search
+---
+
+Supercheck's AI SRE transforms existing tests, monitors, jobs, alert history, and status pages into a powerful **read-only incident investigation loop**. It connects to your existing operational tools, gathers scoped evidence, explains what likely happened with citations, recommends fix steps, and verifies the fix by re-running the checks that detected the issue.
+
+The unified reliability loop works as follows:
+
+1. **Detect**: Monitors, jobs, and tests detect an issue.
+2. **Triage**: AI evaluates severity, affected services, and handles duplicate alerts, creating an incident workspace.
+3. **Investigate**: The AI agent gathers native evidence and read-only connector evidence across your stack.
+4. **Explain**: The incident workspace shows a working theory, confidence scores, cited evidence, tool timeline, and recommendations.
+5. **Verify**: A responder applies the fix in their own systems, and Supercheck verifies the fix by re-running the detecting tests.
+
+## Read-Only By Design
+
+**Supercheck's AI SRE layer is explicitly read-only.** It never writes to your production systems or executes remediation actions on your behalf.
+
+- The agent gathers evidence, correlates data, reasons, and recommends.
+- You apply fixes in your own systems using your own tools and safeguards.
+- Supercheck verifies the resolution by re-running the existing Playwright tests, k6 load tests, or monitors that detected the problem.
+
+This read-only approach ensures the safety of your environment while leveraging AI to significantly reduce Mean Time to Resolution (MTTR).
+
+## Native Evidence
+
+Supercheck automatically utilizes the rich operational evidence it already owns to investigate incidents:
+
+- Failed monitor screenshots and Playwright videos
+- Console logs and network traces from synthetic tests
+- Historical monitor results with P50/P95/P99 latency trends
+- Run logs and artifacts
+- Status page context
+
+## Connector Layer
+
+To get a complete picture of an incident, the AI SRE agent integrates securely with your external observability and operational tools through [Connectors](/docs/app/investigate/connectors).
+
+These TypeScript-native connectors are strictly read-only and governed by Role-Based Access Control (RBAC), budgets, and redaction policies to guarantee that the agent only accesses authorized evidence.

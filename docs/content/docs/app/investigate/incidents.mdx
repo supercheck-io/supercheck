@@ -1,0 +1,45 @@
+---
+title: Incident Investigation
+description: Resolve alerts faster with AI-powered incident workspaces
+icon: ShieldAlert
+---
+
+When an alert fires—whether from a failed synthetic monitor, Playwright test, or inbound webhook—Supercheck's AI SRE jumps into action, triaging the event and launching a unified incident workspace to orchestrate the investigation.
+
+## The Incident Workspace
+
+The Incident Investigation view serves as the central hub for understanding and resolving issues. It provides an immediate, synthesized view of the situation instead of forcing you to hunt through multiple dashboards.
+
+### Live Report Pane
+
+The Live Report Pane is the focal point of the investigation. It actively monitors the agent's progress and updates in real-time, providing:
+
+- **Working Theory**: A clear, concise hypothesis of the root cause.
+- **Evidence Graph**: A connected visual web of the underlying native evidence and connector data that supports the current theory.
+- **Unmatched Citation Warnings**: Alerts when the model's claims lack supporting evidence.
+- **Latest Activity**: A stream of the agent's recent tool calls and actions.
+
+### AI SRE Chat
+
+The SRE chat UI enables conversational investigation. You can ask the agent specific questions, request it to run particular diagnostic queries via connectors, or challenge its current theory. 
+
+The chat includes:
+- **Citations**: Direct links from chat responses to the specific evidence items anchoring the agent's claims.
+- **Safe Tool Result Summaries**: Collapsible, read-only summaries of tool executions to keep the chat clean while providing deep context when needed.
+- **Investigation Progress Cards**: Visual status markers for ongoing investigations.
+
+## Incident Lifecycle & Verification
+
+Supercheck's AI SRE handles the entire incident lifecycle, up to the point of remediation:
+
+1. **Triage**: A dedicated background **SRE Alert Triage Queue Service** automatically processes incoming monitor and test alerts. It dedupes firing alerts, assesses severity, identifies the affected service in the service catalog, and either creates a new internal SRE incident or updates an existing one.
+2. **Investigation**: The AI agent utilizes the [Connector Layer](/docs/app/investigate/connectors) and native evidence to investigate.
+3. **Recommendation**: The Live Report presents the evidence and proposes actionable fix steps.
+4. **Human Verification**: A responder reviews the findings, makes a decision, and applies the fix outside of Supercheck in their respective systems.
+5. **Closed-Loop Verification**: Once the fix is applied, Supercheck validates the resolution by automatically re-running the very monitors or synthetic tests that initially detected the issue.
+
+## Exporting Reports
+
+For post-incident reviews (PIRs) and compliance, Supercheck allows you to download sanitized investigation reports. 
+
+These exports include bounded evidence text, recommendations, and tool input/output hashes, deliberately excluding raw connector data, credentials, and source URIs to maintain security and data privacy.

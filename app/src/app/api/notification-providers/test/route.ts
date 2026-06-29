@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createHash } from "crypto";
 import { type NotificationProviderConfig } from "@/db/schema";
 import { EmailService } from "@/lib/email-service";
 import { renderTestEmail } from "@/lib/email-renderer";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
-import {
-  normalizeWebhookMethod,
-  renderWebhookJsonTemplate,
-} from "@/lib/notification-providers/webhook-template";
+import { normalizeWebhookMethod } from "@/lib/notification-providers/webhook-template";
+import { buildWebhookTestBody } from "@/lib/notification-providers/webhook-preview";
 import { normalizeWebhookHeaders } from "@/lib/notification-providers/validation";
 
 export async function POST(req: NextRequest) {
@@ -259,74 +258,81 @@ async function testWebhookConnection(config: NotificationProviderConfig) {
     }
 
     const method = normalizeWebhookMethod(typedConfig.method);
+    const targetUrl = typedConfig.url as string;
+    const targetHost = new URL(targetUrl).hostname;
     const headers = {
       "Content-Type": "application/json",
       ...normalizeWebhookHeaders(typedConfig.headers),
     };
-
-    const hasBodyTemplate =
-      typeof typedConfig.bodyTemplate === "string" &&
-      typedConfig.bodyTemplate.trim().length > 0;
-
-    const body =
-      hasBodyTemplate && method !== "GET"
-        ? renderWebhookJsonTemplate(
-            typedConfig.bodyTemplate as string,
-            {
-              title: 'Test "Alert"',
-              message: "Connection test from Supercheck",
-              severity: "error",
-              normalizedSeverity: "error",
-              status: "down",
-              monitorName: "Test Monitor",
-              targetName: "Test Monitor",
-              targetUrl: "https://example.com/health",
-              targetId: "test-target-id",
-              timestamp: "2025-01-15T10:30:00.000Z",
-              type: "monitor_down",
-              projectName: "Test Project",
-              projectId: "test-project-id",
-              responseTime: "5200",
-              errorMessage: 'Connection timeout on "health" check',
-              monitorType: "http_request",
-              dashboardUrl: "https://app.supercheck.io/notification-monitor/test-target-id",
-              alertAction: "trigger",
-              eventAction: "trigger",
-              pagerDutyEventAction: "trigger",
-              dedupKey: "monitor:test-target-id",
-            },
-          )
-        : JSON.stringify({
-            test: true,
-            message: "Connection test from Supercheck",
-          });
+    const headerNames = Object.keys(headers).sort((a, b) => a.localeCompare(b));
+    const body = buildWebhookTestBody({
+      method,
+      bodyTemplate:
+        typeof typedConfig.bodyTemplate === "string"
+          ? typedConfig.bodyTemplate
+          : undefined,
+    });
+    const requestBodyHash = body ? sha256(body) : undefined;
+    const startedAt = Date.now();
 
     // Add timeout to prevent hanging connections
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10000);
 
     try {
-      const response = await fetch(typedConfig.url as string, {
+      const response = await fetch(targetUrl, {
         method,
         headers,
-        body: method === "GET" ? undefined : body,
+        body,
         signal: controller.signal,
       });
 
       clearTimeout(timeout);
+      const responseText = await response.text().catch(() => "");
+      const details = {
+        method,
+        targetHost,
+        headerNames,
+        requestBodyHash,
+        responseStatus: response.status,
+        responseStatusText: response.statusText,
+        responseHash: sha256(responseText),
+        elapsedMs: Date.now() - startedAt,
+      };
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Webhook connection failed: HTTP ${response.status}: ${response.statusText}`,
+            details,
+          },
+          { status: 400 }
+        );
       }
 
       return NextResponse.json({
         success: true,
         message: "Webhook connection successful",
+        details,
       });
     } catch (fetchError) {
       clearTimeout(timeout);
       if (fetchError instanceof Error && fetchError.name === 'AbortError') {
-        throw new Error("Request timed out after 10 seconds");
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Webhook connection failed: Request timed out after 10 seconds",
+            details: {
+              method,
+              targetHost,
+              headerNames,
+              requestBodyHash,
+              elapsedMs: Date.now() - startedAt,
+            },
+          },
+          { status: 400 }
+        );
       }
       throw fetchError;
     }
@@ -339,6 +345,10 @@ async function testWebhookConnection(config: NotificationProviderConfig) {
       { status: 400 }
     );
   }
+}
+
+function sha256(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
 }
 
 async function testTelegramConnection(config: NotificationProviderConfig) {

@@ -35,7 +35,27 @@ describe('JobNotificationService', () => {
         failed: 1,
         results: [
           { provider: { id: 'provider-1' }, success: true, error: null },
-          { provider: { id: 'provider-2' }, success: false, error: 'failed' },
+          {
+            provider: { id: 'provider-2' },
+            success: false,
+            error: 'failed',
+            deliveryMetadata: {
+              version: 1,
+              provider: { id: 'provider-2', type: 'webhook' },
+              source: {
+                alertType: 'job_failed',
+                targetType: 'job',
+                targetId: 'job-1',
+                projectId: 'project-1',
+                jobId: 'job-1',
+                runId: 'run-1',
+              },
+              delivery: {
+                status: 'failed',
+                sentAt: '2026-06-28T00:00:00.000Z',
+              },
+            },
+          },
         ],
       }),
     };
@@ -66,6 +86,19 @@ describe('JobNotificationService', () => {
     });
 
     expect(dbService.saveAlertHistory).toHaveBeenCalledTimes(2);
+    expect(dbService.saveAlertHistory).toHaveBeenLastCalledWith(
+      'job-1',
+      'job_failed',
+      'provider-2',
+      'failed',
+      expect.any(String),
+      'failed',
+      'Checkout smoke test',
+      expect.objectContaining({
+        version: 1,
+        provider: { id: 'provider-2', type: 'webhook' },
+      }),
+    );
     expect(
       sreAlertTriageQueueService.enqueueAlertHistoryRows,
     ).toHaveBeenCalledWith([

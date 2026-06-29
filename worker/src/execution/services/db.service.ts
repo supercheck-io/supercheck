@@ -9,6 +9,7 @@ import {
   JobStatus,
   TestRunStatus,
   alertHistory,
+  AlertDeliveryMetadata,
   AlertType,
   AlertStatus,
 } from '../../db/schema'; // Specifically import reports table
@@ -431,6 +432,7 @@ export class DbService implements OnModuleInit {
     message: string,
     errorMessage?: string,
     jobNameOverride?: string,
+    deliveryMetadata?: AlertDeliveryMetadata,
   ): Promise<{ id: string; status: AlertStatus }> {
     try {
       let jobName = jobNameOverride;
@@ -451,6 +453,7 @@ export class DbService implements OnModuleInit {
           message,
           sentAt: new Date(),
           errorMessage,
+          deliveryMetadata,
           target: jobName,
           targetType: 'job',
         })

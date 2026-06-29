@@ -1,0 +1,237 @@
+# Optional AI SRE integration lab.
+#
+# Usage from deploy/docker:
+#   docker compose -f docker-compose.yml -f docker-compose-aisre-lab.yml \
+#     --profile aisre-lab up -d
+#
+# Start only the lightweight metric/alert path:
+#   docker compose -f docker-compose.yml -f docker-compose-aisre-lab.yml \
+#     --profile core up -d
+
+services:
+  aisre-demo-service:
+    build:
+      context: ./aisre-lab/demo-service
+    profiles: ["aisre-lab", "core"]
+    environment:
+      AISRE_DEMO_SERVICE_NAME: ${AISRE_DEMO_SERVICE_NAME:-checkout-api}
+      AISRE_DEMO_OTLP_ENDPOINT: ${AISRE_DEMO_OTLP_ENDPOINT:-http://otel-collector:4318/v1/traces}
+      AISRE_DEMO_LOG_FILE: ${AISRE_DEMO_LOG_FILE:-/var/log/aisre-demo/demo-service.log}
+      AISRE_DEMO_SLOW_MS: ${AISRE_DEMO_SLOW_MS:-1250}
+    ports:
+      - "127.0.0.1:${AISRE_DEMO_PORT:-18080}:8080"
+    volumes:
+      - aisre-demo-logs:/var/log/aisre-demo
+    restart: unless-stopped
+    networks:
+      - supercheck-network
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 256M
+        reservations:
+          cpus: "0.05"
+          memory: 64M
+
+  aisre-webhook-capture:
+    build:
+      context: ./aisre-lab/webhook-capture
+    profiles: ["aisre-lab", "core"]
+    environment:
+      AISRE_WEBHOOK_MAX_EVENTS: ${AISRE_WEBHOOK_MAX_EVENTS:-200}
+    ports:
+      - "127.0.0.1:${AISRE_WEBHOOK_CAPTURE_PORT:-18081}:8080"
+    restart: unless-stopped
+    networks:
+      - supercheck-network
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
+        reservations:
+          cpus: "0.05"
+          memory: 64M
+
+  prometheus:
+    image: ${AISRE_PROMETHEUS_IMAGE:-prom/prometheus:latest}
+    profiles: ["aisre-lab", "core"]
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=${AISRE_PROMETHEUS_RETENTION:-48h}"
+      - "--web.enable-lifecycle"
+    ports:
+      - "127.0.0.1:${AISRE_PROMETHEUS_PORT:-19090}:9090"
+    volumes:
+      - ./aisre-lab/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./aisre-lab/prometheus/rules.yml:/etc/prometheus/rules.yml:ro
+      - aisre-prometheus-data:/prometheus
+    depends_on:
+      - aisre-demo-service
+      - alertmanager
+    restart: unless-stopped
+    networks:
+      - supercheck-network
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+        reservations:
+          cpus: "0.1"
+          memory: 128M
+
+  alertmanager:
+    image: ${AISRE_ALERTMANAGER_IMAGE:-prom/alertmanager:latest}
+    profiles: ["aisre-lab", "core"]
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+      - "--data.retention=${AISRE_ALERTMANAGER_RETENTION:-48h}"
+    ports:
+      - "127.0.0.1:${AISRE_ALERTMANAGER_PORT:-19093}:9093"
+    volumes:
+      - ./aisre-lab/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - aisre-alertmanager-data:/alertmanager
+    depends_on:
+      - aisre-webhook-capture
+    restart: unless-stopped
+    networks:
+      - supercheck-network
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
+        reservations:
+          cpus: "0.05"
+          memory: 64M
+
+  grafana:
+    image: ${AISRE_GRAFANA_IMAGE:-grafana/grafana:latest}
+    profiles: ["aisre-lab", "core"]
+    environment:
+      GF_SECURITY_ADMIN_USER: ${AISRE_GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${AISRE_GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_AUTH_ANONYMOUS_ENABLED: ${AISRE_GRAFANA_ANONYMOUS_ENABLED:-false}
+    ports:
+      - "127.0.0.1:${AISRE_GRAFANA_PORT:-13000}:3000"
+    volumes:
+      - ./aisre-lab/grafana/provisioning:/etc/grafana/provisioning:ro
+      - aisre-grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+    networks:
+      - supercheck-network
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+        reservations:
+          cpus: "0.1"
+          memory: 128M
+
+  loki:
+    image: ${AISRE_LOKI_IMAGE:-grafana/loki:latest}
+    profiles: ["aisre-lab", "logs"]
+    command: ["-config.file=/etc/loki/loki.yml"]
+    ports:
+      - "127.0.0.1:${AISRE_LOKI_PORT:-13100}:3100"
+    volumes:
+      - ./aisre-lab/loki/loki.yml:/etc/loki/loki.yml:ro
+      - aisre-loki-data:/loki
+    restart: unless-stopped
+    networks:
+      - supercheck-network
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+        reservations:
+          cpus: "0.1"
+          memory: 128M
+
+  promtail:
+    image: ${AISRE_PROMTAIL_IMAGE:-grafana/promtail:latest}
+    profiles: ["aisre-lab", "logs"]
+    command: ["-config.file=/etc/promtail/promtail.yml"]
+    volumes:
+      - ./aisre-lab/promtail/promtail.yml:/etc/promtail/promtail.yml:ro
+      - aisre-demo-logs:/var/log/aisre-demo:ro
+      - aisre-promtail-positions:/tmp
+    depends_on:
+      - loki
+      - aisre-demo-service
+    restart: unless-stopped
+    networks:
+      - supercheck-network
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
+        reservations:
+          cpus: "0.05"
+          memory: 64M
+
+  tempo:
+    image: ${AISRE_TEMPO_IMAGE:-grafana/tempo:latest}
+    profiles: ["aisre-lab", "traces"]
+    command: ["-config.file=/etc/tempo/tempo.yml"]
+    ports:
+      - "127.0.0.1:${AISRE_TEMPO_PORT:-13200}:3200"
+    volumes:
+      - ./aisre-lab/tempo/tempo.yml:/etc/tempo/tempo.yml:ro
+      - aisre-tempo-data:/var/tempo
+    restart: unless-stopped
+    networks:
+      - supercheck-network
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+        reservations:
+          cpus: "0.1"
+          memory: 128M
+
+  otel-collector:
+    image: ${AISRE_OTEL_COLLECTOR_IMAGE:-otel/opentelemetry-collector-contrib:latest}
+    profiles: ["aisre-lab", "traces"]
+    command: ["--config=/etc/otelcol/config.yml"]
+    volumes:
+      - ./aisre-lab/otel-collector/config.yml:/etc/otelcol/config.yml:ro
+    depends_on:
+      - tempo
+    restart: unless-stopped
+    networks:
+      - supercheck-network
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 256M
+        reservations:
+          cpus: "0.05"
+          memory: 64M
+
+volumes:
+  aisre-alertmanager-data:
+    driver: local
+  aisre-demo-logs:
+    driver: local
+  aisre-grafana-data:
+    driver: local
+  aisre-loki-data:
+    driver: local
+  aisre-prometheus-data:
+    driver: local
+  aisre-promtail-positions:
+    driver: local
+  aisre-tempo-data:
+    driver: local

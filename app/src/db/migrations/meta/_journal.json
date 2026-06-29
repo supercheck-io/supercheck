@@ -99,6 +99,41 @@
       "when": 1782115100869,
       "tag": "0013_massive_nekra",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1782593941552,
+      "tag": "0014_alert_history_delivery_metadata",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1782597600000,
+      "tag": "0015_sre_integration_bindings",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1782601200000,
+      "tag": "0016_sre_investigation_reports",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1782604800000,
+      "tag": "0017_sre_investigation_report_feedback",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1782608400000,
+      "tag": "0018_sre_evidence_graph_focused_views",
+      "breakpoints": true
     }
   ]
 }

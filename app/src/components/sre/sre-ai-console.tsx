@@ -325,6 +325,8 @@ export function SreAiConsole({ initialHistories = [], loadError = null }: SreAiC
             emptyTitle="How can I help investigate?"
             emptyDescription="Ask a reliability question, request an investigation plan, or choose a prompt below. Use incident detail for cited evidence and live connector context."
             className="h-full rounded-none border-0 shadow-none"
+            isAssistantPending={isPending}
+            pendingLabel={progressEvents[progressEvents.length - 1]?.title ?? "Collecting evidence and checking tool output..."}
             bottomRef={messagesEndRef}
           />
         </section>

@@ -73,6 +73,7 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
       status: alertHistory.status,
       provider: alertHistory.provider,
       sentAt: alertHistory.sentAt,
+      deliveryMetadata: alertHistory.deliveryMetadata,
       monitorName: monitors.name,
       monitorOrganizationId: monitors.organizationId,
       monitorProjectId: monitors.projectId,
@@ -111,7 +112,13 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
   const targetName = alert.monitorName ?? alert.jobName ?? alert.target;
   const severity = deriveSeverity(alert.type, alert.message);
   const firedAt = alert.sentAt ?? new Date();
-  const dedupKey = [projectId, sourceType, sourceId, alert.type].join(":");
+  const deliveryDedupKey =
+    typeof alert.deliveryMetadata?.correlation?.dedupKey === "string" &&
+    alert.deliveryMetadata.correlation.dedupKey.trim().length > 0
+      ? alert.deliveryMetadata.correlation.dedupKey.trim()
+      : undefined;
+  const dedupKey =
+    deliveryDedupKey ?? [projectId, sourceType, sourceId, alert.type].join(":");
   const fingerprintHash = sha256(`${organizationId}:${dedupKey}`);
   const title = truncate(`${targetName}: ${titleCase(alert.type)}`, 500);
 

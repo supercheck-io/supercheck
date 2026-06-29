@@ -1,21 +1,46 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
-import { Download, FileSearch, Search } from "lucide-react";
+import { useMemo, useState, useTransition } from "react";
+import { Archive, Download, FileSearch, MessageSquareText, Search } from "lucide-react";
+import { toast } from "sonner";
 
+import { createSreInvestigationReportSnapshot, saveSreInvestigationReportFeedback } from "@/actions/sre-investigation-reports";
 import type { SreInvestigationHistoryItem } from "@/lib/sre/investigation-queries";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
 
 type SreInvestigationsTableProps = {
   investigations: SreInvestigationHistoryItem[];
   loadError?: string | null;
+};
+
+type ReportFeedbackAccuracy = NonNullable<SreInvestigationHistoryItem["reportFeedbackAccuracy"]>;
+
+type FeedbackState = {
+  accuracy: ReportFeedbackAccuracy | null;
+  rejectedHypothesisCount: number;
+  updatedAt: string | null;
+};
+
+type FeedbackDraft = {
+  accuracy: ReportFeedbackAccuracy;
+  notes: string;
+  rejectedHypothesesText: string;
+};
+
+const feedbackAccuracyLabels: Record<ReportFeedbackAccuracy, string> = {
+  accurate: "Accurate",
+  partially_accurate: "Partially accurate",
+  incorrect: "Incorrect",
+  needs_more_evidence: "Needs more evidence",
 };
 
 function formatDuration(durationMs: number | null) {
@@ -38,12 +63,22 @@ function formatCost(costCents: number | null) {
   return `$${(costCents / 100).toFixed(2)}`;
 }
 
+function formatFeedbackBadge(feedback: FeedbackState | undefined) {
+  if (!feedback?.accuracy) {
+    return null;
+  }
+
+  const rejectedSuffix = feedback.rejectedHypothesisCount > 0 ? ` · ${feedback.rejectedHypothesisCount} rejected` : "";
+  return `${feedbackAccuracyLabels[feedback.accuracy]}${rejectedSuffix}`;
+}
+
 function downloadInvestigation(item: SreInvestigationHistoryItem) {
-  const blob = new Blob([JSON.stringify(item, null, 2)], { type: "application/json" });
+  const payload = item.reportExport ?? item;
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `sre-investigation-${item.id}.json`;
+  link.download = `sre-investigation-report-${item.id}.json`;
   document.body.append(link);
   link.click();
   link.remove();
@@ -54,6 +89,30 @@ export function SreInvestigationsTable({ investigations, loadError = null }: Sre
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
   const [agentType, setAgentType] = useState("all");
+  const [savedSnapshotIds, setSavedSnapshotIds] = useState<Record<string, string | null>>(() =>
+    Object.fromEntries(investigations.map((item) => [item.id, item.reportSnapshotId]))
+  );
+  const [feedbackByRunId, setFeedbackByRunId] = useState<Record<string, FeedbackState>>(() =>
+    Object.fromEntries(
+      investigations.map((item) => [
+        item.id,
+        {
+          accuracy: item.reportFeedbackAccuracy,
+          rejectedHypothesisCount: item.reportRejectedHypothesisCount,
+          updatedAt: item.reportFeedbackUpdatedAt?.toISOString() ?? null,
+        },
+      ])
+    )
+  );
+  const [reviewingRunId, setReviewingRunId] = useState<string | null>(null);
+  const [feedbackDraft, setFeedbackDraft] = useState<FeedbackDraft>({
+    accuracy: "partially_accurate",
+    notes: "",
+    rejectedHypothesesText: "",
+  });
+  const [pendingSnapshotRunId, setPendingSnapshotRunId] = useState<string | null>(null);
+  const [isSnapshotPending, startSnapshotTransition] = useTransition();
+  const [isFeedbackPending, startFeedbackTransition] = useTransition();
   const hasActiveFilters = Boolean(query.trim()) || status !== "all" || agentType !== "all";
 
   const filteredInvestigations = useMemo(() => {
@@ -88,6 +147,72 @@ export function SreInvestigationsTable({ investigations, loadError = null }: Sre
     );
   }
 
+  const saveSnapshot = (item: SreInvestigationHistoryItem) => {
+    setPendingSnapshotRunId(item.id);
+    startSnapshotTransition(async () => {
+      const result = await createSreInvestigationReportSnapshot({ investigationRunId: item.id });
+      setPendingSnapshotRunId(null);
+
+      if (!result.success) {
+        toast.error(result.error);
+        return;
+      }
+
+      setSavedSnapshotIds((current) => ({ ...current, [item.id]: result.snapshotId }));
+      toast.success(result.reused ? "Report snapshot already saved" : "Report snapshot saved");
+    });
+  };
+
+  const openReview = (item: SreInvestigationHistoryItem) => {
+    const existingFeedback = feedbackByRunId[item.id];
+    setReviewingRunId(item.id);
+    setFeedbackDraft({
+      accuracy: existingFeedback?.accuracy ?? "partially_accurate",
+      notes: "",
+      rejectedHypothesesText: "",
+    });
+  };
+
+  const saveFeedback = (item: SreInvestigationHistoryItem) => {
+    const reportSnapshotId = savedSnapshotIds[item.id];
+    if (!reportSnapshotId) {
+      toast.error("Save a report snapshot before reviewing it");
+      return;
+    }
+
+    const rejectedHypotheses = feedbackDraft.rejectedHypothesesText
+      .split("\n")
+      .map((value) => value.trim())
+      .filter(Boolean);
+
+    startFeedbackTransition(async () => {
+      const result = await saveSreInvestigationReportFeedback({
+        reportSnapshotId,
+        accuracy: feedbackDraft.accuracy,
+        notes: feedbackDraft.notes,
+        rejectedHypotheses,
+      });
+
+      if (!result.success) {
+        toast.error(result.error);
+        return;
+      }
+
+      setFeedbackByRunId((current) => ({
+        ...current,
+        [item.id]: {
+          accuracy: result.accuracy,
+          rejectedHypothesisCount: result.rejectedHypothesisCount,
+          updatedAt: result.updatedAt,
+        },
+      }));
+      setReviewingRunId(null);
+      toast.success("Report review saved");
+    });
+  };
+
+  const reviewingItem = filteredInvestigations.find((item) => item.id === reviewingRunId) ?? null;
+
   return (
     <Card className="rounded-3xl">
       <CardHeader className="border-b bg-muted/20">
@@ -98,7 +223,7 @@ export function SreInvestigationsTable({ investigations, loadError = null }: Sre
               Investigation history
             </CardTitle>
             <CardDescription>
-              Search completed and in-progress SRE agent runs by incident, service, model, status, and root-cause text.
+              Search SRE agent runs and export sanitized report JSON with evidence, tool hashes, recommendations, and raw payloads excluded.
             </CardDescription>
           </div>
           <Badge variant="secondary" className="w-fit rounded-full">{filteredInvestigations.length} visible</Badge>
@@ -149,6 +274,67 @@ export function SreInvestigationsTable({ investigations, loadError = null }: Sre
             Clear
           </Button>
         </div>
+
+        {reviewingItem && (
+          <div className="rounded-2xl border bg-muted/20 p-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <p className="text-sm font-medium">Review saved report</p>
+                <p className="text-xs text-muted-foreground">
+                  Capture responder feedback and rejected hypotheses for future SRE evals and report quality tuning.
+                </p>
+              </div>
+              <Button type="button" variant="ghost" size="sm" onClick={() => setReviewingRunId(null)}>
+                Cancel
+              </Button>
+            </div>
+            <div className="mt-4 grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-end">
+              <div className="space-y-2">
+                <Label htmlFor="sre-report-feedback-accuracy">Accuracy</Label>
+                <Select
+                  value={feedbackDraft.accuracy}
+                  onValueChange={(value) =>
+                    setFeedbackDraft((current) => ({ ...current, accuracy: value as ReportFeedbackAccuracy }))
+                  }
+                >
+                  <SelectTrigger id="sre-report-feedback-accuracy">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(feedbackAccuracyLabels).map(([value, label]) => (
+                      <SelectItem key={value} value={value}>{label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="sre-report-rejected-hypotheses">Rejected hypotheses</Label>
+                <Textarea
+                  id="sre-report-rejected-hypotheses"
+                  value={feedbackDraft.rejectedHypothesesText}
+                  onChange={(event) =>
+                    setFeedbackDraft((current) => ({ ...current, rejectedHypothesesText: event.target.value }))
+                  }
+                  placeholder="One rejected hypothesis per line"
+                  className="min-h-20"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="sre-report-feedback-notes">Notes</Label>
+                <Textarea
+                  id="sre-report-feedback-notes"
+                  value={feedbackDraft.notes}
+                  onChange={(event) => setFeedbackDraft((current) => ({ ...current, notes: event.target.value }))}
+                  placeholder="What was missing, useful, or misleading?"
+                  className="min-h-20"
+                />
+              </div>
+              <Button type="button" onClick={() => saveFeedback(reviewingItem)} disabled={isFeedbackPending}>
+                Save review
+              </Button>
+            </div>
+          </div>
+        )}
 
         <div className="overflow-x-auto rounded-2xl border [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <Table className="min-w-[980px]">
@@ -201,16 +387,45 @@ export function SreInvestigationsTable({ investigations, loadError = null }: Sre
                       <div className="text-sm">
                         {item.evidenceCount} evidence
                         <p className="text-xs text-muted-foreground">{item.toolCallCount} tools · {item.recommendationCount} recs</p>
+                        {savedSnapshotIds[item.id] && <Badge variant="outline" className="mt-1 rounded-full">snapshot saved</Badge>}
+                        {formatFeedbackBadge(feedbackByRunId[item.id]) && (
+                          <Badge variant="secondary" className="mt-1 rounded-full">
+                            {formatFeedbackBadge(feedbackByRunId[item.id])}
+                          </Badge>
+                        )}
                       </div>
                     </TableCell>
                     <TableCell className="font-mono text-xs">{item.modelId}</TableCell>
                     <TableCell>{formatDuration(item.durationMs)}</TableCell>
                     <TableCell>{formatCost(item.estimatedCostCents)}</TableCell>
                     <TableCell className="text-right">
-                      <Button type="button" variant="outline" size="sm" onClick={() => downloadInvestigation(item)}>
-                        <Download className="h-4 w-4" />
-                        Export
-                      </Button>
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => saveSnapshot(item)}
+                          disabled={isSnapshotPending && pendingSnapshotRunId === item.id}
+                        >
+                          <Archive className="h-4 w-4" />
+                          Save snapshot
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openReview(item)}
+                          disabled={!savedSnapshotIds[item.id]}
+                          title={!savedSnapshotIds[item.id] ? "Save a snapshot before reviewing" : undefined}
+                        >
+                          <MessageSquareText className="h-4 w-4" />
+                          Review
+                        </Button>
+                        <Button type="button" variant="outline" size="sm" onClick={() => downloadInvestigation(item)}>
+                          <Download className="h-4 w-4" />
+                          Export report
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))

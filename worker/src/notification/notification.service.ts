@@ -1,7 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { createHash } from 'crypto';
 import * as nodemailer from 'nodemailer';
 import {
+  AlertDeliveryMetadata,
   AlertType,
+  AlertStatus,
   NotificationProviderType,
   PlainNotificationProviderConfig,
 } from '../db/schema';
@@ -115,6 +118,7 @@ interface FormattedNotification {
 interface NotificationSendResult {
   success: boolean;
   error?: string;
+  deliveryMetadata?: AlertDeliveryMetadata;
 }
 
 interface SmtpDeliveryResult {
@@ -122,6 +126,16 @@ interface SmtpDeliveryResult {
   failedRecipients: string[];
   errors: Record<string, string>;
 }
+
+type ProviderDeliveryDetails = {
+  attempts?: number;
+  responseStatus?: number;
+  responseBody?: string;
+  dedupKey?: string;
+  eventAction?: string;
+  externalIncidentKey?: string;
+  externalUrl?: string;
+};
 
 const WEBHOOK_TEMPLATE_PATTERN = /\{\{(\w+)\}\}/g;
 const WEBHOOK_ALLOWED_METHODS = new Set(['GET', 'POST', 'PUT']);
@@ -177,7 +191,10 @@ export class NotificationService {
       if (!this.validateProviderConfig(provider)) {
         const error = `Invalid configuration for provider ${provider.id} (${provider.type})`;
         this.logger.error(error);
-        return { success: false, error };
+        return this.withDeliveryMetadata(provider, payload, {
+          success: false,
+          error,
+        });
       }
 
       // Enhanced payload with standardized formatting
@@ -187,52 +204,55 @@ export class NotificationService {
       // Send the actual notification
       switch (provider.type) {
         case 'email':
-          result = await this.sendEmailNotification(
+          result = this.withDeliveryMetadata(
+            provider,
+            enhancedPayload,
+            await this.sendEmailNotification(
+              provider.config,
+              formattedNotification,
+              enhancedPayload,
+            ),
+          );
+          break;
+        case 'slack':
+          result = this.withDeliveryMetadata(provider, enhancedPayload, {
+            success: await this.sendSlackNotification(
+              provider.config,
+              formattedNotification,
+            ),
+          });
+          break;
+        case 'webhook':
+          result = await this.sendWebhookNotification(
+            provider,
             provider.config,
             formattedNotification,
             enhancedPayload,
           );
           break;
-        case 'slack':
-          result = {
-            success: await this.sendSlackNotification(
-              provider.config,
-              formattedNotification,
-            ),
-          };
-          break;
-        case 'webhook':
-          result = {
-            success: await this.sendWebhookNotification(
-              provider.config,
-              formattedNotification,
-              enhancedPayload,
-            ),
-          };
-          break;
         case 'telegram':
-          result = {
+          result = this.withDeliveryMetadata(provider, enhancedPayload, {
             success: await this.sendTelegramNotification(
               provider.config,
               formattedNotification,
             ),
-          };
+          });
           break;
         case 'discord':
-          result = {
+          result = this.withDeliveryMetadata(provider, enhancedPayload, {
             success: await this.sendDiscordNotification(
               provider.config,
               formattedNotification,
             ),
-          };
+          });
           break;
         case 'teams':
-          result = {
+          result = this.withDeliveryMetadata(provider, enhancedPayload, {
             success: await this.sendTeamsNotification(
               provider.config,
               formattedNotification,
             ),
-          };
+          });
           break;
         default: {
           const _exhaustiveCheck: never = provider.type;
@@ -260,7 +280,10 @@ export class NotificationService {
         `Failed to send notification via ${provider.type}:`,
         error,
       );
-      result = { success: false, error: errorMessage };
+      result = this.withDeliveryMetadata(provider, payload, {
+        success: false,
+        error: errorMessage,
+      });
     }
 
     return result.success
@@ -268,7 +291,89 @@ export class NotificationService {
       : {
           success: false,
           error: result.error ?? 'Notification send returned false',
+          deliveryMetadata: result.deliveryMetadata,
         };
+  }
+
+  private withDeliveryMetadata(
+    provider: NotificationProvider,
+    payload: NotificationPayload,
+    result: Omit<NotificationSendResult, 'deliveryMetadata'>,
+    details: ProviderDeliveryDetails = {},
+  ): NotificationSendResult {
+    const providerPreset =
+      typeof provider.config.preset === 'string'
+        ? provider.config.preset
+        : undefined;
+    const targetType = this.getAlertTargetType(payload);
+    const deliveryStatus: AlertStatus = result.success ? 'sent' : 'failed';
+    const responseHash =
+      details.responseBody !== undefined
+        ? this.sha256(details.responseBody)
+        : undefined;
+    const errorHash = result.error ? this.sha256(result.error) : undefined;
+
+    return {
+      ...result,
+      deliveryMetadata: {
+        version: 1,
+        provider: {
+          id: provider.id,
+          type: provider.type,
+          preset: providerPreset,
+        },
+        source: {
+          alertType: payload.type,
+          targetType,
+          targetId: payload.targetId,
+          projectId: payload.projectId,
+          monitorId: targetType === 'monitor' ? payload.targetId : undefined,
+          jobId: targetType === 'job' ? payload.targetId : undefined,
+          runId:
+            typeof payload.metadata?.runId === 'string'
+              ? payload.metadata.runId
+              : undefined,
+        },
+        correlation: this.compactObject({
+          dedupKey: details.dedupKey,
+          eventAction: details.eventAction,
+          externalIncidentKey: details.externalIncidentKey,
+          externalUrl: details.externalUrl,
+        }),
+        delivery: this.compactObject({
+          status: deliveryStatus,
+          sentAt: new Date().toISOString(),
+          attempts: details.attempts,
+          responseStatus: details.responseStatus,
+          responseHash,
+          errorHash,
+        }) as AlertDeliveryMetadata['delivery'],
+      },
+    };
+  }
+
+  private compactObject<T extends Record<string, unknown>>(
+    value: T,
+  ): T | undefined {
+    const compacted = Object.fromEntries(
+      Object.entries(value).filter(
+        ([, entryValue]) => entryValue !== undefined,
+      ),
+    ) as T;
+
+    return Object.keys(compacted).length > 0 ? compacted : undefined;
+  }
+
+  private sha256(value: string): string {
+    return createHash('sha256').update(value).digest('hex');
+  }
+
+  private getAlertTargetType(payload: NotificationPayload): 'monitor' | 'job' {
+    return payload.type === 'job_failed' ||
+      payload.type === 'job_success' ||
+      payload.type === 'job_timeout'
+      ? 'job'
+      : 'monitor';
   }
 
   private enhancePayload(payload: NotificationPayload): NotificationPayload {
@@ -521,6 +626,7 @@ export class NotificationService {
       provider: NotificationProvider;
       success: boolean;
       error?: string;
+      deliveryMetadata?: AlertDeliveryMetadata;
     }>;
   }> {
     if (!providers || providers.length === 0) {
@@ -547,6 +653,7 @@ export class NotificationService {
           error: success
             ? undefined
             : (result.value.error ?? 'Notification send returned false'),
+          deliveryMetadata: result.value.deliveryMetadata,
         };
       }
 
@@ -554,6 +661,10 @@ export class NotificationService {
         provider,
         success: false,
         error: getErrorMessage(result.reason),
+        deliveryMetadata: this.withDeliveryMetadata(provider, payload, {
+          success: false,
+          error: getErrorMessage(result.reason),
+        }).deliveryMetadata,
       };
     });
 
@@ -898,10 +1009,13 @@ export class NotificationService {
   }
 
   private async sendWebhookNotification(
+    provider: NotificationProvider,
     config: Record<string, unknown>,
     formatted: FormattedNotification,
     payload: NotificationPayload,
-  ): Promise<boolean> {
+  ): Promise<NotificationSendResult> {
+    const deliveryDetails = this.getWebhookDeliveryDetails(config, payload);
+
     try {
       const webhookUrl = config.url as string | undefined;
       if (!webhookUrl) {
@@ -929,27 +1043,74 @@ export class NotificationService {
       });
 
       clearTimeout(timeoutId);
+      const responseText = await response
+        .text()
+        .catch(() => 'Unable to read response');
+      const responseDetails: ProviderDeliveryDetails = {
+        ...deliveryDetails,
+        attempts: 1,
+        responseStatus: response.status,
+        responseBody: responseText,
+      };
 
       if (!response.ok) {
-        const responseText = await response
-          .text()
-          .catch(() => 'Unable to read response');
-        throw new Error(
-          `Webhook returned ${response.status}: ${response.statusText}. Response: ${responseText}`,
+        return this.withDeliveryMetadata(
+          provider,
+          payload,
+          {
+            success: false,
+            error: `Webhook returned ${response.status}: ${response.statusText}. Response: ${responseText}`,
+          },
+          responseDetails,
         );
       }
 
-      return true;
+      return this.withDeliveryMetadata(
+        provider,
+        payload,
+        { success: true },
+        responseDetails,
+      );
     } catch (error) {
+      const errorMessage =
+        error instanceof Error && error.name === 'AbortError'
+          ? 'Webhook notification timed out after 10 seconds'
+          : `Failed to send webhook notification: ${getErrorMessage(error)}`;
+
       if (error instanceof Error && error.name === 'AbortError') {
-        this.logger.error(`Webhook notification timed out after 10 seconds`);
+        this.logger.error(errorMessage);
       } else {
-        this.logger.error(
-          `Failed to send webhook notification: ${getErrorMessage(error)}`,
-        );
+        this.logger.error(errorMessage);
       }
-      return false;
+
+      return this.withDeliveryMetadata(
+        provider,
+        payload,
+        {
+          success: false,
+          error: errorMessage,
+        },
+        {
+          ...deliveryDetails,
+          attempts: 1,
+        },
+      );
     }
+  }
+
+  private getWebhookDeliveryDetails(
+    config: Record<string, unknown>,
+    payload: NotificationPayload,
+  ): ProviderDeliveryDetails {
+    const eventAction = this.getWebhookAlertAction(payload);
+    const dedupKey = this.getWebhookDedupKey(payload);
+    const preset = typeof config.preset === 'string' ? config.preset : '';
+
+    return {
+      dedupKey,
+      eventAction,
+      externalIncidentKey: preset && preset !== 'custom' ? dedupKey : undefined,
+    };
   }
 
   private normalizeWebhookMethod(method: unknown): 'GET' | 'POST' | 'PUT' {

@@ -4,6 +4,8 @@
     "icon": "Server",
     "pages": [
         "self-hosted",
-        "multi-location"
+        "multi-location",
+        "aisre-lab",
+        "aisre-release-gates"
     ]
 }

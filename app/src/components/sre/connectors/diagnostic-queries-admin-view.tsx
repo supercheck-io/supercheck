@@ -29,6 +29,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { getDiagnosticQueryAdapterRecipes, type DiagnosticQueryAdapterRecipe } from "@/lib/sre/connectors/diagnostic-query-adapters";
 
 type DiagnosticQueriesAdminViewProps = {
   initialQueries: SreDiagnosticQueryListItem[];
@@ -62,6 +63,10 @@ function parseJsonObject(value: string, label: string) {
   return parsed as Record<string, unknown>;
 }
 
+function stringifyJson(value: Record<string, unknown>) {
+  return JSON.stringify(value, null, 2);
+}
+
 export function DiagnosticQueriesAdminView({ initialQueries, setupOptions, loadError }: DiagnosticQueriesAdminViewProps) {
   const [queries, setQueries] = useState(initialQueries);
   const [search, setSearch] = useState("");
@@ -83,6 +88,8 @@ export function DiagnosticQueriesAdminView({ initialQueries, setupOptions, loadE
   });
 
   const filteredQueries = queries.filter((query) => queryMatches(query, deferredSearch));
+  const selectedConnector = setupOptions.connectors.find((connector) => connector.id === form.connectorId);
+  const adapterRecipes = selectedConnector ? getDiagnosticQueryAdapterRecipes(selectedConnector.type) : [];
 
   const upsertQuery = (query: SreDiagnosticQueryListItem) => {
     setQueries((current) => {
@@ -131,6 +138,20 @@ export function DiagnosticQueriesAdminView({ initialQueries, setupOptions, loadE
       setIsCreateOpen(false);
       setForm((current) => ({ ...current, name: "", template: "" }));
     });
+  };
+
+  const applyRecipe = (recipe: DiagnosticQueryAdapterRecipe) => {
+    setForm((current) => ({
+      ...current,
+      name: recipe.name,
+      queryType: recipe.queryType,
+      template: recipe.template,
+      parameterSchema: stringifyJson(recipe.parameterSchema),
+      allowlist: stringifyJson(recipe.allowlist),
+      maxRows: String(recipe.limits.maxRows),
+      maxBytes: String(recipe.limits.maxBytes),
+      maxSeconds: String(recipe.limits.maxSeconds),
+    }));
   };
 
   const confirmDisableQuery = () => {
@@ -252,6 +273,30 @@ export function DiagnosticQueriesAdminView({ initialQueries, setupOptions, loadE
                 <SelectContent>{setupOptions.connectors.map((connector) => <SelectItem key={connector.id} value={connector.id}>{connector.name} ({connector.type})</SelectItem>)}</SelectContent>
               </Select>
             </div>
+            {adapterRecipes.length > 0 && (
+              <div className="rounded-lg border bg-muted/20 p-3">
+                <div className="flex flex-col gap-1">
+                  <p className="text-sm font-medium">Recommended diagnostic adapters</p>
+                  <p className="text-xs text-muted-foreground">
+                    Start from a connector-specific, read-only recipe. Review the allowlist before saving.
+                  </p>
+                </div>
+                <div className="mt-3 grid gap-2 md:grid-cols-2">
+                  {adapterRecipes.map((recipe) => (
+                    <button
+                      key={recipe.id}
+                      type="button"
+                      onClick={() => applyRecipe(recipe)}
+                      className="rounded-md border bg-background p-2 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      <span className="block text-xs font-medium">{recipe.name}</span>
+                      <Badge variant="outline" className="mt-1">{recipe.queryType}</Badge>
+                      <span className="mt-1 block text-xs text-muted-foreground">{recipe.description}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="grid gap-2">
               <Label>Name</Label>
               <Input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} placeholder="High latency by route" />

@@ -14,11 +14,12 @@ describe("SRE eval scoring", () => {
     ];
 
     for (const connectorType of implementedConnectorTypes) {
-      expect(getSreEvalFixturesByConnectorType(connectorType).map((fixture) => fixture.id)).toHaveLength(1);
+      expect(getSreEvalFixturesByConnectorType(connectorType).map((fixture) => fixture.id).length).toBeGreaterThanOrEqual(1);
     }
 
     expect(sreSeededLiveConnectorEvalFixtures.map((fixture) => fixture.id)).toEqual(
       expect.arrayContaining([
+        "connector-investigation-oss-lab-checkout-degradation",
         "connector-investigation-sentry-regression",
         "connector-investigation-datadog-event-spike",
         "connector-investigation-loki-error-logs",

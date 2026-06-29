@@ -17,6 +17,7 @@ import {
   summarizeSreAgentProgressEvent,
   type SreInvestigationProgressEvent,
 } from "@/components/sre/investigation-progress-card";
+import { SreInvestigationReportPanel } from "@/components/sre/incidents/sre-investigation-report-panel";
 import { parseSreSseEvents, sreSseDataRecord } from "@/components/sre/sre-sse-client";
 import { SreVerificationPanel } from "@/components/sre/verification-panel";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -370,8 +371,16 @@ export function SreInvestigationPanel({
             emptyTitle="No incident chat yet"
             emptyDescription="Ask a question to start an incident-scoped SRE conversation."
             className="h-[460px] min-h-[360px]"
+            isAssistantPending={isChatPending}
+            pendingLabel={progressEvents[progressEvents.length - 1]?.title ?? "Collecting incident evidence and checking tool output..."}
           />
           <SreInvestigationProgressCard events={progressEvents} />
+          <SreInvestigationReportPanel
+            evidenceReferences={evidenceReferences}
+            latestAssistantContent={latestAssistantContent}
+            progressEvents={progressEvents}
+            isInvestigating={isInvestigating || isChatPending}
+          />
           <SreVerificationPanel
             evidenceCount={evidenceReferences.length}
             hasPrimaryService={hasPrimaryService}

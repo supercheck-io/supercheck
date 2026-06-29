@@ -471,6 +471,7 @@ export async function createSreIncidentFromAlert(
         status: alertHistory.status,
         provider: alertHistory.provider,
         sentAt: alertHistory.sentAt,
+        deliveryMetadata: alertHistory.deliveryMetadata,
         monitorName: monitors.name,
         jobName: jobs.name,
       })
@@ -501,7 +502,14 @@ export async function createSreIncidentFromAlert(
     const severity = deriveSeverity(alert.type, alert.message);
     const alertStatus = deriveAlertStatus(alert.type);
     const firedAt = alert.sentAt ?? new Date();
-    const dedupKey = [project.id, sourceType, sourceId ?? targetName, alert.type].join(":");
+    const deliveryDedupKey =
+      typeof alert.deliveryMetadata?.correlation?.dedupKey === "string" &&
+      alert.deliveryMetadata.correlation.dedupKey.trim().length > 0
+        ? alert.deliveryMetadata.correlation.dedupKey.trim()
+        : undefined;
+    const dedupKey =
+      deliveryDedupKey ??
+      [project.id, sourceType, sourceId ?? targetName, alert.type].join(":");
     const fingerprintHash = sha256(`${organizationId}:${dedupKey}`);
     const title = truncate(`${targetName}: ${titleCase(alert.type)}`, 500);
 

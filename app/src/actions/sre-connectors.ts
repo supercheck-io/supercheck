@@ -122,6 +122,13 @@ const searchConnectorSchema = z.object({
   serviceId: z.string().uuid(),
   query: z.string().trim().min(1).max(500),
   timeWindowMinutes: z.number().int().min(1).max(24 * 60).default(60),
+  filters: z
+    .object({
+      index: z.string().trim().min(1).max(200).optional(),
+      timestampField: z.string().trim().min(1).max(100).optional(),
+    })
+    .optional()
+    .default({}),
 });
 
 const privateAgentJobResultSchema = z.object({
@@ -1057,6 +1064,17 @@ export async function searchSreConnectorEvidence(input: z.infer<typeof searchCon
       return { success: false, error: "Connector not found or disabled" };
     }
 
+    const searchSupported = connector.privateAgentId
+      ? supportsPrivateAgentConnector(connector.type)
+      : supportsDirectConnectorValidation(connector.type);
+
+    if (!searchSupported) {
+      return {
+        success: false,
+        error: `${connector.type.replace(/_/g, " ")} evidence search is not implemented yet. Configure the connector for future collaboration context, but do not use it for live investigation search.`,
+      };
+    }
+
     const scopedServiceIds = await getScopedServiceIds(connector.id, organizationId, project.id);
     const serviceAllowed =
       scopedServiceIds.length === 0 || scopedServiceIds.includes(parsed.data.serviceId);
@@ -1102,6 +1120,7 @@ export async function searchSreConnectorEvidence(input: z.infer<typeof searchCon
         maxSeconds: Math.min(definition.outputLimits.maxSeconds, 15),
         maxCost: 0,
       },
+      filters: parsed.data.filters,
     };
     const decision = enforceConnectorPolicy({
       organizationId,
@@ -1238,6 +1257,7 @@ export async function searchSreConnectorEvidence(input: z.infer<typeof searchCon
       serviceId: parsed.data.serviceId,
       query: parsed.data.query,
       timeWindowMinutes: parsed.data.timeWindowMinutes,
+      filters: parsed.data.filters,
     });
 
     await db.insert(sreInvestigationToolCalls).values({

@@ -260,6 +260,7 @@ export class JobNotificationService {
               payload.message,
               result.error,
               job.name,
+              result.deliveryMetadata,
             ),
           );
         }
