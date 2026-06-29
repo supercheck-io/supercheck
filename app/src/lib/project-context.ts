@@ -443,14 +443,16 @@ export async function requireProjectContext(): Promise<{
   }
 
   // SECURITY: Resolve effective role with project-assignment awareness.
-  // Org-wide roles (owner/admin) can access all projects in org.
+  // Org-wide roles (org_owner/org_admin) can access all projects in org.
   // Project-limited roles (project_admin/project_editor) require explicit project membership;
-  // without membership, degrade to viewer (consistent with legacy behavior).
+  // without membership, degrade to viewer.
   const isOrgWideRole =
     ctx.organizationRole === "org_owner" || ctx.organizationRole === "org_admin";
 
   let effectiveRole: string | null = null;
-  if (isOrgWideRole) {
+  if (ctx.organizationRole === "super_admin") {
+    effectiveRole = ctx.organizationRole;
+  } else if (isOrgWideRole) {
     effectiveRole = ctx.organizationRole;
   } else if (ctx.projectRole) {
     effectiveRole = ctx.projectRole;

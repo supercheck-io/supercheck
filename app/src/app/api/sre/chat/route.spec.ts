@@ -10,6 +10,10 @@ jest.mock("@/lib/rbac/middleware", () => ({
   checkPermissionWithContext: jest.fn(),
 }));
 
+jest.mock("@/lib/sre/sre-rate-limiter", () => ({
+  checkSreChatRateLimit: jest.fn(),
+}));
+
 jest.mock("@/sre/lib/session-store", () => ({
   createSreConversation: jest.fn(),
   appendSreMessage: jest.fn(),
@@ -31,6 +35,9 @@ const { requireProjectContext: mockRequireProjectContext } = jest.requireMock("@
 };
 const { checkPermissionWithContext: mockCheckPermissionWithContext } = jest.requireMock("@/lib/rbac/middleware") as {
   checkPermissionWithContext: jest.Mock;
+};
+const { checkSreChatRateLimit: mockCheckSreChatRateLimit } = jest.requireMock("@/lib/sre/sre-rate-limiter") as {
+  checkSreChatRateLimit: jest.Mock;
 };
 const {
   createSreConversation: mockCreateSreConversation,
@@ -56,6 +63,7 @@ describe("SRE chat API", () => {
       project: { id: "018f0000-0000-7000-8000-000000000003", name: "Prod", organizationId: "018f0000-0000-7000-8000-000000000002" },
     });
     mockCheckPermissionWithContext.mockReturnValue(true);
+    mockCheckSreChatRateLimit.mockResolvedValue({ allowed: true });
     mockCreateSreConversation.mockResolvedValue({
       id: "018f0000-0000-7000-8000-000000000004",
       incidentId: null,

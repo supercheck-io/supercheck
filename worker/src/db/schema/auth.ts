@@ -13,6 +13,7 @@ import {
   boolean,
   index,
   jsonb,
+  check,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
@@ -24,21 +25,30 @@ import { jobs } from './job';
 /**
  * Stores user information for authentication and identification.
  */
-export const user = pgTable('user', {
-  id: uuid('id')
-    .primaryKey()
-    .$defaultFn(() => sql`uuidv7()`),
-  name: text('name').notNull(),
-  email: text('email').notNull().unique(),
-  emailVerified: boolean('email_verified').default(false).notNull(),
-  image: text('image'),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-  role: text('role'),
-  banned: boolean('banned'),
-  banReason: text('ban_reason'),
-  banExpires: timestamp('ban_expires'),
-});
+export const user = pgTable(
+  'user',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .$defaultFn(() => sql`uuidv7()`),
+    name: text('name').notNull(),
+    email: text('email').notNull().unique(),
+    emailVerified: boolean('email_verified').default(false).notNull(),
+    image: text('image'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+    role: text('role'),
+    banned: boolean('banned'),
+    banReason: text('ban_reason'),
+    banExpires: timestamp('ban_expires'),
+  },
+  (table) => ({
+    roleCanonicalCheck: check(
+      'user_role_canonical_check',
+      sql`${table.role} IS NULL OR ${table.role} IN ('super_admin', 'project_viewer')`,
+    ),
+  }),
+);
 
 /**
  * Manages user sessions for authentication.

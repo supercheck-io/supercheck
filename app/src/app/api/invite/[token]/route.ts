@@ -203,7 +203,7 @@ export async function POST(
           .values({
             organizationId: invite.organizationId,
             userId: currentUser.id,
-            role: invite.role as 'org_owner' | 'org_admin' | 'project_admin' | 'project_editor' | 'project_viewer',
+            role: (invite.role ?? 'project_viewer') as 'org_owner' | 'org_admin' | 'project_admin' | 'project_editor' | 'project_viewer',
             createdAt: new Date()
           });
       } catch (error: unknown) {
@@ -249,7 +249,7 @@ export async function POST(
         throw new Error("INVITE_PROJECT_SCOPE_MISMATCH");
       }
 
-      if (normalizedSelectedProjectIds.length > 0) {
+      if (requiresProjectAssignments && normalizedSelectedProjectIds.length > 0) {
         // SECURITY: Filter by organization ID to prevent cross-org project assignment
         const selectedProjectsList = await tx
           .select({
@@ -276,7 +276,7 @@ export async function POST(
               .values({
                 userId: currentUser.id,
                 projectId: project.id,
-                role: invite.role as 'org_owner' | 'org_admin' | 'project_admin' | 'project_editor' | 'project_viewer',
+                role: role as 'project_admin' | 'project_editor',
                 createdAt: new Date()
               });
           } catch (error: unknown) {

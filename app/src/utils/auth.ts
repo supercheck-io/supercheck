@@ -477,8 +477,10 @@ export const auth = betterAuth({
     admin({
       // Use database-backed roles instead of hardcoded user IDs
       adminRoles: ["super_admin"],
+      defaultRole: Role.PROJECT_VIEWER,
       ac,
       roles: {
+        project_viewer: roles[Role.PROJECT_VIEWER],
         org_admin: roles[Role.ORG_ADMIN],
         super_admin: roles[Role.SUPER_ADMIN],
       },

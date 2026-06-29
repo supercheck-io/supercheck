@@ -118,7 +118,7 @@ export class HardStopNotificationService {
         .where(
           and(
             eq(schema.member.organizationId, organizationId),
-            inArray(schema.member.role, ['owner', 'admin']),
+            inArray(schema.member.role, ['org_owner', 'org_admin']),
           ),
         );
 

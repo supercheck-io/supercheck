@@ -91,6 +91,16 @@ describe("Role Normalizer", () => {
         warnSpy.mockRestore();
       });
 
+      it("should not promote unregistered organization role labels", () => {
+        const warnSpy = jest.spyOn(console, "warn").mockImplementation();
+        expect(normalizeRole("owner")).toBe(Role.PROJECT_VIEWER);
+        expect(normalizeRole("admin")).toBe(Role.PROJECT_VIEWER);
+        expect(normalizeRole("member")).toBe(Role.PROJECT_VIEWER);
+        expect(normalizeRole("user")).toBe(Role.PROJECT_VIEWER);
+        expect(warnSpy).toHaveBeenCalledTimes(4);
+        warnSpy.mockRestore();
+      });
+
       it("should return PROJECT_VIEWER for empty string", () => {
         const warnSpy = jest.spyOn(console, "warn").mockImplementation();
         expect(normalizeRole("")).toBe(Role.PROJECT_VIEWER);

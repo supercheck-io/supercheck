@@ -39,11 +39,13 @@ docker compose exec app npm run setup:admin admin@yourdomain.com
 </Tab>
 <Tab value="Revoking Access">
 
-To downgrade a super admin to organization admin:
+To revoke the system-level super admin role:
 
 ```bash
 docker compose exec app npm run revoke:admin admin@yourdomain.com
 ```
+
+This changes only the user's system role back to `project_viewer`. Organization memberships and project assignments are managed separately.
 
 </Tab>
 </Tabs>

@@ -17,6 +17,7 @@ import {
   index,
   jsonb,
   uniqueIndex,
+  check,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema, createSelectSchema, createUpdateSchema } from "drizzle-zod";
@@ -93,6 +94,10 @@ export const member = pgTable(
     uniqueUserOrg: unique().on(table.userId, table.organizationId),
     // Index for efficient "list members by org" queries
     organizationIdIdx: index("member_organization_id_idx").on(table.organizationId),
+    roleCanonicalCheck: check(
+      "member_role_canonical_check",
+      sql`${table.role} IN ('org_owner', 'org_admin', 'project_admin', 'project_editor', 'project_viewer')`
+    ),
   })
 );
 
@@ -198,6 +203,10 @@ export const projectMembers = pgTable(
     uniqueUserProject: unique().on(table.userId, table.projectId),
     // Index for efficient "list members by project" queries
     projectIdIdx: index("project_members_project_id_idx").on(table.projectId),
+    roleCanonicalCheck: check(
+      "project_members_role_canonical_check",
+      sql`${table.role} IN ('project_admin', 'project_editor', 'project_viewer')`
+    ),
   })
 );
 

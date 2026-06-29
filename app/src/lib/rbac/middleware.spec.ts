@@ -126,7 +126,7 @@ describe("RBAC Middleware", () => {
       name: "Test User",
       email: "test@example.com",
       image: null,
-      role: "member",
+      role: "project_viewer",
       emailVerified: true,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -137,7 +137,7 @@ describe("RBAC Middleware", () => {
   };
 
   const mockMemberRecord = {
-    role: "admin",
+    role: "org_admin",
   };
 
   beforeEach(() => {
@@ -315,7 +315,7 @@ describe("RBAC Middleware", () => {
           const result = await getUserOrgRole(testUserId, testOrgId);
 
           expect(result).toBe(Role.ORG_ADMIN);
-          expect(mockNormalizeRole).toHaveBeenCalledWith("admin");
+          expect(mockNormalizeRole).toHaveBeenCalledWith("org_admin");
         });
 
         it("should query database for member record", async () => {
@@ -454,7 +454,7 @@ describe("RBAC Middleware", () => {
         const mockSelectChain = {
           from: jest.fn().mockReturnThis(),
           where: jest.fn().mockReturnThis(),
-          limit: jest.fn().mockResolvedValue([{ role: "owner" }]),
+          limit: jest.fn().mockResolvedValue([{ role: "org_owner" }]),
         };
         mockDbSelect.mockReturnValue(mockSelectChain as unknown);
 
@@ -540,7 +540,7 @@ describe("RBAC Middleware", () => {
           return {
             from: jest.fn().mockReturnThis(),
             where: jest.fn().mockReturnThis(),
-            limit: jest.fn().mockResolvedValue([{ role: "owner" }]),
+            limit: jest.fn().mockResolvedValue([{ role: "org_owner" }]),
           } as unknown;
         });
 
@@ -604,7 +604,7 @@ describe("RBAC Middleware", () => {
             return {
               from: jest.fn().mockReturnThis(),
               where: jest.fn().mockReturnThis(),
-              limit: jest.fn().mockResolvedValue([{ role: "member" }]),
+              limit: jest.fn().mockResolvedValue([{ role: "project_viewer" }]),
             } as unknown;
           }
           // Project membership
@@ -643,7 +643,7 @@ describe("RBAC Middleware", () => {
             return {
               from: jest.fn().mockReturnThis(),
               where: jest.fn().mockReturnThis(),
-              limit: jest.fn().mockResolvedValue([{ role: "member" }]),
+              limit: jest.fn().mockResolvedValue([{ role: "project_viewer" }]),
             } as unknown;
           }
           // No project membership
@@ -961,7 +961,7 @@ describe("RBAC Middleware", () => {
           return {
             from: jest.fn().mockReturnThis(),
             where: jest.fn().mockReturnThis(),
-            limit: jest.fn().mockResolvedValue([{ role: "owner" }]),
+            limit: jest.fn().mockResolvedValue([{ role: "org_owner" }]),
           } as unknown;
         });
 
@@ -1024,7 +1024,7 @@ describe("RBAC Middleware", () => {
         const mockSelectChain = {
           from: jest.fn().mockReturnThis(),
           where: jest.fn().mockReturnValue({
-            limit: jest.fn().mockResolvedValue([{ role: "admin" }]),
+            limit: jest.fn().mockResolvedValue([{ role: "org_admin" }]),
             // Also support being awaited directly for getUserAssignedProjects
             then: (resolve: (value: unknown[]) => void) => resolve([]),
           }),

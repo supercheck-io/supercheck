@@ -332,12 +332,9 @@ export async function getUserProjects(
           projectRole = convertRoleToUnified(dbProjectRole);
         } else {
           // No project-specific role found
-          // If orgRole is a project role (happens when member table has project-level role), use it
-          if (orgRole === Role.PROJECT_EDITOR || orgRole === Role.PROJECT_ADMIN) {
-            projectRole = orgRole;
-          } else {
-            projectRole = Role.PROJECT_VIEWER;
-          }
+          // According to RBAC rules, project_editor/project_admin MUST be explicitly assigned
+          // If they are not in projectRolesMap (i.e., not assigned), they degrade to viewer
+          projectRole = Role.PROJECT_VIEWER;
         }
       }
 

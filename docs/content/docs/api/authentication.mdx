@@ -97,9 +97,9 @@ Trigger keys **cannot** access any other API endpoint. Attempts to use them on g
 
 | Practice | Implementation |
 |----------|---------------|
-| **Storage** | Only SHA-256 hash stored in database |
-| **Lookup** | Display prefix narrows DB candidates (1-2 rows vs full scan) |
-| **Comparison** | Constant-time hash comparison prevents timing attacks |
+| **Storage** | Only hashed token material is stored in the database |
+| **Lookup** | Exact stored hash lookup; display prefixes are not used for authentication |
+| **Comparison** | Stored hash match supports current Better Auth API-key hashes and legacy SuperCheck SHA-256 hashes |
 | **Expiry** | Tokens can have optional expiration dates |
 | **Membership** | Token rejected if owner is removed from organization |
 | **Audit** | All token operations are logged in audit trail |

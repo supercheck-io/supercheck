@@ -148,6 +148,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const roleRequiresProjectAssignments =
+      role === "project_admin" || role === "project_editor";
+    const selectedProjectsForRole = roleRequiresProjectAssignments
+      ? normalizedSelectedProjects
+      : [];
+
     // Check team member limit for the organization
     const currentMemberCount = await db
       .select({ count: sql<number>`count(*)` })
@@ -250,7 +256,7 @@ export async function POST(request: NextRequest) {
 
     // SECURITY: Validate selected projects belong to this organization BEFORE creating invitation
     let selectedProjectDetails: { id: string; name: string }[] = [];
-    if (normalizedSelectedProjects.length > 0) {
+    if (selectedProjectsForRole.length > 0) {
       selectedProjectDetails = await db
         .select({
           id: projects.id,
@@ -259,13 +265,13 @@ export async function POST(request: NextRequest) {
         .from(projects)
         .where(
           and(
-            inArray(projects.id, normalizedSelectedProjects),
+            inArray(projects.id, selectedProjectsForRole),
             eq(projects.status, "active"),
             eq(projects.organizationId, organizationId)
           )
         );
 
-      if (selectedProjectDetails.length !== normalizedSelectedProjects.length) {
+      if (selectedProjectDetails.length !== selectedProjectsForRole.length) {
         return NextResponse.json(
           { error: "One or more selected projects do not belong to this organization" },
           { status: 400 }
@@ -286,7 +292,7 @@ export async function POST(request: NextRequest) {
         status: "pending",
         expiresAt,
         inviterId: userId,
-        selectedProjects: normalizedSelectedProjects,
+        selectedProjects: selectedProjectsForRole,
       })
       .returning();
 
@@ -358,7 +364,7 @@ export async function POST(request: NextRequest) {
         organizationId,
         invitedEmail: normalizedEmail,
         role: role,
-        selectedProjectsCount: normalizedSelectedProjects.length,
+        selectedProjectsCount: selectedProjectsForRole.length,
         selectedProjects: selectedProjectDetails.map((p) => ({
           id: p.id,
           name: p.name,

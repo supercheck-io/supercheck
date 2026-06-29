@@ -14,13 +14,16 @@
  */
 
 import { headers } from "next/headers";
+import { defaultKeyHasher } from "@better-auth/api-key";
 import { db } from "@/utils/db";
 import { apikey, projects, member, projectMembers, organization } from "@/db/schema";
 import { eq, and, isNull, or, gt } from "drizzle-orm";
-import { verifyApiKey, isCliToken, getApiKeyPrefix } from "@/lib/security/api-key-hash";
+import { hashApiKey, isCliToken } from "@/lib/security/api-key-hash";
+import { Role } from "@/lib/rbac/permissions-client";
 import { normalizeRole } from "@/lib/rbac/role-normalizer";
 import { requireProjectContext, type ProjectContext } from "@/lib/project-context";
 import { requireAuth as requireSessionAuth } from "@/lib/rbac/middleware";
+import { isSuperAdmin } from "@/lib/rbac/super-admin";
 import { getActiveOrganization } from "@/lib/session";
 import { createLogger } from "@/lib/logger/index";
 
@@ -112,9 +115,14 @@ async function getBearerToken(): Promise<string | null> {
  * and the organization — exactly matching the shape from requireProjectContext().
  */
 async function authenticateCliToken(token: string): Promise<AuthContext | null> {
-  // Use the token's display prefix (stored in `start` column) to narrow candidates
-  // instead of fetching ALL enabled CLI tokens across all projects/orgs
-  const tokenStart = getApiKeyPrefix(token);
+  // Verify by exact hash lookup instead of the display-only `start` column.
+  // This supports old SHA-256 keys and Better Auth api-key hashes while avoiding
+  // brittle auth failures when manually inserted keys have a stale display prefix.
+  const legacyInputHash = hashApiKey(token);
+  const pluginInputHash = await defaultKeyHasher(token);
+  const hashConditions = Array.from(
+    new Set([legacyInputHash, pluginInputHash])
+  ).map((inputHash) => eq(apikey.key, inputHash));
 
   const candidateKeys = await db
     .select({
@@ -130,21 +138,14 @@ async function authenticateCliToken(token: string): Promise<AuthContext | null> 
       and(
         eq(apikey.enabled, true),
         isNull(apikey.jobId),
-        eq(apikey.start, tokenStart),
+        hashConditions.length === 1 ? hashConditions[0] : or(...hashConditions),
         // Exclude expired tokens at DB level to avoid unnecessary hash comparisons
         or(isNull(apikey.expiresAt), gt(apikey.expiresAt, new Date()))
       )
-    );
+    )
+    .limit(1);
 
-  // Find matching key using constant-time hash comparison
-  let matchedKey: (typeof candidateKeys)[0] | null = null;
-  for (const key of candidateKeys) {
-    if (verifyApiKey(token, key.key)) {
-      matchedKey = key;
-      break;
-    }
-  }
-
+  const matchedKey = candidateKeys[0] ?? null;
   if (!matchedKey) {
     logger.warn(
       { keyPrefix: token.substring(0, 12) },
@@ -206,10 +207,11 @@ async function authenticateCliToken(token: string): Promise<AuthContext | null> 
     return null;
   }
 
-  // SECURITY: If user has been removed from both org and project, reject the token.
-  // Without this check, normalizeRole(null) defaults to PROJECT_VIEWER, granting
-  // read access to users who should have no access at all.
-  if (!ctx.orgRole && !ctx.projectRole) {
+  const isTokenOwnerSuperAdmin = await isSuperAdmin(matchedKey.userId);
+
+  // SECURITY: If user has been removed from both org and project, reject the token
+  // unless the token owner is a super admin. This matches session auth behavior.
+  if (!ctx.orgRole && !ctx.projectRole && !isTokenOwnerSuperAdmin) {
     logger.warn(
       { keyId: matchedKey.id, userId: matchedKey.userId, projectId: matchedKey.projectId },
       "CLI token owner has no org or project membership — access denied"
@@ -217,8 +219,32 @@ async function authenticateCliToken(token: string): Promise<AuthContext | null> 
     return null;
   }
 
-  // Determine the user's effective role (org role takes precedence)
-  const effectiveRole = normalizeRole(ctx.orgRole ?? ctx.projectRole);
+  const orgRole = ctx.orgRole ? normalizeRole(ctx.orgRole) : null;
+  const projectRole = ctx.projectRole ? normalizeRole(ctx.projectRole) : null;
+
+  // Match requireProjectContext(): org owners/admins are org-wide, while
+  // project-scoped roles require the project_members assignment for this project.
+  const effectiveRole = (() => {
+    if (isTokenOwnerSuperAdmin) return Role.SUPER_ADMIN;
+    if (orgRole === Role.ORG_OWNER || orgRole === Role.ORG_ADMIN) return orgRole;
+    if (projectRole) return projectRole;
+    if (
+      orgRole === Role.PROJECT_ADMIN ||
+      orgRole === Role.PROJECT_EDITOR ||
+      orgRole === Role.PROJECT_VIEWER
+    ) {
+      return Role.PROJECT_VIEWER;
+    }
+    return null;
+  })();
+
+  if (!effectiveRole) {
+    logger.warn(
+      { keyId: matchedKey.id, userId: matchedKey.userId, projectId: matchedKey.projectId, orgRole: ctx.orgRole, projectRole: ctx.projectRole },
+      "CLI token owner has no valid role for project — access denied"
+    );
+    return null;
+  }
 
   // Update last request timestamp (best-effort, non-blocking for auth flow)
   try {

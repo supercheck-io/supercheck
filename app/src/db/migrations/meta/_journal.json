@@ -134,6 +134,13 @@
       "when": 1782608400000,
       "tag": "0018_sre_evidence_graph_focused_views",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1782612000000,
+      "tag": "0019_canonical_rbac_roles",
+      "breakpoints": true
     }
   ]
 }
