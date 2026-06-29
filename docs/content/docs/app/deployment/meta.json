@@ -5,6 +5,7 @@
     "pages": [
         "self-hosted",
         "multi-location",
+        "private-agent",
         "aisre-lab",
         "aisre-release-gates"
     ]

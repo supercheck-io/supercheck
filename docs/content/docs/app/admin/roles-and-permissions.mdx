@@ -42,7 +42,7 @@ graph TD
 
 ## Permission Matrix
 
-<Tabs items={['Organization', 'Project', 'Tests & Jobs', 'Monitors & Status Pages', 'Test Runs', 'API Keys', 'Notifications', 'Tags']}>
+<Tabs items={['Organization', 'Project', 'Tests & Jobs', 'Monitors & Status Pages', 'Test Runs', 'CLI Tokens', 'Notifications', 'Tags']}>
 <Tab value="Organization">
 
 | Resource | Super Admin | Org Owner | Org Admin | Project Admin | Project Editor | Project Viewer |
@@ -101,7 +101,7 @@ graph TD
 | **Delete** | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
 
 </Tab>
-<Tab value="API Keys">
+<Tab value="CLI Tokens">
 
 | Action | Super Admin | Org Owner | Org Admin | Project Admin* | Project Editor* | Project Viewer |
 |--------|:-----------:|:---------:|:---------:|:--------------:|:---------------:|:--------------:|
@@ -143,10 +143,10 @@ Variables and secrets have special permission rules to balance usability with se
 | **Create variables** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
 | **Edit variables** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
 | **Delete variables** | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
-| **View secret values** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
+| **View secret values** | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
 
 <Callout type="warn">
-**Project Editors** can create/edit variables and view secret values (needed to use secrets in tests), but **cannot delete** variables. This prevents accidental data loss while allowing productive work.
+**Project Editors** can create/edit variables (needed to use secrets in tests), but **cannot delete** variables or view secret values. This prevents accidental data loss and maintains security while allowing productive work.
 </Callout>
 
 ## System Administration

@@ -1,0 +1,69 @@
+---
+title: Private Agent
+description: Deploy an outbound-only agent inside your secure network
+icon: ShieldCheck
+---
+
+The Supercheck Private Agent is a secure, outbound-only worker designed to run inside your internal network. It connects to the Supercheck API to fetch and execute connector queries against internal services (like on-premise Kubernetes clusters, Prometheus, Grafana, or GitHub Enterprise) without requiring you to open inbound firewall ports or expose database credentials.
+
+Unlike a standard worker, the Private Agent:
+- **Does not need** PostgreSQL, Redis, or MinIO credentials.
+- Connects **only** to the Supercheck API via outbound HTTPS.
+- Runs with a **read-only filesystem** and stripped capabilities.
+
+<Callout type="info">
+The Private Agent is used for executing connector queries for investigations. It does not run Playwright or K6 tests.
+</Callout>
+
+## Deployment
+
+Deploy the agent on a server or Kubernetes cluster inside your internal network using the provided Docker Compose configuration.
+
+### 1. Generate an Agent Token
+First, create a Private Agent in the Supercheck dashboard:
+1. Go to **Settings/Admin** -> **Private Agents**.
+2. Click **Create Agent**.
+3. Copy the **Agent ID** and the short-lived **Registration Token**. You will need these for the agent configuration.
+
+### 2. Configure the Environment
+On your internal server, create a `.env` file:
+
+```bash
+# Required
+SUPERCHECK_API_URL=https://app.yourdomain.com
+PRIVATE_AGENT_ID=your-agent-id
+PRIVATE_AGENT_TOKEN=your-registration-token
+
+# Optional Tuning
+SUPERCHECK_VERSION=1.3.5
+PRIVATE_AGENT_LEASE_WAIT_MS=25000
+PRIVATE_AGENT_RETRY_INTERVAL_MS=5000
+PRIVATE_AGENT_HEARTBEAT_INTERVAL_MS=30000
+```
+
+### 3. Deploy using Docker Compose
+Download and run the [Private Agent Docker Compose file](https://raw.githubusercontent.com/supercheck-io/supercheck/main/deploy/docker/docker-compose-private-agent.yml):
+
+```bash
+curl -o docker-compose-private-agent.yml https://raw.githubusercontent.com/supercheck-io/supercheck/main/deploy/docker/docker-compose-private-agent.yml
+
+# Start the agent
+docker compose -f docker-compose-private-agent.yml up -d
+```
+
+### 4. Verify Connection
+Check the agent logs to ensure it has successfully registered and connected:
+
+```bash
+docker compose -f docker-compose-private-agent.yml logs -f
+```
+In the Supercheck dashboard, the agent status should now show as **Active**.
+
+## Security Posture
+
+The provided Docker Compose configuration applies strict security constraints:
+- `user: "1000:1000"`: Runs as a non-root user.
+- `read_only: true`: Mounts the root filesystem as read-only.
+- `tmpfs`: Uses memory-backed ephemeral storage for `/tmp` and cache directories.
+- `security_opt: [no-new-privileges:true]`: Prevents privilege escalation.
+- `cap_drop: [ALL]`: Drops all Linux capabilities.
