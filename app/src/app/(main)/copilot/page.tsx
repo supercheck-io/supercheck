@@ -2,6 +2,8 @@ import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
 import { SreAiConsole } from "@/components/sre/sre-ai-console";
 import { getSreStandaloneChatHistories } from "@/actions/sre-ai";
 
+export const dynamic = "force-dynamic";
+
 export default async function SreAiPage() {
   const historyResult = await getSreStandaloneChatHistories();
 
@@ -11,8 +13,8 @@ export default async function SreAiPage() {
         <PageBreadcrumbs
           items={[
             { label: "Home", href: "/" },
-            { label: "Investigate", href: "/sre-ai" },
-            { label: "Investigation Chat", isCurrentPage: true },
+            { label: "Investigate", href: "/copilot" },
+            { label: "AISRE", isCurrentPage: true },
           ]}
         />
       </div>

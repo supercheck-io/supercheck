@@ -150,7 +150,7 @@ export function summarizeSreAgentProgressEvent(eventName: string, payload: unkno
   if (eventName === "done") {
     return {
       kind: "done",
-      title: "SRE AI response complete",
+      title: "Copilot response complete",
       description: "The assistant response was saved to the conversation.",
       status: "success",
     };

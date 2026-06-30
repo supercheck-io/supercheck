@@ -143,7 +143,7 @@ export async function archiveSreStandaloneChat(input: z.input<typeof archiveStan
       success: true,
     });
 
-    revalidatePath("/sre-ai");
+    revalidatePath("/copilot");
     return { success: true as const };
   } catch (error) {
     console.error("Error archiving standalone SRE AI chat:", error);

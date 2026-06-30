@@ -604,7 +604,7 @@ export async function createSreIntegrationBinding(
       success: true,
     });
 
-    revalidatePath("/org-admin/connectors");
+    revalidatePath("/org-admin/integrations");
     return {
       success: true,
       binding: (await getBindingListItem(created.id, organizationId, project.id)) ?? undefined,
@@ -663,7 +663,7 @@ export async function disableSreIntegrationBinding(
       success: true,
     });
 
-    revalidatePath("/org-admin/connectors");
+    revalidatePath("/org-admin/integrations");
     return {
       success: true,
       binding: (await getBindingListItem(updated.id, organizationId, project.id)) ?? undefined,

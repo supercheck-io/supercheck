@@ -73,11 +73,11 @@ export function CommandSearch({ className }: CommandSearchProps) {
         incidents: "/incidents",
         "status-pages": "/status-pages",
         services: "/services",
-        "investigation-chat": "/sre-ai",
-        "investigation-history": "/sre-ai/investigations",
-        "evidence-graph": "/sre-ai/evidence-graph",
-        "evidence-connectors": "/org-admin/connectors",
-        "diagnostic-queries": "/org-admin/diagnostic-queries",
+        "investigation-chat": "/copilot",
+        "investigation-history": "/copilot/investigations",
+        "evidence-graph": "/copilot/evidence-graph",
+        "evidence-connectors": "/org-admin/integrations",
+        "diagnostic-queries": "/org-admin/runbooks",
 
         // Create Actions
         "create-monitor-http": "/monitors/create?type=http_request",
@@ -214,7 +214,7 @@ export function CommandSearch({ className }: CommandSearchProps) {
               <CommandGroup heading="Investigate">
                 <CommandItem onSelect={() => handleCommand("investigation-chat")}>
                   <Bot className="mr-2 h-4 w-4 !text-zinc-400" />
-                  <span>Chat</span>
+                  <span>Copilot</span>
                 </CommandItem>
                 <CommandItem onSelect={() => handleCommand("investigation-history")}>
                   <FileSearch className="mr-2 h-4 w-4 !text-violet-500" />
@@ -222,15 +222,15 @@ export function CommandSearch({ className }: CommandSearchProps) {
                 </CommandItem>
                 <CommandItem onSelect={() => handleCommand("evidence-graph")}>
                   <Network className="mr-2 h-4 w-4 !text-sky-500" />
-                  <span>Graph</span>
+                  <span>Topology</span>
                 </CommandItem>
                 <CommandItem onSelect={() => handleCommand("evidence-connectors")}>
                   <Cable className="mr-2 h-4 w-4 !text-emerald-500" />
-                  <span>Connectors</span>
+                  <span>Integrations</span>
                 </CommandItem>
                 <CommandItem onSelect={() => handleCommand("diagnostic-queries")}>
                   <Database className="mr-2 h-4 w-4 !text-cyan-600" />
-                  <span>Queries</span>
+                  <span>Runbooks</span>
                 </CommandItem>
               </CommandGroup>
 

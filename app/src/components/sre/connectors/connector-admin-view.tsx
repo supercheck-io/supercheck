@@ -1,7 +1,7 @@
 "use client";
 
-import { useDeferredValue, useState, useTransition } from "react";
-import { Cable, FileSearch, Link2, Loader2, MoreHorizontal, Plus, Search, ShieldCheck, Unlink } from "lucide-react";
+import { useState, useTransition } from "react";
+import { Cable, FileSearch, Loader2, ShieldCheck, Unlink } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -56,14 +56,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { DataTable } from "@/components/sre/data-table/data-table";
+import { columns } from "@/components/sre/data-table/connectors/columns";
+import { ConnectorsToolbar } from "@/components/sre/data-table/connectors/toolbar";
 import { canBindIntegrationToConnector } from "@/lib/sre/integration-bindings";
 import { cn } from "@/lib/utils";
 import { getConnectorQueryBuilder } from "./connector-query-builders";
@@ -129,14 +124,7 @@ function formatDateTime(value: string | Date | null) {
   return new Date(value).toLocaleString();
 }
 
-function connectorMatches(connector: SreConnectorListItem, search: string) {
-  const query = search.trim().toLowerCase();
-  if (!query) return true;
 
-  return [connector.name, connector.type, connector.status, connector.privateAgent?.name]
-    .filter((value): value is string => Boolean(value))
-    .some((value) => value.toLowerCase().includes(query));
-}
 
 function formatIntegrationKey(value: string) {
   return value.replace(/_/g, " ").replace(/\b\w/g, (character) => character.toUpperCase());
@@ -156,8 +144,6 @@ export function ConnectorAdminView({
   const [connectors, setConnectors] = useState(initialConnectors);
   const [bindings, setBindings] = useState(initialBindings);
   const [search, setSearch] = useState("");
-  const deferredSearch = useDeferredValue(search);
-  const [statusFilter, setStatusFilter] = useState("all");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isBindingDialogOpen, setIsBindingDialogOpen] = useState(false);
   const [bindingProviderId, setBindingProviderId] = useState("");
@@ -200,10 +186,7 @@ export function ConnectorAdminView({
     )
     : bindingSetupOptions.services;
 
-  const filteredConnectors = connectors.filter((connector) => {
-    const matchesStatus = statusFilter === "all" || connector.status === statusFilter;
-    return matchesStatus && connectorMatches(connector, deferredSearch);
-  });
+
 
   const handleSaved = (savedConnector: SreConnectorListItem) => {
     setConnectors((current) => {
@@ -409,50 +392,33 @@ export function ConnectorAdminView({
 
   return (
     <div className="space-y-4 pt-6">
-      <div className="mb-4 -mt-2 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex flex-col">
-          <h2 className="text-2xl font-semibold">Evidence connectors</h2>
-          <p className="text-sm text-muted-foreground">
-            Connect read-only code, metrics, logs, traces, and infrastructure evidence to investigations.
-          </p>
-        </div>
-        <Button onClick={() => setIsCreateOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          Add connector
-        </Button>
-      </div>
+      <DataTable
+        columns={columns}
+        data={connectors}
+        renderToolbar={(table) => (
+          <ConnectorsToolbar
+            table={table}
+            onAddConnector={() => setIsCreateOpen(true)}
+            onAddBinding={() => setIsBindingDialogOpen(true)}
+          />
+        )}
+        entityLabel="connectors"
+        meta={{
+          onSearch: openSearchDialog,
+          onValidate: validateConnector,
+          onViewJob: viewLatestJobResult,
+          onRotate: setRotatingCredentialConnector,
+          onDisable: setDisablingConnector,
+          isValidating,
+          isLoadingJobResult,
+          isDisabling,
+        }}
+      />
 
-      <div className="rounded-xl border bg-gradient-to-br from-background via-muted/20 to-muted/40 p-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <Link2 className="h-4 w-4 text-primary" />
-              <h3 className="font-semibold">AI SRE context links</h3>
-            </div>
-            <p className="max-w-3xl text-sm text-muted-foreground">
-              Link an outbound alert provider to a separate read-only connector so investigations can correlate the page Supercheck sent with the external incident or thread the AI reads. Credentials stay separate.
-            </p>
-          </div>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => setIsBindingDialogOpen(true)}
-            disabled={
-              bindingSetupOptions.notificationProviders.length === 0 ||
-              bindingSetupOptions.connectors.length === 0
-            }
-          >
-            <Link2 className="mr-2 h-4 w-4" />
-            Link context
-          </Button>
-        </div>
-
-        {bindings.length === 0 ? (
-          <div className="mt-4 rounded-lg border border-dashed bg-background/70 p-4 text-sm text-muted-foreground">
-            No context links configured. Add one after you have both an alert provider and a matching read-only connector.
-          </div>
-        ) : (
-          <div className="mt-4 grid gap-3 lg:grid-cols-2">
+      {bindings.length > 0 && (
+        <div className="mt-8">
+          <h3 className="mb-4 text-lg font-semibold">Context Links</h3>
+          <div className="grid gap-3 lg:grid-cols-2">
             {bindings.map((binding) => (
               <div
                 key={binding.id}
@@ -494,181 +460,6 @@ export function ConnectorAdminView({
                 </div>
               </div>
             ))}
-          </div>
-        )}
-      </div>
-
-      {connectors.length === 0 ? (
-        <DashboardEmptyState
-          className="min-h-[420px]"
-          title="No evidence connectors yet"
-          description="Start with the local lab Prometheus, Loki, Tempo, or Grafana endpoints, or add a read-only production connector when you are ready."
-          icon={<ShieldCheck className="h-10 w-10" />}
-          action={
-            <Button onClick={() => setIsCreateOpen(true)}>
-              <Plus className="mr-2 h-4 w-4" />
-              Add connector
-            </Button>
-          }
-        />
-      ) : (
-        <div className="space-y-4">
-          <div className="flex flex-col gap-3 md:flex-row">
-            <div className="relative md:max-w-sm md:flex-1">
-              <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search connector, type, agent..."
-                className="pl-9"
-                aria-label="Search connectors"
-              />
-            </div>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="md:w-56" aria-label="Filter by status">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All statuses</SelectItem>
-                <SelectItem value="configured">Configured</SelectItem>
-                <SelectItem value="valid">Valid</SelectItem>
-                <SelectItem value="missing_credentials">Missing credentials</SelectItem>
-                <SelectItem value="unreachable">Unreachable</SelectItem>
-                <SelectItem value="disabled">Disabled</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="overflow-hidden rounded-lg border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Connector</TableHead>
-                  <TableHead>Execution</TableHead>
-                  <TableHead>Scope</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Limits</TableHead>
-                  <TableHead className="w-10" />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredConnectors.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={6} className="h-28 text-center text-muted-foreground">
-                      No connectors match the current filters.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  filteredConnectors.map((connector) => (
-                    <TableRow key={connector.id}>
-                      <TableCell className="min-w-[260px] whitespace-normal">
-                        <div className="space-y-2">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-medium">{connector.name}</span>
-                            <Badge variant="outline">{formatConnectorType(connector.type)}</Badge>
-                            <Badge variant="secondary">{connector.riskLevel}</Badge>
-                          </div>
-                          <p className="text-xs text-muted-foreground">
-                            {connector.hasCredentials ? "Credentials encrypted" : "Credentials not configured"}
-                          </p>
-                          {connector.endpointUrl && (
-                            <p className="max-w-md truncate text-xs text-muted-foreground">{connector.endpointUrl}</p>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="space-y-1">
-                          <p className="capitalize">{connector.executionMode.replace("_", " ")}</p>
-                          {connector.privateAgent && (
-                            <p className="text-xs text-muted-foreground">
-                              {connector.privateAgent.name} · {connector.privateAgent.status}
-                            </p>
-                          )}
-                          {connector.latestPrivateAgentJob && (
-                            <div className="space-y-1 pt-1">
-                              <Badge
-                                variant="outline"
-                                className={cn("capitalize", jobStatusClasses[connector.latestPrivateAgentJob.status])}
-                              >
-                                Last job {connector.latestPrivateAgentJob.status.replace(/_/g, " ")}
-                              </Badge>
-                              <p className="max-w-52 truncate text-xs text-muted-foreground">
-                                {formatJobSummary(connector.latestPrivateAgentJob)}
-                              </p>
-                            </div>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {connector.scopedServiceIds.length > 0 ? (
-                          <Badge variant="outline">{connector.scopedServiceIds.length} service(s)</Badge>
-                        ) : (
-                          <span className="text-sm text-muted-foreground">Org-wide</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className={cn("capitalize", statusClasses[connector.status])}>
-                          {connector.status.replace(/_/g, " ")}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="text-sm text-muted-foreground">
-                          <p>{connector.outputLimits.maxRows} rows</p>
-                          <p>{connector.outputLimits.maxSeconds}s timeout</p>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center justify-end gap-1">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => openSearchDialog(connector)}
-                            disabled={!supportsEvidenceSearch(connector)}
-                            title={supportsEvidenceSearch(connector) ? undefined : "Evidence search adapter is not implemented for this connector type yet"}
-                            aria-label={`Search evidence for ${connector.name}`}
-                          >
-                            <FileSearch className="mr-2 h-4 w-4" />
-                            Search
-                          </Button>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" aria-label={`Open actions for ${connector.name}`}>
-                                <MoreHorizontal className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => openSearchDialog(connector)} disabled={!supportsEvidenceSearch(connector)}>
-                                Search evidence
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => validateConnector(connector)} disabled={isValidating}>
-                                Validate connector
-                              </DropdownMenuItem>
-                              {connector.latestPrivateAgentJob && (
-                                <DropdownMenuItem onClick={() => viewLatestJobResult(connector)} disabled={isLoadingJobResult}>
-                                  View last job result
-                                </DropdownMenuItem>
-                              )}
-                              <DropdownMenuItem onClick={() => setRotatingCredentialConnector(connector)} disabled={isDisabling || isValidating}>
-                                Rotate credential
-                              </DropdownMenuItem>
-                              {connector.status !== "disabled" && (
-                                <DropdownMenuItem
-                                  className="text-destructive focus:text-destructive"
-                                  onClick={() => setDisablingConnector(connector)}
-                                >
-                                  Disable connector
-                                </DropdownMenuItem>
-                              )}
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
           </div>
         </div>
       )}

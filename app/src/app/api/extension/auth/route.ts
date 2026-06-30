@@ -11,6 +11,8 @@ const logger = createLogger({ module: "extension-auth" });
 const EXTENSION_API_KEY_CONFIG_ID = "default";
 const EXTENSION_API_KEY_PREFIX = "ext";
 const EXTENSION_API_KEY_LIST_LIMIT = 1000;
+const EXTENSION_API_KEY_MAX_NAME_LENGTH = 32;
+const DEFAULT_EXTENSION_API_KEY_NAME = "SuperCheck Recorder Extension";
 const EXTENSION_API_KEY_PERMISSIONS: Record<string, string[]> = {
   recorder: ["save"],
 };
@@ -30,6 +32,11 @@ type ListedApiKey = Awaited<
 >["apiKeys"][number];
 
 const apiKeyServerApi = auth.api as typeof auth.api & ApiKeyServerApi;
+
+function normalizeExtensionKeyName(name: string | undefined) {
+  const trimmed = name?.trim() || DEFAULT_EXTENSION_API_KEY_NAME;
+  return trimmed.slice(0, EXTENSION_API_KEY_MAX_NAME_LENGTH);
+}
 
 function getPermissionStatements(rawPermissions: unknown): string[] {
   if (!rawPermissions) {
@@ -77,6 +84,38 @@ function isExtensionKey(
   );
 }
 
+function getBetterAuthErrorStatus(error: unknown) {
+  const candidate = error as { statusCode?: unknown; status?: unknown } | null;
+
+  if (typeof candidate?.statusCode === "number" && candidate.statusCode >= 400 && candidate.statusCode < 600) {
+    return candidate.statusCode;
+  }
+
+  switch (candidate?.status) {
+    case "BAD_REQUEST":
+      return 400;
+    case "UNAUTHORIZED":
+      return 401;
+    case "FORBIDDEN":
+      return 403;
+    case "NOT_FOUND":
+      return 404;
+    default:
+      return 500;
+  }
+}
+
+function getBetterAuthErrorMessage(error: unknown) {
+  const candidate = error as { body?: { message?: unknown }; message?: unknown } | null;
+  const message = typeof candidate?.body?.message === "string"
+    ? candidate.body.message
+    : typeof candidate?.message === "string"
+      ? candidate.message
+      : null;
+
+  return message || "Failed to generate API key";
+}
+
 /**
  * POST /api/extension/auth
  * Generate an API key for the SuperCheck Recorder extension
@@ -118,6 +157,7 @@ export async function POST(request: NextRequest) {
     }
 
     const data = validation.data;
+    const apiKeyName = normalizeExtensionKeyName(data.name);
 
     const { apiKeys } = await apiKeyServerApi.listApiKeys({
       headers: requestHeaders,
@@ -146,11 +186,15 @@ export async function POST(request: NextRequest) {
     }
 
     // Create a new extension-scoped key using Better Auth's supported API key flow.
+    // Do not pass request headers here: Better Auth treats permissions as a
+    // server-only property whenever headers/request context are present. The
+    // route already authenticated the session above, so binding the key to that
+    // user ID is the intended server-side flow.
     const newKey = await apiKeyServerApi.createApiKey({
-      headers: requestHeaders,
       body: {
+        userId,
         configId: EXTENSION_API_KEY_CONFIG_ID,
-        name: data.name,
+        name: apiKeyName,
         prefix: EXTENSION_API_KEY_PREFIX,
         permissions: EXTENSION_API_KEY_PERMISSIONS,
       },
@@ -175,10 +219,11 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     logger.error({ err: error }, "Failed to generate extension API key");
+    const status = getBetterAuthErrorStatus(error);
 
     return NextResponse.json(
-      { success: false, error: "Failed to generate API key" },
-      { status: 500 }
+      { success: false, error: status >= 500 ? "Failed to generate API key" : getBetterAuthErrorMessage(error) },
+      { status }
     );
   }
 }

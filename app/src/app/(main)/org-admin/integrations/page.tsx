@@ -7,6 +7,8 @@ import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
 import { ConnectorAdminView } from "@/components/sre/connectors/connector-admin-view";
 import { Card, CardContent } from "@/components/ui/card";
 
+export const dynamic = "force-dynamic";
+
 export default async function OrgAdminConnectorsPage() {
   const [
     connectorsResult,
@@ -22,7 +24,7 @@ export default async function OrgAdminConnectorsPage() {
 
   const breadcrumbs = [
     { label: "Home", href: "/" },
-    { label: "Investigate", href: "/sre-ai" },
+    { label: "Investigate", href: "/copilot" },
     { label: "Evidence Connectors", isCurrentPage: true },
   ];
 
@@ -39,7 +41,7 @@ export default async function OrgAdminConnectorsPage() {
   return (
     <div>
       <PageBreadcrumbs items={breadcrumbs} />
-      <Card className="m-4 shadow-sm transition-shadow duration-200 hover:shadow-md">
+      <Card className="m-4 mb-8 shadow-sm transition-shadow duration-200 hover:shadow-md">
         <CardContent>
           <ConnectorAdminView
             initialConnectors={connectorsResult.connectors}

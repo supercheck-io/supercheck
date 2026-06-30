@@ -1,5 +1,6 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { v7 as uuidv7 } from "uuid";
 import { db } from "@/utils/db";
 import { authSchema } from "@/db/schema";
 import { organization, admin, lastLoginMethod, captcha } from "better-auth/plugins";
@@ -536,7 +537,7 @@ export const auth = betterAuth({
   ],
   advanced: {
     database: {
-      generateId: false,
+      generateId: () => uuidv7(),
     },
   },
   session: {

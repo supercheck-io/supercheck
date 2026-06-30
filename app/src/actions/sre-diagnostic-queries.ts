@@ -235,7 +235,7 @@ export async function createSreDiagnosticQuery(input: z.infer<typeof createDiagn
       success: true,
     });
 
-    revalidatePath("/org-admin/diagnostic-queries");
+    revalidatePath("/org-admin/runbooks");
     return {
       success: true,
       query: (await getDiagnosticQueryListItem(created.id, organizationId, project.id)) ?? undefined,
@@ -277,7 +277,7 @@ export async function disableSreDiagnosticQuery(input: z.infer<typeof disableDia
       success: true,
     });
 
-    revalidatePath("/org-admin/diagnostic-queries");
+    revalidatePath("/org-admin/runbooks");
     return {
       success: true,
       query: (await getDiagnosticQueryListItem(updated.id, organizationId, project.id)) ?? undefined,

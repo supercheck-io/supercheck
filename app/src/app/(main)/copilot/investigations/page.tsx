@@ -2,22 +2,26 @@ import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
 import { SreInvestigationsTable } from "@/components/sre/investigations-table";
 import { getSreInvestigationHistory } from "@/lib/sre/investigation-queries";
 
+export const dynamic = "force-dynamic";
+
 export default async function SreInvestigationsPage() {
   const result = await getSreInvestigationHistory();
 
   return (
-    <div className="space-y-5 p-4 lg:p-6">
+    <div>
       <PageBreadcrumbs
         items={[
           { label: "Home", href: "/" },
-          { label: "Investigate", href: "/sre-ai" },
+          { label: "Investigate", href: "/copilot" },
           { label: "Investigation History", isCurrentPage: true },
         ]}
       />
-      <SreInvestigationsTable
-        investigations={result.investigations}
-        loadError={result.success ? null : result.error}
-      />
+      <div className="m-4 mb-8">
+        <SreInvestigationsTable
+          investigations={result.investigations}
+          loadError={result.success ? null : result.error}
+        />
+      </div>
     </div>
   );
 }

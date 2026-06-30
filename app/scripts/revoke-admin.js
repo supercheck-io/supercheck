@@ -55,14 +55,23 @@ async function main() {
       return;
     }
 
-    // Downgrade the system-level role. Organization membership roles live in
-    // the member table and are not changed by this script.
-    await sql`
-      UPDATE "user" SET role = 'project_viewer' WHERE id = ${user.id}
-    `;
+    // Downgrade the system-level role and invalidate active sessions together
+    // so cached auth state cannot keep super_admin access after revocation.
+    const revokedSessionCount = await sql.begin(async (tx) => {
+      await tx`
+        UPDATE "user" SET role = 'project_viewer' WHERE id = ${user.id}
+      `;
+
+      const revokedSessions = await tx`
+        DELETE FROM "session" WHERE user_id = ${user.id} RETURNING id
+      `;
+
+      return revokedSessions.length;
+    });
 
     console.log(`✅ Successfully revoked super admin privileges from ${email}.`);
     console.log(`   User system role is now 'project_viewer'.`);
+    console.log(`   Invalidated ${revokedSessionCount} active session(s).`);
 
   } catch (error) {
     console.error('❌ Error revoking super admin:', error);

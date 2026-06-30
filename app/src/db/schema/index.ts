@@ -9,6 +9,7 @@ export * from "./types";
 
 // Auth tables
 export * from "./auth";
+export { apikey as apiKey } from "./auth";
 
 // Organization and project tables
 export * from "./organization";

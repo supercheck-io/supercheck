@@ -3,6 +3,8 @@ import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
 import { PrivateAgentsAdminView } from "@/components/sre/private-agents/private-agents-admin-view";
 import { Card, CardContent } from "@/components/ui/card";
 
+export const dynamic = "force-dynamic";
+
 export default async function OrgAdminPrivateAgentsPage() {
   const result = await getPrivateAgents();
   const breadcrumbs = [

@@ -80,7 +80,7 @@ describe("SRE investigation progress card", () => {
           {
             id: "event-2",
             kind: "done",
-            title: "SRE AI response complete",
+            title: "Copilot response complete",
             status: "success",
           },
         ]}
@@ -93,6 +93,6 @@ describe("SRE investigation progress card", () => {
     expect(screen.getByText("listNativeEvidence")).toBeInTheDocument();
     expect(screen.getByText("1 safe result item")).toBeInTheDocument();
     expect(screen.getByText("Evidence ev-monitor-timeout: Monitor timeout (event/native)")).toBeInTheDocument();
-    expect(screen.getByText("SRE AI response complete")).toBeInTheDocument();
+    expect(screen.getByText("Copilot response complete")).toBeInTheDocument();
   });
 });

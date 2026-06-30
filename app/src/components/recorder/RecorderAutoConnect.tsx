@@ -51,7 +51,8 @@ export function RecorderAutoConnect() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || "Failed to generate API key");
+        console.warn(data.error || "Failed to generate API key for extension");
+        return;
       }
 
       // If extension already connected, no new key was generated

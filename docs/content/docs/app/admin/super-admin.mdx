@@ -45,7 +45,7 @@ To revoke the system-level super admin role:
 docker compose exec app npm run revoke:admin admin@yourdomain.com
 ```
 
-This changes only the user's system role back to `project_viewer`. Organization memberships and project assignments are managed separately.
+This changes only the user's system role back to `project_viewer` and invalidates active sessions for that user. Organization memberships and project assignments are managed separately.
 
 </Tab>
 </Tabs>

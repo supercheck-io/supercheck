@@ -164,7 +164,7 @@ export async function createSreInvestigationReportSnapshot(input: z.input<typeof
       success: true,
     });
 
-    revalidatePath("/sre-ai/investigations");
+    revalidatePath("/copilot/investigations");
     if (report.incident.id) {
       revalidatePath(`/incidents/${report.incident.id}`);
     }
@@ -265,7 +265,7 @@ export async function saveSreInvestigationReportFeedback(input: z.input<typeof s
       success: true,
     });
 
-    revalidatePath("/sre-ai/investigations");
+    revalidatePath("/copilot/investigations");
     if (report.incidentId) {
       revalidatePath(`/incidents/${report.incidentId}`);
     }

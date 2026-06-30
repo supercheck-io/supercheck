@@ -52,6 +52,6 @@ describe("SRE verification panel", () => {
 
     expect(screen.getByText("Generate an evidence brief or gather connector evidence before trusting root-cause claims.")).toBeInTheDocument();
     expect(screen.getByText("Map a primary service before using live connector investigation.")).toBeInTheDocument();
-    expect(screen.getByText("Ask SRE AI for a verification plan after evidence is gathered. SuperCheck will not apply remediation automatically.")).toBeInTheDocument();
+    expect(screen.getByText("Ask Copilot for a verification plan after evidence is gathered. SuperCheck will not apply remediation automatically.")).toBeInTheDocument();
   });
 });

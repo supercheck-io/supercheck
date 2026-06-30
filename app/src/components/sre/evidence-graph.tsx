@@ -1,16 +1,11 @@
 "use client";
 
-import { useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
-import { Bookmark, Network, Search, Trash2 } from "lucide-react";
-import { toast } from "sonner";
+import { useMemo, useState } from "react";
+import { Network, Search, Maximize2, Minimize2 } from "lucide-react";
 
-import {
-  archiveSreEvidenceGraphFocusedView,
-  saveSreEvidenceGraphFocusedView,
-  type SreEvidenceGraphFocusedViewItem,
-} from "@/actions/sre-evidence-graph-views";
 import { SreEvidenceGraphSidePanel } from "@/components/sre/evidence-graph-side-panel";
 import type { SreEvidenceGraph as SreEvidenceGraphData, SreEvidenceGraphNode, SreEvidenceGraphNodeType } from "@/lib/sre/evidence-graph-queries";
+import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,31 +18,7 @@ import { cn } from "@/lib/utils";
 type SreEvidenceGraphProps = {
   graph: SreEvidenceGraphData;
   loadError?: string | null;
-  initialSharedFocusedViews?: SreEvidenceGraphFocusedViewItem[];
-  sharedFocusedViewsError?: string | null;
 };
-
-type SavedFocusedView = {
-  id: string;
-  name: string;
-  query: string;
-  nodeType: SreEvidenceGraphNodeType | "all";
-  incidentId: string;
-  createdAt: string;
-};
-
-type FocusedViewFilters = {
-  query: string;
-  nodeType: SreEvidenceGraphNodeType | "all";
-  incidentId: string;
-};
-
-const SAVED_VIEWS_STORAGE_KEY = "supercheck:sre:evidence-graph:focused-views:v1";
-const SAVED_VIEWS_EVENT = "supercheck:sre:evidence-graph:focused-views-updated";
-const MAX_SAVED_FOCUSED_VIEWS = 8;
-const EMPTY_SAVED_FOCUSED_VIEWS: SavedFocusedView[] = [];
-let savedFocusedViewsCacheKey: string | null = null;
-let savedFocusedViewsCache: SavedFocusedView[] = EMPTY_SAVED_FOCUSED_VIEWS;
 
 const NODE_TYPES: Array<{ value: SreEvidenceGraphNodeType | "all"; label: string }> = [
   { value: "all", label: "All node types" },
@@ -103,71 +74,6 @@ function nodeMatchesQuery(node: SreEvidenceGraphNode, query: string) {
   return [node.title, node.subtitle, node.status, node.type].filter(Boolean).join(" ").toLowerCase().includes(query);
 }
 
-function isSavedFocusedView(value: unknown): value is SavedFocusedView {
-  if (typeof value !== "object" || value === null) {
-    return false;
-  }
-
-  const candidate = value as SavedFocusedView;
-  return (
-    typeof candidate.id === "string" &&
-    typeof candidate.name === "string" &&
-    typeof candidate.query === "string" &&
-    typeof candidate.incidentId === "string" &&
-    NODE_TYPES.some((type) => type.value === candidate.nodeType) &&
-    typeof candidate.createdAt === "string"
-  );
-}
-
-function readSavedFocusedViews() {
-  if (typeof window === "undefined") {
-    return EMPTY_SAVED_FOCUSED_VIEWS;
-  }
-
-  try {
-    const savedValue = window.localStorage.getItem(SAVED_VIEWS_STORAGE_KEY);
-    if (!savedValue) {
-      savedFocusedViewsCacheKey = null;
-      savedFocusedViewsCache = EMPTY_SAVED_FOCUSED_VIEWS;
-      return savedFocusedViewsCache;
-    }
-
-    if (savedValue === savedFocusedViewsCacheKey) {
-      return savedFocusedViewsCache;
-    }
-
-    const parsedValue = JSON.parse(savedValue);
-    savedFocusedViewsCacheKey = savedValue;
-    savedFocusedViewsCache = Array.isArray(parsedValue)
-      ? parsedValue.filter(isSavedFocusedView).slice(0, MAX_SAVED_FOCUSED_VIEWS)
-      : [];
-    return savedFocusedViewsCache;
-  } catch {
-    window.localStorage.removeItem(SAVED_VIEWS_STORAGE_KEY);
-    savedFocusedViewsCacheKey = null;
-    savedFocusedViewsCache = EMPTY_SAVED_FOCUSED_VIEWS;
-    return savedFocusedViewsCache;
-  }
-}
-
-function getServerSavedFocusedViews() {
-  return EMPTY_SAVED_FOCUSED_VIEWS;
-}
-
-function subscribeSavedFocusedViews(onStoreChange: () => void) {
-  if (typeof window === "undefined") {
-    return () => undefined;
-  }
-
-  window.addEventListener("storage", onStoreChange);
-  window.addEventListener(SAVED_VIEWS_EVENT, onStoreChange);
-
-  return () => {
-    window.removeEventListener("storage", onStoreChange);
-    window.removeEventListener(SAVED_VIEWS_EVENT, onStoreChange);
-  };
-}
-
 function getIncidentNeighborhoodNodeIds(incidentNodeId: string, edges: SreEvidenceGraphData["edges"]) {
   const adjacency = new Map<string, Set<string>>();
 
@@ -201,23 +107,12 @@ function getIncidentNeighborhoodNodeIds(incidentNodeId: string, edges: SreEviden
 export function SreEvidenceGraph({
   graph,
   loadError = null,
-  initialSharedFocusedViews = [],
-  sharedFocusedViewsError = null,
 }: SreEvidenceGraphProps) {
-  const graphViewportRef = useRef<HTMLDivElement>(null);
   const [query, setQuery] = useState("");
   const [nodeType, setNodeType] = useState<SreEvidenceGraphNodeType | "all">("all");
   const [incidentFocusId, setIncidentFocusId] = useState("all");
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(graph.nodes[0]?.id ?? null);
-  const [sharedFocusedViews, setSharedFocusedViews] = useState(initialSharedFocusedViews);
-  const [isSavingSharedView, startSavingSharedView] = useTransition();
-  const [isArchivingSharedView, startArchivingSharedView] = useTransition();
-  const savedFocusedViews = useSyncExternalStore(subscribeSavedFocusedViews, readSavedFocusedViews, getServerSavedFocusedViews);
-
-  const persistSavedFocusedViews = (views: SavedFocusedView[]) => {
-    window.localStorage.setItem(SAVED_VIEWS_STORAGE_KEY, JSON.stringify(views));
-    window.dispatchEvent(new Event(SAVED_VIEWS_EVENT));
-  };
+  const [isMaximized, setIsMaximized] = useState(false);
 
   const normalizedQuery = query.trim().toLowerCase();
   const incidentOptions = useMemo(
@@ -251,76 +146,6 @@ export function SreEvidenceGraph({
     total: visibleNodes.filter((node) => node.type === type.value).length,
   }));
   const displayedGroups = groupedNodes.filter((group) => group.total > 0 || (nodeType !== "all" && group.type === nodeType));
-  const hasSavedViews = sharedFocusedViews.length > 0 || savedFocusedViews.length > 0;
-
-  const buildFocusedViewName = () => {
-    const nameParts = [
-      focusedIncident?.title ?? "All incidents",
-      nodeType === "all" ? "all nodes" : NODE_TYPE_LABELS[nodeType].toLowerCase(),
-      normalizedQuery ? `"${query.trim()}"` : null,
-    ].filter(Boolean);
-
-    return nameParts.join(" · ");
-  };
-
-  const saveFocusedView = () => {
-    const view: SavedFocusedView = {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      name: buildFocusedViewName(),
-      query: query.trim(),
-      nodeType,
-      incidentId: incidentFocusId,
-      createdAt: new Date().toISOString(),
-    };
-    const nextViews = [view, ...savedFocusedViews.filter((savedView) => savedView.name !== view.name)].slice(0, MAX_SAVED_FOCUSED_VIEWS);
-    persistSavedFocusedViews(nextViews);
-  };
-
-  const isIncidentFocusAvailable = (viewIncidentId: string) =>
-    viewIncidentId === "all" || graph.nodes.some((node) => node.type === "incident" && node.id === viewIncidentId);
-
-  const applyFocusedView = (view: FocusedViewFilters) => {
-    setQuery(view.query);
-    setNodeType(view.nodeType);
-    setIncidentFocusId(isIncidentFocusAvailable(view.incidentId) ? view.incidentId : "all");
-  };
-
-  const removeFocusedView = (viewId: string) => {
-    persistSavedFocusedViews(savedFocusedViews.filter((view) => view.id !== viewId));
-  };
-
-  const saveSharedFocusedView = () => {
-    startSavingSharedView(async () => {
-      const result = await saveSreEvidenceGraphFocusedView({
-        name: buildFocusedViewName(),
-        query: query.trim(),
-        nodeType,
-        incidentId: incidentFocusId,
-      });
-
-      if (!result.success) {
-        toast.error(result.error);
-        return;
-      }
-
-      setSharedFocusedViews((current) => [result.view, ...current.filter((view) => view.id !== result.view.id)].slice(0, 20));
-      toast.success("Shared evidence graph view saved");
-    });
-  };
-
-  const archiveSharedFocusedView = (viewId: string) => {
-    startArchivingSharedView(async () => {
-      const result = await archiveSreEvidenceGraphFocusedView({ id: viewId });
-      if (!result.success) {
-        toast.error(result.error);
-        return;
-      }
-
-      setSharedFocusedViews((current) => current.filter((view) => view.id !== result.archivedId));
-      toast.success("Shared evidence graph view archived");
-    });
-  };
-
   if (loadError) {
     return (
       <Alert variant="destructive">
@@ -331,13 +156,12 @@ export function SreEvidenceGraph({
   }
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-      <Card className="overflow-hidden rounded-2xl">
-        <CardHeader className="border-b bg-muted/10">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2 text-xl">
-                <Network className="h-5 w-5" />
+    <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <Card className="flex min-h-[520px] flex-col overflow-hidden rounded-xl xl:min-h-[calc(100svh-9rem)]">
+        <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b bg-muted/10">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 w-full">
+            <div className="flex-1">
+              <CardTitle className="text-2xl font-semibold">
                 Evidence graph
               </CardTitle>
               <CardDescription>Find relationships between services, alerts, incidents, evidence, and recommendations.</CardDescription>
@@ -349,8 +173,8 @@ export function SreEvidenceGraph({
             </div>
           </div>
         </CardHeader>
-        <CardContent className="space-y-4 p-4 sm:p-5">
-          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_190px_220px_auto_auto_auto]">
+        <CardContent className="flex min-h-0 flex-1 flex-col gap-4 p-4 sm:p-5">
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_190px_220px_auto]">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search graph nodes..." className="pl-9" />
@@ -382,99 +206,52 @@ export function SreEvidenceGraph({
             >
               Clear
             </Button>
-            <Button type="button" variant="outline" onClick={saveFocusedView} disabled={!hasActiveFilters}>
-              <Bookmark className="h-4 w-4" />
-              Save local
-            </Button>
-            <Button type="button" onClick={saveSharedFocusedView} disabled={!hasActiveFilters || isSavingSharedView}>
-              <Bookmark className="h-4 w-4" />
-              {isSavingSharedView ? "Saving..." : "Save shared"}
-            </Button>
           </div>
 
-          {(focusedIncident || hasSavedViews) && (
-            <div className="rounded-2xl border bg-muted/10 p-3">
-              {focusedIncident && (
-                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-sm text-muted-foreground">
-                    Focused on <span className="font-medium text-foreground">{focusedIncident.title}</span>
-                  </p>
-                  <Badge variant="outline" className="rounded-full">{visibleNodes.length} nodes</Badge>
-                </div>
-              )}
-              {hasSavedViews && (
-                <div className="space-y-3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="text-sm font-medium">Saved views</p>
-                    {sharedFocusedViewsError && (
-                      <span className="text-xs text-muted-foreground">Shared views unavailable; browser views still work.</span>
-                    )}
-                  </div>
-                  {sharedFocusedViews.length > 0 && (
-                    <div className="flex flex-wrap gap-2">
-                      <span className="self-center text-xs text-muted-foreground">Shared</span>
-                      {sharedFocusedViews.map((view) => (
-                        <div key={view.id} className="flex items-center gap-2">
-                          <Button type="button" variant="secondary" size="sm" className="min-w-0 flex-1 justify-start" onClick={() => applyFocusedView(view)}>
-                            <span className="truncate">{view.name}</span>
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            aria-label={`Archive shared view ${view.name}`}
-                            onClick={() => archiveSharedFocusedView(view.id)}
-                            disabled={isArchivingSharedView}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {savedFocusedViews.length > 0 && (
-                    <div className="flex flex-wrap gap-2">
-                      <span className="self-center text-xs text-muted-foreground">Browser</span>
-                      {savedFocusedViews.map((view) => (
-                        <div key={view.id} className="flex items-center gap-2">
-                          <Button type="button" variant="secondary" size="sm" className="min-w-0 flex-1 justify-start" onClick={() => applyFocusedView(view)}>
-                            <span className="truncate">{view.name}</span>
-                          </Button>
-                          <Button type="button" variant="ghost" size="icon" aria-label={`Delete focused view ${view.name}`} onClick={() => removeFocusedView(view.id)}>
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
+          {focusedIncident && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border bg-muted/10 px-3 py-2">
+              <p className="text-sm text-muted-foreground">
+                Focused on <span className="font-medium text-foreground">{focusedIncident.title}</span>
+              </p>
+              <Badge variant="outline" className="rounded-full">{visibleNodes.length} nodes</Badge>
             </div>
           )}
 
-          <div className="overflow-hidden rounded-2xl border bg-background">
+          <div className={cn("flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border bg-background transition-all duration-300", isMaximized && "fixed inset-4 z-50 shadow-2xl")}>
             <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-muted/20 px-4 py-3">
               <div>
                 <p className="text-sm font-medium">Operational lanes</p>
-                <p className="text-xs text-muted-foreground">Filter by incident or node type, then select a node for details.</p>
+                <p className="text-xs text-muted-foreground">Select a node to inspect source, status, and relationships.</p>
+              </div>
+              <div className="flex items-center gap-2">
+                {visibleEdges.length === 0 && visibleNodes.length > 0 && (
+                  <Badge variant="outline" className="rounded-full">No visible relationships</Badge>
+                )}
+                <Button variant="ghost" size="icon" onClick={() => setIsMaximized(!isMaximized)} aria-label="Toggle maximize operational lanes">
+                  {isMaximized ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+                </Button>
               </div>
             </div>
             <div
-              ref={graphViewportRef}
-              className="overflow-x-auto"
+              className="min-h-0 flex-1 overflow-auto bg-[radial-gradient(circle,rgba(0,0,0,0.1)_1px,transparent_1px)] dark:bg-[radial-gradient(circle,rgba(255,255,255,0.1)_1px,transparent_1px)] [background-size:16px_16px]"
               aria-label="Evidence graph viewport"
               tabIndex={0}
             >
               <div
-                className="grid min-h-[320px] grid-flow-col auto-cols-[minmax(260px,340px)] gap-px bg-border"
+                className="grid min-h-full grid-flow-col auto-cols-[minmax(280px,340px)] gap-px bg-border/20"
               >
                 {displayedGroups.length === 0 ? (
-                  <div className="flex min-w-full items-center justify-center bg-muted/10 p-6 text-sm text-muted-foreground">
-                    No graph nodes match the current filters.
+                  <div className="flex w-full min-w-[600px] items-center justify-center p-8">
+                    <DashboardEmptyState
+                      icon={<Network className="h-10 w-10 text-muted-foreground" />}
+                      title="No nodes match the current filters"
+                      description="Adjust or clear filters to see more relationships in the evidence graph."
+                      className="min-h-[400px]"
+                    />
                   </div>
                 ) : (
                   displayedGroups.map((group) => (
-                    <div key={group.type} className="bg-muted/10 p-3">
+                    <div key={group.type} className="p-3">
                       <div className="mb-3 flex items-center justify-between gap-2">
                         <Label className="text-sm font-semibold">{NODE_TYPE_LABELS[group.type]}</Label>
                         <Badge variant="outline" className="rounded-full">{group.total}</Badge>
@@ -490,7 +267,7 @@ export function SreEvidenceGraph({
                               aria-label={`Select ${node.type} node ${node.title}`}
                               onClick={() => setSelectedNodeId(node.id)}
                               className={cn(
-                                "w-full rounded-2xl border p-3 text-left text-sm transition-colors hover:bg-background",
+                                "w-full rounded-xl border p-3 text-left text-sm transition-colors hover:bg-background",
                                 NODE_TYPE_CLASSES[node.type],
                                 effectiveSelectedNodeId === node.id && "ring-2 ring-ring"
                               )}

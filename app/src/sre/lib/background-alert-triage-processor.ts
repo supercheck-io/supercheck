@@ -38,7 +38,10 @@ export async function initializeSreAlertTriageProcessor() {
     worker.on("failed", (job, error) => queueLogger.error({ jobId: job?.id, err: error }, "SRE alert triage job failed"));
     worker.on("error", (error) => queueLogger.error({ err: error }, "SRE alert triage worker error"));
 
-    await worker.run();
+    worker.run().catch((error) => {
+      queueLogger.error({ err: error }, "SRE alert triage worker run loop failed");
+    });
+
     return true;
   })();
 

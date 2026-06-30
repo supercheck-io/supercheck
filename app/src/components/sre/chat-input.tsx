@@ -22,15 +22,22 @@ export function SreChatInput({
   onSubmit,
   isPending,
   placeholder,
-  submitLabel = "Ask SRE AI",
+  submitLabel = "Ask Copilot",
   footer,
   helperLabel = "Read-only",
 }: SreChatInputProps) {
   return (
-    <div className="rounded-2xl border bg-background/95 p-2 shadow-sm">
+    <form
+      className="rounded-2xl border bg-background/95 p-2 shadow-sm"
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSubmit();
+      }}
+    >
       <Textarea
         value={value}
         onChange={(event) => onChange(event.target.value)}
+        aria-label="Copilot prompt"
         placeholder={placeholder}
         rows={2}
         maxLength={4000}
@@ -53,12 +60,12 @@ export function SreChatInput({
           {footer && <span>{footer}</span>}
           <span className="hidden sm:inline">Enter to send · Shift+Enter for newline</span>
         </div>
-        <Button onClick={onSubmit} disabled={isPending || !value.trim()} className="h-9 sm:min-w-28">
+        <Button type="submit" disabled={isPending || !value.trim()} className="h-9 sm:min-w-28">
           {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
           {submitLabel}
           {!isPending && <CornerDownLeft className="ml-2 h-4 w-4" />}
         </Button>
       </div>
-    </div>
+    </form>
   );
 }

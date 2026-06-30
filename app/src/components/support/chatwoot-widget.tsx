@@ -186,11 +186,21 @@ export function ChatwootWidget({
     }
 
     return (
-        <Script
-            id="chatwoot-sdk"
-            src={`${validatedBaseUrl}/packs/js/sdk.js`}
-            strategy="lazyOnload"
-            onLoad={handleLoad}
-        />
+        <>
+            <style dangerouslySetInnerHTML={{ __html: `
+                .cw-widget-container {
+                    bottom: 84px !important;
+                }
+                .cw-widget-bubble {
+                    bottom: 84px !important;
+                }
+            `}} />
+            <Script
+                id="chatwoot-sdk"
+                src={`${validatedBaseUrl}/packs/js/sdk.js`}
+                strategy="lazyOnload"
+                onLoad={handleLoad}
+            />
+        </>
     );
 }

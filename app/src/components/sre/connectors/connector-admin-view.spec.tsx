@@ -41,6 +41,13 @@ const connector = {
 };
 
 describe("ConnectorAdminView", () => {
+  function openConnectorActions(name: string) {
+    fireEvent.keyDown(screen.getByRole("button", { name: `Open actions for ${name}` }), {
+      key: "Enter",
+      code: "Enter",
+    });
+  }
+
   it("renders existing AI SRE context links without exposing secrets", () => {
     render(
       <ConnectorAdminView
@@ -93,7 +100,7 @@ describe("ConnectorAdminView", () => {
     expect(screen.queryByText(/routing key/i)).not.toBeInTheDocument();
   });
 
-  it("opens connector-specific evidence search guidance", () => {
+  it("opens connector-specific evidence search guidance", async () => {
     render(
       <ConnectorAdminView
         loadError={null}
@@ -118,7 +125,8 @@ describe("ConnectorAdminView", () => {
       />
     );
 
-    fireEvent.click(screen.getByLabelText("Search evidence for CloudWatch prod"));
+    openConnectorActions("CloudWatch prod");
+    fireEvent.click(await screen.findByRole("menuitem", { name: /search evidence/i }));
 
     expect(screen.getByText("AWS CloudWatch query guide")).toBeInTheDocument();
     expect(screen.getByText("Active alarms")).toBeInTheDocument();
@@ -126,7 +134,7 @@ describe("ConnectorAdminView", () => {
     expect(screen.getByText(/100 rows, 10s timeout/i)).toBeInTheDocument();
   });
 
-  it("builds typed CloudWatch metric queries in the evidence search dialog", () => {
+  it("builds typed CloudWatch metric queries in the evidence search dialog", async () => {
     render(
       <ConnectorAdminView
         loadError={null}
@@ -151,7 +159,8 @@ describe("ConnectorAdminView", () => {
       />
     );
 
-    fireEvent.click(screen.getByLabelText("Search evidence for CloudWatch prod"));
+    openConnectorActions("CloudWatch prod");
+    fireEvent.click(await screen.findByRole("menuitem", { name: /search evidence/i }));
     fireEvent.change(screen.getByLabelText("Metric namespace"), {
       target: { value: "AWS/ApplicationELB" },
     });
@@ -170,7 +179,7 @@ describe("ConnectorAdminView", () => {
     ).toBeInTheDocument();
   });
 
-  it("disables evidence search for collaboration connectors without live adapters", () => {
+  it("disables evidence search for collaboration connectors without live adapters", async () => {
     const jiraConnector = {
       ...connector,
       id: "018f0000-0000-7000-8000-000000000020",
@@ -206,6 +215,7 @@ describe("ConnectorAdminView", () => {
       />
     );
 
-    expect(screen.getByLabelText("Search evidence for Jira incidents")).toBeDisabled();
+    openConnectorActions("Jira incidents");
+    expect(await screen.findByRole("menuitem", { name: /search evidence/i })).toHaveAttribute("aria-disabled", "true");
   });
 });

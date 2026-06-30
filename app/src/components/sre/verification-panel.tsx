@@ -141,7 +141,7 @@ export function SreVerificationPanel({
             </ul>
           ) : (
             <p className="mt-2 text-xs text-muted-foreground">
-              Ask SRE AI for a verification plan after evidence is gathered. SuperCheck will not apply remediation automatically.
+              Ask Copilot for a verification plan after evidence is gathered. SuperCheck will not apply remediation automatically.
             </p>
           )}
         </div>

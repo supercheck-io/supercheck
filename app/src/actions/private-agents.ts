@@ -186,7 +186,7 @@ export async function registerPrivateAgent(input: z.infer<typeof privateAgentInp
     });
 
     revalidatePath("/org-admin/private-agents");
-    revalidatePath("/org-admin/connectors");
+    revalidatePath("/org-admin/integrations");
     return {
       success: true,
       agent: normalizeAgent(agent),
@@ -322,7 +322,7 @@ export async function disablePrivateAgent(input: z.infer<typeof privateAgentIdSc
     });
 
     revalidatePath("/org-admin/private-agents");
-    revalidatePath("/org-admin/connectors");
+    revalidatePath("/org-admin/integrations");
     return { success: true, agent: normalizeAgent(agent), message: "Private Agent disabled" };
   } catch (error) {
     console.error("Error disabling Private Agent:", error);

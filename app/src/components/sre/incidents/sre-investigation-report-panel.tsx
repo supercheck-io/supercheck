@@ -65,7 +65,7 @@ function getReportStatus({ hasContent, matchedCitationCount, isInvestigating }: 
   if (!hasContent) {
     return {
       label: "Waiting",
-      description: "Ask SRE AI to generate an incident analysis before using this report.",
+      description: "Ask Copilot to generate an incident analysis before using this report.",
       tone: "waiting",
     };
   }
@@ -130,7 +130,7 @@ export function SreInvestigationReportPanel({
               <FileText className="h-4 w-4" />
               Investigation report
             </CardTitle>
-            <CardDescription>Live responder brief generated from the latest SRE AI answer and stored evidence citations.</CardDescription>
+            <CardDescription>Live responder brief generated from the latest Copilot answer and stored evidence citations.</CardDescription>
           </div>
           <Badge variant={status.tone === "backed" ? "secondary" : "outline"} className="gap-2">
             <StatusDot tone={status.tone} />
@@ -147,7 +147,7 @@ export function SreInvestigationReportPanel({
             </h4>
           </div>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            {workingTheory ?? "No working theory yet. Ask SRE AI for a root-cause hypothesis after evidence has been collected."}
+            {workingTheory ?? "No working theory yet. Ask Copilot for a root-cause hypothesis after evidence has been collected."}
           </p>
           <p className="mt-2 text-xs text-muted-foreground">{status.description}</p>
         </section>
@@ -192,7 +192,7 @@ export function SreInvestigationReportPanel({
             </div>
           ) : (
             <p className="mt-2 text-xs text-muted-foreground">
-              No evidence links yet. Ask SRE AI to cite incident evidence IDs or run read-only connector collection.
+              No evidence links yet. Ask Copilot to cite incident evidence IDs or run read-only connector collection.
             </p>
           )}
         </section>

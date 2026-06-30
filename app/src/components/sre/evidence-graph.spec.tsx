@@ -1,13 +1,7 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 
 import { SreEvidenceGraph } from "./evidence-graph";
-import { saveSreEvidenceGraphFocusedView } from "@/actions/sre-evidence-graph-views";
 import type { SreEvidenceGraph as SreEvidenceGraphData } from "@/lib/sre/evidence-graph-queries";
-
-jest.mock("@/actions/sre-evidence-graph-views", () => ({
-  archiveSreEvidenceGraphFocusedView: jest.fn(),
-  saveSreEvidenceGraphFocusedView: jest.fn(),
-}));
 
 jest.mock("sonner", () => ({
   toast: {
@@ -104,64 +98,20 @@ describe("SreEvidenceGraph", () => {
     render(<SreEvidenceGraph graph={graph} />);
 
     expect(screen.getByText("Operational lanes")).toBeInTheDocument();
-    expect(screen.getByText(/filter by incident or node type/i)).toBeInTheDocument();
+    expect(screen.getByText(/select a node to inspect source/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /zoom in graph/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /fit/i })).not.toBeInTheDocument();
   });
 
-  it("saves and reapplies focused graph views in browser storage", () => {
+  it("clears active filters without exposing saved view controls", () => {
     render(<SreEvidenceGraph graph={graph} />);
 
     const searchInput = screen.getByPlaceholderText("Search graph nodes...");
     fireEvent.change(searchInput, { target: { value: "prometheus" } });
-    fireEvent.click(screen.getByRole("button", { name: /save local/i }));
-
-    const savedViewButton = screen.getByText('All incidents · all nodes · "prometheus"').closest("button");
-    expect(savedViewButton).not.toBeNull();
-    expect(window.localStorage.getItem("supercheck:sre:evidence-graph:focused-views:v1")).toContain("prometheus");
 
     fireEvent.click(screen.getByRole("button", { name: "Clear" }));
     expect(searchInput).toHaveValue("");
-
-    fireEvent.click(savedViewButton!);
-    expect(searchInput).toHaveValue("prometheus");
-  });
-
-  it("saves and reapplies shared graph views", async () => {
-    jest.mocked(saveSreEvidenceGraphFocusedView).mockResolvedValue({
-      success: true,
-      view: {
-        id: "7fc2b527-890e-4b33-8b5f-1e4d7f5e7c8d",
-        name: 'All incidents · all nodes · "prometheus"',
-        query: "prometheus",
-        nodeType: "all",
-        incidentId: "all",
-        createdByUserId: "user-1",
-        createdAt: "2026-06-29T10:00:00.000Z",
-        updatedAt: "2026-06-29T10:00:00.000Z",
-      },
-    });
-    render(<SreEvidenceGraph graph={graph} />);
-
-    const searchInput = screen.getByPlaceholderText("Search graph nodes...");
-    fireEvent.change(searchInput, { target: { value: "prometheus" } });
-    fireEvent.click(screen.getByRole("button", { name: /save shared/i }));
-
-    await waitFor(() => {
-      expect(saveSreEvidenceGraphFocusedView).toHaveBeenCalledWith({
-        name: 'All incidents · all nodes · "prometheus"',
-        query: "prometheus",
-        nodeType: "all",
-        incidentId: "all",
-      });
-    });
-
-    expect(await screen.findByText('All incidents · all nodes · "prometheus"')).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
-    expect(searchInput).toHaveValue("");
-
-    fireEvent.click(screen.getByRole("button", { name: 'All incidents · all nodes · "prometheus"' }));
-    expect(searchInput).toHaveValue("prometheus");
+    expect(screen.queryByRole("button", { name: /save local/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /save shared/i })).not.toBeInTheDocument();
   });
 });

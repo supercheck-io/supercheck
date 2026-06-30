@@ -14,8 +14,8 @@ describe("SreInvestigationReportPanel", () => {
 
     expect(screen.getByText("Investigation report")).toBeInTheDocument();
     expect(screen.getByText("Waiting")).toBeInTheDocument();
-    expect(screen.getByText("No working theory yet. Ask SRE AI for a root-cause hypothesis after evidence has been collected.")).toBeInTheDocument();
-    expect(screen.getByText("No evidence links yet. Ask SRE AI to cite incident evidence IDs or run read-only connector collection.")).toBeInTheDocument();
+    expect(screen.getByText("No working theory yet. Ask Copilot for a root-cause hypothesis after evidence has been collected.")).toBeInTheDocument();
+    expect(screen.getByText("No evidence links yet. Ask Copilot to cite incident evidence IDs or run read-only connector collection.")).toBeInTheDocument();
     expect(screen.getByText("No verification actions extracted yet. SuperCheck stays read-only and does not apply remediation automatically.")).toBeInTheDocument();
   });
 
@@ -43,7 +43,7 @@ describe("SreInvestigationReportPanel", () => {
           {
             id: "progress-2",
             kind: "done",
-            title: "SRE AI response complete",
+            title: "Copilot response complete",
             description: "The assistant response was saved to the conversation.",
             status: "success",
           },
@@ -65,7 +65,7 @@ describe("SreInvestigationReportPanel", () => {
     expect(screen.getByText("ev-missing-span")).toBeInTheDocument();
     expect(screen.getByText(/Action 1:/)).toBeInTheDocument();
     expect(screen.getByText(/Verify checkout error budget recovery before closing the incident./)).toBeInTheDocument();
-    expect(screen.getByText("SRE AI response complete")).toBeInTheDocument();
+    expect(screen.getByText("Copilot response complete")).toBeInTheDocument();
   });
 
   it("marks a streaming report as building", () => {

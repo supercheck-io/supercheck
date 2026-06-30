@@ -12,7 +12,11 @@ import {
   ClipboardListIcon,
   FileIcon,
   Code,
+  SquareLibrary,
   BookOpenText,
+  Waypoints,
+  Wrench,
+  Layers,
   Plus,
   Chrome,
   ArrowLeftRight,
@@ -86,29 +90,41 @@ const data = {
 
   Investigate: [
     {
-      title: "Chat",
-      url: "/sre-ai",
+      title: "Copilot",
+      url: "/copilot",
       icon: Bot,
     },
     {
-      title: "History",
-      url: "/sre-ai/investigations",
-      icon: FileSearch,
-    },
-    {
-      title: "Graph",
-      url: "/sre-ai/evidence-graph",
-      icon: Network,
-    },
-    {
-      title: "Connectors",
-      url: "/org-admin/connectors",
-      icon: Cable,
-    },
-    {
-      title: "Queries",
-      url: "/org-admin/diagnostic-queries",
-      icon: Database,
+      title: "Tools",
+      url: "#",
+      icon: Layers,
+      items: [
+        {
+          title: "Services",
+          url: "/services",
+          icon: Waypoints,
+        },
+        {
+          title: "Topology",
+          url: "/copilot/evidence-graph",
+          icon: Network,
+        },
+        {
+          title: "Runbooks",
+          url: "/org-admin/runbooks",
+          icon: SquareLibrary,
+        },
+        {
+          title: "History",
+          url: "/copilot/investigations",
+          icon: FileSearch,
+        },
+        {
+          title: "Integrations",
+          url: "/org-admin/integrations",
+          icon: Cable,
+        },
+      ],
     },
   ],
 
@@ -235,11 +251,6 @@ const data = {
       url: "/monitors",
       icon: Globe,
     },
-    {
-      title: "Services",
-      url: "/services",
-      icon: Network,
-    },
   ],
 
   SuperAdmin: [
@@ -274,7 +285,7 @@ const data = {
       title: "Docs",
       url: "https://supercheck.io/docs/app/welcome",
       icon: BookOpenText,
-      badge: "v1.3.5",
+      badge: "v1.3.6-canary.2",
     },
   ],
   documents: [

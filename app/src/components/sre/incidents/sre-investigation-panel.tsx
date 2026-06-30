@@ -200,7 +200,7 @@ export function SreInvestigationPanel({
 
       if (!response.ok || !response.body) {
         const body = await response.json().catch(() => null) as { error?: string } | null;
-        throw new Error(body?.error ?? "SRE AI chat failed");
+        throw new Error(body?.error ?? "Copilot chat failed");
       }
 
       const reader = response.body.getReader();
@@ -251,7 +251,7 @@ export function SreInvestigationPanel({
       setContextAttachment("");
       setSelectedAttachmentFile(null);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "SRE AI chat failed";
+      const message = error instanceof Error ? error.message : "Copilot chat failed";
       setChatError(message);
       toast.error(message);
     } finally {
@@ -266,10 +266,10 @@ export function SreInvestigationPanel({
           <div>
             <CardTitle className="flex items-center gap-2 text-xl">
               <Bot className="h-5 w-5" />
-              AI investigation workspace
+              Copilot investigation workspace
             </CardTitle>
             <CardDescription className="mt-2 max-w-2xl">
-              Evidence-scoped SRE agent chat with read-only investigation runs, safe tool progress, context attachments, and verification planning.
+              Evidence-scoped Copilot chat with read-only investigation runs, safe tool progress, context attachments, and verification planning.
             </CardDescription>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -319,7 +319,7 @@ export function SreInvestigationPanel({
         <div className="space-y-3">
           <div className="flex items-center gap-2">
             <MessageSquare className="h-4 w-4 text-muted-foreground" />
-            <p className="text-sm font-medium">Ask SRE AI about this incident</p>
+            <p className="text-sm font-medium">Ask Copilot about this incident</p>
           </div>
           <div className="flex flex-col gap-2 rounded-2xl border bg-muted/10 p-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0 flex-1">
@@ -327,7 +327,7 @@ export function SreInvestigationPanel({
               {chatHistories.length > 0 ? (
                 <Select value={conversationId ?? "new"} onValueChange={selectConversation}>
                   <SelectTrigger className="mt-1">
-                    <SelectValue placeholder="Select SRE chat" />
+                    <SelectValue placeholder="Select Copilot chat" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="new">New incident chat</SelectItem>
@@ -339,7 +339,7 @@ export function SreInvestigationPanel({
                   </SelectContent>
                 </Select>
               ) : (
-                <p className="mt-1 text-sm text-muted-foreground">No saved incident chat yet.</p>
+                <p className="mt-1 text-sm text-muted-foreground">No saved Copilot incident chat yet.</p>
               )}
             </div>
             <div className="flex flex-wrap gap-2">
@@ -427,7 +427,7 @@ export function SreInvestigationPanel({
           <SreChatInput
             value={question}
             onChange={setQuestion}
-            onSubmit={submitChat}
+            onSubmit={() => void submitChat()}
             isPending={isChatPending}
             placeholder="Ask for evidence-backed root cause, missing evidence, or verification steps..."
             footer="Responses are saved to an incident-scoped SRE conversation."

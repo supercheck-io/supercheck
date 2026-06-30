@@ -210,4 +210,5 @@ export const authSchema = {
   account,
   verification,
   apikey,
+  apiKey: apikey,
 };

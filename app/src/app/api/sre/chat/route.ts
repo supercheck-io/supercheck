@@ -53,7 +53,7 @@ function sanitizeAttachmentForPrompt(attachment: SreChatTextAttachment) {
       mimeType: safeSummaryText(attachment.mimeType, "application/octet-stream", 120),
       size: attachment.size,
       storagePath: attachment.storagePath,
-      note: "File bytes are stored securely; SRE AI receives metadata only and must not claim file contents were inspected unless provided in text evidence.",
+      note: "File bytes are stored securely; AISRE receives metadata only and must not claim file contents were inspected unless provided in text evidence.",
     };
   }
 
@@ -100,7 +100,13 @@ function buildChatPrompt(input: {
     input.attachments.length > 0 ? `User-provided context attachments (server-validated metadata/text only):\n${JSON.stringify(input.attachments, null, 2)}` : null,
     "User request:",
     input.message,
-    "Respond with read-only investigation guidance. If evidence is missing, state what should be gathered next.",
+    [
+      "Respond with read-only investigation guidance. If evidence is missing, state what should be gathered next.",
+      "Use concise sections, bullets, markdown tables for comparisons, and fenced code blocks for commands or queries.",
+      "When a small numeric summary would be clearer as a chart, include a fenced `chart` JSON block with this exact shape:",
+      '{"type":"bar","title":"Short title","xKey":"label","series":[{"key":"value","label":"Value"}],"data":[{"label":"api","value":12}]}',
+      "Use only real values already present in evidence or the user request; do not fabricate chart data.",
+    ].join("\n"),
   ].filter(Boolean).join("\n");
 }
 
@@ -221,14 +227,14 @@ export async function POST(request: NextRequest) {
   });
 
   if (!canInvestigate) {
-    return NextResponse.json({ error: "Insufficient permissions to use SRE AI" }, { status: 403 });
+    return NextResponse.json({ error: "Insufficient permissions to use AISRE" }, { status: 403 });
   }
 
   const rateLimit = await checkSreChatRateLimit(context.userId);
   if (!rateLimit.allowed) {
     const retryAfter = rateLimit.resetTime ? Math.ceil((rateLimit.resetTime - Date.now()) / 1000) : 60;
     return NextResponse.json(
-      { error: "SRE AI chat rate limit reached. Please wait a moment and try again." },
+      { error: "AISRE chat rate limit reached. Please wait a moment and try again." },
       { status: 429, headers: { "Retry-After": String(retryAfter) } }
     );
   }
@@ -320,7 +326,7 @@ export async function POST(request: NextRequest) {
       modelId = result.modelId;
     } catch (error) {
       console.error("SRE agent error:", error);
-      assistantText = "SRE AI is temporarily unavailable. The conversation was saved; gather native evidence or connector evidence and retry.";
+      assistantText = "AISRE is temporarily unavailable. The conversation was saved; gather native evidence or connector evidence and retry.";
       send("agent.fallback", {
         reason: "ai_unavailable",
       });

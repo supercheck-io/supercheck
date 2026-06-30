@@ -149,6 +149,13 @@ const investigations: SreInvestigationHistoryItem[] = [
 ];
 
 describe("SreInvestigationsTable", () => {
+  function openInvestigationActions(incidentNumber: number) {
+    fireEvent.keyDown(screen.getByRole("button", { name: `Open actions for investigation #${incidentNumber}` }), {
+      key: "Enter",
+      code: "Enter",
+    });
+  }
+
   beforeEach(() => {
     mockCreateSreInvestigationReportSnapshot.mockResolvedValue({
       success: true,
@@ -197,7 +204,8 @@ describe("SreInvestigationsTable", () => {
     const clickSpy = jest.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
 
     render(<SreInvestigationsTable investigations={investigations} />);
-    fireEvent.click(screen.getAllByRole("button", { name: /export report/i })[0]);
+    openInvestigationActions(42);
+    fireEvent.click(await screen.findByRole("menuitem", { name: /export report/i }));
 
     expect(clickSpy).toHaveBeenCalled();
     expect(exportedBlob).not.toBeNull();
@@ -219,20 +227,24 @@ describe("SreInvestigationsTable", () => {
   it("saves a persisted report snapshot", async () => {
     render(<SreInvestigationsTable investigations={investigations} />);
 
-    fireEvent.click(screen.getAllByRole("button", { name: /save snapshot/i })[0]);
+    openInvestigationActions(42);
+    fireEvent.click(await screen.findByRole("menuitem", { name: /save snapshot/i }));
 
     await waitFor(() => {
       expect(mockCreateSreInvestigationReportSnapshot).toHaveBeenCalledWith({
         investigationRunId: "018f0000-0000-7000-8000-000000000001",
       });
     });
-    expect(await screen.findAllByText("snapshot saved")).toHaveLength(2);
+    await waitFor(() => {
+      expect(screen.getAllByText("snapshot")).toHaveLength(2);
+    });
   });
 
   it("saves reviewer feedback for a persisted report snapshot", async () => {
     render(<SreInvestigationsTable investigations={investigations} />);
 
-    fireEvent.click(screen.getAllByRole("button", { name: /review/i })[1]);
+    openInvestigationActions(43);
+    fireEvent.click(await screen.findByRole("menuitem", { name: /^review$/i }));
     fireEvent.change(screen.getByLabelText("Rejected hypotheses"), {
       target: { value: "Cache saturation was not supported\nRegional DNS was unrelated" },
     });

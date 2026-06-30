@@ -3,6 +3,44 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { SreChatInput } from "./chat-input";
 import { extractSreEvidenceCitations, SreChatMessageList } from "./chat-message-list";
 
+beforeAll(() => {
+  const resizeObserverEntry = (target: Element): ResizeObserverEntry => ({
+    target,
+    contentRect: {
+      x: 0,
+      y: 0,
+      width: 640,
+      height: 224,
+      top: 0,
+      right: 640,
+      bottom: 224,
+      left: 0,
+      toJSON: () => ({}),
+    } as DOMRectReadOnly,
+    borderBoxSize: [],
+    contentBoxSize: [],
+    devicePixelContentBoxSize: [],
+  });
+
+  class ResizeObserverMock {
+    constructor(private readonly callback: ResizeObserverCallback) {}
+
+    observe(target: Element) {
+      this.callback([resizeObserverEntry(target)], this as unknown as ResizeObserver);
+    }
+
+    unobserve() {
+      return undefined;
+    }
+
+    disconnect() {
+      return undefined;
+    }
+  }
+
+  global.ResizeObserver = ResizeObserverMock as unknown as typeof ResizeObserver;
+});
+
 describe("SRE chat UI components", () => {
   it("renders empty and populated message states", () => {
     const { rerender } = render(
@@ -19,7 +57,7 @@ describe("SRE chat UI components", () => {
       />
     );
 
-    expect(screen.getByText("SRE AI")).toBeInTheDocument();
+    expect(screen.getByText("Copilot")).toBeInTheDocument();
     expect(screen.getByText("Read-only finding")).toBeInTheDocument();
     expect(screen.getByText("test-model")).toBeInTheDocument();
   });
@@ -37,6 +75,80 @@ describe("SRE chat UI components", () => {
 
     expect(screen.getByRole("status")).toHaveTextContent("Checking recent monitor evidence...");
     expect(screen.getByText("Working")).toBeInTheDocument();
+  });
+
+  it("renders SRE prompt suggestions inside the empty transcript", () => {
+    const onSuggestionSelect = jest.fn();
+
+    render(
+      <SreChatMessageList
+        messages={[]}
+        emptyTitle="No messages"
+        emptyDescription="Ask a question."
+        suggestions={["Inspect system health."]}
+        onSuggestionSelect={onSuggestionSelect}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Inspect system health/i }));
+
+    expect(onSuggestionSelect).toHaveBeenCalledWith("Inspect system health.");
+  });
+
+  it("renders common assistant markdown without exposing raw formatting markers", () => {
+    render(
+      <SreChatMessageList
+        messages={[{ id: "message-1", role: "assistant", content: "1. **Check recent monitoring data**: Review latency.\n- Confirm error rate." }]}
+        emptyTitle="No messages"
+        emptyDescription="Ask a question."
+      />
+    );
+
+    expect(screen.getByText("Check recent monitoring data")).toBeInTheDocument();
+    expect(screen.queryByText(/\*\*Check recent monitoring data\*\*/)).not.toBeInTheDocument();
+    expect(screen.getByText("Confirm error rate.")).toBeInTheDocument();
+  });
+
+  it("renders structured assistant tables and code blocks", () => {
+    render(
+      <SreChatMessageList
+        messages={[
+          {
+            id: "message-1",
+            role: "assistant",
+            content: "```bash\nkubectl get pods\n```\n\n| Signal | State |\n| --- | --- |\n| p95 latency | elevated |",
+          },
+        ]}
+        emptyTitle="No messages"
+        emptyDescription="Ask a question."
+      />
+    );
+
+    expect(screen.getByText("bash")).toBeInTheDocument();
+    expect(screen.getByText("kubectl get pods")).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Signal" })).toBeInTheDocument();
+    expect(screen.getByText("p95 latency")).toBeInTheDocument();
+    expect(screen.queryByText("| --- | --- |")).not.toBeInTheDocument();
+  });
+
+  it("renders safe assistant chart blocks", () => {
+    render(
+      <SreChatMessageList
+        messages={[
+          {
+            id: "message-1",
+            role: "assistant",
+            content:
+              '```chart\n{"type":"bar","title":"Error budget burn","xKey":"service","series":[{"key":"burn","label":"Burn"}],"data":[{"service":"checkout","burn":2.4}]}\n```',
+          },
+        ]}
+        emptyTitle="No messages"
+        emptyDescription="Ask a question."
+      />
+    );
+
+    expect(screen.getByText("Error budget burn")).toBeInTheDocument();
+    expect(screen.queryByText(/```chart/)).not.toBeInTheDocument();
   });
 
   it("extracts bounded assistant evidence citations", () => {
@@ -98,7 +210,7 @@ describe("SRE chat UI components", () => {
     );
 
     fireEvent.change(screen.getByPlaceholderText("Ask"), { target: { value: "New question" } });
-    fireEvent.click(screen.getByRole("button", { name: "Ask SRE AI" }));
+    fireEvent.click(screen.getByRole("button", { name: "Ask Copilot" }));
 
     expect(onChange).toHaveBeenCalledWith("New question");
     expect(onSubmit).toHaveBeenCalled();

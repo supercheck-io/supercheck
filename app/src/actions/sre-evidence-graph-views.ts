@@ -205,7 +205,7 @@ export async function saveSreEvidenceGraphFocusedView(input: z.input<typeof focu
       success: true,
     });
 
-    revalidatePath("/sre-ai/evidence-graph");
+    revalidatePath("/copilot/evidence-graph");
     return { success: true as const, view: mapFocusedView(created) };
   } catch (error) {
     console.error("Error saving SRE evidence graph focused view:", error);
@@ -252,7 +252,7 @@ export async function archiveSreEvidenceGraphFocusedView(input: z.input<typeof a
       success: true,
     });
 
-    revalidatePath("/sre-ai/evidence-graph");
+    revalidatePath("/copilot/evidence-graph");
     return { success: true as const, archivedId: archived.id };
   } catch (error) {
     console.error("Error archiving SRE evidence graph focused view:", error);

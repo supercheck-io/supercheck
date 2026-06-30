@@ -171,280 +171,239 @@ export function ConnectorFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-3xl gap-3 overflow-y-auto p-5">
-        <DialogHeader>
+      <DialogContent className="w-[min(96vw,88rem)] max-w-none min-w-2xl gap-0 overflow-hidden p-0">
+        <DialogHeader className="border-b px-6 py-5">
           <DialogTitle>Add connector</DialogTitle>
           <DialogDescription>
             Add a read-only evidence source for investigations. Secrets stay encrypted and are never shown to the AI model.
           </DialogDescription>
         </DialogHeader>
 
-        <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="connector-type">Connector type</Label>
-              <Select
-                value={type}
-                onValueChange={(value) => {
-                  const nextType = value as ConnectorType;
-                  setType(nextType);
-                  if (!privateAgentSupportedConnectorTypes.includes(nextType)) {
-                    setExecutionMode("direct");
-                    setPrivateAgentId(null);
-                  }
-                }}
-              >
-                <SelectTrigger id="connector-type">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {connectorTypeOptions.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                {connectorTypeOptions.find((option) => option.value === type)?.description}
-              </p>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="connector-name">Name *</Label>
-              <Input
-                id="connector-name"
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                placeholder="Production GitHub"
-                aria-invalid={Boolean(firstError(fieldErrors, "name"))}
-              />
-              {firstError(fieldErrors, "name") && (
-                <p className="text-xs text-destructive">{firstError(fieldErrors, "name")}</p>
-              )}
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="connector-risk">Risk level</Label>
-              <Select value={riskLevel} onValueChange={(value) => setRiskLevel(value as typeof riskLevel)}>
-                <SelectTrigger id="connector-risk">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="low">Low</SelectItem>
-                  <SelectItem value="medium">Medium</SelectItem>
-                  <SelectItem value="high">High</SelectItem>
-                  <SelectItem value="critical">Critical</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="connector-execution">Execution mode</Label>
-              <Select value={executionMode} onValueChange={(value) => setExecutionMode(value as typeof executionMode)}>
-                <SelectTrigger id="connector-execution">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="direct">Direct</SelectItem>
-                  <SelectItem value="private_agent" disabled={setupOptions.privateAgents.length === 0 || !supportsPrivateAgent}>
-                    Private Agent
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-1.5 md:col-span-2">
-              <Label htmlFor="connector-endpoint">Endpoint URL</Label>
-              <Input
-                id="connector-endpoint"
-                value={endpointUrl}
-                onChange={(event) => setEndpointUrl(event.target.value)}
-                placeholder={queryGuide.endpointPlaceholder}
-                aria-invalid={Boolean(firstError(fieldErrors, "endpointUrl"))}
-              />
-              {firstError(fieldErrors, "endpointUrl") ? (
-                <p className="text-xs text-destructive">{firstError(fieldErrors, "endpointUrl")}</p>
-              ) : (
-                <p className="text-xs text-muted-foreground">
-                  Required for direct observability/source-code connectors and useful for knowledge/ticketing/chat setup. Live evidence search is available only where a read-only adapter is implemented.
-                </p>
-              )}
-            </div>
-
-            <div className="rounded-xl border bg-muted/20 p-3 md:col-span-2">
-              <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <p className="text-sm font-medium">{queryGuide.label} query guide</p>
-                  <p className="text-xs text-muted-foreground">{queryGuide.setupHint}</p>
-                </div>
-                <Badge variant="outline">{queryGuide.queryLabel}</Badge>
-              </div>
-              <div className="mt-3 grid gap-2 md:grid-cols-2">
-                {queryGuide.examples.map((example) => (
-                  <div key={example.label} className="rounded-lg border bg-background p-2.5">
-                    <div className="mb-1 flex items-center justify-between gap-2">
-                      <p className="text-xs font-medium">{example.label}</p>
-                    </div>
-                    <code className="block truncate rounded bg-muted px-2 py-1 font-mono text-xs" title={example.query}>
-                      {example.query}
-                    </code>
-                    <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{example.description}</p>
-                  </div>
-                ))}
-              </div>
-              {queryGuide.docs && (
-                <div className="mt-3 flex flex-wrap gap-2 text-xs">
-                  {queryGuide.docs.map((doc) => (
-                    <a
-                      key={doc.href}
-                      href={doc.href}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-primary underline-offset-4 hover:underline"
-                    >
-                      {doc.label}
-                    </a>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {executionMode === "private_agent" && (
-              <div className="space-y-1.5 md:col-span-2">
-                <Label htmlFor="private-agent">Private Agent</Label>
-                <Select value={privateAgentId ?? undefined} onValueChange={setPrivateAgentId}>
-                  <SelectTrigger id="private-agent">
-                    <SelectValue placeholder="Select an agent" />
+        <form className="flex min-h-0 flex-col" onSubmit={handleSubmit}>
+          <div className="flex flex-col gap-5 px-6 py-5">
+            <section className="grid gap-4 xl:grid-cols-12">
+              <div className="flex flex-col gap-1.5 xl:col-span-3">
+                <Label htmlFor="connector-type">Connector type</Label>
+                <Select
+                  value={type}
+                  onValueChange={(value) => {
+                    const nextType = value as ConnectorType;
+                    setType(nextType);
+                    if (!privateAgentSupportedConnectorTypes.includes(nextType)) {
+                      setExecutionMode("direct");
+                      setPrivateAgentId(null);
+                    }
+                  }}
+                >
+                  <SelectTrigger id="connector-type">
+                    <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {setupOptions.privateAgents.map((agent) => (
-                      <SelectItem key={agent.id} value={agent.id}>
-                        {agent.name} ({agent.status})
+                    {connectorTypeOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
-            )}
-
-            <div className="space-y-2 md:col-span-2">
-              <div>
-                <Label>Service scope</Label>
                 <p className="text-xs text-muted-foreground">
-                  Limit where this connector can be used. Leave empty only for org-wide read-only sources.
+                  {connectorTypeOptions.find((option) => option.value === type)?.description}
                 </p>
               </div>
-              {setupOptions.services.length === 0 ? (
-                <div className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
-                  No active services are available. Add services before scoping connectors.
-                </div>
-              ) : (
-                <div className="grid max-h-32 gap-1 overflow-y-auto rounded-lg border p-2 md:grid-cols-2">
-                  {setupOptions.services.map((service) => (
-                    <label
-                      key={service.id}
-                      className="flex cursor-pointer items-start gap-2 rounded-md p-2 hover:bg-muted/50"
-                    >
-                      <Checkbox
-                        checked={selectedServiceIds.includes(service.id)}
-                        onCheckedChange={() => toggleService(service.id)}
-                        aria-label={`Scope connector to ${service.name}`}
-                      />
-                      <span className="space-y-1 text-sm">
-                        <span className="block font-medium">{service.name}</span>
-                        <span className="block text-xs text-muted-foreground">
-                          {[service.environment, service.ownerTeam].filter(Boolean).join(" · ") || "No metadata"}
-                        </span>
-                      </span>
-                    </label>
-                  ))}
-                </div>
-              )}
-            </div>
 
-            {isCloudWatch ? (
-              <div className="grid gap-4 md:col-span-2 md:grid-cols-2">
-                <div className="space-y-1.5">
-                  <Label htmlFor="aws-access-key-id">AWS access key ID</Label>
-                  <Input
-                    id="aws-access-key-id"
-                    value={awsAccessKeyId}
-                    onChange={(event) => setAwsAccessKeyId(event.target.value)}
-                    type="password"
-                    autoComplete="new-password"
-                    placeholder="AKIA..."
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="aws-secret-access-key">AWS secret access key</Label>
-                  <Input
-                    id="aws-secret-access-key"
-                    value={awsSecretAccessKey}
-                    onChange={(event) => setAwsSecretAccessKey(event.target.value)}
-                    type="password"
-                    autoComplete="new-password"
-                    placeholder="Paste read-only secret"
-                  />
-                </div>
-                <div className="space-y-1.5 md:col-span-2">
-                  <Label htmlFor="aws-session-token">AWS session token</Label>
-                  <Input
-                    id="aws-session-token"
-                    value={awsSessionToken}
-                    onChange={(event) => setAwsSessionToken(event.target.value)}
-                    type="password"
-                    autoComplete="new-password"
-                    placeholder="Optional STS session token"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    {queryGuide.credentialHint} Credentials are encrypted server-side, scoped to the selected Private Agent when used, and redacted before AI context.
-                  </p>
-                </div>
+              <div className="flex flex-col gap-1.5 xl:col-span-4">
+                <Label htmlFor="connector-name">Name *</Label>
+                <Input
+                  id="connector-name"
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                  placeholder="Production GitHub"
+                  aria-invalid={Boolean(firstError(fieldErrors, "name"))}
+                />
+                {firstError(fieldErrors, "name") && (
+                  <p className="text-xs text-destructive">{firstError(fieldErrors, "name")}</p>
+                )}
               </div>
-            ) : (
-              <>
-                <div className="space-y-1.5">
-                  <Label htmlFor="credential-type">Credential type</Label>
-                  <Select value={credentialType} onValueChange={(value) => setCredentialType(value as CredentialType)}>
-                    <SelectTrigger id="credential-type">
-                      <SelectValue />
+
+              <div className="flex flex-col gap-1.5 xl:col-span-2">
+                <Label htmlFor="connector-risk">Risk level</Label>
+                <Select value={riskLevel} onValueChange={(value) => setRiskLevel(value as typeof riskLevel)}>
+                  <SelectTrigger id="connector-risk">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="low">Low</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="high">High</SelectItem>
+                    <SelectItem value="critical">Critical</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex flex-col gap-1.5 xl:col-span-3">
+                <Label htmlFor="connector-execution">Execution mode</Label>
+                <Select value={executionMode} onValueChange={(value) => setExecutionMode(value as typeof executionMode)}>
+                  <SelectTrigger id="connector-execution">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="direct">Direct</SelectItem>
+                    <SelectItem value="private_agent" disabled={setupOptions.privateAgents.length === 0 || !supportsPrivateAgent}>
+                      Private Agent
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {executionMode === "private_agent" && (
+                <div className="flex flex-col gap-1.5 xl:col-span-4">
+                  <Label htmlFor="private-agent">Private Agent</Label>
+                  <Select value={privateAgentId ?? undefined} onValueChange={setPrivateAgentId}>
+                    <SelectTrigger id="private-agent">
+                      <SelectValue placeholder="Select an agent" />
                     </SelectTrigger>
                     <SelectContent>
-                      {credentialTypeOptions.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
+                      {setupOptions.privateAgents.map((agent) => (
+                        <SelectItem key={agent.id} value={agent.id}>
+                          {agent.name} ({agent.status})
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
+              )}
 
-                <div className="space-y-1.5">
-                  <Label htmlFor="credential-value">Credential value</Label>
-                  <Input
-                    id="credential-value"
-                    value={credentialValue}
-                    onChange={(event) => setCredentialValue(event.target.value)}
-                    type="password"
-                    autoComplete="new-password"
-                    placeholder="Paste read-only credential"
-                  />
-                  <p className="text-xs text-muted-foreground">{queryGuide.credentialHint}</p>
+              <div className="flex flex-col gap-1.5 xl:col-span-5">
+                <Label htmlFor="connector-endpoint">Endpoint URL</Label>
+                <Input
+                  id="connector-endpoint"
+                  value={endpointUrl}
+                  onChange={(event) => setEndpointUrl(event.target.value)}
+                  placeholder={queryGuide.endpointPlaceholder}
+                  aria-invalid={Boolean(firstError(fieldErrors, "endpointUrl"))}
+                />
+                {firstError(fieldErrors, "endpointUrl") ? (
+                  <p className="text-xs text-destructive">{firstError(fieldErrors, "endpointUrl")}</p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    Use the read-only API endpoint reachable from the selected execution mode.
+                  </p>
+                )}
+              </div>
+
+              {isCloudWatch ? (
+                <>
+                  <div className="flex flex-col gap-1.5 xl:col-span-3">
+                    <Label htmlFor="aws-access-key-id">AWS access key ID</Label>
+                    <Input
+                      id="aws-access-key-id"
+                      value={awsAccessKeyId}
+                      onChange={(event) => setAwsAccessKeyId(event.target.value)}
+                      type="password"
+                      autoComplete="new-password"
+                      placeholder="AKIA..."
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5 xl:col-span-4">
+                    <Label htmlFor="aws-secret-access-key">AWS secret access key</Label>
+                    <Input
+                      id="aws-secret-access-key"
+                      value={awsSecretAccessKey}
+                      onChange={(event) => setAwsSecretAccessKey(event.target.value)}
+                      type="password"
+                      autoComplete="new-password"
+                      placeholder="Paste read-only secret"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5 xl:col-span-5">
+                    <Label htmlFor="aws-session-token">AWS session token</Label>
+                    <Input
+                      id="aws-session-token"
+                      value={awsSessionToken}
+                      onChange={(event) => setAwsSessionToken(event.target.value)}
+                      type="password"
+                      autoComplete="new-password"
+                      placeholder="Optional STS token"
+                    />
+                    <p className="text-xs text-muted-foreground">{queryGuide.credentialHint}</p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex flex-col gap-1.5 xl:col-span-3">
+                    <Label htmlFor="credential-type">Credential type</Label>
+                    <Select value={credentialType} onValueChange={(value) => setCredentialType(value as CredentialType)}>
+                      <SelectTrigger id="credential-type">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {credentialTypeOptions.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="flex flex-col gap-1.5 xl:col-span-4">
+                    <Label htmlFor="credential-value">Credential value</Label>
+                    <Input
+                      id="credential-value"
+                      value={credentialValue}
+                      onChange={(event) => setCredentialValue(event.target.value)}
+                      type="password"
+                      autoComplete="new-password"
+                      placeholder="Paste read-only credential"
+                    />
+                    <p className="text-xs text-muted-foreground">{queryGuide.credentialHint}</p>
+                  </div>
+                </>
+              )}
+            </section>
+
+            <section className="rounded-lg border p-4">
+              <div className="grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)] lg:items-start">
+                <div className="flex flex-col gap-1">
+                  <Label>Service scope</Label>
+                  <p className="text-xs text-muted-foreground">Optional. Leave empty for org-wide read-only use.</p>
                 </div>
-              </>
-            )}
-          </div>
+                {setupOptions.services.length === 0 ? (
+                  <div className="rounded-lg border border-dashed px-3 py-2 text-sm text-muted-foreground">
+                    No active services are available. Add services before scoping connectors.
+                  </div>
+                ) : (
+                  <div className="grid gap-1 rounded-lg border bg-background/70 p-2 md:grid-cols-2 xl:grid-cols-3">
+                    {setupOptions.services.map((service) => (
+                      <label
+                        key={service.id}
+                        className="flex cursor-pointer items-start gap-2 rounded-md p-2 hover:bg-muted/50"
+                      >
+                        <Checkbox
+                          checked={selectedServiceIds.includes(service.id)}
+                          onCheckedChange={() => toggleService(service.id)}
+                          aria-label={`Scope connector to ${service.name}`}
+                        />
+                        <span className="flex min-w-0 flex-col gap-0.5 text-sm">
+                          <span className="truncate font-medium">{service.name}</span>
+                          <span className="truncate text-xs text-muted-foreground">
+                            {[service.environment, service.ownerTeam].filter(Boolean).join(" · ") || "No metadata"}
+                          </span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </section>
 
-          <div className="flex flex-col gap-2 rounded-xl border bg-muted/30 p-3 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
-            <p>Calls are read-only, budgeted, service-scoped, redacted, and audited.</p>
-            <div className="flex shrink-0 flex-wrap gap-2">
-              <Badge variant="outline">Read-only</Badge>
+            <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+              <span>Read-only, budgeted, service-scoped, redacted, and audited.</span>
               <Badge variant="outline">No side effects</Badge>
             </div>
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="border-t px-6 py-4">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isPending}>
               Cancel
             </Button>

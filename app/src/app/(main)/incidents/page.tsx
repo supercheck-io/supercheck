@@ -3,6 +3,8 @@ import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
 import { SreIncidentsList } from "@/components/sre/incidents/sre-incidents-list";
 import { Card, CardContent } from "@/components/ui/card";
 
+export const dynamic = "force-dynamic";
+
 export default async function IncidentsPage() {
   const result = await getSreIncidents();
   const breadcrumbs = [

@@ -10,6 +10,16 @@ jest.mock("@/actions/sre-ai", () => ({
   archiveSreStandaloneChat: jest.fn(),
 }));
 
+jest.mock("@/components/sre/sre-assistant-ui-thread", () => ({
+  SreAssistantUiThread: ({ initialMessages }: { initialMessages: Array<{ content: string }> }) => (
+    <div>
+      {initialMessages.map((message, index) => (
+        <p key={`${message.content}-${index}`}>{message.content}</p>
+      ))}
+    </div>
+  ),
+}));
+
 describe("SreAiConsole", () => {
   it("renders chat history and switches conversations", () => {
     render(

@@ -37,7 +37,7 @@ describe("DiagnosticQueriesAdminView", () => {
 
     expect(screen.getByText("Latency by route")).toBeInTheDocument();
 
-    fireEvent.change(screen.getByPlaceholderText("Search query, connector, type..."), { target: { value: "postgres" } });
+    fireEvent.change(screen.getByLabelText("Search runbooks"), { target: { value: "postgres" } });
 
     expect(screen.queryByText("Latency by route")).not.toBeInTheDocument();
   });
@@ -51,9 +51,9 @@ describe("DiagnosticQueriesAdminView", () => {
       />
     );
 
-    fireEvent.click(screen.getAllByRole("button", { name: /add query/i })[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: /add runbook/i })[0]);
 
-    expect(screen.getByText("Recommended diagnostic adapters")).toBeInTheDocument();
+    expect(screen.getByText("Recommended recipes")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Prometheus HTTP 5xx rate/i }));
 
     expect(screen.getByDisplayValue("Prometheus HTTP 5xx rate")).toBeInTheDocument();
