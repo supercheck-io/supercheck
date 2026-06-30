@@ -14,7 +14,9 @@ const plans = [
             'Unlimited monitors',
             'Unlimited Playwright minutes',
             'Unlimited K6 VU minutes',
-            'Unlimited AI credits',
+            'Unlimited AI feature usage with your own provider key',
+            'Unlimited AISRE investigations on your infrastructure',
+            'Unlimited read-only evidence connectors',
             'Unlimited team members',
             'Unlimited organizations & projects',
             'CI/CD integration',
@@ -34,7 +36,10 @@ const plans = [
             '25 monitors',
             '3,000 Playwright minutes/month',
             '20,000 K6 VU minutes/month',
-            '100 AI credits/month',
+            '500 AI credits/month',
+            '25 AISRE investigation units/month',
+            '3 live evidence connectors',
+            '1 Private Agent',
             '5 team members',
             '2 organizations, 10 projects',
             'CI/CD integration',
@@ -54,7 +59,10 @@ const plans = [
             '100 monitors',
             '10,000 Playwright minutes/month',
             '75,000 K6 VU minutes/month',
-            '300 AI credits/month',
+            '2,500 AI credits/month',
+            '150 AISRE investigation units/month',
+            '15 live evidence connectors',
+            '5 Private Agents',
             '25 team members',
             '10 organizations, 50 projects',
             'CI/CD integration',
@@ -72,7 +80,9 @@ const plans = [
         features: [
             'Unlimited monitors',
             'Unlimited Playwright & K6 minutes',
-            'Unlimited AI credits',
+            'Custom AI credit pool or bring-your-own-provider',
+            'Custom AISRE investigation volume',
+            'Custom connector and Private Agent limits',
             'Unlimited team members & projects',
             'Custom data retention policies',
             'Dedicated account manager',
@@ -89,7 +99,8 @@ const plans = [
 const overagePricing = [
     { metric: 'Playwright minute', plus: '$0.03', pro: '$0.02' },
     { metric: 'K6 VU minute', plus: '$0.01', pro: '$0.01' },
-    { metric: 'AI credit', plus: '$0.05', pro: '$0.03' },
+    { metric: 'AI credit', plus: '$0.02', pro: '$0.01' },
+    { metric: 'AISRE investigation unit', plus: '$0.50', pro: '$0.50' },
 ];
 
 const comparisonFeatures = [
@@ -98,8 +109,20 @@ const comparisonFeatures = [
             { name: 'Monitors', plus: '25', pro: '100', selfHosted: 'Unlimited' },
             { name: 'Playwright minutes/month', plus: '3,000', pro: '10,000', selfHosted: 'Unlimited' },
             { name: 'K6 VU minutes/month', plus: '20,000', pro: '75,000', selfHosted: 'Unlimited' },
-            { name: 'AI credits/month', plus: '100', pro: '300', selfHosted: 'Unlimited' },
+            { name: 'AI credits/month', plus: '500', pro: '2,500', selfHosted: 'Unlimited with BYO provider' },
+            { name: 'AISRE investigation units/month', plus: '25', pro: '150', selfHosted: 'Unlimited' },
+            { name: 'Live evidence connectors', plus: '3', pro: '15', selfHosted: 'Unlimited' },
+            { name: 'Private Agents', plus: '1', pro: '5', selfHosted: 'Unlimited' },
             { name: 'Concurrent jobs', plus: '5', pro: '10', selfHosted: 'Unlimited' },
+        ]
+    },
+    {
+        category: 'AI SRE', items: [
+            { name: 'Standalone AISRE Copilot', plus: '✓', pro: '✓', selfHosted: '✓' },
+            { name: 'Incident investigation chat', plus: '✓', pro: '✓', selfHosted: '✓' },
+            { name: 'Evidence graph and reports', plus: '✓', pro: '✓', selfHosted: '✓' },
+            { name: 'Report snapshots and feedback', plus: '✓', pro: '✓', selfHosted: '✓' },
+            { name: 'Read-only connector evidence', plus: 'Limited', pro: 'Expanded', selfHosted: 'Self-managed' },
         ]
     },
     {
@@ -135,7 +158,11 @@ const faqs = [
     },
     {
         question: 'Do unused minutes roll over?',
-        answer: 'No, plan quotas reset monthly on your billing date.',
+        answer: 'No. Execution minutes, AI credits, and AISRE investigation units reset monthly on your billing date.',
+    },
+    {
+        question: 'How do AI credits work?',
+        answer: 'AI credits are a monthly pool for model-backed features such as test generation, failure analysis, and AISRE chat. AISRE investigations also use investigation units because they can run multiple model/tool steps. Spending limits prevent surprise overages.',
     },
     {
         question: 'Can I change plans anytime?',
@@ -147,7 +174,7 @@ const faqs = [
     },
     {
         question: 'Is the self-hosted version really free?',
-        answer: 'Yes. Supercheck is open source. Self-host on your infrastructure with unlimited usage at no cost.',
+        answer: 'Yes. Supercheck is open source. Self-host on your infrastructure with unlimited Supercheck usage at no license cost. You still pay your own infrastructure and AI provider costs.',
     },
     {
         question: 'Do you offer enterprise plans?',

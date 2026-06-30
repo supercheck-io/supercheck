@@ -96,9 +96,12 @@ export default function HomePage() {
   const YOUTUBE_VIDEO_ID = "A9CzmekuvfI";
 
   useEffect(() => {
-    setIsMounted(true);
-    const isDarkMode = document.documentElement.classList.contains("dark");
-    setIsDark(isDarkMode);
+    const timer = window.setTimeout(() => {
+      setIsMounted(true);
+      setIsDark(document.documentElement.classList.contains("dark"));
+    }, 0);
+
+    return () => window.clearTimeout(timer);
   }, []);
 
   const toggleTheme = () => {
