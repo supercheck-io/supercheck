@@ -14,7 +14,7 @@ describe("SreAssistantUiModal", () => {
   it("renders the floating Copilot launcher and opens the chat panel", async () => {
     render(<SreAssistantUiModal />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Open AI Copilot" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open Copilot" }));
 
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Copilot" })).toBeInTheDocument();
