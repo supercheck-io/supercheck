@@ -53,7 +53,7 @@ function sanitizeAttachmentForPrompt(attachment: SreChatTextAttachment) {
       mimeType: safeSummaryText(attachment.mimeType, "application/octet-stream", 120),
       size: attachment.size,
       storagePath: attachment.storagePath,
-      note: "File bytes are stored securely; AISRE receives metadata only and must not claim file contents were inspected unless provided in text evidence.",
+      note: "File bytes are stored securely; Copilot receives metadata only and must not claim file contents were inspected unless provided in text evidence.",
     };
   }
 
@@ -227,14 +227,14 @@ export async function POST(request: NextRequest) {
   });
 
   if (!canInvestigate) {
-    return NextResponse.json({ error: "Insufficient permissions to use AISRE" }, { status: 403 });
+    return NextResponse.json({ error: "Insufficient permissions to use Copilot" }, { status: 403 });
   }
 
   const rateLimit = await checkSreChatRateLimit(context.userId);
   if (!rateLimit.allowed) {
     const retryAfter = rateLimit.resetTime ? Math.ceil((rateLimit.resetTime - Date.now()) / 1000) : 60;
     return NextResponse.json(
-      { error: "AISRE chat rate limit reached. Please wait a moment and try again." },
+      { error: "Copilot chat rate limit reached. Please wait a moment and try again." },
       { status: 429, headers: { "Retry-After": String(retryAfter) } }
     );
   }
@@ -326,7 +326,7 @@ export async function POST(request: NextRequest) {
       modelId = result.modelId;
     } catch (error) {
       console.error("SRE agent error:", error);
-      assistantText = "AISRE is temporarily unavailable. The conversation was saved; gather native evidence or connector evidence and retry.";
+      assistantText = "Copilot is temporarily unavailable. The conversation was saved; gather native evidence or connector evidence and retry.";
       send("agent.fallback", {
         reason: "ai_unavailable",
       });

@@ -365,7 +365,7 @@ export async function getSreEvidenceGraph(): Promise<
         title: service.name,
         subtitle: [service.environment, `tier ${service.tier}`].filter(Boolean).join(" · "),
         status: service.status,
-        href: "/services",
+        href: "/org-admin?tab=services",
         createdAt: service.createdAt,
       });
     }

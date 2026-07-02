@@ -66,7 +66,7 @@ const {
   getSreConversation: jest.Mock;
 };
 
-describe("AISRE assistant-ui chat API", () => {
+describe("Copilot assistant-ui chat API", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockRequireProjectContext.mockResolvedValue({
@@ -137,7 +137,7 @@ describe("AISRE assistant-ui chat API", () => {
       modelId: "test-model",
     }));
     expect(streamText).toHaveBeenCalledWith(expect.objectContaining({
-      system: expect.stringContaining("Standalone AISRE chat rules"),
+      system: expect.stringContaining("Standalone Copilot chat rules"),
       messages: [{ role: "user", content: "converted" }],
     }));
   });
@@ -183,7 +183,7 @@ describe("AISRE assistant-ui chat API", () => {
     }));
 
     expect(response.status).toBe(503);
-    expect(await response.json()).toEqual({ error: "AISRE is not configured" });
+    expect(await response.json()).toEqual({ error: "Copilot is not configured" });
     expect(streamText).not.toHaveBeenCalled();
     expect(mockCreateSreConversation).not.toHaveBeenCalled();
     expect(mockAppendSreMessage).not.toHaveBeenCalled();

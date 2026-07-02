@@ -9,7 +9,7 @@ Supercheck's AI SRE transforms existing tests, monitors, jobs, alert history, an
 The unified reliability loop works as follows:
 
 1. **Detect**: Monitors, jobs, and tests detect an issue.
-2. **Triage**: AI evaluates severity, affected services, and handles duplicate alerts, creating an incident workspace.
+2. **Triage**: Responders review alert signals and create an incident when the signal needs investigation. Responders can also create an incident manually when the issue starts outside Supercheck alerts.
 3. **Investigate**: The AI agent gathers native evidence and read-only connector evidence across your stack.
 4. **Explain**: The incident workspace shows a working theory, confidence scores, cited evidence, tool timeline, and recommendations.
 5. **Verify**: A responder applies the fix in their own systems, and Supercheck verifies the fix by re-running the detecting tests.
@@ -39,3 +39,5 @@ Supercheck automatically utilizes the rich operational evidence it already owns 
 To get a complete picture of an incident, the AI SRE agent integrates securely with your external observability and operational tools through [Connectors](/docs/app/investigate/connectors).
 
 These TypeScript-native connectors are strictly read-only and governed by Role-Based Access Control (RBAC), budgets, and redaction policies to guarantee that the agent only accesses authorized evidence.
+
+Administrators configure services, integrations, diagnostic recipes, and Private Agents under [Admin → AI SRE Setup](/docs/app/admin/ai-sre-setup).

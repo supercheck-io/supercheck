@@ -340,8 +340,9 @@ abstract class BaseDirectConnector implements Connector {
       return { status: "valid", latencyMs: Date.now() - startedAt };
     } catch (error) {
       const message = error instanceof Error ? error.message : "Connector validation failed";
+      const lowerMessage = message.toLowerCase();
       return {
-        status: message.includes("credentials rejected") ? "invalid_credentials" : "unreachable",
+        status: lowerMessage.includes("credentials rejected") || lowerMessage.includes("invalid credentials") ? "invalid_credentials" : "unreachable",
         message,
         latencyMs: Date.now() - startedAt,
       };
@@ -551,7 +552,9 @@ export class GrafanaConnector extends BaseDirectConnector {
 
   protected validationRequest() {
     if (!this.endpointUrl) throw new Error("Grafana endpoint URL is required");
-    return fetchJson({ url: `${this.endpointUrl}/api/health`, secret: this.secret(), timeoutMs: this.timeoutMs() });
+    const url = new URL(`${this.endpointUrl}/api/search`);
+    url.searchParams.set("limit", "1");
+    return fetchJson({ url: url.toString(), secret: this.secret(), timeoutMs: this.timeoutMs() });
   }
 
   async search(params: ConnectorSearchParams): Promise<ConnectorEvidenceItem[]> {
@@ -786,7 +789,7 @@ export class DatadogConnector extends BaseDirectConnector {
     const apiKey = this.apiKey();
     const applicationKey = this.applicationKey();
     if (!apiKey || !applicationKey) {
-      throw new Error("Datadog connector requires apiKey and applicationKey credentials");
+      throw new Error("credentials rejected: Datadog connector requires apiKey and applicationKey credentials");
     }
 
     return {
@@ -795,9 +798,13 @@ export class DatadogConnector extends BaseDirectConnector {
     };
   }
 
-  protected validationRequest() {
+  protected async validationRequest() {
     if (!this.endpointUrl) throw new Error("Datadog endpoint URL is required");
-    return fetchJson({ url: `${this.endpointUrl}/api/v1/validate`, timeoutMs: this.timeoutMs(), headers: this.datadogHeaders() });
+    const payload = await fetchJson({ url: `${this.endpointUrl}/api/v1/validate`, timeoutMs: this.timeoutMs(), headers: this.datadogHeaders() });
+    if ((payload as { valid?: unknown }).valid === false) {
+      throw new Error("credentials rejected: Datadog API key was rejected");
+    }
+    return payload;
   }
 
   async search(params: ConnectorSearchParams): Promise<ConnectorEvidenceItem[]> {
@@ -877,7 +884,7 @@ export class LokiConnector extends BaseDirectConnector {
 
   protected validationRequest() {
     if (!this.endpointUrl) throw new Error("Loki endpoint URL is required");
-    return fetchOk({ url: `${this.endpointUrl}/ready`, secret: this.secret(), timeoutMs: this.timeoutMs() });
+    return fetchJson({ url: `${this.endpointUrl}/loki/api/v1/labels`, secret: this.secret(), timeoutMs: this.timeoutMs() });
   }
 
   async search(params: ConnectorSearchParams): Promise<ConnectorEvidenceItem[]> {

@@ -22,10 +22,13 @@ import {
   ClipboardList,
   Target,
   Bot,
-  Cable,
   FileSearch,
   Network,
   Siren,
+  UserCog,
+  Boxes,
+  SquareLibrary,
+  RadioTower,
 } from "lucide-react";
 import { PlaywrightLogo } from "@/components/logo/playwright-logo";
 import { K6Logo } from "@/components/logo/k6-logo";
@@ -72,12 +75,14 @@ export function CommandSearch({ className }: CommandSearchProps) {
         alerts: "/alerts",
         incidents: "/incidents",
         "status-pages": "/status-pages",
-        services: "/services",
+        admin: "/org-admin",
+        "admin-services": "/org-admin?tab=services",
+        "admin-integrations": "/org-admin?tab=integrations",
+        "admin-diagnostic-recipes": "/org-admin?tab=diagnostic-recipes",
+        "admin-private-agents": "/org-admin?tab=private-agents",
         "investigation-chat": "/copilot",
         "investigation-history": "/copilot/investigations",
         "evidence-graph": "/copilot/evidence-graph",
-        "evidence-connectors": "/org-admin/integrations",
-        "diagnostic-queries": "/org-admin/runbooks",
 
         // Create Actions
         "create-monitor-http": "/monitors/create?type=http_request",
@@ -203,10 +208,6 @@ export function CommandSearch({ className }: CommandSearchProps) {
                   <Globe className="mr-2 h-4 w-4 !text-cyan-600" />
                   <span>Monitors</span>
                 </CommandItem>
-                <CommandItem onSelect={() => handleCommand("services")}>
-                  <Network className="mr-2 h-4 w-4 !text-sky-600" />
-                  <span>Service Map</span>
-                </CommandItem>
               </CommandGroup>
 
               <CommandSeparator />
@@ -218,19 +219,36 @@ export function CommandSearch({ className }: CommandSearchProps) {
                 </CommandItem>
                 <CommandItem onSelect={() => handleCommand("investigation-history")}>
                   <FileSearch className="mr-2 h-4 w-4 !text-violet-500" />
-                  <span>History</span>
+                  <span>Investigations</span>
                 </CommandItem>
                 <CommandItem onSelect={() => handleCommand("evidence-graph")}>
                   <Network className="mr-2 h-4 w-4 !text-sky-500" />
-                  <span>Topology</span>
+                  <span>Evidence Map</span>
                 </CommandItem>
-                <CommandItem onSelect={() => handleCommand("evidence-connectors")}>
-                  <Cable className="mr-2 h-4 w-4 !text-emerald-500" />
+              </CommandGroup>
+
+              <CommandSeparator />
+
+              <CommandGroup heading="Admin">
+                <CommandItem onSelect={() => handleCommand("admin")}>
+                  <UserCog className="mr-2 h-4 w-4 !text-zinc-400" />
+                  <span>Organization Admin</span>
+                </CommandItem>
+                <CommandItem onSelect={() => handleCommand("admin-services")}>
+                  <Boxes className="mr-2 h-4 w-4 !text-sky-600" />
+                  <span>Services</span>
+                </CommandItem>
+                <CommandItem onSelect={() => handleCommand("admin-integrations")}>
+                  <Network className="mr-2 h-4 w-4 !text-emerald-500" />
                   <span>Integrations</span>
                 </CommandItem>
-                <CommandItem onSelect={() => handleCommand("diagnostic-queries")}>
-                  <Database className="mr-2 h-4 w-4 !text-cyan-600" />
-                  <span>Runbooks</span>
+                <CommandItem onSelect={() => handleCommand("admin-diagnostic-recipes")}>
+                  <SquareLibrary className="mr-2 h-4 w-4 !text-cyan-600" />
+                  <span>Diagnostic Recipes</span>
+                </CommandItem>
+                <CommandItem onSelect={() => handleCommand("admin-private-agents")}>
+                  <RadioTower className="mr-2 h-4 w-4 !text-violet-500" />
+                  <span>Private Agents</span>
                 </CommandItem>
               </CommandGroup>
 

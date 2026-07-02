@@ -1,40 +1,5 @@
-import { getSreDiagnosticQueries, getSreDiagnosticQuerySetupOptions } from "@/actions/sre-diagnostic-queries";
-import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
-import { DiagnosticQueriesAdminView } from "@/components/sre/connectors/diagnostic-queries-admin-view";
-import { Card, CardContent } from "@/components/ui/card";
+import { redirect } from "next/navigation";
 
-export const dynamic = "force-dynamic";
-
-export default async function OrgAdminDiagnosticQueriesPage() {
-  const [queriesResult, setupOptionsResult] = await Promise.all([
-    getSreDiagnosticQueries(),
-    getSreDiagnosticQuerySetupOptions(),
-  ]);
-
-  const loadError = queriesResult.success
-    ? setupOptionsResult.success
-      ? null
-      : setupOptionsResult.error
-    : queriesResult.error;
-
-  return (
-    <div>
-      <PageBreadcrumbs
-        items={[
-          { label: "Home", href: "/" },
-          { label: "Investigate", href: "/copilot" },
-          { label: "Runbooks", isCurrentPage: true },
-        ]}
-      />
-      <Card className="m-4 mb-8 shadow-sm transition-shadow duration-200 hover:shadow-md">
-        <CardContent>
-          <DiagnosticQueriesAdminView
-            initialQueries={queriesResult.queries}
-            setupOptions={setupOptionsResult.options}
-            loadError={loadError}
-          />
-        </CardContent>
-      </Card>
-    </div>
-  );
+export default function OrgAdminDiagnosticQueriesPage() {
+  redirect("/org-admin?tab=diagnostic-recipes");
 }

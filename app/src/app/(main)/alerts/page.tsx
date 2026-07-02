@@ -16,7 +16,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -54,8 +54,27 @@ import {
 import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
 import { SreAlertsView } from "@/components/alerts/sre-alerts-view";
 
+const alertTabs = ["signals", "history", "channels"] as const;
+type AlertTab = typeof alertTabs[number];
+
+function resolveAlertTab(value: string | null): AlertTab {
+  if (value === "providers" || value === "channels") return "channels";
+  if (value === "history") return "history";
+  if (
+    value === "sre-alerts" ||
+    value === "triage" ||
+    value === "active" ||
+    value === "incidents" ||
+    value === "signals"
+  ) {
+    return "signals";
+  }
+  return "signals";
+}
+
 function AlertsPage() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const router = useRouter();
 
   const { providers, isLoading: providersLoading } = useNotificationProviders();
   const { alertHistory, isLoading: historyLoading } = useAlertHistory();
@@ -72,6 +91,7 @@ function AlertsPage() {
   const [deletingProvider, setDeletingProvider] =
     useState<NotificationProvider | null>(null);
   const searchParams = useSearchParams();
+  const activeTab = resolveAlertTab(searchParams.get("tab"));
   const [preselectedType, setPreselectedType] = useState<
     NotificationProviderType | undefined
   >(undefined);
@@ -205,6 +225,17 @@ function AlertsPage() {
     handleDeleteProviderWithConfirmation(provider);
   };
 
+  const handleTabChange = (value: string) => {
+    const tab = resolveAlertTab(value);
+    const params = new URLSearchParams(searchParams.toString());
+    if (tab === "signals") {
+      params.delete("tab");
+    } else {
+      params.set("tab", tab);
+    }
+    const nextQuery = params.toString();
+    router.replace(nextQuery ? `/alerts?${nextQuery}` : "/alerts", { scroll: false });
+  };
 
 
   return (
@@ -213,23 +244,27 @@ function AlertsPage() {
       <div className="">
         <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 m-4">
           <CardContent className="p-6">
-            <Tabs defaultValue="history" className="space-y-4">
+            <Tabs value={activeTab} className="space-y-4" onValueChange={handleTabChange}>
               <TabsList>
-                <TabsTrigger value="providers">
-                  <Mail className="h-4 w-4 mr-2" />
-                  Notification Channels
+                <TabsTrigger value="signals">
+                  <Siren className="h-4 w-4 mr-2" />
+                  Signals
                 </TabsTrigger>
                 <TabsTrigger value="history">
                   <BellRing className="h-4 w-4 mr-2" />
-                  Alert History
+                  History
                 </TabsTrigger>
-                <TabsTrigger value="sre-alerts">
-                  <Siren className="h-4 w-4 mr-2" />
-                  SRE Alerts
+                <TabsTrigger value="channels">
+                  <Mail className="h-4 w-4 mr-2" />
+                  Channels
                 </TabsTrigger>
               </TabsList>
 
-              <TabsContent value="providers" className="space-y-4">
+              <TabsContent value="signals" className="space-y-4">
+                <SreAlertsView alerts={alertHistory} isLoading={historyLoading} />
+              </TabsContent>
+
+              <TabsContent value="channels" className="space-y-4">
                 <div className="flex items-center justify-between">
                   <div>
                     <CardTitle className="text-2xl font-semibold">
@@ -302,9 +337,6 @@ function AlertsPage() {
                 </div>
               </TabsContent>
 
-              <TabsContent value="sre-alerts" className="space-y-4">
-                <SreAlertsView alerts={alertHistory} isLoading={historyLoading} />
-              </TabsContent>
             </Tabs>
 
             <Dialog

@@ -77,7 +77,7 @@ function buildAssistantUiSystemPrompt(projectName: string) {
   return [
     buildSreTriageSystemPrompt(),
     "",
-    "Standalone AISRE chat rules:",
+    "Standalone Copilot chat rules:",
     `- Project: ${projectName}`,
     "- This chat is read-only. Do not suggest production mutations or destructive commands.",
     "- If no incident is scoped, do not claim incident evidence was inspected.",
@@ -104,14 +104,14 @@ export async function POST(request: NextRequest) {
   });
 
   if (!canInvestigate) {
-    return NextResponse.json({ error: "Insufficient permissions to use AISRE" }, { status: 403 });
+    return NextResponse.json({ error: "Insufficient permissions to use Copilot" }, { status: 403 });
   }
 
   const rateLimit = await checkSreChatRateLimit(context.userId);
   if (!rateLimit.allowed) {
     const retryAfter = rateLimit.resetTime ? Math.ceil((rateLimit.resetTime - Date.now()) / 1000) : 60;
     return NextResponse.json(
-      { error: "AISRE chat rate limit reached. Please wait a moment and try again." },
+      { error: "Copilot chat rate limit reached. Please wait a moment and try again." },
       { status: 429, headers: { "Retry-After": String(retryAfter) } }
     );
   }
@@ -120,29 +120,29 @@ export async function POST(request: NextRequest) {
   try {
     parsedBody = await request.json();
   } catch {
-    return NextResponse.json({ error: "Invalid AISRE chat request" }, { status: 400 });
+    return NextResponse.json({ error: "Invalid Copilot chat request" }, { status: 400 });
   }
 
   const parsed = assistantUiChatRequestSchema.safeParse(parsedBody);
   if (!parsed.success) {
-    return NextResponse.json({ error: "Invalid AISRE chat request" }, { status: 400 });
+    return NextResponse.json({ error: "Invalid Copilot chat request" }, { status: 400 });
   }
 
   const messages = parsed.data.messages as SreAssistantUiMessage[];
   if (getTotalMessageTextLength(messages) > MAX_TOTAL_MESSAGE_TEXT_LENGTH) {
-    return NextResponse.json({ error: "AISRE chat history is too large" }, { status: 413 });
+    return NextResponse.json({ error: "Copilot chat history is too large" }, { status: 413 });
   }
 
   const latestUserMessage = getLatestUserMessage(messages);
   const latestUserText = latestUserMessage ? getTextFromUiMessage(latestUserMessage) : "";
   if (!latestUserMessage || !latestUserText) {
-    return NextResponse.json({ error: "AISRE chat message is required" }, { status: 400 });
+    return NextResponse.json({ error: "Copilot chat message is required" }, { status: 400 });
   }
 
   try {
     validateAIConfiguration();
   } catch {
-    return NextResponse.json({ error: "AISRE is not configured" }, { status: 503 });
+    return NextResponse.json({ error: "Copilot is not configured" }, { status: 503 });
   }
 
   let conversation = parsed.data.conversationId

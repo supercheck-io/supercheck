@@ -12,7 +12,7 @@ jest.mock("sonner", () => ({
 
 const graph: SreEvidenceGraphData = {
   nodes: [
-    { id: "service:s1", sourceId: "s1", type: "service", title: "Checkout", subtitle: "prod", status: "active", href: "/services", createdAt: new Date("2026-06-24T10:00:00Z") },
+    { id: "service:s1", sourceId: "s1", type: "service", title: "Checkout", subtitle: "prod", status: "active", href: "/org-admin?tab=services", createdAt: new Date("2026-06-24T10:00:00Z") },
     { id: "monitor:m1", sourceId: "m1", type: "monitor", title: "Checkout monitor", subtitle: "http · https://checkout", status: "active", href: "/monitors", createdAt: new Date("2026-06-24T09:50:00Z") },
     { id: "alert:a1", sourceId: "a1", type: "alert", title: "Checkout p95 breached", subtitle: "monitor", status: "sev2 · firing", href: null, createdAt: new Date("2026-06-24T10:04:00Z") },
     { id: "incident:i1", sourceId: "i1", type: "incident", title: "#7 Checkout latency", subtitle: "sev2", status: "investigating", href: "/incidents/i1", createdAt: new Date("2026-06-24T10:05:00Z") },

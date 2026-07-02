@@ -5,7 +5,7 @@ import { requireProjectContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { assertCanStartSreInvestigation, consumeSreInvestigationCredit, SreInvestigationBillingError } from "@/lib/sre/investigation-billing";
 import { isSreInvestigationAgentEnabled } from "@/sre/lib/feature-gates";
-import { runSreIncidentInvestigation } from "@/sre/lib/investigation-runner";
+import { startSreIncidentInvestigation, executeSreIncidentInvestigation } from "@/sre/lib/investigation-runner";
 
 const investigateRequestSchema = z.object({
   incidentId: z.string().uuid(),
@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
 
   const canInvestigateConnectors = checkPermissionWithContext("sre_connector", "investigate", permissionContext);
   const enableLiveConnectors = parsed.data.useLiveConnectors && canInvestigateConnectors;
-  const result = await runSreIncidentInvestigation({
+  const startResult = await startSreIncidentInvestigation({
     userId: context.userId,
     organizationId: context.organizationId,
     projectId: context.project.id,
@@ -74,21 +74,44 @@ export async function POST(request: NextRequest) {
     enableLiveConnectors,
   });
 
-  if (!result.success) {
+  if (!startResult.success) {
     return NextResponse.json(
-      { error: result.error, investigationRunId: result.investigationRunId },
-      { status: result.status }
+      { error: startResult.error },
+      { status: startResult.status }
     );
   }
 
-  await consumeSreInvestigationCredit({
-    organizationId: context.organizationId,
-    projectId: context.project.id,
-    userId: context.userId,
-    incidentId: parsed.data.incidentId,
-    investigationRunId: result.investigationRunId,
-    useLiveConnectors: enableLiveConnectors,
-  });
+  void (async () => {
+    try {
+      const execResult = await executeSreIncidentInvestigation(
+        startResult.investigationRunId,
+        startResult.incident,
+        {
+          userId: context.userId,
+          organizationId: context.organizationId,
+          projectId: context.project.id,
+          incidentId: parsed.data.incidentId,
+          enableLiveConnectors,
+        }
+      );
 
-  return NextResponse.json(result);
+      if (execResult.success) {
+        await consumeSreInvestigationCredit({
+          organizationId: context.organizationId,
+          projectId: context.project.id,
+          userId: context.userId,
+          incidentId: parsed.data.incidentId,
+          investigationRunId: startResult.investigationRunId,
+          useLiveConnectors: enableLiveConnectors,
+        });
+      }
+    } catch (error) {
+      console.error("SRE investigation execution failed:", error);
+    }
+  })();
+
+  return NextResponse.json({
+    success: true,
+    investigationRunId: startResult.investigationRunId,
+  });
 }

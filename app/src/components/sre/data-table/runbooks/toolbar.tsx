@@ -16,12 +16,12 @@ export function RunbooksToolbar<TData>({ table, onAdd, isAddDisabled }: Runbooks
     <div className="flex flex-col gap-4">
       <div className="mb-4 -mt-2 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <h2 className="text-2xl font-semibold">Runbooks</h2>
+          <h2 className="text-2xl font-semibold">Diagnostic Recipes</h2>
           <p className="text-sm text-muted-foreground">Prepare approved read-only recipes responders can reuse during investigations.</p>
         </div>
         <Button onClick={onAdd} disabled={isAddDisabled}>
           <Plus className="mr-2 h-4 w-4" />
-          Add runbook
+          Add recipe
         </Button>
       </div>
       <div className="flex items-center">
@@ -30,9 +30,9 @@ export function RunbooksToolbar<TData>({ table, onAdd, isAddDisabled }: Runbooks
           <Input
             value={(table.getState().globalFilter as string) ?? ""}
             onChange={(event) => table.setGlobalFilter(event.target.value)}
-            placeholder="Search runbook, connector, type..."
+            placeholder="Search recipe, connector, type..."
             className="pl-9"
-            aria-label="Search runbooks"
+            aria-label="Search diagnostic recipes"
           />
         </div>
       </div>

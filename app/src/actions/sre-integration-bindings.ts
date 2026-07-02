@@ -604,6 +604,7 @@ export async function createSreIntegrationBinding(
       success: true,
     });
 
+    revalidatePath("/org-admin");
     revalidatePath("/org-admin/integrations");
     return {
       success: true,
@@ -663,6 +664,7 @@ export async function disableSreIntegrationBinding(
       success: true,
     });
 
+    revalidatePath("/org-admin");
     revalidatePath("/org-admin/integrations");
     return {
       success: true,

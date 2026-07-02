@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Cable, FileSearch, Loader2, ShieldCheck, Unlink } from "lucide-react";
+import { Cable, FileSearch, Loader2, Plus, ShieldCheck, Unlink } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -391,39 +391,71 @@ export function ConnectorAdminView({
   }
 
   return (
-    <div className="space-y-4 pt-6">
-      <DataTable
-        columns={columns}
-        data={connectors}
-        renderToolbar={(table) => (
-          <ConnectorsToolbar
-            table={table}
-            onAddConnector={() => setIsCreateOpen(true)}
-            onAddBinding={() => setIsBindingDialogOpen(true)}
+    <div className="space-y-4 py-4">
+      {connectors.length === 0 ? (
+        <>
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-col">
+              <h2 className="text-xl font-semibold">Integrations</h2>
+              <p className="text-sm text-muted-foreground">
+                Read-only evidence connectors and alert context links for incident investigations.
+              </p>
+            </div>
+            <Button onClick={() => setIsCreateOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" />
+              Add connector
+            </Button>
+          </div>
+          <DashboardEmptyState
+            className="min-h-[420px]"
+            title="No integrations configured"
+            description="Add a read-only connector such as GitHub, Kubernetes, Prometheus, Grafana, Sentry, or logs so Copilot can collect cited incident evidence."
+            icon={<Cable className="h-10 w-10" />}
+            action={
+              <Button onClick={() => setIsCreateOpen(true)}>
+                <Plus className="mr-2 h-4 w-4" />
+                Add connector
+              </Button>
+            }
           />
-        )}
-        entityLabel="connectors"
-        meta={{
-          onSearch: openSearchDialog,
-          onValidate: validateConnector,
-          onViewJob: viewLatestJobResult,
-          onRotate: setRotatingCredentialConnector,
-          onDisable: setDisablingConnector,
-          isValidating,
-          isLoadingJobResult,
-          isDisabling,
-        }}
-      />
+        </>
+      ) : (
+        <DataTable
+          columns={columns}
+          data={connectors}
+          renderToolbar={(table) => (
+            <ConnectorsToolbar
+              table={table}
+              onAddConnector={() => setIsCreateOpen(true)}
+              onAddBinding={() => setIsBindingDialogOpen(true)}
+            />
+          )}
+          entityLabel="connectors"
+          meta={{
+            onSearch: openSearchDialog,
+            onValidate: validateConnector,
+            onViewJob: viewLatestJobResult,
+            onRotate: setRotatingCredentialConnector,
+            onDisable: setDisablingConnector,
+            isValidating,
+            isLoadingJobResult,
+            isDisabling,
+          }}
+        />
+      )}
 
       {bindings.length > 0 && (
-        <div className="mt-8">
-          <h3 className="mb-4 text-lg font-semibold">Context Links</h3>
-          <div className="grid gap-3 lg:grid-cols-2">
+        <div className="rounded-lg border bg-muted/10 p-3">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold">Context links</h3>
+            <Badge variant="outline" className="rounded-full">{bindings.length}</Badge>
+          </div>
+          <div className="grid gap-2 lg:grid-cols-2">
             {bindings.map((binding) => (
               <div
                 key={binding.id}
                 className={cn(
-                  "rounded-lg border bg-background p-3",
+                  "rounded-md border bg-background p-3",
                   !binding.enabled && "opacity-60",
                 )}
               >

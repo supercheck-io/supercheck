@@ -14,7 +14,7 @@ export default async function SreAiPage() {
           items={[
             { label: "Home", href: "/" },
             { label: "Investigate", href: "/copilot" },
-            { label: "AISRE", isCurrentPage: true },
+            { label: "Copilot", isCurrentPage: true },
           ]}
         />
       </div>

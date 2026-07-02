@@ -4,7 +4,14 @@ description: Resolve alerts faster with AI-powered incident workspaces
 icon: ShieldAlert
 ---
 
-When an alert fires—whether from a failed synthetic monitor, Playwright test, or inbound webhook—Supercheck's AI SRE jumps into action, triaging the event and launching a unified incident workspace to orchestrate the investigation.
+Incidents are the responder queue for issues that need investigation, evidence review, or verification.
+
+You can create an incident in two ways:
+
+- From **Communicate → Alerts → Signals**, when an alert signal needs investigation.
+- From **Communicate → Incidents → New incident**, when the issue did not start from a Supercheck alert.
+
+Both paths create the same incident workspace.
 
 ## The Incident Workspace
 
@@ -19,24 +26,35 @@ The Live Report Pane is the focal point of the investigation. It actively monito
 - **Unmatched Citation Warnings**: Alerts when the model's claims lack supporting evidence.
 - **Latest Activity**: A stream of the agent's recent tool calls and actions.
 
-### AI SRE Chat
+### Copilot
 
-The SRE chat UI enables conversational investigation. You can ask the agent specific questions, request it to run particular diagnostic queries via connectors, or challenge its current theory. 
+Copilot enables conversational investigation. You can ask the agent specific questions, request it to run particular diagnostic queries through read-only connectors, or challenge its current theory.
 
-The chat includes:
+In addition to the dedicated Copilot page, the AI SRE Copilot is globally accessible from anywhere in the platform via the floating chat bubble at the bottom right. This allows you to ask questions or trigger investigations without losing your current context (the bubble is automatically hidden when you are already on the dedicated Copilot page).
+
+Copilot includes:
 - **Citations**: Direct links from chat responses to the specific evidence items anchoring the agent's claims.
 - **Safe Tool Result Summaries**: Collapsible, read-only summaries of tool executions to keep the chat clean while providing deep context when needed.
 - **Investigation Progress Cards**: Visual status markers for ongoing investigations.
 
 ## Incident Lifecycle & Verification
 
-Supercheck's AI SRE handles the entire incident lifecycle, up to the point of remediation:
+Supercheck supports the incident lifecycle up to the point of remediation:
 
-1. **Triage**: A dedicated background **SRE Alert Triage Queue Service** automatically processes incoming monitor and test alerts. It dedupes firing alerts, assesses severity, identifies the affected service in the service catalog, and either creates a new internal SRE incident or updates an existing one.
+1. **Triage**: Review alert signals or create a manual incident. Incidents are deduplicated when created from the same alert signal.
 2. **Investigation**: The AI agent utilizes the [Connector Layer](/docs/app/investigate/connectors) and native evidence to investigate.
 3. **Recommendation**: The Live Report presents the evidence and proposes actionable fix steps.
 4. **Human Verification**: A responder reviews the findings, makes a decision, and applies the fix outside of Supercheck in their respective systems.
 5. **Closed-Loop Verification**: Once the fix is applied, Supercheck validates the resolution by automatically re-running the very monitors or synthetic tests that initially detected the issue.
+
+## Alerts and Incidents
+
+Alerts and incidents intentionally remain separate:
+
+- **Alerts** show notification channels, alert history, and active signals.
+- **Incidents** show issues your team has decided to investigate.
+
+This keeps alert noise out of the responder queue while still making it easy to promote a signal into an incident.
 
 ## Exporting Reports
 

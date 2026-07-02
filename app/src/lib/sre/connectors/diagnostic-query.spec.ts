@@ -36,6 +36,79 @@ describe("diagnostic-query", () => {
     ).toThrow("read-only");
   });
 
+  it("allows read-only sql when disallowed words appear inside string literals", () => {
+    const rendered = renderDiagnosticQueryTemplate(
+      {
+        ...definition,
+        queryType: "sql",
+        template: "select * from status_events where state = 'drop' and action = 'delete'",
+        parameterSchema: {},
+        allowlist: {},
+      },
+      {}
+    );
+
+    expect(rendered.query).toContain("state = 'drop'");
+  });
+
+  it("allows read-only sql when disallowed words appear inside comments or quoted identifiers", () => {
+    const rendered = renderDiagnosticQueryTemplate(
+      {
+        ...definition,
+        queryType: "sql",
+        template: '/* delete historical rows */ select "drop" from status_events -- update dashboard label',
+        parameterSchema: {},
+        allowlist: {},
+      },
+      {}
+    );
+
+    expect(rendered.query).toContain('select "drop"');
+  });
+
+  it("allows semicolons inside sql string literals but still rejects executable separators", () => {
+    expect(() =>
+      renderDiagnosticQueryTemplate(
+        {
+          ...definition,
+          queryType: "sql",
+          template: "select * from status_events where message = 'api; still read only'",
+          parameterSchema: {},
+          allowlist: {},
+        },
+        {}
+      )
+    ).not.toThrow();
+
+    expect(() =>
+      renderDiagnosticQueryTemplate(
+        {
+          ...definition,
+          queryType: "sql",
+          template: "select * from status_events; select * from users",
+          parameterSchema: {},
+          allowlist: {},
+        },
+        {}
+      )
+    ).toThrow("disallowed write or multi-statement token");
+  });
+
+  it("still rejects sql write tokens outside literals and comments", () => {
+    expect(() =>
+      renderDiagnosticQueryTemplate(
+        {
+          ...definition,
+          queryType: "sql",
+          template: "with recent as (select * from status_events) drop table users",
+          parameterSchema: {},
+          allowlist: {},
+        },
+        {}
+      )
+    ).toThrow("disallowed write or multi-statement token");
+  });
+
   it("validates template placeholder coverage against allowlist", () => {
     expect(() => validateTemplatePlaceholderCoverage('sum(rate(http_requests_total{service="$service"}[5m]))', { service: ["checkout"] })).not.toThrow();
   });

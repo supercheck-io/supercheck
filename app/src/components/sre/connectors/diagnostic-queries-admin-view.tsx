@@ -175,7 +175,7 @@ export function DiagnosticQueriesAdminView({ initialQueries, setupOptions, loadE
     return (
       <DashboardEmptyState
         className="min-h-[420px]"
-        title="Runbooks unavailable"
+        title="Diagnostic recipes unavailable"
         description={loadError}
         icon={<SquareLibrary className="h-10 w-10" />}
       />
@@ -188,18 +188,18 @@ export function DiagnosticQueriesAdminView({ initialQueries, setupOptions, loadE
         <>
           <div className="mb-4 -mt-2 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <h2 className="text-2xl font-semibold">Runbooks</h2>
+              <h2 className="text-2xl font-semibold">Diagnostic Recipes</h2>
               <p className="text-sm text-muted-foreground">Prepare approved read-only recipes responders can reuse during investigations.</p>
             </div>
             <Button onClick={() => setIsCreateOpen(true)} disabled>
               <Plus className="mr-2 h-4 w-4" />
-              Add runbook
+              Add recipe
             </Button>
           </div>
           <DashboardEmptyState
             className="min-h-[420px]"
             title="Connectors required"
-            description="Create an evidence connector first. Runbooks are scoped to one connector and stay read-only."
+            description="Create an evidence connector first. Diagnostic recipes are scoped to one connector and stay read-only."
             icon={<ShieldCheck className="h-10 w-10" />}
           />
         </>
@@ -207,20 +207,20 @@ export function DiagnosticQueriesAdminView({ initialQueries, setupOptions, loadE
         <>
           <div className="mb-4 -mt-2 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <h2 className="text-2xl font-semibold">Runbooks</h2>
+              <h2 className="text-2xl font-semibold">Diagnostic Recipes</h2>
               <p className="text-sm text-muted-foreground">Prepare approved read-only recipes responders can reuse during investigations.</p>
             </div>
             <Button onClick={() => setIsCreateOpen(true)}>
               <Plus className="mr-2 h-4 w-4" />
-              Add runbook
+              Add recipe
             </Button>
           </div>
           <DashboardEmptyState
             className="min-h-[420px]"
-            title="No runbooks"
-            description="Add a bounded, allowlisted runbook recipe for common incident questions such as 5xx spikes, slow traces, or error logs."
+            title="No diagnostic recipes"
+            description="Add a bounded, allowlisted diagnostic recipe for common incident questions such as 5xx spikes, slow traces, or error logs."
             icon={<SquareLibrary className="h-10 w-10" />}
-            action={<Button onClick={() => setIsCreateOpen(true)}><Plus className="mr-2 h-4 w-4" />Add runbook</Button>}
+            action={<Button onClick={() => setIsCreateOpen(true)}><Plus className="mr-2 h-4 w-4" />Add recipe</Button>}
           />
         </>
       ) : (
@@ -228,7 +228,7 @@ export function DiagnosticQueriesAdminView({ initialQueries, setupOptions, loadE
           columns={columns}
           data={queries}
           renderToolbar={(table) => <RunbooksToolbar table={table} onAdd={() => setIsCreateOpen(true)} />}
-          entityLabel="runbooks"
+          entityLabel="diagnostic recipes"
           meta={{ onEdit, onDelete, isDisabling, globalFilterColumns: ["name", "queryType", "connectorName", "connectorType", "status"] }}
         />
       )}
@@ -236,7 +236,7 @@ export function DiagnosticQueriesAdminView({ initialQueries, setupOptions, loadE
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
         <DialogContent className="w-[min(94vw,64rem)] max-w-none gap-0 overflow-hidden p-0">
           <DialogHeader className="border-b px-6 py-5">
-            <DialogTitle>Add runbook</DialogTitle>
+            <DialogTitle>Add diagnostic recipe</DialogTitle>
             <DialogDescription>Save a bounded, read-only recipe for future investigations.</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 px-6 py-5">
@@ -315,7 +315,7 @@ export function DiagnosticQueriesAdminView({ initialQueries, setupOptions, loadE
             <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Cancel</Button>
             <Button onClick={createQuery} disabled={isPending || !form.connectorId || !form.name.trim() || !form.template.trim()}>
               {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Save runbook
+              Save recipe
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -324,7 +324,7 @@ export function DiagnosticQueriesAdminView({ initialQueries, setupOptions, loadE
       <AlertDialog open={Boolean(pendingDisableQuery)} onOpenChange={(open) => { if (!open) setPendingDisableQuery(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Disable runbook?</AlertDialogTitle>
+            <AlertDialogTitle>Disable diagnostic recipe?</AlertDialogTitle>
             <AlertDialogDescription>
               This removes {pendingDisableQuery?.name} from investigation tooling. The definition remains stored but will not be available to SRE agents until re-enabled.
             </AlertDialogDescription>
@@ -339,7 +339,7 @@ export function DiagnosticQueriesAdminView({ initialQueries, setupOptions, loadE
               disabled={isDisabling}
             >
               {isDisabling && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Disable runbook
+              Disable recipe
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

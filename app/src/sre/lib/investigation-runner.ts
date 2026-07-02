@@ -32,9 +32,22 @@ export type RunSreIncidentInvestigationResult =
       investigationRunId?: string;
     };
 
-export async function runSreIncidentInvestigation(
+
+export type StartSreIncidentInvestigationResult =
+  | {
+      success: true;
+      investigationRunId: string;
+      incident: any;
+    }
+  | {
+      success: false;
+      status: 404 | 502;
+      error: string;
+    };
+
+export async function startSreIncidentInvestigation(
   input: RunSreIncidentInvestigationInput
-): Promise<RunSreIncidentInvestigationResult> {
+): Promise<StartSreIncidentInvestigationResult> {
   const [incident] = await db
     .select({
       id: sreIncidents.id,
@@ -70,7 +83,6 @@ export async function runSreIncidentInvestigation(
     return { success: false, status: 404, error: "Incident not found or access denied" };
   }
 
-  const startedAt = Date.now();
   const initialModelId = getActualModelName();
   const liveConnectorsEnabled = input.enableLiveConnectors === true;
   const [run] = await db
@@ -91,10 +103,21 @@ export async function runSreIncidentInvestigation(
         specializedSubagentsEnabled: liveConnectorsEnabled,
       },
       createdByUserId: input.userId,
-      startedAt: new Date(startedAt),
+      startedAt: new Date(),
       createdAt: new Date(),
     })
     .returning();
+
+  return { success: true, investigationRunId: run.id, incident };
+}
+
+export async function executeSreIncidentInvestigation(
+  investigationRunId: string,
+  incident: any,
+  input: RunSreIncidentInvestigationInput
+): Promise<RunSreIncidentInvestigationResult> {
+  const startedAt = Date.now();
+  const liveConnectorsEnabled = input.enableLiveConnectors === true;
 
   try {
     const toolScope = {
@@ -102,7 +125,7 @@ export async function runSreIncidentInvestigation(
       projectId: input.projectId,
       incidentId: incident.id,
       userId: input.userId,
-      investigationRunId: run.id,
+      investigationRunId,
     };
     const result = await runSreAgent({
       system: buildSreInvestigationSystemPrompt(),
@@ -143,7 +166,7 @@ export async function runSreIncidentInvestigation(
           completedAt: new Date(),
           durationMs: Date.now() - startedAt,
         })
-        .where(eq(sreInvestigationRuns.id, run.id));
+        .where(eq(sreInvestigationRuns.id, investigationRunId));
 
       await tx
         .update(sreIncidents)
@@ -164,7 +187,7 @@ export async function runSreIncidentInvestigation(
         eventType: "ai_finding",
         eventData: {
           type: "sre_investigation",
-          investigationRunId: run.id,
+          investigationRunId: investigationRunId,
           summary: result.text,
           modelId: result.modelId,
           finishReason: result.finishReason,
@@ -172,14 +195,14 @@ export async function runSreIncidentInvestigation(
           specializedSubagentsEnabled: liveConnectorsEnabled,
         },
         actorType: "agent",
-        agentRunId: run.id,
+        agentRunId: investigationRunId,
         createdAt: new Date(),
       });
     });
 
     return {
       success: true,
-      investigationRunId: run.id,
+      investigationRunId,
       summary: result.text,
       modelId: result.modelId,
       finishReason: result.finishReason,
@@ -194,8 +217,9 @@ export async function runSreIncidentInvestigation(
         completedAt: new Date(),
         durationMs: Date.now() - startedAt,
       })
-      .where(eq(sreInvestigationRuns.id, run.id));
+      .where(eq(sreInvestigationRuns.id, investigationRunId));
 
-    return { success: false, status: 502, error: "SRE investigation failed", investigationRunId: run.id };
+    return { success: false, status: 502, error: "SRE investigation failed", investigationRunId };
   }
 }
+

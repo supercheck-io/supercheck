@@ -6,6 +6,8 @@ icon: Plug
 
 Connectors bridge Supercheck's AI SRE layer to your existing operational tools. By providing the AI agent with read-only access to metrics, logs, and events, it can gather the necessary context to investigate incidents, formulate hypotheses, and suggest fixes.
 
+Administrators configure connectors from **Admin → Integrations**. Responders use the configured connectors from incident workspaces and Copilot.
+
 ## Supported Connectors
 
 Supercheck currently supports a wide array of read-only direct connectors:
@@ -28,7 +30,7 @@ For cloud-accessible tools (e.g., GitHub, Datadog, Sentry), the Supercheck app q
 
 ### Private Agent Mode
 
-For internal services protected behind firewalls (e.g., on-premise Kubernetes clusters, private Elasticsearch nodes, internal Prometheus and Grafana instances, or self-hosted GitHub Enterprise), Supercheck utilizes the **Private Agent**. Currently, the private agent actively supports executing queries against **GitHub, Prometheus, Grafana, and Kubernetes** within your secure environment.
+For internal services protected behind firewalls (e.g., on-premise Kubernetes clusters, private Elasticsearch nodes, internal Prometheus and Grafana instances, or self-hosted GitHub Enterprise), Supercheck utilizes the **Private Agent**. The private agent supports the implemented read-only connector set: **GitHub, Kubernetes, Prometheus, Grafana, Sentry, Datadog, Loki, Elasticsearch/OpenSearch, AWS CloudWatch, and Grafana Tempo**.
 
 The Private Agent is an outbound-only mode of the existing Supercheck worker image. 
 - It uses HTTPS long-polling to fetch query tasks from the Supercheck control plane.
@@ -43,6 +45,9 @@ When configuring connectors, administrators benefit from built-in governance and
 
 - **Setup & Search UX**: Each connector provides guided setup hints, example queries, and official documentation links.
 - **Bounded Search**: Administrators can perform audited read-only searches directly from the connector configuration interface to validate queries without exposing full access.
-- **Redaction & Limits**: Time windows, row limits, byte limits, and network-level Server-Side Request Forgery (SSRF) protections apply automatically to every query.
+- **Credential Validation**: Supercheck automatically verifies your credentials upon saving to ensure successful connectivity.
+- **Redaction & Limits**: Built-in safeguards automatically enforce time windows, row limits, and byte limits on every query to protect performance.
 - **Service Scope**: Connectors can be scoped to specific services and environments to enforce least-privilege context isolation.
-- **SRE Integration Bindings (Context Links)**: Administrators can selectively link outbound notification providers (like PagerDuty or Slack) to specific read-only SRE connectors from the connector admin screen. This ensures secure cross-context references without sharing outbound notification secrets with the read-only AI agents.
+- **SRE Integration Bindings**: Administrators can link outbound notification channels (like PagerDuty or Slack) directly to read-only evidence connectors to automatically surface relevant context.
+
+Services, diagnostic recipes, integrations, and Private Agents are documented in [Admin → AI SRE Setup](/docs/app/admin/ai-sre-setup).

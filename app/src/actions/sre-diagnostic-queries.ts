@@ -235,6 +235,7 @@ export async function createSreDiagnosticQuery(input: z.infer<typeof createDiagn
       success: true,
     });
 
+    revalidatePath("/org-admin");
     revalidatePath("/org-admin/runbooks");
     return {
       success: true,
@@ -277,6 +278,7 @@ export async function disableSreDiagnosticQuery(input: z.infer<typeof disableDia
       success: true,
     });
 
+    revalidatePath("/org-admin");
     revalidatePath("/org-admin/runbooks");
     return {
       success: true,

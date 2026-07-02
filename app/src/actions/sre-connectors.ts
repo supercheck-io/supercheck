@@ -753,6 +753,7 @@ export async function createSreConnector(input: z.infer<typeof createConnectorSc
       success: true,
     });
 
+    revalidatePath("/org-admin");
     revalidatePath("/org-admin/integrations");
     return {
       success: true,
@@ -943,6 +944,7 @@ export async function validateSreConnector(input: z.infer<typeof validateConnect
       success: status === "valid",
     });
 
+    revalidatePath("/org-admin");
     revalidatePath("/org-admin/integrations");
     return {
       success: true,
@@ -1031,6 +1033,7 @@ export async function rotateSreConnectorCredential(
       success: true,
     });
 
+    revalidatePath("/org-admin");
     revalidatePath("/org-admin/integrations");
     return {
       success: true,
@@ -1358,6 +1361,7 @@ export async function disableSreConnector(input: z.infer<typeof disableConnector
       success: true,
     });
 
+    revalidatePath("/org-admin");
     revalidatePath("/org-admin/integrations");
     return {
       success: true,

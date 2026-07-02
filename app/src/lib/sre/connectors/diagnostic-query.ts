@@ -331,6 +331,89 @@ function parameterDefault(name: string, schemaValue: unknown): DiagnosticQueryPa
   return schema.default;
 }
 
+function stripSqlCommentsAndLiterals(query: string) {
+  let sanitized = "";
+  let index = 0;
+
+  const appendSpace = (count: number) => {
+    sanitized += " ".repeat(Math.max(count, 0));
+  };
+
+  while (index < query.length) {
+    const current = query[index];
+    const next = query[index + 1];
+
+    if (current === "-" && next === "-") {
+      const end = query.indexOf("\n", index + 2);
+      const stop = end === -1 ? query.length : end;
+      appendSpace(stop - index);
+      index = stop;
+      continue;
+    }
+
+    if (current === "/" && next === "*") {
+      const end = query.indexOf("*/", index + 2);
+      const stop = end === -1 ? query.length : end + 2;
+      appendSpace(stop - index);
+      index = stop;
+      continue;
+    }
+
+    if (current === "'") {
+      const start = index;
+      index += 1;
+      while (index < query.length) {
+        if (query[index] === "'" && query[index + 1] === "'") {
+          index += 2;
+          continue;
+        }
+        if (query[index] === "'") {
+          index += 1;
+          break;
+        }
+        index += 1;
+      }
+      appendSpace(index - start);
+      continue;
+    }
+
+    if (current === "\"") {
+      const start = index;
+      index += 1;
+      while (index < query.length) {
+        if (query[index] === "\"" && query[index + 1] === "\"") {
+          index += 2;
+          continue;
+        }
+        if (query[index] === "\"") {
+          index += 1;
+          break;
+        }
+        index += 1;
+      }
+      appendSpace(index - start);
+      continue;
+    }
+
+    if (current === "$") {
+      const tagMatch = query.slice(index).match(/^\$[a-zA-Z_][a-zA-Z0-9_]*\$|^\$\$/);
+      if (tagMatch) {
+        const tag = tagMatch[0];
+        const start = index;
+        const end = query.indexOf(tag, index + tag.length);
+        index = end === -1 ? query.length : end + tag.length;
+        appendSpace(index - start);
+        continue;
+      }
+    }
+
+    sanitized += current;
+    index += 1;
+  }
+
+  return sanitized;
+}
+
 export function assertReadOnlyDiagnosticQuery(queryType: DiagnosticQueryType, renderedQuery: string) {
   const trimmed = renderedQuery.trim();
   if (!trimmed) {
@@ -338,11 +421,13 @@ export function assertReadOnlyDiagnosticQuery(queryType: DiagnosticQueryType, re
   }
 
   if (queryType === "sql") {
-    if (!SQL_READ_PREFIX_PATTERN.test(trimmed)) {
+    const executableSql = stripSqlCommentsAndLiterals(trimmed).trim();
+
+    if (!SQL_READ_PREFIX_PATTERN.test(executableSql)) {
       throw new Error("SQL diagnostic queries must be read-only SELECT/WITH/SHOW/EXPLAIN statements");
     }
 
-    if (SQL_WRITE_PATTERN.test(trimmed) || trimmed.includes(";")) {
+    if (SQL_WRITE_PATTERN.test(executableSql) || executableSql.includes(";")) {
       throw new Error("SQL diagnostic query contains a disallowed write or multi-statement token");
     }
   }

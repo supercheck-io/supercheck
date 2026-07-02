@@ -360,10 +360,20 @@
  * Only position and alignment - let Chatwoot handle icon sizing.
  */
 
-/* Position bubble and center content */
-.woot-widget-bubble {
-  bottom: 10px !important;
-  right: 10px !important;
+/* Keep product Copilot bottom-right and customer support top-right. */
+.woot-widget-bubble,
+.cw-widget-bubble {
+  top: 88px !important;
+  right: 18px !important;
+  bottom: auto !important;
+  z-index: 45 !important;
 }
 
+.woot-widget-holder,
+.cw-widget-container {
+  top: 144px !important;
+  right: 18px !important;
+  bottom: auto !important;
+  z-index: 45 !important;
+}
 

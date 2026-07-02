@@ -14,9 +14,6 @@ import {
   Code,
   SquareLibrary,
   BookOpenText,
-  Waypoints,
-  Wrench,
-  Layers,
   Plus,
   Chrome,
   ArrowLeftRight,
@@ -29,8 +26,6 @@ import {
   UserCog,
   UserPlus,
   Tally4,
-  Cable,
-  LayoutDashboard,
   type LucideIcon,
   ClipboardList,
   Target,
@@ -95,36 +90,14 @@ const data = {
       icon: Bot,
     },
     {
-      title: "Tools",
-      url: "#",
-      icon: Layers,
-      items: [
-        {
-          title: "Services",
-          url: "/services",
-          icon: Waypoints,
-        },
-        {
-          title: "Topology",
-          url: "/copilot/evidence-graph",
-          icon: Network,
-        },
-        {
-          title: "Runbooks",
-          url: "/org-admin/runbooks",
-          icon: SquareLibrary,
-        },
-        {
-          title: "History",
-          url: "/copilot/investigations",
-          icon: FileSearch,
-        },
-        {
-          title: "Integrations",
-          url: "/org-admin/integrations",
-          icon: Cable,
-        },
-      ],
+      title: "Evidence Map",
+      url: "/copilot/evidence-graph",
+      icon: Network,
+    },
+    {
+      title: "Investigations",
+      url: "/copilot/investigations",
+      icon: FileSearch,
     },
   ],
 
@@ -265,18 +238,6 @@ const data = {
       title: "Admin",
       url: "/org-admin",
       icon: UserCog,
-      items: [
-        {
-          title: "Overview",
-          url: "/org-admin",
-          icon: LayoutDashboard,
-        },
-        {
-          title: "Private Agents",
-          url: "/org-admin/private-agents",
-          icon: EthernetPort,
-        },
-      ],
     },
   ],
 
@@ -285,7 +246,7 @@ const data = {
       title: "Docs",
       url: "https://supercheck.io/docs/app/welcome",
       icon: BookOpenText,
-      badge: "v1.3.6-aisre-rc1",
+      badge: "v1.3.6-aisre-rc2",
     },
   ],
   documents: [

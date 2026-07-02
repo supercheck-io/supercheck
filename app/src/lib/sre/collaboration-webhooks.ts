@@ -4,7 +4,7 @@ import { z } from "zod";
 import { sreIncidents, sreIncidentTimelineEvents, webhookIdempotency } from "@/db/schema";
 import { assertCanStartSreInvestigation, consumeSreInvestigationCredit, SreInvestigationBillingError } from "@/lib/sre/investigation-billing";
 import { postSreInvestigationSlackSummary } from "@/lib/sre/slack-outbound";
-import { runSreIncidentInvestigation } from "@/sre/lib/investigation-runner";
+import { startSreIncidentInvestigation, executeSreIncidentInvestigation } from "@/sre/lib/investigation-runner";
 import { db } from "@/utils/db";
 
 const WEBHOOK_IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000;
@@ -220,7 +220,7 @@ export async function processSreCollaborationMessage(input: z.input<typeof colla
   }
 
   const useLiveConnectors = process.env.SRE_COLLABORATION_LIVE_CONNECTORS_ENABLED === "true";
-  const result = await runSreIncidentInvestigation({
+  const startResult = await startSreIncidentInvestigation({
     organizationId: incident.organizationId,
     projectId: incident.projectId,
     userId: null,
@@ -228,32 +228,52 @@ export async function processSreCollaborationMessage(input: z.input<typeof colla
     enableLiveConnectors: useLiveConnectors,
   });
 
-  if (!result.success) {
-    return { status: "investigation_failed" as const, incidentId: incident.id, reason: result.error };
+  if (!startResult.success) {
+    return { status: "investigation_failed" as const, incidentId: incident.id, reason: startResult.error };
   }
 
-  await consumeSreInvestigationCredit({
-    organizationId: incident.organizationId,
-    projectId: incident.projectId,
-    userId: null,
-    incidentId: incident.id,
-    investigationRunId: result.investigationRunId,
-    useLiveConnectors,
-  });
+  void (async () => {
+    try {
+      const execResult = await executeSreIncidentInvestigation(
+        startResult.investigationRunId,
+        startResult.incident,
+        {
+          organizationId: incident.organizationId,
+          projectId: incident.projectId,
+          userId: null,
+          incidentId: incident.id,
+          enableLiveConnectors: useLiveConnectors,
+        }
+      );
 
-  if (parsed.provider === "slack") {
-    await postSreInvestigationSlackSummary({
-      channelId: parsed.channelId,
-      threadTs: parsed.threadTs,
-      incidentTitle: incident.title,
-      incidentUrl: getIncidentDeepLink(incident.id),
-      summary: result.summary,
-    });
-  }
+      if (execResult.success) {
+        await consumeSreInvestigationCredit({
+          organizationId: incident.organizationId,
+          projectId: incident.projectId,
+          userId: null,
+          incidentId: incident.id,
+          investigationRunId: startResult.investigationRunId,
+          useLiveConnectors,
+        });
+
+        if (parsed.provider === "slack") {
+          await postSreInvestigationSlackSummary({
+            channelId: parsed.channelId,
+            threadTs: parsed.threadTs,
+            incidentTitle: incident.title,
+            incidentUrl: getIncidentDeepLink(incident.id),
+            summary: execResult.summary,
+          });
+        }
+      }
+    } catch (error) {
+      console.error("SRE collaboration investigation failed:", error);
+    }
+  })();
 
   return {
     status: "investigated" as const,
     incidentId: incident.id,
-    investigationRunId: result.investigationRunId,
+    investigationRunId: startResult.investigationRunId,
   };
 }

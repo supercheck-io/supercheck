@@ -1,14 +1,10 @@
 "use client";
 
-import { useState, useEffect, Suspense, useSyncExternalStore } from "react";
+import { useState, useEffect, Suspense, useMemo, useSyncExternalStore } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { StatsCard } from "@/components/admin/stats-card";
 import {
   Card,
   CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
 import { TableBadge } from "@/components/ui/table-badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -25,17 +21,14 @@ import {
   FolderOpen,
   Users,
   Building2,
-  AlertTriangle,
-  LayoutDashboard,
   DollarSign,
   UserSearch,
-  CalendarClock,
-  Code,
-  Globe,
-  ClipboardList,
   Terminal,
-  Mail,
   EllipsisVertical,
+  RadioTower,
+  Cable,
+  SquareLibrary,
+  Boxes,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AuditLogsTable } from "@/components/admin/audit-logs-table";
@@ -45,6 +38,10 @@ import { ProjectsTable } from "@/components/org-admin/projects-table";
 import { ProjectLocationsDialog } from "@/components/org-admin/project-locations-dialog";
 import { SubscriptionTab } from "@/components/org-admin/subscription-tab";
 import { MemberAccessDialog } from "@/components/members/MemberAccessDialog";
+import { PrivateAgentsAdminView } from "@/components/sre/private-agents/private-agents-admin-view";
+import { ServiceCatalog } from "@/components/sre/services/service-catalog";
+import { ConnectorAdminView } from "@/components/sre/connectors/connector-admin-view";
+import { DiagnosticQueriesAdminView } from "@/components/sre/connectors/diagnostic-queries-admin-view";
 import { FormInput } from "@/components/ui/form-input";
 import {
   createProjectSchema,
@@ -54,34 +51,37 @@ import { useBreadcrumbs } from "@/components/breadcrumb-context";
 import { TabLoadingSpinner } from "@/components/ui/table-skeleton";
 import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
 import { Loader2 } from "lucide-react";
+import type { PrivateAgentListItem } from "@/actions/private-agents";
+import type { SreServiceListItem } from "@/actions/sre-services";
+import type {
+  SreConnectorListItem,
+  SreConnectorSetupOptions,
+} from "@/actions/sre-connectors";
+import type {
+  SreIntegrationBindingListItem,
+  SreIntegrationBindingSetupOptions,
+} from "@/actions/sre-integration-bindings";
+import type {
+  SreDiagnosticQueryListItem,
+  SreDiagnosticQuerySetupOptions,
+} from "@/actions/sre-diagnostic-queries";
 import {
   canCreateProjects,
   canInviteMembers,
   canManageProject,
   canManageOrganization,
 } from "@/lib/rbac/client-permissions";
-import { normalizeRole, roleToDisplayName } from "@/lib/rbac/role-normalizer";
+import { normalizeRole } from "@/lib/rbac/role-normalizer";
 import { z } from "zod";
 import { useAppConfig } from "@/hooks/use-app-config";
-import { cn } from "@/lib/utils";
 import { updateOrganizationNameSchema } from "@/lib/validations/organization";
 // Use React Query hooks for cached data fetching
 import {
-  useOrgStats,
   useOrgDetails,
   useOrgMembers,
   useOrgProjects,
   useOrgDataInvalidation,
 } from "@/hooks/use-organization";
-
-interface OrgStats {
-  projects: number;
-  jobs: number;
-  tests: number;
-  monitors: number;
-  runs: number;
-  members: number;
-}
 
 interface OrgMember {
   id: string;
@@ -135,6 +135,26 @@ interface ProjectMember {
   role: string;
 }
 
+const ADMIN_SETUP_FETCH_TIMEOUT_MS = 15000;
+
+async function fetchAdminSetupJson<T>(url: string): Promise<T> {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), ADMIN_SETUP_FETCH_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(url, { cache: "no-store", signal: controller.signal });
+    const result = await response.json() as T & { success?: boolean; error?: string | null };
+
+    if (!response.ok || result.success === false) {
+      throw new Error(result.error ?? `Failed to fetch ${url}`);
+    }
+
+    return result;
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
 export default function OrgAdminDashboard() {
   return (
     <Suspense
@@ -163,34 +183,62 @@ function OrgAdminDashboardContent() {
 
   const { isCloudHosted } = useAppConfig();
 
-  const allowedTabs = isCloudHosted
-    ? ["overview", "projects", "members", "cli-tokens", "audit", "subscription"]
-    : ["overview", "projects", "members", "cli-tokens", "audit"];
+  const allowedTabs = useMemo(
+    () => isCloudHosted
+      ? ["projects", "members", "cli-tokens", "audit", "services", "integrations", "diagnostic-recipes", "private-agents", "subscription"]
+      : ["projects", "members", "cli-tokens", "audit", "services", "integrations", "diagnostic-recipes", "private-agents"],
+    [isCloudHosted]
+  );
 
   const requestedTab = searchParams.get("tab");
-  const safeTab = requestedTab && allowedTabs.includes(requestedTab)
-    ? requestedTab
-    : "overview";
+  const normalizedRequestedTab =
+    requestedTab === "sre-setup"
+      ? "private-agents"
+      : requestedTab === "runbooks"
+        ? "diagnostic-recipes"
+      : requestedTab;
+  const safeTab = normalizedRequestedTab && allowedTabs.includes(normalizedRequestedTab)
+    ? normalizedRequestedTab
+    : "projects";
 
   const [activeTab, setActiveTab] = useState(safeTab);
 
-  const { stats: orgStats, isLoading: statsLoading } = useOrgStats();
   const { details: orgDetails, isLoading: detailsLoading } = useOrgDetails();
   const { members, invitations, currentUserRole, isLoading: membersLoading } = useOrgMembers();
   const { projects: orgProjects, isLoading: projectsLoading } = useOrgProjects();
   const { invalidateStats, invalidateMembers, invalidateProjects, invalidateDetails } = useOrgDataInvalidation();
+  const [services, setServices] = useState<SreServiceListItem[]>([]);
+  const [servicesLoadError, setServicesLoadError] = useState<string | null>(null);
+  const [servicesLoading, setServicesLoading] = useState(false);
+  const [servicesLoaded, setServicesLoaded] = useState(false);
+  const [connectors, setConnectors] = useState<SreConnectorListItem[]>([]);
+  const [connectorSetupOptions, setConnectorSetupOptions] = useState<SreConnectorSetupOptions>({
+    services: [],
+    privateAgents: [],
+  });
+  const [integrationBindings, setIntegrationBindings] = useState<SreIntegrationBindingListItem[]>([]);
+  const [integrationBindingSetupOptions, setIntegrationBindingSetupOptions] =
+    useState<SreIntegrationBindingSetupOptions>({
+      notificationProviders: [],
+      connectors: [],
+      services: [],
+    });
+  const [integrationsLoadError, setIntegrationsLoadError] = useState<string | null>(null);
+  const [integrationsLoading, setIntegrationsLoading] = useState(false);
+  const [integrationsLoaded, setIntegrationsLoaded] = useState(false);
+  const [diagnosticQueries, setDiagnosticQueries] = useState<SreDiagnosticQueryListItem[]>([]);
+  const [diagnosticSetupOptions, setDiagnosticSetupOptions] =
+    useState<SreDiagnosticQuerySetupOptions>({ connectors: [] });
+  const [diagnosticLoadError, setDiagnosticLoadError] = useState<string | null>(null);
+  const [diagnosticLoading, setDiagnosticLoading] = useState(false);
+  const [diagnosticLoaded, setDiagnosticLoaded] = useState(false);
+  const [privateAgents, setPrivateAgents] = useState<PrivateAgentListItem[]>([]);
+  const [privateAgentsLoadError, setPrivateAgentsLoadError] = useState<string | null>(null);
+  const [privateAgentsLoading, setPrivateAgentsLoading] = useState(false);
+  const [privateAgentsLoaded, setPrivateAgentsLoaded] = useState(false);
 
-  const hasData = orgStats !== null && orgDetails !== null;
-  const isInitialLoading = !isMounted || (!hasData && (statsLoading || detailsLoading));
-
-  const stats: OrgStats | null = orgStats ? {
-    projects: orgStats.projectCount,
-    jobs: orgStats.jobCount || 0,
-    tests: orgStats.testCount || 0,
-    monitors: orgStats.monitorCount || 0,
-    runs: orgStats.runCount || 0,
-    members: orgStats.memberCount,
-  } : null;
+  const hasData = orgDetails !== null;
+  const isInitialLoading = !isMounted || (!hasData && detailsLoading);
 
   // Note: membersCount is not available from the API currently.
   // The Project interface requires it, but the /api/projects endpoint
@@ -231,6 +279,161 @@ function OrgAdminDashboardContent() {
     setActiveTab(safeTab);
   }, [safeTab]);
 
+  useEffect(() => {
+    if (requestedTab && normalizedRequestedTab !== requestedTab && allowedTabs.includes(safeTab)) {
+      const params = new URLSearchParams(searchParams.toString());
+      params.set("tab", safeTab);
+      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    }
+  }, [allowedTabs, normalizedRequestedTab, pathname, requestedTab, router, safeTab, searchParams]);
+
+  useEffect(() => {
+    if (activeTab !== "services" || servicesLoaded) {
+      return;
+    }
+
+    let isCancelled = false;
+    setServicesLoading(true);
+
+    fetchAdminSetupJson<
+      | { success: true; services: SreServiceListItem[] }
+      | { success: false; error: string; services: [] }
+    >("/api/sre/services")
+      .then((result) => {
+        if (isCancelled) return;
+        setServices(result.services);
+        setServicesLoadError(null);
+        setServicesLoaded(true);
+      })
+      .catch((error) => {
+        if (isCancelled) return;
+        console.error("Error loading services:", error);
+        setServices([]);
+        setServicesLoadError("Failed to fetch services");
+        setServicesLoaded(true);
+      })
+      .finally(() => {
+        if (!isCancelled) setServicesLoading(false);
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [activeTab, servicesLoaded]);
+
+  useEffect(() => {
+    if (activeTab !== "integrations" || integrationsLoaded) {
+      return;
+    }
+
+    let isCancelled = false;
+    setIntegrationsLoading(true);
+
+    fetchAdminSetupJson<{
+      success: boolean;
+      error: string | null;
+      connectors: SreConnectorListItem[];
+      setupOptions: SreConnectorSetupOptions;
+      bindings: SreIntegrationBindingListItem[];
+      bindingSetupOptions: SreIntegrationBindingSetupOptions;
+    }>("/api/sre/integrations")
+      .then((result) => {
+        if (isCancelled) return;
+        setConnectors(result.connectors);
+        setConnectorSetupOptions(result.setupOptions);
+        setIntegrationBindings(result.bindings);
+        setIntegrationBindingSetupOptions(result.bindingSetupOptions);
+        setIntegrationsLoadError(null);
+        setIntegrationsLoaded(true);
+      })
+      .catch((error) => {
+        if (isCancelled) return;
+        console.error("Error loading integrations:", error);
+        setConnectors([]);
+        setIntegrationBindings([]);
+        setIntegrationsLoadError("Failed to fetch evidence integrations");
+        setIntegrationsLoaded(true);
+      })
+      .finally(() => {
+        if (!isCancelled) setIntegrationsLoading(false);
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [activeTab, integrationsLoaded]);
+
+  useEffect(() => {
+    if (activeTab !== "diagnostic-recipes" || diagnosticLoaded) {
+      return;
+    }
+
+    let isCancelled = false;
+    setDiagnosticLoading(true);
+
+    fetchAdminSetupJson<{
+      success: boolean;
+      error: string | null;
+      queries: SreDiagnosticQueryListItem[];
+      setupOptions: SreDiagnosticQuerySetupOptions;
+    }>("/api/sre/diagnostic-recipes")
+      .then((result) => {
+        if (isCancelled) return;
+        setDiagnosticQueries(result.queries);
+        setDiagnosticSetupOptions(result.setupOptions);
+        setDiagnosticLoadError(null);
+        setDiagnosticLoaded(true);
+      })
+      .catch((error) => {
+        if (isCancelled) return;
+        console.error("Error loading diagnostic recipes:", error);
+        setDiagnosticQueries([]);
+        setDiagnosticLoadError("Failed to fetch diagnostic recipes");
+        setDiagnosticLoaded(true);
+      })
+      .finally(() => {
+        if (!isCancelled) setDiagnosticLoading(false);
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [activeTab, diagnosticLoaded]);
+
+  useEffect(() => {
+    if (activeTab !== "private-agents" || privateAgentsLoaded) {
+      return;
+    }
+
+    let isCancelled = false;
+    setPrivateAgentsLoading(true);
+
+    fetchAdminSetupJson<
+      | { success: true; agents: PrivateAgentListItem[] }
+      | { success: false; error: string; agents: [] }
+    >("/api/sre/private-agents")
+      .then((result) => {
+        if (isCancelled) return;
+        setPrivateAgents(result.agents);
+        setPrivateAgentsLoadError(result.success ? null : result.error);
+        setPrivateAgentsLoaded(true);
+      })
+      .catch((error) => {
+        if (isCancelled) return;
+        console.error("Error loading Private Agents:", error);
+        setPrivateAgents([]);
+        setPrivateAgentsLoadError("Failed to fetch Private Agents");
+        setPrivateAgentsLoaded(true);
+      })
+      .finally(() => {
+        if (!isCancelled) setPrivateAgentsLoading(false);
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [activeTab, privateAgentsLoaded]);
+
   const handleTabChange = (value: string) => {
     if (!allowedTabs.includes(value)) {
       return;
@@ -239,7 +442,7 @@ function OrgAdminDashboardContent() {
     setActiveTab(value);
 
     const params = new URLSearchParams(searchParams.toString());
-    if (value === "overview") {
+    if (value === "projects") {
       params.delete("tab");
     } else {
       params.set("tab", value);
@@ -428,7 +631,7 @@ function OrgAdminDashboardContent() {
     );
   }
 
-  if (!stats || !orgDetails) {
+  if (!orgDetails) {
     return (
       <div className="flex-1 space-y-4 p-4 pt-6">
         <div className="flex items-center justify-center h-64">
@@ -440,51 +643,6 @@ function OrgAdminDashboardContent() {
     );
   }
 
-  const pendingInvitationsCount = invitations.filter(
-    (invitation) => invitation.status === "pending"
-  ).length;
-  const expiredInvitationsCount = invitations.filter(
-    (invitation) => invitation.status === "expired"
-  ).length;
-  const currentUserDisplayRole = roleToDisplayName(normalizeRole(currentUserRole));
-  const organizationAgeDays = Math.max(
-    0,
-    Math.floor((Date.now() - new Date(orgDetails.createdAt).getTime()) / (1000 * 60 * 60 * 24))
-  );
-  const organizationAgeLabel = organizationAgeDays === 1 ? "1 day" : `${organizationAgeDays} days`;
-
-  const roleCounts = members.reduce(
-    (acc, member) => {
-      const memberRole = member.role as keyof typeof acc;
-      if (memberRole in acc) {
-        acc[memberRole] += 1;
-      }
-      return acc;
-    },
-    {
-      org_owner: 0,
-      org_admin: 0,
-      project_admin: 0,
-      project_editor: 0,
-      project_viewer: 0,
-    }
-  );
-
-  const orgLevelAccessCount = roleCounts.org_owner + roleCounts.org_admin;
-  const defaultProjectName = projects.find((project) => project.isDefault)?.name ?? "Not configured";
-
-  const nextPendingInvite = invitations
-    .filter((invitation) => invitation.status === "pending")
-    .sort((a, b) => new Date(a.expiresAt).getTime() - new Date(b.expiresAt).getTime())[0];
-
-  const nextPendingInviteExpiry = nextPendingInvite
-    ? new Date(nextPendingInvite.expiresAt).toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      })
-    : "No pending invites";
-
   const userCanRenameOrg = canManageOrganization(normalizeRole(currentUserRole));
 
   return (
@@ -495,7 +653,7 @@ function OrgAdminDashboardContent() {
             <div>
               <h1 className="text-2xl font-bold tracking-tight">Organization Admin</h1>
               <p className="text-muted-foreground text-sm">
-                Manage your organization&apos;s projects, members, and security audit data.
+                Manage projects, members, tokens, Private Agents, and audit data.
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -525,16 +683,7 @@ function OrgAdminDashboardContent() {
             className="space-y-4"
             onValueChange={handleTabChange}
           >
-            <TabsList
-              className={cn(
-                "grid w-full lg:w-auto lg:inline-flex",
-                isCloudHosted ? "grid-cols-6" : "grid-cols-5"
-              )}
-            >
-              <TabsTrigger value="overview" className="flex items-center gap-2">
-                <LayoutDashboard className="h-4 w-4" />
-                <span className="hidden sm:inline">Overview</span>
-              </TabsTrigger>
+            <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 lg:w-auto">
               <TabsTrigger value="projects" className="flex items-center gap-2">
                 <FolderOpen className="h-4 w-4" />
                 <span className="hidden sm:inline">Projects</span>
@@ -551,6 +700,22 @@ function OrgAdminDashboardContent() {
                 <UserSearch className="h-4 w-4" />
                 <span className="hidden sm:inline">Audit</span>
               </TabsTrigger>
+              <TabsTrigger value="services" className="flex items-center gap-2">
+                <Boxes className="h-4 w-4" />
+                <span className="hidden sm:inline">Services</span>
+              </TabsTrigger>
+              <TabsTrigger value="integrations" className="flex items-center gap-2">
+                <Cable className="h-4 w-4" />
+                <span className="hidden sm:inline">Integrations</span>
+              </TabsTrigger>
+              <TabsTrigger value="diagnostic-recipes" className="flex items-center gap-2">
+                <SquareLibrary className="h-4 w-4" />
+                <span className="hidden sm:inline">Diagnostic Recipes</span>
+              </TabsTrigger>
+              <TabsTrigger value="private-agents" className="flex items-center gap-2">
+                <RadioTower className="h-4 w-4" />
+                <span className="hidden sm:inline">Private Agents</span>
+              </TabsTrigger>
               {isCloudHosted && (
                 <TabsTrigger
                   value="subscription"
@@ -561,144 +726,6 @@ function OrgAdminDashboardContent() {
                 </TabsTrigger>
               )}
             </TabsList>
-
-            <TabsContent value="overview" className="space-y-6">
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 auto-rows-fr">
-                <StatsCard
-                  title="Projects"
-                  value={stats.projects}
-                  description="Active projects"
-                  icon={FolderOpen}
-                  variant="primary"
-                  className="h-full"
-                  metaInline
-                />
-                <StatsCard
-                  title="Members"
-                  value={stats.members}
-                  description="Organization members"
-                  icon={Users}
-                  variant="purple"
-                  className="h-full"
-                  metaInline
-                />
-                <StatsCard
-                  title="Scheduled Jobs"
-                  value={stats.jobs}
-                  description="Active jobs"
-                  icon={CalendarClock}
-                  variant="warning"
-                  className="h-full"
-                  metaInline
-                />
-                <StatsCard
-                  title="Pending Invites"
-                  value={pendingInvitationsCount}
-                  description={
-                    expiredInvitationsCount > 0
-                      ? `${expiredInvitationsCount} expired invites`
-                      : "Awaiting member response"
-                  }
-                  icon={Mail}
-                  variant="warning"
-                  className="h-full"
-                  metaInline
-                />
-                <StatsCard
-                  title="Test Cases"
-                  value={stats.tests}
-                  description="Available tests"
-                  icon={Code}
-                  variant="cyan"
-                  className="h-full"
-                  metaInline
-                />
-                <StatsCard
-                  title="Monitors"
-                  value={stats.monitors}
-                  description="Active monitors"
-                  icon={Globe}
-                  variant="success"
-                  className="h-full"
-                  metaInline
-                />
-                <StatsCard
-                  title="Total Runs"
-                  value={stats.runs}
-                  description="Test executions"
-                  icon={ClipboardList}
-                  className="h-full"
-                  metaInline
-                />
-                <StatsCard
-                  title="Expired Invites"
-                  value={expiredInvitationsCount}
-                  description={
-                    pendingInvitationsCount > 0
-                      ? `${pendingInvitationsCount} pending invites`
-                      : "No pending invites"
-                  }
-                  icon={AlertTriangle}
-                  variant="danger"
-                  className="h-full"
-                  metaInline
-                />
-              </div>
-
-              <div className="grid gap-4 lg:grid-cols-2">
-                <Card className="h-full">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base">Access Composition</CardTitle>
-                    <CardDescription>Role distribution across your organization</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-2">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Org-Level Access</span>
-                      <TableBadge tone="purple">{orgLevelAccessCount.toLocaleString()}</TableBadge>
-                    </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Project Admins</span>
-                      <TableBadge tone="info">{roleCounts.project_admin.toLocaleString()}</TableBadge>
-                    </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Project Editors</span>
-                      <TableBadge tone="success">{roleCounts.project_editor.toLocaleString()}</TableBadge>
-                    </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Project Viewers</span>
-                      <TableBadge tone="slate">{roleCounts.project_viewer.toLocaleString()}</TableBadge>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card className="h-full">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base">Organization Context</CardTitle>
-                    <CardDescription>Governance and lifecycle details</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-2">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Your Role</span>
-                      <TableBadge tone="purple">{currentUserDisplayRole}</TableBadge>
-                    </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Organization Age</span>
-                      <TableBadge tone="indigo">{organizationAgeLabel}</TableBadge>
-                    </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Default Project</span>
-                      <span className="max-w-[180px] truncate text-right text-foreground" title={defaultProjectName}>
-                        {defaultProjectName}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Next Invite Expiry</span>
-                      <span className="text-foreground">{nextPendingInviteExpiry}</span>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-            </TabsContent>
 
             <TabsContent value="projects" className="space-y-4">
               {projectsLoading && projects.length === 0 ? (
@@ -955,6 +982,54 @@ function OrgAdminDashboardContent() {
 
             <TabsContent value="cli-tokens" className="space-y-4">
               <CliTokensTable />
+            </TabsContent>
+
+            <TabsContent value="services" className="space-y-4">
+              {servicesLoading && !servicesLoaded ? (
+                <TabLoadingSpinner message="Loading services..." />
+              ) : (
+                <ServiceCatalog
+                  initialServices={services}
+                  loadError={servicesLoadError}
+                />
+              )}
+            </TabsContent>
+
+            <TabsContent value="integrations" className="space-y-4">
+              {integrationsLoading && !integrationsLoaded ? (
+                <TabLoadingSpinner message="Loading integrations..." />
+              ) : (
+                <ConnectorAdminView
+                  initialConnectors={connectors}
+                  setupOptions={connectorSetupOptions}
+                  initialBindings={integrationBindings}
+                  bindingSetupOptions={integrationBindingSetupOptions}
+                  loadError={integrationsLoadError}
+                />
+              )}
+            </TabsContent>
+
+            <TabsContent value="diagnostic-recipes" className="space-y-4">
+              {diagnosticLoading && !diagnosticLoaded ? (
+                <TabLoadingSpinner message="Loading diagnostic recipes..." />
+              ) : (
+                <DiagnosticQueriesAdminView
+                  initialQueries={diagnosticQueries}
+                  setupOptions={diagnosticSetupOptions}
+                  loadError={diagnosticLoadError}
+                />
+              )}
+            </TabsContent>
+
+            <TabsContent value="private-agents" className="space-y-4">
+              {privateAgentsLoading && !privateAgentsLoaded ? (
+                <TabLoadingSpinner message="Loading Private Agents..." />
+              ) : (
+                <PrivateAgentsAdminView
+                  initialAgents={privateAgents}
+                  loadError={privateAgentsLoadError}
+                />
+              )}
             </TabsContent>
 
             <TabsContent value="audit" className="space-y-4">

@@ -1,0 +1,78 @@
+---
+title: AI SRE Setup
+description: Configure services, read-only integrations, diagnostic recipes, and Private Agents
+icon: Bot
+---
+
+AI SRE setup lives under **Admin** because these screens are usually configured by project administrators, not responders during an active incident.
+
+Responders use **Communicate → Alerts** to review alert signals, **Communicate → Incidents** to work incidents, and **Investigate → Copilot** for read-only investigation help. Administrators use this page to configure the evidence sources that make those workflows useful.
+
+## Services
+
+Use **Admin → Services** to register the production services Supercheck should reason about.
+
+Services provide a stable system of record for:
+
+- Mapping alerts and incidents to the affected service
+- Scoping connectors to only the services they should support
+- Grouping evidence and ownership metadata during investigations
+
+Start with the services your responders recognize during incidents, such as `checkout-api`, `web-app`, or `payments-worker`.
+
+## Integrations
+
+Use **Admin → Integrations** to configure read-only evidence connectors.
+
+Connectors let Copilot collect cited evidence from tools such as GitHub, Kubernetes, Prometheus, Grafana, Sentry, Datadog, Loki, Elasticsearch, Tempo, and AWS CloudWatch. Connector access is governed by RBAC, service scope, output limits, and redaction.
+
+Connector validation automatically ensures credentials are valid and can reach the target system.
+
+Use context links when an outbound notification provider, such as a webhook alert channel, should be correlated with a read-only evidence connector.
+
+## Diagnostic Recipes
+
+Use **Admin → Diagnostic Recipes** to save approved read-only query templates.
+
+Recipes are useful for repeated questions such as:
+
+- Which services have elevated 5xx errors?
+- Did latency increase around the incident start time?
+- Are recent logs showing the same exception?
+- Which traces show the slowest dependency?
+
+Each recipe is scoped to a connector and constrained by allowlists, row limits, byte limits, and timeouts.
+
+SQL recipes are automatically validated to ensure they are strictly read-only, preventing any accidental data modification.
+
+## Private Agents
+
+Use **Admin → Private Agents** to register outbound-only workers for private network evidence collection.
+
+Private Agents are used when Supercheck Cloud cannot directly reach your internal tools, such as private Kubernetes clusters, internal Prometheus or Grafana instances, or self-hosted GitHub Enterprise.
+
+Private Agents:
+
+- Connect outbound to Supercheck over HTTPS
+- Fetch read-only connector jobs
+- Query your internal systems locally
+- Return bounded, sanitized evidence summaries
+
+They do not apply fixes and do not require inbound firewall access.
+
+## Recommended Setup Order
+
+1. Register the core services your team uses during incidents.
+2. Add direct integrations for cloud-accessible tools.
+3. Register a Private Agent if evidence sources are private.
+4. Add diagnostic recipes for common service-specific questions.
+5. Create or verify alert channels under **Communicate → Alerts → Channels**.
+6. Confirm responders can create incidents from alert signals or manually from **Communicate → Incidents**.
+
+## Permissions
+
+AI SRE setup follows the same project and organization RBAC model as the rest of Supercheck.
+
+- Users need connector configuration permissions to create integrations, diagnostic recipes, and Private Agents.
+- Users need incident permissions to create or investigate incidents.
+- All setup changes and incident actions are audit logged.

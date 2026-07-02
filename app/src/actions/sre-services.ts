@@ -190,6 +190,7 @@ export async function createSreService(input: z.infer<typeof serviceInputSchema>
       success: true,
     });
 
+    revalidatePath("/org-admin");
     revalidatePath("/services");
     return { success: true, service: normalizeService(service), message: "Service created" };
   } catch (error) {
@@ -282,6 +283,7 @@ export async function updateSreService(input: z.infer<typeof updateServiceInputS
       success: true,
     });
 
+    revalidatePath("/org-admin");
     revalidatePath("/services");
     return { success: true, service: normalizeService(service), message: "Service updated" };
   } catch (error) {
@@ -334,6 +336,7 @@ export async function archiveSreService(input: z.infer<typeof archiveServiceInpu
       success: true,
     });
 
+    revalidatePath("/org-admin");
     revalidatePath("/services");
     return { success: true, service: normalizeService(service), message: "Service archived" };
   } catch (error) {

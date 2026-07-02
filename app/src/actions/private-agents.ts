@@ -185,6 +185,7 @@ export async function registerPrivateAgent(input: z.infer<typeof privateAgentInp
       success: true,
     });
 
+    revalidatePath("/org-admin");
     revalidatePath("/org-admin/private-agents");
     revalidatePath("/org-admin/integrations");
     return {
@@ -259,6 +260,7 @@ export async function rotatePrivateAgentToken(input: z.infer<typeof privateAgent
       success: true,
     });
 
+    revalidatePath("/org-admin");
     revalidatePath("/org-admin/private-agents");
     return {
       success: true,
@@ -321,6 +323,7 @@ export async function disablePrivateAgent(input: z.infer<typeof privateAgentIdSc
       success: true,
     });
 
+    revalidatePath("/org-admin");
     revalidatePath("/org-admin/private-agents");
     revalidatePath("/org-admin/integrations");
     return { success: true, agent: normalizeAgent(agent), message: "Private Agent disabled" };

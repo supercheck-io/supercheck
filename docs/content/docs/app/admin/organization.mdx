@@ -4,13 +4,7 @@ description: Manage organization members, projects, and settings
 icon: UserCog
 ---
 
-Manage your organization's members, projects, and view audit trails from the Admin panel.
-
-## Overview
-
-The organization admin dashboard provides a summary of your organization's activity, including member count, project count, and recent activity.
-
-![Organization Overview](/screenshots/org-admin-overview.png)
+Manage your organization's projects, members, CLI tokens, AI SRE setup, and audit trails from the Admin panel.
 
 ## Projects
 
@@ -102,6 +96,19 @@ Tokens created here can be used in your CI/CD pipelines and external integration
 2. Click **Create Token**
 3. Select the target project and assign an expiry date
 4. Copy the generated token securely
+
+## AI SRE Setup
+
+Administrators configure project-level AI SRE setup from **Admin** so responders do not need to manage setup screens during an incident.
+
+The setup tabs are:
+
+- **Services** — Register production services and ownership metadata used to map alerts, incidents, and connector evidence.
+- **Integrations** — Configure read-only evidence connectors and link alert notification providers to connector context.
+- **Diagnostic Recipes** — Save bounded, allowlisted read-only query recipes for common incident questions.
+- **Private Agents** — Register outbound-only workers for querying private network tools without opening inbound access.
+
+See [AI SRE setup](/docs/app/admin/ai-sre-setup) for the full setup flow.
 
 ## Audit Log
 

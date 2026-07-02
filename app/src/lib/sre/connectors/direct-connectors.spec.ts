@@ -125,6 +125,35 @@ describe("direct connectors", () => {
     });
   });
 
+  it("validates Grafana credentials with an authenticated search endpoint", async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      json: async () => ({ message: "Unauthorized" }),
+    }) as unknown as typeof fetch;
+
+    const connector = createDirectConnector({
+      ...baseDefinition,
+      type: "grafana",
+      endpointUrl: "https://grafana.example.com",
+      surfaces: ["metrics"],
+      evidenceTypes: ["document"],
+      credential: { secret: "fake-token" },
+    });
+
+    const result = await connector.validate();
+
+    expect(result.status).toBe("invalid_credentials");
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/api/search?limit=1"),
+      expect.objectContaining({
+        method: "GET",
+        headers: expect.objectContaining({ Authorization: "Bearer fake-token" }),
+      })
+    );
+    expect(global.fetch).not.toHaveBeenCalledWith(expect.stringContaining("/api/health"), expect.anything());
+  });
+
   it("normalizes Kubernetes pods into topology evidence", async () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
@@ -262,6 +291,51 @@ describe("direct connectors", () => {
     );
   });
 
+  it("classifies Datadog validate=false responses as invalid credentials", async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ valid: false }),
+    }) as unknown as typeof fetch;
+
+    const connector = createDirectConnector({
+      ...baseDefinition,
+      type: "datadog",
+      endpointUrl: "https://api.datadoghq.com",
+      surfaces: ["metrics"],
+      evidenceTypes: ["event"],
+      credential: { apiKey: "bad-api-key", applicationKey: "bad-app-key" },
+    });
+
+    const result = await connector.validate();
+
+    expect(result.status).toBe("invalid_credentials");
+    expect(global.fetch).toHaveBeenCalledWith(
+      "https://api.datadoghq.com/api/v1/validate",
+      expect.objectContaining({
+        headers: expect.objectContaining({ "DD-API-KEY": "bad-api-key", "DD-APPLICATION-KEY": "bad-app-key" }),
+      })
+    );
+  });
+
+  it("classifies missing Datadog keys as invalid credentials without probing the network", async () => {
+    global.fetch = jest.fn() as unknown as typeof fetch;
+
+    const connector = createDirectConnector({
+      ...baseDefinition,
+      type: "datadog",
+      endpointUrl: "https://api.datadoghq.com",
+      surfaces: ["metrics"],
+      evidenceTypes: ["event"],
+      credential: { apiKey: "api-key" },
+    });
+
+    const result = await connector.validate();
+
+    expect(result.status).toBe("invalid_credentials");
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
   it("normalizes Loki query_range results into log evidence", async () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
@@ -298,6 +372,31 @@ describe("direct connectors", () => {
       expect.stringContaining("/loki/api/v1/query_range"),
       expect.objectContaining({ method: "GET", cache: "no-store" })
     );
+  });
+
+  it("validates Loki through its query API instead of the readiness probe", async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ status: "success", data: [] }),
+    }) as unknown as typeof fetch;
+
+    const connector = createDirectConnector({
+      ...baseDefinition,
+      type: "loki",
+      endpointUrl: "https://loki.example.com",
+      surfaces: ["logs"],
+      evidenceTypes: ["log"],
+    });
+
+    const result = await connector.validate();
+
+    expect(result.status).toBe("valid");
+    expect(global.fetch).toHaveBeenCalledWith(
+      "https://loki.example.com/loki/api/v1/labels",
+      expect.objectContaining({ method: "GET", cache: "no-store" })
+    );
+    expect(global.fetch).not.toHaveBeenCalledWith(expect.stringContaining("/ready"), expect.anything());
   });
 
   it("normalizes Elasticsearch search hits into log evidence", async () => {

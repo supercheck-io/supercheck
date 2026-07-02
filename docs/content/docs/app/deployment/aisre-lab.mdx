@@ -59,6 +59,8 @@ The error endpoint increments Prometheus counters, writes structured error logs,
 | Loki | `http://127.0.0.1:13100` |
 | Tempo | `http://127.0.0.1:13200` |
 
+Connector validation uses authenticated read-only APIs, not only health endpoints. Grafana `/api/health` can respond successfully even when a bearer token is invalid; Supercheck validates Grafana through `/api/search?limit=1` so bad credentials are rejected before an investigation tries to search dashboards. Loki validation uses `/loki/api/v1/labels`, which better matches evidence collection than readiness-only checks.
+
 ## Seeded Live Eval Fixture
 
 Use fixture ID `connector-investigation-oss-lab-checkout-degradation` after you create a test incident and connect the lab Prometheus, Loki, and Tempo endpoints to a non-production Supercheck project.

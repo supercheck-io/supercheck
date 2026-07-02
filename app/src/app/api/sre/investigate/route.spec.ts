@@ -15,7 +15,8 @@ jest.mock("@/sre/lib/feature-gates", () => ({
 }));
 
 jest.mock("@/sre/lib/investigation-runner", () => ({
-  runSreIncidentInvestigation: jest.fn(),
+  startSreIncidentInvestigation: jest.fn(),
+  executeSreIncidentInvestigation: jest.fn(),
 }));
 
 jest.mock("@/lib/sre/investigation-billing", () => {
@@ -37,13 +38,14 @@ import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireProjectContext } from "@/lib/project-context";
 import { isSreInvestigationAgentEnabled } from "@/sre/lib/feature-gates";
 import { assertCanStartSreInvestigation, consumeSreInvestigationCredit, SreInvestigationBillingError } from "@/lib/sre/investigation-billing";
-import { runSreIncidentInvestigation } from "@/sre/lib/investigation-runner";
+import { startSreIncidentInvestigation, executeSreIncidentInvestigation } from "@/sre/lib/investigation-runner";
 import { POST } from "./route";
 
 const mockRequireProjectContext = requireProjectContext as jest.Mock;
 const mockCheckPermissionWithContext = checkPermissionWithContext as jest.Mock;
 const mockIsSreInvestigationAgentEnabled = isSreInvestigationAgentEnabled as jest.Mock;
-const mockRunSreIncidentInvestigation = runSreIncidentInvestigation as jest.Mock;
+const mockStartSreIncidentInvestigation = startSreIncidentInvestigation as jest.Mock;
+const mockExecuteSreIncidentInvestigation = executeSreIncidentInvestigation as jest.Mock;
 const mockAssertCanStartSreInvestigation = assertCanStartSreInvestigation as jest.Mock;
 const mockConsumeSreInvestigationCredit = consumeSreInvestigationCredit as jest.Mock;
 
@@ -61,7 +63,12 @@ describe("SRE investigate API", () => {
     mockCheckPermissionWithContext.mockReturnValue(true);
     mockAssertCanStartSreInvestigation.mockResolvedValue({ billable: true });
     mockConsumeSreInvestigationCredit.mockResolvedValue({ billed: true, usageEventId: "event-1" });
-    mockRunSreIncidentInvestigation.mockResolvedValue({
+    mockStartSreIncidentInvestigation.mockResolvedValue({
+      success: true,
+      investigationRunId: "018f0000-0000-7000-8000-000000000004",
+      incident: { id: "018f0000-0000-7000-8000-000000000005" },
+    });
+    mockExecuteSreIncidentInvestigation.mockResolvedValue({
       success: true,
       investigationRunId: "018f0000-0000-7000-8000-000000000004",
       summary: "Likely dependency latency",
@@ -80,7 +87,7 @@ describe("SRE investigate API", () => {
 
     expect(response.status).toBe(404);
     expect(mockRequireProjectContext).not.toHaveBeenCalled();
-    expect(mockRunSreIncidentInvestigation).not.toHaveBeenCalled();
+    expect(mockStartSreIncidentInvestigation).not.toHaveBeenCalled();
   });
 
   it("requires incident and investigation permissions", async () => {
@@ -94,7 +101,7 @@ describe("SRE investigate API", () => {
     }));
 
     expect(response.status).toBe(403);
-    expect(mockRunSreIncidentInvestigation).not.toHaveBeenCalled();
+    expect(mockStartSreIncidentInvestigation).not.toHaveBeenCalled();
   });
 
   it("runs investigation and enables live connectors only with connector permission", async () => {
@@ -110,13 +117,14 @@ describe("SRE investigate API", () => {
 
     expect(response.status).toBe(200);
     expect(mockAssertCanStartSreInvestigation).toHaveBeenCalledWith(context.organizationId);
-    expect(mockRunSreIncidentInvestigation).toHaveBeenCalledWith({
+    expect(mockStartSreIncidentInvestigation).toHaveBeenCalledWith({
       userId: context.userId,
       organizationId: context.organizationId,
       projectId: context.project.id,
       incidentId: "018f0000-0000-7000-8000-000000000005",
       enableLiveConnectors: false,
     });
+    await new Promise(process.nextTick);
     expect(mockConsumeSreInvestigationCredit).toHaveBeenCalledWith({
       organizationId: context.organizationId,
       projectId: context.project.id,
@@ -138,16 +146,16 @@ describe("SRE investigate API", () => {
 
     expect(response.status).toBe(402);
     expect(body).toEqual({ error: "Monthly spending limit reached", code: "spending_limit" });
-    expect(mockRunSreIncidentInvestigation).not.toHaveBeenCalled();
+    expect(mockStartSreIncidentInvestigation).not.toHaveBeenCalled();
+    await new Promise(process.nextTick);
     expect(mockConsumeSreInvestigationCredit).not.toHaveBeenCalled();
   });
 
-  it("does not consume usage when investigation fails", async () => {
-    mockRunSreIncidentInvestigation.mockResolvedValue({
+  it("does not consume usage when investigation start fails", async () => {
+    mockStartSreIncidentInvestigation.mockResolvedValue({
       success: false,
       status: 500,
       error: "agent failed",
-      investigationRunId: "018f0000-0000-7000-8000-000000000004",
     });
 
     const response = await POST(new NextRequest("http://localhost/api/sre/investigate", {

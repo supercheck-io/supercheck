@@ -230,8 +230,8 @@ export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
     return (
       <DashboardEmptyState
         className="min-h-[60vh]"
-        title="No SRE alerts yet"
-        description="SRE alerts are derived from alert history. They will appear here after monitors or jobs emit notifications."
+        title="No alert signals yet"
+        description="Signals are derived from alert history. They appear here after monitors or jobs emit notifications."
         icon={<Siren className="h-12 w-12" />}
       />
     );
@@ -241,7 +241,7 @@ export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
     <div className="space-y-5">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <CardTitle className="text-2xl font-semibold">SRE Alerts</CardTitle>
+          <CardTitle className="text-2xl font-semibold">Alert signals</CardTitle>
           <CardDescription>
             Alert-history events normalized into investigation-ready signals with derived severity and fingerprints.
           </CardDescription>

@@ -28,6 +28,12 @@ const createIncidentFromAlertSchema = z.object({
   alertHistoryId: z.string().uuid(),
 });
 
+const createManualIncidentSchema = z.object({
+  title: z.string().trim().min(1, "Incident title is required").max(500, "Incident title is too long"),
+  severity: z.enum(["sev1", "sev2", "sev3", "sev4"]).default("sev3"),
+  summary: z.string().trim().max(2000, "Summary is too long").optional().nullable(),
+});
+
 const archiveIncidentChatSchema = z.object({
   incidentId: z.string().uuid(),
   conversationId: z.string().uuid(),
@@ -50,6 +56,18 @@ export type CreateSreIncidentFromAlertResult =
       message: string;
     }
   | { success: false; error: string };
+
+export type CreateManualSreIncidentResult =
+  | {
+      success: true;
+      incident: {
+        id: string;
+        incidentNumber: number;
+        title: string;
+      };
+      message: string;
+    }
+  | { success: false; error: string; fieldErrors?: Record<string, string[]> };
 
 export type SreIncidentListItem = {
   id: string;
@@ -157,6 +175,13 @@ function sha256(value: string) {
 
 function truncate(value: string, maxLength: number) {
   return value.length > maxLength ? `${value.slice(0, maxLength - 3)}...` : value;
+}
+
+function formatValidationErrors(error: z.ZodError) {
+  const flattened = error.flatten().fieldErrors;
+  return Object.fromEntries(
+    Object.entries(flattened).filter(([, errors]) => errors && errors.length > 0)
+  ) as Record<string, string[]>;
 }
 
 async function getConversationHistory(input: {
@@ -439,6 +464,108 @@ export async function archiveSreIncidentChatConversation(
   }
 }
 
+export async function createManualSreIncident(
+  input: z.infer<typeof createManualIncidentSchema>
+): Promise<CreateManualSreIncidentResult> {
+  try {
+    const parsed = createManualIncidentSchema.safeParse(input);
+    if (!parsed.success) {
+      return {
+        success: false,
+        error: "Invalid incident details",
+        fieldErrors: formatValidationErrors(parsed.error),
+      };
+    }
+
+    const { userId, organizationId, project } = await requireProjectContext();
+    const canCreate = checkPermissionWithContext("sre_incident", "create", {
+      userId,
+      organizationId,
+      project,
+    });
+
+    if (!canCreate) {
+      return { success: false, error: "Insufficient permissions to create incidents" };
+    }
+
+    const title = truncate(parsed.data.title, 500);
+    const summary = parsed.data.summary?.trim() || null;
+    const now = new Date();
+
+    const incident = await db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${organizationId}))`);
+
+      const [numberRow] = await tx
+        .select({
+          nextIncidentNumber: sql<number>`coalesce(max(${sreIncidents.incidentNumber}), 0) + 1`,
+        })
+        .from(sreIncidents)
+        .where(eq(sreIncidents.organizationId, organizationId));
+
+      const incidentNumber = Number(numberRow?.nextIncidentNumber ?? 1);
+
+      const [created] = await tx
+        .insert(sreIncidents)
+        .values({
+          organizationId,
+          projectId: project.id,
+          incidentNumber,
+          title,
+          severity: parsed.data.severity,
+          status: "triggered",
+          createdByUserId: userId,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .returning({
+          id: sreIncidents.id,
+          incidentNumber: sreIncidents.incidentNumber,
+          title: sreIncidents.title,
+        });
+
+      await tx.insert(sreIncidentTimelineEvents).values({
+        incidentId: created.id,
+        eventType: "state_change",
+        eventData: {
+          state: "manual_incident_created",
+          summary,
+        },
+        actorType: "user",
+        actorUserId: userId,
+        createdAt: now,
+      });
+
+      return created;
+    });
+
+    await logAuditEvent({
+      userId,
+      organizationId,
+      action: "sre_incident_created_manual",
+      resource: "sre_incident",
+      resourceId: incident.id,
+      metadata: {
+        projectId: project.id,
+        incidentNumber: incident.incidentNumber,
+        severity: parsed.data.severity,
+      },
+      success: true,
+    });
+
+    revalidatePath("/incidents");
+    revalidatePath(`/incidents/${incident.id}`);
+
+    return {
+      success: true,
+      incident,
+      message: `Incident #${incident.incidentNumber} created`,
+    };
+  } catch (error) {
+    console.error("Error creating manual SRE incident:", error);
+    return { success: false, error: "Failed to create incident" };
+  }
+}
+
 export async function createSreIncidentFromAlert(
   input: z.infer<typeof createIncidentFromAlertSchema>
 ): Promise<CreateSreIncidentFromAlertResult> {
@@ -653,10 +780,8 @@ export async function createSreIncidentFromAlert(
     });
 
     revalidatePath("/alerts");
-    if (triage.attempted) {
-      revalidatePath("/incidents");
-      revalidatePath(`/incidents/${result.incident.id}`);
-    }
+    revalidatePath("/incidents");
+    revalidatePath(`/incidents/${result.incident.id}`);
 
     return {
       success: true,

@@ -98,7 +98,7 @@ export function ServiceCatalog({ initialServices, loadError }: ServiceCatalogPro
           <DashboardEmptyState
             className="min-h-[420px]"
             title="No services registered"
-            description="Add your first production service so incidents, alerts, runbooks, and evidence have a stable system of record."
+            description="Add your first production service so incidents, alerts, diagnostic recipes, and evidence have a stable system of record."
             icon={<Boxes className="h-10 w-10" />}
             action={
               <Button onClick={handleAdd}>
