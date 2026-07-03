@@ -360,20 +360,17 @@
  * Only position and alignment - let Chatwoot handle icon sizing.
  */
 
-/* Keep product Copilot bottom-right and customer support top-right. */
+/* Stack customer support above the AI SRE Copilot launcher in the bottom-right corner. */
 .woot-widget-bubble,
 .cw-widget-bubble {
-  top: 88px !important;
   right: 18px !important;
-  bottom: auto !important;
+  bottom: 88px !important;
   z-index: 45 !important;
 }
 
 .woot-widget-holder,
 .cw-widget-container {
-  top: 144px !important;
   right: 18px !important;
-  bottom: auto !important;
+  bottom: 150px !important;
   z-index: 45 !important;
 }
-

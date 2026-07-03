@@ -97,8 +97,8 @@ describe("SreEvidenceGraph", () => {
   it("keeps the graph controls focused on filtering and node selection", () => {
     render(<SreEvidenceGraph graph={graph} />);
 
-    expect(screen.getByText("Operational lanes")).toBeInTheDocument();
-    expect(screen.getByText(/select a node to inspect source/i)).toBeInTheDocument();
+    expect(screen.getByText("Graph lanes")).toBeInTheDocument();
+    expect(screen.getByText(/select a node to inspect details/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /zoom in graph/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /fit/i })).not.toBeInTheDocument();
   });

@@ -8,7 +8,7 @@ import { Bot, ChevronDown, CornerDownLeft, Loader2, Send, ShieldCheck, UserRound
 
 import type { SreStandaloneChatHistory } from "@/actions/sre-ai";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
-import { SreMessageContent } from "@/components/sre/chat-message-list";
+import { SreMessageContent } from "@/components/sre/sre-message-content";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -168,12 +168,12 @@ function EmptyThread() {
 
   return (
     <ThreadPrimitive.Empty>
-      <div className="mx-auto flex min-h-[inherit] max-w-2xl flex-col justify-center p-4">
+      <div className="mx-auto flex min-h-[inherit] max-w-2xl flex-col justify-center p-3">
         <DashboardEmptyState
           icon={<Bot className="h-10 w-10 text-muted-foreground" />}
           title="Hello! I am your AI SRE Copilot."
           description="Use Copilot for read-only triage plans, evidence checklists, and verification steps. Open an incident when you need cited evidence."
-          className="min-h-[400px]"
+          className="min-h-[320px]"
           action={
             <div className="mt-5 grid w-full gap-2 sm:grid-cols-2">
               {SRE_AI_SUGGESTIONS.map((suggestion) => (
@@ -203,7 +203,7 @@ function SreComposer() {
         placeholder="Ask Copilot about an incident, service, or verification plan..."
         submitMode="enter"
         rows={2}
-        className="max-h-44 min-h-16 resize-none border-0 bg-transparent text-sm leading-6 outline-none placeholder:text-muted-foreground focus-visible:outline-none"
+        className="w-full max-h-44 min-h-16 resize-none border-0 bg-transparent text-sm leading-6 outline-none placeholder:text-muted-foreground focus-visible:outline-none"
       />
       <div className="mt-3 flex items-center justify-between gap-3 border-t pt-3">
         <div className="min-w-0 text-xs text-muted-foreground">

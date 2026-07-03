@@ -39,14 +39,14 @@ interface DataTableProps<TData, TValue> {
   renderToolbar?: (table: import("@tanstack/react-table").Table<TData>) => React.ReactNode;
   entityLabel?: string;
   meta?: {
-        [key: string]: unknown;
+    [key: string]: unknown;
   };
 }
 
 // Define the extended meta type locally
 interface ExtendedTableMeta<TData> extends TableMeta<TData> {
   globalFilterColumns?: string[];
-  }
+}
 
 // Generic global filter function
 function genericGlobalFilterFn(row: Row<unknown>, _columnId: string, filterValue: string) {
@@ -97,7 +97,7 @@ export function DataTable<TData, TValue>({
   const [mounted, setMounted] = React.useState(false);
 
   // Track hover timers for debouncing
-  const hoverTimersRef = React.useRef<Map<string, NodeJS.Timeout>>(new Map());
+  const hoverTimersRef = React.useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   // Set mounted to true after initial render
   React.useEffect(() => {
@@ -210,26 +210,57 @@ export function DataTable<TData, TValue>({
     // Only reset if there's data and the component is mounted
     if (data.length > 0 && mounted) {
       // Use setTimeout to ensure this runs after the current render cycle
-      setTimeout(() => {
+      const timeoutId = setTimeout(() => {
         if (mounted) {
           table.resetPageIndex(true);
         }
       }, 0);
+
+      return () => clearTimeout(timeoutId);
     }
   }, [data, table, mounted]);
-
-
 
   // Don't render the table until the component is mounted
   if (!mounted) {
     return <DataTableSkeleton columns={5} rows={3} />;
   }
 
+  const isInteractiveTarget = (target: HTMLElement) =>
+    !!(
+      target.closest("button") ||
+      target.closest("a") ||
+      target.closest("input") ||
+      target.closest("select") ||
+      target.closest("textarea") ||
+      target.closest('[role="button"]') ||
+      target.closest('[role="menu"]') ||
+      target.closest('[role="menuitem"]')
+    );
+
+  const handleRowClick = (event: React.MouseEvent, row: Row<TData>) => {
+    const target = event.target as HTMLElement;
+    if (isInteractiveTarget(target)) {
+      return;
+    }
+    onRowClick?.(row);
+  };
+
+  const handleRowKeyDown = (event: React.KeyboardEvent, row: Row<TData>) => {
+    const target = event.target as HTMLElement;
+    if (isInteractiveTarget(target)) {
+      return;
+    }
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      onRowClick?.(row);
+    }
+  };
+
   return (
     <div className="space-y-4">
       {renderToolbar?.(table)}
-      <div className="rounded-t-lg border relative">
-        <Table>
+      <div className="relative max-w-full overflow-x-auto rounded-t-lg border">
+        <Table className="w-full min-w-[900px]">
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id}>
@@ -272,8 +303,10 @@ export function DataTable<TData, TValue>({
                   <TableRow
                     key={row.id}
                     data-state={row.getIsSelected() && "selected"}
-                    className={cn(onRowClick && "cursor-pointer")}
-                    onClick={() => onRowClick?.(row)}
+                    className={cn(onRowClick && "cursor-pointer hover:bg-muted/50")}
+                    tabIndex={onRowClick ? 0 : undefined}
+                    onClick={(event) => handleRowClick(event, row)}
+                    onKeyDown={(event) => handleRowKeyDown(event, row)}
                     onMouseEnter={() => {
                       if (rowId && onRowClick) {
                         // Clear any existing timer for this row

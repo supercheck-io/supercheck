@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { FileSearch } from "lucide-react";
 import { toast } from "sonner";
 
@@ -60,6 +61,7 @@ function downloadInvestigation(item: SreInvestigationHistoryItem) {
 }
 
 export function SreInvestigationsTable({ investigations, loadError = null }: SreInvestigationsTableProps) {
+  const router = useRouter();
   const [savedSnapshotIds, setSavedSnapshotIds] = useState<Record<string, string | null>>(() =>
     Object.fromEntries(investigations.map((item) => [item.id, item.reportSnapshotId]))
   );
@@ -162,14 +164,14 @@ export function SreInvestigationsTable({ investigations, loadError = null }: Sre
 
   return (
     <Card className="shadow-sm hover:shadow-md transition-shadow duration-200">
-      <CardHeader className="border-b bg-muted/10">
+      <CardHeader className="pb-4">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <CardTitle className="text-2xl font-semibold">
               Investigation history
             </CardTitle>
             <CardDescription>
-              Search SRE agent runs and export sanitized report JSON with evidence, tool hashes, recommendations, and raw payloads excluded.
+              Review investigation runs, open the related incident, and export sanitized report JSON when needed.
             </CardDescription>
           </div>
         </div>
@@ -179,7 +181,7 @@ export function SreInvestigationsTable({ investigations, loadError = null }: Sre
           <DashboardEmptyState
             icon={<FileSearch className="h-10 w-10 text-muted-foreground" />}
             title="No investigations recorded yet"
-            description="Run an incident investigation to capture evidence, recommendations, cost, and report exports here."
+            description="Run an incident investigation to capture evidence, summaries, and sanitized report exports here."
             className="min-h-[360px]"
           />
         ) : (
@@ -187,6 +189,11 @@ export function SreInvestigationsTable({ investigations, loadError = null }: Sre
             <DataTable
               columns={columns}
               data={investigations}
+              onRowClick={(row) => {
+                if (row.original.incidentId) {
+                  router.push(`/incidents/${row.original.incidentId}`);
+                }
+              }}
               renderToolbar={(table) => <InvestigationsToolbar table={table} />}
               entityLabel="investigations"
               meta={{
@@ -197,7 +204,7 @@ export function SreInvestigationsTable({ investigations, loadError = null }: Sre
                 feedbackByRunId,
                 pendingSnapshotRunId,
                 isSnapshotPending,
-                globalFilterColumns: ["incidentTitle", "rootCauseHypothesis", "serviceName", "severity", "modelId", "status", "agentType"]
+                globalFilterColumns: ["incidentTitle", "rootCauseHypothesis", "serviceName", "severity", "status", "agentType"]
               }}
             />
             {reviewingItem && (

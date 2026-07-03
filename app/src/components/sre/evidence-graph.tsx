@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Network, Search, Maximize2, Minimize2 } from "lucide-react";
+import { Network, Search } from "lucide-react";
 
 import { SreEvidenceGraphSidePanel } from "@/components/sre/evidence-graph-side-panel";
 import type { SreEvidenceGraph as SreEvidenceGraphData, SreEvidenceGraphNode, SreEvidenceGraphNodeType } from "@/lib/sre/evidence-graph-queries";
@@ -51,21 +51,6 @@ const NODE_TYPE_LABELS: Record<SreEvidenceGraphNodeType, string> = {
   playbook: "Playbooks",
 };
 
-const NODE_TYPE_CLASSES: Record<SreEvidenceGraphNodeType, string> = {
-  service: "border-sky-500/30 bg-sky-500/10",
-  monitor: "border-cyan-500/30 bg-cyan-500/10",
-  job: "border-indigo-500/30 bg-indigo-500/10",
-  alert: "border-red-500/30 bg-red-500/10",
-  incident: "border-rose-500/30 bg-rose-500/10",
-  investigation: "border-violet-500/30 bg-violet-500/10",
-  evidence: "border-emerald-500/30 bg-emerald-500/10",
-  recommendation: "border-amber-500/30 bg-amber-500/10",
-  deployment: "border-blue-500/30 bg-blue-500/10",
-  commit: "border-slate-500/30 bg-slate-500/10",
-  recollection: "border-teal-500/30 bg-teal-500/10",
-  playbook: "border-lime-500/30 bg-lime-500/10",
-};
-
 function nodeMatchesQuery(node: SreEvidenceGraphNode, query: string) {
   if (!query) {
     return true;
@@ -112,7 +97,6 @@ export function SreEvidenceGraph({
   const [nodeType, setNodeType] = useState<SreEvidenceGraphNodeType | "all">("all");
   const [incidentFocusId, setIncidentFocusId] = useState("all");
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(graph.nodes[0]?.id ?? null);
-  const [isMaximized, setIsMaximized] = useState(false);
 
   const normalizedQuery = query.trim().toLowerCase();
   const incidentOptions = useMemo(
@@ -157,19 +141,17 @@ export function SreEvidenceGraph({
 
   return (
     <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-      <Card className="flex min-h-[520px] flex-col overflow-hidden rounded-xl xl:min-h-[calc(100svh-9rem)]">
-        <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b bg-muted/10">
+      <Card className="flex min-h-[520px] flex-col overflow-hidden xl:min-h-[calc(100svh-9rem)]">
+        <CardHeader className="flex flex-col gap-4 border-b sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 w-full">
             <div className="flex-1">
               <CardTitle className="text-2xl font-semibold">
                 Evidence graph
               </CardTitle>
-              <CardDescription>Find relationships between services, alerts, incidents, evidence, and recommendations.</CardDescription>
+              <CardDescription>Review relationships between services, alerts, incidents, and evidence.</CardDescription>
             </div>
             <div className="flex flex-wrap gap-2 text-sm">
-              <Badge variant="secondary" className="rounded-full">{visibleNodes.length} visible</Badge>
-              <Badge variant="outline" className="rounded-full">{graph.nodes.length} total nodes</Badge>
-              <Badge variant="outline" className="rounded-full">{visibleEdges.length} relationships</Badge>
+              <Badge variant="secondary">{visibleNodes.length} visible</Badge>
             </div>
           </div>
         </CardHeader>
@@ -209,36 +191,37 @@ export function SreEvidenceGraph({
           </div>
 
           {focusedIncident && (
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border bg-muted/10 px-3 py-2">
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/10 px-3 py-2">
               <p className="text-sm text-muted-foreground">
                 Focused on <span className="font-medium text-foreground">{focusedIncident.title}</span>
               </p>
-              <Badge variant="outline" className="rounded-full">{visibleNodes.length} nodes</Badge>
+              <Badge variant="outline">{visibleNodes.length} nodes</Badge>
             </div>
           )}
 
-          <div className={cn("flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border bg-background transition-all duration-300", isMaximized && "fixed inset-4 z-50 shadow-2xl")}>
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-muted/20 px-4 py-3">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border bg-background">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
               <div>
-                <p className="text-sm font-medium">Operational lanes</p>
-                <p className="text-xs text-muted-foreground">Select a node to inspect source, status, and relationships.</p>
+                <p className="text-sm font-medium">Graph lanes</p>
+                <p className="text-xs text-muted-foreground">Select a node to inspect details and relationships.</p>
               </div>
               <div className="flex items-center gap-2">
                 {visibleEdges.length === 0 && visibleNodes.length > 0 && (
-                  <Badge variant="outline" className="rounded-full">No visible relationships</Badge>
+                  <Badge variant="outline">No visible relationships</Badge>
                 )}
-                <Button variant="ghost" size="icon" onClick={() => setIsMaximized(!isMaximized)} aria-label="Toggle maximize operational lanes">
-                  {isMaximized ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-                </Button>
               </div>
             </div>
             <div
-              className="min-h-0 flex-1 overflow-auto bg-[radial-gradient(circle,rgba(0,0,0,0.1)_1px,transparent_1px)] dark:bg-[radial-gradient(circle,rgba(255,255,255,0.1)_1px,transparent_1px)] [background-size:16px_16px]"
+              className="min-h-0 flex-1 overflow-auto bg-background"
+              style={{
+                backgroundImage: "radial-gradient(hsl(var(--muted-foreground) / 0.16) 1px, transparent 1px)",
+                backgroundSize: "16px 16px",
+              }}
               aria-label="Evidence graph viewport"
               tabIndex={0}
             >
               <div
-                className="grid min-h-full grid-flow-col auto-cols-[minmax(280px,340px)] gap-px bg-border/20"
+                className="grid min-h-full grid-flow-col auto-cols-[minmax(280px,340px)] divide-x"
               >
                 {displayedGroups.length === 0 ? (
                   <div className="flex w-full min-w-[600px] items-center justify-center p-8">
@@ -251,14 +234,14 @@ export function SreEvidenceGraph({
                   </div>
                 ) : (
                   displayedGroups.map((group) => (
-                    <div key={group.type} className="p-3">
+                    <div key={group.type} className="bg-background p-3">
                       <div className="mb-3 flex items-center justify-between gap-2">
                         <Label className="text-sm font-semibold">{NODE_TYPE_LABELS[group.type]}</Label>
-                        <Badge variant="outline" className="rounded-full">{group.total}</Badge>
+                        <Badge variant="outline">{group.total}</Badge>
                       </div>
                       <div className="space-y-2">
                         {group.nodes.length === 0 ? (
-                          <div className="rounded-2xl border border-dashed p-4 text-center text-xs text-muted-foreground">No visible nodes</div>
+                          <div className="rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">No visible nodes</div>
                         ) : (
                           group.nodes.map((node) => (
                             <button
@@ -267,8 +250,7 @@ export function SreEvidenceGraph({
                               aria-label={`Select ${node.type} node ${node.title}`}
                               onClick={() => setSelectedNodeId(node.id)}
                               className={cn(
-                                "w-full rounded-xl border p-3 text-left text-sm transition-colors hover:bg-background",
-                                NODE_TYPE_CLASSES[node.type],
+                                "w-full rounded-md border bg-card p-3 text-left text-sm transition-colors hover:bg-muted/50",
                                 effectiveSelectedNodeId === node.id && "ring-2 ring-ring"
                               )}
                             >
@@ -285,33 +267,6 @@ export function SreEvidenceGraph({
             </div>
           </div>
 
-          {visibleEdges.length > 0 && (
-            <div className="rounded-2xl border bg-muted/10 p-4">
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-sm font-semibold">Relationship paths</h3>
-                <Badge variant="outline" className="rounded-full">{visibleEdges.length} visible edges</Badge>
-              </div>
-              <div className="grid gap-2 md:grid-cols-2">
-                {visibleEdges.slice(0, 12).map((edge) => {
-                  const source = nodesById.get(edge.source);
-                  const target = nodesById.get(edge.target);
-                  return (
-                    <button
-                      key={edge.id}
-                      type="button"
-                      aria-label={`Inspect relationship ${source?.title ?? "Unknown"} ${edge.label} ${target?.title ?? "Unknown"}`}
-                      onClick={() => setSelectedNodeId(edge.target)}
-                      className="rounded-2xl border bg-background p-3 text-left text-sm hover:bg-muted/40"
-                    >
-                      <span className="line-clamp-1 font-medium">{source?.title ?? "Unknown"}</span>
-                      <span className="my-1 block text-xs text-muted-foreground">{edge.label}</span>
-                      <span className="line-clamp-1 font-medium">{target?.title ?? "Unknown"}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
         </CardContent>
       </Card>
 

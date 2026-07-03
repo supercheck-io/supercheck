@@ -11,7 +11,7 @@ The unified reliability loop works as follows:
 1. **Detect**: Monitors, jobs, and tests detect an issue.
 2. **Triage**: Responders review alert signals and create an incident when the signal needs investigation. Responders can also create an incident manually when the issue starts outside Supercheck alerts.
 3. **Investigate**: The AI agent gathers native evidence and read-only connector evidence across your stack.
-4. **Explain**: The incident workspace shows a working theory, confidence scores, cited evidence, tool timeline, and recommendations.
+4. **Explain**: The incident detail page keeps investigation actions, cited evidence, and the latest brief in separate focused tabs.
 5. **Verify**: A responder applies the fix in their own systems, and Supercheck verifies the fix by re-running the detecting tests.
 
 ## Read-Only By Design
@@ -40,4 +40,12 @@ To get a complete picture of an incident, the AI SRE agent integrates securely w
 
 These TypeScript-native connectors are strictly read-only and governed by Role-Based Access Control (RBAC), budgets, and redaction policies to guarantee that the agent only accesses authorized evidence.
 
-Administrators configure services, integrations, diagnostic recipes, and Private Agents under [Admin → AI SRE Setup](/docs/app/admin/ai-sre-setup).
+Administrators configure AI SRE setup from **Settings → Admin** using the dedicated **Services**, **Integrations**, **Diagnostic Recipes**, and **Private Agents** tabs.
+
+## Responder Screens
+
+- **Communicate → Alerts** shows failure signals, alert history, and notification channels. Delivery failures and recovery/success notifications stay in History; they are not promoted as investigation signals.
+- **Communicate → Incidents** is the responder queue for alert-promoted and manually created incidents. It uses the same compact filter, sorting, row sizing, and pagination pattern as other Supercheck tables.
+- **Investigate → Copilot** provides read-only conversational help without cluttering incident detail pages.
+- **Investigate → Evidence Map** shows relationships between services, alerts, incidents, and evidence using compact dotted-background lanes and a focused detail panel.
+- **Investigate → Investigations** shows SRE investigation history as a compact table with incident number, incident title, likely cause, agent/status, service, evidence count, completion time, row navigation back to incidents, and row-menu actions for sanitized exports, snapshots, and review feedback.

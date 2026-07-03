@@ -16,7 +16,7 @@ export default async function IncidentsPage() {
     <div>
       <PageBreadcrumbs items={breadcrumbs} />
       <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 m-4">
-        <CardContent>
+        <CardContent className="p-6">
           <SreIncidentsList
             incidents={result.incidents}
             loadError={result.success ? null : result.error}

@@ -169,6 +169,21 @@ function deriveAlertStatus(type: string): SreAlertStatus {
     : "firing";
 }
 
+function isActionableAlertForIncident(status: "sent" | "failed" | "pending", type: string, message: string) {
+  if (status !== "sent") {
+    return false;
+  }
+
+  const normalizedType = type.toLowerCase();
+  const normalizedMessage = message.toLowerCase();
+  return !(
+    normalizedType.includes("recovery") ||
+    normalizedType.includes("success") ||
+    normalizedType.includes("resolved") ||
+    normalizedMessage.includes("completed successfully")
+  );
+}
+
 function sha256(value: string) {
   return createHash("sha256").update(value, "utf8").digest("hex");
 }
@@ -621,6 +636,10 @@ export async function createSreIncidentFromAlert(
 
     if (!alert) {
       return { success: false, error: "Alert not found or access denied" };
+    }
+
+    if (!isActionableAlertForIncident(alert.status, alert.type, alert.message)) {
+      return { success: false, error: "Only sent failure alerts can create incidents" };
     }
 
     const sourceType: SreAlertSourceType = alert.monitorId ? "monitor" : "job";

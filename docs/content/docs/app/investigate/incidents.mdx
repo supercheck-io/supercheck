@@ -13,37 +13,37 @@ You can create an incident in two ways:
 
 Both paths create the same incident workspace.
 
-## The Incident Workspace
+The incident queue uses the same table behavior as Tests and Runs: incident number is a separate sortable column, long titles are constrained, rows open the incident detail page, filters sit in the header toolbar, and pagination is available for larger queues.
 
-The Incident Investigation view serves as the central hub for understanding and resolving issues. It provides an immediate, synthesized view of the situation instead of forcing you to hunt through multiple dashboards.
+## Incident Detail
 
-### Live Report Pane
+The incident detail page is intentionally focused. It shows the incident status, mapped service, stored evidence count, and the latest brief without mixing in every investigation control.
 
-The Live Report Pane is the focal point of the investigation. It actively monitors the agent's progress and updates in real-time, providing:
+The page has three tabs:
 
-- **Working Theory**: A clear, concise hypothesis of the root cause.
-- **Evidence Graph**: A connected visual web of the underlying native evidence and connector data that supports the current theory.
-- **Unmatched Citation Warnings**: Alerts when the model's claims lack supporting evidence.
-- **Latest Activity**: A stream of the agent's recent tool calls and actions.
+- **Investigation** — Run a read-only investigation from stored evidence, with optional live connector tools when a primary service is mapped.
+- **Evidence** — Review native Supercheck evidence and citation anchors.
+- **Brief** — Read or regenerate the latest evidence brief. Brief generation is kept in this tab instead of the incident header to avoid cluttering the default investigation view.
+
+This keeps the responder view simple: first confirm the incident, then run investigation, then review evidence and the summary.
 
 ### Copilot
 
-Copilot enables conversational investigation. You can ask the agent specific questions, request it to run particular diagnostic queries through read-only connectors, or challenge its current theory.
-
-In addition to the dedicated Copilot page, the AI SRE Copilot is globally accessible from anywhere in the platform via the floating chat bubble at the bottom right. This allows you to ask questions or trigger investigations without losing your current context (the bubble is automatically hidden when you are already on the dedicated Copilot page).
+Copilot is available from **Investigate → Copilot** and from the global floating Copilot launcher. Use it for read-only follow-up questions and investigation planning without adding a second chat transcript inside the incident page.
 
 Copilot includes:
+
 - **Citations**: Direct links from chat responses to the specific evidence items anchoring the agent's claims.
 - **Safe Tool Result Summaries**: Collapsible, read-only summaries of tool executions to keep the chat clean while providing deep context when needed.
-- **Investigation Progress Cards**: Visual status markers for ongoing investigations.
+- **Standalone history**: Conversations stay in the Copilot console instead of cluttering the incident detail page.
 
 ## Incident Lifecycle & Verification
 
 Supercheck supports the incident lifecycle up to the point of remediation:
 
 1. **Triage**: Review alert signals or create a manual incident. Incidents are deduplicated when created from the same alert signal.
-2. **Investigation**: The AI agent utilizes the [Connector Layer](/docs/app/investigate/connectors) and native evidence to investigate.
-3. **Recommendation**: The Live Report presents the evidence and proposes actionable fix steps.
+2. **Investigation**: Run the read-only investigation from the incident detail page using native evidence and, when enabled, scoped [Connector Layer](/docs/app/investigate/connectors) data.
+3. **Recommendation**: The evidence brief and investigation report present cited findings and proposed next steps.
 4. **Human Verification**: A responder reviews the findings, makes a decision, and applies the fix outside of Supercheck in their respective systems.
 5. **Closed-Loop Verification**: Once the fix is applied, Supercheck validates the resolution by automatically re-running the very monitors or synthetic tests that initially detected the issue.
 

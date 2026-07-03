@@ -190,16 +190,14 @@ export function ChatwootWidget({
             <style dangerouslySetInnerHTML={{ __html: `
                 .cw-widget-container,
                 .woot-widget-holder {
-                    top: 144px !important;
                     right: 18px !important;
-                    bottom: auto !important;
+                    bottom: 150px !important;
                     z-index: 45 !important;
                 }
                 .cw-widget-bubble,
                 .woot-widget-bubble {
-                    top: 88px !important;
                     right: 18px !important;
-                    bottom: auto !important;
+                    bottom: 88px !important;
                     z-index: 45 !important;
                 }
             `}} />

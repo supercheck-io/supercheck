@@ -348,6 +348,18 @@ The webhook UI supports custom JSON headers for provider API keys. Supercheck st
 </Tab>
 </Tabs>
 
+## Alert Signals
+
+Use **Alerts → Signals** for investigation-ready failure signals. Signals are derived from sent failure alerts only. Notification delivery failures, recoveries, and success notifications remain in **History** so they do not create false incident noise.
+
+From Signals, responders can:
+
+- Search by target, service, or fingerprint.
+- Filter by severity or source.
+- Sort by signal, severity, source, or last seen time.
+- Create an SRE incident from a genuine failure signal.
+- Page through larger signal sets with the same pagination pattern used by other Supercheck tables.
+
 ## Alert History
 
 Track all alerts from **Alerts → History**:

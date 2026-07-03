@@ -1,76 +1,64 @@
 "use client";
 
 import { ColumnDef } from "@tanstack/react-table";
-import Link from "next/link";
 import { Archive, Download, MessageSquareText, MoreHorizontal } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { DataTableColumnHeader } from "@/components/ui/data-table-column-header";
 import type { SreInvestigationHistoryItem } from "@/lib/sre/investigation-queries";
 
-function formatDuration(durationMs: number | null) {
-  if (durationMs == null) return "-";
-  if (durationMs < 1000) return `${durationMs}ms`;
-  return `${(durationMs / 1000).toFixed(1)}s`;
-}
-
-function formatCost(costCents: number | null) {
-  if (costCents == null) return "-";
-  return `$${(costCents / 100).toFixed(2)}`;
-}
-
-type ReportFeedbackAccuracy = NonNullable<SreInvestigationHistoryItem["reportFeedbackAccuracy"]>;
-type FeedbackState = {
-  accuracy: ReportFeedbackAccuracy | null;
-  rejectedHypothesisCount: number;
-  updatedAt: string | null;
-};
-const feedbackAccuracyLabels: Record<ReportFeedbackAccuracy, string> = {
-  accurate: "Accurate",
-  partially_accurate: "Partially accurate",
-  incorrect: "Incorrect",
-  needs_more_evidence: "Needs more evidence",
-};
-function formatFeedbackBadge(feedback: FeedbackState | undefined) {
-  if (!feedback?.accuracy) return null;
-  const rejectedSuffix = feedback.rejectedHypothesisCount > 0 ? ` · ${feedback.rejectedHypothesisCount} rejected` : "";
-  return `${feedbackAccuracyLabels[feedback.accuracy]}${rejectedSuffix}`;
+function formatCompletedAt(value: Date | null) {
+  if (!value) return "-";
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(value);
 }
 
 export const columns: ColumnDef<SreInvestigationHistoryItem>[] = [
   {
+    accessorKey: "incidentNumber",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="No." />,
+    cell: ({ row }) => (
+      <Badge variant="secondary" className="whitespace-nowrap">
+        {row.original.incidentNumber ? `#${row.original.incidentNumber}` : "-"}
+      </Badge>
+    ),
+    size: 72,
+  },
+  {
     accessorKey: "incidentTitle",
-    header: "Incident",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Incident" />,
     cell: ({ row }) => {
       const item = row.original;
+      const title = item.incidentTitle ?? "Untitled incident";
       return (
-        <div className="flex flex-wrap items-center gap-2">
-          {item.incidentId ? (
-            <Link href={`/incidents/${item.incidentId}`} className="font-medium hover:underline whitespace-nowrap">
-              {item.incidentNumber ? `#${item.incidentNumber} ` : ""}{item.incidentTitle ?? "Untitled incident"}
-            </Link>
-          ) : (
-            <span className="font-medium whitespace-nowrap">Unscoped investigation</span>
-          )}
+        <div className="max-w-[420px]">
+          <span className="block truncate font-medium" title={item.incidentId ? title : "Unscoped investigation"}>
+            {item.incidentId ? title : "Unscoped investigation"}
+          </span>
         </div>
       );
     }
   },
   {
-    id: "rootCause",
-    header: "Root Cause",
+    accessorKey: "rootCauseHypothesis",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Root Cause" />,
     cell: ({ row }) => (
-      <div className="max-w-[200px] truncate text-xs text-muted-foreground" title={row.original.rootCauseHypothesis || ""}>
+      <div className="max-w-[220px] truncate text-sm text-muted-foreground" title={row.original.rootCauseHypothesis || ""}>
         {row.original.rootCauseHypothesis ?? "No root-cause summary"}
       </div>
     )
   },
   {
     accessorKey: "agentType",
-    header: "Agent",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Agent" />,
     cell: ({ row }) => (
-      <Badge variant="outline" className="capitalize whitespace-nowrap">
+      <Badge variant="outline" className="whitespace-nowrap capitalize border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-900/60 dark:bg-violet-950/40 dark:text-violet-300">
         {row.getValue("agentType")}
       </Badge>
     ),
@@ -78,11 +66,18 @@ export const columns: ColumnDef<SreInvestigationHistoryItem>[] = [
   },
   {
     accessorKey: "status",
-    header: "Status",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Status" />,
     cell: ({ row }) => {
       const status = row.getValue("status") as string;
       return (
-        <Badge variant={status === "completed" ? "secondary" : "outline"} className="capitalize whitespace-nowrap">
+        <Badge
+          variant="outline"
+          className={
+            status === "completed"
+              ? "whitespace-nowrap capitalize border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300"
+              : "whitespace-nowrap capitalize"
+          }
+        >
           {status.replace(/_/g, " ")}
         </Badge>
       );
@@ -91,59 +86,18 @@ export const columns: ColumnDef<SreInvestigationHistoryItem>[] = [
   },
   {
     accessorKey: "serviceName",
-    header: "Service",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Service" />,
     cell: ({ row }) => <span className="whitespace-nowrap">{row.getValue("serviceName") ?? "-"}</span>,
   },
   {
-    id: "evidence",
-    header: "Evidence",
+    accessorKey: "evidenceCount",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Evidence" />,
     cell: ({ row }) => <span className="whitespace-nowrap">{row.original.evidenceCount}</span>
   },
   {
-    id: "tools",
-    header: "Tools",
-    cell: ({ row }) => <span className="whitespace-nowrap">{row.original.toolCallCount}</span>
-  },
-  {
-    id: "recs",
-    header: "Recs",
-    cell: ({ row }) => <span className="whitespace-nowrap">{row.original.recommendationCount}</span>
-  },
-  {
-    id: "feedback",
-    header: "Feedback",
-    cell: ({ row, table }) => {
-      const item = row.original;
-      const meta = table.options.meta as any;
-      const feedback = (meta?.feedbackByRunId || {})[item.id];
-      const hasSnapshot = !!(meta?.savedSnapshotIds || {})[item.id];
-
-      return (
-        <div className="flex flex-col gap-1 min-w-[100px]">
-          {hasSnapshot && <Badge variant="outline" className="rounded-full w-fit">snapshot</Badge>}
-          {formatFeedbackBadge(feedback) && (
-            <Badge variant="secondary" className="rounded-full w-fit whitespace-nowrap">
-              {formatFeedbackBadge(feedback)}
-            </Badge>
-          )}
-        </div>
-      );
-    }
-  },
-  {
-    accessorKey: "modelId",
-    header: "Model",
-    cell: ({ row }) => <span className="font-mono text-xs">{row.getValue("modelId")}</span>
-  },
-  {
-    accessorKey: "durationMs",
-    header: "Duration",
-    cell: ({ row }) => formatDuration(row.getValue("durationMs"))
-  },
-  {
-    accessorKey: "estimatedCostCents",
-    header: "Cost",
-    cell: ({ row }) => formatCost(row.getValue("estimatedCostCents"))
+    accessorKey: "completedAt",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Completed" />,
+    cell: ({ row }) => <span className="whitespace-nowrap text-muted-foreground">{formatCompletedAt(row.original.completedAt)}</span>
   },
   {
     id: "actions",

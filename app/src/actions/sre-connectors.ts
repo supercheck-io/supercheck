@@ -340,7 +340,7 @@ function validationUrl(connectorType: (typeof connectorTypes)[number], endpointU
 
   switch (connectorType) {
     case "grafana":
-      return `${endpointUrl}/api/health`;
+      return `${endpointUrl}/api/search?limit=1`;
     case "prometheus":
       return `${endpointUrl}/api/v1/status/runtimeinfo`;
     case "kubernetes":

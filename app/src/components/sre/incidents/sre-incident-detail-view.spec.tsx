@@ -61,14 +61,14 @@ function detailFixture(): SreIncidentDetail {
 }
 
 describe("SreIncidentDetailView", () => {
-  it("renders the investigation workspace tabs and default AI panel", () => {
+  it("renders simplified incident tabs and default investigation panel", () => {
     render(<SreIncidentDetailView detail={detailFixture()} />);
 
-    expect(screen.getByText("Investigation workspace")).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "AI investigation" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Investigation" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Evidence" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Brief" })).toBeInTheDocument();
     expect(screen.getByText("Mock AI investigation panel")).toBeInTheDocument();
     expect(screen.getByText("Incident #42")).toBeInTheDocument();
+    expect(screen.queryByText("Investigation workspace")).not.toBeInTheDocument();
   });
 });

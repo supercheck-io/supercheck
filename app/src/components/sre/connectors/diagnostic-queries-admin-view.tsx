@@ -183,7 +183,7 @@ export function DiagnosticQueriesAdminView({ initialQueries, setupOptions, loadE
   }
 
   return (
-    <div className="space-y-4 pt-6">
+    <div className="space-y-4 py-4">
       {setupOptions.connectors.length === 0 ? (
         <>
           <div className="mb-4 -mt-2 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">

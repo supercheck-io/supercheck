@@ -1,8 +1,20 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { Clock, Loader2, Plus, Siren } from "lucide-react";
-import Link from "next/link";
+import { useDeferredValue, useMemo, useState, useTransition } from "react";
+import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  Clock,
+  Loader2,
+  Plus,
+  Search,
+  Siren,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
@@ -43,6 +55,11 @@ type SreIncidentsListProps = {
   loadError: string | null;
 };
 
+type IncidentSortKey = "incidentNumber" | "title" | "severity" | "status" | "primaryServiceName" | "alertCount" | "updatedAt";
+type SortDirection = "asc" | "desc";
+
+const PAGE_SIZE_OPTIONS = [12, 25, 50, 100];
+
 const severityClasses: Record<SreIncidentListItem["severity"], string> = {
   sev1: "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300",
   sev2: "border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-900/60 dark:bg-orange-950/40 dark:text-orange-300",
@@ -73,12 +90,60 @@ function formatStatus(value: string) {
   return value.replace(/_/g, " ");
 }
 
+function getIncidentSortValue(incident: SreIncidentListItem, key: IncidentSortKey) {
+  if (key === "updatedAt") return new Date(incident.updatedAt).getTime();
+  if (key === "primaryServiceName") return incident.primaryServiceName ?? "Unmapped";
+  return incident[key];
+}
+
+function SortableHead({
+  label,
+  sortKey,
+  activeKey,
+  direction,
+  onSort,
+  className,
+}: {
+  label: string;
+  sortKey: IncidentSortKey;
+  activeKey: IncidentSortKey;
+  direction: SortDirection;
+  onSort: (key: IncidentSortKey) => void;
+  className?: string;
+}) {
+  const isActive = activeKey === sortKey;
+  const Icon = isActive ? (direction === "desc" ? ArrowDown : ArrowUp) : ArrowUpDown;
+
+  return (
+    <TableHead className={className}>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className={cn("-ml-3 h-8", isActive && "bg-muted font-semibold")}
+        onClick={() => onSort(sortKey)}
+      >
+        {label}
+        <Icon className={cn("ml-2 h-4 w-4", isActive ? "text-primary" : "text-muted-foreground")} />
+      </Button>
+    </TableHead>
+  );
+}
+
 export function SreIncidentsList({ incidents, loadError }: SreIncidentsListProps) {
   const router = useRouter();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [severity, setSeverity] = useState<SreIncidentListItem["severity"]>("sev3");
   const [summary, setSummary] = useState("");
+  const [search, setSearch] = useState("");
+  const deferredSearch = useDeferredValue(search);
+  const [severityFilter, setSeverityFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [sortKey, setSortKey] = useState<IncidentSortKey>("updatedAt");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+  const [pageIndex, setPageIndex] = useState(0);
+  const [pageSize, setPageSize] = useState(12);
   const [isPending, startTransition] = useTransition();
 
   const resetForm = () => {
@@ -114,6 +179,51 @@ export function SreIncidentsList({ incidents, loadError }: SreIncidentsListProps
     });
   };
 
+  const statusOptions = useMemo(
+    () => Array.from(new Set(incidents.map((incident) => incident.status))).sort(),
+    [incidents]
+  );
+
+  const filteredIncidents = useMemo(() => {
+    const query = deferredSearch.trim().toLowerCase();
+    const filtered = incidents.filter((incident) => {
+      const matchesSeverity = severityFilter === "all" || incident.severity === severityFilter;
+      const matchesStatus = statusFilter === "all" || incident.status === statusFilter;
+      const searchable = [
+        String(incident.incidentNumber),
+        incident.title,
+        incident.primaryServiceName ?? "Unmapped",
+        incident.severity,
+        incident.status,
+      ].join(" ").toLowerCase();
+
+      return matchesSeverity && matchesStatus && (!query || searchable.includes(query));
+    });
+
+    return [...filtered].sort((a, b) => {
+      const left = getIncidentSortValue(a, sortKey);
+      const right = getIncidentSortValue(b, sortKey);
+      const result =
+        typeof left === "number" && typeof right === "number"
+          ? left - right
+          : String(left).localeCompare(String(right), undefined, { numeric: true, sensitivity: "base" });
+      return sortDirection === "asc" ? result : -result;
+    });
+  }, [deferredSearch, incidents, severityFilter, sortDirection, sortKey, statusFilter]);
+
+  const pageCount = Math.max(1, Math.ceil(filteredIncidents.length / pageSize));
+  const safePageIndex = Math.min(pageIndex, pageCount - 1);
+  const pagedIncidents = filteredIncidents.slice(safePageIndex * pageSize, safePageIndex * pageSize + pageSize);
+
+  const handleSort = (key: IncidentSortKey) => {
+    if (sortKey === key) {
+      setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDirection(key === "updatedAt" || key === "incidentNumber" ? "desc" : "asc");
+    }
+  };
+
   if (loadError) {
     return (
       <DashboardEmptyState
@@ -126,18 +236,71 @@ export function SreIncidentsList({ incidents, loadError }: SreIncidentsListProps
   }
 
   return (
-    <div className="space-y-4 py-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="space-y-4">
+      <div className="-mt-2 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex flex-col">
-          <h2 className="text-xl font-semibold">Incident queue</h2>
+          <h2 className="text-2xl font-semibold">Incident queue</h2>
           <p className="text-sm text-muted-foreground">
             Create incidents manually or from alert signals, then investigate them here.
           </p>
         </div>
-        <Button type="button" onClick={() => setDialogOpen(true)}>
-          <Plus className="h-4 w-4" />
-          New incident
-        </Button>
+        {incidents.length > 0 && (
+          <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto">
+            <div className="relative w-full sm:w-[320px] lg:w-[400px]">
+              <Search className="absolute left-2 top-2 h-4 w-4 text-muted-foreground" />
+              <Input
+                value={search}
+                onChange={(event) => {
+                  setSearch(event.target.value);
+                  setPageIndex(0);
+                }}
+                placeholder="Filter by all available fields..."
+                className="h-8 pl-8 pr-8"
+              />
+            </div>
+            <Select
+              value={severityFilter}
+              onValueChange={(value) => {
+                setSeverityFilter(value);
+                setPageIndex(0);
+              }}
+            >
+              <SelectTrigger className="h-8 w-[150px]">
+                <SelectValue placeholder="Severity" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All severities</SelectItem>
+                <SelectItem value="sev1">SEV1</SelectItem>
+                <SelectItem value="sev2">SEV2</SelectItem>
+                <SelectItem value="sev3">SEV3</SelectItem>
+                <SelectItem value="sev4">SEV4</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select
+              value={statusFilter}
+              onValueChange={(value) => {
+                setStatusFilter(value);
+                setPageIndex(0);
+              }}
+            >
+              <SelectTrigger className="h-8 w-[150px]">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All statuses</SelectItem>
+                {statusOptions.map((status) => (
+                  <SelectItem key={status} value={status}>
+                    {formatStatus(status)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button type="button" onClick={() => setDialogOpen(true)}>
+              <Plus className="h-4 w-4" />
+              New incident
+            </Button>
+          </div>
+        )}
       </div>
 
       {incidents.length === 0 ? (
@@ -154,57 +317,127 @@ export function SreIncidentsList({ incidents, loadError }: SreIncidentsListProps
           }
         />
       ) : (
-        <div className="overflow-hidden rounded-lg border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Incident</TableHead>
-                <TableHead>Severity</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Service</TableHead>
-                <TableHead>Alerts</TableHead>
-                <TableHead>Updated</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {incidents.map((incident) => (
-                <TableRow key={incident.id}>
-                  <TableCell className="min-w-[320px] whitespace-normal py-2.5">
-                    <div className="space-y-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge variant="secondary">#{incident.incidentNumber}</Badge>
-                        <Link href={`/incidents/${incident.id}`} className="font-medium text-primary hover:underline">
-                          {incident.title}
-                        </Link>
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        Created {formatDate(incident.createdAt)}
-                      </p>
-                    </div>
-                  </TableCell>
-                  <TableCell className="py-2.5">
-                    <Badge variant="outline" className={cn("uppercase", severityClasses[incident.severity])}>
-                      {incident.severity}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="py-2.5">
-                    <Badge variant="outline" className={cn("capitalize", statusClasses[incident.status])}>
-                      {formatStatus(incident.status)}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="py-2.5">{incident.primaryServiceName ?? "Unmapped"}</TableCell>
-                  <TableCell className="py-2.5">{incident.alertCount}</TableCell>
-                  <TableCell className="py-2.5">
-                    <div className="inline-flex items-center gap-1 text-sm">
-                      <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-                      {formatDate(incident.updatedAt)}
-                    </div>
-                  </TableCell>
+        <>
+          <div className="overflow-hidden rounded-t-lg border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <SortableHead label="No." sortKey="incidentNumber" activeKey={sortKey} direction={sortDirection} onSort={handleSort} className="w-24" />
+                  <SortableHead label="Incident" sortKey="title" activeKey={sortKey} direction={sortDirection} onSort={handleSort} />
+                  <SortableHead label="Severity" sortKey="severity" activeKey={sortKey} direction={sortDirection} onSort={handleSort} className="w-32" />
+                  <SortableHead label="Status" sortKey="status" activeKey={sortKey} direction={sortDirection} onSort={handleSort} className="w-40" />
+                  <SortableHead label="Service" sortKey="primaryServiceName" activeKey={sortKey} direction={sortDirection} onSort={handleSort} className="w-44" />
+                  <SortableHead label="Alerts" sortKey="alertCount" activeKey={sortKey} direction={sortDirection} onSort={handleSort} className="w-28" />
+                  <SortableHead label="Updated" sortKey="updatedAt" activeKey={sortKey} direction={sortDirection} onSort={handleSort} className="w-44" />
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+              </TableHeader>
+              <TableBody>
+                {pagedIncidents.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+                      No incidents match the current filters.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  pagedIncidents.map((incident) => (
+                    <TableRow
+                      key={incident.id}
+                      className="cursor-pointer hover:bg-muted/50"
+                      tabIndex={0}
+                      onClick={() => router.push(`/incidents/${incident.id}`)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          router.push(`/incidents/${incident.id}`);
+                        }
+                      }}
+                      aria-label={`View incident #${incident.incidentNumber}: ${incident.title}`}
+                    >
+                      <TableCell className="py-2.5">
+                        <Badge variant="secondary">#{incident.incidentNumber}</Badge>
+                      </TableCell>
+                      <TableCell className="max-w-[560px] py-2.5">
+                        <span className="block truncate font-medium" title={incident.title}>
+                          {incident.title}
+                        </span>
+                      </TableCell>
+                      <TableCell className="py-2.5">
+                        <Badge variant="outline" className={cn("uppercase", severityClasses[incident.severity])}>
+                          {incident.severity}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="py-2.5">
+                        <Badge variant="outline" className={cn("capitalize", statusClasses[incident.status])}>
+                          {formatStatus(incident.status)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="max-w-[180px] truncate py-2.5" title={incident.primaryServiceName ?? "Unmapped"}>
+                        {incident.primaryServiceName ?? "Unmapped"}
+                      </TableCell>
+                      <TableCell className="py-2.5">{incident.alertCount}</TableCell>
+                      <TableCell className="py-2.5">
+                        <div className="inline-flex items-center gap-1 whitespace-nowrap text-sm">
+                          <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+                          {formatDate(incident.updatedAt)}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+
+          <div className="flex flex-col gap-3 px-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex-1 text-sm text-muted-foreground">
+              Total {filteredIncidents.length} incidents
+            </div>
+            <div className="flex flex-wrap items-center gap-3 sm:gap-6 lg:gap-8">
+              <div className="flex items-center space-x-2">
+                <p className="text-sm">Rows per page</p>
+                <Select
+                  value={`${pageSize}`}
+                  onValueChange={(value) => {
+                    setPageSize(Number(value));
+                    setPageIndex(0);
+                  }}
+                >
+                  <SelectTrigger className="h-8 w-[70px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent side="top">
+                    {PAGE_SIZE_OPTIONS.map((option) => (
+                      <SelectItem key={option} value={`${option}`}>
+                        {option}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex w-[100px] items-center justify-center text-sm">
+                Page {safePageIndex + 1} of {pageCount}
+              </div>
+              <div className="flex items-center space-x-2">
+                <Button variant="outline" className="hidden h-8 w-8 p-0 lg:flex" onClick={() => setPageIndex(0)} disabled={safePageIndex === 0}>
+                  <span className="sr-only">Go to first page</span>
+                  <ChevronsLeft />
+                </Button>
+                <Button variant="outline" className="h-8 w-8 p-0" onClick={() => setPageIndex(Math.max(0, safePageIndex - 1))} disabled={safePageIndex === 0}>
+                  <span className="sr-only">Go to previous page</span>
+                  <ChevronLeft />
+                </Button>
+                <Button variant="outline" className="h-8 w-8 p-0" onClick={() => setPageIndex(Math.min(pageCount - 1, safePageIndex + 1))} disabled={safePageIndex >= pageCount - 1}>
+                  <span className="sr-only">Go to next page</span>
+                  <ChevronRight />
+                </Button>
+                <Button variant="outline" className="hidden h-8 w-8 p-0 lg:flex" onClick={() => setPageIndex(pageCount - 1)} disabled={safePageIndex >= pageCount - 1}>
+                  <span className="sr-only">Go to last page</span>
+                  <ChevronsRight />
+                </Button>
+              </div>
+            </div>
+          </div>
+        </>
       )}
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>

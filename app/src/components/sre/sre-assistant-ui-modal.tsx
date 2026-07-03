@@ -43,7 +43,7 @@ export function SreAssistantUiModal() {
           type="button"
           aria-label="Open Copilot"
           className={cn(
-            "fixed right-6 bottom-24 z-40 flex h-12 items-center justify-center gap-2 rounded-full px-4 shadow-xl",
+            "fixed bottom-6 right-6 z-40 flex h-12 items-center justify-center gap-2 rounded-full px-4 shadow-xl",
             "bg-gradient-to-r from-primary to-primary/80 text-primary-foreground border border-primary/20"
           )}
         >
@@ -51,9 +51,9 @@ export function SreAssistantUiModal() {
           <span className="text-sm font-medium">Copilot</span>
         </Button>
       </DialogTrigger>
-      <DialogContent hideOverlay className="bottom-4 right-4 left-auto top-auto grid h-[min(760px,calc(100svh-2rem))] w-[min(640px,calc(100vw-2rem))] max-w-none translate-x-0 translate-y-0 grid-rows-[auto_minmax(0,1fr)] gap-0 p-0 sm:rounded-xl">
-        <DialogHeader className="border-b px-4 py-3 pr-14">
-          <div className="flex flex-wrap items-center justify-between gap-3">
+      <DialogContent hideOverlay className="bottom-4 right-4 left-auto top-auto grid h-[min(740px,calc(100svh-2rem))] w-[min(860px,calc(100vw-2rem))] max-w-none translate-x-0 translate-y-0 grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:rounded-xl [&>button]:right-4 [&>button]:top-4">
+        <DialogHeader className="border-b px-4 py-3 pr-16">
+          <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
               <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border bg-background shadow-sm">
                 <Bot className="h-4 w-4" />
@@ -65,8 +65,8 @@ export function SreAssistantUiModal() {
                 </DialogDescription>
               </div>
             </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <Button type="button" variant="ghost" size="sm" onClick={startNewChat}>
+            <div className="mr-8 flex shrink-0 items-center gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={startNewChat}>
                 New
               </Button>
               <Button asChild variant="outline" size="sm">

@@ -1,0 +1,58 @@
+import { fireEvent, render, screen, within } from "@testing-library/react";
+
+import type { SreIncidentListItem } from "@/actions/sre-incidents";
+
+import { SreIncidentsList } from "./sre-incidents-list";
+
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push: jest.fn(),
+    refresh: jest.fn(),
+  }),
+}));
+
+jest.mock("@/actions/sre-incidents", () => ({
+  createManualSreIncident: jest.fn(),
+}));
+
+function incidentFixture(index: number, overrides: Partial<SreIncidentListItem> = {}): SreIncidentListItem {
+  return {
+    id: `018f0000-0000-7000-8000-${String(index).padStart(12, "0")}`,
+    incidentNumber: index,
+    title: `Checkout incident ${index}`,
+    severity: index % 2 === 0 ? "sev2" : "sev3",
+    status: index % 2 === 0 ? "investigating" : "triggered",
+    primaryServiceName: index % 2 === 0 ? "checkout-api" : null,
+    alertCount: index,
+    createdAt: new Date(`2026-07-02T${String(index % 24).padStart(2, "0")}:00:00.000Z`),
+    updatedAt: new Date(`2026-07-03T${String(index % 24).padStart(2, "0")}:00:00.000Z`),
+    resolvedAt: null,
+    ...overrides,
+  };
+}
+
+describe("SreIncidentsList", () => {
+  it("renders a compact sortable incident table with filters and pagination", () => {
+    const incidents = Array.from({ length: 13 }, (_, index) => incidentFixture(index + 1));
+
+    render(<SreIncidentsList incidents={incidents} loadError={null} />);
+
+    expect(screen.getByText("Incident queue")).toBeInTheDocument();
+    expect(screen.getByText("Total 13 incidents")).toBeInTheDocument();
+    expect(screen.getByText("Rows per page")).toBeInTheDocument();
+    expect(screen.getByText("Page 1 of 2")).toBeInTheDocument();
+
+    const table = screen.getByRole("table");
+    expect(within(table).getByRole("columnheader", { name: /No./ })).toBeInTheDocument();
+    expect(within(table).getByRole("columnheader", { name: /Incident/ })).toBeInTheDocument();
+    expect(within(table).getAllByRole("row")).toHaveLength(13);
+
+    fireEvent.change(screen.getByPlaceholderText("Filter by all available fields..."), {
+      target: { value: "Checkout incident 13" },
+    });
+
+    expect(screen.getByText("Total 1 incidents")).toBeInTheDocument();
+    expect(screen.getByText("Checkout incident 13")).toBeInTheDocument();
+    expect(screen.queryByText("Checkout incident 12")).not.toBeInTheDocument();
+  });
+});

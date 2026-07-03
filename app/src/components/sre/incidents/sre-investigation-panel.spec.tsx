@@ -1,108 +1,60 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-import { parseSreSseEvents } from "@/components/sre/sre-sse-client";
-
-jest.mock("@/actions/sre-incidents", () => ({
-  archiveSreIncidentChatConversation: jest.fn(),
-}));
-
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: jest.fn() }),
 }));
 
-import { archiveSreIncidentChatConversation } from "@/actions/sre-incidents";
-
 import { SreInvestigationPanel } from "./sre-investigation-panel";
-
-const mockArchiveSreIncidentChatConversation = archiveSreIncidentChatConversation as jest.Mock;
-
-describe("parseSreSseEvents", () => {
-  it("parses complete SSE blocks and keeps partial remainder", () => {
-    const parsed = parseSreSseEvents(
-      'event: conversation\ndata: {"id":"conversation-1"}\n\nevent: message\ndata: {"role":"assistant","content":"hello"}\n\nevent: message\ndata:'
-    );
-
-    expect(parsed.events).toEqual([
-      { event: "conversation", data: { id: "conversation-1" } },
-      { event: "message", data: { role: "assistant", content: "hello" } },
-    ]);
-    expect(parsed.remaining).toBe("event: message\ndata:");
-  });
-
-  it("returns null data for malformed JSON blocks", () => {
-    const parsed = parseSreSseEvents("event: error\ndata: not-json\n\n");
-
-    expect(parsed.events).toEqual([{ event: "error", data: null }]);
-    expect(parsed.remaining).toBe("");
-  });
-});
 
 describe("SreInvestigationPanel", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockArchiveSreIncidentChatConversation.mockResolvedValue({ success: true });
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ summary: "Root cause summary updated" }),
+    }) as unknown as typeof fetch;
   });
 
-  it("hydrates saved incident chat messages", () => {
+  it("renders a simplified investigation action panel without embedded chat", () => {
     render(
       <SreInvestigationPanel
         incidentId="018f0000-0000-7000-8000-000000000001"
         hasPrimaryService={true}
         evidenceReferences={[{ id: "ev-monitor-timeout", title: "Monitor timeout", evidenceType: "event" }]}
-        initialConversationId="018f0000-0000-7000-8000-000000000002"
-        initialMessages={[
-          { id: "message-1", role: "user", content: "What happened?" },
-          { id: "message-2", role: "assistant", content: "Finding cites ev-monitor-timeout.\n- Verify monitor recovery", modelId: "test-model" },
-        ]}
-        chatHistories={[
-          {
-            conversationId: "018f0000-0000-7000-8000-000000000002",
-            title: "Incident investigation",
-            updatedAt: new Date("2026-06-24T12:00:00Z"),
-            messages: [
-              { id: "message-1", role: "user", content: "What happened?", modelId: null },
-              { id: "message-2", role: "assistant", content: "Finding cites ev-monitor-timeout.\n- Verify monitor recovery", modelId: "test-model" },
-            ],
-          },
-        ]}
       />
     );
 
-    expect(screen.getByText("Conversation")).toBeInTheDocument();
-    expect(screen.getByText("What happened?")).toBeInTheDocument();
-    expect(screen.getAllByText("Finding cites ev-monitor-timeout.").length).toBeGreaterThan(0);
-    expect(screen.getByRole("link", { name: "ev-monitor-timeout" })).toHaveAttribute("href", "#sre-evidence-ev-monitor-timeout");
-    expect(screen.getAllByText("Verify monitor recovery").length).toBeGreaterThan(0);
-    expect(screen.getByLabelText("Optional context attachment")).toBeInTheDocument();
-    expect(screen.getByText("Text notes are limited to 2,000 characters. File uploads are stored separately and passed to the AI as metadata only.")).toBeInTheDocument();
-    expect(screen.getByLabelText("Optional file attachment")).toBeInTheDocument();
+    expect(screen.getByText("Investigation")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /run investigation/i })).toBeInTheDocument();
+    expect(screen.getByLabelText("Use live connector tools")).toBeInTheDocument();
+    expect(screen.getByText("Stored evidence")).toBeInTheDocument();
+    expect(screen.queryByText("Conversation")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Optional context attachment")).not.toBeInTheDocument();
   });
 
-  it("archives the selected incident chat conversation", async () => {
+  it("runs the investigation with the selected connector setting", async () => {
     render(
       <SreInvestigationPanel
         incidentId="018f0000-0000-7000-8000-000000000001"
         hasPrimaryService={true}
-        initialConversationId="018f0000-0000-7000-8000-000000000002"
-        initialMessages={[{ id: "message-1", role: "user", content: "What happened?" }]}
-        chatHistories={[
-          {
-            conversationId: "018f0000-0000-7000-8000-000000000002",
-            title: "Incident investigation",
-            updatedAt: new Date("2026-06-24T12:00:00Z"),
-            messages: [{ id: "message-1", role: "user", content: "What happened?", modelId: null }],
-          },
-        ]}
+        evidenceReferences={[{ id: "ev-monitor-timeout", title: "Monitor timeout", evidenceType: "event" }]}
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /archive/i }));
+    fireEvent.click(screen.getByLabelText("Use live connector tools"));
+    fireEvent.click(screen.getByRole("button", { name: /run investigation/i }));
 
     await waitFor(() => {
-      expect(mockArchiveSreIncidentChatConversation).toHaveBeenCalledWith({
-        incidentId: "018f0000-0000-7000-8000-000000000001",
-        conversationId: "018f0000-0000-7000-8000-000000000002",
-      });
+      expect(global.fetch).toHaveBeenCalledWith(
+        "/api/sre/investigate",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({
+            incidentId: "018f0000-0000-7000-8000-000000000001",
+            useLiveConnectors: true,
+          }),
+        })
+      );
     });
   });
 });

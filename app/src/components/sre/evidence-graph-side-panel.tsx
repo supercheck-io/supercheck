@@ -22,12 +22,12 @@ function formatDate(value: Date | null) {
 
 function getNodeTypeColor(type: string) {
   switch (type.toLowerCase()) {
-    case "job": return "bg-blue-100 text-blue-800 border-blue-200 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800";
-    case "alert": return "bg-orange-100 text-orange-800 border-orange-200 hover:bg-orange-200 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-800";
-    case "service": return "bg-purple-100 text-purple-800 border-purple-200 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-800";
-    case "incident": return "bg-red-100 text-red-800 border-red-200 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800";
-    case "evidence": return "bg-teal-100 text-teal-800 border-teal-200 hover:bg-teal-200 dark:bg-teal-900/30 dark:text-teal-300 dark:border-teal-800";
-    default: return "bg-secondary text-secondary-foreground hover:bg-secondary/80";
+    case "job": return "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-300";
+    case "alert": return "border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-900/60 dark:bg-orange-950/40 dark:text-orange-300";
+    case "service": return "border-purple-200 bg-purple-50 text-purple-700 dark:border-purple-900/60 dark:bg-purple-950/40 dark:text-purple-300";
+    case "incident": return "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300";
+    case "evidence": return "border-teal-200 bg-teal-50 text-teal-700 dark:border-teal-900/60 dark:bg-teal-950/40 dark:text-teal-300";
+    default: return "border-border bg-muted text-muted-foreground";
   }
 }
 
@@ -37,15 +37,15 @@ function getStatusColor(status: string) {
     case "past":
     case "resolved":
     case "completed":
-      return "bg-green-100 text-green-800 border-green-200 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800";
+      return "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300";
     case "failed":
     case "critical":
     case "error":
-      return "bg-red-100 text-red-800 border-red-200 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800";
+      return "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300";
     case "warning":
     case "investigating":
-      return "bg-yellow-100 text-yellow-800 border-yellow-200 hover:bg-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-300 dark:border-yellow-800";
-    default: return "bg-muted text-muted-foreground border-border";
+      return "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300";
+    default: return "border-border bg-muted text-muted-foreground";
   }
 }
 
@@ -63,10 +63,10 @@ export function SreEvidenceGraphSidePanel({ node, edges, nodesById }: SreEvidenc
   const connectedEdges = edges.filter((edge) => edge.source === node.id || edge.target === node.id).slice(0, 8);
 
   return (
-    <Card className="min-h-[320px] rounded-xl xl:min-h-[calc(100svh-9rem)]">
+    <Card className="min-h-[320px] rounded-lg xl:min-h-[calc(100svh-9rem)]">
       <CardHeader className="space-y-3 pb-4">
         <div className="flex flex-wrap items-center gap-2">
-          <Badge className={`capitalize font-medium shadow-none ${getNodeTypeColor(node.type)}`}>{node.type}</Badge>
+          <Badge variant="outline" className={`capitalize shadow-none ${getNodeTypeColor(node.type)}`}>{node.type}</Badge>
           {node.status && <Badge variant="outline" className={`capitalize shadow-none ${getStatusColor(node.status)}`}>{node.status.replace(/_/g, " ")}</Badge>}
         </div>
         <div>
@@ -74,7 +74,7 @@ export function SreEvidenceGraphSidePanel({ node, edges, nodesById }: SreEvidenc
           <CardDescription className="mt-1.5" suppressHydrationWarning>{node.subtitle ?? formatDate(node.createdAt)}</CardDescription>
         </div>
         {node.href && (
-          <Button asChild variant="secondary" size="sm" className="w-fit mt-1">
+          <Button asChild variant="outline" size="sm" className="mt-1 w-fit">
             <Link href={node.href}>
               View details
               <ExternalLink className="ml-1.5 h-3.5 w-3.5" />
@@ -95,7 +95,7 @@ export function SreEvidenceGraphSidePanel({ node, edges, nodesById }: SreEvidenc
             connectedEdges.map((edge) => {
               const otherNode = nodesById.get(edge.source === node.id ? edge.target : edge.source);
               return (
-                <div key={edge.id} className="rounded-2xl border bg-muted/20 p-3">
+                <div key={edge.id} className="rounded-lg border bg-muted/10 p-3">
                   <div className="flex flex-wrap items-center gap-2 text-sm">
                     <Badge variant="outline">{edge.label}</Badge>
                     <span className="line-clamp-1 font-medium">{otherNode?.title ?? "Unknown node"}</span>

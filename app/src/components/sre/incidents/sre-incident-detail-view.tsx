@@ -58,13 +58,18 @@ function EvidenceBriefCard({ detail, summary, provider }: { detail: SreIncidentD
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-lg">
-          <Siren className="h-5 w-5" />
-          Evidence brief
-        </CardTitle>
-        <CardDescription>
-          Claims are limited to native SuperCheck evidence and cite stored evidence items.
-        </CardDescription>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Siren className="h-5 w-5" />
+              Evidence brief
+            </CardTitle>
+            <CardDescription>
+              Native SuperCheck evidence with cited incident context.
+            </CardDescription>
+          </div>
+          <GenerateEvidenceBriefButton incidentId={detail.incident.id} hasBrief={Boolean(detail.latestBrief)} />
+        </div>
       </CardHeader>
       <CardContent>
         {summary ? (
@@ -85,7 +90,7 @@ function EvidenceBriefCard({ detail, summary, provider }: { detail: SreIncidentD
             <FileText className="mx-auto h-10 w-10 text-muted-foreground" />
             <h3 className="mt-3 text-base font-medium">No evidence brief generated</h3>
             <p className="mx-auto mt-1 max-w-lg text-sm text-muted-foreground">
-              Generate a native brief to gather SuperCheck evidence and produce a cited incident summary.
+              Generate a brief when you need native evidence citations for this incident.
             </p>
           </div>
         )}
@@ -148,12 +153,13 @@ function NativeEvidenceCard({ detail }: { detail: SreIncidentDetail }) {
                     <TableCell>
                       {item.sourceUri.startsWith("http://") || item.sourceUri.startsWith("https://") ? (
                         <a href={item.sourceUri} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-sm text-primary hover:underline">
-                          Open source
+                          View details
                           <ExternalLink className="h-3 w-3" />
                         </a>
                       ) : (
-                        <Link href={item.sourceUri} className="text-sm text-primary hover:underline">
-                          Open source
+                        <Link href={item.sourceUri} className="inline-flex items-center gap-1 text-sm text-primary hover:underline">
+                          View details
+                          <ExternalLink className="h-3 w-3" />
                         </Link>
                       )}
                     </TableCell>
@@ -173,9 +179,9 @@ export function SreIncidentDetailView({ detail }: SreIncidentDetailViewProps) {
   const provider = getBriefProvider(detail);
 
   return (
-    <div className="space-y-6 pt-6">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div className="space-y-3">
+    <div className="space-y-5 pt-2">
+      <div className="space-y-3">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="secondary">Incident #{detail.incident.incidentNumber}</Badge>
             <Badge variant="outline" className={cn("uppercase", severityClasses[detail.incident.severity] ?? "")}>
@@ -185,24 +191,17 @@ export function SreIncidentDetailView({ detail }: SreIncidentDetailViewProps) {
               {formatStatus(detail.incident.status)}
             </Badge>
           </div>
-          <div>
-            <h2 className="text-2xl font-semibold">{detail.incident.title}</h2>
-            <p className="text-sm text-muted-foreground">
-              Native SuperCheck evidence is collected from alerts, monitors, job runs, k6 runs, and stored artifacts.
-            </p>
-          </div>
         </div>
-        <GenerateEvidenceBriefButton incidentId={detail.incident.id} hasBrief={Boolean(detail.latestBrief)} />
+        <div className="max-w-5xl">
+          <h2 className="line-clamp-2 text-2xl font-semibold leading-tight">{detail.incident.title}</h2>
+          <p className="text-sm text-muted-foreground">Review status, evidence, and the latest investigation summary.</p>
+        </div>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-4">
+      <div className="grid gap-3 md:grid-cols-3">
         <div className="rounded-lg border bg-muted/20 p-4">
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Service</p>
           <p className="mt-2 text-lg font-semibold">{detail.incident.primaryServiceName ?? "Unmapped"}</p>
-        </div>
-        <div className="rounded-lg border bg-muted/20 p-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Alerts</p>
-          <p className="mt-2 text-lg font-semibold">{detail.incident.alertCount}</p>
         </div>
         <div className="rounded-lg border bg-muted/20 p-4">
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Evidence</p>
@@ -215,19 +214,11 @@ export function SreIncidentDetailView({ detail }: SreIncidentDetailViewProps) {
       </div>
 
       <Tabs defaultValue="investigation" className="space-y-4">
-        <div className="flex flex-col gap-3 rounded-lg border bg-muted/10 p-3 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <h3 className="text-base font-semibold">Investigation workspace</h3>
-            <p className="text-sm text-muted-foreground">
-              Keep AI investigation, citations, and native evidence in one incident-scoped view.
-            </p>
-          </div>
-          <TabsList className="grid w-full grid-cols-3 lg:w-auto">
-            <TabsTrigger value="investigation">AI investigation</TabsTrigger>
-            <TabsTrigger value="evidence">Evidence</TabsTrigger>
-            <TabsTrigger value="brief">Brief</TabsTrigger>
-          </TabsList>
-        </div>
+        <TabsList>
+          <TabsTrigger value="investigation">Investigation</TabsTrigger>
+          <TabsTrigger value="evidence">Evidence</TabsTrigger>
+          <TabsTrigger value="brief">Brief</TabsTrigger>
+        </TabsList>
 
         <TabsContent value="investigation" className="space-y-4">
           <SreInvestigationPanel
@@ -238,9 +229,6 @@ export function SreIncidentDetailView({ detail }: SreIncidentDetailViewProps) {
               title: item.title,
               evidenceType: item.evidenceType,
             }))}
-            initialConversationId={detail.chatHistory?.conversationId ?? null}
-            initialMessages={detail.chatHistory?.messages ?? []}
-            chatHistories={detail.chatHistories}
           />
         </TabsContent>
 

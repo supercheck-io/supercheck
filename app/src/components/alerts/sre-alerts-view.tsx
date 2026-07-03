@@ -1,7 +1,19 @@
 "use client";
 
-import { useDeferredValue, useState, useTransition } from "react";
-import { AlertTriangle, BellRing, CheckCircle2, Clock, Search, Siren } from "lucide-react";
+import { useDeferredValue, useMemo, useState, useTransition } from "react";
+import {
+  AlertTriangle,
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  Clock,
+  Search,
+  Siren,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { createSreIncidentFromAlert } from "@/actions/sre-incidents";
@@ -30,20 +42,16 @@ import {
 import { cn } from "@/lib/utils";
 
 type SreAlertSeverity = "sev1" | "sev2" | "sev3" | "sev4";
-type SreAlertStatus = "firing" | "resolved" | "pending" | "notification_failed";
 
 type DerivedSreAlert = {
   id: string;
   fingerprint: string;
   targetName: string;
-  targetType: string;
   source: string;
   serviceHint: string;
   type: string;
   message: string;
   severity: SreAlertSeverity;
-  status: SreAlertStatus;
-  notificationProvider: string;
   timestamp: string;
   duplicateCount: number;
 };
@@ -53,6 +61,11 @@ type SreAlertsViewProps = {
   isLoading: boolean;
 };
 
+type AlertSortKey = "targetName" | "severity" | "source" | "timestamp";
+type SortDirection = "asc" | "desc";
+
+const PAGE_SIZE_OPTIONS = [12, 25, 50, 100];
+
 const severityClasses: Record<SreAlertSeverity, string> = {
   sev1: "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300",
   sev2: "border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-900/60 dark:bg-orange-950/40 dark:text-orange-300",
@@ -60,17 +73,25 @@ const severityClasses: Record<SreAlertSeverity, string> = {
   sev4: "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300",
 };
 
-const statusClasses: Record<SreAlertStatus, string> = {
-  firing: "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300",
-  resolved: "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300",
-  pending: "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-300",
-  notification_failed: "border-zinc-200 bg-zinc-50 text-zinc-700 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300",
-};
-
 function titleCase(value: string) {
   return value
     .replace(/_/g, " ")
     .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function isActionableSreSignal(alert: AlertHistory) {
+  if (alert.status !== "sent") {
+    return false;
+  }
+
+  const normalizedType = alert.type.toLowerCase();
+  const normalizedMessage = alert.message.toLowerCase();
+  return !(
+    normalizedType.includes("recovery") ||
+    normalizedType.includes("success") ||
+    normalizedType.includes("resolved") ||
+    normalizedMessage.includes("completed successfully")
+  );
 }
 
 function deriveSeverity(alert: AlertHistory): SreAlertSeverity {
@@ -92,16 +113,6 @@ function deriveSeverity(alert: AlertHistory): SreAlertSeverity {
   return "sev4";
 }
 
-function deriveStatus(alert: AlertHistory): SreAlertStatus {
-  const type = alert.type.toLowerCase();
-
-  if (alert.status === "pending") return "pending";
-  if (alert.status === "failed") return "notification_failed";
-  if (type.includes("recovery") || type.includes("success")) return "resolved";
-
-  return "firing";
-}
-
 function deriveSource(alert: AlertHistory) {
   if (alert.targetType === "monitor") return "Monitor";
   if (alert.type.toLowerCase().includes("job")) return "Job";
@@ -110,7 +121,7 @@ function deriveSource(alert: AlertHistory) {
 
 function deriveServiceHint(alert: AlertHistory) {
   const target = alert.targetName.trim();
-  if (!target) return "Unmapped service";
+  if (!target) return "Unmapped";
 
   return target
     .replace(/\s+(monitor|job|check|test)$/i, "")
@@ -135,26 +146,24 @@ function formatTimestamp(value: string) {
 }
 
 function deriveSreAlerts(alerts: AlertHistory[]) {
+  const actionableAlerts = alerts.filter(isActionableSreSignal);
   const fingerprintCounts = new Map<string, number>();
-  for (const alert of alerts) {
+  for (const alert of actionableAlerts) {
     const fingerprint = deriveFingerprint(alert);
     fingerprintCounts.set(fingerprint, (fingerprintCounts.get(fingerprint) ?? 0) + 1);
   }
 
-  return alerts.map((alert): DerivedSreAlert => {
+  return actionableAlerts.map((alert): DerivedSreAlert => {
     const fingerprint = deriveFingerprint(alert);
     return {
       id: alert.id,
       fingerprint,
       targetName: alert.targetName,
-      targetType: alert.targetType,
       source: deriveSource(alert),
       serviceHint: deriveServiceHint(alert),
       type: titleCase(alert.type),
       message: alert.message,
       severity: deriveSeverity(alert),
-      status: deriveStatus(alert),
-      notificationProvider: alert.notificationProvider,
       timestamp: alert.timestamp,
       duplicateCount: fingerprintCounts.get(fingerprint) ?? 1,
     };
@@ -172,32 +181,87 @@ function alertMatches(alert: DerivedSreAlert, search: string) {
     alert.type,
     alert.message,
     alert.fingerprint,
-    alert.notificationProvider,
   ].some((value) => value.toLowerCase().includes(query));
+}
+
+function getAlertSortValue(alert: DerivedSreAlert, key: AlertSortKey) {
+  if (key === "timestamp") return new Date(alert.timestamp).getTime();
+  return alert[key];
+}
+
+function SortableHead({
+  label,
+  sortKey,
+  activeKey,
+  direction,
+  onSort,
+  className,
+}: {
+  label: string;
+  sortKey: AlertSortKey;
+  activeKey: AlertSortKey;
+  direction: SortDirection;
+  onSort: (key: AlertSortKey) => void;
+  className?: string;
+}) {
+  const isActive = activeKey === sortKey;
+  const Icon = isActive ? (direction === "desc" ? ArrowDown : ArrowUp) : ArrowUpDown;
+
+  return (
+    <TableHead className={className}>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className={cn("-ml-3 h-8", isActive && "bg-muted font-semibold")}
+        onClick={() => onSort(sortKey)}
+      >
+        {label}
+        <Icon className={cn("ml-2 h-4 w-4", isActive ? "text-primary" : "text-muted-foreground")} />
+      </Button>
+    </TableHead>
+  );
 }
 
 export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search);
-  const [statusFilter, setStatusFilter] = useState("all");
   const [severityFilter, setSeverityFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState("all");
+  const [sortKey, setSortKey] = useState<AlertSortKey>("timestamp");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+  const [pageIndex, setPageIndex] = useState(0);
+  const [pageSize, setPageSize] = useState(12);
   const [incidentByAlertId, setIncidentByAlertId] = useState<Record<string, number>>({});
   const [pendingAlertId, setPendingAlertId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  const derivedAlerts = deriveSreAlerts(alerts);
-  const sourceOptions = Array.from(new Set(derivedAlerts.map((alert) => alert.source))).sort();
-  const firingCount = derivedAlerts.filter((alert) => alert.status === "firing").length;
-  const sevOneTwoCount = derivedAlerts.filter((alert) => alert.severity === "sev1" || alert.severity === "sev2").length;
-  const deduplicatedCount = derivedAlerts.filter((alert) => alert.duplicateCount > 1).length;
+  const derivedAlerts = useMemo(() => deriveSreAlerts(alerts), [alerts]);
+  const sourceOptions = useMemo(() => Array.from(new Set(derivedAlerts.map((alert) => alert.source))).sort(), [derivedAlerts]);
+  const filteredAlerts = useMemo(
+    () => {
+      const filtered = derivedAlerts.filter((alert) => {
+        const matchesSeverity = severityFilter === "all" || alert.severity === severityFilter;
+        const matchesSource = sourceFilter === "all" || alert.source === sourceFilter;
+        return matchesSeverity && matchesSource && alertMatches(alert, deferredSearch);
+      });
 
-  const filteredAlerts = derivedAlerts.filter((alert) => {
-    const matchesStatus = statusFilter === "all" || alert.status === statusFilter;
-    const matchesSeverity = severityFilter === "all" || alert.severity === severityFilter;
-    const matchesSource = sourceFilter === "all" || alert.source === sourceFilter;
-    return matchesStatus && matchesSeverity && matchesSource && alertMatches(alert, deferredSearch);
-  });
+      return [...filtered].sort((a, b) => {
+        const left = getAlertSortValue(a, sortKey);
+        const right = getAlertSortValue(b, sortKey);
+        const result =
+          typeof left === "number" && typeof right === "number"
+            ? left - right
+            : String(left).localeCompare(String(right), undefined, { numeric: true, sensitivity: "base" });
+        return sortDirection === "asc" ? result : -result;
+      });
+    },
+    [deferredSearch, derivedAlerts, severityFilter, sortDirection, sortKey, sourceFilter]
+  );
+
+  const pageCount = Math.max(1, Math.ceil(filteredAlerts.length / pageSize));
+  const safePageIndex = Math.min(pageIndex, pageCount - 1);
+  const pagedAlerts = filteredAlerts.slice(safePageIndex * pageSize, safePageIndex * pageSize + pageSize);
 
   const handleCreateIncident = (alertHistoryId: string) => {
     setPendingAlertId(alertHistoryId);
@@ -218,173 +282,143 @@ export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
     });
   };
 
+  const handleSort = (key: AlertSortKey) => {
+    if (sortKey === key) {
+      setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDirection(key === "timestamp" ? "desc" : "asc");
+    }
+  };
+
   if (isLoading && alerts.length === 0) {
     return (
       <div className="flex min-h-[360px] items-center justify-center">
-        <SuperCheckLoading size="md" message="Deriving SRE alerts..." />
+        <SuperCheckLoading size="md" message="Loading alert signals..." />
       </div>
     );
   }
 
-  if (alerts.length === 0) {
+  if (derivedAlerts.length === 0) {
     return (
       <DashboardEmptyState
-        className="min-h-[60vh]"
+        className="min-h-[360px]"
         title="No alert signals yet"
-        description="Signals are derived from alert history. They appear here after monitors or jobs emit notifications."
+        description="Only sent failure alerts appear here. Notification delivery failures stay in alert history."
         icon={<Siren className="h-12 w-12" />}
       />
     );
   }
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+    <div className="space-y-4">
+      <div className="-mt-2 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <CardTitle className="text-2xl font-semibold">Alert signals</CardTitle>
-          <CardDescription>
-            Alert-history events normalized into investigation-ready signals with derived severity and fingerprints.
-          </CardDescription>
+          <CardDescription>Failure alerts that can be promoted to incidents.</CardDescription>
+        </div>
+        <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto">
+          <div className="relative w-full sm:w-[320px] lg:w-[400px]">
+            <Search className="absolute left-2 top-2 h-4 w-4 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(event) => {
+                setSearch(event.target.value);
+                setPageIndex(0);
+              }}
+              placeholder="Filter by all available fields..."
+              className="h-8 pl-8 pr-8"
+            />
+          </div>
+          <Select
+            value={severityFilter}
+            onValueChange={(value) => {
+              setSeverityFilter(value);
+              setPageIndex(0);
+            }}
+          >
+            <SelectTrigger className="h-8 w-[150px]">
+              <SelectValue placeholder="Severity" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All severities</SelectItem>
+              <SelectItem value="sev1">SEV1</SelectItem>
+              <SelectItem value="sev2">SEV2</SelectItem>
+              <SelectItem value="sev3">SEV3</SelectItem>
+              <SelectItem value="sev4">SEV4</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select
+            value={sourceFilter}
+            onValueChange={(value) => {
+              setSourceFilter(value);
+              setPageIndex(0);
+            }}
+          >
+            <SelectTrigger className="h-8 w-[150px]">
+              <SelectValue placeholder="Source" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All sources</SelectItem>
+              {sourceOptions.map((source) => (
+                <SelectItem key={source} value={source}>
+                  {source}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-3">
-        <div className="rounded-lg border bg-muted/20 p-4">
-          <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            <BellRing className="h-3.5 w-3.5" />
-            Firing
-          </div>
-          <p className="mt-2 text-2xl font-semibold">{firingCount}</p>
-        </div>
-        <div className="rounded-lg border bg-muted/20 p-4">
-          <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            <AlertTriangle className="h-3.5 w-3.5" />
-            Sev1 / Sev2
-          </div>
-          <p className="mt-2 text-2xl font-semibold">{sevOneTwoCount}</p>
-        </div>
-        <div className="rounded-lg border bg-muted/20 p-4">
-          <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            <CheckCircle2 className="h-3.5 w-3.5" />
-            Repeated fingerprints
-          </div>
-          <p className="mt-2 text-2xl font-semibold">{deduplicatedCount}</p>
-        </div>
-      </div>
-
-      <div className="flex flex-col gap-3 lg:flex-row">
-        <div className="relative lg:max-w-sm lg:flex-1">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search target, service, fingerprint..."
-            className="pl-9"
-          />
-        </div>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="lg:w-48">
-            <SelectValue placeholder="Status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All statuses</SelectItem>
-            <SelectItem value="firing">Firing</SelectItem>
-            <SelectItem value="resolved">Resolved</SelectItem>
-            <SelectItem value="pending">Pending</SelectItem>
-            <SelectItem value="notification_failed">Notification failed</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={severityFilter} onValueChange={setSeverityFilter}>
-          <SelectTrigger className="lg:w-40">
-            <SelectValue placeholder="Severity" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All severities</SelectItem>
-            <SelectItem value="sev1">SEV1</SelectItem>
-            <SelectItem value="sev2">SEV2</SelectItem>
-            <SelectItem value="sev3">SEV3</SelectItem>
-            <SelectItem value="sev4">SEV4</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={sourceFilter} onValueChange={setSourceFilter}>
-          <SelectTrigger className="lg:w-44">
-            <SelectValue placeholder="Source" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All sources</SelectItem>
-            {sourceOptions.map((source) => (
-              <SelectItem key={source} value={source}>
-                {source}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div className="overflow-hidden rounded-lg border">
+      <div className="overflow-hidden rounded-t-lg border">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Signal</TableHead>
-              <TableHead>Severity</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Source</TableHead>
-              <TableHead>Fingerprint</TableHead>
-              <TableHead>Last seen</TableHead>
+              <SortableHead label="Signal" sortKey="targetName" activeKey={sortKey} direction={sortDirection} onSort={handleSort} />
+              <SortableHead label="Severity" sortKey="severity" activeKey={sortKey} direction={sortDirection} onSort={handleSort} className="w-32" />
+              <SortableHead label="Source" sortKey="source" activeKey={sortKey} direction={sortDirection} onSort={handleSort} className="w-40" />
+              <SortableHead label="Last seen" sortKey="timestamp" activeKey={sortKey} direction={sortDirection} onSort={handleSort} className="w-44" />
               <TableHead className="w-36" />
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredAlerts.length === 0 ? (
+            {pagedAlerts.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="h-28 text-center text-muted-foreground">
-                  No SRE alerts match the current filters.
+                <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
+                  No signals match the current filters.
                 </TableCell>
               </TableRow>
             ) : (
-              filteredAlerts.map((alert) => (
+              pagedAlerts.map((alert) => (
                 <TableRow key={alert.id}>
-                  <TableCell className="min-w-[280px] whitespace-normal">
+                  <TableCell className="max-w-[560px] whitespace-normal py-2.5">
                     <div className="space-y-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-medium">{alert.targetName}</span>
+                        <span className="line-clamp-1 font-medium">{alert.targetName}</span>
                         <Badge variant="secondary">{alert.serviceHint}</Badge>
+                        {alert.duplicateCount > 1 && (
+                          <Badge variant="outline" className="text-[11px]">
+                            {alert.duplicateCount} repeats
+                          </Badge>
+                        )}
                       </div>
                       <p className="text-xs text-muted-foreground">{alert.type}</p>
-                      <p className="line-clamp-2 max-w-xl text-xs text-muted-foreground">{alert.message}</p>
+                      <p className="line-clamp-2 max-w-2xl text-xs text-muted-foreground">{alert.message}</p>
                     </div>
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="py-2.5">
                     <Badge variant="outline" className={cn("uppercase", severityClasses[alert.severity])}>
                       {alert.severity}
                     </Badge>
                   </TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className={cn("capitalize", statusClasses[alert.status])}>
-                      {alert.status.replace(/_/g, " ")}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="space-y-1">
-                      <p>{alert.source}</p>
-                      <p className="text-xs text-muted-foreground">{alert.notificationProvider}</p>
-                    </div>
-                  </TableCell>
-                  <TableCell className="max-w-[260px] truncate font-mono text-xs">
-                    {alert.fingerprint}
-                    {alert.duplicateCount > 1 && (
-                      <Badge variant="outline" className="ml-2 font-sans text-[11px]">
-                        x{alert.duplicateCount}
-                      </Badge>
-                    )}
-                  </TableCell>
-                  <TableCell>
+                  <TableCell className="py-2.5">{alert.source}</TableCell>
+                  <TableCell className="py-2.5">
                     <div className="inline-flex items-center gap-1 text-sm">
                       <Clock className="h-3.5 w-3.5 text-muted-foreground" />
                       {formatTimestamp(alert.timestamp)}
                     </div>
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="py-2.5">
                     {incidentByAlertId[alert.id] ? (
                       <Badge variant="secondary">Incident #{incidentByAlertId[alert.id]}</Badge>
                     ) : (
@@ -404,6 +438,63 @@ export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
           </TableBody>
         </Table>
       </div>
+
+      <div className="flex flex-col gap-3 px-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex-1 text-sm text-muted-foreground">
+          Total {filteredAlerts.length} signals
+        </div>
+        <div className="flex flex-wrap items-center gap-3 sm:gap-6 lg:gap-8">
+          <div className="flex items-center space-x-2">
+            <p className="text-sm">Rows per page</p>
+            <Select
+              value={`${pageSize}`}
+              onValueChange={(value) => {
+                setPageSize(Number(value));
+                setPageIndex(0);
+              }}
+            >
+              <SelectTrigger className="h-8 w-[70px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent side="top">
+                {PAGE_SIZE_OPTIONS.map((option) => (
+                  <SelectItem key={option} value={`${option}`}>
+                    {option}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex w-[100px] items-center justify-center text-sm">
+            Page {safePageIndex + 1} of {pageCount}
+          </div>
+          <div className="flex items-center space-x-2">
+            <Button variant="outline" className="hidden h-8 w-8 p-0 lg:flex" onClick={() => setPageIndex(0)} disabled={safePageIndex === 0}>
+              <span className="sr-only">Go to first page</span>
+              <ChevronsLeft />
+            </Button>
+            <Button variant="outline" className="h-8 w-8 p-0" onClick={() => setPageIndex(Math.max(0, safePageIndex - 1))} disabled={safePageIndex === 0}>
+              <span className="sr-only">Go to previous page</span>
+              <ChevronLeft />
+            </Button>
+            <Button variant="outline" className="h-8 w-8 p-0" onClick={() => setPageIndex(Math.min(pageCount - 1, safePageIndex + 1))} disabled={safePageIndex >= pageCount - 1}>
+              <span className="sr-only">Go to next page</span>
+              <ChevronRight />
+            </Button>
+            <Button variant="outline" className="hidden h-8 w-8 p-0 lg:flex" onClick={() => setPageIndex(pageCount - 1)} disabled={safePageIndex >= pageCount - 1}>
+              <span className="sr-only">Go to last page</span>
+              <ChevronsRight />
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {alerts.length > derivedAlerts.length && (
+        <p className="text-xs text-muted-foreground">
+          <AlertTriangle className="mr-1 inline h-3.5 w-3.5" />
+          Notification delivery failures and recovery/success events are available in History, not Signals.
+        </p>
+      )}
     </div>
   );
 }

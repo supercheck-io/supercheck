@@ -36,7 +36,7 @@ export function InvestigationsToolbar<TData>({ table }: InvestigationsToolbarPro
         <div className="relative w-full max-w-sm">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="Search service, root cause, severity, model..."
+            placeholder="Filter by all available fields..."
             value={(table.getState().globalFilter as string) ?? ""}
             onChange={(event) => table.setGlobalFilter(event.target.value)}
             className="pl-9 h-10 lg:w-[250px]"

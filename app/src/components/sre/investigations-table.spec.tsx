@@ -1,4 +1,3 @@
-import type { AnchorHTMLAttributes, ReactNode } from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import {
@@ -8,16 +7,6 @@ import {
 import type { SreInvestigationHistoryItem } from "@/lib/sre/investigation-queries";
 
 import { SreInvestigationsTable } from "./investigations-table";
-
-type MockLinkProps = Omit<AnchorHTMLAttributes<HTMLAnchorElement>, "href"> & {
-  href: string;
-  children: ReactNode;
-};
-
-jest.mock("next/link", () => ({
-  __esModule: true,
-  default: ({ href, children, ...props }: MockLinkProps) => <a href={href} {...props}>{children}</a>,
-}));
 
 jest.mock("@/actions/sre-investigation-reports", () => ({
   createSreInvestigationReportSnapshot: jest.fn(),
@@ -184,7 +173,7 @@ describe("SreInvestigationsTable", () => {
     expect(screen.getByText(/Checkout latency/)).toBeInTheDocument();
     expect(screen.getByText(/Search timeout/)).toBeInTheDocument();
 
-    fireEvent.change(screen.getByPlaceholderText("Search service, root cause, severity, model..."), {
+    fireEvent.change(screen.getByPlaceholderText("Filter by all available fields..."), {
       target: { value: "checkout" },
     });
 
@@ -236,7 +225,7 @@ describe("SreInvestigationsTable", () => {
       });
     });
     await waitFor(() => {
-      expect(screen.getAllByText("snapshot")).toHaveLength(2);
+      expect(mockCreateSreInvestigationReportSnapshot).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -261,7 +250,9 @@ describe("SreInvestigationsTable", () => {
         rejectedHypotheses: ["Cache saturation was not supported", "Regional DNS was unrelated"],
       });
     });
-    expect(await screen.findByText("Incorrect · 2 rejected")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByText("Review saved report")).not.toBeInTheDocument();
+    });
   });
 
   it("shows load errors", () => {
