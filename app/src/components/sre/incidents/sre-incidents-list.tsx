@@ -378,7 +378,7 @@ export function SreIncidentsList({ incidents, loadError }: SreIncidentsListProps
                       <TableCell className="py-2.5">
                         <div className="inline-flex items-center gap-1 whitespace-nowrap text-sm">
                           <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-                          {formatDate(incident.updatedAt)}
+                          <span suppressHydrationWarning>{formatDate(incident.updatedAt)}</span>
                         </div>
                       </TableCell>
                     </TableRow>

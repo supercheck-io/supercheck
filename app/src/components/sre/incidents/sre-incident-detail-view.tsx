@@ -147,7 +147,7 @@ function NativeEvidenceCard({ detail }: { detail: SreIncidentDetail }) {
                     <TableCell>
                       <div className="inline-flex items-center gap-1 text-sm">
                         <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-                        {formatDate(item.observedAt)}
+                        <span suppressHydrationWarning>{formatDate(item.observedAt)}</span>
                       </div>
                     </TableCell>
                     <TableCell>
@@ -209,7 +209,7 @@ export function SreIncidentDetailView({ detail }: SreIncidentDetailViewProps) {
         </div>
         <div className="rounded-lg border bg-muted/20 p-4">
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Updated</p>
-          <p className="mt-2 text-lg font-semibold">{formatDate(detail.incident.updatedAt)}</p>
+          <p className="mt-2 text-lg font-semibold" suppressHydrationWarning>{formatDate(detail.incident.updatedAt)}</p>
         </div>
       </div>
 

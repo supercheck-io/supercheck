@@ -188,8 +188,8 @@ Each test execution runs in a per-run K8s Job with `runtimeClassName: gvisor`:
 
 ### Network Isolation
 
-- PostgreSQL, Redis, MinIO bind to `127.0.0.1` only
-- Only Traefik (secure variant) binds to `0.0.0.0`
+- PostgreSQL, Redis, MinIO bind to localhost only
+- Only Traefik (secure variant) binds to all interfaces
 
 ## Scaling
 
@@ -216,18 +216,18 @@ WORKER_LOCATION=eu-west WORKER_REPLICAS=2 docker compose -f docker-compose-worke
 
 ## Demo Server (Docker Compose Production)
 
-The Docker Compose production deployment runs on a **dedicated Hetzner server** as the demo site (demo.supercheck.dev).
+The Docker Compose production deployment runs on a **dedicated server** as the demo site (e.g., `<your-demo-domain>`).
 
 ### Server Details
 
 | Property | Value |
 |----------|-------|
-| **Server IP** | `88.198.125.135` |
-| **SSH Access** | `ssh root@88.198.125.135` |
+| **Server IP** | `your-server-ip` |
+| **SSH Access** | `ssh root@your-server-ip` |
 | **Compose File** | `docker-compose-secure.yml` |
 | **Project Path** | `/root/supercheck/deploy/docker/` |
 | **Environment File** | `/root/supercheck/deploy/docker/.env` |
-| **Domain** | `demo.supercheck.dev` |
+| **Domain** | `<your-demo-domain>` |
 
 ### Deployment Commands
 
@@ -235,19 +235,19 @@ The Docker Compose production deployment runs on a **dedicated Hetzner server** 
 
 ```bash
 # Check current running versions
-ssh root@88.198.125.135 "docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}'"
+ssh root@your-server-ip "docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}'"
 
 # Update version (supports semver, canary, rc tags — e.g. 1.3.3, 1.3.3-canary.1, 1.4.0-rc.2)
-ssh root@88.198.125.135 "sed -i 's/SUPERCHECK_VERSION=.*/SUPERCHECK_VERSION=<new_version>/' /root/supercheck/deploy/docker/.env"
+ssh root@your-server-ip "sed -i 's/SUPERCHECK_VERSION=.*/SUPERCHECK_VERSION=<new_version>/' /root/supercheck/deploy/docker/.env"
 
 # Pull new images and redeploy
-ssh root@88.198.125.135 "cd /root/supercheck/deploy/docker && docker compose -f docker-compose-secure.yml pull app worker && docker compose -f docker-compose-secure.yml up -d app worker"
+ssh root@your-server-ip "cd /root/supercheck/deploy/docker && docker compose -f docker-compose-secure.yml pull app worker && docker compose -f docker-compose-secure.yml up -d app worker"
 
 # Verify deployment
-ssh root@88.198.125.135 "docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}'"
+ssh root@your-server-ip "docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}'"
 
 # View logs (tail 30 lines of both services)
-ssh root@88.198.125.135 "cd /root/supercheck/deploy/docker && docker compose -f docker-compose-secure.yml logs --tail=30 app worker"
+ssh root@your-server-ip "cd /root/supercheck/deploy/docker && docker compose -f docker-compose-secure.yml logs --tail=30 app worker"
 ```
 
 ### Version Upgrade Procedure
@@ -264,7 +264,7 @@ ssh root@88.198.125.135 "cd /root/supercheck/deploy/docker && docker compose -f 
 
 ## Operations
 
-**On the demo server** (`ssh root@88.198.125.135`):
+**On the demo server** (`ssh root@your-server-ip`):
 
 ```bash
 cd /root/supercheck/deploy/docker

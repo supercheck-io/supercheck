@@ -199,7 +199,7 @@ export function PrivateAgentsAdminView({ initialAgents, loadError }: PrivateAgen
                       <p className="text-xs text-muted-foreground">{agent.networkLabel ?? "No network label"}</p>
                     </div>
                   </TableCell>
-                  <TableCell>{formatDate(agent.lastHeartbeatAt)}</TableCell>
+                  <TableCell suppressHydrationWarning>{formatDate(agent.lastHeartbeatAt)}</TableCell>
                   <TableCell>{agent.projectScoped ? "Current project" : "Organization"}</TableCell>
                   <TableCell>
                     <DropdownMenu>

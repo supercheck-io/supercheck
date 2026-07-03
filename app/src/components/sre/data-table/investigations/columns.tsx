@@ -97,7 +97,7 @@ export const columns: ColumnDef<SreInvestigationHistoryItem>[] = [
   {
     accessorKey: "completedAt",
     header: ({ column }) => <DataTableColumnHeader column={column} title="Completed" />,
-    cell: ({ row }) => <span className="whitespace-nowrap text-muted-foreground">{formatCompletedAt(row.original.completedAt)}</span>
+    cell: ({ row }) => <span suppressHydrationWarning className="whitespace-nowrap text-muted-foreground">{formatCompletedAt(row.original.completedAt)}</span>
   },
   {
     id: "actions",

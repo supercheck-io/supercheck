@@ -415,7 +415,7 @@ export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
                   <TableCell className="py-2.5">
                     <div className="inline-flex items-center gap-1 text-sm">
                       <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-                      {formatTimestamp(alert.timestamp)}
+                      <span suppressHydrationWarning>{formatTimestamp(alert.timestamp)}</span>
                     </div>
                   </TableCell>
                   <TableCell className="py-2.5">

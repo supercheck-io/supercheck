@@ -402,7 +402,7 @@ export function PublicStatusPage({
               pointerEvents: "none",
             }}
           >
-            <div className="font-semibold mb-2 text-white">
+            <div className="font-semibold mb-2 text-white" suppressHydrationWarning>
               {fullDateFormatter.format(data[hoveredDay].date)}
             </div>
 
@@ -663,7 +663,7 @@ export function PublicStatusPage({
                       key={format(date, "yyyy-MM-dd")}
                       className="pb-5 border-b dark:border-gray-800 last:border-b-0"
                     >
-                      <h3 className="text-sm sm:text-base font-semibold text-gray-900 dark:text-gray-100 mb-3">
+                      <h3 className="text-sm sm:text-base font-semibold text-gray-900 dark:text-gray-100 mb-3" suppressHydrationWarning>
                         {fullDateFormatter.format(date)}
                       </h3>
 

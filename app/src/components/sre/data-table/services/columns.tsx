@@ -105,7 +105,7 @@ export const columns: ColumnDef<SreServiceListItem>[] = [
     accessorKey: "updatedAt",
     header: "Updated",
     cell: ({ row }) => {
-      return formatDate(row.getValue("updatedAt"));
+      return <span suppressHydrationWarning>{formatDate(row.getValue("updatedAt"))}</span>;
     },
   },
   {
