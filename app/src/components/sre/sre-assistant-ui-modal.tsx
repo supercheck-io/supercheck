@@ -52,8 +52,8 @@ export function SreAssistantUiModal() {
         </Button>
       </DialogTrigger>
       <DialogContent hideOverlay className="bottom-4 right-4 left-auto top-auto grid h-[min(740px,calc(100svh-2rem))] w-[min(860px,calc(100vw-2rem))] max-w-none translate-x-0 translate-y-0 grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:rounded-xl [&>button]:right-4 [&>button]:top-4">
-        <DialogHeader className="border-b px-4 py-3 pr-16">
-          <div className="flex items-center justify-between gap-3">
+        <DialogHeader className="w-full min-w-0 border-b px-4 py-3 pr-16">
+          <div className="flex w-full min-w-0 items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
               <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border bg-background shadow-sm">
                 <Bot className="h-4 w-4" />
@@ -78,7 +78,7 @@ export function SreAssistantUiModal() {
             </div>
           </div>
         </DialogHeader>
-        <div className="min-h-0 flex-1 overflow-hidden">
+        <div className="min-h-0 w-full min-w-0 flex-1 overflow-hidden">
           <SreAssistantUiThread
             key={threadKey}
             conversationId={conversationId}

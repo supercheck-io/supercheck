@@ -264,7 +264,9 @@ describe('private agent connector execution', () => {
       evidenceType: 'log',
       observedAt: '2026-06-22T09:58:00.000Z',
     });
-    expect(JSON.stringify(result.evidence)).not.toContain('sensitive raw stack');
+    expect(JSON.stringify(result.evidence)).not.toContain(
+      'sensitive raw stack',
+    );
   });
 
   it('executes Tempo jobs and preserves trace evidence shape', async () => {
@@ -436,5 +438,65 @@ describe('private agent connector execution', () => {
     }) as unknown as typeof fetch;
 
     await expect(exchangeRegistrationToken(config)).resolves.toBe(config);
+  });
+
+  it('uses a fresh registration token when a file runtime credential is present', async () => {
+    const config: PrivateAgentConfig = {
+      apiUrl: 'https://app.supercheck.io',
+      agentId: '018f0000-0000-7000-8000-000000000001',
+      token: 'scpac_old_runtime_1234567890',
+      tokenSource: 'file',
+      registrationToken: 'scpa_fresh_registration',
+      credentialFile: null,
+      agentVersion: '1.3.5',
+      retryIntervalMs: 5_000,
+      leaseWaitMs: 25_000,
+      heartbeatIntervalMs: 30_000,
+    };
+
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        token: 'scpac_new_runtime_1234567890',
+        keyId: 'pa_456',
+        agent: {
+          id: config.agentId,
+          status: 'connected',
+          registeredAt: '2026-06-22T10:00:00.000Z',
+        },
+      }),
+    }) as unknown as typeof fetch;
+
+    const exchanged = await exchangeRegistrationToken(config);
+
+    expect(exchanged.token).toBe('scpac_new_runtime_1234567890');
+    expect(global.fetch).toHaveBeenCalledWith(
+      'https://app.supercheck.io/api/private-agents/registration/exchange',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: 'Bearer scpa_fresh_registration',
+        }),
+      }),
+    );
+  });
+
+  it('does not re-exchange existing file runtime credentials without a fresh registration token', async () => {
+    const config: PrivateAgentConfig = {
+      apiUrl: 'https://app.supercheck.io',
+      agentId: '018f0000-0000-7000-8000-000000000001',
+      token: 'scpac_existing_runtime_1234567890',
+      tokenSource: 'file',
+      credentialFile: null,
+      agentVersion: '1.3.5',
+      retryIntervalMs: 5_000,
+      leaseWaitMs: 25_000,
+      heartbeatIntervalMs: 30_000,
+    };
+
+    global.fetch = jest.fn() as unknown as typeof fetch;
+
+    await expect(exchangeRegistrationToken(config)).resolves.toBe(config);
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 });

@@ -5,8 +5,18 @@ import {
   getSreIntegrationBindingSetupOptions,
 } from "@/actions/sre-integration-bindings";
 import { getSreConnectors, getSreConnectorSetupOptions } from "@/actions/sre-connectors";
+import { requireSreApiPermissions } from "../_auth";
 
 export async function GET() {
+  const auth = await requireSreApiPermissions([
+    { resource: "sre_connector", action: "view" },
+    { resource: "notification", action: "view" },
+  ]);
+
+  if (!auth.success) {
+    return auth.response;
+  }
+
   const [
     connectorsResult,
     setupOptionsResult,

@@ -25,72 +25,75 @@ import {
   createDirectConnector,
   enforceConnectorPolicy,
   hashConnectorPayload,
+  isDirectValidationConnectorType,
+  isPrivateAgentConnectorType,
+  isSetupOnlyConnectorType,
   redactConnectorText,
   sanitizeConnectorEvidence,
+  SRE_CONNECTOR_TYPES,
   type ConnectorCredentialValue,
   type ConnectorDefinition,
+  type SreConnectorType,
 } from "@/lib/sre/connectors";
 import { getPrivateAgentHealth } from "@/lib/private-agents/agent-registry";
 import { routeSreConnectorQuery } from "@/lib/private-agents/job-router";
-import { checkSreConnectorSearchRateLimit, checkSreConnectorValidationRateLimit } from "@/lib/sre/sre-rate-limiter";
+import {
+  checkSreConnectorSearchRateLimit,
+  checkSreConnectorValidationRateLimit,
+} from "@/lib/sre/sre-rate-limiter";
 import { db } from "@/utils/db";
 
-const connectorTypes = [
-  "github",
-  "kubernetes",
-  "prometheus",
-  "grafana",
-  "datadog",
-  "splunk",
-  "appdynamics",
-  "newrelic",
-  "sentry",
-  "loki",
-  "elasticsearch",
-  "tempo",
-  "jaeger",
-  "opentelemetry",
-  "aws_cloudwatch",
-  "gcp_monitoring",
-  "azure_monitor",
-  "postgresql",
-  "mysql",
-  "mongodb",
-  "redis",
-  "clickhouse",
-  "kafka",
-  "rabbitmq",
-  "gitlab",
-  "confluence",
-  "notion",
-  "slack",
-  "teams",
-  "pagerduty",
-  "opsgenie",
-  "jira",
-  "mcp",
-  "webhook",
-  "supercheck_native",
+const credentialTypes = [
+  "api_key",
+  "oauth_token",
+  "bearer_token",
+  "basic_auth",
+  "service_account",
 ] as const;
-
-const credentialTypes = ["api_key", "oauth_token", "bearer_token", "basic_auth", "service_account"] as const;
 const riskLevels = ["low", "medium", "high", "critical"] as const;
 
-const flatCredentialValueSchema = z.record(z.union([z.string().max(5000), z.number(), z.boolean(), z.null()]));
+const flatCredentialValueSchema = z.record(
+  z.union([z.string().max(5000), z.number(), z.boolean(), z.null()]),
+);
 
 const createConnectorSchema = z.object({
   name: z.string().trim().min(1, "Connector name is required").max(100),
-  type: z.enum(connectorTypes),
+  type: z.enum(SRE_CONNECTOR_TYPES),
   riskLevel: z.enum(riskLevels).default("low"),
-  endpointUrl: z.string().trim().url("Enter a valid endpoint URL").optional().or(z.literal("")),
+  endpointUrl: z
+    .string()
+    .trim()
+    .url("Enter a valid endpoint URL")
+    .optional()
+    .or(z.literal("")),
   privateAgentId: z.string().uuid().optional().nullable(),
   serviceIds: z.array(z.string().uuid()).max(50).default([]),
-  defaultTimeWindowMinutes: z.number().int().min(1).max(7 * 24 * 60).default(60),
+  defaultTimeWindowMinutes: z
+    .number()
+    .int()
+    .min(1)
+    .max(7 * 24 * 60)
+    .default(60),
   outputLimits: z
     .object({
-      maxRows: z.number().int().min(1).max(1000).default(DEFAULT_CONNECTOR_OUTPUT_LIMITS.maxRows),
-      maxBytes: z.number().int().min(1024).max(5 * 1024 * 1024).default(DEFAULT_CONNECTOR_OUTPUT_LIMITS.maxBytes),
-      maxSeconds: z.number().int().min(1).max(30).default(DEFAULT_CONNECTOR_OUTPUT_LIMITS.maxSeconds),
+      maxRows: z
+        .number()
+        .int()
+        .min(1)
+        .max(1000)
+        .default(DEFAULT_CONNECTOR_OUTPUT_LIMITS.maxRows),
+      maxBytes: z
+        .number()
+        .int()
+        .min(1024)
+        .max(5 * 1024 * 1024)
+        .default(DEFAULT_CONNECTOR_OUTPUT_LIMITS.maxBytes),
+      maxSeconds: z
+        .number()
+        .int()
+        .min(1)
+        .max(30)
+        .default(DEFAULT_CONNECTOR_OUTPUT_LIMITS.maxSeconds),
     })
     .default(DEFAULT_CONNECTOR_OUTPUT_LIMITS),
   credential: z
@@ -121,7 +124,12 @@ const searchConnectorSchema = z.object({
   id: z.string().uuid(),
   serviceId: z.string().uuid(),
   query: z.string().trim().min(1).max(500),
-  timeWindowMinutes: z.number().int().min(1).max(24 * 60).default(60),
+  timeWindowMinutes: z
+    .number()
+    .int()
+    .min(1)
+    .max(24 * 60)
+    .default(60),
   filters: z
     .object({
       index: z.string().trim().min(1).max(200).optional(),
@@ -135,27 +143,24 @@ const privateAgentJobResultSchema = z.object({
   jobId: z.string().uuid(),
 });
 
-const privateAgentSupportedConnectorTypes = [
-  "github",
-  "kubernetes",
-  "prometheus",
-  "grafana",
-  "sentry",
-  "datadog",
-  "loki",
-  "elasticsearch",
-  "tempo",
-  "aws_cloudwatch",
-] as const;
-
 export type SreConnectorListItem = {
   id: string;
   name: string;
-  type: (typeof connectorTypes)[number];
-  status: "configured" | "valid" | "unreachable" | "missing_credentials" | "disabled";
+  type: SreConnectorType;
+  status:
+    | "configured"
+    | "valid"
+    | "unreachable"
+    | "missing_credentials"
+    | "disabled";
   riskLevel: (typeof riskLevels)[number];
   executionMode: "direct" | "private_agent";
-  privateAgent: { id: string; name: string; status: string; lastHeartbeatAt: Date | null } | null;
+  privateAgent: {
+    id: string;
+    name: string;
+    status: string;
+    lastHeartbeatAt: Date | null;
+  } | null;
   scopedServiceIds: string[];
   hasCredentials: boolean;
   defaultTimeWindowMinutes: number;
@@ -163,7 +168,14 @@ export type SreConnectorListItem = {
   endpointUrl: string | null;
   latestPrivateAgentJob: {
     id: string;
-    status: "queued" | "leased" | "running" | "completed" | "failed" | "cancelled" | "timed_out";
+    status:
+      | "queued"
+      | "leased"
+      | "running"
+      | "completed"
+      | "failed"
+      | "cancelled"
+      | "timed_out";
     createdAt: Date;
     completedAt: Date | null;
     errorCode: string | null;
@@ -205,7 +217,14 @@ export type SrePrivateAgentJobResult =
       success: true;
       job: {
         id: string;
-        status: "queued" | "leased" | "running" | "completed" | "failed" | "cancelled" | "timed_out";
+        status:
+          | "queued"
+          | "leased"
+          | "running"
+          | "completed"
+          | "failed"
+          | "cancelled"
+          | "timed_out";
         connectorId: string | null;
         connectorName: string | null;
         createdAt: string;
@@ -229,7 +248,12 @@ export type SrePrivateAgentJobResult =
   | { success: false; error: string; fieldErrors?: Record<string, string[]> };
 
 export type SreConnectorSetupOptions = {
-  services: Array<{ id: string; name: string; environment: string | null; ownerTeam: string | null }>;
+  services: Array<{
+    id: string;
+    name: string;
+    environment: string | null;
+    ownerTeam: string | null;
+  }>;
   privateAgents: Array<{
     id: string;
     name: string;
@@ -244,15 +268,26 @@ export type SreConnectorSetupOptions = {
 function formatValidationErrors(error: z.ZodError) {
   const flattened = error.flatten().fieldErrors;
   return Object.fromEntries(
-    Object.entries(flattened).filter(([, errors]) => errors && errors.length > 0)
+    Object.entries(flattened).filter(
+      ([, errors]) => errors && errors.length > 0,
+    ),
   ) as Record<string, string[]>;
 }
 
 function normalizeOutputLimits(value: Record<string, unknown> | null) {
   return {
-    maxRows: typeof value?.maxRows === "number" ? value.maxRows : DEFAULT_CONNECTOR_OUTPUT_LIMITS.maxRows,
-    maxBytes: typeof value?.maxBytes === "number" ? value.maxBytes : DEFAULT_CONNECTOR_OUTPUT_LIMITS.maxBytes,
-    maxSeconds: typeof value?.maxSeconds === "number" ? value.maxSeconds : DEFAULT_CONNECTOR_OUTPUT_LIMITS.maxSeconds,
+    maxRows:
+      typeof value?.maxRows === "number"
+        ? value.maxRows
+        : DEFAULT_CONNECTOR_OUTPUT_LIMITS.maxRows,
+    maxBytes:
+      typeof value?.maxBytes === "number"
+        ? value.maxBytes
+        : DEFAULT_CONNECTOR_OUTPUT_LIMITS.maxBytes,
+    maxSeconds:
+      typeof value?.maxSeconds === "number"
+        ? value.maxSeconds
+        : DEFAULT_CONNECTOR_OUTPUT_LIMITS.maxSeconds,
   };
 }
 
@@ -271,11 +306,15 @@ function normalizeEndpointUrl(value: string | null | undefined) {
   return url.toString().replace(/\/$/, "");
 }
 
-function normalizePrivateAgentJobSummary(row: typeof privateAgentJobs.$inferSelect | null): SreConnectorListItem["latestPrivateAgentJob"] {
+function normalizePrivateAgentJobSummary(
+  row: typeof privateAgentJobs.$inferSelect | null,
+): SreConnectorListItem["latestPrivateAgentJob"] {
   if (!row) return null;
 
   const resultSummary = row.resultSummary;
-  const evidence = Array.isArray(resultSummary?.evidence) ? resultSummary.evidence : [];
+  const evidence = Array.isArray(resultSummary?.evidence)
+    ? resultSummary.evidence
+    : [];
 
   return {
     id: row.id,
@@ -294,7 +333,10 @@ function credentialSecret(value: ConnectorCredentialValue | null) {
   return typeof secret === "string" && secret.trim() ? secret.trim() : null;
 }
 
-function credentialString(value: ConnectorCredentialValue | null, keys: string[]) {
+function credentialString(
+  value: ConnectorCredentialValue | null,
+  keys: string[],
+) {
   for (const key of keys) {
     const candidate = value?.[key];
     if (typeof candidate === "string" && candidate.trim()) {
@@ -310,26 +352,33 @@ function directConnectorCredential(value: ConnectorCredentialValue | null) {
 
   return {
     secret: credentialSecret(value),
-    apiKey: credentialString(value, ["apiKey", "api_key", "accessKeyId", "access_key_id", "secret"]),
-    applicationKey: credentialString(value, ["applicationKey", "application_key", "appKey", "app_key"]),
-    sessionToken: credentialString(value, ["sessionToken", "session_token", "awsSessionToken", "aws_session_token"]),
+    apiKey: credentialString(value, [
+      "apiKey",
+      "api_key",
+      "accessKeyId",
+      "access_key_id",
+      "secret",
+    ]),
+    applicationKey: credentialString(value, [
+      "applicationKey",
+      "application_key",
+      "appKey",
+      "app_key",
+    ]),
+    sessionToken: credentialString(value, [
+      "sessionToken",
+      "session_token",
+      "awsSessionToken",
+      "aws_session_token",
+    ]),
     region: credentialString(value, ["region", "awsRegion", "aws_region"]),
   };
 }
 
-function supportsDirectConnectorValidation(connectorType: (typeof connectorTypes)[number]) {
-  return ["github", "kubernetes", "prometheus", "grafana", "sentry", "datadog", "loki", "elasticsearch", "tempo", "aws_cloudwatch"].includes(connectorType);
-}
-
-function isSetupOnlyConnector(connectorType: (typeof connectorTypes)[number]) {
-  return ["jira", "confluence", "notion", "slack"].includes(connectorType);
-}
-
-function supportsPrivateAgentConnector(connectorType: (typeof connectorTypes)[number]) {
-  return privateAgentSupportedConnectorTypes.includes(connectorType as (typeof privateAgentSupportedConnectorTypes)[number]);
-}
-
-function validationUrl(connectorType: (typeof connectorTypes)[number], endpointUrl: string | null) {
+function validationUrl(
+  connectorType: SreConnectorType,
+  endpointUrl: string | null,
+) {
   if (connectorType === "github") {
     return "https://api.github.com/rate_limit";
   }
@@ -352,7 +401,7 @@ function validationUrl(connectorType: (typeof connectorTypes)[number], endpointU
 
 function buildConnectorDefinition(
   row: typeof externalConnectors.$inferSelect,
-  scopedServiceIds: string[]
+  scopedServiceIds: string[],
 ): ConnectorDefinition {
   return {
     id: row.id,
@@ -370,7 +419,11 @@ function buildConnectorDefinition(
   };
 }
 
-async function getScopedServiceIds(connectorId: string, organizationId: string, projectId: string) {
+async function getScopedServiceIds(
+  connectorId: string,
+  organizationId: string,
+  projectId: string,
+) {
   const rows = await db
     .select({ serviceId: externalConnectorServices.serviceId })
     .from(externalConnectorServices)
@@ -378,8 +431,8 @@ async function getScopedServiceIds(connectorId: string, organizationId: string, 
       and(
         eq(externalConnectorServices.organizationId, organizationId),
         eq(externalConnectorServices.projectId, projectId),
-        eq(externalConnectorServices.connectorId, connectorId)
-      )
+        eq(externalConnectorServices.connectorId, connectorId),
+      ),
     );
 
   return rows.map((row) => row.serviceId);
@@ -388,7 +441,7 @@ async function getScopedServiceIds(connectorId: string, organizationId: string, 
 async function getConnectorListItem(
   connectorId: string,
   organizationId: string,
-  projectId: string
+  projectId: string,
 ): Promise<SreConnectorListItem | null> {
   const [row] = await db
     .select({
@@ -400,14 +453,20 @@ async function getConnectorListItem(
       credentialId: externalConnectorCredentials.id,
     })
     .from(externalConnectors)
-    .leftJoin(privateAgents, eq(externalConnectors.privateAgentId, privateAgents.id))
-    .leftJoin(externalConnectorCredentials, eq(externalConnectorCredentials.connectorId, externalConnectors.id))
+    .leftJoin(
+      privateAgents,
+      eq(externalConnectors.privateAgentId, privateAgents.id),
+    )
+    .leftJoin(
+      externalConnectorCredentials,
+      eq(externalConnectorCredentials.connectorId, externalConnectors.id),
+    )
     .where(
       and(
         eq(externalConnectors.id, connectorId),
         eq(externalConnectors.organizationId, organizationId),
-        eq(externalConnectors.projectId, projectId)
-      )
+        eq(externalConnectors.projectId, projectId),
+      ),
     )
     .limit(1);
 
@@ -422,8 +481,8 @@ async function getConnectorListItem(
       and(
         eq(externalConnectorServices.organizationId, organizationId),
         eq(externalConnectorServices.projectId, projectId),
-        eq(externalConnectorServices.connectorId, connectorId)
-      )
+        eq(externalConnectorServices.connectorId, connectorId),
+      ),
     );
 
   const latestJob = row.connector.privateAgentId
@@ -432,7 +491,7 @@ async function getConnectorListItem(
           eq(privateAgentJobs.organizationId, organizationId),
           eq(privateAgentJobs.projectId, projectId),
           eq(privateAgentJobs.connectorId, connectorId),
-          eq(privateAgentJobs.jobClass, "sre_connector_query")
+          eq(privateAgentJobs.jobClass, "sre_connector_query"),
         ),
         orderBy: desc(privateAgentJobs.createdAt),
       })
@@ -457,7 +516,10 @@ async function getConnectorListItem(
     hasCredentials: Boolean(row.credentialId),
     defaultTimeWindowMinutes: row.connector.defaultTimeWindowMinutes,
     outputLimits: normalizeOutputLimits(row.connector.outputLimits),
-    endpointUrl: typeof row.connector.config?.endpointUrl === "string" ? row.connector.config.endpointUrl : null,
+    endpointUrl:
+      typeof row.connector.config?.endpointUrl === "string"
+        ? row.connector.config.endpointUrl
+        : null,
     latestPrivateAgentJob: normalizePrivateAgentJobSummary(latestJob ?? null),
     lastValidatedAt: row.connector.lastValidatedAt,
     lastValidationStatus: row.connector.lastValidationStatus,
@@ -473,43 +535,169 @@ export async function getSreConnectors(): Promise<
 > {
   try {
     const { userId, organizationId, project } = await requireProjectContext();
-    const canView = checkPermissionWithContext("sre_connector", "view", { userId, organizationId, project });
+    const canView = checkPermissionWithContext("sre_connector", "view", {
+      userId,
+      organizationId,
+      project,
+    });
 
     if (!canView) {
-      return { success: false, error: "Insufficient permissions to view connectors", connectors: [] };
+      return {
+        success: false,
+        error: "Insufficient permissions to view connectors",
+        connectors: [],
+      };
     }
 
     const rows = await db
-      .select({ id: externalConnectors.id })
+      .select({
+        connector: externalConnectors,
+        privateAgentId: privateAgents.id,
+        privateAgentName: privateAgents.name,
+        privateAgentStatus: privateAgents.status,
+        privateAgentLastHeartbeatAt: privateAgents.lastHeartbeatAt,
+      })
       .from(externalConnectors)
-      .where(and(eq(externalConnectors.organizationId, organizationId), eq(externalConnectors.projectId, project.id)))
+      .leftJoin(
+        privateAgents,
+        eq(externalConnectors.privateAgentId, privateAgents.id),
+      )
+      .where(
+        and(
+          eq(externalConnectors.organizationId, organizationId),
+          eq(externalConnectors.projectId, project.id),
+        ),
+      )
       .orderBy(desc(externalConnectors.updatedAt));
 
-    const connectors = await Promise.all(
-      rows.map((row) => getConnectorListItem(row.id, organizationId, project.id))
-    );
+    const connectorIds = rows.map((row) => row.connector.id);
+    if (connectorIds.length === 0) {
+      return { success: true, connectors: [] };
+    }
 
-    return { success: true, connectors: connectors.filter((connector): connector is SreConnectorListItem => Boolean(connector)) };
+    const [serviceRows, credentialRows, jobRows] = await Promise.all([
+      db
+        .select({
+          connectorId: externalConnectorServices.connectorId,
+          serviceId: externalConnectorServices.serviceId,
+        })
+        .from(externalConnectorServices)
+        .where(
+          and(
+            eq(externalConnectorServices.organizationId, organizationId),
+            eq(externalConnectorServices.projectId, project.id),
+            inArray(externalConnectorServices.connectorId, connectorIds),
+          ),
+        ),
+      db
+        .select({
+          connectorId: externalConnectorCredentials.connectorId,
+          id: externalConnectorCredentials.id,
+        })
+        .from(externalConnectorCredentials)
+        .where(inArray(externalConnectorCredentials.connectorId, connectorIds)),
+      db.query.privateAgentJobs.findMany({
+        where: and(
+          eq(privateAgentJobs.organizationId, organizationId),
+          eq(privateAgentJobs.projectId, project.id),
+          eq(privateAgentJobs.jobClass, "sre_connector_query"),
+          inArray(privateAgentJobs.connectorId, connectorIds),
+        ),
+        orderBy: desc(privateAgentJobs.createdAt),
+      }),
+    ]);
+
+    const servicesByConnectorId = new Map<string, string[]>();
+    for (const row of serviceRows) {
+      const services = servicesByConnectorId.get(row.connectorId) ?? [];
+      services.push(row.serviceId);
+      servicesByConnectorId.set(row.connectorId, services);
+    }
+
+    const credentialConnectorIds = new Set(
+      credentialRows.map((row) => row.connectorId),
+    );
+    const latestJobByConnectorId = new Map<
+      string,
+      typeof privateAgentJobs.$inferSelect
+    >();
+    for (const row of jobRows) {
+      if (row.connectorId && !latestJobByConnectorId.has(row.connectorId)) {
+        latestJobByConnectorId.set(row.connectorId, row);
+      }
+    }
+
+    const connectors = rows.map((row) => ({
+      id: row.connector.id,
+      name: row.connector.name,
+      type: row.connector.type,
+      status: row.connector.status,
+      riskLevel: row.connector.riskLevel,
+      executionMode: row.connector.privateAgentId
+        ? ("private_agent" as const)
+        : ("direct" as const),
+      privateAgent: row.privateAgentId
+        ? {
+            id: row.privateAgentId,
+            name: row.privateAgentName ?? "Private Agent",
+            status: row.privateAgentStatus ?? "unknown",
+            lastHeartbeatAt: row.privateAgentLastHeartbeatAt,
+          }
+        : null,
+      scopedServiceIds: servicesByConnectorId.get(row.connector.id) ?? [],
+      hasCredentials: credentialConnectorIds.has(row.connector.id),
+      defaultTimeWindowMinutes: row.connector.defaultTimeWindowMinutes,
+      outputLimits: normalizeOutputLimits(row.connector.outputLimits),
+      endpointUrl:
+        typeof row.connector.config?.endpointUrl === "string"
+          ? row.connector.config.endpointUrl
+          : null,
+      latestPrivateAgentJob: normalizePrivateAgentJobSummary(
+        latestJobByConnectorId.get(row.connector.id) ?? null,
+      ),
+      lastValidatedAt: row.connector.lastValidatedAt,
+      lastValidationStatus: row.connector.lastValidationStatus,
+      lastValidationError: row.connector.lastValidationError,
+      createdAt: row.connector.createdAt,
+      updatedAt: row.connector.updatedAt,
+    }));
+
+    return { success: true, connectors };
   } catch (error) {
     console.error("Error fetching SRE connectors:", error);
-    return { success: false, error: "Failed to fetch connectors", connectors: [] };
+    return {
+      success: false,
+      error: "Failed to fetch connectors",
+      connectors: [],
+    };
   }
 }
 
 export async function getPrivateAgentConnectorJobResult(
-  input: z.infer<typeof privateAgentJobResultSchema>
+  input: z.infer<typeof privateAgentJobResultSchema>,
 ): Promise<SrePrivateAgentJobResult> {
   try {
     const parsed = privateAgentJobResultSchema.safeParse(input);
     if (!parsed.success) {
-      return { success: false, error: "Invalid Private Agent job", fieldErrors: formatValidationErrors(parsed.error) };
+      return {
+        success: false,
+        error: "Invalid Private Agent job",
+        fieldErrors: formatValidationErrors(parsed.error),
+      };
     }
 
     const { userId, organizationId, project } = await requireProjectContext();
-    const canView = checkPermissionWithContext("sre_connector", "view", { userId, organizationId, project });
+    const canView = checkPermissionWithContext("sre_connector", "view", {
+      userId,
+      organizationId,
+      project,
+    });
 
     if (!canView) {
-      return { success: false, error: "Insufficient permissions to view Private Agent job results" };
+      return {
+        success: false,
+        error: "Insufficient permissions to view Private Agent job results",
+      };
     }
 
     const job = await db.query.privateAgentJobs.findFirst({
@@ -517,12 +705,15 @@ export async function getPrivateAgentConnectorJobResult(
         eq(privateAgentJobs.id, parsed.data.jobId),
         eq(privateAgentJobs.organizationId, organizationId),
         eq(privateAgentJobs.projectId, project.id),
-        eq(privateAgentJobs.jobClass, "sre_connector_query")
+        eq(privateAgentJobs.jobClass, "sre_connector_query"),
       ),
     });
 
     if (!job) {
-      return { success: false, error: "Private Agent job not found or access denied" };
+      return {
+        success: false,
+        error: "Private Agent job not found or access denied",
+      };
     }
 
     const connector = job.connectorId
@@ -530,7 +721,7 @@ export async function getPrivateAgentConnectorJobResult(
           where: and(
             eq(externalConnectors.id, job.connectorId),
             eq(externalConnectors.organizationId, organizationId),
-            eq(externalConnectors.projectId, project.id)
+            eq(externalConnectors.projectId, project.id),
           ),
           columns: { id: true, name: true },
         })
@@ -550,20 +741,25 @@ export async function getPrivateAgentConnectorJobResult(
         errorCode: job.errorCode,
         resultHash: job.resultHash,
         truncated: job.resultSummary?.truncated === true,
-        evidence: normalizePrivateAgentEvidenceSummaries(job.resultSummary).map((item) => ({
-          id: item.id,
-          sourceUri: item.sourceUri,
-          title: item.title,
-          summary: item.summary,
-          evidenceType: item.evidenceType,
-          observedAt: item.observedAt,
-          resultHash: item.resultHash,
-        })),
+        evidence: normalizePrivateAgentEvidenceSummaries(job.resultSummary).map(
+          (item) => ({
+            id: item.id,
+            sourceUri: item.sourceUri,
+            title: item.title,
+            summary: item.summary,
+            evidenceType: item.evidenceType,
+            observedAt: item.observedAt,
+            resultHash: item.resultHash,
+          }),
+        ),
       },
     };
   } catch (error) {
     console.error("Error fetching Private Agent connector job result:", error);
-    return { success: false, error: "Failed to fetch Private Agent job result" };
+    return {
+      success: false,
+      error: "Failed to fetch Private Agent job result",
+    };
   }
 }
 
@@ -571,14 +767,25 @@ export async function getSreConnectorSetupOptions(): Promise<
   | { success: true; options: SreConnectorSetupOptions }
   | { success: false; error: string; options: SreConnectorSetupOptions }
 > {
-  const emptyOptions: SreConnectorSetupOptions = { services: [], privateAgents: [] };
+  const emptyOptions: SreConnectorSetupOptions = {
+    services: [],
+    privateAgents: [],
+  };
 
   try {
     const { userId, organizationId, project } = await requireProjectContext();
-    const canView = checkPermissionWithContext("sre_connector", "view", { userId, organizationId, project });
+    const canView = checkPermissionWithContext("sre_connector", "view", {
+      userId,
+      organizationId,
+      project,
+    });
 
     if (!canView) {
-      return { success: false, error: "Insufficient permissions to view connector setup options", options: emptyOptions };
+      return {
+        success: false,
+        error: "Insufficient permissions to view connector setup options",
+        options: emptyOptions,
+      };
     }
 
     const [services, agents] = await Promise.all([
@@ -594,8 +801,8 @@ export async function getSreConnectorSetupOptions(): Promise<
           and(
             eq(sreServices.organizationId, organizationId),
             eq(sreServices.projectId, project.id),
-            eq(sreServices.status, "active")
-          )
+            eq(sreServices.status, "active"),
+          ),
         )
         .orderBy(sreServices.name),
       db
@@ -612,9 +819,12 @@ export async function getSreConnectorSetupOptions(): Promise<
         .where(
           and(
             eq(privateAgents.organizationId, organizationId),
-            or(eq(privateAgents.projectId, project.id), isNull(privateAgents.projectId)),
-            eq(privateAgents.supportsSreConnectors, true)
-          )
+            or(
+              eq(privateAgents.projectId, project.id),
+              isNull(privateAgents.projectId),
+            ),
+            eq(privateAgents.supportsSreConnectors, true),
+          ),
         )
         .orderBy(desc(privateAgents.lastHeartbeatAt)),
     ]);
@@ -622,22 +832,39 @@ export async function getSreConnectorSetupOptions(): Promise<
     return { success: true, options: { services, privateAgents: agents } };
   } catch (error) {
     console.error("Error fetching SRE connector setup options:", error);
-    return { success: false, error: "Failed to fetch connector setup options", options: emptyOptions };
+    return {
+      success: false,
+      error: "Failed to fetch connector setup options",
+      options: emptyOptions,
+    };
   }
 }
 
-export async function createSreConnector(input: z.infer<typeof createConnectorSchema>): Promise<SreConnectorActionResult> {
+export async function createSreConnector(
+  input: z.infer<typeof createConnectorSchema>,
+): Promise<SreConnectorActionResult> {
   try {
     const parsed = createConnectorSchema.safeParse(input);
     if (!parsed.success) {
-      return { success: false, error: "Invalid connector data", fieldErrors: formatValidationErrors(parsed.error) };
+      return {
+        success: false,
+        error: "Invalid connector data",
+        fieldErrors: formatValidationErrors(parsed.error),
+      };
     }
 
     const { userId, organizationId, project } = await requireProjectContext();
-    const canConfigure = checkPermissionWithContext("sre_connector", "configure", { userId, organizationId, project });
+    const canConfigure = checkPermissionWithContext(
+      "sre_connector",
+      "configure",
+      { userId, organizationId, project },
+    );
 
     if (!canConfigure) {
-      return { success: false, error: "Insufficient permissions to configure connectors" };
+      return {
+        success: false,
+        error: "Insufficient permissions to configure connectors",
+      };
     }
 
     const uniqueServiceIds = Array.from(new Set(parsed.data.serviceIds));
@@ -649,34 +876,56 @@ export async function createSreConnector(input: z.infer<typeof createConnectorSc
           and(
             eq(sreServices.organizationId, organizationId),
             eq(sreServices.projectId, project.id),
-            inArray(sreServices.id, uniqueServiceIds)
-          )
+            inArray(sreServices.id, uniqueServiceIds),
+          ),
         );
 
       if (serviceRows.length !== uniqueServiceIds.length) {
-        return { success: false, error: "One or more selected services were not found" };
+        return {
+          success: false,
+          error: "One or more selected services were not found",
+        };
       }
     }
 
-    if (parsed.data.privateAgentId && !supportsPrivateAgentConnector(parsed.data.type)) {
-      return { success: false, error: `${parsed.data.type.replace(/_/g, " ")} currently supports direct execution only. Private Agent support is a follow-up task.` };
+    if (
+      parsed.data.privateAgentId &&
+      !isPrivateAgentConnectorType(parsed.data.type)
+    ) {
+      return {
+        success: false,
+        error: `${parsed.data.type.replace(/_/g, " ")} currently supports direct execution only. Private Agent support is a follow-up task.`,
+      };
     }
 
     const endpointUrl = normalizeEndpointUrl(parsed.data.endpointUrl);
-    await assertEndpointAllowedForExecution(endpointUrl, Boolean(parsed.data.privateAgentId));
+    await assertEndpointAllowedForExecution(
+      endpointUrl,
+      Boolean(parsed.data.privateAgentId),
+    );
 
     if (parsed.data.privateAgentId) {
       const agent = await db.query.privateAgents.findFirst({
         where: and(
           eq(privateAgents.id, parsed.data.privateAgentId),
           eq(privateAgents.organizationId, organizationId),
-          or(eq(privateAgents.projectId, project.id), isNull(privateAgents.projectId))
+          or(
+            eq(privateAgents.projectId, project.id),
+            isNull(privateAgents.projectId),
+          ),
         ),
         columns: { id: true, status: true, supportsSreConnectors: true },
       });
 
-      if (!agent || agent.status === "disabled" || !agent.supportsSreConnectors) {
-        return { success: false, error: "Selected Private Agent is unavailable for SRE connectors" };
+      if (
+        !agent ||
+        agent.status === "disabled" ||
+        !agent.supportsSreConnectors
+      ) {
+        return {
+          success: false,
+          error: "Selected Private Agent is unavailable for SRE connectors",
+        };
       }
     }
 
@@ -703,11 +952,14 @@ export async function createSreConnector(input: z.infer<typeof createConnectorSc
         .returning();
 
       if (parsed.data.credential) {
-        const encrypted = encryptConnectorCredential(parsed.data.credential.value as ConnectorCredentialValue, {
-          organizationId,
-          projectId: project.id,
-          connectorId: created.id,
-        });
+        const encrypted = encryptConnectorCredential(
+          parsed.data.credential.value as ConnectorCredentialValue,
+          {
+            organizationId,
+            projectId: project.id,
+            connectorId: created.id,
+          },
+        );
 
         await tx.insert(externalConnectorCredentials).values({
           connectorId: created.id,
@@ -730,7 +982,7 @@ export async function createSreConnector(input: z.infer<typeof createConnectorSc
             connectorId: created.id,
             serviceId,
             createdAt: new Date(),
-          }))
+          })),
         );
       }
 
@@ -757,16 +1009,25 @@ export async function createSreConnector(input: z.infer<typeof createConnectorSc
     revalidatePath("/org-admin/integrations");
     return {
       success: true,
-      connector: (await getConnectorListItem(connector.id, organizationId, project.id)) ?? undefined,
+      connector:
+        (await getConnectorListItem(
+          connector.id,
+          organizationId,
+          project.id,
+        )) ?? undefined,
       message: "Connector configured",
     };
   } catch (error) {
     console.error("Error creating SRE connector:", error);
-    return { success: false, error: "Failed to configure connector" };
+    const message =
+      error instanceof Error ? error.message : "Failed to configure connector";
+    return { success: false, error: message };
   }
 }
 
-export async function validateSreConnector(input: z.infer<typeof validateConnectorSchema>): Promise<SreConnectorActionResult> {
+export async function validateSreConnector(
+  input: z.infer<typeof validateConnectorSchema>,
+): Promise<SreConnectorActionResult> {
   const startedAt = Date.now();
 
   try {
@@ -776,17 +1037,24 @@ export async function validateSreConnector(input: z.infer<typeof validateConnect
     }
 
     const { userId, organizationId, project } = await requireProjectContext();
-    const canConfigure = checkPermissionWithContext("sre_connector", "configure", { userId, organizationId, project });
+    const canConfigure = checkPermissionWithContext(
+      "sre_connector",
+      "configure",
+      { userId, organizationId, project },
+    );
 
     if (!canConfigure) {
-      return { success: false, error: "Insufficient permissions to validate connectors" };
+      return {
+        success: false,
+        error: "Insufficient permissions to validate connectors",
+      };
     }
 
     const row = await db.query.externalConnectors.findFirst({
       where: and(
         eq(externalConnectors.id, parsed.data.id),
         eq(externalConnectors.organizationId, organizationId),
-        eq(externalConnectors.projectId, project.id)
+        eq(externalConnectors.projectId, project.id),
       ),
     });
 
@@ -795,20 +1063,43 @@ export async function validateSreConnector(input: z.infer<typeof validateConnect
     }
 
     if (row.status === "disabled") {
-      return { success: false, error: "Disabled connectors cannot be validated" };
+      return {
+        success: false,
+        error: "Disabled connectors cannot be validated",
+      };
     }
 
-    const rateLimit = await checkSreConnectorValidationRateLimit(userId, row.id);
+    const rateLimit = await checkSreConnectorValidationRateLimit(
+      userId,
+      row.id,
+    );
     if (!rateLimit.allowed) {
-      return { success: false, error: "Connector validation rate limit reached. Wait a moment and try again." };
+      if (rateLimit.unavailable) {
+        return {
+          success: false,
+          error:
+            "Connector validation rate limiter is temporarily unavailable. Try again shortly.",
+        };
+      }
+
+      return {
+        success: false,
+        error:
+          "Connector validation rate limit reached. Wait a moment and try again.",
+      };
     }
 
-    const credentialRow = await db.query.externalConnectorCredentials.findFirst({
-      where: eq(externalConnectorCredentials.connectorId, row.id),
-      orderBy: desc(externalConnectorCredentials.updatedAt),
-    });
+    const credentialRow = await db.query.externalConnectorCredentials.findFirst(
+      {
+        where: eq(externalConnectorCredentials.connectorId, row.id),
+        orderBy: desc(externalConnectorCredentials.updatedAt),
+      },
+    );
 
-    const endpointUrl = typeof row.config?.endpointUrl === "string" ? row.config.endpointUrl : null;
+    const endpointUrl =
+      typeof row.config?.endpointUrl === "string"
+        ? row.config.endpointUrl
+        : null;
     const inputSummary = JSON.stringify({
       connectorId: row.id,
       connectorType: row.type,
@@ -816,7 +1107,11 @@ export async function validateSreConnector(input: z.infer<typeof validateConnect
       endpointHost: endpointUrl ? new URL(endpointUrl).host : null,
     });
 
-    let status: "valid" | "unreachable" | "invalid_credentials" | "policy_blocked" = "valid";
+    let status:
+      | "valid"
+      | "unreachable"
+      | "invalid_credentials"
+      | "policy_blocked" = "valid";
     let outputSummary = "Connector validation passed";
 
     if (!credentialRow && row.type !== "webhook") {
@@ -827,19 +1122,27 @@ export async function validateSreConnector(input: z.infer<typeof validateConnect
         where: and(
           eq(privateAgents.id, row.privateAgentId),
           eq(privateAgents.organizationId, organizationId),
-          or(eq(privateAgents.projectId, project.id), isNull(privateAgents.projectId))
+          or(
+            eq(privateAgents.projectId, project.id),
+            isNull(privateAgents.projectId),
+          ),
         ),
       });
 
-      if (!agent || !getPrivateAgentHealth(agent).healthy || !agent.supportsSreConnectors) {
+      if (
+        !agent ||
+        !getPrivateAgentHealth(agent).healthy ||
+        !agent.supportsSreConnectors
+      ) {
         status = "unreachable";
-        outputSummary = "Configured Private Agent is not healthy or does not support SRE connectors";
+        outputSummary =
+          "Configured Private Agent is not healthy or does not support SRE connectors";
       }
     } else {
       await assertEndpointAllowedForExecution(endpointUrl, false);
       const url = validationUrl(row.type, endpointUrl);
 
-      if (supportsDirectConnectorValidation(row.type)) {
+      if (isDirectValidationConnectorType(row.type)) {
         const credential = credentialRow
           ? decryptConnectorCredential(credentialRow.encryptedCredential, {
               organizationId,
@@ -854,13 +1157,19 @@ export async function validateSreConnector(input: z.infer<typeof validateConnect
         });
         const validation = await directConnector.validate();
         status = validation.status;
-        outputSummary = validation.message ?? (validation.status === "valid" ? "Connector validation passed" : "Connector validation failed");
-      } else if (isSetupOnlyConnector(row.type)) {
+        outputSummary =
+          validation.message ??
+          (validation.status === "valid"
+            ? "Connector validation passed"
+            : "Connector validation failed");
+      } else if (isSetupOnlyConnectorType(row.type)) {
         status = "policy_blocked";
-        outputSummary = "Live validation is not implemented for this setup-only connector yet. Configuration is saved, and evidence search stays disabled until a read-only adapter is available.";
+        outputSummary =
+          "Live validation is not implemented for this setup-only connector yet. Configuration is saved, and evidence search stays disabled until a read-only adapter is available.";
       } else if (!url && row.type !== "github" && row.type !== "webhook") {
         status = "policy_blocked";
-        outputSummary = "Connector endpoint URL is required for direct validation";
+        outputSummary =
+          "Connector endpoint URL is required for direct validation";
       } else if (url) {
         const credential = credentialRow
           ? decryptConnectorCredential(credentialRow.encryptedCredential, {
@@ -879,7 +1188,12 @@ export async function validateSreConnector(input: z.infer<typeof validateConnect
                 Accept: "application/json",
               }
             : { Accept: "application/json" },
-          signal: AbortSignal.timeout(Math.min((normalizeOutputLimits(row.outputLimits).maxSeconds || 10) * 1000, 30_000)),
+          signal: AbortSignal.timeout(
+            Math.min(
+              (normalizeOutputLimits(row.outputLimits).maxSeconds || 10) * 1000,
+              30_000,
+            ),
+          ),
           cache: "no-store",
         });
 
@@ -904,14 +1218,17 @@ export async function validateSreConnector(input: z.infer<typeof validateConnect
             : "unreachable";
 
     await db.transaction(async (tx) => {
-      await tx.update(externalConnectors).set({
-        status: connectorStatus,
-        lastValidatedAt: new Date(),
-        lastValidationStatus: status,
-        lastValidationError: status === "valid" ? null : outputSummary,
-        lastValidationLatencyMs: durationMs,
-        updatedAt: new Date(),
-      }).where(eq(externalConnectors.id, row.id));
+      await tx
+        .update(externalConnectors)
+        .set({
+          status: connectorStatus,
+          lastValidatedAt: new Date(),
+          lastValidationStatus: status,
+          lastValidationError: status === "valid" ? null : outputSummary,
+          lastValidationLatencyMs: durationMs,
+          updatedAt: new Date(),
+        })
+        .where(eq(externalConnectors.id, row.id));
 
       await tx.insert(sreInvestigationToolCalls).values({
         connectorId: row.id,
@@ -919,10 +1236,14 @@ export async function validateSreConnector(input: z.infer<typeof validateConnect
         toolName: "connector.validate",
         inputHash: hashConnectorPayload({ connectorId: row.id, inputSummary }),
         inputSummary,
-        outputHash: hashConnectorPayload({ status, outputSummary: redactConnectorText(outputSummary) }),
+        outputHash: hashConnectorPayload({
+          status,
+          outputSummary: redactConnectorText(outputSummary),
+        }),
         outputSummary: redactConnectorText(outputSummary),
         status: status === "valid" ? "success" : "error",
-        errorMessage: status === "valid" ? null : redactConnectorText(outputSummary),
+        errorMessage:
+          status === "valid" ? null : redactConnectorText(outputSummary),
         durationMs,
         costEstimateCents: 0,
         executedAt: new Date(),
@@ -948,8 +1269,11 @@ export async function validateSreConnector(input: z.infer<typeof validateConnect
     revalidatePath("/org-admin/integrations");
     return {
       success: true,
-      connector: (await getConnectorListItem(row.id, organizationId, project.id)) ?? undefined,
-      message: status === "valid" ? "Connector validation passed" : outputSummary,
+      connector:
+        (await getConnectorListItem(row.id, organizationId, project.id)) ??
+        undefined,
+      message:
+        status === "valid" ? "Connector validation passed" : outputSummary,
     };
   } catch (error) {
     console.error("Error validating SRE connector:", error);
@@ -958,26 +1282,37 @@ export async function validateSreConnector(input: z.infer<typeof validateConnect
 }
 
 export async function rotateSreConnectorCredential(
-  input: z.infer<typeof rotateConnectorCredentialSchema>
+  input: z.infer<typeof rotateConnectorCredentialSchema>,
 ): Promise<SreConnectorActionResult> {
   try {
     const parsed = rotateConnectorCredentialSchema.safeParse(input);
     if (!parsed.success) {
-      return { success: false, error: "Invalid connector credential", fieldErrors: formatValidationErrors(parsed.error) };
+      return {
+        success: false,
+        error: "Invalid connector credential",
+        fieldErrors: formatValidationErrors(parsed.error),
+      };
     }
 
     const { userId, organizationId, project } = await requireProjectContext();
-    const canConfigure = checkPermissionWithContext("sre_connector", "configure", { userId, organizationId, project });
+    const canConfigure = checkPermissionWithContext(
+      "sre_connector",
+      "configure",
+      { userId, organizationId, project },
+    );
 
     if (!canConfigure) {
-      return { success: false, error: "Insufficient permissions to rotate connector credentials" };
+      return {
+        success: false,
+        error: "Insufficient permissions to rotate connector credentials",
+      };
     }
 
     const connector = await db.query.externalConnectors.findFirst({
       where: and(
         eq(externalConnectors.id, parsed.data.id),
         eq(externalConnectors.organizationId, organizationId),
-        eq(externalConnectors.projectId, project.id)
+        eq(externalConnectors.projectId, project.id),
       ),
     });
 
@@ -985,14 +1320,19 @@ export async function rotateSreConnectorCredential(
       return { success: false, error: "Connector not found or disabled" };
     }
 
-    const encrypted = encryptConnectorCredential(parsed.data.value as ConnectorCredentialValue, {
-      organizationId,
-      projectId: project.id,
-      connectorId: connector.id,
-    });
+    const encrypted = encryptConnectorCredential(
+      parsed.data.value as ConnectorCredentialValue,
+      {
+        organizationId,
+        projectId: project.id,
+        connectorId: connector.id,
+      },
+    );
 
     await db.transaction(async (tx) => {
-      await tx.delete(externalConnectorCredentials).where(eq(externalConnectorCredentials.connectorId, connector.id));
+      await tx
+        .delete(externalConnectorCredentials)
+        .where(eq(externalConnectorCredentials.connectorId, connector.id));
 
       await tx.insert(externalConnectorCredentials).values({
         connectorId: connector.id,
@@ -1037,7 +1377,12 @@ export async function rotateSreConnectorCredential(
     revalidatePath("/org-admin/integrations");
     return {
       success: true,
-      connector: (await getConnectorListItem(connector.id, organizationId, project.id)) ?? undefined,
+      connector:
+        (await getConnectorListItem(
+          connector.id,
+          organizationId,
+          project.id,
+        )) ?? undefined,
       message: "Connector credential rotated",
     };
   } catch (error) {
@@ -1046,27 +1391,40 @@ export async function rotateSreConnectorCredential(
   }
 }
 
-export async function searchSreConnectorEvidence(input: z.infer<typeof searchConnectorSchema>): Promise<SreConnectorSearchResult> {
+export async function searchSreConnectorEvidence(
+  input: z.infer<typeof searchConnectorSchema>,
+): Promise<SreConnectorSearchResult> {
   const startedAt = Date.now();
 
   try {
     const parsed = searchConnectorSchema.safeParse(input);
     if (!parsed.success) {
-      return { success: false, error: "Invalid connector search", fieldErrors: formatValidationErrors(parsed.error) };
+      return {
+        success: false,
+        error: "Invalid connector search",
+        fieldErrors: formatValidationErrors(parsed.error),
+      };
     }
 
     const { userId, organizationId, project } = await requireProjectContext();
-    const canInvestigate = checkPermissionWithContext("sre_connector", "investigate", { userId, organizationId, project });
+    const canInvestigate = checkPermissionWithContext(
+      "sre_connector",
+      "investigate",
+      { userId, organizationId, project },
+    );
 
     if (!canInvestigate) {
-      return { success: false, error: "Insufficient permissions to search connector evidence" };
+      return {
+        success: false,
+        error: "Insufficient permissions to search connector evidence",
+      };
     }
 
     const connector = await db.query.externalConnectors.findFirst({
       where: and(
         eq(externalConnectors.id, parsed.data.id),
         eq(externalConnectors.organizationId, organizationId),
-        eq(externalConnectors.projectId, project.id)
+        eq(externalConnectors.projectId, project.id),
       ),
     });
 
@@ -1075,8 +1433,8 @@ export async function searchSreConnectorEvidence(input: z.infer<typeof searchCon
     }
 
     const searchSupported = connector.privateAgentId
-      ? supportsPrivateAgentConnector(connector.type)
-      : supportsDirectConnectorValidation(connector.type);
+      ? isPrivateAgentConnectorType(connector.type)
+      : isDirectValidationConnectorType(connector.type);
 
     if (!searchSupported) {
       return {
@@ -1085,24 +1443,47 @@ export async function searchSreConnectorEvidence(input: z.infer<typeof searchCon
       };
     }
 
-    const scopedServiceIds = await getScopedServiceIds(connector.id, organizationId, project.id);
+    const scopedServiceIds = await getScopedServiceIds(
+      connector.id,
+      organizationId,
+      project.id,
+    );
     const serviceAllowed =
-      scopedServiceIds.length === 0 || scopedServiceIds.includes(parsed.data.serviceId);
+      scopedServiceIds.length === 0 ||
+      scopedServiceIds.includes(parsed.data.serviceId);
 
     if (!serviceAllowed) {
-      return { success: false, error: "Connector is not scoped to the requested service" };
+      return {
+        success: false,
+        error: "Connector is not scoped to the requested service",
+      };
     }
 
-    const searchRateLimit = await checkSreConnectorSearchRateLimit(userId, connector.id);
+    const searchRateLimit = await checkSreConnectorSearchRateLimit(
+      userId,
+      connector.id,
+    );
     if (!searchRateLimit.allowed) {
-      return { success: false, error: "Connector search rate limit reached. Wait a moment and try again." };
+      if (searchRateLimit.unavailable) {
+        return {
+          success: false,
+          error:
+            "Connector search rate limiter is temporarily unavailable. Try again shortly.",
+        };
+      }
+
+      return {
+        success: false,
+        error:
+          "Connector search rate limit reached. Wait a moment and try again.",
+      };
     }
 
     const service = await db.query.sreServices.findFirst({
       where: and(
         eq(sreServices.id, parsed.data.serviceId),
         eq(sreServices.organizationId, organizationId),
-        eq(sreServices.projectId, project.id)
+        eq(sreServices.projectId, project.id),
       ),
       columns: { id: true },
     });
@@ -1111,8 +1492,14 @@ export async function searchSreConnectorEvidence(input: z.infer<typeof searchCon
       return { success: false, error: "Service not found or access denied" };
     }
 
-    const endpointUrl = typeof connector.config?.endpointUrl === "string" ? connector.config.endpointUrl : null;
-    await assertEndpointAllowedForExecution(endpointUrl, Boolean(connector.privateAgentId));
+    const endpointUrl =
+      typeof connector.config?.endpointUrl === "string"
+        ? connector.config.endpointUrl
+        : null;
+    await assertEndpointAllowedForExecution(
+      endpointUrl,
+      Boolean(connector.privateAgentId),
+    );
 
     const now = new Date();
     const timeWindow = {
@@ -1145,18 +1532,28 @@ export async function searchSreConnectorEvidence(input: z.infer<typeof searchCon
         where: and(
           eq(privateAgents.id, connector.privateAgentId),
           eq(privateAgents.organizationId, organizationId),
-          or(eq(privateAgents.projectId, project.id), isNull(privateAgents.projectId))
+          or(
+            eq(privateAgents.projectId, project.id),
+            isNull(privateAgents.projectId),
+          ),
         ),
       });
 
       if (!agent) {
-        return { success: false, error: "Configured Private Agent was not found" };
+        return {
+          success: false,
+          error: "Configured Private Agent was not found",
+        };
       }
 
       const route = routeSreConnectorQuery({
         organizationId,
         projectId: project.id,
-        connector: { ...definition, privateAgentId: connector.privateAgentId, endpointUrl },
+        connector: {
+          ...definition,
+          privateAgentId: connector.privateAgentId,
+          endpointUrl,
+        },
         params,
         agents: [agent],
       });
@@ -1165,7 +1562,10 @@ export async function searchSreConnectorEvidence(input: z.infer<typeof searchCon
         return { success: false, error: route.reason };
       }
 
-      const policyDecisionHash = hashConnectorPayload({ connectorId: connector.id, decision });
+      const policyDecisionHash = hashConnectorPayload({
+        connectorId: connector.id,
+        decision,
+      });
       const [insertedJob] = await db
         .insert(privateAgentJobs)
         .values({
@@ -1190,14 +1590,17 @@ export async function searchSreConnectorEvidence(input: z.infer<typeof searchCon
             where: and(
               eq(privateAgentJobs.idempotencyKey, route.idempotencyKey),
               eq(privateAgentJobs.organizationId, organizationId),
-              eq(privateAgentJobs.projectId, project.id)
+              eq(privateAgentJobs.projectId, project.id),
             ),
             columns: { id: true },
           });
       const jobId = insertedJob?.id ?? existingJob?.id;
 
       if (!jobId) {
-        return { success: false, error: "Failed to queue Private Agent connector job" };
+        return {
+          success: false,
+          error: "Failed to queue Private Agent connector job",
+        };
       }
 
       const durationMs = Date.now() - startedAt;
@@ -1237,14 +1640,18 @@ export async function searchSreConnectorEvidence(input: z.infer<typeof searchCon
         evidence: [],
         truncated: false,
         privateAgentJobId: jobId,
-        message: insertedJob ? "Queued Private Agent connector search" : "Private Agent connector search is already queued",
+        message: insertedJob
+          ? "Queued Private Agent connector search"
+          : "Private Agent connector search is already queued",
       };
     }
 
-    const credentialRow = await db.query.externalConnectorCredentials.findFirst({
-      where: eq(externalConnectorCredentials.connectorId, connector.id),
-      orderBy: desc(externalConnectorCredentials.updatedAt),
-    });
+    const credentialRow = await db.query.externalConnectorCredentials.findFirst(
+      {
+        where: eq(externalConnectorCredentials.connectorId, connector.id),
+        orderBy: desc(externalConnectorCredentials.updatedAt),
+      },
+    );
     const credential = credentialRow
       ? decryptConnectorCredential(credentialRow.encryptedCredential, {
           organizationId,
@@ -1259,7 +1666,10 @@ export async function searchSreConnectorEvidence(input: z.infer<typeof searchCon
       credential: directConnectorCredential(credential),
     });
     const rawEvidence = await directConnector.search(params);
-    const sanitized = sanitizeConnectorEvidence(rawEvidence, decision.effectiveLimits);
+    const sanitized = sanitizeConnectorEvidence(
+      rawEvidence,
+      decision.effectiveLimits,
+    );
     const durationMs = Date.now() - startedAt;
     const inputSummary = JSON.stringify({
       connectorId: connector.id,
@@ -1274,7 +1684,10 @@ export async function searchSreConnectorEvidence(input: z.infer<typeof searchCon
       connectorId: connector.id,
       connectorType: connector.type,
       toolName: "connector.search",
-      inputHash: hashConnectorPayload({ connectorId: connector.id, inputSummary }),
+      inputHash: hashConnectorPayload({
+        connectorId: connector.id,
+        inputSummary,
+      }),
       inputSummary: redactConnectorText(inputSummary),
       outputHash: sanitized.resultHash,
       outputSummary: `Returned ${sanitized.items.length} evidence item(s)${sanitized.truncated ? " (truncated)" : ""}`,
@@ -1321,7 +1734,9 @@ export async function searchSreConnectorEvidence(input: z.infer<typeof searchCon
   }
 }
 
-export async function disableSreConnector(input: z.infer<typeof disableConnectorSchema>): Promise<SreConnectorActionResult> {
+export async function disableSreConnector(
+  input: z.infer<typeof disableConnectorSchema>,
+): Promise<SreConnectorActionResult> {
   try {
     const parsed = disableConnectorSchema.safeParse(input);
     if (!parsed.success) {
@@ -1329,10 +1744,17 @@ export async function disableSreConnector(input: z.infer<typeof disableConnector
     }
 
     const { userId, organizationId, project } = await requireProjectContext();
-    const canConfigure = checkPermissionWithContext("sre_connector", "configure", { userId, organizationId, project });
+    const canConfigure = checkPermissionWithContext(
+      "sre_connector",
+      "configure",
+      { userId, organizationId, project },
+    );
 
     if (!canConfigure) {
-      return { success: false, error: "Insufficient permissions to disable connectors" };
+      return {
+        success: false,
+        error: "Insufficient permissions to disable connectors",
+      };
     }
 
     const [connector] = await db
@@ -1342,8 +1764,8 @@ export async function disableSreConnector(input: z.infer<typeof disableConnector
         and(
           eq(externalConnectors.id, parsed.data.id),
           eq(externalConnectors.organizationId, organizationId),
-          eq(externalConnectors.projectId, project.id)
-        )
+          eq(externalConnectors.projectId, project.id),
+        ),
       )
       .returning();
 
@@ -1365,7 +1787,12 @@ export async function disableSreConnector(input: z.infer<typeof disableConnector
     revalidatePath("/org-admin/integrations");
     return {
       success: true,
-      connector: (await getConnectorListItem(connector.id, organizationId, project.id)) ?? undefined,
+      connector:
+        (await getConnectorListItem(
+          connector.id,
+          organizationId,
+          project.id,
+        )) ?? undefined,
       message: "Connector disabled",
     };
   } catch (error) {

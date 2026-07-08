@@ -17,24 +17,27 @@ Supercheck combines **test automation**, **synthetic + uptime monitoring**, **pe
 
 ### Competitive landscape
 
-| Category | Platform | Pricing (public) | Notes |
-|----------|----------|------------------|-------|
-| **Monitoring** | Checkly | Free tier; Starter: $24/mo; Team: $64/mo | Playwright-based; Browser checks are metered & expensive at scale |
-| **Monitoring** | Datadog | API: $5/10k runs; Browser: $12/1k runs | High volume costs; complex enterprise pricing model |
-| **Monitoring** | Pingdom | Syn: $10/mo (10 checks); $15/10k runs | Legacy incumbent; limited modern browser automation features |
-| **Monitoring** | Better Stack | Free tier; Pro: $29/mo + usage | Focuses on incident management & pages; limited testing |
-| **Monitoring** | UptimeRobot | Free tier; Solo: $7/mo; Team: $29/mo | Basic uptime focus; limited synthetic capabilities |
-| **Automation** | BrowserStack | Desktop: $129/mo; Mobile: $199/mo | Pricing per parallel thread; becomes costly for high concurrency |
-| **Automation** | Sauce Labs | Virtual Cloud: $149/mo (1 parallel) | Similar to BrowserStack; expensive for parallel execution |
-| **Automation** | LambdaTest | Web: $79/mo (1 parallel); Pro: $158/mo | Cheaper than competitors but still costly for scaling parallelism |
-| **Automation** | Cypress Cloud | Free tier; Team: $67/mo; Business: $267/mo | Test orchestration only; requires separate infrastructure |
-| **Performance** | Grafana k6 | Free (500 VUH); Pro: $29/mo (500 VUH) | Usage-based (Virtual User Hours); enterprise is custom |
-| **Performance** | BlazeMeter | Basic: $99/mo; Pro: $499/mo | Enterprise-grade JMeter/Taurus; high entry cost for Pro features |
-| **Performance** | Gatling | Basic: €89/mo (~$95); Team: €396/mo | Scala/Java/JS based; expensive for team collaboration features |
-| **Performance** | Azure Test | $0.15/VUH (first 10k), then $0.06/VUH | Usage-only pricing; complex Azure infrastructure setup |
-| **Status** | Statuspage | Free tier; Startup: $99/mo; Business: $399/mo | The industry standard (Atlassian); expensive for business features |
-| **Status** | Instatus | Free tier; Pro: $20/mo; Business: $300/mo | Modern alternative; "Business" tier jump is steep ($20 -> $300) |
-| **All-in-one** | **Supercheck** | **Open-source, self-hosted** | **Unified Tests, Monitors, Load, & Status Pages in one platform** |
+Supercheck is positioned as an open-source reliability platform that combines test automation, synthetic and uptime monitoring, k6 performance testing, status pages, and read-only AI SRE investigation. Some competitors cover parts of this workflow, but they usually specialize in one layer: synthetic monitoring, browser/device clouds, load testing, status communication, incident response, or AI incident investigation.
+
+Public pricing changes frequently; check the linked vendor pages for the latest details.
+
+| Platform | Primary focus | Public pricing / model | Test automation | Synthetic / uptime | Load testing | Status pages | AI SRE / incident investigation | Unified AISRE loop | Self-hosted OSS | Notes |
+|----------|---------------|------------------------|:---------------:|:------------------:|:------------:|:------------:|:-------------------------------:|:----------------:|:---------------:|-------|
+| **Supercheck** | Unified reliability | **Open-source, self-hosted** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Tests, monitors, k6, incidents, status communication, native evidence, and read-only AI SRE investigation in one platform. |
+| [Checkly](https://www.checklyhq.com/pricing/) | Synthetic monitoring | Free; Starter $24/mo; Team $64/mo when billed annually | ✅ | ✅ | — | ✅ | Partial | — | — | Strong Playwright/API synthetic monitoring and AI root-cause analysis for check failures; not a self-hosted OSS testing + load + SRE platform. |
+| [Datadog Synthetic Monitoring](https://www.datadoghq.com/pricing/?product=synthetic-monitoring) | Observability + synthetics | API tests from $5/10K runs; browser tests from $12/1K runs when billed annually | Partial | ✅ | — | — | Partial | — | — | Broad observability suite with synthetics and AI features; pricing and deployment span multiple Datadog products. |
+| [Better Stack](https://betterstack.com/pricing) | Incident management + observability | Incident management starts at $29/license/mo when billed annually | — | ✅ | — | ✅ | Partial | — | — | Uptime, on-call, status pages, logs/traces/metrics, and AI SRE/postmortem features; not a test automation or load testing platform. |
+| [UptimeRobot](https://uptimerobot.com/pricing/) | Uptime monitoring | Free; Solo from $7/mo; Team from $29/mo when billed annually | — | ✅ | — | ✅ | — | — | — | Affordable uptime/API/status-page monitoring; limited synthetic browser and no native test/load execution. |
+| [BrowserStack](https://www.browserstack.com/pricing) | Browser/device cloud | Paid by product and parallel capacity | ✅ | — | — | — | — | — | — | Cross-browser and real-device execution infrastructure; does not own monitoring, incidents, status pages, or AI SRE workflows. |
+| [Sauce Labs](https://saucelabs.com/pricing) | Browser/device cloud | Virtual Device Cloud from $149/mo for 1 parallel test when billed annually | ✅ | — | — | — | — | — | — | Automated/manual cross-browser and mobile testing; not a monitoring/status/AISRE system. |
+| [Cypress Cloud](https://www.cypress.io/pricing) | Cypress test orchestration | Free; Team from $67/mo; Business from $267/mo when billed annually | ✅ | — | — | — | — | — | — | CI orchestration, analytics, flake detection, and AI test-generation support for Cypress projects. |
+| [Grafana k6 Cloud](https://grafana.com/pricing/) | Load testing | Free/paid Grafana Cloud tiers; usage-based k6 capacity | — | Partial | ✅ | — | — | — | — | Excellent load testing and observability integration; does not provide Supercheck's browser/API test, incident, and status-page workflow. |
+| [Azure App Testing](https://azure.microsoft.com/en-us/pricing/details/app-testing/) | Cloud test execution | Usage-based Virtual User Hours and Playwright test minutes | ✅ | — | ✅ | — | — | — | — | Azure-native Playwright workspaces and load testing; not a standalone open-source reliability platform. |
+| [Statuspage](https://www.atlassian.com/software/statuspage/pricing) | Status communication | Free; Hobby $29/mo; Startup $99/mo; Business $399/mo | — | — | — | ✅ | — | — | — | Mature hosted status pages and subscriber communication; monitoring/investigation require other tools. |
+| [Instatus](https://instatus.com/pricing) | Status pages + monitoring | Free; paid plans by monitor/status-page capacity | — | ✅ | — | ✅ | — | — | — | Lightweight status pages, on-call, and monitoring; not a test/load/AISRE platform. |
+| [HolmesGPT](https://github.com/HolmesGPT/holmesgpt) | AI SRE agent | Open-source | — | Partial | — | — | ✅ | — | ✅ | CNCF Sandbox SRE agent for incident investigation across observability tools; not a testing, monitoring, load, and status-page product. |
+| [PagerDuty AIOps](https://www.pagerduty.com/platform/aiops/) | Incident response + AIOps | SaaS; trial / sales-led plans | — | — | — | — | Partial | — | — | Alert correlation, event enrichment, automation, and incident response; depends on external monitors/tests. |
+| [Resolve AI](https://resolve.ai/) | AI SRE / production agents | Sales-led | — | — | — | — | ✅ | — | — | AI agents for on-call, incidents, and operational tasks; focused on production investigation/operations rather than Supercheck's test-monitor-verify loop. |
 
 ## Features
 
@@ -58,6 +61,7 @@ Supercheck combines **test automation**, **synthetic + uptime monitoring**, **pe
 - **AI Create** — Generate tests from natural language
 - **AI Fix** — Analyze failures and propose fixes
 - **AI Analyze** — Analyze monitor, job, and performance run outcomes
+- **AI SRE Investigation** — Read-only triage over native evidence, connectors, incidents, monitor history, and execution artifacts
 
 ### Debugging & Reporting
 
@@ -190,5 +194,3 @@ If Supercheck is useful to your team:
 [![Discord](https://img.shields.io/badge/Discord-Join%20Community-5865F2?logo=discord&logoColor=white)](https://discord.gg/UVe327CSbm)
 [![GitHub Issues](https://img.shields.io/badge/GitHub-Issues-181717?logo=github&logoColor=white)](https://github.com/supercheck-io/supercheck/issues)
 [![GitHub Discussions](https://img.shields.io/badge/GitHub-Discussions-181717?logo=github&logoColor=white)](https://github.com/supercheck-io/supercheck/discussions)
-
-

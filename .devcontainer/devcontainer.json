@@ -1,0 +1,45 @@
+{
+  "name": "Supercheck",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "args": {
+      "NODE_VERSION": "20"
+    }
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {
+      "version": "latest",
+      "enableNonRootDocker": "true",
+      "moby": "true"
+    },
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+  "mounts": [
+    "source=supercheck-npm-cache,target=/home/node/.npm,type=volume",
+    "source=supercheck-bashhistory,target=/commandhistory,type=volume"
+  ],
+  "forwardPorts": [3000, 5432, 6379, 8000, 9000, 9001],
+  "portsAttributes": {
+    "3000": { "label": "App", "onAutoForward": "notify" },
+    "5432": { "label": "PostgreSQL", "onAutoForward": "silent" },
+    "6379": { "label": "Redis", "onAutoForward": "silent" },
+    "8000": { "label": "Worker API", "onAutoForward": "silent" },
+    "9000": { "label": "MinIO API", "onAutoForward": "silent" },
+    "9001": { "label": "MinIO Console", "onAutoForward": "silent" }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "bradlc.vscode-tailwindcss",
+        "ms-azuretools.vscode-docker",
+        "mtxr.sqltools",
+        "mtxr.sqltools-driver-pg"
+      ]
+    }
+  },
+  "remoteUser": "node",
+  "updateContentCommand": "sudo chown -R node /commandhistory && npm install --prefix app && npm install --prefix worker && cd app/e2e && npm install && sudo npx playwright install-deps && npx playwright install",
+  "postCreateCommand": "echo 'export PROMPT_COMMAND=\"history -a\"' >> ~/.bashrc && echo 'export HISTFILE=/commandhistory/.bash_history' >> ~/.bashrc && cat .devcontainer/welcome.txt"
+}

@@ -124,7 +124,6 @@ describe("SRE investigate API", () => {
       incidentId: "018f0000-0000-7000-8000-000000000005",
       enableLiveConnectors: false,
     });
-    await new Promise(process.nextTick);
     expect(mockConsumeSreInvestigationCredit).toHaveBeenCalledWith({
       organizationId: context.organizationId,
       projectId: context.project.id,
@@ -147,7 +146,6 @@ describe("SRE investigate API", () => {
     expect(response.status).toBe(402);
     expect(body).toEqual({ error: "Monthly spending limit reached", code: "spending_limit" });
     expect(mockStartSreIncidentInvestigation).not.toHaveBeenCalled();
-    await new Promise(process.nextTick);
     expect(mockConsumeSreInvestigationCredit).not.toHaveBeenCalled();
   });
 
@@ -164,6 +162,28 @@ describe("SRE investigate API", () => {
     }));
 
     expect(response.status).toBe(500);
+    expect(mockConsumeSreInvestigationCredit).not.toHaveBeenCalled();
+  });
+
+  it("returns the failed run id when investigation execution fails", async () => {
+    mockExecuteSreIncidentInvestigation.mockResolvedValue({
+      success: false,
+      status: 502,
+      error: "SRE investigation failed",
+      investigationRunId: "018f0000-0000-7000-8000-000000000004",
+    });
+
+    const response = await POST(new NextRequest("http://localhost/api/sre/investigate", {
+      method: "POST",
+      body: JSON.stringify({ incidentId: "018f0000-0000-7000-8000-000000000005" }),
+    }));
+    const body = await response.json();
+
+    expect(response.status).toBe(502);
+    expect(body).toEqual({
+      error: "SRE investigation failed",
+      investigationRunId: "018f0000-0000-7000-8000-000000000004",
+    });
     expect(mockConsumeSreInvestigationCredit).not.toHaveBeenCalled();
   });
 });

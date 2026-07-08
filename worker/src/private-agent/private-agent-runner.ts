@@ -88,6 +88,7 @@ export type PrivateAgentConfig = {
   agentId: string;
   token: string;
   tokenSource: 'env' | 'file';
+  registrationToken?: string | null;
   credentialFile: string | null;
   agentVersion: string;
   retryIntervalMs: number;
@@ -397,12 +398,16 @@ function sha256Hex(value: string) {
 }
 
 function awsEncode(value: string) {
-  return encodeURIComponent(value).replace(/[!'()*]/g, (character) =>
-    `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
+  return encodeURIComponent(value).replace(
+    /[!'()*]/g,
+    (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
   );
 }
 
-function cloudWatchRegion(endpointUrl: string, configuredRegion?: string | null) {
+function cloudWatchRegion(
+  endpointUrl: string,
+  configuredRegion?: string | null,
+) {
   if (configuredRegion?.trim()) return configuredRegion.trim();
 
   const host = new URL(endpointUrl).hostname;
@@ -1027,7 +1032,12 @@ async function executeDatadog(
         id: evidenceId(spec.connectorId, sourceUri, title),
         sourceUri,
         title: `Datadog event: ${title}`,
-        summary: [item.alert_type, item.source, item.host, item.text?.slice(0, 180)]
+        summary: [
+          item.alert_type,
+          item.source,
+          item.host,
+          item.text?.slice(0, 180),
+        ]
           .filter(Boolean)
           .join(' - '),
         evidenceType: 'event',
@@ -1120,7 +1130,9 @@ async function executeElasticsearch(
     spec.filters.timestampField.trim()
       ? spec.filters.timestampField.trim()
       : '@timestamp';
-  const searchPath = index ? `/${encodeURIComponent(index)}/_search` : '/_search';
+  const searchPath = index
+    ? `/${encodeURIComponent(index)}/_search`
+    : '/_search';
   const url = new URL(`${endpoint}${searchPath}`);
   url.searchParams.set(
     'q',
@@ -1160,8 +1172,14 @@ async function executeElasticsearch(
         'application',
       ]);
       const level = sourceString(source, ['log.level', 'level', 'severity']);
-      const timestamp = sourceString(source, ['@timestamp', 'timestamp', 'time']);
-      const observedAt = timestamp ? new Date(timestamp) : new Date(spec.timeWindow.end);
+      const timestamp = sourceString(source, [
+        '@timestamp',
+        'timestamp',
+        'time',
+      ]);
+      const observedAt = timestamp
+        ? new Date(timestamp)
+        : new Date(spec.timeWindow.end);
       const safeObservedAt = Number.isNaN(observedAt.getTime())
         ? spec.timeWindow.end
         : observedAt.toISOString();
@@ -1178,7 +1196,9 @@ async function executeElasticsearch(
           item._index,
           service,
           severity,
-          typeof item._score === 'number' ? `score ${item._score.toFixed(2)}` : null,
+          typeof item._score === 'number'
+            ? `score ${item._score.toFixed(2)}`
+            : null,
         ]
           .filter(Boolean)
           .join(' - '),
@@ -1285,7 +1305,9 @@ async function executeTempo(job: LeasedJob): Promise<ConnectorExecutionResult> {
           duration ? `duration ${duration}` : null,
           serviceNames.length ? `services ${serviceNames.join(', ')}` : null,
           tempoTraceHasError(trace) ? 'error' : null,
-          spanAttributes.length ? `attributes ${spanAttributes.join(', ')}` : null,
+          spanAttributes.length
+            ? `attributes ${spanAttributes.join(', ')}`
+            : null,
         ]
           .filter(Boolean)
           .join(' - '),
@@ -1361,7 +1383,9 @@ async function executeCloudWatchMetricData(
 ): Promise<ConnectorExecutionResult> {
   const spec = job.jobSpec;
   if (!query.namespace || !query.metricName) {
-    throw new Error('AWS CloudWatch metric queries require namespace and metric');
+    throw new Error(
+      'AWS CloudWatch metric queries require namespace and metric',
+    );
   }
 
   const endpoint = normalizedEndpoint(spec);
@@ -1395,8 +1419,12 @@ async function executeCloudWatchMetricData(
 
   return bounded(
     results.map((result) => {
-      const label = xmlText(result, 'Label') || `${query.namespace}/${query.metricName}`;
-      const values = xmlMemberValues(result, 'Values').slice(0, spec.budget.maxRows);
+      const label =
+        xmlText(result, 'Label') || `${query.namespace}/${query.metricName}`;
+      const values = xmlMemberValues(result, 'Values').slice(
+        0,
+        spec.budget.maxRows,
+      );
       const timestamps = xmlMemberValues(result, 'Timestamps').slice(
         0,
         spec.budget.maxRows,
@@ -1489,6 +1517,9 @@ function readConfig(): PrivateAgentConfig {
     agentId,
     token,
     tokenSource: persistedToken ? 'file' : 'env',
+    registrationToken: persistedToken
+      ? (process.env.PRIVATE_AGENT_TOKEN ?? null)
+      : null,
     credentialFile,
     agentVersion:
       process.env.PRIVATE_AGENT_VERSION ??
@@ -1546,19 +1577,28 @@ async function postJson(
   return response.json();
 }
 
-export async function exchangeRegistrationToken(
-  config: PrivateAgentConfig,
-): Promise<PrivateAgentConfig> {
-  if (config.tokenSource === 'file') {
-    return config;
+class RegistrationExchangeHttpError extends Error {
+  constructor(public readonly status: number) {
+    super(
+      `/api/private-agents/registration/exchange failed with HTTP ${status}`,
+    );
   }
+}
 
+function isRegistrationToken(token: string) {
+  return token.startsWith('scpa_') && !token.startsWith('scpac_');
+}
+
+async function requestRegistrationExchange(
+  config: PrivateAgentConfig,
+  token: string,
+) {
   const response = await fetch(
     `${config.apiUrl}/api/private-agents/registration/exchange`,
     {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${config.token}`,
+        Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
         Accept: 'application/json',
       },
@@ -1573,28 +1613,77 @@ export async function exchangeRegistrationToken(
   );
 
   if (response.status === 401) {
-    return config;
+    return null;
   }
 
   if (!response.ok) {
-    throw new Error(
-      `/api/private-agents/registration/exchange failed with HTTP ${response.status}`,
-    );
+    throw new RegistrationExchangeHttpError(response.status);
   }
 
-  const exchanged = registrationExchangeResponseSchema.parse(
-    await response.json(),
-  );
+  return registrationExchangeResponseSchema.parse(await response.json());
+}
 
+function persistExchangedCredential(
+  config: PrivateAgentConfig,
+  token: string,
+): PrivateAgentConfig {
   if (config.credentialFile) {
-    writeCredentialFile(config.credentialFile, exchanged.token);
+    writeCredentialFile(config.credentialFile, token);
   }
 
   return {
     ...config,
-    token: exchanged.token,
+    token,
     tokenSource: config.credentialFile ? 'file' : 'env',
   };
+}
+
+export async function exchangeRegistrationToken(
+  config: PrivateAgentConfig,
+): Promise<PrivateAgentConfig> {
+  const fallbackRegistrationToken = config.registrationToken?.trim();
+  const canUseFallbackRegistrationToken = Boolean(
+    fallbackRegistrationToken &&
+    fallbackRegistrationToken !== config.token &&
+    isRegistrationToken(fallbackRegistrationToken),
+  );
+
+  if (!isRegistrationToken(config.token)) {
+    if (canUseFallbackRegistrationToken) {
+      const exchanged = await requestRegistrationExchange(
+        config,
+        fallbackRegistrationToken!,
+      );
+      return exchanged
+        ? persistExchangedCredential(config, exchanged.token)
+        : config;
+    }
+
+    return config;
+  }
+
+  try {
+    const exchanged = await requestRegistrationExchange(config, config.token);
+    return exchanged
+      ? persistExchangedCredential(config, exchanged.token)
+      : config;
+  } catch (error) {
+    if (
+      canUseFallbackRegistrationToken &&
+      error instanceof RegistrationExchangeHttpError &&
+      [403, 410].includes(error.status)
+    ) {
+      const exchanged = await requestRegistrationExchange(
+        config,
+        fallbackRegistrationToken!,
+      );
+      return exchanged
+        ? persistExchangedCredential(config, exchanged.token)
+        : config;
+    }
+
+    throw error;
+  }
 }
 
 async function sendHeartbeat(

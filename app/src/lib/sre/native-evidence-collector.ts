@@ -1,5 +1,5 @@
 import { createHash } from "crypto";
-import { and, desc, eq, gte, lte } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lte } from "drizzle-orm";
 
 import {
   jobs,
@@ -99,6 +99,10 @@ function addEvidence(
   target.push({ ...input, citationResultHash });
 }
 
+function hasNonEmptyText(value: string | null | undefined) {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
 function resolveWindow(anchor: Date | null, fallback: Date): NativeEvidenceWindow {
   const untilAnchor = anchor ?? fallback ?? new Date();
   const until = new Date(untilAnchor.getTime() + DEFAULT_FORWARD_BUFFER_MINUTES * 60_000);
@@ -162,6 +166,101 @@ export async function collectNativeEvidence(input: {
   const primaryAlert = linkedAlerts[0];
   const window = resolveWindow(primaryAlert?.firedAt ?? null, incident.createdAt);
   const evidence: NativeEvidenceCandidate[] = [];
+  const monitorIds = Array.from(
+    new Set(linkedAlerts.flatMap((alert) => alert.sourceType === "monitor" && alert.sourceId ? [alert.sourceId] : []))
+  );
+  const jobIds = Array.from(
+    new Set(linkedAlerts.flatMap((alert) => alert.sourceType === "job" && alert.sourceId ? [alert.sourceId] : []))
+  );
+
+  const [
+    monitorRows,
+    monitorResultRows,
+    jobRows,
+    runRows,
+    k6RunRows,
+  ] = await Promise.all([
+    monitorIds.length > 0
+      ? db
+          .select()
+          .from(monitors)
+          .where(
+            and(
+              eq(monitors.organizationId, input.organizationId),
+              eq(monitors.projectId, input.projectId),
+              inArray(monitors.id, monitorIds)
+            )
+          )
+      : Promise.resolve([]),
+    monitorIds.length > 0
+      ? db
+          .select()
+          .from(monitorResults)
+          .where(
+            and(
+              inArray(monitorResults.monitorId, monitorIds),
+              gte(monitorResults.checkedAt, window.since),
+              lte(monitorResults.checkedAt, window.until)
+            )
+          )
+          .orderBy(desc(monitorResults.checkedAt))
+      : Promise.resolve([]),
+    jobIds.length > 0
+      ? db
+          .select()
+          .from(jobs)
+          .where(
+            and(
+              eq(jobs.organizationId, input.organizationId),
+              eq(jobs.projectId, input.projectId),
+              inArray(jobs.id, jobIds)
+            )
+          )
+      : Promise.resolve([]),
+    jobIds.length > 0
+      ? db
+          .select()
+          .from(runs)
+          .where(and(eq(runs.projectId, input.projectId), inArray(runs.jobId, jobIds)))
+          .orderBy(desc(runs.createdAt))
+      : Promise.resolve([]),
+    jobIds.length > 0
+      ? db
+          .select()
+          .from(k6PerformanceRuns)
+          .where(and(eq(k6PerformanceRuns.projectId, input.projectId), inArray(k6PerformanceRuns.jobId, jobIds)))
+          .orderBy(desc(k6PerformanceRuns.startedAt))
+      : Promise.resolve([]),
+  ]);
+
+  const monitorsById = new Map(monitorRows.map((monitor) => [monitor.id, monitor]));
+  const jobsById = new Map(jobRows.map((job) => [job.id, job]));
+  const monitorResultsByMonitorId = new Map<string, typeof monitorResults.$inferSelect[]>();
+  for (const result of monitorResultRows) {
+    const results = monitorResultsByMonitorId.get(result.monitorId) ?? [];
+    if (results.length < 10) {
+      results.push(result);
+      monitorResultsByMonitorId.set(result.monitorId, results);
+    }
+  }
+  const runsByJobId = new Map<string, typeof runs.$inferSelect[]>();
+  for (const run of runRows) {
+    if (!run.jobId) continue;
+    const jobRuns = runsByJobId.get(run.jobId) ?? [];
+    if (jobRuns.length < 8) {
+      jobRuns.push(run);
+      runsByJobId.set(run.jobId, jobRuns);
+    }
+  }
+  const k6RunsByJobId = new Map<string, typeof k6PerformanceRuns.$inferSelect[]>();
+  for (const k6Run of k6RunRows) {
+    if (!k6Run.jobId) continue;
+    const jobK6Runs = k6RunsByJobId.get(k6Run.jobId) ?? [];
+    if (jobK6Runs.length < 5) {
+      jobK6Runs.push(k6Run);
+      k6RunsByJobId.set(k6Run.jobId, jobK6Runs);
+    }
+  }
 
   for (const alert of linkedAlerts) {
     addEvidence(evidence, {
@@ -185,17 +284,7 @@ export async function collectNativeEvidence(input: {
     });
 
     if (alert.sourceType === "monitor" && alert.sourceId) {
-      const [monitor] = await db
-        .select()
-        .from(monitors)
-        .where(
-          and(
-            eq(monitors.id, alert.sourceId),
-            eq(monitors.organizationId, input.organizationId),
-            eq(monitors.projectId, input.projectId)
-          )
-        )
-        .limit(1);
+      const monitor = monitorsById.get(alert.sourceId);
 
       if (monitor) {
         addEvidence(evidence, {
@@ -220,18 +309,7 @@ export async function collectNativeEvidence(input: {
         });
       }
 
-      const results = await db
-        .select()
-        .from(monitorResults)
-        .where(
-          and(
-            eq(monitorResults.monitorId, alert.sourceId),
-            gte(monitorResults.checkedAt, window.since),
-            lte(monitorResults.checkedAt, window.until)
-          )
-        )
-        .orderBy(desc(monitorResults.checkedAt))
-        .limit(10);
+      const results = monitorResultsByMonitorId.get(alert.sourceId) ?? [];
 
       for (const result of results) {
         addEvidence(evidence, {
@@ -265,17 +343,7 @@ export async function collectNativeEvidence(input: {
     }
 
     if (alert.sourceType === "job" && alert.sourceId) {
-      const [job] = await db
-        .select()
-        .from(jobs)
-        .where(
-          and(
-            eq(jobs.id, alert.sourceId),
-            eq(jobs.organizationId, input.organizationId),
-            eq(jobs.projectId, input.projectId)
-          )
-        )
-        .limit(1);
+      const job = jobsById.get(alert.sourceId);
 
       if (job) {
         addEvidence(evidence, {
@@ -293,12 +361,7 @@ export async function collectNativeEvidence(input: {
         });
       }
 
-      const recentRuns = await db
-        .select()
-        .from(runs)
-        .where(and(eq(runs.jobId, alert.sourceId), eq(runs.projectId, input.projectId)))
-        .orderBy(desc(runs.createdAt))
-        .limit(8);
+      const recentRuns = runsByJobId.get(alert.sourceId) ?? [];
 
       for (const run of recentRuns) {
         addEvidence(evidence, {
@@ -316,7 +379,7 @@ export async function collectNativeEvidence(input: {
             screenshotsS3Path: run.screenshotsS3Path,
             artifactPaths: run.artifactPaths,
           }),
-          evidenceType: run.logs || run.errorDetails ? "log" : "artifact",
+          evidenceType: hasNonEmptyText(run.logs) || hasNonEmptyText(run.errorDetails) ? "log" : "artifact",
           severity: run.status === "failed" || run.status === "error" ? alert.severity : "sev4",
           confidence: run.status === "failed" || run.status === "error" ? 0.85 : 0.65,
           observedAt: run.completedAt ?? run.startedAt ?? run.createdAt ?? alert.firedAt,
@@ -333,12 +396,7 @@ export async function collectNativeEvidence(input: {
         });
       }
 
-      const k6Runs = await db
-        .select()
-        .from(k6PerformanceRuns)
-        .where(and(eq(k6PerformanceRuns.jobId, alert.sourceId), eq(k6PerformanceRuns.projectId, input.projectId)))
-        .orderBy(desc(k6PerformanceRuns.startedAt))
-        .limit(5);
+      const k6Runs = k6RunsByJobId.get(alert.sourceId) ?? [];
 
       for (const k6Run of k6Runs) {
         addEvidence(evidence, {

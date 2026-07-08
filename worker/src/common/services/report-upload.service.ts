@@ -61,6 +61,7 @@ export class ReportUploadService {
     const testBucket = this.s3Service.getBucketForEntityType(entityType);
     let reportFound = false;
     let s3Url: string | null = null;
+    let lastUploadError: string | undefined;
 
     const candidateDirs: string[] = [
       path.join(runDir, `report-${testId.substring(0, 8)}`),
@@ -92,6 +93,11 @@ export class ReportUploadService {
           '/index.html';
         return { success: true, reportUrl: s3Url };
       }
+
+      if (result.error && result.error !== 'No index.html found') {
+        reportFound = true;
+        lastUploadError = result.error;
+      }
     }
 
     if (!reportFound) {
@@ -120,7 +126,22 @@ export class ReportUploadService {
             '/index.html';
           return { success: true, reportUrl: s3Url };
         }
+
+        if (result.error && result.error !== 'No index.html found') {
+          reportFound = true;
+          lastUploadError = result.error;
+        }
       }
+    }
+
+    if (lastUploadError) {
+      const warning = `HTML report was generated for test ${testId}, but upload failed: ${lastUploadError}`;
+      this.logger.warn(warning);
+      return {
+        success: false,
+        reportUrl: null,
+        error: lastUploadError,
+      };
     }
 
     // No report found in any location

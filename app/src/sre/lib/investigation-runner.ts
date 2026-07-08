@@ -1,8 +1,17 @@
 import { and, eq, sql } from "drizzle-orm";
 
-import { sreEvidenceItems, sreIncidentTimelineEvents, sreIncidents, sreInvestigationRuns, sreServices } from "@/db/schema";
+import {
+  sreEvidenceItems,
+  sreIncidentTimelineEvents,
+  sreIncidents,
+  sreInvestigationRuns,
+  sreServices,
+} from "@/db/schema";
 import { getActualModelName } from "@/lib/ai/ai-provider";
-import { buildSreInvestigationPrompt, buildSreInvestigationSystemPrompt } from "@/sre/agents/investigator";
+import {
+  buildSreInvestigationPrompt,
+  buildSreInvestigationSystemPrompt,
+} from "@/sre/agents/investigator";
 import { runSreAgent } from "@/sre/lib/agent-runner";
 import { createSreInvestigationSubagentTools } from "@/sre/subagents/domain-subagents";
 import { createSreConnectorTools } from "@/sre/tools/connector-tools";
@@ -32,7 +41,6 @@ export type RunSreIncidentInvestigationResult =
       investigationRunId?: string;
     };
 
-
 export type StartSreIncidentInvestigationResult =
   | {
       success: true;
@@ -46,7 +54,7 @@ export type StartSreIncidentInvestigationResult =
     };
 
 export async function startSreIncidentInvestigation(
-  input: RunSreIncidentInvestigationInput
+  input: RunSreIncidentInvestigationInput,
 ): Promise<StartSreIncidentInvestigationResult> {
   const [incident] = await db
     .select({
@@ -61,13 +69,16 @@ export async function startSreIncidentInvestigation(
     })
     .from(sreIncidents)
     .leftJoin(sreServices, eq(sreIncidents.primaryServiceId, sreServices.id))
-    .leftJoin(sreEvidenceItems, eq(sreEvidenceItems.incidentId, sreIncidents.id))
+    .leftJoin(
+      sreEvidenceItems,
+      eq(sreEvidenceItems.incidentId, sreIncidents.id),
+    )
     .where(
       and(
         eq(sreIncidents.id, input.incidentId),
         eq(sreIncidents.organizationId, input.organizationId),
-        eq(sreIncidents.projectId, input.projectId)
-      )
+        eq(sreIncidents.projectId, input.projectId),
+      ),
     )
     .groupBy(
       sreIncidents.id,
@@ -75,12 +86,16 @@ export async function startSreIncidentInvestigation(
       sreIncidents.severity,
       sreIncidents.status,
       sreIncidents.primaryServiceId,
-      sreServices.name
+      sreServices.name,
     )
     .limit(1);
 
   if (!incident) {
-    return { success: false, status: 404, error: "Incident not found or access denied" };
+    return {
+      success: false,
+      status: 404,
+      error: "Incident not found or access denied",
+    };
   }
 
   const initialModelId = getActualModelName();
@@ -114,7 +129,7 @@ export async function startSreIncidentInvestigation(
 export async function executeSreIncidentInvestigation(
   investigationRunId: string,
   incident: any,
-  input: RunSreIncidentInvestigationInput
+  input: RunSreIncidentInvestigationInput,
 ): Promise<RunSreIncidentInvestigationResult> {
   const startedAt = Date.now();
   const liveConnectorsEnabled = input.enableLiveConnectors === true;
@@ -144,7 +159,11 @@ export async function executeSreIncidentInvestigation(
         ...(liveConnectorsEnabled ? createSreConnectorTools(toolScope) : {}),
         ...(liveConnectorsEnabled ? createSreInvestigationSubagentTools() : {}),
       },
-      budget: { maxSteps: liveConnectorsEnabled ? 11 : 5, maxOutputTokens: 1800, timeoutMs: 90_000 },
+      budget: {
+        maxSteps: liveConnectorsEnabled ? 11 : 5,
+        maxOutputTokens: 1800,
+        timeoutMs: 90_000,
+      },
     });
 
     await db.transaction(async (tx) => {
@@ -159,7 +178,9 @@ export async function executeSreIncidentInvestigation(
             summary: result.text,
             finishReason: result.finishReason,
             evidenceCount: Number(incident.evidenceCount ?? 0),
-            connectorEvidenceCount: Number(incident.connectorEvidenceCount ?? 0),
+            connectorEvidenceCount: Number(
+              incident.connectorEvidenceCount ?? 0,
+            ),
             liveConnectorsEnabled,
             specializedSubagentsEnabled: liveConnectorsEnabled,
           },
@@ -178,8 +199,8 @@ export async function executeSreIncidentInvestigation(
           and(
             eq(sreIncidents.id, incident.id),
             eq(sreIncidents.organizationId, input.organizationId),
-            eq(sreIncidents.projectId, input.projectId)
-          )
+            eq(sreIncidents.projectId, input.projectId),
+          ),
         );
 
       await tx.insert(sreIncidentTimelineEvents).values({
@@ -208,18 +229,43 @@ export async function executeSreIncidentInvestigation(
       finishReason: result.finishReason,
     };
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "SRE investigation failed";
-    await db
-      .update(sreInvestigationRuns)
-      .set({
-        status: "failed",
-        agentStateSnapshot: { mode: "sre_investigation_api", error: errorMessage },
-        completedAt: new Date(),
-        durationMs: Date.now() - startedAt,
-      })
-      .where(eq(sreInvestigationRuns.id, investigationRunId));
+    const errorMessage =
+      error instanceof Error ? error.message : "SRE investigation failed";
+    await db.transaction(async (tx) => {
+      await tx
+        .update(sreInvestigationRuns)
+        .set({
+          status: "failed",
+          agentStateSnapshot: {
+            mode: "sre_investigation_api",
+            error: errorMessage,
+          },
+          completedAt: new Date(),
+          durationMs: Date.now() - startedAt,
+        })
+        .where(eq(sreInvestigationRuns.id, investigationRunId));
 
-    return { success: false, status: 502, error: "SRE investigation failed", investigationRunId };
+      await tx.insert(sreIncidentTimelineEvents).values({
+        incidentId: incident.id,
+        eventType: "ai_finding",
+        eventData: {
+          type: "sre_investigation_failed",
+          investigationRunId,
+          error: errorMessage.slice(0, 1000),
+          liveConnectorsEnabled,
+          specializedSubagentsEnabled: liveConnectorsEnabled,
+        },
+        actorType: "agent",
+        agentRunId: investigationRunId,
+        createdAt: new Date(),
+      });
+    });
+
+    return {
+      success: false,
+      status: 502,
+      error: "SRE investigation failed",
+      investigationRunId,
+    };
   }
 }
-

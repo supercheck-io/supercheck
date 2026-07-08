@@ -1,4 +1,9 @@
-import { hashConnectorPayload, type ConnectorDefinition, type ConnectorSearchParams } from "@/lib/sre/connectors";
+import {
+  hashConnectorPayload,
+  type ConnectorDefinition,
+  type ConnectorSearchParams,
+} from "@/lib/sre/connectors";
+import { isPrivateAgentConnectorType } from "@/lib/sre/connectors/connector-capabilities";
 import {
   isPrivateAgentEligibleForJob,
   type PrivateAgentRecord,
@@ -7,7 +12,10 @@ import {
 export type PrivateAgentRouteRequest = {
   organizationId: string;
   projectId: string;
-  connector: ConnectorDefinition & { privateAgentId?: string | null; endpointUrl?: string | null };
+  connector: ConnectorDefinition & {
+    privateAgentId?: string | null;
+    endpointUrl?: string | null;
+  };
   params: ConnectorSearchParams;
   agents: PrivateAgentRecord[];
   now?: Date;
@@ -24,7 +32,11 @@ export type PrivateAgentRouteDecision =
     }
   | {
       routed: false;
-      code: "direct_connector" | "private_agent_not_found" | "private_agent_unhealthy" | "private_agent_unsupported";
+      code:
+        | "direct_connector"
+        | "private_agent_not_found"
+        | "private_agent_unhealthy"
+        | "private_agent_unsupported";
       reason: string;
     };
 
@@ -42,27 +54,19 @@ export type PrivateAgentSreConnectorJobSpec = {
   filters: Record<string, unknown>;
 };
 
-const privateAgentSupportedConnectorTypes = new Set<ConnectorDefinition["type"]>([
-  "github",
-  "kubernetes",
-  "prometheus",
-  "grafana",
-  "sentry",
-  "datadog",
-  "loki",
-  "elasticsearch",
-  "tempo",
-  "aws_cloudwatch",
-]);
-
-export function buildSreConnectorJobSpec(request: PrivateAgentRouteRequest): PrivateAgentSreConnectorJobSpec {
+export function buildSreConnectorJobSpec(
+  request: PrivateAgentRouteRequest,
+): PrivateAgentSreConnectorJobSpec {
   return {
     jobClass: "sre_connector_query",
     organizationId: request.organizationId,
     projectId: request.projectId,
     connectorId: request.connector.id,
     connectorType: request.connector.type,
-    endpointUrl: typeof request.connector.endpointUrl === "string" ? request.connector.endpointUrl : null,
+    endpointUrl:
+      typeof request.connector.endpointUrl === "string"
+        ? request.connector.endpointUrl
+        : null,
     serviceId: request.params.serviceId,
     query: request.params.query,
     timeWindow: {
@@ -74,12 +78,18 @@ export function buildSreConnectorJobSpec(request: PrivateAgentRouteRequest): Pri
   };
 }
 
-export function routeSreConnectorQuery(request: PrivateAgentRouteRequest): PrivateAgentRouteDecision {
+export function routeSreConnectorQuery(
+  request: PrivateAgentRouteRequest,
+): PrivateAgentRouteDecision {
   if (!request.connector.privateAgentId) {
-    return { routed: false, code: "direct_connector", reason: "Connector is configured for direct execution" };
+    return {
+      routed: false,
+      code: "direct_connector",
+      reason: "Connector is configured for direct execution",
+    };
   }
 
-  if (!privateAgentSupportedConnectorTypes.has(request.connector.type)) {
+  if (!isPrivateAgentConnectorType(request.connector.type)) {
     return {
       routed: false,
       code: "private_agent_unsupported",
@@ -87,17 +97,31 @@ export function routeSreConnectorQuery(request: PrivateAgentRouteRequest): Priva
     };
   }
 
-  const agent = request.agents.find((candidate) => candidate.id === request.connector.privateAgentId);
+  const agent = request.agents.find(
+    (candidate) => candidate.id === request.connector.privateAgentId,
+  );
   if (!agent) {
-    return { routed: false, code: "private_agent_not_found", reason: "Configured private agent was not found" };
+    return {
+      routed: false,
+      code: "private_agent_not_found",
+      reason: "Configured private agent was not found",
+    };
   }
 
-  if (!isPrivateAgentEligibleForJob(agent, "sre_connector_query", request, { now: request.now })) {
+  if (
+    !isPrivateAgentEligibleForJob(agent, "sre_connector_query", request, {
+      now: request.now,
+    })
+  ) {
     const supportsJob = agent.supportsSreConnectors;
     return {
       routed: false,
-      code: supportsJob ? "private_agent_unhealthy" : "private_agent_unsupported",
-      reason: supportsJob ? "Configured private agent is not healthy" : "Configured private agent does not support SRE connectors",
+      code: supportsJob
+        ? "private_agent_unhealthy"
+        : "private_agent_unsupported",
+      reason: supportsJob
+        ? "Configured private agent is not healthy"
+        : "Configured private agent does not support SRE connectors",
     };
   }
 
@@ -108,7 +132,10 @@ export function routeSreConnectorQuery(request: PrivateAgentRouteRequest): Priva
     routed: true,
     jobClass: "sre_connector_query",
     privateAgentId: agent.id,
-    idempotencyKey: hashConnectorPayload({ privateAgentId: agent.id, jobSpecHash }),
+    idempotencyKey: hashConnectorPayload({
+      privateAgentId: agent.id,
+      jobSpecHash,
+    }),
     jobSpecHash,
     jobSpec,
   };

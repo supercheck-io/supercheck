@@ -9,10 +9,12 @@ import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { getS3Client } from "@/lib/s3-proxy";
 import { checkSreAttachmentUploadRateLimit } from "@/lib/sre/sre-rate-limiter";
 import { db } from "@/utils/db";
+import { requireSreSameOriginRequest } from "../../_auth";
 
 const MAX_ATTACHMENT_SIZE = 2 * 1024 * 1024;
 const REQUEST_OVERHEAD_BYTES = 512 * 1024;
-const BUCKET_NAME = process.env.S3_SRE_ATTACHMENTS_BUCKET_NAME || "sre-chat-attachments";
+const BUCKET_NAME =
+  process.env.S3_SRE_ATTACHMENTS_BUCKET_NAME || "sre-chat-attachments";
 const ALLOWED_TYPES = new Set([
   "text/plain",
   "text/markdown",
@@ -24,7 +26,8 @@ const ALLOWED_TYPES = new Set([
 ]);
 
 function authErrorResponse(error: unknown) {
-  const message = error instanceof Error ? error.message : "Authentication required";
+  const message =
+    error instanceof Error ? error.message : "Authentication required";
   return NextResponse.json({ error: message }, { status: 401 });
 }
 
@@ -62,17 +65,36 @@ function extensionFor(fileName: string, mimeType: string) {
 function hasValidImageSignature(buffer: Buffer, mimeType: string) {
   switch (mimeType) {
     case "image/png":
-      return buffer.length >= 8 && buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+      return (
+        buffer.length >= 8 &&
+        buffer
+          .subarray(0, 8)
+          .equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+      );
     case "image/jpeg":
-      return buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+      return (
+        buffer.length >= 3 &&
+        buffer[0] === 0xff &&
+        buffer[1] === 0xd8 &&
+        buffer[2] === 0xff
+      );
     case "image/webp":
-      return buffer.length >= 12 && buffer.subarray(0, 4).toString("ascii") === "RIFF" && buffer.subarray(8, 12).toString("ascii") === "WEBP";
+      return (
+        buffer.length >= 12 &&
+        buffer.subarray(0, 4).toString("ascii") === "RIFF" &&
+        buffer.subarray(8, 12).toString("ascii") === "WEBP"
+      );
     default:
       return true;
   }
 }
 
 export async function POST(request: NextRequest) {
+  const sameOriginError = requireSreSameOriginRequest(request);
+  if (sameOriginError) {
+    return sameOriginError;
+  }
+
   let context: Awaited<ReturnType<typeof requireProjectContext>>;
   try {
     context = await requireProjectContext();
@@ -80,26 +102,47 @@ export async function POST(request: NextRequest) {
     return authErrorResponse(error);
   }
 
-  const canInvestigate = checkPermissionWithContext("sre_investigation", "investigate", {
-    userId: context.userId,
-    organizationId: context.organizationId,
-    project: context.project,
-  });
+  const canInvestigate = checkPermissionWithContext(
+    "sre_investigation",
+    "investigate",
+    {
+      userId: context.userId,
+      organizationId: context.organizationId,
+      project: context.project,
+    },
+  );
   if (!canInvestigate) {
-    return NextResponse.json({ error: "Insufficient permissions to upload SRE chat attachments" }, { status: 403 });
+    return NextResponse.json(
+      { error: "Insufficient permissions to upload SRE chat attachments" },
+      { status: 403 },
+    );
   }
 
-  const contentLength = Number.parseInt(request.headers.get("content-length") || "0", 10);
+  const contentLength = Number.parseInt(
+    request.headers.get("content-length") || "0",
+    10,
+  );
   if (contentLength > MAX_ATTACHMENT_SIZE + REQUEST_OVERHEAD_BYTES) {
-    return NextResponse.json({ error: "Attachment request body too large" }, { status: 413 });
+    return NextResponse.json(
+      { error: "Attachment request body too large" },
+      { status: 413 },
+    );
   }
 
   const formData = await request.formData();
   const incidentId = formData.get("incidentId");
   const file = formData.get("file");
 
-  if (typeof incidentId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(incidentId)) {
-    return NextResponse.json({ error: "Valid incidentId is required" }, { status: 400 });
+  if (
+    typeof incidentId !== "string" ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      incidentId,
+    )
+  ) {
+    return NextResponse.json(
+      { error: "Valid incidentId is required" },
+      { status: 400 },
+    );
   }
 
   if (!(file instanceof File)) {
@@ -107,32 +150,59 @@ export async function POST(request: NextRequest) {
   }
 
   if (file.size <= 0 || file.size > MAX_ATTACHMENT_SIZE) {
-    return NextResponse.json({ error: "Attachment file size must be between 1 byte and 2MB" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Attachment file size must be between 1 byte and 2MB" },
+      { status: 400 },
+    );
   }
 
   const mimeType = file.type || "application/octet-stream";
   if (!ALLOWED_TYPES.has(mimeType)) {
-    return NextResponse.json({ error: "Unsupported attachment type" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Unsupported attachment type" },
+      { status: 400 },
+    );
   }
 
   const incident = await db.query.sreIncidents.findFirst({
     where: and(
       eq(sreIncidents.id, incidentId),
       eq(sreIncidents.organizationId, context.organizationId),
-      eq(sreIncidents.projectId, context.project.id)
+      eq(sreIncidents.projectId, context.project.id),
     ),
     columns: { id: true },
   });
   if (!incident) {
-    return NextResponse.json({ error: "Incident not found or access denied" }, { status: 404 });
+    return NextResponse.json(
+      { error: "Incident not found or access denied" },
+      { status: 404 },
+    );
   }
 
-  const rateLimit = await checkSreAttachmentUploadRateLimit(context.userId, incidentId);
+  const rateLimit = await checkSreAttachmentUploadRateLimit(
+    context.userId,
+    incidentId,
+  );
   if (!rateLimit.allowed) {
-    const retryAfter = rateLimit.resetTime ? Math.max(1, Math.ceil((rateLimit.resetTime - Date.now()) / 1000)) : 60;
+    if (rateLimit.unavailable) {
+      return NextResponse.json(
+        {
+          error:
+            "Attachment upload rate limiter is temporarily unavailable. Please try again shortly.",
+        },
+        { status: 503, headers: { "Retry-After": "60" } },
+      );
+    }
+
+    const retryAfter = rateLimit.resetTime
+      ? Math.max(1, Math.ceil((rateLimit.resetTime - Date.now()) / 1000))
+      : 60;
     return NextResponse.json(
-      { error: "SRE chat attachment upload rate limit reached. Please wait and try again." },
-      { status: 429, headers: { "Retry-After": String(retryAfter) } }
+      {
+        error:
+          "SRE chat attachment upload rate limit reached. Please wait and try again.",
+      },
+      { status: 429, headers: { "Retry-After": String(retryAfter) } },
     );
   }
 
@@ -142,21 +212,26 @@ export async function POST(request: NextRequest) {
   const buffer = Buffer.from(await file.arrayBuffer());
 
   if (!hasValidImageSignature(buffer, mimeType)) {
-    return NextResponse.json({ error: "Attachment image content does not match its declared type" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Attachment image content does not match its declared type" },
+      { status: 400 },
+    );
   }
 
-  await getS3Client().send(new PutObjectCommand({
-    Bucket: BUCKET_NAME,
-    Key: storagePath,
-    Body: buffer,
-    ContentType: mimeType,
-    Metadata: {
-      organizationId: context.organizationId,
-      projectId: context.project.id,
-      incidentId,
-      uploadedByUserId: context.userId,
-    },
-  }));
+  await getS3Client().send(
+    new PutObjectCommand({
+      Bucket: BUCKET_NAME,
+      Key: storagePath,
+      Body: buffer,
+      ContentType: mimeType,
+      Metadata: {
+        organizationId: context.organizationId,
+        projectId: context.project.id,
+        incidentId,
+        uploadedByUserId: context.userId,
+      },
+    }),
+  );
 
   await logAuditEvent({
     userId: context.userId,
@@ -164,7 +239,13 @@ export async function POST(request: NextRequest) {
     action: "sre_chat_attachment_uploaded",
     resource: "sre_incident",
     resourceId: incidentId,
-    metadata: { projectId: context.project.id, storageBucket: BUCKET_NAME, storagePath, mimeType, size: file.size },
+    metadata: {
+      projectId: context.project.id,
+      storageBucket: BUCKET_NAME,
+      storagePath,
+      mimeType,
+      size: file.size,
+    },
     success: true,
   });
 

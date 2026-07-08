@@ -12,25 +12,110 @@ jest.mock("sonner", () => ({
 
 const graph: SreEvidenceGraphData = {
   nodes: [
-    { id: "service:s1", sourceId: "s1", type: "service", title: "Checkout", subtitle: "prod", status: "active", href: "/org-admin?tab=services", createdAt: new Date("2026-06-24T10:00:00Z") },
-    { id: "monitor:m1", sourceId: "m1", type: "monitor", title: "Checkout monitor", subtitle: "http · https://checkout", status: "active", href: "/monitors", createdAt: new Date("2026-06-24T09:50:00Z") },
-    { id: "alert:a1", sourceId: "a1", type: "alert", title: "Checkout p95 breached", subtitle: "monitor", status: "sev2 · firing", href: null, createdAt: new Date("2026-06-24T10:04:00Z") },
-    { id: "incident:i1", sourceId: "i1", type: "incident", title: "#7 Checkout latency", subtitle: "sev2", status: "investigating", href: "/incidents/i1", createdAt: new Date("2026-06-24T10:05:00Z") },
-    { id: "evidence:e1", sourceId: "e1", type: "evidence", title: "Prometheus latency spike", subtitle: "prometheus · metric", status: "sev2", href: "/incidents/i1#sre-evidence-e1", createdAt: new Date("2026-06-24T10:10:00Z") },
-    { id: "playbook:p1", sourceId: "p1", type: "playbook", title: "Checkout latency playbook", subtitle: "1 matches", status: "active", href: null, createdAt: new Date("2026-06-24T10:20:00Z") },
+    {
+      id: "service:s1",
+      sourceId: "s1",
+      type: "service",
+      title: "Checkout",
+      subtitle: "prod",
+      status: "active",
+      href: "/org-admin?tab=services",
+      createdAt: new Date("2026-06-24T10:00:00Z"),
+    },
+    {
+      id: "monitor:m1",
+      sourceId: "m1",
+      type: "monitor",
+      title: "Checkout monitor",
+      subtitle: "http · https://checkout",
+      status: "active",
+      href: "/monitors",
+      createdAt: new Date("2026-06-24T09:50:00Z"),
+    },
+    {
+      id: "alert:a1",
+      sourceId: "a1",
+      type: "alert",
+      title: "Checkout p95 breached",
+      subtitle: "monitor",
+      status: "sev2 · firing",
+      href: null,
+      createdAt: new Date("2026-06-24T10:04:00Z"),
+    },
+    {
+      id: "incident:i1",
+      sourceId: "i1",
+      type: "incident",
+      title: "#7 Checkout latency",
+      subtitle: "sev2",
+      status: "investigating",
+      href: "/incidents/i1",
+      createdAt: new Date("2026-06-24T10:05:00Z"),
+    },
+    {
+      id: "evidence:e1",
+      sourceId: "e1",
+      type: "evidence",
+      title: "Prometheus latency spike",
+      subtitle: "prometheus · metric",
+      status: "sev2",
+      href: "/incidents/i1#sre-evidence-e1",
+      createdAt: new Date("2026-06-24T10:10:00Z"),
+    },
+    {
+      id: "playbook:p1",
+      sourceId: "p1",
+      type: "playbook",
+      title: "Checkout latency playbook",
+      subtitle: "1 matches",
+      status: "active",
+      href: null,
+      createdAt: new Date("2026-06-24T10:20:00Z"),
+    },
   ],
   edges: [
-    { id: "service:s1->monitor:m1:monitored by", source: "service:s1", target: "monitor:m1", label: "monitored by", evidence: "Service resource mapping" },
-    { id: "monitor:m1->alert:a1:triggered", source: "monitor:m1", target: "alert:a1", label: "triggered", evidence: "Alert source id" },
-    { id: "alert:a1->incident:i1:triggered incident", source: "alert:a1", target: "incident:i1", label: "triggered incident", evidence: "Incident alert correlation" },
-    { id: "service:s1->incident:i1:impacted service", source: "service:s1", target: "incident:i1", label: "impacted service", evidence: "Incident primary service scope" },
-    { id: "incident:i1->evidence:e1:has evidence", source: "incident:i1", target: "evidence:e1", label: "has evidence", evidence: "prometheus" },
+    {
+      id: "service:s1->monitor:m1:monitored by",
+      source: "service:s1",
+      target: "monitor:m1",
+      label: "monitored by",
+      evidence: "Service resource mapping",
+    },
+    {
+      id: "monitor:m1->alert:a1:triggered",
+      source: "monitor:m1",
+      target: "alert:a1",
+      label: "triggered",
+      evidence: "Alert source id",
+    },
+    {
+      id: "alert:a1->incident:i1:triggered incident",
+      source: "alert:a1",
+      target: "incident:i1",
+      label: "triggered incident",
+      evidence: "Incident alert correlation",
+    },
+    {
+      id: "service:s1->incident:i1:impacted service",
+      source: "service:s1",
+      target: "incident:i1",
+      label: "impacted service",
+      evidence: "Incident primary service scope",
+    },
+    {
+      id: "incident:i1->evidence:e1:has evidence",
+      source: "incident:i1",
+      target: "evidence:e1",
+      label: "has evidence",
+      evidence: "prometheus",
+    },
     {
       id: "alert:a1->playbook:p1:matches playbook",
       source: "alert:a1",
       target: "playbook:p1",
       label: "matches playbook",
-      evidence: "Alert fingerprint matched promoted playbook signature (service: checkout; severity: sev2; error pattern: p95 latency; hash abc123def456)",
+      evidence:
+        "Alert fingerprint matched promoted playbook signature (service: checkout; severity: sev2; error pattern: p95 latency; hash abc123def456)",
     },
   ],
   stats: {
@@ -59,18 +144,30 @@ describe("SreEvidenceGraph", () => {
     render(<SreEvidenceGraph graph={graph} />);
 
     expect(screen.getAllByText("Checkout").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Prometheus latency spike").length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText("Prometheus latency spike").length,
+    ).toBeGreaterThan(0);
 
-    fireEvent.change(screen.getByPlaceholderText("Search graph nodes..."), { target: { value: "prometheus" } });
+    fireEvent.change(screen.getByPlaceholderText("Search graph nodes..."), {
+      target: { value: "prometheus" },
+    });
 
-    expect(screen.queryByRole("button", { name: /select service node checkout/i })).not.toBeInTheDocument();
-    expect(screen.getAllByText("Prometheus latency spike").length).toBeGreaterThan(0);
+    expect(
+      screen.queryByRole("button", { name: /select service node checkout/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getAllByText("Prometheus latency spike").length,
+    ).toBeGreaterThan(0);
   });
 
   it("shows selected node relationships", () => {
     render(<SreEvidenceGraph graph={graph} />);
 
-    fireEvent.click(screen.getByRole("button", { name: /select incident node #7 checkout latency/i }));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /select incident node #7 checkout latency/i,
+      }),
+    );
 
     expect(screen.getAllByText("impacted service").length).toBeGreaterThan(0);
     expect(screen.getAllByText("triggered incident").length).toBeGreaterThan(0);
@@ -81,26 +178,65 @@ describe("SreEvidenceGraph", () => {
     render(<SreEvidenceGraph graph={graph} />);
 
     expect(screen.getAllByText("Checkout monitor").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Checkout p95 breached").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Checkout latency playbook").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Checkout p95 breached").length).toBeGreaterThan(
+      0,
+    );
+    expect(
+      screen.getAllByText("Checkout latency playbook").length,
+    ).toBeGreaterThan(0);
   });
 
   it("explains why an alert matched a playbook", () => {
     render(<SreEvidenceGraph graph={graph} />);
 
-    fireEvent.click(screen.getByRole("button", { name: /select playbook node checkout latency playbook/i }));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /select playbook node checkout latency playbook/i,
+      }),
+    );
 
     expect(screen.getAllByText("matches playbook").length).toBeGreaterThan(0);
-    expect(screen.getByText(/service: checkout; severity: sev2; error pattern: p95 latency/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /service: checkout; severity: sev2; error pattern: p95 latency/i,
+      ),
+    ).toBeInTheDocument();
   });
 
   it("keeps the graph controls focused on filtering and node selection", () => {
     render(<SreEvidenceGraph graph={graph} />);
 
     expect(screen.getByText("Graph lanes")).toBeInTheDocument();
-    expect(screen.getByText(/select a node to inspect details/i)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /zoom in graph/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /fit/i })).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/select a node to inspect details/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /zoom in graph/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /fit/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("opens and closes the expanded graph lanes view", () => {
+    render(<SreEvidenceGraph graph={graph} />);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /expand graph lanes/i }),
+    );
+
+    expect(
+      screen.getByRole("dialog", { name: /graph lanes/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getAllByLabelText("Evidence graph lanes viewport"),
+    ).toHaveLength(2);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /close expanded graph lanes/i }),
+    );
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("clears active filters without exposing saved view controls", () => {
@@ -111,7 +247,11 @@ describe("SreEvidenceGraph", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Clear" }));
     expect(searchInput).toHaveValue("");
-    expect(screen.queryByRole("button", { name: /save local/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /save shared/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /save local/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /save shared/i }),
+    ).not.toBeInTheDocument();
   });
 });

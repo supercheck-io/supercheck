@@ -5,6 +5,7 @@ import { requireProjectContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { isSreTriageAgentEnabled } from "@/sre/lib/feature-gates";
 import { runSreIncidentTriage } from "@/sre/lib/triage-runner";
+import { requireSreSameOriginRequest } from "../_auth";
 
 const triageRequestSchema = z.object({
   incidentId: z.string().uuid(),
@@ -26,6 +27,11 @@ async function parseRequestJson(request: NextRequest) {
 export async function POST(request: NextRequest) {
   if (!isSreTriageAgentEnabled()) {
     return NextResponse.json({ error: "SRE triage agent is not enabled" }, { status: 404 });
+  }
+
+  const sameOriginError = requireSreSameOriginRequest(request);
+  if (sameOriginError) {
+    return sameOriginError;
   }
 
   let context: Awaited<ReturnType<typeof requireProjectContext>>;

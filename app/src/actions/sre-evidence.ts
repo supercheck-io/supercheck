@@ -18,7 +18,10 @@ import { requireProjectContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { normalizePrivateAgentEvidenceSummaries } from "@/lib/sre/connector-job-evidence";
 import { generateEvidenceBrief } from "@/lib/sre/evidence-brief-generator";
-import { collectNativeEvidence, type NativeEvidenceWindow } from "@/lib/sre/native-evidence-collector";
+import {
+  collectNativeEvidence,
+  type NativeEvidenceWindow,
+} from "@/lib/sre/native-evidence-collector";
 import { checkSreEvidenceBriefRateLimit } from "@/lib/sre/sre-rate-limiter";
 import { db } from "@/utils/db";
 
@@ -57,15 +60,22 @@ const connectorEvidenceSourceTypes = [
   "mcp",
   "webhook",
 ] as const;
-type ConnectorEvidenceSourceType = (typeof connectorEvidenceSourceTypes)[number];
-const connectorEvidenceSourceTypeSet = new Set<string>(connectorEvidenceSourceTypes);
+type ConnectorEvidenceSourceType =
+  (typeof connectorEvidenceSourceTypes)[number];
+const connectorEvidenceSourceTypeSet = new Set<string>(
+  connectorEvidenceSourceTypes,
+);
 
 function truncate(value: string, maxLength: number) {
-  return value.length > maxLength ? `${value.slice(0, maxLength - 3)}...` : value;
+  return value.length > maxLength
+    ? `${value.slice(0, maxLength - 3)}...`
+    : value;
 }
 
 function connectorSourceType(value: string) {
-  return connectorEvidenceSourceTypeSet.has(value) ? value as ConnectorEvidenceSourceType : null;
+  return connectorEvidenceSourceTypeSet.has(value)
+    ? (value as ConnectorEvidenceSourceType)
+    : null;
 }
 
 function jobSpecServiceId(jobSpec: Record<string, unknown>) {
@@ -87,7 +97,10 @@ async function importCompletedPrivateAgentConnectorEvidence(input: {
   const completedJobs = await db
     .select({ job: privateAgentJobs, connector: externalConnectors })
     .from(privateAgentJobs)
-    .innerJoin(externalConnectors, eq(privateAgentJobs.connectorId, externalConnectors.id))
+    .innerJoin(
+      externalConnectors,
+      eq(privateAgentJobs.connectorId, externalConnectors.id),
+    )
     .where(
       and(
         eq(privateAgentJobs.organizationId, input.organizationId),
@@ -95,20 +108,27 @@ async function importCompletedPrivateAgentConnectorEvidence(input: {
         eq(privateAgentJobs.jobClass, "sre_connector_query"),
         eq(privateAgentJobs.status, "completed"),
         eq(externalConnectors.organizationId, input.organizationId),
-        eq(externalConnectors.projectId, input.projectId)
-      )
+        eq(externalConnectors.projectId, input.projectId),
+      ),
     )
-    .orderBy(desc(privateAgentJobs.completedAt), desc(privateAgentJobs.createdAt))
+    .orderBy(
+      desc(privateAgentJobs.completedAt),
+      desc(privateAgentJobs.createdAt),
+    )
     .limit(25);
 
-  const matchingJobs = completedJobs.filter(({ job }) => jobSpecServiceId(job.jobSpec) === input.serviceId);
+  const matchingJobs = completedJobs.filter(
+    ({ job }) => jobSpecServiceId(job.jobSpec) === input.serviceId,
+  );
 
   if (matchingJobs.length === 0) {
     return [];
   }
 
   return db.transaction(async (tx) => {
-    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${input.incidentId}))`);
+    await tx.execute(
+      sql`select pg_advisory_xact_lock(hashtext(${input.incidentId}))`,
+    );
     const imported = [];
 
     for (const { job, connector } of matchingJobs) {
@@ -117,9 +137,15 @@ async function importCompletedPrivateAgentConnectorEvidence(input: {
         continue;
       }
 
-      const summaries = normalizePrivateAgentEvidenceSummaries(job.resultSummary, 25);
+      const summaries = normalizePrivateAgentEvidenceSummaries(
+        job.resultSummary,
+        25,
+      );
       for (const item of summaries) {
-        if (item.observedAtDate < input.window.since || item.observedAtDate > input.window.until) {
+        if (
+          item.observedAtDate < input.window.since ||
+          item.observedAtDate > input.window.until
+        ) {
           continue;
         }
 
@@ -129,8 +155,8 @@ async function importCompletedPrivateAgentConnectorEvidence(input: {
           .where(
             and(
               eq(sreEvidenceItems.incidentId, input.incidentId),
-              eq(sreEvidenceItems.citationResultHash, item.resultHash)
-            )
+              eq(sreEvidenceItems.citationResultHash, item.resultHash),
+            ),
           )
           .limit(1);
 
@@ -155,7 +181,10 @@ async function importCompletedPrivateAgentConnectorEvidence(input: {
             evidenceType: item.evidenceType,
             severity: null,
             confidence: "0.8000",
-            tags: { source: "private_agent_connector", connectorType: connector.type },
+            tags: {
+              source: "private_agent_connector",
+              connectorType: connector.type,
+            },
             metadata: {
               privateAgentJobId: job.id,
               privateAgentId: job.privateAgentId,
@@ -192,19 +221,41 @@ export async function generateSreEvidenceBrief(input: {
     }
 
     const { userId, organizationId, project } = await requireProjectContext();
-    const canInvestigate = checkPermissionWithContext("sre_incident", "investigate", {
-      userId,
-      organizationId,
-      project,
-    });
+    const canInvestigate = checkPermissionWithContext(
+      "sre_incident",
+      "investigate",
+      {
+        userId,
+        organizationId,
+        project,
+      },
+    );
 
     if (!canInvestigate) {
-      return { success: false, error: "Insufficient permissions to investigate this incident" };
+      return {
+        success: false,
+        error: "Insufficient permissions to investigate this incident",
+      };
     }
 
-    const rateLimit = await checkSreEvidenceBriefRateLimit(userId, parsed.data.incidentId);
+    const rateLimit = await checkSreEvidenceBriefRateLimit(
+      userId,
+      parsed.data.incidentId,
+    );
     if (!rateLimit.allowed) {
-      return { success: false, error: "Evidence brief generation rate limit reached. Wait a moment and try again." };
+      if (rateLimit.unavailable) {
+        return {
+          success: false,
+          error:
+            "Evidence brief rate limiter is temporarily unavailable. Try again shortly.",
+        };
+      }
+
+      return {
+        success: false,
+        error:
+          "Evidence brief generation rate limit reached. Wait a moment and try again.",
+      };
     }
 
     const collection = await collectNativeEvidence({
@@ -252,8 +303,8 @@ export async function generateSreEvidenceBrief(input: {
         .where(
           and(
             eq(sreEvidenceItems.incidentId, parsed.data.incidentId),
-            eq(sreEvidenceItems.citationResultHash, item.citationResultHash)
-          )
+            eq(sreEvidenceItems.citationResultHash, item.citationResultHash),
+          ),
         )
         .limit(1);
 
@@ -289,14 +340,15 @@ export async function generateSreEvidenceBrief(input: {
       evidenceRows.push(created);
     }
 
-    const connectorEvidenceRows = await importCompletedPrivateAgentConnectorEvidence({
-      organizationId,
-      projectId: project.id,
-      incidentId: parsed.data.incidentId,
-      serviceId: collection.incident.primaryServiceId,
-      investigationRunId: run.id,
-      window: collection.window,
-    });
+    const connectorEvidenceRows =
+      await importCompletedPrivateAgentConnectorEvidence({
+        organizationId,
+        projectId: project.id,
+        incidentId: parsed.data.incidentId,
+        serviceId: collection.incident.primaryServiceId,
+        investigationRunId: run.id,
+        window: collection.window,
+      });
     const allEvidenceRows = [...evidenceRows, ...connectorEvidenceRows];
 
     const brief = await generateEvidenceBrief({
@@ -334,16 +386,20 @@ export async function generateSreEvidenceBrief(input: {
         completedAt: new Date(),
         durationMs: Date.now() - startedAt,
       })
-      .where(and(
-        eq(sreInvestigationRuns.id, run.id),
-        eq(sreInvestigationRuns.organizationId, organizationId),
-        eq(sreInvestigationRuns.projectId, project.id)
-      ));
+      .where(
+        and(
+          eq(sreInvestigationRuns.id, run.id),
+          eq(sreInvestigationRuns.organizationId, organizationId),
+          eq(sreInvestigationRuns.projectId, project.id),
+        ),
+      );
 
     await db
       .update(sreIncidents)
       .set({
-        ...(collection.incident.status === "triggered" ? { status: "investigating" as const } : {}),
+        ...(collection.incident.status === "triggered"
+          ? { status: "investigating" as const }
+          : {}),
         rootCauseSummary: brief.summary,
         confidenceScore: String(brief.confidenceScore),
         updatedAt: new Date(),
@@ -352,8 +408,8 @@ export async function generateSreEvidenceBrief(input: {
         and(
           eq(sreIncidents.id, parsed.data.incidentId),
           eq(sreIncidents.organizationId, organizationId),
-          eq(sreIncidents.projectId, project.id)
-        )
+          eq(sreIncidents.projectId, project.id),
+        ),
       );
 
     await db.insert(sreIncidentTimelineEvents).values({
@@ -394,7 +450,10 @@ export async function generateSreEvidenceBrief(input: {
 
     return {
       success: true,
-      message: brief.provider === "ai" ? "Native evidence brief generated" : "Native evidence gathered with fallback brief",
+      message:
+        brief.provider === "ai"
+          ? "Native evidence brief generated"
+          : "Native evidence gathered with fallback brief",
       brief: {
         suspectedFailureDomain: brief.suspectedFailureDomain,
         summary: brief.summary,
@@ -406,6 +465,9 @@ export async function generateSreEvidenceBrief(input: {
     };
   } catch (error) {
     console.error("Error generating SRE evidence brief:", error);
-    return { success: false, error: "Failed to generate native evidence brief" };
+    return {
+      success: false,
+      error: "Failed to generate native evidence brief",
+    };
   }
 }

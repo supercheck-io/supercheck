@@ -1,5 +1,8 @@
 import { MEMORY_LIMITS } from '../../common/constants/memory.constants';
 import { S3Service } from './s3.service';
+import * as fs from 'fs/promises';
+import * as os from 'os';
+import * as path from 'path';
 
 describe('S3Service file variable handling', () => {
   function createService() {
@@ -62,5 +65,33 @@ describe('S3Service file variable handling', () => {
     ).rejects.toThrow('exceeds the 50 MB per-run limit');
 
     expect(downloadSpy).not.toHaveBeenCalled();
+  });
+
+  it('uploads cloud directories without requiring bucket list or create permissions', async () => {
+    const service = createService();
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 's3-service-'));
+    const sdkClient = {
+      send: jest.fn().mockRejectedValue(new Error('Access Denied')),
+    };
+
+    (service as unknown as { s3Client: { send: jest.Mock } }).s3Client =
+      sdkClient;
+
+    jest
+      .spyOn(service, 'uploadFile')
+      .mockImplementation(async (_localFilePath, s3Key) => s3Key);
+
+    await fs.writeFile(path.join(tempDir, 'index.html'), '<html></html>');
+
+    const uploadedKeys = await service.uploadDirectory(
+      tempDir,
+      'execution-123/report',
+      'playwright-job-artifacts',
+      'execution-123',
+      'job',
+    );
+
+    expect(uploadedKeys).toEqual(['execution-123/report/index.html']);
+    expect(sdkClient.send).not.toHaveBeenCalled();
   });
 });

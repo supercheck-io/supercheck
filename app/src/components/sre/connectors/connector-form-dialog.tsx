@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { isPrivateAgentConnectorType } from "@/lib/sre/connectors/connector-capabilities";
 import {
   Select,
   SelectContent,
@@ -39,35 +40,72 @@ type ConnectorFormDialogProps = {
 };
 
 type ConnectorType = Parameters<typeof createSreConnector>[0]["type"];
-type CredentialType = NonNullable<Parameters<typeof createSreConnector>[0]["credential"]>["credentialType"];
+type CredentialType = NonNullable<
+  Parameters<typeof createSreConnector>[0]["credential"]
+>["credentialType"];
 
-const connectorTypeOptions: Array<{ value: ConnectorType; label: string; description: string }> = [
-  { value: "github", label: "GitHub", description: "Deploys, commits, pull requests" },
-  { value: "kubernetes", label: "Kubernetes", description: "Pods, events, workloads" },
-  { value: "prometheus", label: "Prometheus", description: "Metrics and PromQL" },
-  { value: "grafana", label: "Grafana", description: "Dashboards and panel context" },
+const connectorTypeOptions: Array<{
+  value: ConnectorType;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: "github",
+    label: "GitHub",
+    description: "Deploys, commits, pull requests",
+  },
+  {
+    value: "kubernetes",
+    label: "Kubernetes",
+    description: "Pods, events, workloads",
+  },
+  {
+    value: "prometheus",
+    label: "Prometheus",
+    description: "Metrics and PromQL",
+  },
+  {
+    value: "grafana",
+    label: "Grafana",
+    description: "Dashboards and panel context",
+  },
   { value: "datadog", label: "Datadog", description: "Metrics, logs, traces" },
-  { value: "aws_cloudwatch", label: "AWS CloudWatch", description: "Metric alarms and CloudWatch metric data" },
+  {
+    value: "aws_cloudwatch",
+    label: "AWS CloudWatch",
+    description: "Metric alarms and CloudWatch metric data",
+  },
   { value: "loki", label: "Loki", description: "LogQL logs" },
-  { value: "tempo", label: "Tempo", description: "Distributed traces and TraceQL search" },
-  { value: "jira", label: "Jira", description: "Tickets, incident records, change context" },
-  { value: "confluence", label: "Confluence", description: "Runbooks, postmortems, operational docs" },
-  { value: "notion", label: "Notion", description: "Knowledge base, runbooks, incident notes" },
-  { value: "slack", label: "Slack", description: "Incident channels and responder discussion" },
-  { value: "webhook", label: "Webhook", description: "Inbound operational events" },
-];
-
-const privateAgentSupportedConnectorTypes: ConnectorType[] = [
-  "github",
-  "kubernetes",
-  "prometheus",
-  "grafana",
-  "sentry",
-  "datadog",
-  "loki",
-  "elasticsearch",
-  "tempo",
-  "aws_cloudwatch",
+  {
+    value: "tempo",
+    label: "Tempo",
+    description: "Distributed traces and TraceQL search",
+  },
+  {
+    value: "jira",
+    label: "Jira",
+    description: "Tickets, incident records, change context",
+  },
+  {
+    value: "confluence",
+    label: "Confluence",
+    description: "Runbooks, postmortems, operational docs",
+  },
+  {
+    value: "notion",
+    label: "Notion",
+    description: "Knowledge base, runbooks, incident notes",
+  },
+  {
+    value: "slack",
+    label: "Slack",
+    description: "Incident channels and responder discussion",
+  },
+  {
+    value: "webhook",
+    label: "Webhook",
+    description: "Inbound operational events",
+  },
 ];
 
 const credentialTypeOptions: Array<{ value: CredentialType; label: string }> = [
@@ -94,24 +132,29 @@ export function ConnectorFormDialog({
   const [name, setName] = useState("");
   const [type, setType] = useState<ConnectorType>("github");
   const [endpointUrl, setEndpointUrl] = useState("");
-  const [riskLevel, setRiskLevel] = useState<"low" | "medium" | "high" | "critical">("low");
-  const [executionMode, setExecutionMode] = useState<"direct" | "private_agent">("direct");
+  const [riskLevel, setRiskLevel] = useState<
+    "low" | "medium" | "high" | "critical"
+  >("low");
+  const [executionMode, setExecutionMode] = useState<
+    "direct" | "private_agent"
+  >("direct");
   const [privateAgentId, setPrivateAgentId] = useState<string | null>(null);
   const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
-  const [credentialType, setCredentialType] = useState<CredentialType>("api_key");
+  const [credentialType, setCredentialType] =
+    useState<CredentialType>("api_key");
   const [credentialValue, setCredentialValue] = useState("");
   const [awsAccessKeyId, setAwsAccessKeyId] = useState("");
   const [awsSecretAccessKey, setAwsSecretAccessKey] = useState("");
   const [awsSessionToken, setAwsSessionToken] = useState("");
   const isCloudWatch = type === "aws_cloudwatch";
-  const supportsPrivateAgent = privateAgentSupportedConnectorTypes.includes(type);
+  const supportsPrivateAgent = isPrivateAgentConnectorType(type);
   const queryGuide = getConnectorQueryGuide(type);
 
   const toggleService = (serviceId: string) => {
     setSelectedServiceIds((current) =>
       current.includes(serviceId)
         ? current.filter((id) => id !== serviceId)
-        : [...current, serviceId]
+        : [...current, serviceId],
     );
   };
 
@@ -129,25 +172,29 @@ export function ConnectorFormDialog({
         type,
         endpointUrl,
         riskLevel,
-        privateAgentId: executionMode === "private_agent" ? privateAgentId : null,
+        privateAgentId:
+          executionMode === "private_agent" ? privateAgentId : null,
         serviceIds: selectedServiceIds,
         defaultTimeWindowMinutes: 60,
         outputLimits: { maxRows: 100, maxBytes: 1_048_576, maxSeconds: 10 },
-        credential: isCloudWatch && trimmedAwsAccessKeyId && trimmedAwsSecretAccessKey
-          ? {
-              credentialType: "api_key",
-              value: {
-                apiKey: trimmedAwsAccessKeyId,
-                secret: trimmedAwsSecretAccessKey,
-                ...(trimmedAwsSessionToken ? { sessionToken: trimmedAwsSessionToken } : {}),
-              },
-            }
-          : trimmedCredential
-          ? {
-              credentialType,
-              value: { secret: trimmedCredential },
-            }
-          : undefined,
+        credential:
+          isCloudWatch && trimmedAwsAccessKeyId && trimmedAwsSecretAccessKey
+            ? {
+                credentialType: "api_key",
+                value: {
+                  apiKey: trimmedAwsAccessKeyId,
+                  secret: trimmedAwsSecretAccessKey,
+                  ...(trimmedAwsSessionToken
+                    ? { sessionToken: trimmedAwsSessionToken }
+                    : {}),
+                },
+              }
+            : trimmedCredential
+              ? {
+                  credentialType,
+                  value: { secret: trimmedCredential },
+                }
+              : undefined,
       });
 
       if (!result.success) {
@@ -175,7 +222,8 @@ export function ConnectorFormDialog({
         <DialogHeader className="border-b px-6 py-5">
           <DialogTitle>Add connector</DialogTitle>
           <DialogDescription>
-            Add a read-only evidence source for investigations. Secrets stay encrypted and are never shown to the AI model.
+            Add a read-only evidence source for investigations. Secrets stay
+            encrypted and are never shown to the AI model.
           </DialogDescription>
         </DialogHeader>
 
@@ -189,7 +237,7 @@ export function ConnectorFormDialog({
                   onValueChange={(value) => {
                     const nextType = value as ConnectorType;
                     setType(nextType);
-                    if (!privateAgentSupportedConnectorTypes.includes(nextType)) {
+                    if (!isPrivateAgentConnectorType(nextType)) {
                       setExecutionMode("direct");
                       setPrivateAgentId(null);
                     }
@@ -207,7 +255,10 @@ export function ConnectorFormDialog({
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                  {connectorTypeOptions.find((option) => option.value === type)?.description}
+                  {
+                    connectorTypeOptions.find((option) => option.value === type)
+                      ?.description
+                  }
                 </p>
               </div>
 
@@ -221,13 +272,20 @@ export function ConnectorFormDialog({
                   aria-invalid={Boolean(firstError(fieldErrors, "name"))}
                 />
                 {firstError(fieldErrors, "name") && (
-                  <p className="text-xs text-destructive">{firstError(fieldErrors, "name")}</p>
+                  <p className="text-xs text-destructive">
+                    {firstError(fieldErrors, "name")}
+                  </p>
                 )}
               </div>
 
               <div className="flex flex-col gap-1.5 xl:col-span-2">
                 <Label htmlFor="connector-risk">Risk level</Label>
-                <Select value={riskLevel} onValueChange={(value) => setRiskLevel(value as typeof riskLevel)}>
+                <Select
+                  value={riskLevel}
+                  onValueChange={(value) =>
+                    setRiskLevel(value as typeof riskLevel)
+                  }
+                >
                   <SelectTrigger id="connector-risk">
                     <SelectValue />
                   </SelectTrigger>
@@ -242,23 +300,41 @@ export function ConnectorFormDialog({
 
               <div className="flex flex-col gap-1.5 xl:col-span-3">
                 <Label htmlFor="connector-execution">Execution mode</Label>
-                <Select value={executionMode} onValueChange={(value) => setExecutionMode(value as typeof executionMode)}>
+                <Select
+                  value={executionMode}
+                  onValueChange={(value) =>
+                    setExecutionMode(value as typeof executionMode)
+                  }
+                >
                   <SelectTrigger id="connector-execution">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="direct">Direct</SelectItem>
-                    <SelectItem value="private_agent" disabled={setupOptions.privateAgents.length === 0 || !supportsPrivateAgent}>
+                    <SelectItem
+                      value="private_agent"
+                      disabled={
+                        setupOptions.privateAgents.length === 0 ||
+                        !supportsPrivateAgent
+                      }
+                    >
                       Private Agent
                     </SelectItem>
                   </SelectContent>
                 </Select>
+                <p className="text-[11px] leading-tight text-muted-foreground">
+                  Use <strong>Direct</strong> for public APIs. Use{" "}
+                  <strong>Private Agent</strong> for internal private services.
+                </p>
               </div>
 
               {executionMode === "private_agent" && (
                 <div className="flex flex-col gap-1.5 xl:col-span-4">
                   <Label htmlFor="private-agent">Private Agent</Label>
-                  <Select value={privateAgentId ?? undefined} onValueChange={setPrivateAgentId}>
+                  <Select
+                    value={privateAgentId ?? undefined}
+                    onValueChange={setPrivateAgentId}
+                  >
                     <SelectTrigger id="private-agent">
                       <SelectValue placeholder="Select an agent" />
                     </SelectTrigger>
@@ -283,12 +359,29 @@ export function ConnectorFormDialog({
                   aria-invalid={Boolean(firstError(fieldErrors, "endpointUrl"))}
                 />
                 {firstError(fieldErrors, "endpointUrl") ? (
-                  <p className="text-xs text-destructive">{firstError(fieldErrors, "endpointUrl")}</p>
+                  <p className="text-xs text-destructive">
+                    {firstError(fieldErrors, "endpointUrl")}
+                  </p>
                 ) : (
                   <p className="text-xs text-muted-foreground">
-                    Use the read-only API endpoint reachable from the selected execution mode.
+                    Use the read-only API endpoint reachable from the selected
+                    execution mode.
                   </p>
                 )}
+                {endpointUrl &&
+                  /^(https?:\/\/)?(localhost|127\.0\.0\.1|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+|.*\.svc|.*\.local)(:\d+)?(\/.*)?$/.test(
+                    endpointUrl,
+                  ) &&
+                  executionMode === "direct" && (
+                    <div className="mt-1 flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-2 text-[11px] text-amber-600 dark:text-amber-400">
+                      <span className="text-sm leading-none">💡</span>
+                      <p className="leading-tight">
+                        This looks like an internal network address. SuperCheck
+                        Cloud cannot reach this directly. Please change the{" "}
+                        <strong>Execution mode</strong> to a Private Agent.
+                      </p>
+                    </div>
+                  )}
               </div>
 
               {isCloudWatch ? (
@@ -298,18 +391,24 @@ export function ConnectorFormDialog({
                     <Input
                       id="aws-access-key-id"
                       value={awsAccessKeyId}
-                      onChange={(event) => setAwsAccessKeyId(event.target.value)}
+                      onChange={(event) =>
+                        setAwsAccessKeyId(event.target.value)
+                      }
                       type="password"
                       autoComplete="new-password"
                       placeholder="AKIA..."
                     />
                   </div>
                   <div className="flex flex-col gap-1.5 xl:col-span-4">
-                    <Label htmlFor="aws-secret-access-key">AWS secret access key</Label>
+                    <Label htmlFor="aws-secret-access-key">
+                      AWS secret access key
+                    </Label>
                     <Input
                       id="aws-secret-access-key"
                       value={awsSecretAccessKey}
-                      onChange={(event) => setAwsSecretAccessKey(event.target.value)}
+                      onChange={(event) =>
+                        setAwsSecretAccessKey(event.target.value)
+                      }
                       type="password"
                       autoComplete="new-password"
                       placeholder="Paste read-only secret"
@@ -320,19 +419,28 @@ export function ConnectorFormDialog({
                     <Input
                       id="aws-session-token"
                       value={awsSessionToken}
-                      onChange={(event) => setAwsSessionToken(event.target.value)}
+                      onChange={(event) =>
+                        setAwsSessionToken(event.target.value)
+                      }
                       type="password"
                       autoComplete="new-password"
                       placeholder="Optional STS token"
                     />
-                    <p className="text-xs text-muted-foreground">{queryGuide.credentialHint}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {queryGuide.credentialHint}
+                    </p>
                   </div>
                 </>
               ) : (
                 <>
                   <div className="flex flex-col gap-1.5 xl:col-span-3">
                     <Label htmlFor="credential-type">Credential type</Label>
-                    <Select value={credentialType} onValueChange={(value) => setCredentialType(value as CredentialType)}>
+                    <Select
+                      value={credentialType}
+                      onValueChange={(value) =>
+                        setCredentialType(value as CredentialType)
+                      }
+                    >
                       <SelectTrigger id="credential-type">
                         <SelectValue />
                       </SelectTrigger>
@@ -351,12 +459,16 @@ export function ConnectorFormDialog({
                     <Input
                       id="credential-value"
                       value={credentialValue}
-                      onChange={(event) => setCredentialValue(event.target.value)}
+                      onChange={(event) =>
+                        setCredentialValue(event.target.value)
+                      }
                       type="password"
                       autoComplete="new-password"
                       placeholder="Paste read-only credential"
                     />
-                    <p className="text-xs text-muted-foreground">{queryGuide.credentialHint}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {queryGuide.credentialHint}
+                    </p>
                   </div>
                 </>
               )}
@@ -366,11 +478,14 @@ export function ConnectorFormDialog({
               <div className="grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)] lg:items-start">
                 <div className="flex flex-col gap-1">
                   <Label>Service scope</Label>
-                  <p className="text-xs text-muted-foreground">Optional. Leave empty for org-wide read-only use.</p>
+                  <p className="text-xs text-muted-foreground">
+                    Optional. Leave empty for org-wide read-only use.
+                  </p>
                 </div>
                 {setupOptions.services.length === 0 ? (
                   <div className="rounded-lg border border-dashed px-3 py-2 text-sm text-muted-foreground">
-                    No active services are available. Add services before scoping connectors.
+                    No active services are available. Add services before
+                    scoping connectors.
                   </div>
                 ) : (
                   <div className="grid gap-1 rounded-lg border bg-background/70 p-2 md:grid-cols-2 xl:grid-cols-3">
@@ -385,9 +500,13 @@ export function ConnectorFormDialog({
                           aria-label={`Scope connector to ${service.name}`}
                         />
                         <span className="flex min-w-0 flex-col gap-0.5 text-sm">
-                          <span className="truncate font-medium">{service.name}</span>
+                          <span className="truncate font-medium">
+                            {service.name}
+                          </span>
                           <span className="truncate text-xs text-muted-foreground">
-                            {[service.environment, service.ownerTeam].filter(Boolean).join(" · ") || "No metadata"}
+                            {[service.environment, service.ownerTeam]
+                              .filter(Boolean)
+                              .join(" · ") || "No metadata"}
                           </span>
                         </span>
                       </label>
@@ -398,13 +517,20 @@ export function ConnectorFormDialog({
             </section>
 
             <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-              <span>Read-only, budgeted, service-scoped, redacted, and audited.</span>
+              <span>
+                Read-only, budgeted, service-scoped, redacted, and audited.
+              </span>
               <Badge variant="outline">No side effects</Badge>
             </div>
           </div>
 
           <DialogFooter className="border-t px-6 py-4">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isPending}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={isPending}
+            >
               Cancel
             </Button>
             <Button type="submit" disabled={isPending}>

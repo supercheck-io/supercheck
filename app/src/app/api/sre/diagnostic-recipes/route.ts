@@ -4,8 +4,17 @@ import {
   getSreDiagnosticQueries,
   getSreDiagnosticQuerySetupOptions,
 } from "@/actions/sre-diagnostic-queries";
+import { requireSreApiPermissions } from "../_auth";
 
 export async function GET() {
+  const auth = await requireSreApiPermissions([
+    { resource: "sre_connector", action: "configure" },
+  ]);
+
+  if (!auth.success) {
+    return auth.response;
+  }
+
   const [queriesResult, setupOptionsResult] = await Promise.all([
     getSreDiagnosticQueries(),
     getSreDiagnosticQuerySetupOptions(),

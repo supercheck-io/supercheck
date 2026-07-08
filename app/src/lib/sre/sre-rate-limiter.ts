@@ -5,7 +5,8 @@
  * Follows the same pattern as session-security.ts checkRateLimit:
  * sorted-set sliding window with ZREMRANGEBYSCORE → ZCARD → ZADD → EXPIRE.
  *
- * Fails open on Redis unavailability to avoid blocking incident investigation.
+ * Fails closed on Redis unavailability so expensive SRE operations cannot run
+ * unlimited when the shared limiter is unavailable.
  * All keys use the `supercheck:sre:ratelimit:` prefix for consistency.
  */
 
@@ -24,23 +25,58 @@ export type SreRateLimitResult = {
   allowed: boolean;
   resetTime?: number;
   remaining: number;
+  unavailable?: boolean;
 };
+
+type SreRateLimitUnavailableReason =
+  | "redis_unavailable"
+  | "redis_transaction_failed"
+  | "redis_error";
+
+function logSreRateLimiterUnavailable(
+  level: "warn" | "error",
+  data: { key: string; reason: SreRateLimitUnavailableReason; error?: unknown },
+  message: string,
+) {
+  sreRateLimitLogger[level](
+    {
+      event: "sre_rate_limiter_unavailable",
+      key: data.key,
+      reason: data.reason,
+      error: data.error,
+    },
+    message,
+  );
+}
+
+function unavailableResult(windowMs: number): SreRateLimitResult {
+  return {
+    allowed: false,
+    resetTime: Date.now() + windowMs,
+    remaining: 0,
+    unavailable: true,
+  };
+}
 
 /**
  * Core sliding-window rate check.
  * Returns allowed=false if the operation count in the window has reached maxOperations.
- * Fails open (allowed=true) on Redis errors.
+ * Fails closed (allowed=false) on Redis errors.
  */
 async function checkSreRateLimit(
   key: string,
   maxOperations: number,
-  windowMs: number
+  windowMs: number,
 ): Promise<SreRateLimitResult> {
   try {
     const redis = await getRedisConnection();
     if (!redis) {
-      sreRateLimitLogger.warn({ key }, "Redis unavailable for SRE rate limiting, allowing request");
-      return { allowed: true, remaining: maxOperations };
+      logSreRateLimiterUnavailable(
+        "warn",
+        { key, reason: "redis_unavailable" },
+        "Redis unavailable for SRE rate limiting, denying request",
+      );
+      return unavailableResult(windowMs);
     }
 
     const redisKey = `${RATE_LIMIT_KEY_PREFIX}:${key}`;
@@ -55,8 +91,12 @@ async function checkSreRateLimit(
     const results = await multi.exec();
 
     if (!results) {
-      sreRateLimitLogger.warn({ key }, "Redis transaction failed, allowing request");
-      return { allowed: true, remaining: maxOperations };
+      logSreRateLimiterUnavailable(
+        "warn",
+        { key, reason: "redis_transaction_failed" },
+        "Redis transaction failed for SRE rate limiting, denying request",
+      );
+      return unavailableResult(windowMs);
     }
 
     const currentCount = (results[1]?.[1] as number) ?? 0;
@@ -72,7 +112,7 @@ async function checkSreRateLimit(
 
       sreRateLimitLogger.debug(
         { key, count: currentCount, limit: maxOperations },
-        "SRE rate limit exceeded"
+        "SRE rate limit exceeded",
       );
 
       return { allowed: false, resetTime, remaining: 0 };
@@ -84,8 +124,12 @@ async function checkSreRateLimit(
 
     return { allowed: true, remaining: maxOperations - currentCount - 1 };
   } catch (error) {
-    sreRateLimitLogger.error({ error, key }, "SRE rate limiting error, allowing request");
-    return { allowed: true, remaining: maxOperations };
+    logSreRateLimiterUnavailable(
+      "error",
+      { key, reason: "redis_error", error },
+      "SRE rate limiting error, denying request",
+    );
+    return unavailableResult(windowMs);
   }
 }
 
@@ -96,12 +140,12 @@ async function checkSreRateLimit(
  */
 export async function checkSreConnectorValidationRateLimit(
   userId: string,
-  connectorId: string
+  connectorId: string,
 ): Promise<SreRateLimitResult> {
   return checkSreRateLimit(
     `connector-validate:${userId}:${connectorId}`,
     5,
-    60 * 1000
+    60 * 1000,
   );
 }
 
@@ -112,12 +156,12 @@ export async function checkSreConnectorValidationRateLimit(
  */
 export async function checkSreConnectorSearchRateLimit(
   userId: string,
-  connectorId: string
+  connectorId: string,
 ): Promise<SreRateLimitResult> {
   return checkSreRateLimit(
     `connector-search:${userId}:${connectorId}`,
     20,
-    60 * 1000
+    60 * 1000,
   );
 }
 
@@ -128,12 +172,12 @@ export async function checkSreConnectorSearchRateLimit(
  */
 export async function checkSreEvidenceBriefRateLimit(
   userId: string,
-  incidentId: string
+  incidentId: string,
 ): Promise<SreRateLimitResult> {
   return checkSreRateLimit(
     `evidence-brief:${userId}:${incidentId}`,
     3,
-    60 * 1000
+    60 * 1000,
   );
 }
 
@@ -143,13 +187,9 @@ export async function checkSreEvidenceBriefRateLimit(
  * Each message may trigger an LLM call and optional connector tool calls.
  */
 export async function checkSreChatRateLimit(
-  userId: string
+  userId: string,
 ): Promise<SreRateLimitResult> {
-  return checkSreRateLimit(
-    `chat:${userId}`,
-    30,
-    60 * 1000
-  );
+  return checkSreRateLimit(`chat:${userId}`, 30, 60 * 1000);
 }
 
 /**
@@ -159,12 +199,12 @@ export async function checkSreChatRateLimit(
  */
 export async function checkSreAttachmentUploadRateLimit(
   userId: string,
-  incidentId: string
+  incidentId: string,
 ): Promise<SreRateLimitResult> {
   const burst = await checkSreRateLimit(
     `attachment-upload:minute:${userId}:${incidentId}`,
     10,
-    60 * 1000
+    60 * 1000,
   );
 
   if (!burst.allowed) {
@@ -174,12 +214,15 @@ export async function checkSreAttachmentUploadRateLimit(
   const daily = await checkSreRateLimit(
     `attachment-upload:day:${userId}:${incidentId}`,
     100,
-    24 * 60 * 60 * 1000
+    24 * 60 * 60 * 1000,
   );
 
   if (!daily.allowed) {
     return daily;
   }
 
-  return { allowed: true, remaining: Math.min(burst.remaining, daily.remaining) };
+  return {
+    allowed: true,
+    remaining: Math.min(burst.remaining, daily.remaining),
+  };
 }
