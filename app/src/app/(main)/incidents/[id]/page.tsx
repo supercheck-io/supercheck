@@ -23,13 +23,17 @@ export default async function SreIncidentDetailPage({ params }: Params) {
   ];
 
   return (
-    <div>
-      <PageBreadcrumbs items={breadcrumbs} />
-      <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 m-4">
-        <CardContent className="p-6">
-          <SreIncidentDetailView detail={result.detail} />
-        </CardContent>
-      </Card>
+    <div className="flex h-[calc(100svh-3.5rem)] min-h-0 flex-col overflow-hidden">
+      <div className="sr-only">
+        <PageBreadcrumbs items={breadcrumbs} />
+      </div>
+      <div className="min-h-0 flex-1 overflow-hidden p-4 pb-6">
+        <Card className="h-full min-w-0 overflow-hidden shadow-sm transition-shadow duration-200 hover:shadow-md">
+          <CardContent className="h-full min-w-0 overflow-hidden p-6">
+            <SreIncidentDetailView detail={result.detail} />
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

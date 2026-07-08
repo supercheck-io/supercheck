@@ -36,7 +36,9 @@ interface DataTableProps<TData, TValue> {
   data: TData[];
   isLoading?: boolean;
   onRowClick?: (row: Row<TData>) => void;
-  renderToolbar?: (table: import("@tanstack/react-table").Table<TData>) => React.ReactNode;
+  renderToolbar?: (
+    table: import("@tanstack/react-table").Table<TData>,
+  ) => React.ReactNode;
   entityLabel?: string;
   meta?: {
     [key: string]: unknown;
@@ -49,13 +51,25 @@ interface ExtendedTableMeta<TData> extends TableMeta<TData> {
 }
 
 // Generic global filter function
-function genericGlobalFilterFn(row: Row<unknown>, _columnId: string, filterValue: string) {
+function genericGlobalFilterFn(
+  row: Row<unknown>,
+  _columnId: string,
+  filterValue: string,
+) {
   if (!filterValue) return true;
   const search = String(filterValue).toLowerCase();
   // We check the columns passed in meta.globalFilterColumns if available
-  const meta = row.getAllCells()[0]?.getContext().table.options.meta as ExtendedTableMeta<unknown>;
-  const columns = meta?.globalFilterColumns || ["id", "title", "name", "description"];
-  const availableColumnIds = new Set(row.getAllCells().map((cell) => cell.column.id));
+  const meta = row.getAllCells()[0]?.getContext().table.options
+    .meta as ExtendedTableMeta<unknown>;
+  const columns = meta?.globalFilterColumns || [
+    "id",
+    "title",
+    "name",
+    "description",
+  ];
+  const availableColumnIds = new Set(
+    row.getAllCells().map((cell) => cell.column.id),
+  );
   const original = row.original as Record<string, unknown>;
 
   return columns.some((id: string) => {
@@ -65,9 +79,12 @@ function genericGlobalFilterFn(row: Row<unknown>, _columnId: string, filterValue
     }
     if (Array.isArray(value)) {
       return value.some((item) => {
-        if (typeof item === "string") return item.toLowerCase().includes(search);
+        if (typeof item === "string")
+          return item.toLowerCase().includes(search);
         if (item && typeof item === "object" && "name" in item) {
-          return String((item as { name: unknown }).name).toLowerCase().includes(search);
+          return String((item as { name: unknown }).name)
+            .toLowerCase()
+            .includes(search);
         }
         return false;
       });
@@ -90,14 +107,16 @@ export function DataTable<TData, TValue>({
       updatedAt: false,
     });
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(
-    []
+    [],
   );
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = React.useState("");
   const [mounted, setMounted] = React.useState(false);
 
   // Track hover timers for debouncing
-  const hoverTimersRef = React.useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const hoverTimersRef = React.useRef<
+    Map<string, ReturnType<typeof setTimeout>>
+  >(new Map());
 
   // Set mounted to true after initial render
   React.useEffect(() => {
@@ -109,61 +128,68 @@ export function DataTable<TData, TValue>({
     return () => {
       setMounted(false);
       // Clear all hover timers on unmount
-      hoverTimers.forEach(t => clearTimeout(t));
+      hoverTimers.forEach((timer) => clearTimeout(timer));
       hoverTimers.clear();
     };
   }, []);
 
   // Safe state setters that only run when component is mounted
-  const safeSetRowSelection = React.useCallback((updaterOrValue: RowSelectionState | ((old: RowSelectionState) => RowSelectionState)) => {
-    if (mounted) {
-      if (typeof updaterOrValue === 'function') {
+  const safeSetRowSelection = React.useCallback(
+    (
+      updaterOrValue:
+        | RowSelectionState
+        | ((old: RowSelectionState) => RowSelectionState),
+    ) => {
+      if (mounted) {
         setRowSelection(updaterOrValue);
-      } else {
-        setRowSelection(updaterOrValue);
       }
-    }
-  }, [mounted]);
+    },
+    [mounted],
+  );
 
-  const safeSetSorting = React.useCallback((updaterOrValue: SortingState | ((old: SortingState) => SortingState)) => {
-    if (mounted) {
-      if (typeof updaterOrValue === 'function') {
-        setSorting(updaterOrValue);
-      } else {
+  const safeSetSorting = React.useCallback(
+    (updaterOrValue: SortingState | ((old: SortingState) => SortingState)) => {
+      if (mounted) {
         setSorting(updaterOrValue);
       }
-    }
-  }, [mounted]);
+    },
+    [mounted],
+  );
 
-  const safeSetColumnFilters = React.useCallback((updaterOrValue: ColumnFiltersState | ((old: ColumnFiltersState) => ColumnFiltersState)) => {
-    if (mounted) {
-      if (typeof updaterOrValue === 'function') {
+  const safeSetColumnFilters = React.useCallback(
+    (
+      updaterOrValue:
+        | ColumnFiltersState
+        | ((old: ColumnFiltersState) => ColumnFiltersState),
+    ) => {
+      if (mounted) {
         setColumnFilters(updaterOrValue);
-      } else {
-        setColumnFilters(updaterOrValue);
       }
-    }
-  }, [mounted]);
+    },
+    [mounted],
+  );
 
-  const safeSetColumnVisibility = React.useCallback((updaterOrValue: VisibilityState | ((old: VisibilityState) => VisibilityState)) => {
-    if (mounted) {
-      if (typeof updaterOrValue === 'function') {
-        setColumnVisibility(updaterOrValue);
-      } else {
+  const safeSetColumnVisibility = React.useCallback(
+    (
+      updaterOrValue:
+        | VisibilityState
+        | ((old: VisibilityState) => VisibilityState),
+    ) => {
+      if (mounted) {
         setColumnVisibility(updaterOrValue);
       }
-    }
-  }, [mounted]);
+    },
+    [mounted],
+  );
 
-  const safeSetGlobalFilter = React.useCallback((updaterOrValue: string | ((old: string) => string)) => {
-    if (mounted) {
-      if (typeof updaterOrValue === 'function') {
-        setGlobalFilter(updaterOrValue);
-      } else {
+  const safeSetGlobalFilter = React.useCallback(
+    (updaterOrValue: string | ((old: string) => string)) => {
+      if (mounted) {
         setGlobalFilter(updaterOrValue);
       }
-    }
-  }, [mounted]);
+    },
+    [mounted],
+  );
 
   const table = useReactTable({
     data,
@@ -173,19 +199,21 @@ export function DataTable<TData, TValue>({
         pageSize: 12,
       },
     },
-    state: mounted ? {
-      sorting,
-      columnVisibility,
-      rowSelection,
-      columnFilters,
-      globalFilter,
-    } : {
-      sorting: [],
-      columnVisibility: {},
-      rowSelection: {},
-      columnFilters: [],
-      globalFilter: "",
-    },
+    state: mounted
+      ? {
+          sorting,
+          columnVisibility,
+          rowSelection,
+          columnFilters,
+          globalFilter,
+        }
+      : {
+          sorting: [],
+          columnVisibility: {},
+          rowSelection: {},
+          columnFilters: [],
+          globalFilter: "",
+        },
     enableRowSelection: true,
     onRowSelectionChange: safeSetRowSelection,
     onSortingChange: safeSetSorting,
@@ -200,7 +228,12 @@ export function DataTable<TData, TValue>({
     getFacetedUniqueValues: getFacetedUniqueValues(),
     globalFilterFn: genericGlobalFilterFn,
     meta: {
-      globalFilterColumns: meta?.globalFilterColumns || ["id", "title", "name", "description"],
+      globalFilterColumns: meta?.globalFilterColumns || [
+        "id",
+        "title",
+        "name",
+        "description",
+      ],
       ...meta,
     } as ExtendedTableMeta<TData>,
   });
@@ -270,9 +303,9 @@ export function DataTable<TData, TValue>({
                       {header.isPlaceholder
                         ? null
                         : flexRender(
-                          header.column.columnDef.header,
-                          header.getContext()
-                        )}
+                            header.column.columnDef.header,
+                            header.getContext(),
+                          )}
                     </TableHead>
                   );
                 })}
@@ -303,7 +336,9 @@ export function DataTable<TData, TValue>({
                   <TableRow
                     key={row.id}
                     data-state={row.getIsSelected() && "selected"}
-                    className={cn(onRowClick && "cursor-pointer hover:bg-muted/50")}
+                    className={cn(
+                      onRowClick && "cursor-pointer hover:bg-muted/50",
+                    )}
                     tabIndex={onRowClick ? 0 : undefined}
                     onClick={(event) => handleRowClick(event, row)}
                     onKeyDown={(event) => handleRowKeyDown(event, row)}
@@ -337,7 +372,7 @@ export function DataTable<TData, TValue>({
                       <TableCell key={cell.id} className="py-2.5">
                         {flexRender(
                           cell.column.columnDef.cell,
-                          cell.getContext()
+                          cell.getContext(),
                         )}
                       </TableCell>
                     ))}

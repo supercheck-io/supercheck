@@ -139,9 +139,12 @@ function buildChatPrompt(input: {
     [
       "Respond with read-only investigation guidance. If evidence is missing, state what should be gathered next.",
       "Use concise sections, bullets, markdown tables for comparisons, and fenced code blocks for commands or queries.",
+      "Supported slash commands are read-only aliases: /health for system health summaries, /investigate for incident/service triage, /evidence for evidence review, and /verify for verification planning.",
+      "Treat @service, @incident, and @recent-deploy mentions as user-provided context labels. Do not claim you resolved them unless available evidence confirms the entity.",
       "When a small numeric summary would be clearer as a chart, include a fenced `chart` JSON block with this exact shape:",
-      '{"type":"bar","title":"Short title","xKey":"label","series":[{"key":"value","label":"Value"}],"data":[{"label":"api","value":12}]}',
-      "Use only real values already present in evidence or the user request; do not fabricate chart data.",
+      '{"type":"line","title":"Short title","description":"Optional one-sentence context","sources":[{"label":"Prometheus","type":"prometheus","evidenceIds":["ev-123"],"query":"rate(http_requests_total[5m])"}],"xKey":"label","series":[{"key":"value","label":"Value"}],"data":[{"label":"api","value":12}]}',
+      "Supported chart types are bar, line, and area. Use only real values already present in evidence or the user request; do not fabricate chart data.",
+      "Include chart sources when values come from evidence, connectors, or user-provided data. Source labels must be non-secret names such as Prometheus, Grafana, Kubernetes, or Generated preview data.",
     ].join("\n"),
   ]
     .filter(Boolean)

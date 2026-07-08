@@ -526,7 +526,7 @@ export async function getSreEvidenceGraph(): Promise<
         title: investigation.rootCauseHypothesis ?? `${investigation.agentType} investigation`,
         subtitle: investigation.modelId,
         status: investigation.status,
-        href: investigation.incidentId ? `/incidents/${investigation.incidentId}` : "/copilot/investigations",
+        href: investigation.incidentId ? `/incidents/${investigation.incidentId}` : "/incidents",
         createdAt: investigation.createdAt,
       });
 

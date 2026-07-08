@@ -20,16 +20,28 @@ describe("SreInvestigationPanel", () => {
       <SreInvestigationPanel
         incidentId="018f0000-0000-7000-8000-000000000001"
         hasPrimaryService={true}
-        evidenceReferences={[{ id: "ev-monitor-timeout", title: "Monitor timeout", evidenceType: "event" }]}
-      />
+        evidenceReferences={[
+          {
+            id: "ev-monitor-timeout",
+            title: "Monitor timeout",
+            evidenceType: "event",
+          },
+        ]}
+      />,
     );
 
     expect(screen.getByText("Investigation")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /run investigation/i })).toBeInTheDocument();
-    expect(screen.getByLabelText("Use live connector tools")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /run investigation/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Use live connector tools"),
+    ).toBeInTheDocument();
     expect(screen.getByText("Stored evidence")).toBeInTheDocument();
     expect(screen.queryByText("Conversation")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Optional context attachment")).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Optional context attachment"),
+    ).not.toBeInTheDocument();
   });
 
   it("runs the investigation with the selected connector setting", async () => {
@@ -37,8 +49,14 @@ describe("SreInvestigationPanel", () => {
       <SreInvestigationPanel
         incidentId="018f0000-0000-7000-8000-000000000001"
         hasPrimaryService={true}
-        evidenceReferences={[{ id: "ev-monitor-timeout", title: "Monitor timeout", evidenceType: "event" }]}
-      />
+        evidenceReferences={[
+          {
+            id: "ev-monitor-timeout",
+            title: "Monitor timeout",
+            evidenceType: "event",
+          },
+        ]}
+      />,
     );
 
     fireEvent.click(screen.getByLabelText("Use live connector tools"));
@@ -53,7 +71,7 @@ describe("SreInvestigationPanel", () => {
             incidentId: "018f0000-0000-7000-8000-000000000001",
             useLiveConnectors: true,
           }),
-        })
+        }),
       );
     });
   });

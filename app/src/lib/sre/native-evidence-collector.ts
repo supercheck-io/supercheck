@@ -2,6 +2,7 @@ import { createHash } from "crypto";
 import { and, desc, eq, gte, inArray, lte } from "drizzle-orm";
 
 import {
+  alertHistory,
   jobs,
   k6PerformanceRuns,
   monitorResults,
@@ -9,6 +10,7 @@ import {
   runs,
   sreAlertEvents,
   sreIncidentAlerts,
+  sreIncidentTimelineEvents,
   sreIncidents,
 } from "@/db/schema";
 import { db } from "@/utils/db";
@@ -103,6 +105,29 @@ function hasNonEmptyText(value: string | null | undefined) {
   return typeof value === "string" && value.trim().length > 0;
 }
 
+function deriveNativeSeverity(type: string, message: string) {
+  const normalizedType = type.toLowerCase();
+  const normalizedMessage = message.toLowerCase();
+
+  if (
+    normalizedMessage.includes("sev1") ||
+    normalizedMessage.includes("critical") ||
+    normalizedType.includes("timeout")
+  ) {
+    return "sev1";
+  }
+
+  if (normalizedType.includes("failure") || normalizedType.includes("failed")) {
+    return "sev2";
+  }
+
+  if (normalizedType.includes("ssl") || normalizedMessage.includes("expir")) {
+    return "sev3";
+  }
+
+  return "sev4";
+}
+
 function resolveWindow(anchor: Date | null, fallback: Date): NativeEvidenceWindow {
   const untilAnchor = anchor ?? fallback ?? new Date();
   const until = new Date(untilAnchor.getTime() + DEFAULT_FORWARD_BUFFER_MINUTES * 60_000);
@@ -144,7 +169,7 @@ export async function collectNativeEvidence(input: {
     return null;
   }
 
-  const linkedAlerts = await db
+  let linkedAlerts = await db
     .select({
       id: sreAlertEvents.id,
       fingerprintHash: sreAlertEvents.fingerprintHash,
@@ -162,6 +187,73 @@ export async function collectNativeEvidence(input: {
     .innerJoin(sreAlertEvents, eq(sreIncidentAlerts.alertEventId, sreAlertEvents.id))
     .where(eq(sreIncidentAlerts.incidentId, input.incidentId))
     .orderBy(desc(sreAlertEvents.firedAt));
+
+  if (linkedAlerts.length === 0) {
+    const timelineRows = await db
+      .select({
+        eventData: sreIncidentTimelineEvents.eventData,
+      })
+      .from(sreIncidentTimelineEvents)
+      .where(eq(sreIncidentTimelineEvents.incidentId, input.incidentId))
+      .orderBy(desc(sreIncidentTimelineEvents.createdAt));
+
+    const alertHistoryIds = Array.from(
+      new Set(
+        timelineRows.flatMap((row) => {
+          const alertHistoryId = row.eventData?.alertHistoryId;
+          return typeof alertHistoryId === "string" ? [alertHistoryId] : [];
+        }),
+      ),
+    );
+
+    if (alertHistoryIds.length > 0) {
+      const fallbackAlerts = await db
+        .select({
+          id: alertHistory.id,
+          target: alertHistory.target,
+          targetType: alertHistory.targetType,
+          monitorId: alertHistory.monitorId,
+          jobId: alertHistory.jobId,
+          type: alertHistory.type,
+          message: alertHistory.message,
+          status: alertHistory.status,
+          sentAt: alertHistory.sentAt,
+          monitorName: monitors.name,
+          jobName: jobs.name,
+        })
+        .from(alertHistory)
+        .leftJoin(monitors, eq(alertHistory.monitorId, monitors.id))
+        .leftJoin(jobs, eq(alertHistory.jobId, jobs.id))
+        .where(inArray(alertHistory.id, alertHistoryIds));
+
+      linkedAlerts = fallbackAlerts.map((alert) => {
+        const sourceType = alert.monitorId ? ("monitor" as const) : ("job" as const);
+        const sourceId = alert.monitorId ?? alert.jobId;
+        const title = `${alert.monitorName ?? alert.jobName ?? alert.target}: ${alert.type.replace(/_/g, " ")}`;
+        const firedAt = alert.sentAt ?? incident.createdAt;
+        const dedupKey = [
+          input.projectId,
+          sourceType,
+          sourceId ?? alert.target,
+          alert.type,
+        ].join(":");
+
+        return {
+          id: alert.id,
+          fingerprintHash: hash(`${input.organizationId}:${dedupKey}`),
+          dedupKey,
+          severity: deriveNativeSeverity(alert.type, alert.message),
+          status: alert.status === "sent" ? "firing" : "resolved",
+          sourceType,
+          sourceId,
+          title,
+          description: alert.message,
+          firedAt,
+          resolvedAt: null,
+        };
+      });
+    }
+  }
 
   const primaryAlert = linkedAlerts[0];
   const window = resolveWindow(primaryAlert?.firedAt ?? null, incident.createdAt);

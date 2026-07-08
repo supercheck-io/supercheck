@@ -2,7 +2,7 @@
 
 import { createHash } from "crypto";
 import { revalidatePath } from "next/cache";
-import { and, desc, eq, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import {
@@ -42,6 +42,12 @@ const archiveIncidentChatSchema = z.object({
 type SreSeverity = "sev1" | "sev2" | "sev3" | "sev4";
 type SreAlertStatus = "firing" | "resolved";
 type SreAlertSourceType = "monitor" | "job";
+type SreInvestigationStatus =
+  | "running"
+  | "completed"
+  | "failed"
+  | "aborted"
+  | "timed_out";
 
 export type CreateSreIncidentFromAlertResult =
   | {
@@ -84,6 +90,11 @@ export type SreIncidentListItem = {
     | "resolved";
   primaryServiceName: string | null;
   alertCount: number;
+  evidenceCount: number;
+  investigationCount: number;
+  latestInvestigationStatus: SreInvestigationStatus | null;
+  latestInvestigationCompletedAt: Date | null;
+  latestInvestigationCreatedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
   resolvedAt: Date | null;
@@ -284,7 +295,107 @@ export async function getSreIncidents(): Promise<
       )
       .orderBy(desc(sreIncidents.updatedAt));
 
-    return { success: true, incidents: rows };
+    const incidentIds = rows.map((row) => row.id);
+
+    if (incidentIds.length === 0) {
+      return { success: true, incidents: [] };
+    }
+
+    const [evidenceCounts, investigationCounts, investigationRows] = await Promise.all([
+      db
+        .select({
+          incidentId: sreEvidenceItems.incidentId,
+          count: sql<number>`count(${sreEvidenceItems.id})::int`,
+        })
+        .from(sreEvidenceItems)
+        .where(
+          and(
+            eq(sreEvidenceItems.organizationId, organizationId),
+            eq(sreEvidenceItems.projectId, project.id),
+            inArray(sreEvidenceItems.incidentId, incidentIds)
+          )
+        )
+        .groupBy(sreEvidenceItems.incidentId),
+      db
+        .select({
+          incidentId: sreInvestigationRuns.incidentId,
+          count: sql<number>`count(${sreInvestigationRuns.id})::int`,
+        })
+        .from(sreInvestigationRuns)
+        .where(
+          and(
+            eq(sreInvestigationRuns.organizationId, organizationId),
+            eq(sreInvestigationRuns.projectId, project.id),
+            inArray(sreInvestigationRuns.incidentId, incidentIds)
+          )
+        )
+        .groupBy(sreInvestigationRuns.incidentId),
+      db
+        .select({
+          incidentId: sreInvestigationRuns.incidentId,
+          status: sreInvestigationRuns.status,
+          completedAt: sreInvestigationRuns.completedAt,
+          createdAt: sreInvestigationRuns.createdAt,
+        })
+        .from(sreInvestigationRuns)
+        .where(
+          and(
+            eq(sreInvestigationRuns.organizationId, organizationId),
+            eq(sreInvestigationRuns.projectId, project.id),
+            inArray(sreInvestigationRuns.incidentId, incidentIds)
+          )
+        )
+        .orderBy(desc(sreInvestigationRuns.createdAt)),
+    ]);
+
+    const evidenceCountByIncidentId = new Map(
+      evidenceCounts.flatMap((row) =>
+        row.incidentId ? [[row.incidentId, row.count] as const] : []
+      )
+    );
+    const investigationCountByIncidentId = new Map(
+      investigationCounts.flatMap((row) =>
+        row.incidentId ? [[row.incidentId, row.count] as const] : []
+      )
+    );
+    const latestInvestigationByIncidentId = new Map<
+      string,
+      {
+        status: SreInvestigationStatus;
+        completedAt: Date | null;
+        createdAt: Date;
+      }
+    >();
+
+    for (const investigation of investigationRows) {
+      if (
+        investigation.incidentId &&
+        !latestInvestigationByIncidentId.has(investigation.incidentId)
+      ) {
+        latestInvestigationByIncidentId.set(investigation.incidentId, {
+          status: investigation.status,
+          completedAt: investigation.completedAt,
+          createdAt: investigation.createdAt,
+        });
+      }
+    }
+
+    return {
+      success: true,
+      incidents: rows.map((row) => {
+        const latestInvestigation = latestInvestigationByIncidentId.get(row.id);
+
+        return {
+          ...row,
+          evidenceCount: evidenceCountByIncidentId.get(row.id) ?? 0,
+          investigationCount: investigationCountByIncidentId.get(row.id) ?? 0,
+          latestInvestigationStatus: latestInvestigation?.status ?? null,
+          latestInvestigationCompletedAt:
+            latestInvestigation?.completedAt ?? null,
+          latestInvestigationCreatedAt: latestInvestigation?.createdAt ?? null,
+        };
+      }),
+    };
   } catch (error) {
     console.error("Error fetching SRE incidents:", error);
     return { success: false, error: "Failed to fetch SRE incidents", incidents: [] };
@@ -373,27 +484,40 @@ export async function getSreIncidentDetails(
       .orderBy(desc(sreInvestigationRuns.createdAt))
       .limit(1);
 
-    const evidence = await db
-      .select({
-        id: sreEvidenceItems.id,
-        title: sreEvidenceItems.title,
-        summary: sreEvidenceItems.summary,
-        sourceUri: sreEvidenceItems.sourceUri,
-        evidenceType: sreEvidenceItems.evidenceType,
-        severity: sreEvidenceItems.severity,
-        confidence: sreEvidenceItems.confidence,
-        rawContentExcerpt: sreEvidenceItems.rawContentExcerpt,
-        citationQuery: sreEvidenceItems.citationQuery,
-        observedAt: sreEvidenceItems.observedAt,
-        createdAt: sreEvidenceItems.createdAt,
-      })
-      .from(sreEvidenceItems)
-      .where(and(
-        eq(sreEvidenceItems.incidentId, incidentId),
-        eq(sreEvidenceItems.organizationId, organizationId),
-        eq(sreEvidenceItems.projectId, project.id)
-      ))
-      .orderBy(desc(sreEvidenceItems.observedAt), desc(sreEvidenceItems.createdAt));
+    const [evidence, investigationCountRow] = await Promise.all([
+      db
+        .select({
+          id: sreEvidenceItems.id,
+          title: sreEvidenceItems.title,
+          summary: sreEvidenceItems.summary,
+          sourceUri: sreEvidenceItems.sourceUri,
+          evidenceType: sreEvidenceItems.evidenceType,
+          severity: sreEvidenceItems.severity,
+          confidence: sreEvidenceItems.confidence,
+          rawContentExcerpt: sreEvidenceItems.rawContentExcerpt,
+          citationQuery: sreEvidenceItems.citationQuery,
+          observedAt: sreEvidenceItems.observedAt,
+          createdAt: sreEvidenceItems.createdAt,
+        })
+        .from(sreEvidenceItems)
+        .where(and(
+          eq(sreEvidenceItems.incidentId, incidentId),
+          eq(sreEvidenceItems.organizationId, organizationId),
+          eq(sreEvidenceItems.projectId, project.id)
+        ))
+        .orderBy(desc(sreEvidenceItems.observedAt), desc(sreEvidenceItems.createdAt)),
+      db
+        .select({
+          count: sql<number>`count(${sreInvestigationRuns.id})::int`,
+        })
+        .from(sreInvestigationRuns)
+        .where(and(
+          eq(sreInvestigationRuns.incidentId, incidentId),
+          eq(sreInvestigationRuns.organizationId, organizationId),
+          eq(sreInvestigationRuns.projectId, project.id)
+        ))
+        .limit(1),
+    ]);
 
     const recentConversations = await listSreConversations({
       organizationId,
@@ -415,7 +539,23 @@ export async function getSreIncidentDetails(
     );
     const chatHistory = chatHistories[0] ?? null;
 
-    return { success: true, detail: { incident, latestBrief: latestBrief ?? null, evidence, chatHistory, chatHistories } };
+    return {
+      success: true,
+      detail: {
+        incident: {
+          ...incident,
+          evidenceCount: evidence.length,
+          investigationCount: investigationCountRow[0]?.count ?? 0,
+          latestInvestigationStatus: latestBrief?.status ?? null,
+          latestInvestigationCompletedAt: latestBrief?.completedAt ?? null,
+          latestInvestigationCreatedAt: latestBrief?.createdAt ?? null,
+        },
+        latestBrief: latestBrief ?? null,
+        evidence,
+        chatHistory,
+        chatHistories,
+      },
+    };
   } catch (error) {
     console.error("Error fetching SRE incident details:", error);
     return { success: false, error: "Failed to fetch SRE incident", detail: null };

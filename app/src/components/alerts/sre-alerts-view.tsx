@@ -2,7 +2,6 @@
 
 import { useDeferredValue, useMemo, useState, useTransition } from "react";
 import {
-  AlertTriangle,
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
@@ -11,6 +10,8 @@ import {
   ChevronsLeft,
   ChevronsRight,
   Clock,
+  Info,
+  Plus,
   Search,
   Siren,
 } from "lucide-react";
@@ -39,6 +40,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 type SreAlertSeverity = "sev1" | "sev2" | "sev3" | "sev4";
@@ -61,7 +68,14 @@ type SreAlertsViewProps = {
   isLoading: boolean;
 };
 
-type AlertSortKey = "targetName" | "severity" | "source" | "timestamp";
+type AlertSortKey =
+  | "targetName"
+  | "serviceHint"
+  | "type"
+  | "duplicateCount"
+  | "severity"
+  | "source"
+  | "timestamp";
 type SortDirection = "asc" | "desc";
 
 const PAGE_SIZE_OPTIONS = [12, 25, 50, 100];
@@ -311,14 +325,34 @@ export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="-mt-2 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <CardTitle className="text-2xl font-semibold">Alert signals</CardTitle>
+    <div className="w-full max-w-full space-y-4 overflow-x-hidden p-2">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <CardTitle className="text-2xl font-semibold">Alert signals</CardTitle>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-muted-foreground"
+                    aria-label="Alert signal scope"
+                  >
+                    <Info className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs">
+                  Delivery failures and recovery/success events stay in History.
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
           <CardDescription>Failure alerts that can be promoted to incidents.</CardDescription>
         </div>
-        <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto">
-          <div className="relative w-full sm:w-[320px] lg:w-[400px]">
+        <div className="flex w-full flex-wrap items-center justify-start gap-2 xl:w-auto xl:justify-end">
+          <div className="relative w-full sm:w-[300px] xl:w-[360px]">
             <Search className="absolute left-2 top-2 h-4 w-4 text-muted-foreground" />
             <Input
               value={search}
@@ -370,41 +404,55 @@ export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-t-lg border">
+      <div className="w-full max-w-full overflow-hidden rounded-t-lg border">
         <Table>
           <TableHeader>
             <TableRow>
-              <SortableHead label="Signal" sortKey="targetName" activeKey={sortKey} direction={sortDirection} onSort={handleSort} />
+              <SortableHead label="Signal" sortKey="targetName" activeKey={sortKey} direction={sortDirection} onSort={handleSort} className="w-[260px]" />
+              <SortableHead label="Type" sortKey="type" activeKey={sortKey} direction={sortDirection} onSort={handleSort} className="w-44" />
+              <SortableHead label="Service" sortKey="serviceHint" activeKey={sortKey} direction={sortDirection} onSort={handleSort} className="w-48" />
+              <TableHead className="w-[360px]">Message</TableHead>
+              <SortableHead label="Repeats" sortKey="duplicateCount" activeKey={sortKey} direction={sortDirection} onSort={handleSort} className="w-32" />
               <SortableHead label="Severity" sortKey="severity" activeKey={sortKey} direction={sortDirection} onSort={handleSort} className="w-32" />
               <SortableHead label="Source" sortKey="source" activeKey={sortKey} direction={sortDirection} onSort={handleSort} className="w-40" />
               <SortableHead label="Last seen" sortKey="timestamp" activeKey={sortKey} direction={sortDirection} onSort={handleSort} className="w-44" />
-              <TableHead className="w-36" />
+              <TableHead className="w-44" />
             </TableRow>
           </TableHeader>
           <TableBody>
             {pagedAlerts.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
+                <TableCell colSpan={9} className="h-24 text-center text-muted-foreground">
                   No signals match the current filters.
                 </TableCell>
               </TableRow>
             ) : (
               pagedAlerts.map((alert) => (
-                <TableRow key={alert.id}>
-                  <TableCell className="max-w-[560px] whitespace-normal py-2.5">
-                    <div className="space-y-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="line-clamp-1 font-medium">{alert.targetName}</span>
-                        <Badge variant="secondary">{alert.serviceHint}</Badge>
-                        {alert.duplicateCount > 1 && (
-                          <Badge variant="outline" className="text-[11px]">
-                            {alert.duplicateCount} repeats
-                          </Badge>
-                        )}
-                      </div>
-                      <p className="text-xs text-muted-foreground">{alert.type}</p>
-                      <p className="line-clamp-2 max-w-2xl text-xs text-muted-foreground">{alert.message}</p>
-                    </div>
+                <TableRow key={alert.id} className="h-[72px]">
+                  <TableCell className="max-w-[260px] py-2.5">
+                    <span className="block truncate font-medium" title={alert.targetName}>
+                      {alert.targetName}
+                    </span>
+                  </TableCell>
+                  <TableCell className="max-w-[180px] truncate py-2.5" title={alert.type}>
+                    {alert.type}
+                  </TableCell>
+                  <TableCell className="max-w-[200px] truncate py-2.5" title={alert.serviceHint}>
+                    {alert.serviceHint}
+                  </TableCell>
+                  <TableCell className="max-w-[360px] py-2.5">
+                    <span className="block truncate text-muted-foreground" title={alert.message}>
+                      {alert.message}
+                    </span>
+                  </TableCell>
+                  <TableCell className="py-2.5">
+                    {alert.duplicateCount > 1 ? (
+                      <Badge variant="outline" className="text-[11px]">
+                        {alert.duplicateCount}
+                      </Badge>
+                    ) : (
+                      <span className="text-muted-foreground">1</span>
+                    )}
                   </TableCell>
                   <TableCell className="py-2.5">
                     <Badge variant="outline" className={cn("uppercase", severityClasses[alert.severity])}>
@@ -427,7 +475,9 @@ export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
                         size="sm"
                         onClick={() => handleCreateIncident(alert.id)}
                         disabled={isPending && pendingAlertId === alert.id}
+                        className="h-8"
                       >
+                        <Plus className="h-4 w-4" />
                         {isPending && pendingAlertId === alert.id ? "Creating..." : "Create incident"}
                       </Button>
                     )}
@@ -488,13 +538,6 @@ export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
           </div>
         </div>
       </div>
-
-      {alerts.length > derivedAlerts.length && (
-        <p className="text-xs text-muted-foreground">
-          <AlertTriangle className="mr-1 inline h-3.5 w-3.5" />
-          Notification delivery failures and recovery/success events are available in History, not Signals.
-        </p>
-      )}
     </div>
   );
 }

@@ -32,7 +32,6 @@ import {
   Network,
   Siren,
   Bot,
-  FileSearch,
 } from "lucide-react";
 import { PlaywrightLogo } from "@/components/logo/playwright-logo";
 import { K6Logo } from "@/components/logo/k6-logo";
@@ -93,11 +92,6 @@ const data = {
       title: "Evidence Map",
       url: "/copilot/evidence-graph",
       icon: Network,
-    },
-    {
-      title: "Investigations",
-      url: "/copilot/investigations",
-      icon: FileSearch,
     },
   ],
 
@@ -246,7 +240,7 @@ const data = {
       title: "Docs",
       url: "https://supercheck.io/docs/app/welcome",
       icon: BookOpenText,
-      badge: "v1.3.6-aisre-rc5",
+      badge: "v1.3.6-aisre-rc6",
     },
   ],
   documents: [

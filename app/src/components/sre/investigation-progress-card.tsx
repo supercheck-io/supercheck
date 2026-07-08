@@ -1,7 +1,19 @@
-import { Activity, AlertTriangle, CheckCircle2, Clock, Wrench } from "lucide-react";
+import {
+  Activity,
+  AlertTriangle,
+  CheckCircle2,
+  Clock,
+  Wrench,
+} from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 
 export type SreInvestigationToolActivity = {
   id: string;
@@ -11,8 +23,18 @@ export type SreInvestigationToolActivity = {
     itemCount: number;
     message?: string | null;
     privateAgentJobId?: string | null;
-    evidence?: Array<{ id: string; title: string; evidenceType: string; sourceType: string }>;
-    connectors?: Array<{ id: string; name: string; type: string; executionMode: string }>;
+    evidence?: Array<{
+      id: string;
+      title: string;
+      evidenceType: string;
+      sourceType: string;
+    }>;
+    connectors?: Array<{
+      id: string;
+      name: string;
+      type: string;
+      executionMode: string;
+    }>;
   };
 };
 
@@ -27,11 +49,15 @@ export type SreInvestigationProgressEvent = {
 };
 
 function asRecord(value: unknown): Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
 }
 
 function truncate(value: string, maxLength = 180) {
-  return value.length > maxLength ? `${value.slice(0, maxLength - 3)}...` : value;
+  return value.length > maxLength
+    ? `${value.slice(0, maxLength - 3)}...`
+    : value;
 }
 
 function getToolCallCount(eventPayload: Record<string, unknown>) {
@@ -53,20 +79,27 @@ function safeToolName(value: unknown) {
   return trimmed;
 }
 
-function getToolActivities(eventPayload: Record<string, unknown>): SreInvestigationToolActivity[] {
+function getToolActivities(
+  eventPayload: Record<string, unknown>,
+): SreInvestigationToolActivity[] {
   const event = asRecord(eventPayload.event);
   const toolCalls = Array.isArray(event.toolCalls) ? event.toolCalls : [];
   const toolResults = Array.isArray(event.toolResults) ? event.toolResults : [];
   const resultsByToolCallId = new Map(
     toolResults.flatMap((toolResult) => {
       const record = asRecord(toolResult);
-      return typeof record.toolCallId === "string" ? [[record.toolCallId, record.summary]] : [];
+      return typeof record.toolCallId === "string"
+        ? [[record.toolCallId, record.summary]]
+        : [];
     }),
   );
 
   return toolCalls.slice(0, 10).map((toolCall, index) => {
     const record = asRecord(toolCall);
-    const toolCallId = typeof record.toolCallId === "string" ? record.toolCallId : `tool-call-${index}`;
+    const toolCallId =
+      typeof record.toolCallId === "string"
+        ? record.toolCallId
+        : `tool-call-${index}`;
     const toolName = safeToolName(record.toolName ?? record.name);
 
     return {
@@ -78,7 +111,9 @@ function getToolActivities(eventPayload: Record<string, unknown>): SreInvestigat
   });
 }
 
-function normalizeToolResultSummary(value: unknown): SreInvestigationToolActivity["summary"] {
+function normalizeToolResultSummary(
+  value: unknown,
+): SreInvestigationToolActivity["summary"] {
   const record = asRecord(value);
   if (Object.keys(record).length === 0) {
     return undefined;
@@ -89,7 +124,10 @@ function normalizeToolResultSummary(value: unknown): SreInvestigationToolActivit
         const evidenceItem = asRecord(item);
         return {
           id: safeToolName(evidenceItem.id),
-          title: typeof evidenceItem.title === "string" ? truncate(evidenceItem.title, 100) : "Untitled evidence",
+          title:
+            typeof evidenceItem.title === "string"
+              ? truncate(evidenceItem.title, 100)
+              : "Untitled evidence",
           evidenceType: safeToolName(evidenceItem.evidenceType),
           sourceType: safeToolName(evidenceItem.sourceType),
         };
@@ -100,7 +138,10 @@ function normalizeToolResultSummary(value: unknown): SreInvestigationToolActivit
         const connector = asRecord(item);
         return {
           id: safeToolName(connector.id),
-          name: typeof connector.name === "string" ? truncate(connector.name, 100) : "Connector",
+          name:
+            typeof connector.name === "string"
+              ? truncate(connector.name, 100)
+              : "Connector",
           type: safeToolName(connector.type),
           executionMode: safeToolName(connector.executionMode),
         };
@@ -109,28 +150,39 @@ function normalizeToolResultSummary(value: unknown): SreInvestigationToolActivit
 
   return {
     itemCount: typeof record.itemCount === "number" ? record.itemCount : 0,
-    message: typeof record.message === "string" ? truncate(record.message, 140) : null,
-    privateAgentJobId: typeof record.privateAgentJobId === "string" ? safeToolName(record.privateAgentJobId) : null,
+    message:
+      typeof record.message === "string" ? truncate(record.message, 140) : null,
+    privateAgentJobId:
+      typeof record.privateAgentJobId === "string"
+        ? safeToolName(record.privateAgentJobId)
+        : null,
     evidence,
     connectors,
   };
 }
 
-export function summarizeSreAgentProgressEvent(eventName: string, payload: unknown): Omit<SreInvestigationProgressEvent, "id"> | null {
+export function summarizeSreAgentProgressEvent(
+  eventName: string,
+  payload: unknown,
+): Omit<SreInvestigationProgressEvent, "id"> | null {
   const data = asRecord(payload);
 
   if (eventName === "agent.step") {
-    const stepIndex = typeof data.stepIndex === "number" ? data.stepIndex : null;
-    const elapsedMs = typeof data.elapsedMs === "number" ? data.elapsedMs : undefined;
-    const modelId = typeof data.modelId === "string" ? data.modelId : null;
+    const stepIndex =
+      typeof data.stepIndex === "number" ? data.stepIndex : null;
+    const elapsedMs =
+      typeof data.elapsedMs === "number" ? data.elapsedMs : undefined;
     const toolCallCount = getToolCallCount(data);
     const tools = getToolActivities(data);
-    const toolSummary = toolCallCount > 0 ? `${toolCallCount} read-only tool call${toolCallCount === 1 ? "" : "s"}` : "model reasoning step";
+    const toolSummary =
+      toolCallCount > 0
+        ? `${toolCallCount} read-only tool call${toolCallCount === 1 ? "" : "s"}`
+        : "model reasoning step";
 
     return {
       kind: "step",
       title: stepIndex ? `Agent step ${stepIndex}` : "Agent step",
-      description: truncate([toolSummary, modelId ? `model: ${modelId}` : null].filter(Boolean).join(" · ")),
+      description: truncate(toolSummary),
       status: "running",
       elapsedMs,
       tools,
@@ -138,7 +190,8 @@ export function summarizeSreAgentProgressEvent(eventName: string, payload: unkno
   }
 
   if (eventName === "agent.fallback") {
-    const reason = typeof data.reason === "string" ? data.reason : "AI provider unavailable";
+    const reason =
+      typeof data.reason === "string" ? data.reason : "AI provider unavailable";
     return {
       kind: "fallback",
       title: "Fallback response used",
@@ -171,7 +224,11 @@ function formatElapsed(value?: number) {
   return `${(value / 1000).toFixed(1)}s`;
 }
 
-function StatusIcon({ status }: { status: SreInvestigationProgressEvent["status"] }) {
+function StatusIcon({
+  status,
+}: {
+  status: SreInvestigationProgressEvent["status"];
+}) {
   if (status === "success") {
     return <CheckCircle2 className="h-4 w-4 text-emerald-600" />;
   }
@@ -187,7 +244,9 @@ type SreInvestigationProgressCardProps = {
   events: SreInvestigationProgressEvent[];
 };
 
-export function SreInvestigationProgressCard({ events }: SreInvestigationProgressCardProps) {
+export function SreInvestigationProgressCard({
+  events,
+}: SreInvestigationProgressCardProps) {
   if (events.length === 0) {
     return null;
   }
@@ -199,16 +258,23 @@ export function SreInvestigationProgressCard({ events }: SreInvestigationProgres
           <Activity className="h-4 w-4" />
           Investigation progress
         </CardTitle>
-        <CardDescription>Read-only agent steps streamed by the current conversation.</CardDescription>
+        <CardDescription>
+          Read-only agent steps streamed by the current conversation.
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-2">
         {events.slice(-8).map((event) => (
-          <div key={event.id} className="flex items-start gap-3 rounded-md border bg-muted/10 p-3">
+          <div
+            key={event.id}
+            className="flex items-start gap-3 rounded-md border bg-muted/10 p-3"
+          >
             <StatusIcon status={event.status} />
             <div className="min-w-0 flex-1 space-y-1">
               <div className="flex flex-wrap items-center gap-2">
                 <p className="text-sm font-medium">{event.title}</p>
-                <Badge variant="outline" className="capitalize">{event.kind}</Badge>
+                <Badge variant="outline" className="capitalize">
+                  {event.kind}
+                </Badge>
                 {formatElapsed(event.elapsedMs) && (
                   <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                     <Clock className="h-3 w-3" />
@@ -216,7 +282,11 @@ export function SreInvestigationProgressCard({ events }: SreInvestigationProgres
                   </span>
                 )}
               </div>
-              {event.description && <p className="text-xs text-muted-foreground">{event.description}</p>}
+              {event.description && (
+                <p className="text-xs text-muted-foreground">
+                  {event.description}
+                </p>
+              )}
               {event.tools && event.tools.length > 0 && (
                 <details className="group rounded-md border bg-background/60 px-3 py-2 text-xs">
                   <summary className="flex cursor-pointer list-none items-center gap-2 font-medium text-muted-foreground">
@@ -225,20 +295,48 @@ export function SreInvestigationProgressCard({ events }: SreInvestigationProgres
                   </summary>
                   <div className="mt-2 space-y-2">
                     {event.tools.map((tool) => (
-                      <div key={tool.id} className="flex flex-wrap items-center gap-2 rounded border bg-muted/20 px-2 py-1.5">
-                        <span className="font-mono text-[11px] text-foreground">{tool.name}</span>
-                        <Badge variant="outline" className="capitalize">{tool.status}</Badge>
-                        {tool.summary && <span className="text-muted-foreground">{tool.summary.itemCount} safe result item{tool.summary.itemCount === 1 ? "" : "s"}</span>}
-                        {tool.summary?.privateAgentJobId && <Badge variant="secondary">job {tool.summary.privateAgentJobId}</Badge>}
-                        {tool.summary?.message && <span className="basis-full text-muted-foreground">{tool.summary.message}</span>}
+                      <div
+                        key={tool.id}
+                        className="flex flex-wrap items-center gap-2 rounded border bg-muted/20 px-2 py-1.5"
+                      >
+                        <span className="font-mono text-[11px] text-foreground">
+                          {tool.name}
+                        </span>
+                        <Badge variant="outline" className="capitalize">
+                          {tool.status}
+                        </Badge>
+                        {tool.summary && (
+                          <span className="text-muted-foreground">
+                            {tool.summary.itemCount} safe result item
+                            {tool.summary.itemCount === 1 ? "" : "s"}
+                          </span>
+                        )}
+                        {tool.summary?.privateAgentJobId && (
+                          <Badge variant="secondary">
+                            job {tool.summary.privateAgentJobId}
+                          </Badge>
+                        )}
+                        {tool.summary?.message && (
+                          <span className="basis-full text-muted-foreground">
+                            {tool.summary.message}
+                          </span>
+                        )}
                         {tool.summary?.evidence?.map((item) => (
-                          <span key={`${tool.id}-${item.id}`} className="basis-full rounded bg-background px-2 py-1 text-muted-foreground">
-                            Evidence {item.id}: {item.title} ({item.evidenceType}/{item.sourceType})
+                          <span
+                            key={`${tool.id}-${item.id}`}
+                            className="basis-full rounded bg-background px-2 py-1 text-muted-foreground"
+                          >
+                            Evidence {item.id}: {item.title} (
+                            {item.evidenceType}/{item.sourceType})
                           </span>
                         ))}
                         {tool.summary?.connectors?.map((item) => (
-                          <span key={`${tool.id}-${item.id}`} className="basis-full rounded bg-background px-2 py-1 text-muted-foreground">
-                            Connector {item.name} ({item.type}, {item.executionMode})
+                          <span
+                            key={`${tool.id}-${item.id}`}
+                            className="basis-full rounded bg-background px-2 py-1 text-muted-foreground"
+                          >
+                            Connector {item.name} ({item.type},{" "}
+                            {item.executionMode})
                           </span>
                         ))}
                       </div>

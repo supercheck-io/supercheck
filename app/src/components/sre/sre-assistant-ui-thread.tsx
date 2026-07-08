@@ -12,6 +12,7 @@ import {
   useAuiState,
   useMessagePartText,
   useThreadRuntime,
+  type ThreadRuntime,
 } from "@assistant-ui/react";
 import {
   AssistantChatTransport,
@@ -27,15 +28,20 @@ import {
   UserRound,
   RefreshCw,
   Copy,
-  Check,
+  BarChart3,
 } from "lucide-react";
 
 import type { SreStandaloneChatHistory } from "@/actions/sre-ai";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
+import {
+  createUserPromptMessage,
+  formatCopilotError,
+  getQuickRepliesForAssistantText,
+  SRE_INLINE_CAPABILITIES_PREVIEW,
+} from "@/components/sre/sre-generative-ui";
 import { SreMessageContent } from "@/components/sre/sre-message-content";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 
 const SRE_AI_SUGGESTIONS = [
   "Inspect system health",
@@ -43,6 +49,40 @@ const SRE_AI_SUGGESTIONS = [
   "Summarize evidence gaps",
   "Draft a verification plan",
 ];
+
+const SRE_COMMAND_SHORTCUTS = [
+  {
+    label: "/health",
+    prompt:
+      "/health Inspect current system health and summarize the most important signals as tables or charts when data is available.",
+  },
+  {
+    label: "/investigate",
+    prompt:
+      "/investigate Help me investigate the currently selected service or incident using only read-only evidence and verification steps.",
+  },
+  {
+    label: "/evidence",
+    prompt:
+      "/evidence Show the strongest evidence, gaps, and next read-only checks. Use inline charts for numeric series when possible.",
+  },
+  {
+    label: "/verify",
+    prompt:
+      "/verify Build a read-only verification plan with concrete checks I can run before taking action.",
+  },
+];
+
+function appendUserPrompt(thread: ThreadRuntime, prompt: string) {
+  thread.append(createUserPromptMessage(prompt));
+}
+
+function appendInlinePreview(thread: ThreadRuntime) {
+  thread.append({
+    role: "assistant",
+    content: [{ type: "text", text: SRE_INLINE_CAPABILITIES_PREVIEW }],
+  });
+}
 
 export type SreAssistantUiMessageMetadata = {
   conversationId?: string;
@@ -60,6 +100,7 @@ type SreAssistantUiThreadProps = {
     messages: SreStandaloneChatHistory["messages"];
     title: string;
   }) => void;
+  onClearError: () => void;
   onError: (message: string) => void;
 };
 
@@ -77,6 +118,31 @@ export function historyMessagesToUiMessages(
 function textFromUiMessage(message: SreAssistantUiMessage) {
   return message.parts
     .flatMap((part) => (part.type === "text" ? [part.text] : []))
+    .join("\n")
+    .trim();
+}
+
+function textFromThreadMessage(message: {
+  content?: unknown;
+  parts?: unknown;
+}) {
+  const parts = Array.isArray(message.parts)
+    ? message.parts
+    : Array.isArray(message.content)
+      ? message.content
+      : [];
+
+  return parts
+    .flatMap((part) => {
+      if (typeof part !== "object" || part === null) {
+        return [];
+      }
+
+      const record = part as Record<string, unknown>;
+      return record.type === "text" && typeof record.text === "string"
+        ? [record.text]
+        : [];
+    })
     .join("\n")
     .trim();
 }
@@ -110,18 +176,7 @@ function AssistantTextPart() {
   return <SreMessageContent content={part.text} />;
 }
 
-function useMessageMetadata() {
-  return useAuiState((state) => {
-    const metadata = state.message.metadata as
-      | SreAssistantUiMessageMetadata
-      | undefined;
-    return metadata ?? {};
-  });
-}
-
 function AssistantMessage() {
-  const metadata = useMessageMetadata();
-
   return (
     <MessagePrimitive.Root
       className="group flex gap-3"
@@ -133,11 +188,6 @@ function AssistantMessage() {
       <div className="min-w-0 flex-1 rounded-2xl border bg-background px-4 py-3 text-sm leading-6 shadow-sm">
         <div className="mb-2 flex flex-wrap items-center gap-2">
           <Badge variant="secondary">Copilot</Badge>
-          {metadata.modelId && (
-            <span className="text-xs text-muted-foreground">
-              {metadata.modelId}
-            </span>
-          )}
         </div>
         <MessagePrimitive.Content components={{ Text: AssistantTextPart }} />
         <ActionBarPrimitive.Root
@@ -232,7 +282,7 @@ function AssistantThinking() {
   );
 }
 
-function EmptyThread() {
+function EmptyThread({ onClearError }: { onClearError: () => void }) {
   const thread = useThreadRuntime();
 
   return (
@@ -251,13 +301,28 @@ function EmptyThread() {
                     key={suggestion}
                     type="button"
                     variant="outline"
-                    onClick={() => thread.append(suggestion)}
+                    onClick={() => {
+                      onClearError();
+                      appendUserPrompt(thread, suggestion);
+                    }}
                     className="h-auto justify-start rounded-xl px-3 py-2 text-left text-sm font-normal whitespace-normal bg-background"
                   >
                     <CornerDownLeft className="h-4 w-4 shrink-0 text-muted-foreground" />
                     <span className="min-w-0">{suggestion}</span>
                   </Button>
                 ))}
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    onClearError();
+                    appendInlinePreview(thread);
+                  }}
+                  className="h-auto justify-start rounded-xl px-3 py-2 text-left text-sm font-normal whitespace-normal"
+                >
+                  <BarChart3 className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <span className="min-w-0">Preview inline charts</span>
+                </Button>
               </div>
             }
           />
@@ -267,49 +332,133 @@ function EmptyThread() {
   );
 }
 
-function SreComposer() {
+function SreFollowUpSuggestions({
+  onClearError,
+}: {
+  onClearError: () => void;
+}) {
+  const thread = useThreadRuntime();
+  const latestAssistantText = useAuiState((state) => {
+    const messages = state.thread.messages;
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index];
+      if (message?.role === "assistant") {
+        return textFromThreadMessage(message);
+      }
+    }
+
+    return "";
+  });
+  const isRunning = useAuiState((state) => state.thread.isRunning);
+  const replies = latestAssistantText
+    ? getQuickRepliesForAssistantText(latestAssistantText)
+    : [];
+
+  if (isRunning || !latestAssistantText || replies.length === 0) {
+    return null;
+  }
+
   return (
-    <ComposerPrimitive.Root className="mx-auto flex w-full max-w-4xl flex-col rounded-2xl border bg-background px-4 py-3 shadow-sm">
-      <ComposerPrimitive.Input
-        placeholder="Ask Copilot about an incident, service, or verification plan..."
-        submitMode="enter"
-        rows={2}
-        className="w-full max-h-44 min-h-16 resize-none border-0 bg-transparent text-sm leading-6 outline-none placeholder:text-muted-foreground focus-visible:outline-none"
-      />
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t pt-3">
-        <div className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-          <span className="inline-flex shrink-0 items-center gap-1 rounded-full border bg-muted/30 px-2 py-1">
-            <ShieldCheck className="h-3.5 w-3.5" />
-            Read-only
-          </span>
-          <span className="ml-2 hidden truncate lg:inline">
-            Project history is saved. Incident evidence is attached from
-            incident pages.
-          </span>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <ThreadPrimitive.If running>
-            <ComposerPrimitive.Cancel asChild>
-              <Button type="button" variant="outline" size="sm">
-                Stop
-              </Button>
-            </ComposerPrimitive.Cancel>
-          </ThreadPrimitive.If>
-          <ThreadPrimitive.If running={false}>
-            <ComposerPrimitive.Send asChild>
-              <Button type="submit" size="sm">
-                Send
-                <Send className="h-4 w-4" />
-              </Button>
-            </ComposerPrimitive.Send>
-          </ThreadPrimitive.If>
-        </div>
-      </div>
-    </ComposerPrimitive.Root>
+    <div className="mx-auto flex w-full max-w-4xl flex-wrap gap-2">
+      {replies.map((reply) => (
+        <Button
+          key={reply.label}
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-auto rounded-full px-3 py-1.5 text-xs font-normal"
+          onClick={() => {
+            onClearError();
+            appendUserPrompt(thread, reply.prompt);
+          }}
+        >
+          {reply.label}
+        </Button>
+      ))}
+    </div>
   );
 }
 
-export function SreThread() {
+function SreComposer({ onClearError }: { onClearError: () => void }) {
+  const thread = useThreadRuntime();
+
+  return (
+    <ComposerPrimitive.AttachmentDropzone
+      disabled
+      className="mx-auto w-full max-w-4xl rounded-2xl data-[dragging]:border-primary"
+    >
+      <ComposerPrimitive.Root className="flex w-full flex-col rounded-2xl border bg-background px-4 py-3 shadow-sm">
+        <div className="mb-3 flex flex-wrap gap-2">
+          {SRE_COMMAND_SHORTCUTS.map((shortcut) => (
+            <Button
+              key={shortcut.label}
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 rounded-full px-2.5 text-xs font-normal"
+              onClick={() => {
+                onClearError();
+                appendUserPrompt(thread, shortcut.prompt);
+              }}
+            >
+              {shortcut.label}
+            </Button>
+          ))}
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            className="h-7 rounded-full px-2.5 text-xs font-normal"
+            onClick={() => {
+              onClearError();
+              appendInlinePreview(thread);
+            }}
+          >
+            <BarChart3 className="h-3.5 w-3.5" />
+            Preview charts
+          </Button>
+        </div>
+        <ComposerPrimitive.Input
+          placeholder="Ask Copilot about an incident, service, or verification plan..."
+          submitMode="enter"
+          rows={2}
+          className="w-full max-h-44 min-h-16 resize-none border-0 bg-transparent text-sm leading-6 outline-none placeholder:text-muted-foreground focus-visible:outline-none"
+        />
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t pt-3">
+          <div className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+            <span className="inline-flex shrink-0 items-center gap-1 rounded-full border bg-muted/30 px-2 py-1">
+              <ShieldCheck className="h-3.5 w-3.5" />
+              Read-only
+            </span>
+            <span className="ml-2 hidden truncate lg:inline">
+              Slash commands and quick replies are read-only. Chart preview uses
+              local sample data.
+            </span>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <ThreadPrimitive.If running>
+              <ComposerPrimitive.Cancel asChild>
+                <Button type="button" variant="outline" size="sm">
+                  Stop
+                </Button>
+              </ComposerPrimitive.Cancel>
+            </ThreadPrimitive.If>
+            <ThreadPrimitive.If running={false}>
+              <ComposerPrimitive.Send asChild>
+                <Button type="submit" size="sm">
+                  Send
+                  <Send className="h-4 w-4" />
+                </Button>
+              </ComposerPrimitive.Send>
+            </ThreadPrimitive.If>
+          </div>
+        </div>
+      </ComposerPrimitive.Root>
+    </ComposerPrimitive.AttachmentDropzone>
+  );
+}
+
+export function SreThread({ onClearError }: { onClearError: () => void }) {
   return (
     <ThreadPrimitive.Root className="flex h-full w-full min-h-0 min-w-0 flex-col overflow-hidden bg-muted/5">
       <ThreadPrimitive.Viewport
@@ -318,12 +467,13 @@ export function SreThread() {
         scrollToBottomOnInitialize
         className="min-h-0 w-full min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-3 py-5 [scrollbar-width:none] sm:px-5 [&::-webkit-scrollbar]:hidden"
       >
-        <EmptyThread />
+        <EmptyThread onClearError={onClearError} />
         <div className="mx-auto flex w-full min-w-0 max-w-4xl flex-col gap-5">
           <ThreadPrimitive.Messages
             components={{ UserMessage, AssistantMessage }}
           />
           <AssistantThinking />
+          <SreFollowUpSuggestions onClearError={onClearError} />
         </div>
         <ThreadPrimitive.ScrollToBottom asChild>
           <Button
@@ -338,7 +488,7 @@ export function SreThread() {
         </ThreadPrimitive.ScrollToBottom>
       </ThreadPrimitive.Viewport>
       <div className="w-full min-w-0 shrink-0 border-t bg-background/95 px-3 py-3 sm:px-5">
-        <SreComposer />
+        <SreComposer onClearError={onClearError} />
       </div>
     </ThreadPrimitive.Root>
   );
@@ -348,6 +498,7 @@ export function SreAssistantUiThread({
   conversationId,
   initialMessages,
   onConversationResolved,
+  onClearError,
   onError,
 }: SreAssistantUiThreadProps) {
   const uiMessages = useMemo(
@@ -369,8 +520,7 @@ export function SreAssistantUiThread({
     id: conversationId ?? undefined,
     messages: uiMessages,
     transport,
-    onError: (error) =>
-      onError(error instanceof Error ? error.message : "Copilot chat failed"),
+    onError: (error) => onError(formatCopilotError(error)),
     onFinish: ({ message, messages }) => {
       const resolvedConversationId = message.metadata?.conversationId;
       if (!resolvedConversationId) {
@@ -391,7 +541,7 @@ export function SreAssistantUiThread({
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <SreThread />
+      <SreThread onClearError={onClearError} />
     </AssistantRuntimeProvider>
   );
 }

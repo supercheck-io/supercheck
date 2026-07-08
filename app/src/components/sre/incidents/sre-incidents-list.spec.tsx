@@ -24,6 +24,17 @@ function incidentFixture(index: number, overrides: Partial<SreIncidentListItem> 
     status: index % 2 === 0 ? "investigating" : "triggered",
     primaryServiceName: index % 2 === 0 ? "checkout-api" : null,
     alertCount: index,
+    evidenceCount: index + 1,
+    investigationCount: index % 2 === 0 ? 1 : 0,
+    latestInvestigationStatus: index % 2 === 0 ? "completed" : null,
+    latestInvestigationCompletedAt:
+      index % 2 === 0
+        ? new Date(`2026-07-03T${String(index % 24).padStart(2, "0")}:30:00.000Z`)
+        : null,
+    latestInvestigationCreatedAt:
+      index % 2 === 0
+        ? new Date(`2026-07-03T${String(index % 24).padStart(2, "0")}:10:00.000Z`)
+        : null,
     createdAt: new Date(`2026-07-02T${String(index % 24).padStart(2, "0")}:00:00.000Z`),
     updatedAt: new Date(`2026-07-03T${String(index % 24).padStart(2, "0")}:00:00.000Z`),
     resolvedAt: null,
@@ -37,14 +48,16 @@ describe("SreIncidentsList", () => {
 
     render(<SreIncidentsList incidents={incidents} loadError={null} />);
 
-    expect(screen.getByText("Incident queue")).toBeInTheDocument();
+    expect(screen.getByText("Incidents")).toBeInTheDocument();
     expect(screen.getByText("Total 13 incidents")).toBeInTheDocument();
     expect(screen.getByText("Rows per page")).toBeInTheDocument();
     expect(screen.getByText("Page 1 of 2")).toBeInTheDocument();
 
     const table = screen.getByRole("table");
-    expect(within(table).getByRole("columnheader", { name: /No./ })).toBeInTheDocument();
-    expect(within(table).getByRole("columnheader", { name: /Incident/ })).toBeInTheDocument();
+    expect(within(table).getByRole("columnheader", { name: /^ID$/ })).toBeInTheDocument();
+    expect(within(table).getByRole("columnheader", { name: /^Incident$/ })).toBeInTheDocument();
+    expect(within(table).getByRole("columnheader", { name: /Investigation/ })).toBeInTheDocument();
+    expect(within(table).getByRole("columnheader", { name: /Evidence/ })).toBeInTheDocument();
     expect(within(table).getAllByRole("row")).toHaveLength(13);
 
     fireEvent.change(screen.getByPlaceholderText("Filter by all available fields..."), {

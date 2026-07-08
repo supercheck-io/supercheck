@@ -5,7 +5,9 @@ import type { SreIncidentDetail } from "@/actions/sre-incidents";
 import { SreIncidentDetailView } from "./sre-incident-detail-view";
 
 jest.mock("@/components/sre/incidents/generate-evidence-brief-button", () => ({
-  GenerateEvidenceBriefButton: () => <button type="button">Generate brief</button>,
+  GenerateEvidenceBriefButton: () => (
+    <button type="button">Generate brief</button>
+  ),
 }));
 
 jest.mock("@/components/sre/incidents/sre-investigation-panel", () => ({
@@ -24,6 +26,11 @@ function detailFixture(): SreIncidentDetail {
       status: "investigating",
       primaryServiceName: "checkout-api",
       alertCount: 2,
+      evidenceCount: 1,
+      investigationCount: 1,
+      latestInvestigationStatus: "completed",
+      latestInvestigationCompletedAt: now,
+      latestInvestigationCreatedAt: now,
       createdAt: now,
       updatedAt: now,
       resolvedAt: null,
@@ -64,11 +71,15 @@ describe("SreIncidentDetailView", () => {
   it("renders simplified incident tabs and default investigation panel", () => {
     render(<SreIncidentDetailView detail={detailFixture()} />);
 
-    expect(screen.getByRole("tab", { name: "Investigation" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("tab", { name: "Investigation" }),
+    ).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Evidence" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Brief" })).toBeInTheDocument();
     expect(screen.getByText("Mock AI investigation panel")).toBeInTheDocument();
     expect(screen.getByText("Incident #42")).toBeInTheDocument();
-    expect(screen.queryByText("Investigation workspace")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Investigation workspace"),
+    ).not.toBeInTheDocument();
   });
 });

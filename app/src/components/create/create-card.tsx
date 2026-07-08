@@ -1,13 +1,9 @@
 "use client";
 
 import React from "react";
-import {
-  Card,
-
-} from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { ExternalLink } from "lucide-react";
-
 
 interface CreateCardProps extends React.HTMLAttributes<HTMLDivElement> {
   icon: React.ReactNode;
@@ -26,9 +22,9 @@ export function CreateCard({
   ...props
 }: CreateCardProps) {
   const showExternalIcon = title === "Record";
-  
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (onClick && (e.key === 'Enter' || e.key === ' ')) {
+    if (onClick && (e.key === "Enter" || e.key === " ")) {
       e.preventDefault();
       onClick();
     }
@@ -38,7 +34,7 @@ export function CreateCard({
     <Card
       className={cn(
         "hover:border-primary/70 hover:shadow-md transition-all cursor-pointer h-full rounded-xl border border-border/60",
-        className
+        className,
       )}
       onClick={onClick}
       role={onClick ? "button" : undefined}
@@ -46,10 +42,12 @@ export function CreateCard({
       onKeyDown={onClick ? handleKeyDown : undefined}
       {...props}
     >
-      <div className="h-full p-4">
+      <div className="flex h-full min-h-[88px] flex-col justify-center p-4">
         <div className="flex items-start gap-3">
           <div className="text-primary shrink-0">{icon}</div>
-          <div className="font-medium text-sm flex-1 leading-tight">{title}</div>
+          <div className="font-medium text-sm flex-1 leading-tight">
+            {title}
+          </div>
           {showExternalIcon && (
             <div className="text-muted-foreground shrink-0">
               <ExternalLink className="h-3 w-3" />
@@ -57,7 +55,7 @@ export function CreateCard({
           )}
         </div>
         {description && (
-          <div className="text-xs text-muted-foreground leading-relaxed mt-2">
+          <div className="mt-2 overflow-hidden text-xs leading-snug text-muted-foreground [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">
             {description}
           </div>
         )}

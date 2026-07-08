@@ -77,10 +77,47 @@ const NODE_TYPE_LABELS: Record<SreEvidenceGraphNodeType, string> = {
 };
 
 const GRAPH_LANE_DOT_BACKGROUND: CSSProperties = {
+  backgroundColor: "hsl(var(--background))",
   backgroundImage:
-    "radial-gradient(hsl(var(--muted-foreground) / 0.16) 1px, transparent 1px)",
-  backgroundSize: "16px 16px",
+    "radial-gradient(rgba(148, 163, 184, 0.28) 1px, transparent 1px)",
+  backgroundPosition: "0 0",
+  backgroundSize: "18px 18px",
 };
+
+function isModelLikeLabel(value: string) {
+  return /\b(gpt|claude|gemini|llama|deepseek|qwen|mistral|sonnet|haiku|flash|mini)\b/i.test(
+    value,
+  );
+}
+
+function getDisplayNodeTitle(node: SreEvidenceGraphNode) {
+  if (node.type !== "incident") {
+    return node.title;
+  }
+
+  return node.title.replace(/^#\d+\s+/, "").trim() || node.title;
+}
+
+function getIncidentNumberLabel(node: SreEvidenceGraphNode) {
+  if (node.type !== "incident") {
+    return null;
+  }
+
+  const match = /^#(\d+)\b/.exec(node.title);
+  return match ? `#${match[1]}` : null;
+}
+
+function getDisplayNodeSubtitle(node: SreEvidenceGraphNode) {
+  if (
+    node.type === "investigation" &&
+    node.subtitle &&
+    isModelLikeLabel(node.subtitle)
+  ) {
+    return node.status ?? "Read-only investigation";
+  }
+
+  return node.subtitle ?? node.status ?? "No detail";
+}
 
 type GraphLanesViewportProps = {
   displayedGroups: DisplayedGraphGroup[];
@@ -151,12 +188,12 @@ function GraphLanesViewport({
         </div>
       </div>
       <div
-        className="min-h-0 flex-1 overflow-auto bg-background [scrollbar-width:thin] [&::-webkit-scrollbar]:h-2 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/30 [&::-webkit-scrollbar-track]:bg-transparent"
+        className="min-h-0 flex-1 overflow-auto [scrollbar-width:thin] [&::-webkit-scrollbar]:h-2 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/30 [&::-webkit-scrollbar-track]:bg-transparent"
         style={GRAPH_LANE_DOT_BACKGROUND}
         aria-label="Evidence graph lanes viewport"
         tabIndex={0}
       >
-        <div className="grid min-h-full w-max min-w-full grid-flow-col auto-cols-[minmax(280px,340px)] divide-x">
+        <div className="grid min-h-full w-max min-w-full grid-flow-col auto-cols-[minmax(280px,340px)] divide-x divide-border/80">
           {displayedGroups.length === 0 ? (
             <div className="flex w-full min-w-[600px] items-center justify-center p-8">
               <DashboardEmptyState
@@ -181,26 +218,40 @@ function GraphLanesViewport({
                       No visible nodes
                     </div>
                   ) : (
-                    group.nodes.map((node) => (
-                      <button
-                        key={node.id}
-                        type="button"
-                        aria-label={`Select ${node.type} node ${node.title}`}
-                        onClick={() => onSelectNode(node.id)}
-                        className={cn(
-                          "w-full rounded-md border bg-card p-3 text-left text-sm transition-colors hover:bg-muted/50",
-                          effectiveSelectedNodeId === node.id &&
-                            "ring-2 ring-ring",
-                        )}
-                      >
-                        <span className="line-clamp-2 font-medium">
-                          {node.title}
-                        </span>
-                        <span className="mt-1 block truncate text-xs text-muted-foreground">
-                          {node.subtitle ?? node.status ?? "No detail"}
-                        </span>
-                      </button>
-                    ))
+                    group.nodes.map((node) => {
+                      const incidentNumberLabel = getIncidentNumberLabel(node);
+
+                      return (
+                        <button
+                          key={node.id}
+                          type="button"
+                          aria-label={`Select ${node.type} node ${getDisplayNodeTitle(node)}`}
+                          onClick={() => onSelectNode(node.id)}
+                          className={cn(
+                            "w-full rounded-md border bg-card/95 p-3 text-left text-sm shadow-sm transition-colors hover:bg-muted/50",
+                            effectiveSelectedNodeId === node.id &&
+                              "ring-2 ring-ring",
+                          )}
+                        >
+                          <span className="flex min-w-0 items-start gap-2">
+                            {incidentNumberLabel && (
+                              <Badge
+                                variant="secondary"
+                                className="mt-0.5 h-5 shrink-0 px-1.5 text-[11px]"
+                              >
+                                {incidentNumberLabel}
+                              </Badge>
+                            )}
+                            <span className="line-clamp-2 min-w-0 font-medium">
+                              {getDisplayNodeTitle(node)}
+                            </span>
+                          </span>
+                          <span className="mt-1 block truncate text-xs text-muted-foreground">
+                            {getDisplayNodeSubtitle(node)}
+                          </span>
+                        </button>
+                      );
+                    })
                   )}
                 </div>
               </div>
@@ -346,7 +397,7 @@ export function SreEvidenceGraph({
   }
 
   return (
-    <div className="grid h-full min-h-0 gap-4 overflow-hidden [grid-template-rows:minmax(0,1fr)_minmax(240px,320px)] xl:grid-cols-[minmax(0,1fr)_360px] xl:[grid-template-rows:none]">
+    <div className="grid h-full min-h-0 gap-4 overflow-hidden [grid-template-rows:minmax(0,1fr)_minmax(220px,300px)] xl:grid-cols-[minmax(0,1fr)_360px] xl:[grid-template-rows:none]">
       <Card className="flex h-full min-h-0 flex-col overflow-hidden">
         <CardHeader className="flex flex-col gap-4 border-b sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 w-full">

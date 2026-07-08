@@ -63,6 +63,16 @@ const graph: SreEvidenceGraphData = {
       createdAt: new Date("2026-06-24T10:10:00Z"),
     },
     {
+      id: "investigation:r1",
+      sourceId: "r1",
+      type: "investigation",
+      title: "Checkout investigation",
+      subtitle: "gpt-4o-mini",
+      status: "completed",
+      href: null,
+      createdAt: new Date("2026-06-24T10:14:00Z"),
+    },
+    {
       id: "playbook:p1",
       sourceId: "p1",
       type: "playbook",
@@ -110,6 +120,13 @@ const graph: SreEvidenceGraphData = {
       evidence: "prometheus",
     },
     {
+      id: "incident:i1->investigation:r1:investigated by",
+      source: "incident:i1",
+      target: "investigation:r1",
+      label: "investigated by",
+      evidence: "Investigation run",
+    },
+    {
       id: "alert:a1->playbook:p1:matches playbook",
       source: "alert:a1",
       target: "playbook:p1",
@@ -124,7 +141,7 @@ const graph: SreEvidenceGraphData = {
     job: 0,
     alert: 1,
     incident: 1,
-    investigation: 0,
+    investigation: 1,
     evidence: 1,
     recommendation: 0,
     deployment: 0,
@@ -165,13 +182,23 @@ describe("SreEvidenceGraph", () => {
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: /select incident node #7 checkout latency/i,
+        name: /select incident node checkout latency/i,
       }),
     );
 
+    expect(screen.getAllByText("#7").length).toBeGreaterThan(0);
     expect(screen.getAllByText("impacted service").length).toBeGreaterThan(0);
     expect(screen.getAllByText("triggered incident").length).toBeGreaterThan(0);
     expect(screen.getAllByText("has evidence").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("investigated by").length).toBeGreaterThan(0);
+  });
+
+  it("does not expose model names in investigation graph cards", () => {
+    render(<SreEvidenceGraph graph={graph} />);
+
+    expect(screen.getByText("Checkout investigation")).toBeInTheDocument();
+    expect(screen.getAllByText("completed").length).toBeGreaterThan(0);
+    expect(screen.queryByText("gpt-4o-mini")).not.toBeInTheDocument();
   });
 
   it("renders expanded operational node types", () => {
@@ -210,6 +237,9 @@ describe("SreEvidenceGraph", () => {
     expect(
       screen.getByText(/select a node to inspect details/i),
     ).toBeInTheDocument();
+    expect(screen.getByLabelText("Evidence graph lanes viewport")).toHaveStyle({
+      backgroundSize: "18px 18px",
+    });
     expect(
       screen.queryByRole("button", { name: /zoom in graph/i }),
     ).not.toBeInTheDocument();

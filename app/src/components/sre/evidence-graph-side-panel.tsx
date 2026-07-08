@@ -29,6 +29,41 @@ function formatDate(value: Date | null) {
   return value.toLocaleString();
 }
 
+function getDisplayNodeTitle(node: SreEvidenceGraphNode) {
+  if (node.type !== "incident") {
+    return node.title;
+  }
+
+  return node.title.replace(/^#\d+\s+/, "").trim() || node.title;
+}
+
+function getIncidentNumberLabel(node: SreEvidenceGraphNode) {
+  if (node.type !== "incident") {
+    return null;
+  }
+
+  const match = /^#(\d+)\b/.exec(node.title);
+  return match ? `Incident #${match[1]}` : null;
+}
+
+function isModelLikeLabel(value: string) {
+  return /\b(gpt|claude|gemini|llama|deepseek|qwen|mistral|sonnet|haiku|flash|mini)\b/i.test(
+    value,
+  );
+}
+
+function getDisplayNodeSubtitle(node: SreEvidenceGraphNode) {
+  if (
+    node.type === "investigation" &&
+    node.subtitle &&
+    isModelLikeLabel(node.subtitle)
+  ) {
+    return node.status ?? "Read-only investigation";
+  }
+
+  return node.subtitle ?? formatDate(node.createdAt);
+}
+
 function getNodeTypeColor(type: string) {
   switch (type.toLowerCase()) {
     case "job":
@@ -83,6 +118,7 @@ export function SreEvidenceGraphSidePanel({
   const connectedEdges = edges
     .filter((edge) => edge.source === node.id || edge.target === node.id)
     .slice(0, 8);
+  const incidentNumberLabel = getIncidentNumberLabel(node);
 
   return (
     <Card className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg">
@@ -94,6 +130,9 @@ export function SreEvidenceGraphSidePanel({
           >
             {node.type}
           </Badge>
+          {incidentNumberLabel && (
+            <Badge variant="secondary">{incidentNumberLabel}</Badge>
+          )}
           {node.status && (
             <Badge
               variant="outline"
@@ -105,10 +144,10 @@ export function SreEvidenceGraphSidePanel({
         </div>
         <div>
           <CardTitle className="line-clamp-3 text-lg leading-tight">
-            {node.title}
+            {getDisplayNodeTitle(node)}
           </CardTitle>
           <CardDescription className="mt-1.5" suppressHydrationWarning>
-            {node.subtitle ?? formatDate(node.createdAt)}
+            {getDisplayNodeSubtitle(node)}
           </CardDescription>
         </div>
         {node.href && (
@@ -151,7 +190,9 @@ export function SreEvidenceGraphSidePanel({
                   <div className="flex flex-wrap items-center gap-2 text-sm">
                     <Badge variant="outline">{edge.label}</Badge>
                     <span className="line-clamp-1 font-medium">
-                      {otherNode?.title ?? "Unknown node"}
+                      {otherNode
+                        ? getDisplayNodeTitle(otherNode)
+                        : "Unknown node"}
                     </span>
                   </div>
                   {edge.evidence && (

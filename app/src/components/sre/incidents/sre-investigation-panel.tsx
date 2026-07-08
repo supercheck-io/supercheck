@@ -2,12 +2,23 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { CheckCircle2, Loader2, SearchCheck, TriangleAlert } from "lucide-react";
+import {
+  CheckCircle2,
+  Loader2,
+  SearchCheck,
+  TriangleAlert,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 
@@ -89,7 +100,10 @@ export function SreInvestigationPanel({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ incidentId, useLiveConnectors }),
       });
-      const body = await response.json().catch(() => null) as { error?: string; summary?: string } | null;
+      const body = (await response.json().catch(() => null)) as {
+        error?: string;
+        summary?: string;
+      } | null;
 
       if (!response.ok) {
         toast.error(body?.error ?? "SRE investigation failed");
@@ -97,29 +111,40 @@ export function SreInvestigationPanel({
       }
 
       toast.success("Investigation completed", {
-        description: body?.summary ? body.summary.slice(0, 120) : "Incident summary updated",
+        description: body?.summary
+          ? body.summary.slice(0, 120)
+          : "Incident summary updated",
       });
       router.refresh();
     });
   };
 
   return (
-    <Card>
-      <CardHeader className="border-b">
+    <Card className="overflow-hidden">
+      <CardHeader className="border-b px-5 py-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <CardTitle>Investigation</CardTitle>
+          <div className="min-w-0">
+            <CardTitle className="text-lg">Investigation</CardTitle>
             <CardDescription>
-              Run a read-only investigation from stored evidence and optional live connector data.
+              Run a read-only check from stored evidence and optional live
+              connector data.
             </CardDescription>
           </div>
-          <Button onClick={runInvestigation} disabled={isInvestigating}>
-            {isInvestigating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <SearchCheck className="mr-2 h-4 w-4" />}
+          <Button
+            className="w-full sm:w-auto"
+            onClick={runInvestigation}
+            disabled={isInvestigating}
+          >
+            {isInvestigating ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <SearchCheck className="mr-2 h-4 w-4" />
+            )}
             Run investigation
           </Button>
         </div>
       </CardHeader>
-      <CardContent className="space-y-4 pt-5">
+      <CardContent className="space-y-4 p-5">
         <div className="flex items-start gap-3 rounded-lg border bg-muted/10 p-4">
           <Switch
             id="live-connectors"
@@ -130,9 +155,12 @@ export function SreInvestigationPanel({
           <div className="space-y-1">
             <Label htmlFor="live-connectors">Use live connector tools</Label>
             <p className="text-sm text-muted-foreground">
-              Optional read-only connector execution. Requires a mapped primary service.
+              Optional read-only connector execution. Requires a mapped primary
+              service.
             </p>
-            {!hasPrimaryService && <Badge variant="outline">Primary service required</Badge>}
+            {!hasPrimaryService && (
+              <Badge variant="outline">Primary service required</Badge>
+            )}
           </div>
         </div>
 

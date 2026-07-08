@@ -45,7 +45,6 @@ Administrators configure AI SRE setup from **Settings → Admin** using the dedi
 ## Responder Screens
 
 - **Communicate → Alerts** shows failure signals, alert history, and notification channels. Delivery failures and recovery/success notifications stay in History; they are not promoted as investigation signals.
-- **Communicate → Incidents** is the responder queue for alert-promoted and manually created incidents. It uses the same compact filter, sorting, row sizing, and pagination pattern as other Supercheck tables.
+- **Communicate → Incidents** is the responder queue for alert-promoted and manually created incidents. It also shows latest investigation status and evidence counts, using the same compact filter, sorting, row sizing, and pagination pattern as other Supercheck tables. Incident detail pages keep investigation actions, cited evidence, and downloadable markdown briefs in separate focused tabs.
 - **Investigate → Copilot** provides read-only conversational help without cluttering incident detail pages.
 - **Investigate → Evidence Map** shows relationships between services, alerts, incidents, and evidence using compact dotted-background lanes and a focused detail panel.
-- **Investigate → Investigations** shows SRE investigation history as a compact table with incident number, incident title, likely cause, agent/status, service, evidence count, completion time, row navigation back to incidents, and row-menu actions for sanitized exports, snapshots, and review feedback.

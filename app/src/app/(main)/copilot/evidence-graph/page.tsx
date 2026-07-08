@@ -8,7 +8,7 @@ export default async function SreEvidenceGraphPage() {
   const result = await getSreEvidenceGraph();
 
   return (
-    <div className="flex h-[calc(100svh-3.5rem)] min-h-0 flex-col overflow-hidden">
+    <div className="flex h-[calc(100svh-4.25rem)] min-h-0 flex-col overflow-hidden">
       <PageBreadcrumbs
         items={[
           { label: "Home", href: "/" },
@@ -16,7 +16,7 @@ export default async function SreEvidenceGraphPage() {
           { label: "Evidence Graph", isCurrentPage: true },
         ]}
       />
-      <div className="min-h-0 flex-1 p-4">
+      <div className="min-h-0 flex-1 p-4 pb-6">
         <SreEvidenceGraph
           graph={result.graph}
           loadError={result.success ? null : result.error}

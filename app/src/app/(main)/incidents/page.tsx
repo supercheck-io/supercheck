@@ -15,7 +15,7 @@ export default async function IncidentsPage() {
   return (
     <div>
       <PageBreadcrumbs items={breadcrumbs} />
-      <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 m-4">
+      <Card className="m-4 min-w-0 overflow-hidden shadow-sm transition-shadow duration-200 hover:shadow-md">
         <CardContent className="p-6">
           <SreIncidentsList
             incidents={result.incidents}

@@ -58,9 +58,21 @@ const assistantUiMessageSchema = z
     id: z.string().trim().min(1).max(200).optional(),
     role: z.enum(["user", "assistant"]),
     metadata: assistantUiMessageMetadataSchema.optional(),
-    parts: z.array(assistantUiTextPartSchema).min(1).max(20),
+    parts: z.array(assistantUiTextPartSchema).min(1).max(20).optional(),
+    content: z.array(assistantUiTextPartSchema).min(1).max(20).optional(),
   })
-  .passthrough();
+  .passthrough()
+  .superRefine((message, context) => {
+    if (!message.parts?.length && !message.content?.length) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Message text parts are required",
+        path: ["parts"],
+      });
+    }
+  });
+
+type ParsedAssistantUiMessage = z.infer<typeof assistantUiMessageSchema>;
 
 const assistantUiChatRequestSchema = z.object({
   id: z.string().trim().max(200).optional().nullable(),
@@ -95,6 +107,22 @@ function getLatestUserMessage(messages: SreAssistantUiMessage[]) {
   return null;
 }
 
+function normalizeAssistantUiMessage(
+  message: ParsedAssistantUiMessage,
+): SreAssistantUiMessage {
+  const parts = (message.parts ?? message.content ?? []).map((part) => ({
+    ...part,
+    type: "text" as const,
+  }));
+  const { content: _content, parts: _parts, ...rest } = message;
+
+  return {
+    ...rest,
+    id: message.id ?? crypto.randomUUID(),
+    parts,
+  };
+}
+
 function getTotalMessageTextLength(messages: SreAssistantUiMessage[]) {
   return messages.reduce(
     (total, message) => total + getTextFromUiMessage(message).length,
@@ -112,9 +140,12 @@ function buildAssistantUiSystemPrompt(projectName: string) {
     "- If no incident is scoped, do not claim incident evidence was inspected.",
     "- Prefer concise headings, short bullets, markdown tables for comparisons, and fenced code blocks for commands or queries.",
     "- Do not emit raw markdown heading markers as decoration; use headings only when they add structure.",
+    "- Supported slash commands are read-only aliases: /health for system health summaries, /investigate for incident/service triage, /evidence for evidence review, and /verify for verification planning.",
+    "- Treat @service, @incident, and @recent-deploy mentions as user-provided context labels. Do not claim you resolved them unless available evidence confirms the entity.",
     "- When a small numeric summary is clearer as a chart and real values are available, include a fenced `chart` JSON block:",
-    '{"type":"bar","title":"Short title","xKey":"label","series":[{"key":"value","label":"Value"}],"data":[{"label":"api","value":12}]}',
-    "- Use only evidence or values from the conversation; do not fabricate chart data.",
+    '{"type":"line","title":"Short title","description":"Optional one-sentence context","sources":[{"label":"Prometheus","type":"prometheus","evidenceIds":["ev-123"],"query":"rate(http_requests_total[5m])"}],"xKey":"label","series":[{"key":"value","label":"Value"}],"data":[{"label":"api","value":12}]}',
+    "- Supported chart types are bar, line, and area. Use only evidence or values from the conversation; do not fabricate chart data.",
+    "- Include chart sources when values come from evidence, connectors, or user-provided data. Source labels must be non-secret names such as Prometheus, Grafana, Kubernetes, or Generated preview data.",
   ].join("\n");
 }
 
@@ -190,7 +221,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const messages = parsed.data.messages as SreAssistantUiMessage[];
+  const messages = parsed.data.messages.map(normalizeAssistantUiMessage);
   if (getTotalMessageTextLength(messages) > MAX_TOTAL_MESSAGE_TEXT_LENGTH) {
     return NextResponse.json(
       { error: "Copilot chat history is too large" },

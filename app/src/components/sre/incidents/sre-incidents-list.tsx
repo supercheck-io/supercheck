@@ -18,7 +18,10 @@ import {
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
-import { createManualSreIncident, type SreIncidentListItem } from "@/actions/sre-incidents";
+import {
+  createManualSreIncident,
+  type SreIncidentListItem,
+} from "@/actions/sre-incidents";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -48,6 +51,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { UUIDField } from "@/components/ui/uuid-field";
 import { cn } from "@/lib/utils";
 
 type SreIncidentsListProps = {
@@ -55,7 +59,16 @@ type SreIncidentsListProps = {
   loadError: string | null;
 };
 
-type IncidentSortKey = "incidentNumber" | "title" | "severity" | "status" | "primaryServiceName" | "alertCount" | "updatedAt";
+type IncidentSortKey =
+  | "id"
+  | "incidentNumber"
+  | "title"
+  | "severity"
+  | "status"
+  | "primaryServiceName"
+  | "latestInvestigationStatus"
+  | "evidenceCount"
+  | "updatedAt";
 type SortDirection = "asc" | "desc";
 
 const PAGE_SIZE_OPTIONS = [12, 25, 50, 100];
@@ -68,13 +81,36 @@ const severityClasses: Record<SreIncidentListItem["severity"], string> = {
 };
 
 const statusClasses: Record<SreIncidentListItem["status"], string> = {
-  triggered: "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300",
-  investigating: "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-300",
-  identified: "border-purple-200 bg-purple-50 text-purple-700 dark:border-purple-900/60 dark:bg-purple-950/40 dark:text-purple-300",
-  recommendations_ready: "border-cyan-200 bg-cyan-50 text-cyan-700 dark:border-cyan-900/60 dark:bg-cyan-950/40 dark:text-cyan-300",
-  user_applying_fix: "border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-900/60 dark:bg-indigo-950/40 dark:text-indigo-300",
-  verifying: "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300",
-  resolved: "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300",
+  triggered:
+    "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300",
+  investigating:
+    "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-300",
+  identified:
+    "border-purple-200 bg-purple-50 text-purple-700 dark:border-purple-900/60 dark:bg-purple-950/40 dark:text-purple-300",
+  recommendations_ready:
+    "border-cyan-200 bg-cyan-50 text-cyan-700 dark:border-cyan-900/60 dark:bg-cyan-950/40 dark:text-cyan-300",
+  user_applying_fix:
+    "border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-900/60 dark:bg-indigo-950/40 dark:text-indigo-300",
+  verifying:
+    "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300",
+  resolved:
+    "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300",
+};
+
+const investigationStatusClasses: Record<
+  NonNullable<SreIncidentListItem["latestInvestigationStatus"]>,
+  string
+> = {
+  running:
+    "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-300",
+  completed:
+    "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300",
+  failed:
+    "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300",
+  aborted:
+    "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300",
+  timed_out:
+    "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300",
 };
 
 function formatDate(value: Date | string) {
@@ -90,9 +126,16 @@ function formatStatus(value: string) {
   return value.replace(/_/g, " ");
 }
 
-function getIncidentSortValue(incident: SreIncidentListItem, key: IncidentSortKey) {
+function getIncidentSortValue(
+  incident: SreIncidentListItem,
+  key: IncidentSortKey,
+) {
   if (key === "updatedAt") return new Date(incident.updatedAt).getTime();
-  if (key === "primaryServiceName") return incident.primaryServiceName ?? "Unmapped";
+  if (key === "primaryServiceName")
+    return incident.primaryServiceName ?? "Unmapped";
+  if (key === "latestInvestigationStatus")
+    return incident.latestInvestigationStatus ?? "not_started";
+  if (key === "id") return incident.id;
   return incident[key];
 }
 
@@ -112,7 +155,11 @@ function SortableHead({
   className?: string;
 }) {
   const isActive = activeKey === sortKey;
-  const Icon = isActive ? (direction === "desc" ? ArrowDown : ArrowUp) : ArrowUpDown;
+  const Icon = isActive
+    ? direction === "desc"
+      ? ArrowDown
+      : ArrowUp
+    : ArrowUpDown;
 
   return (
     <TableHead className={className}>
@@ -124,17 +171,26 @@ function SortableHead({
         onClick={() => onSort(sortKey)}
       >
         {label}
-        <Icon className={cn("ml-2 h-4 w-4", isActive ? "text-primary" : "text-muted-foreground")} />
+        <Icon
+          className={cn(
+            "ml-2 h-4 w-4",
+            isActive ? "text-primary" : "text-muted-foreground",
+          )}
+        />
       </Button>
     </TableHead>
   );
 }
 
-export function SreIncidentsList({ incidents, loadError }: SreIncidentsListProps) {
+export function SreIncidentsList({
+  incidents,
+  loadError,
+}: SreIncidentsListProps) {
   const router = useRouter();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [title, setTitle] = useState("");
-  const [severity, setSeverity] = useState<SreIncidentListItem["severity"]>("sev3");
+  const [severity, setSeverity] =
+    useState<SreIncidentListItem["severity"]>("sev3");
   const [summary, setSummary] = useState("");
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search);
@@ -180,24 +236,35 @@ export function SreIncidentsList({ incidents, loadError }: SreIncidentsListProps
   };
 
   const statusOptions = useMemo(
-    () => Array.from(new Set(incidents.map((incident) => incident.status))).sort(),
-    [incidents]
+    () =>
+      Array.from(new Set(incidents.map((incident) => incident.status))).sort(),
+    [incidents],
   );
 
   const filteredIncidents = useMemo(() => {
     const query = deferredSearch.trim().toLowerCase();
     const filtered = incidents.filter((incident) => {
-      const matchesSeverity = severityFilter === "all" || incident.severity === severityFilter;
-      const matchesStatus = statusFilter === "all" || incident.status === statusFilter;
+      const matchesSeverity =
+        severityFilter === "all" || incident.severity === severityFilter;
+      const matchesStatus =
+        statusFilter === "all" || incident.status === statusFilter;
       const searchable = [
+        incident.id,
         String(incident.incidentNumber),
         incident.title,
         incident.primaryServiceName ?? "Unmapped",
         incident.severity,
         incident.status,
-      ].join(" ").toLowerCase();
+        incident.latestInvestigationStatus ?? "not started",
+      ]
+        .join(" ")
+        .toLowerCase();
 
-      return matchesSeverity && matchesStatus && (!query || searchable.includes(query));
+      return (
+        matchesSeverity &&
+        matchesStatus &&
+        (!query || searchable.includes(query))
+      );
     });
 
     return [...filtered].sort((a, b) => {
@@ -206,21 +273,36 @@ export function SreIncidentsList({ incidents, loadError }: SreIncidentsListProps
       const result =
         typeof left === "number" && typeof right === "number"
           ? left - right
-          : String(left).localeCompare(String(right), undefined, { numeric: true, sensitivity: "base" });
+          : String(left).localeCompare(String(right), undefined, {
+              numeric: true,
+              sensitivity: "base",
+            });
       return sortDirection === "asc" ? result : -result;
     });
-  }, [deferredSearch, incidents, severityFilter, sortDirection, sortKey, statusFilter]);
+  }, [
+    deferredSearch,
+    incidents,
+    severityFilter,
+    sortDirection,
+    sortKey,
+    statusFilter,
+  ]);
 
   const pageCount = Math.max(1, Math.ceil(filteredIncidents.length / pageSize));
   const safePageIndex = Math.min(pageIndex, pageCount - 1);
-  const pagedIncidents = filteredIncidents.slice(safePageIndex * pageSize, safePageIndex * pageSize + pageSize);
+  const pagedIncidents = filteredIncidents.slice(
+    safePageIndex * pageSize,
+    safePageIndex * pageSize + pageSize,
+  );
 
   const handleSort = (key: IncidentSortKey) => {
     if (sortKey === key) {
       setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
     } else {
       setSortKey(key);
-      setSortDirection(key === "updatedAt" || key === "incidentNumber" ? "desc" : "asc");
+      setSortDirection(
+        key === "updatedAt" || key === "incidentNumber" ? "desc" : "asc",
+      );
     }
   };
 
@@ -236,17 +318,17 @@ export function SreIncidentsList({ incidents, loadError }: SreIncidentsListProps
   }
 
   return (
-    <div className="space-y-4">
-      <div className="-mt-2 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex flex-col">
-          <h2 className="text-2xl font-semibold">Incident queue</h2>
-          <p className="text-sm text-muted-foreground">
-            Create incidents manually or from alert signals, then investigate them here.
+    <div className="w-full max-w-full space-y-4 overflow-x-hidden p-2">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+        <div className="flex min-w-0 flex-col">
+          <h2 className="text-2xl font-semibold">Incidents</h2>
+          <p className="max-w-[560px] text-sm text-muted-foreground">
+            Track response status, investigation state, evidence, and service ownership.
           </p>
         </div>
         {incidents.length > 0 && (
-          <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto">
-            <div className="relative w-full sm:w-[320px] lg:w-[400px]">
+          <div className="flex w-full flex-wrap items-center justify-start gap-2 xl:w-auto xl:justify-end">
+            <div className="relative w-full sm:w-[300px] xl:w-[360px]">
               <Search className="absolute left-2 top-2 h-4 w-4 text-muted-foreground" />
               <Input
                 value={search}
@@ -295,7 +377,7 @@ export function SreIncidentsList({ incidents, loadError }: SreIncidentsListProps
                 ))}
               </SelectContent>
             </Select>
-            <Button type="button" onClick={() => setDialogOpen(true)}>
+            <Button type="button" className="h-8" onClick={() => setDialogOpen(true)}>
               <Plus className="h-4 w-4" />
               New incident
             </Button>
@@ -318,23 +400,83 @@ export function SreIncidentsList({ incidents, loadError }: SreIncidentsListProps
         />
       ) : (
         <>
-          <div className="overflow-hidden rounded-t-lg border">
+          <div className="w-full max-w-full overflow-hidden rounded-t-lg border">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <SortableHead label="No." sortKey="incidentNumber" activeKey={sortKey} direction={sortDirection} onSort={handleSort} className="w-24" />
-                  <SortableHead label="Incident" sortKey="title" activeKey={sortKey} direction={sortDirection} onSort={handleSort} />
-                  <SortableHead label="Severity" sortKey="severity" activeKey={sortKey} direction={sortDirection} onSort={handleSort} className="w-32" />
-                  <SortableHead label="Status" sortKey="status" activeKey={sortKey} direction={sortDirection} onSort={handleSort} className="w-40" />
-                  <SortableHead label="Service" sortKey="primaryServiceName" activeKey={sortKey} direction={sortDirection} onSort={handleSort} className="w-44" />
-                  <SortableHead label="Alerts" sortKey="alertCount" activeKey={sortKey} direction={sortDirection} onSort={handleSort} className="w-28" />
-                  <SortableHead label="Updated" sortKey="updatedAt" activeKey={sortKey} direction={sortDirection} onSort={handleSort} className="w-44" />
+                  <SortableHead
+                    label="ID"
+                    sortKey="id"
+                    activeKey={sortKey}
+                    direction={sortDirection}
+                    onSort={handleSort}
+                    className="w-32"
+                  />
+                  <SortableHead
+                    label="Incident"
+                    sortKey="title"
+                    activeKey={sortKey}
+                    direction={sortDirection}
+                    onSort={handleSort}
+                    className="w-[420px]"
+                  />
+                  <SortableHead
+                    label="Severity"
+                    sortKey="severity"
+                    activeKey={sortKey}
+                    direction={sortDirection}
+                    onSort={handleSort}
+                    className="w-32"
+                  />
+                  <SortableHead
+                    label="Status"
+                    sortKey="status"
+                    activeKey={sortKey}
+                    direction={sortDirection}
+                    onSort={handleSort}
+                    className="w-40"
+                  />
+                  <SortableHead
+                    label="Service"
+                    sortKey="primaryServiceName"
+                    activeKey={sortKey}
+                    direction={sortDirection}
+                    onSort={handleSort}
+                    className="w-36"
+                  />
+                  <SortableHead
+                    label="Investigation"
+                    sortKey="latestInvestigationStatus"
+                    activeKey={sortKey}
+                    direction={sortDirection}
+                    onSort={handleSort}
+                    className="w-36"
+                  />
+                  <SortableHead
+                    label="Evidence"
+                    sortKey="evidenceCount"
+                    activeKey={sortKey}
+                    direction={sortDirection}
+                    onSort={handleSort}
+                    className="w-32"
+                  />
+                  <SortableHead
+                    label="Updated"
+                    sortKey="updatedAt"
+                    activeKey={sortKey}
+                    direction={sortDirection}
+                    onSort={handleSort}
+                    className="w-44"
+                  />
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {pagedIncidents.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+                    <TableCell
+                      colSpan={8}
+                      className="h-24 text-center text-muted-foreground"
+                    >
                       No incidents match the current filters.
                     </TableCell>
                   </TableRow>
@@ -342,7 +484,7 @@ export function SreIncidentsList({ incidents, loadError }: SreIncidentsListProps
                   pagedIncidents.map((incident) => (
                     <TableRow
                       key={incident.id}
-                      className="cursor-pointer hover:bg-muted/50"
+                      className="h-[72px] cursor-pointer hover:bg-muted/50"
                       tabIndex={0}
                       onClick={() => router.push(`/incidents/${incident.id}`)}
                       onKeyDown={(event) => {
@@ -351,34 +493,73 @@ export function SreIncidentsList({ incidents, loadError }: SreIncidentsListProps
                           router.push(`/incidents/${incident.id}`);
                         }
                       }}
-                      aria-label={`View incident #${incident.incidentNumber}: ${incident.title}`}
+                      aria-label={`View incident ${incident.id}: ${incident.title}`}
                     >
-                      <TableCell className="py-2.5">
-                        <Badge variant="secondary">#{incident.incidentNumber}</Badge>
+                      <TableCell className="py-2.5" onClick={(event) => event.stopPropagation()}>
+                        <UUIDField value={incident.id} maxLength={8} />
                       </TableCell>
-                      <TableCell className="max-w-[560px] py-2.5">
-                        <span className="block truncate font-medium" title={incident.title}>
+                      <TableCell className="max-w-[420px] py-2.5">
+                        <span
+                          className="block truncate font-medium"
+                          title={incident.title}
+                        >
                           {incident.title}
                         </span>
                       </TableCell>
                       <TableCell className="py-2.5">
-                        <Badge variant="outline" className={cn("uppercase", severityClasses[incident.severity])}>
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            "uppercase",
+                            severityClasses[incident.severity],
+                          )}
+                        >
                           {incident.severity}
                         </Badge>
                       </TableCell>
                       <TableCell className="py-2.5">
-                        <Badge variant="outline" className={cn("capitalize", statusClasses[incident.status])}>
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            "capitalize",
+                            statusClasses[incident.status],
+                          )}
+                        >
                           {formatStatus(incident.status)}
                         </Badge>
                       </TableCell>
-                      <TableCell className="max-w-[180px] truncate py-2.5" title={incident.primaryServiceName ?? "Unmapped"}>
+                      <TableCell
+                        className="max-w-[180px] truncate py-2.5"
+                        title={incident.primaryServiceName ?? "Unmapped"}
+                      >
                         {incident.primaryServiceName ?? "Unmapped"}
                       </TableCell>
-                      <TableCell className="py-2.5">{incident.alertCount}</TableCell>
+                      <TableCell className="py-2.5">
+                        {incident.latestInvestigationStatus ? (
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              "w-fit capitalize",
+                              investigationStatusClasses[
+                                incident.latestInvestigationStatus
+                              ],
+                            )}
+                          >
+                            {formatStatus(incident.latestInvestigationStatus)}
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary">Not started</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="py-2.5">
+                        {incident.evidenceCount}
+                      </TableCell>
                       <TableCell className="py-2.5">
                         <div className="inline-flex items-center gap-1 whitespace-nowrap text-sm">
                           <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-                          <span suppressHydrationWarning>{formatDate(incident.updatedAt)}</span>
+                          <span suppressHydrationWarning>
+                            {formatDate(incident.updatedAt)}
+                          </span>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -418,19 +599,41 @@ export function SreIncidentsList({ incidents, loadError }: SreIncidentsListProps
                 Page {safePageIndex + 1} of {pageCount}
               </div>
               <div className="flex items-center space-x-2">
-                <Button variant="outline" className="hidden h-8 w-8 p-0 lg:flex" onClick={() => setPageIndex(0)} disabled={safePageIndex === 0}>
+                <Button
+                  variant="outline"
+                  className="hidden h-8 w-8 p-0 lg:flex"
+                  onClick={() => setPageIndex(0)}
+                  disabled={safePageIndex === 0}
+                >
                   <span className="sr-only">Go to first page</span>
                   <ChevronsLeft />
                 </Button>
-                <Button variant="outline" className="h-8 w-8 p-0" onClick={() => setPageIndex(Math.max(0, safePageIndex - 1))} disabled={safePageIndex === 0}>
+                <Button
+                  variant="outline"
+                  className="h-8 w-8 p-0"
+                  onClick={() => setPageIndex(Math.max(0, safePageIndex - 1))}
+                  disabled={safePageIndex === 0}
+                >
                   <span className="sr-only">Go to previous page</span>
                   <ChevronLeft />
                 </Button>
-                <Button variant="outline" className="h-8 w-8 p-0" onClick={() => setPageIndex(Math.min(pageCount - 1, safePageIndex + 1))} disabled={safePageIndex >= pageCount - 1}>
+                <Button
+                  variant="outline"
+                  className="h-8 w-8 p-0"
+                  onClick={() =>
+                    setPageIndex(Math.min(pageCount - 1, safePageIndex + 1))
+                  }
+                  disabled={safePageIndex >= pageCount - 1}
+                >
                   <span className="sr-only">Go to next page</span>
                   <ChevronRight />
                 </Button>
-                <Button variant="outline" className="hidden h-8 w-8 p-0 lg:flex" onClick={() => setPageIndex(pageCount - 1)} disabled={safePageIndex >= pageCount - 1}>
+                <Button
+                  variant="outline"
+                  className="hidden h-8 w-8 p-0 lg:flex"
+                  onClick={() => setPageIndex(pageCount - 1)}
+                  disabled={safePageIndex >= pageCount - 1}
+                >
                   <span className="sr-only">Go to last page</span>
                   <ChevronsRight />
                 </Button>
@@ -445,7 +648,8 @@ export function SreIncidentsList({ incidents, loadError }: SreIncidentsListProps
           <DialogHeader>
             <DialogTitle>Create incident</DialogTitle>
             <DialogDescription>
-              Use this when an incident did not start from an alert. Alert-created incidents still come from the Alerts page.
+              Use this when an incident did not start from an alert.
+              Alert-created incidents still come from the Alerts page.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
@@ -461,7 +665,12 @@ export function SreIncidentsList({ incidents, loadError }: SreIncidentsListProps
             </div>
             <div className="space-y-2">
               <Label htmlFor="manual-incident-severity">Severity</Label>
-              <Select value={severity} onValueChange={(value) => setSeverity(value as SreIncidentListItem["severity"])}>
+              <Select
+                value={severity}
+                onValueChange={(value) =>
+                  setSeverity(value as SreIncidentListItem["severity"])
+                }
+              >
                 <SelectTrigger id="manual-incident-severity">
                   <SelectValue placeholder="Select severity" />
                 </SelectTrigger>
@@ -496,7 +705,11 @@ export function SreIncidentsList({ incidents, loadError }: SreIncidentsListProps
             >
               Cancel
             </Button>
-            <Button type="button" onClick={handleCreateIncident} disabled={isPending || !title.trim()}>
+            <Button
+              type="button"
+              onClick={handleCreateIncident}
+              disabled={isPending || !title.trim()}
+            >
               {isPending ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />

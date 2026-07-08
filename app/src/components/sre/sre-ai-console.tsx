@@ -5,7 +5,10 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { Archive, Bot, Clock3, Plus, Search, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 
-import { archiveSreStandaloneChat, type SreStandaloneChatHistory } from "@/actions/sre-ai";
+import {
+  archiveSreStandaloneChat,
+  type SreStandaloneChatHistory,
+} from "@/actions/sre-ai";
 import { SreAssistantUiThread } from "@/components/sre/sre-assistant-ui-thread";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -25,17 +28,30 @@ function formatHistoryDate(value: string) {
     return "Recent";
   }
 
-  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" }).format(date);
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  }).format(date);
 }
 
-export function SreAiConsole({ initialHistories = [], loadError = null }: SreAiConsoleProps) {
+export function SreAiConsole({
+  initialHistories = [],
+  loadError = null,
+}: SreAiConsoleProps) {
   const router = useRouter();
   const [histories, setHistories] = useState(initialHistories);
   const [historyQuery, setHistoryQuery] = useState("");
-  const [conversationId, setConversationId] = useState<string | null>(initialHistories[0]?.conversationId ?? null);
-  const [activeMessages, setActiveMessages] = useState<SreStandaloneChatHistory["messages"]>(initialHistories[0]?.messages ?? []);
+  const [conversationId, setConversationId] = useState<string | null>(
+    initialHistories[0]?.conversationId ?? null,
+  );
+  const [activeMessages, setActiveMessages] = useState<
+    SreStandaloneChatHistory["messages"]
+  >(initialHistories[0]?.messages ?? []);
   const [error, setError] = useState<string | null>(loadError);
-  const [threadKey, setThreadKey] = useState(initialHistories[0]?.conversationId ?? "new");
+  const [threadKey, setThreadKey] = useState(
+    initialHistories[0]?.conversationId ?? "new",
+  );
   const [isArchiving, startArchiveTransition] = useTransition();
 
   useEffect(() => {
@@ -53,7 +69,7 @@ export function SreAiConsole({ initialHistories = [], loadError = null }: SreAiC
         .filter(Boolean)
         .join(" ")
         .toLowerCase()
-        .includes(query)
+        .includes(query),
     );
   }, [histories, historyQuery]);
 
@@ -83,7 +99,9 @@ export function SreAiConsole({ initialHistories = [], loadError = null }: SreAiC
         return;
       }
 
-      setHistories((current) => current.filter((history) => history.conversationId !== conversationId));
+      setHistories((current) =>
+        current.filter((history) => history.conversationId !== conversationId),
+      );
       startNewChat();
       router.refresh();
       toast.success("Copilot session archived");
@@ -99,13 +117,18 @@ export function SreAiConsole({ initialHistories = [], loadError = null }: SreAiC
     setActiveMessages(input.messages);
     setThreadKey(input.conversationId);
     setHistories((current) => {
-      const withoutActive = current.filter((history) => history.conversationId !== input.conversationId);
-      return [{
-        conversationId: input.conversationId,
-        title: input.title,
-        updatedAt: new Date().toISOString(),
-        messages: input.messages,
-      }, ...withoutActive];
+      const withoutActive = current.filter(
+        (history) => history.conversationId !== input.conversationId,
+      );
+      return [
+        {
+          conversationId: input.conversationId,
+          title: input.title,
+          updatedAt: new Date().toISOString(),
+          messages: input.messages,
+        },
+        ...withoutActive,
+      ];
     });
     router.refresh();
   };
@@ -116,9 +139,15 @@ export function SreAiConsole({ initialHistories = [], loadError = null }: SreAiC
         <div className="flex flex-col gap-3 border-b p-3">
           <div>
             <p className="text-sm font-medium">Agent history</p>
-            <p className="text-xs text-muted-foreground">Standalone Copilot sessions</p>
+            <p className="text-xs text-muted-foreground">
+              Standalone Copilot sessions
+            </p>
           </div>
-          <Button type="button" className="w-full justify-start" onClick={startNewChat}>
+          <Button
+            type="button"
+            className="w-full justify-start"
+            onClick={startNewChat}
+          >
             <Plus className="h-4 w-4" />
             New chat
           </Button>
@@ -135,7 +164,9 @@ export function SreAiConsole({ initialHistories = [], loadError = null }: SreAiC
         <div className="min-h-0 flex-1 overflow-y-auto p-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {filteredHistories.length === 0 ? (
             <div className="px-2 py-8 text-center text-sm text-muted-foreground">
-              {historyQuery.trim() ? "No Copilot sessions match your search." : "Saved Copilot sessions will appear here."}
+              {historyQuery.trim()
+                ? "No Copilot sessions match your search."
+                : "Saved Copilot sessions will appear here."}
             </div>
           ) : (
             <div className="flex flex-col gap-1">
@@ -149,13 +180,18 @@ export function SreAiConsole({ initialHistories = [], loadError = null }: SreAiC
                     onClick={() => selectHistory(history)}
                     className={cn(
                       "w-full rounded-xl px-3 py-2.5 text-left text-sm transition-colors hover:bg-background/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                      isActive && "bg-background shadow-sm ring-1 ring-border"
+                      isActive && "bg-background shadow-sm ring-1 ring-border",
                     )}
                   >
-                    <span className="block truncate font-medium">{history.title ?? "Copilot session"}</span>
+                    <span className="block truncate font-medium">
+                      {history.title ?? "Copilot session"}
+                    </span>
                     <span className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
                       <Clock3 className="h-3 w-3" />
-                      <time dateTime={history.updatedAt}>{formatHistoryDate(history.updatedAt)}</time> · {history.messages.length} messages
+                      <time dateTime={history.updatedAt}>
+                        {formatHistoryDate(history.updatedAt)}
+                      </time>{" "}
+                      · {history.messages.length} messages
                     </span>
                   </button>
                 );
@@ -179,21 +215,43 @@ export function SreAiConsole({ initialHistories = [], loadError = null }: SreAiC
             </div>
             <div className="min-w-0">
               <h1 className="truncate text-sm font-semibold">Copilot</h1>
-              <p className="truncate text-xs text-muted-foreground">Read-only triage, evidence planning, and safe verification.</p>
+              <p className="truncate text-xs text-muted-foreground">
+                Read-only triage, evidence planning, and safe verification.
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={startNewChat}>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={startNewChat}
+            >
               <Plus className="h-4 w-4" />
               <span className="hidden sm:inline">New</span>
             </Button>
             {conversationId && (
-              <Button type="button" variant="ghost" size="sm" onClick={archiveCurrentChat} disabled={isArchiving}>
-                {isArchiving ? <Spinner className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={archiveCurrentChat}
+                disabled={isArchiving}
+              >
+                {isArchiving ? (
+                  <Spinner className="h-4 w-4" />
+                ) : (
+                  <Archive className="h-4 w-4" />
+                )}
                 <span className="hidden sm:inline">Archive</span>
               </Button>
             )}
-            <Badge variant="secondary" className="hidden rounded-full sm:inline-flex">No remediation</Badge>
+            <Badge
+              variant="secondary"
+              className="hidden rounded-full sm:inline-flex"
+            >
+              No remediation
+            </Badge>
           </div>
         </header>
 
@@ -212,6 +270,7 @@ export function SreAiConsole({ initialHistories = [], loadError = null }: SreAiC
             conversationId={conversationId}
             initialMessages={activeMessages}
             onConversationResolved={handleConversationResolved}
+            onClearError={() => setError(null)}
             onError={(message) => {
               setError(message);
               toast.error(message);

@@ -22,7 +22,6 @@ import {
   ClipboardList,
   Target,
   Bot,
-  FileSearch,
   Network,
   Siren,
   UserCog,
@@ -81,7 +80,6 @@ export function CommandSearch({ className }: CommandSearchProps) {
         "admin-diagnostic-recipes": "/org-admin?tab=diagnostic-recipes",
         "admin-private-agents": "/org-admin?tab=private-agents",
         "investigation-chat": "/copilot",
-        "investigation-history": "/copilot/investigations",
         "evidence-graph": "/copilot/evidence-graph",
 
         // Create Actions
@@ -216,10 +214,6 @@ export function CommandSearch({ className }: CommandSearchProps) {
                 <CommandItem onSelect={() => handleCommand("investigation-chat")}>
                   <Bot className="mr-2 h-4 w-4 !text-zinc-400" />
                   <span>Copilot</span>
-                </CommandItem>
-                <CommandItem onSelect={() => handleCommand("investigation-history")}>
-                  <FileSearch className="mr-2 h-4 w-4 !text-violet-500" />
-                  <span>Investigations</span>
                 </CommandItem>
                 <CommandItem onSelect={() => handleCommand("evidence-graph")}>
                   <Network className="mr-2 h-4 w-4 !text-sky-500" />

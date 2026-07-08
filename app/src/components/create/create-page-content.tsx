@@ -2,7 +2,24 @@
 import React, { useState, useCallback } from "react";
 import { CreateCard } from "./create-card";
 import { useRouter } from "next/navigation";
-import { Video, Variable, Shield, Tally4, Chrome, FileText } from "lucide-react";
+import {
+  Bot,
+  Boxes,
+  Cable,
+  FileText,
+  FolderOpen,
+  KeyRound,
+  Network,
+  RadioTower,
+  Shield,
+  Siren,
+  SquareLibrary,
+  Tally4,
+  UserPlus,
+  Variable,
+  Video,
+  Chrome,
+} from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -18,43 +35,78 @@ import { K6Logo } from "@/components/logo/k6-logo";
 import { PlaywrightLogo } from "@/components/logo/playwright-logo";
 import { notificationProviders } from "@/components/alerts/data";
 
-type ScriptType = "browser" | "api" | "custom" | "database" | "performance" | "record";
+type ScriptType =
+  | "browser"
+  | "api"
+  | "custom"
+  | "database"
+  | "performance"
+  | "record";
+
+export type QuickCreateCapabilities = {
+  canCreateProjects: boolean;
+  canInviteMembers: boolean;
+  canCreateCliTokens: boolean;
+  canInvestigateSre: boolean;
+  canCreateSreServices: boolean;
+  canConfigureSreConnectors: boolean;
+};
 
 // Extension URLs
-const CHROME_WEB_STORE_URL = "https://chromewebstore.google.com/detail/supercheck-recorder/gfmbcelfhhfmifdkccnbgdadibdfhioe";
-const EDGE_ADDONS_URL = "https://microsoftedge.microsoft.com/addons/detail/supercheck-recorder/ngmlkgfgmdnfpddohcbfdgihennolnem";
+const CHROME_WEB_STORE_URL =
+  "https://chromewebstore.google.com/detail/supercheck-recorder/gfmbcelfhhfmifdkccnbgdadibdfhioe";
+const EDGE_ADDONS_URL =
+  "https://microsoftedge.microsoft.com/addons/detail/supercheck-recorder/ngmlkgfgmdnfpddohcbfdgihennolnem";
 
 // Detect browser type
-function detectBrowser(): 'chrome' | 'edge' | 'unsupported' {
-  if (typeof navigator === 'undefined') return 'unsupported';
+function detectBrowser(): "chrome" | "edge" | "unsupported" {
+  if (typeof navigator === "undefined") return "unsupported";
 
   const userAgent = navigator.userAgent.toLowerCase();
 
   // Edge uses "edg" in user agent
-  if (userAgent.includes('edg')) return 'edge';
+  if (userAgent.includes("edg")) return "edge";
 
   // Chrome - must check after Edge since Edge also contains Chrome
   // Most Chromium browsers (Brave, Vivaldi, etc.) include "Chrome" in UA
-  if (userAgent.includes('chrome') && !userAgent.includes('edg')) return 'chrome';
+  if (userAgent.includes("chrome") && !userAgent.includes("edg"))
+    return "chrome";
 
   // All other browsers (Safari, Firefox, etc.) are unsupported
-  return 'unsupported';
+  return "unsupported";
 }
 
-export function CreatePageContent() {
+export function CreatePageContent({
+  capabilities,
+}: {
+  capabilities: QuickCreateCapabilities;
+}) {
   const router = useRouter();
   const [showUnsupportedDialog, setShowUnsupportedDialog] = useState(false);
+  const cardGridClass =
+    "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3";
 
   const testTypes = [
     ...types.map((type) => ({
       icon: <type.icon size={20} className={type.color} />,
       title: type.label,
+      description:
+        type.value === "browser"
+          ? "Automate browser flows"
+          : type.value === "api"
+            ? "Validate API behavior"
+            : type.value === "database"
+              ? "Check database queries"
+              : type.value === "custom"
+                ? "Script a custom check"
+                : "Run performance tests",
       path: `/playground?scriptType=${type.value}`,
       scriptType: type.value as ScriptType,
     })),
     {
       icon: <Video size={20} className="text-red-500" />,
       title: "Record",
+      description: "Capture a browser flow",
       path: "", // Handled by custom onClick
       scriptType: "record" as ScriptType,
     },
@@ -63,24 +115,26 @@ export function CreatePageContent() {
   const handleRecordClick = useCallback(() => {
     const browser = detectBrowser();
 
-    if (browser === 'unsupported') {
+    if (browser === "unsupported") {
       setShowUnsupportedDialog(true);
       return;
     }
 
-    const url = browser === 'edge' ? EDGE_ADDONS_URL : CHROME_WEB_STORE_URL;
-    window.open(url, '_blank');
+    const url = browser === "edge" ? EDGE_ADDONS_URL : CHROME_WEB_STORE_URL;
+    window.open(url, "_blank");
   }, []);
 
   const jobTypes = [
     {
       icon: <PlaywrightLogo width={20} height={20} />,
       title: "Playwright Job",
+      description: "Schedule browser suites",
       onClick: () => router.push("/jobs/create/playwright"),
     },
     {
       icon: <K6Logo width={20} height={20} />,
       title: "k6 Performance Job",
+      description: "Schedule load checks",
       onClick: () => router.push("/jobs/create/k6"),
     },
   ];
@@ -89,16 +143,19 @@ export function CreatePageContent() {
     {
       icon: <Variable size={20} className="text-cyan-500" />,
       title: "Variable",
+      description: "Store plain config",
       onClick: () => router.push("/variables?create=true"),
     },
     {
       icon: <Shield size={20} className="text-red-500" />,
       title: "Secret",
+      description: "Store encrypted values",
       onClick: () => router.push("/variables?create=true&type=secret"),
     },
     {
       icon: <FileText size={20} className="text-green-500" />,
       title: "File",
+      description: "Upload project files",
       onClick: () => router.push("/variables?create=true&type=file"),
     },
   ];
@@ -107,21 +164,114 @@ export function CreatePageContent() {
     {
       icon: <Tally4 size={20} className="text-green-600" />,
       title: "Status Page",
+      description: "Publish service health",
       onClick: () => router.push("/status-pages?create=true"),
     },
   ];
+
+  const notificationDescriptions: Record<string, string> = {
+    email: "Send alert emails",
+    slack: "Post alerts to Slack",
+    webhook: "Call an HTTP endpoint",
+    telegram: "Send Telegram alerts",
+    discord: "Post alerts to Discord",
+    teams: "Post alerts to Teams",
+  };
 
   const notificationTypes = notificationProviders.map((provider) => {
     const IconComponent = provider.icon;
     return {
       icon: <IconComponent size={20} className={provider.color} />,
       title: provider.label,
+      description: notificationDescriptions[provider.type] ?? "Send alerts",
       onClick: () => router.push(`/alerts?create=true&type=${provider.type}`),
     };
   });
+  const investigationTypes = capabilities.canInvestigateSre
+    ? [
+        {
+          icon: <Bot size={20} className="text-zinc-300" />,
+          title: "Copilot",
+          description: "Start read-only triage",
+          onClick: () => router.push("/copilot"),
+        },
+        {
+          icon: <Network size={20} className="text-sky-500" />,
+          title: "Evidence Map",
+          description: "Review evidence links",
+          onClick: () => router.push("/copilot/evidence-graph"),
+        },
+        {
+          icon: <Siren size={20} className="text-rose-500" />,
+          title: "Incidents",
+          description: "Review response queue",
+          onClick: () => router.push("/incidents"),
+        },
+      ]
+    : [];
+  const sreSetupTypes = [
+    capabilities.canCreateSreServices
+      ? {
+          icon: <Boxes size={20} className="text-sky-500" />,
+          title: "Service",
+          description: "Define service topology",
+          onClick: () => router.push("/org-admin?tab=services"),
+        }
+      : null,
+    capabilities.canConfigureSreConnectors
+      ? {
+          icon: <Cable size={20} className="text-emerald-500" />,
+          title: "Integration",
+          description: "Connect evidence sources",
+          onClick: () => router.push("/org-admin?tab=integrations"),
+        }
+      : null,
+    capabilities.canConfigureSreConnectors
+      ? {
+          icon: <SquareLibrary size={20} className="text-cyan-500" />,
+          title: "Diagnostic Recipe",
+          description: "Add safe query templates",
+          onClick: () => router.push("/org-admin?tab=diagnostic-recipes"),
+        }
+      : null,
+    capabilities.canConfigureSreConnectors
+      ? {
+          icon: <RadioTower size={20} className="text-violet-500" />,
+          title: "Private Agent",
+          description: "Register private access",
+          onClick: () => router.push("/org-admin?tab=private-agents"),
+        }
+      : null,
+  ].filter((item): item is NonNullable<typeof item> => Boolean(item));
+  const adminSetupTypes = [
+    capabilities.canCreateProjects
+      ? {
+          icon: <FolderOpen size={20} className="text-amber-500" />,
+          title: "Project",
+          description: "Manage workspaces",
+          onClick: () => router.push("/org-admin?tab=projects"),
+        }
+      : null,
+    capabilities.canInviteMembers
+      ? {
+          icon: <UserPlus size={20} className="text-teal-500" />,
+          title: "Member",
+          description: "Invite users",
+          onClick: () => router.push("/org-admin?tab=members"),
+        }
+      : null,
+    capabilities.canCreateCliTokens
+      ? {
+          icon: <KeyRound size={20} className="text-indigo-500" />,
+          title: "CLI Token",
+          description: "Create CLI access",
+          onClick: () => router.push("/org-admin?tab=cli-tokens"),
+        }
+      : null,
+  ].filter((item): item is NonNullable<typeof item> => Boolean(item));
 
   return (
-    <div className="mx-auto p-4 mt-3">
+    <div className="mx-auto mt-3 p-4">
       <div className="mb-3 pl-1">
         <h2 className="text-md font-semibold">Create New Test</h2>
         <p className="text-muted-foreground text-sm mt-0.5">
@@ -129,12 +279,13 @@ export function CreatePageContent() {
         </p>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+      <div className={cardGridClass}>
         {testTypes.map((testType) => (
           <CreateCard
             key={testType.scriptType || testType.title}
             icon={testType.icon}
             title={testType.title}
+            description={testType.description}
             onClick={() =>
               testType.title === "Record"
                 ? handleRecordClick()
@@ -146,7 +297,10 @@ export function CreatePageContent() {
       </div>
 
       {/* Unsupported Browser Dialog */}
-      <Dialog open={showUnsupportedDialog} onOpenChange={setShowUnsupportedDialog}>
+      <Dialog
+        open={showUnsupportedDialog}
+        onOpenChange={setShowUnsupportedDialog}
+      >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-3">
@@ -156,7 +310,8 @@ export function CreatePageContent() {
               <span>Browser Not Supported</span>
             </DialogTitle>
             <DialogDescription>
-              The Supercheck Recorder extension requires a Chromium-based browser
+              The Supercheck Recorder extension requires a Chromium-based
+              browser
             </DialogDescription>
           </DialogHeader>
 
@@ -174,17 +329,23 @@ export function CreatePageContent() {
                 </div>
               </div>
               <p className="text-xs text-muted-foreground mt-2">
-                Also compatible with Brave, Opera, Vivaldi, and other Chromium-based browsers.
+                Also compatible with Brave, Opera, Vivaldi, and other
+                Chromium-based browsers.
               </p>
             </div>
 
             <p className="text-sm text-muted-foreground">
-              Please open Supercheck in a Chromium-based browser to use the browser recording feature.
+              Please open Supercheck in a Chromium-based browser to use the
+              browser recording feature.
             </p>
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowUnsupportedDialog(false)} className="w-full">
+            <Button
+              variant="outline"
+              onClick={() => setShowUnsupportedDialog(false)}
+              className="w-full"
+            >
               Got it
             </Button>
           </DialogFooter>
@@ -198,16 +359,86 @@ export function CreatePageContent() {
         </p>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+      <div className={cardGridClass}>
         {jobTypes.map((jobType) => (
           <CreateCard
             key={jobType.title}
             icon={jobType.icon}
             title={jobType.title}
+            description={jobType.description}
             onClick={jobType.onClick}
           />
         ))}
       </div>
+
+      {investigationTypes.length > 0 && (
+        <>
+          <div className="mt-6 mb-3 pl-1">
+            <h2 className="text-md font-semibold">Investigate with AI SRE</h2>
+            <p className="text-muted-foreground mt-0.5 text-sm">
+              Open read-only triage, evidence graph, and investigation tools
+            </p>
+          </div>
+
+          <div className={cardGridClass}>
+            {investigationTypes.map((investigationType) => (
+              <CreateCard
+                key={investigationType.title}
+                icon={investigationType.icon}
+                title={investigationType.title}
+                description={investigationType.description}
+                onClick={investigationType.onClick}
+              />
+            ))}
+          </div>
+        </>
+      )}
+
+      {sreSetupTypes.length > 0 && (
+        <>
+          <div className="mt-6 mb-3 pl-1">
+            <h2 className="text-md font-semibold">Configure AI SRE</h2>
+            <p className="text-muted-foreground mt-0.5 text-sm">
+              Add services, read-only connectors, recipes, and Private Agents
+            </p>
+          </div>
+
+          <div className={cardGridClass}>
+            {sreSetupTypes.map((setupType) => (
+              <CreateCard
+                key={setupType.title}
+                icon={setupType.icon}
+                title={setupType.title}
+                description={setupType.description}
+                onClick={setupType.onClick}
+              />
+            ))}
+          </div>
+        </>
+      )}
+
+      {adminSetupTypes.length > 0 && (
+        <>
+          <div className="mt-6 mb-3 pl-1">
+            <h2 className="text-md font-semibold">Admin Setup</h2>
+            <p className="text-muted-foreground mt-0.5 text-sm">
+              Manage project, member, and CLI access
+            </p>
+          </div>
+
+          <div className={`${cardGridClass} mb-2`}>
+            {adminSetupTypes.map((setupType) => (
+              <CreateCard
+                key={setupType.title}
+                icon={setupType.icon}
+                title={setupType.title}
+                description={setupType.description}
+                onClick={setupType.onClick}
+              />
+            ))}
+          </div>
+        </>
+      )}
 
       <div className="mt-6 mb-3 pl-1">
         <h2 className="text-md font-semibold">Create New Monitor</h2>
@@ -216,7 +447,7 @@ export function CreatePageContent() {
         </p>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+      <div className={cardGridClass}>
         {monitorTypes.map((monitorType) => {
           const IconComponent = monitorType.icon;
           return (
@@ -224,6 +455,17 @@ export function CreatePageContent() {
               key={monitorType.value}
               icon={<IconComponent size={20} className={monitorType.color} />}
               title={monitorType.label}
+              description={
+                monitorType.value === "http_request"
+                  ? "Check HTTP endpoints"
+                  : monitorType.value === "website"
+                    ? "Monitor website health"
+                    : monitorType.value === "ping_host"
+                      ? "Ping a host"
+                      : monitorType.value === "port_check"
+                        ? "Check a network port"
+                        : "Run scheduled flows"
+              }
               onClick={() =>
                 router.push(`/monitors/create?type=${monitorType.value}`)
               }
@@ -239,12 +481,13 @@ export function CreatePageContent() {
         </p>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+      <div className={cardGridClass}>
         {statusPageTypes.map((statusPageType) => (
           <CreateCard
             key={statusPageType.title}
             icon={statusPageType.icon}
             title={statusPageType.title}
+            description={statusPageType.description}
             onClick={statusPageType.onClick}
           />
         ))}
@@ -257,12 +500,13 @@ export function CreatePageContent() {
         </p>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+      <div className={cardGridClass}>
         {variableTypes.map((variableType) => (
           <CreateCard
             key={variableType.title}
             icon={variableType.icon}
             title={variableType.title}
+            description={variableType.description}
             onClick={variableType.onClick}
           />
         ))}
@@ -275,12 +519,13 @@ export function CreatePageContent() {
         </p>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 mb-2">
+      <div className={`${cardGridClass} mb-2`}>
         {notificationTypes.map((notificationType) => (
           <CreateCard
             key={notificationType.title}
             icon={notificationType.icon}
             title={notificationType.title}
+            description={notificationType.description}
             onClick={notificationType.onClick}
           />
         ))}

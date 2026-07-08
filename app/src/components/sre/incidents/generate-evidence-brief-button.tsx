@@ -36,7 +36,7 @@ export function GenerateEvidenceBriefButton({ incidentId, hasBrief }: GenerateEv
   return (
     <Button onClick={handleClick} disabled={isPending}>
       {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
-      {hasBrief ? "Regenerate native brief" : "Generate native brief"}
+      {hasBrief ? "Regenerate brief" : "Generate brief"}
     </Button>
   );
 }
