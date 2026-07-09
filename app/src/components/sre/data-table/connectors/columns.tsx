@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { FileSearch, MoreHorizontal } from "lucide-react";
 import { type SreConnectorListItem } from "@/actions/sre-connectors";
+import { isLiveSearchConnectorType } from "@/lib/sre/connectors/connector-capabilities";
 import { cn } from "@/lib/utils";
 
 const statusClasses: Record<SreConnectorListItem["status"], string> = {
@@ -25,21 +26,32 @@ function formatConnectorType(value: string) {
   return value.replace(/_/g, " ").replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
-const evidenceSearchConnectorTypes = new Set([
-  "github",
-  "kubernetes",
-  "prometheus",
-  "grafana",
-  "sentry",
-  "datadog",
-  "loki",
-  "elasticsearch",
-  "tempo",
-  "aws_cloudwatch",
-]);
-
 function supportsEvidenceSearch(connector: SreConnectorListItem) {
-  return connector.status !== "disabled" && evidenceSearchConnectorTypes.has(connector.type);
+  return connector.status !== "disabled" && isLiveSearchConnectorType(connector.type);
+}
+
+function connectorCapabilityBadge(connectorType: SreConnectorListItem["type"]) {
+  if (connectorType === "supercheck_native") {
+    return {
+      label: "Native",
+      className:
+        "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900/60 dark:bg-sky-950/40 dark:text-sky-300",
+    };
+  }
+
+  if (isLiveSearchConnectorType(connectorType)) {
+    return {
+      label: "Live search",
+      className:
+        "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300",
+    };
+  }
+
+  return {
+    label: "Setup only",
+    className:
+      "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300",
+  };
 }
 
 export const columns: ColumnDef<SreConnectorListItem>[] = [
@@ -58,7 +70,18 @@ export const columns: ColumnDef<SreConnectorListItem>[] = [
     header: "Type",
     cell: ({ row }) => {
       const connector = row.original;
-      return <Badge variant="outline">{formatConnectorType(connector.type)}</Badge>;
+      const capability = connectorCapabilityBadge(connector.type);
+      return (
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+          <Badge variant="outline">{formatConnectorType(connector.type)}</Badge>
+          <Badge
+            variant="outline"
+            className={capability.className}
+          >
+            {capability.label}
+          </Badge>
+        </div>
+      );
     },
     filterFn: (row, id, value) => value.includes(row.getValue(id)),
   },

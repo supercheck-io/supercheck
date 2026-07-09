@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import {
@@ -25,6 +26,7 @@ import { Switch } from "@/components/ui/switch";
 type SreInvestigationPanelProps = {
   incidentId: string;
   hasPrimaryService: boolean;
+  serviceMappingHref: string;
   evidenceReferences?: Array<{
     id: string;
     title: string;
@@ -36,6 +38,10 @@ type ReadinessItem = {
   label: string;
   description: string;
   ready: boolean;
+  action?: {
+    label: string;
+    href: string;
+  };
 };
 
 function ReadinessRow({ item }: { item: ReadinessItem }) {
@@ -54,6 +60,11 @@ function ReadinessRow({ item }: { item: ReadinessItem }) {
           </Badge>
         </div>
         <p className="mt-1 text-sm text-muted-foreground">{item.description}</p>
+        {!item.ready && item.action && (
+          <Button asChild variant="link" className="mt-1 h-auto p-0 text-sm">
+            <Link href={item.action.href}>{item.action.label}</Link>
+          </Button>
+        )}
       </div>
     </div>
   );
@@ -62,6 +73,7 @@ function ReadinessRow({ item }: { item: ReadinessItem }) {
 export function SreInvestigationPanel({
   incidentId,
   hasPrimaryService,
+  serviceMappingHref,
   evidenceReferences = [],
 }: SreInvestigationPanelProps) {
   const router = useRouter();
@@ -83,6 +95,9 @@ export function SreInvestigationPanel({
       description: hasPrimaryService
         ? "Live connector tools can be scoped to the incident service."
         : "Map a primary service before using live connector tools.",
+      action: hasPrimaryService
+        ? undefined
+        : { label: "Map service", href: serviceMappingHref },
     },
     {
       label: "Connector tools",

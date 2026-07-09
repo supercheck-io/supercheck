@@ -34,6 +34,22 @@ const createManualIncidentSchema = z.object({
   summary: z.string().trim().max(2000, "Summary is too long").optional().nullable(),
 });
 
+const updateIncidentSchema = z.object({
+  id: z.string().uuid(),
+  title: z.string().trim().min(1, "Incident title is required").max(500, "Incident title is too long"),
+  severity: z.enum(["sev1", "sev2", "sev3", "sev4"]),
+  status: z.enum([
+    "triggered",
+    "investigating",
+    "identified",
+    "recommendations_ready",
+    "user_applying_fix",
+    "verifying",
+    "resolved",
+  ]),
+  primaryServiceId: z.string().uuid().nullable(),
+});
+
 const archiveIncidentChatSchema = z.object({
   incidentId: z.string().uuid(),
   conversationId: z.string().uuid(),
@@ -75,6 +91,18 @@ export type CreateManualSreIncidentResult =
     }
   | { success: false; error: string; fieldErrors?: Record<string, string[]> };
 
+export type UpdateSreIncidentResult =
+  | {
+      success: true;
+      incident: {
+        id: string;
+        incidentNumber: number;
+        title: string;
+      };
+      message: string;
+    }
+  | { success: false; error: string; fieldErrors?: Record<string, string[]> };
+
 export type SreIncidentListItem = {
   id: string;
   incidentNumber: number;
@@ -88,6 +116,7 @@ export type SreIncidentListItem = {
     | "user_applying_fix"
     | "verifying"
     | "resolved";
+  primaryServiceId: string | null;
   primaryServiceName: string | null;
   alertCount: number;
   evidenceCount: number;
@@ -142,6 +171,9 @@ export type SreIncidentDetail = {
   }>;
   chatHistory: SreIncidentChatHistory | null;
   chatHistories: SreIncidentChatHistory[];
+  permissions: {
+    canUpdate: boolean;
+  };
 };
 
 function titleCase(value: string) {
@@ -267,6 +299,7 @@ export async function getSreIncidents(): Promise<
         title: sreIncidents.title,
         severity: sreIncidents.severity,
         status: sreIncidents.status,
+        primaryServiceId: sreIncidents.primaryServiceId,
         primaryServiceName: sreServices.name,
         createdAt: sreIncidents.createdAt,
         updatedAt: sreIncidents.updatedAt,
@@ -288,6 +321,7 @@ export async function getSreIncidents(): Promise<
         sreIncidents.title,
         sreIncidents.severity,
         sreIncidents.status,
+        sreIncidents.primaryServiceId,
         sreServices.name,
         sreIncidents.createdAt,
         sreIncidents.updatedAt,
@@ -415,6 +449,11 @@ export async function getSreIncidentDetails(
       organizationId,
       project,
     });
+    const canUpdate = checkPermissionWithContext("sre_incident", "update", {
+      userId,
+      organizationId,
+      project,
+    });
 
     if (!canView) {
       return { success: false, error: "Insufficient permissions to view SRE incidents", detail: null };
@@ -427,6 +466,7 @@ export async function getSreIncidentDetails(
         title: sreIncidents.title,
         severity: sreIncidents.severity,
         status: sreIncidents.status,
+        primaryServiceId: sreIncidents.primaryServiceId,
         primaryServiceName: sreServices.name,
         createdAt: sreIncidents.createdAt,
         updatedAt: sreIncidents.updatedAt,
@@ -451,6 +491,7 @@ export async function getSreIncidentDetails(
         sreIncidents.title,
         sreIncidents.severity,
         sreIncidents.status,
+        sreIncidents.primaryServiceId,
         sreServices.name,
         sreIncidents.createdAt,
         sreIncidents.updatedAt,
@@ -554,6 +595,9 @@ export async function getSreIncidentDetails(
         evidence,
         chatHistory,
         chatHistories,
+        permissions: {
+          canUpdate,
+        },
       },
     };
   } catch (error) {
@@ -718,6 +762,148 @@ export async function createManualSreIncident(
   } catch (error) {
     console.error("Error creating manual SRE incident:", error);
     return { success: false, error: "Failed to create incident" };
+  }
+}
+
+export async function updateSreIncident(
+  input: z.infer<typeof updateIncidentSchema>
+): Promise<UpdateSreIncidentResult> {
+  try {
+    const parsed = updateIncidentSchema.safeParse(input);
+    if (!parsed.success) {
+      return {
+        success: false,
+        error: "Invalid incident details",
+        fieldErrors: formatValidationErrors(parsed.error),
+      };
+    }
+
+    const { userId, organizationId, project } = await requireProjectContext();
+    const canUpdate = checkPermissionWithContext("sre_incident", "update", {
+      userId,
+      organizationId,
+      project,
+    });
+
+    if (!canUpdate) {
+      return { success: false, error: "Insufficient permissions to update incidents" };
+    }
+
+    const current = await db.query.sreIncidents.findFirst({
+      where: and(
+        eq(sreIncidents.id, parsed.data.id),
+        eq(sreIncidents.organizationId, organizationId),
+        eq(sreIncidents.projectId, project.id)
+      ),
+    });
+
+    if (!current) {
+      return { success: false, error: "Incident not found or access denied" };
+    }
+
+    if (parsed.data.primaryServiceId) {
+      const service = await db.query.sreServices.findFirst({
+        where: and(
+          eq(sreServices.id, parsed.data.primaryServiceId),
+          eq(sreServices.organizationId, organizationId),
+          eq(sreServices.projectId, project.id)
+        ),
+      });
+
+      if (!service || service.status === "merged") {
+        return {
+          success: false,
+          error: "Selected service is not available for this project",
+          fieldErrors: { primaryServiceId: ["Select a valid service"] },
+        };
+      }
+    }
+
+    const now = new Date();
+    const incident = await db.transaction(async (tx) => {
+      const [updatedIncident] = await tx
+        .update(sreIncidents)
+        .set({
+          title: truncate(parsed.data.title, 500),
+          severity: parsed.data.severity,
+          status: parsed.data.status,
+          primaryServiceId: parsed.data.primaryServiceId,
+          resolvedAt:
+            parsed.data.status === "resolved"
+              ? current.resolvedAt ?? now
+              : null,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(sreIncidents.id, parsed.data.id),
+            eq(sreIncidents.organizationId, organizationId),
+            eq(sreIncidents.projectId, project.id)
+          )
+        )
+        .returning({
+          id: sreIncidents.id,
+          incidentNumber: sreIncidents.incidentNumber,
+          title: sreIncidents.title,
+        });
+
+      if (!updatedIncident) {
+        throw new Error("Incident was updated or deleted by another request");
+      }
+
+      await tx.insert(sreIncidentTimelineEvents).values({
+        incidentId: parsed.data.id,
+        eventType: "state_change",
+        eventData: {
+          state: "incident_updated",
+          previous: {
+            title: current.title,
+            severity: current.severity,
+            status: current.status,
+            primaryServiceId: current.primaryServiceId,
+          },
+          current: {
+            title: parsed.data.title,
+            severity: parsed.data.severity,
+            status: parsed.data.status,
+            primaryServiceId: parsed.data.primaryServiceId,
+          },
+        },
+        actorType: "user",
+        actorUserId: userId,
+        createdAt: now,
+      });
+
+      return updatedIncident;
+    });
+
+    await logAuditEvent({
+      userId,
+      organizationId,
+      action: "sre_incident_updated",
+      resource: "sre_incident",
+      resourceId: parsed.data.id,
+      metadata: {
+        projectId: project.id,
+        incidentNumber: incident.incidentNumber,
+        severity: parsed.data.severity,
+        status: parsed.data.status,
+        primaryServiceId: parsed.data.primaryServiceId,
+      },
+      success: true,
+    });
+
+    revalidatePath("/incidents");
+    revalidatePath(`/incidents/${parsed.data.id}`);
+
+    return {
+      success: true,
+      incident,
+      message: `Incident #${incident.incidentNumber} updated`,
+    };
+  } catch (error) {
+    console.error("Error updating SRE incident:", error);
+    return { success: false, error: "Failed to update incident" };
   }
 }
 

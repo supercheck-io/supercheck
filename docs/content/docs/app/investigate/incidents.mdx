@@ -25,6 +25,8 @@ The page has three tabs:
 - **Evidence** — Review native Supercheck evidence and citation anchors.
 - **Brief** — Read or regenerate the latest evidence brief. Brief generation is kept in this tab instead of the incident header to avoid cluttering the default investigation view.
 
+The Investigation tab includes a readiness checklist. Missing stored evidence links to brief generation, and missing service mapping links administrators to service setup so live connector tools remain properly scoped.
+
 This keeps the responder view simple: first confirm the incident, then run investigation, then review evidence and the summary.
 
 ### Copilot
@@ -34,6 +36,10 @@ Copilot is available from **Investigate → Copilot** and from the global floati
 Copilot includes:
 
 - **Citations**: Direct links from chat responses to the specific evidence items anchoring the agent's claims.
+- **Incident-scoped verification**: When opened from an incident detail page, the floating Copilot is scoped to that incident. It can inspect stored evidence and, when the user has connector investigation permission, use the same bounded read-only live connector tools as the Investigation tab.
+- **Inline charts**: Responses can render bounded `bar`, `line`, and `area` charts when the answer includes connector, evidence, or user-provided numeric series.
+- **Slash commands and mentions**: `/health`, `/investigate`, `/evidence`, `/verify`, `@incident`, `@service`, and `@recent-deploy` are read-only context shortcuts.
+- **Log context**: Drag text, log, JSON, CSV, or Markdown files into the composer to add local read-only context. Copilot treats dropped files as user-provided context, not verified production state, until corroborated by evidence or connectors.
 - **Safe Tool Result Summaries**: Collapsible, read-only summaries of tool executions to keep the chat clean while providing deep context when needed.
 - **Standalone history**: Conversations stay in the Copilot console instead of cluttering the incident detail page.
 
@@ -60,4 +66,4 @@ This keeps alert noise out of the responder queue while still making it easy to 
 
 For post-incident reviews (PIRs) and compliance, Supercheck allows you to download sanitized investigation reports. 
 
-These exports include bounded evidence text, recommendations, and tool input/output hashes, deliberately excluding raw connector data, credentials, and source URIs to maintain security and data privacy.
+These exports include bounded evidence text, recommendations, and tool input/output hashes, deliberately excluding raw connector data, credentials, and source URIs to maintain security and data privacy. Export provenance includes item counts and truncation metadata so reviewers know when evidence, tool calls, or recommendations were omitted because of safety limits.

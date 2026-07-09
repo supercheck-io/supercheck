@@ -36,4 +36,16 @@ describe("diagnostic query adapters", () => {
     expect(isDiagnosticQueryTypeCompatible("future_connector", "http_get")).toBe(true);
     expect(getDiagnosticQueryAdapterRecipes("future_connector")).toEqual([]);
   });
+
+  it("does not ship sample service names in built-in recipe allowlists", () => {
+    const serializedRecipes = JSON.stringify([
+      ...getDiagnosticQueryAdapterRecipes("prometheus"),
+      ...getDiagnosticQueryAdapterRecipes("loki"),
+      ...getDiagnosticQueryAdapterRecipes("tempo"),
+      ...getDiagnosticQueryAdapterRecipes("aws_cloudwatch"),
+      ...getDiagnosticQueryAdapterRecipes("elasticsearch"),
+    ]);
+
+    expect(serializedRecipes).not.toContain("checkout");
+  });
 });

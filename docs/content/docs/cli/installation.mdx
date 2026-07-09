@@ -50,11 +50,11 @@ The CLI requires a **CLI token** for API access. Create one in the dashboard:
 Then authenticate:
 
 ```bash
-# Option 1: Environment variable (recommended for CI/CD)
+# CI/CD: set the token as an environment variable — the CLI reads
+# SUPERCHECK_TOKEN at runtime, so no login step is needed.
 export SUPERCHECK_TOKEN="sck_live_..."
-supercheck login --token $SUPERCHECK_TOKEN
 
-# Option 2: Direct login
+# Local machine: persist credentials via login
 supercheck login --token sck_live_a1b2c3d4...
 ```
 

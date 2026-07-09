@@ -1,6 +1,12 @@
 "use client";
 
-import { useMemo } from "react";
+import {
+  useMemo,
+  useState,
+  type DragEvent,
+  type FormEvent,
+  type KeyboardEvent,
+} from "react";
 import type { UIMessage } from "ai";
 import {
   AssistantRuntimeProvider,
@@ -9,6 +15,7 @@ import {
   ThreadPrimitive,
   ActionBarPrimitive,
   BranchPickerPrimitive,
+  unstable_useComposerInput,
   useAuiState,
   useMessagePartText,
   useThreadRuntime,
@@ -29,15 +36,24 @@ import {
   RefreshCw,
   Copy,
   BarChart3,
+  CheckCircle2,
+  FileText,
+  Paperclip,
+  X,
 } from "lucide-react";
 
 import type { SreStandaloneChatHistory } from "@/actions/sre-ai";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 import {
+  buildAttachmentContextPrompt,
   createUserPromptMessage,
   formatCopilotError,
   getQuickRepliesForAssistantText,
+  formatCopilotAttachmentSize,
+  isSupportedCopilotAttachment,
   SRE_INLINE_CAPABILITIES_PREVIEW,
+  SRE_COPILOT_ATTACHMENT_LIMITS,
+  type SreCopilotAttachmentContext,
 } from "@/components/sre/sre-generative-ui";
 import { SreMessageContent } from "@/components/sre/sre-message-content";
 import { Badge } from "@/components/ui/badge";
@@ -73,6 +89,28 @@ const SRE_COMMAND_SHORTCUTS = [
   },
 ];
 
+const SRE_MENTION_SHORTCUTS = [
+  {
+    label: "@incident",
+    description: "Reference the selected incident context",
+    value: "@incident ",
+  },
+  {
+    label: "@service",
+    description: "Reference an affected service",
+    value: "@service ",
+  },
+  {
+    label: "@recent-deploy",
+    description: "Ask Copilot to consider recent deploy context",
+    value: "@recent-deploy ",
+  },
+];
+
+type PendingCopilotAttachment = SreCopilotAttachmentContext & {
+  id: string;
+};
+
 function appendUserPrompt(thread: ThreadRuntime, prompt: string) {
   thread.append(createUserPromptMessage(prompt));
 }
@@ -82,6 +120,31 @@ function appendInlinePreview(thread: ThreadRuntime) {
     role: "assistant",
     content: [{ type: "text", text: SRE_INLINE_CAPABILITIES_PREVIEW }],
   });
+}
+
+async function readCopilotAttachment(
+  file: File,
+): Promise<PendingCopilotAttachment> {
+  if (!isSupportedCopilotAttachment(file)) {
+    throw new Error(
+      "Attach text, log, JSON, CSV, or Markdown files only for Copilot context.",
+    );
+  }
+
+  if (file.size > SRE_COPILOT_ATTACHMENT_LIMITS.maxFileSizeBytes) {
+    throw new Error(
+      `Attachments must be ${formatCopilotAttachmentSize(SRE_COPILOT_ATTACHMENT_LIMITS.maxFileSizeBytes)} or smaller.`,
+    );
+  }
+
+  const content = await file.text();
+  return {
+    id: `${file.name}-${file.size}-${file.lastModified}`,
+    fileName: file.name,
+    mimeType: file.type || "text/plain",
+    size: file.size,
+    content,
+  };
 }
 
 export type SreAssistantUiMessageMetadata = {
@@ -94,6 +157,7 @@ export type SreAssistantUiMessage = UIMessage<SreAssistantUiMessageMetadata>;
 
 type SreAssistantUiThreadProps = {
   conversationId: string | null;
+  incidentId?: string | null;
   initialMessages: SreStandaloneChatHistory["messages"];
   onConversationResolved: (input: {
     conversationId: string;
@@ -372,6 +436,11 @@ function SreFollowUpSuggestions({
             appendUserPrompt(thread, reply.prompt);
           }}
         >
+          {reply.intent === "verify" ? (
+            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+          ) : reply.intent === "chart" ? (
+            <BarChart3 className="h-3.5 w-3.5 text-sky-500" />
+          ) : null}
           {reply.label}
         </Button>
       ))}
@@ -381,13 +450,134 @@ function SreFollowUpSuggestions({
 
 function SreComposer({ onClearError }: { onClearError: () => void }) {
   const thread = useThreadRuntime();
+  const composer = unstable_useComposerInput();
+  const [attachments, setAttachments] = useState<PendingCopilotAttachment[]>(
+    [],
+  );
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const activeMentionMatch = /(^|\s)(@[\w-]*)$/.exec(composer.value);
+  const mentionQuery = activeMentionMatch?.[2].toLowerCase() ?? "";
+  const mentionOptions =
+    mentionQuery.length > 0
+      ? SRE_MENTION_SHORTCUTS.filter((mention) =>
+          mention.label.toLowerCase().startsWith(mentionQuery),
+        )
+      : [];
+
+  async function addFiles(files: File[]) {
+    if (files.length === 0) {
+      return;
+    }
+
+    setAttachmentError(null);
+    const availableSlots =
+      SRE_COPILOT_ATTACHMENT_LIMITS.maxFiles - attachments.length;
+    if (availableSlots <= 0) {
+      setAttachmentError(
+        `Attach up to ${SRE_COPILOT_ATTACHMENT_LIMITS.maxFiles} files per message.`,
+      );
+      return;
+    }
+
+    try {
+      const next = await Promise.all(
+        files.slice(0, availableSlots).map(readCopilotAttachment),
+      );
+      setAttachments((current) => {
+        const seen = new Set(current.map((item) => item.id));
+        return [
+          ...current,
+          ...next.filter((item) => {
+            if (seen.has(item.id)) {
+              return false;
+            }
+            seen.add(item.id);
+            return true;
+          }),
+        ];
+      });
+    } catch (error) {
+      setAttachmentError(
+        error instanceof Error ? error.message : "Attachment could not be read.",
+      );
+    }
+  }
+
+  async function handleDrop(event: DragEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setIsDragging(false);
+    await addFiles(Array.from(event.dataTransfer.files));
+  }
+
+  function sendComposerMessage() {
+    const messageText = composer.value.trim();
+    if (!messageText) {
+      if (attachments.length > 0) {
+        setAttachmentError("Add a short question before sending attachments.");
+      }
+      return;
+    }
+
+    setAttachmentError(null);
+    if (attachments.length > 0) {
+      const attachmentContext = buildAttachmentContextPrompt(attachments);
+      composer.setText(
+        [
+          messageText,
+          "Attached context:",
+          attachmentContext,
+        ].join("\n\n"),
+      );
+      setAttachments([]);
+    }
+
+    onClearError();
+    composer.send();
+  }
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    sendComposerMessage();
+  }
+
+  function handleInputKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      sendComposerMessage();
+    }
+  }
+
+  function insertMention(value: string) {
+    const nextText = activeMentionMatch
+      ? `${composer.value.slice(0, activeMentionMatch.index)}${activeMentionMatch[1]}${value}`
+      : `${composer.value}${composer.value.endsWith(" ") ? "" : " "}${value}`;
+    composer.setText(nextText);
+  }
 
   return (
-    <ComposerPrimitive.AttachmentDropzone
-      disabled
-      className="mx-auto w-full max-w-4xl rounded-2xl data-[dragging]:border-primary"
-    >
-      <ComposerPrimitive.Root className="flex w-full flex-col rounded-2xl border bg-background px-4 py-3 shadow-sm">
+    <div className="mx-auto w-full max-w-4xl rounded-2xl">
+      <ComposerPrimitive.Root
+        onSubmit={handleSubmit}
+        onDragEnter={(event) => {
+          event.preventDefault();
+          setIsDragging(true);
+        }}
+        onDragOver={(event) => {
+          event.preventDefault();
+          setIsDragging(true);
+        }}
+        onDragLeave={(event) => {
+          const next = event.relatedTarget as Node | null;
+          if (!next || !event.currentTarget.contains(next)) {
+            setIsDragging(false);
+          }
+        }}
+        onDrop={handleDrop}
+        className={`relative flex w-full flex-col rounded-2xl border bg-background px-4 py-3 shadow-sm transition-colors ${
+          isDragging ? "border-primary bg-primary/5" : ""
+        }`}
+      >
         <div className="mb-3 flex flex-wrap gap-2">
           {SRE_COMMAND_SHORTCUTS.map((shortcut) => (
             <Button
@@ -417,22 +607,92 @@ function SreComposer({ onClearError }: { onClearError: () => void }) {
             <BarChart3 className="h-3.5 w-3.5" />
             Preview charts
           </Button>
+          {SRE_MENTION_SHORTCUTS.map((mention) => (
+            <Button
+              key={mention.label}
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 rounded-full px-2.5 text-xs font-normal text-muted-foreground"
+              onClick={() => insertMention(mention.value)}
+              title={mention.description}
+            >
+              {mention.label}
+            </Button>
+          ))}
         </div>
-        <ComposerPrimitive.Input
+        {attachments.length > 0 ? (
+          <div className="mb-3 flex flex-wrap gap-2">
+            {attachments.map((attachment) => (
+              <span
+                key={attachment.id}
+                className="inline-flex min-w-0 max-w-full items-center gap-2 rounded-full border bg-muted/40 px-2 py-1 text-xs"
+              >
+                <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                <span className="truncate">{attachment.fileName}</span>
+                <span className="shrink-0 text-muted-foreground">
+                  {formatCopilotAttachmentSize(attachment.size)}
+                </span>
+                <button
+                  type="button"
+                  className="rounded-full text-muted-foreground hover:text-foreground"
+                  aria-label={`Remove ${attachment.fileName}`}
+                  onClick={() =>
+                    setAttachments((current) =>
+                      current.filter((item) => item.id !== attachment.id),
+                    )
+                  }
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </span>
+            ))}
+          </div>
+        ) : null}
+        <div className="relative">
+          <textarea
+            value={composer.value}
+            disabled={composer.isDisabled}
+            onChange={(event) => composer.setText(event.target.value)}
+            onKeyDown={handleInputKeyDown}
           placeholder="Ask Copilot about an incident, service, or verification plan..."
-          submitMode="enter"
-          rows={2}
-          className="w-full max-h-44 min-h-16 resize-none border-0 bg-transparent text-sm leading-6 outline-none placeholder:text-muted-foreground focus-visible:outline-none"
-        />
+            rows={2}
+            className="w-full max-h-44 min-h-16 resize-none border-0 bg-transparent text-sm leading-6 outline-none placeholder:text-muted-foreground focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+          />
+          {mentionOptions.length > 0 ? (
+            <div className="absolute bottom-full left-0 z-20 mb-2 w-72 overflow-hidden rounded-xl border bg-popover shadow-lg">
+              {mentionOptions.map((mention) => (
+                <button
+                  key={mention.label}
+                  type="button"
+                  className="flex w-full flex-col gap-0.5 px-3 py-2 text-left text-sm hover:bg-muted"
+                  onClick={() => insertMention(mention.value)}
+                >
+                  <span className="font-medium">{mention.label}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {mention.description}
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
+        {attachmentError ? (
+          <p className="mt-2 text-xs text-destructive">{attachmentError}</p>
+        ) : null}
         <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t pt-3">
           <div className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
             <span className="inline-flex shrink-0 items-center gap-1 rounded-full border bg-muted/30 px-2 py-1">
               <ShieldCheck className="h-3.5 w-3.5" />
               Read-only
             </span>
+            <span className="ml-2 inline-flex shrink-0 items-center gap-1 rounded-full border bg-muted/30 px-2 py-1">
+              <Paperclip className="h-3.5 w-3.5" />
+              Drop logs
+            </span>
             <span className="ml-2 hidden truncate lg:inline">
-              Slash commands and quick replies are read-only. Chart preview uses
-              local sample data.
+              Slash commands, mentions, and local text attachments stay
+              read-only.
             </span>
           </div>
           <div className="flex shrink-0 items-center gap-2">
@@ -444,17 +704,15 @@ function SreComposer({ onClearError }: { onClearError: () => void }) {
               </ComposerPrimitive.Cancel>
             </ThreadPrimitive.If>
             <ThreadPrimitive.If running={false}>
-              <ComposerPrimitive.Send asChild>
-                <Button type="submit" size="sm">
-                  Send
-                  <Send className="h-4 w-4" />
-                </Button>
-              </ComposerPrimitive.Send>
+              <Button type="submit" size="sm">
+                Send
+                <Send className="h-4 w-4" />
+              </Button>
             </ThreadPrimitive.If>
           </div>
         </div>
       </ComposerPrimitive.Root>
-    </ComposerPrimitive.AttachmentDropzone>
+    </div>
   );
 }
 
@@ -496,6 +754,7 @@ export function SreThread({ onClearError }: { onClearError: () => void }) {
 
 export function SreAssistantUiThread({
   conversationId,
+  incidentId = null,
   initialMessages,
   onConversationResolved,
   onClearError,
@@ -511,10 +770,11 @@ export function SreAssistantUiThread({
         api: "/api/sre/chat/assistant-ui",
         body: {
           conversationId,
-          incidentId: null,
+          incidentId,
+          useLiveConnectorTools: Boolean(incidentId),
         },
       }),
-    [conversationId],
+    [conversationId, incidentId],
   );
   const runtime = useChatRuntime<SreAssistantUiMessage>({
     id: conversationId ?? undefined,

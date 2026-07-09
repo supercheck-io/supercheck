@@ -174,6 +174,10 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
   private static readonly TOTAL_MEMORY_OVERHEAD_MB =
     ContainerExecutorService.SHM_SIZE_MB +
     ContainerExecutorService.GVISOR_SENTRY_OVERHEAD_MB;
+  private static readonly DEFAULT_EPHEMERAL_STORAGE_REQUEST = '1Gi';
+  private static readonly DEFAULT_EPHEMERAL_STORAGE_LIMIT = '8Gi';
+  private static readonly RESOURCE_QUANTITY_RE =
+    /^([1-9]\d*)(m|Ki|Mi|Gi|Ti|Pi|Ei|k|M|G|T|P|E)?$/;
 
   /** Allowed filename pattern: alphanumeric, dots, hyphens, underscores */
   private static readonly SAFE_FILENAME_RE = /^[\w.\-]+$/;
@@ -183,6 +187,9 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
   private readonly executionNodeSelector?: Record<string, string>;
   private readonly executionTolerations?: k8s.V1Toleration[];
   private readonly executionDnsNameservers?: string[];
+  private readonly executionEphemeralStorageRequest: string;
+  private readonly executionEphemeralStorageLimit: string;
+  private readonly executionTmpSizeLimit: string;
   private k8sModule: typeof import('@kubernetes/client-node') | null = null;
   private kubeConfig: k8s.KubeConfig | null = null;
   private batchApi: k8s.BatchV1Api | null = null;
@@ -218,6 +225,18 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     );
     this.executionDnsNameservers = this.parseExecutionDnsNameservers(
       this.configService.get<string>('EXECUTION_DNS_NAMESERVERS'),
+    );
+    this.executionEphemeralStorageRequest = this.resolveResourceQuantity(
+      'EXECUTION_EPHEMERAL_STORAGE_REQUEST',
+      ContainerExecutorService.DEFAULT_EPHEMERAL_STORAGE_REQUEST,
+    );
+    this.executionEphemeralStorageLimit = this.resolveResourceQuantity(
+      'EXECUTION_EPHEMERAL_STORAGE_LIMIT',
+      ContainerExecutorService.DEFAULT_EPHEMERAL_STORAGE_LIMIT,
+    );
+    this.executionTmpSizeLimit = this.resolveResourceQuantity(
+      'EXECUTION_TMP_EMPTYDIR_SIZE_LIMIT',
+      this.executionEphemeralStorageLimit,
     );
   }
 
@@ -820,10 +839,12 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
                   requests: {
                     cpu: resourceCpuRequest,
                     memory: resourceMemoryRequest,
+                    'ephemeral-storage': this.executionEphemeralStorageRequest,
                   },
                   limits: {
                     cpu: resourceCpuLimit,
                     memory: resourceMemoryLimit,
+                    'ephemeral-storage': this.executionEphemeralStorageLimit,
                   },
                 },
                 securityContext: {
@@ -853,7 +874,9 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
             volumes: [
               {
                 name: 'tmp',
-                emptyDir: {},
+                emptyDir: {
+                  sizeLimit: this.executionTmpSizeLimit,
+                },
               },
               {
                 name: 'dshm',
@@ -898,6 +921,20 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
         options,
       },
     };
+  }
+
+  private resolveResourceQuantity(envName: string, fallback: string): string {
+    const rawValue = this.configService.get<string>(envName, fallback);
+    const value = rawValue?.trim() || fallback;
+
+    if (!ContainerExecutorService.RESOURCE_QUANTITY_RE.test(value)) {
+      this.logger.warn(
+        `Invalid ${envName} value "${value}"; using ${fallback}`,
+      );
+      return fallback;
+    }
+
+    return value;
   }
 
   private buildKubernetesWrapperScript(

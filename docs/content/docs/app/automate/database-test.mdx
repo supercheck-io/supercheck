@@ -9,10 +9,11 @@ Run SQL queries and validate database state directly. Database tests connect to 
 ## Create Test
 
 1. Go to **Create → Database Test**
-2. Select database connection
-3. Write SQL query
-4. Add assertions
-5. Run and save
+2. Write SQL query
+3. Add assertions
+4. Run and save
+
+Database connections are defined inline in your script. Use `getVariable()` for connection details such as host, port, database, and user, and `getSecret()` for the password (see the example below). There is no separate connection picker in the UI.
 
 ## Example
 
@@ -67,9 +68,11 @@ test.describe('database read health check', () => {
 
 ## Connection Methods
 
-- **Direct** — Public database with credentials
-- **SSH Tunnel** — Private network via bastion host
-- **Secrets** — Store credentials securely with `getSecret()`
+- **Direct** — Connect to a publicly reachable database using credentials from Variables/Secrets.
+- **Secrets** — Store credentials securely with `getSecret()` instead of hardcoding them in the script.
+- **Private networks** — Reach databases inside a private network by supplying the connection string/endpoint that the execution environment can route to. Supercheck does not provide a built-in SSH-tunnel/bastion option; handle tunneled access at the network level.
+
+Import the matching Node driver (`pg`, `mysql2`, `mssql`) at the top of your script — connection details come from Variables/Secrets, not a UI connection picker.
 
 ## Common Assertions
 

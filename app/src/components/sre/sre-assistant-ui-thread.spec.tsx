@@ -1,6 +1,8 @@
 import {
+  buildAttachmentContextPrompt,
   createUserPromptMessage,
   formatCopilotError,
+  isSupportedCopilotAttachment,
   getQuickRepliesForAssistantText,
   SRE_INLINE_CAPABILITIES_PREVIEW,
 } from "./sre-generative-ui";
@@ -27,7 +29,20 @@ describe("getQuickRepliesForAssistantText", () => {
     );
 
     expect(replies).toContainEqual(
-      expect.objectContaining({ label: "Render chart" }),
+      expect.objectContaining({ label: "Render chart", intent: "chart" }),
+    );
+  });
+
+  it("marks verification replies so the UI can distinguish read-only checks", () => {
+    const replies = getQuickRepliesForAssistantText(
+      "The leading hypothesis needs verification against evidence.",
+    );
+
+    expect(replies).toContainEqual(
+      expect.objectContaining({
+        label: "Verify hypothesis",
+        intent: "verify",
+      }),
     );
   });
 });
@@ -53,5 +68,42 @@ describe("SRE assistant-ui prompt helpers", () => {
     expect(SRE_INLINE_CAPABILITIES_PREVIEW).toContain('"type":"area"');
     expect(SRE_INLINE_CAPABILITIES_PREVIEW).toContain('"sources"');
     expect(SRE_INLINE_CAPABILITIES_PREVIEW).toContain("Generated preview data");
+  });
+
+  it("accepts only text-like Copilot attachments", () => {
+    expect(
+      isSupportedCopilotAttachment({
+        name: "pod-restarts.log",
+        type: "text/plain",
+      }),
+    ).toBe(true);
+    expect(
+      isSupportedCopilotAttachment({
+        name: "metrics.json",
+        type: "application/json",
+      }),
+    ).toBe(true);
+    expect(
+      isSupportedCopilotAttachment({
+        name: "screenshot.png",
+        type: "image/png",
+      }),
+    ).toBe(false);
+  });
+
+  it("formats dropped attachment context as read-only evidence", () => {
+    const context = buildAttachmentContextPrompt([
+      {
+        fileName: "kubectl-top.txt",
+        mimeType: "text/plain",
+        size: 128,
+        content: "pod checkout-api 772Mi",
+      },
+    ]);
+
+    expect(context).toContain("user-provided attachment context");
+    expect(context).toContain("Attachment 1: kubectl-top.txt");
+    expect(context).toContain("```text");
+    expect(context).toContain("pod checkout-api 772Mi");
   });
 });

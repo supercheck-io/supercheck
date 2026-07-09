@@ -49,4 +49,28 @@ describe("SreAiConsole", () => {
 
     expect(screen.getByText("Check search index health.")).toBeInTheDocument();
   });
+
+  it("shows unavailable date copy for invalid history timestamps", () => {
+    render(
+      <SreAiConsole
+        initialHistories={[
+          {
+            conversationId: "018f0000-0000-7000-8000-000000000001",
+            title: "Invalid date session",
+            updatedAt: "not-a-date",
+            messages: [
+              {
+                id: "m1",
+                role: "assistant",
+                content: "Check service health.",
+                modelId: "test-model",
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("Date unavailable")).toBeInTheDocument();
+  });
 });

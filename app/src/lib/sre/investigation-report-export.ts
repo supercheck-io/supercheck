@@ -79,6 +79,23 @@ export type SreInvestigationReportExport = {
     evidenceCount: number;
     toolCallCount: number;
     recommendationCount: number;
+    truncation: {
+      evidence: {
+        shown: number;
+        total: number;
+        truncated: boolean;
+      };
+      toolCalls: {
+        shown: number;
+        total: number;
+        truncated: boolean;
+      };
+      recommendations: {
+        shown: number;
+        total: number;
+        truncated: boolean;
+      };
+    };
     rawFieldsExcluded: string[];
   };
 };
@@ -131,6 +148,20 @@ const REPORT_EXPORT_RAW_FIELDS_EXCLUDED = [
   "outputSummary",
 ];
 
+const REPORT_EXPORT_LIMITS = {
+  evidence: 50,
+  toolCalls: 80,
+  recommendations: 25,
+} as const;
+
+function truncationFooter(total: number, shown: number) {
+  return {
+    shown,
+    total,
+    truncated: total > shown,
+  };
+}
+
 function toIsoString(value: Date | null) {
   return value ? value.toISOString() : null;
 }
@@ -152,6 +183,9 @@ export function buildSreInvestigationReportExport(input: {
   exportedAt?: Date;
 }): SreInvestigationReportExport {
   const { item, evidence, toolCalls, recommendations, exportedAt = new Date() } = input;
+  const boundedEvidence = evidence.slice(0, REPORT_EXPORT_LIMITS.evidence);
+  const boundedToolCalls = toolCalls.slice(0, REPORT_EXPORT_LIMITS.toolCalls);
+  const boundedRecommendations = recommendations.slice(0, REPORT_EXPORT_LIMITS.recommendations);
 
   return {
     version: "sre-investigation-report.v1",
@@ -178,7 +212,7 @@ export function buildSreInvestigationReportExport(input: {
     service: {
       name: item.serviceName,
     },
-    evidence: evidence.slice(0, 50).map((evidenceItem) => ({
+    evidence: boundedEvidence.map((evidenceItem) => ({
       id: evidenceItem.id,
       title: boundedReportText(evidenceItem.title, 500) ?? "Untitled evidence",
       summary: boundedReportText(evidenceItem.summary),
@@ -189,7 +223,7 @@ export function buildSreInvestigationReportExport(input: {
       observedAt: toIsoString(evidenceItem.observedAt),
       createdAt: evidenceItem.createdAt.toISOString(),
     })),
-    toolCalls: toolCalls.slice(0, 80).map((toolCall) => ({
+    toolCalls: boundedToolCalls.map((toolCall) => ({
       id: toolCall.id,
       connectorType: toolCall.connectorType,
       toolName: toolCall.toolName,
@@ -200,7 +234,7 @@ export function buildSreInvestigationReportExport(input: {
       durationMs: toolCall.durationMs,
       executedAt: toolCall.executedAt.toISOString(),
     })),
-    recommendations: recommendations.slice(0, 25).map((recommendation) => ({
+    recommendations: boundedRecommendations.map((recommendation) => ({
       id: recommendation.id,
       recommendationText: boundedReportText(recommendation.recommendationText, 1600) ?? "",
       stepCount: recommendation.stepCount,
@@ -212,6 +246,14 @@ export function buildSreInvestigationReportExport(input: {
       evidenceCount: evidence.length,
       toolCallCount: toolCalls.length,
       recommendationCount: recommendations.length,
+      truncation: {
+        evidence: truncationFooter(evidence.length, boundedEvidence.length),
+        toolCalls: truncationFooter(toolCalls.length, boundedToolCalls.length),
+        recommendations: truncationFooter(
+          recommendations.length,
+          boundedRecommendations.length
+        ),
+      },
       rawFieldsExcluded: REPORT_EXPORT_RAW_FIELDS_EXCLUDED,
     },
   };

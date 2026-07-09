@@ -77,15 +77,21 @@ describe("SRE investigate API", () => {
     });
   });
 
-  it("returns 404 without auth or DB work when disabled", async () => {
+  it("returns 503 without auth or DB work when disabled", async () => {
     mockIsSreInvestigationAgentEnabled.mockReturnValue(false);
 
     const response = await POST(new NextRequest("http://localhost/api/sre/investigate", {
       method: "POST",
       body: JSON.stringify({ incidentId: "018f0000-0000-7000-8000-000000000005" }),
     }));
+    const body = await response.json();
 
-    expect(response.status).toBe(404);
+    expect(response.status).toBe(503);
+    expect(body).toEqual({
+      error: "SRE investigation is not enabled",
+      code: "feature_disabled",
+      enabledBy: "SRE_INVESTIGATION_AGENT_ENABLED",
+    });
     expect(mockRequireProjectContext).not.toHaveBeenCalled();
     expect(mockStartSreIncidentInvestigation).not.toHaveBeenCalled();
   });

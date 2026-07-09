@@ -138,12 +138,18 @@ describe("SRE triage API", () => {
     }
   });
 
-  it("returns 404 without touching auth or database when disabled", async () => {
+  it("returns 503 without touching auth or database when disabled", async () => {
     process.env.SRE_TRIAGE_AGENT_ENABLED = "false";
 
     const response = await POST(request({ incidentId: "018f0000-0000-7000-8000-000000000004" }));
+    const body = await response.json();
 
-    expect(response.status).toBe(404);
+    expect(response.status).toBe(503);
+    expect(body).toEqual({
+      error: "SRE triage is not enabled",
+      code: "feature_disabled",
+      enabledBy: "SRE_TRIAGE_AGENT_ENABLED",
+    });
     expect(mockRequireProjectContext).not.toHaveBeenCalled();
     expect(mockDb.select).not.toHaveBeenCalled();
     expect(mockDb.insert).not.toHaveBeenCalled();

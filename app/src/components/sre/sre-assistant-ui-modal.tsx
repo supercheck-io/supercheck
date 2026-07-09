@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Bot, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 
@@ -19,19 +19,37 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
+const INCIDENT_PATH_PATTERN =
+  /^\/incidents\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\/|$)/i;
+
 export function SreAssistantUiModal() {
   const pathname = usePathname();
+  const incidentId = useMemo(() => {
+    const match = pathname?.match(INCIDENT_PATH_PATTERN);
+    return match?.[1] ?? null;
+  }, [pathname]);
+  const activeContextKey = incidentId ?? "standalone";
   const [open, setOpen] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<
     SreStandaloneChatHistory["messages"]
   >([]);
   const [threadKey, setThreadKey] = useState("floating-new");
+  const [conversationContextKey, setConversationContextKey] =
+    useState(activeContextKey);
+
+  const isCurrentContext = conversationContextKey === activeContextKey;
+  const activeConversationId = isCurrentContext ? conversationId : null;
+  const activeMessages = isCurrentContext ? messages : [];
+  const activeThreadKey = isCurrentContext
+    ? threadKey
+    : `floating-context-${activeContextKey}`;
 
   const startNewChat = () => {
+    setConversationContextKey(activeContextKey);
     setConversationId(null);
     setMessages([]);
-    setThreadKey(`floating-new-${Date.now()}`);
+    setThreadKey(`floating-new-${activeContextKey}-${Date.now()}`);
   };
 
   if (pathname?.startsWith("/copilot")) {
@@ -66,7 +84,9 @@ export function SreAssistantUiModal() {
               <div className="min-w-0">
                 <DialogTitle className="truncate text-sm">Copilot</DialogTitle>
                 <DialogDescription className="truncate text-xs">
-                  Read-only incident triage and verification planning.
+                  {incidentId
+                    ? "Read-only incident evidence and verification."
+                    : "Read-only incident triage and verification planning."}
                 </DialogDescription>
               </div>
             </div>
@@ -90,10 +110,12 @@ export function SreAssistantUiModal() {
         </DialogHeader>
         <div className="min-h-0 w-full min-w-0 flex-1 overflow-hidden">
           <SreAssistantUiThread
-            key={threadKey}
-            conversationId={conversationId}
-            initialMessages={messages}
+            key={activeThreadKey}
+            conversationId={activeConversationId}
+            incidentId={incidentId}
+            initialMessages={activeMessages}
             onConversationResolved={(input) => {
+              setConversationContextKey(activeContextKey);
               setConversationId(input.conversationId);
               setMessages(input.messages);
               setThreadKey(input.conversationId);

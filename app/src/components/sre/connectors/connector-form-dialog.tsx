@@ -21,7 +21,11 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { isPrivateAgentConnectorType } from "@/lib/sre/connectors/connector-capabilities";
+import {
+  isLiveSearchConnectorType,
+  isPrivateAgentConnectorType,
+  isSetupOnlyConnectorType,
+} from "@/lib/sre/connectors/connector-capabilities";
 import {
   Select,
   SelectContent,
@@ -148,6 +152,11 @@ export function ConnectorFormDialog({
   const [awsSessionToken, setAwsSessionToken] = useState("");
   const isCloudWatch = type === "aws_cloudwatch";
   const supportsPrivateAgent = isPrivateAgentConnectorType(type);
+  const selectedTypeOption = connectorTypeOptions.find(
+    (option) => option.value === type,
+  );
+  const isSetupOnlyType = isSetupOnlyConnectorType(type);
+  const isLiveSearchType = isLiveSearchConnectorType(type);
   const queryGuide = getConnectorQueryGuide(type);
 
   const toggleService = (serviceId: string) => {
@@ -247,19 +256,66 @@ export function ConnectorFormDialog({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {connectorTypeOptions.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
+                    {connectorTypeOptions.map((option) => {
+                      const isSetupOnly = isSetupOnlyConnectorType(option.value);
+                      const isNativeEvidence = option.value === "supercheck_native";
+                      return (
+                        <SelectItem
+                          key={option.value}
+                          value={option.value}
+                          disabled={isSetupOnly}
+                        >
+                          <span className="flex items-center gap-2">
+                            <span>{option.label}</span>
+                            <Badge
+                              variant="outline"
+                              className={
+                                isNativeEvidence
+                                  ? "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900/60 dark:bg-sky-950/40 dark:text-sky-300"
+                                  : isSetupOnly
+                                    ? "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300"
+                                    : "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300"
+                              }
+                            >
+                              {isNativeEvidence
+                                ? "Native"
+                                : isSetupOnly
+                                  ? "Setup only"
+                                  : "Live search"}
+                            </Badge>
+                          </span>
+                        </SelectItem>
+                      );
+                    })}
                   </SelectContent>
                 </Select>
-                <p className="text-xs text-muted-foreground">
-                  {
-                    connectorTypeOptions.find((option) => option.value === type)
-                      ?.description
-                  }
-                </p>
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">
+                    {selectedTypeOption?.description}
+                  </p>
+                  <Badge
+                    variant="outline"
+                    className={
+                      type === "supercheck_native"
+                        ? "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900/60 dark:bg-sky-950/40 dark:text-sky-300"
+                        : isLiveSearchType
+                        ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300"
+                        : "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300"
+                    }
+                  >
+                    {type === "supercheck_native"
+                      ? "Native evidence"
+                      : isLiveSearchType
+                        ? "Live search available"
+                        : "Setup only"}
+                  </Badge>
+                </div>
+                {isSetupOnlyType && (
+                  <p className="rounded-md border border-amber-500/30 bg-amber-500/10 p-2 text-xs text-amber-700 dark:text-amber-300">
+                    This connector type does not have a read-only live search
+                    adapter yet, so new setup is disabled.
+                  </p>
+                )}
               </div>
 
               <div className="flex flex-col gap-1.5 xl:col-span-4">
@@ -533,7 +589,7 @@ export function ConnectorFormDialog({
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={isPending}>
+            <Button type="submit" disabled={isPending || isSetupOnlyType}>
               {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Add connector
             </Button>

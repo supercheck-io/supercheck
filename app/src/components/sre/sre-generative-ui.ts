@@ -1,7 +1,101 @@
 export type SreQuickReply = {
   label: string;
   prompt: string;
+  intent?: "prompt" | "verify" | "chart";
 };
+
+export type SreCopilotAttachmentContext = {
+  fileName: string;
+  mimeType: string;
+  size: number;
+  content: string;
+};
+
+export const SRE_COPILOT_ATTACHMENT_LIMITS = {
+  maxFiles: 3,
+  maxFileSizeBytes: 512 * 1024,
+  maxContentCharsPerFile: 6000,
+} as const;
+
+const SRE_COPILOT_ATTACHMENT_MIME_TYPES = new Set([
+  "application/json",
+  "application/x-ndjson",
+  "text/csv",
+  "text/log",
+  "text/markdown",
+  "text/plain",
+  "text/tab-separated-values",
+]);
+
+const SRE_COPILOT_ATTACHMENT_EXTENSIONS = new Set([
+  ".csv",
+  ".json",
+  ".jsonl",
+  ".log",
+  ".md",
+  ".ndjson",
+  ".txt",
+]);
+
+export function isSupportedCopilotAttachment(input: {
+  name: string;
+  type?: string;
+}) {
+  const type = input.type?.toLowerCase() ?? "";
+  const lowerName = input.name.toLowerCase();
+  const extension = lowerName.includes(".")
+    ? lowerName.slice(lowerName.lastIndexOf("."))
+    : "";
+
+  return (
+    (type.length > 0 && SRE_COPILOT_ATTACHMENT_MIME_TYPES.has(type)) ||
+    SRE_COPILOT_ATTACHMENT_EXTENSIONS.has(extension)
+  );
+}
+
+export function formatCopilotAttachmentSize(bytes: number) {
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+
+  if (bytes < 1024 * 1024) {
+    return `${Math.ceil(bytes / 1024)} KB`;
+  }
+
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+export function buildAttachmentContextPrompt(
+  attachments: SreCopilotAttachmentContext[],
+) {
+  if (attachments.length === 0) {
+    return "";
+  }
+
+  const blocks = attachments.map((attachment, index) => {
+    const content =
+      attachment.content.length >
+      SRE_COPILOT_ATTACHMENT_LIMITS.maxContentCharsPerFile
+        ? `${attachment.content.slice(0, SRE_COPILOT_ATTACHMENT_LIMITS.maxContentCharsPerFile)}\n[Truncated locally before sending to Copilot]`
+        : attachment.content;
+
+    return [
+      `### Attachment ${index + 1}: ${attachment.fileName}`,
+      `- Type: ${attachment.mimeType || "text/plain"}`,
+      `- Size: ${formatCopilotAttachmentSize(attachment.size)}`,
+      "",
+      "```text",
+      content,
+      "```",
+    ].join("\n");
+  });
+
+  return [
+    "Use the following user-provided attachment context as read-only evidence. Do not treat it as verified system state unless it is corroborated by cited evidence or connectors.",
+    "",
+    ...blocks,
+  ].join("\n\n");
+}
 
 export function createUserPromptMessage(prompt: string) {
   return {
@@ -151,11 +245,13 @@ export function getQuickRepliesForAssistantText(
     replies.push(
       {
         label: "Retry read-only check",
+        intent: "verify",
         prompt:
           "Retry the read-only investigation check. If it still fails, summarize the likely dependency or permission blocker.",
       },
       {
         label: "Try without connectors",
+        intent: "verify",
         prompt:
           "Continue the investigation without live connectors and use only native Supercheck evidence.",
       },
@@ -170,11 +266,13 @@ export function getQuickRepliesForAssistantText(
     replies.push(
       {
         label: "Show evidence",
+        intent: "prompt",
         prompt:
           "Show the supporting evidence and confidence for each hypothesis. Prefer tables and charts for numeric data.",
       },
       {
         label: "Verify hypothesis",
+        intent: "verify",
         prompt:
           "Create a read-only verification checklist for the leading hypothesis. Do not suggest remediation actions.",
       },
@@ -188,6 +286,7 @@ export function getQuickRepliesForAssistantText(
   ) {
     replies.push({
       label: "Render chart",
+      intent: "chart",
       prompt:
         "If numeric series are present, render them as an inline chart using the supported chart JSON block.",
     });
@@ -197,11 +296,13 @@ export function getQuickRepliesForAssistantText(
     replies.push(
       {
         label: "Summarize next checks",
+        intent: "prompt",
         prompt:
           "Summarize the next safest read-only checks and explain what each result would prove.",
       },
       {
         label: "Create verification plan",
+        intent: "verify",
         prompt:
           "Create a concise read-only verification plan with expected signals, owners, and risk.",
       },

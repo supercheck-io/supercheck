@@ -66,6 +66,36 @@ describe('ContainerExecutorService', () => {
       await service.onModuleInit();
       expect(ensureClients).toHaveBeenCalled();
     });
+
+    it('bounds execution pod ephemeral storage and tmp volume size', () => {
+      const manifest = (service as any).buildExecutionJob({
+        jobName: 'sc-exec-test',
+        workspace: '/tmp/supercheck/run-test',
+        shellScript: 'node test.js',
+        workingDir: '/tmp',
+        limits: {
+          timeoutMs: 30000,
+          memoryLimitMb: 512,
+          cpuLimit: 0.5,
+        },
+        options: {
+          ...defaultOptions,
+          runId: '018f0000-0000-7000-8000-000000000001',
+        },
+      });
+
+      const container = manifest.spec.template.spec.containers[0];
+      expect(container.resources.requests['ephemeral-storage']).toBe('1Gi');
+      expect(container.resources.limits['ephemeral-storage']).toBe('8Gi');
+      expect(manifest.spec.template.spec.volumes).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            name: 'tmp',
+            emptyDir: { sizeLimit: '8Gi' },
+          }),
+        ]),
+      );
+    });
   });
 
   describe('input validation', () => {

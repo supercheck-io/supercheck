@@ -23,6 +23,17 @@ function authErrorResponse(error: unknown) {
   return NextResponse.json({ error: message }, { status: 401 });
 }
 
+function featureDisabledResponse() {
+  return NextResponse.json(
+    {
+      error: "SRE investigation is not enabled",
+      code: "feature_disabled",
+      enabledBy: "SRE_INVESTIGATION_AGENT_ENABLED",
+    },
+    { status: 503 },
+  );
+}
+
 async function parseRequestJson(request: NextRequest) {
   try {
     return await request.json();
@@ -33,7 +44,7 @@ async function parseRequestJson(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   if (!isSreInvestigationAgentEnabled()) {
-    return NextResponse.json({ error: "SRE investigation agent is not enabled" }, { status: 404 });
+    return featureDisabledResponse();
   }
 
   const sameOriginError = requireSreSameOriginRequest(request);

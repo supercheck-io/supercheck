@@ -44,7 +44,7 @@ export const diagnosticQueryAdapterRecipes: DiagnosticQueryAdapterRecipe[] = [
       service: { type: "string", maxLength: 100, pattern: "^[a-zA-Z0-9_.:-]+$" },
       window: { type: "duration", default: "5m" },
     },
-    allowlist: { service: ["checkout"], window: ["1m", "5m", "15m"] },
+    allowlist: { service: [], window: ["1m", "5m", "15m"] },
     limits: { maxRows: 50, maxBytes: 262_144, maxSeconds: 10 },
   },
   {
@@ -58,7 +58,7 @@ export const diagnosticQueryAdapterRecipes: DiagnosticQueryAdapterRecipe[] = [
       service: { type: "string", maxLength: 100, pattern: "^[a-zA-Z0-9_.:-]+$" },
       window: { type: "duration", default: "5m" },
     },
-    allowlist: { service: ["checkout"], window: ["1m", "5m", "15m"] },
+    allowlist: { service: [], window: ["1m", "5m", "15m"] },
     limits: { maxRows: 100, maxBytes: 524_288, maxSeconds: 10 },
   },
   {
@@ -72,7 +72,7 @@ export const diagnosticQueryAdapterRecipes: DiagnosticQueryAdapterRecipe[] = [
       service: { type: "string", maxLength: 100, pattern: "^[a-zA-Z0-9_.:-]+$" },
       pattern: { type: "string", enum: ["error", "timeout", "deadline"], default: "error" },
     },
-    allowlist: { service: ["checkout"], pattern: ["error", "timeout", "deadline"] },
+    allowlist: { service: [], pattern: ["error", "timeout", "deadline"] },
     limits: { maxRows: 100, maxBytes: 524_288, maxSeconds: 10 },
   },
   {
@@ -85,7 +85,7 @@ export const diagnosticQueryAdapterRecipes: DiagnosticQueryAdapterRecipe[] = [
     parameterSchema: {
       service: { type: "string", maxLength: 100, pattern: "^[a-zA-Z0-9_.:-]+$" },
     },
-    allowlist: { service: ["checkout"] },
+    allowlist: { service: [] },
     limits: { maxRows: 50, maxBytes: 524_288, maxSeconds: 10 },
   },
   {
@@ -99,7 +99,7 @@ export const diagnosticQueryAdapterRecipes: DiagnosticQueryAdapterRecipe[] = [
       service: { type: "string", maxLength: 100, pattern: "^[a-zA-Z0-9_.:-]+$" },
       min_duration: { type: "duration", default: "1s" },
     },
-    allowlist: { service: ["checkout"], min_duration: ["500ms", "1s", "5s"] },
+    allowlist: { service: [], min_duration: ["500ms", "1s", "5s"] },
     limits: { maxRows: 50, maxBytes: 524_288, maxSeconds: 10 },
   },
   {
@@ -113,7 +113,7 @@ export const diagnosticQueryAdapterRecipes: DiagnosticQueryAdapterRecipe[] = [
       alarm_prefix: { type: "string", maxLength: 120, pattern: "^[a-zA-Z0-9_.:/-]+$" },
       state: { type: "string", enum: ["ALARM", "OK", "INSUFFICIENT_DATA"], default: "ALARM" },
     },
-    allowlist: { alarm_prefix: ["checkout"], state: ["ALARM", "OK", "INSUFFICIENT_DATA"] },
+    allowlist: { alarm_prefix: [], state: ["ALARM", "OK", "INSUFFICIENT_DATA"] },
     limits: { maxRows: 50, maxBytes: 262_144, maxSeconds: 10 },
   },
   {
@@ -133,7 +133,7 @@ export const diagnosticQueryAdapterRecipes: DiagnosticQueryAdapterRecipe[] = [
     allowlist: {
       namespace: ["AWS/ApplicationELB"],
       metric: ["TargetResponseTime", "HTTPCode_Target_5XX_Count"],
-      dimension: ["LoadBalancer=app/checkout"],
+      dimension: [],
       stat: ["Average", "Sum", "Maximum", "Minimum", "p95"],
       period: [60, 300],
     },
@@ -150,7 +150,7 @@ export const diagnosticQueryAdapterRecipes: DiagnosticQueryAdapterRecipe[] = [
       service: { type: "string", maxLength: 100, pattern: "^[a-zA-Z0-9_.:-]+$" },
       pattern: { type: "string", enum: ["error", "exception", "timeout"], default: "error" },
     },
-    allowlist: { service: ["checkout"], pattern: ["error", "exception", "timeout"] },
+    allowlist: { service: [], pattern: ["error", "exception", "timeout"] },
     limits: { maxRows: 100, maxBytes: 524_288, maxSeconds: 10 },
   },
 ];

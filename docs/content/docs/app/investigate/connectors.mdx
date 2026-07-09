@@ -10,15 +10,19 @@ Administrators configure connectors from **Admin → Integrations**. Responders 
 
 ## Supported Connectors
 
-Supercheck currently supports a wide array of read-only direct connectors:
+Supercheck exposes connector types by capability. The implemented **live search** set can be validated and used during investigations today:
 
 - **Metrics & Observability**: Prometheus, Grafana, Datadog
-- **Logs & Search**: Elasticsearch, OpenSearch, Loki
+- **Logs & Search**: Elasticsearch (includes OpenSearch), Loki
+- **Tracing**: Grafana Tempo
 - **Cloud & Infrastructure**: Kubernetes, AWS CloudWatch
-- **Error Tracking & Tracing**: Sentry, Grafana Tempo
+- **Error Tracking**: Sentry
 - **Code & Version Control**: GitHub
+- **Native evidence**: Supercheck alerts, monitors, jobs, runs, logs, reports, and k6 results
 
 All connectors are strictly read-only. For example, the AWS CloudWatch connector only uses least-privilege IAM permissions like `cloudwatch:DescribeAlarms` and `cloudwatch:GetMetricData`.
+
+Other connector types, such as Splunk, AppDynamics, New Relic, Jaeger, OpenTelemetry, GCP Monitoring, Azure Monitor, databases, queues, GitLab, Jira, Confluence, Notion, Slack, Microsoft Teams, PagerDuty, OpsGenie, MCP, and generic webhooks, may appear as **Setup only**. They are shown for roadmap visibility but new setup is disabled until the matching bounded read-only adapter is available.
 
 ## Connector Execution Modes
 

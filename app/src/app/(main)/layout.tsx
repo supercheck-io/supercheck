@@ -24,6 +24,7 @@ import { SreAssistantUiModal } from "@/components/sre/sre-assistant-ui-modal";
 import { getCurrentUser, getActiveOrganization, getUserProjects } from "@/lib/session";
 import { getCurrentProjectContext } from "@/lib/project-context";
 import { isSelfHosted } from "@/lib/feature-flags";
+import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 
 function deriveInitialSubscriptionStatus(
   org: NonNullable<Awaited<ReturnType<typeof getActiveOrganization>>>,
@@ -76,6 +77,10 @@ export default async function MainLayout({
   let initialCurrentProject: ProjectContext | null = null;
   let initialSession: { user: { id: string; name: string; email: string; image?: string | null } } | null = null;
   let initialSubscriptionStatus: SubscriptionStatus | null = null;
+  let commandSearchCapabilities = {
+    canInvestigateSre: false,
+    canConfigureSre: false,
+  };
   const initialIsSelfHosted = isSelfHosted();
 
   if (user && org) {
@@ -101,6 +106,28 @@ export default async function MainLayout({
       }));
 
       initialCurrentProject = currentProjectResult;
+      if (currentProjectResult) {
+        const permissionContext = {
+          userId: user.id,
+          organizationId: currentProjectResult.organizationId,
+          project: {
+            id: currentProjectResult.id,
+            userRole: currentProjectResult.userRole,
+          },
+        };
+        commandSearchCapabilities = {
+          canInvestigateSre: checkPermissionWithContext(
+            "sre_investigation",
+            "investigate",
+            permissionContext
+          ),
+          canConfigureSre: checkPermissionWithContext(
+            "sre_connector",
+            "configure",
+            permissionContext
+          ),
+        };
+      }
 
       initialSession = {
         user: {
@@ -151,7 +178,7 @@ export default async function MainLayout({
                   </div>
                   <div className="flex items-center gap-4 px-4">
                     <DemoBadge />
-                    <CommandSearch />
+                    <CommandSearch {...commandSearchCapabilities} />
                     <ParallelThreads />
                     <CommunityLinks />
                     <NavUser />

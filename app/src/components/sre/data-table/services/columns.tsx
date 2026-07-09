@@ -2,7 +2,7 @@ import { ColumnDef } from "@tanstack/react-table";
 import { type SreServiceListItem } from "@/actions/sre-services";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ExternalLink, MoreHorizontal, Archive } from "lucide-react";
+import { Archive, ExternalLink, MoreHorizontal, Pencil } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   DropdownMenu,
@@ -50,7 +50,10 @@ export const columns: ColumnDef<SreServiceListItem>[] = [
     id: "description",
     header: "Description",
     cell: ({ row }) => (
-      <div className="max-w-[200px] truncate text-xs text-muted-foreground" title={row.original.description || ""}>
+      <div
+        className="max-w-[240px] truncate text-sm"
+        title={row.original.description || ""}
+      >
         {row.original.description || "-"}
       </div>
     ),
@@ -128,10 +131,11 @@ export const columns: ColumnDef<SreServiceListItem>[] = [
               <MoreHorizontal className="h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
+          <DropdownMenuContent align="end" className="w-44">
             <DropdownMenuItem
               onClick={() => meta?.onEdit?.(service)}
             >
+              <Pencil className="mr-2 h-4 w-4" />
               Edit service
             </DropdownMenuItem>
             {service.status !== "deprecated" && (

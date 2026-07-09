@@ -190,9 +190,9 @@ supercheck job delete <job-id> --force    # Skip confirmation
 Run a job immediately, bypassing the cron schedule.
 
 ```bash
-supercheck job run --id <job-id>
-supercheck job run --local --id <job-id>     # Run locally
-supercheck job run --cloud --id <job-id>     # Run in the cloud
+supercheck job run <job-id>
+supercheck job run <job-id> --local     # Run locally
+supercheck job run <job-id> --cloud     # Run in the cloud
 ```
 
 ### `supercheck job trigger`

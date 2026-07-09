@@ -10,6 +10,10 @@ jest.mock("@/components/sre/incidents/generate-evidence-brief-button", () => ({
   ),
 }));
 
+jest.mock("@/components/sre/incidents/edit-sre-incident-dialog", () => ({
+  EditSreIncidentDialog: () => <button type="button">Edit incident</button>,
+}));
+
 jest.mock("@/components/sre/incidents/sre-investigation-panel", () => ({
   SreInvestigationPanel: () => <div>Mock AI investigation panel</div>,
 }));
@@ -24,6 +28,7 @@ function detailFixture(): SreIncidentDetail {
       title: "Checkout latency",
       severity: "sev2",
       status: "investigating",
+      primaryServiceId: "018f0000-0000-7000-8000-000000000010",
       primaryServiceName: "checkout-api",
       alertCount: 2,
       evidenceCount: 1,
@@ -64,12 +69,15 @@ function detailFixture(): SreIncidentDetail {
     ],
     chatHistory: null,
     chatHistories: [],
+    permissions: {
+      canUpdate: true,
+    },
   };
 }
 
 describe("SreIncidentDetailView", () => {
   it("renders simplified incident tabs and default investigation panel", () => {
-    render(<SreIncidentDetailView detail={detailFixture()} />);
+    render(<SreIncidentDetailView detail={detailFixture()} services={[]} />);
 
     expect(
       screen.getByRole("tab", { name: "Investigation" }),

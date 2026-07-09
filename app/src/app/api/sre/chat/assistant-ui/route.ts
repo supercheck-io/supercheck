@@ -24,7 +24,10 @@ import {
   appendSreMessage,
   createSreConversation,
   getSreConversation,
+  SreSessionStoreError,
 } from "@/sre/lib/session-store";
+import { createSreConnectorTools } from "@/sre/tools/connector-tools";
+import { createSreEvidenceTools } from "@/sre/tools/evidence-tools";
 import { requireSreSameOriginRequest } from "../../_auth";
 
 type SreAssistantUiMessageMetadata = {
@@ -38,10 +41,10 @@ type SreAssistantUiMessage = UIMessage<SreAssistantUiMessageMetadata>;
 const MAX_MESSAGE_TEXT_LENGTH = 4000;
 const MAX_TOTAL_MESSAGE_TEXT_LENGTH = 20_000;
 
-const assistantUiTextPartSchema = z
+const assistantUiPartSchema = z
   .object({
-    type: z.literal("text"),
-    text: z.string().max(MAX_MESSAGE_TEXT_LENGTH),
+    type: z.string().trim().min(1).max(80),
+    text: z.string().max(MAX_MESSAGE_TEXT_LENGTH).optional(),
   })
   .passthrough();
 
@@ -58,12 +61,17 @@ const assistantUiMessageSchema = z
     id: z.string().trim().min(1).max(200).optional(),
     role: z.enum(["user", "assistant"]),
     metadata: assistantUiMessageMetadataSchema.optional(),
-    parts: z.array(assistantUiTextPartSchema).min(1).max(20).optional(),
-    content: z.array(assistantUiTextPartSchema).min(1).max(20).optional(),
+    parts: z.array(assistantUiPartSchema).min(1).max(50).optional(),
+    content: z.array(assistantUiPartSchema).min(1).max(50).optional(),
   })
   .passthrough()
   .superRefine((message, context) => {
-    if (!message.parts?.length && !message.content?.length) {
+    const parts = message.parts ?? message.content ?? [];
+    const hasTextPart = parts.some(
+      (part) => part.type === "text" && typeof part.text === "string",
+    );
+
+    if (!hasTextPart) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
         message: "Message text parts are required",
@@ -77,7 +85,8 @@ type ParsedAssistantUiMessage = z.infer<typeof assistantUiMessageSchema>;
 const assistantUiChatRequestSchema = z.object({
   id: z.string().trim().max(200).optional().nullable(),
   conversationId: z.string().uuid().optional().nullable(),
-  incidentId: z.null().optional(),
+  incidentId: z.string().uuid().optional().nullable(),
+  useLiveConnectorTools: z.boolean().optional().default(false),
   messages: z.array(assistantUiMessageSchema).min(1).max(50),
 });
 
@@ -110,10 +119,11 @@ function getLatestUserMessage(messages: SreAssistantUiMessage[]) {
 function normalizeAssistantUiMessage(
   message: ParsedAssistantUiMessage,
 ): SreAssistantUiMessage {
-  const parts = (message.parts ?? message.content ?? []).map((part) => ({
-    ...part,
-    type: "text" as const,
-  }));
+  const parts = (message.parts ?? message.content ?? []).flatMap((part) =>
+    part.type === "text" && typeof part.text === "string"
+      ? [{ ...part, type: "text" as const, text: part.text }]
+      : [],
+  );
   const { content: _content, parts: _parts, ...rest } = message;
 
   return {
@@ -130,14 +140,26 @@ function getTotalMessageTextLength(messages: SreAssistantUiMessage[]) {
   );
 }
 
-function buildAssistantUiSystemPrompt(projectName: string) {
+function buildAssistantUiSystemPrompt(input: {
+  projectName: string;
+  incidentId: string | null;
+  liveConnectorToolsEnabled: boolean;
+}) {
   return [
     buildSreTriageSystemPrompt(),
     "",
-    "Standalone Copilot chat rules:",
-    `- Project: ${projectName}`,
+    input.incidentId
+      ? "Incident-scoped Copilot chat rules:"
+      : "Standalone Copilot chat rules:",
+    `- Project: ${input.projectName}`,
+    input.incidentId ? `- Scoped incident ID: ${input.incidentId}` : null,
     "- This chat is read-only. Do not suggest production mutations or destructive commands.",
-    "- If no incident is scoped, do not claim incident evidence was inspected.",
+    input.incidentId
+      ? "- Use available stored evidence tools before making incident-specific claims. Use live connector tools only when they are available and needed for verification."
+      : "- If no incident is scoped, do not claim incident evidence was inspected.",
+    input.incidentId && !input.liveConnectorToolsEnabled
+      ? "- Live connector tools are not available for this chat; explain that verification is based on stored evidence and user-provided context only."
+      : null,
     "- Prefer concise headings, short bullets, markdown tables for comparisons, and fenced code blocks for commands or queries.",
     "- Do not emit raw markdown heading markers as decoration; use headings only when they add structure.",
     "- Supported slash commands are read-only aliases: /health for system health summaries, /investigate for incident/service triage, /evidence for evidence review, and /verify for verification planning.",
@@ -146,7 +168,9 @@ function buildAssistantUiSystemPrompt(projectName: string) {
     '{"type":"line","title":"Short title","description":"Optional one-sentence context","sources":[{"label":"Prometheus","type":"prometheus","evidenceIds":["ev-123"],"query":"rate(http_requests_total[5m])"}],"xKey":"label","series":[{"key":"value","label":"Value"}],"data":[{"label":"api","value":12}]}',
     "- Supported chart types are bar, line, and area. Use only evidence or values from the conversation; do not fabricate chart data.",
     "- Include chart sources when values come from evidence, connectors, or user-provided data. Source labels must be non-secret names such as Prometheus, Grafana, Kubernetes, or Generated preview data.",
-  ].join("\n");
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 export async function POST(request: NextRequest) {
@@ -164,6 +188,15 @@ export async function POST(request: NextRequest) {
 
   const canInvestigate = checkPermissionWithContext(
     "sre_investigation",
+    "investigate",
+    {
+      userId: context.userId,
+      organizationId: context.organizationId,
+      project: context.project,
+    },
+  );
+  const canInvestigateConnectors = checkPermissionWithContext(
+    "sre_connector",
     "investigate",
     {
       userId: context.userId,
@@ -249,26 +282,69 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  let conversation = parsed.data.conversationId
-    ? await getSreConversation({
+  const requestedIncidentId = parsed.data.incidentId ?? null;
+  let conversation: Awaited<ReturnType<typeof getSreConversation>> | null;
+  try {
+    conversation = parsed.data.conversationId
+      ? await getSreConversation({
+          organizationId: context.organizationId,
+          projectId: context.project.id,
+          userId: context.userId,
+          conversationId: parsed.data.conversationId,
+        })
+      : null;
+  } catch (error) {
+    if (error instanceof SreSessionStoreError) {
+      return NextResponse.json(
+        { error: "Copilot conversation was not found" },
+        { status: 404 },
+      );
+    }
+
+    console.error("Failed to load Copilot conversation:", error);
+    return NextResponse.json(
+      { error: "Copilot conversation could not be loaded" },
+      { status: 500 },
+    );
+  }
+
+  if (conversation && conversation.incidentId !== requestedIncidentId) {
+    return NextResponse.json(
+      {
+        error:
+          "Copilot conversation context changed. Start a new chat for this incident.",
+      },
+      { status: 409 },
+    );
+  }
+
+  if (!conversation) {
+    try {
+      conversation = await createSreConversation({
         organizationId: context.organizationId,
         projectId: context.project.id,
         userId: context.userId,
-        conversationId: parsed.data.conversationId,
-      })
-    : null;
+        incidentId: requestedIncidentId,
+        title: latestUserText.slice(0, 80),
+        scope: {
+          source: "sre_assistant_ui_chat_api",
+          incidentId: requestedIncidentId,
+        },
+      });
+    } catch (error) {
+      if (error instanceof SreSessionStoreError) {
+        return NextResponse.json(
+          { error: "Incident not found or access denied" },
+          { status: error.code === "incident_not_found" ? 404 : 400 },
+        );
+      }
 
-  if (!conversation) {
-    conversation = await createSreConversation({
-      organizationId: context.organizationId,
-      projectId: context.project.id,
-      userId: context.userId,
-      incidentId: null,
-      title: latestUserText.slice(0, 80),
-      scope: {
-        source: "sre_assistant_ui_chat_api",
-      },
-    });
+      console.error("Failed to create Copilot conversation:", error);
+      return NextResponse.json(
+        { error: "Copilot conversation could not be created" },
+        { status: 500 },
+      );
+    }
   }
 
   await appendSreMessage({
@@ -286,7 +362,23 @@ export async function POST(request: NextRequest) {
     maxOutputTokens: 1200,
     timeoutMs: 45_000,
   });
-  const system = buildAssistantUiSystemPrompt(context.project.name);
+  const incidentToolScope = conversation.incidentId
+    ? {
+        organizationId: context.organizationId,
+        projectId: context.project.id,
+        incidentId: conversation.incidentId,
+        userId: context.userId,
+      }
+    : null;
+  const liveConnectorToolsEnabled =
+    Boolean(incidentToolScope) &&
+    parsed.data.useLiveConnectorTools &&
+    canInvestigateConnectors;
+  const system = buildAssistantUiSystemPrompt({
+    projectName: context.project.name,
+    incidentId: conversation.incidentId,
+    liveConnectorToolsEnabled,
+  });
   const promptPreview = `${system}\n\n${latestUserText}`;
   assertSreAgentPromptWithinBudget(promptPreview, budget);
 
@@ -298,6 +390,14 @@ export async function POST(request: NextRequest) {
     model: getProviderModel(),
     system,
     messages: await convertToModelMessages(messages),
+    tools: incidentToolScope
+      ? {
+          ...createSreEvidenceTools(incidentToolScope),
+          ...(liveConnectorToolsEnabled
+            ? createSreConnectorTools(incidentToolScope)
+            : {}),
+        }
+      : undefined,
     stopWhen: stepCountIs(budget.maxSteps),
     maxOutputTokens: budget.maxOutputTokens,
     abortSignal: AbortSignal.timeout(budget.timeoutMs),

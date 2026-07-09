@@ -4,6 +4,8 @@
   "pages": [
     "listTags",
     "createTag",
+    "getTag",
+    "updateTag",
     "deleteTag"
   ]
 }

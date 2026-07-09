@@ -53,13 +53,6 @@ export const DIRECT_VALIDATION_CONNECTOR_TYPES = [
 
 export const PRIVATE_AGENT_CONNECTOR_TYPES = DIRECT_VALIDATION_CONNECTOR_TYPES;
 
-export const SETUP_ONLY_CONNECTOR_TYPES = [
-  "jira",
-  "confluence",
-  "notion",
-  "slack",
-] as const satisfies readonly ConnectorType[];
-
 export type SreConnectorType = (typeof SRE_CONNECTOR_TYPES)[number];
 
 export function isDirectValidationConnectorType(connectorType: ConnectorType) {
@@ -74,8 +67,13 @@ export function isPrivateAgentConnectorType(connectorType: ConnectorType) {
   );
 }
 
-export function isSetupOnlyConnectorType(connectorType: ConnectorType) {
-  return SETUP_ONLY_CONNECTOR_TYPES.includes(
-    connectorType as (typeof SETUP_ONLY_CONNECTOR_TYPES)[number],
+export function isLiveSearchConnectorType(connectorType: ConnectorType) {
+  return (
+    isDirectValidationConnectorType(connectorType) ||
+    isPrivateAgentConnectorType(connectorType)
   );
+}
+
+export function isSetupOnlyConnectorType(connectorType: ConnectorType) {
+  return connectorType !== "supercheck_native" && !isLiveSearchConnectorType(connectorType);
 }

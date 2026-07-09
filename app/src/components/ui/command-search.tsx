@@ -51,9 +51,15 @@ import { Button } from "@/components/ui/button";
 
 interface CommandSearchProps {
   className?: string;
+  canInvestigateSre?: boolean;
+  canConfigureSre?: boolean;
 }
 
-export function CommandSearch({ className }: CommandSearchProps) {
+export function CommandSearch({
+  className,
+  canInvestigateSre = false,
+  canConfigureSre = false,
+}: CommandSearchProps) {
   const [open, setOpen] = React.useState(false);
   const router = useRouter();
 
@@ -75,12 +81,20 @@ export function CommandSearch({ className }: CommandSearchProps) {
         incidents: "/incidents",
         "status-pages": "/status-pages",
         admin: "/org-admin",
-        "admin-services": "/org-admin?tab=services",
-        "admin-integrations": "/org-admin?tab=integrations",
-        "admin-diagnostic-recipes": "/org-admin?tab=diagnostic-recipes",
-        "admin-private-agents": "/org-admin?tab=private-agents",
-        "investigation-chat": "/copilot",
-        "evidence-graph": "/copilot/evidence-graph",
+        ...(canConfigureSre
+          ? {
+              "admin-services": "/org-admin?tab=services",
+              "admin-integrations": "/org-admin?tab=integrations",
+              "admin-diagnostic-recipes": "/org-admin?tab=diagnostic-recipes",
+              "admin-private-agents": "/org-admin?tab=private-agents",
+            }
+          : {}),
+        ...(canInvestigateSre
+          ? {
+              "investigation-chat": "/copilot",
+              "evidence-graph": "/copilot/evidence-graph",
+            }
+          : {}),
 
         // Create Actions
         "create-monitor-http": "/monitors/create?type=http_request",
@@ -114,7 +128,7 @@ export function CommandSearch({ className }: CommandSearchProps) {
         }
       }
     },
-    [router]
+    [canConfigureSre, canInvestigateSre, router]
   );
 
   // Command palette toggle only
@@ -210,40 +224,58 @@ export function CommandSearch({ className }: CommandSearchProps) {
 
               <CommandSeparator />
 
-              <CommandGroup heading="Investigate">
-                <CommandItem onSelect={() => handleCommand("investigation-chat")}>
-                  <Bot className="mr-2 h-4 w-4 !text-zinc-400" />
-                  <span>Copilot</span>
-                </CommandItem>
-                <CommandItem onSelect={() => handleCommand("evidence-graph")}>
-                  <Network className="mr-2 h-4 w-4 !text-sky-500" />
-                  <span>Evidence Map</span>
-                </CommandItem>
-              </CommandGroup>
+              {canInvestigateSre && (
+                <>
+                  <CommandGroup heading="Investigate">
+                    <CommandItem
+                      onSelect={() => handleCommand("investigation-chat")}
+                    >
+                      <Bot className="mr-2 h-4 w-4 !text-zinc-400" />
+                      <span>Copilot</span>
+                    </CommandItem>
+                    <CommandItem onSelect={() => handleCommand("evidence-graph")}>
+                      <Network className="mr-2 h-4 w-4 !text-sky-500" />
+                      <span>Evidence Map</span>
+                    </CommandItem>
+                  </CommandGroup>
 
-              <CommandSeparator />
+                  <CommandSeparator />
+                </>
+              )}
 
               <CommandGroup heading="Admin">
                 <CommandItem onSelect={() => handleCommand("admin")}>
                   <UserCog className="mr-2 h-4 w-4 !text-zinc-400" />
                   <span>Organization Admin</span>
                 </CommandItem>
-                <CommandItem onSelect={() => handleCommand("admin-services")}>
-                  <Boxes className="mr-2 h-4 w-4 !text-sky-600" />
-                  <span>Services</span>
-                </CommandItem>
-                <CommandItem onSelect={() => handleCommand("admin-integrations")}>
-                  <Network className="mr-2 h-4 w-4 !text-emerald-500" />
-                  <span>Integrations</span>
-                </CommandItem>
-                <CommandItem onSelect={() => handleCommand("admin-diagnostic-recipes")}>
-                  <SquareLibrary className="mr-2 h-4 w-4 !text-cyan-600" />
-                  <span>Diagnostic Recipes</span>
-                </CommandItem>
-                <CommandItem onSelect={() => handleCommand("admin-private-agents")}>
-                  <RadioTower className="mr-2 h-4 w-4 !text-violet-500" />
-                  <span>Private Agents</span>
-                </CommandItem>
+                {canConfigureSre && (
+                  <>
+                    <CommandItem onSelect={() => handleCommand("admin-services")}>
+                      <Boxes className="mr-2 h-4 w-4 !text-sky-600" />
+                      <span>Services</span>
+                    </CommandItem>
+                    <CommandItem
+                      onSelect={() => handleCommand("admin-integrations")}
+                    >
+                      <Network className="mr-2 h-4 w-4 !text-emerald-500" />
+                      <span>Integrations</span>
+                    </CommandItem>
+                    <CommandItem
+                      onSelect={() =>
+                        handleCommand("admin-diagnostic-recipes")
+                      }
+                    >
+                      <SquareLibrary className="mr-2 h-4 w-4 !text-cyan-600" />
+                      <span>Diagnostic Recipes</span>
+                    </CommandItem>
+                    <CommandItem
+                      onSelect={() => handleCommand("admin-private-agents")}
+                    >
+                      <RadioTower className="mr-2 h-4 w-4 !text-violet-500" />
+                      <span>Private Agents</span>
+                    </CommandItem>
+                  </>
+                )}
               </CommandGroup>
 
               <CommandSeparator />

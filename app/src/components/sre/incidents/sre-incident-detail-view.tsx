@@ -4,16 +4,12 @@ import {
   Clock,
   Database,
   ExternalLink,
-  FileText,
-  Siren,
 } from "lucide-react";
 
 import type { SreIncidentDetail } from "@/actions/sre-incidents";
-import { GenerateEvidenceBriefButton } from "@/components/sre/incidents/generate-evidence-brief-button";
-import {
-  SreIncidentBriefReport,
-  SreIncidentBriefReportActions,
-} from "@/components/sre/incidents/sre-incident-brief-report";
+import type { SreServiceListItem } from "@/actions/sre-services";
+import { EditSreIncidentDialog } from "@/components/sre/incidents/edit-sre-incident-dialog";
+import { SreIncidentBriefPanel } from "@/components/sre/incidents/sre-incident-brief-panel";
 import { SreInvestigationPanel } from "@/components/sre/incidents/sre-investigation-panel";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -36,6 +32,8 @@ import { cn } from "@/lib/utils";
 
 type SreIncidentDetailViewProps = {
   detail: SreIncidentDetail;
+  services: SreServiceListItem[];
+  initialTab?: "investigation" | "evidence" | "brief";
 };
 
 const severityClasses: Record<
@@ -77,81 +75,6 @@ function getBriefProvider(detail: SreIncidentDetail) {
   return snapshot && typeof snapshot.provider === "string"
     ? snapshot.provider
     : null;
-}
-
-function EvidenceBriefCard({
-  detail,
-  summary,
-  provider,
-}: {
-  detail: SreIncidentDetail;
-  summary: string | null;
-  provider: string | null;
-}) {
-  return (
-    <Card className="flex h-full min-h-0 flex-col overflow-hidden">
-      <CardHeader className="shrink-0">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <Siren className="h-5 w-5" />
-              Evidence brief
-            </CardTitle>
-            <CardDescription>
-              Native SuperCheck evidence with cited incident context.
-            </CardDescription>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {summary && (
-              <SreIncidentBriefReportActions
-                incidentNumber={detail.incident.incidentNumber}
-                incidentTitle={detail.incident.title}
-                content={summary}
-              />
-            )}
-            <GenerateEvidenceBriefButton
-              incidentId={detail.incident.id}
-              hasBrief={Boolean(detail.latestBrief)}
-            />
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent className="min-h-0 flex-1 overflow-hidden">
-        {summary ? (
-          <div className="flex h-full min-h-0 flex-col gap-3">
-            <div className="flex shrink-0 flex-wrap items-center gap-2">
-              {detail.latestBrief?.confidenceScore != null && (
-                <Badge variant="outline">
-                  Confidence{" "}
-                  {Math.round(Number(detail.latestBrief.confidenceScore) * 100)}
-                  %
-                </Badge>
-              )}
-              {provider && (
-                <Badge variant="outline">
-                  {provider === "ai" ? "AI generated" : "Fallback brief"}
-                </Badge>
-              )}
-            </div>
-            <SreIncidentBriefReport
-              content={summary}
-            />
-          </div>
-        ) : (
-          <div className="rounded-lg border border-dashed p-8 text-center">
-            <FileText className="mx-auto h-10 w-10 text-muted-foreground" />
-            <h3 className="mt-3 text-base font-medium">
-              No evidence brief generated
-            </h3>
-            <p className="mx-auto mt-1 max-w-lg text-sm text-muted-foreground">
-              Generate a brief when you need native evidence citations for this
-              incident.
-            </p>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
 }
 
 function NativeEvidenceCard({ detail }: { detail: SreIncidentDetail }) {
@@ -255,7 +178,11 @@ function NativeEvidenceCard({ detail }: { detail: SreIncidentDetail }) {
   );
 }
 
-export function SreIncidentDetailView({ detail }: SreIncidentDetailViewProps) {
+export function SreIncidentDetailView({
+  detail,
+  services,
+  initialTab = "investigation",
+}: SreIncidentDetailViewProps) {
   const summary = getBriefSummary(detail);
   const provider = getBriefProvider(detail);
 
@@ -289,6 +216,11 @@ export function SreIncidentDetailView({ detail }: SreIncidentDetailViewProps) {
               investigation readiness for this incident.
             </p>
           </div>
+          <EditSreIncidentDialog
+            incident={detail.incident}
+            services={services}
+            canUpdate={detail.permissions.canUpdate}
+          />
         </div>
 
         <div className="grid overflow-hidden rounded-lg border bg-muted/10 sm:grid-cols-3">
@@ -320,7 +252,7 @@ export function SreIncidentDetailView({ detail }: SreIncidentDetailViewProps) {
       </div>
 
       <Tabs
-        defaultValue="investigation"
+        defaultValue={initialTab}
         className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden"
       >
         <TabsList className="shrink-0 justify-start self-start">
@@ -336,6 +268,7 @@ export function SreIncidentDetailView({ detail }: SreIncidentDetailViewProps) {
           <SreInvestigationPanel
             incidentId={detail.incident.id}
             hasPrimaryService={Boolean(detail.incident.primaryServiceName)}
+            serviceMappingHref="/org-admin?tab=services"
             evidenceReferences={detail.evidence.map((item) => ({
               id: item.id,
               title: item.title,
@@ -349,10 +282,14 @@ export function SreIncidentDetailView({ detail }: SreIncidentDetailViewProps) {
         </TabsContent>
 
         <TabsContent value="brief" className="min-h-0 flex-1 overflow-hidden">
-          <EvidenceBriefCard
-            detail={detail}
-            summary={summary}
-            provider={provider}
+          <SreIncidentBriefPanel
+            incidentId={detail.incident.id}
+            incidentNumber={detail.incident.incidentNumber}
+            incidentTitle={detail.incident.title}
+            initialSummary={summary}
+            initialProvider={provider}
+            initialConfidenceScore={detail.latestBrief?.confidenceScore ?? null}
+            hasBrief={Boolean(detail.latestBrief)}
           />
         </TabsContent>
       </Tabs>

@@ -899,6 +899,13 @@ export async function createSreConnector(
     }
 
     const endpointUrl = normalizeEndpointUrl(parsed.data.endpointUrl);
+    if (isSetupOnlyConnectorType(parsed.data.type)) {
+      return {
+        success: false,
+        error: `${parsed.data.type.replace(/_/g, " ")} connectors are setup-only right now. Live investigation search is not available yet, so new setup is disabled until a read-only adapter is shipped.`,
+      };
+    }
+
     await assertEndpointAllowedForExecution(
       endpointUrl,
       Boolean(parsed.data.privateAgentId),

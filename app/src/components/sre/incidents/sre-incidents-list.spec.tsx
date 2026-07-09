@@ -22,6 +22,10 @@ function incidentFixture(index: number, overrides: Partial<SreIncidentListItem> 
     title: `Checkout incident ${index}`,
     severity: index % 2 === 0 ? "sev2" : "sev3",
     status: index % 2 === 0 ? "investigating" : "triggered",
+    primaryServiceId:
+      index % 2 === 0
+        ? `018f0000-0000-7000-8001-${String(index).padStart(12, "0")}`
+        : null,
     primaryServiceName: index % 2 === 0 ? "checkout-api" : null,
     alertCount: index,
     evidenceCount: index + 1,

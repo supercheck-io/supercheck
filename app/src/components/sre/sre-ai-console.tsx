@@ -25,7 +25,7 @@ type SreAiConsoleProps = {
 function formatHistoryDate(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
-    return "Recent";
+    return "Date unavailable";
   }
 
   return new Intl.DateTimeFormat("en-US", {

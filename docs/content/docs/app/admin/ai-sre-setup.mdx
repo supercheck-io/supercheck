@@ -28,6 +28,12 @@ Connectors let Copilot collect cited evidence from tools such as GitHub, Kuberne
 
 Connector validation automatically ensures credentials are valid and can reach the target system.
 
+Connector types are labeled by capability during setup:
+
+- **Live search** connectors can be used by investigations and Copilot for bounded read-only evidence search.
+- **Native** evidence comes from Supercheck's own alerts, monitors, jobs, runs, logs, reports, and k6 results.
+- **Setup only** connector types are visible for roadmap clarity but cannot be newly configured until their read-only search adapter is implemented.
+
 Use context links when an outbound notification provider, such as a webhook alert channel, should be correlated with a read-only evidence connector.
 
 ## Diagnostic Recipes
@@ -42,6 +48,8 @@ Recipes are useful for repeated questions such as:
 - Which traces show the slowest dependency?
 
 Each recipe is scoped to a connector and constrained by allowlists, row limits, byte limits, and timeouts.
+
+Built-in recipe templates do not ship with sample production service names. Administrators must provide tenant-specific service values that pass the recipe schema and any configured allowlists.
 
 SQL recipes are automatically validated to ensure they are strictly read-only, preventing any accidental data modification.
 
@@ -66,7 +74,7 @@ They do not apply fixes and do not require inbound firewall access.
 2. Add direct integrations for cloud-accessible tools.
 3. Register a Private Agent if evidence sources are private.
 4. Add diagnostic recipes for common service-specific questions.
-5. Create or verify alert channels under **Communicate → Alerts → Channels**.
+5. Create or verify alert channels under **Alerts → Notification Channels**.
 6. Confirm responders can create incidents from alert signals or manually from **Communicate → Incidents**.
 
 ## Permissions

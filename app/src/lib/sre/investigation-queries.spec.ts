@@ -92,9 +92,56 @@ describe("buildSreInvestigationReportExport", () => {
         evidenceCount: 1,
         toolCallCount: 1,
         recommendationCount: 1,
+        truncation: {
+          evidence: {
+            shown: 1,
+            total: 1,
+            truncated: false,
+          },
+          toolCalls: {
+            shown: 1,
+            total: 1,
+            truncated: false,
+          },
+          recommendations: {
+            shown: 1,
+            total: 1,
+            truncated: false,
+          },
+        },
       },
     });
     expect(report.provenance.rawFieldsExcluded).toEqual(expect.arrayContaining(["rawInputS3Path", "rawOutputS3Path", "rawContentExcerpt", "sourceUri"]));
     expect(JSON.stringify(report)).not.toContain("rawInputS3PathValue");
+  });
+
+  it("reports bounded export truncation in provenance", () => {
+    const evidence = Array.from({ length: 51 }, (_, index) => ({
+      id: `ev-${index}`,
+      investigationRunId: investigationItem.id,
+      title: `Evidence ${index}`,
+      summary: "Bounded evidence summary.",
+      sourceType: "prometheus",
+      evidenceType: "metric",
+      severity: null,
+      citationResultHash: null,
+      observedAt: null,
+      createdAt: new Date("2026-06-24T12:00:02Z"),
+    }));
+
+    const report = buildSreInvestigationReportExport({
+      item: investigationItem,
+      exportedAt: new Date("2026-06-24T12:01:00Z"),
+      evidence,
+      toolCalls: [],
+      recommendations: [],
+    });
+
+    expect(report.evidence).toHaveLength(50);
+    expect(report.provenance.truncation.evidence).toEqual({
+      shown: 50,
+      total: 51,
+      truncated: true,
+    });
   });
 });
