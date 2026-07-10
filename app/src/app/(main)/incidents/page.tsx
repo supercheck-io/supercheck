@@ -1,12 +1,8 @@
-import { getSreIncidents } from "@/actions/sre-incidents";
 import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
-import { SreIncidentsList } from "@/components/sre/incidents/sre-incidents-list";
+import { SreIncidentsPageClient } from "@/components/sre/incidents/sre-incidents-page-client";
 import { Card, CardContent } from "@/components/ui/card";
 
-export const dynamic = "force-dynamic";
-
-export default async function IncidentsPage() {
-  const result = await getSreIncidents();
+export default function IncidentsPage() {
   const breadcrumbs = [
     { label: "Home", href: "/" },
     { label: "Incidents", isCurrentPage: true },
@@ -17,10 +13,7 @@ export default async function IncidentsPage() {
       <PageBreadcrumbs items={breadcrumbs} />
       <Card className="m-4 min-w-0 overflow-hidden shadow-sm transition-shadow duration-200 hover:shadow-md">
         <CardContent className="p-6">
-          <SreIncidentsList
-            incidents={result.incidents}
-            loadError={result.success ? null : result.error}
-          />
+          <SreIncidentsPageClient />
         </CardContent>
       </Card>
     </div>

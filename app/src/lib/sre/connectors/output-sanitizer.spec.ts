@@ -42,4 +42,13 @@ describe("sanitizeConnectorEvidence", () => {
     expect(result.items).toHaveLength(1);
     expect(result.truncated).toBe(true);
   });
+
+  it("neutralizes unsafe evidence link schemes", () => {
+    const result = sanitizeConnectorEvidence(
+      [{ ...item, sourceUri: "javascript:alert(1)" }],
+      { maxRows: 10, maxBytes: 10_000, maxSeconds: 10 },
+    );
+
+    expect(result.items[0].sourceUri).toBe("#");
+  });
 });

@@ -69,6 +69,11 @@ function detailFixture(): SreIncidentDetail {
     ],
     chatHistory: null,
     chatHistories: [],
+    toolMetrics: {
+      total: 3,
+      errors: 1,
+      averageDurationMs: 240,
+    },
     permissions: {
       canUpdate: true,
     },
@@ -86,6 +91,8 @@ describe("SreIncidentDetailView", () => {
     expect(screen.getByRole("tab", { name: "Brief" })).toBeInTheDocument();
     expect(screen.getByText("Mock AI investigation panel")).toBeInTheDocument();
     expect(screen.getByText("Incident #42")).toBeInTheDocument();
+    expect(screen.getByText("Alerts")).toBeInTheDocument();
+    expect(screen.getByText("2")).toBeInTheDocument();
     expect(
       screen.queryByText("Investigation workspace"),
     ).not.toBeInTheDocument();

@@ -11,6 +11,7 @@ import {
 import { getActualModelName } from "@/lib/ai/ai-provider";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { normalizePrivateAgentEvidenceSummaries } from "@/lib/sre/connector-job-evidence";
+import { DIRECT_VALIDATION_CONNECTOR_TYPES } from "@/lib/sre/connectors";
 import type {
   BriefEvidenceInput,
   EvidenceBrief,
@@ -22,16 +23,7 @@ import {
 import { db } from "@/utils/db";
 
 const connectorEvidenceSourceTypes = [
-  "github",
-  "kubernetes",
-  "prometheus",
-  "grafana",
-  "datadog",
-  "aws_cloudwatch",
-  "sentry",
-  "loki",
-  "elasticsearch",
-  "tempo",
+  ...DIRECT_VALIDATION_CONNECTOR_TYPES,
   "splunk",
   "slack",
   "mcp",
@@ -419,7 +411,9 @@ export async function runSreEvidenceBriefGeneration(input: {
     };
   } catch (error) {
     const errorMessage =
-      error instanceof Error ? error.message : "Evidence brief generation failed";
+      error instanceof Error
+        ? error.message
+        : "Evidence brief generation failed";
     console.error("Failed to generate SRE evidence brief:", error);
 
     try {

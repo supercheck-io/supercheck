@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { Archive, Bot, Clock3, Plus, Search, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
@@ -20,6 +19,7 @@ import { cn } from "@/lib/utils";
 type SreAiConsoleProps = {
   initialHistories?: SreStandaloneChatHistory[];
   loadError?: string | null;
+  onHistoriesChange?: (histories: SreStandaloneChatHistory[]) => void;
 };
 
 function formatHistoryDate(value: string) {
@@ -38,8 +38,8 @@ function formatHistoryDate(value: string) {
 export function SreAiConsole({
   initialHistories = [],
   loadError = null,
+  onHistoriesChange,
 }: SreAiConsoleProps) {
-  const router = useRouter();
   const [histories, setHistories] = useState(initialHistories);
   const [historyQuery, setHistoryQuery] = useState("");
   const [conversationId, setConversationId] = useState<string | null>(
@@ -57,6 +57,10 @@ export function SreAiConsole({
   useEffect(() => {
     setHistories(initialHistories);
   }, [initialHistories]);
+
+  useEffect(() => {
+    onHistoriesChange?.(histories);
+  }, [histories, onHistoriesChange]);
 
   const filteredHistories = useMemo(() => {
     const query = historyQuery.trim().toLowerCase();
@@ -103,7 +107,6 @@ export function SreAiConsole({
         current.filter((history) => history.conversationId !== conversationId),
       );
       startNewChat();
-      router.refresh();
       toast.success("Copilot session archived");
     });
   };
@@ -130,7 +133,6 @@ export function SreAiConsole({
         ...withoutActive,
       ];
     });
-    router.refresh();
   };
 
   return (

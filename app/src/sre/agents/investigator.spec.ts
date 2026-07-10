@@ -17,10 +17,13 @@ describe("SRE investigation prompt", () => {
     expect(system).toContain("read-only SRE investigation agent");
     expect(system).toContain("Recommended fix steps must be text instructions");
     expect(system).toContain("Never suggest executing shell commands");
+    expect(system).toContain("start with statistics in a narrow window");
+    expect(system).toContain("Fact, Inference, or Hypothesis");
     expect(prompt).toContain("checkout latency");
     expect(prompt).toContain("Live connector tools: available");
     expect(prompt).toContain("Specialized subagents: available");
     expect(prompt).toContain("pass cited context into the subagent task");
     expect(prompt).toContain("verification plan");
+    expect(prompt).toContain("Blast radius");
   });
 });

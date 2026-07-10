@@ -1,6 +1,7 @@
 "use client";
 
 import { useDeferredValue, useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import {
   ArrowDown,
   ArrowUp,
@@ -21,7 +22,7 @@ import { createSreIncidentFromAlert } from "@/actions/sre-incidents";
 import type { AlertHistory } from "@/components/alerts/schema";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
-import { Badge } from "@/components/ui/badge";
+import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
 import { Button } from "@/components/ui/button";
 import { CardDescription, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -80,11 +81,11 @@ type SortDirection = "asc" | "desc";
 
 const PAGE_SIZE_OPTIONS = [12, 25, 50, 100];
 
-const severityClasses: Record<SreAlertSeverity, string> = {
-  sev1: "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300",
-  sev2: "border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-900/60 dark:bg-orange-950/40 dark:text-orange-300",
-  sev3: "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300",
-  sev4: "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300",
+const severityTones: Record<SreAlertSeverity, TableBadgeTone> = {
+  sev1: "danger",
+  sev2: "warning",
+  sev3: "warning",
+  sev4: "slate",
 };
 
 function titleCase(value: string) {
@@ -112,7 +113,11 @@ function deriveSeverity(alert: AlertHistory): SreAlertSeverity {
   const type = alert.type.toLowerCase();
   const message = alert.message.toLowerCase();
 
-  if (message.includes("sev1") || message.includes("critical") || type.includes("timeout")) {
+  if (
+    message.includes("sev1") ||
+    message.includes("critical") ||
+    type.includes("timeout")
+  ) {
     return "sev1";
   }
 
@@ -137,10 +142,12 @@ function deriveServiceHint(alert: AlertHistory) {
   const target = alert.targetName.trim();
   if (!target) return "Unmapped";
 
-  return target
-    .replace(/\s+(monitor|job|check|test)$/i, "")
-    .replace(/\s+-\s+(monitor|job|check|test)$/i, "")
-    .trim() || target;
+  return (
+    target
+      .replace(/\s+(monitor|job|check|test)$/i, "")
+      .replace(/\s+-\s+(monitor|job|check|test)$/i, "")
+      .trim() || target
+  );
 }
 
 function deriveFingerprint(alert: AlertHistory) {
@@ -164,7 +171,10 @@ function deriveSreAlerts(alerts: AlertHistory[]) {
   const fingerprintCounts = new Map<string, number>();
   for (const alert of actionableAlerts) {
     const fingerprint = deriveFingerprint(alert);
-    fingerprintCounts.set(fingerprint, (fingerprintCounts.get(fingerprint) ?? 0) + 1);
+    fingerprintCounts.set(
+      fingerprint,
+      (fingerprintCounts.get(fingerprint) ?? 0) + 1,
+    );
   }
 
   return actionableAlerts.map((alert): DerivedSreAlert => {
@@ -219,7 +229,11 @@ function SortableHead({
   className?: string;
 }) {
   const isActive = activeKey === sortKey;
-  const Icon = isActive ? (direction === "desc" ? ArrowDown : ArrowUp) : ArrowUpDown;
+  const Icon = isActive
+    ? direction === "desc"
+      ? ArrowDown
+      : ArrowUp
+    : ArrowUpDown;
 
   return (
     <TableHead className={className}>
@@ -231,13 +245,19 @@ function SortableHead({
         onClick={() => onSort(sortKey)}
       >
         {label}
-        <Icon className={cn("ml-2 h-4 w-4", isActive ? "text-primary" : "text-muted-foreground")} />
+        <Icon
+          className={cn(
+            "ml-2 h-4 w-4",
+            isActive ? "text-primary" : "text-muted-foreground",
+          )}
+        />
       </Button>
     </TableHead>
   );
 }
 
 export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
+  const router = useRouter();
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search);
   const [severityFilter, setSeverityFilter] = useState("all");
@@ -246,36 +266,56 @@ export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [pageIndex, setPageIndex] = useState(0);
   const [pageSize, setPageSize] = useState(12);
-  const [incidentByAlertId, setIncidentByAlertId] = useState<Record<string, number>>({});
+  const [incidentByAlertId, setIncidentByAlertId] = useState<
+    Record<string, number>
+  >({});
   const [pendingAlertId, setPendingAlertId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const derivedAlerts = useMemo(() => deriveSreAlerts(alerts), [alerts]);
-  const sourceOptions = useMemo(() => Array.from(new Set(derivedAlerts.map((alert) => alert.source))).sort(), [derivedAlerts]);
-  const filteredAlerts = useMemo(
-    () => {
-      const filtered = derivedAlerts.filter((alert) => {
-        const matchesSeverity = severityFilter === "all" || alert.severity === severityFilter;
-        const matchesSource = sourceFilter === "all" || alert.source === sourceFilter;
-        return matchesSeverity && matchesSource && alertMatches(alert, deferredSearch);
-      });
-
-      return [...filtered].sort((a, b) => {
-        const left = getAlertSortValue(a, sortKey);
-        const right = getAlertSortValue(b, sortKey);
-        const result =
-          typeof left === "number" && typeof right === "number"
-            ? left - right
-            : String(left).localeCompare(String(right), undefined, { numeric: true, sensitivity: "base" });
-        return sortDirection === "asc" ? result : -result;
-      });
-    },
-    [deferredSearch, derivedAlerts, severityFilter, sortDirection, sortKey, sourceFilter]
+  const sourceOptions = useMemo(
+    () =>
+      Array.from(new Set(derivedAlerts.map((alert) => alert.source))).sort(),
+    [derivedAlerts],
   );
+  const filteredAlerts = useMemo(() => {
+    const filtered = derivedAlerts.filter((alert) => {
+      const matchesSeverity =
+        severityFilter === "all" || alert.severity === severityFilter;
+      const matchesSource =
+        sourceFilter === "all" || alert.source === sourceFilter;
+      return (
+        matchesSeverity && matchesSource && alertMatches(alert, deferredSearch)
+      );
+    });
+
+    return [...filtered].sort((a, b) => {
+      const left = getAlertSortValue(a, sortKey);
+      const right = getAlertSortValue(b, sortKey);
+      const result =
+        typeof left === "number" && typeof right === "number"
+          ? left - right
+          : String(left).localeCompare(String(right), undefined, {
+              numeric: true,
+              sensitivity: "base",
+            });
+      return sortDirection === "asc" ? result : -result;
+    });
+  }, [
+    deferredSearch,
+    derivedAlerts,
+    severityFilter,
+    sortDirection,
+    sortKey,
+    sourceFilter,
+  ]);
 
   const pageCount = Math.max(1, Math.ceil(filteredAlerts.length / pageSize));
   const safePageIndex = Math.min(pageIndex, pageCount - 1);
-  const pagedAlerts = filteredAlerts.slice(safePageIndex * pageSize, safePageIndex * pageSize + pageSize);
+  const pagedAlerts = filteredAlerts.slice(
+    safePageIndex * pageSize,
+    safePageIndex * pageSize + pageSize,
+  );
 
   const handleCreateIncident = (alertHistoryId: string) => {
     setPendingAlertId(alertHistoryId);
@@ -293,6 +333,8 @@ export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
         [alertHistoryId]: result.incident.incidentNumber,
       }));
       toast.success(result.message);
+      router.push(`/incidents/${result.incident.id}`);
+      router.refresh();
     });
   };
 
@@ -329,7 +371,9 @@ export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <CardTitle className="text-2xl font-semibold">Alert signals</CardTitle>
+            <CardTitle className="text-2xl font-semibold">
+              Alert signals
+            </CardTitle>
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -349,7 +393,9 @@ export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
               </Tooltip>
             </TooltipProvider>
           </div>
-          <CardDescription>Failure alerts that can be promoted to incidents.</CardDescription>
+          <CardDescription>
+            Failure alerts that can be promoted to incidents.
+          </CardDescription>
         </div>
         <div className="flex w-full flex-wrap items-center justify-start gap-2 xl:w-auto xl:justify-end">
           <div className="relative w-full sm:w-[300px] xl:w-[360px]">
@@ -408,67 +454,137 @@ export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
         <Table>
           <TableHeader>
             <TableRow>
-              <SortableHead label="Signal" sortKey="targetName" activeKey={sortKey} direction={sortDirection} onSort={handleSort} className="w-[260px]" />
-              <SortableHead label="Type" sortKey="type" activeKey={sortKey} direction={sortDirection} onSort={handleSort} className="w-44" />
-              <SortableHead label="Service" sortKey="serviceHint" activeKey={sortKey} direction={sortDirection} onSort={handleSort} className="w-48" />
+              <SortableHead
+                label="Signal"
+                sortKey="targetName"
+                activeKey={sortKey}
+                direction={sortDirection}
+                onSort={handleSort}
+                className="w-[260px]"
+              />
+              <SortableHead
+                label="Type"
+                sortKey="type"
+                activeKey={sortKey}
+                direction={sortDirection}
+                onSort={handleSort}
+                className="w-44"
+              />
+              <SortableHead
+                label="Service"
+                sortKey="serviceHint"
+                activeKey={sortKey}
+                direction={sortDirection}
+                onSort={handleSort}
+                className="w-48"
+              />
               <TableHead className="w-[360px]">Message</TableHead>
-              <SortableHead label="Repeats" sortKey="duplicateCount" activeKey={sortKey} direction={sortDirection} onSort={handleSort} className="w-32" />
-              <SortableHead label="Severity" sortKey="severity" activeKey={sortKey} direction={sortDirection} onSort={handleSort} className="w-32" />
-              <SortableHead label="Source" sortKey="source" activeKey={sortKey} direction={sortDirection} onSort={handleSort} className="w-40" />
-              <SortableHead label="Last seen" sortKey="timestamp" activeKey={sortKey} direction={sortDirection} onSort={handleSort} className="w-44" />
+              <SortableHead
+                label="Repeats"
+                sortKey="duplicateCount"
+                activeKey={sortKey}
+                direction={sortDirection}
+                onSort={handleSort}
+                className="w-32"
+              />
+              <SortableHead
+                label="Severity"
+                sortKey="severity"
+                activeKey={sortKey}
+                direction={sortDirection}
+                onSort={handleSort}
+                className="w-32"
+              />
+              <SortableHead
+                label="Source"
+                sortKey="source"
+                activeKey={sortKey}
+                direction={sortDirection}
+                onSort={handleSort}
+                className="w-40"
+              />
+              <SortableHead
+                label="Last seen"
+                sortKey="timestamp"
+                activeKey={sortKey}
+                direction={sortDirection}
+                onSort={handleSort}
+                className="w-44"
+              />
               <TableHead className="w-44" />
             </TableRow>
           </TableHeader>
           <TableBody>
             {pagedAlerts.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} className="h-24 text-center text-muted-foreground">
+                <TableCell
+                  colSpan={9}
+                  className="h-24 text-center text-muted-foreground"
+                >
                   No signals match the current filters.
                 </TableCell>
               </TableRow>
             ) : (
               pagedAlerts.map((alert) => (
-                <TableRow key={alert.id} className="h-[72px]">
+                <TableRow key={alert.id}>
                   <TableCell className="max-w-[260px] py-2.5">
-                    <span className="block truncate font-medium" title={alert.targetName}>
+                    <span
+                      className="block truncate font-medium"
+                      title={alert.targetName}
+                    >
                       {alert.targetName}
                     </span>
                   </TableCell>
-                  <TableCell className="max-w-[180px] truncate py-2.5" title={alert.type}>
+                  <TableCell
+                    className="max-w-[180px] truncate py-2.5"
+                    title={alert.type}
+                  >
                     {alert.type}
                   </TableCell>
-                  <TableCell className="max-w-[200px] truncate py-2.5" title={alert.serviceHint}>
+                  <TableCell
+                    className="max-w-[200px] truncate py-2.5"
+                    title={alert.serviceHint}
+                  >
                     {alert.serviceHint}
                   </TableCell>
                   <TableCell className="max-w-[360px] py-2.5">
-                    <span className="block truncate text-muted-foreground" title={alert.message}>
+                    <span
+                      className="block truncate text-muted-foreground"
+                      title={alert.message}
+                    >
                       {alert.message}
                     </span>
                   </TableCell>
                   <TableCell className="py-2.5">
                     {alert.duplicateCount > 1 ? (
-                      <Badge variant="outline" className="text-[11px]">
-                        {alert.duplicateCount}
-                      </Badge>
+                      <TableBadge compact>{alert.duplicateCount}</TableBadge>
                     ) : (
                       <span className="text-muted-foreground">1</span>
                     )}
                   </TableCell>
                   <TableCell className="py-2.5">
-                    <Badge variant="outline" className={cn("uppercase", severityClasses[alert.severity])}>
+                    <TableBadge
+                      tone={severityTones[alert.severity]}
+                      compact
+                      className="uppercase"
+                    >
                       {alert.severity}
-                    </Badge>
+                    </TableBadge>
                   </TableCell>
                   <TableCell className="py-2.5">{alert.source}</TableCell>
                   <TableCell className="py-2.5">
                     <div className="inline-flex items-center gap-1 text-sm">
                       <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-                      <span suppressHydrationWarning>{formatTimestamp(alert.timestamp)}</span>
+                      <span suppressHydrationWarning>
+                        {formatTimestamp(alert.timestamp)}
+                      </span>
                     </div>
                   </TableCell>
                   <TableCell className="py-2.5">
                     {incidentByAlertId[alert.id] ? (
-                      <Badge variant="secondary">Incident #{incidentByAlertId[alert.id]}</Badge>
+                      <TableBadge tone="info" compact>
+                        Incident #{incidentByAlertId[alert.id]}
+                      </TableBadge>
                     ) : (
                       <Button
                         variant="outline"
@@ -478,7 +594,9 @@ export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
                         className="h-8"
                       >
                         <Plus className="h-4 w-4" />
-                        {isPending && pendingAlertId === alert.id ? "Creating..." : "Create incident"}
+                        {isPending && pendingAlertId === alert.id
+                          ? "Creating..."
+                          : "Create incident"}
                       </Button>
                     )}
                   </TableCell>
@@ -519,19 +637,41 @@ export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
             Page {safePageIndex + 1} of {pageCount}
           </div>
           <div className="flex items-center space-x-2">
-            <Button variant="outline" className="hidden h-8 w-8 p-0 lg:flex" onClick={() => setPageIndex(0)} disabled={safePageIndex === 0}>
+            <Button
+              variant="outline"
+              className="hidden h-8 w-8 p-0 lg:flex"
+              onClick={() => setPageIndex(0)}
+              disabled={safePageIndex === 0}
+            >
               <span className="sr-only">Go to first page</span>
               <ChevronsLeft />
             </Button>
-            <Button variant="outline" className="h-8 w-8 p-0" onClick={() => setPageIndex(Math.max(0, safePageIndex - 1))} disabled={safePageIndex === 0}>
+            <Button
+              variant="outline"
+              className="h-8 w-8 p-0"
+              onClick={() => setPageIndex(Math.max(0, safePageIndex - 1))}
+              disabled={safePageIndex === 0}
+            >
               <span className="sr-only">Go to previous page</span>
               <ChevronLeft />
             </Button>
-            <Button variant="outline" className="h-8 w-8 p-0" onClick={() => setPageIndex(Math.min(pageCount - 1, safePageIndex + 1))} disabled={safePageIndex >= pageCount - 1}>
+            <Button
+              variant="outline"
+              className="h-8 w-8 p-0"
+              onClick={() =>
+                setPageIndex(Math.min(pageCount - 1, safePageIndex + 1))
+              }
+              disabled={safePageIndex >= pageCount - 1}
+            >
               <span className="sr-only">Go to next page</span>
               <ChevronRight />
             </Button>
-            <Button variant="outline" className="hidden h-8 w-8 p-0 lg:flex" onClick={() => setPageIndex(pageCount - 1)} disabled={safePageIndex >= pageCount - 1}>
+            <Button
+              variant="outline"
+              className="hidden h-8 w-8 p-0 lg:flex"
+              onClick={() => setPageIndex(pageCount - 1)}
+              disabled={safePageIndex >= pageCount - 1}
+            >
               <span className="sr-only">Go to last page</span>
               <ChevronsRight />
             </Button>

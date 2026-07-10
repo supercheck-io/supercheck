@@ -1,11 +1,15 @@
 "use client";
 
-import { useState, useEffect, Suspense, useMemo, useSyncExternalStore } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
-  Card,
-  CardContent,
-} from "@/components/ui/card";
+  useState,
+  useEffect,
+  Suspense,
+  useMemo,
+  useSyncExternalStore,
+} from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
+import { Card, CardContent } from "@/components/ui/card";
 import { TableBadge } from "@/components/ui/table-badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -52,6 +56,7 @@ import { TabLoadingSpinner } from "@/components/ui/table-skeleton";
 import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
 import { Loader2 } from "lucide-react";
 import type { PrivateAgentListItem } from "@/actions/private-agents";
+import type { SreOnboardingStatus } from "@/actions/sre-onboarding";
 import type { SreServiceListItem } from "@/actions/sre-services";
 import type {
   SreConnectorListItem,
@@ -74,6 +79,12 @@ import {
 import { normalizeRole } from "@/lib/rbac/role-normalizer";
 import { z } from "zod";
 import { useAppConfig } from "@/hooks/use-app-config";
+import { useProjectContext } from "@/hooks/use-project-context";
+import {
+  getSreAdminQueryKey,
+  getSreEvidenceGraphQueryKey,
+  SRE_QUERY_KEYS,
+} from "@/lib/sre/query-keys";
 import { updateOrganizationNameSchema } from "@/lib/validations/organization";
 // Use React Query hooks for cached data fetching
 import {
@@ -88,11 +99,11 @@ interface OrgMember {
   name: string;
   email: string;
   role:
-  | "org_owner"
-  | "org_admin"
-  | "project_admin"
-  | "project_editor"
-  | "project_viewer";
+    | "org_owner"
+    | "org_admin"
+    | "project_admin"
+    | "project_editor"
+    | "project_viewer";
   joinedAt: string;
 }
 
@@ -135,15 +146,54 @@ interface ProjectMember {
   role: string;
 }
 
+type SreSetupResponse =
+  | { success: true; status: SreOnboardingStatus }
+  | { success: false; error: string; status: null };
+type SreServicesResponse =
+  | { success: true; services: SreServiceListItem[] }
+  | { success: false; error: string; services: [] };
+type SreIntegrationsResponse = {
+  success: boolean;
+  error: string | null;
+  connectors: SreConnectorListItem[];
+  setupOptions: SreConnectorSetupOptions;
+  bindings: SreIntegrationBindingListItem[];
+  bindingSetupOptions: SreIntegrationBindingSetupOptions;
+};
+type SreDiagnosticRecipesResponse = {
+  success: boolean;
+  error: string | null;
+  queries: SreDiagnosticQueryListItem[];
+  setupOptions: SreDiagnosticQuerySetupOptions;
+};
+type SrePrivateAgentsResponse =
+  | { success: true; agents: PrivateAgentListItem[] }
+  | { success: false; error: string; agents: [] };
+
 const ADMIN_SETUP_FETCH_TIMEOUT_MS = 15000;
+const SRE_SETUP_TABS = new Set([
+  "services",
+  "integrations",
+  "diagnostic-recipes",
+  "private-agents",
+]);
 
 async function fetchAdminSetupJson<T>(url: string): Promise<T> {
   const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), ADMIN_SETUP_FETCH_TIMEOUT_MS);
+  const timeout = window.setTimeout(
+    () => controller.abort(),
+    ADMIN_SETUP_FETCH_TIMEOUT_MS,
+  );
 
   try {
-    const response = await fetch(url, { cache: "no-store", signal: controller.signal });
-    const result = await response.json() as T & { success?: boolean; error?: string | null };
+    const response = await fetch(url, {
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    const result = (await response.json()) as T & {
+      success?: boolean;
+      error?: string | null;
+    };
 
     if (!response.ok || result.success === false) {
       throw new Error(result.error ?? `Failed to fetch ${url}`);
@@ -174,20 +224,42 @@ function OrgAdminDashboardContent() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const queryClient = useQueryClient();
+  const { projectId } = useProjectContext();
 
   const isMounted = useSyncExternalStore(
-    () => () => { },
+    () => () => {},
     () => true,
-    () => false
+    () => false,
   );
 
   const { isCloudHosted } = useAppConfig();
 
   const allowedTabs = useMemo(
-    () => isCloudHosted
-      ? ["projects", "members", "cli-tokens", "audit", "services", "integrations", "diagnostic-recipes", "private-agents", "subscription"]
-      : ["projects", "members", "cli-tokens", "audit", "services", "integrations", "diagnostic-recipes", "private-agents"],
-    [isCloudHosted]
+    () =>
+      isCloudHosted
+        ? [
+            "projects",
+            "members",
+            "cli-tokens",
+            "audit",
+            "services",
+            "integrations",
+            "diagnostic-recipes",
+            "private-agents",
+            "subscription",
+          ]
+        : [
+            "projects",
+            "members",
+            "cli-tokens",
+            "audit",
+            "services",
+            "integrations",
+            "diagnostic-recipes",
+            "private-agents",
+          ],
+    [isCloudHosted],
   );
 
   const requestedTab = searchParams.get("tab");
@@ -196,46 +268,107 @@ function OrgAdminDashboardContent() {
       ? "private-agents"
       : requestedTab === "runbooks"
         ? "diagnostic-recipes"
-      : requestedTab;
-  const safeTab = normalizedRequestedTab && allowedTabs.includes(normalizedRequestedTab)
-    ? normalizedRequestedTab
-    : "projects";
+        : requestedTab;
+  const safeTab =
+    normalizedRequestedTab && allowedTabs.includes(normalizedRequestedTab)
+      ? normalizedRequestedTab
+      : "projects";
 
   const [activeTab, setActiveTab] = useState(safeTab);
 
   const { details: orgDetails, isLoading: detailsLoading } = useOrgDetails();
-  const { members, invitations, currentUserRole, isLoading: membersLoading } = useOrgMembers();
-  const { projects: orgProjects, isLoading: projectsLoading } = useOrgProjects();
-  const { invalidateStats, invalidateMembers, invalidateProjects, invalidateDetails } = useOrgDataInvalidation();
-  const [services, setServices] = useState<SreServiceListItem[]>([]);
-  const [servicesLoadError, setServicesLoadError] = useState<string | null>(null);
+  const {
+    members,
+    invitations,
+    currentUserRole,
+    isLoading: membersLoading,
+  } = useOrgMembers();
+  const { projects: orgProjects, isLoading: projectsLoading } =
+    useOrgProjects();
+  const {
+    invalidateStats,
+    invalidateMembers,
+    invalidateProjects,
+    invalidateDetails,
+  } = useOrgDataInvalidation();
+  const cachedSetup = queryClient.getQueryData<SreSetupResponse>(
+    getSreAdminQueryKey(projectId, "setup"),
+  );
+  const cachedServices = queryClient.getQueryData<SreServicesResponse>(
+    getSreAdminQueryKey(projectId, "services"),
+  );
+  const cachedIntegrations = queryClient.getQueryData<SreIntegrationsResponse>(
+    getSreAdminQueryKey(projectId, "integrations"),
+  );
+  const cachedDiagnostic =
+    queryClient.getQueryData<SreDiagnosticRecipesResponse>(
+      getSreAdminQueryKey(projectId, "diagnostic-recipes"),
+    );
+  const cachedPrivateAgents =
+    queryClient.getQueryData<SrePrivateAgentsResponse>(
+      getSreAdminQueryKey(projectId, "private-agents"),
+    );
+
+  const [services, setServices] = useState<SreServiceListItem[]>(
+    cachedServices?.services ?? [],
+  );
+  const [servicesLoadError, setServicesLoadError] = useState<string | null>(
+    null,
+  );
   const [servicesLoading, setServicesLoading] = useState(false);
-  const [servicesLoaded, setServicesLoaded] = useState(false);
-  const [connectors, setConnectors] = useState<SreConnectorListItem[]>([]);
-  const [connectorSetupOptions, setConnectorSetupOptions] = useState<SreConnectorSetupOptions>({
-    services: [],
-    privateAgents: [],
-  });
-  const [integrationBindings, setIntegrationBindings] = useState<SreIntegrationBindingListItem[]>([]);
+  const [servicesLoaded, setServicesLoaded] = useState(Boolean(cachedServices));
+  const [connectors, setConnectors] = useState<SreConnectorListItem[]>(
+    cachedIntegrations?.connectors ?? [],
+  );
+  const [connectorSetupOptions, setConnectorSetupOptions] =
+    useState<SreConnectorSetupOptions>(
+      cachedIntegrations?.setupOptions ?? { services: [], privateAgents: [] },
+    );
+  const [integrationBindings, setIntegrationBindings] = useState<
+    SreIntegrationBindingListItem[]
+  >(cachedIntegrations?.bindings ?? []);
   const [integrationBindingSetupOptions, setIntegrationBindingSetupOptions] =
-    useState<SreIntegrationBindingSetupOptions>({
-      notificationProviders: [],
-      connectors: [],
-      services: [],
-    });
-  const [integrationsLoadError, setIntegrationsLoadError] = useState<string | null>(null);
+    useState<SreIntegrationBindingSetupOptions>(
+      cachedIntegrations?.bindingSetupOptions ?? {
+        notificationProviders: [],
+        connectors: [],
+        services: [],
+      },
+    );
+  const [integrationsLoadError, setIntegrationsLoadError] = useState<
+    string | null
+  >(null);
   const [integrationsLoading, setIntegrationsLoading] = useState(false);
-  const [integrationsLoaded, setIntegrationsLoaded] = useState(false);
-  const [diagnosticQueries, setDiagnosticQueries] = useState<SreDiagnosticQueryListItem[]>([]);
+  const [integrationsLoaded, setIntegrationsLoaded] = useState(
+    Boolean(cachedIntegrations),
+  );
+  const [diagnosticQueries, setDiagnosticQueries] = useState<
+    SreDiagnosticQueryListItem[]
+  >(cachedDiagnostic?.queries ?? []);
   const [diagnosticSetupOptions, setDiagnosticSetupOptions] =
-    useState<SreDiagnosticQuerySetupOptions>({ connectors: [] });
-  const [diagnosticLoadError, setDiagnosticLoadError] = useState<string | null>(null);
+    useState<SreDiagnosticQuerySetupOptions>(
+      cachedDiagnostic?.setupOptions ?? { connectors: [] },
+    );
+  const [diagnosticLoadError, setDiagnosticLoadError] = useState<string | null>(
+    null,
+  );
   const [diagnosticLoading, setDiagnosticLoading] = useState(false);
-  const [diagnosticLoaded, setDiagnosticLoaded] = useState(false);
-  const [privateAgents, setPrivateAgents] = useState<PrivateAgentListItem[]>([]);
-  const [privateAgentsLoadError, setPrivateAgentsLoadError] = useState<string | null>(null);
+  const [diagnosticLoaded, setDiagnosticLoaded] = useState(
+    Boolean(cachedDiagnostic),
+  );
+  const [privateAgents, setPrivateAgents] = useState<PrivateAgentListItem[]>(
+    cachedPrivateAgents?.agents ?? [],
+  );
+  const [privateAgentsLoadError, setPrivateAgentsLoadError] = useState<
+    string | null
+  >(null);
   const [privateAgentsLoading, setPrivateAgentsLoading] = useState(false);
-  const [privateAgentsLoaded, setPrivateAgentsLoaded] = useState(false);
+  const [privateAgentsLoaded, setPrivateAgentsLoaded] = useState(
+    Boolean(cachedPrivateAgents),
+  );
+  const [sreSetupStatus, setSreSetupStatus] =
+    useState<SreOnboardingStatus | null>(cachedSetup?.status ?? null);
+  const [sreSetupLoaded, setSreSetupLoaded] = useState(Boolean(cachedSetup));
 
   const hasData = orgDetails !== null;
   const isInitialLoading = !isMounted || (!hasData && detailsLoading);
@@ -244,7 +377,7 @@ function OrgAdminDashboardContent() {
   // The Project interface requires it, but the /api/projects endpoint
   // doesn't return per-project member counts. Setting to 0 for now.
   // TODO: Add members count to /api/projects response if needed.
-  const projects: Project[] = orgProjects.map(p => ({
+  const projects: Project[] = orgProjects.map((p) => ({
     id: p.id,
     name: p.name,
     slug: p.slug,
@@ -261,11 +394,43 @@ function OrgAdminDashboardContent() {
   const [showEditProjectDialog, setShowEditProjectDialog] = useState(false);
   const [creatingProject, setCreatingProject] = useState(false);
   const [updatingProject, setUpdatingProject] = useState(false);
-  const [newProject, setNewProject] = useState({ name: "", description: "", isDefault: false });
+  const [newProject, setNewProject] = useState({
+    name: "",
+    description: "",
+    isDefault: false,
+  });
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [showRenameOrgDialog, setShowRenameOrgDialog] = useState(false);
   const [newOrgName, setNewOrgName] = useState("");
   const [renamingOrg, setRenamingOrg] = useState(false);
+
+  useEffect(() => {
+    if (!SRE_SETUP_TABS.has(activeTab) || sreSetupLoaded) return;
+
+    let isCancelled = false;
+    queryClient
+      .fetchQuery({
+        queryKey: getSreAdminQueryKey(projectId, "setup"),
+        queryFn: () =>
+          fetchAdminSetupJson<SreSetupResponse>("/api/sre/onboarding"),
+        staleTime: 60_000,
+        meta: { persist: false },
+      })
+      .then((result) => {
+        if (!isCancelled) setSreSetupStatus(result.status);
+      })
+      .catch((error) => {
+        if (!isCancelled)
+          console.error("Error loading AI SRE setup status:", error);
+      })
+      .finally(() => {
+        if (!isCancelled) setSreSetupLoaded(true);
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [activeTab, projectId, queryClient, sreSetupLoaded]);
 
   useEffect(() => {
     setBreadcrumbs([
@@ -280,12 +445,24 @@ function OrgAdminDashboardContent() {
   }, [safeTab]);
 
   useEffect(() => {
-    if (requestedTab && normalizedRequestedTab !== requestedTab && allowedTabs.includes(safeTab)) {
+    if (
+      requestedTab &&
+      normalizedRequestedTab !== requestedTab &&
+      allowedTabs.includes(safeTab)
+    ) {
       const params = new URLSearchParams(searchParams.toString());
       params.set("tab", safeTab);
       router.replace(`${pathname}?${params.toString()}`, { scroll: false });
     }
-  }, [allowedTabs, normalizedRequestedTab, pathname, requestedTab, router, safeTab, searchParams]);
+  }, [
+    allowedTabs,
+    normalizedRequestedTab,
+    pathname,
+    requestedTab,
+    router,
+    safeTab,
+    searchParams,
+  ]);
 
   useEffect(() => {
     if (activeTab !== "services" || servicesLoaded) {
@@ -295,10 +472,14 @@ function OrgAdminDashboardContent() {
     let isCancelled = false;
     setServicesLoading(true);
 
-    fetchAdminSetupJson<
-      | { success: true; services: SreServiceListItem[] }
-      | { success: false; error: string; services: [] }
-    >("/api/sre/services")
+    queryClient
+      .fetchQuery({
+        queryKey: getSreAdminQueryKey(projectId, "services"),
+        queryFn: () =>
+          fetchAdminSetupJson<SreServicesResponse>("/api/sre/services"),
+        staleTime: 60_000,
+        meta: { persist: false },
+      })
       .then((result) => {
         if (isCancelled) return;
         setServices(result.services);
@@ -319,7 +500,7 @@ function OrgAdminDashboardContent() {
     return () => {
       isCancelled = true;
     };
-  }, [activeTab, servicesLoaded]);
+  }, [activeTab, projectId, queryClient, servicesLoaded]);
 
   useEffect(() => {
     if (activeTab !== "integrations" || integrationsLoaded) {
@@ -329,14 +510,14 @@ function OrgAdminDashboardContent() {
     let isCancelled = false;
     setIntegrationsLoading(true);
 
-    fetchAdminSetupJson<{
-      success: boolean;
-      error: string | null;
-      connectors: SreConnectorListItem[];
-      setupOptions: SreConnectorSetupOptions;
-      bindings: SreIntegrationBindingListItem[];
-      bindingSetupOptions: SreIntegrationBindingSetupOptions;
-    }>("/api/sre/integrations")
+    queryClient
+      .fetchQuery({
+        queryKey: getSreAdminQueryKey(projectId, "integrations"),
+        queryFn: () =>
+          fetchAdminSetupJson<SreIntegrationsResponse>("/api/sre/integrations"),
+        staleTime: 60_000,
+        meta: { persist: false },
+      })
       .then((result) => {
         if (isCancelled) return;
         setConnectors(result.connectors);
@@ -361,7 +542,7 @@ function OrgAdminDashboardContent() {
     return () => {
       isCancelled = true;
     };
-  }, [activeTab, integrationsLoaded]);
+  }, [activeTab, integrationsLoaded, projectId, queryClient]);
 
   useEffect(() => {
     if (activeTab !== "diagnostic-recipes" || diagnosticLoaded) {
@@ -371,12 +552,16 @@ function OrgAdminDashboardContent() {
     let isCancelled = false;
     setDiagnosticLoading(true);
 
-    fetchAdminSetupJson<{
-      success: boolean;
-      error: string | null;
-      queries: SreDiagnosticQueryListItem[];
-      setupOptions: SreDiagnosticQuerySetupOptions;
-    }>("/api/sre/diagnostic-recipes")
+    queryClient
+      .fetchQuery({
+        queryKey: getSreAdminQueryKey(projectId, "diagnostic-recipes"),
+        queryFn: () =>
+          fetchAdminSetupJson<SreDiagnosticRecipesResponse>(
+            "/api/sre/diagnostic-recipes",
+          ),
+        staleTime: 60_000,
+        meta: { persist: false },
+      })
       .then((result) => {
         if (isCancelled) return;
         setDiagnosticQueries(result.queries);
@@ -398,7 +583,7 @@ function OrgAdminDashboardContent() {
     return () => {
       isCancelled = true;
     };
-  }, [activeTab, diagnosticLoaded]);
+  }, [activeTab, diagnosticLoaded, projectId, queryClient]);
 
   useEffect(() => {
     if (activeTab !== "private-agents" || privateAgentsLoaded) {
@@ -408,10 +593,16 @@ function OrgAdminDashboardContent() {
     let isCancelled = false;
     setPrivateAgentsLoading(true);
 
-    fetchAdminSetupJson<
-      | { success: true; agents: PrivateAgentListItem[] }
-      | { success: false; error: string; agents: [] }
-    >("/api/sre/private-agents")
+    queryClient
+      .fetchQuery({
+        queryKey: getSreAdminQueryKey(projectId, "private-agents"),
+        queryFn: () =>
+          fetchAdminSetupJson<SrePrivateAgentsResponse>(
+            "/api/sre/private-agents",
+          ),
+        staleTime: 60_000,
+        meta: { persist: false },
+      })
       .then((result) => {
         if (isCancelled) return;
         setPrivateAgents(result.agents);
@@ -432,7 +623,7 @@ function OrgAdminDashboardContent() {
     return () => {
       isCancelled = true;
     };
-  }, [activeTab, privateAgentsLoaded]);
+  }, [activeTab, privateAgentsLoaded, projectId, queryClient]);
 
   const handleTabChange = (value: string) => {
     if (!allowedTabs.includes(value)) {
@@ -447,9 +638,20 @@ function OrgAdminDashboardContent() {
     } else {
       params.set("tab", value);
     }
+    params.delete("action");
 
-    const nextUrl = params.toString() ? `${pathname}?${params.toString()}` : pathname;
+    const nextUrl = params.toString()
+      ? `${pathname}?${params.toString()}`
+      : pathname;
     router.replace(nextUrl, { scroll: false });
+  };
+
+  const handleSreSetupChanged = () => {
+    void queryClient.invalidateQueries({ queryKey: SRE_QUERY_KEYS.admin });
+    void queryClient.invalidateQueries({
+      queryKey: getSreEvidenceGraphQueryKey(projectId),
+    });
+    setSreSetupLoaded(false);
   };
 
   const handleRenameOrganization = async () => {
@@ -643,7 +845,9 @@ function OrgAdminDashboardContent() {
     );
   }
 
-  const userCanRenameOrg = canManageOrganization(normalizeRole(currentUserRole));
+  const userCanRenameOrg = canManageOrganization(
+    normalizeRole(currentUserRole),
+  );
 
   return (
     <div className="overflow-hidden">
@@ -651,9 +855,12 @@ function OrgAdminDashboardContent() {
         <CardContent className="p-6 overflow-hidden">
           <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h1 className="text-2xl font-bold tracking-tight">Organization Admin</h1>
+              <h1 className="text-2xl font-bold tracking-tight">
+                Organization Admin
+              </h1>
               <p className="text-muted-foreground text-sm">
-                Manage projects, members, tokens, Private Agents, and audit data.
+                Manage projects, members, tokens, Private Agents, and audit
+                data.
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -692,7 +899,10 @@ function OrgAdminDashboardContent() {
                 <Users className="h-4 w-4" />
                 <span className="hidden sm:inline">Members</span>
               </TabsTrigger>
-              <TabsTrigger value="cli-tokens" className="flex items-center gap-2">
+              <TabsTrigger
+                value="cli-tokens"
+                className="flex items-center gap-2"
+              >
                 <Terminal className="h-4 w-4" />
                 <span className="hidden sm:inline">CLI Tokens</span>
               </TabsTrigger>
@@ -704,15 +914,24 @@ function OrgAdminDashboardContent() {
                 <Boxes className="h-4 w-4" />
                 <span className="hidden sm:inline">Services</span>
               </TabsTrigger>
-              <TabsTrigger value="integrations" className="flex items-center gap-2">
+              <TabsTrigger
+                value="integrations"
+                className="flex items-center gap-2"
+              >
                 <Cable className="h-4 w-4" />
                 <span className="hidden sm:inline">Integrations</span>
               </TabsTrigger>
-              <TabsTrigger value="diagnostic-recipes" className="flex items-center gap-2">
+              <TabsTrigger
+                value="diagnostic-recipes"
+                className="flex items-center gap-2"
+              >
                 <SquareLibrary className="h-4 w-4" />
                 <span className="hidden sm:inline">Diagnostic Recipes</span>
               </TabsTrigger>
-              <TabsTrigger value="private-agents" className="flex items-center gap-2">
+              <TabsTrigger
+                value="private-agents"
+                className="flex items-center gap-2"
+              >
                 <RadioTower className="h-4 w-4" />
                 <span className="hidden sm:inline">Private Agents</span>
               </TabsTrigger>
@@ -737,10 +956,10 @@ function OrgAdminDashboardContent() {
                   onEditProject={handleEditProject}
                   onManageLocations={handleManageLocations}
                   canCreateProjects={canCreateProjects(
-                    normalizeRole(currentUserRole)
+                    normalizeRole(currentUserRole),
                   )}
                   canManageProject={canManageProject(
-                    normalizeRole(currentUserRole)
+                    normalizeRole(currentUserRole),
                   )}
                 />
               )}
@@ -918,7 +1137,7 @@ function OrgAdminDashboardContent() {
                     })),
                     ...(invitations || [])
                       .filter(
-                        (i) => i.status === "pending" || i.status === "expired"
+                        (i) => i.status === "pending" || i.status === "expired",
                       )
                       .map((i) => ({
                         ...i,
@@ -932,7 +1151,7 @@ function OrgAdminDashboardContent() {
                   }}
                   onInviteMember={() => setShowInviteDialog(true)}
                   canInviteMembers={canInviteMembers(
-                    normalizeRole(currentUserRole)
+                    normalizeRole(currentUserRole),
                   )}
                   projects={projects.filter((p) => p.status === "active")}
                 />
@@ -959,7 +1178,7 @@ function OrgAdminDashboardContent() {
                           role: memberData.role,
                           selectedProjects: memberData.selectedProjects,
                         }),
-                      }
+                      },
                     );
 
                     const data = await response.json();
@@ -968,7 +1187,7 @@ function OrgAdminDashboardContent() {
                       invalidateMembers();
                     } else {
                       throw new Error(
-                        data.error || "Failed to send invitation"
+                        data.error || "Failed to send invitation",
                       );
                     }
                   } finally {
@@ -991,6 +1210,8 @@ function OrgAdminDashboardContent() {
                 <ServiceCatalog
                   initialServices={services}
                   loadError={servicesLoadError}
+                  setupStatus={sreSetupStatus}
+                  onSetupChanged={handleSreSetupChanged}
                 />
               )}
             </TabsContent>
@@ -1005,6 +1226,8 @@ function OrgAdminDashboardContent() {
                   initialBindings={integrationBindings}
                   bindingSetupOptions={integrationBindingSetupOptions}
                   loadError={integrationsLoadError}
+                  setupStatus={sreSetupStatus}
+                  onSetupChanged={handleSreSetupChanged}
                 />
               )}
             </TabsContent>
@@ -1017,6 +1240,8 @@ function OrgAdminDashboardContent() {
                   initialQueries={diagnosticQueries}
                   setupOptions={diagnosticSetupOptions}
                   loadError={diagnosticLoadError}
+                  setupStatus={sreSetupStatus}
+                  onSetupChanged={handleSreSetupChanged}
                 />
               )}
             </TabsContent>
@@ -1046,10 +1271,7 @@ function OrgAdminDashboardContent() {
       </Card>
 
       {/* Rename Organization Dialog */}
-      <Dialog
-        open={showRenameOrgDialog}
-        onOpenChange={setShowRenameOrgDialog}
-      >
+      <Dialog open={showRenameOrgDialog} onOpenChange={setShowRenameOrgDialog}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -1057,7 +1279,8 @@ function OrgAdminDashboardContent() {
               Rename Organization
             </DialogTitle>
             <DialogDescription>
-              Update your organization&apos;s display name. This change is visible to all members.
+              Update your organization&apos;s display name. This change is
+              visible to all members.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">

@@ -1,12 +1,18 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Loader2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
 import { generateSreEvidenceBrief } from "@/actions/sre-evidence";
 import { Button } from "@/components/ui/button";
+import { useProjectContext } from "@/hooks/use-project-context";
+import {
+  getSreEvidenceGraphQueryKey,
+  getSreIncidentDetailQueryKey,
+  getSreIncidentsQueryKey,
+} from "@/lib/sre/query-keys";
 
 type GenerateEvidenceBriefButtonProps = {
   incidentId: string;
@@ -54,7 +60,8 @@ export function GenerateEvidenceBriefButton({
   onStreamDone,
   onStreamError,
 }: GenerateEvidenceBriefButtonProps) {
-  const router = useRouter();
+  const queryClient = useQueryClient();
+  const { projectId } = useProjectContext();
   const [isPending, setIsPending] = useState(false);
 
   const handleClick = async () => {
@@ -72,9 +79,7 @@ export function GenerateEvidenceBriefButton({
 
           if (!response.ok) {
             const payload = await response.json().catch(() => null);
-            throw new Error(
-              errorMessage(payload, "Failed to generate brief"),
-            );
+            throw new Error(errorMessage(payload, "Failed to generate brief"));
           }
 
           const reader = response.body?.getReader();
@@ -117,7 +122,7 @@ export function GenerateEvidenceBriefButton({
               } else if (data.type === "done") {
                 onStreamDone(data);
                 toast.success(data.message ?? "Evidence brief generated");
-                router.refresh();
+                await invalidateIncidentQueries();
               } else if (data.type === "error") {
                 throw new Error(
                   errorMessage(data.error, "Failed to generate brief"),
@@ -146,11 +151,24 @@ export function GenerateEvidenceBriefButton({
       toast.success(result.message, {
         description: `${result.evidenceCount} native evidence item${result.evidenceCount === 1 ? "" : "s"} available`,
       });
-      router.refresh();
+      await invalidateIncidentQueries();
     } finally {
       setIsPending(false);
     }
   };
+
+  const invalidateIncidentQueries = () =>
+    Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: getSreIncidentDetailQueryKey(projectId, incidentId),
+      }),
+      queryClient.invalidateQueries({
+        queryKey: getSreIncidentsQueryKey(projectId),
+      }),
+      queryClient.invalidateQueries({
+        queryKey: getSreEvidenceGraphQueryKey(projectId),
+      }),
+    ]);
 
   return (
     <Button onClick={handleClick} disabled={isPending}>

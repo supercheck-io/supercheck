@@ -10,6 +10,7 @@ import {
   type SreDiagnosticQueryListItem,
   type SreDiagnosticQuerySetupOptions,
 } from "@/actions/sre-diagnostic-queries";
+import type { SreOnboardingStatus } from "@/actions/sre-onboarding";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 import {
   AlertDialog,
@@ -23,20 +24,39 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { getDiagnosticQueryAdapterRecipes, type DiagnosticQueryAdapterRecipe } from "@/lib/sre/connectors/diagnostic-query-adapters";
+import {
+  getDiagnosticQueryAdapterRecipes,
+  type DiagnosticQueryAdapterRecipe,
+} from "@/lib/sre/connectors/diagnostic-query-adapters";
 import { DataTable } from "@/components/sre/data-table/data-table";
 import { columns } from "@/components/sre/data-table/runbooks/columns";
 import { RunbooksToolbar } from "@/components/sre/data-table/runbooks/toolbar";
+import { SreSetupGuideDialog } from "@/components/sre/onboarding/sre-setup-guide-dialog";
 
 type DiagnosticQueriesAdminViewProps = {
   initialQueries: SreDiagnosticQueryListItem[];
   setupOptions: SreDiagnosticQuerySetupOptions;
   loadError: string | null;
+  setupStatus?: SreOnboardingStatus | null;
+  onSetupChanged?: () => void;
 };
 
 const queryTypes = ["sql", "promql", "logql", "traceql", "http_get"] as const;
@@ -60,11 +80,18 @@ function stringifyJson(value: Record<string, unknown>) {
   return JSON.stringify(value, null, 2);
 }
 
-export function DiagnosticQueriesAdminView({ initialQueries, setupOptions, loadError }: DiagnosticQueriesAdminViewProps) {
+export function DiagnosticQueriesAdminView({
+  initialQueries,
+  setupOptions,
+  loadError,
+  setupStatus = null,
+  onSetupChanged,
+}: DiagnosticQueriesAdminViewProps) {
   const [queries, setQueries] = useState(initialQueries);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
-  const [pendingDisableQuery, setPendingDisableQuery] = useState<SreDiagnosticQueryListItem | null>(null);
+  const [pendingDisableQuery, setPendingDisableQuery] =
+    useState<SreDiagnosticQueryListItem | null>(null);
   const [isDisabling, startDisableTransition] = useTransition();
   const [form, setForm] = useState({
     connectorId: setupOptions.connectors[0]?.id ?? "",
@@ -78,8 +105,12 @@ export function DiagnosticQueriesAdminView({ initialQueries, setupOptions, loadE
     maxSeconds: "10",
   });
 
-  const selectedConnector = setupOptions.connectors.find((connector) => connector.id === form.connectorId);
-  const adapterRecipes = selectedConnector ? getDiagnosticQueryAdapterRecipes(selectedConnector.type) : [];
+  const selectedConnector = setupOptions.connectors.find(
+    (connector) => connector.id === form.connectorId,
+  );
+  const adapterRecipes = selectedConnector
+    ? getDiagnosticQueryAdapterRecipes(selectedConnector.type)
+    : [];
 
   const upsertQuery = (query: SreDiagnosticQueryListItem) => {
     setQueries((current) => {
@@ -96,7 +127,10 @@ export function DiagnosticQueriesAdminView({ initialQueries, setupOptions, loadE
     let allowlist: Record<string, unknown>;
 
     try {
-      parameterSchema = parseJsonObject(form.parameterSchema, "Parameter schema");
+      parameterSchema = parseJsonObject(
+        form.parameterSchema,
+        "Parameter schema",
+      );
       allowlist = parseJsonObject(form.allowlist, "Allowlist");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Invalid JSON");
@@ -107,7 +141,12 @@ export function DiagnosticQueriesAdminView({ initialQueries, setupOptions, loadE
       const result = await createSreDiagnosticQuery({
         connectorId: form.connectorId,
         name: form.name,
-        queryType: form.queryType as "sql" | "promql" | "logql" | "traceql" | "http_get",
+        queryType: form.queryType as
+          | "sql"
+          | "promql"
+          | "logql"
+          | "traceql"
+          | "http_get",
         template: form.template,
         parameterSchema,
         allowlist,
@@ -124,6 +163,7 @@ export function DiagnosticQueriesAdminView({ initialQueries, setupOptions, loadE
       if (result.query) {
         upsertQuery(result.query);
       }
+      onSetupChanged?.();
       toast.success(result.message);
       setIsCreateOpen(false);
       setForm((current) => ({ ...current, name: "", template: "" }));
@@ -163,10 +203,6 @@ export function DiagnosticQueriesAdminView({ initialQueries, setupOptions, loadE
     });
   };
 
-  const onEdit = (query: SreDiagnosticQueryListItem) => {
-    // Placeholder for edit functionality
-  };
-
   const onDelete = (query: SreDiagnosticQueryListItem) => {
     setPendingDisableQuery(query);
   };
@@ -183,53 +219,54 @@ export function DiagnosticQueriesAdminView({ initialQueries, setupOptions, loadE
   }
 
   return (
-    <div className="space-y-4 py-4">
+    <div className="space-y-4">
       {setupOptions.connectors.length === 0 ? (
-        <>
-          <div className="mb-4 -mt-2 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <h2 className="text-2xl font-semibold">Diagnostic Recipes</h2>
-              <p className="text-sm text-muted-foreground">Prepare approved read-only recipes responders can reuse during investigations.</p>
-            </div>
-            <Button onClick={() => setIsCreateOpen(true)} disabled>
-              <Plus className="mr-2 h-4 w-4" />
-              Add recipe
-            </Button>
-          </div>
-          <DashboardEmptyState
-            className="min-h-[420px]"
-            title="Connectors required"
-            description="Create an evidence connector first. Diagnostic recipes are scoped to one connector and stay read-only."
-            icon={<ShieldCheck className="h-10 w-10" />}
-          />
-        </>
+        <DashboardEmptyState
+          className="min-h-[420px]"
+          title="Connectors required"
+          description="Create an evidence connector first. Diagnostic recipes are scoped to one connector and stay read-only."
+          icon={<ShieldCheck className="h-10 w-10" />}
+          action={<SreSetupGuideDialog status={setupStatus} />}
+        />
       ) : queries.length === 0 ? (
-        <>
-          <div className="mb-4 -mt-2 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <h2 className="text-2xl font-semibold">Diagnostic Recipes</h2>
-              <p className="text-sm text-muted-foreground">Prepare approved read-only recipes responders can reuse during investigations.</p>
+        <DashboardEmptyState
+          className="min-h-[420px]"
+          title="No diagnostic recipes"
+          description="Add a bounded, allowlisted diagnostic recipe for common incident questions such as 5xx spikes, slow traces, or error logs."
+          icon={<SquareLibrary className="h-10 w-10" />}
+          action={
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <SreSetupGuideDialog status={setupStatus} />
+              <Button onClick={() => setIsCreateOpen(true)}>
+                <Plus className="mr-2 h-4 w-4" />
+                Add recipe
+              </Button>
             </div>
-            <Button onClick={() => setIsCreateOpen(true)}>
-              <Plus className="mr-2 h-4 w-4" />
-              Add recipe
-            </Button>
-          </div>
-          <DashboardEmptyState
-            className="min-h-[420px]"
-            title="No diagnostic recipes"
-            description="Add a bounded, allowlisted diagnostic recipe for common incident questions such as 5xx spikes, slow traces, or error logs."
-            icon={<SquareLibrary className="h-10 w-10" />}
-            action={<Button onClick={() => setIsCreateOpen(true)}><Plus className="mr-2 h-4 w-4" />Add recipe</Button>}
-          />
-        </>
+          }
+        />
       ) : (
         <DataTable
           columns={columns}
           data={queries}
-          renderToolbar={(table) => <RunbooksToolbar table={table} onAdd={() => setIsCreateOpen(true)} />}
+          renderToolbar={(table) => (
+            <RunbooksToolbar
+              table={table}
+              onAdd={() => setIsCreateOpen(true)}
+              setupGuide={<SreSetupGuideDialog status={setupStatus} />}
+            />
+          )}
           entityLabel="diagnostic recipes"
-          meta={{ onEdit, onDelete, isDisabling, globalFilterColumns: ["name", "queryType", "connectorName", "connectorType", "status"] }}
+          meta={{
+            onDelete,
+            isDisabling,
+            globalFilterColumns: [
+              "name",
+              "queryType",
+              "connectorName",
+              "connectorType",
+              "status",
+            ],
+          }}
         />
       )}
 
@@ -237,27 +274,53 @@ export function DiagnosticQueriesAdminView({ initialQueries, setupOptions, loadE
         <DialogContent className="w-[min(94vw,64rem)] max-w-none gap-0 overflow-hidden p-0">
           <DialogHeader className="border-b px-6 py-5">
             <DialogTitle>Add diagnostic recipe</DialogTitle>
-            <DialogDescription>Save a bounded, read-only recipe for future investigations.</DialogDescription>
+            <DialogDescription>
+              Save a bounded, read-only recipe for future investigations.
+            </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 px-6 py-5">
             <div className="grid gap-4 lg:grid-cols-12">
               <div className="grid gap-2 lg:col-span-6">
-              <Label>Connector</Label>
-              <Select value={form.connectorId} onValueChange={(value) => setForm((current) => ({ ...current, connectorId: value }))}>
-                <SelectTrigger><SelectValue placeholder="Choose connector" /></SelectTrigger>
-                <SelectContent>{setupOptions.connectors.map((connector) => <SelectItem key={connector.id} value={connector.id}>{connector.name} ({connector.type})</SelectItem>)}</SelectContent>
-              </Select>
+                <Label>Connector</Label>
+                <Select
+                  value={form.connectorId}
+                  onValueChange={(value) =>
+                    setForm((current) => ({ ...current, connectorId: value }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Choose connector" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {setupOptions.connectors.map((connector) => (
+                      <SelectItem key={connector.id} value={connector.id}>
+                        {connector.name} ({connector.type})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="grid gap-2 lg:col-span-6">
                 <Label>Name</Label>
-                <Input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} placeholder="High latency by route" />
+                <Input
+                  value={form.name}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      name: event.target.value,
+                    }))
+                  }
+                  placeholder="High latency by route"
+                />
               </div>
             </div>
             {adapterRecipes.length > 0 && (
               <div className="rounded-lg border bg-muted/20 p-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="text-sm font-medium">Recommended recipes</p>
-                  <p className="text-xs text-muted-foreground">Optional starting points for this connector.</p>
+                  <p className="text-xs text-muted-foreground">
+                    Optional starting points for this connector.
+                  </p>
                 </div>
                 <div className="mt-3 grid gap-2 md:grid-cols-3">
                   {adapterRecipes.map((recipe) => (
@@ -267,9 +330,15 @@ export function DiagnosticQueriesAdminView({ initialQueries, setupOptions, loadE
                       onClick={() => applyRecipe(recipe)}
                       className="rounded-md border bg-background p-2 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
-                      <span className="block text-xs font-medium">{recipe.name}</span>
-                      <Badge variant="outline" className="mt-1">{recipe.queryType}</Badge>
-                      <span className="mt-1 line-clamp-2 block text-xs text-muted-foreground">{recipe.description}</span>
+                      <span className="block text-xs font-medium">
+                        {recipe.name}
+                      </span>
+                      <Badge variant="outline" className="mt-1">
+                        {recipe.queryType}
+                      </Badge>
+                      <span className="mt-1 line-clamp-2 block text-xs text-muted-foreground">
+                        {recipe.description}
+                      </span>
                     </button>
                   ))}
                 </div>
@@ -278,42 +347,128 @@ export function DiagnosticQueriesAdminView({ initialQueries, setupOptions, loadE
             <div className="grid gap-4 lg:grid-cols-4">
               <div className="grid gap-2">
                 <Label>Type</Label>
-                <Select value={form.queryType} onValueChange={(value) => setForm((current) => ({ ...current, queryType: value }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>{queryTypes.map((type) => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent>
+                <Select
+                  value={form.queryType}
+                  onValueChange={(value) =>
+                    setForm((current) => ({ ...current, queryType: value }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {queryTypes.map((type) => (
+                      <SelectItem key={type} value={type}>
+                        {type}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
                 </Select>
               </div>
               <div className="grid gap-2">
                 <Label>Rows</Label>
-                <Input type="number" min={1} max={1000} value={form.maxRows} onChange={(event) => setForm((current) => ({ ...current, maxRows: event.target.value }))} />
+                <Input
+                  type="number"
+                  min={1}
+                  max={1000}
+                  value={form.maxRows}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      maxRows: event.target.value,
+                    }))
+                  }
+                />
               </div>
               <div className="grid gap-2">
                 <Label>Bytes</Label>
-                <Input type="number" min={1024} max={5 * 1024 * 1024} value={form.maxBytes} onChange={(event) => setForm((current) => ({ ...current, maxBytes: event.target.value }))} />
+                <Input
+                  type="number"
+                  min={1024}
+                  max={5 * 1024 * 1024}
+                  value={form.maxBytes}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      maxBytes: event.target.value,
+                    }))
+                  }
+                />
               </div>
               <div className="grid gap-2">
                 <Label>Seconds</Label>
-                <Input type="number" min={1} max={30} value={form.maxSeconds} onChange={(event) => setForm((current) => ({ ...current, maxSeconds: event.target.value }))} />
+                <Input
+                  type="number"
+                  min={1}
+                  max={30}
+                  value={form.maxSeconds}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      maxSeconds: event.target.value,
+                    }))
+                  }
+                />
               </div>
             </div>
             <div className="grid gap-2">
               <Label>Template</Label>
-              <Textarea value={form.template} onChange={(event) => setForm((current) => ({ ...current, template: event.target.value }))} rows={4} placeholder='sum(rate(http_request_duration_seconds_count{service="$service"}[5m])) by (route)' />
+              <Textarea
+                value={form.template}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    template: event.target.value,
+                  }))
+                }
+                rows={4}
+                placeholder='sum(rate(http_request_duration_seconds_count{service="$service"}[5m])) by (route)'
+              />
             </div>
             <div className="grid gap-3 md:grid-cols-2">
               <div className="grid gap-2">
                 <Label>Parameter schema JSON</Label>
-                <Textarea value={form.parameterSchema} onChange={(event) => setForm((current) => ({ ...current, parameterSchema: event.target.value }))} rows={4} className="font-mono text-xs" />
+                <Textarea
+                  value={form.parameterSchema}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      parameterSchema: event.target.value,
+                    }))
+                  }
+                  rows={4}
+                  className="font-mono text-xs"
+                />
               </div>
               <div className="grid gap-2">
                 <Label>Allowlist JSON</Label>
-                <Textarea value={form.allowlist} onChange={(event) => setForm((current) => ({ ...current, allowlist: event.target.value }))} rows={4} className="font-mono text-xs" />
+                <Textarea
+                  value={form.allowlist}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      allowlist: event.target.value,
+                    }))
+                  }
+                  rows={4}
+                  className="font-mono text-xs"
+                />
               </div>
             </div>
           </div>
           <DialogFooter className="border-t px-6 py-4">
-            <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Cancel</Button>
-            <Button onClick={createQuery} disabled={isPending || !form.connectorId || !form.name.trim() || !form.template.trim()}>
+            <Button variant="outline" onClick={() => setIsCreateOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={createQuery}
+              disabled={
+                isPending ||
+                !form.connectorId ||
+                !form.name.trim() ||
+                !form.template.trim()
+              }
+            >
               {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Save recipe
             </Button>
@@ -321,12 +476,19 @@ export function DiagnosticQueriesAdminView({ initialQueries, setupOptions, loadE
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={Boolean(pendingDisableQuery)} onOpenChange={(open) => { if (!open) setPendingDisableQuery(null); }}>
+      <AlertDialog
+        open={Boolean(pendingDisableQuery)}
+        onOpenChange={(open) => {
+          if (!open) setPendingDisableQuery(null);
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Disable diagnostic recipe?</AlertDialogTitle>
             <AlertDialogDescription>
-              This removes {pendingDisableQuery?.name} from investigation tooling. The definition remains stored but will not be available to SRE agents until re-enabled.
+              This removes {pendingDisableQuery?.name} from investigation
+              tooling. The definition remains stored but will not be available
+              to SRE agents until re-enabled.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

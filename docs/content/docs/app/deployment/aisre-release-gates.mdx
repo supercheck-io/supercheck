@@ -66,6 +66,17 @@ The template uses placeholders for secrets. Populate real values in the CI secre
 | `SRE_EVAL_GRADER_MODEL_ID` | Recommended | Must differ from the evaluated model when set. |
 | `SRE_EVAL_MODEL_GRADE_MIN_SCORE` | Optional | Defaults to `0.8`. |
 
+## Runtime Workflow Flags
+
+The correlation and staged-evidence workflows are independent from the eval flags and default to disabled:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `SRE_ALERT_CORRELATION_ENABLED` | `false` | Links only high-confidence related alerts to active incidents within the bounded correlation window. Failures fall back to normal incident creation. |
+| `SRE_STAGED_EVIDENCE_ENABLED` | `false` | Enforces statistics-first staged evidence for direct Loki searches and validates the LogQL statistics operation. |
+
+Enable these in a seeded non-production tenant first. Confirm correlation timeline/audit events, non-correlation fallbacks, stage ordering, query limits, and connector error records before enabling them in production. Rollback is immediate: set the affected flag to `false` and restart the app deployment. Existing incident links and evidence remain readable.
+
 ## Seeded Tenant Checklist
 
 - Create a dedicated non-production organization/project for release evals.

@@ -4,6 +4,7 @@ import {
   type ConnectorEvidenceItem,
   type ConnectorOutputLimits,
 } from "./connector-base";
+import { safeEvidenceSourceUri } from "@/lib/sre/evidence-source-uri";
 
 const REDACTION_PATTERNS: Array<[RegExp, string]> = [
   [/([?&](?:token|api[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token|secret|password)=)[^&#\s]+/gi, "$1[REDACTED]"],
@@ -60,7 +61,7 @@ function redactEvidenceItem(item: ConnectorEvidenceItem): ConnectorEvidenceItem 
 
   return {
     ...item,
-    sourceUri: redactConnectorText(item.sourceUri),
+    sourceUri: safeEvidenceSourceUri(redactConnectorText(item.sourceUri)),
     title: redactConnectorText(item.title),
     summary: redactConnectorText(item.summary),
     rawContent,

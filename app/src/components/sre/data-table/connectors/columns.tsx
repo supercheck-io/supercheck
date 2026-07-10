@@ -1,7 +1,7 @@
 "use client";
 
 import { ColumnDef } from "@tanstack/react-table";
-import { Badge } from "@/components/ui/badge";
+import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -9,48 +9,68 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { FileSearch, MoreHorizontal } from "lucide-react";
+import { MoreHorizontal } from "lucide-react";
 import { type SreConnectorListItem } from "@/actions/sre-connectors";
+import { getSreConnectorLabel } from "@/components/sre/connectors/connector-catalog";
 import { isLiveSearchConnectorType } from "@/lib/sre/connectors/connector-capabilities";
-import { cn } from "@/lib/utils";
 
-const statusClasses: Record<SreConnectorListItem["status"], string> = {
-  configured: "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900/60 dark:bg-sky-950/40 dark:text-sky-300",
-  valid: "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300",
-  unreachable: "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300",
-  missing_credentials: "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300",
-  disabled: "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300",
+type ConnectorTableMeta = {
+  onSearch?: (connector: SreConnectorListItem) => void;
+  onValidate?: (connector: SreConnectorListItem) => void;
+  onViewJob?: (connector: SreConnectorListItem) => void;
+  onRotate?: (connector: SreConnectorListItem) => void;
+  onDisable?: (connector: SreConnectorListItem) => void;
+  isValidating?: boolean;
+  isLoadingJobResult?: boolean;
+  isDisabling?: boolean;
 };
 
-function formatConnectorType(value: string) {
-  return value.replace(/_/g, " ").replace(/\b\w/g, (character) => character.toUpperCase());
-}
+const statusTones: Record<SreConnectorListItem["status"], TableBadgeTone> = {
+  configured: "info",
+  valid: "success",
+  unreachable: "warning",
+  missing_credentials: "warning",
+  disabled: "slate",
+};
+
+const riskTones: Record<SreConnectorListItem["riskLevel"], TableBadgeTone> = {
+  low: "slate",
+  medium: "info",
+  high: "warning",
+  critical: "danger",
+};
 
 function supportsEvidenceSearch(connector: SreConnectorListItem) {
-  return connector.status !== "disabled" && isLiveSearchConnectorType(connector.type);
+  return (
+    connector.status !== "disabled" && isLiveSearchConnectorType(connector.type)
+  );
+}
+
+function formatValidationTime(value: Date | string | null) {
+  if (!value) return "Not validated";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Unavailable";
+  return date.toLocaleString();
 }
 
 function connectorCapabilityBadge(connectorType: SreConnectorListItem["type"]) {
   if (connectorType === "supercheck_native") {
     return {
       label: "Native",
-      className:
-        "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900/60 dark:bg-sky-950/40 dark:text-sky-300",
+      tone: "info" as const,
     };
   }
 
   if (isLiveSearchConnectorType(connectorType)) {
     return {
       label: "Live search",
-      className:
-        "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300",
+      tone: "success" as const,
     };
   }
 
   return {
     label: "Setup only",
-    className:
-      "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300",
+    tone: "warning" as const,
   };
 }
 
@@ -60,9 +80,7 @@ export const columns: ColumnDef<SreConnectorListItem>[] = [
     header: "Name",
     cell: ({ row }) => {
       const connector = row.original;
-      return (
-        <span className="font-medium">{connector.name}</span>
-      );
+      return <span className="font-medium">{connector.name}</span>;
     },
   },
   {
@@ -73,17 +91,70 @@ export const columns: ColumnDef<SreConnectorListItem>[] = [
       const capability = connectorCapabilityBadge(connector.type);
       return (
         <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-          <Badge variant="outline">{formatConnectorType(connector.type)}</Badge>
-          <Badge
-            variant="outline"
-            className={capability.className}
-          >
+          <TableBadge compact>
+            {getSreConnectorLabel(connector.type)}
+          </TableBadge>
+          <TableBadge tone={capability.tone} compact>
             {capability.label}
-          </Badge>
+          </TableBadge>
         </div>
       );
     },
     filterFn: (row, id, value) => value.includes(row.getValue(id)),
+  },
+  {
+    accessorKey: "executionMode",
+    header: "Execution",
+    cell: ({ row }) => {
+      const connector = row.original;
+      return (
+        <div className="min-w-0">
+          <TableBadge
+            tone={connector.executionMode === "direct" ? "info" : "purple"}
+            compact
+          >
+            {connector.executionMode === "direct" ? "Direct" : "Private Agent"}
+          </TableBadge>
+          {connector.privateAgent && (
+            <p
+              className="mt-1 max-w-40 truncate text-xs text-muted-foreground"
+              title={connector.privateAgent.name}
+            >
+              {connector.privateAgent.name}
+            </p>
+          )}
+        </div>
+      );
+    },
+    filterFn: (row, id, value) => value.includes(row.getValue(id)),
+  },
+  {
+    id: "scope",
+    header: "Service scope",
+    accessorFn: (connector) => connector.scopedServiceIds.length,
+    cell: ({ row }) => {
+      const count = row.original.scopedServiceIds.length;
+      return (
+        <span className="text-sm text-muted-foreground">
+          {count === 0
+            ? "All services"
+            : `${count} service${count === 1 ? "" : "s"}`}
+        </span>
+      );
+    },
+  },
+  {
+    accessorKey: "riskLevel",
+    header: "Risk",
+    cell: ({ row }) => (
+      <TableBadge
+        tone={riskTones[row.original.riskLevel]}
+        compact
+        className="capitalize"
+      >
+        {row.original.riskLevel}
+      </TableBadge>
+    ),
   },
   {
     accessorKey: "status",
@@ -91,44 +162,77 @@ export const columns: ColumnDef<SreConnectorListItem>[] = [
     cell: ({ row }) => {
       const connector = row.original;
       return (
-        <Badge variant="outline" className={cn("capitalize", statusClasses[connector.status])}>
+        <TableBadge
+          tone={statusTones[connector.status]}
+          compact
+          className="capitalize"
+        >
           {connector.status.replace(/_/g, " ")}
-        </Badge>
+        </TableBadge>
       );
     },
     filterFn: (row, id, value) => value.includes(row.getValue(id)),
   },
   {
+    accessorKey: "lastValidatedAt",
+    header: "Last validated",
+    cell: ({ row }) => {
+      const value = row.original.lastValidatedAt;
+      return (
+        <span
+          className="whitespace-nowrap text-sm text-muted-foreground"
+          title={formatValidationTime(value)}
+        >
+          {formatValidationTime(value)}
+        </span>
+      );
+    },
+  },
+  {
     id: "actions",
     cell: ({ row, table }) => {
       const connector = row.original;
-      const meta = table.options.meta as any;
-      const { onSearch, onValidate, onViewJob, onRotate, onDisable } = meta || {};
+      const meta = table.options.meta as ConnectorTableMeta | undefined;
+      const { onSearch, onValidate, onViewJob, onRotate, onDisable } =
+        meta ?? {};
 
       return (
         <div className="flex items-center justify-end gap-1">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" aria-label={`Open actions for ${connector.name}`}>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={`Open actions for ${connector.name}`}
+              >
                 <MoreHorizontal className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => meta?.onEdit?.(connector)}>
-                Edit connector
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onSearch?.(connector)} disabled={!supportsEvidenceSearch(connector)}>
+              <DropdownMenuItem
+                onClick={() => onSearch?.(connector)}
+                disabled={!supportsEvidenceSearch(connector)}
+              >
                 Search evidence
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onValidate?.(connector)} disabled={meta?.isValidating}>
+              <DropdownMenuItem
+                onClick={() => onValidate?.(connector)}
+                disabled={meta?.isValidating}
+              >
                 Validate connector
               </DropdownMenuItem>
               {connector.latestPrivateAgentJob && (
-                <DropdownMenuItem onClick={() => onViewJob?.(connector)} disabled={meta?.isLoadingJobResult}>
+                <DropdownMenuItem
+                  onClick={() => onViewJob?.(connector)}
+                  disabled={meta?.isLoadingJobResult}
+                >
                   View last job result
                 </DropdownMenuItem>
               )}
-              <DropdownMenuItem onClick={() => onRotate?.(connector)} disabled={meta?.isDisabling || meta?.isValidating}>
+              <DropdownMenuItem
+                onClick={() => onRotate?.(connector)}
+                disabled={meta?.isDisabling || meta?.isValidating}
+              >
                 Rotate credential
               </DropdownMenuItem>
               {connector.status !== "disabled" && (

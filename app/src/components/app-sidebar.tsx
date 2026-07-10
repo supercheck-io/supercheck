@@ -29,7 +29,7 @@ import {
   type LucideIcon,
   ClipboardList,
   Target,
-  Network,
+  BrainCircuit,
   Siren,
   Bot,
 } from "lucide-react";
@@ -89,9 +89,9 @@ const data = {
       icon: Bot,
     },
     {
-      title: "Evidence Map",
+      title: "Investigation Map",
       url: "/copilot/evidence-graph",
-      icon: Network,
+      icon: BrainCircuit,
     },
   ],
 
@@ -240,7 +240,7 @@ const data = {
       title: "Docs",
       url: "https://supercheck.io/docs/app/welcome",
       icon: BookOpenText,
-      badge: "v1.3.6-aisre-rc7",
+      badge: "v1.3.6-aisre-rc8",
     },
   ],
   documents: [

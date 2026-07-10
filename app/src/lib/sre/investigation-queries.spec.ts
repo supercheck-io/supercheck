@@ -144,4 +144,34 @@ describe("buildSreInvestigationReportExport", () => {
       truncated: true,
     });
   });
+
+  it("uses database totals when the query already returned a bounded page", () => {
+    const evidence = Array.from({ length: 50 }, (_, index) => ({
+      id: `ev-${index}`,
+      investigationRunId: investigationItem.id,
+      title: `Evidence ${index}`,
+      summary: "Bounded evidence summary.",
+      sourceType: "prometheus",
+      evidenceType: "metric",
+      severity: null,
+      citationResultHash: null,
+      observedAt: null,
+      createdAt: new Date("2026-06-24T12:00:02Z"),
+    }));
+
+    const report = buildSreInvestigationReportExport({
+      item: investigationItem,
+      evidence,
+      toolCalls: [],
+      recommendations: [],
+      totals: { evidence: 127, toolCalls: 0, recommendations: 0 },
+    });
+
+    expect(report.provenance.evidenceCount).toBe(127);
+    expect(report.provenance.truncation.evidence).toEqual({
+      shown: 50,
+      total: 127,
+      truncated: true,
+    });
+  });
 });

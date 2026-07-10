@@ -2,7 +2,17 @@
 
 import { createHash } from "crypto";
 import { revalidatePath } from "next/cache";
-import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
+import {
+  and,
+  desc,
+  eq,
+  gte,
+  inArray,
+  isNotNull,
+  ne,
+  or,
+  sql,
+} from "drizzle-orm";
 import { z } from "zod";
 
 import {
@@ -15,28 +25,63 @@ import {
   sreIncidentTimelineEvents,
   sreEvidenceItems,
   sreInvestigationRuns,
+  sreInvestigationToolCalls,
+  sreServiceDependencies,
+  sreServiceResources,
   sreServices,
 } from "@/db/schema";
 import { logAuditEvent } from "@/lib/audit-logger";
+import { createLogger } from "@/lib/logger/index";
+import {
+  ALERT_CORRELATION_LIMITS,
+  selectAlertCorrelationMatch,
+} from "@/lib/sre/alert-correlation";
 import { requireProjectContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
-import { archiveSreConversation, getSreConversation, listSreConversations, listSreMessages } from "@/sre/lib/session-store";
-import { maybeRunAutomaticSreTriage, type AutomaticSreTriageResult } from "@/sre/lib/triage-automation";
+import {
+  archiveSreConversation,
+  getSreConversation,
+  listSreConversations,
+  listSreMessages,
+} from "@/sre/lib/session-store";
+import {
+  maybeRunAutomaticSreTriage,
+  type AutomaticSreTriageResult,
+} from "@/sre/lib/triage-automation";
+import { isSreAlertCorrelationEnabled } from "@/sre/lib/feature-gates";
 import { db } from "@/utils/db";
+
+const logger = createLogger({ module: "sre-incidents" }) as {
+  error: (data: unknown, message?: string) => void;
+  warn: (data: unknown, message?: string) => void;
+};
 
 const createIncidentFromAlertSchema = z.object({
   alertHistoryId: z.string().uuid(),
 });
 
 const createManualIncidentSchema = z.object({
-  title: z.string().trim().min(1, "Incident title is required").max(500, "Incident title is too long"),
+  title: z
+    .string()
+    .trim()
+    .min(1, "Incident title is required")
+    .max(500, "Incident title is too long"),
   severity: z.enum(["sev1", "sev2", "sev3", "sev4"]).default("sev3"),
-  summary: z.string().trim().max(2000, "Summary is too long").optional().nullable(),
+  summary: z
+    .string()
+    .trim()
+    .max(2000, "Summary is too long")
+    .optional()
+    .nullable(),
 });
 
 const updateIncidentSchema = z.object({
   id: z.string().uuid(),
-  title: z.string().trim().min(1, "Incident title is required").max(500, "Incident title is too long"),
+  title: z
+    .string()
+    .trim()
+    .min(1, "Incident title is required")
+    .max(500, "Incident title is too long"),
   severity: z.enum(["sev1", "sev2", "sev3", "sev4"]),
   status: z.enum([
     "triggered",
@@ -171,15 +216,182 @@ export type SreIncidentDetail = {
   }>;
   chatHistory: SreIncidentChatHistory | null;
   chatHistories: SreIncidentChatHistory[];
+  toolMetrics: {
+    total: number;
+    errors: number;
+    averageDurationMs: number;
+  };
   permissions: {
     canUpdate: boolean;
   };
+};
+
+export type SreIncidentAnalytics = {
+  windowDays: number;
+  summary: {
+    created: number;
+    resolved: number;
+    resolutionRate: number;
+    averageResolutionMinutes: number | null;
+  };
+  daily: Array<{
+    date: string;
+    created: number;
+    resolved: number;
+  }>;
+  severities: Array<{ severity: SreSeverity; count: number }>;
+  topServices: Array<{
+    serviceId: string | null;
+    serviceName: string;
+    count: number;
+  }>;
 };
 
 function titleCase(value: string) {
   return value
     .replace(/_/g, " ")
     .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+export async function getSreIncidentAnalytics(): Promise<
+  | { success: true; analytics: SreIncidentAnalytics }
+  | { success: false; error: string; analytics: null }
+> {
+  try {
+    const { userId, organizationId, project } = await requireProjectContext();
+    const canView = checkPermissionWithContext("sre_incident", "view", {
+      userId,
+      organizationId,
+      project,
+    });
+    if (!canView) {
+      return {
+        success: false,
+        error: "Insufficient permissions to view incident analytics",
+        analytics: null,
+      };
+    }
+
+    const windowDays = 30;
+    const now = new Date();
+    const windowStart = new Date(now);
+    windowStart.setUTCHours(0, 0, 0, 0);
+    windowStart.setUTCDate(windowStart.getUTCDate() - (windowDays - 1));
+    const scope = and(
+      eq(sreIncidents.organizationId, organizationId),
+      eq(sreIncidents.projectId, project.id),
+    );
+
+    const [summaryRows, createdRows, resolvedRows, severityRows, serviceRows] =
+      await Promise.all([
+        db
+          .select({
+            created: sql<number>`count(${sreIncidents.id})::int`,
+            resolved: sql<number>`count(${sreIncidents.id}) filter (where ${sreIncidents.resolvedAt} is not null)::int`,
+            averageResolutionMinutes: sql<
+              number | null
+            >`avg(extract(epoch from (${sreIncidents.resolvedAt} - ${sreIncidents.createdAt})) / 60) filter (where ${sreIncidents.resolvedAt} is not null)`,
+          })
+          .from(sreIncidents)
+          .where(and(scope, gte(sreIncidents.createdAt, windowStart))),
+        db
+          .select({
+            date: sql<string>`to_char(date_trunc('day', ${sreIncidents.createdAt}), 'YYYY-MM-DD')`,
+            count: sql<number>`count(${sreIncidents.id})::int`,
+          })
+          .from(sreIncidents)
+          .where(and(scope, gte(sreIncidents.createdAt, windowStart)))
+          .groupBy(sql`date_trunc('day', ${sreIncidents.createdAt})`),
+        db
+          .select({
+            date: sql<string>`to_char(date_trunc('day', ${sreIncidents.resolvedAt}), 'YYYY-MM-DD')`,
+            count: sql<number>`count(${sreIncidents.id})::int`,
+          })
+          .from(sreIncidents)
+          .where(
+            and(
+              scope,
+              isNotNull(sreIncidents.resolvedAt),
+              gte(sreIncidents.resolvedAt, windowStart),
+            ),
+          )
+          .groupBy(sql`date_trunc('day', ${sreIncidents.resolvedAt})`),
+        db
+          .select({
+            severity: sreIncidents.severity,
+            count: sql<number>`count(${sreIncidents.id})::int`,
+          })
+          .from(sreIncidents)
+          .where(and(scope, gte(sreIncidents.createdAt, windowStart)))
+          .groupBy(sreIncidents.severity),
+        db
+          .select({
+            serviceId: sreIncidents.primaryServiceId,
+            serviceName: sql<string>`coalesce(${sreServices.name}, 'Unmapped')`,
+            count: sql<number>`count(${sreIncidents.id})::int`,
+          })
+          .from(sreIncidents)
+          .leftJoin(
+            sreServices,
+            eq(sreIncidents.primaryServiceId, sreServices.id),
+          )
+          .where(and(scope, gte(sreIncidents.createdAt, windowStart)))
+          .groupBy(sreIncidents.primaryServiceId, sreServices.name)
+          .orderBy(desc(sql`count(${sreIncidents.id})`))
+          .limit(5),
+      ]);
+
+    const createdByDate = new Map(
+      createdRows.map((row) => [row.date, row.count]),
+    );
+    const resolvedByDate = new Map(
+      resolvedRows.map((row) => [row.date, row.count]),
+    );
+    const daily = Array.from({ length: windowDays }, (_, index) => {
+      const date = new Date(windowStart);
+      date.setUTCDate(date.getUTCDate() + index);
+      const key = date.toISOString().slice(0, 10);
+      return {
+        date: key,
+        created: createdByDate.get(key) ?? 0,
+        resolved: resolvedByDate.get(key) ?? 0,
+      };
+    });
+    const summary = summaryRows[0] ?? {
+      created: 0,
+      resolved: 0,
+      averageResolutionMinutes: null,
+    };
+
+    return {
+      success: true,
+      analytics: {
+        windowDays,
+        summary: {
+          created: summary.created,
+          resolved: summary.resolved,
+          resolutionRate:
+            summary.created > 0
+              ? Math.round((summary.resolved / summary.created) * 100)
+              : 0,
+          averageResolutionMinutes:
+            summary.averageResolutionMinutes === null
+              ? null
+              : Math.round(Number(summary.averageResolutionMinutes)),
+        },
+        daily,
+        severities: severityRows,
+        topServices: serviceRows,
+      },
+    };
+  } catch (error) {
+    logger.error({ error }, "Error fetching SRE incident analytics");
+    return {
+      success: false,
+      error: "Failed to fetch incident analytics",
+      analytics: null,
+    };
+  }
 }
 
 function deriveSeverity(type: string, message: string): SreSeverity {
@@ -207,12 +419,17 @@ function deriveSeverity(type: string, message: string): SreSeverity {
 
 function deriveAlertStatus(type: string): SreAlertStatus {
   const normalizedType = type.toLowerCase();
-  return normalizedType.includes("recovery") || normalizedType.includes("success")
+  return normalizedType.includes("recovery") ||
+    normalizedType.includes("success")
     ? "resolved"
     : "firing";
 }
 
-function isActionableAlertForIncident(status: "sent" | "failed" | "pending", type: string, message: string) {
+function isActionableAlertForIncident(
+  status: "sent" | "failed" | "pending",
+  type: string,
+  message: string,
+) {
   if (status !== "sent") {
     return false;
   }
@@ -232,13 +449,17 @@ function sha256(value: string) {
 }
 
 function truncate(value: string, maxLength: number) {
-  return value.length > maxLength ? `${value.slice(0, maxLength - 3)}...` : value;
+  return value.length > maxLength
+    ? `${value.slice(0, maxLength - 3)}...`
+    : value;
 }
 
 function formatValidationErrors(error: z.ZodError) {
   const flattened = error.flatten().fieldErrors;
   return Object.fromEntries(
-    Object.entries(flattened).filter(([, errors]) => errors && errors.length > 0)
+    Object.entries(flattened).filter(
+      ([, errors]) => errors && errors.length > 0,
+    ),
   ) as Record<string, string[]>;
 }
 
@@ -262,16 +483,21 @@ async function getConversationHistory(input: {
     title: input.title,
     updatedAt: input.updatedAt,
     messages: messages.flatMap((message) => {
-      if ((message.role !== "user" && message.role !== "assistant") || !message.content) {
+      if (
+        (message.role !== "user" && message.role !== "assistant") ||
+        !message.content
+      ) {
         return [];
       }
 
-      return [{
-        id: message.id,
-        role: message.role,
-        content: message.content,
-        modelId: message.modelId,
-      }];
+      return [
+        {
+          id: message.id,
+          role: message.role,
+          content: message.content,
+          modelId: message.modelId,
+        },
+      ];
     }),
   };
 }
@@ -289,7 +515,11 @@ export async function getSreIncidents(): Promise<
     });
 
     if (!canView) {
-      return { success: false, error: "Insufficient permissions to view SRE incidents", incidents: [] };
+      return {
+        success: false,
+        error: "Insufficient permissions to view SRE incidents",
+        incidents: [],
+      };
     }
 
     const rows = await db
@@ -308,12 +538,15 @@ export async function getSreIncidents(): Promise<
       })
       .from(sreIncidents)
       .leftJoin(sreServices, eq(sreIncidents.primaryServiceId, sreServices.id))
-      .leftJoin(sreIncidentAlerts, eq(sreIncidentAlerts.incidentId, sreIncidents.id))
+      .leftJoin(
+        sreIncidentAlerts,
+        eq(sreIncidentAlerts.incidentId, sreIncidents.id),
+      )
       .where(
         and(
           eq(sreIncidents.organizationId, organizationId),
-          eq(sreIncidents.projectId, project.id)
-        )
+          eq(sreIncidents.projectId, project.id),
+        ),
       )
       .groupBy(
         sreIncidents.id,
@@ -325,7 +558,7 @@ export async function getSreIncidents(): Promise<
         sreServices.name,
         sreIncidents.createdAt,
         sreIncidents.updatedAt,
-        sreIncidents.resolvedAt
+        sreIncidents.resolvedAt,
       )
       .orderBy(desc(sreIncidents.updatedAt));
 
@@ -335,62 +568,63 @@ export async function getSreIncidents(): Promise<
       return { success: true, incidents: [] };
     }
 
-    const [evidenceCounts, investigationCounts, investigationRows] = await Promise.all([
-      db
-        .select({
-          incidentId: sreEvidenceItems.incidentId,
-          count: sql<number>`count(${sreEvidenceItems.id})::int`,
-        })
-        .from(sreEvidenceItems)
-        .where(
-          and(
-            eq(sreEvidenceItems.organizationId, organizationId),
-            eq(sreEvidenceItems.projectId, project.id),
-            inArray(sreEvidenceItems.incidentId, incidentIds)
+    const [evidenceCounts, investigationCounts, investigationRows] =
+      await Promise.all([
+        db
+          .select({
+            incidentId: sreEvidenceItems.incidentId,
+            count: sql<number>`count(${sreEvidenceItems.id})::int`,
+          })
+          .from(sreEvidenceItems)
+          .where(
+            and(
+              eq(sreEvidenceItems.organizationId, organizationId),
+              eq(sreEvidenceItems.projectId, project.id),
+              inArray(sreEvidenceItems.incidentId, incidentIds),
+            ),
           )
-        )
-        .groupBy(sreEvidenceItems.incidentId),
-      db
-        .select({
-          incidentId: sreInvestigationRuns.incidentId,
-          count: sql<number>`count(${sreInvestigationRuns.id})::int`,
-        })
-        .from(sreInvestigationRuns)
-        .where(
-          and(
-            eq(sreInvestigationRuns.organizationId, organizationId),
-            eq(sreInvestigationRuns.projectId, project.id),
-            inArray(sreInvestigationRuns.incidentId, incidentIds)
+          .groupBy(sreEvidenceItems.incidentId),
+        db
+          .select({
+            incidentId: sreInvestigationRuns.incidentId,
+            count: sql<number>`count(${sreInvestigationRuns.id})::int`,
+          })
+          .from(sreInvestigationRuns)
+          .where(
+            and(
+              eq(sreInvestigationRuns.organizationId, organizationId),
+              eq(sreInvestigationRuns.projectId, project.id),
+              inArray(sreInvestigationRuns.incidentId, incidentIds),
+            ),
           )
-        )
-        .groupBy(sreInvestigationRuns.incidentId),
-      db
-        .select({
-          incidentId: sreInvestigationRuns.incidentId,
-          status: sreInvestigationRuns.status,
-          completedAt: sreInvestigationRuns.completedAt,
-          createdAt: sreInvestigationRuns.createdAt,
-        })
-        .from(sreInvestigationRuns)
-        .where(
-          and(
-            eq(sreInvestigationRuns.organizationId, organizationId),
-            eq(sreInvestigationRuns.projectId, project.id),
-            inArray(sreInvestigationRuns.incidentId, incidentIds)
+          .groupBy(sreInvestigationRuns.incidentId),
+        db
+          .select({
+            incidentId: sreInvestigationRuns.incidentId,
+            status: sreInvestigationRuns.status,
+            completedAt: sreInvestigationRuns.completedAt,
+            createdAt: sreInvestigationRuns.createdAt,
+          })
+          .from(sreInvestigationRuns)
+          .where(
+            and(
+              eq(sreInvestigationRuns.organizationId, organizationId),
+              eq(sreInvestigationRuns.projectId, project.id),
+              inArray(sreInvestigationRuns.incidentId, incidentIds),
+            ),
           )
-        )
-        .orderBy(desc(sreInvestigationRuns.createdAt)),
-    ]);
+          .orderBy(desc(sreInvestigationRuns.createdAt)),
+      ]);
 
     const evidenceCountByIncidentId = new Map(
       evidenceCounts.flatMap((row) =>
-        row.incidentId ? [[row.incidentId, row.count] as const] : []
-      )
+        row.incidentId ? [[row.incidentId, row.count] as const] : [],
+      ),
     );
     const investigationCountByIncidentId = new Map(
       investigationCounts.flatMap((row) =>
-        row.incidentId ? [[row.incidentId, row.count] as const] : []
-      )
+        row.incidentId ? [[row.incidentId, row.count] as const] : [],
+      ),
     );
     const latestInvestigationByIncidentId = new Map<
       string,
@@ -431,13 +665,17 @@ export async function getSreIncidents(): Promise<
       }),
     };
   } catch (error) {
-    console.error("Error fetching SRE incidents:", error);
-    return { success: false, error: "Failed to fetch SRE incidents", incidents: [] };
+    logger.error({ error }, "Error fetching SRE incidents");
+    return {
+      success: false,
+      error: "Failed to fetch SRE incidents",
+      incidents: [],
+    };
   }
 }
 
 export async function getSreIncidentDetails(
-  incidentId: string
+  incidentId: string,
 ): Promise<
   | { success: true; detail: SreIncidentDetail }
   | { success: false; error: string; detail: null }
@@ -456,7 +694,11 @@ export async function getSreIncidentDetails(
     });
 
     if (!canView) {
-      return { success: false, error: "Insufficient permissions to view SRE incidents", detail: null };
+      return {
+        success: false,
+        error: "Insufficient permissions to view SRE incidents",
+        detail: null,
+      };
     }
 
     const [incident] = await db
@@ -477,13 +719,16 @@ export async function getSreIncidentDetails(
       })
       .from(sreIncidents)
       .leftJoin(sreServices, eq(sreIncidents.primaryServiceId, sreServices.id))
-      .leftJoin(sreIncidentAlerts, eq(sreIncidentAlerts.incidentId, sreIncidents.id))
+      .leftJoin(
+        sreIncidentAlerts,
+        eq(sreIncidentAlerts.incidentId, sreIncidents.id),
+      )
       .where(
         and(
           eq(sreIncidents.id, incidentId),
           eq(sreIncidents.organizationId, organizationId),
-          eq(sreIncidents.projectId, project.id)
-        )
+          eq(sreIncidents.projectId, project.id),
+        ),
       )
       .groupBy(
         sreIncidents.id,
@@ -497,12 +742,16 @@ export async function getSreIncidentDetails(
         sreIncidents.updatedAt,
         sreIncidents.resolvedAt,
         sreIncidents.rootCauseSummary,
-        sreIncidents.confidenceScore
+        sreIncidents.confidenceScore,
       )
       .limit(1);
 
     if (!incident) {
-      return { success: false, error: "Incident not found or access denied", detail: null };
+      return {
+        success: false,
+        error: "Incident not found or access denied",
+        detail: null,
+      };
     }
 
     const [latestBrief] = await db
@@ -517,48 +766,81 @@ export async function getSreIncidentDetails(
         createdAt: sreInvestigationRuns.createdAt,
       })
       .from(sreInvestigationRuns)
-      .where(and(
-        eq(sreInvestigationRuns.incidentId, incidentId),
-        eq(sreInvestigationRuns.organizationId, organizationId),
-        eq(sreInvestigationRuns.projectId, project.id)
-      ))
+      .where(
+        and(
+          eq(sreInvestigationRuns.incidentId, incidentId),
+          eq(sreInvestigationRuns.organizationId, organizationId),
+          eq(sreInvestigationRuns.projectId, project.id),
+        ),
+      )
       .orderBy(desc(sreInvestigationRuns.createdAt))
       .limit(1);
 
-    const [evidence, investigationCountRow] = await Promise.all([
-      db
-        .select({
-          id: sreEvidenceItems.id,
-          title: sreEvidenceItems.title,
-          summary: sreEvidenceItems.summary,
-          sourceUri: sreEvidenceItems.sourceUri,
-          evidenceType: sreEvidenceItems.evidenceType,
-          severity: sreEvidenceItems.severity,
-          confidence: sreEvidenceItems.confidence,
-          rawContentExcerpt: sreEvidenceItems.rawContentExcerpt,
-          citationQuery: sreEvidenceItems.citationQuery,
-          observedAt: sreEvidenceItems.observedAt,
-          createdAt: sreEvidenceItems.createdAt,
-        })
-        .from(sreEvidenceItems)
-        .where(and(
-          eq(sreEvidenceItems.incidentId, incidentId),
-          eq(sreEvidenceItems.organizationId, organizationId),
-          eq(sreEvidenceItems.projectId, project.id)
-        ))
-        .orderBy(desc(sreEvidenceItems.observedAt), desc(sreEvidenceItems.createdAt)),
-      db
-        .select({
-          count: sql<number>`count(${sreInvestigationRuns.id})::int`,
-        })
-        .from(sreInvestigationRuns)
-        .where(and(
-          eq(sreInvestigationRuns.incidentId, incidentId),
-          eq(sreInvestigationRuns.organizationId, organizationId),
-          eq(sreInvestigationRuns.projectId, project.id)
-        ))
-        .limit(1),
-    ]);
+    const [evidence, investigationCountRow, toolMetricsRow] = await Promise.all(
+      [
+        db
+          .select({
+            id: sreEvidenceItems.id,
+            title: sreEvidenceItems.title,
+            summary: sreEvidenceItems.summary,
+            sourceUri: sreEvidenceItems.sourceUri,
+            evidenceType: sreEvidenceItems.evidenceType,
+            severity: sreEvidenceItems.severity,
+            confidence: sreEvidenceItems.confidence,
+            rawContentExcerpt: sreEvidenceItems.rawContentExcerpt,
+            citationQuery: sreEvidenceItems.citationQuery,
+            observedAt: sreEvidenceItems.observedAt,
+            createdAt: sreEvidenceItems.createdAt,
+          })
+          .from(sreEvidenceItems)
+          .where(
+            and(
+              eq(sreEvidenceItems.incidentId, incidentId),
+              eq(sreEvidenceItems.organizationId, organizationId),
+              eq(sreEvidenceItems.projectId, project.id),
+            ),
+          )
+          .orderBy(
+            desc(sreEvidenceItems.observedAt),
+            desc(sreEvidenceItems.createdAt),
+          ),
+        db
+          .select({
+            count: sql<number>`count(${sreInvestigationRuns.id})::int`,
+          })
+          .from(sreInvestigationRuns)
+          .where(
+            and(
+              eq(sreInvestigationRuns.incidentId, incidentId),
+              eq(sreInvestigationRuns.organizationId, organizationId),
+              eq(sreInvestigationRuns.projectId, project.id),
+            ),
+          )
+          .limit(1),
+        db
+          .select({
+            total: sql<number>`count(${sreInvestigationToolCalls.id})::int`,
+            errors: sql<number>`count(${sreInvestigationToolCalls.id}) filter (where ${sreInvestigationToolCalls.status} = 'error')::int`,
+            averageDurationMs: sql<number>`coalesce(avg(${sreInvestigationToolCalls.durationMs}), 0)::int`,
+          })
+          .from(sreInvestigationRuns)
+          .leftJoin(
+            sreInvestigationToolCalls,
+            eq(
+              sreInvestigationToolCalls.investigationRunId,
+              sreInvestigationRuns.id,
+            ),
+          )
+          .where(
+            and(
+              eq(sreInvestigationRuns.incidentId, incidentId),
+              eq(sreInvestigationRuns.organizationId, organizationId),
+              eq(sreInvestigationRuns.projectId, project.id),
+            ),
+          )
+          .limit(1),
+      ],
+    );
 
     const recentConversations = await listSreConversations({
       organizationId,
@@ -569,14 +851,16 @@ export async function getSreIncidentDetails(
     });
 
     const chatHistories = await Promise.all(
-      recentConversations.map((conversation) => getConversationHistory({
-        organizationId,
-        projectId: project.id,
-        userId,
-        conversationId: conversation.id,
-        title: conversation.title,
-        updatedAt: conversation.updatedAt,
-      }))
+      recentConversations.map((conversation) =>
+        getConversationHistory({
+          organizationId,
+          projectId: project.id,
+          userId,
+          conversationId: conversation.id,
+          title: conversation.title,
+          updatedAt: conversation.updatedAt,
+        }),
+      ),
     );
     const chatHistory = chatHistories[0] ?? null;
 
@@ -595,19 +879,28 @@ export async function getSreIncidentDetails(
         evidence,
         chatHistory,
         chatHistories,
+        toolMetrics: {
+          total: toolMetricsRow[0]?.total ?? 0,
+          errors: toolMetricsRow[0]?.errors ?? 0,
+          averageDurationMs: toolMetricsRow[0]?.averageDurationMs ?? 0,
+        },
         permissions: {
           canUpdate,
         },
       },
     };
   } catch (error) {
-    console.error("Error fetching SRE incident details:", error);
-    return { success: false, error: "Failed to fetch SRE incident", detail: null };
+    logger.error({ error }, "Error fetching SRE incident details");
+    return {
+      success: false,
+      error: "Failed to fetch SRE incident",
+      detail: null,
+    };
   }
 }
 
 export async function archiveSreIncidentChatConversation(
-  input: z.infer<typeof archiveIncidentChatSchema>
+  input: z.infer<typeof archiveIncidentChatSchema>,
 ): Promise<{ success: true } | { success: false; error: string }> {
   try {
     const parsed = archiveIncidentChatSchema.safeParse(input);
@@ -616,14 +909,21 @@ export async function archiveSreIncidentChatConversation(
     }
 
     const { userId, organizationId, project } = await requireProjectContext();
-    const canInvestigate = checkPermissionWithContext("sre_investigation", "investigate", {
-      userId,
-      organizationId,
-      project,
-    });
+    const canInvestigate = checkPermissionWithContext(
+      "sre_investigation",
+      "investigate",
+      {
+        userId,
+        organizationId,
+        project,
+      },
+    );
 
     if (!canInvestigate) {
-      return { success: false, error: "Insufficient permissions to archive SRE chat conversations" };
+      return {
+        success: false,
+        error: "Insufficient permissions to archive SRE chat conversations",
+      };
     }
 
     const conversation = await getSreConversation({
@@ -634,7 +934,10 @@ export async function archiveSreIncidentChatConversation(
     });
 
     if (conversation.incidentId !== parsed.data.incidentId) {
-      return { success: false, error: "Conversation does not belong to this incident" };
+      return {
+        success: false,
+        error: "Conversation does not belong to this incident",
+      };
     }
 
     await archiveSreConversation({
@@ -658,13 +961,13 @@ export async function archiveSreIncidentChatConversation(
 
     return { success: true };
   } catch (error) {
-    console.error("Error archiving SRE incident chat conversation:", error);
+    logger.error({ error }, "Error archiving SRE incident chat conversation");
     return { success: false, error: "Failed to archive SRE chat conversation" };
   }
 }
 
 export async function createManualSreIncident(
-  input: z.infer<typeof createManualIncidentSchema>
+  input: z.infer<typeof createManualIncidentSchema>,
 ): Promise<CreateManualSreIncidentResult> {
   try {
     const parsed = createManualIncidentSchema.safeParse(input);
@@ -684,7 +987,10 @@ export async function createManualSreIncident(
     });
 
     if (!canCreate) {
-      return { success: false, error: "Insufficient permissions to create incidents" };
+      return {
+        success: false,
+        error: "Insufficient permissions to create incidents",
+      };
     }
 
     const title = truncate(parsed.data.title, 500);
@@ -692,7 +998,9 @@ export async function createManualSreIncident(
     const now = new Date();
 
     const incident = await db.transaction(async (tx) => {
-      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${organizationId}))`);
+      await tx.execute(
+        sql`select pg_advisory_xact_lock(hashtext(${organizationId}))`,
+      );
 
       const [numberRow] = await tx
         .select({
@@ -760,13 +1068,13 @@ export async function createManualSreIncident(
       message: `Incident #${incident.incidentNumber} created`,
     };
   } catch (error) {
-    console.error("Error creating manual SRE incident:", error);
+    logger.error({ error }, "Error creating manual SRE incident");
     return { success: false, error: "Failed to create incident" };
   }
 }
 
 export async function updateSreIncident(
-  input: z.infer<typeof updateIncidentSchema>
+  input: z.infer<typeof updateIncidentSchema>,
 ): Promise<UpdateSreIncidentResult> {
   try {
     const parsed = updateIncidentSchema.safeParse(input);
@@ -786,14 +1094,17 @@ export async function updateSreIncident(
     });
 
     if (!canUpdate) {
-      return { success: false, error: "Insufficient permissions to update incidents" };
+      return {
+        success: false,
+        error: "Insufficient permissions to update incidents",
+      };
     }
 
     const current = await db.query.sreIncidents.findFirst({
       where: and(
         eq(sreIncidents.id, parsed.data.id),
         eq(sreIncidents.organizationId, organizationId),
-        eq(sreIncidents.projectId, project.id)
+        eq(sreIncidents.projectId, project.id),
       ),
     });
 
@@ -806,7 +1117,7 @@ export async function updateSreIncident(
         where: and(
           eq(sreServices.id, parsed.data.primaryServiceId),
           eq(sreServices.organizationId, organizationId),
-          eq(sreServices.projectId, project.id)
+          eq(sreServices.projectId, project.id),
         ),
       });
 
@@ -830,7 +1141,7 @@ export async function updateSreIncident(
           primaryServiceId: parsed.data.primaryServiceId,
           resolvedAt:
             parsed.data.status === "resolved"
-              ? current.resolvedAt ?? now
+              ? (current.resolvedAt ?? now)
               : null,
           updatedAt: now,
         })
@@ -838,8 +1149,8 @@ export async function updateSreIncident(
           and(
             eq(sreIncidents.id, parsed.data.id),
             eq(sreIncidents.organizationId, organizationId),
-            eq(sreIncidents.projectId, project.id)
-          )
+            eq(sreIncidents.projectId, project.id),
+          ),
         )
         .returning({
           id: sreIncidents.id,
@@ -902,13 +1213,13 @@ export async function updateSreIncident(
       message: `Incident #${incident.incidentNumber} updated`,
     };
   } catch (error) {
-    console.error("Error updating SRE incident:", error);
+    logger.error({ error }, "Error updating SRE incident");
     return { success: false, error: "Failed to update incident" };
   }
 }
 
 export async function createSreIncidentFromAlert(
-  input: z.infer<typeof createIncidentFromAlertSchema>
+  input: z.infer<typeof createIncidentFromAlertSchema>,
 ): Promise<CreateSreIncidentFromAlertResult> {
   try {
     const parsed = createIncidentFromAlertSchema.safeParse(input);
@@ -924,7 +1235,10 @@ export async function createSreIncidentFromAlert(
     });
 
     if (!canCreate) {
-      return { success: false, error: "Insufficient permissions to create SRE incidents" };
+      return {
+        success: false,
+        error: "Insufficient permissions to create SRE incidents",
+      };
     }
 
     const [alert] = await db
@@ -952,11 +1266,14 @@ export async function createSreIncidentFromAlert(
           or(
             and(
               eq(monitors.organizationId, organizationId),
-              eq(monitors.projectId, project.id)
+              eq(monitors.projectId, project.id),
             ),
-            and(eq(jobs.organizationId, organizationId), eq(jobs.projectId, project.id))
-          )
-        )
+            and(
+              eq(jobs.organizationId, organizationId),
+              eq(jobs.projectId, project.id),
+            ),
+          ),
+        ),
       )
       .limit(1);
 
@@ -964,8 +1281,13 @@ export async function createSreIncidentFromAlert(
       return { success: false, error: "Alert not found or access denied" };
     }
 
-    if (!isActionableAlertForIncident(alert.status, alert.type, alert.message)) {
-      return { success: false, error: "Only sent failure alerts can create incidents" };
+    if (
+      !isActionableAlertForIncident(alert.status, alert.type, alert.message)
+    ) {
+      return {
+        success: false,
+        error: "Only sent failure alerts can create incidents",
+      };
     }
 
     const sourceType: SreAlertSourceType = alert.monitorId ? "monitor" : "job";
@@ -986,7 +1308,29 @@ export async function createSreIncidentFromAlert(
     const title = truncate(`${targetName}: ${titleCase(alert.type)}`, 500);
 
     const result = await db.transaction(async (tx) => {
-      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${organizationId}))`);
+      await tx.execute(
+        sql`select pg_advisory_xact_lock(hashtext(${organizationId}))`,
+      );
+
+      const [mappedService] = sourceId
+        ? await tx
+            .select({ id: sreServices.id })
+            .from(sreServiceResources)
+            .innerJoin(
+              sreServices,
+              eq(sreServiceResources.serviceId, sreServices.id),
+            )
+            .where(
+              and(
+                eq(sreServiceResources.resourceType, sourceType),
+                eq(sreServiceResources.resourceId, sourceId),
+                eq(sreServices.organizationId, organizationId),
+                eq(sreServices.projectId, project.id),
+                eq(sreServices.status, "active"),
+              ),
+            )
+            .limit(1)
+        : [];
 
       const [existingAlertEvent] = await tx
         .select({ id: sreAlertEvents.id })
@@ -995,8 +1339,8 @@ export async function createSreIncidentFromAlert(
           and(
             eq(sreAlertEvents.organizationId, organizationId),
             eq(sreAlertEvents.projectId, project.id),
-            eq(sreAlertEvents.fingerprintHash, fingerprintHash)
-          )
+            eq(sreAlertEvents.fingerprintHash, fingerprintHash),
+          ),
         )
         .limit(1);
 
@@ -1014,6 +1358,7 @@ export async function createSreIncidentFromAlert(
                 status: alertStatus,
                 sourceType,
                 sourceId,
+                serviceId: mappedService?.id ?? null,
                 title,
                 description: alert.message,
                 firedAt,
@@ -1030,13 +1375,160 @@ export async function createSreIncidentFromAlert(
           title: sreIncidents.title,
         })
         .from(sreIncidentAlerts)
-        .innerJoin(sreIncidents, eq(sreIncidentAlerts.incidentId, sreIncidents.id))
+        .innerJoin(
+          sreIncidents,
+          eq(sreIncidentAlerts.incidentId, sreIncidents.id),
+        )
         .where(eq(sreIncidentAlerts.alertEventId, alertEvent.id))
         .orderBy(desc(sreIncidents.createdAt))
         .limit(1);
 
       if (existingIncident) {
         return { incident: existingIncident, existing: true };
+      }
+
+      if (isSreAlertCorrelationEnabled()) {
+        const correlatedIncident = await tx
+          .transaction(async (correlationTx) => {
+            const windowStart = new Date(
+              firedAt.getTime() -
+                ALERT_CORRELATION_LIMITS.windowMinutes * 60_000,
+            );
+            const [candidateRows, dependencyRows] = await Promise.all([
+              correlationTx
+                .select({
+                  incidentId: sreIncidents.id,
+                  incidentNumber: sreIncidents.incidentNumber,
+                  incidentTitle: sreIncidents.title,
+                  fingerprintHash: sreAlertEvents.fingerprintHash,
+                  dedupKey: sreAlertEvents.dedupKey,
+                  serviceId: sreAlertEvents.serviceId,
+                  sourceType: sreAlertEvents.sourceType,
+                  title: sreAlertEvents.title,
+                  description: sreAlertEvents.description,
+                  firedAt: sreAlertEvents.firedAt,
+                })
+                .from(sreIncidentAlerts)
+                .innerJoin(
+                  sreIncidents,
+                  eq(sreIncidentAlerts.incidentId, sreIncidents.id),
+                )
+                .innerJoin(
+                  sreAlertEvents,
+                  eq(sreIncidentAlerts.alertEventId, sreAlertEvents.id),
+                )
+                .where(
+                  and(
+                    eq(sreIncidents.organizationId, organizationId),
+                    eq(sreIncidents.projectId, project.id),
+                    ne(sreIncidents.status, "resolved"),
+                    ne(sreAlertEvents.id, alertEvent.id),
+                    gte(sreAlertEvents.firedAt, windowStart),
+                  ),
+                )
+                .orderBy(desc(sreAlertEvents.firedAt))
+                .limit(ALERT_CORRELATION_LIMITS.candidateLimit),
+              mappedService?.id
+                ? correlationTx
+                    .select({
+                      sourceServiceId: sreServiceDependencies.sourceServiceId,
+                      targetServiceId: sreServiceDependencies.targetServiceId,
+                    })
+                    .from(sreServiceDependencies)
+                    .where(
+                      and(
+                        eq(
+                          sreServiceDependencies.organizationId,
+                          organizationId,
+                        ),
+                        eq(sreServiceDependencies.projectId, project.id),
+                        eq(sreServiceDependencies.status, "active"),
+                        isNotNull(sreServiceDependencies.approvedAt),
+                        or(
+                          eq(
+                            sreServiceDependencies.sourceServiceId,
+                            mappedService.id,
+                          ),
+                          eq(
+                            sreServiceDependencies.targetServiceId,
+                            mappedService.id,
+                          ),
+                        ),
+                      ),
+                    )
+                : Promise.resolve([]),
+            ]);
+            const relatedServiceIds = new Set(
+              dependencyRows
+                .flatMap((dependency) => [
+                  dependency.sourceServiceId,
+                  dependency.targetServiceId,
+                ])
+                .filter((serviceId) => serviceId !== mappedService?.id),
+            );
+            const correlation = selectAlertCorrelationMatch({
+              alert: {
+                fingerprintHash,
+                dedupKey,
+                serviceId: mappedService?.id ?? null,
+                sourceType,
+                title,
+                description: alert.message,
+                firedAt,
+              },
+              candidates: candidateRows,
+              approvedRelatedServiceIds: relatedServiceIds,
+            });
+
+            if (!correlation) return null;
+
+            await correlationTx
+              .insert(sreIncidentAlerts)
+              .values({
+                incidentId: correlation.candidate.incidentId,
+                alertEventId: alertEvent.id,
+                role: "related",
+                createdAt: new Date(),
+              })
+              .onConflictDoNothing();
+
+            await correlationTx.insert(sreIncidentTimelineEvents).values({
+              incidentId: correlation.candidate.incidentId,
+              eventType: "state_change",
+              eventData: {
+                state: "alert_correlated",
+                alertEventId: alertEvent.id,
+                alertHistoryId: alert.id,
+                score: correlation.score,
+                signals: correlation.signals,
+                correlationVersion: 1,
+              },
+              actorType: "system",
+              createdAt: new Date(),
+            });
+
+            return {
+              incident: {
+                id: correlation.candidate.incidentId,
+                incidentNumber: correlation.candidate.incidentNumber,
+                title: correlation.candidate.incidentTitle,
+              },
+              existing: true,
+              correlation: {
+                score: correlation.score,
+                signals: correlation.signals,
+              },
+            };
+          })
+          .catch((error) => {
+            logger.warn(
+              { error },
+              "SRE alert correlation failed; falling back to normal incident creation",
+            );
+            return null;
+          });
+
+        if (correlatedIncident) return correlatedIncident;
       }
 
       const [numberRow] = await tx
@@ -1057,6 +1549,7 @@ export async function createSreIncidentFromAlert(
           title,
           severity,
           status: alertStatus === "resolved" ? "resolved" : "triggered",
+          primaryServiceId: mappedService?.id ?? null,
           resolvedAt: alertStatus === "resolved" ? firedAt : null,
           createdByUserId: userId,
           createdAt: new Date(),
@@ -1097,10 +1590,16 @@ export async function createSreIncidentFromAlert(
       return { incident, existing: false };
     });
 
+    const correlation = "correlation" in result ? result.correlation : null;
+
     await logAuditEvent({
       userId,
       organizationId,
-      action: result.existing ? "sre_incident_reused_from_alert" : "sre_incident_created_from_alert",
+      action: correlation
+        ? "sre_alert_correlated_to_incident"
+        : result.existing
+          ? "sre_incident_reused_from_alert"
+          : "sre_incident_created_from_alert",
       resource: "sre_incident",
       resourceId: result.incident.id,
       metadata: {
@@ -1108,6 +1607,13 @@ export async function createSreIncidentFromAlert(
         alertHistoryId: alert.id,
         incidentNumber: result.incident.incidentNumber,
         fingerprintHash,
+        ...(correlation
+          ? {
+              correlationScore: correlation.score,
+              correlationSignals: correlation.signals,
+              correlationVersion: 1,
+            }
+          : {}),
       },
       success: true,
     });
@@ -1138,7 +1644,7 @@ export async function createSreIncidentFromAlert(
         : `Incident #${result.incident.incidentNumber} created`,
     };
   } catch (error) {
-    console.error("Error creating SRE incident from alert:", error);
+    logger.error({ error }, "Error creating SRE incident from alert");
     return { success: false, error: "Failed to create SRE incident" };
   }
 }

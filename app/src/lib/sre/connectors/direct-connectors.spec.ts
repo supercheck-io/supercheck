@@ -1,5 +1,8 @@
 import { createDirectConnector } from "./direct-connectors";
-import { type ConnectorDefinition, type ConnectorSearchParams } from "./connector-base";
+import {
+  type ConnectorDefinition,
+  type ConnectorSearchParams,
+} from "./connector-base";
 
 const baseDefinition: ConnectorDefinition = {
   id: "connector_1",
@@ -52,7 +55,11 @@ describe("direct connectors", () => {
       }),
     }) as unknown as typeof fetch;
 
-    const connector = createDirectConnector({ ...baseDefinition, type: "github", credential: { secret: "token" } });
+    const connector = createDirectConnector({
+      ...baseDefinition,
+      type: "github",
+      credential: { secret: "token" },
+    });
     const evidence = await connector.search(params);
 
     expect(evidence).toHaveLength(1);
@@ -65,7 +72,11 @@ describe("direct connectors", () => {
     expect(evidence[0].citation.resultHash).toHaveLength(64);
     expect(global.fetch).toHaveBeenCalledWith(
       expect.stringContaining("https://api.github.com/search/commits"),
-      expect.objectContaining({ method: "GET", cache: "no-store" })
+      expect.objectContaining({
+        method: "GET",
+        cache: "no-store",
+        redirect: "error",
+      }),
     );
   });
 
@@ -75,7 +86,12 @@ describe("direct connectors", () => {
       status: 200,
       json: async () => ({
         data: {
-          result: [{ metric: { __name__: "up", job: "checkout" }, values: [[1782036000, "1"]] }],
+          result: [
+            {
+              metric: { __name__: "up", job: "checkout" },
+              values: [[1782036000, "1"]],
+            },
+          ],
         },
       }),
     }) as unknown as typeof fetch;
@@ -96,7 +112,7 @@ describe("direct connectors", () => {
     });
     expect(global.fetch).toHaveBeenCalledWith(
       expect.stringContaining("/api/v1/query_range"),
-      expect.objectContaining({ method: "GET", cache: "no-store" })
+      expect.objectContaining({ method: "GET", cache: "no-store" }),
     );
   });
 
@@ -104,7 +120,14 @@ describe("direct connectors", () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
       status: 200,
-      json: async () => ([{ title: "Checkout Overview", url: "/d/abc/checkout", type: "dash-db", tags: ["checkout"] }]),
+      json: async () => [
+        {
+          title: "Checkout Overview",
+          url: "/d/abc/checkout",
+          type: "dash-db",
+          tags: ["checkout"],
+        },
+      ],
     }) as unknown as typeof fetch;
 
     const connector = createDirectConnector({
@@ -148,10 +171,15 @@ describe("direct connectors", () => {
       expect.stringContaining("/api/search?limit=1"),
       expect.objectContaining({
         method: "GET",
-        headers: expect.objectContaining({ Authorization: "Bearer fake-token" }),
-      })
+        headers: expect.objectContaining({
+          Authorization: "Bearer fake-token",
+        }),
+      }),
     );
-    expect(global.fetch).not.toHaveBeenCalledWith(expect.stringContaining("/api/health"), expect.anything());
+    expect(global.fetch).not.toHaveBeenCalledWith(
+      expect.stringContaining("/api/health"),
+      expect.anything(),
+    );
   });
 
   it("normalizes Kubernetes pods into topology evidence", async () => {
@@ -171,7 +199,9 @@ describe("direct connectors", () => {
             status: {
               phase: "Running",
               startTime: "2026-06-21T10:10:00.000Z",
-              containerStatuses: [{ name: "app", ready: true, restartCount: 1 }],
+              containerStatuses: [
+                { name: "app", ready: true, restartCount: 1 },
+              ],
             },
           },
         ],
@@ -186,17 +216,22 @@ describe("direct connectors", () => {
       evidenceTypes: ["topology"],
       credential: { secret: "token" },
     });
-    const evidence = await connector.search({ ...params, query: "app=checkout", filters: { namespace: "payments" } });
+    const evidence = await connector.search({
+      ...params,
+      query: "app=checkout",
+      filters: { namespace: "payments" },
+    });
 
     expect(evidence[0]).toMatchObject({
       source: "kubernetes",
       title: "Kubernetes pod: payments/checkout-api-7d9c",
-      sourceUri: "https://kubernetes.example.com/api/v1/namespaces/payments/pods/checkout-api-7d9c",
+      sourceUri:
+        "https://kubernetes.example.com/api/v1/namespaces/payments/pods/checkout-api-7d9c",
       evidenceType: "topology",
     });
     expect(global.fetch).toHaveBeenCalledWith(
       expect.stringContaining("/api/v1/namespaces/payments/pods"),
-      expect.objectContaining({ method: "GET", cache: "no-store" })
+      expect.objectContaining({ method: "GET", cache: "no-store" }),
     );
   });
 
@@ -204,7 +239,7 @@ describe("direct connectors", () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
       status: 200,
-      json: async () => ([
+      json: async () => [
         {
           id: "123",
           shortId: "CHECKOUT-1",
@@ -217,7 +252,7 @@ describe("direct connectors", () => {
           firstSeen: "2026-06-21T10:00:00.000Z",
           lastSeen: "2026-06-21T10:45:00.000Z",
         },
-      ]),
+      ],
     }) as unknown as typeof fetch;
 
     const connector = createDirectConnector({
@@ -228,7 +263,10 @@ describe("direct connectors", () => {
       evidenceTypes: ["event"],
       credential: { secret: "token" },
     });
-    const evidence = await connector.search({ ...params, query: "is:unresolved timeout" });
+    const evidence = await connector.search({
+      ...params,
+      query: "is:unresolved timeout",
+    });
 
     expect(evidence[0]).toMatchObject({
       source: "sentry",
@@ -239,7 +277,7 @@ describe("direct connectors", () => {
     });
     expect(global.fetch).toHaveBeenCalledWith(
       expect.stringContaining("/api/0/projects/acme/checkout/issues/"),
-      expect.objectContaining({ method: "GET", cache: "no-store" })
+      expect.objectContaining({ method: "GET", cache: "no-store" }),
     );
   });
 
@@ -272,7 +310,10 @@ describe("direct connectors", () => {
       evidenceTypes: ["event"],
       credential: { apiKey: "api-key", applicationKey: "app-key" },
     });
-    const evidence = await connector.search({ ...params, query: "service:checkout" });
+    const evidence = await connector.search({
+      ...params,
+      query: "service:checkout",
+    });
 
     expect(evidence[0]).toMatchObject({
       source: "datadog",
@@ -286,8 +327,11 @@ describe("direct connectors", () => {
       expect.objectContaining({
         method: "GET",
         cache: "no-store",
-        headers: expect.objectContaining({ "DD-API-KEY": "api-key", "DD-APPLICATION-KEY": "app-key" }),
-      })
+        headers: expect.objectContaining({
+          "DD-API-KEY": "api-key",
+          "DD-APPLICATION-KEY": "app-key",
+        }),
+      }),
     );
   });
 
@@ -313,8 +357,11 @@ describe("direct connectors", () => {
     expect(global.fetch).toHaveBeenCalledWith(
       "https://api.datadoghq.com/api/v1/validate",
       expect.objectContaining({
-        headers: expect.objectContaining({ "DD-API-KEY": "bad-api-key", "DD-APPLICATION-KEY": "bad-app-key" }),
-      })
+        headers: expect.objectContaining({
+          "DD-API-KEY": "bad-api-key",
+          "DD-APPLICATION-KEY": "bad-app-key",
+        }),
+      }),
     );
   });
 
@@ -345,7 +392,12 @@ describe("direct connectors", () => {
           result: [
             {
               stream: { service: "checkout", level: "error" },
-              values: [["1782038700000000000", "error checkout failed with upstream timeout"]],
+              values: [
+                [
+                  "1782038700000000000",
+                  "error checkout failed with upstream timeout",
+                ],
+              ],
             },
           ],
         },
@@ -359,18 +411,28 @@ describe("direct connectors", () => {
       surfaces: ["logs"],
       evidenceTypes: ["log"],
     });
-    const evidence = await connector.search({ ...params, query: '{service="checkout"} |= "error"' });
+    const evidence = await connector.search({
+      ...params,
+      query: '{service="checkout"} |= "error"',
+    });
 
     expect(evidence[0]).toMatchObject({
       source: "loki",
       title: "Loki log: error checkout failed with upstream timeout",
       evidenceType: "log",
       summary: "service=checkout, level=error",
-      metadata: expect.objectContaining({ severity: "error", tags: expect.arrayContaining(["loki", "service:checkout", "level:error"]) }),
+      metadata: expect.objectContaining({
+        severity: "error",
+        tags: expect.arrayContaining([
+          "loki",
+          "service:checkout",
+          "level:error",
+        ]),
+      }),
     });
     expect(global.fetch).toHaveBeenCalledWith(
       expect.stringContaining("/loki/api/v1/query_range"),
-      expect.objectContaining({ method: "GET", cache: "no-store" })
+      expect.objectContaining({ method: "GET", cache: "no-store" }),
     );
   });
 
@@ -394,9 +456,12 @@ describe("direct connectors", () => {
     expect(result.status).toBe("valid");
     expect(global.fetch).toHaveBeenCalledWith(
       "https://loki.example.com/loki/api/v1/labels",
-      expect.objectContaining({ method: "GET", cache: "no-store" })
+      expect.objectContaining({ method: "GET", cache: "no-store" }),
     );
-    expect(global.fetch).not.toHaveBeenCalledWith(expect.stringContaining("/ready"), expect.anything());
+    expect(global.fetch).not.toHaveBeenCalledWith(
+      expect.stringContaining("/ready"),
+      expect.anything(),
+    );
   });
 
   it("normalizes Elasticsearch search hits into log evidence", async () => {
@@ -430,15 +495,27 @@ describe("direct connectors", () => {
       evidenceTypes: ["log"],
       credential: { secret: "token" },
     });
-    const evidence = await connector.search({ ...params, query: "service:checkout AND error", filters: { index: "logs-checkout-*" } });
+    const evidence = await connector.search({
+      ...params,
+      query: "service:checkout AND error",
+      filters: { index: "logs-checkout-*" },
+    });
 
     expect(evidence[0]).toMatchObject({
       source: "elasticsearch",
       title: "Elasticsearch log: checkout upstream timeout error",
-      sourceUri: "https://search.example.com/logs-checkout-2026.06.21/_doc/log-1",
+      sourceUri:
+        "https://search.example.com/logs-checkout-2026.06.21/_doc/log-1",
       evidenceType: "log",
       summary: "logs-checkout-2026.06.21 · checkout · error · score 12.25",
-      metadata: expect.objectContaining({ severity: "error", tags: expect.arrayContaining(["elasticsearch", "logs-checkout-2026.06.21", "checkout"]) }),
+      metadata: expect.objectContaining({
+        severity: "error",
+        tags: expect.arrayContaining([
+          "elasticsearch",
+          "logs-checkout-2026.06.21",
+          "checkout",
+        ]),
+      }),
     });
     expect(global.fetch).toHaveBeenCalledWith(
       expect.stringContaining("/logs-checkout-*/_search"),
@@ -446,11 +523,13 @@ describe("direct connectors", () => {
         method: "GET",
         cache: "no-store",
         headers: expect.objectContaining({ Authorization: "Bearer token" }),
-      })
+      }),
     );
     expect(global.fetch).toHaveBeenCalledWith(
-      expect.stringContaining("q=%28service%3Acheckout+AND+error%29+AND+%40timestamp"),
-      expect.anything()
+      expect.stringContaining(
+        "q=%28service%3Acheckout+AND+error%29+AND+%40timestamp",
+      ),
+      expect.anything(),
     );
   });
 
@@ -495,17 +574,30 @@ describe("direct connectors", () => {
       evidenceTypes: ["trace"],
       credential: { secret: "token" },
     });
-    const evidence = await connector.search({ ...params, query: "service:checkout minDuration:100ms" });
+    const evidence = await connector.search({
+      ...params,
+      query: "service:checkout minDuration:100ms",
+    });
 
     expect(evidence[0]).toMatchObject({
       source: "tempo",
       title: "Tempo trace: checkout POST /checkout",
-      sourceUri: "https://tempo.example.com/api/traces/4bf92f3577b34da6a3ce929d0e0e4736",
+      sourceUri:
+        "https://tempo.example.com/api/traces/4bf92f3577b34da6a3ce929d0e0e4736",
       evidenceType: "trace",
-      summary: "4bf92f3577b34da6a3ce929d0e0e4736 · duration 1.24s · services checkout, payments",
+      summary:
+        "4bf92f3577b34da6a3ce929d0e0e4736 · duration 1.24s · services checkout, payments",
       metadata: expect.objectContaining({
         severity: "error",
-        tags: expect.arrayContaining(["tempo", "trace", "checkout", "service:checkout", "service:payments", "http.status_code=500", "status=error"]),
+        tags: expect.arrayContaining([
+          "tempo",
+          "trace",
+          "checkout",
+          "service:checkout",
+          "service:payments",
+          "http.status_code=500",
+          "status=error",
+        ]),
       }),
     });
     expect(global.fetch).toHaveBeenCalledWith(
@@ -514,15 +606,15 @@ describe("direct connectors", () => {
         method: "GET",
         cache: "no-store",
         headers: expect.objectContaining({ Authorization: "Bearer token" }),
-      })
+      }),
     );
     expect(global.fetch).toHaveBeenCalledWith(
       expect.stringContaining("tags=service.name%3Dcheckout"),
-      expect.anything()
+      expect.anything(),
     );
     expect(global.fetch).toHaveBeenCalledWith(
       expect.stringContaining("minDuration=100ms"),
-      expect.anything()
+      expect.anything(),
     );
   });
 
@@ -559,7 +651,11 @@ describe("direct connectors", () => {
       endpointUrl: "https://monitoring.us-east-1.amazonaws.com",
       surfaces: ["metrics"],
       evidenceTypes: ["metric"],
-      credential: { apiKey: "access-key", secret: "secret-key", sessionToken: "session-token" },
+      credential: {
+        apiKey: "access-key",
+        secret: "secret-key",
+        sessionToken: "session-token",
+      },
     });
     const evidence = await connector.search({ ...params, query: "checkout-" });
 
@@ -567,20 +663,27 @@ describe("direct connectors", () => {
       source: "aws_cloudwatch",
       title: "CloudWatch alarm: checkout-5xx-rate",
       evidenceType: "metric",
-      metadata: expect.objectContaining({ severity: "critical", tags: expect.arrayContaining(["aws", "cloudwatch", "alarm", "ALARM"]) }),
+      metadata: expect.objectContaining({
+        severity: "critical",
+        tags: expect.arrayContaining(["aws", "cloudwatch", "alarm", "ALARM"]),
+      }),
     });
-    expect(evidence[0].summary).toContain("AWS/ApplicationELB/HTTPCode_Target_5XX_Count");
+    expect(evidence[0].summary).toContain(
+      "AWS/ApplicationELB/HTTPCode_Target_5XX_Count",
+    );
     expect(global.fetch).toHaveBeenCalledWith(
       "https://monitoring.us-east-1.amazonaws.com",
       expect.objectContaining({
         method: "POST",
         cache: "no-store",
         headers: expect.objectContaining({
-          Authorization: expect.stringContaining("AWS4-HMAC-SHA256 Credential=access-key/"),
+          Authorization: expect.stringContaining(
+            "AWS4-HMAC-SHA256 Credential=access-key/",
+          ),
           "X-Amz-Security-Token": "session-token",
         }),
         body: expect.stringContaining("Action=DescribeAlarms"),
-      })
+      }),
     );
   });
 
@@ -619,7 +722,8 @@ describe("direct connectors", () => {
     });
     const evidence = await connector.search({
       ...params,
-      query: "namespace:AWS/EC2 metric:CPUUtilization dimension:InstanceId=i-123 stat:Average period:300",
+      query:
+        "namespace:AWS/EC2 metric:CPUUtilization dimension:InstanceId=i-123 stat:Average period:300",
     });
 
     expect(evidence[0]).toMatchObject({
@@ -627,20 +731,185 @@ describe("direct connectors", () => {
       title: "CloudWatch metric: CPUUtilization",
       evidenceType: "metric",
       summary: "1 datapoint · latest 42.5 · InstanceId=i-123",
-      metadata: expect.objectContaining({ tags: expect.arrayContaining(["aws", "cloudwatch", "metric", "AWS/EC2", "CPUUtilization", "InstanceId:i-123"]) }),
+      metadata: expect.objectContaining({
+        tags: expect.arrayContaining([
+          "aws",
+          "cloudwatch",
+          "metric",
+          "AWS/EC2",
+          "CPUUtilization",
+          "InstanceId:i-123",
+        ]),
+      }),
     });
     expect(global.fetch).toHaveBeenCalledWith(
       "https://monitoring.us-east-1.amazonaws.com",
       expect.objectContaining({
         method: "POST",
         body: expect.stringContaining("Action=GetMetricData"),
-      })
+      }),
     );
     expect(global.fetch).toHaveBeenCalledWith(
       expect.any(String),
       expect.objectContaining({
-        body: expect.stringContaining("MetricDataQueries.member.1.MetricStat.Metric.Dimensions.member.1.Name=InstanceId"),
-      })
+        body: expect.stringContaining(
+          "MetricDataQueries.member.1.MetricStat.Metric.Dimensions.member.1.Name=InstanceId",
+        ),
+      }),
+    );
+  });
+
+  it("normalizes GitLab project commits with a read-only private token", async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => [
+        {
+          id: "abcdef1234567890",
+          short_id: "abcdef12",
+          title: "Deploy checkout service",
+          message: "Deploy checkout service\n\nRelease 1.2.3",
+          author_name: "SRE Bot",
+          committed_date: "2026-06-21T10:30:00.000Z",
+          web_url: "https://gitlab.com/acme/checkout/-/commit/abcdef1234567890",
+        },
+      ],
+    }) as unknown as typeof fetch;
+
+    const connector = createDirectConnector({
+      ...baseDefinition,
+      type: "gitlab",
+      credential: { secret: "gitlab-token" },
+    });
+    const evidence = await connector.search({
+      ...params,
+      query: "project:acme/checkout deploy",
+    });
+
+    expect(evidence[0]).toMatchObject({
+      source: "gitlab",
+      title: "Deploy checkout service",
+      sourceUri: "https://gitlab.com/acme/checkout/-/commit/abcdef1234567890",
+      evidenceType: "deployment",
+    });
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/projects/acme%2Fcheckout/repository/commits"),
+      expect.objectContaining({
+        method: "GET",
+        headers: expect.objectContaining({ "PRIVATE-TOKEN": "gitlab-token" }),
+      }),
+    );
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining("since=2026-06-21T10%3A00%3A00.000Z"),
+      expect.anything(),
+    );
+  });
+
+  it("normalizes PagerDuty incidents within the requested time window", async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        incidents: [
+          {
+            id: "P123",
+            incident_number: 42,
+            title: "Checkout latency is high",
+            status: "triggered",
+            urgency: "high",
+            created_at: "2026-06-21T10:20:00.000Z",
+            last_status_change_at: "2026-06-21T10:25:00.000Z",
+            html_url: "https://acme.pagerduty.com/incidents/P123",
+            service: { id: "PSVC", summary: "checkout" },
+          },
+        ],
+      }),
+    }) as unknown as typeof fetch;
+
+    const connector = createDirectConnector({
+      ...baseDefinition,
+      type: "pagerduty",
+      credential: { secret: "pagerduty-token" },
+    });
+    const evidence = await connector.search({
+      ...params,
+      query: "status:triggered service:checkout",
+    });
+
+    expect(evidence[0]).toMatchObject({
+      source: "pagerduty",
+      title: "Checkout latency is high",
+      evidenceType: "event",
+      metadata: expect.objectContaining({ severity: "critical" }),
+    });
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/incidents?"),
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Accept: "application/vnd.pagerduty+json;version=2",
+          Authorization: "Token token=pagerduty-token",
+        }),
+      }),
+    );
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining("until=2026-06-21T11%3A00%3A00.000Z"),
+      expect.anything(),
+    );
+  });
+
+  it("normalizes Opsgenie alerts and enforces the selected time window", async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        data: [
+          {
+            id: "alert-1",
+            tinyId: "1791",
+            message: "Checkout error budget exhausted",
+            status: "open",
+            acknowledged: false,
+            priority: "P1",
+            createdAt: "2026-06-21T10:35:00.000Z",
+            updatedAt: "2026-06-21T10:40:00.000Z",
+            source: "Prometheus",
+            tags: ["checkout"],
+          },
+          {
+            id: "alert-old",
+            message: "Old checkout alert",
+            status: "closed",
+            priority: "P3",
+            createdAt: "2026-06-20T10:35:00.000Z",
+          },
+        ],
+      }),
+    }) as unknown as typeof fetch;
+
+    const connector = createDirectConnector({
+      ...baseDefinition,
+      type: "opsgenie",
+      credential: { secret: "opsgenie-key" },
+    });
+    const evidence = await connector.search({
+      ...params,
+      query: "status:open AND priority:P1",
+    });
+
+    expect(evidence).toHaveLength(1);
+    expect(evidence[0]).toMatchObject({
+      source: "opsgenie",
+      title: "Checkout error budget exhausted",
+      evidenceType: "event",
+      metadata: expect.objectContaining({ severity: "critical" }),
+    });
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining("query=status%3Aopen+AND+priority%3AP1"),
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "GenieKey opsgenie-key",
+        }),
+      }),
     );
   });
 });

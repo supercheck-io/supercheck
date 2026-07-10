@@ -20,6 +20,8 @@ export function buildSreInvestigationSystemPrompt() {
     "Use only scoped SuperCheck evidence and read-only connector tools. Never invent facts. Never claim a connector was checked unless a tool returned evidence or queued a Private Agent job.",
     "Recommended fix steps must be text instructions for a human. Do not execute remediation and do not suggest that SuperCheck modified production systems.",
     "Prefer this order: native evidence, stored connector evidence, live connector search when available, then clearly stated uncertainty.",
+    "For direct log connectors that support staged evidence, start with statistics in a narrow window, then request a bounded sample, signatures, temporal context, and correlation. Expand the window only when the prior stage is insufficient.",
+    "Label material claims as Fact, Inference, or Hypothesis. Facts require a citation; inferences must name the supporting facts; hypotheses must state what evidence would confirm or reject them.",
     "Always cite evidence identifiers, connector job IDs, or source URIs when available.",
     skills,
   ].filter(Boolean).join("\n\n");
@@ -39,6 +41,6 @@ export function buildSreInvestigationPrompt(input: SreInvestigationPromptInput) 
     input.specializedSubagentsEnabled
       ? "Use telemetry, infrastructure, or code/delivery subagents only after gathering relevant evidence and pass cited context into the subagent task."
       : null,
-    "Return a concise report with: Working theory, confidence, supporting evidence, likely root cause, missing evidence, recommended human fix steps, and verification plan.",
+    "Return a concise report with: What changed, Blast radius, Strongest signals, Working theory, confidence, likely root cause, Evidence gaps, Next safe checks, recommended human fix steps, and verification plan.",
   ].filter(Boolean).join("\n");
 }

@@ -1,9 +1,10 @@
 import { ColumnDef } from "@tanstack/react-table";
+import Link from "next/link";
 import { type SreServiceListItem } from "@/actions/sre-services";
-import { Badge } from "@/components/ui/badge";
+import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
 import { Button } from "@/components/ui/button";
-import { Archive, ExternalLink, MoreHorizontal, Pencil } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { isSafeEvidenceSourceUri } from "@/lib/sre/evidence-source-uri";
+import { Archive, ExternalLink, Eye, MoreHorizontal, Pencil } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -18,13 +19,10 @@ const tierLabels: Record<SreServiceListItem["tier"], string> = {
   "4": "Tier 4",
 };
 
-const statusClasses: Record<SreServiceListItem["status"], string> = {
-  active:
-    "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300",
-  deprecated:
-    "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300",
-  merged:
-    "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300",
+const statusTones: Record<SreServiceListItem["status"], TableBadgeTone> = {
+  active: "success",
+  deprecated: "warning",
+  merged: "slate",
 };
 
 function formatDate(value: Date | string) {
@@ -39,12 +37,12 @@ export const columns: ColumnDef<SreServiceListItem>[] = [
   {
     accessorKey: "name",
     header: "Service",
-    cell: ({ row }) => <span className="font-medium whitespace-nowrap">{row.original.name}</span>,
+    cell: ({ row }) => <span className="whitespace-nowrap font-medium">{row.original.name}</span>,
   },
   {
     id: "environment",
     header: "Env",
-    cell: ({ row }) => row.original.environment ? <Badge variant="secondary" className="whitespace-nowrap">{row.original.environment}</Badge> : <span>-</span>,
+    cell: ({ row }) => row.original.environment ? <TableBadge tone="info" compact className="whitespace-nowrap">{row.original.environment}</TableBadge> : <span>-</span>,
   },
   {
     id: "description",
@@ -63,7 +61,7 @@ export const columns: ColumnDef<SreServiceListItem>[] = [
     header: "Tier",
     cell: ({ row }) => {
       const tier = row.getValue("tier") as SreServiceListItem["tier"];
-      return <Badge variant="outline">{tierLabels[tier]}</Badge>;
+      return <TableBadge compact>{tierLabels[tier]}</TableBadge>;
     },
     filterFn: (row, id, value) => {
       return value.includes(row.getValue(id));
@@ -79,8 +77,8 @@ export const columns: ColumnDef<SreServiceListItem>[] = [
     header: "Repo",
     cell: ({ row }) => {
       const repo = row.original.repoUrl;
-      return repo ? (
-        <a href={repo} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-primary hover:underline whitespace-nowrap">
+      return repo && isSafeEvidenceSourceUri(repo) ? (
+        <a href={repo} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-primary hover:underline whitespace-nowrap">
           Link <ExternalLink className="h-3 w-3" />
         </a>
       ) : <span>-</span>;
@@ -92,12 +90,9 @@ export const columns: ColumnDef<SreServiceListItem>[] = [
     cell: ({ row }) => {
       const service = row.original;
       return (
-        <Badge
-          variant="outline"
-          className={cn("capitalize", statusClasses[service.status])}
-        >
+        <TableBadge tone={statusTones[service.status]} compact className="capitalize">
           {service.status}
-        </Badge>
+        </TableBadge>
       );
     },
     filterFn: (row, id, value) => {
@@ -132,6 +127,12 @@ export const columns: ColumnDef<SreServiceListItem>[] = [
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-44">
+            <DropdownMenuItem asChild>
+              <Link href={`/services/${service.id}`}>
+                <Eye className="mr-2 h-4 w-4" />
+                View details
+              </Link>
+            </DropdownMenuItem>
             <DropdownMenuItem
               onClick={() => meta?.onEdit?.(service)}
             >

@@ -1,9 +1,8 @@
-import { and, desc, eq, inArray, isNull, or } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, like, or } from "drizzle-orm";
 import { tool } from "ai";
 import { z } from "zod";
 
 import {
-  externalConnectorCredentials,
   externalConnectors,
   externalConnectorServices,
   privateAgentJobs,
@@ -17,37 +16,76 @@ import { routeSreConnectorQuery } from "@/lib/private-agents/job-router";
 import {
   DEFAULT_CONNECTOR_OUTPUT_LIMITS,
   assertEndpointAllowedForExecution,
+  boundedStageWindowMinutes,
   createDirectConnector,
-  decryptConnectorCredential,
   enforceConnectorPolicy,
   hashConnectorPayload,
+  isStagedLogConnectorType,
+  parseStagedEvidenceToolName,
   redactConnectorText,
   renderDiagnosticQueryTemplate,
+  resolveConnectorCredential,
   sanitizeConnectorEvidence,
+  stagedEvidenceToolName,
+  STAGED_EVIDENCE_STAGES,
+  validateStagedEvidenceTransition,
+  validateStagedEvidenceQuery,
   type ConnectorCredentialValue,
   type ConnectorDefinition,
   type ConnectorEvidenceItem,
+  type StagedEvidenceStage,
 } from "@/lib/sre/connectors";
+import { isSreStagedEvidenceEnabled } from "@/sre/lib/feature-gates";
 import { db } from "@/utils/db";
 
 const MAX_TOOL_ROWS = 10;
 const MAX_TIME_WINDOW_MINUTES = 6 * 60;
-const supportedLiveConnectorTypes = ["github", "kubernetes", "prometheus", "grafana", "sentry", "datadog", "loki", "elasticsearch", "tempo", "aws_cloudwatch"] as const;
+const supportedLiveConnectorTypes = [
+  "github",
+  "kubernetes",
+  "prometheus",
+  "grafana",
+  "sentry",
+  "datadog",
+  "loki",
+  "elasticsearch",
+  "tempo",
+  "aws_cloudwatch",
+  "gitlab",
+  "pagerduty",
+  "opsgenie",
+] as const;
 type SupportedLiveConnectorType = (typeof supportedLiveConnectorTypes)[number];
 
 const connectorSearchInputSchema = z.object({
   connectorId: z.string().uuid(),
   query: z.string().trim().min(1).max(500),
-  timeWindowMinutes: z.number().int().min(1).max(MAX_TIME_WINDOW_MINUTES).optional().default(60),
+  timeWindowMinutes: z
+    .number()
+    .int()
+    .min(1)
+    .max(MAX_TIME_WINDOW_MINUTES)
+    .optional()
+    .default(60),
   maxRows: z.number().int().min(1).max(MAX_TOOL_ROWS).optional().default(5),
   maxBytes: z.number().int().min(1024).max(256_000).optional().default(256_000),
   maxSeconds: z.number().int().min(1).max(15).optional().default(15),
+  stage: z.enum(STAGED_EVIDENCE_STAGES).optional(),
 });
 
 const diagnosticQueryInputSchema = z.object({
   queryId: z.string().uuid(),
-  parameters: z.record(z.union([z.string().max(500), z.number(), z.boolean(), z.null()])).optional().default({}),
-  timeWindowMinutes: z.number().int().min(1).max(MAX_TIME_WINDOW_MINUTES).optional().default(60),
+  parameters: z
+    .record(z.union([z.string().max(500), z.number(), z.boolean(), z.null()]))
+    .optional()
+    .default({}),
+  timeWindowMinutes: z
+    .number()
+    .int()
+    .min(1)
+    .max(MAX_TIME_WINDOW_MINUTES)
+    .optional()
+    .default(60),
 });
 
 export type SreConnectorToolScope = {
@@ -65,7 +103,10 @@ function credentialSecret(value: ConnectorCredentialValue | null) {
   return typeof secret === "string" && secret.trim() ? secret.trim() : null;
 }
 
-function credentialString(value: ConnectorCredentialValue | null, keys: string[]) {
+function credentialString(
+  value: ConnectorCredentialValue | null,
+  keys: string[],
+) {
   for (const key of keys) {
     const candidate = value?.[key];
     if (typeof candidate === "string" && candidate.trim()) {
@@ -81,22 +122,50 @@ function directConnectorCredential(value: ConnectorCredentialValue | null) {
 
   return {
     secret: credentialSecret(value),
-    apiKey: credentialString(value, ["apiKey", "api_key", "accessKeyId", "access_key_id", "secret"]),
-    applicationKey: credentialString(value, ["applicationKey", "application_key", "appKey", "app_key"]),
-    sessionToken: credentialString(value, ["sessionToken", "session_token", "awsSessionToken", "aws_session_token"]),
+    apiKey: credentialString(value, [
+      "apiKey",
+      "api_key",
+      "accessKeyId",
+      "access_key_id",
+      "secret",
+    ]),
+    applicationKey: credentialString(value, [
+      "applicationKey",
+      "application_key",
+      "appKey",
+      "app_key",
+    ]),
+    sessionToken: credentialString(value, [
+      "sessionToken",
+      "session_token",
+      "awsSessionToken",
+      "aws_session_token",
+    ]),
     region: credentialString(value, ["region", "awsRegion", "aws_region"]),
   };
 }
 
 function normalizeOutputLimits(value: Record<string, unknown> | null) {
   return {
-    maxRows: typeof value?.maxRows === "number" ? value.maxRows : DEFAULT_CONNECTOR_OUTPUT_LIMITS.maxRows,
-    maxBytes: typeof value?.maxBytes === "number" ? value.maxBytes : DEFAULT_CONNECTOR_OUTPUT_LIMITS.maxBytes,
-    maxSeconds: typeof value?.maxSeconds === "number" ? value.maxSeconds : DEFAULT_CONNECTOR_OUTPUT_LIMITS.maxSeconds,
+    maxRows:
+      typeof value?.maxRows === "number"
+        ? value.maxRows
+        : DEFAULT_CONNECTOR_OUTPUT_LIMITS.maxRows,
+    maxBytes:
+      typeof value?.maxBytes === "number"
+        ? value.maxBytes
+        : DEFAULT_CONNECTOR_OUTPUT_LIMITS.maxBytes,
+    maxSeconds:
+      typeof value?.maxSeconds === "number"
+        ? value.maxSeconds
+        : DEFAULT_CONNECTOR_OUTPUT_LIMITS.maxSeconds,
   };
 }
 
-function buildConnectorDefinition(row: ConnectorRow, scopedServiceIds: string[]): ConnectorDefinition {
+function buildConnectorDefinition(
+  row: ConnectorRow,
+  scopedServiceIds: string[],
+): ConnectorDefinition {
   return {
     id: row.id,
     type: row.type,
@@ -114,7 +183,9 @@ function buildConnectorDefinition(row: ConnectorRow, scopedServiceIds: string[])
 }
 
 function endpointUrl(row: ConnectorRow) {
-  return typeof row.config?.endpointUrl === "string" ? row.config.endpointUrl : null;
+  return typeof row.config?.endpointUrl === "string"
+    ? row.config.endpointUrl
+    : null;
 }
 
 async function getIncidentPrimaryService(scope: SreConnectorToolScope) {
@@ -122,7 +193,7 @@ async function getIncidentPrimaryService(scope: SreConnectorToolScope) {
     where: and(
       eq(sreIncidents.id, scope.incidentId),
       eq(sreIncidents.organizationId, scope.organizationId),
-      eq(sreIncidents.projectId, scope.projectId)
+      eq(sreIncidents.projectId, scope.projectId),
     ),
     columns: { id: true, primaryServiceId: true },
   });
@@ -132,25 +203,12 @@ async function getIncidentPrimaryService(scope: SreConnectorToolScope) {
   }
 
   if (!incident.primaryServiceId) {
-    throw new Error("Incident has no primary service; live connector tools require service scope");
+    throw new Error(
+      "Incident has no primary service; live connector tools require service scope",
+    );
   }
 
   return incident.primaryServiceId;
-}
-
-async function getConnectorScopedServiceIds(connectorId: string, scope: SreConnectorToolScope) {
-  const rows = await db
-    .select({ serviceId: externalConnectorServices.serviceId })
-    .from(externalConnectorServices)
-    .where(
-      and(
-        eq(externalConnectorServices.organizationId, scope.organizationId),
-        eq(externalConnectorServices.projectId, scope.projectId),
-        eq(externalConnectorServices.connectorId, connectorId)
-      )
-    );
-
-  return rows.map((row) => row.serviceId);
 }
 
 async function loadIncidentConnectors(scope: SreConnectorToolScope) {
@@ -161,23 +219,50 @@ async function loadIncidentConnectors(scope: SreConnectorToolScope) {
     .where(
       and(
         eq(externalConnectors.organizationId, scope.organizationId),
-        or(eq(externalConnectors.projectId, scope.projectId), isNull(externalConnectors.projectId)),
+        or(
+          eq(externalConnectors.projectId, scope.projectId),
+          isNull(externalConnectors.projectId),
+        ),
         inArray(externalConnectors.type, supportedLiveConnectorTypes),
-        inArray(externalConnectors.status, ["configured", "valid"])
-      )
+        inArray(externalConnectors.status, ["configured", "valid"]),
+      ),
     )
     .orderBy(desc(externalConnectors.updatedAt));
 
-  const connectors = await Promise.all(
-    rows.map(async (row) => {
-      const scopedServiceIds = await getConnectorScopedServiceIds(row.connector.id, scope);
-      return { row: row.connector, scopedServiceIds };
-    })
-  );
+  const connectorIds = rows.map((row) => row.connector.id);
+  const scopeRows = connectorIds.length
+    ? await db
+        .select({
+          connectorId: externalConnectorServices.connectorId,
+          serviceId: externalConnectorServices.serviceId,
+        })
+        .from(externalConnectorServices)
+        .where(
+          and(
+            eq(externalConnectorServices.organizationId, scope.organizationId),
+            eq(externalConnectorServices.projectId, scope.projectId),
+            inArray(externalConnectorServices.connectorId, connectorIds),
+          ),
+        )
+    : [];
+  const scopesByConnector = new Map<string, string[]>();
+  for (const row of scopeRows) {
+    const serviceIds = scopesByConnector.get(row.connectorId) ?? [];
+    serviceIds.push(row.serviceId);
+    scopesByConnector.set(row.connectorId, serviceIds);
+  }
+  const connectors = rows.map((row) => ({
+    row: row.connector,
+    scopedServiceIds: scopesByConnector.get(row.connector.id) ?? [],
+  }));
 
   return {
     primaryServiceId,
-    connectors: connectors.filter((entry) => entry.scopedServiceIds.length === 0 || entry.scopedServiceIds.includes(primaryServiceId)),
+    connectors: connectors.filter(
+      (entry) =>
+        entry.scopedServiceIds.length === 0 ||
+        entry.scopedServiceIds.includes(primaryServiceId),
+    ),
   };
 }
 
@@ -194,8 +279,15 @@ function summarizeEvidenceItem(row: typeof sreEvidenceItems.$inferSelect) {
   };
 }
 
-function evidenceInsertValue(scope: SreConnectorToolScope, item: ConnectorEvidenceItem) {
-  if (!supportedLiveConnectorTypes.includes(item.source as SupportedLiveConnectorType)) {
+function evidenceInsertValue(
+  scope: SreConnectorToolScope,
+  item: ConnectorEvidenceItem,
+) {
+  if (
+    !supportedLiveConnectorTypes.includes(
+      item.source as SupportedLiveConnectorType,
+    )
+  ) {
     throw new Error(`Unsupported connector evidence source: ${item.source}`);
   }
 
@@ -212,7 +304,10 @@ function evidenceInsertValue(scope: SreConnectorToolScope, item: ConnectorEviden
     rawContentExcerpt: item.rawContent ? item.rawContent.slice(0, 4000) : null,
     evidenceType: item.evidenceType,
     severity: item.metadata.severity ?? null,
-    confidence: typeof item.metadata.confidence === "number" ? item.metadata.confidence.toFixed(4) : null,
+    confidence:
+      typeof item.metadata.confidence === "number"
+        ? item.metadata.confidence.toFixed(4)
+        : null,
     tags: { values: item.metadata.tags ?? [] },
     metadata: {
       connectorEvidenceId: item.id,
@@ -245,24 +340,118 @@ export async function listIncidentLiveConnectors(scope: SreConnectorToolScope) {
 
 export async function searchIncidentLiveConnectorEvidence(
   scope: SreConnectorToolScope,
-  input: z.infer<typeof connectorSearchInputSchema>
+  input: z.infer<typeof connectorSearchInputSchema>,
 ) {
   const startedAt = Date.now();
   const { primaryServiceId, connectors } = await loadIncidentConnectors(scope);
-  const selected = connectors.find((entry) => entry.row.id === input.connectorId);
+  const selected = connectors.find(
+    (entry) => entry.row.id === input.connectorId,
+  );
 
   if (!selected) {
-    throw new Error("Connector not found, unavailable, or not scoped to the incident service");
+    throw new Error(
+      "Connector not found, unavailable, or not scoped to the incident service",
+    );
   }
 
   const connector = selected.row;
   const outputLimits = normalizeOutputLimits(connector.outputLimits);
+  const stagedStage =
+    isSreStagedEvidenceEnabled() &&
+    !connector.privateAgentId &&
+    isStagedLogConnectorType(connector.type)
+      ? input.stage
+      : null;
+
+  if (
+    isSreStagedEvidenceEnabled() &&
+    !connector.privateAgentId &&
+    isStagedLogConnectorType(connector.type)
+  ) {
+    try {
+      if (!stagedStage) {
+        throw new Error(
+          "A staged evidence operation is required for direct log connector searches",
+        );
+      }
+      if (!scope.investigationRunId) {
+        throw new Error(
+          "Staged evidence searches require an active investigation run",
+        );
+      }
+
+      const previousCalls = await db
+        .select({ toolName: sreInvestigationToolCalls.toolName })
+        .from(sreInvestigationToolCalls)
+        .where(
+          and(
+            eq(
+              sreInvestigationToolCalls.investigationRunId,
+              scope.investigationRunId,
+            ),
+            eq(sreInvestigationToolCalls.connectorId, connector.id),
+            eq(sreInvestigationToolCalls.status, "success"),
+            like(
+              sreInvestigationToolCalls.toolName,
+              "agent.connector.search.stage.%",
+            ),
+          ),
+        );
+      const completedStages = new Set(
+        previousCalls
+          .map((call) => parseStagedEvidenceToolName(call.toolName))
+          .filter((stage): stage is StagedEvidenceStage => Boolean(stage)),
+      );
+      validateStagedEvidenceTransition({ stage: stagedStage, completedStages });
+      validateStagedEvidenceQuery({
+        connectorType: connector.type,
+        stage: stagedStage,
+        query: input.query,
+      });
+    } catch (error) {
+      await db.insert(sreInvestigationToolCalls).values({
+        investigationRunId: scope.investigationRunId ?? null,
+        connectorId: connector.id,
+        connectorType: connector.type,
+        toolName: stagedStage
+          ? stagedEvidenceToolName(stagedStage)
+          : "agent.connector.search.stage.required",
+        inputHash: hashConnectorPayload({
+          connectorId: connector.id,
+          query: input.query,
+          stage: stagedStage,
+          timeWindowMinutes: input.timeWindowMinutes,
+        }),
+        inputSummary: redactConnectorText(
+          JSON.stringify({
+            connectorId: connector.id,
+            connectorType: connector.type,
+            stage: stagedStage,
+            timeWindowMinutes: input.timeWindowMinutes,
+          }),
+        ),
+        status: "error",
+        errorMessage:
+          error instanceof Error
+            ? error.message.slice(0, 2000)
+            : "Staged evidence request rejected",
+        durationMs: Date.now() - startedAt,
+        costEstimateCents: 0,
+        executedAt: new Date(),
+      });
+      throw error;
+    }
+  }
+
   const now = new Date();
+  const effectiveTimeWindowMinutes = stagedStage
+    ? boundedStageWindowMinutes(stagedStage, input.timeWindowMinutes)
+    : input.timeWindowMinutes;
   const params = {
     query: input.query,
     serviceId: primaryServiceId,
     timeWindow: {
-      start: new Date(now.getTime() - input.timeWindowMinutes * 60_000),
+      start: new Date(now.getTime() - effectiveTimeWindowMinutes * 60_000),
       end: now,
     },
     budget: {
@@ -272,23 +461,36 @@ export async function searchIncidentLiveConnectorEvidence(
       maxCost: 0,
     },
   };
-  const definition = buildConnectorDefinition(connector, selected.scopedServiceIds);
+  const definition = buildConnectorDefinition(
+    connector,
+    selected.scopedServiceIds,
+  );
   const policyDecision = enforceConnectorPolicy({
     organizationId: scope.organizationId,
     projectId: scope.projectId,
     connector: definition,
     params,
-    actor: { actorType: "agent", userId: scope.userId ?? undefined, investigationRunId: scope.investigationRunId ?? undefined },
+    actor: {
+      actorType: "agent",
+      userId: scope.userId ?? undefined,
+      investigationRunId: scope.investigationRunId ?? undefined,
+    },
   });
   const connectorEndpointUrl = endpointUrl(connector);
-  await assertEndpointAllowedForExecution(connectorEndpointUrl, Boolean(connector.privateAgentId));
+  await assertEndpointAllowedForExecution(
+    connectorEndpointUrl,
+    Boolean(connector.privateAgentId),
+  );
 
   if (connector.privateAgentId) {
     const agent = await db.query.privateAgents.findFirst({
       where: and(
         eq(privateAgents.id, connector.privateAgentId),
         eq(privateAgents.organizationId, scope.organizationId),
-        or(eq(privateAgents.projectId, scope.projectId), isNull(privateAgents.projectId))
+        or(
+          eq(privateAgents.projectId, scope.projectId),
+          isNull(privateAgents.projectId),
+        ),
       ),
     });
 
@@ -299,7 +501,11 @@ export async function searchIncidentLiveConnectorEvidence(
     const route = routeSreConnectorQuery({
       organizationId: scope.organizationId,
       projectId: scope.projectId,
-      connector: { ...definition, privateAgentId: connector.privateAgentId, endpointUrl: connectorEndpointUrl },
+      connector: {
+        ...definition,
+        privateAgentId: connector.privateAgentId,
+        endpointUrl: connectorEndpointUrl,
+      },
       params,
       agents: [agent],
     });
@@ -308,7 +514,10 @@ export async function searchIncidentLiveConnectorEvidence(
       throw new Error(route.reason);
     }
 
-    const policyDecisionHash = hashConnectorPayload({ connectorId: connector.id, policyDecision });
+    const policyDecisionHash = hashConnectorPayload({
+      connectorId: connector.id,
+      policyDecision,
+    });
     const [insertedJob] = await db
       .insert(privateAgentJobs)
       .values({
@@ -333,7 +542,7 @@ export async function searchIncidentLiveConnectorEvidence(
           where: and(
             eq(privateAgentJobs.idempotencyKey, route.idempotencyKey),
             eq(privateAgentJobs.organizationId, scope.organizationId),
-            eq(privateAgentJobs.projectId, scope.projectId)
+            eq(privateAgentJobs.projectId, scope.projectId),
           ),
           columns: { id: true },
         });
@@ -363,58 +572,106 @@ export async function searchIncidentLiveConnectorEvidence(
       privateAgentJobId: jobId,
       queued: true,
       evidence: [],
-      message: insertedJob ? "Queued Private Agent connector search" : "Private Agent connector search is already queued",
+      message: insertedJob
+        ? "Queued Private Agent connector search"
+        : "Private Agent connector search is already queued",
     };
   }
 
-  const credentialRow = await db.query.externalConnectorCredentials.findFirst({
-    where: eq(externalConnectorCredentials.connectorId, connector.id),
-    orderBy: desc(externalConnectorCredentials.updatedAt),
-  });
-  const credential = credentialRow
-    ? decryptConnectorCredential(credentialRow.encryptedCredential, {
-        organizationId: scope.organizationId,
-        projectId: scope.projectId,
-        connectorId: connector.id,
-      })
-    : null;
-  const directConnector = createDirectConnector({
-    ...definition,
-    endpointUrl: connectorEndpointUrl,
-    credential: directConnectorCredential(credential),
-  });
-  const rawEvidence = await directConnector.search(params);
-  const sanitized = sanitizeConnectorEvidence(rawEvidence, policyDecision.effectiveLimits);
-  const insertedEvidence = sanitized.items.length
-    ? await db.insert(sreEvidenceItems).values(sanitized.items.map((item) => evidenceInsertValue(scope, item))).returning()
-    : [];
-
-  await db.insert(sreInvestigationToolCalls).values({
-    investigationRunId: scope.investigationRunId ?? null,
+  const toolName = stagedStage
+    ? stagedEvidenceToolName(stagedStage)
+    : "agent.connector.search";
+  const inputHash = hashConnectorPayload({
     connectorId: connector.id,
-    connectorType: connector.type,
-    toolName: "agent.connector.search",
-    inputHash: hashConnectorPayload({ connectorId: connector.id, params }),
-    inputSummary: redactConnectorText(JSON.stringify({ connectorId: connector.id, connectorType: connector.type, serviceId: primaryServiceId, query: input.query })),
-    outputHash: sanitized.resultHash,
-    outputSummary: `Returned ${insertedEvidence.length} evidence item(s)${sanitized.truncated ? " (truncated)" : ""}`,
-    status: "success",
-    durationMs: Date.now() - startedAt,
-    costEstimateCents: 0,
-    evidenceItemId: insertedEvidence[0]?.id ?? null,
-    executedAt: new Date(),
+    params,
+    stage: stagedStage,
   });
+  const inputSummary = redactConnectorText(
+    JSON.stringify({
+      connectorId: connector.id,
+      connectorType: connector.type,
+      serviceId: primaryServiceId,
+      query: input.query,
+      stage: stagedStage,
+      timeWindowMinutes: effectiveTimeWindowMinutes,
+    }),
+  );
 
-  return {
-    executionMode: "direct" as const,
-    queued: false,
-    evidence: insertedEvidence.map(summarizeEvidenceItem),
-    truncated: sanitized.truncated,
-    message: `Persisted ${insertedEvidence.length} connector evidence item(s)`,
-  };
+  try {
+    const credentialResolution = await resolveConnectorCredential({
+      organizationId: scope.organizationId,
+      projectId: scope.projectId,
+      connectorId: connector.id,
+    });
+    const directConnector = createDirectConnector({
+      ...definition,
+      endpointUrl: connectorEndpointUrl,
+      credential: directConnectorCredential(
+        credentialResolution?.value ?? null,
+      ),
+    });
+    const rawEvidence = await directConnector.search(params);
+    const sanitized = sanitizeConnectorEvidence(
+      rawEvidence,
+      policyDecision.effectiveLimits,
+    );
+    const insertedEvidence = sanitized.items.length
+      ? await db
+          .insert(sreEvidenceItems)
+          .values(
+            sanitized.items.map((item) => evidenceInsertValue(scope, item)),
+          )
+          .returning()
+      : [];
+
+    await db.insert(sreInvestigationToolCalls).values({
+      investigationRunId: scope.investigationRunId ?? null,
+      connectorId: connector.id,
+      connectorType: connector.type,
+      toolName,
+      inputHash,
+      inputSummary,
+      outputHash: sanitized.resultHash,
+      outputSummary: `Returned ${insertedEvidence.length} evidence item(s)${sanitized.truncated ? " (truncated)" : ""}`,
+      status: "success",
+      durationMs: Date.now() - startedAt,
+      costEstimateCents: 0,
+      evidenceItemId: insertedEvidence[0]?.id ?? null,
+      executedAt: new Date(),
+    });
+
+    return {
+      executionMode: "direct" as const,
+      queued: false,
+      stage: stagedStage,
+      evidence: insertedEvidence.map(summarizeEvidenceItem),
+      truncated: sanitized.truncated,
+      message: `Persisted ${insertedEvidence.length} connector evidence item(s)`,
+    };
+  } catch (error) {
+    await db.insert(sreInvestigationToolCalls).values({
+      investigationRunId: scope.investigationRunId ?? null,
+      connectorId: connector.id,
+      connectorType: connector.type,
+      toolName,
+      inputHash,
+      inputSummary,
+      status: "error",
+      errorMessage:
+        error instanceof Error
+          ? error.message.slice(0, 2000)
+          : "Connector search failed",
+      durationMs: Date.now() - startedAt,
+      costEstimateCents: 0,
+      executedAt: new Date(),
+    });
+    throw error;
+  }
 }
 
-export async function listIncidentDiagnosticQueries(scope: SreConnectorToolScope) {
+export async function listIncidentDiagnosticQueries(
+  scope: SreConnectorToolScope,
+) {
   const { connectors } = await loadIncidentConnectors(scope);
   const connectorIds = connectors.map((entry) => entry.row.id);
 
@@ -435,14 +692,17 @@ export async function listIncidentDiagnosticQueries(scope: SreConnectorToolScope
       connectorName: externalConnectors.name,
     })
     .from(diagnosticQueries)
-    .innerJoin(externalConnectors, eq(diagnosticQueries.connectorId, externalConnectors.id))
+    .innerJoin(
+      externalConnectors,
+      eq(diagnosticQueries.connectorId, externalConnectors.id),
+    )
     .where(
       and(
         eq(diagnosticQueries.organizationId, scope.organizationId),
         eq(diagnosticQueries.projectId, scope.projectId),
         eq(diagnosticQueries.status, "active"),
-        inArray(diagnosticQueries.connectorId, connectorIds)
-      )
+        inArray(diagnosticQueries.connectorId, connectorIds),
+      ),
     )
     .orderBy(desc(diagnosticQueries.createdAt))
     .limit(25);
@@ -455,12 +715,19 @@ export async function listIncidentDiagnosticQueries(scope: SreConnectorToolScope
       connectorId: row.connectorId,
       connectorName: row.connectorName,
       connectorType: row.connectorType,
-      limits: { maxRows: row.maxRows, maxBytes: row.maxBytes, maxSeconds: row.maxSeconds },
+      limits: {
+        maxRows: row.maxRows,
+        maxBytes: row.maxBytes,
+        maxSeconds: row.maxSeconds,
+      },
     })),
   };
 }
 
-export async function executeIncidentDiagnosticQuery(scope: SreConnectorToolScope, input: z.infer<typeof diagnosticQueryInputSchema>) {
+export async function executeIncidentDiagnosticQuery(
+  scope: SreConnectorToolScope,
+  input: z.infer<typeof diagnosticQueryInputSchema>,
+) {
   const startedAt = Date.now();
   const { connectors } = await loadIncidentConnectors(scope);
   const connectorIds = connectors.map((entry) => entry.row.id);
@@ -480,19 +747,24 @@ export async function executeIncidentDiagnosticQuery(scope: SreConnectorToolScop
       maxSeconds: diagnosticQueries.maxSeconds,
     })
     .from(diagnosticQueries)
-    .innerJoin(externalConnectors, eq(diagnosticQueries.connectorId, externalConnectors.id))
+    .innerJoin(
+      externalConnectors,
+      eq(diagnosticQueries.connectorId, externalConnectors.id),
+    )
     .where(
       and(
         eq(diagnosticQueries.id, input.queryId),
         eq(diagnosticQueries.organizationId, scope.organizationId),
         eq(diagnosticQueries.projectId, scope.projectId),
-        eq(diagnosticQueries.status, "active")
-      )
+        eq(diagnosticQueries.status, "active"),
+      ),
     )
     .limit(1);
 
   if (!definition || !connectorIds.includes(definition.connectorId)) {
-    throw new Error("Diagnostic query is not available for this incident service scope");
+    throw new Error(
+      "Diagnostic query is not available for this incident service scope",
+    );
   }
 
   const rendered = renderDiagnosticQueryTemplate(definition, input.parameters);
@@ -538,7 +810,10 @@ export async function executeIncidentDiagnosticQuery(scope: SreConnectorToolScop
       inputHash: rendered.inputHash,
       inputSummary: rendered.inputSummary,
       status: "error",
-      errorMessage: error instanceof Error ? error.message.slice(0, 2000) : "Diagnostic query failed",
+      errorMessage:
+        error instanceof Error
+          ? error.message.slice(0, 2000)
+          : "Diagnostic query failed",
       durationMs: Date.now() - startedAt,
       costEstimateCents: 0,
       executedAt: new Date(),
@@ -551,22 +826,27 @@ export async function executeIncidentDiagnosticQuery(scope: SreConnectorToolScop
 export function createSreConnectorTools(scope: SreConnectorToolScope) {
   return {
     listIncidentConnectors: tool({
-      description: "List live read-only connectors available to the scoped incident's primary service.",
+      description:
+        "List live read-only connectors available to the scoped incident's primary service.",
       inputSchema: z.object({}),
       execute: async () => listIncidentLiveConnectors(scope),
     }),
     searchLiveConnectorEvidence: tool({
-      description: "Search one live read-only connector for the scoped incident's primary service. Direct connectors persist sanitized evidence immediately; Private Agent connectors queue a server-authorized job.",
+      description:
+        "Search one live read-only connector for the scoped incident's primary service. When staged log evidence is enabled, direct Loki searches must progress through statistics, sample, signatures, temporal_context, then correlation. Loki statistics require a LogQL metric function. Direct connectors persist sanitized evidence immediately; Private Agent connectors queue a server-authorized job.",
       inputSchema: connectorSearchInputSchema,
-      execute: async (input) => searchIncidentLiveConnectorEvidence(scope, input),
+      execute: async (input) =>
+        searchIncidentLiveConnectorEvidence(scope, input),
     }),
     listDiagnosticQueries: tool({
-      description: "List admin-approved read-only diagnostic query templates available to the scoped incident service.",
+      description:
+        "List admin-approved read-only diagnostic query templates available to the scoped incident service.",
       inputSchema: z.object({}),
       execute: async () => listIncidentDiagnosticQueries(scope),
     }),
     executeDiagnosticQuery: tool({
-      description: "Execute one admin-approved read-only diagnostic query template with allowlisted parameters for the scoped incident service.",
+      description:
+        "Execute one admin-approved read-only diagnostic query template with allowlisted parameters for the scoped incident service.",
       inputSchema: diagnosticQueryInputSchema,
       execute: async (input) => executeIncidentDiagnosticQuery(scope, input),
     }),

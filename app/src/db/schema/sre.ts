@@ -65,6 +65,7 @@ type SreVerificationStatus = "pending" | "running" | "passed" | "failed";
 type SreEvidenceSourceType =
   | "native"
   | "github"
+  | "gitlab"
   | "kubernetes"
   | "prometheus"
   | "grafana"
@@ -74,6 +75,8 @@ type SreEvidenceSourceType =
   | "loki"
   | "elasticsearch"
   | "tempo"
+  | "pagerduty"
+  | "opsgenie"
   | "splunk"
   | "slack"
   | "mcp"

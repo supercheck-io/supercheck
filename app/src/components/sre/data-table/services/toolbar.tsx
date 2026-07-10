@@ -1,4 +1,5 @@
 import { Table } from "@tanstack/react-table";
+import type { ReactNode } from "react";
 import { Plus, Search } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -8,39 +9,29 @@ import { DataTableFacetedFilter } from "@/components/ui/data-table-faceted-filte
 interface ServicesToolbarProps<TData> {
   table: Table<TData>;
   onAdd: () => void;
+  setupGuide?: ReactNode;
 }
 
 export function ServicesToolbar<TData>({
   table,
   onAdd,
+  setupGuide,
 }: ServicesToolbarProps<TData>) {
   return (
-    <div className="space-y-4">
-      <div className="mb-4 -mt-2 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex flex-col">
-          <h2 className="text-2xl font-semibold">Services</h2>
-          <p className="text-sm text-muted-foreground">
-            Manage services, ownership, telemetry names, and incident routing metadata
-          </p>
-        </div>
-        <Button onClick={onAdd}>
-          <Plus className="mr-2 h-4 w-4" />
-          Register service
-        </Button>
-      </div>
-
-      <div className="flex flex-col gap-3 md:flex-row md:items-center">
-        <div className="relative md:max-w-sm md:flex-1">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+      <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:items-center">
+        <div className="relative w-full sm:max-w-sm">
+          <Search className="absolute left-3 top-2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Search service, owner, tag..."
             value={table.getState().globalFilter ?? ""}
             onChange={(event) => table.setGlobalFilter(event.target.value)}
-            className="pl-9 h-8"
+            className="h-8 pl-9"
+            aria-label="Search services"
           />
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {table.getColumn("tier") && (
             <DataTableFacetedFilter
               column={table.getColumn("tier")}
@@ -65,6 +56,14 @@ export function ServicesToolbar<TData>({
             />
           )}
         </div>
+      </div>
+
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        {setupGuide}
+        <Button onClick={onAdd} className="w-full sm:w-auto">
+          <Plus className="mr-2 h-4 w-4" />
+          Add service
+        </Button>
       </div>
     </div>
   );

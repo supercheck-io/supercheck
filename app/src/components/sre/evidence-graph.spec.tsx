@@ -3,6 +3,22 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { SreEvidenceGraph } from "./evidence-graph";
 import type { SreEvidenceGraph as SreEvidenceGraphData } from "@/lib/sre/evidence-graph-queries";
 
+if (!globalThis.structuredClone) {
+  globalThis.structuredClone = <T,>(value: T): T =>
+    JSON.parse(JSON.stringify(value)) as T;
+}
+
+if (!globalThis.ResizeObserver) {
+  class ResizeObserverMock {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+
+  globalThis.ResizeObserver =
+    ResizeObserverMock as unknown as typeof ResizeObserver;
+}
+
 jest.mock("sonner", () => ({
   toast: {
     error: jest.fn(),
@@ -161,17 +177,13 @@ describe("SreEvidenceGraph", () => {
     render(<SreEvidenceGraph graph={graph} />);
 
     expect(screen.getAllByText("Checkout").length).toBeGreaterThan(0);
-    expect(
-      screen.getAllByText("Prometheus latency spike").length,
-    ).toBeGreaterThan(0);
+    expect(screen.queryByText("Prometheus latency spike")).not.toBeInTheDocument();
 
-    fireEvent.change(screen.getByPlaceholderText("Search graph nodes..."), {
+    fireEvent.change(screen.getByPlaceholderText("Search topology..."), {
       target: { value: "prometheus" },
     });
 
-    expect(
-      screen.queryByRole("button", { name: /select service node checkout/i }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Service: Checkout")).not.toBeInTheDocument();
     expect(
       screen.getAllByText("Prometheus latency spike").length,
     ).toBeGreaterThan(0);
@@ -180,17 +192,88 @@ describe("SreEvidenceGraph", () => {
   it("shows selected node relationships", () => {
     render(<SreEvidenceGraph graph={graph} />);
 
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: /select incident node checkout latency/i,
-      }),
-    );
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("Incident: Checkout latency"));
 
+    const detailsDialog = screen.getByRole("dialog", {
+      name: /incident: checkout latency/i,
+    });
+    expect(detailsDialog).toBeInTheDocument();
+    expect(detailsDialog).toHaveClass("max-h-[calc(100svh-1rem)]");
+    expect(detailsDialog).not.toHaveClass(
+      "h-[min(720px,calc(100svh-2rem))]",
+    );
     expect(screen.getAllByText("#7").length).toBeGreaterThan(0);
     expect(screen.getAllByText("impacted service").length).toBeGreaterThan(0);
     expect(screen.getAllByText("triggered incident").length).toBeGreaterThan(0);
     expect(screen.getAllByText("has evidence").length).toBeGreaterThan(0);
     expect(screen.getAllByText("investigated by").length).toBeGreaterThan(0);
+  });
+
+  it("does not render unsafe node detail links", () => {
+    const graphWithUnsafeLink = {
+      ...graph,
+      nodes: graph.nodes.map((node) =>
+        node.id === "incident:i1"
+          ? { ...node, href: "javascript:alert(1)" }
+          : node,
+      ),
+    };
+
+    render(<SreEvidenceGraph graph={graphWithUnsafeLink} />);
+    fireEvent.click(screen.getByLabelText("Incident: Checkout latency"));
+
+    expect(
+      screen.queryByRole("link", { name: /view details/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("groups repeated relationships and provides a fallback title", () => {
+    const graphWithDuplicates = structuredClone(graph);
+    graphWithDuplicates.nodes.push(
+      {
+        id: "investigation:r2",
+        sourceId: "r2",
+        type: "investigation",
+        title: "",
+        subtitle: null,
+        status: "completed",
+        href: "/incidents/i1",
+        createdAt: new Date("2026-06-24T10:15:00Z"),
+      },
+      {
+        id: "investigation:r3",
+        sourceId: "r3",
+        type: "investigation",
+        title: "",
+        subtitle: null,
+        status: "completed",
+        href: "/incidents/i1",
+        createdAt: new Date("2026-06-24T10:16:00Z"),
+      },
+    );
+    graphWithDuplicates.edges.push(
+      {
+        id: "incident:i1->investigation:r2:investigated by",
+        source: "incident:i1",
+        target: "investigation:r2",
+        label: "investigated by",
+        evidence: "Investigation run",
+      },
+      {
+        id: "incident:i1->investigation:r3:investigated by",
+        source: "incident:i1",
+        target: "investigation:r3",
+        label: "investigated by",
+        evidence: "Investigation run",
+      },
+    );
+
+    render(<SreEvidenceGraph graph={graphWithDuplicates} />);
+    fireEvent.click(screen.getByLabelText("Incident: Checkout latency"));
+
+    expect(screen.getByText("investigation record")).toBeInTheDocument();
+    expect(screen.getByText("2 similar")).toBeInTheDocument();
   });
 
   it("does not expose model names in investigation graph cards", () => {
@@ -201,10 +284,10 @@ describe("SreEvidenceGraph", () => {
     expect(screen.queryByText("gpt-4o-mini")).not.toBeInTheDocument();
   });
 
-  it("renders expanded operational node types", () => {
+  it("keeps secondary operational nodes out of the default view", () => {
     render(<SreEvidenceGraph graph={graph} />);
 
-    expect(screen.getAllByText("Checkout monitor").length).toBeGreaterThan(0);
+    expect(screen.queryByLabelText("Monitor: Checkout monitor")).not.toBeInTheDocument();
     expect(screen.getAllByText("Checkout p95 breached").length).toBeGreaterThan(
       0,
     );
@@ -217,12 +300,15 @@ describe("SreEvidenceGraph", () => {
     render(<SreEvidenceGraph graph={graph} />);
 
     fireEvent.click(
-      screen.getByRole("button", {
-        name: /select playbook node checkout latency playbook/i,
-      }),
+      screen.getByLabelText("Playbook: Checkout latency playbook"),
     );
 
     expect(screen.getAllByText("matches playbook").length).toBeGreaterThan(0);
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /checkout p95 breached matches playbook/i,
+      }),
+    );
     expect(
       screen.getByText(
         /service: checkout; severity: sev2; error pattern: p95 latency/i,
@@ -230,40 +316,38 @@ describe("SreEvidenceGraph", () => {
     ).toBeInTheDocument();
   });
 
-  it("keeps the graph controls focused on filtering and node selection", () => {
+  it("renders production topology navigation controls", () => {
     render(<SreEvidenceGraph graph={graph} />);
 
-    expect(screen.getByText("Graph lanes")).toBeInTheDocument();
+    expect(screen.getByText("Investigation context")).toBeInTheDocument();
     expect(
-      screen.getByText(/select a node to inspect details/i),
+      screen.getByText(/select a node or relationship/i),
     ).toBeInTheDocument();
-    expect(screen.getByLabelText("Evidence graph lanes viewport")).toHaveStyle({
-      backgroundSize: "18px 18px",
-    });
     expect(
-      screen.queryByRole("button", { name: /zoom in graph/i }),
-    ).not.toBeInTheDocument();
+      screen.getByLabelText("Investigation Map canvas"),
+    ).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: /fit/i }),
-    ).not.toBeInTheDocument();
+      screen.getByRole("button", { name: /zoom in/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /fit view/i })).toBeInTheDocument();
   });
 
-  it("opens and closes the expanded graph lanes view", () => {
+  it("opens and closes the expanded topology view", () => {
     render(<SreEvidenceGraph graph={graph} />);
 
     fireEvent.click(
-      screen.getByRole("button", { name: /expand graph lanes/i }),
+      screen.getByRole("button", { name: /expand investigation map/i }),
     );
 
     expect(
-      screen.getByRole("dialog", { name: /graph lanes/i }),
+      screen.getByRole("dialog", { name: /expanded investigation map/i }),
     ).toBeInTheDocument();
     expect(
-      screen.getAllByLabelText("Evidence graph lanes viewport"),
+      screen.getAllByLabelText("Investigation Map canvas"),
     ).toHaveLength(2);
 
     fireEvent.click(
-      screen.getByRole("button", { name: /close expanded graph lanes/i }),
+      screen.getByRole("button", { name: /close expanded investigation map/i }),
     );
 
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -272,7 +356,7 @@ describe("SreEvidenceGraph", () => {
   it("clears active filters without exposing saved view controls", () => {
     render(<SreEvidenceGraph graph={graph} />);
 
-    const searchInput = screen.getByPlaceholderText("Search graph nodes...");
+    const searchInput = screen.getByPlaceholderText("Search topology...");
     fireEvent.change(searchInput, { target: { value: "prometheus" } });
 
     fireEvent.click(screen.getByRole("button", { name: "Clear" }));

@@ -180,9 +180,19 @@ export function buildSreInvestigationReportExport(input: {
   evidence: SreInvestigationExportEvidence[];
   toolCalls: SreInvestigationExportToolCall[];
   recommendations: SreInvestigationExportRecommendation[];
+  totals?: {
+    evidence: number;
+    toolCalls: number;
+    recommendations: number;
+  };
   exportedAt?: Date;
 }): SreInvestigationReportExport {
   const { item, evidence, toolCalls, recommendations, exportedAt = new Date() } = input;
+  const totals = input.totals ?? {
+    evidence: evidence.length,
+    toolCalls: toolCalls.length,
+    recommendations: recommendations.length,
+  };
   const boundedEvidence = evidence.slice(0, REPORT_EXPORT_LIMITS.evidence);
   const boundedToolCalls = toolCalls.slice(0, REPORT_EXPORT_LIMITS.toolCalls);
   const boundedRecommendations = recommendations.slice(0, REPORT_EXPORT_LIMITS.recommendations);
@@ -243,14 +253,14 @@ export function buildSreInvestigationReportExport(input: {
       createdAt: recommendation.createdAt.toISOString(),
     })),
     provenance: {
-      evidenceCount: evidence.length,
-      toolCallCount: toolCalls.length,
-      recommendationCount: recommendations.length,
+      evidenceCount: totals.evidence,
+      toolCallCount: totals.toolCalls,
+      recommendationCount: totals.recommendations,
       truncation: {
-        evidence: truncationFooter(evidence.length, boundedEvidence.length),
-        toolCalls: truncationFooter(toolCalls.length, boundedToolCalls.length),
+        evidence: truncationFooter(totals.evidence, boundedEvidence.length),
+        toolCalls: truncationFooter(totals.toolCalls, boundedToolCalls.length),
         recommendations: truncationFooter(
-          recommendations.length,
+          totals.recommendations,
           boundedRecommendations.length
         ),
       },

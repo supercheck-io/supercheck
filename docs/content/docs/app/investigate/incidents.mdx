@@ -8,7 +8,7 @@ Incidents are the responder queue for issues that need investigation, evidence r
 
 You can create an incident in two ways:
 
-- From **Communicate → Alerts → Signals**, when an alert signal needs investigation.
+- From **Communicate → Alerts → Signals**, when an alert signal needs investigation. The new incident opens immediately after creation.
 - From **Communicate → Incidents → New incident**, when the issue did not start from a Supercheck alert.
 
 Both paths create the same incident workspace.
@@ -27,18 +27,39 @@ The page has three tabs:
 
 The Investigation tab includes a readiness checklist. Missing stored evidence links to brief generation, and missing service mapping links administrators to service setup so live connector tools remain properly scoped.
 
+Completed investigations also show bounded tool telemetry: total connector calls, failed calls, and average latency. These counters never expose connector inputs, raw results, or credentials.
+
 This keeps the responder view simple: first confirm the incident, then run investigation, then review evidence and the summary.
+
+### Investigation Report
+
+Reports separate evidence from judgment using **Fact**, **Inference**, and **Hypothesis** labels. The standard responder summary includes:
+
+- What changed
+- Blast radius
+- Strongest signals
+- Likely cause and confidence
+- Evidence gaps
+- Next safe read-only checks and a human verification plan
+
+If the available evidence cannot establish a cause or affected scope, the report states that explicitly instead of filling the gap with assumptions.
+
+### Incident Trends
+
+Select **Trends** from the incident queue to review the last 30 days of created and resolved incidents, resolution rate, average resolution time, severity mix, and most affected services. Analytics use the current organization and project context and require the same incident view permission as the queue.
 
 ### Copilot
 
 Copilot is available from **Investigate → Copilot** and from the global floating Copilot launcher. Use it for read-only follow-up questions and investigation planning without adding a second chat transcript inside the incident page.
+
+On small screens the launcher is icon-only and the chat fills the viewport. On larger screens it opens as a bottom-right work panel. The separate customer-support bubble remains above the Copilot launcher and behind the open Copilot panel so the two chat surfaces do not overlap.
 
 Copilot includes:
 
 - **Citations**: Direct links from chat responses to the specific evidence items anchoring the agent's claims.
 - **Incident-scoped verification**: When opened from an incident detail page, the floating Copilot is scoped to that incident. It can inspect stored evidence and, when the user has connector investigation permission, use the same bounded read-only live connector tools as the Investigation tab.
 - **Inline charts**: Responses can render bounded `bar`, `line`, and `area` charts when the answer includes connector, evidence, or user-provided numeric series.
-- **Slash commands and mentions**: `/health`, `/investigate`, `/evidence`, `/verify`, `@incident`, `@service`, and `@recent-deploy` are read-only context shortcuts.
+- **Slash commands and mentions**: `/health`, `/investigate`, `/evidence`, and `/verify` remain visible as read-only actions. Select **@ context** or type `@` to reference an incident, service, or recent deployment without keeping a row of mention chips in the composer.
 - **Log context**: Drag text, log, JSON, CSV, or Markdown files into the composer to add local read-only context. Copilot treats dropped files as user-provided context, not verified production state, until corroborated by evidence or connectors.
 - **Safe Tool Result Summaries**: Collapsible, read-only summaries of tool executions to keep the chat clean while providing deep context when needed.
 - **Standalone history**: Conversations stay in the Copilot console instead of cluttering the incident detail page.
@@ -47,7 +68,7 @@ Copilot includes:
 
 Supercheck supports the incident lifecycle up to the point of remediation:
 
-1. **Triage**: Review alert signals or create a manual incident. Incidents are deduplicated when created from the same alert signal.
+1. **Triage**: Review alert signals or create a manual incident. Incidents are deduplicated when created from the same alert signal. When an administrator enables alert correlation, a high-confidence related alert can be linked to an active incident in the same project instead of creating noise. Correlation is bounded to a short time window, uses approved topology only, records its score and signals, and falls back to normal incident creation if correlation is unavailable.
 2. **Investigation**: Run the read-only investigation from the incident detail page using native evidence and, when enabled, scoped [Connector Layer](/docs/app/investigate/connectors) data.
 3. **Recommendation**: The evidence brief and investigation report present cited findings and proposed next steps.
 4. **Human Verification**: A responder reviews the findings, makes a decision, and applies the fix outside of Supercheck in their respective systems.

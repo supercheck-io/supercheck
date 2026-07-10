@@ -1,10 +1,12 @@
 "use client";
 
 import { useDeferredValue, useMemo, useState, useTransition } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
+  BarChart3,
   ChevronLeft,
   ChevronRight,
   ChevronsLeft,
@@ -14,7 +16,9 @@ import {
   Plus,
   Search,
   Siren,
+  X,
 } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
@@ -23,7 +27,7 @@ import {
   type SreIncidentListItem,
 } from "@/actions/sre-incidents";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
-import { Badge } from "@/components/ui/badge";
+import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -52,6 +56,12 @@ import {
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { UUIDField } from "@/components/ui/uuid-field";
+import { useProjectContext } from "@/hooks/use-project-context";
+import {
+  getSreEvidenceGraphQueryKey,
+  getSreIncidentAnalyticsQueryKey,
+  getSreIncidentsQueryKey,
+} from "@/lib/sre/query-keys";
 import { cn } from "@/lib/utils";
 
 type SreIncidentsListProps = {
@@ -73,44 +83,32 @@ type SortDirection = "asc" | "desc";
 
 const PAGE_SIZE_OPTIONS = [12, 25, 50, 100];
 
-const severityClasses: Record<SreIncidentListItem["severity"], string> = {
-  sev1: "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300",
-  sev2: "border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-900/60 dark:bg-orange-950/40 dark:text-orange-300",
-  sev3: "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300",
-  sev4: "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300",
+const severityTones: Record<SreIncidentListItem["severity"], TableBadgeTone> = {
+  sev1: "danger",
+  sev2: "warning",
+  sev3: "warning",
+  sev4: "slate",
 };
 
-const statusClasses: Record<SreIncidentListItem["status"], string> = {
-  triggered:
-    "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300",
-  investigating:
-    "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-300",
-  identified:
-    "border-purple-200 bg-purple-50 text-purple-700 dark:border-purple-900/60 dark:bg-purple-950/40 dark:text-purple-300",
-  recommendations_ready:
-    "border-cyan-200 bg-cyan-50 text-cyan-700 dark:border-cyan-900/60 dark:bg-cyan-950/40 dark:text-cyan-300",
-  user_applying_fix:
-    "border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-900/60 dark:bg-indigo-950/40 dark:text-indigo-300",
-  verifying:
-    "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300",
-  resolved:
-    "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300",
+const statusTones: Record<SreIncidentListItem["status"], TableBadgeTone> = {
+  triggered: "danger",
+  investigating: "info",
+  identified: "purple",
+  recommendations_ready: "info",
+  user_applying_fix: "indigo",
+  verifying: "warning",
+  resolved: "success",
 };
 
-const investigationStatusClasses: Record<
+const investigationStatusTones: Record<
   NonNullable<SreIncidentListItem["latestInvestigationStatus"]>,
-  string
+  TableBadgeTone
 > = {
-  running:
-    "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-300",
-  completed:
-    "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300",
-  failed:
-    "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300",
-  aborted:
-    "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300",
-  timed_out:
-    "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300",
+  running: "info",
+  completed: "success",
+  failed: "danger",
+  aborted: "slate",
+  timed_out: "warning",
 };
 
 function formatDate(value: Date | string) {
@@ -187,6 +185,8 @@ export function SreIncidentsList({
   loadError,
 }: SreIncidentsListProps) {
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const { projectId } = useProjectContext();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [severity, setSeverity] =
@@ -230,8 +230,18 @@ export function SreIncidentsList({
       toast.success(result.message);
       setDialogOpen(false);
       resetForm();
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: getSreIncidentsQueryKey(projectId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: getSreIncidentAnalyticsQueryKey(projectId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: getSreEvidenceGraphQueryKey(projectId),
+        }),
+      ]);
       router.push(`/incidents/${result.incident.id}`);
-      router.refresh();
     });
   };
 
@@ -319,70 +329,98 @@ export function SreIncidentsList({
 
   return (
     <div className="w-full max-w-full space-y-4 overflow-x-hidden p-2">
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-        <div className="flex min-w-0 flex-col">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="shrink-0">
           <h2 className="text-2xl font-semibold">Incidents</h2>
-          <p className="max-w-[560px] text-sm text-muted-foreground">
-            Track response status, investigation state, evidence, and service ownership.
+          <p className="text-sm text-muted-foreground">
+            Track, investigate, and resolve operational incidents.
           </p>
         </div>
-        {incidents.length > 0 && (
-          <div className="flex w-full flex-wrap items-center justify-start gap-2 xl:w-auto xl:justify-end">
-            <div className="relative w-full sm:w-[300px] xl:w-[360px]">
-              <Search className="absolute left-2 top-2 h-4 w-4 text-muted-foreground" />
-              <Input
-                value={search}
-                onChange={(event) => {
-                  setSearch(event.target.value);
+        <div
+          className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center lg:w-auto lg:justify-end"
+          data-testid="incident-header-actions"
+        >
+          {incidents.length > 0 && (
+            <>
+              <div className="relative w-full sm:w-[250px]">
+                <Search className="absolute left-2 top-2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  value={search}
+                  onChange={(event) => {
+                    setSearch(event.target.value);
+                    setPageIndex(0);
+                  }}
+                  placeholder="Filter by all available fields..."
+                  className="h-8 pl-8 pr-8"
+                />
+                {search.length > 0 && (
+                  <button
+                    type="button"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    onClick={() => {
+                      setSearch("");
+                      setPageIndex(0);
+                    }}
+                    aria-label="Clear incident search"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+              <Select
+                value={severityFilter}
+                onValueChange={(value) => {
+                  setSeverityFilter(value);
                   setPageIndex(0);
                 }}
-                placeholder="Filter by all available fields..."
-                className="h-8 pl-8 pr-8"
-              />
-            </div>
-            <Select
-              value={severityFilter}
-              onValueChange={(value) => {
-                setSeverityFilter(value);
-                setPageIndex(0);
-              }}
-            >
-              <SelectTrigger className="h-8 w-[150px]">
-                <SelectValue placeholder="Severity" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All severities</SelectItem>
-                <SelectItem value="sev1">SEV1</SelectItem>
-                <SelectItem value="sev2">SEV2</SelectItem>
-                <SelectItem value="sev3">SEV3</SelectItem>
-                <SelectItem value="sev4">SEV4</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select
-              value={statusFilter}
-              onValueChange={(value) => {
-                setStatusFilter(value);
-                setPageIndex(0);
-              }}
-            >
-              <SelectTrigger className="h-8 w-[150px]">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All statuses</SelectItem>
-                {statusOptions.map((status) => (
-                  <SelectItem key={status} value={status}>
-                    {formatStatus(status)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button type="button" className="h-8" onClick={() => setDialogOpen(true)}>
-              <Plus className="h-4 w-4" />
-              New incident
-            </Button>
-          </div>
-        )}
+              >
+                <SelectTrigger className="h-8 w-full sm:w-[140px]">
+                  <SelectValue placeholder="Severity" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All severities</SelectItem>
+                  <SelectItem value="sev1">SEV1</SelectItem>
+                  <SelectItem value="sev2">SEV2</SelectItem>
+                  <SelectItem value="sev3">SEV3</SelectItem>
+                  <SelectItem value="sev4">SEV4</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select
+                value={statusFilter}
+                onValueChange={(value) => {
+                  setStatusFilter(value);
+                  setPageIndex(0);
+                }}
+              >
+                <SelectTrigger className="h-8 w-full sm:w-[140px]">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All statuses</SelectItem>
+                  {statusOptions.map((status) => (
+                    <SelectItem key={status} value={status}>
+                      {formatStatus(status)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </>
+          )}
+          <Button asChild type="button" variant="outline" className="h-8">
+            <Link href="/incidents/analytics">
+              <BarChart3 className="h-4 w-4" />
+              Trends
+            </Link>
+          </Button>
+          <Button
+            type="button"
+            className="h-8"
+            onClick={() => setDialogOpen(true)}
+          >
+            <Plus className="h-4 w-4" />
+            New incident
+          </Button>
+        </div>
       </div>
 
       {incidents.length === 0 ? (
@@ -391,12 +429,6 @@ export function SreIncidentsList({
           title="No incidents yet"
           description="Create one manually, or create one from an alert signal when it needs investigation."
           icon={<Siren className="h-10 w-10" />}
-          action={
-            <Button type="button" onClick={() => setDialogOpen(true)}>
-              <Plus className="h-4 w-4" />
-              New incident
-            </Button>
-          }
         />
       ) : (
         <>
@@ -484,7 +516,7 @@ export function SreIncidentsList({
                   pagedIncidents.map((incident) => (
                     <TableRow
                       key={incident.id}
-                      className="h-[72px] cursor-pointer hover:bg-muted/50"
+                      className="cursor-pointer hover:bg-muted/50"
                       tabIndex={0}
                       onClick={() => router.push(`/incidents/${incident.id}`)}
                       onKeyDown={(event) => {
@@ -495,7 +527,10 @@ export function SreIncidentsList({
                       }}
                       aria-label={`View incident ${incident.id}: ${incident.title}`}
                     >
-                      <TableCell className="py-2.5" onClick={(event) => event.stopPropagation()}>
+                      <TableCell
+                        className="py-2.5"
+                        onClick={(event) => event.stopPropagation()}
+                      >
                         <UUIDField value={incident.id} maxLength={8} />
                       </TableCell>
                       <TableCell className="max-w-[420px] py-2.5">
@@ -507,26 +542,22 @@ export function SreIncidentsList({
                         </span>
                       </TableCell>
                       <TableCell className="py-2.5">
-                        <Badge
-                          variant="outline"
-                          className={cn(
-                            "uppercase",
-                            severityClasses[incident.severity],
-                          )}
+                        <TableBadge
+                          tone={severityTones[incident.severity]}
+                          compact
+                          className="uppercase"
                         >
                           {incident.severity}
-                        </Badge>
+                        </TableBadge>
                       </TableCell>
                       <TableCell className="py-2.5">
-                        <Badge
-                          variant="outline"
-                          className={cn(
-                            "capitalize",
-                            statusClasses[incident.status],
-                          )}
+                        <TableBadge
+                          tone={statusTones[incident.status]}
+                          compact
+                          className="capitalize"
                         >
                           {formatStatus(incident.status)}
-                        </Badge>
+                        </TableBadge>
                       </TableCell>
                       <TableCell
                         className="max-w-[180px] truncate py-2.5"
@@ -536,19 +567,19 @@ export function SreIncidentsList({
                       </TableCell>
                       <TableCell className="py-2.5">
                         {incident.latestInvestigationStatus ? (
-                          <Badge
-                            variant="outline"
-                            className={cn(
-                              "w-fit capitalize",
-                              investigationStatusClasses[
+                          <TableBadge
+                            tone={
+                              investigationStatusTones[
                                 incident.latestInvestigationStatus
-                              ],
-                            )}
+                              ]
+                            }
+                            compact
+                            className="w-fit capitalize"
                           >
                             {formatStatus(incident.latestInvestigationStatus)}
-                          </Badge>
+                          </TableBadge>
                         ) : (
-                          <Badge variant="secondary">Not started</Badge>
+                          <TableBadge compact>Not started</TableBadge>
                         )}
                       </TableCell>
                       <TableCell className="py-2.5">

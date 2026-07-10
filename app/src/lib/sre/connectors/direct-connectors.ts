@@ -32,7 +32,12 @@ type FetchJsonOptions = {
   headers?: HeadersInit;
 };
 
-async function fetchJson({ url, secret, timeoutMs, headers = {} }: FetchJsonOptions): Promise<unknown> {
+async function fetchJson({
+  url,
+  secret,
+  timeoutMs,
+  headers = {},
+}: FetchJsonOptions): Promise<unknown> {
   const response = await fetch(url, {
     method: "GET",
     headers: {
@@ -42,6 +47,7 @@ async function fetchJson({ url, secret, timeoutMs, headers = {} }: FetchJsonOpti
     },
     signal: AbortSignal.timeout(timeoutMs),
     cache: "no-store",
+    redirect: "error",
   });
 
   if (response.status === 401 || response.status === 403) {
@@ -55,7 +61,12 @@ async function fetchJson({ url, secret, timeoutMs, headers = {} }: FetchJsonOpti
   return response.json();
 }
 
-async function fetchOk({ url, secret, timeoutMs, headers = {} }: FetchJsonOptions): Promise<void> {
+async function fetchOk({
+  url,
+  secret,
+  timeoutMs,
+  headers = {},
+}: FetchJsonOptions): Promise<void> {
   const response = await fetch(url, {
     method: "GET",
     headers: {
@@ -65,6 +76,7 @@ async function fetchOk({ url, secret, timeoutMs, headers = {} }: FetchJsonOption
     },
     signal: AbortSignal.timeout(timeoutMs),
     cache: "no-store",
+    redirect: "error",
   });
 
   if (response.status === 401 || response.status === 403) {
@@ -93,10 +105,32 @@ function dateFromUnixNs(value: string | number | undefined, fallback: Date) {
   return new Date(Math.floor(numeric / 1_000_000));
 }
 
+function dateFromValue(value: unknown, fallback: Date) {
+  if (typeof value !== "string" && typeof value !== "number") return fallback;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? fallback : parsed;
+}
+
+function requireSecret(secret: string | null, connectorName: string) {
+  if (!secret) {
+    throw new Error(
+      `invalid credentials: ${connectorName} requires a read-only API token`,
+    );
+  }
+
+  return secret;
+}
+
 function severityFromLogLine(value: string) {
   const lowered = value.toLowerCase();
-  if (lowered.includes("fatal") || lowered.includes("panic") || lowered.includes("critical")) return "critical";
-  if (lowered.includes("error") || lowered.includes("exception")) return "error";
+  if (
+    lowered.includes("fatal") ||
+    lowered.includes("panic") ||
+    lowered.includes("critical")
+  )
+    return "critical";
+  if (lowered.includes("error") || lowered.includes("exception"))
+    return "error";
   if (lowered.includes("warn")) return "warning";
   if (lowered.includes("info")) return "info";
   return undefined;
@@ -106,7 +140,8 @@ function sourceString(source: Record<string, unknown>, keys: string[]) {
   for (const key of keys) {
     const value = source[key];
     if (typeof value === "string" && value.trim()) return value.trim();
-    if (typeof value === "number" || typeof value === "boolean") return String(value);
+    if (typeof value === "number" || typeof value === "boolean")
+      return String(value);
 
     const nested = key.split(".").reduce<unknown>((current, part) => {
       if (current && typeof current === "object" && !Array.isArray(current)) {
@@ -116,7 +151,8 @@ function sourceString(source: Record<string, unknown>, keys: string[]) {
       return undefined;
     }, source);
     if (typeof nested === "string" && nested.trim()) return nested.trim();
-    if (typeof nested === "number" || typeof nested === "boolean") return String(nested);
+    if (typeof nested === "number" || typeof nested === "boolean")
+      return String(nested);
   }
 
   return null;
@@ -139,10 +175,16 @@ function sha256Hex(value: string) {
 }
 
 function awsEncode(value: string) {
-  return encodeURIComponent(value).replace(/[!'()*]/g, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`);
+  return encodeURIComponent(value).replace(
+    /[!'()*]/g,
+    (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
 }
 
-function cloudWatchRegion(endpointUrl: string, configuredRegion?: string | null) {
+function cloudWatchRegion(
+  endpointUrl: string,
+  configuredRegion?: string | null,
+) {
   if (configuredRegion?.trim()) return configuredRegion.trim();
 
   const host = new URL(endpointUrl).hostname;
@@ -155,7 +197,7 @@ function xmlDecode(value: string | undefined) {
   return value
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, "\"")
+    .replace(/&quot;/g, '"')
     .replace(/&apos;/g, "'")
     .replace(/&amp;/g, "&")
     .trim();
@@ -207,8 +249,12 @@ function xmlBlocks(xml: string, tag: string) {
 }
 
 function xmlMemberValues(xml: string, containerTag: string) {
-  const container = xmlText(xml, containerTag) ? xmlBlocks(xml, containerTag)[0] : "";
-  return container ? xmlBlocks(container, "member").map((block) => xmlDecode(block)) : [];
+  const container = xmlText(xml, containerTag)
+    ? xmlBlocks(xml, containerTag)[0]
+    : "";
+  return container
+    ? xmlBlocks(container, "member").map((block) => xmlDecode(block))
+    : [];
 }
 
 function cloudWatchSeverity(state: string) {
@@ -220,34 +266,43 @@ function cloudWatchSeverity(state: string) {
 
 function stringValue(value: unknown) {
   if (typeof value === "string" && value.trim()) return value.trim();
-  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (typeof value === "number" || typeof value === "boolean")
+    return String(value);
   return null;
 }
 
 function tempoAttributeValue(value: unknown) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const attributeValue = value as Record<string, unknown>;
-  return stringValue(attributeValue.stringValue)
-    ?? stringValue(attributeValue.intValue)
-    ?? stringValue(attributeValue.doubleValue)
-    ?? stringValue(attributeValue.boolValue)
-    ?? stringValue(attributeValue.arrayValue);
+  return (
+    stringValue(attributeValue.stringValue) ??
+    stringValue(attributeValue.intValue) ??
+    stringValue(attributeValue.doubleValue) ??
+    stringValue(attributeValue.boolValue) ??
+    stringValue(attributeValue.arrayValue)
+  );
 }
 
 function tempoTraceHasError(trace: unknown) {
   const serialized = JSON.stringify(trace).toLowerCase();
-  return serialized.includes("\"status\"") && serialized.includes("error");
+  return serialized.includes('"status"') && serialized.includes("error");
 }
 
 function durationSummary(durationMs: unknown) {
-  if (typeof durationMs !== "number" || !Number.isFinite(durationMs)) return null;
+  if (typeof durationMs !== "number" || !Number.isFinite(durationMs))
+    return null;
   if (durationMs >= 1000) return `${(durationMs / 1000).toFixed(2)}s`;
   return `${Math.round(durationMs)}ms`;
 }
 
 function isTraceQlQuery(query: string) {
   const trimmed = query.trim();
-  return trimmed.startsWith("{") || trimmed.includes("&&") || trimmed.includes("||") || trimmed.includes("|");
+  return (
+    trimmed.startsWith("{") ||
+    trimmed.includes("&&") ||
+    trimmed.includes("||") ||
+    trimmed.includes("|")
+  );
 }
 
 function normalizeTempoSearchQuery(query: string) {
@@ -329,7 +384,9 @@ abstract class BaseDirectConnector implements Connector {
     this.credential = options.credential ?? null;
   }
 
-  abstract search(params: ConnectorSearchParams): Promise<ConnectorEvidenceItem[]>;
+  abstract search(
+    params: ConnectorSearchParams,
+  ): Promise<ConnectorEvidenceItem[]>;
   abstract metadata(): ConnectorMetadata;
 
   async validate(): Promise<ConnectorValidationResult> {
@@ -339,10 +396,15 @@ abstract class BaseDirectConnector implements Connector {
       await this.validationRequest();
       return { status: "valid", latencyMs: Date.now() - startedAt };
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Connector validation failed";
+      const message =
+        error instanceof Error ? error.message : "Connector validation failed";
       const lowerMessage = message.toLowerCase();
       return {
-        status: lowerMessage.includes("credentials rejected") || lowerMessage.includes("invalid credentials") ? "invalid_credentials" : "unreachable",
+        status:
+          lowerMessage.includes("credentials rejected") ||
+          lowerMessage.includes("invalid credentials")
+            ? "invalid_credentials"
+            : "unreachable",
         message,
         latencyMs: Date.now() - startedAt,
       };
@@ -352,33 +414,51 @@ abstract class BaseDirectConnector implements Connector {
   protected abstract validationRequest(): Promise<unknown>;
 
   protected timeoutMs(params?: ConnectorSearchParams) {
-    const maxSeconds = params?.budget.maxSeconds ?? this.outputLimits.maxSeconds ?? DEFAULT_CONNECTOR_OUTPUT_LIMITS.maxSeconds;
+    const maxSeconds =
+      params?.budget.maxSeconds ??
+      this.outputLimits.maxSeconds ??
+      DEFAULT_CONNECTOR_OUTPUT_LIMITS.maxSeconds;
     return Math.min(maxSeconds * 1000, 30_000);
   }
 
   protected secret() {
-    return typeof this.credential?.secret === "string" ? this.credential.secret : null;
+    return typeof this.credential?.secret === "string"
+      ? this.credential.secret
+      : null;
   }
 
   protected apiKey() {
-    return typeof this.credential?.apiKey === "string" ? this.credential.apiKey : this.secret();
+    return typeof this.credential?.apiKey === "string"
+      ? this.credential.apiKey
+      : this.secret();
   }
 
   protected applicationKey() {
-    return typeof this.credential?.applicationKey === "string" ? this.credential.applicationKey : null;
+    return typeof this.credential?.applicationKey === "string"
+      ? this.credential.applicationKey
+      : null;
   }
 
   protected sessionToken() {
-    return typeof this.credential?.sessionToken === "string" ? this.credential.sessionToken : null;
+    return typeof this.credential?.sessionToken === "string"
+      ? this.credential.sessionToken
+      : null;
   }
 
   protected region() {
-    return typeof this.credential?.region === "string" ? this.credential.region : null;
+    return typeof this.credential?.region === "string"
+      ? this.credential.region
+      : null;
   }
 }
 
 export class GitHubConnector extends BaseDirectConnector {
-  constructor(options: Omit<DirectConnectorOptions, "type" | "surfaces" | "evidenceTypes" | "requires">) {
+  constructor(
+    options: Omit<
+      DirectConnectorOptions,
+      "type" | "surfaces" | "evidenceTypes" | "requires"
+    >,
+  ) {
     super({
       ...options,
       type: "github",
@@ -394,7 +474,8 @@ export class GitHubConnector extends BaseDirectConnector {
       id: this.id,
       type: this.type,
       displayName: "GitHub",
-      description: "Read-only commits, pull requests, and deployment context from GitHub.",
+      description:
+        "Read-only commits, pull requests, and deployment context from GitHub.",
       surfaces: this.surfaces,
       evidenceTypes: this.evidenceTypes,
       requires: this.requires,
@@ -410,7 +491,9 @@ export class GitHubConnector extends BaseDirectConnector {
     });
   }
 
-  async search(params: ConnectorSearchParams): Promise<ConnectorEvidenceItem[]> {
+  async search(
+    params: ConnectorSearchParams,
+  ): Promise<ConnectorEvidenceItem[]> {
     const query = params.query.trim();
     const url = `${this.endpointUrl}/search/commits?q=${encodeURIComponent(query)}&per_page=${Math.min(params.budget.maxRows, 20)}`;
     const payload = await fetchJson({
@@ -423,27 +506,45 @@ export class GitHubConnector extends BaseDirectConnector {
       },
     });
 
-    const items = Array.isArray((payload as { items?: unknown[] }).items) ? (payload as { items: unknown[] }).items : [];
+    const items = Array.isArray((payload as { items?: unknown[] }).items)
+      ? (payload as { items: unknown[] }).items
+      : [];
     return items.slice(0, params.budget.maxRows).map((item) => {
       const commit = item as {
         html_url?: string;
         sha?: string;
-        commit?: { message?: string; author?: { date?: string; name?: string } };
+        commit?: {
+          message?: string;
+          author?: { date?: string; name?: string };
+        };
         repository?: { full_name?: string };
       };
-      const title = commit.commit?.message?.split("\n")[0]?.slice(0, 180) || commit.sha || "GitHub commit";
-      const sourceUri = commit.html_url ?? `${this.endpointUrl}/search?q=${encodeURIComponent(query)}`;
+      const title =
+        commit.commit?.message?.split("\n")[0]?.slice(0, 180) ||
+        commit.sha ||
+        "GitHub commit";
+      const sourceUri =
+        commit.html_url ??
+        `${this.endpointUrl}/search?q=${encodeURIComponent(query)}`;
 
       return {
         id: evidenceId(this.id, sourceUri, title),
         source: "github",
         sourceUri,
         title,
-        summary: [commit.repository?.full_name, commit.commit?.author?.name, commit.sha?.slice(0, 12)].filter(Boolean).join(" · "),
+        summary: [
+          commit.repository?.full_name,
+          commit.commit?.author?.name,
+          commit.sha?.slice(0, 12),
+        ]
+          .filter(Boolean)
+          .join(" · "),
         rawContent: commit.commit?.message,
         evidenceType: "deployment",
         metadata: {
-          timestamp: commit.commit?.author?.date ? new Date(commit.commit.author.date) : params.timeWindow.end,
+          timestamp: commit.commit?.author?.date
+            ? new Date(commit.commit.author.date)
+            : params.timeWindow.end,
           tags: ["github", "commit"],
         },
         citation: {
@@ -456,8 +557,415 @@ export class GitHubConnector extends BaseDirectConnector {
   }
 }
 
+export class GitLabConnector extends BaseDirectConnector {
+  constructor(
+    options: Omit<
+      DirectConnectorOptions,
+      "type" | "surfaces" | "evidenceTypes" | "requires"
+    >,
+  ) {
+    super({
+      ...options,
+      type: "gitlab",
+      surfaces: ["code", "deploys"],
+      evidenceTypes: ["deployment", "document"],
+      requires: ["credentials", "service_scope", "time_window"],
+      endpointUrl: options.endpointUrl ?? "https://gitlab.com/api/v4",
+    });
+  }
+
+  metadata(): ConnectorMetadata {
+    return {
+      id: this.id,
+      type: this.type,
+      displayName: "GitLab",
+      description:
+        "Read-only commit and deployment change context from GitLab.",
+      surfaces: this.surfaces,
+      evidenceTypes: this.evidenceTypes,
+      requires: this.requires,
+    };
+  }
+
+  protected validationRequest() {
+    const token = requireSecret(this.secret(), "GitLab");
+    return fetchJson({
+      url: `${this.endpointUrl}/user`,
+      timeoutMs: this.timeoutMs(),
+      headers: { "PRIVATE-TOKEN": token },
+    });
+  }
+
+  async search(
+    params: ConnectorSearchParams,
+  ): Promise<ConnectorEvidenceItem[]> {
+    const token = requireSecret(this.secret(), "GitLab");
+    const projectMatch = params.query.match(/(?:^|\s)project:([^\s]+)/i);
+    const project = projectMatch?.[1]?.trim();
+
+    if (!projectMatch || !project) {
+      throw new Error("GitLab queries require project:<project-id-or-path>");
+    }
+
+    const search = params.query.replace(projectMatch[0], " ").trim();
+    const url = new URL(
+      `${this.endpointUrl}/projects/${encodeURIComponent(project)}/repository/commits`,
+    );
+    url.searchParams.set("since", params.timeWindow.start.toISOString());
+    url.searchParams.set("until", params.timeWindow.end.toISOString());
+    url.searchParams.set(
+      "per_page",
+      String(Math.min(params.budget.maxRows, 100)),
+    );
+    if (search) url.searchParams.set("search", search);
+
+    const payload = await fetchJson({
+      url: url.toString(),
+      timeoutMs: this.timeoutMs(params),
+      headers: { "PRIVATE-TOKEN": token },
+    });
+    const commits = Array.isArray(payload) ? payload : [];
+
+    return commits.slice(0, params.budget.maxRows).map((item) => {
+      const commit = item as {
+        id?: string;
+        short_id?: string;
+        title?: string;
+        message?: string;
+        author_name?: string;
+        committed_date?: string;
+        created_at?: string;
+        web_url?: string;
+      };
+      const title =
+        commit.title?.slice(0, 180) || commit.short_id || "GitLab commit";
+      const sourceUri =
+        commit.web_url ??
+        `${this.endpointUrl}/projects/${encodeURIComponent(project)}/repository/commits/${commit.id ?? ""}`;
+
+      return {
+        id: evidenceId(this.id, sourceUri, title),
+        source: "gitlab",
+        sourceUri,
+        title,
+        summary: [project, commit.author_name, commit.short_id]
+          .filter(Boolean)
+          .join(" · "),
+        rawContent: commit.message,
+        evidenceType: "deployment",
+        metadata: {
+          timestamp: dateFromValue(
+            commit.committed_date ?? commit.created_at,
+            params.timeWindow.end,
+          ),
+          tags: ["gitlab", "commit", `project:${project}`],
+        },
+        citation: {
+          connectorId: this.id,
+          query: params.query,
+          resultHash: hashConnectorPayload(commit),
+        },
+      };
+    });
+  }
+}
+
+export class PagerDutyConnector extends BaseDirectConnector {
+  constructor(
+    options: Omit<
+      DirectConnectorOptions,
+      "type" | "surfaces" | "evidenceTypes" | "requires"
+    >,
+  ) {
+    super({
+      ...options,
+      type: "pagerduty",
+      surfaces: ["tickets"],
+      evidenceTypes: ["event"],
+      requires: ["credentials", "service_scope", "time_window"],
+      endpointUrl: options.endpointUrl ?? "https://api.pagerduty.com",
+    });
+  }
+
+  metadata(): ConnectorMetadata {
+    return {
+      id: this.id,
+      type: this.type,
+      displayName: "PagerDuty",
+      description:
+        "Read-only incident state, urgency, and service context from PagerDuty.",
+      surfaces: this.surfaces,
+      evidenceTypes: this.evidenceTypes,
+      requires: this.requires,
+    };
+  }
+
+  private headers() {
+    const token = requireSecret(this.secret(), "PagerDuty");
+    return {
+      Accept: "application/vnd.pagerduty+json;version=2",
+      Authorization: `Token token=${token}`,
+    };
+  }
+
+  protected validationRequest() {
+    return fetchJson({
+      url: `${this.endpointUrl}/incidents?limit=1&total=false`,
+      timeoutMs: this.timeoutMs(),
+      headers: this.headers(),
+    });
+  }
+
+  async search(
+    params: ConnectorSearchParams,
+  ): Promise<ConnectorEvidenceItem[]> {
+    const url = new URL(`${this.endpointUrl}/incidents`);
+    url.searchParams.set("limit", String(Math.min(params.budget.maxRows, 100)));
+    url.searchParams.set("total", "false");
+    url.searchParams.set("since", params.timeWindow.start.toISOString());
+    url.searchParams.set("until", params.timeWindow.end.toISOString());
+    url.searchParams.set("sort_by", "created_at:desc");
+
+    const payload = await fetchJson({
+      url: url.toString(),
+      timeoutMs: this.timeoutMs(params),
+      headers: this.headers(),
+    });
+    const incidents = Array.isArray(
+      (payload as { incidents?: unknown[] }).incidents,
+    )
+      ? (payload as { incidents: unknown[] }).incidents
+      : [];
+    const terms =
+      params.query === "*"
+        ? []
+        : params.query
+            .toLowerCase()
+            .split(/\s+/)
+            .map((term) => term.replace(/^(status|urgency|service):/, ""))
+            .filter(Boolean);
+
+    return incidents
+      .filter((item) => {
+        if (terms.length === 0) return true;
+        const incident = item as Record<string, unknown>;
+        const searchable = JSON.stringify({
+          title: incident.title,
+          incidentNumber: incident.incident_number,
+          status: incident.status,
+          urgency: incident.urgency,
+          service: incident.service,
+        }).toLowerCase();
+        return terms.every((term) => searchable.includes(term));
+      })
+      .slice(0, params.budget.maxRows)
+      .map((item) => {
+        const incident = item as {
+          id?: string;
+          incident_number?: number;
+          title?: string;
+          status?: string;
+          urgency?: string;
+          created_at?: string;
+          last_status_change_at?: string;
+          html_url?: string;
+          service?: { id?: string; summary?: string };
+          assignments?: Array<{ assignee?: { summary?: string } }>;
+        };
+        const title =
+          incident.title?.slice(0, 180) ||
+          `PagerDuty incident #${incident.incident_number ?? "unknown"}`;
+        const sourceUri =
+          incident.html_url ??
+          `${this.endpointUrl}/incidents/${incident.id ?? ""}`;
+
+        return {
+          id: evidenceId(this.id, sourceUri, title),
+          source: "pagerduty",
+          sourceUri,
+          title,
+          summary: [
+            incident.status,
+            incident.urgency,
+            incident.service?.summary,
+            incident.assignments?.[0]?.assignee?.summary,
+          ]
+            .filter(Boolean)
+            .join(" · "),
+          rawContent: JSON.stringify(incident),
+          evidenceType: "event",
+          metadata: {
+            timestamp: dateFromValue(
+              incident.last_status_change_at ?? incident.created_at,
+              params.timeWindow.end,
+            ),
+            severity: incident.urgency === "high" ? "critical" : "warning",
+            tags: [
+              "pagerduty",
+              "incident",
+              incident.status,
+              incident.urgency,
+              incident.service?.summary,
+            ].filter((value): value is string => Boolean(value)),
+          },
+          citation: {
+            connectorId: this.id,
+            query: params.query,
+            resultHash: hashConnectorPayload(incident),
+          },
+        };
+      });
+  }
+}
+
+export class OpsgenieConnector extends BaseDirectConnector {
+  constructor(
+    options: Omit<
+      DirectConnectorOptions,
+      "type" | "surfaces" | "evidenceTypes" | "requires"
+    >,
+  ) {
+    super({
+      ...options,
+      type: "opsgenie",
+      surfaces: ["tickets"],
+      evidenceTypes: ["event"],
+      requires: ["credentials", "service_scope", "time_window"],
+      endpointUrl: options.endpointUrl ?? "https://api.opsgenie.com",
+    });
+  }
+
+  metadata(): ConnectorMetadata {
+    return {
+      id: this.id,
+      type: this.type,
+      displayName: "Opsgenie",
+      description:
+        "Read-only alert priority and responder context from Opsgenie.",
+      surfaces: this.surfaces,
+      evidenceTypes: this.evidenceTypes,
+      requires: this.requires,
+    };
+  }
+
+  private headers() {
+    return {
+      Authorization: `GenieKey ${requireSecret(this.secret(), "Opsgenie")}`,
+    };
+  }
+
+  protected validationRequest() {
+    return fetchJson({
+      url: `${this.endpointUrl}/v2/alerts?limit=1`,
+      timeoutMs: this.timeoutMs(),
+      headers: this.headers(),
+    });
+  }
+
+  async search(
+    params: ConnectorSearchParams,
+  ): Promise<ConnectorEvidenceItem[]> {
+    const url = new URL(`${this.endpointUrl}/v2/alerts`);
+    url.searchParams.set("limit", String(Math.min(params.budget.maxRows, 100)));
+    url.searchParams.set("sort", "createdAt");
+    url.searchParams.set("order", "desc");
+    if (params.query !== "*") url.searchParams.set("query", params.query);
+
+    const payload = await fetchJson({
+      url: url.toString(),
+      timeoutMs: this.timeoutMs(params),
+      headers: this.headers(),
+    });
+    const alerts = Array.isArray((payload as { data?: unknown[] }).data)
+      ? (payload as { data: unknown[] }).data
+      : [];
+
+    return alerts
+      .filter((item) => {
+        const alert = item as { createdAt?: string; updatedAt?: string };
+        const timestamp = dateFromValue(
+          alert.createdAt ?? alert.updatedAt,
+          params.timeWindow.end,
+        );
+        return (
+          timestamp >= params.timeWindow.start &&
+          timestamp <= params.timeWindow.end
+        );
+      })
+      .slice(0, params.budget.maxRows)
+      .map((item) => {
+        const alert = item as {
+          id?: string;
+          tinyId?: string;
+          alias?: string;
+          message?: string;
+          status?: string;
+          acknowledged?: boolean;
+          createdAt?: string;
+          updatedAt?: string;
+          priority?: string;
+          source?: string;
+          owner?: string;
+          tags?: string[];
+          integration?: { name?: string; type?: string };
+        };
+        const title =
+          alert.message?.slice(0, 180) ||
+          `Opsgenie alert #${alert.tinyId ?? "unknown"}`;
+        const sourceUri = `${this.endpointUrl}/v2/alerts/${encodeURIComponent(alert.id ?? alert.tinyId ?? "")}`;
+
+        return {
+          id: evidenceId(this.id, sourceUri, title),
+          source: "opsgenie",
+          sourceUri,
+          title,
+          summary: [
+            alert.status,
+            alert.priority,
+            alert.source,
+            alert.owner,
+            alert.integration?.name,
+          ]
+            .filter(Boolean)
+            .join(" · "),
+          rawContent: JSON.stringify(alert),
+          evidenceType: "event",
+          metadata: {
+            timestamp: dateFromValue(
+              alert.updatedAt ?? alert.createdAt,
+              params.timeWindow.end,
+            ),
+            severity:
+              alert.priority === "P1"
+                ? "critical"
+                : alert.priority === "P2"
+                  ? "error"
+                  : "warning",
+            tags: [
+              "opsgenie",
+              "alert",
+              alert.status,
+              alert.priority,
+              ...(alert.tags ?? []),
+            ].filter((value): value is string => Boolean(value)),
+          },
+          citation: {
+            connectorId: this.id,
+            query: params.query,
+            resultHash: hashConnectorPayload(alert),
+          },
+        };
+      });
+  }
+}
+
 export class PrometheusConnector extends BaseDirectConnector {
-  constructor(options: Omit<DirectConnectorOptions, "type" | "surfaces" | "evidenceTypes" | "requires">) {
+  constructor(
+    options: Omit<
+      DirectConnectorOptions,
+      "type" | "surfaces" | "evidenceTypes" | "requires"
+    >,
+  ) {
     super({
       ...options,
       type: "prometheus",
@@ -480,7 +988,8 @@ export class PrometheusConnector extends BaseDirectConnector {
   }
 
   protected validationRequest() {
-    if (!this.endpointUrl) throw new Error("Prometheus endpoint URL is required");
+    if (!this.endpointUrl)
+      throw new Error("Prometheus endpoint URL is required");
     return fetchJson({
       url: `${this.endpointUrl}/api/v1/status/runtimeinfo`,
       secret: this.secret(),
@@ -488,20 +997,37 @@ export class PrometheusConnector extends BaseDirectConnector {
     });
   }
 
-  async search(params: ConnectorSearchParams): Promise<ConnectorEvidenceItem[]> {
-    if (!this.endpointUrl) throw new Error("Prometheus endpoint URL is required");
+  async search(
+    params: ConnectorSearchParams,
+  ): Promise<ConnectorEvidenceItem[]> {
+    if (!this.endpointUrl)
+      throw new Error("Prometheus endpoint URL is required");
 
     const url = new URL(`${this.endpointUrl}/api/v1/query_range`);
     url.searchParams.set("query", params.query);
-    url.searchParams.set("start", String(Math.floor(params.timeWindow.start.getTime() / 1000)));
-    url.searchParams.set("end", String(Math.floor(params.timeWindow.end.getTime() / 1000)));
+    url.searchParams.set(
+      "start",
+      String(Math.floor(params.timeWindow.start.getTime() / 1000)),
+    );
+    url.searchParams.set(
+      "end",
+      String(Math.floor(params.timeWindow.end.getTime() / 1000)),
+    );
     url.searchParams.set("step", String(params.filters?.stepSeconds ?? 60));
 
-    const payload = await fetchJson({ url: url.toString(), secret: this.secret(), timeoutMs: this.timeoutMs(params) });
-    const result = (payload as { data?: { result?: unknown[] } }).data?.result ?? [];
+    const payload = await fetchJson({
+      url: url.toString(),
+      secret: this.secret(),
+      timeoutMs: this.timeoutMs(params),
+    });
+    const result =
+      (payload as { data?: { result?: unknown[] } }).data?.result ?? [];
 
     return result.slice(0, params.budget.maxRows).map((series, index) => {
-      const metricSeries = series as { metric?: Record<string, string>; values?: Array<[number, string]> };
+      const metricSeries = series as {
+        metric?: Record<string, string>;
+        values?: Array<[number, string]>;
+      };
       const metricName = metricSeries.metric?.__name__ ?? params.query;
       const sourceUri = `${this.endpointUrl}/graph?g0.expr=${encodeURIComponent(params.query)}`;
 
@@ -528,7 +1054,12 @@ export class PrometheusConnector extends BaseDirectConnector {
 }
 
 export class GrafanaConnector extends BaseDirectConnector {
-  constructor(options: Omit<DirectConnectorOptions, "type" | "surfaces" | "evidenceTypes" | "requires">) {
+  constructor(
+    options: Omit<
+      DirectConnectorOptions,
+      "type" | "surfaces" | "evidenceTypes" | "requires"
+    >,
+  ) {
     super({
       ...options,
       type: "grafana",
@@ -554,10 +1085,16 @@ export class GrafanaConnector extends BaseDirectConnector {
     if (!this.endpointUrl) throw new Error("Grafana endpoint URL is required");
     const url = new URL(`${this.endpointUrl}/api/search`);
     url.searchParams.set("limit", "1");
-    return fetchJson({ url: url.toString(), secret: this.secret(), timeoutMs: this.timeoutMs() });
+    return fetchJson({
+      url: url.toString(),
+      secret: this.secret(),
+      timeoutMs: this.timeoutMs(),
+    });
   }
 
-  async search(params: ConnectorSearchParams): Promise<ConnectorEvidenceItem[]> {
+  async search(
+    params: ConnectorSearchParams,
+  ): Promise<ConnectorEvidenceItem[]> {
     if (!this.endpointUrl) throw new Error("Grafana endpoint URL is required");
     const endpointUrl = this.endpointUrl;
 
@@ -565,11 +1102,21 @@ export class GrafanaConnector extends BaseDirectConnector {
     url.searchParams.set("query", params.query);
     url.searchParams.set("limit", String(Math.min(params.budget.maxRows, 50)));
 
-    const payload = await fetchJson({ url: url.toString(), secret: this.secret(), timeoutMs: this.timeoutMs(params) });
+    const payload = await fetchJson({
+      url: url.toString(),
+      secret: this.secret(),
+      timeoutMs: this.timeoutMs(params),
+    });
     const dashboards = Array.isArray(payload) ? payload : [];
 
     return dashboards.slice(0, params.budget.maxRows).map((dashboard) => {
-      const item = dashboard as { title?: string; url?: string; uri?: string; type?: string; tags?: string[] };
+      const item = dashboard as {
+        title?: string;
+        url?: string;
+        uri?: string;
+        type?: string;
+        tags?: string[];
+      };
       const sourceUri = item.url ? `${endpointUrl}${item.url}` : endpointUrl;
       const title = item.title ?? item.uri ?? "Grafana dashboard";
 
@@ -596,13 +1143,24 @@ export class GrafanaConnector extends BaseDirectConnector {
 }
 
 export class KubernetesConnector extends BaseDirectConnector {
-  constructor(options: Omit<DirectConnectorOptions, "type" | "surfaces" | "evidenceTypes" | "requires">) {
+  constructor(
+    options: Omit<
+      DirectConnectorOptions,
+      "type" | "surfaces" | "evidenceTypes" | "requires"
+    >,
+  ) {
     super({
       ...options,
       type: "kubernetes",
       surfaces: ["infra", "logs"],
       evidenceTypes: ["event", "topology"],
-      requires: ["credentials", "network", "service_scope", "time_window", "allowlist"],
+      requires: [
+        "credentials",
+        "network",
+        "service_scope",
+        "time_window",
+        "allowlist",
+      ],
     });
   }
 
@@ -619,43 +1177,95 @@ export class KubernetesConnector extends BaseDirectConnector {
   }
 
   protected validationRequest() {
-    if (!this.endpointUrl) throw new Error("Kubernetes API endpoint URL is required");
-    return fetchJson({ url: `${this.endpointUrl}/version`, secret: this.secret(), timeoutMs: this.timeoutMs() });
+    if (!this.endpointUrl)
+      throw new Error("Kubernetes API endpoint URL is required");
+    return fetchJson({
+      url: `${this.endpointUrl}/version`,
+      secret: this.secret(),
+      timeoutMs: this.timeoutMs(),
+    });
   }
 
-  async search(params: ConnectorSearchParams): Promise<ConnectorEvidenceItem[]> {
-    if (!this.endpointUrl) throw new Error("Kubernetes API endpoint URL is required");
+  async search(
+    params: ConnectorSearchParams,
+  ): Promise<ConnectorEvidenceItem[]> {
+    if (!this.endpointUrl)
+      throw new Error("Kubernetes API endpoint URL is required");
     const endpointUrl = this.endpointUrl;
-    const namespace = typeof params.filters?.namespace === "string" ? params.filters.namespace : null;
-    const labelSelector = params.query.trim() && params.query.trim() !== "*" ? params.query.trim() : null;
-    const basePath = namespace ? `/api/v1/namespaces/${encodeURIComponent(namespace)}/pods` : "/api/v1/pods";
+    const namespace =
+      typeof params.filters?.namespace === "string"
+        ? params.filters.namespace
+        : null;
+    const labelSelector =
+      params.query.trim() && params.query.trim() !== "*"
+        ? params.query.trim()
+        : null;
+    const basePath = namespace
+      ? `/api/v1/namespaces/${encodeURIComponent(namespace)}/pods`
+      : "/api/v1/pods";
     const podUrl = new URL(`${endpointUrl}${basePath}`);
-    podUrl.searchParams.set("limit", String(Math.min(params.budget.maxRows, 50)));
+    podUrl.searchParams.set(
+      "limit",
+      String(Math.min(params.budget.maxRows, 50)),
+    );
     if (labelSelector) {
       podUrl.searchParams.set("labelSelector", labelSelector);
     }
 
-    const payload = await fetchJson({ url: podUrl.toString(), secret: this.secret(), timeoutMs: this.timeoutMs(params) });
-    const pods = Array.isArray((payload as { items?: unknown[] }).items) ? (payload as { items: unknown[] }).items : [];
+    const payload = await fetchJson({
+      url: podUrl.toString(),
+      secret: this.secret(),
+      timeoutMs: this.timeoutMs(params),
+    });
+    const pods = Array.isArray((payload as { items?: unknown[] }).items)
+      ? (payload as { items: unknown[] }).items
+      : [];
 
     return pods.slice(0, params.budget.maxRows).map((pod) => {
       const item = pod as {
-        metadata?: { name?: string; namespace?: string; uid?: string; creationTimestamp?: string; labels?: Record<string, string> };
-        status?: { phase?: string; podIP?: string; startTime?: string; containerStatuses?: Array<{ name?: string; ready?: boolean; restartCount?: number }> };
+        metadata?: {
+          name?: string;
+          namespace?: string;
+          uid?: string;
+          creationTimestamp?: string;
+          labels?: Record<string, string>;
+        };
+        status?: {
+          phase?: string;
+          podIP?: string;
+          startTime?: string;
+          containerStatuses?: Array<{
+            name?: string;
+            ready?: boolean;
+            restartCount?: number;
+          }>;
+        };
         spec?: { nodeName?: string; serviceAccountName?: string };
       };
       const podNamespace = item.metadata?.namespace ?? namespace ?? "default";
       const podName = item.metadata?.name ?? "unknown-pod";
       const sourceUri = `${endpointUrl}/api/v1/namespaces/${encodeURIComponent(podNamespace)}/pods/${encodeURIComponent(podName)}`;
-      const restarts = item.status?.containerStatuses?.reduce((total, container) => total + (container.restartCount ?? 0), 0) ?? 0;
-      const notReady = item.status?.containerStatuses?.filter((container) => container.ready === false).map((container) => container.name).filter(Boolean) ?? [];
+      const restarts =
+        item.status?.containerStatuses?.reduce(
+          (total, container) => total + (container.restartCount ?? 0),
+          0,
+        ) ?? 0;
+      const notReady =
+        item.status?.containerStatuses
+          ?.filter((container) => container.ready === false)
+          .map((container) => container.name)
+          .filter(Boolean) ?? [];
 
       return {
         id: evidenceId(this.id, sourceUri, podName),
         source: "kubernetes",
         sourceUri,
         title: `Kubernetes pod: ${podNamespace}/${podName}`,
-        summary: [`Phase ${item.status?.phase ?? "unknown"}`, `${restarts} restart(s)`, notReady.length ? `Not ready: ${notReady.join(", ")}` : null]
+        summary: [
+          `Phase ${item.status?.phase ?? "unknown"}`,
+          `${restarts} restart(s)`,
+          notReady.length ? `Not ready: ${notReady.join(", ")}` : null,
+        ]
           .filter(Boolean)
           .join(" · "),
         rawContent: JSON.stringify({
@@ -668,8 +1278,15 @@ export class KubernetesConnector extends BaseDirectConnector {
         }),
         evidenceType: "topology",
         metadata: {
-          timestamp: item.status?.startTime ? new Date(item.status.startTime) : params.timeWindow.end,
-          severity: item.status?.phase === "Running" && restarts === 0 && notReady.length === 0 ? "info" : "warning",
+          timestamp: item.status?.startTime
+            ? new Date(item.status.startTime)
+            : params.timeWindow.end,
+          severity:
+            item.status?.phase === "Running" &&
+            restarts === 0 &&
+            notReady.length === 0
+              ? "info"
+              : "warning",
           tags: ["kubernetes", "pod", podNamespace],
         },
         citation: {
@@ -683,7 +1300,12 @@ export class KubernetesConnector extends BaseDirectConnector {
 }
 
 export class SentryConnector extends BaseDirectConnector {
-  constructor(options: Omit<DirectConnectorOptions, "type" | "surfaces" | "evidenceTypes" | "requires">) {
+  constructor(
+    options: Omit<
+      DirectConnectorOptions,
+      "type" | "surfaces" | "evidenceTypes" | "requires"
+    >,
+  ) {
     super({
       ...options,
       type: "sentry",
@@ -698,7 +1320,8 @@ export class SentryConnector extends BaseDirectConnector {
       id: this.id,
       type: this.type,
       displayName: "Sentry",
-      description: "Read-only Sentry issue context for incidents and regressions.",
+      description:
+        "Read-only Sentry issue context for incidents and regressions.",
       surfaces: this.surfaces,
       evidenceTypes: this.evidenceTypes,
       requires: this.requires,
@@ -706,18 +1329,30 @@ export class SentryConnector extends BaseDirectConnector {
   }
 
   protected validationRequest() {
-    if (!this.endpointUrl) throw new Error("Sentry project API endpoint URL is required");
-    return fetchJson({ url: `${this.endpointUrl}/issues/?limit=1`, secret: this.secret(), timeoutMs: this.timeoutMs() });
+    if (!this.endpointUrl)
+      throw new Error("Sentry project API endpoint URL is required");
+    return fetchJson({
+      url: `${this.endpointUrl}/issues/?limit=1`,
+      secret: this.secret(),
+      timeoutMs: this.timeoutMs(),
+    });
   }
 
-  async search(params: ConnectorSearchParams): Promise<ConnectorEvidenceItem[]> {
-    if (!this.endpointUrl) throw new Error("Sentry project API endpoint URL is required");
+  async search(
+    params: ConnectorSearchParams,
+  ): Promise<ConnectorEvidenceItem[]> {
+    if (!this.endpointUrl)
+      throw new Error("Sentry project API endpoint URL is required");
 
     const url = new URL(`${this.endpointUrl}/issues/`);
     url.searchParams.set("query", params.query);
     url.searchParams.set("limit", String(Math.min(params.budget.maxRows, 50)));
 
-    const payload = await fetchJson({ url: url.toString(), secret: this.secret(), timeoutMs: this.timeoutMs(params) });
+    const payload = await fetchJson({
+      url: url.toString(),
+      secret: this.secret(),
+      timeoutMs: this.timeoutMs(params),
+    });
     const issues = Array.isArray(payload) ? payload : [];
 
     return issues.slice(0, params.budget.maxRows).map((issue) => {
@@ -735,7 +1370,9 @@ export class SentryConnector extends BaseDirectConnector {
         metadata?: Record<string, unknown>;
       };
       const title = item.title ?? item.shortId ?? item.id ?? "Sentry issue";
-      const sourceUri = item.permalink ?? `${this.endpointUrl}/issues/${encodeURIComponent(item.id ?? title)}/`;
+      const sourceUri =
+        item.permalink ??
+        `${this.endpointUrl}/issues/${encodeURIComponent(item.id ?? title)}/`;
       const observedAt = item.lastSeen ?? item.firstSeen;
 
       return {
@@ -743,13 +1380,22 @@ export class SentryConnector extends BaseDirectConnector {
         source: "sentry",
         sourceUri,
         title: `Sentry issue: ${title}`,
-        summary: [item.shortId, item.culprit, item.status, item.count ? `${item.count} event(s)` : null].filter(Boolean).join(" · "),
+        summary: [
+          item.shortId,
+          item.culprit,
+          item.status,
+          item.count ? `${item.count} event(s)` : null,
+        ]
+          .filter(Boolean)
+          .join(" · "),
         rawContent: JSON.stringify({ ...item, metadata: item.metadata ?? {} }),
         evidenceType: "event",
         metadata: {
           timestamp: observedAt ? new Date(observedAt) : params.timeWindow.end,
           severity: item.level ?? undefined,
-          tags: ["sentry", "issue", item.status].filter((value): value is string => Boolean(value)),
+          tags: ["sentry", "issue", item.status].filter(
+            (value): value is string => Boolean(value),
+          ),
         },
         citation: {
           connectorId: this.id,
@@ -762,7 +1408,12 @@ export class SentryConnector extends BaseDirectConnector {
 }
 
 export class DatadogConnector extends BaseDirectConnector {
-  constructor(options: Omit<DirectConnectorOptions, "type" | "surfaces" | "evidenceTypes" | "requires">) {
+  constructor(
+    options: Omit<
+      DirectConnectorOptions,
+      "type" | "surfaces" | "evidenceTypes" | "requires"
+    >,
+  ) {
     super({
       ...options,
       type: "datadog",
@@ -778,7 +1429,8 @@ export class DatadogConnector extends BaseDirectConnector {
       id: this.id,
       type: this.type,
       displayName: "Datadog",
-      description: "Read-only Datadog event context for incident investigations.",
+      description:
+        "Read-only Datadog event context for incident investigations.",
       surfaces: this.surfaces,
       evidenceTypes: this.evidenceTypes,
       requires: this.requires,
@@ -789,7 +1441,9 @@ export class DatadogConnector extends BaseDirectConnector {
     const apiKey = this.apiKey();
     const applicationKey = this.applicationKey();
     if (!apiKey || !applicationKey) {
-      throw new Error("credentials rejected: Datadog connector requires apiKey and applicationKey credentials");
+      throw new Error(
+        "credentials rejected: Datadog connector requires apiKey and applicationKey credentials",
+      );
     }
 
     return {
@@ -800,26 +1454,44 @@ export class DatadogConnector extends BaseDirectConnector {
 
   protected async validationRequest() {
     if (!this.endpointUrl) throw new Error("Datadog endpoint URL is required");
-    const payload = await fetchJson({ url: `${this.endpointUrl}/api/v1/validate`, timeoutMs: this.timeoutMs(), headers: this.datadogHeaders() });
+    const payload = await fetchJson({
+      url: `${this.endpointUrl}/api/v1/validate`,
+      timeoutMs: this.timeoutMs(),
+      headers: this.datadogHeaders(),
+    });
     if ((payload as { valid?: unknown }).valid === false) {
       throw new Error("credentials rejected: Datadog API key was rejected");
     }
     return payload;
   }
 
-  async search(params: ConnectorSearchParams): Promise<ConnectorEvidenceItem[]> {
+  async search(
+    params: ConnectorSearchParams,
+  ): Promise<ConnectorEvidenceItem[]> {
     if (!this.endpointUrl) throw new Error("Datadog endpoint URL is required");
 
     const url = new URL(`${this.endpointUrl}/api/v1/events`);
-    url.searchParams.set("start", String(Math.floor(params.timeWindow.start.getTime() / 1000)));
-    url.searchParams.set("end", String(Math.floor(params.timeWindow.end.getTime() / 1000)));
+    url.searchParams.set(
+      "start",
+      String(Math.floor(params.timeWindow.start.getTime() / 1000)),
+    );
+    url.searchParams.set(
+      "end",
+      String(Math.floor(params.timeWindow.end.getTime() / 1000)),
+    );
     url.searchParams.set("unaggregated", "true");
     if (params.query.trim()) {
       url.searchParams.set("tags", params.query.trim());
     }
 
-    const payload = await fetchJson({ url: url.toString(), timeoutMs: this.timeoutMs(params), headers: this.datadogHeaders() });
-    const events = Array.isArray((payload as { events?: unknown[] }).events) ? (payload as { events: unknown[] }).events : [];
+    const payload = await fetchJson({
+      url: url.toString(),
+      timeoutMs: this.timeoutMs(params),
+      headers: this.datadogHeaders(),
+    });
+    const events = Array.isArray((payload as { events?: unknown[] }).events)
+      ? (payload as { events: unknown[] }).events
+      : [];
 
     return events.slice(0, params.budget.maxRows).map((event) => {
       const item = event as {
@@ -834,18 +1506,29 @@ export class DatadogConnector extends BaseDirectConnector {
         url?: string;
       };
       const title = item.title ?? `Datadog event ${item.id ?? "unknown"}`;
-      const sourceUri = item.url ?? `${this.endpointUrl}/event/event?id=${encodeURIComponent(String(item.id ?? title))}`;
+      const sourceUri =
+        item.url ??
+        `${this.endpointUrl}/event/event?id=${encodeURIComponent(String(item.id ?? title))}`;
 
       return {
         id: evidenceId(this.id, sourceUri, title),
         source: "datadog",
         sourceUri,
         title: `Datadog event: ${title}`,
-        summary: [item.alert_type, item.source, item.host, item.text?.slice(0, 180)].filter(Boolean).join(" · "),
+        summary: [
+          item.alert_type,
+          item.source,
+          item.host,
+          item.text?.slice(0, 180),
+        ]
+          .filter(Boolean)
+          .join(" · "),
         rawContent: JSON.stringify(item),
         evidenceType: "event",
         metadata: {
-          timestamp: item.date_happened ? new Date(item.date_happened * 1000) : params.timeWindow.end,
+          timestamp: item.date_happened
+            ? new Date(item.date_happened * 1000)
+            : params.timeWindow.end,
           severity: item.alert_type ?? undefined,
           tags: ["datadog", ...(item.tags ?? [])],
         },
@@ -860,7 +1543,12 @@ export class DatadogConnector extends BaseDirectConnector {
 }
 
 export class LokiConnector extends BaseDirectConnector {
-  constructor(options: Omit<DirectConnectorOptions, "type" | "surfaces" | "evidenceTypes" | "requires">) {
+  constructor(
+    options: Omit<
+      DirectConnectorOptions,
+      "type" | "surfaces" | "evidenceTypes" | "requires"
+    >,
+  ) {
     super({
       ...options,
       type: "loki",
@@ -884,28 +1572,54 @@ export class LokiConnector extends BaseDirectConnector {
 
   protected validationRequest() {
     if (!this.endpointUrl) throw new Error("Loki endpoint URL is required");
-    return fetchJson({ url: `${this.endpointUrl}/loki/api/v1/labels`, secret: this.secret(), timeoutMs: this.timeoutMs() });
+    return fetchJson({
+      url: `${this.endpointUrl}/loki/api/v1/labels`,
+      secret: this.secret(),
+      timeoutMs: this.timeoutMs(),
+    });
   }
 
-  async search(params: ConnectorSearchParams): Promise<ConnectorEvidenceItem[]> {
+  async search(
+    params: ConnectorSearchParams,
+  ): Promise<ConnectorEvidenceItem[]> {
     if (!this.endpointUrl) throw new Error("Loki endpoint URL is required");
 
     const url = new URL(`${this.endpointUrl}/loki/api/v1/query_range`);
+    const isMetricQuery =
+      /\b(?:count_over_time|rate|bytes_rate|bytes_over_time)\s*\(/i.test(
+        params.query,
+      );
     url.searchParams.set("query", params.query);
-    url.searchParams.set("start", String(params.timeWindow.start.getTime() * 1_000_000));
-    url.searchParams.set("end", String(params.timeWindow.end.getTime() * 1_000_000));
+    url.searchParams.set(
+      "start",
+      String(params.timeWindow.start.getTime() * 1_000_000),
+    );
+    url.searchParams.set(
+      "end",
+      String(params.timeWindow.end.getTime() * 1_000_000),
+    );
     url.searchParams.set("limit", String(Math.min(params.budget.maxRows, 100)));
     url.searchParams.set("direction", "backward");
 
-    const payload = await fetchJson({ url: url.toString(), secret: this.secret(), timeoutMs: this.timeoutMs(params) });
-    const streams = Array.isArray((payload as { data?: { result?: unknown[] } }).data?.result)
+    const payload = await fetchJson({
+      url: url.toString(),
+      secret: this.secret(),
+      timeoutMs: this.timeoutMs(params),
+    });
+    const streams = Array.isArray(
+      (payload as { data?: { result?: unknown[] } }).data?.result,
+    )
       ? (payload as { data: { result: unknown[] } }).data.result
       : [];
     const entries: ConnectorEvidenceItem[] = [];
 
     for (const stream of streams) {
-      const item = stream as { stream?: Record<string, string>; values?: Array<[string, string]> };
-      const labels = item.stream ?? {};
+      const item = stream as {
+        stream?: Record<string, string>;
+        metric?: Record<string, string>;
+        values?: Array<[string, string]>;
+      };
+      const labels = item.stream ?? item.metric ?? {};
       const labelSummary = Object.entries(labels)
         .map(([key, value]) => `${key}=${value}`)
         .join(", ");
@@ -921,14 +1635,23 @@ export class LokiConnector extends BaseDirectConnector {
           id: evidenceId(this.id, sourceUri, titleLine),
           source: "loki",
           sourceUri,
-          title: `Loki log: ${titleLine}`,
-          summary: labelSummary || `LogQL match for ${params.query}`,
+          title: isMetricQuery
+            ? `Loki statistic: ${titleLine}`
+            : `Loki log: ${titleLine}`,
+          summary:
+            labelSummary ||
+            `LogQL ${isMetricQuery ? "statistic" : "match"} for ${params.query}`,
           rawContent: line,
-          evidenceType: "log",
+          evidenceType: isMetricQuery ? "metric" : "log",
           metadata: {
             timestamp: observedAt,
             severity: severityFromLogLine(line),
-            tags: ["loki", ...Object.entries(labels).map(([key, value]) => `${key}:${value}`)],
+            tags: [
+              "loki",
+              ...Object.entries(labels).map(
+                ([key, value]) => `${key}:${value}`,
+              ),
+            ],
           },
           citation: {
             connectorId: this.id,
@@ -944,7 +1667,12 @@ export class LokiConnector extends BaseDirectConnector {
 }
 
 export class ElasticsearchConnector extends BaseDirectConnector {
-  constructor(options: Omit<DirectConnectorOptions, "type" | "surfaces" | "evidenceTypes" | "requires">) {
+  constructor(
+    options: Omit<
+      DirectConnectorOptions,
+      "type" | "surfaces" | "evidenceTypes" | "requires"
+    >,
+  ) {
     super({
       ...options,
       type: "elasticsearch",
@@ -959,7 +1687,8 @@ export class ElasticsearchConnector extends BaseDirectConnector {
       id: this.id,
       type: this.type,
       displayName: "Elasticsearch/OpenSearch",
-      description: "Read-only log evidence from Elasticsearch-compatible search APIs.",
+      description:
+        "Read-only log evidence from Elasticsearch-compatible search APIs.",
       surfaces: this.surfaces,
       evidenceTypes: this.evidenceTypes,
       requires: this.requires,
@@ -967,36 +1696,81 @@ export class ElasticsearchConnector extends BaseDirectConnector {
   }
 
   protected validationRequest() {
-    if (!this.endpointUrl) throw new Error("Elasticsearch endpoint URL is required");
-    return fetchJson({ url: `${this.endpointUrl}/_cluster/health`, secret: this.secret(), timeoutMs: this.timeoutMs() });
+    if (!this.endpointUrl)
+      throw new Error("Elasticsearch endpoint URL is required");
+    return fetchJson({
+      url: `${this.endpointUrl}/_cluster/health`,
+      secret: this.secret(),
+      timeoutMs: this.timeoutMs(),
+    });
   }
 
-  async search(params: ConnectorSearchParams): Promise<ConnectorEvidenceItem[]> {
-    if (!this.endpointUrl) throw new Error("Elasticsearch endpoint URL is required");
+  async search(
+    params: ConnectorSearchParams,
+  ): Promise<ConnectorEvidenceItem[]> {
+    if (!this.endpointUrl)
+      throw new Error("Elasticsearch endpoint URL is required");
 
-    const index = typeof params.filters?.index === "string" && params.filters.index.trim() ? params.filters.index.trim() : null;
-    const timestampField = typeof params.filters?.timestampField === "string" && params.filters.timestampField.trim() ? params.filters.timestampField.trim() : "@timestamp";
-    const searchPath = index ? `/${encodeURIComponent(index)}/_search` : "/_search";
+    const index =
+      typeof params.filters?.index === "string" && params.filters.index.trim()
+        ? params.filters.index.trim()
+        : null;
+    const timestampField =
+      typeof params.filters?.timestampField === "string" &&
+      params.filters.timestampField.trim()
+        ? params.filters.timestampField.trim()
+        : "@timestamp";
+    const searchPath = index
+      ? `/${encodeURIComponent(index)}/_search`
+      : "/_search";
     const url = new URL(`${this.endpointUrl}${searchPath}`);
-    url.searchParams.set("q", `(${params.query}) AND ${timestampField}:[${params.timeWindow.start.toISOString()} TO ${params.timeWindow.end.toISOString()}]`);
+    url.searchParams.set(
+      "q",
+      `(${params.query}) AND ${timestampField}:[${params.timeWindow.start.toISOString()} TO ${params.timeWindow.end.toISOString()}]`,
+    );
     url.searchParams.set("size", String(Math.min(params.budget.maxRows, 100)));
     url.searchParams.set("ignore_unavailable", "true");
     url.searchParams.set("allow_no_indices", "true");
 
-    const payload = await fetchJson({ url: url.toString(), secret: this.secret(), timeoutMs: this.timeoutMs(params) });
-    const hits = Array.isArray((payload as { hits?: { hits?: unknown[] } }).hits?.hits)
+    const payload = await fetchJson({
+      url: url.toString(),
+      secret: this.secret(),
+      timeoutMs: this.timeoutMs(params),
+    });
+    const hits = Array.isArray(
+      (payload as { hits?: { hits?: unknown[] } }).hits?.hits,
+    )
       ? (payload as { hits: { hits: unknown[] } }).hits.hits
       : [];
 
     return hits.slice(0, params.budget.maxRows).map((hit) => {
-      const item = hit as { _id?: string; _index?: string; _score?: number; _source?: Record<string, unknown> };
+      const item = hit as {
+        _id?: string;
+        _index?: string;
+        _score?: number;
+        _source?: Record<string, unknown>;
+      };
       const source = item._source ?? {};
-      const message = sourceString(source, ["message", "log", "event.original", "body"]) ?? JSON.stringify(source).slice(0, 500);
-      const service = sourceString(source, ["service.name", "service", "app", "application"]);
+      const message =
+        sourceString(source, ["message", "log", "event.original", "body"]) ??
+        JSON.stringify(source).slice(0, 500);
+      const service = sourceString(source, [
+        "service.name",
+        "service",
+        "app",
+        "application",
+      ]);
       const level = sourceString(source, ["log.level", "level", "severity"]);
-      const timestamp = sourceString(source, ["@timestamp", "timestamp", "time"]);
-      const observedAt = timestamp ? new Date(timestamp) : params.timeWindow.end;
-      const titleLine = message.slice(0, 160) || item._id || "Elasticsearch log document";
+      const timestamp = sourceString(source, [
+        "@timestamp",
+        "timestamp",
+        "time",
+      ]);
+      const observedAt = timestamp
+        ? new Date(timestamp)
+        : params.timeWindow.end;
+      const titleLine =
+        message.slice(0, 160) || item._id || "Elasticsearch log document";
       const sourceUri = `${this.endpointUrl}/${encodeURIComponent(item._index ?? index ?? "_all")}/_doc/${encodeURIComponent(item._id ?? titleLine)}`;
 
       return {
@@ -1004,13 +1778,26 @@ export class ElasticsearchConnector extends BaseDirectConnector {
         source: "elasticsearch",
         sourceUri,
         title: `Elasticsearch log: ${titleLine}`,
-        summary: [item._index, service, level, typeof item._score === "number" ? `score ${item._score.toFixed(2)}` : null].filter(Boolean).join(" · "),
+        summary: [
+          item._index,
+          service,
+          level,
+          typeof item._score === "number"
+            ? `score ${item._score.toFixed(2)}`
+            : null,
+        ]
+          .filter(Boolean)
+          .join(" · "),
         rawContent: JSON.stringify(source),
         evidenceType: "log",
         metadata: {
-          timestamp: Number.isNaN(observedAt.getTime()) ? params.timeWindow.end : observedAt,
+          timestamp: Number.isNaN(observedAt.getTime())
+            ? params.timeWindow.end
+            : observedAt,
           severity: level ?? severityFromLogLine(message),
-          tags: ["elasticsearch", item._index, service].filter((value): value is string => Boolean(value)),
+          tags: ["elasticsearch", item._index, service].filter(
+            (value): value is string => Boolean(value),
+          ),
         },
         citation: {
           connectorId: this.id,
@@ -1023,7 +1810,12 @@ export class ElasticsearchConnector extends BaseDirectConnector {
 }
 
 export class TempoConnector extends BaseDirectConnector {
-  constructor(options: Omit<DirectConnectorOptions, "type" | "surfaces" | "evidenceTypes" | "requires">) {
+  constructor(
+    options: Omit<
+      DirectConnectorOptions,
+      "type" | "surfaces" | "evidenceTypes" | "requires"
+    >,
+  ) {
     super({
       ...options,
       type: "tempo",
@@ -1038,7 +1830,8 @@ export class TempoConnector extends BaseDirectConnector {
       id: this.id,
       type: this.type,
       displayName: "Grafana Tempo",
-      description: "Read-only distributed trace search evidence from Grafana Tempo.",
+      description:
+        "Read-only distributed trace search evidence from Grafana Tempo.",
       surfaces: this.surfaces,
       evidenceTypes: this.evidenceTypes,
       requires: this.requires,
@@ -1047,16 +1840,28 @@ export class TempoConnector extends BaseDirectConnector {
 
   protected validationRequest() {
     if (!this.endpointUrl) throw new Error("Tempo endpoint URL is required");
-    return fetchOk({ url: `${this.endpointUrl}/ready`, secret: this.secret(), timeoutMs: this.timeoutMs() });
+    return fetchOk({
+      url: `${this.endpointUrl}/ready`,
+      secret: this.secret(),
+      timeoutMs: this.timeoutMs(),
+    });
   }
 
-  async search(params: ConnectorSearchParams): Promise<ConnectorEvidenceItem[]> {
+  async search(
+    params: ConnectorSearchParams,
+  ): Promise<ConnectorEvidenceItem[]> {
     if (!this.endpointUrl) throw new Error("Tempo endpoint URL is required");
 
     const normalizedQuery = normalizeTempoSearchQuery(params.query);
     const url = new URL(`${this.endpointUrl}/api/search`);
-    url.searchParams.set("start", String(Math.floor(params.timeWindow.start.getTime() / 1000)));
-    url.searchParams.set("end", String(Math.floor(params.timeWindow.end.getTime() / 1000)));
+    url.searchParams.set(
+      "start",
+      String(Math.floor(params.timeWindow.start.getTime() / 1000)),
+    );
+    url.searchParams.set(
+      "end",
+      String(Math.floor(params.timeWindow.end.getTime() / 1000)),
+    );
     url.searchParams.set("limit", String(Math.min(params.budget.maxRows, 100)));
 
     if (normalizedQuery.q) {
@@ -1073,8 +1878,14 @@ export class TempoConnector extends BaseDirectConnector {
       url.searchParams.set("maxDuration", normalizedQuery.maxDuration);
     }
 
-    const payload = await fetchJson({ url: url.toString(), secret: this.secret(), timeoutMs: this.timeoutMs(params) });
-    const traces = Array.isArray((payload as { traces?: unknown[] }).traces) ? (payload as { traces: unknown[] }).traces : [];
+    const payload = await fetchJson({
+      url: url.toString(),
+      secret: this.secret(),
+      timeoutMs: this.timeoutMs(params),
+    });
+    const traces = Array.isArray((payload as { traces?: unknown[] }).traces)
+      ? (payload as { traces: unknown[] }).traces
+      : [];
 
     return traces.slice(0, params.budget.maxRows).map((trace) => {
       const item = trace as {
@@ -1095,16 +1906,24 @@ export class TempoConnector extends BaseDirectConnector {
       const serviceNames = Object.keys(item.serviceStats ?? {}).slice(0, 10);
       const spans = [
         ...(Array.isArray(item.spanSet?.spans) ? item.spanSet.spans : []),
-        ...(item.spanSets ?? []).flatMap((spanSet) => Array.isArray(spanSet.spans) ? spanSet.spans : []),
+        ...(item.spanSets ?? []).flatMap((spanSet) =>
+          Array.isArray(spanSet.spans) ? spanSet.spans : [],
+        ),
       ];
       const spanAttributes = spans
         .flatMap((span) => {
-          if (!span || typeof span !== "object" || Array.isArray(span)) return [];
+          if (!span || typeof span !== "object" || Array.isArray(span))
+            return [];
           const attributes = (span as { attributes?: unknown[] }).attributes;
           if (!Array.isArray(attributes)) return [];
           return attributes
             .map((attribute) => {
-              if (!attribute || typeof attribute !== "object" || Array.isArray(attribute)) return null;
+              if (
+                !attribute ||
+                typeof attribute !== "object" ||
+                Array.isArray(attribute)
+              )
+                return null;
               const entry = attribute as { key?: unknown; value?: unknown };
               const key = stringValue(entry.key);
               const value = tempoAttributeValue(entry.value);
@@ -1124,7 +1943,9 @@ export class TempoConnector extends BaseDirectConnector {
           traceId,
           duration ? `duration ${duration}` : null,
           serviceNames.length ? `services ${serviceNames.join(", ")}` : null,
-        ].filter(Boolean).join(" · "),
+        ]
+          .filter(Boolean)
+          .join(" · "),
         rawContent: JSON.stringify({
           traceID: traceId,
           rootServiceName: item.rootServiceName,
@@ -1136,9 +1957,18 @@ export class TempoConnector extends BaseDirectConnector {
         }),
         evidenceType: "trace",
         metadata: {
-          timestamp: dateFromUnixNs(item.startTimeUnixNano, params.timeWindow.end),
+          timestamp: dateFromUnixNs(
+            item.startTimeUnixNano,
+            params.timeWindow.end,
+          ),
           severity: tempoTraceHasError(trace) ? "error" : undefined,
-          tags: ["tempo", "trace", rootService, ...serviceNames.map((service) => `service:${service}`), ...spanAttributes],
+          tags: [
+            "tempo",
+            "trace",
+            rootService,
+            ...serviceNames.map((service) => `service:${service}`),
+            ...spanAttributes,
+          ],
         },
         citation: {
           connectorId: this.id,
@@ -1162,14 +1992,26 @@ type CloudWatchQueryShape = {
 };
 
 export class AwsCloudWatchConnector extends BaseDirectConnector {
-  constructor(options: Omit<DirectConnectorOptions, "type" | "surfaces" | "evidenceTypes" | "requires">) {
+  constructor(
+    options: Omit<
+      DirectConnectorOptions,
+      "type" | "surfaces" | "evidenceTypes" | "requires"
+    >,
+  ) {
     super({
       ...options,
       type: "aws_cloudwatch",
       surfaces: ["metrics", "infra"],
       evidenceTypes: ["metric", "event"],
-      requires: ["credentials", "network", "service_scope", "time_window", "allowlist"],
-      endpointUrl: options.endpointUrl ?? "https://monitoring.us-east-1.amazonaws.com",
+      requires: [
+        "credentials",
+        "network",
+        "service_scope",
+        "time_window",
+        "allowlist",
+      ],
+      endpointUrl:
+        options.endpointUrl ?? "https://monitoring.us-east-1.amazonaws.com",
     });
   }
 
@@ -1178,7 +2020,8 @@ export class AwsCloudWatchConnector extends BaseDirectConnector {
       id: this.id,
       type: this.type,
       displayName: "AWS CloudWatch",
-      description: "Read-only CloudWatch alarm and metric evidence for AWS-backed services.",
+      description:
+        "Read-only CloudWatch alarm and metric evidence for AWS-backed services.",
       surfaces: this.surfaces,
       evidenceTypes: this.evidenceTypes,
       requires: this.requires,
@@ -1192,7 +2035,9 @@ export class AwsCloudWatchConnector extends BaseDirectConnector {
     });
   }
 
-  async search(params: ConnectorSearchParams): Promise<ConnectorEvidenceItem[]> {
+  async search(
+    params: ConnectorSearchParams,
+  ): Promise<ConnectorEvidenceItem[]> {
     const query = this.parseQuery(params.query);
 
     if (query.namespace && query.metricName) {
@@ -1206,7 +2051,9 @@ export class AwsCloudWatchConnector extends BaseDirectConnector {
     const accessKeyId = this.apiKey();
     const secretAccessKey = this.secret();
     if (!accessKeyId || !secretAccessKey) {
-      throw new Error("AWS CloudWatch connector requires apiKey/accessKeyId and secret/secretAccessKey credentials");
+      throw new Error(
+        "AWS CloudWatch connector requires apiKey/accessKeyId and secret/secretAccessKey credentials",
+      );
     }
 
     return {
@@ -1216,8 +2063,12 @@ export class AwsCloudWatchConnector extends BaseDirectConnector {
     };
   }
 
-  private async cloudWatchRequest(parameters: Record<string, string>, params?: ConnectorSearchParams) {
-    if (!this.endpointUrl) throw new Error("AWS CloudWatch endpoint URL is required");
+  private async cloudWatchRequest(
+    parameters: Record<string, string>,
+    params?: ConnectorSearchParams,
+  ) {
+    if (!this.endpointUrl)
+      throw new Error("AWS CloudWatch endpoint URL is required");
 
     const endpoint = new URL(this.endpointUrl);
     const region = cloudWatchRegion(this.endpointUrl, this.region());
@@ -1229,18 +2080,47 @@ export class AwsCloudWatchConnector extends BaseDirectConnector {
       ...parameters,
     }).toString();
     const payloadHash = sha256Hex(body);
-    const canonicalHeaders = [
-      "content-type:application/x-www-form-urlencoded; charset=utf-8",
-      `host:${endpoint.host}`,
-      `x-amz-date:${amzDate}`,
-      ...(credentials.sessionToken ? [`x-amz-security-token:${credentials.sessionToken}`] : []),
-    ].join("\n") + "\n";
-    const signedHeaders = ["content-type", "host", "x-amz-date", ...(credentials.sessionToken ? ["x-amz-security-token"] : [])].join(";");
-    const canonicalRequest = ["POST", endpoint.pathname || "/", "", canonicalHeaders, signedHeaders, payloadHash].join("\n");
+    const canonicalHeaders =
+      [
+        "content-type:application/x-www-form-urlencoded; charset=utf-8",
+        `host:${endpoint.host}`,
+        `x-amz-date:${amzDate}`,
+        ...(credentials.sessionToken
+          ? [`x-amz-security-token:${credentials.sessionToken}`]
+          : []),
+      ].join("\n") + "\n";
+    const signedHeaders = [
+      "content-type",
+      "host",
+      "x-amz-date",
+      ...(credentials.sessionToken ? ["x-amz-security-token"] : []),
+    ].join(";");
+    const canonicalRequest = [
+      "POST",
+      endpoint.pathname || "/",
+      "",
+      canonicalHeaders,
+      signedHeaders,
+      payloadHash,
+    ].join("\n");
     const credentialScope = `${dateStamp}/${region}/monitoring/aws4_request`;
-    const stringToSign = ["AWS4-HMAC-SHA256", amzDate, credentialScope, sha256Hex(canonicalRequest)].join("\n");
-    const signingKey = hmac(hmac(hmac(hmac(`AWS4${credentials.secretAccessKey}`, dateStamp), region), "monitoring"), "aws4_request");
-    const signature = crypto.createHmac("sha256", signingKey).update(stringToSign).digest("hex");
+    const stringToSign = [
+      "AWS4-HMAC-SHA256",
+      amzDate,
+      credentialScope,
+      sha256Hex(canonicalRequest),
+    ].join("\n");
+    const signingKey = hmac(
+      hmac(
+        hmac(hmac(`AWS4${credentials.secretAccessKey}`, dateStamp), region),
+        "monitoring",
+      ),
+      "aws4_request",
+    );
+    const signature = crypto
+      .createHmac("sha256", signingKey)
+      .update(stringToSign)
+      .digest("hex");
     const authorization = `AWS4-HMAC-SHA256 Credential=${credentials.accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
 
     const response = await fetch(this.endpointUrl, {
@@ -1250,11 +2130,14 @@ export class AwsCloudWatchConnector extends BaseDirectConnector {
         Authorization: authorization,
         "Content-Type": "application/x-www-form-urlencoded; charset=utf-8",
         "X-Amz-Date": amzDate,
-        ...(credentials.sessionToken ? { "X-Amz-Security-Token": credentials.sessionToken } : {}),
+        ...(credentials.sessionToken
+          ? { "X-Amz-Security-Token": credentials.sessionToken }
+          : {}),
       },
       body,
       signal: AbortSignal.timeout(this.timeoutMs(params)),
       cache: "no-store",
+      redirect: "error",
     });
 
     if (response.status === 401 || response.status === 403) {
@@ -1289,15 +2172,24 @@ export class AwsCloudWatchConnector extends BaseDirectConnector {
       if (!value) continue;
 
       if (key === "namespace" || key === "ns") parsed.namespace = value;
-      else if (key === "metric" || key === "metricname") parsed.metricName = value;
+      else if (key === "metric" || key === "metricname")
+        parsed.metricName = value;
       else if (key === "stat" || key === "statistic") parsed.statistic = value;
-      else if (key === "period" || key === "periodseconds") parsed.periodSeconds = Math.min(Math.max(Number(value) || 60, 60), 3600);
+      else if (key === "period" || key === "periodseconds")
+        parsed.periodSeconds = Math.min(
+          Math.max(Number(value) || 60, 60),
+          3600,
+        );
       else if (key === "state") parsed.stateValue = value.toUpperCase();
-      else if (key === "prefix" || key === "alarmprefix") parsed.alarmPrefix = value;
+      else if (key === "prefix" || key === "alarmprefix")
+        parsed.alarmPrefix = value;
       else if (key === "dimension" || key === "dim") {
         const equalsAt = value.indexOf("=");
         if (equalsAt > 0) {
-          parsed.dimensions.push({ name: value.slice(0, equalsAt), value: value.slice(equalsAt + 1) });
+          parsed.dimensions.push({
+            name: value.slice(0, equalsAt),
+            value: value.slice(equalsAt + 1),
+          });
         }
       } else {
         freeText.push(token);
@@ -1308,8 +2200,12 @@ export class AwsCloudWatchConnector extends BaseDirectConnector {
     return parsed;
   }
 
-  private async searchAlarms(params: ConnectorSearchParams, query: CloudWatchQueryShape): Promise<ConnectorEvidenceItem[]> {
-    if (!this.endpointUrl) throw new Error("AWS CloudWatch endpoint URL is required");
+  private async searchAlarms(
+    params: ConnectorSearchParams,
+    query: CloudWatchQueryShape,
+  ): Promise<ConnectorEvidenceItem[]> {
+    if (!this.endpointUrl)
+      throw new Error("AWS CloudWatch endpoint URL is required");
 
     const body: Record<string, string> = {
       Action: "DescribeAlarms",
@@ -1317,7 +2213,10 @@ export class AwsCloudWatchConnector extends BaseDirectConnector {
     };
     const prefix = query.alarmPrefix ?? query.freeText;
     if (prefix && prefix !== "*") body.AlarmNamePrefix = prefix.slice(0, 255);
-    if (query.stateValue && ["OK", "ALARM", "INSUFFICIENT_DATA"].includes(query.stateValue)) {
+    if (
+      query.stateValue &&
+      ["OK", "ALARM", "INSUFFICIENT_DATA"].includes(query.stateValue)
+    ) {
       body.StateValue = query.stateValue;
     }
 
@@ -1341,7 +2240,11 @@ export class AwsCloudWatchConnector extends BaseDirectConnector {
         source: "aws_cloudwatch",
         sourceUri,
         title,
-        summary: [stateValue || "unknown state", namespace && metricName ? `${namespace}/${metricName}` : null, xmlText(alarm, "StateReason")]
+        summary: [
+          stateValue || "unknown state",
+          namespace && metricName ? `${namespace}/${metricName}` : null,
+          xmlText(alarm, "StateReason"),
+        ]
           .filter(Boolean)
           .join(" · "),
         rawContent: JSON.stringify({
@@ -1352,15 +2255,25 @@ export class AwsCloudWatchConnector extends BaseDirectConnector {
           stateReason: xmlText(alarm, "StateReason"),
           namespace,
           metricName,
-          statistic: xmlText(alarm, "Statistic") || xmlText(alarm, "ExtendedStatistic"),
+          statistic:
+            xmlText(alarm, "Statistic") || xmlText(alarm, "ExtendedStatistic"),
           threshold: xmlText(alarm, "Threshold"),
           comparisonOperator: xmlText(alarm, "ComparisonOperator"),
         }),
         evidenceType: "metric",
         metadata: {
-          timestamp: stateUpdatedAt ? new Date(stateUpdatedAt) : params.timeWindow.end,
+          timestamp: stateUpdatedAt
+            ? new Date(stateUpdatedAt)
+            : params.timeWindow.end,
           severity: cloudWatchSeverity(stateValue),
-          tags: ["aws", "cloudwatch", "alarm", stateValue, namespace, metricName].filter((value): value is string => Boolean(value)),
+          tags: [
+            "aws",
+            "cloudwatch",
+            "alarm",
+            stateValue,
+            namespace,
+            metricName,
+          ].filter((value): value is string => Boolean(value)),
         },
         citation: {
           connectorId: this.id,
@@ -1371,28 +2284,42 @@ export class AwsCloudWatchConnector extends BaseDirectConnector {
     });
   }
 
-  private async searchMetricData(params: ConnectorSearchParams, query: CloudWatchQueryShape): Promise<ConnectorEvidenceItem[]> {
+  private async searchMetricData(
+    params: ConnectorSearchParams,
+    query: CloudWatchQueryShape,
+  ): Promise<ConnectorEvidenceItem[]> {
     if (!this.endpointUrl || !query.namespace || !query.metricName) {
-      throw new Error("AWS CloudWatch metric queries require namespace and metric");
+      throw new Error(
+        "AWS CloudWatch metric queries require namespace and metric",
+      );
     }
 
     const body: Record<string, string> = {
       Action: "GetMetricData",
       StartTime: params.timeWindow.start.toISOString(),
       EndTime: params.timeWindow.end.toISOString(),
-      MaxDatapoints: String(Math.min(Math.max(params.budget.maxRows * 2, 1), 1000)),
+      MaxDatapoints: String(
+        Math.min(Math.max(params.budget.maxRows * 2, 1), 1000),
+      ),
       "MetricDataQueries.member.1.Id": "m1",
       "MetricDataQueries.member.1.ReturnData": "true",
       "MetricDataQueries.member.1.MetricStat.Metric.Namespace": query.namespace,
-      "MetricDataQueries.member.1.MetricStat.Metric.MetricName": query.metricName,
-      "MetricDataQueries.member.1.MetricStat.Period": String(query.periodSeconds),
+      "MetricDataQueries.member.1.MetricStat.Metric.MetricName":
+        query.metricName,
+      "MetricDataQueries.member.1.MetricStat.Period": String(
+        query.periodSeconds,
+      ),
       "MetricDataQueries.member.1.MetricStat.Stat": query.statistic,
     };
 
     query.dimensions.slice(0, 10).forEach((dimension, index) => {
       const position = index + 1;
-      body[`MetricDataQueries.member.1.MetricStat.Metric.Dimensions.member.${position}.Name`] = dimension.name;
-      body[`MetricDataQueries.member.1.MetricStat.Metric.Dimensions.member.${position}.Value`] = dimension.value;
+      body[
+        `MetricDataQueries.member.1.MetricStat.Metric.Dimensions.member.${position}.Name`
+      ] = dimension.name;
+      body[
+        `MetricDataQueries.member.1.MetricStat.Metric.Dimensions.member.${position}.Value`
+      ] = dimension.value;
     });
 
     const xml = await this.cloudWatchRequest(body, params);
@@ -1401,9 +2328,16 @@ export class AwsCloudWatchConnector extends BaseDirectConnector {
     const region = cloudWatchRegion(this.endpointUrl, this.region());
 
     return results.slice(0, params.budget.maxRows).map((result) => {
-      const label = xmlText(result, "Label") || `${query.namespace}/${query.metricName}`;
-      const values = xmlMemberValues(result, "Values").slice(0, params.budget.maxRows);
-      const timestamps = xmlMemberValues(result, "Timestamps").slice(0, params.budget.maxRows);
+      const label =
+        xmlText(result, "Label") || `${query.namespace}/${query.metricName}`;
+      const values = xmlMemberValues(result, "Values").slice(
+        0,
+        params.budget.maxRows,
+      );
+      const timestamps = xmlMemberValues(result, "Timestamps").slice(
+        0,
+        params.budget.maxRows,
+      );
       const latestValue = values[0];
       const latestTimestamp = timestamps[0];
       const title = `CloudWatch metric: ${label}`;
@@ -1417,8 +2351,14 @@ export class AwsCloudWatchConnector extends BaseDirectConnector {
         summary: [
           `${values.length} datapoint${values.length === 1 ? "" : "s"}`,
           latestValue ? `latest ${latestValue}` : null,
-          query.dimensions.length ? query.dimensions.map((dimension) => `${dimension.name}=${dimension.value}`).join(", ") : null,
-        ].filter(Boolean).join(" · "),
+          query.dimensions.length
+            ? query.dimensions
+                .map((dimension) => `${dimension.name}=${dimension.value}`)
+                .join(", ")
+            : null,
+        ]
+          .filter(Boolean)
+          .join(" · "),
         rawContent: JSON.stringify({
           namespace: query.namespace,
           metricName: query.metricName,
@@ -1431,9 +2371,19 @@ export class AwsCloudWatchConnector extends BaseDirectConnector {
         }),
         evidenceType: "metric",
         metadata: {
-          timestamp: latestTimestamp ? new Date(latestTimestamp) : params.timeWindow.end,
-          tags: ["aws", "cloudwatch", "metric", query.namespace, query.metricName, ...query.dimensions.map((dimension) => `${dimension.name}:${dimension.value}`)]
-            .filter((value): value is string => Boolean(value)),
+          timestamp: latestTimestamp
+            ? new Date(latestTimestamp)
+            : params.timeWindow.end,
+          tags: [
+            "aws",
+            "cloudwatch",
+            "metric",
+            query.namespace,
+            query.metricName,
+            ...query.dimensions.map(
+              (dimension) => `${dimension.name}:${dimension.value}`,
+            ),
+          ].filter((value): value is string => Boolean(value)),
         },
         citation: {
           connectorId: this.id,
@@ -1445,10 +2395,18 @@ export class AwsCloudWatchConnector extends BaseDirectConnector {
   }
 }
 
-export function createDirectConnector(options: DirectConnectorOptions): Connector {
+export function createDirectConnector(
+  options: DirectConnectorOptions,
+): Connector {
   switch (options.type) {
     case "github":
       return new GitHubConnector(options);
+    case "gitlab":
+      return new GitLabConnector(options);
+    case "pagerduty":
+      return new PagerDutyConnector(options);
+    case "opsgenie":
+      return new OpsgenieConnector(options);
     case "prometheus":
       return new PrometheusConnector(options);
     case "grafana":
@@ -1468,6 +2426,8 @@ export function createDirectConnector(options: DirectConnectorOptions): Connecto
     case "aws_cloudwatch":
       return new AwsCloudWatchConnector(options);
     default:
-      throw new Error(`Direct connector search is not implemented for ${options.type}`);
+      throw new Error(
+        `Direct connector search is not implemented for ${options.type}`,
+      );
   }
 }

@@ -1,57 +1,44 @@
 ---
 title: Connectors
-description: Integrate external observability tools with AI SRE
+description: Add read-only evidence sources for AI SRE investigations
 icon: Plug
 ---
 
-Connectors bridge Supercheck's AI SRE layer to your existing operational tools. By providing the AI agent with read-only access to metrics, logs, and events, it can gather the necessary context to investigate incidents, formulate hypotheses, and suggest fixes.
-
-Administrators configure connectors from **Admin → Integrations**. Responders use the configured connectors from incident workspaces and Copilot.
+Connectors let Supercheck collect cited operational evidence during an investigation. Administrators manage them from **Organization Admin → Integrations**.
 
 ## Supported Connectors
 
-Supercheck exposes connector types by capability. The implemented **live search** set can be validated and used during investigations today:
+- **Metrics and dashboards:** Prometheus, Grafana, Datadog
+- **Logs and search:** Loki, Elasticsearch/OpenSearch
+- **Tracing:** Grafana Tempo
+- **Cloud and infrastructure:** Kubernetes, AWS CloudWatch
+- **Errors:** Sentry
+- **Code changes:** GitHub, GitLab
+- **Incident management:** PagerDuty, Opsgenie
 
-- **Metrics & Observability**: Prometheus, Grafana, Datadog
-- **Logs & Search**: Elasticsearch (includes OpenSearch), Loki
-- **Tracing**: Grafana Tempo
-- **Cloud & Infrastructure**: Kubernetes, AWS CloudWatch
-- **Error Tracking**: Sentry
-- **Code & Version Control**: GitHub
-- **Native evidence**: Supercheck alerts, monitors, jobs, runs, logs, reports, and k6 results
+The Add Connector dialog shows only providers with implemented validation and bounded read-only search. Existing records for unsupported providers are labeled **Setup only** and cannot run searches.
 
-All connectors are strictly read-only. For example, the AWS CloudWatch connector only uses least-privilege IAM permissions like `cloudwatch:DescribeAlarms` and `cloudwatch:GetMetricData`.
+## Execution Modes
 
-Other connector types, such as Splunk, AppDynamics, New Relic, Jaeger, OpenTelemetry, GCP Monitoring, Azure Monitor, databases, queues, GitLab, Jira, Confluence, Notion, Slack, Microsoft Teams, PagerDuty, OpsGenie, MCP, and generic webhooks, may appear as **Setup only**. They are shown for roadmap visibility but new setup is disabled until the matching bounded read-only adapter is available.
+**Direct** connects from the Supercheck app to a reachable provider API.
 
-## Connector Execution Modes
+**Private Agent** connects from an outbound-only agent inside your network. It is available for GitHub, Kubernetes, Prometheus, Grafana, Sentry, Datadog, Loki, Elasticsearch/OpenSearch, Tempo, and AWS CloudWatch.
 
-Supercheck executes connectors using two primary models, ensuring your architecture remains secure regardless of whether you self-host or use cloud infrastructure.
+GitLab, PagerDuty, and Opsgenie currently support direct execution only.
 
-### Direct Execution
+## Add a Connector
 
-For cloud-accessible tools (e.g., GitHub, Datadog, Sentry), the Supercheck app queries these services directly, passing the necessary authentication tokens and parameters based on server-side RBAC and strict service scoping.
+1. Choose the provider, name, risk level, and supported execution mode.
+2. Enter the API endpoint and least-privilege read-only credential.
+3. Limit access to the services that need this evidence.
+4. Save, validate, and run a bounded search with known-safe data.
 
-### Private Agent Mode
+Use **Context links** only when an alert destination should be correlated with a separate read-only connector.
 
-For internal services protected behind firewalls (e.g., on-premise Kubernetes clusters, private Elasticsearch nodes, internal Prometheus and Grafana instances, or self-hosted GitHub Enterprise), Supercheck utilizes the **Private Agent**. The private agent supports the implemented read-only connector set: **GitHub, Kubernetes, Prometheus, Grafana, Sentry, Datadog, Loki, Elasticsearch/OpenSearch, AWS CloudWatch, and Grafana Tempo**.
+## Query Examples
 
-The Private Agent is an outbound-only mode of the existing Supercheck worker image. 
-- It uses HTTPS long-polling to fetch query tasks from the Supercheck control plane.
-- It executes the queries locally against your internal network resources.
-- It submits bounded, sanitized evidence summaries back to the app.
+- GitLab: `project:acme/checkout deploy`
+- PagerDuty: `status:triggered service:checkout`
+- Opsgenie: `status:open AND priority:P1`
 
-The Private Agent ensures that raw upstream logs, complete trace payloads, or massive Elasticsearch documents remain within your internal network. Only the relevant, summarized evidence generated from the query is transmitted back.
-
-## Connector Configuration & Governance
-
-When configuring connectors, administrators benefit from built-in governance and safety measures:
-
-- **Setup & Search UX**: Each connector provides guided setup hints, example queries, and official documentation links.
-- **Bounded Search**: Administrators can perform audited read-only searches directly from the connector configuration interface to validate queries without exposing full access.
-- **Credential Validation**: Supercheck automatically verifies your credentials upon saving to ensure successful connectivity.
-- **Redaction & Limits**: Built-in safeguards automatically enforce time windows, row limits, and byte limits on every query to protect performance.
-- **Service Scope**: Connectors can be scoped to specific services and environments to enforce least-privilege context isolation.
-- **SRE Integration Bindings**: Administrators can link outbound notification channels (like PagerDuty or Slack) directly to read-only evidence connectors to automatically surface relevant context.
-
-Services, diagnostic recipes, integrations, and Private Agents are documented in [Admin → AI SRE Setup](/docs/app/admin/ai-sre-setup).
+Each search is tenant-scoped, service-scoped, rate-limited, audited, redacted, and limited by time, rows, and bytes. Credentials are encrypted and are not included in AI prompts or responses.

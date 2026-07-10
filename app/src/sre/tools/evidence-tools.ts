@@ -3,21 +3,17 @@ import { tool } from "ai";
 import { z } from "zod";
 
 import { sreEvidenceItems } from "@/db/schema";
-import { redactConnectorText } from "@/lib/sre/connectors";
+import {
+  DIRECT_VALIDATION_CONNECTOR_TYPES,
+  redactConnectorText,
+} from "@/lib/sre/connectors";
 import { db } from "@/utils/db";
 
 const MAX_EVIDENCE_ITEMS = 25;
 const MAX_TEXT_LENGTH = 1200;
 
 const connectorSourceTypes = [
-  "github",
-  "kubernetes",
-  "prometheus",
-  "grafana",
-  "datadog",
-  "sentry",
-  "loki",
-  "elasticsearch",
+  ...DIRECT_VALIDATION_CONNECTOR_TYPES,
   "splunk",
   "slack",
   "mcp",
@@ -26,7 +22,18 @@ const connectorSourceTypes = [
 
 const evidenceToolInputSchema = z.object({
   limit: z.number().int().min(1).max(MAX_EVIDENCE_ITEMS).optional().default(10),
-  evidenceType: z.enum(["metric", "log", "trace", "artifact", "deployment", "event", "document", "topology"]).optional(),
+  evidenceType: z
+    .enum([
+      "metric",
+      "log",
+      "trace",
+      "artifact",
+      "deployment",
+      "event",
+      "document",
+      "topology",
+    ])
+    .optional(),
 });
 
 export type SreEvidenceToolScope = {
@@ -41,10 +48,15 @@ export type StoredSreEvidenceQuery = SreEvidenceToolScope & {
   evidenceType?: string;
 };
 
-function truncateText(value: string | null | undefined, maxLength = MAX_TEXT_LENGTH) {
+function truncateText(
+  value: string | null | undefined,
+  maxLength = MAX_TEXT_LENGTH,
+) {
   if (!value) return null;
   const redacted = redactConnectorText(value);
-  return redacted.length > maxLength ? `${redacted.slice(0, maxLength - 3)}...` : redacted;
+  return redacted.length > maxLength
+    ? `${redacted.slice(0, maxLength - 3)}...`
+    : redacted;
 }
 
 export async function listStoredSreEvidence(input: StoredSreEvidenceQuery) {
@@ -74,10 +86,18 @@ export async function listStoredSreEvidence(input: StoredSreEvidenceQuery) {
         input.sourceMode === "native"
           ? eq(sreEvidenceItems.sourceType, "native")
           : inArray(sreEvidenceItems.sourceType, connectorSourceTypes),
-        input.evidenceType ? eq(sreEvidenceItems.evidenceType, input.evidenceType as typeof sreEvidenceItems.evidenceType._.data) : undefined
-      )
+        input.evidenceType
+          ? eq(
+              sreEvidenceItems.evidenceType,
+              input.evidenceType as typeof sreEvidenceItems.evidenceType._.data,
+            )
+          : undefined,
+      ),
     )
-    .orderBy(desc(sreEvidenceItems.observedAt), desc(sreEvidenceItems.createdAt))
+    .orderBy(
+      desc(sreEvidenceItems.observedAt),
+      desc(sreEvidenceItems.createdAt),
+    )
     .limit(limit);
 
   return rows.map((row) => ({
@@ -99,20 +119,32 @@ export async function listStoredSreEvidence(input: StoredSreEvidenceQuery) {
 
 export function createNativeEvidenceTool(scope: SreEvidenceToolScope) {
   return tool({
-    description: "List stored native SuperCheck evidence for the scoped incident. Read-only; does not query external systems.",
+    description:
+      "List stored native SuperCheck evidence for the scoped incident. Read-only; does not query external systems.",
     inputSchema: evidenceToolInputSchema,
     execute: async ({ limit, evidenceType }) => ({
-      evidence: await listStoredSreEvidence({ ...scope, sourceMode: "native", limit, evidenceType }),
+      evidence: await listStoredSreEvidence({
+        ...scope,
+        sourceMode: "native",
+        limit,
+        evidenceType,
+      }),
     }),
   });
 }
 
 export function createConnectorEvidenceTool(scope: SreEvidenceToolScope) {
   return tool({
-    description: "List stored connector evidence for the scoped incident. Read-only; uses sanitized persisted summaries only.",
+    description:
+      "List stored connector evidence for the scoped incident. Read-only; uses sanitized persisted summaries only.",
     inputSchema: evidenceToolInputSchema,
     execute: async ({ limit, evidenceType }) => ({
-      evidence: await listStoredSreEvidence({ ...scope, sourceMode: "connector", limit, evidenceType }),
+      evidence: await listStoredSreEvidence({
+        ...scope,
+        sourceMode: "connector",
+        limit,
+        evidenceType,
+      }),
     }),
   });
 }

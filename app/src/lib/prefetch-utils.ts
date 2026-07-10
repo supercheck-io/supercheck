@@ -23,7 +23,15 @@
  */
 
 import type { QueryClient } from "@tanstack/react-query";
+import { getSreEvidenceGraphAction } from "@/actions/sre-evidence-graph";
+import { getSreStandaloneChatHistories } from "@/actions/sre-ai";
+import { getSreIncidents } from "@/actions/sre-incidents";
 import { triggerMonacoPreload } from "@/components/monaco-prefetcher";
+import {
+  getSreEvidenceGraphQueryKey,
+  getSreCopilotHistoriesQueryKey,
+  getSreIncidentsQueryKey,
+} from "@/lib/sre/query-keys";
 
 // ============================================================================
 // INTERNAL STATE
@@ -97,7 +105,7 @@ function markPrefetchActive(key: string): void {
  */
 export function prefetchTestPage(
   testId: string,
-  queryClient: QueryClient
+  queryClient: QueryClient,
 ): void {
   const key = `test-${testId}`;
   if (shouldSkipPrefetch(key)) return;
@@ -126,10 +134,7 @@ export function prefetchTestPage(
  * @param jobId - The job ID to prefetch
  * @param queryClient - React Query client instance
  */
-export function prefetchJobPage(
-  jobId: string,
-  queryClient: QueryClient
-): void {
+export function prefetchJobPage(jobId: string, queryClient: QueryClient): void {
   const key = `job-${jobId}`;
   if (shouldSkipPrefetch(key)) return;
   markPrefetchActive(key);
@@ -158,10 +163,7 @@ export function prefetchJobPage(
  * @param runId - The run ID to prefetch
  * @param queryClient - React Query client instance
  */
-export function prefetchRunPage(
-  runId: string,
-  queryClient: QueryClient
-): void {
+export function prefetchRunPage(runId: string, queryClient: QueryClient): void {
   const key = `run-${runId}`;
   if (shouldSkipPrefetch(key)) return;
   markPrefetchActive(key);
@@ -188,7 +190,7 @@ export function prefetchRunPage(
  */
 export function prefetchMonitorPage(
   monitorId: string,
-  queryClient: QueryClient
+  queryClient: QueryClient,
 ): void {
   const key = `monitor-${monitorId}`;
   if (shouldSkipPrefetch(key)) return;
@@ -228,11 +230,11 @@ const STALE_TIME = 5 * 60 * 1000; // 5 minutes
  * All API calls must include x-project-id for proper data isolation.
  */
 async function fetchJsonWithProject(url: string, projectId: string) {
-  const res = await fetch(url, { 
-    headers: { 
+  const res = await fetch(url, {
+    headers: {
       "Content-Type": "application/json",
       "x-project-id": projectId,
-    } 
+    },
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
@@ -242,6 +244,7 @@ type RouteConfig = {
   queryKey: readonly unknown[];
   queryFn: () => Promise<unknown>;
   staleTime?: number;
+  persist?: boolean;
 };
 
 function getRouteConfigs(projectId: string): Record<string, RouteConfig> {
@@ -283,12 +286,32 @@ function getRouteConfigs(projectId: string): Record<string, RouteConfig> {
     },
     "/alerts": {
       queryKey: ["notification-providers", projectId],
-      queryFn: () => fetchJsonWithProject("/api/notification-providers", projectId),
+      queryFn: () =>
+        fetchJsonWithProject("/api/notification-providers", projectId),
       staleTime: STALE_TIME,
+    },
+    "/incidents": {
+      queryKey: getSreIncidentsQueryKey(projectId),
+      queryFn: getSreIncidents,
+      staleTime: 30_000,
+      persist: false,
+    },
+    "/copilot/evidence-graph": {
+      queryKey: getSreEvidenceGraphQueryKey(projectId),
+      queryFn: getSreEvidenceGraphAction,
+      staleTime: 30_000,
+      persist: false,
+    },
+    "/copilot": {
+      queryKey: getSreCopilotHistoriesQueryKey(projectId),
+      queryFn: getSreStandaloneChatHistories,
+      staleTime: 30_000,
+      persist: false,
     },
     "/variables": {
       queryKey: ["variables", projectId],
-      queryFn: () => fetchJsonWithProject(`/api/projects/${projectId}/variables`, projectId),
+      queryFn: () =>
+        fetchJsonWithProject(`/api/projects/${projectId}/variables`, projectId),
       staleTime: STALE_TIME,
     },
   };
@@ -316,9 +339,9 @@ const ORG_ROUTES: Record<string, RouteConfig> = {
 export function prefetchSidebarRoute(
   href: string,
   projectId: string | null,
-  queryClient: QueryClient
+  queryClient: QueryClient,
 ): void {
-  const key = `sidebar-${href}-${projectId || 'org'}`;
+  const key = `sidebar-${href}-${projectId || "org"}`;
   if (shouldSkipPrefetch(key)) return;
   markPrefetchActive(key);
 
@@ -344,6 +367,7 @@ export function prefetchSidebarRoute(
       queryKey: config.queryKey as unknown[],
       queryFn: config.queryFn,
       staleTime: config.staleTime ?? STALE_TIME,
+      meta: { persist: config.persist !== false },
     });
   }
 

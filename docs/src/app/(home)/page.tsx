@@ -184,7 +184,7 @@ export default function HomePage() {
               className="p-2 md:px-3 md:py-2 rounded-lg inline-flex items-center gap-1.5 text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition"
               aria-label="Supercheck CLI on npm"
             >
-              <img src="/npm.svg" alt="npm" className="size-4.5" />
+              <Image src="/npm.svg" alt="npm" className="size-4.5" width={18} height={18} />
               <span className="hidden md:inline">npm</span>
             </a>
             <a

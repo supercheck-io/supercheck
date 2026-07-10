@@ -1,12 +1,13 @@
 import Link from "next/link";
-import { ExternalLink } from "lucide-react";
+import { ArrowRight, CalendarClock, ExternalLink } from "lucide-react";
 
 import type {
   SreEvidenceGraphEdge,
   SreEvidenceGraphNode,
+  SreEvidenceGraphNodeType,
 } from "@/lib/sre/evidence-graph-queries";
+import { isSafeEvidenceSourceUri } from "@/lib/sre/evidence-source-uri";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -15,11 +16,17 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
+import { cn } from "@/lib/utils";
 
 type SreEvidenceGraphSidePanelProps = {
   node: SreEvidenceGraphNode | null;
+  edge: SreEvidenceGraphEdge | null;
   edges: SreEvidenceGraphEdge[];
   nodesById: Map<string, SreEvidenceGraphNode>;
+  embedded?: boolean;
+  onSelectEdge: (edgeId: string) => void;
+  onSelectNode: (nodeId: string) => void;
 };
 
 function formatDate(value: Date | null) {
@@ -30,11 +37,12 @@ function formatDate(value: Date | null) {
 }
 
 function getDisplayNodeTitle(node: SreEvidenceGraphNode) {
-  if (node.type !== "incident") {
-    return node.title;
-  }
+  const title =
+    node.type === "incident"
+      ? node.title.replace(/^#\d+\s+/, "").trim()
+      : node.title.trim();
 
-  return node.title.replace(/^#\d+\s+/, "").trim() || node.title;
+  return title || `${node.type.replace(/_/g, " ")} record`;
 }
 
 function getIncidentNumberLabel(node: SreEvidenceGraphNode) {
@@ -64,47 +72,131 @@ function getDisplayNodeSubtitle(node: SreEvidenceGraphNode) {
   return node.subtitle ?? formatDate(node.createdAt);
 }
 
-function getNodeTypeColor(type: string) {
-  switch (type.toLowerCase()) {
+function getNodeTypeTone(type: SreEvidenceGraphNodeType): TableBadgeTone {
+  switch (type) {
     case "job":
-      return "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-300";
-    case "alert":
-      return "border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-900/60 dark:bg-orange-950/40 dark:text-orange-300";
+      return "info";
+    case "monitor":
     case "service":
-      return "border-purple-200 bg-purple-50 text-purple-700 dark:border-purple-900/60 dark:bg-purple-950/40 dark:text-purple-300";
+      return "info";
+    case "alert":
+    case "recommendation":
+      return "warning";
     case "incident":
-      return "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300";
+      return "danger";
+    case "investigation":
+      return "purple";
     case "evidence":
-      return "border-teal-200 bg-teal-50 text-teal-700 dark:border-teal-900/60 dark:bg-teal-950/40 dark:text-teal-300";
+    case "playbook":
+      return "success";
+    case "deployment":
+      return "indigo";
+    case "commit":
+    case "recollection":
+      return "slate";
     default:
-      return "border-border bg-muted text-muted-foreground";
+      return "neutral";
   }
 }
 
-function getStatusColor(status: string) {
+function getStatusTone(status: string): TableBadgeTone {
   switch (status.toLowerCase()) {
     case "passed":
     case "past":
     case "resolved":
     case "completed":
-      return "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300";
+      return "success";
     case "failed":
     case "critical":
     case "error":
-      return "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300";
+      return "danger";
     case "warning":
     case "investigating":
-      return "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300";
+      return "warning";
     default:
-      return "border-border bg-muted text-muted-foreground";
+      return "neutral";
   }
 }
 
 export function SreEvidenceGraphSidePanel({
   node,
+  edge,
   edges,
   nodesById,
+  embedded = false,
+  onSelectEdge,
+  onSelectNode,
 }: SreEvidenceGraphSidePanelProps) {
+  if (edge) {
+    const sourceNode = nodesById.get(edge.source);
+    const targetNode = nodesById.get(edge.target);
+
+    return (
+      <Card
+        className={cn(
+          "flex min-h-0 flex-col overflow-hidden rounded-lg",
+          embedded
+            ? "max-h-[calc(100svh-4rem)] rounded-none border-0 shadow-none sm:max-h-[min(76svh,40rem)]"
+            : "h-full",
+        )}
+      >
+        <CardHeader
+          className={cn("shrink-0 space-y-3 pb-4", embedded && "pr-14")}
+        >
+          <TableBadge tone="purple" className="w-fit">
+            Relationship
+          </TableBadge>
+          <div>
+            <CardTitle className="text-lg leading-tight">
+              {edge.label}
+            </CardTitle>
+            <CardDescription className="mt-1.5">
+              Directed topology relationship and its stored provenance.
+            </CardDescription>
+          </div>
+        </CardHeader>
+        <CardContent className="min-h-0 flex-1 space-y-4 overflow-y-auto pt-0">
+          <div className="space-y-2">
+            <p className="text-xs font-medium uppercase text-muted-foreground">
+              Direction
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-auto w-full justify-start whitespace-normal py-2 text-left"
+              onClick={() => sourceNode && onSelectNode(sourceNode.id)}
+              disabled={!sourceNode}
+            >
+              {sourceNode ? getDisplayNodeTitle(sourceNode) : "Unknown source"}
+            </Button>
+            <div className="flex items-center gap-2 px-2 text-xs text-muted-foreground">
+              <ArrowRight className="h-3.5 w-3.5" />
+              <span>{edge.label}</span>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-auto w-full justify-start whitespace-normal py-2 text-left"
+              onClick={() => targetNode && onSelectNode(targetNode.id)}
+              disabled={!targetNode}
+            >
+              {targetNode ? getDisplayNodeTitle(targetNode) : "Unknown target"}
+            </Button>
+          </div>
+          <div>
+            <p className="mb-1 text-xs font-medium uppercase text-muted-foreground">
+              Provenance
+            </p>
+            <p className="text-sm text-foreground/90">
+              {edge.evidence ??
+                "No provenance was recorded for this relationship."}
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
   if (!node) {
     return (
       <DashboardEmptyState
@@ -115,94 +207,192 @@ export function SreEvidenceGraphSidePanel({
     );
   }
 
-  const connectedEdges = edges
-    .filter((edge) => edge.source === node.id || edge.target === node.id)
-    .slice(0, 8);
+  const connectedEdges = edges.filter(
+    (edge) => edge.source === node.id || edge.target === node.id,
+  );
+  const relationshipGroups = Array.from(
+    connectedEdges.reduce<
+      Map<
+        string,
+        {
+          edge: SreEvidenceGraphEdge;
+          otherNode: SreEvidenceGraphNode | undefined;
+          count: number;
+        }
+      >
+    >((groups, connectedEdge) => {
+      const otherNode = nodesById.get(
+        connectedEdge.source === node.id
+          ? connectedEdge.target
+          : connectedEdge.source,
+      );
+      const relatedTitle = otherNode
+        ? getDisplayNodeTitle(otherNode)
+        : "Unknown related record";
+      const groupKey = [
+        connectedEdge.label,
+        otherNode?.type ?? "unknown",
+        relatedTitle.toLowerCase(),
+      ].join(":");
+      const existing = groups.get(groupKey);
+
+      if (existing) {
+        existing.count += 1;
+      } else {
+        groups.set(groupKey, { edge: connectedEdge, otherNode, count: 1 });
+      }
+
+      return groups;
+    }, new Map()),
+  ).map(([, group]) => group);
+  const visibleRelationshipGroups = relationshipGroups.slice(0, 6);
+  const hiddenRelationshipGroups = Math.max(
+    relationshipGroups.length - visibleRelationshipGroups.length,
+    0,
+  );
   const incidentNumberLabel = getIncidentNumberLabel(node);
+  const safeNodeHref =
+    node.href && isSafeEvidenceSourceUri(node.href) ? node.href : null;
 
   return (
-    <Card className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg">
-      <CardHeader className="shrink-0 space-y-3 pb-4">
+    <Card
+      className={cn(
+        "flex min-h-0 flex-col overflow-hidden rounded-lg",
+        embedded
+          ? "max-h-[calc(100svh-4rem)] rounded-none border-0 shadow-none sm:max-h-[min(76svh,40rem)]"
+          : "h-full",
+      )}
+    >
+      <CardHeader
+        className={cn("shrink-0 space-y-3 pb-4", embedded && "pr-14")}
+      >
         <div className="flex flex-wrap items-center gap-2">
-          <Badge
-            variant="outline"
-            className={`capitalize shadow-none ${getNodeTypeColor(node.type)}`}
-          >
+          <TableBadge tone={getNodeTypeTone(node.type)} className="capitalize">
             {node.type}
-          </Badge>
+          </TableBadge>
           {incidentNumberLabel && (
-            <Badge variant="secondary">{incidentNumberLabel}</Badge>
+            <TableBadge tone="danger" className="font-semibold">
+              {incidentNumberLabel}
+            </TableBadge>
           )}
           {node.status && (
-            <Badge
-              variant="outline"
-              className={`capitalize shadow-none ${getStatusColor(node.status)}`}
+            <TableBadge
+              tone={getStatusTone(node.status)}
+              className="capitalize"
             >
               {node.status.replace(/_/g, " ")}
-            </Badge>
+            </TableBadge>
           )}
         </div>
         <div>
-          <CardTitle className="line-clamp-3 text-lg leading-tight">
+          <CardTitle
+            className="line-clamp-2 text-xl leading-snug"
+            title={getDisplayNodeTitle(node)}
+          >
             {getDisplayNodeTitle(node)}
           </CardTitle>
           <CardDescription className="mt-1.5" suppressHydrationWarning>
             {getDisplayNodeSubtitle(node)}
           </CardDescription>
         </div>
-        {node.href && (
-          <Button asChild variant="outline" size="sm" className="mt-1 w-fit">
-            <Link href={node.href}>
-              View details
-              <ExternalLink className="ml-1.5 h-3.5 w-3.5" />
-            </Link>
-          </Button>
-        )}
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+          {safeNodeHref ? (
+            <Button asChild variant="outline" size="sm" className="w-fit">
+              {safeNodeHref.startsWith("http://") ||
+              safeNodeHref.startsWith("https://") ? (
+                <a
+                  href={safeNodeHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  View details
+                  <ExternalLink className="ml-1.5 h-3.5 w-3.5" />
+                </a>
+              ) : (
+                <Link href={safeNodeHref}>
+                  View details
+                  <ExternalLink className="ml-1.5 h-3.5 w-3.5" />
+                </Link>
+              )}
+            </Button>
+          ) : (
+            <span />
+          )}
+          <div
+            className="flex items-center gap-1.5 text-xs text-muted-foreground"
+            suppressHydrationWarning
+          >
+            <CalendarClock className="h-3.5 w-3.5" />
+            <span>{formatDate(node.createdAt)}</span>
+          </div>
+        </div>
       </CardHeader>
       <CardContent className="min-h-0 flex-1 space-y-4 overflow-y-auto pt-0 [scrollbar-width:thin] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/30 [&::-webkit-scrollbar-track]:bg-transparent">
-        <div>
-          <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Created At
-          </p>
-          <p className="text-sm text-foreground/90" suppressHydrationWarning>
-            {formatDate(node.createdAt)}
-          </p>
-        </div>
         <div className="space-y-2">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Relationships
-          </p>
-          {connectedEdges.length === 0 ? (
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Relationships
+            </p>
+            <TableBadge tone="slate" compact>
+              {connectedEdges.length}
+            </TableBadge>
+          </div>
+          {visibleRelationshipGroups.length === 0 ? (
             <p className="text-sm text-muted-foreground">
               No visible relationships for this node in the current graph
               window.
             </p>
           ) : (
-            connectedEdges.map((edge) => {
-              const otherNode = nodesById.get(
-                edge.source === node.id ? edge.target : edge.source,
-              );
-              return (
-                <div
-                  key={edge.id}
-                  className="rounded-lg border bg-muted/10 p-3"
-                >
-                  <div className="flex flex-wrap items-center gap-2 text-sm">
-                    <Badge variant="outline">{edge.label}</Badge>
-                    <span className="line-clamp-1 font-medium">
-                      {otherNode
-                        ? getDisplayNodeTitle(otherNode)
-                        : "Unknown node"}
-                    </span>
-                  </div>
-                  {edge.evidence && (
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Why: {edge.evidence}
-                    </p>
-                  )}
-                </div>
-              );
-            })
+            <div className="overflow-hidden rounded-md border bg-background/40">
+              <div className="divide-y">
+                {visibleRelationshipGroups.map(({ edge, otherNode, count }) => {
+                  const relatedTitle = otherNode
+                    ? getDisplayNodeTitle(otherNode)
+                    : "Unknown related record";
+                  return (
+                    <button
+                      key={edge.id}
+                      type="button"
+                      className="group flex w-full min-w-0 items-center gap-3 px-3 py-3 text-left transition-colors hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                      onClick={() => onSelectEdge(edge.id)}
+                      aria-label={`${relatedTitle} ${edge.label}`}
+                    >
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <div className="flex min-w-0 items-center gap-2">
+                          {otherNode && (
+                            <TableBadge
+                              tone={getNodeTypeTone(otherNode.type)}
+                              compact
+                              className="capitalize"
+                            >
+                              {otherNode.type}
+                            </TableBadge>
+                          )}
+                          <span className="min-w-0 truncate text-sm font-medium">
+                            {relatedTitle}
+                          </span>
+                          {count > 1 && (
+                            <TableBadge tone="neutral" compact>
+                              {count} similar
+                            </TableBadge>
+                          )}
+                        </div>
+                        <span className="block truncate text-xs capitalize text-muted-foreground">
+                          {edge.label}
+                        </span>
+                      </div>
+                      <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+                    </button>
+                  );
+                })}
+              </div>
+              {hiddenRelationshipGroups > 0 && (
+                <p className="border-t px-3 py-2 text-xs text-muted-foreground">
+                  {hiddenRelationshipGroups} more relationship groups are
+                  available from the source details.
+                </p>
+              )}
+            </div>
           )}
         </div>
       </CardContent>

@@ -4,6 +4,16 @@ jest.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: jest.fn() }),
 }));
 
+jest.mock("@tanstack/react-query", () => ({
+  useQueryClient: () => ({
+    invalidateQueries: jest.fn().mockResolvedValue(undefined),
+  }),
+}));
+
+jest.mock("@/hooks/use-project-context", () => ({
+  useProjectContext: () => ({ projectId: "project-1" }),
+}));
+
 import { SreInvestigationPanel } from "./sre-investigation-panel";
 
 describe("SreInvestigationPanel", () => {
@@ -28,6 +38,7 @@ describe("SreInvestigationPanel", () => {
             evidenceType: "event",
           },
         ]}
+        toolMetrics={{ total: 3, errors: 1, averageDurationMs: 240 }}
       />,
     );
 
@@ -39,6 +50,8 @@ describe("SreInvestigationPanel", () => {
       screen.getByLabelText("Use live connector tools"),
     ).toBeInTheDocument();
     expect(screen.getByText("Stored evidence")).toBeInTheDocument();
+    expect(screen.getByText("Tool calls")).toBeInTheDocument();
+    expect(screen.getByText("240 ms")).toBeInTheDocument();
     expect(screen.queryByText("Conversation")).not.toBeInTheDocument();
     expect(
       screen.queryByLabelText("Optional context attachment"),
@@ -76,5 +89,25 @@ describe("SreInvestigationPanel", () => {
         }),
       );
     });
+  });
+
+  it("links missing readiness requirements to the corrective workflow", () => {
+    const incidentId = "018f0000-0000-7000-8000-000000000001";
+    render(
+      <SreInvestigationPanel
+        incidentId={incidentId}
+        hasPrimaryService={false}
+        serviceMappingHref="/org-admin?tab=services"
+        evidenceReferences={[]}
+      />,
+    );
+
+    expect(
+      screen.getByRole("link", { name: "Generate brief" }),
+    ).toHaveAttribute("href", `/incidents/${incidentId}?tab=brief`);
+    expect(screen.getByRole("link", { name: "Map service" })).toHaveAttribute(
+      "href",
+      "/org-admin?tab=services",
+    );
   });
 });

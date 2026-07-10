@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Loader2, Pencil } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 import {
@@ -23,6 +23,13 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useProjectContext } from "@/hooks/use-project-context";
+import {
+  getSreEvidenceGraphQueryKey,
+  getSreIncidentAnalyticsQueryKey,
+  getSreIncidentDetailQueryKey,
+  getSreIncidentsQueryKey,
+} from "@/lib/sre/query-keys";
 import {
   Select,
   SelectContent,
@@ -50,15 +57,18 @@ export function EditSreIncidentDialog({
   services,
   canUpdate,
 }: EditSreIncidentDialogProps) {
-  const router = useRouter();
+  const queryClient = useQueryClient();
+  const { projectId } = useProjectContext();
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>();
   const [title, setTitle] = useState(incident.title);
-  const [severity, setSeverity] =
-    useState<SreIncidentListItem["severity"]>(incident.severity);
-  const [status, setStatus] =
-    useState<SreIncidentListItem["status"]>(incident.status);
+  const [severity, setSeverity] = useState<SreIncidentListItem["severity"]>(
+    incident.severity,
+  );
+  const [status, setStatus] = useState<SreIncidentListItem["status"]>(
+    incident.status,
+  );
   const [primaryServiceId, setPrimaryServiceId] = useState(
     incident.primaryServiceId ?? noServiceValue,
   );
@@ -92,7 +102,20 @@ export function EditSreIncidentDialog({
 
       toast.success(result.message);
       setOpen(false);
-      router.refresh();
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: getSreIncidentDetailQueryKey(projectId, incident.id),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: getSreIncidentsQueryKey(projectId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: getSreIncidentAnalyticsQueryKey(projectId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: getSreEvidenceGraphQueryKey(projectId),
+        }),
+      ]);
     });
   };
 
@@ -194,7 +217,10 @@ export function EditSreIncidentDialog({
 
           <div className="space-y-2">
             <Label htmlFor="incident-service">Service</Label>
-            <Select value={primaryServiceId} onValueChange={setPrimaryServiceId}>
+            <Select
+              value={primaryServiceId}
+              onValueChange={setPrimaryServiceId}
+            >
               <SelectTrigger id="incident-service">
                 <SelectValue />
               </SelectTrigger>

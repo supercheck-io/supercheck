@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, or } from "drizzle-orm";
+import { and, desc, eq, isNotNull, isNull, ne, or } from "drizzle-orm";
 
 import {
   jobs,
@@ -12,11 +12,13 @@ import {
   sreInvestigationRecommendations,
   sreInvestigationRuns,
   sreServiceDeployments,
+  sreServiceDependencies,
   sreServiceResources,
   sreServices,
 } from "@/db/schema";
 import { requireProjectContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
+import { formatSreEvidenceGraphTitle } from "@/lib/sre/evidence-graph-display";
 import { db } from "@/utils/db";
 
 export type SreEvidenceGraphNodeType =
@@ -92,6 +94,28 @@ function truncateGraphTitle(value: string, maxLength = 140) {
   return value.length > maxLength ? `${value.slice(0, maxLength - 3)}...` : value;
 }
 
+function selectRelevantEvidence<T extends {
+  incidentId: string | null;
+  investigationRunId: string | null;
+}>(items: T[], maxPerContext = 3) {
+  const counts = new Map<string, number>();
+
+  return items.filter((item) => {
+    const contextKey = item.investigationRunId
+      ? `investigation:${item.investigationRunId}`
+      : item.incidentId
+        ? `incident:${item.incidentId}`
+        : "unscoped";
+    const count = counts.get(contextKey) ?? 0;
+    if (count >= maxPerContext) {
+      return false;
+    }
+
+    counts.set(contextKey, count + 1);
+    return true;
+  });
+}
+
 function formatSignatureValue(value: unknown) {
   if (typeof value === "string") {
     return value.trim();
@@ -154,6 +178,7 @@ export async function getSreEvidenceGraph(): Promise<
     const [
       services,
       serviceResources,
+      serviceDependencies,
       monitorRows,
       jobRows,
       deployments,
@@ -191,6 +216,29 @@ export async function getSreEvidenceGraph(): Promise<
         .innerJoin(sreServices, eq(sreServiceResources.serviceId, sreServices.id))
         .where(and(eq(sreServices.organizationId, organizationId), eq(sreServices.projectId, project.id)))
         .orderBy(desc(sreServiceResources.createdAt))
+        .limit(200),
+      db
+        .select({
+          sourceServiceId: sreServiceDependencies.sourceServiceId,
+          targetServiceId: sreServiceDependencies.targetServiceId,
+          source: sreServiceDependencies.source,
+          sourceRef: sreServiceDependencies.sourceRef,
+          confidence: sreServiceDependencies.confidence,
+          approvedAt: sreServiceDependencies.approvedAt,
+        })
+        .from(sreServiceDependencies)
+        .where(
+          and(
+            eq(sreServiceDependencies.organizationId, organizationId),
+            eq(sreServiceDependencies.projectId, project.id),
+            eq(sreServiceDependencies.status, "active"),
+            or(
+              ne(sreServiceDependencies.source, "ai_suggested"),
+              isNotNull(sreServiceDependencies.approvedAt),
+            ),
+          ),
+        )
+        .orderBy(desc(sreServiceDependencies.lastSeenAt))
         .limit(200),
       db
         .select({
@@ -365,7 +413,7 @@ export async function getSreEvidenceGraph(): Promise<
         title: service.name,
         subtitle: [service.environment, `tier ${service.tier}`].filter(Boolean).join(" · "),
         status: service.status,
-        href: "/org-admin?tab=services",
+        href: `/services/${service.id}`,
         createdAt: service.createdAt,
       });
     }
@@ -406,6 +454,26 @@ export async function getSreEvidenceGraph(): Promise<
         target: graphNodeId(resource.resourceType, resource.resourceId),
         label: resource.relationship === "monitors" ? "monitored by" : resource.relationship.replace(/_/g, " "),
         evidence: "Service resource mapping",
+      });
+    }
+
+    for (const dependency of serviceDependencies) {
+      const confidence = dependency.confidence
+        ? `${Math.round(Number(dependency.confidence) * 100)}% confidence`
+        : null;
+      const provenance = [
+        dependency.source.replace(/_/g, " "),
+        confidence,
+        dependency.sourceRef,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+
+      addEdge(edges, {
+        source: graphNodeId("service", dependency.sourceServiceId),
+        target: graphNodeId("service", dependency.targetServiceId),
+        label: "depends on",
+        evidence: provenance || "Service dependency",
       });
     }
 
@@ -519,11 +587,15 @@ export async function getSreEvidenceGraph(): Promise<
 
     for (const investigation of investigations) {
       const investigationNodeId = graphNodeId("investigation", investigation.id);
+      const investigationTitle = `${investigation.agentType.replace(/_/g, " ")} investigation`;
       nodes.push({
         id: investigationNodeId,
         sourceId: investigation.id,
         type: "investigation",
-        title: investigation.rootCauseHypothesis ?? `${investigation.agentType} investigation`,
+        title: formatSreEvidenceGraphTitle(
+          investigation.rootCauseHypothesis,
+          investigationTitle,
+        ),
         subtitle: investigation.modelId,
         status: investigation.status,
         href: investigation.incidentId ? `/incidents/${investigation.incidentId}` : "/incidents",
@@ -540,7 +612,9 @@ export async function getSreEvidenceGraph(): Promise<
       }
     }
 
-    for (const evidence of evidenceItems) {
+    // Evidence rows arrive newest-first. Keep the map useful by limiting each
+    // investigation or incident to its three most recent supporting items.
+    for (const evidence of selectRelevantEvidence(evidenceItems)) {
       const evidenceNodeId = graphNodeId("evidence", evidence.id);
       nodes.push({
         id: evidenceNodeId,

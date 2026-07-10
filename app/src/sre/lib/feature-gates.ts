@@ -17,3 +17,11 @@ export function isSreInvestigationAgentEnabled() {
 export function isSreAgentSandboxEnabled() {
   return process.env.SRE_AGENT_SANDBOX_ENABLED === "true";
 }
+
+export function isSreAlertCorrelationEnabled() {
+  return process.env.SRE_ALERT_CORRELATION_ENABLED === "true";
+}
+
+export function isSreStagedEvidenceEnabled() {
+  return process.env.SRE_STAGED_EVIDENCE_ENABLED === "true";
+}

@@ -1,26 +1,30 @@
+import { Suspense } from "react";
+
 import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
-import { SreEvidenceGraph } from "@/components/sre/evidence-graph";
-import { getSreEvidenceGraph } from "@/lib/sre/evidence-graph-queries";
+import { SreEvidenceGraphPageClient } from "@/components/sre/evidence-graph-page-client";
+import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
 
-export const dynamic = "force-dynamic";
-
-export default async function SreEvidenceGraphPage() {
-  const result = await getSreEvidenceGraph();
-
+export default function SreEvidenceGraphPage() {
   return (
     <div className="flex h-[calc(100svh-4.25rem)] min-h-0 flex-col overflow-hidden">
       <PageBreadcrumbs
         items={[
           { label: "Home", href: "/" },
           { label: "Investigate", href: "/copilot" },
-          { label: "Evidence Graph", isCurrentPage: true },
+          { label: "Investigation Map", isCurrentPage: true },
         ]}
       />
       <div className="min-h-0 flex-1 p-4 pb-6">
-        <SreEvidenceGraph
-          graph={result.graph}
-          loadError={result.success ? null : result.error}
-        />
+        <Suspense
+          fallback={
+            <SuperCheckLoading
+              className="h-full"
+              message="Loading Investigation Map..."
+            />
+          }
+        >
+          <SreEvidenceGraphPageClient />
+        </Suspense>
       </div>
     </div>
   );

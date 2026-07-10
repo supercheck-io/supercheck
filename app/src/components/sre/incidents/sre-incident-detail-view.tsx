@@ -1,17 +1,11 @@
 import Link from "next/link";
-import {
-  AlertTriangle,
-  Clock,
-  Database,
-  ExternalLink,
-} from "lucide-react";
+import { AlertTriangle, Clock, Database, ExternalLink } from "lucide-react";
 
 import type { SreIncidentDetail } from "@/actions/sre-incidents";
 import type { SreServiceListItem } from "@/actions/sre-services";
 import { EditSreIncidentDialog } from "@/components/sre/incidents/edit-sre-incident-dialog";
 import { SreIncidentBriefPanel } from "@/components/sre/incidents/sre-incident-brief-panel";
 import { SreInvestigationPanel } from "@/components/sre/incidents/sre-investigation-panel";
-import { Badge } from "@/components/ui/badge";
 import {
   Card,
   CardContent,
@@ -27,8 +21,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { cn } from "@/lib/utils";
+import { isSafeEvidenceSourceUri } from "@/lib/sre/evidence-source-uri";
 
 type SreIncidentDetailViewProps = {
   detail: SreIncidentDetail;
@@ -36,14 +31,27 @@ type SreIncidentDetailViewProps = {
   initialTab?: "investigation" | "evidence" | "brief";
 };
 
-const severityClasses: Record<
+const severityTones: Record<
   SreIncidentDetail["incident"]["severity"],
-  string
+  TableBadgeTone
 > = {
-  sev1: "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300",
-  sev2: "border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-900/60 dark:bg-orange-950/40 dark:text-orange-300",
-  sev3: "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300",
-  sev4: "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300",
+  sev1: "danger",
+  sev2: "warning",
+  sev3: "warning",
+  sev4: "slate",
+};
+
+const statusTones: Record<
+  SreIncidentDetail["incident"]["status"],
+  TableBadgeTone
+> = {
+  triggered: "danger",
+  investigating: "info",
+  identified: "purple",
+  recommendations_ready: "info",
+  user_applying_fix: "indigo",
+  verifying: "warning",
+  resolved: "success",
 };
 
 function formatDate(value: Date | string | null) {
@@ -128,9 +136,9 @@ function NativeEvidenceCard({ detail }: { detail: SreIncidentDetail }) {
                       {item.summary ?? item.citationQuery ?? "No summary"}
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline" className="capitalize">
+                      <TableBadge tone="info" compact className="capitalize">
                         {item.evidenceType}
-                      </Badge>
+                      </TableBadge>
                     </TableCell>
                     <TableCell>
                       {item.confidence
@@ -146,8 +154,12 @@ function NativeEvidenceCard({ detail }: { detail: SreIncidentDetail }) {
                       </div>
                     </TableCell>
                     <TableCell>
-                      {item.sourceUri.startsWith("http://") ||
-                      item.sourceUri.startsWith("https://") ? (
+                      {!isSafeEvidenceSourceUri(item.sourceUri) ? (
+                        <span className="text-sm text-muted-foreground">
+                          Unavailable
+                        </span>
+                      ) : item.sourceUri.startsWith("http://") ||
+                        item.sourceUri.startsWith("https://") ? (
                         <a
                           href={item.sourceUri}
                           target="_blank"
@@ -192,29 +204,25 @@ export function SreIncidentDetailView({
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0 space-y-2">
             <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="secondary">
+              <TableBadge tone="info">
                 Incident #{detail.incident.incidentNumber}
-              </Badge>
-              <Badge
-                variant="outline"
-                className={cn(
-                  "uppercase",
-                  severityClasses[detail.incident.severity] ?? "",
-                )}
+              </TableBadge>
+              <TableBadge
+                tone={severityTones[detail.incident.severity]}
+                className="uppercase"
               >
                 {detail.incident.severity}
-              </Badge>
-              <Badge variant="outline" className="capitalize">
+              </TableBadge>
+              <TableBadge
+                tone={statusTones[detail.incident.status]}
+                className="capitalize"
+              >
                 {formatStatus(detail.incident.status)}
-              </Badge>
+              </TableBadge>
             </div>
-            <h2 className="max-w-5xl text-xl font-semibold leading-snug tracking-tight md:text-2xl">
+            <h1 className="max-w-5xl text-xl font-semibold leading-snug md:text-2xl">
               {detail.incident.title}
-            </h2>
-            <p className="max-w-3xl text-sm text-muted-foreground">
-              Review the current response state, available evidence, and
-              investigation readiness for this incident.
-            </p>
+            </h1>
           </div>
           <EditSreIncidentDialog
             incident={detail.incident}
@@ -223,17 +231,25 @@ export function SreIncidentDetailView({
           />
         </div>
 
-        <div className="grid overflow-hidden rounded-lg border bg-muted/10 sm:grid-cols-3">
-          <div className="border-b p-4 sm:border-b-0 sm:border-r">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        <div className="grid overflow-hidden rounded-lg border bg-muted/10 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="border-b p-4 sm:border-r xl:border-b-0">
+            <p className="text-xs font-medium uppercase text-muted-foreground">
               Service
             </p>
             <p className="mt-1 truncate text-sm font-semibold">
               {detail.incident.primaryServiceName ?? "Unmapped"}
             </p>
           </div>
+          <div className="border-b p-4 xl:border-b-0 xl:border-r">
+            <p className="text-xs font-medium uppercase text-muted-foreground">
+              Alerts
+            </p>
+            <p className="mt-1 text-sm font-semibold">
+              {detail.incident.alertCount}
+            </p>
+          </div>
           <div className="border-b p-4 sm:border-b-0 sm:border-r">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            <p className="text-xs font-medium uppercase text-muted-foreground">
               Evidence
             </p>
             <p className="mt-1 text-sm font-semibold">
@@ -241,7 +257,7 @@ export function SreIncidentDetailView({
             </p>
           </div>
           <div className="p-4">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            <p className="text-xs font-medium uppercase text-muted-foreground">
               Updated
             </p>
             <p className="mt-1 text-sm font-semibold" suppressHydrationWarning>
@@ -274,10 +290,14 @@ export function SreIncidentDetailView({
               title: item.title,
               evidenceType: item.evidenceType,
             }))}
+            toolMetrics={detail.toolMetrics}
           />
         </TabsContent>
 
-        <TabsContent value="evidence" className="min-h-0 flex-1 overflow-hidden">
+        <TabsContent
+          value="evidence"
+          className="min-h-0 flex-1 overflow-hidden"
+        >
           <NativeEvidenceCard detail={detail} />
         </TabsContent>
 

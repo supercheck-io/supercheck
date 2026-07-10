@@ -1568,6 +1568,7 @@ async function postJson(
     },
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(30_000),
+    redirect: 'error',
   });
 
   if (!response.ok) {
@@ -1609,6 +1610,7 @@ async function requestRegistrationExchange(
         capabilities: privateAgentCapabilities(),
       }),
       signal: AbortSignal.timeout(30_000),
+      redirect: 'error',
     },
   );
 

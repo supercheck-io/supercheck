@@ -93,7 +93,7 @@ const socialLinks = [
         label: "GitHub"
     },
     {
-        icon: <img src="/npm.svg" alt="npm" className="size-4.5" />,
+        icon: <Image src="/npm.svg" alt="npm" className="size-4.5" width={18} height={18} />,
         href: "https://www.npmjs.com/package/@supercheck/cli",
         label: "npm"
     },

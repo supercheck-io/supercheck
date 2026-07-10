@@ -250,7 +250,11 @@ function SreInlineChart({ chart }: { chart: ParsedSreChart }) {
     : [];
 
   return (
-    <div className="rounded-lg border bg-background p-3 shadow-sm">
+    <div
+      role="group"
+      aria-label={chart.title ?? "Copilot evidence chart"}
+      className="rounded-lg border bg-background p-3 shadow-sm"
+    >
       {(chart.title ||
         chart.description ||
         chart.sources.length > 0 ||
@@ -347,7 +351,13 @@ function SreInlineChart({ chart }: { chart: ParsedSreChart }) {
               />
             ))}
             {showBrush && (
-              <Brush dataKey="label" height={20} travellerWidth={8} />
+              <Brush
+                dataKey="label"
+                height={20}
+                travellerWidth={8}
+                fill="var(--muted)"
+                stroke="var(--border)"
+              />
             )}
           </BarChart>
         ) : chart.type === "line" ? (
@@ -376,7 +386,13 @@ function SreInlineChart({ chart }: { chart: ParsedSreChart }) {
               />
             ))}
             {showBrush && (
-              <Brush dataKey="label" height={20} travellerWidth={8} />
+              <Brush
+                dataKey="label"
+                height={20}
+                travellerWidth={8}
+                fill="var(--muted)"
+                stroke="var(--border)"
+              />
             )}
           </LineChart>
         ) : (
@@ -406,7 +422,13 @@ function SreInlineChart({ chart }: { chart: ParsedSreChart }) {
               />
             ))}
             {showBrush && (
-              <Brush dataKey="label" height={20} travellerWidth={8} />
+              <Brush
+                dataKey="label"
+                height={20}
+                travellerWidth={8}
+                fill="var(--muted)"
+                stroke="var(--border)"
+              />
             )}
           </AreaChart>
         )}

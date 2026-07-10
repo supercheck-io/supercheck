@@ -1202,6 +1202,7 @@ export async function validateSreConnector(
             ),
           ),
           cache: "no-store",
+          redirect: "error",
         });
 
         if (response.status === 401 || response.status === 403) {

@@ -49,9 +49,23 @@ export const DIRECT_VALIDATION_CONNECTOR_TYPES = [
   "elasticsearch",
   "tempo",
   "aws_cloudwatch",
+  "gitlab",
+  "pagerduty",
+  "opsgenie",
 ] as const satisfies readonly ConnectorType[];
 
-export const PRIVATE_AGENT_CONNECTOR_TYPES = DIRECT_VALIDATION_CONNECTOR_TYPES;
+export const PRIVATE_AGENT_CONNECTOR_TYPES = [
+  "github",
+  "kubernetes",
+  "prometheus",
+  "grafana",
+  "sentry",
+  "datadog",
+  "loki",
+  "elasticsearch",
+  "tempo",
+  "aws_cloudwatch",
+] as const satisfies readonly ConnectorType[];
 
 export type SreConnectorType = (typeof SRE_CONNECTOR_TYPES)[number];
 
@@ -75,5 +89,8 @@ export function isLiveSearchConnectorType(connectorType: ConnectorType) {
 }
 
 export function isSetupOnlyConnectorType(connectorType: ConnectorType) {
-  return connectorType !== "supercheck_native" && !isLiveSearchConnectorType(connectorType);
+  return (
+    connectorType !== "supercheck_native" &&
+    !isLiveSearchConnectorType(connectorType)
+  );
 }

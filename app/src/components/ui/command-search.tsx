@@ -23,6 +23,7 @@ import {
   Target,
   Bot,
   Network,
+  BrainCircuit,
   Siren,
   UserCog,
   Boxes,
@@ -234,8 +235,8 @@ export function CommandSearch({
                       <span>Copilot</span>
                     </CommandItem>
                     <CommandItem onSelect={() => handleCommand("evidence-graph")}>
-                      <Network className="mr-2 h-4 w-4 !text-sky-500" />
-                      <span>Evidence Map</span>
+                      <BrainCircuit className="mr-2 h-4 w-4 !text-violet-500" />
+                      <span>Investigation Map</span>
                     </CommandItem>
                   </CommandGroup>
 

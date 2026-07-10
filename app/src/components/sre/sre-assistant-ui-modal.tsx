@@ -62,18 +62,19 @@ export function SreAssistantUiModal() {
         <Button
           type="button"
           aria-label="Open Copilot"
+          aria-expanded={open}
+          title="Open AI SRE Copilot"
           className={cn(
-            "fixed bottom-6 right-6 z-40 flex h-12 items-center justify-center gap-2 rounded-full px-4 shadow-xl",
-            "bg-gradient-to-r from-primary to-primary/80 text-primary-foreground border border-primary/20",
+            "fixed bottom-5 right-5 z-40 flex h-12 w-12 items-center justify-center gap-2 rounded-full border border-primary/20 bg-primary p-0 text-primary-foreground shadow-lg transition-transform hover:scale-[1.03] sm:w-auto sm:px-4",
           )}
         >
           <Bot className="h-5 w-5" />
-          <span className="text-sm font-medium">Copilot</span>
+          <span className="hidden text-sm font-medium sm:inline">Copilot</span>
         </Button>
       </DialogTrigger>
       <DialogContent
         hideOverlay
-        className="bottom-4 right-4 left-auto top-auto grid h-[min(740px,calc(100svh-2rem))] w-[min(860px,calc(100vw-2rem))] max-w-none translate-x-0 translate-y-0 grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:rounded-xl [&>button]:right-4 [&>button]:top-4"
+        className="bottom-0 right-0 left-auto top-auto grid h-[100svh] w-full max-w-none translate-x-0 translate-y-0 grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden rounded-none p-0 sm:bottom-4 sm:right-4 sm:h-[min(740px,calc(100svh-2rem))] sm:w-[min(820px,calc(100vw-2rem))] sm:rounded-xl [&>button]:right-4 [&>button]:top-4"
       >
         <DialogHeader className="w-full min-w-0 border-b px-4 py-3 pr-16">
           <div className="flex w-full min-w-0 items-center justify-between gap-3">

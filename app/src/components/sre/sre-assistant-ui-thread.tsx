@@ -51,7 +51,6 @@ import {
   getQuickRepliesForAssistantText,
   formatCopilotAttachmentSize,
   isSupportedCopilotAttachment,
-  SRE_INLINE_CAPABILITIES_PREVIEW,
   SRE_COPILOT_ATTACHMENT_LIMITS,
   type SreCopilotAttachmentContext,
 } from "@/components/sre/sre-generative-ui";
@@ -113,13 +112,6 @@ type PendingCopilotAttachment = SreCopilotAttachmentContext & {
 
 function appendUserPrompt(thread: ThreadRuntime, prompt: string) {
   thread.append(createUserPromptMessage(prompt));
-}
-
-function appendInlinePreview(thread: ThreadRuntime) {
-  thread.append({
-    role: "assistant",
-    content: [{ type: "text", text: SRE_INLINE_CAPABILITIES_PREVIEW }],
-  });
 }
 
 async function readCopilotAttachment(
@@ -375,18 +367,6 @@ function EmptyThread({ onClearError }: { onClearError: () => void }) {
                     <span className="min-w-0">{suggestion}</span>
                   </Button>
                 ))}
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => {
-                    onClearError();
-                    appendInlinePreview(thread);
-                  }}
-                  className="h-auto justify-start rounded-xl px-3 py-2 text-left text-sm font-normal whitespace-normal"
-                >
-                  <BarChart3 className="h-4 w-4 shrink-0 text-muted-foreground" />
-                  <span className="min-w-0">Preview inline charts</span>
-                </Button>
               </div>
             }
           />
@@ -542,6 +522,12 @@ function SreComposer({ onClearError }: { onClearError: () => void }) {
   }
 
   function handleInputKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key === "Enter" && mentionOptions.length > 0) {
+      event.preventDefault();
+      insertMention(mentionOptions[0].value);
+      return;
+    }
+
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       sendComposerMessage();
@@ -596,30 +582,14 @@ function SreComposer({ onClearError }: { onClearError: () => void }) {
           ))}
           <Button
             type="button"
-            variant="secondary"
+            variant="ghost"
             size="sm"
-            className="h-7 rounded-full px-2.5 text-xs font-normal"
-            onClick={() => {
-              onClearError();
-              appendInlinePreview(thread);
-            }}
+            className="h-7 rounded-full px-2.5 text-xs font-normal text-muted-foreground"
+            onClick={() => insertMention("@")}
+            title="Reference an incident, service, or recent deployment"
           >
-            <BarChart3 className="h-3.5 w-3.5" />
-            Preview charts
+            @ context
           </Button>
-          {SRE_MENTION_SHORTCUTS.map((mention) => (
-            <Button
-              key={mention.label}
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-7 rounded-full px-2.5 text-xs font-normal text-muted-foreground"
-              onClick={() => insertMention(mention.value)}
-              title={mention.description}
-            >
-              {mention.label}
-            </Button>
-          ))}
         </div>
         {attachments.length > 0 ? (
           <div className="mb-3 flex flex-wrap gap-2">
@@ -660,12 +630,18 @@ function SreComposer({ onClearError }: { onClearError: () => void }) {
             className="w-full max-h-44 min-h-16 resize-none border-0 bg-transparent text-sm leading-6 outline-none placeholder:text-muted-foreground focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60"
           />
           {mentionOptions.length > 0 ? (
-            <div className="absolute bottom-full left-0 z-20 mb-2 w-72 overflow-hidden rounded-xl border bg-popover shadow-lg">
+            <div
+              role="listbox"
+              aria-label="Context references"
+              className="absolute bottom-full left-0 z-20 mb-2 w-72 overflow-hidden rounded-md border bg-popover shadow-lg"
+            >
               {mentionOptions.map((mention) => (
                 <button
                   key={mention.label}
                   type="button"
-                  className="flex w-full flex-col gap-0.5 px-3 py-2 text-left text-sm hover:bg-muted"
+                  role="option"
+                  aria-selected="false"
+                  className="flex w-full flex-col gap-0.5 px-3 py-2 text-left text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                   onClick={() => insertMention(mention.value)}
                 >
                   <span className="font-medium">{mention.label}</span>

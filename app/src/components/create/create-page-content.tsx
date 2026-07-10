@@ -9,7 +9,7 @@ import {
   FileText,
   FolderOpen,
   KeyRound,
-  Network,
+  BrainCircuit,
   RadioTower,
   Shield,
   Siren,
@@ -196,9 +196,9 @@ export function CreatePageContent({
           onClick: () => router.push("/copilot"),
         },
         {
-          icon: <Network size={20} className="text-sky-500" />,
-          title: "Evidence Map",
-          description: "Review evidence links",
+          icon: <BrainCircuit size={20} className="text-violet-500" />,
+          title: "Investigation Map",
+          description: "Trace incident context",
           onClick: () => router.push("/copilot/evidence-graph"),
         },
         {

@@ -170,6 +170,7 @@ export function ChatwootWidget({
             email: user.email,
             name: user.name || user.email,
             avatar_url: user.image || undefined,
+            identifier_hash: user.identityValidationToken,
         });
 
         if (customAttributes) {
@@ -186,27 +187,11 @@ export function ChatwootWidget({
     }
 
     return (
-        <>
-            <style dangerouslySetInnerHTML={{ __html: `
-                .cw-widget-container,
-                .woot-widget-holder {
-                    right: 18px !important;
-                    bottom: 150px !important;
-                    z-index: 45 !important;
-                }
-                .cw-widget-bubble,
-                .woot-widget-bubble {
-                    right: 18px !important;
-                    bottom: 88px !important;
-                    z-index: 45 !important;
-                }
-            `}} />
-            <Script
-                id="chatwoot-sdk"
-                src={`${validatedBaseUrl}/packs/js/sdk.js`}
-                strategy="lazyOnload"
-                onLoad={handleLoad}
-            />
-        </>
+        <Script
+            id="chatwoot-sdk"
+            src={`${validatedBaseUrl}/packs/js/sdk.js`}
+            strategy="lazyOnload"
+            onLoad={handleLoad}
+        />
     );
 }

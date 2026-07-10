@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, count, desc, eq } from "drizzle-orm";
 
 import {
   sreEvidenceItems,
@@ -54,7 +54,7 @@ export async function getSreInvestigationReportExportForRun(input: {
     return null;
   }
 
-  const [evidence, toolCalls, recommendations] = await Promise.all([
+  const [evidence, toolCalls, recommendations, evidenceTotal, toolCallTotal, recommendationTotal] = await Promise.all([
     db
       .select({
         id: sreEvidenceItems.id,
@@ -116,18 +116,57 @@ export async function getSreInvestigationReportExportForRun(input: {
       )
       .orderBy(desc(sreInvestigationRecommendations.createdAt))
       .limit(25),
+    db
+      .select({ total: count() })
+      .from(sreEvidenceItems)
+      .where(
+        and(
+          eq(sreEvidenceItems.organizationId, input.organizationId),
+          eq(sreEvidenceItems.projectId, input.projectId),
+          eq(sreEvidenceItems.investigationRunId, input.investigationRunId),
+        ),
+      ),
+    db
+      .select({ total: count() })
+      .from(sreInvestigationToolCalls)
+      .innerJoin(sreInvestigationRuns, eq(sreInvestigationToolCalls.investigationRunId, sreInvestigationRuns.id))
+      .where(
+        and(
+          eq(sreInvestigationRuns.organizationId, input.organizationId),
+          eq(sreInvestigationRuns.projectId, input.projectId),
+          eq(sreInvestigationToolCalls.investigationRunId, input.investigationRunId),
+        ),
+      ),
+    db
+      .select({ total: count() })
+      .from(sreInvestigationRecommendations)
+      .innerJoin(sreInvestigationRuns, eq(sreInvestigationRecommendations.investigationRunId, sreInvestigationRuns.id))
+      .where(
+        and(
+          eq(sreInvestigationRuns.organizationId, input.organizationId),
+          eq(sreInvestigationRuns.projectId, input.projectId),
+          eq(sreInvestigationRecommendations.investigationRunId, input.investigationRunId),
+        ),
+      ),
   ]);
+
+  const totals = {
+    evidence: evidenceTotal[0]?.total ?? 0,
+    toolCalls: toolCallTotal[0]?.total ?? 0,
+    recommendations: recommendationTotal[0]?.total ?? 0,
+  };
 
   const reportExport = buildSreInvestigationReportExport({
     item: {
       ...row,
-      evidenceCount: evidence.length,
-      toolCallCount: toolCalls.length,
-      recommendationCount: recommendations.length,
+      evidenceCount: totals.evidence,
+      toolCallCount: totals.toolCalls,
+      recommendationCount: totals.recommendations,
     },
     evidence,
     toolCalls,
     recommendations,
+    totals,
   });
 
   return { row, evidence, toolCalls, recommendations, reportExport };

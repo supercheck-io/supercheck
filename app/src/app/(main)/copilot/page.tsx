@@ -1,12 +1,7 @@
 import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
-import { SreAiConsole } from "@/components/sre/sre-ai-console";
-import { getSreStandaloneChatHistories } from "@/actions/sre-ai";
+import { SreCopilotPageClient } from "@/components/sre/sre-copilot-page-client";
 
-export const dynamic = "force-dynamic";
-
-export default async function SreAiPage() {
-  const historyResult = await getSreStandaloneChatHistories();
-
+export default function SreAiPage() {
   return (
     <div className="h-[calc(100svh-3.5rem)] overflow-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       <div className="sr-only">
@@ -18,10 +13,7 @@ export default async function SreAiPage() {
           ]}
         />
       </div>
-      <SreAiConsole
-        initialHistories={historyResult.histories}
-        loadError={historyResult.success ? null : historyResult.error}
-      />
+      <SreCopilotPageClient />
     </div>
   );
 }

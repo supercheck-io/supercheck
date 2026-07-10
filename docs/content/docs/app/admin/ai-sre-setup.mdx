@@ -4,83 +4,50 @@ description: Configure services, read-only integrations, diagnostic recipes, and
 icon: Bot
 ---
 
-AI SRE setup lives under **Admin** because these screens are usually configured by project administrators, not responders during an active incident.
+Project administrators configure AI SRE from **Organization Admin**. Responders use **Alerts**, **Incidents**, **Investigation Map**, and **Copilot** during an incident.
 
-Responders use **Communicate → Alerts** to review alert signals, **Communicate → Incidents** to work incidents, and **Investigate → Copilot** for read-only investigation help. Administrators use this page to configure the evidence sources that make those workflows useful.
+Select **Setup guide** beside **Add service**, **Add connector**, or **Add recipe** to review setup status. The guide opens only when selected and does not open another form automatically.
 
 ## Services
 
-Use **Admin → Services** to register the production services Supercheck should reason about.
+Use **Services** to define the systems responders recognize, such as `checkout-api` or `payments-worker`.
 
-Services provide a stable system of record for:
+For each service, add its owner, environment, repository, and telemetry name. The service detail page manages:
 
-- Mapping alerts and incidents to the affected service
-- Scoping connectors to only the services they should support
-- Grouping evidence and ownership metadata during investigations
+- Trusted dependencies
+- Linked monitors, jobs, tests, k6 runs, and status components
+- Recent incident and alert activity
+- Topology suggestions awaiting approval
 
-Start with the services your responders recognize during incidents, such as `checkout-api`, `web-app`, or `payments-worker`.
+Suggested relationships do not enter the Investigation Map until an authorized user approves them.
 
 ## Integrations
 
-Use **Admin → Integrations** to configure read-only evidence connectors.
+Use **Integrations** to add read-only evidence sources. Each connector has a service scope, validation status, execution mode, and output limits.
 
-Connectors let Copilot collect cited evidence from tools such as GitHub, Kubernetes, Prometheus, Grafana, Sentry, Datadog, Loki, Elasticsearch, Tempo, and AWS CloudWatch. Connector access is governed by RBAC, service scope, output limits, and redaction.
-
-Connector validation automatically ensures credentials are valid and can reach the target system.
-
-Connector types are labeled by capability during setup:
-
-- **Live search** connectors can be used by investigations and Copilot for bounded read-only evidence search.
-- **Native** evidence comes from Supercheck's own alerts, monitors, jobs, runs, logs, reports, and k6 results.
-- **Setup only** connector types are visible for roadmap clarity but cannot be newly configured until their read-only search adapter is implemented.
-
-Use context links when an outbound notification provider, such as a webhook alert channel, should be correlated with a read-only evidence connector.
+Use the narrowest credential and service scope that supports your investigation queries. Validate the connector after setup. See [Connectors](/docs/app/investigate/connectors) for supported providers and query examples.
 
 ## Diagnostic Recipes
 
-Use **Admin → Diagnostic Recipes** to save approved read-only query templates.
+Use **Diagnostic Recipes** to save approved, repeatable investigation queries. Recipes are connector-scoped and enforce row, byte, time, and allowlist limits.
 
-Recipes are useful for repeated questions such as:
-
-- Which services have elevated 5xx errors?
-- Did latency increase around the incident start time?
-- Are recent logs showing the same exception?
-- Which traces show the slowest dependency?
-
-Each recipe is scoped to a connector and constrained by allowlists, row limits, byte limits, and timeouts.
-
-Built-in recipe templates do not ship with sample production service names. Administrators must provide tenant-specific service values that pass the recipe schema and any configured allowlists.
-
-SQL recipes are automatically validated to ensure they are strictly read-only, preventing any accidental data modification.
+Start with high-value checks such as service error rate, latency, recent error logs, or slow traces.
 
 ## Private Agents
 
-Use **Admin → Private Agents** to register outbound-only workers for private network evidence collection.
+Use **Private Agents** only when Supercheck cannot reach a supported source directly. Private Agents connect outbound over HTTPS and return bounded, sanitized evidence summaries. They do not apply fixes or require inbound firewall access.
 
-Private Agents are used when Supercheck Cloud cannot directly reach your internal tools, such as private Kubernetes clusters, internal Prometheus or Grafana instances, or self-hosted GitHub Enterprise.
+## Setup Order
 
-Private Agents:
-
-- Connect outbound to Supercheck over HTTPS
-- Fetch read-only connector jobs
-- Query your internal systems locally
-- Return bounded, sanitized evidence summaries
-
-They do not apply fixes and do not require inbound firewall access.
-
-## Recommended Setup Order
-
-1. Register the core services your team uses during incidents.
-2. Add direct integrations for cloud-accessible tools.
-3. Register a Private Agent if evidence sources are private.
-4. Add diagnostic recipes for common service-specific questions.
-5. Create or verify alert channels under **Alerts → Notification Channels**.
-6. Confirm responders can create incidents from alert signals or manually from **Communicate → Incidents**.
+1. Add the services responders use during incidents.
+2. Link native monitors, jobs, tests, or status components.
+3. Add and validate read-only connectors.
+4. Add diagnostic recipes for common checks.
+5. Verify alert channels and run a test investigation.
 
 ## Permissions
 
-AI SRE setup follows the same project and organization RBAC model as the rest of Supercheck.
-
-- Users need connector configuration permissions to create integrations, diagnostic recipes, and Private Agents.
-- Users need incident permissions to create or investigate incidents.
-- All setup changes and incident actions are audit logged.
+- Connector configuration permission is required for integrations, recipes, and Private Agents.
+- Service update permission is required for service metadata, dependencies, and resource links.
+- Service configure permission is required to approve topology suggestions.
+- Incident permissions control incident creation and investigation.

@@ -1,7 +1,14 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Cable, FileSearch, Loader2, Plus, ShieldCheck, Unlink } from "lucide-react";
+import {
+  Cable,
+  FileSearch,
+  Loader2,
+  Plus,
+  ShieldCheck,
+  Unlink,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -20,6 +27,7 @@ import {
   type SrePrivateAgentJobResult,
   type SreConnectorSetupOptions,
 } from "@/actions/sre-connectors";
+import type { SreOnboardingStatus } from "@/actions/sre-onboarding";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 import { ConnectorCredentialDialog } from "@/components/sre/connectors/connector-credential-dialog";
 import { ConnectorFormDialog } from "@/components/sre/connectors/connector-form-dialog";
@@ -63,6 +71,7 @@ import { canBindIntegrationToConnector } from "@/lib/sre/integration-bindings";
 import { cn } from "@/lib/utils";
 import { getConnectorQueryBuilder } from "./connector-query-builders";
 import { getConnectorQueryGuide } from "./connector-query-guides";
+import { SreSetupGuideDialog } from "@/components/sre/onboarding/sre-setup-guide-dialog";
 
 type ConnectorAdminViewProps = {
   initialConnectors: SreConnectorListItem[];
@@ -70,24 +79,41 @@ type ConnectorAdminViewProps = {
   initialBindings: SreIntegrationBindingListItem[];
   bindingSetupOptions: SreIntegrationBindingSetupOptions;
   loadError: string | null;
+  setupStatus?: SreOnboardingStatus | null;
+  onSetupChanged?: () => void;
 };
 
 const statusClasses: Record<SreConnectorListItem["status"], string> = {
-  configured: "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900/60 dark:bg-sky-950/40 dark:text-sky-300",
-  valid: "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300",
-  unreachable: "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300",
-  missing_credentials: "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300",
-  disabled: "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300",
+  configured:
+    "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900/60 dark:bg-sky-950/40 dark:text-sky-300",
+  valid:
+    "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300",
+  unreachable:
+    "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300",
+  missing_credentials:
+    "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300",
+  disabled:
+    "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300",
 };
 
-const jobStatusClasses: Record<NonNullable<SreConnectorListItem["latestPrivateAgentJob"]>["status"], string> = {
-  queued: "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900/60 dark:bg-sky-950/40 dark:text-sky-300",
-  leased: "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900/60 dark:bg-sky-950/40 dark:text-sky-300",
-  running: "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900/60 dark:bg-sky-950/40 dark:text-sky-300",
-  completed: "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300",
-  failed: "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300",
-  cancelled: "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300",
-  timed_out: "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300",
+const jobStatusClasses: Record<
+  NonNullable<SreConnectorListItem["latestPrivateAgentJob"]>["status"],
+  string
+> = {
+  queued:
+    "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900/60 dark:bg-sky-950/40 dark:text-sky-300",
+  leased:
+    "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900/60 dark:bg-sky-950/40 dark:text-sky-300",
+  running:
+    "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900/60 dark:bg-sky-950/40 dark:text-sky-300",
+  completed:
+    "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300",
+  failed:
+    "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300",
+  cancelled:
+    "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300",
+  timed_out:
+    "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300",
 };
 
 const evidenceSearchConnectorTypes = new Set([
@@ -101,13 +127,20 @@ const evidenceSearchConnectorTypes = new Set([
   "elasticsearch",
   "tempo",
   "aws_cloudwatch",
+  "gitlab",
+  "pagerduty",
+  "opsgenie",
 ]);
 
 function formatConnectorType(value: string) {
-  return value.replace(/_/g, " ").replace(/\b\w/g, (character) => character.toUpperCase());
+  return value
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
-function formatJobSummary(job: NonNullable<SreConnectorListItem["latestPrivateAgentJob"]>) {
+function formatJobSummary(
+  job: NonNullable<SreConnectorListItem["latestPrivateAgentJob"]>,
+) {
   if (job.status === "completed") {
     return `${job.evidenceCount} evidence item${job.evidenceCount === 1 ? "" : "s"}${job.truncated ? " (truncated)" : ""}`;
   }
@@ -116,7 +149,9 @@ function formatJobSummary(job: NonNullable<SreConnectorListItem["latestPrivateAg
     return job.errorCode;
   }
 
-  return job.completedAt ? `Completed ${job.completedAt.toLocaleString()}` : `Queued ${job.createdAt.toLocaleString()}`;
+  return job.completedAt
+    ? `Completed ${job.completedAt.toLocaleString()}`
+    : `Queued ${job.createdAt.toLocaleString()}`;
 }
 
 function formatDateTime(value: string | Date | null) {
@@ -124,14 +159,17 @@ function formatDateTime(value: string | Date | null) {
   return new Date(value).toLocaleString();
 }
 
-
-
 function formatIntegrationKey(value: string) {
-  return value.replace(/_/g, " ").replace(/\b\w/g, (character) => character.toUpperCase());
+  return value
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
 function supportsEvidenceSearch(connector: SreConnectorListItem) {
-  return connector.status !== "disabled" && evidenceSearchConnectorTypes.has(connector.type);
+  return (
+    connector.status !== "disabled" &&
+    evidenceSearchConnectorTypes.has(connector.type)
+  );
 }
 
 export function ConnectorAdminView({
@@ -140,6 +178,8 @@ export function ConnectorAdminView({
   initialBindings,
   bindingSetupOptions,
   loadError,
+  setupStatus = null,
+  onSetupChanged,
 }: ConnectorAdminViewProps) {
   const [connectors, setConnectors] = useState(initialConnectors);
   const [bindings, setBindings] = useState(initialBindings);
@@ -149,60 +189,80 @@ export function ConnectorAdminView({
   const [bindingProviderId, setBindingProviderId] = useState("");
   const [bindingConnectorId, setBindingConnectorId] = useState("");
   const [bindingServiceId, setBindingServiceId] = useState("all");
-  const [disablingBinding, setDisablingBinding] = useState<SreIntegrationBindingListItem | null>(null);
-  const [rotatingCredentialConnector, setRotatingCredentialConnector] = useState<SreConnectorListItem | null>(null);
-  const [disablingConnector, setDisablingConnector] = useState<SreConnectorListItem | null>(null);
-  const [jobResult, setJobResult] = useState<Extract<SrePrivateAgentJobResult, { success: true }>["job"] | null>(null);
-  const [searchConnector, setSearchConnector] = useState<SreConnectorListItem | null>(null);
+  const [disablingBinding, setDisablingBinding] =
+    useState<SreIntegrationBindingListItem | null>(null);
+  const [rotatingCredentialConnector, setRotatingCredentialConnector] =
+    useState<SreConnectorListItem | null>(null);
+  const [disablingConnector, setDisablingConnector] =
+    useState<SreConnectorListItem | null>(null);
+  const [jobResult, setJobResult] = useState<
+    Extract<SrePrivateAgentJobResult, { success: true }>["job"] | null
+  >(null);
+  const [searchConnector, setSearchConnector] =
+    useState<SreConnectorListItem | null>(null);
   const [searchServiceId, setSearchServiceId] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchFilters, setSearchFilters] = useState<Record<string, string>>({});
-  const [queryBuilderValues, setQueryBuilderValues] = useState<Record<string, string>>({});
+  const [searchFilters, setSearchFilters] = useState<Record<string, string>>(
+    {},
+  );
+  const [queryBuilderValues, setQueryBuilderValues] = useState<
+    Record<string, string>
+  >({});
   const [searchTimeWindowMinutes, setSearchTimeWindowMinutes] = useState("60");
-  const [searchResult, setSearchResult] = useState<Extract<SreConnectorSearchResult, { success: true }> | null>(null);
+  const [searchResult, setSearchResult] = useState<Extract<
+    SreConnectorSearchResult,
+    { success: true }
+  > | null>(null);
   const [isDisabling, startDisableTransition] = useTransition();
   const [isSavingBinding, startBindingTransition] = useTransition();
   const [isValidating, startValidateTransition] = useTransition();
   const [isLoadingJobResult, startJobResultTransition] = useTransition();
   const [isSearchingConnector, startSearchTransition] = useTransition();
 
-  const selectedBindingProvider = bindingSetupOptions.notificationProviders.find(
-    (provider) => provider.id === bindingProviderId,
-  );
+  const selectedBindingProvider =
+    bindingSetupOptions.notificationProviders.find(
+      (provider) => provider.id === bindingProviderId,
+    );
   const selectedBindingConnector = connectors.find(
     (connector) => connector.id === bindingConnectorId,
   );
   const compatibleBindingConnectors = selectedBindingProvider
     ? bindingSetupOptions.connectors.filter((connector) =>
-      canBindIntegrationToConnector(
-        selectedBindingProvider.integrationKey,
-        connector.type,
-      ),
-    )
+        canBindIntegrationToConnector(
+          selectedBindingProvider.integrationKey,
+          connector.type,
+        ),
+      )
     : bindingSetupOptions.connectors;
-  const bindingServiceOptions = selectedBindingConnector?.scopedServiceIds.length
+  const bindingServiceOptions = selectedBindingConnector?.scopedServiceIds
+    .length
     ? bindingSetupOptions.services.filter((service) =>
-      selectedBindingConnector.scopedServiceIds.includes(service.id),
-    )
+        selectedBindingConnector.scopedServiceIds.includes(service.id),
+      )
     : bindingSetupOptions.services;
-
-
 
   const handleSaved = (savedConnector: SreConnectorListItem) => {
     setConnectors((current) => {
-      const exists = current.some((connector) => connector.id === savedConnector.id);
+      const exists = current.some(
+        (connector) => connector.id === savedConnector.id,
+      );
       if (exists) {
-        return current.map((connector) => (connector.id === savedConnector.id ? savedConnector : connector));
+        return current.map((connector) =>
+          connector.id === savedConnector.id ? savedConnector : connector,
+        );
       }
       return [savedConnector, ...current];
     });
+    onSetupChanged?.();
   };
 
   const handleSavedBinding = (savedBinding: SreIntegrationBindingListItem) => {
     setBindings((current) => {
       const exists = current.some((binding) => binding.id === savedBinding.id);
       if (exists) {
-        return current.map((binding) => (binding.id === savedBinding.id ? savedBinding : binding));
+        return current.map((binding) =>
+          binding.id === savedBinding.id ? savedBinding : binding,
+        );
       }
       return [savedBinding, ...current];
     });
@@ -238,7 +298,9 @@ export function ConnectorAdminView({
     if (!disablingBinding) return;
 
     startBindingTransition(async () => {
-      const result = await disableSreIntegrationBinding({ id: disablingBinding.id });
+      const result = await disableSreIntegrationBinding({
+        id: disablingBinding.id,
+      });
       if (!result.success) {
         toast.error(result.error);
         return;
@@ -297,12 +359,16 @@ export function ConnectorAdminView({
       return setupOptions.services;
     }
 
-    return setupOptions.services.filter((service) => connector.scopedServiceIds.includes(service.id));
+    return setupOptions.services.filter((service) =>
+      connector.scopedServiceIds.includes(service.id),
+    );
   };
 
   const openSearchDialog = (connector: SreConnectorListItem) => {
     if (!supportsEvidenceSearch(connector)) {
-      toast.info("Evidence search is not implemented for this connector type yet. Use the setup guide to configure it for future collaboration context.");
+      toast.info(
+        "Evidence search is not implemented for this connector type yet. Use the setup guide to configure it for future collaboration context.",
+      );
       return;
     }
 
@@ -325,7 +391,9 @@ export function ConnectorAdminView({
     if (!searchConnector) return;
 
     const builder = getConnectorQueryBuilder(searchConnector.type);
-    const service = servicesForConnector(searchConnector).find((candidate) => candidate.id === serviceId);
+    const service = servicesForConnector(searchConnector).find(
+      (candidate) => candidate.id === serviceId,
+    );
     if (builder) {
       setQueryBuilderValues(builder.defaults(service?.name));
     }
@@ -369,7 +437,9 @@ export function ConnectorAdminView({
     if (!connector.latestPrivateAgentJob) return;
 
     startJobResultTransition(async () => {
-      const result = await getPrivateAgentConnectorJobResult({ jobId: connector.latestPrivateAgentJob!.id });
+      const result = await getPrivateAgentConnectorJobResult({
+        jobId: connector.latestPrivateAgentJob!.id,
+      });
       if (!result.success) {
         toast.error(result.error);
         return;
@@ -391,34 +461,23 @@ export function ConnectorAdminView({
   }
 
   return (
-    <div className="space-y-4 py-4">
+    <div className="space-y-4">
       {connectors.length === 0 ? (
-        <>
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex flex-col">
-              <h2 className="text-xl font-semibold">Integrations</h2>
-              <p className="text-sm text-muted-foreground">
-                Read-only evidence connectors and alert context links for incident investigations.
-              </p>
-            </div>
-            <Button onClick={() => setIsCreateOpen(true)}>
-              <Plus className="mr-2 h-4 w-4" />
-              Add connector
-            </Button>
-          </div>
-          <DashboardEmptyState
-            className="min-h-[420px]"
-            title="No integrations configured"
-            description="Add a read-only connector such as GitHub, Kubernetes, Prometheus, Grafana, Sentry, or logs so Copilot can collect cited incident evidence."
-            icon={<Cable className="h-10 w-10" />}
-            action={
+        <DashboardEmptyState
+          className="min-h-[420px]"
+          title="No integrations configured"
+          description="Add a read-only connector such as GitHub, Kubernetes, Prometheus, Grafana, Sentry, or logs so Copilot can collect cited incident evidence."
+          icon={<Cable className="h-10 w-10" />}
+          action={
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <SreSetupGuideDialog status={setupStatus} />
               <Button onClick={() => setIsCreateOpen(true)}>
                 <Plus className="mr-2 h-4 w-4" />
                 Add connector
               </Button>
-            }
-          />
-        </>
+            </div>
+          }
+        />
       ) : (
         <DataTable
           columns={columns}
@@ -428,6 +487,7 @@ export function ConnectorAdminView({
               table={table}
               onAddConnector={() => setIsCreateOpen(true)}
               onAddBinding={() => setIsBindingDialogOpen(true)}
+              setupGuide={<SreSetupGuideDialog status={setupStatus} />}
             />
           )}
           entityLabel="connectors"
@@ -440,6 +500,14 @@ export function ConnectorAdminView({
             isValidating,
             isLoadingJobResult,
             isDisabling,
+            globalFilterColumns: [
+              "name",
+              "type",
+              "status",
+              "executionMode",
+              "riskLevel",
+              "lastValidationStatus",
+            ],
           }}
         />
       )}
@@ -448,7 +516,9 @@ export function ConnectorAdminView({
         <div className="rounded-lg border bg-muted/10 p-3">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-sm font-semibold">Context links</h3>
-            <Badge variant="outline" className="rounded-full">{bindings.length}</Badge>
+            <Badge variant="outline" className="rounded-full">
+              {bindings.length}
+            </Badge>
           </div>
           <div className="grid gap-2 lg:grid-cols-2">
             {bindings.map((binding) => (
@@ -462,14 +532,24 @@ export function ConnectorAdminView({
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0 space-y-2">
                     <div className="flex flex-wrap items-center gap-2">
-                      <Badge variant="secondary">{formatIntegrationKey(binding.integrationKey)}</Badge>
-                      <Badge variant="outline">{binding.correlationStrategy.replace(/_/g, " ")}</Badge>
-                      {!binding.enabled && <Badge variant="outline">Disabled</Badge>}
+                      <Badge variant="secondary">
+                        {formatIntegrationKey(binding.integrationKey)}
+                      </Badge>
+                      <Badge variant="outline">
+                        {binding.correlationStrategy.replace(/_/g, " ")}
+                      </Badge>
+                      {!binding.enabled && (
+                        <Badge variant="outline">Disabled</Badge>
+                      )}
                     </div>
                     <div className="text-sm">
-                      <p className="font-medium">{binding.notificationProvider.name}</p>
+                      <p className="font-medium">
+                        {binding.notificationProvider.name}
+                      </p>
                       <p className="text-muted-foreground">
-                        {binding.notificationProvider.type} alerts → {binding.externalConnector.name} ({formatConnectorType(binding.externalConnector.type)})
+                        {binding.notificationProvider.type} alerts →{" "}
+                        {binding.externalConnector.name} (
+                        {formatConnectorType(binding.externalConnector.type)})
                       </p>
                     </div>
                     <p className="text-xs text-muted-foreground">
@@ -519,7 +599,9 @@ export function ConnectorAdminView({
           <DialogHeader>
             <DialogTitle>Link AI SRE context</DialogTitle>
             <DialogDescription>
-              Connect an alert destination to a separate read-only connector. This improves correlation only; it does not share credentials or allow remediation.
+              Connect an alert destination to a separate read-only connector.
+              This improves correlation only; it does not share credentials or
+              allow remediation.
             </DialogDescription>
           </DialogHeader>
 
@@ -532,7 +614,12 @@ export function ConnectorAdminView({
           >
             <div className="grid gap-3 md:grid-cols-2">
               <div className="space-y-1.5">
-                <label htmlFor="binding-provider" className="text-sm font-medium">Alert provider</label>
+                <label
+                  htmlFor="binding-provider"
+                  className="text-sm font-medium"
+                >
+                  Alert provider
+                </label>
                 <Select
                   value={bindingProviderId || undefined}
                   onValueChange={(value) => {
@@ -545,17 +632,25 @@ export function ConnectorAdminView({
                     <SelectValue placeholder="Select provider" />
                   </SelectTrigger>
                   <SelectContent>
-                    {bindingSetupOptions.notificationProviders.map((provider) => (
-                      <SelectItem key={provider.id} value={provider.id}>
-                        {provider.name} · {formatIntegrationKey(provider.integrationKey)}
-                      </SelectItem>
-                    ))}
+                    {bindingSetupOptions.notificationProviders.map(
+                      (provider) => (
+                        <SelectItem key={provider.id} value={provider.id}>
+                          {provider.name} ·{" "}
+                          {formatIntegrationKey(provider.integrationKey)}
+                        </SelectItem>
+                      ),
+                    )}
                   </SelectContent>
                 </Select>
               </div>
 
               <div className="space-y-1.5">
-                <label htmlFor="binding-connector" className="text-sm font-medium">Read-only connector</label>
+                <label
+                  htmlFor="binding-connector"
+                  className="text-sm font-medium"
+                >
+                  Read-only connector
+                </label>
                 <Select
                   value={bindingConnectorId || undefined}
                   onValueChange={(value) => {
@@ -579,7 +674,9 @@ export function ConnectorAdminView({
             </div>
 
             <div className="space-y-1.5">
-              <label htmlFor="binding-service" className="text-sm font-medium">Service scope</label>
+              <label htmlFor="binding-service" className="text-sm font-medium">
+                Service scope
+              </label>
               <Select
                 value={bindingServiceId}
                 onValueChange={setBindingServiceId}
@@ -600,20 +697,31 @@ export function ConnectorAdminView({
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                If the connector is service-scoped, choose one of its allowed services. Project-wide links are available only for project-wide connectors.
+                If the connector is service-scoped, choose one of its allowed
+                services. Project-wide links are available only for project-wide
+                connectors.
               </p>
             </div>
 
             {selectedBindingProvider && (
               <div className="rounded-lg border bg-muted/30 p-3 text-sm">
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant="secondary">{formatIntegrationKey(selectedBindingProvider.integrationKey)}</Badge>
+                  <Badge variant="secondary">
+                    {formatIntegrationKey(
+                      selectedBindingProvider.integrationKey,
+                    )}
+                  </Badge>
                   <Badge variant="outline">
-                    {selectedBindingProvider.defaultCorrelationStrategy.replace(/_/g, " ")}
+                    {selectedBindingProvider.defaultCorrelationStrategy.replace(
+                      /_/g,
+                      " ",
+                    )}
                   </Badge>
                 </div>
                 <p className="mt-2 text-muted-foreground">
-                  Supercheck will use delivery metadata such as dedup keys, aliases, incident URLs, or chat threads to seed AI SRE context.
+                  Supercheck will use delivery metadata such as dedup keys,
+                  aliases, incident URLs, or chat threads to seed AI SRE
+                  context.
                 </p>
               </div>
             )}
@@ -633,10 +741,13 @@ export function ConnectorAdminView({
                   isSavingBinding ||
                   !bindingProviderId ||
                   !bindingConnectorId ||
-                  (Boolean(selectedBindingConnector?.scopedServiceIds.length) && bindingServiceId === "all")
+                  (Boolean(selectedBindingConnector?.scopedServiceIds.length) &&
+                    bindingServiceId === "all")
                 }
               >
-                {isSavingBinding && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {isSavingBinding && (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                )}
                 Link context
               </Button>
             </div>
@@ -644,12 +755,16 @@ export function ConnectorAdminView({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={Boolean(searchConnector)} onOpenChange={(open) => !open && setSearchConnector(null)}>
+      <Dialog
+        open={Boolean(searchConnector)}
+        onOpenChange={(open) => !open && setSearchConnector(null)}
+      >
         <DialogContent className="max-h-[90vh] max-w-4xl min-w-2xl gap-3 overflow-y-auto p-5">
           <DialogHeader>
             <DialogTitle>Search connector evidence</DialogTitle>
             <DialogDescription>
-              Run a bounded, read-only connector search for one service. Searches are rate-limited, audited, and redacted before AI use.
+              Run a bounded, read-only connector search for one service.
+              Searches are rate-limited, audited, and redacted before AI use.
             </DialogDescription>
           </DialogHeader>
 
@@ -666,8 +781,12 @@ export function ConnectorAdminView({
                     <div className="rounded-lg border bg-muted/20 p-3">
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                         <div>
-                          <p className="text-sm font-medium">{guide.label} query guide</p>
-                          <p className="text-xs text-muted-foreground">{guide.setupHint}</p>
+                          <p className="text-sm font-medium">
+                            {guide.label} query guide
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {guide.setupHint}
+                          </p>
                         </div>
                         <Badge variant="outline">{guide.queryLabel}</Badge>
                       </div>
@@ -679,11 +798,15 @@ export function ConnectorAdminView({
                             onClick={() => setSearchQuery(example.query)}
                             className="rounded-md border bg-background p-2 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           >
-                            <span className="block text-xs font-medium">{example.label}</span>
+                            <span className="block text-xs font-medium">
+                              {example.label}
+                            </span>
                             <code className="mt-1 block break-words rounded bg-muted px-2 py-1 font-mono text-xs">
                               {example.query}
                             </code>
-                            <span className="mt-1 block text-xs text-muted-foreground">{example.description}</span>
+                            <span className="mt-1 block text-xs text-muted-foreground">
+                              {example.description}
+                            </span>
                           </button>
                         ))}
                       </div>
@@ -693,17 +816,29 @@ export function ConnectorAdminView({
                       <div className="rounded-lg border bg-background p-3">
                         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                           <div className="space-y-1">
-                            <p className="text-sm font-medium">{builder.title}</p>
-                            <p className="max-w-3xl text-xs text-muted-foreground">{builder.description}</p>
+                            <p className="text-sm font-medium">
+                              {builder.title}
+                            </p>
+                            <p className="max-w-3xl text-xs text-muted-foreground">
+                              {builder.description}
+                            </p>
                           </div>
-                          <Button type="button" variant="outline" size="sm" onClick={applyQueryBuilder}>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={applyQueryBuilder}
+                          >
                             Build query
                           </Button>
                         </div>
                         <div className="mt-3 grid gap-3 md:grid-cols-2">
                           {builder.fields.map((field) => (
                             <div key={field.id} className="space-y-1.5">
-                              <label htmlFor={`query-builder-${field.id}`} className="text-xs font-medium">
+                              <label
+                                htmlFor={`query-builder-${field.id}`}
+                                className="text-xs font-medium"
+                              >
                                 {field.label}
                               </label>
                               <Input
@@ -711,11 +846,16 @@ export function ConnectorAdminView({
                                 value={queryBuilderValues[field.id] ?? ""}
                                 onChange={(event) => {
                                   const value = event.target.value;
-                                  setQueryBuilderValues((current) => ({ ...current, [field.id]: value }));
+                                  setQueryBuilderValues((current) => ({
+                                    ...current,
+                                    [field.id]: value,
+                                  }));
                                 }}
                                 placeholder={field.placeholder}
                               />
-                              <p className="text-[11px] leading-4 text-muted-foreground">{field.help}</p>
+                              <p className="text-[11px] leading-4 text-muted-foreground">
+                                {field.help}
+                              </p>
                             </div>
                           ))}
                         </div>
@@ -730,8 +870,16 @@ export function ConnectorAdminView({
                       }}
                     >
                       <div className="space-y-1.5">
-                        <label htmlFor="connector-search-service" className="text-sm font-medium">Service</label>
-                        <Select value={searchServiceId || undefined} onValueChange={updateSearchService}>
+                        <label
+                          htmlFor="connector-search-service"
+                          className="text-sm font-medium"
+                        >
+                          Service
+                        </label>
+                        <Select
+                          value={searchServiceId || undefined}
+                          onValueChange={updateSearchService}
+                        >
                           <SelectTrigger id="connector-search-service">
                             <SelectValue placeholder="Select service" />
                           </SelectTrigger>
@@ -745,8 +893,16 @@ export function ConnectorAdminView({
                         </Select>
                       </div>
                       <div className="space-y-1.5">
-                        <label htmlFor="connector-search-window" className="text-sm font-medium">Window</label>
-                        <Select value={searchTimeWindowMinutes} onValueChange={setSearchTimeWindowMinutes}>
+                        <label
+                          htmlFor="connector-search-window"
+                          className="text-sm font-medium"
+                        >
+                          Window
+                        </label>
+                        <Select
+                          value={searchTimeWindowMinutes}
+                          onValueChange={setSearchTimeWindowMinutes}
+                        >
                           <SelectTrigger id="connector-search-window">
                             <SelectValue />
                           </SelectTrigger>
@@ -759,17 +915,28 @@ export function ConnectorAdminView({
                         </Select>
                       </div>
                       <div className="space-y-1.5 md:col-span-2">
-                        <label htmlFor="connector-search-query" className="text-sm font-medium">{guide.queryLabel}</label>
+                        <label
+                          htmlFor="connector-search-query"
+                          className="text-sm font-medium"
+                        >
+                          {guide.queryLabel}
+                        </label>
                         <Input
                           id="connector-search-query"
                           value={searchQuery}
-                          onChange={(event) => setSearchQuery(event.target.value)}
+                          onChange={(event) =>
+                            setSearchQuery(event.target.value)
+                          }
                           placeholder={guide.queryPlaceholder}
                         />
                         {activeFilters.length > 0 && (
                           <div className="flex flex-wrap gap-2 pt-1">
                             {activeFilters.map(([key, value]) => (
-                              <Badge key={key} variant="secondary" className="font-mono text-[11px]">
+                              <Badge
+                                key={key}
+                                variant="secondary"
+                                className="font-mono text-[11px]"
+                              >
                                 {key}: {value}
                               </Badge>
                             ))}
@@ -778,15 +945,27 @@ export function ConnectorAdminView({
                       </div>
                       {availableServices.length === 0 && (
                         <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200 md:col-span-2">
-                          No matching services are available for this connector scope.
+                          No matching services are available for this connector
+                          scope.
                         </div>
                       )}
                       <div className="flex flex-col gap-2 md:col-span-2 md:flex-row md:items-center md:justify-between">
                         <p className="text-xs text-muted-foreground">
-                          Results are capped by the connector limits: {searchConnector.outputLimits.maxRows} rows, {searchConnector.outputLimits.maxSeconds}s timeout.
+                          Results are capped by the connector limits:{" "}
+                          {searchConnector.outputLimits.maxRows} rows,{" "}
+                          {searchConnector.outputLimits.maxSeconds}s timeout.
                         </p>
-                        <Button type="submit" disabled={isSearchingConnector || !searchServiceId || !searchQuery.trim()}>
-                          {isSearchingConnector && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        <Button
+                          type="submit"
+                          disabled={
+                            isSearchingConnector ||
+                            !searchServiceId ||
+                            !searchQuery.trim()
+                          }
+                        >
+                          {isSearchingConnector && (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          )}
                           Search evidence
                         </Button>
                       </div>
@@ -796,29 +975,48 @@ export function ConnectorAdminView({
                       <div className="space-y-3 rounded-lg border p-3">
                         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                           <div>
-                            <p className="text-sm font-medium">{searchResult.message}</p>
+                            <p className="text-sm font-medium">
+                              {searchResult.message}
+                            </p>
                             <p className="text-xs text-muted-foreground">
-                              {searchResult.privateAgentJobId ? `Private Agent job ${searchResult.privateAgentJobId}` : `${searchResult.evidence.length} evidence item${searchResult.evidence.length === 1 ? "" : "s"}`}
+                              {searchResult.privateAgentJobId
+                                ? `Private Agent job ${searchResult.privateAgentJobId}`
+                                : `${searchResult.evidence.length} evidence item${searchResult.evidence.length === 1 ? "" : "s"}`}
                               {searchResult.truncated ? " (truncated)" : ""}
                             </p>
                           </div>
-                          {searchResult.privateAgentJobId && <Badge variant="secondary">Queued</Badge>}
+                          {searchResult.privateAgentJobId && (
+                            <Badge variant="secondary">Queued</Badge>
+                          )}
                         </div>
 
                         {searchResult.evidence.length > 0 && (
                           <div className="space-y-2">
                             {searchResult.evidence.map((item) => (
-                              <div key={item.id} className="rounded-md border bg-muted/20 p-2">
+                              <div
+                                key={item.id}
+                                className="rounded-md border bg-muted/20 p-2"
+                              >
                                 <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
                                   <div className="min-w-0">
                                     <div className="flex flex-wrap items-center gap-2">
-                                      <p className="font-medium">{item.title}</p>
-                                      <Badge variant="outline">{item.evidenceType}</Badge>
+                                      <p className="font-medium">
+                                        {item.title}
+                                      </p>
+                                      <Badge variant="outline">
+                                        {item.evidenceType}
+                                      </Badge>
                                     </div>
-                                    <p className="text-sm text-muted-foreground">{item.summary}</p>
-                                    <p className="truncate text-xs text-muted-foreground">{item.sourceUri}</p>
+                                    <p className="text-sm text-muted-foreground">
+                                      {item.summary}
+                                    </p>
+                                    <p className="truncate text-xs text-muted-foreground">
+                                      {item.sourceUri}
+                                    </p>
                                   </div>
-                                  <p className="shrink-0 font-mono text-xs text-muted-foreground">{item.resultHash.slice(0, 12)}</p>
+                                  <p className="shrink-0 font-mono text-xs text-muted-foreground">
+                                    {item.resultHash.slice(0, 12)}
+                                  </p>
                                 </div>
                               </div>
                             ))}
@@ -834,12 +1032,16 @@ export function ConnectorAdminView({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={Boolean(jobResult)} onOpenChange={(open) => !open && setJobResult(null)}>
+      <Dialog
+        open={Boolean(jobResult)}
+        onOpenChange={(open) => !open && setJobResult(null)}
+      >
         <DialogContent className="max-h-[90vh] max-w-4xl min-w-2xl gap-3 overflow-y-auto p-5">
           <DialogHeader>
             <DialogTitle>Private Agent Job Result</DialogTitle>
             <DialogDescription>
-              Sanitized result summary for the latest connector query job. Raw connector payloads and credentials are not shown.
+              Sanitized result summary for the latest connector query job. Raw
+              connector payloads and credentials are not shown.
             </DialogDescription>
           </DialogHeader>
 
@@ -848,18 +1050,27 @@ export function ConnectorAdminView({
               <div className="grid gap-3 rounded-lg border p-3 text-sm md:grid-cols-3">
                 <div>
                   <p className="text-xs text-muted-foreground">Status</p>
-                  <Badge variant="outline" className={cn("mt-1 capitalize", jobStatusClasses[jobResult.status])}>
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      "mt-1 capitalize",
+                      jobStatusClasses[jobResult.status],
+                    )}
+                  >
                     {jobResult.status.replace(/_/g, " ")}
                   </Badge>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Connector</p>
-                  <p className="mt-1 font-medium">{jobResult.connectorName ?? "Unknown connector"}</p>
+                  <p className="mt-1 font-medium">
+                    {jobResult.connectorName ?? "Unknown connector"}
+                  </p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Evidence</p>
                   <p className="mt-1 font-medium">
-                    {jobResult.evidence.length} item{jobResult.evidence.length === 1 ? "" : "s"}
+                    {jobResult.evidence.length} item
+                    {jobResult.evidence.length === 1 ? "" : "s"}
                     {jobResult.truncated ? " (truncated)" : ""}
                   </p>
                 </div>
@@ -869,11 +1080,17 @@ export function ConnectorAdminView({
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Completed</p>
-                  <p className="mt-1">{formatDateTime(jobResult.completedAt)}</p>
+                  <p className="mt-1">
+                    {formatDateTime(jobResult.completedAt)}
+                  </p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Duration</p>
-                  <p className="mt-1">{jobResult.durationMs === null ? "Not recorded" : `${jobResult.durationMs}ms`}</p>
+                  <p className="mt-1">
+                    {jobResult.durationMs === null
+                      ? "Not recorded"
+                      : `${jobResult.durationMs}ms`}
+                  </p>
                 </div>
               </div>
 
@@ -898,14 +1115,22 @@ export function ConnectorAdminView({
                         <div className="min-w-0 space-y-1">
                           <div className="flex flex-wrap items-center gap-2">
                             <p className="font-medium">{item.title}</p>
-                            <Badge variant="secondary">{item.evidenceType}</Badge>
+                            <Badge variant="secondary">
+                              {item.evidenceType}
+                            </Badge>
                           </div>
-                          <p className="text-sm text-muted-foreground">{item.summary}</p>
-                          <p className="truncate text-xs text-muted-foreground">{item.sourceUri}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {item.summary}
+                          </p>
+                          <p className="truncate text-xs text-muted-foreground">
+                            {item.sourceUri}
+                          </p>
                         </div>
                         <div className="shrink-0 text-xs text-muted-foreground sm:text-right">
                           <p>{formatDateTime(item.observedAt)}</p>
-                          <p className="font-mono">{item.resultHash.slice(0, 12)}</p>
+                          <p className="font-mono">
+                            {item.resultHash.slice(0, 12)}
+                          </p>
                         </div>
                       </div>
                     </div>
@@ -917,16 +1142,23 @@ export function ConnectorAdminView({
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={Boolean(disablingBinding)} onOpenChange={(open) => !open && setDisablingBinding(null)}>
+      <AlertDialog
+        open={Boolean(disablingBinding)}
+        onOpenChange={(open) => !open && setDisablingBinding(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Disable context link?</AlertDialogTitle>
             <AlertDialogDescription>
-              AI SRE will stop using this provider-to-connector link for future correlation. Existing incidents, evidence, and audit history are preserved.
+              AI SRE will stop using this provider-to-connector link for future
+              correlation. Existing incidents, evidence, and audit history are
+              preserved.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isSavingBinding}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={isSavingBinding}>
+              Cancel
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={(event) => {
                 event.preventDefault();
@@ -934,19 +1166,25 @@ export function ConnectorAdminView({
               }}
               disabled={isSavingBinding}
             >
-              {isSavingBinding && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {isSavingBinding && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
               Disable link
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={Boolean(disablingConnector)} onOpenChange={(open) => !open && setDisablingConnector(null)}>
+      <AlertDialog
+        open={Boolean(disablingConnector)}
+        onOpenChange={(open) => !open && setDisablingConnector(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Disable connector?</AlertDialogTitle>
             <AlertDialogDescription>
-              {disablingConnector?.name} will stop being available to SRE investigations. Existing evidence and audit history are preserved.
+              {disablingConnector?.name} will stop being available to SRE
+              investigations. Existing evidence and audit history are preserved.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

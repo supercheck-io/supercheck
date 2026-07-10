@@ -1,11 +1,35 @@
 import { createHash } from "crypto";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, gte, isNotNull, ne, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
-import { alertHistory, jobs, monitors, sreAlertEvents, sreIncidentAlerts, sreIncidents, sreIncidentTimelineEvents } from "@/db/schema";
-import { isSreBackgroundAlertTriageEnabled } from "@/sre/lib/feature-gates";
+import {
+  alertHistory,
+  jobs,
+  monitors,
+  sreAlertEvents,
+  sreIncidentAlerts,
+  sreIncidents,
+  sreIncidentTimelineEvents,
+  sreServiceDependencies,
+  sreServiceResources,
+  sreServices,
+} from "@/db/schema";
+import { logAuditEvent } from "@/lib/audit-logger";
+import { createLogger } from "@/lib/logger/index";
+import {
+  ALERT_CORRELATION_LIMITS,
+  selectAlertCorrelationMatch,
+} from "@/lib/sre/alert-correlation";
+import {
+  isSreAlertCorrelationEnabled,
+  isSreBackgroundAlertTriageEnabled,
+} from "@/sre/lib/feature-gates";
 import { runSreIncidentTriage } from "@/sre/lib/triage-runner";
 import { db } from "@/utils/db";
+
+const logger = createLogger({ module: "sre-background-alert-triage" }) as {
+  warn: (data: unknown, message?: string) => void;
+};
 
 const backgroundTriageJobSchema = z.object({
   alertHistoryId: z.string().uuid(),
@@ -15,12 +39,36 @@ type SreSeverity = "sev1" | "sev2" | "sev3" | "sev4";
 type SreAlertStatus = "firing" | "resolved";
 type SreAlertSourceType = "monitor" | "job";
 
-export type SreBackgroundAlertTriageJob = z.infer<typeof backgroundTriageJobSchema>;
+export type SreBackgroundAlertTriageJob = z.infer<
+  typeof backgroundTriageJobSchema
+>;
 
 export type SreBackgroundAlertTriageResult =
-  | { success: true; skipped: false; incidentId: string; investigationRunId: string; alertEventId: string }
-  | { success: true; skipped: true; reason: "disabled" | "invalid_job" | "alert_not_found" | "non_sent_alert" | "resolved_alert" | "already_triaged" | "unsupported_source" }
-  | { success: false; error: string; incidentId?: string; investigationRunId?: string };
+  | {
+      success: true;
+      skipped: false;
+      incidentId: string;
+      investigationRunId: string;
+      alertEventId: string;
+    }
+  | {
+      success: true;
+      skipped: true;
+      reason:
+        | "disabled"
+        | "invalid_job"
+        | "alert_not_found"
+        | "non_sent_alert"
+        | "resolved_alert"
+        | "already_triaged"
+        | "unsupported_source";
+    }
+  | {
+      success: false;
+      error: string;
+      incidentId?: string;
+      investigationRunId?: string;
+    };
 
 function titleCase(value: string) {
   return value
@@ -32,7 +80,11 @@ function deriveSeverity(type: string, message: string): SreSeverity {
   const normalizedType = type.toLowerCase();
   const normalizedMessage = message.toLowerCase();
 
-  if (normalizedMessage.includes("sev1") || normalizedMessage.includes("critical") || normalizedType.includes("timeout")) {
+  if (
+    normalizedMessage.includes("sev1") ||
+    normalizedMessage.includes("critical") ||
+    normalizedType.includes("timeout")
+  ) {
     return "sev1";
   }
 
@@ -49,7 +101,10 @@ function deriveSeverity(type: string, message: string): SreSeverity {
 
 function deriveAlertStatus(type: string): SreAlertStatus {
   const normalizedType = type.toLowerCase();
-  return normalizedType.includes("recovery") || normalizedType.includes("success") ? "resolved" : "firing";
+  return normalizedType.includes("recovery") ||
+    normalizedType.includes("success")
+    ? "resolved"
+    : "firing";
 }
 
 function sha256(value: string) {
@@ -57,7 +112,9 @@ function sha256(value: string) {
 }
 
 function truncate(value: string, maxLength: number) {
-  return value.length > maxLength ? `${value.slice(0, maxLength - 3)}...` : value;
+  return value.length > maxLength
+    ? `${value.slice(0, maxLength - 3)}...`
+    : value;
 }
 
 async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
@@ -102,7 +159,11 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
 
   const organizationId = alert.monitorOrganizationId ?? alert.jobOrganizationId;
   const projectId = alert.monitorProjectId ?? alert.jobProjectId;
-  const sourceType: SreAlertSourceType | null = alert.monitorId ? "monitor" : alert.jobId ? "job" : null;
+  const sourceType: SreAlertSourceType | null = alert.monitorId
+    ? "monitor"
+    : alert.jobId
+      ? "job"
+      : null;
   const sourceId = alert.monitorId ?? alert.jobId;
 
   if (!organizationId || !projectId || !sourceType || !sourceId) {
@@ -122,8 +183,25 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
   const fingerprintHash = sha256(`${organizationId}:${dedupKey}`);
   const title = truncate(`${targetName}: ${titleCase(alert.type)}`, 500);
 
-  return db.transaction(async (tx) => {
-    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${organizationId}))`);
+  const result = await db.transaction(async (tx) => {
+    await tx.execute(
+      sql`select pg_advisory_xact_lock(hashtext(${organizationId}))`,
+    );
+
+    const [mappedService] = await tx
+      .select({ id: sreServices.id })
+      .from(sreServiceResources)
+      .innerJoin(sreServices, eq(sreServiceResources.serviceId, sreServices.id))
+      .where(
+        and(
+          eq(sreServiceResources.resourceType, sourceType),
+          eq(sreServiceResources.resourceId, sourceId),
+          eq(sreServices.organizationId, organizationId),
+          eq(sreServices.projectId, projectId),
+          eq(sreServices.status, "active"),
+        ),
+      )
+      .limit(1);
 
     const [existingAlertEvent] = await tx
       .select({ id: sreAlertEvents.id })
@@ -132,8 +210,8 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
         and(
           eq(sreAlertEvents.organizationId, organizationId),
           eq(sreAlertEvents.projectId, projectId),
-          eq(sreAlertEvents.fingerprintHash, fingerprintHash)
-        )
+          eq(sreAlertEvents.fingerprintHash, fingerprintHash),
+        ),
       )
       .limit(1);
 
@@ -151,6 +229,7 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
               status: alertStatus,
               sourceType,
               sourceId,
+              serviceId: mappedService?.id ?? null,
               title,
               description: alert.message,
               firedAt,
@@ -165,7 +244,10 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
         triageInvestigationRunId: sreIncidents.triageInvestigationRunId,
       })
       .from(sreIncidentAlerts)
-      .innerJoin(sreIncidents, eq(sreIncidentAlerts.incidentId, sreIncidents.id))
+      .innerJoin(
+        sreIncidents,
+        eq(sreIncidentAlerts.incidentId, sreIncidents.id),
+      )
       .where(eq(sreIncidentAlerts.alertEventId, alertEvent.id))
       .orderBy(desc(sreIncidents.createdAt))
       .limit(1);
@@ -181,8 +263,156 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
       };
     }
 
+    if (isSreAlertCorrelationEnabled()) {
+      const correlatedIncident = await tx
+        .transaction(async (correlationTx) => {
+          const windowStart = new Date(
+            firedAt.getTime() - ALERT_CORRELATION_LIMITS.windowMinutes * 60_000,
+          );
+          const [candidateRows, dependencyRows] = await Promise.all([
+            correlationTx
+              .select({
+                incidentId: sreIncidents.id,
+                incidentNumber: sreIncidents.incidentNumber,
+                incidentTitle: sreIncidents.title,
+                triageInvestigationRunId: sreIncidents.triageInvestigationRunId,
+                fingerprintHash: sreAlertEvents.fingerprintHash,
+                dedupKey: sreAlertEvents.dedupKey,
+                serviceId: sreAlertEvents.serviceId,
+                sourceType: sreAlertEvents.sourceType,
+                title: sreAlertEvents.title,
+                description: sreAlertEvents.description,
+                firedAt: sreAlertEvents.firedAt,
+              })
+              .from(sreIncidentAlerts)
+              .innerJoin(
+                sreIncidents,
+                eq(sreIncidentAlerts.incidentId, sreIncidents.id),
+              )
+              .innerJoin(
+                sreAlertEvents,
+                eq(sreIncidentAlerts.alertEventId, sreAlertEvents.id),
+              )
+              .where(
+                and(
+                  eq(sreIncidents.organizationId, organizationId),
+                  eq(sreIncidents.projectId, projectId),
+                  ne(sreIncidents.status, "resolved"),
+                  ne(sreAlertEvents.id, alertEvent.id),
+                  gte(sreAlertEvents.firedAt, windowStart),
+                ),
+              )
+              .orderBy(desc(sreAlertEvents.firedAt))
+              .limit(ALERT_CORRELATION_LIMITS.candidateLimit),
+            mappedService?.id
+              ? correlationTx
+                  .select({
+                    sourceServiceId: sreServiceDependencies.sourceServiceId,
+                    targetServiceId: sreServiceDependencies.targetServiceId,
+                  })
+                  .from(sreServiceDependencies)
+                  .where(
+                    and(
+                      eq(sreServiceDependencies.organizationId, organizationId),
+                      eq(sreServiceDependencies.projectId, projectId),
+                      eq(sreServiceDependencies.status, "active"),
+                      isNotNull(sreServiceDependencies.approvedAt),
+                      or(
+                        eq(
+                          sreServiceDependencies.sourceServiceId,
+                          mappedService.id,
+                        ),
+                        eq(
+                          sreServiceDependencies.targetServiceId,
+                          mappedService.id,
+                        ),
+                      ),
+                    ),
+                  )
+              : Promise.resolve([]),
+          ]);
+          const relatedServiceIds = new Set(
+            dependencyRows
+              .flatMap((dependency) => [
+                dependency.sourceServiceId,
+                dependency.targetServiceId,
+              ])
+              .filter((serviceId) => serviceId !== mappedService?.id),
+          );
+          const correlation = selectAlertCorrelationMatch({
+            alert: {
+              fingerprintHash,
+              dedupKey,
+              serviceId: mappedService?.id ?? null,
+              sourceType,
+              title,
+              description: alert.message,
+              firedAt,
+            },
+            candidates: candidateRows,
+            approvedRelatedServiceIds: relatedServiceIds,
+          });
+
+          if (!correlation) return null;
+
+          await correlationTx
+            .insert(sreIncidentAlerts)
+            .values({
+              incidentId: correlation.candidate.incidentId,
+              alertEventId: alertEvent.id,
+              role: "related",
+              createdAt: new Date(),
+            })
+            .onConflictDoNothing();
+
+          await correlationTx.insert(sreIncidentTimelineEvents).values({
+            incidentId: correlation.candidate.incidentId,
+            eventType: "state_change",
+            eventData: {
+              state: "alert_correlated",
+              alertEventId: alertEvent.id,
+              alertHistoryId: alert.id,
+              score: correlation.score,
+              signals: correlation.signals,
+              correlationVersion: 1,
+            },
+            actorType: "system",
+            createdAt: new Date(),
+          });
+
+          return {
+            skipped: false as const,
+            organizationId,
+            projectId,
+            alertEventId: alertEvent.id,
+            incidentId: correlation.candidate.incidentId,
+            alreadyTriaged: Boolean(
+              candidateRows.find(
+                (candidate) =>
+                  candidate.incidentId === correlation.candidate.incidentId,
+              )?.triageInvestigationRunId,
+            ),
+            correlation: {
+              score: correlation.score,
+              signals: correlation.signals,
+            },
+          };
+        })
+        .catch((error) => {
+          logger.warn(
+            { error },
+            "SRE alert correlation failed; falling back to normal incident creation",
+          );
+          return null;
+        });
+
+      if (correlatedIncident) return correlatedIncident;
+    }
+
     const [numberRow] = await tx
-      .select({ nextIncidentNumber: sql<number>`coalesce(max(${sreIncidents.incidentNumber}), 0) + 1` })
+      .select({
+        nextIncidentNumber: sql<number>`coalesce(max(${sreIncidents.incidentNumber}), 0) + 1`,
+      })
       .from(sreIncidents)
       .where(eq(sreIncidents.organizationId, organizationId));
 
@@ -195,6 +425,7 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
         title,
         severity,
         status: "triggered",
+        primaryServiceId: mappedService?.id ?? null,
         createdByUserId: null,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -234,9 +465,31 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
       alreadyTriaged: false,
     };
   });
+
+  if ("correlation" in result && result.correlation) {
+    await logAuditEvent({
+      organizationId,
+      action: "sre_alert_correlated_to_incident",
+      resource: "sre_incident",
+      resourceId: result.incidentId,
+      metadata: {
+        projectId,
+        alertHistoryId: alert.id,
+        alertEventId: result.alertEventId,
+        correlationScore: result.correlation.score,
+        correlationSignals: result.correlation.signals,
+        correlationVersion: 1,
+      },
+      success: true,
+    });
+  }
+
+  return result;
 }
 
-export async function processSreBackgroundAlertTriageJob(jobData: unknown): Promise<SreBackgroundAlertTriageResult> {
+export async function processSreBackgroundAlertTriageJob(
+  jobData: unknown,
+): Promise<SreBackgroundAlertTriageResult> {
   if (!isSreBackgroundAlertTriageEnabled()) {
     return { success: true, skipped: true, reason: "disabled" };
   }
@@ -246,7 +499,9 @@ export async function processSreBackgroundAlertTriageJob(jobData: unknown): Prom
     return { success: true, skipped: true, reason: "invalid_job" };
   }
 
-  const incident = await createOrGetIncidentForAlertHistory(parsed.data.alertHistoryId);
+  const incident = await createOrGetIncidentForAlertHistory(
+    parsed.data.alertHistoryId,
+  );
   if (incident.skipped) {
     return { success: true, skipped: true, reason: incident.reason };
   }
@@ -278,8 +533,8 @@ export async function processSreBackgroundAlertTriageJob(jobData: unknown): Prom
       and(
         eq(sreAlertEvents.id, incident.alertEventId),
         eq(sreAlertEvents.organizationId, incident.organizationId),
-        eq(sreAlertEvents.projectId, incident.projectId)
-      )
+        eq(sreAlertEvents.projectId, incident.projectId),
+      ),
     );
 
   return {

@@ -1,10 +1,16 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useCallback, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import type { Row } from "@tanstack/react-table";
 import { Boxes, Loader2, Network, Plus } from "lucide-react";
 import { toast } from "sonner";
 
-import { archiveSreService, type SreServiceListItem } from "@/actions/sre-services";
+import {
+  archiveSreService,
+  type SreServiceListItem,
+} from "@/actions/sre-services";
+import type { SreOnboardingStatus } from "@/actions/sre-onboarding";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 import { ServiceFormDialog } from "@/components/sre/services/service-form-dialog";
 import {
@@ -22,18 +28,36 @@ import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/sre/data-table/data-table";
 import { columns } from "@/components/sre/data-table/services/columns";
 import { ServicesToolbar } from "@/components/sre/data-table/services/toolbar";
+import { SreSetupGuideDialog } from "@/components/sre/onboarding/sre-setup-guide-dialog";
 
 type ServiceCatalogProps = {
   initialServices: SreServiceListItem[];
   loadError: string | null;
+  setupStatus?: SreOnboardingStatus | null;
+  onSetupChanged?: () => void;
 };
 
-export function ServiceCatalog({ initialServices, loadError }: ServiceCatalogProps) {
+export function ServiceCatalog({
+  initialServices,
+  loadError,
+  setupStatus = null,
+  onSetupChanged,
+}: ServiceCatalogProps) {
+  const router = useRouter();
   const [services, setServices] = useState(initialServices);
-  const [editingService, setEditingService] = useState<SreServiceListItem | null>(null);
+  const [editingService, setEditingService] =
+    useState<SreServiceListItem | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
-  const [archivingService, setArchivingService] = useState<SreServiceListItem | null>(null);
+  const [archivingService, setArchivingService] =
+    useState<SreServiceListItem | null>(null);
   const [isArchiving, startArchiveTransition] = useTransition();
+
+  const handleRowClick = useCallback(
+    (row: Row<SreServiceListItem>) => {
+      router.push(`/services/${row.original.id}`);
+    },
+    [router],
+  );
 
   const handleAdd = () => {
     setEditingService(null);
@@ -44,10 +68,13 @@ export function ServiceCatalog({ initialServices, loadError }: ServiceCatalogPro
     setServices((current) => {
       const exists = current.some((service) => service.id === savedService.id);
       if (exists) {
-        return current.map((service) => (service.id === savedService.id ? savedService : service));
+        return current.map((service) =>
+          service.id === savedService.id ? savedService : service,
+        );
       }
       return [savedService, ...current];
     });
+    onSetupChanged?.();
   };
 
   const confirmArchive = () => {
@@ -80,42 +107,33 @@ export function ServiceCatalog({ initialServices, loadError }: ServiceCatalogPro
   }
 
   return (
-    <div className="space-y-4 py-4">
+    <div className="space-y-4">
       {services.length === 0 ? (
-        <>
-          <div className="mb-4 -mt-2 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex flex-col">
-              <h2 className="text-2xl font-semibold">Services</h2>
-              <p className="text-sm text-muted-foreground">
-                Manage services, ownership, telemetry names, and incident routing metadata
-              </p>
-            </div>
-            <Button onClick={handleAdd}>
-              <Plus className="mr-2 h-4 w-4" />
-              Add service
-            </Button>
-          </div>
-          <DashboardEmptyState
-            className="min-h-[420px]"
-            title="No services registered"
-            description="Add your first production service so incidents, alerts, diagnostic recipes, and evidence have a stable system of record."
-            icon={<Boxes className="h-10 w-10" />}
-            action={
+        <DashboardEmptyState
+          className="min-h-[420px]"
+          title="No services registered"
+          description="Add your first production service so incidents, alerts, diagnostic recipes, and evidence have a stable system of record."
+          icon={<Boxes className="h-10 w-10" />}
+          action={
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <SreSetupGuideDialog status={setupStatus} />
               <Button onClick={handleAdd}>
                 <Plus className="mr-2 h-4 w-4" />
                 Add service
               </Button>
-            }
-          />
-        </>
+            </div>
+          }
+        />
       ) : (
         <DataTable
           columns={columns}
           data={services}
+          onRowClick={handleRowClick}
           renderToolbar={(table) => (
             <ServicesToolbar
               table={table}
               onAdd={handleAdd}
+              setupGuide={<SreSetupGuideDialog status={setupStatus} />}
             />
           )}
           entityLabel="services"
@@ -140,12 +158,16 @@ export function ServiceCatalog({ initialServices, loadError }: ServiceCatalogPro
         />
       )}
 
-      <AlertDialog open={Boolean(archivingService)} onOpenChange={(open) => !open && setArchivingService(null)}>
+      <AlertDialog
+        open={Boolean(archivingService)}
+        onOpenChange={(open) => !open && setArchivingService(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Archive service?</AlertDialogTitle>
             <AlertDialogDescription>
-              {archivingService?.name} will be marked deprecated instead of deleted, preserving topology and incident history.
+              {archivingService?.name} will be marked deprecated instead of
+              deleted, preserving topology and incident history.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

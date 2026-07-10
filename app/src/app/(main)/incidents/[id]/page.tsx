@@ -1,9 +1,6 @@
-import { getSreIncidentDetails } from "@/actions/sre-incidents";
-import { getSreServices } from "@/actions/sre-services";
 import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
-import { SreIncidentDetailView } from "@/components/sre/incidents/sre-incident-detail-view";
+import { SreIncidentDetailPageClient } from "@/components/sre/incidents/sre-incident-detail-page-client";
 import { Card, CardContent } from "@/components/ui/card";
-import { notFound } from "next/navigation";
 
 type Params = {
   params: Promise<{ id: string }>;
@@ -15,23 +12,17 @@ function parseIncidentTab(value: string | string[] | undefined) {
   return tab === "evidence" || tab === "brief" ? tab : "investigation";
 }
 
-export default async function SreIncidentDetailPage({ params, searchParams }: Params) {
+export default async function SreIncidentDetailPage({
+  params,
+  searchParams,
+}: Params) {
   const { id } = await params;
   const resolvedSearchParams = searchParams ? await searchParams : {};
   const initialTab = parseIncidentTab(resolvedSearchParams.tab);
-  const [result, servicesResult] = await Promise.all([
-    getSreIncidentDetails(id),
-    getSreServices(),
-  ]);
-
-  if (!result.success || !result.detail) {
-    notFound();
-  }
-
   const breadcrumbs = [
     { label: "Home", href: "/" },
     { label: "Incidents", href: "/incidents" },
-    { label: `#${result.detail.incident.incidentNumber}`, isCurrentPage: true },
+    { label: "Incident", isCurrentPage: true },
   ];
 
   return (
@@ -40,11 +31,10 @@ export default async function SreIncidentDetailPage({ params, searchParams }: Pa
         <PageBreadcrumbs items={breadcrumbs} />
       </div>
       <div className="min-h-0 flex-1 overflow-hidden p-4 pb-6">
-        <Card className="h-full min-w-0 overflow-hidden shadow-sm transition-shadow duration-200 hover:shadow-md">
-          <CardContent className="h-full min-w-0 overflow-hidden p-6">
-            <SreIncidentDetailView
-              detail={result.detail}
-              services={servicesResult.success ? servicesResult.services : []}
+        <Card className="h-full min-w-0 overflow-hidden shadow-sm">
+          <CardContent className="h-full min-w-0 overflow-hidden p-4 md:p-6">
+            <SreIncidentDetailPageClient
+              incidentId={id}
               initialTab={initialTab}
             />
           </CardContent>

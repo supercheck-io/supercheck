@@ -334,6 +334,18 @@
   animation: subtlePulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
+/* Keep the read-only investigation canvas aligned with application tokens. */
+.sre-investigation-map {
+  --xy-edge-stroke-default: var(--border);
+  --xy-edge-stroke-selected-default: var(--foreground);
+  --xy-background-pattern-dots-color-default: var(--border);
+  --xy-minimap-background-color-default: var(--background);
+  --xy-controls-button-background-color-default: var(--background);
+  --xy-controls-button-background-color-hover-default: var(--muted);
+  --xy-controls-button-color-default: var(--foreground);
+  --xy-controls-button-border-color-default: var(--border);
+}
+
 /* === SERVICE MAP CANVAS PREMIUM STYLING === */
 
 /* Light mode dotted grid background */
@@ -363,14 +375,14 @@
 /* Stack customer support above the AI SRE Copilot launcher in the bottom-right corner. */
 .woot-widget-bubble,
 .cw-widget-bubble {
-  right: 18px !important;
-  bottom: 88px !important;
+  right: 20px !important;
+  bottom: 84px !important;
   z-index: 45 !important;
 }
 
 .woot-widget-holder,
 .cw-widget-container {
-  right: 18px !important;
-  bottom: 150px !important;
+  right: 20px !important;
+  bottom: 148px !important;
   z-index: 45 !important;
 }
