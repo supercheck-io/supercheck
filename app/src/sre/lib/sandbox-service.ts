@@ -1,4 +1,5 @@
 import { Buffer } from "buffer";
+import { posix as posixPath } from "path";
 import { Writable } from "stream";
 import type * as k8s from "@kubernetes/client-node";
 import { z } from "zod";
@@ -17,8 +18,15 @@ const DEFAULT_CPU_REQUEST = "500m";
 const DEFAULT_MEMORY_REQUEST = "512Mi";
 const DEFAULT_CPU_LIMIT = "1000m";
 const DEFAULT_MEMORY_LIMIT = "1Gi";
+const DEFAULT_EPHEMERAL_STORAGE_REQUEST = "512Mi";
+const DEFAULT_EPHEMERAL_STORAGE_LIMIT = "2Gi";
+const DEFAULT_WORKSPACE_VOLUME_SIZE_LIMIT = "1Gi";
+const DEFAULT_TMP_VOLUME_SIZE_LIMIT = "1Gi";
+const AGENT_SANDBOX_SERVICE_ACCOUNT = "sre-agent-workspace";
 const DEFAULT_READY_TIMEOUT_MS = 120_000;
 const DEFAULT_EXEC_TIMEOUT_MS = 60_000;
+const DELETE_ATTEMPTS = 3;
+const DELETE_RETRY_DELAY_MS = 100;
 const EXEC_EXIT_CODE_MARKER = "__SUPERCHECK_SRE_SANDBOX_EXIT_CODE__:";
 
 const uuidSchema = z.string().uuid();
@@ -93,7 +101,10 @@ function isKubernetesAlreadyExistsError(error: unknown) {
 }
 
 function assertSandboxPath(path: string) {
-  if (path.includes("\0") || (!path.startsWith("/workspace/") && !path.startsWith("/tmp/"))) {
+  const normalizedPath = posixPath.normalize(path);
+  const isWorkspacePath = normalizedPath === "/workspace" || normalizedPath.startsWith("/workspace/");
+  const isTmpPath = normalizedPath === "/tmp" || normalizedPath.startsWith("/tmp/");
+  if (path.includes("\0") || !path.startsWith("/") || (!isWorkspacePath && !isTmpPath)) {
     throw new Error("Sandbox file paths must be under /workspace or /tmp");
   }
 }
@@ -153,6 +164,7 @@ export function buildAgentSandboxPodManifest(input: AgentSandboxOptions): AgentS
       restartPolicy: "Never",
       activeDeadlineSeconds: opts.ttlSeconds,
       terminationGracePeriodSeconds: 1,
+      serviceAccountName: AGENT_SANDBOX_SERVICE_ACCOUNT,
       automountServiceAccountToken: false,
       enableServiceLinks: false,
       runtimeClassName: opts.runtimeClassName,
@@ -179,8 +191,16 @@ export function buildAgentSandboxPodManifest(input: AgentSandboxOptions): AgentS
             seccompProfile: { type: "RuntimeDefault" },
           },
           resources: {
-            requests: { cpu: opts.cpuRequest, memory: opts.memoryRequest },
-            limits: { cpu: opts.cpuLimit, memory: opts.memoryLimit },
+            requests: {
+              cpu: opts.cpuRequest,
+              memory: opts.memoryRequest,
+              "ephemeral-storage": DEFAULT_EPHEMERAL_STORAGE_REQUEST,
+            },
+            limits: {
+              cpu: opts.cpuLimit,
+              memory: opts.memoryLimit,
+              "ephemeral-storage": DEFAULT_EPHEMERAL_STORAGE_LIMIT,
+            },
           },
           volumeMounts: [
             { name: "workspace", mountPath: "/workspace" },
@@ -189,8 +209,8 @@ export function buildAgentSandboxPodManifest(input: AgentSandboxOptions): AgentS
         },
       ],
       volumes: [
-        { name: "workspace", emptyDir: {} },
-        { name: "tmp", emptyDir: {} },
+        { name: "workspace", emptyDir: { sizeLimit: DEFAULT_WORKSPACE_VOLUME_SIZE_LIMIT } },
+        { name: "tmp", emptyDir: { sizeLimit: DEFAULT_TMP_VOLUME_SIZE_LIMIT } },
       ],
     },
   };
@@ -222,7 +242,12 @@ export class AgentSandboxService {
   async start(): Promise<void> {
     if (this.started) return;
     await this.adapter.createPod(this.opts.namespace, this.buildPodManifest());
-    await this.waitForPodReady();
+    try {
+      await this.waitForPodReady();
+    } catch (error) {
+      await this.deletePodWithRetry("Sandbox startup failed; cleaning up pod");
+      throw error;
+    }
     this.started = true;
     logger.info({ podName: this.podName, investigationId: this.opts.investigationId }, "Agent sandbox pod ready");
   }
@@ -233,7 +258,7 @@ export class AgentSandboxService {
     }
 
     const parsed = execOptionsSchema.parse(options);
-    if (parsed.cwd) assertSandboxPath(parsed.cwd.endsWith("/") ? `${parsed.cwd}.` : `${parsed.cwd}/.`);
+    if (parsed.cwd) assertSandboxPath(parsed.cwd);
     const envPrefix = parsed.env
       ? `${Object.entries(parsed.env).map(([key, value]) => `export ${key}=${shellQuote(value)}`).join("; ")};`
       : "";
@@ -266,13 +291,25 @@ export class AgentSandboxService {
 
   async dispose(): Promise<void> {
     if (this.disposed) return;
-    this.disposed = true;
-    try {
-      await this.adapter.deletePod(this.opts.namespace, this.podName);
+    this.disposed = await this.deletePodWithRetry("Failed to delete agent sandbox pod");
+    if (this.disposed) {
       logger.info({ podName: this.podName }, "Agent sandbox pod deleted");
-    } catch (error) {
-      logger.warn({ err: error, podName: this.podName }, "Failed to delete agent sandbox pod");
     }
+  }
+
+  private async deletePodWithRetry(message: string): Promise<boolean> {
+    for (let attempt = 1; attempt <= DELETE_ATTEMPTS; attempt += 1) {
+      try {
+        await this.adapter.deletePod(this.opts.namespace, this.podName);
+        return true;
+      } catch (error) {
+        logger.warn({ err: error, podName: this.podName, attempt, maxAttempts: DELETE_ATTEMPTS }, message);
+        if (attempt < DELETE_ATTEMPTS) {
+          await sleep(DELETE_RETRY_DELAY_MS * attempt);
+        }
+      }
+    }
+    return false;
   }
 
   private async waitForPodReady(): Promise<void> {

@@ -63,6 +63,7 @@ describe("AgentSandboxService", () => {
     const manifest = buildAgentSandboxPodManifest(options) as {
       metadata: { name: string; labels: Record<string, string> };
       spec: {
+        serviceAccountName: string;
         automountServiceAccountToken: boolean;
         enableServiceLinks: boolean;
         activeDeadlineSeconds: number;
@@ -72,14 +73,20 @@ describe("AgentSandboxService", () => {
           name: string;
           image: string;
           securityContext: Record<string, unknown>;
+          resources: {
+            requests: Record<string, string>;
+            limits: Record<string, string>;
+          };
           volumeMounts: Array<{ name: string; mountPath: string }>;
         }>;
+        volumes: Array<{ name: string; emptyDir: { sizeLimit: string } }>;
       };
     };
 
     expect(manifest.metadata.name).toMatch(/^sc-sre-agent-/);
     expect(manifest.metadata.labels["supercheck.io/organization-id"]).toBe(options.organizationId);
     expect(manifest.spec.activeDeadlineSeconds).toBe(3600);
+    expect(manifest.spec.serviceAccountName).toBe("sre-agent-workspace");
     expect(manifest.spec.automountServiceAccountToken).toBe(false);
     expect(manifest.spec.enableServiceLinks).toBe(false);
     expect(manifest.spec.runtimeClassName).toBe("gvisor");
@@ -96,6 +103,14 @@ describe("AgentSandboxService", () => {
     expect(manifest.spec.containers[0].volumeMounts).toEqual(expect.arrayContaining([
       { name: "workspace", mountPath: "/workspace" },
       { name: "tmp", mountPath: "/tmp" },
+    ]));
+    expect(manifest.spec.containers[0].resources).toEqual(expect.objectContaining({
+      requests: expect.objectContaining({ "ephemeral-storage": "512Mi" }),
+      limits: expect.objectContaining({ "ephemeral-storage": "2Gi" }),
+    }));
+    expect(manifest.spec.volumes).toEqual(expect.arrayContaining([
+      { name: "workspace", emptyDir: { sizeLimit: "1Gi" } },
+      { name: "tmp", emptyDir: { sizeLimit: "1Gi" } },
     ]));
   });
 
@@ -131,17 +146,33 @@ describe("AgentSandboxService", () => {
     expect(adapter.deletePod).toHaveBeenCalledTimes(1);
   });
 
+  it("retries transient sandbox deletion failures", async () => {
+    const adapter = createAdapter();
+    adapter.deletePod.mockRejectedValueOnce(new Error("temporary API timeout"));
+    const service = new AgentSandboxService(options, adapter);
+    await service.start();
+
+    await service.dispose();
+    await service.dispose();
+
+    expect(adapter.deletePod).toHaveBeenCalledTimes(2);
+  });
+
   it("blocks file operations outside workspace directories", async () => {
     const service = new AgentSandboxService(options, createAdapter());
     await service.start();
 
     await expect(service.readFile("/etc/passwd")).rejects.toThrow("Sandbox file paths must be under /workspace or /tmp");
     await expect(service.writeFile("/root/.env", "secret")).rejects.toThrow("Sandbox file paths must be under /workspace or /tmp");
+    await expect(service.readFile("/workspace/../../etc/passwd")).rejects.toThrow("Sandbox file paths must be under /workspace or /tmp");
+    await expect(service.exec("pwd", { cwd: "/tmp/../etc" })).rejects.toThrow("Sandbox file paths must be under /workspace or /tmp");
   });
 
   it("fails if the sandbox pod terminates before becoming ready", async () => {
-    const service = new AgentSandboxService(options, createAdapter(["Failed"]));
+    const adapter = createAdapter(["Failed"]);
+    const service = new AgentSandboxService(options, adapter);
 
     await expect(service.start()).rejects.toThrow("Sandbox pod terminated early: Failed");
+    expect(adapter.deletePod).toHaveBeenCalledTimes(1);
   });
 });
