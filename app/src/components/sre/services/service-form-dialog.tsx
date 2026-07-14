@@ -264,7 +264,7 @@ export function ServiceFormDialog({
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={isPending}>
+            <Button type="submit" disabled={isPending} data-testid="submit-service-btn">
               {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {service ? "Save changes" : "Add service"}
             </Button>

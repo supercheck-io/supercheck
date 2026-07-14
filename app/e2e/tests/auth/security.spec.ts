@@ -14,6 +14,9 @@
  */
 
 import { test, expect } from '@playwright/test';
+
+test.use({ storageState: { cookies: [], origins: [] } });
+
 import { SignInPage, ForgotPasswordPage } from '../../pages/auth';
 import { env, routes } from '../../utils/env';
 

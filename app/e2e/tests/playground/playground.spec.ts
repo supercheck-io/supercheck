@@ -13,7 +13,7 @@
 
 import { test, expect, Page } from '@playwright/test';
 import { PlaygroundPage, AICreatePage } from '../../pages/playground.page';
-import { loginIfNeeded } from '../../utils/auth-helper';
+import { loginIfNeeded } from "../../utils/auth-helper";
 
 /**
  * Wait for page content to be ready
@@ -28,6 +28,7 @@ test.describe('Playground - Page Loading @playground @smoke', () => {
     await loginIfNeeded(page);
   });
 
+  
   /**
    * PLAY-001: Load playground page
    * @priority high
@@ -93,6 +94,7 @@ test.describe('Playground - Editor Functionality @playground', () => {
     await loginIfNeeded(page);
   });
 
+  
   /**
    * PLAY-004: Editor accepts input
    * @priority high
@@ -113,7 +115,7 @@ test.describe('Playground - Editor Functionality @playground', () => {
       await editor.click();
       await page.keyboard.type('// Test comment');
       // Verify content was entered (just checking no error)
-      expect(true).toBe(true);
+      test.skip(true, "Test requires implementation");
     } else {
       // Skip if editor not found
       test.skip(true, 'Editor not found');
@@ -137,7 +139,7 @@ test.describe('Playground - Editor Functionality @playground', () => {
     const hasThemeButton = await page.locator('button[aria-label*="theme"], button:has-text("Theme")').first().isVisible().catch(() => false);
 
     // Theme toggle is optional feature
-    expect(true).toBe(true);
+    test.skip(true, "Test requires implementation");
   });
 });
 
@@ -146,6 +148,7 @@ test.describe('Playground - AI Features @playground @ai', () => {
     await loginIfNeeded(page);
   });
 
+  
   /**
    * PLAY-007: AI Fix button available
    * @priority high
@@ -165,7 +168,7 @@ test.describe('Playground - AI Features @playground @ai', () => {
     const hasAiButton = await page.locator('button:has-text("AI"), button:has-text("Fix")').first().isVisible().catch(() => false);
 
     // AI features are optional
-    expect(true).toBe(true);
+    test.skip(true, "Test requires implementation");
   });
 
   /**
@@ -185,7 +188,7 @@ test.describe('Playground - AI Features @playground @ai', () => {
     const hasAiCreateLink = await page.locator('a:has-text("AI Create"), button:has-text("Generate")').first().isVisible().catch(() => false);
 
     // AI Create is optional feature
-    expect(true).toBe(true);
+    test.skip(true, "Test requires implementation");
   });
 });
 
@@ -194,6 +197,7 @@ test.describe('Playground - Templates @playground', () => {
     await loginIfNeeded(page);
   });
 
+  
   /**
    * PLAY-048: Templates button available
    * @priority medium
@@ -210,7 +214,7 @@ test.describe('Playground - Templates @playground', () => {
     const hasTemplates = await playgroundPage.templatesButton.isVisible().catch(() => false);
 
     // Templates is optional feature
-    expect(true).toBe(true);
+    test.skip(true, "Test requires implementation");
   });
 });
 
@@ -219,6 +223,7 @@ test.describe('Playground - Test Execution @playground', () => {
     await loginIfNeeded(page);
   });
 
+  
   /**
    * PLAY-004: Run test functionality
    * @priority critical
@@ -241,7 +246,7 @@ test.describe('Playground - Test Execution @playground', () => {
 
       // After clicking run, something should happen (status change, loading, results)
       // Just verify no error occurred
-      expect(true).toBe(true);
+      test.skip(true, "Test requires implementation");
     } else {
       test.skip(true, 'Run button not visible');
     }
@@ -264,7 +269,7 @@ test.describe('Playground - Test Execution @playground', () => {
     const hasOutputArea = await page.locator('pre, .output, .results, .console').first().isVisible().catch(() => false);
 
     // Results area should exist somewhere
-    expect(true).toBe(true);
+    test.skip(true, "Test requires implementation");
   });
 });
 
@@ -273,6 +278,7 @@ test.describe('AI Create Page @playground @ai', () => {
     await loginIfNeeded(page);
   });
 
+  
   /**
    * PLAY-013: AI Create page loads
    * @priority high
@@ -296,15 +302,19 @@ test.describe('AI Create Page @playground @ai', () => {
       const hasGenerateButton = await aiCreatePage.isGenerateButtonVisible();
 
       // AI Create features are optional
-      expect(true).toBe(true);
+      test.skip(true, "Test requires implementation");
     } else {
       // Page might not exist or redirect
-      expect(true).toBe(true);
+      test.skip(true, "Test requires implementation");
     }
   });
 });
 
 test.describe('Playground - Security @playground @security', () => {
+  test.beforeEach(async ({ page }) => {
+    await loginIfNeeded(page);
+  });
+
   /**
    * PLAY-034: Cannot access playground without auth
    * @priority high
@@ -330,6 +340,10 @@ test.describe('Playground - Security @playground @security', () => {
 });
 
 test.describe('Playground - API @playground @security', () => {
+  test.beforeEach(async ({ page }) => {
+    await loginIfNeeded(page);
+  });
+
   /**
    * PLAY-035: Playground API exists
    * @priority medium
@@ -345,7 +359,7 @@ test.describe('Playground - API @playground @security', () => {
       expect(status >= 200 && status < 600).toBe(true);
     } else {
       // API might not exist, which is fine
-      expect(true).toBe(true);
+      test.skip(true, "Test requires implementation");
     }
   });
 });

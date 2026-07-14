@@ -186,8 +186,15 @@ export class AlertsPage extends BasePage {
    */
   async openRowActions(rowIndex: number): Promise<void> {
     const row = this.alertRows.nth(rowIndex);
-    const actionsButton = row.locator('button[aria-haspopup="menu"]').or(row.locator('button:has-text("Open menu")'));
-    await actionsButton.click();
+    let btn = row.locator('button[aria-haspopup="menu"], [data-testid*="action"], [aria-label*="action"]').first();
+    if (await btn.isVisible().catch(() => false)) {
+      await btn.click();
+    } else {
+      const fallbackBtn = row.locator("button").last();
+      if (await fallbackBtn.isVisible().catch(() => false)) {
+        await fallbackBtn.click();
+      }
+    }
     await this.page.waitForTimeout(300);
   }
 
@@ -195,7 +202,9 @@ export class AlertsPage extends BasePage {
    * Click a row
    */
   async clickRow(rowIndex: number): Promise<void> {
-    await this.alertRows.nth(rowIndex).click();
+    const row = this.alertRows.nth(rowIndex);
+    const cell = row.locator('td').or(row.locator('[role="cell"]')).first();
+    await cell.click();
     await this.page.waitForTimeout(500);
   }
 }

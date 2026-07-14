@@ -15,7 +15,7 @@
 
 import { test, expect, Page } from '@playwright/test';
 import { MonitorsPage, MonitorCreatePage, MonitorDetailPage } from '../../pages/monitors.page';
-import { loginIfNeeded } from '../../utils/auth-helper';
+import { loginIfNeeded } from "../../utils/auth-helper";
 
 /**
  * Wait for page content to be ready
@@ -31,6 +31,7 @@ test.describe('Monitors - Page Loading @monitors @smoke', () => {
     await loginIfNeeded(page);
   });
 
+  
   /**
    * MON-002: Monitors page shows correct title
    * @priority medium
@@ -63,6 +64,7 @@ test.describe('Monitors - Navigation @monitors', () => {
     await loginIfNeeded(page);
   });
 
+  
   /**
    * MON-005: Create monitor page shows type selection
    * @priority high
@@ -104,9 +106,12 @@ test.describe('Monitors - Navigation @monitors', () => {
     await waitForPageReady(page);
 
     // Skip if no monitors exist
-    const monitorCount = await monitorsPage.getMonitorCount();
-    if (monitorCount === 0) {
-      test.skip(true, 'No monitors available to click');
+    
+    // Wait for either rows or an empty state to appear
+    await page.waitForTimeout(2000); // Give it time to load or show empty state
+    const hasRows = (await page.locator('tbody tr:not(:has(td[colspan]))').count() > 0) || (await page.locator('[role="row"]:not(:has([role="cell"][colspan]))').count() > 1);
+    if (!hasRows) {
+      test.skip(true, 'No data available for row actions');
     }
 
     const initialUrl = page.url();
@@ -128,6 +133,7 @@ test.describe('Monitors - Search and Filter @monitors', () => {
     await loginIfNeeded(page);
   });
 
+  
   /**
    * MON-008: Status filter is available
    * @priority medium
@@ -169,6 +175,7 @@ test.describe('Monitors - Data Table @monitors', () => {
     await loginIfNeeded(page);
   });
 
+  
   /**
    * MON-011: Row actions menu opens
    * @priority medium
@@ -179,9 +186,12 @@ test.describe('Monitors - Data Table @monitors', () => {
     await monitorsPage.navigate();
 
     // Skip if no monitors exist
-    const monitorCount = await monitorsPage.getMonitorCount();
-    if (monitorCount === 0) {
-      test.skip(true, 'No monitors available for row actions');
+    
+    // Wait for either rows or an empty state to appear
+    await page.waitForTimeout(2000); // Give it time to load or show empty state
+    const hasRows = (await page.locator('tbody tr:not(:has(td[colspan]))').count() > 0) || (await page.locator('[role="row"]:not(:has([role="cell"][colspan]))').count() > 1);
+    if (!hasRows) {
+      test.skip(true, 'No data available for row actions');
     }
 
     // Open row actions
@@ -202,6 +212,7 @@ test.describe('Monitors - Pagination @monitors', () => {
     await loginIfNeeded(page);
   });
 
+  
   /**
    * MON-013: Can navigate pages
    * @priority medium
@@ -238,6 +249,7 @@ test.describe('Monitors - Delete Flow @monitors', () => {
     await loginIfNeeded(page);
   });
 
+  
   /**
    * MON-015: Cancel delete closes dialog
    * @priority medium
@@ -248,9 +260,12 @@ test.describe('Monitors - Delete Flow @monitors', () => {
     await monitorsPage.navigate();
 
     // Skip if no monitors exist
-    const monitorCount = await monitorsPage.getMonitorCount();
-    if (monitorCount === 0) {
-      test.skip(true, 'No monitors available for deletion test');
+    
+    // Wait for either rows or an empty state to appear
+    await page.waitForTimeout(2000); // Give it time to load or show empty state
+    const hasRows = (await page.locator('tbody tr:not(:has(td[colspan]))').count() > 0) || (await page.locator('[role="row"]:not(:has([role="cell"][colspan]))').count() > 1);
+    if (!hasRows) {
+      test.skip(true, 'No data available for row actions');
     }
 
     // Open row actions and click delete
@@ -269,13 +284,15 @@ test.describe('Monitors - Pause/Resume @monitors', () => {
   test.beforeEach(async ({ page }) => {
     await loginIfNeeded(page);
   });
-});
+
+  });
 
 test.describe('Monitors - Detail Page @monitors', () => {
   test.beforeEach(async ({ page }) => {
     await loginIfNeeded(page);
   });
 
+  
   /**
    * MON-018: Detail page has edit capability
    * @priority medium
@@ -289,9 +306,12 @@ test.describe('Monitors - Detail Page @monitors', () => {
     await waitForPageReady(page);
 
     // Skip if no monitors exist
-    const monitorCount = await monitorsPage.getMonitorCount();
-    if (monitorCount === 0) {
-      test.skip(true, 'No monitors available for detail page test');
+    
+    // Wait for either rows or an empty state to appear
+    await page.waitForTimeout(2000); // Give it time to load or show empty state
+    const hasRows = (await page.locator('tbody tr:not(:has(td[colspan]))').count() > 0) || (await page.locator('[role="row"]:not(:has([role="cell"][colspan]))').count() > 1);
+    if (!hasRows) {
+      test.skip(true, 'No data available for row actions');
     }
 
     // Check for actions on the list page (row actions menu)
@@ -304,6 +324,10 @@ test.describe('Monitors - Detail Page @monitors', () => {
 });
 
 test.describe('Monitors - API Authorization @monitors @security', () => {
+  test.beforeEach(async ({ page }) => {
+    await loginIfNeeded(page);
+  });
+
   /**
    * MON-019: API endpoint exists
    * @priority critical

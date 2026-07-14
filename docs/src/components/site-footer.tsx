@@ -58,7 +58,7 @@ const sections = [
     {
         title: "Resources",
         links: [
-            { name: "Live Demo", href: "https://demo.supercheck.io" },
+            { name: "Live Demo", href: process.env.NEXT_PUBLIC_DEMO_URL || "https://demo.supercheck.dev" },
             { name: "Chrome Extension", href: "https://chromewebstore.google.com/detail/supercheck-recorder/gfmbcelfhhfmifdkccnbgdadibdfhioe" },
             { name: "Edge Extension", href: "https://microsoftedge.microsoft.com/addons/detail/supercheck-recorder/ngmlkgfgmdnfpddohcbfdgihennolnem" },
             { name: "npm CLI", href: "https://www.npmjs.com/package/@supercheck/cli" },

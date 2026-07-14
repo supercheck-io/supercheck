@@ -12,10 +12,15 @@
  */
 
 import { test, expect } from '@playwright/test';
+
+
+test.use({ storageState: { cookies: [], origins: [] } });
 import { SignInPage, SignUpPage } from '../../pages/auth';
 import { routes } from '../../utils/env';
 
 async function getHostingMode(page: import('@playwright/test').Page): Promise<{ selfHosted: boolean; cloudHosted: boolean }> {
+
+
   const response = await page.request.get('/api/config/app');
   if (!response.ok()) {
     throw new Error(`Failed to load app config: ${response.status()}`);

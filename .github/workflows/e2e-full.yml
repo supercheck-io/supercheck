@@ -11,6 +11,10 @@ on:
         description: "Test filter (e.g., @auth, @monitors, leave empty for all)"
         required: false
         type: string
+      base_url:
+        description: "Base URL for tests (overrides secret E2E_BASE_URL)"
+        required: false
+        type: string
 
 env:
   NODE_VERSION: "20"
@@ -22,7 +26,6 @@ permissions:
 
 jobs:
   e2e-full:
-    if: false
     name: Full E2E Tests
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -71,7 +74,7 @@ jobs:
         continue-on-error: true
         env:
           CI: true
-          E2E_BASE_URL: ${{ secrets.E2E_BASE_URL }}
+          E2E_BASE_URL: ${{ github.event.inputs.base_url || secrets.E2E_BASE_URL }}
           E2E_TEST_USER_EMAIL: ${{ secrets.E2E_TEST_USER_EMAIL }}
           E2E_TEST_USER_PASSWORD: ${{ secrets.E2E_TEST_USER_PASSWORD }}
 

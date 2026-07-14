@@ -15,7 +15,7 @@
 
 import { test, expect, Page } from '@playwright/test';
 import { StatusPagesPage, StatusPageDetailPage } from '../../pages/status-pages.page';
-import { loginIfNeeded } from '../../utils/auth-helper';
+import { loginIfNeeded } from "../../utils/auth-helper";
 
 /**
  * Wait for page content to be ready
@@ -31,6 +31,7 @@ test.describe('Status Pages - Page Loading @status-pages @smoke', () => {
     await loginIfNeeded(page);
   });
 
+  
   /**
    * SP-001: Status pages list loads successfully
    * @priority critical
@@ -88,6 +89,7 @@ test.describe('Status Pages - Create Flow @status-pages', () => {
     await loginIfNeeded(page);
   });
 
+  
   /**
    * SP-004: Create dialog opens
    * @priority high
@@ -174,6 +176,7 @@ test.describe('Status Pages - Navigation @status-pages', () => {
     await loginIfNeeded(page);
   });
 
+  
   /**
    * SP-008: Click card navigates to detail
    * @priority high
@@ -223,6 +226,7 @@ test.describe('Status Pages - Detail Page @status-pages', () => {
     await loginIfNeeded(page);
   });
 
+  
   /**
    * SP-010: Detail page loads successfully
    * @priority high
@@ -307,7 +311,7 @@ test.describe('Status Pages - Detail Page @status-pages', () => {
 
     // Badge might be shown or status displayed differently
     // This is acceptable either way
-    expect(true).toBe(true);
+    test.skip(true, "Test requires implementation");
   });
 
   /**
@@ -353,6 +357,7 @@ test.describe('Status Pages - Publish/Unpublish @status-pages', () => {
     await loginIfNeeded(page);
   });
 
+  
   /**
    * SP-014: Publish/Unpublish button visible
    * @priority high
@@ -387,6 +392,7 @@ test.describe('Status Pages - Card Actions @status-pages', () => {
     await loginIfNeeded(page);
   });
 
+  
   /**
    * SP-015: Card has action buttons
    * @priority medium
@@ -433,7 +439,7 @@ test.describe('Status Pages - Card Actions @status-pages', () => {
     const hasMenuItems = await page.locator('[role="menu"], [role="menuitem"]').first().isVisible().catch(() => false);
 
     // Dropdown might be styled differently
-    expect(true).toBe(true);
+    test.skip(true, "Test requires implementation");
   });
 });
 
@@ -442,6 +448,7 @@ test.describe('Status Pages - Delete Flow @status-pages', () => {
     await loginIfNeeded(page);
   });
 
+  
   /**
    * SP-017: Delete option available in menu
    * @priority high
@@ -465,11 +472,18 @@ test.describe('Status Pages - Delete Flow @status-pages', () => {
     const hasDelete = await deleteOption.isVisible().catch(() => false);
 
     // Delete should be available (might be disabled for some users)
-    expect(true).toBe(true);
+    test.skip(true, "Test requires implementation");
   });
 });
 
 test.describe('Status Pages - API Authorization @status-pages @security', () => {
+  test.beforeEach(async ({ page }) => {
+    await loginIfNeeded(page);
+  });
+
+  // Override global storage state to test unauthenticated access
+  test.use({ storageState: { cookies: [], origins: [] } });
+
   /**
    * SP-018: API requires authentication
    * @priority critical

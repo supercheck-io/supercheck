@@ -35,7 +35,7 @@ export default defineConfig({
 
   /* Shared settings for all the projects below */
   use: {
-    baseURL: process.env.E2E_BASE_URL || 'http://localhost:3000',
+    baseURL: process.env.E2E_BASE_URL || 'https://demo.supercheck.dev',
     trace: 'off',
     screenshot: 'only-on-failure',
     video: 'off',
@@ -51,7 +51,7 @@ export default defineConfig({
     timeout: 5000,
   },
 
-  /* Configure projects - single project, no storageState */
+  /* Configure projects */
   projects: [
     {
       name: 'chromium',

@@ -167,7 +167,7 @@ export class StatusPagesPage extends BasePage {
    * Check if empty state is visible
    */
   async isEmptyStateVisible(): Promise<boolean> {
-    return this.emptyState.isVisible();
+    return this.emptyState.first().isVisible().catch(() => false);
   }
 
   /**

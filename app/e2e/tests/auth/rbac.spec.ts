@@ -27,6 +27,9 @@ async function isAuthenticated(page: import('@playwright/test').Page): Promise<b
 }
 
 test.describe('RBAC - Unauthenticated Access @auth @rbac @security', () => {
+  // Override global storage state to test unauthenticated access
+  test.use({ storageState: { cookies: [], origins: [] } });
+
   /**
    * AUTH-042: Unauthenticated users cannot access protected routes
    * @priority critical
@@ -306,6 +309,9 @@ test.describe('RBAC - UI Element Visibility @auth @rbac', () => {
 });
 
 test.describe('RBAC - API Authorization @auth @rbac @security', () => {
+  // Override global storage state to test unauthenticated access
+  test.use({ storageState: { cookies: [], origins: [] } });
+
   /**
    * Test that API endpoints respect authorization
    *

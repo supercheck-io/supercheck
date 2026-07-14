@@ -19,6 +19,8 @@ import { test, expect } from '@playwright/test';
 import { SignInPage, SignUpPage } from '../../pages/auth';
 import { env, routes } from '../../utils/env';
 
+test.use({ storageState: { cookies: [], origins: [] } });
+
 test.describe('Seed Tests - Authentication Foundation', () => {
   test.describe.configure({ mode: 'serial' });
 

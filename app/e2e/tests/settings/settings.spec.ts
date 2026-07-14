@@ -13,7 +13,7 @@
 
 import { test, expect, Page } from '@playwright/test';
 import { SettingsPage, ApiKeysPage, VariablesPage, BillingPage } from '../../pages/settings.page';
-import { loginIfNeeded } from '../../utils/auth-helper';
+import { loginIfNeeded } from "../../utils/auth-helper";
 
 /**
  * Wait for page content to be ready
@@ -28,6 +28,7 @@ test.describe('Settings - Page Loading @settings @smoke', () => {
     await loginIfNeeded(page);
   });
 
+  
   /**
    * SET-001: Settings page loads successfully
    * @priority high
@@ -72,6 +73,7 @@ test.describe('API Keys @settings @api-keys', () => {
     await loginIfNeeded(page);
   });
 
+  
   /**
    * API-001: API Keys page loads
    * @priority high
@@ -170,6 +172,7 @@ test.describe('Variables/Secrets @settings @variables', () => {
     await loginIfNeeded(page);
   });
 
+  
   /**
    * VAR-001: Variables page loads
    * @priority high
@@ -261,6 +264,7 @@ test.describe('Billing @settings @billing', () => {
     await loginIfNeeded(page);
   });
 
+  
   /**
    * BILL-001: Billing page loads
    * @priority high
@@ -323,7 +327,7 @@ test.describe('Billing @settings @billing', () => {
     const hasUpgradeText = await page.locator('button:has-text("Upgrade"), a:has-text("Upgrade")').first().isVisible().catch(() => false);
 
     // Upgrade button is conditional based on current plan
-    expect(true).toBe(true);
+    test.skip(true, "Test requires implementation");
   });
 });
 
@@ -332,6 +336,7 @@ test.describe('Settings - Profile @settings @profile', () => {
     await loginIfNeeded(page);
   });
 
+  
   /**
    * PROF-001: Profile section accessible
    * @priority high
@@ -357,7 +362,7 @@ test.describe('Settings - Profile @settings @profile', () => {
       expect(hasProfileContent).toBe(true);
     } else {
       // Profile might already be showing
-      expect(true).toBe(true);
+      test.skip(true, "Test requires implementation");
     }
   });
 });
@@ -367,6 +372,7 @@ test.describe('Settings - Security @settings @security', () => {
     await loginIfNeeded(page);
   });
 
+  
   /**
    * SEC-001: Security section accessible
    * @priority high
@@ -392,12 +398,16 @@ test.describe('Settings - Security @settings @security', () => {
       expect(hasSecurityContent).toBe(true);
     } else {
       // Security might not be visible or different navigation
-      expect(true).toBe(true);
+      test.skip(true, "Test requires implementation");
     }
   });
 });
 
 test.describe('Settings - API Authorization @settings @security', () => {
+  test.beforeEach(async ({ page }) => {
+    await loginIfNeeded(page);
+  });
+
   /**
    * SET-API-001: Settings API exists
    * @priority high
@@ -412,7 +422,7 @@ test.describe('Settings - API Authorization @settings @security', () => {
       expect(status >= 200 && status < 600).toBe(true);
     } else {
       // API might not exist at this path
-      expect(true).toBe(true);
+      test.skip(true, "Test requires implementation");
     }
   });
 
@@ -443,7 +453,7 @@ test.describe('Settings - API Authorization @settings @security', () => {
       expect(status >= 200 && status < 600).toBe(true);
     } else {
       // API might not exist at this path
-      expect(true).toBe(true);
+      test.skip(true, "Test requires implementation");
     }
   });
 });

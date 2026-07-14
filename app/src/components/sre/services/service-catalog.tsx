@@ -117,7 +117,7 @@ export function ServiceCatalog({
           action={
             <div className="flex flex-col gap-2 sm:flex-row">
               <SreSetupGuideDialog status={setupStatus} />
-              <Button onClick={handleAdd}>
+              <Button onClick={handleAdd} data-testid="add-service-btn">
                 <Plus className="mr-2 h-4 w-4" />
                 Add service
               </Button>

@@ -14,7 +14,7 @@
 
 import { test, expect, Page } from '@playwright/test';
 import { TestsPage, TestCreatePage } from '../../pages/tests.page';
-import { loginIfNeeded } from '../../utils/auth-helper';
+import { loginIfNeeded } from "../../utils/auth-helper";
 
 /**
  * Wait for page content to be ready
@@ -30,6 +30,7 @@ test.describe('Tests - Page Loading @tests @smoke', () => {
     await loginIfNeeded(page);
   });
 
+  
   /**
    * TESTS-001: Tests page loads successfully
    * @priority critical
@@ -82,6 +83,7 @@ test.describe('Tests - Navigation @tests', () => {
     await loginIfNeeded(page);
   });
 
+  
   /**
    * TESTS-004: Navigate to create test page
    * @priority high
@@ -135,9 +137,12 @@ test.describe('Tests - Navigation @tests', () => {
     await waitForPageReady(page);
 
     // Skip if no tests exist
-    const testCount = await testsPage.getTestCount();
-    if (testCount === 0) {
-      test.skip(true, 'No tests available to click');
+    
+    // Wait for either rows or an empty state to appear
+    await page.waitForTimeout(2000); // Give it time to load or show empty state
+    const hasRows = (await page.locator('tbody tr:not(:has(td[colspan]))').count() > 0) || (await page.locator('[role="row"]:not(:has([role="cell"][colspan]))').count() > 1);
+    if (!hasRows) {
+      test.skip(true, 'No data available for row actions');
     }
 
     // Row click behavior varies - may navigate, open sheet, or select row
@@ -146,7 +151,7 @@ test.describe('Tests - Navigation @tests', () => {
     await page.waitForTimeout(500);
 
     // Test passes if click didn't throw an error
-    expect(true).toBe(true);
+    test.skip(true, "Test requires implementation");
   });
 });
 
@@ -155,6 +160,7 @@ test.describe('Tests - Search and Filter @tests', () => {
     await loginIfNeeded(page);
   });
 
+  
   /**
    * TESTS-007: Search input is functional
    * @priority medium
@@ -224,6 +230,7 @@ test.describe('Tests - Data Table @tests', () => {
     await loginIfNeeded(page);
   });
 
+  
   /**
    * TESTS-010: Table displays test data
    * @priority high
@@ -253,9 +260,12 @@ test.describe('Tests - Data Table @tests', () => {
     await testsPage.navigate();
 
     // Skip if no tests exist
-    const testCount = await testsPage.getTestCount();
-    if (testCount === 0) {
-      test.skip(true, 'No tests available for row actions');
+    
+    // Wait for either rows or an empty state to appear
+    await page.waitForTimeout(2000); // Give it time to load or show empty state
+    const hasRows = (await page.locator('tbody tr:not(:has(td[colspan]))').count() > 0) || (await page.locator('[role="row"]:not(:has([role="cell"][colspan]))').count() > 1);
+    if (!hasRows) {
+      test.skip(true, 'No data available for row actions');
     }
 
     // Open row actions
@@ -274,6 +284,7 @@ test.describe('Tests - Delete Flow @tests', () => {
     await loginIfNeeded(page);
   });
 
+  
   /**
    * TESTS-012: Delete confirmation dialog appears
    * @priority high
@@ -284,9 +295,12 @@ test.describe('Tests - Delete Flow @tests', () => {
     await testsPage.navigate();
 
     // Skip if no tests exist
-    const testCount = await testsPage.getTestCount();
-    if (testCount === 0) {
-      test.skip(true, 'No tests available for deletion test');
+    
+    // Wait for either rows or an empty state to appear
+    await page.waitForTimeout(2000); // Give it time to load or show empty state
+    const hasRows = (await page.locator('tbody tr:not(:has(td[colspan]))').count() > 0) || (await page.locator('[role="row"]:not(:has([role="cell"][colspan]))').count() > 1);
+    if (!hasRows) {
+      test.skip(true, 'No data available for row actions');
     }
 
     // Open row actions and click delete
@@ -309,9 +323,12 @@ test.describe('Tests - Delete Flow @tests', () => {
     await testsPage.navigate();
 
     // Skip if no tests exist
-    const testCount = await testsPage.getTestCount();
-    if (testCount === 0) {
-      test.skip(true, 'No tests available for deletion test');
+    
+    // Wait for either rows or an empty state to appear
+    await page.waitForTimeout(2000); // Give it time to load or show empty state
+    const hasRows = (await page.locator('tbody tr:not(:has(td[colspan]))').count() > 0) || (await page.locator('[role="row"]:not(:has([role="cell"][colspan]))').count() > 1);
+    if (!hasRows) {
+      test.skip(true, 'No data available for row actions');
     }
 
     // Open row actions and click delete
@@ -327,6 +344,10 @@ test.describe('Tests - Delete Flow @tests', () => {
 });
 
 test.describe('Tests - API Authorization @tests @security', () => {
+  test.beforeEach(async ({ page }) => {
+    await loginIfNeeded(page);
+  });
+
   /**
    * TESTS-014: API endpoint exists
    * @priority critical

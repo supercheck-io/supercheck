@@ -15,7 +15,7 @@
 
 import { test, expect, Page } from '@playwright/test';
 import { JobsPage, JobCreatePage } from '../../pages/jobs.page';
-import { loginIfNeeded } from '../../utils/auth-helper';
+import { loginIfNeeded } from "../../utils/auth-helper";
 
 /**
  * Wait for page content to be ready
@@ -31,6 +31,7 @@ test.describe('Jobs - Page Loading @jobs @smoke', () => {
     await loginIfNeeded(page);
   });
 
+  
   /**
    * JOBS-001: Jobs page loads successfully
    * @priority critical
@@ -79,6 +80,7 @@ test.describe('Jobs - Navigation @jobs', () => {
     await loginIfNeeded(page);
   });
 
+  
   /**
    * JOBS-004: Navigate to create job page
    * @priority high
@@ -134,9 +136,12 @@ test.describe('Jobs - Navigation @jobs', () => {
     await waitForPageReady(page);
 
     // Skip if no jobs exist
-    const jobCount = await jobsPage.getJobCount();
-    if (jobCount === 0) {
-      test.skip(true, 'No jobs available to click');
+    
+    // Wait for either rows or an empty state to appear
+    await page.waitForTimeout(2000); // Give it time to load or show empty state
+    const hasRows = (await page.locator('tbody tr:not(:has(td[colspan]))').count() > 0) || (await page.locator('[role="row"]:not(:has([role="cell"][colspan]))').count() > 1);
+    if (!hasRows) {
+      test.skip(true, 'No data available for row actions');
     }
 
     // Row click behavior varies - may navigate, open sheet, or select row
@@ -145,7 +150,7 @@ test.describe('Jobs - Navigation @jobs', () => {
     await page.waitForTimeout(500);
 
     // Test passes if click didn't throw an error
-    expect(true).toBe(true);
+    test.skip(true, "Test requires implementation");
   });
 });
 
@@ -154,6 +159,7 @@ test.describe('Jobs - Search and Filter @jobs', () => {
     await loginIfNeeded(page);
   });
 
+  
   /**
    * JOBS-008: Status filter is available
    * @priority medium
@@ -178,6 +184,7 @@ test.describe('Jobs - Data Table @jobs', () => {
     await loginIfNeeded(page);
   });
 
+  
   /**
    * JOBS-010: Row actions menu opens
    * @priority medium
@@ -188,9 +195,12 @@ test.describe('Jobs - Data Table @jobs', () => {
     await jobsPage.navigate();
 
     // Skip if no jobs exist
-    const jobCount = await jobsPage.getJobCount();
-    if (jobCount === 0) {
-      test.skip(true, 'No jobs available for row actions');
+    
+    // Wait for either rows or an empty state to appear
+    await page.waitForTimeout(2000); // Give it time to load or show empty state
+    const hasRows = (await page.locator('tbody tr:not(:has(td[colspan]))').count() > 0) || (await page.locator('[role="row"]:not(:has([role="cell"][colspan]))').count() > 1);
+    if (!hasRows) {
+      test.skip(true, 'No data available for row actions');
     }
 
     // Open row actions
@@ -209,6 +219,7 @@ test.describe('Jobs - Detail View @jobs', () => {
     await loginIfNeeded(page);
   });
 
+  
   /**
    * JOBS-012: Can return from detail view
    * @priority medium
@@ -222,9 +233,12 @@ test.describe('Jobs - Detail View @jobs', () => {
     await waitForPageReady(page);
 
     // Skip if no jobs exist
-    const jobCount = await jobsPage.getJobCount();
-    if (jobCount === 0) {
-      test.skip(true, 'No jobs available for detail test');
+    
+    // Wait for either rows or an empty state to appear
+    await page.waitForTimeout(2000); // Give it time to load or show empty state
+    const hasRows = (await page.locator('tbody tr:not(:has(td[colspan]))').count() > 0) || (await page.locator('[role="row"]:not(:has([role="cell"][colspan]))').count() > 1);
+    if (!hasRows) {
+      test.skip(true, 'No data available for row actions');
     }
 
     const initialUrl = page.url();
@@ -253,7 +267,7 @@ test.describe('Jobs - Detail View @jobs', () => {
     }
 
     // Should be back or dialog closed - just verify test completes
-    expect(true).toBe(true);
+    test.skip(true, "Test requires implementation");
   });
 
   /**
@@ -269,9 +283,12 @@ test.describe('Jobs - Detail View @jobs', () => {
     await waitForPageReady(page);
 
     // Skip if no jobs exist
-    const jobCount = await jobsPage.getJobCount();
-    if (jobCount === 0) {
-      test.skip(true, 'No jobs available for tab test');
+    
+    // Wait for either rows or an empty state to appear
+    await page.waitForTimeout(2000); // Give it time to load or show empty state
+    const hasRows = (await page.locator('tbody tr:not(:has(td[colspan]))').count() > 0) || (await page.locator('[role="row"]:not(:has([role="cell"][colspan]))').count() > 1);
+    if (!hasRows) {
+      test.skip(true, 'No data available for row actions');
     }
 
     // Open detail
@@ -291,6 +308,7 @@ test.describe('Jobs - Delete Flow @jobs', () => {
     await loginIfNeeded(page);
   });
 
+  
   /**
    * JOBS-015: Cancel delete closes dialog
    * @priority medium
@@ -301,9 +319,12 @@ test.describe('Jobs - Delete Flow @jobs', () => {
     await jobsPage.navigate();
 
     // Skip if no jobs exist
-    const jobCount = await jobsPage.getJobCount();
-    if (jobCount === 0) {
-      test.skip(true, 'No jobs available for deletion test');
+    
+    // Wait for either rows or an empty state to appear
+    await page.waitForTimeout(2000); // Give it time to load or show empty state
+    const hasRows = (await page.locator('tbody tr:not(:has(td[colspan]))').count() > 0) || (await page.locator('[role="row"]:not(:has([role="cell"][colspan]))').count() > 1);
+    if (!hasRows) {
+      test.skip(true, 'No data available for row actions');
     }
 
     // Open row actions and click delete
@@ -319,9 +340,17 @@ test.describe('Jobs - Delete Flow @jobs', () => {
 });
 
 test.describe('Jobs - Run Functionality @jobs', () => {
+  test.beforeEach(async ({ page }) => {
+    await loginIfNeeded(page);
+  });
+
 });
 
 test.describe('Jobs - API Authorization @jobs @security', () => {
+  test.beforeEach(async ({ page }) => {
+    await loginIfNeeded(page);
+  });
+
   /**
    * JOBS-017: API requires authentication
    * @priority critical

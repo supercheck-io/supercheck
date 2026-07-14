@@ -60,7 +60,7 @@ export function ServicesToolbar<TData>({
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         {setupGuide}
-        <Button onClick={onAdd} className="w-full sm:w-auto">
+        <Button onClick={onAdd} className="w-full sm:w-auto" data-testid="add-service-btn">
           <Plus className="mr-2 h-4 w-4" />
           Add service
         </Button>

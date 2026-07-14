@@ -8,6 +8,9 @@
  */
 
 import { test, expect } from '../../fixtures/auth.fixture';
+
+test.use({ storageState: { cookies: [], origins: [] } });
+
 import { SignInPage } from '../../pages/auth';
 import { env, routes } from '../../utils/env';
 

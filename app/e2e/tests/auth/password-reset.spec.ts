@@ -12,6 +12,9 @@
  */
 
 import { test, expect } from '@playwright/test';
+
+test.use({ storageState: { cookies: [], origins: [] } });
+
 import { ForgotPasswordPage } from '../../pages/auth';
 import { routes, generateTestEmail } from '../../utils/env';
 
@@ -115,11 +118,12 @@ test.describe('Reset Password Page @auth @password-reset', () => {
     // Navigate to reset page with invalid token
     await page.goto('/reset-password?token=invalid-token-12345');
     await page.waitForLoadState('domcontentloaded');
+    await page.waitForTimeout(1000); // Prevent race condition on isVisible
 
     // The page shows the reset form - it validates token on submission
     // Check if we're on reset-password page or if there's an error message
     const isOnResetPage = page.url().includes('/reset-password');
-    const hasForm = await page.locator('form').isVisible().catch(() => false);
+    const hasForm = await page.locator('input[type="password"], button[type="submit"]').first().isVisible().catch(() => false);
     const hasError = await page.locator('text=/invalid|expired|token|missing/i').isVisible().catch(() => false);
 
     // Either shows form or error
@@ -135,8 +139,9 @@ test.describe('Reset Password Page @auth @password-reset', () => {
    */
   test('AUTH-010: Expired reset token - page loads @high @negative', async ({ page }) => {
     // Navigate to reset page with expired token
-    await page.goto('/reset-password?token=expired-token-from-long-ago');
+    await page.goto('/reset-password?token=expired-token-12345');
     await page.waitForLoadState('domcontentloaded');
+    await page.waitForTimeout(1000); // Prevent race condition on isVisible
 
     // Page should load (form or error message)
     const isOnResetPage = page.url().includes('/reset-password');

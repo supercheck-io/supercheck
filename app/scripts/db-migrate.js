@@ -12,6 +12,13 @@ const path = require("path");
 // Configuration
 const MAX_RETRIES = 20;
 const RETRY_DELAY = 2000;
+// A PostgreSQL advisory lock serializes migrations across concurrently-starting
+// app pods without requiring a privileged Kubernetes API permission or a
+// separate release Job. The lock is scoped to the database session and is
+// released automatically if the migration process exits unexpectedly.
+const MIGRATION_LOCK_NAME = "supercheck-db-migrate-v1";
+const DEFAULT_MIGRATION_LOCK_TIMEOUT_MS = 5 * 60 * 1000;
+const MIGRATION_LOCK_RETRY_DELAY_MS = 2000;
 
 // Environment variables with defaults
 const DB_HOST = process.env.DB_HOST || "localhost";
@@ -65,6 +72,66 @@ function parseBooleanEnv(value) {
   if (["1", "true", "yes", "on"].includes(normalized)) return true;
   if (["0", "false", "no", "off"].includes(normalized)) return false;
   return undefined;
+}
+
+function parsePositiveIntegerEnv(value, fallback) {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    return fallback;
+  }
+
+  const parsed = Number.parseInt(value, 10);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+const MIGRATION_LOCK_TIMEOUT_MS = parsePositiveIntegerEnv(
+  process.env.DB_MIGRATION_LOCK_TIMEOUT_MS,
+  DEFAULT_MIGRATION_LOCK_TIMEOUT_MS
+);
+
+async function acquireMigrationLock() {
+  const lockClient = postgres(TARGET_DATABASE_URL, { max: 1 });
+  const deadline = Date.now() + MIGRATION_LOCK_TIMEOUT_MS;
+
+  log(
+    `Waiting up to ${MIGRATION_LOCK_TIMEOUT_MS}ms for the ${MIGRATION_LOCK_NAME} advisory lock...`
+  );
+
+  try {
+    while (Date.now() < deadline) {
+      const result = await lockClient`
+        SELECT pg_try_advisory_lock(hashtext(${MIGRATION_LOCK_NAME})) AS acquired
+      `;
+
+      if (result[0]?.acquired === true) {
+        logSuccess("Database migration advisory lock acquired");
+        return lockClient;
+      }
+
+      await new Promise((resolve) =>
+        setTimeout(resolve, MIGRATION_LOCK_RETRY_DELAY_MS)
+      );
+    }
+
+    logError(
+      `Timed out waiting for the database migration advisory lock after ${MIGRATION_LOCK_TIMEOUT_MS}ms`
+    );
+    await lockClient.end();
+    return null;
+  } catch (error) {
+    await lockClient.end().catch(() => undefined);
+    throw error;
+  }
+}
+
+async function releaseMigrationLock(lockClient) {
+  if (!lockClient) return;
+
+  try {
+    await lockClient`SELECT pg_advisory_unlock(hashtext(${MIGRATION_LOCK_NAME}))`;
+    logSuccess("Database migration advisory lock released");
+  } finally {
+    await lockClient.end();
+  }
 }
 
 const {
@@ -658,6 +725,8 @@ async function verifyPlanLimitsSeeded() {
 
 // Main function
 async function main() {
+  let migrationLockClient;
+
   try {
     log("Starting database migration process...");
     log(`Database URL: ${DATABASE_URL.replace(/:[^:@]*@/, ":***@")}`);
@@ -718,47 +787,63 @@ async function main() {
       }
     }
 
+    migrationLockClient = await acquireMigrationLock();
+    if (!migrationLockClient) {
+      process.exitCode = 1;
+      return;
+    }
+
+    // The critical schema/seed sequence is serialized across all app Pods.
+    // Do not move individual calls out of this lock without proving they are
+    // read-only and safe during a concurrent rollout.
     // Step 3: Run migrations
     if (!(await runMigrations())) {
-      process.exit(1);
+      process.exitCode = 1;
+      return;
     }
 
     // Step 3.5: Ensure Better Auth v1.6 api-key schema drift is repaired
     if (!(await ensureBetterAuthApiKeyColumns())) {
       logError("Failed to ensure Better Auth API key columns exist");
-      process.exit(1);
+      process.exitCode = 1;
+      return;
     }
 
     // Step 4: Verify migrations
     if (!(await verifyMigrations())) {
-      process.exit(1);
+      process.exitCode = 1;
+      return;
     }
 
     // Step 4.5: Ensure Polar columns exist (critical for subscription flow)
     if (!(await ensurePolarColumns())) {
       logError("Failed to ensure Polar columns exist");
-      process.exit(1);
+      process.exitCode = 1;
+      return;
     }
 
     // Step 5: Run database seeds (idempotent - safe to run multiple times)
     log("Running database seeds...");
     if (!(await runSeeds())) {
       logError("CRITICAL: Database seeding failed.");
-      process.exit(1);
+      process.exitCode = 1;
+      return;
     }
 
     // Step 6: Verify plan_limits are seeded (CRITICAL - app cannot function without this)
     log("Verifying plan_limits seeding...");
     if (!(await verifyPlanLimitsSeeded())) {
       logError("CRITICAL: plan_limits table is empty after seeding.");
-      process.exit(1);
+      process.exitCode = 1;
+      return;
     }
 
     logSuccess("Database migration process completed successfully");
-    process.exit(0);
   } catch (err) {
     logError(`Unexpected error: ${err.message}`);
-    process.exit(1);
+    process.exitCode = 1;
+  } finally {
+    await releaseMigrationLock(migrationLockClient);
   }
 }
 

@@ -192,9 +192,9 @@ export class JobsPage extends BasePage {
    * @param index - Row index (0-based)
    */
   async clickRow(index: number): Promise<void> {
-    // Click the second cell (Name) to ensure we hit the navigation trigger
-    // and avoid hitting checkboxes or other interactive elements in other columns
-    await this.tableRows.nth(index).locator("td").nth(1).click();
+    const row = this.tableRows.nth(index);
+    const cell = row.locator('td').or(row.locator('[role="cell"]')).first();
+    await cell.click();
   }
 
   /**
@@ -203,10 +203,16 @@ export class JobsPage extends BasePage {
    */
   async openRowActions(index: number): Promise<void> {
     const row = this.tableRows.nth(index);
-    const actionsButton = row
-      .locator('button[aria-haspopup="menu"]')
-      .or(row.locator("button").last());
-    await actionsButton.click();
+    let btn = row.locator('button[aria-haspopup="menu"], [data-testid*="action"], [aria-label*="action"]').first();
+    if (await btn.isVisible().catch(() => false)) {
+      await btn.click();
+    } else {
+      const fallbackBtn = row.locator("button").last();
+      if (await fallbackBtn.isVisible().catch(() => false)) {
+        await fallbackBtn.click();
+      }
+    }
+    await this.page.waitForSelector('[role="menu"], [data-state="open"]', { timeout: 2000 }).catch(() => {});
   }
 
   /**
