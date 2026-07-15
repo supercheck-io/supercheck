@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { buildRedisOptions } from '../redis/redis-options';
 import Redis from 'ioredis';
 
 /**
@@ -20,28 +21,7 @@ export class CancellationService {
   }
 
   private setupRedisConnection(): void {
-    const host = this.configService.get<string>('REDIS_HOST', 'localhost');
-    const port = this.configService.get<number>('REDIS_PORT', 6379);
-    const password = this.configService.get<string>('REDIS_PASSWORD');
-    const tlsEnabled =
-      this.configService.get<string>('REDIS_TLS_ENABLED', 'false') === 'true';
-
-    this.redisClient = new Redis({
-      host,
-      port,
-      password,
-      maxRetriesPerRequest: null,
-      enableReadyCheck: false,
-      tls: tlsEnabled
-        ? {
-            rejectUnauthorized:
-              this.configService.get<string>(
-                'REDIS_TLS_REJECT_UNAUTHORIZED',
-                'true',
-              ) !== 'false',
-          }
-        : undefined,
-    });
+    this.redisClient = new Redis(buildRedisOptions(this.configService));
 
     this.redisClient.on('error', (err) => {
       this.logger.error(`Redis connection error: ${err.message}`, err.stack);

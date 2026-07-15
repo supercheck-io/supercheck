@@ -39,6 +39,7 @@ import {
 } from './queue-alerting.types';
 import { executeWithRetry } from '../common/utils/retry.util';
 import { PLAYWRIGHT_QUEUE } from '../execution/constants';
+import { buildRedisOptions } from '../common/redis/redis-options';
 
 /**
  * Static queues that always exist regardless of enabled locations.
@@ -213,35 +214,7 @@ export class QueueAlertingService implements OnModuleInit, OnModuleDestroy {
    * Initialize Redis connection
    */
   private async initializeRedis(): Promise<void> {
-    const host = this.configService.get<string>('REDIS_HOST', 'localhost');
-    const port = parseInt(
-      this.configService.get<string>('REDIS_PORT', '6379'),
-      10,
-    );
-    const password = this.configService.get<string>('REDIS_PASSWORD');
-    const username = this.configService.get<string>('REDIS_USERNAME');
-    const tlsEnabled =
-      this.configService.get<string>('REDIS_TLS_ENABLED', 'false') === 'true';
-
-    this.redisClient = new Redis({
-      host,
-      port,
-      password: password || undefined,
-      username: username || undefined,
-      maxRetriesPerRequest: null,
-      enableReadyCheck: false,
-      retryStrategy: (attempt: number) =>
-        Math.min(1000 * Math.pow(2, attempt), 10000),
-      tls: tlsEnabled
-        ? {
-            rejectUnauthorized:
-              this.configService.get<string>(
-                'REDIS_TLS_REJECT_UNAUTHORIZED',
-                'true',
-              ) !== 'false',
-          }
-        : undefined,
-    });
+    this.redisClient = new Redis(buildRedisOptions(this.configService));
 
     this.redisClient.on('error', (err) => {
       this.logger.error('Queue alerting Redis error:', err);

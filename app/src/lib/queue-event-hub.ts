@@ -3,6 +3,7 @@ import { Queue, QueueEvents } from "bullmq";
 import { eq } from "drizzle-orm";
 import {
   getQueues,
+  buildRedisOptions,
   PLAYWRIGHT_QUEUE,
   k6QueueName,
   monitorQueueName,
@@ -138,24 +139,7 @@ class QueueEventHub extends EventEmitter {
     // BullMQ recommends using separate connections for Queue and QueueEvents
     const Redis = (await import('ioredis')).default;
 
-    // TLS configuration for cloud Redis providers (Redis Cloud, Upstash, etc.)
-    const tlsEnabled = process.env.REDIS_TLS_ENABLED === 'true';
-    const tlsRejectUnauthorized = process.env.REDIS_TLS_REJECT_UNAUTHORIZED !== 'false';
-
-    const connection = new Redis({
-      host: process.env.REDIS_HOST || 'localhost',
-      port: parseInt(process.env.REDIS_PORT || '6379'),
-      password: process.env.REDIS_PASSWORD || undefined,
-      maxRetriesPerRequest: null,
-      enableReadyCheck: false,
-      lazyConnect: false, // Connect immediately
-      // Enable TLS for cloud Redis (Upstash, Redis Cloud, etc.)
-      ...(tlsEnabled && {
-        tls: {
-          rejectUnauthorized: tlsRejectUnauthorized,
-        },
-      }),
-    });
+    const connection = new Redis(buildRedisOptions({ lazyConnect: false }));
 
 
     // Log connection errors for debugging

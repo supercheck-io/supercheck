@@ -5,6 +5,7 @@ import { DbService } from './db.service';
 import { eq, inArray } from 'drizzle-orm';
 import * as schema from '../../db/schema';
 import { TIMEOUTS } from '../../common/constants/timeouts.constants';
+import { buildRedisOptions } from '../../common/redis/redis-options';
 
 /**
  * Service to handle stalled jobs
@@ -45,28 +46,7 @@ export class StalledJobHandlerService implements OnModuleInit {
   }
 
   private setupRedisConnection(): void {
-    const host = this.configService.get<string>('REDIS_HOST', 'localhost');
-    const port = this.configService.get<number>('REDIS_PORT', 6379);
-    const password = this.configService.get<string>('REDIS_PASSWORD');
-    const tlsEnabled =
-      this.configService.get<string>('REDIS_TLS_ENABLED', 'false') === 'true';
-
-    this.redisClient = new Redis({
-      host,
-      port,
-      password,
-      maxRetriesPerRequest: null,
-      enableReadyCheck: false,
-      tls: tlsEnabled
-        ? {
-            rejectUnauthorized:
-              this.configService.get<string>(
-                'REDIS_TLS_REJECT_UNAUTHORIZED',
-                'true',
-              ) !== 'false',
-          }
-        : undefined,
-    });
+    this.redisClient = new Redis(buildRedisOptions(this.configService));
 
     this.redisClient.on('error', (err) => {
       this.logger.error(`Redis connection error: ${err.message}`, err.stack);

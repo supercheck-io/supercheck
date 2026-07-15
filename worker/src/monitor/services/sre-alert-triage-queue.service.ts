@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { buildRedisOptions } from '../../common/redis/redis-options';
 import { Queue } from 'bullmq';
 
 export const SRE_ALERT_TRIAGE_QUEUE_NAME = 'sre-alert-triage';
@@ -68,31 +69,10 @@ export class SreAlertTriageQueueService implements OnModuleDestroy {
       return this.queue;
     }
 
-    const tlsEnabled =
-      this.configService.get<string>('REDIS_TLS_ENABLED', 'false') === 'true';
-    const redisPassword = this.configService.get<string>('REDIS_PASSWORD');
-    const redisUsername = this.configService.get<string>('REDIS_USERNAME');
-
     this.queue = new Queue<SreAlertTriageQueueJob>(
       SRE_ALERT_TRIAGE_QUEUE_NAME,
       {
-        connection: {
-          host: this.configService.get<string>('REDIS_HOST', 'localhost'),
-          port: this.configService.get<number>('REDIS_PORT', 6379),
-          password: redisPassword,
-          username: redisUsername,
-          maxRetriesPerRequest: null,
-          enableReadyCheck: false,
-          tls: tlsEnabled
-            ? {
-                rejectUnauthorized:
-                  this.configService.get<string>(
-                    'REDIS_TLS_REJECT_UNAUTHORIZED',
-                    'true',
-                  ) !== 'false',
-              }
-            : undefined,
-        },
+        connection: buildRedisOptions(this.configService),
         defaultJobOptions: {
           attempts: 2,
           backoff: { type: 'exponential', delay: 30_000 },

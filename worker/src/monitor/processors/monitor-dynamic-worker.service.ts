@@ -7,6 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { Worker, Job } from 'bullmq';
 import Redis from 'ioredis';
+import { buildRedisOptions } from '../../common/redis/redis-options';
 import { MonitorService } from '../monitor.service';
 import { MonitorJobDataDto } from '../dto/monitor-job.dto';
 import { MonitorExecutionResult } from '../types/monitor-result.type';
@@ -504,27 +505,6 @@ export class MonitorDynamicWorkerService
   }
 
   private createRedisConnection(): Redis {
-    const tlsEnabled =
-      this.configService.get<string>('REDIS_TLS_ENABLED', 'false') === 'true';
-    const password = this.configService.get<string>('REDIS_PASSWORD');
-    const username = this.configService.get<string>('REDIS_USERNAME');
-
-    return new Redis({
-      host: this.configService.get<string>('REDIS_HOST', 'localhost'),
-      port: this.configService.get<number>('REDIS_PORT', 6379),
-      password: password || undefined,
-      username: username || undefined,
-      maxRetriesPerRequest: null,
-      enableReadyCheck: false,
-      ...(tlsEnabled && {
-        tls: {
-          rejectUnauthorized:
-            this.configService.get<string>(
-              'REDIS_TLS_REJECT_UNAUTHORIZED',
-              'true',
-            ) !== 'false',
-        },
-      }),
-    });
+    return new Redis(buildRedisOptions(this.configService));
   }
 }

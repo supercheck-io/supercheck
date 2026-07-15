@@ -216,10 +216,32 @@ export function buildRedisOptions(
   const tlsEnabled = process.env.REDIS_TLS_ENABLED === "true";
   const tlsRejectUnauthorized =
     process.env.REDIS_TLS_REJECT_UNAUTHORIZED !== "false";
+  const sentinels = process.env.REDIS_SENTINELS?.split(",").map((entry) => {
+    const trimmed = entry.trim();
+    const separator = trimmed.lastIndexOf(":");
+    const sentinelHost = trimmed.slice(0, separator);
+    const sentinelPort = Number(trimmed.slice(separator + 1));
+    if (
+      separator <= 0 ||
+      !sentinelHost ||
+      !Number.isInteger(sentinelPort) ||
+      sentinelPort < 1 ||
+      sentinelPort > 65535
+    ) {
+      throw new Error(`Invalid REDIS_SENTINELS entry: ${trimmed}`);
+    }
+    return { host: sentinelHost, port: sentinelPort };
+  });
 
   return {
-    host,
-    port,
+    ...(sentinels?.length
+      ? {
+          sentinels,
+          name: process.env.REDIS_SENTINEL_MASTER || "mymaster",
+          sentinelPassword: process.env.REDIS_SENTINEL_PASSWORD || undefined,
+          sentinelRetryStrategy: (times: number) => Math.min(times * 250, 3000),
+        }
+      : { host, port }),
     password: password || undefined,
     maxRetriesPerRequest: null,
     enableReadyCheck: false,

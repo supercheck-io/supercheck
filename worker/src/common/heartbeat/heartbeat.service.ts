@@ -5,6 +5,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { buildRedisOptions } from '../redis/redis-options';
 import Redis from 'ioredis';
 import { hostname } from 'os';
 import { PLAYWRIGHT_QUEUE } from '../../execution/constants';
@@ -41,32 +42,12 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleInit(): Promise<void> {
     try {
-      const redisHost = this.configService.get<string>(
-        'REDIS_HOST',
-        'localhost',
-      );
-      const redisPort = this.configService.get<number>('REDIS_PORT', 6379);
-      const redisPassword = this.configService.get<string>('REDIS_PASSWORD');
-      const redisUsername = this.configService.get<string>('REDIS_USERNAME');
-      const tlsEnabled =
-        this.configService.get<string>('REDIS_TLS_ENABLED') === 'true';
-
-      this.redis = new Redis({
-        host: redisHost,
-        port: redisPort,
-        password: redisPassword || undefined,
-        username: redisUsername || undefined,
-        maxRetriesPerRequest: 3,
-        enableReadyCheck: true,
-        ...(tlsEnabled && {
-          tls: {
-            rejectUnauthorized:
-              this.configService.get<string>(
-                'REDIS_TLS_REJECT_UNAUTHORIZED',
-              ) !== 'false',
-          },
+      this.redis = new Redis(
+        buildRedisOptions(this.configService, {
+          maxRetriesPerRequest: 3,
+          enableReadyCheck: true,
         }),
-      });
+      );
 
       this.redis.on('error', (err) => {
         this.logger.warn(`Heartbeat Redis error: ${err.message}`);

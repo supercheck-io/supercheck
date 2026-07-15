@@ -9,6 +9,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { Worker, Job } from 'bullmq';
 import Redis from 'ioredis';
+import { buildRedisOptions } from '../../common/redis/redis-options';
 import { K6ExecutionTask } from '../services/k6-execution.service';
 import { K6ExecutionProcessor } from './k6-execution.processor';
 import { K6_QUEUE, k6QueueName } from '../k6.constants';
@@ -412,27 +413,6 @@ export class K6DynamicWorkerService implements OnModuleInit, OnModuleDestroy {
   }
 
   private createRedisConnection(): Redis {
-    const tlsEnabled =
-      this.configService.get<string>('REDIS_TLS_ENABLED', 'false') === 'true';
-    const password = this.configService.get<string>('REDIS_PASSWORD');
-    const username = this.configService.get<string>('REDIS_USERNAME');
-
-    return new Redis({
-      host: this.configService.get<string>('REDIS_HOST', 'localhost'),
-      port: this.configService.get<number>('REDIS_PORT', 6379),
-      password: password || undefined,
-      username: username || undefined,
-      maxRetriesPerRequest: null,
-      enableReadyCheck: false,
-      ...(tlsEnabled && {
-        tls: {
-          rejectUnauthorized:
-            this.configService.get<string>(
-              'REDIS_TLS_REJECT_UNAUTHORIZED',
-              'true',
-            ) !== 'false',
-        },
-      }),
-    });
+    return new Redis(buildRedisOptions(this.configService));
   }
 }

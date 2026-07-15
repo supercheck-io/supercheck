@@ -10,6 +10,7 @@ import { Queue, QueueEvents } from 'bullmq';
 import { InjectQueue } from '@nestjs/bullmq';
 import { PLAYWRIGHT_QUEUE } from '../constants';
 import { DbService } from './db.service';
+import { buildRedisOptions } from '../../common/redis/redis-options';
 
 // Constants for Redis TTL
 const REDIS_JOB_TTL = 7 * 24 * 60 * 60; // 7 days for job data
@@ -35,44 +36,24 @@ const REDIS_CLEANUP_BATCH_SIZE = 100; // Process keys in smaller batches to redu
 export class RedisService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(RedisService.name);
   private redisClient: Redis;
-  private queueEvents: QueueEvents;
-  private queueEventsConnection: Redis;
+  // Initialized synchronously by initializeQueueListeners() in the constructor.
+  private queueEvents!: QueueEvents;
+  private queueEventsConnection!: Redis;
   private readonly redisOptions: RedisOptions;
-  private cleanupInterval: NodeJS.Timeout;
+  // Initialized synchronously by setupRedisCleanup() in the constructor.
+  private cleanupInterval!: NodeJS.Timeout;
 
   constructor(
     private configService: ConfigService,
     @InjectQueue(PLAYWRIGHT_QUEUE) private queue: Queue,
     private dbService: DbService,
   ) {
-    const host = this.configService.get<string>('REDIS_HOST', 'localhost');
-    const port = this.configService.get<number>('REDIS_PORT', 6379);
-    const password = this.configService.get<string>('REDIS_PASSWORD');
-    const username = this.configService.get<string>('REDIS_USERNAME');
-    const tlsEnabled =
-      this.configService.get<string>('REDIS_TLS_ENABLED', 'false') === 'true';
-
-    this.redisOptions = {
-      host,
-      port,
-      password: password || undefined,
-      username,
-      maxRetriesPerRequest: null,
-      enableReadyCheck: false,
-      retryStrategy: (attempt: number) =>
-        Math.min(1000 * Math.pow(2, attempt), 10000),
-      tls: tlsEnabled
-        ? {
-            rejectUnauthorized:
-              this.configService.get<string>(
-                'REDIS_TLS_REJECT_UNAUTHORIZED',
-                'true',
-              ) !== 'false',
-          }
-        : undefined,
-    };
-
-    this.logger.log(`Initializing Redis connection to ${host}:${port}`);
+    this.redisOptions = buildRedisOptions(this.configService);
+    this.logger.log(
+      this.configService.get<string>('REDIS_SENTINELS')
+        ? 'Initializing Redis connection through Sentinel discovery'
+        : 'Initializing direct Redis connection',
+    );
 
     this.redisClient = new Redis(this.redisOptions);
 
