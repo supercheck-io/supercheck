@@ -177,10 +177,8 @@ async function seedPlanLimits(client) {
       END $$;
     `;
   } catch (err) {
-    // Ignore constraint errors
-    if (!err.message.includes("already exists")) {
-      log(`Note: ${err.message}`);
-    }
+    logError(`Failed to ensure plan_limits uniqueness: ${err.message}`);
+    return false;
   }
 
   // Upsert each plan
@@ -272,10 +270,8 @@ async function seedOveragePricing(client) {
       END $$;
     `;
   } catch (err) {
-    // Ignore constraint errors
-    if (!err.message.includes("already exists")) {
-      log(`Note: ${err.message}`);
-    }
+    logError(`Failed to ensure overage_pricing uniqueness: ${err.message}`);
+    return false;
   }
 
   // Upsert each pricing

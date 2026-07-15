@@ -8,17 +8,16 @@
 const postgres = require("postgres");
 const fs = require("fs");
 const path = require("path");
+const {
+  acquireMigrationLock,
+  releaseMigrationLock,
+} = require("./migration-lock.js");
 
 // Configuration
 const MAX_RETRIES = 20;
 const RETRY_DELAY = 2000;
-// A PostgreSQL advisory lock serializes migrations across concurrently-starting
-// app pods without requiring a privileged Kubernetes API permission or a
-// separate release Job. The lock is scoped to the database session and is
-// released automatically if the migration process exits unexpectedly.
 const MIGRATION_LOCK_NAME = "supercheck-db-migrate-v1";
 const DEFAULT_MIGRATION_LOCK_TIMEOUT_MS = 5 * 60 * 1000;
-const MIGRATION_LOCK_RETRY_DELAY_MS = 2000;
 
 // Environment variables with defaults
 const DB_HOST = process.env.DB_HOST || "localhost";
@@ -87,52 +86,6 @@ const MIGRATION_LOCK_TIMEOUT_MS = parsePositiveIntegerEnv(
   process.env.DB_MIGRATION_LOCK_TIMEOUT_MS,
   DEFAULT_MIGRATION_LOCK_TIMEOUT_MS
 );
-
-async function acquireMigrationLock() {
-  const lockClient = postgres(TARGET_DATABASE_URL, { max: 1 });
-  const deadline = Date.now() + MIGRATION_LOCK_TIMEOUT_MS;
-
-  log(
-    `Waiting up to ${MIGRATION_LOCK_TIMEOUT_MS}ms for the ${MIGRATION_LOCK_NAME} advisory lock...`
-  );
-
-  try {
-    while (Date.now() < deadline) {
-      const result = await lockClient`
-        SELECT pg_try_advisory_lock(hashtext(${MIGRATION_LOCK_NAME})) AS acquired
-      `;
-
-      if (result[0]?.acquired === true) {
-        logSuccess("Database migration advisory lock acquired");
-        return lockClient;
-      }
-
-      await new Promise((resolve) =>
-        setTimeout(resolve, MIGRATION_LOCK_RETRY_DELAY_MS)
-      );
-    }
-
-    logError(
-      `Timed out waiting for the database migration advisory lock after ${MIGRATION_LOCK_TIMEOUT_MS}ms`
-    );
-    await lockClient.end();
-    return null;
-  } catch (error) {
-    await lockClient.end().catch(() => undefined);
-    throw error;
-  }
-}
-
-async function releaseMigrationLock(lockClient) {
-  if (!lockClient) return;
-
-  try {
-    await lockClient`SELECT pg_advisory_unlock(hashtext(${MIGRATION_LOCK_NAME}))`;
-    logSuccess("Database migration advisory lock released");
-  } finally {
-    await lockClient.end();
-  }
-}
 
 const {
   targetConnectionString: TARGET_DATABASE_URL,
@@ -310,13 +263,10 @@ async function createDatabaseIfNotExists() {
 }
 
 // Function to run migrations
-async function runMigrations() {
+async function runMigrations(client) {
   log("Running database migrations...");
 
   try {
-    // Connect to the database
-    const client = postgres(TARGET_DATABASE_URL);
-
     // Get the migrations directory
     const migrationsDir = path.join(process.cwd(), "src", "db", "migrations");
 
@@ -331,7 +281,6 @@ async function runMigrations() {
       if (fs.existsSync("src/db")) {
         logError(`  src/db contents: ${fs.readdirSync("src/db").join(", ")}`);
       }
-      await client.end();
       return false;
     }
 
@@ -345,7 +294,6 @@ async function runMigrations() {
 
     if (migrationFiles.length === 0) {
       logWarning("No migration files found");
-      await client.end();
       return true;
     }
 
@@ -415,9 +363,14 @@ async function runMigrations() {
         for (const statement of statements) {
           if (!statement) continue;
 
+          await client`SAVEPOINT migration_statement`;
           try {
             await client.unsafe(statement);
+            await client`RELEASE SAVEPOINT migration_statement`;
           } catch (stmtErr) {
+            await client`ROLLBACK TO SAVEPOINT migration_statement`;
+            await client`RELEASE SAVEPOINT migration_statement`;
+
             // Log but don't fail on certain expected errors
             const errorMsg = stmtErr.message.toLowerCase();
             if (isIgnorableMigrationStatementError(statement, errorMsg)) {
@@ -438,12 +391,10 @@ async function runMigrations() {
         logSuccess(`Migration ${migrationFile} applied successfully`);
       } catch (err) {
         logError(`Failed to apply migration ${migrationFile}: ${err.message}`);
-        await client.end();
         return false;
       }
     }
 
-    await client.end();
     logSuccess("All migrations completed successfully");
     return true;
   } catch (err) {
@@ -454,12 +405,10 @@ async function runMigrations() {
 
 // Function to ensure critical columns exist for Polar billing
 // Since app is not live yet, we can be more aggressive about schema fixes
-async function ensurePolarColumns() {
+async function ensurePolarColumns(client) {
   log("Ensuring Polar billing columns exist...");
 
   try {
-    const client = postgres(TARGET_DATABASE_URL);
-
     // Check if organization table exists
     const orgTableExists = await client`
       SELECT EXISTS (
@@ -471,7 +420,6 @@ async function ensurePolarColumns() {
 
     if (!orgTableExists) {
       log("Organization table doesn't exist, will be created by migration");
-      await client.end();
       return true;
     }
 
@@ -508,20 +456,14 @@ async function ensurePolarColumns() {
           );
           logSuccess(`Added ${column.name} column`);
         } catch (err) {
-          if (err.message.includes("already exists")) {
-            log(`${column.name} column already exists`);
-          } else {
-            logError(`Failed to add ${column.name}: ${err.message}`);
-            await client.end();
-            return false;
-          }
+          logError(`Failed to add ${column.name}: ${err.message}`);
+          return false;
         }
       } else {
         log(`${column.name} column already exists`);
       }
     }
 
-    await client.end();
     logSuccess("All Polar billing columns verified");
     return true;
   } catch (err) {
@@ -530,12 +472,10 @@ async function ensurePolarColumns() {
   }
 }
 
-async function ensureBetterAuthApiKeyColumns() {
+async function ensureBetterAuthApiKeyColumns(client) {
   log("Ensuring Better Auth API key columns exist...");
 
   try {
-    const client = postgres(TARGET_DATABASE_URL);
-
     const apiKeyTableExists = await client`
       SELECT EXISTS (
         SELECT FROM information_schema.tables
@@ -546,7 +486,6 @@ async function ensureBetterAuthApiKeyColumns() {
 
     if (!apiKeyTableExists) {
       log("apikey table does not exist yet, skipping Better Auth API key checks");
-      await client.end();
       return true;
     }
 
@@ -590,7 +529,6 @@ async function ensureBetterAuthApiKeyColumns() {
       ON "apikey" USING btree ("config_id")
     `;
 
-    await client.end();
     logSuccess("Better Auth API key columns verified");
     return true;
   } catch (err) {
@@ -600,12 +538,10 @@ async function ensureBetterAuthApiKeyColumns() {
 }
 
 // Function to verify migrations
-async function verifyMigrations() {
+async function verifyMigrations(client) {
   log("Verifying migrations...");
 
   try {
-    const client = postgres(TARGET_DATABASE_URL);
-
     // Check if key tables exist
     const tables = ["user", "organization", "tests", "jobs", "runs", "apikey"];
     const missingTables = [];
@@ -624,8 +560,6 @@ async function verifyMigrations() {
       }
     }
 
-    await client.end();
-
     if (missingTables.length > 0) {
       logError(`Missing tables: ${missingTables.join(", ")}`);
       return false;
@@ -640,28 +574,23 @@ async function verifyMigrations() {
 }
 
 // Function to run database seeds (idempotent)
-async function runSeeds() {
+async function runSeeds(client) {
   log("Running database seeds...");
 
   try {
     const seedModule = require("./db-seed.js");
-    const client = postgres(TARGET_DATABASE_URL);
-
     // Run plan_limits seeding
     if (!(await seedModule.seedPlanLimits(client))) {
-      await client.end();
       logError("Failed to seed plan_limits");
       return false;
     }
 
     // Run overage_pricing seeding
     if (!(await seedModule.seedOveragePricing(client))) {
-      await client.end();
       logError("Failed to seed overage_pricing");
       return false;
     }
 
-    await client.end();
     logSuccess("Database seeds completed successfully");
     return true;
   } catch (err) {
@@ -671,12 +600,10 @@ async function runSeeds() {
 }
 
 // Function to verify plan_limits are seeded (CRITICAL)
-async function verifyPlanLimitsSeeded() {
+async function verifyPlanLimitsSeeded(client) {
   log("Verifying plan_limits table has required data...");
 
   try {
-    const client = postgres(TARGET_DATABASE_URL);
-
     // Check if plan_limits table exists
     const tableExists = await client`
       SELECT EXISTS (
@@ -688,7 +615,6 @@ async function verifyPlanLimitsSeeded() {
 
     if (!tableExists) {
       logError("plan_limits table does not exist");
-      await client.end();
       return false;
     }
 
@@ -698,7 +624,6 @@ async function verifyPlanLimitsSeeded() {
 
     if (planNames.length === 0) {
       logError("plan_limits table is empty - no plans found");
-      await client.end();
       return false;
     }
 
@@ -708,11 +633,9 @@ async function verifyPlanLimitsSeeded() {
 
     if (missingPlans.length > 0) {
       logError(`Missing required plans: ${missingPlans.join(", ")}`);
-      await client.end();
       return false;
     }
 
-    await client.end();
     logSuccess(
       `Verified ${planNames.length} plan(s) in database: ${planNames.join(", ")}`
     );
@@ -726,6 +649,7 @@ async function verifyPlanLimitsSeeded() {
 // Main function
 async function main() {
   let migrationLockClient;
+  let migrationCompleted = false;
 
   try {
     log("Starting database migration process...");
@@ -787,7 +711,17 @@ async function main() {
       }
     }
 
-    migrationLockClient = await acquireMigrationLock();
+    migrationLockClient = await acquireMigrationLock(
+      postgres,
+      TARGET_DATABASE_URL,
+      {
+        lockName: MIGRATION_LOCK_NAME,
+        timeoutMs: MIGRATION_LOCK_TIMEOUT_MS,
+        log,
+        logSuccess,
+        logError,
+      },
+    );
     if (!migrationLockClient) {
       process.exitCode = 1;
       return;
@@ -797,26 +731,26 @@ async function main() {
     // Do not move individual calls out of this lock without proving they are
     // read-only and safe during a concurrent rollout.
     // Step 3: Run migrations
-    if (!(await runMigrations())) {
+    if (!(await runMigrations(migrationLockClient))) {
       process.exitCode = 1;
       return;
     }
 
     // Step 3.5: Ensure Better Auth v1.6 api-key schema drift is repaired
-    if (!(await ensureBetterAuthApiKeyColumns())) {
+    if (!(await ensureBetterAuthApiKeyColumns(migrationLockClient))) {
       logError("Failed to ensure Better Auth API key columns exist");
       process.exitCode = 1;
       return;
     }
 
     // Step 4: Verify migrations
-    if (!(await verifyMigrations())) {
+    if (!(await verifyMigrations(migrationLockClient))) {
       process.exitCode = 1;
       return;
     }
 
     // Step 4.5: Ensure Polar columns exist (critical for subscription flow)
-    if (!(await ensurePolarColumns())) {
+    if (!(await ensurePolarColumns(migrationLockClient))) {
       logError("Failed to ensure Polar columns exist");
       process.exitCode = 1;
       return;
@@ -824,7 +758,7 @@ async function main() {
 
     // Step 5: Run database seeds (idempotent - safe to run multiple times)
     log("Running database seeds...");
-    if (!(await runSeeds())) {
+    if (!(await runSeeds(migrationLockClient))) {
       logError("CRITICAL: Database seeding failed.");
       process.exitCode = 1;
       return;
@@ -832,18 +766,22 @@ async function main() {
 
     // Step 6: Verify plan_limits are seeded (CRITICAL - app cannot function without this)
     log("Verifying plan_limits seeding...");
-    if (!(await verifyPlanLimitsSeeded())) {
+    if (!(await verifyPlanLimitsSeeded(migrationLockClient))) {
       logError("CRITICAL: plan_limits table is empty after seeding.");
       process.exitCode = 1;
       return;
     }
 
+    migrationCompleted = true;
     logSuccess("Database migration process completed successfully");
   } catch (err) {
     logError(`Unexpected error: ${err.message}`);
     process.exitCode = 1;
   } finally {
-    await releaseMigrationLock(migrationLockClient);
+    await releaseMigrationLock(migrationLockClient, {
+      commit: migrationCompleted,
+      logSuccess,
+    });
   }
 }
 
