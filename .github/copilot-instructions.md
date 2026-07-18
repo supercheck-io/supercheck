@@ -1,4 +1,4 @@
-# Copilot Instructions for SuperCheck
+# Copilot Instructions for Supercheck
 
 ## Development Commands
 

@@ -222,7 +222,7 @@ export function ReportViewer({
   }, [clearRetryTimer]);
 
   // Hide external link button in Playwright trace viewer
-  // This prevents users from opening snapshots in a new tab outside of SuperCheck
+  // This prevents users from opening snapshots in a new tab outside of Supercheck
   // Note: Due to CORS restrictions, we can't directly modify cross-origin iframe content
   // Instead, we use a CSS approach that targets elements via attribute selectors
   // and also try direct DOM manipulation for same-origin iframes

@@ -3,7 +3,7 @@
 import { useSearchParams } from "next/navigation";
 
 import { SreEvidenceGraph } from "@/components/sre/evidence-graph";
-import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
+import { SupercheckLoading } from "@/components/shared/supercheck-loading";
 import { useSreEvidenceGraph } from "@/hooks/use-sre";
 import type { SreEvidenceGraph as SreEvidenceGraphData } from "@/lib/sre/evidence-graph-queries";
 
@@ -36,7 +36,7 @@ export function SreEvidenceGraphPageClient() {
   if (!query.data) {
     if (query.isPending) {
       return (
-        <SuperCheckLoading
+        <SupercheckLoading
           className="h-full"
           message="Loading Investigation Map..."
         />

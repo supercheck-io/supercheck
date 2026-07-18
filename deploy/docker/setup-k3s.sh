@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SuperCheck K3s + gVisor Setup Script
+# Supercheck K3s + gVisor Setup Script
 #
 # Installs K3s with containerd and gVisor (runsc) runtime for secure
 # sandboxed test execution. Replaces Docker-socket-based execution.
@@ -79,7 +79,7 @@ fi
 
 info "Architecture: $ARCH"
 info "Host IP: $HOST_IP"
-info "Starting SuperCheck K3s + gVisor setup..."
+info "Starting Supercheck K3s + gVisor setup..."
 
 # ─── Configuration ────────────────────────────────────────────────────────────
 
@@ -496,7 +496,7 @@ k3s kubectl delete pod gvisor-test -n supercheck-execution --ignore-not-found 2>
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-log "SuperCheck K3s + gVisor setup complete!"
+log "Supercheck K3s + gVisor setup complete!"
 echo ""
 info "K3s:       $(k3s --version 2>&1 | head -1)"
 info "gVisor:    $(runsc --version 2>&1 | head -1)"

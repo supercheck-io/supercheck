@@ -12,14 +12,14 @@ const EXTENSION_API_KEY_CONFIG_ID = "default";
 const EXTENSION_API_KEY_PREFIX = "ext";
 const EXTENSION_API_KEY_LIST_LIMIT = 1000;
 const EXTENSION_API_KEY_MAX_NAME_LENGTH = 32;
-const DEFAULT_EXTENSION_API_KEY_NAME = "SuperCheck Recorder Extension";
+const DEFAULT_EXTENSION_API_KEY_NAME = "Supercheck Recorder Extension";
 const EXTENSION_API_KEY_PERMISSIONS: Record<string, string[]> = {
   recorder: ["save"],
 };
 const EXTENSION_PERMISSION_STATEMENT = "recorder:save";
 
 const authRequestSchema = z.object({
-  name: z.string().optional().default("SuperCheck Recorder Extension"),
+  name: z.string().optional().default("Supercheck Recorder Extension"),
   extensionVersion: z.string().optional(),
 });
 
@@ -118,10 +118,10 @@ function getBetterAuthErrorMessage(error: unknown) {
 
 /**
  * POST /api/extension/auth
- * Generate an API key for the SuperCheck Recorder extension
+ * Generate an API key for the Supercheck Recorder extension
  * 
  * Authentication: Session cookie (user must be logged in)
- * Used by: SuperCheck web app to connect the extension
+ * Used by: Supercheck web app to connect the extension
  */
 export async function POST(request: NextRequest) {
   try {

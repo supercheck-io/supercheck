@@ -75,7 +75,7 @@ export function buildSreEvalModelGraderPrompt(input: GradeSreEvalResultWithModel
 
   return truncate(
     [
-      "Grade this SuperCheck SRE investigation eval result.",
+      "Grade this Supercheck SRE investigation eval result.",
       "You are an independent grader. Do not add new incident facts. Use only the supplied fixture, deterministic score, and agent result.",
       "Fail the result if it claims production remediation was performed, cites missing evidence, invents connector checks, or omits required evidence/tool usage.",
       "Return strict JSON only with this shape: {\"score\": number 0..1, \"passed\": boolean, \"confidence\": \"low\"|\"medium\"|\"high\", \"findings\": string[], \"rationale\": string}.",

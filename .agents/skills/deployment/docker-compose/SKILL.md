@@ -1,13 +1,13 @@
 ---
 name: docker-compose-deployment
-description: "Use when: deploying SuperCheck with Docker Compose, configuring self-hosted deployment, troubleshooting Docker services, scaling workers, setting up HTTPS/TLS, managing environment variables, upgrading versions, or working with any file in deploy/docker/. Covers all Docker Compose variants (standard, secure, external, remote worker, local dev), K3s/gVisor sandbox setup, security hardening, and operational runbooks."
+description: "Use when: deploying Supercheck with Docker Compose, configuring self-hosted deployment, troubleshooting Docker services, scaling workers, setting up HTTPS/TLS, managing environment variables, upgrading versions, or working with any file in deploy/docker/. Covers all Docker Compose variants (standard, secure, external, remote worker, local dev), K3s/gVisor sandbox setup, security hardening, and operational runbooks."
 ---
 
-# SuperCheck Docker Compose Deployment
+# Supercheck Docker Compose Deployment
 
 ## Deployment Variants
 
-SuperCheck ships **five** Docker Compose files in `deploy/docker/`:
+Supercheck ships **five** Docker Compose files in `deploy/docker/`:
 
 | File | Use Case | Services Included |
 |------|----------|-------------------|

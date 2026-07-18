@@ -1,7 +1,7 @@
 "use client";
 
 import { SreIncidentsList } from "@/components/sre/incidents/sre-incidents-list";
-import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
+import { SupercheckLoading } from "@/components/shared/supercheck-loading";
 import { useSreIncidents } from "@/hooks/use-sre";
 
 export function SreIncidentsPageClient() {
@@ -10,7 +10,7 @@ export function SreIncidentsPageClient() {
   if (!query.data) {
     if (query.isPending) {
       return (
-        <SuperCheckLoading
+        <SupercheckLoading
           className="min-h-72"
           message="Loading incidents..."
         />

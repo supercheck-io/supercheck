@@ -69,7 +69,7 @@ import {
   getStatusPagesListQueryKey,
   type StatusPagesResponse,
 } from "@/hooks/use-status-pages";
-import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
+import { SupercheckLoading } from "@/components/shared/supercheck-loading";
 
 /**
  * Status page type for display purposes.
@@ -329,7 +329,7 @@ export default function StatusPagesList() {
   if (!isMounted || isRestoring || (!hasData && isLoading)) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
-        <SuperCheckLoading size="md" message="Loading status pages..." />
+        <SupercheckLoading size="md" message="Loading status pages..." />
       </div>
     );
   }

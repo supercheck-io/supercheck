@@ -53,7 +53,7 @@ import {
 } from "@/lib/validations/project";
 import { useBreadcrumbs } from "@/components/breadcrumb-context";
 import { TabLoadingSpinner } from "@/components/ui/table-skeleton";
-import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
+import { SupercheckLoading } from "@/components/shared/supercheck-loading";
 import { Loader2 } from "lucide-react";
 import type { PrivateAgentListItem } from "@/actions/private-agents";
 import type { SreOnboardingStatus } from "@/actions/sre-onboarding";
@@ -210,7 +210,7 @@ export default function OrgAdminDashboard() {
     <Suspense
       fallback={
         <div className="flex min-h-[400px] items-center justify-center">
-          <SuperCheckLoading size="md" message="Loading organization..." />
+          <SupercheckLoading size="md" message="Loading organization..." />
         </div>
       }
     >
@@ -828,7 +828,7 @@ function OrgAdminDashboardContent() {
   if (isInitialLoading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <SuperCheckLoading size="md" message="Loading organization..." />
+        <SupercheckLoading size="md" message="Loading organization..." />
       </div>
     );
   }

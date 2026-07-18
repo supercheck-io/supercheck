@@ -65,7 +65,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
+import { SupercheckLoading } from "@/components/shared/supercheck-loading";
 
 interface CliToken {
   id: string;
@@ -625,7 +625,7 @@ export function CliTokensTable() {
           <CardContent>
             {isLoading ? (
               <div className="flex flex-col items-center justify-center py-6">
-                <SuperCheckLoading size="sm" message="Loading tokens..." />
+                <SupercheckLoading size="sm" message="Loading tokens..." />
               </div>
             ) : tokens.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-4 text-center">

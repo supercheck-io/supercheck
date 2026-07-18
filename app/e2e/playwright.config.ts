@@ -6,7 +6,7 @@ import dotenv from 'dotenv';
 dotenv.config({ path: path.resolve(__dirname, '.env') });
 
 /**
- * Playwright E2E Test Configuration for SuperCheck
+ * Playwright E2E Test Configuration for Supercheck
  *
  * Authentication approach: Each test file that needs authentication
  * uses loginIfNeeded() in beforeEach hook. No shared auth state file.

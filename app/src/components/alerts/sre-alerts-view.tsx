@@ -21,7 +21,7 @@ import { toast } from "sonner";
 import { createSreIncidentFromAlert } from "@/actions/sre-incidents";
 import type { AlertHistory } from "@/components/alerts/schema";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
-import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
+import { SupercheckLoading } from "@/components/shared/supercheck-loading";
 import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
 import { Button } from "@/components/ui/button";
 import { CardDescription, CardTitle } from "@/components/ui/card";
@@ -350,7 +350,7 @@ export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
   if (isLoading && alerts.length === 0) {
     return (
       <div className="flex min-h-[360px] items-center justify-center">
-        <SuperCheckLoading size="md" message="Loading alert signals..." />
+        <SupercheckLoading size="md" message="Loading alert signals..." />
       </div>
     );
   }

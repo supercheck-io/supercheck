@@ -32,7 +32,7 @@ describe("SRE eval model grader", () => {
       deterministicScore: scoreSreEvalResult(fixture, agentResult),
     });
 
-    expect(prompt).toContain("Grade this SuperCheck SRE investigation eval result");
+    expect(prompt).toContain("Grade this Supercheck SRE investigation eval result");
     expect(prompt).not.toContain("secret-value");
     expect(prompt).not.toContain("abc123");
     expect(prompt.length).toBeLessThanOrEqual(12_000);

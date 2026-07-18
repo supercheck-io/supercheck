@@ -2,7 +2,7 @@ import { Suspense } from "react";
 
 import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
 import { SreEvidenceGraphPageClient } from "@/components/sre/evidence-graph-page-client";
-import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
+import { SupercheckLoading } from "@/components/shared/supercheck-loading";
 
 export default function SreEvidenceGraphPage() {
   return (
@@ -17,7 +17,7 @@ export default function SreEvidenceGraphPage() {
       <div className="min-h-0 flex-1 p-4 pb-6">
         <Suspense
           fallback={
-            <SuperCheckLoading
+            <SupercheckLoading
               className="h-full"
               message="Loading Investigation Map..."
             />

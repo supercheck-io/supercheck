@@ -1,9 +1,9 @@
 ---
 name: code-review
-description: "Use when: reviewing code changes (uncommitted, staged, or PR diffs), performing code quality audits, checking for security vulnerabilities, verifying architectural patterns, validating multi-tenant scoping, reviewing test coverage, or when asked to 'review my code' or 'check my changes'. Covers Next.js App Router, NestJS worker, Drizzle ORM, BullMQ queues, RBAC, Zod validation, and all SuperCheck conventions."
+description: "Use when: reviewing code changes (uncommitted, staged, or PR diffs), performing code quality audits, checking for security vulnerabilities, verifying architectural patterns, validating multi-tenant scoping, reviewing test coverage, or when asked to 'review my code' or 'check my changes'. Covers Next.js App Router, NestJS worker, Drizzle ORM, BullMQ queues, RBAC, Zod validation, and all Supercheck conventions."
 ---
 
-# SuperCheck Code Review
+# Supercheck Code Review
 
 ## Review Workflow
 

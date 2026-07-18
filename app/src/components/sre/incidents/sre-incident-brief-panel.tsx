@@ -74,7 +74,7 @@ export function SreIncidentBriefPanel({
               Evidence brief
             </CardTitle>
             <CardDescription>
-              Streaming SuperCheck AI report grounded in cited incident
+              Streaming Supercheck AI report grounded in cited incident
               evidence.
             </CardDescription>
           </div>

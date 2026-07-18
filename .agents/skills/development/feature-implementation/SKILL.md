@@ -1,9 +1,9 @@
 ---
 name: feature-implementation
-description: "Use when: implementing new features, adding CRUD functionality, creating new pages/routes/components, adding database tables, building new API endpoints, adding worker processors, extending the platform with new capabilities, or when asked to 'add a feature', 'create a new module', or 'build X'. Covers end-to-end implementation across Next.js App Router, NestJS worker, Drizzle ORM, BullMQ queues, React components, RBAC permissions, and all SuperCheck architectural conventions."
+description: "Use when: implementing new features, adding CRUD functionality, creating new pages/routes/components, adding database tables, building new API endpoints, adding worker processors, extending the platform with new capabilities, or when asked to 'add a feature', 'create a new module', or 'build X'. Covers end-to-end implementation across Next.js App Router, NestJS worker, Drizzle ORM, BullMQ queues, React components, RBAC permissions, and all Supercheck architectural conventions."
 ---
 
-# SuperCheck Feature Implementation
+# Supercheck Feature Implementation
 
 ## Implementation Workflow
 

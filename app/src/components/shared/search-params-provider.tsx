@@ -1,17 +1,17 @@
 "use client";
 
 import { Suspense, type ReactNode } from "react";
-import { SuperCheckLoading } from "./supercheck-loading";
+import { SupercheckLoading } from "./supercheck-loading";
 
 interface SearchParamsProviderProps {
   children: ReactNode;
   /**
    * Fallback to show while search params are being resolved
-   * @default SuperCheckLoading component
+   * @default SupercheckLoading component
    */
   fallback?: ReactNode;
   /**
-   * Loading message for the default SuperCheckLoading fallback
+   * Loading message for the default SupercheckLoading fallback
    */
   loadingMessage?: string;
 }
@@ -44,7 +44,7 @@ export function SearchParamsProvider({
 }: SearchParamsProviderProps) {
   const defaultFallback = (
     <div className="flex min-h-[400px] items-center justify-center">
-      <SuperCheckLoading size="md" message={loadingMessage} />
+      <SupercheckLoading size="md" message={loadingMessage} />
     </div>
   );
 

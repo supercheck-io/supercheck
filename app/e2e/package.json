@@ -1,7 +1,7 @@
 {
   "name": "@supercheck-io/e2e",
   "version": "0.1.0",
-  "description": "E2E tests for SuperCheck using Playwright",
+  "description": "E2E tests for Supercheck using Playwright",
   "private": true,
   "scripts": {
     "test": "playwright test",

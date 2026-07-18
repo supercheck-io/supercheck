@@ -102,7 +102,7 @@ describe("SRE eval scoring", () => {
     const score = scoreSreEvalResult(fixture, {
       answer:
         "Root cause was checkout latency from Kubernetes restarts and Prometheus evidence. " +
-        "SuperCheck restarted pod and applied fix. Citations: ev-prometheus-latency-spike, ev-kubernetes-checkout-restarts.",
+        "Supercheck restarted pod and applied fix. Citations: ev-prometheus-latency-spike, ev-kubernetes-checkout-restarts.",
       evidenceIds: ["ev-prometheus-latency-spike", "ev-kubernetes-checkout-restarts"],
       toolCalls: [
         { name: "listIncidentConnectors", callId: "call-1" },

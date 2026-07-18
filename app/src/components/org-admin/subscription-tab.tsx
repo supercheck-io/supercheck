@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
+import { SupercheckLoading } from "@/components/shared/supercheck-loading";
 import {
   Calendar,
   Users,
@@ -219,7 +219,7 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
-        <SuperCheckLoading size="md" message="Loading subscription..." />
+        <SupercheckLoading size="md" message="Loading subscription..." />
       </div>
     );
   }

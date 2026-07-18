@@ -1,7 +1,7 @@
 "use client";
 
 import { SreIncidentDetailView } from "@/components/sre/incidents/sre-incident-detail-view";
-import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
+import { SupercheckLoading } from "@/components/shared/supercheck-loading";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useSreIncidentPageData } from "@/hooks/use-sre";
 
@@ -17,7 +17,7 @@ export function SreIncidentDetailPageClient({
   if (!query.data) {
     if (query.isPending) {
       return (
-        <SuperCheckLoading className="h-full" message="Loading incident..." />
+        <SupercheckLoading className="h-full" message="Loading incident..." />
       );
     }
 

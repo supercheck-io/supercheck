@@ -675,7 +675,7 @@ const Playground: React.FC<PlaygroundProps> = ({
     }
   }, []);
 
-  // Listen for recorded code from SuperCheck Recorder extension
+  // Listen for recorded code from Supercheck Recorder extension
   useEffect(() => {
     const handleRecordedCode = (event: MessageEvent) => {
       // Security: Validate origin to prevent cross-origin attacks
@@ -1578,7 +1578,7 @@ const Playground: React.FC<PlaygroundProps> = ({
                               <div>
                                 <span className="text-sm font-medium text-red-400">Record Browser Test</span>
                                 <span className="text-sm text-muted-foreground ml-2">
-                                  Use SuperCheck Recorder to capture interactions, then save directly to Playground.
+                                  Use Supercheck Recorder to capture interactions, then save directly to Playground.
                                 </span>
                               </div>
                             </div>

@@ -60,7 +60,7 @@ describe("Extension auth route", () => {
       apiKeys: [
         {
           id: "key-1",
-          name: "SuperCheck Recorder Extension",
+          name: "Supercheck Recorder Extension",
           prefix: "ext",
           enabled: true,
         },
@@ -74,7 +74,7 @@ describe("Extension auth route", () => {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        name: "SuperCheck Recorder Extension",
+        name: "Supercheck Recorder Extension",
       }),
     });
 
@@ -121,7 +121,7 @@ describe("Extension auth route", () => {
     mockAuth.api.createApiKey.mockResolvedValue({
       id: "key-2",
       key: "extABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
-      name: "SuperCheck Recorder Extension",
+      name: "Supercheck Recorder Extension",
       prefix: "ext",
       enabled: true,
     });
@@ -130,7 +130,7 @@ describe("Extension auth route", () => {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        name: "SuperCheck Recorder Extension",
+        name: "Supercheck Recorder Extension",
       }),
     });
 
@@ -162,7 +162,7 @@ describe("Extension auth route", () => {
     mockAuth.api.createApiKey.mockResolvedValue({
       id: "key-2",
       key: "extABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
-      name: "SuperCheck Recorder Extension",
+      name: "Supercheck Recorder Extension",
       prefix: "ext",
       enabled: true,
     });
@@ -171,7 +171,7 @@ describe("Extension auth route", () => {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        name: "SuperCheck Recorder Extension",
+        name: "Supercheck Recorder Extension",
       }),
     });
 
@@ -185,7 +185,7 @@ describe("Extension auth route", () => {
       body: {
         userId: "user-1",
         configId: "default",
-        name: "SuperCheck Recorder Extension",
+        name: "Supercheck Recorder Extension",
         prefix: "ext",
         permissions: {
           recorder: ["save"],
@@ -213,7 +213,7 @@ describe("Extension auth route", () => {
     mockAuth.api.createApiKey.mockResolvedValue({
       id: "key-2",
       key: "extABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
-      name: "SuperCheck Recorder Extension",
+      name: "Supercheck Recorder Extension",
       prefix: "ext",
       enabled: true,
     });
@@ -222,7 +222,7 @@ describe("Extension auth route", () => {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        name: "SuperCheck Recorder Extension With Extra Debug Suffix",
+        name: "Supercheck Recorder Extension With Extra Debug Suffix",
       }),
     });
 
@@ -232,7 +232,7 @@ describe("Extension auth route", () => {
     expect(mockAuth.api.createApiKey).toHaveBeenCalledWith({
       body: expect.objectContaining({
         userId: "user-1",
-        name: "SuperCheck Recorder Extension Wi",
+        name: "Supercheck Recorder Extension Wi",
       }),
     });
   });
@@ -264,7 +264,7 @@ describe("Extension auth route", () => {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        name: "SuperCheck Recorder Extension",
+        name: "Supercheck Recorder Extension",
       }),
     });
 

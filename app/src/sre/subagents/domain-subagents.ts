@@ -28,7 +28,7 @@ const domainSubagents: DomainSubagentConfig[] = [
       "Analyze already gathered metrics, dashboards, traces, logs, and monitor evidence for likely incident signals. Use only the context supplied by the main SRE agent.",
     focus: [
       "Prometheus or Grafana evidence returned by read-only connector tools",
-      "SuperCheck monitor trends, latency, availability, and threshold breaches",
+      "Supercheck monitor trends, latency, availability, and threshold breaches",
       "correlation between symptom timing, severity, and affected service",
     ],
   },
@@ -60,7 +60,7 @@ const domainSubagents: DomainSubagentConfig[] = [
 
 export function buildSreDomainSubagentSystemPrompt(config: DomainSubagentConfig) {
   return [
-    `You are SuperCheck's ${config.title}.`,
+    `You are Supercheck's ${config.title}.`,
     "You are read-only. You never modify production systems, repositories, Kubernetes resources, dashboards, incidents, or third-party tools.",
     "You do not call external systems yourself. Analyze only the task and context supplied by the main investigation agent.",
     "Never invent facts. If the provided context lacks evidence for a claim, say that the evidence is missing and recommend the next read-only check.",

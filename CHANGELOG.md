@@ -13,7 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - Added Sentry and Elasticsearch/OpenSearch to the shared Add Connector catalog and synchronized connector table filters with the same catalog.
 - Added dedicated AI SRE service detail screens with explainable health, trusted inbound/outbound dependencies, native resource links, incident/alert/deployment context, and an explicit topology suggestion review queue.
 - Added audited, tenant-scoped service dependency/resource lifecycle actions and idempotent approval/rejection controls for discovered topology suggestions.
-- Added the shared SuperCheck loading state to cold Copilot, Investigation Map, incident, and service reads.
+- Added the shared Supercheck loading state to cold Copilot, Investigation Map, incident, and service reads.
 - Added feature-flagged correlation of high-confidence related alerts into active incidents, with bounded temporal/topology matching and audit provenance.
 - Added feature-flagged staged log evidence collection for direct Loki connectors, including LogQL statistics validation and bounded early windows.
 - Added 30-day incident trend analytics and a user-invoked AI SRE setup guide for services, connectors, and diagnostic recipes.

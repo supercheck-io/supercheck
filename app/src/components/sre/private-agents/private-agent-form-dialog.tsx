@@ -89,7 +89,7 @@ export function PrivateAgentFormDialog({ open, onOpenChange, onSaved }: PrivateA
               </div>
             </div>
             <div className="rounded-lg border bg-muted/30 p-3 text-sm text-muted-foreground">
-              Start the agent with this token in its environment. Connector execution remains read-only and policy-gated by SuperCheck.
+              Start the agent with this token in its environment. Connector execution remains read-only and policy-gated by Supercheck.
             </div>
             <DialogFooter>
               <Button type="button" onClick={() => onOpenChange(false)}>

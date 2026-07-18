@@ -1,11 +1,11 @@
 # Private Agent Deployment
 #
-# Runs the SuperCheck worker image in outbound-only Private Agent mode.
-# Use this for SuperCheck Cloud or any deployment where the edge process must not
+# Runs the Supercheck worker image in outbound-only Private Agent mode.
+# Use this for Supercheck Cloud or any deployment where the edge process must not
 # receive PostgreSQL, Redis, or S3 credentials.
 #
 # This is intentionally different from docker-compose-worker.yml:
-# - Private Agent: connector proxy, outbound HTTPS to SuperCheck API only.
+# - Private Agent: connector proxy, outbound HTTPS to Supercheck API only.
 # - Worker: trusted execution worker, requires PostgreSQL/Redis/S3 access.
 #
 # Usage:
@@ -16,7 +16,7 @@
 #
 # Required .env:
 #   SUPERCHECK_API_URL=https://app.supercheck.io
-#   PRIVATE_AGENT_ID=<agent uuid from SuperCheck>
+#   PRIVATE_AGENT_ID=<agent uuid from Supercheck>
 #   PRIVATE_AGENT_TOKEN=<short-lived registration token shown during registration/rotation>
 #
 # Optional .env:

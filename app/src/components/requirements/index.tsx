@@ -57,7 +57,7 @@ import {
     PopoverContent,
     PopoverTrigger,
 } from "@/components/ui/popover";
-import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
+import { SupercheckLoading } from "@/components/shared/supercheck-loading";
 import { K6Logo } from "@/components/logo/k6-logo";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
@@ -618,7 +618,7 @@ export default function RequirementsPage() {
                                         </div>
 
                                         {testsLoading ? (
-                                            <SuperCheckLoading className="py-12" />
+                                            <SupercheckLoading className="py-12" />
                                         ) : linkedTests.length === 0 ? (
                                             <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
                                                 <FileText className="h-12 w-12 mb-4" />

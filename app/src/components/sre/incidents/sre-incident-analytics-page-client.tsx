@@ -1,7 +1,7 @@
 "use client";
 
 import { SreIncidentAnalytics } from "@/components/sre/incidents/sre-incident-analytics";
-import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
+import { SupercheckLoading } from "@/components/shared/supercheck-loading";
 import { useSreIncidentAnalytics } from "@/hooks/use-sre";
 
 export function SreIncidentAnalyticsPageClient() {
@@ -10,7 +10,7 @@ export function SreIncidentAnalyticsPageClient() {
   if (!query.data) {
     if (query.isPending) {
       return (
-        <SuperCheckLoading
+        <SupercheckLoading
           className="min-h-72"
           message="Loading incident trends..."
         />

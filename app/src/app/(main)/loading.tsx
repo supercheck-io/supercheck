@@ -1,4 +1,4 @@
-import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
+import { SupercheckLoading } from "@/components/shared/supercheck-loading";
 
 /**
  * Main Layout Loading
@@ -9,7 +9,7 @@ import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
 export default function Loading() {
     return (
         <div className="flex min-h-[calc(100vh-3.5rem)] items-center justify-center">
-            <SuperCheckLoading size="md" message="Loading..." />
+            <SupercheckLoading size="md" message="Loading..." />
         </div>
     );
 }

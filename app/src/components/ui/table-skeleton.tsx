@@ -8,7 +8,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
+import { SupercheckLoading } from "@/components/shared/supercheck-loading";
 
 interface TableSkeletonProps {
   rows?: number;
@@ -20,7 +20,7 @@ interface TableSkeletonProps {
 }
 
 // Consistent loading spinner for all tab content
-// Uses SuperCheckLoading for consistent branding across the app
+// Uses SupercheckLoading for consistent branding across the app
 export function TabLoadingSpinner({
   message = "Loading...",
 }: {
@@ -28,7 +28,7 @@ export function TabLoadingSpinner({
 }) {
   return (
     <div className="flex flex-col items-center justify-center py-16">
-      <SuperCheckLoading size="md" message={message} />
+      <SupercheckLoading size="md" message={message} />
     </div>
   );
 }

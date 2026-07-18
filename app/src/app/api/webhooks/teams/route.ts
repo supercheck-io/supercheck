@@ -42,14 +42,14 @@ export async function POST(request: Request) {
 
   const parsed = teamsMessageSchema.safeParse(rawPayload);
   if (!parsed.success || (parsed.data.type && parsed.data.type !== "message")) {
-    return NextResponse.json({ type: "message", text: "SuperCheck ignored this Teams event." });
+    return NextResponse.json({ type: "message", text: "Supercheck ignored this Teams event." });
   }
 
   const deliveryId = deliveryIdForTeamsPayload(body, parsed.data);
   const eventType = "teams.outgoing_webhook";
   const shouldProcess = await claimSreCollaborationWebhook(deliveryId, eventType);
   if (!shouldProcess) {
-    return NextResponse.json({ type: "message", text: "SuperCheck already processed this Teams message." });
+    return NextResponse.json({ type: "message", text: "Supercheck already processed this Teams message." });
   }
 
   try {
@@ -69,7 +69,7 @@ export async function POST(request: Request) {
       message: result.status,
     });
 
-    return NextResponse.json({ type: "message", text: `SuperCheck SRE ${result.status}.` });
+    return NextResponse.json({ type: "message", text: `Supercheck SRE ${result.status}.` });
   } catch (error) {
     await updateSreCollaborationWebhookResult({
       deliveryId,

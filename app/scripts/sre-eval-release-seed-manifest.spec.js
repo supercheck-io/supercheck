@@ -56,7 +56,7 @@ describe("SRE eval release seed manifest", () => {
     expect(RELEASE_ENVIRONMENT_REQUIREMENTS.map((item) => item.name)).toEqual(
       expect.arrayContaining(["SRE_EVAL_AUTH_TOKEN", "SRE_EVAL_INCIDENT_IDS", "SRE_EVAL_GRADER_MODEL_ID"])
     );
-    expect(runbook).toContain("non-production SuperCheck tenant");
+    expect(runbook).toContain("non-production Supercheck tenant");
     expect(runbook).toContain("Never run seeded live evals against customer production tenants");
     expect(runbook).toContain("connector-investigation-cloudwatch-alarm");
   });

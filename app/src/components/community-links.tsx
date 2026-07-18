@@ -61,7 +61,6 @@ export function CommunityLinks() {
                     aria-label="View corresponding source code"
                 >
                     <GitHubIcon className="h-4 w-4" />
-                    <span className="hidden lg:inline">Source code</span>
                 </a>
             </Button>
 

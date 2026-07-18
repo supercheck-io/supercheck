@@ -3,11 +3,11 @@ name: queue-system
 description: "Use when: working with the BullMQ execution queue, debugging test runners, capacity management, scheduling jobs, multi-region workers, or handling queue events via SSE."
 ---
 
-# SuperCheck Queue System Architecture
+# Supercheck Queue System Architecture
 
 ## Core Concepts
 
-SuperCheck relies on a robust **BullMQ** queue system with **Redis** as the storage backend.
+Supercheck relies on a robust **BullMQ** queue system with **Redis** as the storage backend.
 
 ### Key Workloads
 1. **Execution**: Playwright tests (`playwright-global`), K6 performance tests (`k6-*`), and synthetic monitors (`monitor-*`).
@@ -27,7 +27,7 @@ SuperCheck relies on a robust **BullMQ** queue system with **Redis** as the stor
 ### Connection Best Practices
 - **Shared Connections**: General queue operations share a base Redis connection to optimize connection usage.
 - **QueueEvents Requirements**: Each `QueueEvents` instance (for listening to job updates and SSE) MUST have its own independent Redis connection because it uses blocking commands (`XREAD BLOCK`). Never share a connection for `QueueEvents`.
-- **Reconnection Logic**: Redis connection settings in SuperCheck intentionally use `maxRetriesPerRequest: null` and a never-ending `retryStrategy` to ensure resilience during Redis Sentinel failovers.
+- **Reconnection Logic**: Redis connection settings in Supercheck intentionally use `maxRetriesPerRequest: null` and a never-ending `retryStrategy` to ensure resilience during Redis Sentinel failovers.
 
 ### Schedulers Run in the App
 - Scheduler queues (`job-scheduler`, etc.) are processed by the **Next.js App** containers, not the workers.

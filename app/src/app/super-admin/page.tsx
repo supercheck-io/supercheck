@@ -39,7 +39,7 @@ import {
 } from "lucide-react";
 import { useBreadcrumbs } from "@/components/breadcrumb-context";
 import { TabLoadingSpinner } from "@/components/ui/table-skeleton";
-import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
+import { SupercheckLoading } from "@/components/shared/supercheck-loading";
 import { LocationsTable } from "@/components/admin/locations-table";
 
 export default function AdminDashboard() {
@@ -144,7 +144,7 @@ export default function AdminDashboard() {
   if (isInitialLoading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <SuperCheckLoading size="md" message="Loading admin dashboard..." />
+        <SupercheckLoading size="md" message="Loading admin dashboard..." />
       </div>
     );
   }
@@ -400,7 +400,7 @@ export default function AdminDashboard() {
                       minHeight: "400px",
                     }}
                   >
-                    <SuperCheckLoading size="md" message="Loading Queue Dashboard..." />
+                    <SupercheckLoading size="md" message="Loading Queue Dashboard..." />
                   </div>
                 ) : null}
 

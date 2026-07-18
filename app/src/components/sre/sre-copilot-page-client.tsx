@@ -4,7 +4,7 @@ import { useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import type { SreStandaloneChatHistory } from "@/actions/sre-ai";
-import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
+import { SupercheckLoading } from "@/components/shared/supercheck-loading";
 import { SreAiConsole } from "@/components/sre/sre-ai-console";
 import { useProjectContext } from "@/hooks/use-project-context";
 import { useSreCopilotHistories } from "@/hooks/use-sre";
@@ -27,7 +27,7 @@ export function SreCopilotPageClient() {
   if (!query.data) {
     if (query.isPending) {
       return (
-        <SuperCheckLoading className="h-full" message="Loading Copilot..." />
+        <SupercheckLoading className="h-full" message="Loading Copilot..." />
       );
     }
 

@@ -211,7 +211,7 @@ const builders: Record<string, ConnectorQueryBuilder> = {
         id: "queryString",
         label: "Query string",
         placeholder: "service.name:checkout AND (error OR exception)",
-        help: "Elasticsearch query-string syntax. Time bounds are added by SuperCheck.",
+        help: "Elasticsearch query-string syntax. Time bounds are added by Supercheck.",
       },
       {
         id: "index",

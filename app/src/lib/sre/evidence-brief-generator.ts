@@ -51,11 +51,11 @@ export function fallbackBrief(
         "# Incident Investigation Report",
         "",
         "## Report Details",
-        "- **Evidence Source**: Native SuperCheck evidence",
+        "- **Evidence Source**: Native Supercheck evidence",
         "- **Evidence Items**: 0",
         "",
         "## Executive Summary",
-        "No native SuperCheck evidence was available for this incident yet. Generate or link monitor, job, run, or connector evidence before relying on a root-cause summary.",
+        "No native Supercheck evidence was available for this incident yet. Generate or link monitor, job, run, or connector evidence before relying on a root-cause summary.",
         "",
         "## What Changed",
         "- **Fact**: No stored native evidence was found for this incident.",
@@ -89,7 +89,7 @@ export function fallbackBrief(
       "# Incident Investigation Report",
       "",
       "## Report Details",
-      "- **Evidence Source**: Native SuperCheck evidence",
+      "- **Evidence Source**: Native Supercheck evidence",
       `- **Evidence Items**: ${evidence.length}`,
       `- **Primary Signal**: ${first.title}`,
       "",
@@ -155,9 +155,9 @@ function buildStructuredBriefPrompt(input: {
   incidentSeverity: string;
   evidence: BriefEvidenceInput[];
 }) {
-  return `You are SuperCheck's read-only AI SRE assistant.
+  return `You are Supercheck's read-only AI SRE assistant.
 
-Create a concise incident evidence brief using ONLY the cited native SuperCheck evidence below. Do not invent external facts. If evidence is weak, say so.
+Create a concise incident evidence brief using ONLY the cited native Supercheck evidence below. Do not invent external facts. If evidence is weak, say so.
 
 Return JSON only with this exact shape:
 {
@@ -173,7 +173,7 @@ Required summary markdown format:
 ## Report Details
 - **Incident**: ${input.incidentTitle}
 - **Severity**: ${input.incidentSeverity}
-- **Evidence Source**: Native SuperCheck evidence
+- **Evidence Source**: Native Supercheck evidence
 
 ## Executive Summary
 [3-5 concise sentences with the overall verdict, strongest signals, and confidence level.]
@@ -213,9 +213,9 @@ function buildStreamingBriefPrompt(input: {
   incidentSeverity: string;
   evidence: BriefEvidenceInput[];
 }) {
-  return `You are SuperCheck's read-only AI SRE assistant.
+  return `You are Supercheck's read-only AI SRE assistant.
 
-Write a concise Markdown incident evidence brief using ONLY the cited native SuperCheck evidence below. Do not return JSON. Do not wrap the answer in a code fence. Do not invent external facts. If evidence is weak or contradictory, state that plainly.
+Write a concise Markdown incident evidence brief using ONLY the cited native Supercheck evidence below. Do not return JSON. Do not wrap the answer in a code fence. Do not invent external facts. If evidence is weak or contradictory, state that plainly.
 
 Use exactly this Markdown structure:
 # Incident Investigation Report
@@ -223,7 +223,7 @@ Use exactly this Markdown structure:
 ## Report Details
 - **Incident**: ${input.incidentTitle}
 - **Severity**: ${input.incidentSeverity}
-- **Evidence Source**: Native SuperCheck evidence
+- **Evidence Source**: Native Supercheck evidence
 - **Evidence Items**: ${input.evidence.length}
 - **Primary Signal**: [strongest evidence title, or "None available"]
 

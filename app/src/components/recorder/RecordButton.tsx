@@ -25,14 +25,14 @@ interface RecordButtonProps {
 }
 
 // Extension API interface exposed by content script
-interface SuperCheckRecorderAPI {
+interface SupercheckRecorderAPI {
   version: string;
   isConnected: () => Promise<boolean>;
   storeRecordingContext: (payload: Record<string, unknown>) => Promise<void>;
 }
 
 // Get the extension API from window (set by content script)
-function getExtensionAPI(): SuperCheckRecorderAPI | null {
+function getExtensionAPI(): SupercheckRecorderAPI | null {
   return (window as any).__SUPERCHECK_RECORDER__ || null;
 }
 

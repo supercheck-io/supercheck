@@ -120,7 +120,7 @@ export async function listStoredSreEvidence(input: StoredSreEvidenceQuery) {
 export function createNativeEvidenceTool(scope: SreEvidenceToolScope) {
   return tool({
     description:
-      "List stored native SuperCheck evidence for the scoped incident. Read-only; does not query external systems.",
+      "List stored native Supercheck evidence for the scoped incident. Read-only; does not query external systems.",
     inputSchema: evidenceToolInputSchema,
     execute: async ({ limit, evidenceType }) => ({
       evidence: await listStoredSreEvidence({

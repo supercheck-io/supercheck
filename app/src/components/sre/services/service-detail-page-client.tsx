@@ -1,7 +1,7 @@
 "use client";
 
 import { ServiceDetailView } from "@/components/sre/services/service-detail-view";
-import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
+import { SupercheckLoading } from "@/components/shared/supercheck-loading";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useSreServiceDetail } from "@/hooks/use-sre";
 
@@ -11,7 +11,7 @@ export function ServiceDetailPageClient({ serviceId }: { serviceId: string }) {
   if (!query.data) {
     if (query.isPending) {
       return (
-        <SuperCheckLoading className="h-full" message="Loading service..." />
+        <SupercheckLoading className="h-full" message="Loading service..." />
       );
     }
 

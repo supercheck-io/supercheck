@@ -51,7 +51,7 @@ import {
   useNotificationProviderMutations,
   type NotificationProvider,
 } from "@/hooks/use-alerts";
-import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
+import { SupercheckLoading } from "@/components/shared/supercheck-loading";
 import { SreAlertsView } from "@/components/alerts/sre-alerts-view";
 
 const alertTabs = ["signals", "history", "channels"] as const;
@@ -428,7 +428,7 @@ export default function AlertsPageWrapper() {
     <Suspense
       fallback={
         <div className="flex min-h-[400px] items-center justify-center">
-          <SuperCheckLoading size="md" message="Loading alerts..." />
+          <SupercheckLoading size="md" message="Loading alerts..." />
         </div>
       }
     >

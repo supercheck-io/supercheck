@@ -27,7 +27,7 @@ import {
     ArrowDown,
     Loader2,
 } from "lucide-react";
-import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
+import { SupercheckLoading } from "@/components/shared/supercheck-loading";
 import { Badge } from "@/components/ui/badge";
 import { formatDistanceToNow, format } from "date-fns";
 import { UploadDocumentDialog } from "./upload-document-dialog";
@@ -521,7 +521,7 @@ export function DocumentsList({ canUpload = false }: DocumentsListProps) {
             {/* Documents Grid or Empty State */}
             {isLoading ? (
                 <div className="flex-1 overflow-y-auto">
-                    <SuperCheckLoading className="h-[200px]" />
+                    <SupercheckLoading className="h-[200px]" />
                 </div>
             ) : documents.length === 0 ? (
                 <div className="flex-1 overflow-y-auto">

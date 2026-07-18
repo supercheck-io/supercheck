@@ -27,7 +27,7 @@ export async function postSreInvestigationSlackSummary(input: {
 
   const summary = truncateSlackText(input.summary);
   const confidenceLine = input.confidenceLabel ? `\n*Confidence:* ${input.confidenceLabel}` : "";
-  const text = `SuperCheck SRE investigation update for ${input.incidentTitle}\n${summary}${confidenceLine}\n${input.incidentUrl}`;
+  const text = `Supercheck SRE investigation update for ${input.incidentTitle}\n${summary}${confidenceLine}\n${input.incidentUrl}`;
   const client = new WebClient(token);
 
   const response = await client.chat.postMessage({
@@ -41,7 +41,7 @@ export async function postSreInvestigationSlackSummary(input: {
         type: "section",
         text: {
           type: "mrkdwn",
-          text: `*SuperCheck SRE investigation update*\n*Incident:* <${input.incidentUrl}|${input.incidentTitle}>${confidenceLine}`,
+          text: `*Supercheck SRE investigation update*\n*Incident:* <${input.incidentUrl}|${input.incidentTitle}>${confidenceLine}`,
         },
       },
       {

@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import { JobCreationWizard } from "@/components/jobs/job-creation-wizard";
 import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
-import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
+import { SupercheckLoading } from "@/components/shared/supercheck-loading";
 
 const breadcrumbs = [
   { label: "Home", href: "/" },
@@ -18,7 +18,7 @@ export default function CreatePlaywrightJobPage() {
       <Suspense
         fallback={
           <div className="flex min-h-[400px] items-center justify-center">
-            <SuperCheckLoading size="md" message="Loading job wizard..." />
+            <SupercheckLoading size="md" message="Loading job wizard..." />
           </div>
         }
       >

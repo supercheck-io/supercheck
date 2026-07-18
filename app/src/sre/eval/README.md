@@ -1,6 +1,6 @@
 # SRE Eval Gate
 
-The SRE eval suite is a production safety gate for SuperCheck's read-only AI SRE agents.
+The SRE eval suite is a production safety gate for Supercheck's read-only AI SRE agents.
 
 ## Why GitHub Actions
 
@@ -52,7 +52,7 @@ The generated template intentionally contains placeholders only. Populate real v
 
 Release engineers must verify before RC/stable gates:
 
-- The target is a seeded non-production SuperCheck tenant.
+- The target is a seeded non-production Supercheck tenant.
 - `SRE_EVAL_AUTH_TOKEN` is scoped to the eval tenant and can run SRE investigations only.
 - `SRE_EVAL_INCIDENT_IDS` maps every selected fixture to a seeded SRE incident.
 - All selected connectors use read-only credentials and fake/demo data.
@@ -125,7 +125,7 @@ The optional Docker Compose lab in `deploy/docker/docker-compose-aisre-lab.yml` 
 - Loki and Promtail for structured checkout logs.
 - Tempo and OpenTelemetry Collector for trace evidence.
 - Grafana with provisioned Prometheus, Loki, and Tempo data sources.
-- `aisre-webhook-capture` for inspecting Alertmanager or SuperCheck webhook payloads.
+- `aisre-webhook-capture` for inspecting Alertmanager or Supercheck webhook payloads.
 
 Start the full lab from `deploy/docker`:
 
@@ -141,7 +141,7 @@ curl http://127.0.0.1:18080/checkout/slow
 curl http://127.0.0.1:18080/checkout/error
 ```
 
-Use `SRE_EVAL_FIXTURE_IDS=connector-investigation-oss-lab-checkout-degradation` for the lab-specific live fixture after creating a seeded test incident and connecting the lab Prometheus, Loki, and Tempo endpoints to a non-production SuperCheck project.
+Use `SRE_EVAL_FIXTURE_IDS=connector-investigation-oss-lab-checkout-degradation` for the lab-specific live fixture after creating a seeded test incident and connecting the lab Prometheus, Loki, and Tempo endpoints to a non-production Supercheck project.
 
 ## Security Rules
 

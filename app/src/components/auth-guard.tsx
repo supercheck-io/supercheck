@@ -3,7 +3,7 @@
 import { useEffect, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "@/utils/auth-client";
-import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
+import { SupercheckLoading } from "@/components/shared/supercheck-loading";
 
 /**
  * AuthGuard - Client-side authentication guard using Better Auth
@@ -80,7 +80,7 @@ export function AuthGuard({ children, initialSession }: AuthGuardProps) {
     if (isEffectivelyPending) {
         return (
             <div className="flex min-h-[calc(100vh-3.5rem)] items-center justify-center">
-                <SuperCheckLoading size="md" message="Checking authentication..." />
+                <SupercheckLoading size="md" message="Checking authentication..." />
             </div>
         );
     }
@@ -90,7 +90,7 @@ export function AuthGuard({ children, initialSession }: AuthGuardProps) {
     if (!effectiveSession || sessionExpired) {
         return (
             <div className="flex min-h-[calc(100vh-3.5rem)] items-center justify-center">
-                <SuperCheckLoading size="md" message="Redirecting to sign in..." />
+                <SupercheckLoading size="md" message="Redirecting to sign in..." />
             </div>
         );
     }

@@ -94,7 +94,7 @@ function NativeEvidenceCard({ detail }: { detail: SreIncidentDetail }) {
           Native evidence
         </CardTitle>
         <CardDescription>
-          Stored citations from SuperCheck alerts, monitors, runs, logs,
+          Stored citations from Supercheck alerts, monitors, runs, logs,
           reports, and k6 results.
         </CardDescription>
       </CardHeader>
