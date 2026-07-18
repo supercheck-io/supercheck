@@ -108,7 +108,7 @@ jobs:
 
       - name: Lint code
         working-directory: ./worker
-        run: echo "Skipping worker lint - fix lint issues and re-enable later"
+        run: npx eslint "src/**/*.ts"
 
       - name: Run tests
         working-directory: ./worker

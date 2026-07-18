@@ -43,6 +43,8 @@ COPY . .
 # Note: CHATWOOT_* variables are read at runtime via /api/config/chatwoot (not build-time)
 ENV NODE_OPTIONS="--max-old-space-size=4096"
 ENV NODE_ENV=production
+ARG NEXT_PUBLIC_SOURCE_URL=https://github.com/supercheck-io/supercheck
+ENV NEXT_PUBLIC_SOURCE_URL=${NEXT_PUBLIC_SOURCE_URL}
 
 # Build with standalone output and static optimization
 # Use a build-time placeholder secret that will be overridden at runtime

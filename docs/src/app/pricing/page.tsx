@@ -174,7 +174,7 @@ const faqs = [
     },
     {
         question: 'Is the self-hosted version really free?',
-        answer: 'Yes. Supercheck is open source. Self-host on your infrastructure with unlimited Supercheck usage at no license cost. You still pay your own infrastructure and AI provider costs.',
+        answer: 'Yes. Supercheck core is open source under AGPLv3. Self-host on your infrastructure with unlimited Supercheck usage at no license cost. You still pay your own infrastructure and AI provider costs.',
     },
     {
         question: 'Do you offer enterprise plans?',

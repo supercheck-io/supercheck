@@ -39,21 +39,15 @@ const DISCORD_URL = "https://discord.gg/UVe327CSbm";
 
 /**
  * Community links component for the navigation header
- * Displays GitHub star and Discord join buttons when SHOW_COMMUNITY_LINKS is enabled
- * Controlled by a separate environment variable for flexibility
+ * Displays the AGPL source link and optional community links in the navigation header.
  */
 export function CommunityLinks() {
     const hydrated = useHydrated();
     const { showCommunityLinks, isLoading } = useAppConfig();
 
-    // Always return null on server to avoid hydration mismatch
-    if (!hydrated || isLoading || !showCommunityLinks) {
-        return null;
-    }
-
     return (
         <div className="flex items-center gap-2">
-            {/* GitHub Star Button */}
+            {/* AGPL source offer */}
             <Button
                 variant="outline"
                 size="sm"
@@ -61,33 +55,33 @@ export function CommunityLinks() {
                 asChild
             >
                 <a
-                    href={GITHUB_URL}
+                    href={process.env.NEXT_PUBLIC_SOURCE_URL || GITHUB_URL}
                     target="_blank"
                     rel="noopener noreferrer"
-                    aria-label="Give a Star on GitHub"
+                    aria-label="View corresponding source code"
                 >
                     <GitHubIcon className="h-4 w-4" />
-                    <span className="hidden lg:inline">Star us</span>
+                    <span className="hidden lg:inline">Source code</span>
                 </a>
             </Button>
 
-            {/* Discord Button */}
-            <Button
-                variant="outline"
-                size="sm"
-                className="h-8 gap-1.5 border-muted-foreground/30 text-muted-foreground hover:text-foreground hover:border-border"
-                asChild
-            >
-                <a
-                    href={DISCORD_URL}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    aria-label="Join our Discord"
+            {(hydrated && !isLoading && showCommunityLinks) && (
+                <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 gap-1.5 border-muted-foreground/30 text-muted-foreground hover:text-foreground hover:border-border"
+                    asChild
                 >
-                    <DiscordIcon className="h-4 w-4" />
-                    {/* <span className="hidden lg:inline">Discord</span> */}
-                </a>
-            </Button>
+                    <a
+                        href={DISCORD_URL}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label="Join our Discord"
+                    >
+                        <DiscordIcon className="h-4 w-4" />
+                    </a>
+                </Button>
+            )}
         </div>
     );
 }

@@ -90,4 +90,4 @@ npm run generate-docs
 ## Repository Notes
 
 - `README.md` is the primary product/architecture overview for this monorepo.
-- `CONTRIBUTING.md` currently states that external contributions are not being accepted.
+- External pull requests are welcome. See `CONTRIBUTING.md` for the current policy and operational boundaries.

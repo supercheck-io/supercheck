@@ -2,7 +2,7 @@
   "name": "@supercheck-io/worker",
   "version": "1.3.5",
   "description": "Supercheck - Distributed test execution and job processing worker service",
-  "license": "MIT",
+  "license": "AGPL-3.0-only",
   "author": {
     "name": "Supercheck Contributors",
     "url": "https://github.com/supercheck-io/supercheck"

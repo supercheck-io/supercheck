@@ -318,7 +318,7 @@ export async function GET() {
       {
         question: "Can I self-host Supercheck?",
         answer:
-          "Yes! Supercheck is open source and can be self-hosted for free with unlimited features. Visit our GitHub repository for deployment instructions.",
+          "Yes! Supercheck core is open source under AGPLv3 and can be self-hosted with unlimited features. Visit our GitHub repository for deployment instructions.",
       },
     ];
 

@@ -17,7 +17,7 @@ Supercheck combines **test automation**, **synthetic + uptime monitoring**, **pe
 
 ### Competitive landscape
 
-Supercheck is positioned as an open-source reliability platform that combines test automation, synthetic and uptime monitoring, k6 performance testing, status pages, and read-only AI SRE investigation. Some competitors cover parts of this workflow, but they usually specialize in one layer: synthetic monitoring, browser/device clouds, load testing, status communication, incident response, or AI incident investigation.
+Supercheck is an open-source reliability platform that combines test automation, synthetic and uptime monitoring, k6 performance testing, status pages, and read-only AI SRE investigation. Some competitors cover parts of this workflow, but they usually specialize in one layer: synthetic monitoring, browser/device clouds, load testing, status communication, incident response, or AI incident investigation.
 
 Public pricing changes frequently; check the linked vendor pages for the latest details.
 
@@ -32,7 +32,7 @@ Public pricing changes frequently; check the linked vendor pages for the latest 
 | [Sauce Labs](https://saucelabs.com/pricing) | Browser/device cloud | Virtual Device Cloud from $149/mo for 1 parallel test when billed annually | ✅ | — | — | — | — | — | — | Automated/manual cross-browser and mobile testing; not a monitoring/status/AISRE system. |
 | [Cypress Cloud](https://www.cypress.io/pricing) | Cypress test orchestration | Free; Team from $67/mo; Business from $267/mo when billed annually | ✅ | — | — | — | — | — | — | CI orchestration, analytics, flake detection, and AI test-generation support for Cypress projects. |
 | [Grafana k6 Cloud](https://grafana.com/pricing/) | Load testing | Free/paid Grafana Cloud tiers; usage-based k6 capacity | — | Partial | ✅ | — | — | — | — | Excellent load testing and observability integration; does not provide Supercheck's browser/API test, incident, and status-page workflow. |
-| [Azure App Testing](https://azure.microsoft.com/en-us/pricing/details/app-testing/) | Cloud test execution | Usage-based Virtual User Hours and Playwright test minutes | ✅ | — | ✅ | — | — | — | — | Azure-native Playwright workspaces and load testing; not a standalone open-source reliability platform. |
+| [Azure App Testing](https://azure.microsoft.com/en-us/pricing/details/app-testing/) | Cloud test execution | Usage-based Virtual User Hours and Playwright test minutes | ✅ | — | ✅ | — | — | — | — | Azure-native Playwright workspaces and load testing; not a standalone self-hosted reliability platform. |
 | [Statuspage](https://www.atlassian.com/software/statuspage/pricing) | Status communication | Free; Hobby $29/mo; Startup $99/mo; Business $399/mo | — | — | — | ✅ | — | — | — | Mature hosted status pages and subscriber communication; monitoring/investigation require other tools. |
 | [Instatus](https://instatus.com/pricing) | Status pages + monitoring | Free; paid plans by monitor/status-page capacity | — | ✅ | — | ✅ | — | — | — | Lightweight status pages, on-call, and monitoring; not a test/load/AISRE platform. |
 | [HolmesGPT](https://github.com/HolmesGPT/holmesgpt) | AI SRE agent | Open-source | — | Partial | — | — | ✅ | — | ✅ | CNCF Sandbox SRE agent for incident investigation across observability tools; not a testing, monitoring, load, and status-page product. |
@@ -188,6 +188,10 @@ If Supercheck is useful to your team:
 - ⭐ Star this repository
 - 💡 Suggest features in [Discussions](https://github.com/supercheck-io/supercheck/discussions)
 - 🐞 Report issues in [Issues](https://github.com/supercheck-io/supercheck/issues)
+
+## License and Contributions
+
+Supercheck core is open source under the [GNU Affero General Public License v3.0 only](LICENSE). We welcome external contributions. Use [GitHub Discussions](https://github.com/supercheck-io/supercheck/discussions) for proposals and [GitHub Issues](https://github.com/supercheck-io/supercheck/issues) for reproducible bugs. See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidance.
 
 ## Community
 

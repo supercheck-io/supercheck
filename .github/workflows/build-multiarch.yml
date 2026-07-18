@@ -63,7 +63,7 @@ jobs:
           if [ "${{ matrix.package }}" = "app" ]; then
             npm run lint -- --max-warnings 0
           else
-            echo "Skipping worker lint - fix lint issues and re-enable later"
+            npx eslint "src/**/*.ts"
           fi
 
       - name: Run tests
@@ -85,6 +85,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write
 
     steps:
       - name: Checkout repository
@@ -132,7 +133,7 @@ jobs:
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
-          password: ${{ secrets.PAT_TOKEN }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Check registry access
         run: |
@@ -186,14 +187,19 @@ jobs:
             type=sha,prefix={{branch}}-,suffix=-${{ github.run_number }},enable=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version == '' }}
 
       - name: Build and push app image
+        id: build-app
         uses: docker/build-push-action@v5
         with:
           context: ./app
           file: ./app/Dockerfile
           platforms: ${{ github.event.inputs.platforms || 'linux/amd64,linux/arm64' }}
           push: true
+          provenance: mode=max
+          sbom: true
           tags: ${{ steps.app-meta.outputs.tags }}
           labels: ${{ steps.app-meta.outputs.labels }}
+          build-args: |
+            NEXT_PUBLIC_SOURCE_URL=https://github.com/supercheck-io/supercheck/tree/${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -204,16 +210,27 @@ jobs:
           df -h
 
       - name: Build and push worker image
+        id: build-worker
         uses: docker/build-push-action@v5
         with:
           context: ./worker
           file: ./worker/Dockerfile
           platforms: ${{ github.event.inputs.platforms || 'linux/amd64,linux/arm64' }}
           push: true
+          provenance: mode=max
+          sbom: true
           tags: ${{ steps.worker-meta.outputs.tags }}
           labels: ${{ steps.worker-meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Sign published images
+        run: |
+          cosign sign --yes "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/app@${{ steps.build-app.outputs.digest }}"
+          cosign sign --yes "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/worker@${{ steps.build-worker.outputs.digest }}"
 
       - name: Output image names
         run: |
