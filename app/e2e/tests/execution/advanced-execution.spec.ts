@@ -1,88 +1,189 @@
-import { test, expect } from '@playwright/test';
-import { loginIfNeeded } from "../../utils/auth-helper";
+import { expect } from '@playwright/test';
+import { test } from '../../fixtures';
+import { createTest, deleteTest } from '../../utils/test-data';
 
-test.describe('Advanced Execution & Details @execution', () => {
-  test.beforeEach(async ({ page }) => {
-    await loginIfNeeded(page);
+type ExecutionStart = {
+  runId: string;
+  status: 'queued' | 'running';
+  position?: number;
+  testType: string;
+  location?: string;
+};
+
+async function deleteRun(
+  request: import('@playwright/test').APIRequestContext,
+  runId: string,
+): Promise<void> {
+  const response = await request.delete(`/api/runs/${runId}`);
+  expect([200, 404]).toContain(response.status());
+}
+
+test.describe('Advanced execution contracts @execution', () => {
+  test('saved Playwright execution can be cancelled and inspected through API and UI @critical @positive', async ({
+    projectAdminPage,
+    cleanup,
+  }) => {
+    const request = projectAdminPage.request;
+    const page = projectAdminPage;
+    const created = await createTest(request, {
+      title: `E2E cancellable Playwright ${Date.now()}`,
+      type: 'browser',
+      script: Buffer.from(
+        "import { test, expect } from '@playwright/test'; test('wait', async ({ page }) => { await page.waitForTimeout(30000); expect(true).toBe(true); });",
+      ).toString('base64'),
+    });
+    cleanup.add(`test ${created.id}`, () => deleteTest(request, created.id));
+
+    const executeResponse = await request.post(`/api/tests/${created.id}/execute`, { data: {} });
+    expect(executeResponse.status()).toBe(200);
+    const execution = (await executeResponse.json()) as ExecutionStart;
+    expect(execution).toMatchObject({
+      runId: expect.any(String),
+      status: expect.stringMatching(/^(queued|running)$/),
+    });
+    cleanup.add(`run ${execution.runId}`, () => deleteRun(request, execution.runId));
+
+    const activeResponse = await request.get('/api/executions/running');
+    expect(activeResponse.status()).toBe(200);
+    const active = (await activeResponse.json()) as {
+      running: Array<{ runId: string }>;
+      queued: Array<{ runId: string; queuePosition?: number }>;
+      runningCapacity: number;
+      queuedCapacity: number;
+    };
+    expect(active.runningCapacity).toEqual(expect.any(Number));
+    expect(active.queuedCapacity).toEqual(expect.any(Number));
+    expect([...active.running, ...active.queued]).toContainEqual(
+      expect.objectContaining({ runId: execution.runId }),
+    );
+
+    const cancelResponse = await request.post(`/api/runs/${execution.runId}/cancel`);
+    expect(cancelResponse.status()).toBe(200);
+    expect(await cancelResponse.json()).toMatchObject({
+      success: true,
+      runId: execution.runId,
+      message: 'Run cancelled successfully',
+    });
+
+    const detailResponse = await request.get(`/api/runs/${execution.runId}`);
+    expect(detailResponse.status()).toBe(200);
+    expect(await detailResponse.json()).toMatchObject({
+      id: execution.runId,
+      status: 'error',
+      errorDetails: 'Cancellation requested by user',
+      trigger: 'manual',
+      projectId: expect.any(String),
+    });
+
+    const statusResponse = await request.get(`/api/runs/${execution.runId}/status`);
+    expect(statusResponse.status()).toBe(200);
+    expect(await statusResponse.json()).toMatchObject({
+      runId: execution.runId,
+      status: 'error',
+      errorDetails: 'Cancellation requested by user',
+    });
+
+    await page.goto(`/runs/${execution.runId}`, { waitUntil: 'load' });
+    await expect(page).toHaveURL(new RegExp(`/runs/${execution.runId}$`));
+    await expect(page.getByText('Status', { exact: true })).toBeVisible();
+    await expect(page.getByText('Error', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: /delete/i })).toBeEnabled();
   });
 
-  
-  /**
-   * E5 - Run Detail
-   */
-  test('E5: View Run Details (screenshots, trace, console) @high', async ({ page }) => {
-    await page.goto('/runs');
-    
-    // Find the first run row and click it
-    const firstRow = page.locator('table tbody tr, [data-testid="run-card"]').first();
-    if (await firstRow.isVisible().catch(() => false)) {
-      await firstRow.click();
-      
-      // Wait for the details page to load
-      const tabs = page.locator('button[role="tab"]');
-      if (await tabs.first().isVisible({ timeout: 5000 }).catch(() => false)) {
-        // Verify console or log output tab exists
-        const consoleTab = tabs.filter({ hasText: /console|logs/i });
-        if (await consoleTab.isVisible().catch(() => false)) {
-           await consoleTab.click();
-           await expect(page.locator('.log-viewer, pre, code').first()).toBeVisible({ timeout: 5000 }).catch(() => null);
-        }
-      } else {
-        test.skip(true, 'Run details UI does not use tab roles or failed to load');
-      }
-    } else {
-      test.skip(true, 'No runs available to view details');
+  test('k6 execution uses an available location and exposes location metadata @high @positive', async ({
+    projectAdminPage,
+    cleanup,
+  }) => {
+    const request = projectAdminPage.request;
+    const projectsResponse = await request.get('/api/projects');
+    expect(projectsResponse.status()).toBe(200);
+    const projects = (await projectsResponse.json()) as {
+      currentProject?: { id?: string } | null;
+      data?: Array<{ id: string }>;
+    };
+    const projectId = projects.currentProject?.id ?? projects.data?.[0]?.id;
+    expect(projectId).toEqual(expect.any(String));
+
+    const locationsResponse = await request.get('/api/locations/available', {
+      params: { projectId: projectId as string },
+    });
+    expect(locationsResponse.status()).toBe(200);
+    const locationsBody = (await locationsResponse.json()) as {
+      success: boolean;
+      data: { locations: Array<{ code: string; name: string; isEnabled: boolean; online: boolean }> };
+    };
+    expect(locationsBody.success).toBe(true);
+    expect(locationsBody.data.locations.length).toBeGreaterThan(0);
+    for (const location of locationsBody.data.locations) {
+      expect(location).toEqual(
+        expect.objectContaining({
+          code: expect.any(String),
+          name: expect.any(String),
+          isEnabled: true,
+          online: expect.any(Boolean),
+        }),
+      );
     }
+    const location = locationsBody.data.locations[0].code;
+
+    const script = `import http from 'k6/http';\nexport const options = { vus: 1, iterations: 1 };\nexport default function () { http.get('https://httpbin.org/status/200'); }`;
+    const created = await createTest(request, {
+      title: `E2E k6 location ${Date.now()}`,
+      type: 'performance',
+      script: Buffer.from(script).toString('base64'),
+    });
+    cleanup.add(`k6 test ${created.id}`, () => deleteTest(request, created.id));
+
+    const executeResponse = await request.post(`/api/tests/${created.id}/execute`, {
+      data: { location },
+    });
+    expect(executeResponse.status()).toBe(200);
+    const execution = (await executeResponse.json()) as ExecutionStart;
+    expect(execution).toMatchObject({
+      runId: expect.any(String),
+      status: expect.stringMatching(/^(queued|running)$/),
+      testType: 'performance',
+      location,
+    });
+    cleanup.add(`k6 run ${execution.runId}`, () => deleteRun(request, execution.runId));
+
+    const cancelResponse = await request.post(`/api/runs/${execution.runId}/cancel`);
+    expect(cancelResponse.status()).toBe(200);
+    const detailResponse = await request.get(`/api/runs/${execution.runId}`);
+    expect(detailResponse.status()).toBe(200);
+    expect(await detailResponse.json()).toMatchObject({
+      id: execution.runId,
+      status: 'error',
+    });
   });
 
-  /**
-   * E6 - Run Cancellation
-   */
-  test('E6: Cancel an in-progress run @medium', async ({ page }) => {
-    test.skip(true, 'Requires triggering a long-running test first');
-  });
+  test('execution and location endpoints enforce authentication and project isolation @high @security', async ({
+    request,
+    playwright,
+  }) => {
+    const crossProject = await request.get('/api/locations/available', {
+      params: { projectId: '00000000-0000-4000-8000-000000000001' },
+    });
+    expect(crossProject.status()).toBe(403);
+    expect(await crossProject.json()).toEqual({ success: false, error: 'Access denied' });
 
-  /**
-   * E7, E8 - K6 Load Tests
-   */
-  test('E7, E8: K6 Load Test CRUD and Results @medium', async ({ page }) => {
-    await page.goto('/tests/create');
-    
-    // Check if K6 option is available
-    const k6Option = page.locator('button:has-text("K6"), [value="k6"]');
-    if (await k6Option.isVisible().catch(() => false)) {
-      await k6Option.click();
-      expect(await page.locator('text=/VU|Virtual Users/i').first().isVisible().catch(() => false)).toBe(true);
-    } else {
-      test.skip(true, 'K6 load testing not enabled in this environment');
-    }
-  });
-
-  /**
-   * E12, E13 - Multi-Location Execution
-   */
-  test('E12, E13: Multi-Location Execution and Heartbeats @high', async ({ page }) => {
-    await page.goto('/tests');
-    
-    const firstTest = page.locator('table tbody tr').first();
-    if (await firstTest.isVisible().catch(() => false)) {
-      await firstTest.click();
-      
-      const runBtn = page.locator('button:has-text("Run"), [data-testid="run-test"]').first();
-      if (await runBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
-        await runBtn.click();
-        
-        // Check for location selector in the run modal
-        const locationSelect = page.locator('select[name="location"], [data-testid="location-select"], button[aria-haspopup="listbox"]');
-        if (await locationSelect.isVisible({ timeout: 3000 }).catch(() => false)) {
-           const options = locationSelect.locator('option, [role="option"]');
-           expect(await options.count().catch(() => 0)).toBeGreaterThanOrEqual(0);
-        }
-      } else {
-        test.skip(true, 'Run button not available on test details page');
+    const unauthenticated = await playwright.request.newContext({
+      baseURL: test.info().project.use.baseURL,
+      storageState: { cookies: [], origins: [] },
+    });
+    try {
+      for (const endpoint of ['/api/executions/running', '/api/locations/available']) {
+        const response = await unauthenticated.get(endpoint);
+        expect(response.status()).toBe(401);
+        expect(await response.json()).toMatchObject({ error: expect.any(String) });
       }
-    } else {
-      test.skip(true, 'No test available to verify multi-location execution');
+      const cancel = await unauthenticated.post(
+        '/api/runs/00000000-0000-4000-8000-000000000001/cancel',
+      );
+      expect(cancel.status()).toBe(401);
+      expect(await cancel.json()).toMatchObject({ error: expect.any(String) });
+    } finally {
+      await unauthenticated.dispose();
     }
   });
 });

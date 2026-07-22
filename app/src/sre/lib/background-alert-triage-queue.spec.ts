@@ -97,7 +97,7 @@ describe("enqueueSreAlertTriageJob", () => {
 
     const queue = mockQueueConstructor.mock.results[0].value;
     expect(queue.add).toHaveBeenCalledWith("triage-alert-history", { alertHistoryId }, {
-      jobId: `sre-alert-triage:${alertHistoryId}`,
+        jobId: `sre-alert-triage-${alertHistoryId}`,
     });
   });
 

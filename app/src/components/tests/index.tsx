@@ -26,6 +26,7 @@ export default function Tests() {
     tests: rawTests,
     isLoading,
     isRestoring,
+    error,
     invalidate,
   } = useTests();
 
@@ -61,6 +62,20 @@ export default function Tests() {
     return (
       <div className="flex h-full flex-col p-2 mt-6">
         <DataTableSkeleton columns={5} rows={3} />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex min-h-48 flex-col items-center justify-center gap-3 p-6 text-center" role="alert">
+        <h3 className="font-semibold">Failed to fetch tests</h3>
+        <p className="max-w-md text-sm text-muted-foreground">
+          {error instanceof Error ? error.message : "The tests list could not be loaded."}
+        </p>
+        <Button variant="outline" onClick={() => invalidate()}>
+          Retry
+        </Button>
       </div>
     );
   }

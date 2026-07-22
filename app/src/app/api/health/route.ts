@@ -95,6 +95,9 @@ export async function GET() {
 
   const responseBody = {
     status: overallStatus,
+    build: {
+      revision: process.env.SUPERCHECK_BUILD_SHA || "unknown",
+    },
     timestamp: new Date().toISOString(),
     latencyMs: totalLatencyMs,
     checks,

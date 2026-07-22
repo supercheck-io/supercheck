@@ -1,9 +1,8 @@
 name: Full E2E Test Suite
 
 on:
-  # Run on schedule (e.g., nightly)
-  # schedule:
-  #   - cron: "0 2 * * *" # 2 AM UTC daily
+  schedule:
+    - cron: "0 2 * * *" # Daily at 02:00 UTC
   # Manual trigger
   workflow_dispatch:
     inputs:
@@ -15,6 +14,42 @@ on:
         description: "Base URL for tests (overrides secret E2E_BASE_URL)"
         required: false
         type: string
+      expected_build_sha:
+        description: "Full commit SHA deployed at the target URL"
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      test_filter:
+        required: false
+        type: string
+      base_url:
+        required: true
+        type: string
+      expected_build_sha:
+        required: true
+        type: string
+    secrets:
+      E2E_TEST_USER_EMAIL: { required: true }
+      E2E_TEST_USER_PASSWORD: { required: true }
+      E2E_INVITEE_EMAIL: { required: true }
+      E2E_INVITEE_PASSWORD: { required: true }
+      E2E_SESSION_USER_EMAIL: { required: true }
+      E2E_SESSION_USER_PASSWORD: { required: true }
+      E2E_SECURITY_USER_EMAIL: { required: true }
+      E2E_SECURITY_USER_PASSWORD: { required: true }
+      E2E_SUPER_ADMIN_EMAIL: { required: true }
+      E2E_SUPER_ADMIN_PASSWORD: { required: true }
+      E2E_ORG_OWNER_EMAIL: { required: true }
+      E2E_ORG_OWNER_PASSWORD: { required: true }
+      E2E_ORG_ADMIN_EMAIL: { required: true }
+      E2E_ORG_ADMIN_PASSWORD: { required: true }
+      E2E_PROJECT_ADMIN_EMAIL: { required: true }
+      E2E_PROJECT_ADMIN_PASSWORD: { required: true }
+      E2E_EDITOR_EMAIL: { required: true }
+      E2E_EDITOR_PASSWORD: { required: true }
+      E2E_VIEWER_EMAIL: { required: true }
+      E2E_VIEWER_PASSWORD: { required: true }
 
 env:
   NODE_VERSION: "24"
@@ -65,8 +100,15 @@ jobs:
         id: e2e-tests
         working-directory: ./app/e2e
         run: |
-          if [ -z "$E2E_BASE_URL" ] || [ -z "$E2E_TEST_USER_EMAIL" ] || [ -z "$E2E_TEST_USER_PASSWORD" ]; then
-            echo "::error::E2E_BASE_URL, E2E_TEST_USER_EMAIL, and E2E_TEST_USER_PASSWORD must be configured."
+          REQUIRED_VARS="E2E_BASE_URL E2E_EXPECTED_BUILD_SHA E2E_TEST_USER_EMAIL E2E_TEST_USER_PASSWORD E2E_INVITEE_EMAIL E2E_INVITEE_PASSWORD E2E_SESSION_USER_EMAIL E2E_SESSION_USER_PASSWORD E2E_SECURITY_USER_EMAIL E2E_SECURITY_USER_PASSWORD E2E_SUPER_ADMIN_EMAIL E2E_SUPER_ADMIN_PASSWORD E2E_ORG_OWNER_EMAIL E2E_ORG_OWNER_PASSWORD E2E_ORG_ADMIN_EMAIL E2E_ORG_ADMIN_PASSWORD E2E_PROJECT_ADMIN_EMAIL E2E_PROJECT_ADMIN_PASSWORD E2E_EDITOR_EMAIL E2E_EDITOR_PASSWORD E2E_VIEWER_EMAIL E2E_VIEWER_PASSWORD"
+          MISSING_VARS=""
+          for VAR_NAME in $REQUIRED_VARS; do
+            if [ -z "$(printenv "$VAR_NAME")" ]; then
+              MISSING_VARS="$MISSING_VARS $VAR_NAME"
+            fi
+          done
+          if [ -n "$MISSING_VARS" ]; then
+            echo "::error::Missing required full-suite E2E variables:$MISSING_VARS"
             exit 1
           fi
 
@@ -79,13 +121,35 @@ jobs:
         continue-on-error: true
         env:
           CI: true
-          TEST_FILTER: ${{ github.event.inputs.test_filter }}
-          E2E_BASE_URL: ${{ github.event.inputs.base_url || secrets.E2E_BASE_URL }}
+          E2E_FAIL_ON_PRIORITY_SKIPS: true
+          TEST_FILTER: ${{ inputs.test_filter }}
+          E2E_BASE_URL: ${{ inputs.base_url || secrets.E2E_BASE_URL }}
+          # Scheduled runs must verify that the deployment matches the exact
+          # default-branch commit checked out by this workflow.
+          E2E_EXPECTED_BUILD_SHA: ${{ inputs.expected_build_sha || github.sha }}
           E2E_TEST_USER_EMAIL: ${{ secrets.E2E_TEST_USER_EMAIL }}
           E2E_TEST_USER_PASSWORD: ${{ secrets.E2E_TEST_USER_PASSWORD }}
+          E2E_INVITEE_EMAIL: ${{ secrets.E2E_INVITEE_EMAIL }}
+          E2E_INVITEE_PASSWORD: ${{ secrets.E2E_INVITEE_PASSWORD }}
+          E2E_SESSION_USER_EMAIL: ${{ secrets.E2E_SESSION_USER_EMAIL }}
+          E2E_SESSION_USER_PASSWORD: ${{ secrets.E2E_SESSION_USER_PASSWORD }}
+          E2E_SECURITY_USER_EMAIL: ${{ secrets.E2E_SECURITY_USER_EMAIL }}
+          E2E_SECURITY_USER_PASSWORD: ${{ secrets.E2E_SECURITY_USER_PASSWORD }}
+          E2E_SUPER_ADMIN_EMAIL: ${{ secrets.E2E_SUPER_ADMIN_EMAIL }}
+          E2E_SUPER_ADMIN_PASSWORD: ${{ secrets.E2E_SUPER_ADMIN_PASSWORD }}
+          E2E_ORG_OWNER_EMAIL: ${{ secrets.E2E_ORG_OWNER_EMAIL }}
+          E2E_ORG_OWNER_PASSWORD: ${{ secrets.E2E_ORG_OWNER_PASSWORD }}
+          E2E_ORG_ADMIN_EMAIL: ${{ secrets.E2E_ORG_ADMIN_EMAIL }}
+          E2E_ORG_ADMIN_PASSWORD: ${{ secrets.E2E_ORG_ADMIN_PASSWORD }}
+          E2E_PROJECT_ADMIN_EMAIL: ${{ secrets.E2E_PROJECT_ADMIN_EMAIL }}
+          E2E_PROJECT_ADMIN_PASSWORD: ${{ secrets.E2E_PROJECT_ADMIN_PASSWORD }}
+          E2E_EDITOR_EMAIL: ${{ secrets.E2E_EDITOR_EMAIL }}
+          E2E_EDITOR_PASSWORD: ${{ secrets.E2E_EDITOR_PASSWORD }}
+          E2E_VIEWER_EMAIL: ${{ secrets.E2E_VIEWER_EMAIL }}
+          E2E_VIEWER_PASSWORD: ${{ secrets.E2E_VIEWER_PASSWORD }}
 
       - name: Upload Playwright report
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: playwright-report-full
@@ -93,7 +157,7 @@ jobs:
           retention-days: 30
 
       - name: Upload test results
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: test-results-full
@@ -103,7 +167,7 @@ jobs:
       - name: Create test summary
         if: always()
         env:
-          TEST_FILTER: ${{ github.event.inputs.test_filter }}
+          TEST_FILTER: ${{ inputs.test_filter }}
         run: |
           echo "## 🎭 Full E2E Test Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY

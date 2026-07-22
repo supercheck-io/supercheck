@@ -6,7 +6,10 @@ on:
       - "app/package.json"
       - "app/package-lock.json"
       - "app/scripts/sre-eval-*.js"
-      - "app/src/sre/**"
+      - "app/src/actions/sre-*.ts"
+      - "app/src/app/api/sre/**"
+      - "app/src/components/sre/**"
+      - "app/src/lib/sre/**"
       - ".github/workflows/sre-eval.yml"
   push:
     branches:
@@ -15,7 +18,10 @@ on:
       - "app/package.json"
       - "app/package-lock.json"
       - "app/scripts/sre-eval-*.js"
-      - "app/src/sre/**"
+      - "app/src/actions/sre-*.ts"
+      - "app/src/app/api/sre/**"
+      - "app/src/components/sre/**"
+      - "app/src/lib/sre/**"
       - ".github/workflows/sre-eval.yml"
 
 jobs:
@@ -26,12 +32,12 @@ jobs:
         working-directory: app
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: "20.9.0"
+          node-version: "24"
           cache: npm
           cache-dependency-path: app/package-lock.json
 

@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
-import { monitors, monitorNotificationSettings, notificationProviders } from "@/db/schema";
+import {
+  monitors,
+  monitorNotificationSettings,
+  notificationProviders,
+} from "@/db/schema";
 import { eq, desc, and, sql, inArray } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
@@ -18,6 +22,7 @@ import { checkMonitorLimit } from "@/lib/middleware/plan-enforcement";
 import { subscriptionService } from "@/lib/services/subscription-service";
 import { getProjectAvailableLocationCodes } from "@/lib/location-registry";
 import { createLogger } from "@/lib/logger/index";
+import { validateMonitorConfiguration } from "@/lib/monitor-validation";
 
 const logger = createLogger({ module: "monitors-api" }) as {
   debug: (data: unknown, msg?: string) => void;
@@ -32,12 +37,12 @@ export async function GET(request: Request) {
     const context = await requireAuthContext();
 
     // PERFORMANCE: Use checkPermissionWithContext to avoid 5-8 duplicate DB queries
-    const canView = checkPermissionWithContext('monitor', 'view', context);
+    const canView = checkPermissionWithContext("monitor", "view", context);
 
     if (!canView) {
       return NextResponse.json(
-        { error: 'Insufficient permissions' },
-        { status: 403 }
+        { error: "Insufficient permissions" },
+        { status: 403 },
       );
     }
 
@@ -46,7 +51,7 @@ export async function GET(request: Request) {
     const page = parseInt(url.searchParams.get("page") || "1", 10);
     const limit = Math.min(
       parseInt(url.searchParams.get("limit") || "50", 10),
-      100
+      100,
     );
 
     // For backward compatibility, if no pagination params are provided, return all
@@ -56,7 +61,7 @@ export async function GET(request: Request) {
     // SECURITY: Always filter by org/project from session, never trust client params
     const whereCondition = and(
       eq(monitors.projectId, context.project.id),
-      eq(monitors.organizationId, context.organizationId)
+      eq(monitors.organizationId, context.organizationId),
     );
 
     if (usePagination) {
@@ -66,7 +71,7 @@ export async function GET(request: Request) {
           {
             error: "Invalid pagination parameters. Page and limit must be >= 1",
           },
-          { status: 400 }
+          { status: 400 },
         );
       }
 
@@ -128,14 +133,17 @@ export async function GET(request: Request) {
   } catch (error) {
     if (isAuthError(error)) {
       return NextResponse.json(
-        { error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 }
+        {
+          error:
+            error instanceof Error ? error.message : "Authentication required",
+        },
+        { status: 401 },
       );
     }
     logger.error({ err: error }, "Error fetching monitors");
     return NextResponse.json(
       { error: "Failed to fetch monitors" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -146,13 +154,11 @@ export async function POST(req: NextRequest) {
     const { userId, project, organizationId } = authCtx;
 
     // SECURITY: Rate limiting to prevent API abuse
-    const { checkMonitorApiRateLimit } = await import(
-      "@/lib/session-security"
-    );
+    const { checkMonitorApiRateLimit } = await import("@/lib/session-security");
     const rateLimitResult = await checkMonitorApiRateLimit(
       userId,
       organizationId,
-      "create"
+      "create",
     );
     if (!rateLimitResult.allowed) {
       return NextResponse.json(
@@ -165,7 +171,7 @@ export async function POST(req: NextRequest) {
           headers: {
             "Retry-After": String(rateLimitResult.retryAfter || 60),
           },
-        }
+        },
       );
     }
 
@@ -174,7 +180,10 @@ export async function POST(req: NextRequest) {
     await subscriptionService.requireValidPolarCustomer(organizationId);
 
     const rawData = await req.json();
-    logger.debug({ type: rawData.type, name: rawData.name }, "[MONITOR_CREATE] Raw data received");
+    logger.debug(
+      { type: rawData.type, name: rawData.name },
+      "[MONITOR_CREATE] Raw data received",
+    );
 
     // Sanitize input data
     rawData.name = sanitizeString(rawData.name);
@@ -196,12 +205,12 @@ export async function POST(req: NextRequest) {
     if (rawData.config?.auth) {
       if (rawData.config.auth.username) {
         rawData.config.auth.username = sanitizeString(
-          rawData.config.auth.username
+          rawData.config.auth.username,
         );
       }
       if (rawData.config.auth.password) {
         rawData.config.auth.password = sanitizeString(
-          rawData.config.auth.password
+          rawData.config.auth.password,
         );
       }
       if (rawData.config.auth.token) {
@@ -212,7 +221,7 @@ export async function POST(req: NextRequest) {
     // Sanitize custom message in alertConfig
     if (rawData.alertConfig?.customMessage) {
       rawData.alertConfig.customMessage = sanitizeString(
-        rawData.alertConfig.customMessage
+        rawData.alertConfig.customMessage,
       );
     }
 
@@ -220,7 +229,7 @@ export async function POST(req: NextRequest) {
     if (rawData.type === "heartbeat") {
       logger.debug(
         { config: rawData.config },
-        "[MONITOR_CREATE] Processing heartbeat monitor"
+        "[MONITOR_CREATE] Processing heartbeat monitor",
       );
     }
 
@@ -231,7 +240,7 @@ export async function POST(req: NextRequest) {
           error: "Missing required fields",
           details: "name and type are required",
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -239,16 +248,20 @@ export async function POST(req: NextRequest) {
     // This prevents resource exhaustion from too-frequent checks and ensures reasonable monitoring intervals
     const MIN_FREQUENCY_MINUTES = 1;
     const MAX_FREQUENCY_MINUTES = 1440; // 24 hours
-    
+
     if (rawData.frequencyMinutes !== undefined) {
       const freq = Number(rawData.frequencyMinutes);
-      if (isNaN(freq) || freq < MIN_FREQUENCY_MINUTES || freq > MAX_FREQUENCY_MINUTES) {
+      if (
+        isNaN(freq) ||
+        freq < MIN_FREQUENCY_MINUTES ||
+        freq > MAX_FREQUENCY_MINUTES
+      ) {
         return NextResponse.json(
           {
             error: "Invalid frequency",
             details: `frequencyMinutes must be between ${MIN_FREQUENCY_MINUTES} and ${MAX_FREQUENCY_MINUTES} minutes`,
           },
-          { status: 400 }
+          { status: 400 },
         );
       }
     }
@@ -262,7 +275,7 @@ export async function POST(req: NextRequest) {
             error: "testId is required in config for synthetic monitors",
             details: "Please select a test to monitor",
           },
-          { status: 400 }
+          { status: 400 },
         );
       }
 
@@ -274,7 +287,7 @@ export async function POST(req: NextRequest) {
         where: and(
           eq(tests.id, rawData.config.testId),
           eq(tests.projectId, project.id),
-          eq(tests.organizationId, organizationId)
+          eq(tests.organizationId, organizationId),
         ),
         columns: {
           id: true,
@@ -290,7 +303,7 @@ export async function POST(req: NextRequest) {
             details:
               "The selected test does not exist or you do not have permission to access it",
           },
-          { status: 404 }
+          { status: 404 },
         );
       }
 
@@ -304,13 +317,22 @@ export async function POST(req: NextRequest) {
 
       logger.debug(
         { testTitle: test.title },
-        "[MONITOR_CREATE] Creating synthetic monitor for test"
+        "[MONITOR_CREATE] Creating synthetic monitor for test",
       );
     } else if (rawData.type !== "heartbeat" && !rawData.target) {
       return NextResponse.json(
         { error: "Target is required for this monitor type" },
-        { status: 400 }
+        { status: 400 },
       );
+    }
+
+    const configurationValidation = validateMonitorConfiguration({
+      type: rawData.type,
+      target: rawData.target,
+      config: rawData.config,
+    });
+    if (!configurationValidation.success) {
+      return NextResponse.json(configurationValidation, { status: 400 });
     }
 
     // Prepare alert configuration - ensure it's properly structured and saved to alertConfig column
@@ -319,7 +341,7 @@ export async function POST(req: NextRequest) {
       alertConfig = {
         enabled: Boolean(rawData.alertConfig.enabled),
         notificationProviders: Array.isArray(
-          rawData.alertConfig.notificationProviders
+          rawData.alertConfig.notificationProviders,
         )
           ? rawData.alertConfig.notificationProviders
           : [],
@@ -348,7 +370,10 @@ export async function POST(req: NextRequest) {
             ? rawData.alertConfig.customMessage
             : "",
       };
-      logger.debug({ alertEnabled: alertConfig?.enabled }, "[MONITOR_CREATE] Processed alert config");
+      logger.debug(
+        { alertEnabled: alertConfig?.enabled },
+        "[MONITOR_CREATE] Processed alert config",
+      );
     }
 
     // Construct the config object (for monitor-specific settings, not alerts)
@@ -357,13 +382,13 @@ export async function POST(req: NextRequest) {
     // Validate locationConfig.locations against enabled locations in DB
     if (finalConfig.locationConfig?.locations?.length > 0) {
       const enabledCodes = await getProjectAvailableLocationCodes(project.id);
-      const invalidLocations = (finalConfig.locationConfig.locations as string[]).filter(
-        (loc: string) => !enabledCodes.includes(loc)
-      );
+      const invalidLocations = (
+        finalConfig.locationConfig.locations as string[]
+      ).filter((loc: string) => !enabledCodes.includes(loc));
       if (invalidLocations.length > 0) {
         return NextResponse.json(
           { error: `Invalid location codes: ${invalidLocations.join(", ")}` },
-          { status: 400 }
+          { status: 400 },
         );
       }
     }
@@ -379,7 +404,7 @@ export async function POST(req: NextRequest) {
     if (!canCreate) {
       return NextResponse.json(
         { error: "Insufficient permissions to create monitors" },
-        { status: 403 }
+        { status: 403 },
       );
     }
 
@@ -391,12 +416,12 @@ export async function POST(req: NextRequest) {
 
     const limitCheck = await checkMonitorLimit(
       organizationId,
-      Number(countResult[0]?.count || 0)
+      Number(countResult[0]?.count || 0),
     );
     if (!limitCheck.allowed) {
       logger.warn(
         { organizationId },
-        `Monitor limit reached: ${limitCheck.error}`
+        `Monitor limit reached: ${limitCheck.error}`,
       );
       return NextResponse.json(
         {
@@ -405,7 +430,7 @@ export async function POST(req: NextRequest) {
           currentPlan: limitCheck.currentPlan,
           limit: limitCheck.limit,
         },
-        { status: 403 }
+        { status: 403 },
       );
     }
 
@@ -436,21 +461,21 @@ export async function POST(req: NextRequest) {
             error:
               "At least one notification channel must be selected when alerts are enabled",
           },
-          { status: 400 }
+          { status: 400 },
         );
       }
 
       // Check notification channel limit
       const maxMonitorChannels = parseInt(
         process.env.MAX_MONITOR_NOTIFICATION_CHANNELS || "10",
-        10
+        10,
       );
       if (alertConfig.notificationProviders.length > maxMonitorChannels) {
         return NextResponse.json(
           {
             error: `You can only select up to ${maxMonitorChannels} notification channels`,
           },
-          { status: 400 }
+          { status: 400 },
         );
       }
 
@@ -467,7 +492,7 @@ export async function POST(req: NextRequest) {
             error:
               "At least one alert type must be selected when alerts are enabled",
           },
-          { status: 400 }
+          { status: 400 },
         );
       }
     }
@@ -487,21 +512,24 @@ export async function POST(req: NextRequest) {
         .from(notificationProviders)
         .where(
           and(
-            inArray(notificationProviders.id, alertConfig.notificationProviders),
+            inArray(
+              notificationProviders.id,
+              alertConfig.notificationProviders,
+            ),
             eq(notificationProviders.organizationId, organizationId),
-            eq(notificationProviders.projectId, targetProjectId)
-          )
+            eq(notificationProviders.projectId, targetProjectId),
+          ),
         );
 
       const validProviderIds = new Set(validProviders.map((p) => p.id));
       const invalidProviderIds = alertConfig.notificationProviders.filter(
-        (id: string) => !validProviderIds.has(id)
+        (id: string) => !validProviderIds.has(id),
       );
 
       if (invalidProviderIds.length > 0) {
         logger.warn(
           { invalidProviderIds },
-          `Skipping ${invalidProviderIds.length} invalid/unauthorized notification provider(s)`
+          `Skipping ${invalidProviderIds.length} invalid/unauthorized notification provider(s)`,
         );
       }
 
@@ -509,9 +537,9 @@ export async function POST(req: NextRequest) {
         const normalizedProviderIds = Array.from(validProviderIds);
 
         logger.debug(
-        { providerIds: normalizedProviderIds },
-        "[MONITOR_CREATE] Linking notification providers"
-      );
+          { providerIds: normalizedProviderIds },
+          "[MONITOR_CREATE] Linking notification providers",
+        );
 
         await db
           .insert(monitorNotificationSettings)
@@ -519,7 +547,7 @@ export async function POST(req: NextRequest) {
             normalizedProviderIds.map((providerId) => ({
               monitorId: newMonitor.id,
               notificationProviderId: providerId,
-            }))
+            })),
           )
           .onConflictDoNothing();
       }
@@ -548,20 +576,23 @@ export async function POST(req: NextRequest) {
 
     logger.info(
       { monitorId: newMonitor.id },
-      "[MONITOR_CREATE] Successfully created monitor"
+      "[MONITOR_CREATE] Successfully created monitor",
     );
     return NextResponse.json(newMonitor, { status: 201 });
   } catch (error) {
     if (isAuthError(error)) {
       return NextResponse.json(
-        { error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 }
+        {
+          error:
+            error instanceof Error ? error.message : "Authentication required",
+        },
+        { status: 401 },
       );
     }
     logger.error({ err: error }, "Error creating monitor");
     return NextResponse.json(
       { error: "Failed to create monitor" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -577,7 +608,7 @@ export async function PUT(req: NextRequest) {
     if (!id) {
       return NextResponse.json(
         { error: "Monitor ID is required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -586,21 +617,24 @@ export async function PUT(req: NextRequest) {
       .select({
         projectId: monitors.projectId,
         organizationId: monitors.organizationId,
+        type: monitors.type,
+        target: monitors.target,
+        config: monitors.config,
       })
       .from(monitors)
       .where(
         and(
           eq(monitors.id, id),
           eq(monitors.projectId, project.id),
-          eq(monitors.organizationId, organizationId)
-        )
+          eq(monitors.organizationId, organizationId),
+        ),
       )
       .limit(1);
 
     if (monitorData.length === 0) {
       return NextResponse.json(
         { error: "Monitor not found or access denied" },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
@@ -610,25 +644,38 @@ export async function PUT(req: NextRequest) {
     if (!canManage) {
       return NextResponse.json(
         { error: "Insufficient permissions to update monitors" },
-        { status: 403 }
+        { status: 403 },
       );
     }
 
     // Validate frequency bounds (1 minute minimum, 1440 minutes = 24 hours maximum)
     const MIN_FREQUENCY_MINUTES = 1;
     const MAX_FREQUENCY_MINUTES = 1440; // 24 hours
-    
+
     if (rawData.frequencyMinutes !== undefined) {
       const freq = Number(rawData.frequencyMinutes);
-      if (isNaN(freq) || freq < MIN_FREQUENCY_MINUTES || freq > MAX_FREQUENCY_MINUTES) {
+      if (
+        isNaN(freq) ||
+        freq < MIN_FREQUENCY_MINUTES ||
+        freq > MAX_FREQUENCY_MINUTES
+      ) {
         return NextResponse.json(
           {
             error: "Invalid frequency",
             details: `frequencyMinutes must be between ${MIN_FREQUENCY_MINUTES} and ${MAX_FREQUENCY_MINUTES} minutes`,
           },
-          { status: 400 }
+          { status: 400 },
         );
       }
+    }
+
+    const configurationValidation = validateMonitorConfiguration({
+      type: updateData.type ?? monitorData[0].type,
+      target: updateData.target ?? monitorData[0].target,
+      config: updateData.config ?? monitorData[0].config,
+    });
+    if (!configurationValidation.success) {
+      return NextResponse.json(configurationValidation, { status: 400 });
     }
 
     // Validate synthetic test monitor updates
@@ -640,7 +687,7 @@ export async function PUT(req: NextRequest) {
         where: and(
           eq(tests.id, rawData.config.testId),
           eq(tests.projectId, project.id),
-          eq(tests.organizationId, organizationId)
+          eq(tests.organizationId, organizationId),
         ),
         columns: {
           id: true,
@@ -656,7 +703,7 @@ export async function PUT(req: NextRequest) {
             details:
               "The selected test does not exist or you do not have permission to access it",
           },
-          { status: 404 }
+          { status: 404 },
         );
       }
 
@@ -667,7 +714,7 @@ export async function PUT(req: NextRequest) {
 
       logger.debug(
         { testTitle: test.title },
-        "[MONITOR_UPDATE] Updating synthetic monitor for test"
+        "[MONITOR_UPDATE] Updating synthetic monitor for test",
       );
     }
 
@@ -677,7 +724,7 @@ export async function PUT(req: NextRequest) {
       alertConfig = {
         enabled: Boolean(rawData.alertConfig.enabled),
         notificationProviders: Array.isArray(
-          rawData.alertConfig.notificationProviders
+          rawData.alertConfig.notificationProviders,
         )
           ? rawData.alertConfig.notificationProviders
           : [],
@@ -712,13 +759,13 @@ export async function PUT(req: NextRequest) {
     // Validate locationConfig.locations against enabled locations in DB
     if (updateData.config?.locationConfig?.locations?.length > 0) {
       const enabledCodes = await getProjectAvailableLocationCodes(project.id);
-      const invalidLocations = (updateData.config.locationConfig.locations as string[]).filter(
-        (loc: string) => !enabledCodes.includes(loc)
-      );
+      const invalidLocations = (
+        updateData.config.locationConfig.locations as string[]
+      ).filter((loc: string) => !enabledCodes.includes(loc));
       if (invalidLocations.length > 0) {
         return NextResponse.json(
           { error: `Invalid location codes: ${invalidLocations.join(", ")}` },
-          { status: 400 }
+          { status: 400 },
         );
       }
     }
@@ -746,21 +793,21 @@ export async function PUT(req: NextRequest) {
             error:
               "At least one notification channel must be selected when alerts are enabled",
           },
-          { status: 400 }
+          { status: 400 },
         );
       }
 
       // Check notification channel limit
       const maxMonitorChannels = parseInt(
         process.env.MAX_MONITOR_NOTIFICATION_CHANNELS || "10",
-        10
+        10,
       );
       if (alertConfig.notificationProviders.length > maxMonitorChannels) {
         return NextResponse.json(
           {
             error: `You can only select up to ${maxMonitorChannels} notification channels`,
           },
-          { status: 400 }
+          { status: 400 },
         );
       }
 
@@ -777,7 +824,7 @@ export async function PUT(req: NextRequest) {
             error:
               "At least one alert type must be selected when alerts are enabled",
           },
-          { status: 400 }
+          { status: 400 },
         );
       }
     }
@@ -802,10 +849,13 @@ export async function PUT(req: NextRequest) {
           .from(notificationProviders)
           .where(
             and(
-              inArray(notificationProviders.id, alertConfig.notificationProviders),
+              inArray(
+                notificationProviders.id,
+                alertConfig.notificationProviders,
+              ),
               eq(notificationProviders.organizationId, organizationId),
-              eq(notificationProviders.projectId, project.id)
-            )
+              eq(notificationProviders.projectId, project.id),
+            ),
           );
 
         const validProviderIds = validProviders.map((p) => p.id);
@@ -818,7 +868,7 @@ export async function PUT(req: NextRequest) {
               validProviderIds.map((providerId) => ({
                 monitorId: id,
                 notificationProviderId: providerId,
-              }))
+              })),
             )
             .onConflictDoNothing();
         }
@@ -851,14 +901,17 @@ export async function PUT(req: NextRequest) {
   } catch (error) {
     if (isAuthError(error)) {
       return NextResponse.json(
-        { error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 }
+        {
+          error:
+            error instanceof Error ? error.message : "Authentication required",
+        },
+        { status: 401 },
       );
     }
     logger.error({ err: error }, "Error updating monitor");
     return NextResponse.json(
       { error: "Failed to update monitor" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

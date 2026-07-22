@@ -5,6 +5,9 @@ import { z } from "zod";
 import { auth } from "@/utils/auth";
 import { headers } from "next/headers";
 import { createLogger } from "@/lib/logger/pino-config";
+import { db } from "@/utils/db";
+import { apikey } from "@/db/schema";
+import { and, eq, like, or } from "drizzle-orm";
 
 const logger = createLogger({ module: "extension-auth" });
 
@@ -13,6 +16,7 @@ const EXTENSION_API_KEY_PREFIX = "ext";
 const EXTENSION_API_KEY_LIST_LIMIT = 1000;
 const EXTENSION_API_KEY_MAX_NAME_LENGTH = 32;
 const DEFAULT_EXTENSION_API_KEY_NAME = "Supercheck Recorder Extension";
+const EXTENSION_API_KEY_NAME_PREFIX = "Recorder: ";
 const EXTENSION_API_KEY_PERMISSIONS: Record<string, string[]> = {
   recorder: ["save"],
 };
@@ -35,7 +39,7 @@ const apiKeyServerApi = auth.api as typeof auth.api & ApiKeyServerApi;
 
 function normalizeExtensionKeyName(name: string | undefined) {
   const trimmed = name?.trim() || DEFAULT_EXTENSION_API_KEY_NAME;
-  return trimmed.slice(0, EXTENSION_API_KEY_MAX_NAME_LENGTH);
+  return `${EXTENSION_API_KEY_NAME_PREFIX}${trimmed}`.slice(0, EXTENSION_API_KEY_MAX_NAME_LENGTH);
 }
 
 function getPermissionStatements(rawPermissions: unknown): string[] {
@@ -74,9 +78,10 @@ function getPermissionStatements(rawPermissions: unknown): string[] {
 }
 
 function isExtensionKey(
-  apiKey: Pick<ListedApiKey, "permissions" | "prefix">
+  apiKey: Pick<ListedApiKey, "name" | "permissions" | "prefix">
 ): boolean {
   return (
+    apiKey.name?.startsWith(EXTENSION_API_KEY_NAME_PREFIX) === true ||
     apiKey.prefix === EXTENSION_API_KEY_PREFIX ||
     getPermissionStatements(apiKey.permissions).includes(
       EXTENSION_PERMISSION_STATEMENT
@@ -159,6 +164,38 @@ export async function POST(request: NextRequest) {
     const data = validation.data;
     const apiKeyName = normalizeExtensionKeyName(data.name);
 
+    const [persistedExtensionKey] = await db
+      .select({ id: apikey.id })
+      .from(apikey)
+      .where(
+        and(
+          eq(apikey.referenceId, userId),
+          eq(apikey.configId, EXTENSION_API_KEY_CONFIG_ID),
+          eq(apikey.enabled, true),
+          or(
+            eq(apikey.prefix, EXTENSION_API_KEY_PREFIX),
+            like(apikey.name, `${EXTENSION_API_KEY_NAME_PREFIX}%`),
+          ),
+        ),
+      )
+      .orderBy(apikey.createdAt)
+      .limit(1);
+
+    if (persistedExtensionKey) {
+      return NextResponse.json({
+        success: true,
+        data: {
+          message: "Extension already connected",
+          keyId: persistedExtensionKey.id,
+          user: {
+            id: session.user.id,
+            email: session.user.email,
+            name: session.user.name,
+          },
+        },
+      });
+    }
+
     const { apiKeys } = await apiKeyServerApi.listApiKeys({
       headers: requestHeaders,
       query: {
@@ -169,7 +206,7 @@ export async function POST(request: NextRequest) {
 
     const existingExtensionKey = apiKeys.find(isExtensionKey);
 
-    if (existingExtensionKey && existingExtensionKey.enabled) {
+    if (existingExtensionKey && existingExtensionKey.enabled !== false) {
       // Return existing key info (but not the key itself for security)
       return NextResponse.json({
         success: true,

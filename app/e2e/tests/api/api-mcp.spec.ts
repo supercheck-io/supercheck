@@ -1,79 +1,75 @@
-import { test, expect } from '@playwright/test';
-import { env } from '../../utils/env';
+import { expect, test } from '@playwright/test';
 
-/**
- * These are true API tests running via Playwright's APIRequestContext.
- * They cover the MCP API and CLI endpoints directly, addressing both the
- * user's "see if we need to add api tests too" request and the remaining flows.
- */
-test.describe('API, MCP & CLI Endpoints @api @mcp', () => {
-  let authToken = '';
+test.describe('Health, CLI and automation API contracts @api @critical', () => {
+  test('deep health endpoint reports required dependency health', async ({ request }) => {
+    const response = await request.get('/api/health');
 
-  test.beforeAll(async ({ request }) => {
-    // Attempt to authenticate and get a bearer token for API testing
-    try {
-      const response = await request.post(`${env.baseUrl}/api/auth/login`, {
-        data: {
-          email: env.testUser.email,
-          password: env.testUser.password,
-        },
-      });
-      
-      if (response.ok()) {
-        const body = await response.json();
-        authToken = body.token || body.sessionToken || '';
-      }
-    } catch (e) {
-      console.warn('API login failed, tests requiring auth token may fail', e);
-    }
+    expect(response.status()).toBe(200);
+    const body: unknown = await response.json();
+    expect(body).toEqual(
+      expect.objectContaining({
+        status: expect.stringMatching(/^(ok|degraded)$/),
+        timestamp: expect.any(String),
+        latencyMs: expect.any(Number),
+        checks: expect.objectContaining({
+          database: expect.objectContaining({ status: 'ok' }),
+        }),
+      }),
+    );
   });
 
-  /**
-   * MCP1 - MCP Server - List Tools
-   * MCP2 - Create
-   * MCP3 - Execute
-   * MCP4 - RBAC
-   */
-  test('MCP API Endpoints respond appropriately @high @api', async ({ request }) => {
-    // Skip if we couldn't get a token and the API requires one for basic discovery
-    // We will just do a health check or discovery check
-    const mcpDiscovery = await request.get(`${env.baseUrl}/api/mcp/tools`);
-    
-    // If the endpoint exists, it should return 200 or 401
-    expect([200, 401, 403, 404]).toContain(mcpDiscovery.status());
-    
-    if (mcpDiscovery.status() === 200) {
-      const body = await mcpDiscovery.json();
-      expect(Array.isArray(body.tools)).toBe(true);
-    }
-  });
-
-  /**
-   * MCP5 - CLI Authentication
-   * MCP6 - CLI Commands
-   * MCP7 - CLI CI/CD
-   */
-  test('CLI API Endpoints validate tokens @high @api', async ({ request }) => {
-    // Try to trigger a job without a valid sck_trigger_ token
-    const triggerRes = await request.post(`${env.baseUrl}/api/cli/trigger`, {
-      headers: {
-        Authorization: 'Bearer invalid_sck_trigger_token_123',
-      },
-      data: {
-        jobId: 'fake-id',
-      }
+  test('CLI project config rejects an unauthenticated request', async ({ playwright }) => {
+    const unauthenticated = await playwright.request.newContext({
+      baseURL: test.info().project.use.baseURL,
+      storageState: { cookies: [], origins: [] },
     });
-    
-    // Should be unauthorized
-    expect([401, 403, 404]).toContain(triggerRes.status());
+
+    try {
+      const response = await unauthenticated.get('/api/cli/project-config');
+      expect(response.status()).toBe(401);
+      expect(await response.json()).toMatchObject({ error: expect.any(String) });
+    } finally {
+      await unauthenticated.dispose();
+    }
   });
 
-  /**
-   * General API Sanity Check (Core Endpoints)
-   */
-  test('Core API Health and Config @critical @api', async ({ request }) => {
-    const health = await request.get(`${env.baseUrl}/api/health`);
-    // Some next.js apps don't have a /api/health, so we allow 404
-    expect([200, 404]).toContain(health.status());
+  test('CLI token listing returns redacted token metadata', async ({ request }) => {
+    const response = await request.get('/api/cli-tokens');
+
+    expect(response.status()).toBe(200);
+    const body = (await response.json()) as {
+      success: boolean;
+      tokens: Array<Record<string, unknown>>;
+    };
+    expect(body.success).toBe(true);
+    expect(Array.isArray(body.tokens)).toBe(true);
+
+    for (const token of body.tokens) {
+      expect(token).toEqual(
+        expect.objectContaining({
+          id: expect.any(String),
+          name: expect.any(String),
+          enabled: expect.any(Boolean),
+          start: expect.any(String),
+        }),
+      );
+      expect(token).not.toHaveProperty('key');
+    }
+  });
+
+  test('CLI token creation validates input without mutating data', async ({ request }) => {
+    const response = await request.post('/api/cli-tokens', {
+      data: { name: '   ', expiresIn: 60 },
+    });
+
+    expect(response.status()).toBe(400);
+    expect(await response.json()).toEqual(
+      expect.objectContaining({
+        error: 'Validation failed',
+        details: expect.arrayContaining([
+          expect.objectContaining({ field: expect.any(String), message: expect.any(String) }),
+        ]),
+      }),
+    );
   });
 });

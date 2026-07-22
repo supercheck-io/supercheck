@@ -2,8 +2,18 @@ import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { v7 as uuidv7 } from "uuid";
 import { db } from "@/utils/db";
-import { authSchema } from "@/db/schema";
-import { organization, admin, lastLoginMethod, captcha } from "better-auth/plugins";
+import {
+  authSchema,
+  invitation,
+  member,
+  organization as organizationTable,
+} from "@/db/schema";
+import {
+  organization as organizationPlugin,
+  admin,
+  lastLoginMethod,
+  captcha,
+} from "better-auth/plugins";
 import { apiKey } from "@better-auth/api-key";
 import { ac, roles, Role } from "@/lib/rbac/permissions";
 import { EmailService } from "@/lib/email-service";
@@ -471,7 +481,12 @@ export const auth = betterAuth({
   },
   database: drizzleAdapter(db, {
     provider: "pg", // PostgreSQL
-    schema: authSchema,
+    schema: {
+      ...authSchema,
+      organization: organizationTable,
+      member,
+      invitation,
+    },
   }),
   plugins: [
     // openAPI(),
@@ -488,7 +503,7 @@ export const auth = betterAuth({
       // Enable secure impersonation with audit trail
       impersonationSessionDuration: 60 * 60 * 24, // 1 day
     }),
-    organization({
+    organizationPlugin({
       // Disable automatic organization creation - we handle this manually
       allowUserToCreateOrganization: false,
       organizationLimit: parseInt(

@@ -22,9 +22,11 @@ export {
 // Merge both fixtures for tests that need both auth and role capabilities
 import { test as authTest } from './auth.fixture';
 import { test as roleTest } from './roles.fixture';
+import { test as cleanupTest } from './cleanup.fixture';
 import { mergeTests } from '@playwright/test';
 
 /**
  * Combined test fixture with both auth and role capabilities
  */
-export const test = mergeTests(authTest, roleTest);
+export const test = mergeTests(authTest, roleTest, cleanupTest);
+export type { CleanupRegistry } from './cleanup.fixture';

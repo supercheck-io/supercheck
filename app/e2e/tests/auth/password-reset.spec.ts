@@ -39,13 +39,12 @@ test.describe('Forgot Password @auth @password-reset', () => {
    * @priority critical
    * @type positive
    */
-  test.skip('AUTH-009: Request password reset shows success @critical @positive', async ({ page }) => {
-    // Skipped: Rate limiting on demo site causes flaky results
+  test('AUTH-009: Request password reset shows success @critical @positive', async ({ page }) => {
     const forgotPasswordPage = new ForgotPasswordPage(page);
     await forgotPasswordPage.navigate();
 
     // Use a test email (doesn't need to exist for success message)
-    const testEmail = 'test-reset@example.com';
+    const testEmail = generateTestEmail('password-reset');
     await forgotPasswordPage.requestReset(testEmail);
 
     // Should show success message (even if email doesn't exist for security)
@@ -118,20 +117,14 @@ test.describe('Reset Password Page @auth @password-reset', () => {
    * with an invalid token, the form submission will fail with an error.
    * The page initially shows the form regardless of token validity.
    */
-  test('AUTH-010: Invalid reset token shows form @high @negative', async ({ page }) => {
-    // Navigate to reset page with invalid token
+  test('AUTH-010: Invalid reset token is rejected after valid form submission @high @negative', async ({ page }) => {
     await page.goto('/reset-password?token=invalid-token-12345');
-    await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(1000); // Prevent race condition on isVisible
+    await page.getByLabel('New Password', { exact: true }).fill('ValidPass123');
+    await page.getByLabel('Confirm New Password').fill('ValidPass123');
+    await page.getByRole('button', { name: 'Reset password' }).click();
 
-    // The page shows the reset form - it validates token on submission
-    // Check if we're on reset-password page or if there's an error message
-    const isOnResetPage = page.url().includes('/reset-password');
-    const hasForm = await page.locator('input[type="password"], button[type="submit"]').first().isVisible().catch(() => false);
-    const hasError = await page.locator('text=/invalid|expired|token|missing/i').isVisible().catch(() => false);
-
-    // Either shows form or error
-    expect(isOnResetPage && (hasForm || hasError)).toBe(true);
+    await expect(page.getByText(/invalid|expired/i)).toBeVisible();
+    await expect(page).toHaveURL(/reset-password\?token=invalid-token-12345/);
   });
 
   /**
@@ -141,19 +134,13 @@ test.describe('Reset Password Page @auth @password-reset', () => {
    *
    * Similar to invalid token - the page loads and validates on submission
    */
-  test('AUTH-010: Expired reset token - page loads @high @negative', async ({ page }) => {
-    // Navigate to reset page with expired token
+  test('AUTH-010: Expired reset token is rejected @high @negative', async ({ page }) => {
     await page.goto('/reset-password?token=expired-token-12345');
-    await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(1000); // Prevent race condition on isVisible
+    await page.getByLabel('New Password', { exact: true }).fill('ValidPass123');
+    await page.getByLabel('Confirm New Password').fill('ValidPass123');
+    await page.getByRole('button', { name: 'Reset password' }).click();
 
-    // Page should load (form or error message)
-    const isOnResetPage = page.url().includes('/reset-password');
-    const hasForm = await page.locator('form').isVisible().catch(() => false);
-    const hasError = await page.locator('text=/invalid|expired|token|missing/i').isVisible().catch(() => false);
-
-    // Either shows form or error
-    expect(isOnResetPage && (hasForm || hasError)).toBe(true);
+    await expect(page.getByText(/invalid|expired/i)).toBeVisible();
   });
 
   /**
@@ -168,21 +155,11 @@ test.describe('Reset Password Page @auth @password-reset', () => {
     await page.goto('/reset-password');
     await page.waitForLoadState('domcontentloaded');
 
-    // Wait for useEffect to set error state
-    await page.waitForTimeout(2000);
-
-    const isOnResetPage = page.url().includes('/reset-password');
-
-    // Should show error about missing token OR loading state
-    // The page sets error state in useEffect when token is missing
-    const hasError = await page.locator('text=/invalid|missing|token|reset/i').isVisible().catch(() => false);
-    const hasLoading = await page.locator('text=/loading/i').isVisible().catch(() => false);
-    const hasForm = await page.locator('form').isVisible().catch(() => false);
-
-    // Either shows error, loading state, or form (all acceptable states while waiting)
-    expect(isOnResetPage).toBe(true);
-    // The page should show SOMETHING (error message, form, or loading)
-    expect(hasError || hasLoading || hasForm).toBe(true);
+    await expect(page).toHaveURL(/reset-password$/);
+    await expect(
+      page.getByText('Invalid or missing reset token. Please request a new password reset.'),
+    ).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Reset password' })).toBeDisabled();
   });
 });
 
@@ -191,89 +168,31 @@ test.describe('Password Reset - Form Validation @auth @password-reset', () => {
    * Test that reset form requires matching passwords
    * Note: This test requires a valid token, so it's marked as skip
    */
-  test.skip('Passwords must match on reset @medium @negative', async ({ page }) => {
-    // This would require a valid reset token
-    await page.goto('/reset-password?token=valid-test-token');
+  test('Passwords must match on reset @medium @negative', async ({ page }) => {
+    await page.goto('/reset-password?token=client-validation-token');
 
     // Fill mismatched passwords
-    await page.fill('[data-testid="reset-password-input"]', 'NewPassword123!');
-    await page.fill('[data-testid="reset-password-confirm-input"]', 'DifferentPassword123!');
-    await page.click('[data-testid="reset-password-submit"]');
+    await page.getByLabel('New Password', { exact: true }).fill('NewPassword123!');
+    await page.getByLabel('Confirm New Password').fill('DifferentPassword123!');
+    await page.getByRole('button', { name: 'Reset password' }).click();
 
     // Should show mismatch error
-    await expect(page.locator('text=/match|same/i')).toBeVisible();
+    await expect(page.getByText('Passwords do not match')).toBeVisible();
   });
 
   /**
    * Test password strength validation
    * Note: This test requires a valid token, so it's marked as skip
    */
-  test.skip('Weak password shows validation error @medium @negative', async ({ page }) => {
-    await page.goto('/reset-password?token=valid-test-token');
+  test('Weak password shows validation error @medium @negative', async ({ page }) => {
+    await page.goto('/reset-password?token=client-validation-token');
 
     // Fill weak password
-    await page.fill('[data-testid="reset-password-input"]', 'weak');
-    await page.fill('[data-testid="reset-password-confirm-input"]', 'weak');
-    await page.click('[data-testid="reset-password-submit"]');
+    await page.getByLabel('New Password', { exact: true }).fill('weak');
+    await page.getByLabel('Confirm New Password').fill('weak');
+    await page.getByRole('button', { name: 'Reset password' }).click();
 
     // Should show password strength error
-    await expect(page.locator('text=/weak|strong|minimum|characters/i')).toBeVisible();
-  });
-});
-
-test.describe('Password Reset - Rate Limiting @auth @security', () => {
-  /**
-   * AUTH-046: Rate limiting on password reset requests
-   * @priority high
-   * @type security
-   */
-  test.skip('AUTH-046: Rate limiting after multiple requests @high @security', async () => {
-    // Do not intentionally rate-limit the shared demo account/IP in the general
-    // E2E suite. This belongs in an isolated security environment.
-  });
-});
-
-test.describe('Password Reset - Success Flow @auth @password-reset', () => {
-  /**
-   * AUTH-011: Successful password reset flow
-   * Note: Full flow requires email access, so we test what we can
-   * @priority high
-   * @type positive
-   */
-  test.skip('AUTH-011: Success message after reset request @high @positive', async ({ page }) => {
-    // Skipped: Rate limiting on demo site causes flaky results
-    const forgotPasswordPage = new ForgotPasswordPage(page);
-    await forgotPasswordPage.navigate();
-
-    await forgotPasswordPage.requestReset('valid-user@example.com');
-
-    // Should show success state - wait for it to appear
-    // expectSuccess checks for success message visibility with multiple selectors
-    await forgotPasswordPage.expectSuccess();
-
-    // If we get here, the success message is visible - test passed
-    // Just verify we're still on the forgot-password route (not redirected elsewhere)
-    await expect(page).toHaveURL(/forgot-password/);
-  });
-
-  /**
-   * Test "Try again" functionality after success
-   * @priority medium
-   * @type positive
-   */
-  test.skip('Can try again after success @medium @positive', async ({ page }) => {
-    // Skipped: Depends on success state which is blocked by rate limiting
-    const forgotPasswordPage = new ForgotPasswordPage(page);
-    await forgotPasswordPage.navigate();
-
-    await forgotPasswordPage.requestReset('test@example.com');
-    await forgotPasswordPage.expectSuccess();
-
-    // Click try again
-    const tryAgainButton = page.locator('button:has-text("try again")');
-    await tryAgainButton.click();
-
-    // Should show form again
-    await expect(forgotPasswordPage.emailInput).toBeVisible();
+    await expect(page.getByText('Password must be at least 8 characters long')).toBeVisible();
   });
 });

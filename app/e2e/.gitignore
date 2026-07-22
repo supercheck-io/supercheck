@@ -4,6 +4,8 @@ node_modules/
 # Test outputs
 test-results/
 playwright-report/
+test-results-*/
+playwright-report-*/
 playwright/.cache/
 
 # Authentication state files (contain session tokens)

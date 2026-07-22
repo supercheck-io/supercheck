@@ -1,3 +1,5 @@
+ARG SUPERCHECK_BUILD_SHA=unknown
+
 # Use platform-agnostic base image with pinned LTS version for reproducible builds
 # Node 22.x LTS for compatibility with @noble/hashes and other modern packages
 FROM node:22-slim AS base
@@ -56,6 +58,7 @@ RUN BETTER_AUTH_SECRET=build-time-placeholder-will-be-overridden-at-runtime \
 
 # Production image, copy all the files and run next
 FROM base AS runner
+ARG SUPERCHECK_BUILD_SHA
 WORKDIR /app
 
 # Add OCI labels to link package to repository
@@ -64,6 +67,7 @@ LABEL org.opencontainers.image.title="Supercheck App"
 LABEL org.opencontainers.image.description="Next.js frontend service for Supercheck - A comprehensive automation & monitoring platform for modern apps. Includes dashboard, job scheduling, test execution, and monitoring capabilities with multi-tenant support."
 
 ENV NODE_ENV=production
+ENV SUPERCHECK_BUILD_SHA=${SUPERCHECK_BUILD_SHA}
 
 # Create user
 RUN groupadd --system --gid 1001 nodejs && \

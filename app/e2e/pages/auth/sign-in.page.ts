@@ -88,8 +88,8 @@ export class SignInPage extends BasePage {
    * Navigate to the sign-in page
    */
   async navigate(): Promise<void> {
-    await this.goto(routes.signIn);
-    await this.waitForPageLoad();
+    await this.page.goto(routes.signIn, { waitUntil: 'load' });
+    await expect(this.submitButton).toBeVisible();
   }
 
   /**
@@ -110,10 +110,7 @@ export class SignInPage extends BasePage {
    */
   async signInAndWaitForDashboard(email: string, password: string): Promise<void> {
     await this.signIn(email, password);
-    await Promise.race([
-      this.page.waitForURL((url) => !url.pathname.includes('/sign-in'), { timeout: 15000 }),
-      this.errorMessage.waitFor({ state: 'visible', timeout: 15000 }).catch(() => {}),
-    ]);
+    await this.page.waitForURL((url) => !url.pathname.includes('/sign-in'), { timeout: 15000 });
   }
 
   /**
@@ -151,10 +148,8 @@ export class SignInPage extends BasePage {
    * @returns Error message text or null
    */
   async getErrorMessage(): Promise<string | null> {
-    if (await this.errorMessage.isVisible()) {
-      return this.errorMessage.textContent();
-    }
-    return null;
+    await expect(this.errorMessage).toBeVisible();
+    return this.errorMessage.textContent();
   }
 
   /**

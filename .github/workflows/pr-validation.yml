@@ -12,7 +12,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  NODE_VERSION: "20"
+  NODE_VERSION: "24"
 
 # Explicit permissions following least-privilege principle
 permissions:
@@ -41,7 +41,7 @@ jobs:
         run: npm ci --prefer-offline --no-audit
 
       - name: Restore Jest cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: app/.jest-cache
           key: node-v20-jest-app-${{ hashFiles('app/jest.config.js', 'app/package-lock.json') }}
@@ -62,7 +62,7 @@ jobs:
           NODE_ENV: test
 
       - name: Upload coverage
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: app-coverage
@@ -96,7 +96,7 @@ jobs:
         run: npm ci --prefer-offline --no-audit
 
       - name: Restore Jest cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: worker/.jest-cache
           key: node-v20-jest-worker-${{ hashFiles('worker/jest.config.js', 'worker/package-lock.json') }}
@@ -117,7 +117,7 @@ jobs:
           NODE_ENV: test
 
       - name: Upload coverage
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: worker-coverage
@@ -128,19 +128,48 @@ jobs:
         working-directory: ./worker
         run: npm run build
 
+  e2e-quality-checks:
+    name: E2E Suite Quality Checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: app/e2e/package-lock.json
+
+      - name: Install E2E dependencies
+        working-directory: ./app/e2e
+        run: npm ci --prefer-offline --no-audit
+
+      - name: Type check E2E suite
+        working-directory: ./app/e2e
+        run: npx tsc --noEmit -p tsconfig.json
+
+      - name: Verify Playwright discovery
+        working-directory: ./app/e2e
+        run: npx playwright test --list
+
   summary:
     name: Quality Checks Summary
     runs-on: ubuntu-latest
-    needs: [app-quality-checks, worker-quality-checks]
+    needs: [app-quality-checks, worker-quality-checks, e2e-quality-checks]
     if: always()
 
     steps:
       - name: Check results
         run: |
-          if [ "${{ needs.app-quality-checks.result }}" != "success" ] || [ "${{ needs.worker-quality-checks.result }}" != "success" ]; then
+          if [ "${{ needs.app-quality-checks.result }}" != "success" ] || [ "${{ needs.worker-quality-checks.result }}" != "success" ] || [ "${{ needs.e2e-quality-checks.result }}" != "success" ]; then
             echo "❌ Quality checks failed"
             echo "App checks: ${{ needs.app-quality-checks.result }}"
             echo "Worker checks: ${{ needs.worker-quality-checks.result }}"
+            echo "E2E suite checks: ${{ needs.e2e-quality-checks.result }}"
             exit 1
           else
             echo "✅ All quality checks passed"

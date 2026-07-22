@@ -13,18 +13,8 @@
  * Test IDs: AUTH-020 through AUTH-032
  */
 
-import { test, expect } from '@playwright/test';
-import { env, routes } from '../../utils/env';
-import { SignInPage } from '../../pages/auth';
-
-/**
- * Helper to check if auth-state.json exists (user is authenticated)
- */
-async function isAuthenticated(page: import('@playwright/test').Page): Promise<boolean> {
-  await page.goto('/');
-  await page.waitForLoadState('domcontentloaded');
-  return !page.url().includes('/sign-in');
-}
+import { test, expect } from '../../fixtures/roles.fixture';
+import { requireRbacUser } from '../../utils/env';
 
 test.describe('RBAC - Unauthenticated Access @auth @rbac @security', () => {
   // Override global storage state to test unauthenticated access
@@ -35,11 +25,7 @@ test.describe('RBAC - Unauthenticated Access @auth @rbac @security', () => {
    * @priority critical
    * @type security
    */
-  test('AUTH-042: Protected routes redirect to sign-in @critical @security', async ({ browser }) => {
-    // Create fresh context without any auth state
-    const context = await browser.newContext();
-    const page = await context.newPage();
-
+  test('AUTH-042: Protected routes redirect to sign-in @critical @security', async ({ page }) => {
     const protectedRoutes = [
       '/tests',
       '/jobs',
@@ -61,7 +47,6 @@ test.describe('RBAC - Unauthenticated Access @auth @rbac @security', () => {
       });
     }
 
-    await context.close();
   });
 
   /**
@@ -69,42 +54,28 @@ test.describe('RBAC - Unauthenticated Access @auth @rbac @security', () => {
    * @priority critical
    * @type security
    */
-  test('Super admin panel requires authentication @critical @security', async ({ browser }) => {
-    const context = await browser.newContext();
-    const page = await context.newPage();
-
+  test('Super admin panel requires authentication @critical @security', async ({ page }) => {
     await page.goto('/super-admin');
     await page.waitForLoadState('domcontentloaded');
 
-    // Should redirect to sign-in or show 403
-    const isSignIn = page.url().includes('/sign-in');
-    const is403 = page.url().includes('403') || await page.locator('text=/forbidden|access denied|not authorized/i').isVisible().catch(() => false);
-
-    expect(isSignIn || is403).toBe(true);
-
-    await context.close();
+    await expect(page).toHaveURL(/\/sign-in/);
   });
 });
 
 test.describe('RBAC - Viewer Restrictions @auth @rbac', () => {
-  // These tests require a viewer user to be configured
-  // Skip if no viewer credentials available
+  test.beforeAll(() => requireRbacUser('viewer'));
 
   /**
    * AUTH-020: Viewer cannot access admin panel
    * @priority critical
    * @type rbac
    */
-  test.skip('AUTH-020: Viewer cannot access admin panel @critical @rbac', async ({ page }) => {
-    // Would need viewer credentials configured
-    // await loginAsViewer(page);
-
+  test('AUTH-020: Viewer cannot access admin panel @critical @rbac', async ({ viewerPage: page }) => {
     await page.goto('/super-admin');
     await page.waitForLoadState('domcontentloaded');
 
     // Should show 403 or redirect
-    const is403 = page.url().includes('403') || await page.locator('text=/forbidden|access denied/i').isVisible();
-    expect(is403).toBe(true);
+    await expect(page).not.toHaveURL(/\/super-admin(?:\/|$)/);
   });
 
   /**
@@ -112,20 +83,26 @@ test.describe('RBAC - Viewer Restrictions @auth @rbac', () => {
    * @priority critical
    * @type rbac
    */
-  test.skip('AUTH-021: Viewer cannot create tests @critical @rbac', async ({ page }) => {
-    // Would need viewer credentials configured
-
+  test('AUTH-021: Viewer cannot create tests @critical @rbac', async ({ viewerPage: page }) => {
     await page.goto('/tests');
     await page.waitForLoadState('domcontentloaded');
 
     // Create button should be hidden for viewer
-    const createButton = page.locator('[data-testid="create-test-button"], button:has-text("Create"), a:has-text("Create")');
+    const createButton = page.getByRole('link', { name: /create test/i }).or(
+      page.getByRole('button', { name: /create test/i }),
+    );
     await expect(createButton).toBeHidden();
 
-    // Direct navigation to create should fail
-    await page.goto('/tests/create');
-    const is403 = page.url().includes('403') || !page.url().includes('/tests/create');
-    expect(is403).toBe(true);
+    const response = await page.request.post('/api/tests', {
+      data: {
+        title: `viewer-forbidden-${Date.now()}`,
+        type: 'custom',
+        priority: 'medium',
+        script: 'export default {}',
+      },
+    });
+    expect(response.status()).toBe(403);
+    expect(await response.json()).toMatchObject({ error: expect.any(String) });
   });
 
   /**
@@ -133,35 +110,32 @@ test.describe('RBAC - Viewer Restrictions @auth @rbac', () => {
    * @priority high
    * @type rbac
    */
-  test.skip('AUTH-023: Viewer can view test results @high @rbac', async ({ page }) => {
-    // Would need viewer credentials configured
-
+  test('AUTH-023: Viewer can view test results @high @rbac', async ({ viewerPage: page }) => {
     await page.goto('/runs');
     await page.waitForLoadState('domcontentloaded');
 
     // Should be able to view runs page
     await expect(page).toHaveURL(/runs/);
 
-    // Page should load without errors
-    const hasError = await page.locator('text=/error|forbidden/i').isVisible().catch(() => false);
-    expect(hasError).toBe(false);
+    await expect(page.getByRole('heading', { name: 'Runs', exact: true })).toBeVisible();
   });
 });
 
 test.describe('RBAC - Editor Capabilities @auth @rbac', () => {
+  test.beforeAll(() => requireRbacUser('editor'));
   /**
    * AUTH-024: Editor can create tests
    * @priority critical
    * @type rbac
    */
-  test.skip('AUTH-024: Editor can create tests @critical @rbac', async ({ page }) => {
-    // Would need editor credentials configured
-
+  test('AUTH-024: Editor can create tests @critical @rbac', async ({ editorPage: page }) => {
     await page.goto('/tests');
     await page.waitForLoadState('domcontentloaded');
 
     // Create button should be visible for editor
-    const createButton = page.locator('[data-testid="create-test-button"], button:has-text("Create"), a:has-text("Create")');
+    const createButton = page.getByRole('link', { name: /create test/i }).or(
+      page.getByRole('button', { name: /create test/i }),
+    );
     await expect(createButton).toBeVisible();
   });
 
@@ -170,39 +144,42 @@ test.describe('RBAC - Editor Capabilities @auth @rbac', () => {
    * @priority critical
    * @type rbac
    */
-  test.skip('AUTH-025: Editor cannot access admin panel @critical @rbac', async ({ page }) => {
-    // Would need editor credentials configured
-
+  test('AUTH-025: Editor cannot access admin panel @critical @rbac', async ({ editorPage: page }) => {
     await page.goto('/super-admin');
     await page.waitForLoadState('domcontentloaded');
 
     // Should show 403 or redirect
-    const is403 = page.url().includes('403') || await page.locator('text=/forbidden|access denied/i').isVisible();
-    expect(is403).toBe(true);
+    await expect(page).not.toHaveURL(/\/super-admin(?:\/|$)/);
   });
 });
 
-test.describe('RBAC - Admin Capabilities @auth @rbac', () => {
+test.describe('RBAC - Project Admin Capabilities @auth @rbac', () => {
+  test.beforeAll(() => requireRbacUser('projectAdmin'));
   /**
    * AUTH-026: Project Admin can manage project members
    * @priority critical
    * @type rbac
    */
-  test.skip('AUTH-026: Project Admin can manage members @critical @rbac', async ({ page }) => {
-    // Would need project admin credentials configured
+  test('AUTH-026: Project Admin can access project administration @critical @rbac', async ({ projectAdminPage: page }) => {
+    const projects = await page.request.get('/api/projects');
+    expect(projects.status(), await projects.text()).toBe(200);
+    expect(await projects.json()).toMatchObject({ success: true, data: expect.any(Array) });
 
-    // Navigate to project settings/members
-    // Verify member management is accessible
+    await page.goto('/tests');
+    await expect(page.getByRole('button', { name: 'Create Test', exact: true })).toBeVisible();
   });
+
+});
+
+test.describe('RBAC - Org Admin Capabilities @auth @rbac', () => {
+  test.beforeAll(() => requireRbacUser('orgAdmin'));
 
   /**
    * AUTH-028: Org Admin can manage projects
    * @priority critical
    * @type rbac
    */
-  test.skip('AUTH-028: Org Admin can manage projects @critical @rbac', async ({ page }) => {
-    // Would need org admin credentials configured
-
+  test('AUTH-028: Org Admin can manage projects @critical @rbac', async ({ orgAdminPage: page }) => {
     await page.goto('/org-admin');
     await page.waitForLoadState('domcontentloaded');
 
@@ -210,14 +187,17 @@ test.describe('RBAC - Admin Capabilities @auth @rbac', () => {
     await expect(page).toHaveURL(/org-admin/);
   });
 
+});
+
+test.describe('RBAC - Org Owner Capabilities @auth @rbac', () => {
+  test.beforeAll(() => requireRbacUser('orgOwner'));
+
   /**
    * AUTH-030: Org Owner has full org access
    * @priority critical
    * @type rbac
    */
-  test.skip('AUTH-030: Org Owner has full org access @critical @rbac', async ({ page }) => {
-    // Would need org owner credentials configured
-
+  test('AUTH-030: Org Owner has full org access @critical @rbac', async ({ orgOwnerPage: page }) => {
     // Should access billing
     await page.goto('/billing');
     await expect(page).toHaveURL(/billing/);
@@ -229,20 +209,16 @@ test.describe('RBAC - Admin Capabilities @auth @rbac', () => {
 });
 
 test.describe('RBAC - Super Admin @auth @rbac', () => {
+  test.beforeAll(() => requireRbacUser('superAdmin'));
   /**
    * AUTH-031: Super Admin can access admin panel
    * @priority critical
    * @type rbac
    */
-  test.skip('AUTH-031: Super Admin can access admin panel @critical @rbac', async ({ page }) => {
-    // Would need super admin credentials configured
-
+  test('AUTH-031: Super Admin can access admin panel @critical @rbac', async ({ superAdminPage: page }) => {
     await page.goto('/super-admin');
-    await page.waitForLoadState('domcontentloaded');
-
-    // Should be able to access super admin panel
     await expect(page).toHaveURL(/super-admin/);
-    await expect(page.locator('h1')).toContainText(/admin|super/i);
+    await expect(page.getByRole('heading', { name: 'Super Admin', exact: true })).toBeVisible();
   });
 
   /**
@@ -250,15 +226,11 @@ test.describe('RBAC - Super Admin @auth @rbac', () => {
    * @priority critical
    * @type rbac
    */
-  test.skip('AUTH-032: Super Admin can view all orgs @critical @rbac', async ({ page }) => {
-    // Would need super admin credentials configured
-
+  test('AUTH-032: Super Admin can view all orgs @critical @rbac', async ({ superAdminPage: page }) => {
     await page.goto('/super-admin');
-    await page.waitForLoadState('domcontentloaded');
-
-    // Should see organization list
-    const orgList = page.locator('[data-testid="org-list"], table, [role="table"]');
-    await expect(orgList).toBeVisible();
+    await page.getByRole('tab', { name: 'Organizations', exact: true }).click();
+    await expect(page.getByRole('tabpanel', { name: 'Organizations' })).toBeVisible();
+    await expect(page.getByRole('table')).toBeVisible();
   });
 });
 
@@ -268,43 +240,15 @@ test.describe('RBAC - UI Element Visibility @auth @rbac', () => {
    * This test runs for authenticated users to verify correct nav items
    */
   test('Navigation shows role-appropriate items @medium @rbac', async ({ page }) => {
-    // Check if user is authenticated
-    const authenticated = await isAuthenticated(page);
-    test.skip(!authenticated, 'Requires authenticated user');
-
     await page.goto('/');
-    await page.waitForLoadState('domcontentloaded');
+    await page.waitForLoadState('load');
 
     // Common navigation items should be visible for all authenticated users
     const navItems = ['Tests', 'Jobs', 'Monitors', 'Runs'];
 
     for (const item of navItems) {
-      const navItem = page.locator(`nav a:has-text("${item}"), [role="navigation"] a:has-text("${item}")`);
-      // At least one nav should be visible
-      const isVisible = await navItem.first().isVisible().catch(() => false);
-      // Don't fail - just log
-      if (!isVisible) {
-        console.log(`Nav item "${item}" not visible - may be role-restricted`);
-      }
+      await expect(page.getByRole('link', { name: item, exact: true }).first()).toBeVisible();
     }
-  });
-
-  /**
-   * Test admin link visibility based on role
-   */
-  test('Admin link visibility matches role @medium @rbac', async ({ page }) => {
-    const authenticated = await isAuthenticated(page);
-    test.skip(!authenticated, 'Requires authenticated user');
-
-    await page.goto('/');
-    await page.waitForLoadState('domcontentloaded');
-
-    // Check for admin-related navigation
-    const adminLink = page.locator('a:has-text("Admin"), a[href*="admin"], a:has-text("Super Admin")');
-    const isAdminVisible = await adminLink.first().isVisible().catch(() => false);
-
-    // Log result - don't fail as this depends on user role
-    console.log(`Admin link visible: ${isAdminVisible}`);
   });
 });
 
@@ -324,17 +268,8 @@ test.describe('RBAC - API Authorization @auth @rbac @security', () => {
     // Try to access API without authentication
     const response = await request.get('/api/tests');
 
-    // Should return error status (401, 403, or 500 if auth middleware throws)
-    // The key is that it doesn't return 200 with data
-    const status = response.status();
-    expect(status).not.toBe(200);
-
-    // If we got a response body, ensure it doesn't contain test data
-    if (status < 500) {
-      const body = await response.text();
-      // Should not contain actual test data
-      expect(body).not.toContain('"tests":[{');
-    }
+    expect(response.status()).toBe(401);
+    expect(await response.json()).toMatchObject({ error: expect.any(String) });
   });
 
   /**
@@ -345,10 +280,11 @@ test.describe('RBAC - API Authorization @auth @rbac @security', () => {
     // Testing cross-organization access attempts
 
     // Example: Try to access a known-invalid org ID
-    const response = await request.get('/api/organizations/invalid-org-id/projects');
+    const response = await request.get('/api/projects', {
+      params: { organizationId: '00000000-0000-4000-8000-000000000001' },
+    });
 
-    // Should return error status (401, 403, 404, or 500)
-    const status = response.status();
-    expect(status).not.toBe(200);
+    expect(response.status()).toBe(401);
+    expect(await response.json()).toMatchObject({ error: expect.any(String) });
   });
 });

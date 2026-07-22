@@ -1,89 +1,94 @@
-import { test, expect } from '@playwright/test';
-import { SignInPage, SignUpPage } from '../../pages/auth';
+import { expect, test } from '@playwright/test';
+import { authenticateWithApi } from '../../utils/api-auth';
 import { env } from '../../utils/env';
 
-test.use({ storageState: { cookies: [], origins: [] } });
+test.describe('Session invalidation @auth @security', () => {
+  test('invalidates other sessions, preserves current session, then supports logout everywhere @high @security', async ({
+    playwright,
+    baseURL,
+  }) => {
+    if (!env.sessionTestUser.email || !env.sessionTestUser.password) {
+      throw new Error(
+        'E2E_SESSION_USER_EMAIL and E2E_SESSION_USER_PASSWORD must identify a dedicated session test user',
+      );
+    }
+    if (!baseURL) throw new Error('Playwright baseURL is required');
+    const [stateA, stateB] = await Promise.all([
+      authenticateWithApi(playwright.request, baseURL, env.sessionTestUser),
+      authenticateWithApi(playwright.request, baseURL, env.sessionTestUser),
+    ]);
+    const sessionA = await playwright.request.newContext({ baseURL, storageState: stateA });
+    const sessionB = await playwright.request.newContext({ baseURL, storageState: stateB });
 
-test.describe('Extended Auth Flows - A1, A16 @auth @security', () => {
+    try {
+      const before = await sessionB.get('/api/auth/invalidate-sessions');
+      expect(before.status()).toBe(200);
+      const beforeBody = (await before.json()) as {
+        success: boolean;
+        data: { totalSessions: number; sessions: Array<{ isCurrent: boolean; token?: unknown }> };
+      };
+      expect(beforeBody.success).toBe(true);
+      expect(beforeBody.data.totalSessions).toBeGreaterThanOrEqual(2);
+      expect(beforeBody.data.sessions).toContainEqual(
+        expect.objectContaining({ isCurrent: true }),
+      );
+      for (const session of beforeBody.data.sessions) {
+        expect(session).not.toHaveProperty('token');
+      }
 
-  /**
-   * A1 - Email Verification (Cloud)
-   * Verify email flow, resend, protected routes blocked until verified
-   */
-  test('A1: Email verification flow @high @positive', async ({ page }) => {
-    // Navigate to sign up
-    const signUpPage = new SignUpPage(page);
-    await signUpPage.navigate();
-    
-    // We expect the sign up to go to verification or dashboard with verification banner
-    const testEmail = `verify-test-${Date.now()}@example.com`;
-    await signUpPage.fillName('Verify Test');
-    await signUpPage.fillEmail(testEmail);
-    await signUpPage.fillPassword('Password123!');
-    
-    // Try to submit
-    const submitBtn = page.locator('button[type="submit"]');
-    if (await submitBtn.isVisible().catch(() => false)) {
-        await submitBtn.click();
-        await page.waitForTimeout(2000);
-        
-        // Check for verification toast or redirect to verify-email
-        const hasVerifyBanner = await page.locator('text=/verify your email/i').isVisible().catch(() => false);
-        const url = page.url();
-        const isReady = url.includes('verify') || hasVerifyBanner || url.includes('dashboard') || url.includes('onboarding');
-        
-        if (!isReady) {
-            test.skip(true, 'Sign up did not proceed to verification or dashboard');
-        } else {
-            expect(isReady).toBe(true);
-        }
-    } else {
-        test.skip(true, 'Sign up form not accessible');
+      const preserveCurrent = await sessionB.post('/api/auth/invalidate-sessions', {
+        data: { invalidateAll: false },
+      });
+      expect(preserveCurrent.status()).toBe(200);
+      expect(await preserveCurrent.json()).toMatchObject({
+        success: true,
+        data: {
+          invalidatedCount: expect.any(Number),
+          totalSessions: expect.any(Number),
+          currentSessionPreserved: true,
+        },
+      });
+
+      const invalidatedSession = await sessionA.get('/api/projects');
+      expect(invalidatedSession.status()).toBe(401);
+      const preservedSession = await sessionB.get('/api/projects');
+      expect(preservedSession.status()).toBe(200);
+
+      const invalidateAll = await sessionB.post('/api/auth/invalidate-sessions', {
+        data: { invalidateAll: true },
+      });
+      expect(invalidateAll.status()).toBe(200);
+      expect(await invalidateAll.json()).toMatchObject({
+        success: true,
+        data: { currentSessionPreserved: false },
+      });
+
+      const afterLogoutEverywhere = await sessionB.get('/api/projects');
+      expect(afterLogoutEverywhere.status()).toBe(401);
+    } finally {
+      await sessionA.dispose();
+      await sessionB.dispose();
     }
   });
 
-  /**
-   * A16 - Session Invalidation
-   * Invalidate all sessions -> forced re-login
-   */
-  test('A16: Session invalidation forces re-login @high @security', async ({ page, request }) => {
-    const signInPage = new SignInPage(page);
-    await signInPage.navigate();
-    
-    // Login
-    if (!env.testUser.email || !env.testUser.password) {
-      test.skip(true, 'Test user credentials not configured');
-    }
-    
-    await signInPage.signIn(env.testUser.email, env.testUser.password);
-    await page.waitForTimeout(2000);
-    
-    // We expect to be logged in
-    const isDashboard = page.url() === env.baseUrl + '/' || page.url().includes('/dashboard');
-    
-    // Now trigger session invalidation if such a button exists in settings
-    await page.goto('/settings/profile');
-    
-    const invalidateBtn = page.locator('button:has-text("Sign out everywhere"), button:has-text("Invalidate sessions")').first();
-    if (await invalidateBtn.isVisible().catch(() => false)) {
-        await invalidateBtn.click();
-        await page.waitForTimeout(1000);
-        
-        // Confirm if dialog
-        const confirmBtn = page.locator('button:has-text("Confirm"), button:has-text("Yes")').first();
-        if (await confirmBtn.isVisible().catch(() => false)) {
-            await confirmBtn.click();
-            await page.waitForTimeout(1000);
-        }
-        
-        // Should redirect to sign-in
-        await expect(page).toHaveURL(/sign-in/);
-        
-        // Trying to access protected route again
-        await page.goto('/tests');
-        await expect(page).toHaveURL(/sign-in/);
-    } else {
-        test.skip(true, 'Invalidate sessions button not found in profile');
+  test('session-management API rejects unauthenticated callers @high @security', async ({
+    playwright,
+    baseURL,
+  }) => {
+    const unauthenticated = await playwright.request.newContext({
+      baseURL,
+      storageState: { cookies: [], origins: [] },
+    });
+    try {
+      for (const method of ['get', 'post'] as const) {
+        const response = await unauthenticated[method]('/api/auth/invalidate-sessions', {
+          data: method === 'post' ? { invalidateAll: true } : undefined,
+        });
+        expect(response.status()).toBe(401);
+        expect(await response.json()).toEqual({ error: 'Authentication required' });
+      }
+    } finally {
+      await unauthenticated.dispose();
     }
   });
 });

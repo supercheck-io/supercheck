@@ -74,29 +74,17 @@ test.describe('Sign In @auth @smoke', () => {
    * @priority high
    * @type positive
    */
-  test.skip('AUTH-018: Sign out @high @positive', async ({ page }) => {
-    // Skipped: Times out waiting for dashboard redirect on demo site
+  test('AUTH-018: Sign out @high @positive', async ({ page }) => {
     const signInPage = new SignInPage(page);
     await signInPage.navigate();
     await signInPage.signInAndWaitForDashboard(env.testUser.email, env.testUser.password);
 
     // Act - Sign out via the user menu (Avatar button in top right)
-    const userMenu = page
-      .locator('[data-testid="user-menu"]')
-      .or(page.locator('button:has(img[alt])')  // Avatar button
-      .or(page.locator('button.rounded-full:has(.rounded-full)')));  // Fallback for avatar
-
-    await userMenu.click();
-
-    const signOutButton = page
-      .locator('[data-testid="sign-out-button"]')
-      .or(page.getByRole('menuitem', { name: /log out/i }))
-      .or(page.locator('[role="menuitem"]:has-text("Log out")'));
-
-    await signOutButton.click();
+    await page.getByTestId('user-menu').click();
+    await page.getByTestId('sign-out-button').click();
 
     // Assert
-    await expect(page).toHaveURL(/sign-in/);
+    await expect(page).toHaveURL(/sign-in/, { timeout: 30_000 });
 
     // Verify session is destroyed
     await page.goto('/tests');

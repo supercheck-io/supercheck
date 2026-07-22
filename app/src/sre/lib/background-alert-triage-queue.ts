@@ -168,6 +168,7 @@ export async function enqueueSreAlertTriageJob(input: SreAlertTriageQueueJob) {
 
   const triageQueue = await getSreAlertTriageQueue();
   return triageQueue.add("triage-alert-history", parsed.data, {
-    jobId: `sre-alert-triage:${parsed.data.alertHistoryId}`,
+      // BullMQ custom job IDs must not contain a colon.
+      jobId: `sre-alert-triage-${parsed.data.alertHistoryId}`,
   });
 }

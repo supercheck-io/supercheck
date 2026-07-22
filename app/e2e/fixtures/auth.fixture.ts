@@ -1,6 +1,7 @@
 import { test as base, Page, BrowserContext } from '@playwright/test';
 import { SignInPage, SignUpPage, ForgotPasswordPage, InvitePage } from '../pages/auth';
 import { env } from '../utils/env';
+import { newAuthenticatedPage } from '../utils/api-auth';
 
 /**
  * Authentication Test Fixtures
@@ -57,30 +58,19 @@ export const test = base.extend<AuthFixtures>({
   },
 
   // Authenticated page - logs in using test user credentials
-  authenticatedPage: async ({ browser }, use) => {
-    const context = await browser.newContext();
-    const page = await context.newPage();
-
-    // Login using test user credentials
-    await page.goto('/');
-    await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(1000);
-
-    // If redirected to sign-in, login
-    if (page.url().includes('/sign-in')) {
-      const { env } = await import('../utils/env');
-      if (!env.testUser.email || !env.testUser.password) {
-        throw new Error('E2E_TEST_USER credentials required for authenticatedPage fixture');
-      }
-      const signInPage = new SignInPage(page);
-      await signInPage.signIn(env.testUser.email, env.testUser.password);
-      await page.waitForURL((url) => !url.pathname.includes('/sign-in'), { timeout: 20000 });
+  authenticatedPage: async ({ browser, playwright, baseURL }, use) => {
+    if (!env.testUser.email || !env.testUser.password) {
+      throw new Error('E2E_TEST_USER credentials required for authenticatedPage fixture');
     }
+    if (!baseURL) {
+      throw new Error('Playwright baseURL is required for authenticatedPage fixture');
+    }
+
+    const page = await newAuthenticatedPage(browser, playwright.request, baseURL, env.testUser);
 
     await use(page);
 
-    // Cleanup
-    await context.close();
+    await page.context().close();
   },
 
   // Unauthenticated page - fresh context without auth

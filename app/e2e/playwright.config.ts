@@ -20,8 +20,8 @@ export default defineConfig({
   /* Fail the build on CI if you accidentally left test.only in the source code */
   forbidOnly: !!process.env.CI,
 
-  /* Retry once in CI to tolerate transient production navigation latency. */
-  retries: process.env.CI ? 1 : 0,
+  /* Flakes are failures: CI must prove every test passes on its first attempt. */
+  retries: 0,
 
   /* CI uses one shared account; parallel workers cause state and rate-limit collisions. */
   workers: process.env.CI ? 1 : 2,
@@ -31,12 +31,15 @@ export default defineConfig({
     ['html', { outputFolder: 'playwright-report', open: 'never' }],
     ['json', { outputFile: 'test-results/results.json' }],
     ['list'],
+    ...(process.env.E2E_FAIL_ON_PRIORITY_SKIPS === 'true'
+      ? [['./reporters/priority-skip-reporter.ts'] as [string]]
+      : []),
   ],
 
   /* Shared settings for all the projects below */
   use: {
     baseURL: process.env.E2E_BASE_URL || 'https://demo.supercheck.dev',
-    trace: 'off',
+    trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'off',
     actionTimeout: 15000,

@@ -1,156 +1,46 @@
-import { test, expect, Page } from '@playwright/test';
-import { PlaygroundPage, AICreatePage } from '../../pages/playground.page';
-import { loginIfNeeded } from "../../utils/auth-helper";
+import { expect } from '@playwright/test';
 
-async function waitForPageReady(page: Page, timeout = 2000): Promise<void> {
-  await page.waitForLoadState('domcontentloaded');
-  await page.waitForTimeout(timeout);
-}
+import { test } from '../../fixtures';
+import { createTest, deleteTest } from '../../utils/test-data';
 
-test.describe('Playground - Page Loading @playground @smoke', () => {
-  test.beforeEach(async ({ page }) => {
-    await loginIfNeeded(page);
+test.describe('Playground UI @playground', () => {
+  test('loads the exact saved test into Monaco with executable controls @critical @positive', async ({ projectAdminPage: page, cleanup }) => {
+    test.setTimeout(90_000);
+    const request = page.request;
+    const created = await createTest(request, { title: `E2E Playground ${Date.now()}` });
+    cleanup.add(`test ${created.id}`, () => deleteTest(request, created.id));
+    await page.goto(`/playground/${created.id}`);
+    await expect(page).toHaveURL(new RegExp(`/playground/${created.id}$`));
+    await expect(page.locator('.monaco-editor')).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByRole('button', { name: 'Run', exact: true })).toBeEnabled();
+    await expect(page.getByRole('button', { name: 'Templates', exact: true })).toBeEnabled();
+    await expect(page.getByRole('button', { name: /AI Create/i })).toBeVisible();
   });
 
-  test('PLAY-001: Playground page loads successfully @high @positive', async ({ page }) => {
-    const playgroundPage = new PlaygroundPage(page);
-    await playgroundPage.navigate();
-    await waitForPageReady(page);
-
-    await expect(page).toHaveURL(/playground/);
-  });
-
-  test('PLAY-002: Monaco editor is visible @high @positive', async ({ page }) => {
-    const playgroundPage = new PlaygroundPage(page);
-    await playgroundPage.navigate();
-    await waitForPageReady(page);
-
-    await expect(page).toHaveURL(/playground/);
-  });
-
-  test('PLAY-003: Run button is visible @high @positive', async ({ page }) => {
-    const playgroundPage = new PlaygroundPage(page);
-    await playgroundPage.navigate();
-    await waitForPageReady(page);
-
-    await expect(page).toHaveURL(/playground/);
-  });
-});
-test.describe('Playground - Editor Functionality @playground', () => {
-  test.beforeEach(async ({ page }) => {
-    await loginIfNeeded(page);
-  });
-
-  test('PLAY-004: Can type in editor @high @positive', async ({ page }) => {
-    const playgroundPage = new PlaygroundPage(page);
-    await playgroundPage.navigate();
-    await waitForPageReady(page);
-
-    await expect(page).toHaveURL(/playground/);
-  });
-
-  test('PLAY-023: Theme toggle is available @medium @positive', async ({ page }) => {
-    const playgroundPage = new PlaygroundPage(page);
-    await playgroundPage.navigate();
-    await waitForPageReady(page);
-
-    await expect(page).toHaveURL(/playground/);
+  test('opens the templates workflow and closes it without mutating the saved test @high @positive', async ({ projectAdminPage: page, cleanup }) => {
+    const request = page.request;
+    const created = await createTest(request, { title: `E2E Templates ${Date.now()}` });
+    cleanup.add(`test ${created.id}`, () => deleteTest(request, created.id));
+    await page.goto(`/playground/${created.id}`);
+    const templates = page.getByRole('button', { name: 'Templates', exact: true });
+    await expect(templates).toBeVisible({ timeout: 30_000 });
+    await templates.click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText(/template/i);
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden();
+    const persisted = await request.get(`/api/tests/${created.id}`, { params: { includeScript: 'true' } });
+    expect(persisted.status(), await persisted.text()).toBe(200);
+    expect(await persisted.json()).toMatchObject({ id: created.id, title: created.title });
   });
 });
 
-test.describe('Playground - AI Features @playground @ai', () => {
-  test.beforeEach(async ({ page }) => {
-    await loginIfNeeded(page);
-  });
+test.describe('Playground authentication @playground @security', () => {
+  test.use({ storageState: { cookies: [], origins: [] } });
 
-  test('PLAY-007: AI Fix button is available @high @positive', async ({ page }) => {
-    const playgroundPage = new PlaygroundPage(page);
-    await playgroundPage.navigate();
-    await waitForPageReady(page);
-
-    await expect(page).toHaveURL(/playground/);
-  });
-
-  test('PLAY-013: AI Create is accessible @high @positive', async ({ page }) => {
-    const playgroundPage = new PlaygroundPage(page);
-    await playgroundPage.navigate();
-    await waitForPageReady(page);
-
-    await expect(page).toHaveURL(/playground/);
-  });
-});
-
-test.describe('Playground - Templates @playground', () => {
-  test.beforeEach(async ({ page }) => {
-    await loginIfNeeded(page);
-  });
-
-  test('PLAY-048: Templates button is visible @medium @positive', async ({ page }) => {
-    const playgroundPage = new PlaygroundPage(page);
-    await playgroundPage.navigate();
-    await waitForPageReady(page);
-
-    await expect(page).toHaveURL(/playground/);
-  });
-});
-
-test.describe('Playground - Test Execution @playground', () => {
-  test.beforeEach(async ({ page }) => {
-    await loginIfNeeded(page);
-  });
-
-  test('PLAY-004: Run button triggers execution @critical @positive', async ({ page }) => {
-    const playgroundPage = new PlaygroundPage(page);
-    await playgroundPage.navigate();
-    await waitForPageReady(page);
-
-    await expect(page).toHaveURL(/playground/);
-  });
-
-  test('PLAY-043: Results area exists @high @positive', async ({ page }) => {
-    const playgroundPage = new PlaygroundPage(page);
-    await playgroundPage.navigate();
-    await waitForPageReady(page);
-
-    await expect(page).toHaveURL(/playground/);
-  });
-});
-
-test.describe('AI Create Page @playground @ai', () => {
-  test.beforeEach(async ({ page }) => {
-    await loginIfNeeded(page);
-  });
-
-  test('PLAY-013: AI Create page is accessible @high @positive', async ({ page }) => {
-    await page.goto('/playground', { waitUntil: 'domcontentloaded' });
-    await page.waitForLoadState('domcontentloaded');
-
-    await expect(page).toHaveURL(/playground/);
-  });
-});
-
-test.describe('Playground - Security @playground @security', () => {
-  test.beforeEach(async ({ page }) => {
-    await loginIfNeeded(page);
-  });
-
-  test('PLAY-034: Playground requires authentication @high @security', async ({ page }) => {
-    await page.goto('/playground', { waitUntil: 'domcontentloaded' });
-    await page.waitForLoadState('domcontentloaded');
-
-    expect(page.url()).toBeTruthy();
-  });
-});
-
-test.describe('Playground - API @playground @security', () => {
-  test.beforeEach(async ({ page }) => {
-    await loginIfNeeded(page);
-  });
-
-  test('PLAY-035: Playground endpoint responds @medium @security', async ({ request }) => {
-    const response = await request.get('/api/playground').catch(() => null);
-    if (response) {
-      expect(response.status()).toBeLessThan(600);
-    }
+  test('redirects an unauthenticated saved-test route to sign-in @critical @security', async ({ page }) => {
+    await page.goto('/playground/01900000-0000-7000-8000-000000000000');
+    await expect(page).toHaveURL(/\/sign-in(?:\?|$)/);
   });
 });

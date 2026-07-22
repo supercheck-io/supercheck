@@ -17,6 +17,18 @@ jest.mock("next/headers", () => ({
   headers: jest.fn(async () => new Headers()),
 }));
 
+jest.mock("@/utils/db", () => {
+  const limit = jest.fn();
+  const orderBy = jest.fn(() => ({ limit }));
+  const where = jest.fn(() => ({ orderBy }));
+  const from = jest.fn(() => ({ where }));
+
+  return {
+    db: { select: jest.fn(() => ({ from })) },
+    __mockLimit: limit,
+  };
+});
+
 jest.mock("@/lib/logger/pino-config", () => {
   const logger = {
     info: jest.fn(),
@@ -30,6 +42,10 @@ jest.mock("@/lib/logger/pino-config", () => {
 });
 
 import { POST } from "./route";
+
+const { __mockLimit: mockPersistedKeyLookup } = jest.requireMock("@/utils/db") as {
+  __mockLimit: jest.Mock;
+};
 
 const { auth: mockAuth } = jest.requireMock("@/utils/auth") as {
   auth: {
@@ -45,6 +61,7 @@ const { auth: mockAuth } = jest.requireMock("@/utils/auth") as {
 describe("Extension auth route", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockPersistedKeyLookup.mockResolvedValue([]);
   });
 
   it("returns success when the extension is already connected", async () => {
@@ -74,7 +91,7 @@ describe("Extension auth route", () => {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        name: "Supercheck Recorder Extension",
+        name: "Recorder: Supercheck Recorder Ex",
       }),
     });
 
@@ -130,7 +147,7 @@ describe("Extension auth route", () => {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        name: "Supercheck Recorder Extension",
+        name: "Recorder: Supercheck Recorder Ex",
       }),
     });
 
@@ -185,7 +202,7 @@ describe("Extension auth route", () => {
       body: {
         userId: "user-1",
         configId: "default",
-        name: "Supercheck Recorder Extension",
+        name: "Recorder: Supercheck Recorder Ex",
         prefix: "ext",
         permissions: {
           recorder: ["save"],
@@ -232,7 +249,7 @@ describe("Extension auth route", () => {
     expect(mockAuth.api.createApiKey).toHaveBeenCalledWith({
       body: expect.objectContaining({
         userId: "user-1",
-        name: "Supercheck Recorder Extension Wi",
+        name: "Recorder: Supercheck Recorder Ex",
       }),
     });
   });

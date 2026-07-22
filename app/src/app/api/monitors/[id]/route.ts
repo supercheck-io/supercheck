@@ -17,8 +17,12 @@ import { MonitorJobData } from "@/lib/queue";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import { logAuditEvent } from "@/lib/audit-logger";
-import { createS3CleanupService, type ReportDeletionInput } from "@/lib/s3-cleanup";
+import {
+  createS3CleanupService,
+  type ReportDeletionInput,
+} from "@/lib/s3-cleanup";
 import { createLogger } from "@/lib/logger/index";
+import { validateMonitorConfiguration } from "@/lib/monitor-validation";
 
 const logger = createLogger({ module: "monitor-detail-api" }) as {
   debug: (data: unknown, msg?: string) => void;
@@ -33,14 +37,14 @@ const RECENT_RESULTS_LIMIT = 100;
 
 export async function GET(
   request: NextRequest,
-  routeContext: { params: Promise<{ id: string }> }
+  routeContext: { params: Promise<{ id: string }> },
 ) {
   const params = await routeContext.params;
   const { id } = params;
   if (!id) {
     return NextResponse.json(
       { error: "Monitor ID is required" },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -52,7 +56,7 @@ export async function GET(
     if (!canView) {
       return NextResponse.json(
         { error: "Insufficient permissions to view this monitor" },
-        { status: 403 }
+        { status: 403 },
       );
     }
 
@@ -61,7 +65,7 @@ export async function GET(
       where: and(
         eq(monitors.id, id),
         eq(monitors.projectId, context.project.id),
-        eq(monitors.organizationId, context.organizationId)
+        eq(monitors.organizationId, context.organizationId),
       ),
     });
 
@@ -96,28 +100,31 @@ export async function GET(
   } catch (error) {
     if (isAuthError(error)) {
       return NextResponse.json(
-        { error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 }
+        {
+          error:
+            error instanceof Error ? error.message : "Authentication required",
+        },
+        { status: 401 },
       );
     }
     logger.error({ err: error, monitorId: id }, "Error fetching monitor");
     return NextResponse.json(
       { error: "Failed to fetch monitor data" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
 
 export async function PUT(
   request: NextRequest,
-  routeContext: { params: Promise<{ id: string }> }
+  routeContext: { params: Promise<{ id: string }> },
 ) {
   const params = await routeContext.params;
   const { id } = params;
   if (!id) {
     return NextResponse.json(
       { error: "Monitor ID is required" },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -131,7 +138,7 @@ export async function PUT(
     if (!validationResult.success) {
       return NextResponse.json(
         { error: "Invalid input", details: validationResult.error.format() },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -142,7 +149,7 @@ export async function PUT(
     if (!canUpdate) {
       return NextResponse.json(
         { error: "Insufficient permissions" },
-        { status: 403 }
+        { status: 403 },
       );
     }
 
@@ -151,7 +158,7 @@ export async function PUT(
       where: and(
         eq(monitors.id, id),
         eq(monitors.projectId, authCtx.project.id),
-        eq(monitors.organizationId, authCtx.organizationId)
+        eq(monitors.organizationId, authCtx.organizationId),
       ),
     });
 
@@ -159,19 +166,32 @@ export async function PUT(
       return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
     }
 
+    const configurationValidation = validateMonitorConfiguration({
+      type: updateData.type ?? currentMonitor.type,
+      target: updateData.target ?? currentMonitor.target,
+      config: updateData.config ?? currentMonitor.config,
+    });
+    if (!configurationValidation.success) {
+      return NextResponse.json(configurationValidation, { status: 400 });
+    }
+
     // Validate frequency bounds (1 minute minimum, 1440 minutes = 24 hours maximum)
     const MIN_FREQUENCY_MINUTES = 1;
     const MAX_FREQUENCY_MINUTES = 1440; // 24 hours
-    
+
     if (rawData.frequencyMinutes !== undefined) {
       const freq = Number(rawData.frequencyMinutes);
-      if (isNaN(freq) || freq < MIN_FREQUENCY_MINUTES || freq > MAX_FREQUENCY_MINUTES) {
+      if (
+        isNaN(freq) ||
+        freq < MIN_FREQUENCY_MINUTES ||
+        freq > MAX_FREQUENCY_MINUTES
+      ) {
         return NextResponse.json(
           {
             error: "Invalid frequency",
             details: `frequencyMinutes must be between ${MIN_FREQUENCY_MINUTES} and ${MAX_FREQUENCY_MINUTES} minutes`,
           },
-          { status: 400 }
+          { status: 400 },
         );
       }
     }
@@ -188,14 +208,14 @@ export async function PUT(
             error:
               "At least one notification channel must be selected when alerts are enabled",
           },
-          { status: 400 }
+          { status: 400 },
         );
       }
 
       // Check notification channel limit
       const maxMonitorChannels = parseInt(
         process.env.MAX_MONITOR_NOTIFICATION_CHANNELS || "10",
-        10
+        10,
       );
       if (
         rawData.alertConfig.notificationProviders.length > maxMonitorChannels
@@ -204,7 +224,7 @@ export async function PUT(
           {
             error: `You can only select up to ${maxMonitorChannels} notification channels`,
           },
-          { status: 400 }
+          { status: 400 },
         );
       }
 
@@ -221,7 +241,7 @@ export async function PUT(
             error:
               "At least one alert type must be selected when alerts are enabled",
           },
-          { status: 400 }
+          { status: 400 },
         );
       }
     }
@@ -247,7 +267,7 @@ export async function PUT(
         ? {
             enabled: Boolean(rawData.alertConfig.enabled),
             notificationProviders: Array.isArray(
-              rawData.alertConfig.notificationProviders
+              rawData.alertConfig.notificationProviders,
             )
               ? rawData.alertConfig.notificationProviders
               : [],
@@ -257,7 +277,7 @@ export async function PUT(
                 : true,
             alertOnRecovery: Boolean(rawData.alertConfig.alertOnRecovery),
             alertOnSslExpiration: Boolean(
-              rawData.alertConfig.alertOnSslExpiration
+              rawData.alertConfig.alertOnSslExpiration,
             ),
             failureThreshold:
               typeof rawData.alertConfig.failureThreshold === "number"
@@ -282,15 +302,16 @@ export async function PUT(
 
     let normalizedProviderIds: string[] = [];
     if (shouldSyncNotificationProviders) {
-      const rawProviderIds = rawData.alertConfig.notificationProviders as unknown[];
+      const rawProviderIds = rawData.alertConfig
+        .notificationProviders as unknown[];
 
       normalizedProviderIds = Array.from(
         new Set(
           rawProviderIds.filter(
             (providerId: unknown): providerId is string =>
-              typeof providerId === "string" && providerId.trim().length > 0
-          )
-        )
+              typeof providerId === "string" && providerId.trim().length > 0,
+          ),
+        ),
       );
 
       if (normalizedProviderIds.length !== rawProviderIds.length) {
@@ -298,13 +319,13 @@ export async function PUT(
           {
             error: "Notification provider IDs must be non-empty strings",
           },
-          { status: 400 }
+          { status: 400 },
         );
       }
-
     }
 
-    const NOTIFICATION_PROVIDER_VALIDATION_ERROR = "NOTIFICATION_PROVIDER_VALIDATION_FAILED";
+    const NOTIFICATION_PROVIDER_VALIDATION_ERROR =
+      "NOTIFICATION_PROVIDER_VALIDATION_FAILED";
 
     let updatedMonitor;
     try {
@@ -316,8 +337,8 @@ export async function PUT(
             and(
               eq(monitors.id, id),
               eq(monitors.projectId, authCtx.project.id),
-              eq(monitors.organizationId, authCtx.organizationId)
-            )
+              eq(monitors.organizationId, authCtx.organizationId),
+            ),
           )
           .returning();
 
@@ -334,9 +355,12 @@ export async function PUT(
               .where(
                 and(
                   inArray(notificationProviders.id, normalizedProviderIds),
-                  eq(notificationProviders.organizationId, authCtx.organizationId),
-                  eq(notificationProviders.projectId, authCtx.project.id)
-                )
+                  eq(
+                    notificationProviders.organizationId,
+                    authCtx.organizationId,
+                  ),
+                  eq(notificationProviders.projectId, authCtx.project.id),
+                ),
               );
 
             if (validProviders.length !== normalizedProviderIds.length) {
@@ -355,7 +379,7 @@ export async function PUT(
                 normalizedProviderIds.map((providerId: string) => ({
                   monitorId: id,
                   notificationProviderId: providerId,
-                }))
+                })),
               )
               .onConflictDoNothing();
           }
@@ -364,13 +388,16 @@ export async function PUT(
         return updated;
       });
     } catch (error) {
-      if (error instanceof Error && error.message === NOTIFICATION_PROVIDER_VALIDATION_ERROR) {
+      if (
+        error instanceof Error &&
+        error.message === NOTIFICATION_PROVIDER_VALIDATION_ERROR
+      ) {
         return NextResponse.json(
           {
             error:
               "One or more notification providers are invalid or not accessible in this project",
           },
-          { status: 400 }
+          { status: 400 },
         );
       }
       throw error;
@@ -379,7 +406,7 @@ export async function PUT(
     if (!updatedMonitor) {
       return NextResponse.json(
         { error: "Failed to update monitor, monitor not found after update." },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
@@ -400,17 +427,23 @@ export async function PUT(
 
     // Handle status changes (pause/resume)
     if (oldStatus !== newStatus) {
-      logger.debug({ monitorId: id, oldStatus, newStatus }, "Monitor status changed");
+      logger.debug(
+        { monitorId: id, oldStatus, newStatus },
+        "Monitor status changed",
+      );
 
       if (newStatus === "paused") {
         // Pause monitor - remove from scheduler and clear scheduledJobId
-        logger.debug({ monitorId: id }, "Pausing monitor - removing from scheduler");
+        logger.debug(
+          { monitorId: id },
+          "Pausing monitor - removing from scheduler",
+        );
 
         // Try both the stored scheduledJobId and the monitor ID
         let deleteSuccess = false;
         if (currentMonitor.scheduledJobId) {
           deleteSuccess = await deleteScheduledMonitor(
-            currentMonitor.scheduledJobId
+            currentMonitor.scheduledJobId,
           );
         }
 
@@ -426,8 +459,8 @@ export async function PUT(
             and(
               eq(monitors.id, id),
               eq(monitors.projectId, authCtx.project.id),
-              eq(monitors.organizationId, authCtx.organizationId)
-            )
+              eq(monitors.organizationId, authCtx.organizationId),
+            ),
           );
       } else if (
         oldStatus === "paused" &&
@@ -435,7 +468,10 @@ export async function PUT(
       ) {
         // Resume monitor - add to scheduler if it has valid frequency
         if (newFrequency && newFrequency > 0) {
-          logger.debug({ monitorId: id, frequencyMinutes: newFrequency }, "Resuming monitor - adding to scheduler");
+          logger.debug(
+            { monitorId: id, frequencyMinutes: newFrequency },
+            "Resuming monitor - adding to scheduler",
+          );
           const schedulerId = await scheduleMonitor({
             monitorId: id,
             frequencyMinutes: newFrequency,
@@ -451,8 +487,8 @@ export async function PUT(
               and(
                 eq(monitors.id, id),
                 eq(monitors.projectId, authCtx.project.id),
-                eq(monitors.organizationId, authCtx.organizationId)
-              )
+                eq(monitors.organizationId, authCtx.organizationId),
+              ),
             );
         }
       }
@@ -464,13 +500,19 @@ export async function PUT(
       JSON.stringify(updatedMonitor.config);
     const targetChanged = currentMonitor.target !== updatedMonitor.target;
     const typeChanged = currentMonitor.type !== updatedMonitor.type;
-    
+
     // Track alert config changes for audit logging
     const alertConfigChanged =
       JSON.stringify(currentMonitor.alertConfig) !==
       JSON.stringify(updatedMonitor.alertConfig);
-    const oldAlertConfig = currentMonitor.alertConfig as Record<string, unknown> | null;
-    const newAlertConfig = updatedMonitor.alertConfig as Record<string, unknown> | null;
+    const oldAlertConfig = currentMonitor.alertConfig as Record<
+      string,
+      unknown
+    > | null;
+    const newAlertConfig = updatedMonitor.alertConfig as Record<
+      string,
+      unknown
+    > | null;
 
     if (
       (oldFrequency !== newFrequency ||
@@ -480,11 +522,24 @@ export async function PUT(
       newStatus !== "paused"
     ) {
       // Always remove the old schedule first
-      logger.debug({ monitorId: id, oldFrequency, newFrequency, configChanged, targetChanged, typeChanged }, "Rescheduling monitor due to changes");
+      logger.debug(
+        {
+          monitorId: id,
+          oldFrequency,
+          newFrequency,
+          configChanged,
+          targetChanged,
+          typeChanged,
+        },
+        "Rescheduling monitor due to changes",
+      );
       await deleteScheduledMonitor(id);
 
       if (newFrequency && newFrequency > 0) {
-        logger.debug({ monitorId: id }, "Scheduling monitor with updated configuration");
+        logger.debug(
+          { monitorId: id },
+          "Scheduling monitor with updated configuration",
+        );
         const schedulerId = await scheduleMonitor({
           monitorId: id,
           frequencyMinutes: newFrequency,
@@ -500,11 +555,14 @@ export async function PUT(
             and(
               eq(monitors.id, id),
               eq(monitors.projectId, authCtx.project.id),
-              eq(monitors.organizationId, authCtx.organizationId)
-            )
+              eq(monitors.organizationId, authCtx.organizationId),
+            ),
           );
       } else {
-        logger.debug({ monitorId: id, frequency: newFrequency }, "Monitor frequency cleared, not scheduling");
+        logger.debug(
+          { monitorId: id, frequency: newFrequency },
+          "Monitor frequency cleared, not scheduling",
+        );
         // Clear scheduler ID if frequency is 0 or null
         await db
           .update(monitors)
@@ -513,8 +571,8 @@ export async function PUT(
             and(
               eq(monitors.id, id),
               eq(monitors.projectId, authCtx.project.id),
-              eq(monitors.organizationId, authCtx.organizationId)
-            )
+              eq(monitors.organizationId, authCtx.organizationId),
+            ),
           );
       }
     }
@@ -575,14 +633,17 @@ export async function PUT(
   } catch (error) {
     if (isAuthError(error)) {
       return NextResponse.json(
-        { error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 }
+        {
+          error:
+            error instanceof Error ? error.message : "Authentication required",
+        },
+        { status: 401 },
       );
     }
     logger.error({ err: error, monitorId: id }, "Error updating monitor");
     return NextResponse.json(
       { error: "Failed to update monitor" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -608,7 +669,7 @@ function deepMerge<
         } else {
           (output as Record<string, unknown>)[key] = deepMerge(
             target[key] as Record<string, unknown>,
-            source[key] as Record<string, unknown>
+            source[key] as Record<string, unknown>,
           );
         }
       } else {
@@ -622,14 +683,14 @@ function deepMerge<
 
 export async function PATCH(
   request: NextRequest,
-  routeContext: { params: Promise<{ id: string }> }
+  routeContext: { params: Promise<{ id: string }> },
 ) {
   const params = await routeContext.params;
   const { id } = params;
   if (!id) {
     return NextResponse.json(
       { error: "Monitor ID is required" },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -644,7 +705,7 @@ export async function PATCH(
     if (!canUpdate) {
       return NextResponse.json(
         { error: "Insufficient permissions" },
-        { status: 403 }
+        { status: 403 },
       );
     }
 
@@ -653,7 +714,7 @@ export async function PATCH(
       where: and(
         eq(monitors.id, id),
         eq(monitors.projectId, authCtx.project.id),
-        eq(monitors.organizationId, authCtx.organizationId)
+        eq(monitors.organizationId, authCtx.organizationId),
       ),
     });
 
@@ -676,11 +737,20 @@ export async function PATCH(
       updatePayload.config = newConfig;
     }
 
+    const configurationValidation = validateMonitorConfiguration({
+      type: currentMonitor.type,
+      target: currentMonitor.target,
+      config: updatePayload.config ?? currentMonitor.config,
+    });
+    if (!configurationValidation.success) {
+      return NextResponse.json(configurationValidation, { status: 400 });
+    }
+
     // Handle partial update for 'alertConfig'
     if (rawData.alertConfig) {
       const newAlertConfig = deepMerge(
         currentMonitor.alertConfig ?? {},
-        rawData.alertConfig
+        rawData.alertConfig,
       );
       updatePayload.alertConfig = newAlertConfig;
     }
@@ -696,31 +766,41 @@ export async function PATCH(
         and(
           eq(monitors.id, id),
           eq(monitors.projectId, authCtx.project.id),
-          eq(monitors.organizationId, authCtx.organizationId)
-        )
+          eq(monitors.organizationId, authCtx.organizationId),
+        ),
       )
       .returning();
 
     if (!updatedMonitor) {
       return NextResponse.json(
         { error: "Failed to update monitor" },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
     // Handle pause/resume logic when status changes
     if (rawData.status && rawData.status !== currentMonitor.status) {
-      logger.debug({ monitorId: id, oldStatus: currentMonitor.status, newStatus: rawData.status }, "Monitor status changed (PATCH)");
+      logger.debug(
+        {
+          monitorId: id,
+          oldStatus: currentMonitor.status,
+          newStatus: rawData.status,
+        },
+        "Monitor status changed (PATCH)",
+      );
 
       if (rawData.status === "paused") {
         // Pause monitor - remove from scheduler and clear scheduledJobId
-        logger.debug({ monitorId: id }, "Pausing monitor (PATCH) - removing from scheduler");
+        logger.debug(
+          { monitorId: id },
+          "Pausing monitor (PATCH) - removing from scheduler",
+        );
 
         // Try both the stored scheduledJobId and the monitor ID
         let deleteSuccess = false;
         if (currentMonitor.scheduledJobId) {
           deleteSuccess = await deleteScheduledMonitor(
-            currentMonitor.scheduledJobId
+            currentMonitor.scheduledJobId,
           );
         }
 
@@ -736,8 +816,8 @@ export async function PATCH(
             and(
               eq(monitors.id, id),
               eq(monitors.projectId, authCtx.project.id),
-              eq(monitors.organizationId, authCtx.organizationId)
-            )
+              eq(monitors.organizationId, authCtx.organizationId),
+            ),
           );
       } else if (
         currentMonitor.status === "paused" &&
@@ -748,7 +828,13 @@ export async function PATCH(
           updatedMonitor.frequencyMinutes &&
           updatedMonitor.frequencyMinutes > 0
         ) {
-          logger.debug({ monitorId: id, frequencyMinutes: updatedMonitor.frequencyMinutes }, "Resuming monitor (PATCH) - adding to scheduler");
+          logger.debug(
+            {
+              monitorId: id,
+              frequencyMinutes: updatedMonitor.frequencyMinutes,
+            },
+            "Resuming monitor (PATCH) - adding to scheduler",
+          );
 
           const jobData: MonitorJobData = {
             monitorId: updatedMonitor.id,
@@ -774,8 +860,8 @@ export async function PATCH(
               and(
                 eq(monitors.id, id),
                 eq(monitors.projectId, authCtx.project.id),
-                eq(monitors.organizationId, authCtx.organizationId)
-              )
+                eq(monitors.organizationId, authCtx.organizationId),
+              ),
             );
         }
       }
@@ -806,14 +892,20 @@ export async function PATCH(
   } catch (error) {
     if (isAuthError(error)) {
       return NextResponse.json(
-        { error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 }
+        {
+          error:
+            error instanceof Error ? error.message : "Authentication required",
+        },
+        { status: 401 },
       );
     }
-    logger.error({ err: error, monitorId: id }, "Error partially updating monitor");
+    logger.error(
+      { err: error, monitorId: id },
+      "Error partially updating monitor",
+    );
     return NextResponse.json(
       { error: "Failed to update monitor" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -825,7 +917,7 @@ export async function PATCH(
  */
 export async function DELETE(
   _request: NextRequest,
-  routeContext: { params: Promise<{ id: string }> }
+  routeContext: { params: Promise<{ id: string }> },
 ) {
   try {
     const { id } = await routeContext.params;
@@ -836,21 +928,26 @@ export async function DELETE(
     if (!canDelete) {
       return NextResponse.json(
         { error: "Insufficient permissions to delete monitors" },
-        { status: 403 }
+        { status: 403 },
       );
     }
 
     // Transaction: verify ownership, collect S3 report URLs, delete DB records
     const transactionResult = await db.transaction(async (tx) => {
       const [existingMonitor] = await tx
-        .select({ id: monitors.id, name: monitors.name, type: monitors.type, target: monitors.target })
+        .select({
+          id: monitors.id,
+          name: monitors.name,
+          type: monitors.type,
+          target: monitors.target,
+        })
         .from(monitors)
         .where(
           and(
             eq(monitors.id, id),
             eq(monitors.projectId, project.id),
-            eq(monitors.organizationId, organizationId)
-          )
+            eq(monitors.organizationId, organizationId),
+          ),
         )
         .limit(1);
 
@@ -886,7 +983,7 @@ export async function DELETE(
     if (!transactionResult.success) {
       return NextResponse.json(
         { error: transactionResult.error },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
@@ -926,15 +1023,24 @@ export async function DELETE(
       success: true,
     });
 
-    return NextResponse.json({ success: true, message: "Monitor deleted successfully" });
+    return NextResponse.json({
+      success: true,
+      message: "Monitor deleted successfully",
+    });
   } catch (error) {
     if (isAuthError(error)) {
       return NextResponse.json(
-        { error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 }
+        {
+          error:
+            error instanceof Error ? error.message : "Authentication required",
+        },
+        { status: 401 },
       );
     }
     logger.error({ err: error }, "Error deleting monitor");
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 },
+    );
   }
 }

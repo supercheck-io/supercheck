@@ -37,7 +37,7 @@ export class StatusPagesPage extends BasePage {
 
     // Page elements
     this.pageTitle = page
-      .locator("h1, h2")
+      .locator("h1, h2, h3")
       .filter({ hasText: /status pages/i })
       .first();
 

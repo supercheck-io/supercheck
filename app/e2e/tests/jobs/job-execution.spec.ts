@@ -1,54 +1,71 @@
-import { test, expect } from '@playwright/test';
-import { JobsPage, JobCreatePage } from '../../pages/jobs.page';
-import { loginIfNeeded } from "../../utils/auth-helper";
+import { expect } from '@playwright/test';
+
+import { test } from '../../fixtures';
+import { JobCreatePage, JobsPage } from '../../pages/jobs.page';
 import { createJob, deleteJob, deleteTest } from '../../utils/test-data';
 
-test.describe('Jobs Execution - E9 to E11 @jobs @execution', () => {
-  test.beforeEach(async ({ page }) => {
-    await loginIfNeeded(page);
-  });
+type JobRun = {
+  id: string;
+  jobId: string;
+  status: string;
+  trigger: string;
+};
 
-  test('E9: Create, update, and delete Job @critical @positive', async ({ page }) => {
+test.describe('Job execution @jobs @execution', () => {
+  test('job creation UI exposes the supported execution types @high @positive', async ({ projectAdminPage: page }) => {
     const jobsPage = new JobsPage(page);
     await jobsPage.navigate();
-
     await jobsPage.clickCreate();
 
     const createPage = new JobCreatePage(page);
     await createPage.expectLoaded();
-
-    const playwrightCard = page.locator('text=/playwright|k6|browser/i').first();
-    if (await playwrightCard.isVisible().catch(() => false)) {
-      await playwrightCard.click();
-    }
-
-    expect(page.url()).toContain('/jobs/create');
+    await expect(createPage.playwrightCard).toBeVisible({ timeout: 30_000 });
+    await expect(createPage.k6Card).toBeVisible({ timeout: 30_000 });
   });
 
-  test('E10: Trigger job manually from UI @critical @positive', async ({ page, request }) => {
-    const tempJob = await createJob(request, { name: `Trigger Test Job ${Date.now()}` });
-    try {
-      const jobsPage = new JobsPage(page);
-      await jobsPage.navigate();
-      await jobsPage.expectLoaded();
-
-      const count = await jobsPage.getJobCount();
-      if (count > 0) {
-        await jobsPage.clickRow(0);
-        await page.waitForTimeout(500);
-
-        const runBtn = page.locator('button:has-text("Trigger"), button:has-text("Run"), [data-testid="trigger-job-button"]').first();
-        if (await runBtn.isVisible().catch(() => false)) {
-          await runBtn.click({ force: true });
-          const toast = page.locator('[data-sonner-toast]').first();
-          await expect(toast).toBeVisible({ timeout: 5000 }).catch(() => {});
-        }
-      }
-    } finally {
-      await deleteJob(request, tempJob.id);
-      if (tempJob.createdTestId) {
-        await deleteTest(request, tempJob.createdTestId);
-      }
+  test('triggers the selected job from the UI and persists a run @critical @positive', async ({
+    projectAdminPage,
+    cleanup,
+  }) => {
+    const page = projectAdminPage;
+    const request = projectAdminPage.request;
+    const created = await createJob(request);
+    if (created.createdTestId) {
+      cleanup.add(`test ${created.createdTestId}`, () =>
+        deleteTest(request, created.createdTestId!),
+      );
     }
+    cleanup.add(`job ${created.id}`, () => deleteJob(request, created.id));
+
+    await page.goto('/jobs', { waitUntil: 'load' });
+    const search = page.getByPlaceholder('Filter by all available fields...');
+    await search.fill(created.name);
+    const row = page.getByRole('row').filter({ hasText: created.name });
+    await expect(row).toBeVisible();
+
+    const runButton = row.getByRole('button', { name: 'Run', exact: true });
+    await expect(runButton).toBeEnabled();
+    await runButton.click();
+
+    await expect.poll(async () => latestRun(request, created.id), { timeout: 30_000 }).toEqual(
+      expect.objectContaining({
+        id: expect.any(String),
+        jobId: created.id,
+        trigger: 'manual',
+        status: expect.stringMatching(/^(queued|running|passed|failed|error|blocked)$/),
+      }),
+    );
   });
 });
+
+async function latestRun(
+  request: import('@playwright/test').APIRequestContext,
+  jobId: string,
+): Promise<JobRun | undefined> {
+  const response = await request.get('/api/runs', {
+    params: { jobId, page: '1', limit: '10' },
+  });
+  expect(response.status()).toBe(200);
+  const body = (await response.json()) as { data: JobRun[] };
+  return body.data[0];
+}

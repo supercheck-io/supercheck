@@ -1,115 +1,176 @@
-import { test, expect } from '@playwright/test';
-import { loginIfNeeded } from "../../utils/auth-helper";
+import { expect, test } from '../../fixtures/roles.fixture';
+import { requireRbacUser } from '../../utils/env';
 
-test.describe('Billing & Admin @admin @billing', () => {
-  test.beforeEach(async ({ page }) => {
-    await loginIfNeeded(page);
-  });
+test.describe('Billing and usage @admin @billing', () => {
+  test.beforeAll(() => requireRbacUser('orgOwner'));
 
-  
-  /**
-   * B1 - Plan Limits - UI
-   * B3 - Usage Display
-   */
-  test('B1, B3: Billing page loads and shows plan limits and usage @high', async ({ page }) => {
-    await page.goto('/settings/billing');
-    
-    // Check if billing page loaded
-    const title = page.locator('h1, h2').filter({ hasText: /billing|plan/i }).first();
-    if (await title.isVisible().catch(() => false)) {
-      // Check for usage display
-      const usage = page.locator('text=/usage|runs this month/i').first();
-      expect(await usage.isVisible().catch(() => false)).toBe(true);
+  test('org owner sees the persisted plan, usage, limits, and spending state in API and UI @high @positive', async ({
+    orgOwnerPage: page,
+  }) => {
+    const currentResponse = await page.request.get('/api/billing/current');
+    expect(currentResponse.status()).toBe(200);
+    const current = (await currentResponse.json()) as {
+      subscription: { plan: string; status: string; planName: string; basePriceCents: number };
+      usage: Record<string, { used: number; included: number; overage: number; percentage: number }>;
+      limits: Record<string, Record<string, number>>;
+      planFeatures: { customDomains: boolean; ssoEnabled: boolean; dataRetentionDays: number };
+    };
+    expect(current.subscription).toEqual(
+      expect.objectContaining({
+        plan: expect.stringMatching(/^(plus|pro|unlimited)$/),
+        status: expect.any(String),
+        planName: expect.any(String),
+        basePriceCents: expect.any(Number),
+      }),
+    );
+    for (const metric of ['playwrightMinutes', 'k6VuMinutes', 'aiCredits', 'sreInvestigations']) {
+      expect(current.usage[metric]).toEqual(
+        expect.objectContaining({
+          used: expect.any(Number),
+          included: expect.any(Number),
+          overage: expect.any(Number),
+          percentage: expect.any(Number),
+        }),
+      );
+    }
+    for (const resource of ['monitors', 'statusPages', 'projects', 'teamMembers']) {
+      expect(current.limits[resource]).toEqual(
+        expect.objectContaining({
+          current: expect.any(Number),
+          limit: expect.any(Number),
+          remaining: expect.any(Number),
+          percentage: expect.any(Number),
+        }),
+      );
+    }
+
+    const usageResponse = await page.request.get('/api/billing/usage');
+    expect(usageResponse.status()).toBe(200);
+    expect(await usageResponse.json()).toMatchObject({
+      usage: expect.any(Object),
+      spending: {
+        currentDollars: expect.any(Number),
+        limitEnabled: expect.any(Boolean),
+        hardStopEnabled: expect.any(Boolean),
+        percentageUsed: expect.any(Number),
+        isAtLimit: expect.any(Boolean),
+      },
+    });
+
+    await page.goto('/billing');
+    if (current.subscription.plan === 'unlimited') {
+      await expect(page).toHaveURL(/\/org-admin\?tab=subscription$/);
+      await expect(page.getByRole('tab', { name: 'Projects', exact: true })).toHaveAttribute('data-state', 'active');
+      await expect(page.getByRole('tab', { name: 'Subscription', exact: true })).toHaveCount(0);
     } else {
-      test.skip(true, 'Billing UI not accessible');
+      await expect(page).toHaveURL(/\/org-admin\?tab=subscription$/);
+      await expect(page.getByRole('heading', { name: `${current.subscription.planName} Plan` })).toBeVisible();
+      await expect(page.getByText('Usage This Period', { exact: true })).toBeVisible();
+      await expect(page.getByText('Resource Limits', { exact: true })).toBeVisible();
     }
   });
+});
 
-  /**
-   * B2 - Subscription Upgrade
-   */
-  test('B2: Subscription upgrade flow (mocked) @high', async ({ page }) => {
-    await page.goto('/settings/billing');
-    
-    const upgradeBtn = page.locator('button:has-text("Upgrade")').first();
-    if (await upgradeBtn.isVisible().catch(() => false)) {
-      await upgradeBtn.click();
-      // Assume a modal or checkout redirect happens
-      expect(page.url()).not.toBeNull();
-    } else {
-      test.skip(true, 'Upgrade button not found or user is already on max plan');
+test.describe('Organization audit log @admin @security', () => {
+  test.beforeAll(() => {
+    requireRbacUser('orgOwner');
+    requireRbacUser('viewer');
+  });
+
+  test('org owner can query and render tenant-scoped audit records while viewer is forbidden @high @security', async ({
+    orgOwnerPage,
+    viewerPage,
+  }) => {
+    const response = await orgOwnerPage.request.get('/api/audit', {
+      params: { page: '1', limit: '10', sortOrder: 'desc' },
+    });
+    expect(response.status()).toBe(200);
+    const body = (await response.json()) as {
+      success: boolean;
+      data: {
+        logs: Array<{ id: string; action: string; createdAt: string; user: unknown }>;
+        pagination: { currentPage: number; totalCount: number; limit: number; hasNext: boolean; hasPrev: boolean };
+        filters: { actions: string[] };
+      };
+    };
+    expect(body.success).toBe(true);
+    expect(body.data.pagination).toEqual(
+      expect.objectContaining({
+        currentPage: 1,
+        totalCount: expect.any(Number),
+        limit: 10,
+        hasNext: expect.any(Boolean),
+        hasPrev: false,
+      }),
+    );
+    for (const log of body.data.logs) {
+      expect(log).toEqual(
+        expect.objectContaining({
+          id: expect.any(String),
+          action: expect.any(String),
+          createdAt: expect.any(String),
+        }),
+      );
+    }
+
+    await orgOwnerPage.goto('/org-admin?tab=audit', { waitUntil: 'load' });
+    await expect(orgOwnerPage.getByRole('tab', { name: 'Audit' })).toHaveAttribute(
+      'data-state',
+      'active',
+    );
+    const auditPanel = orgOwnerPage.getByRole('tabpanel', { name: 'Audit' });
+    await expect(auditPanel).toBeVisible();
+    await expect(auditPanel.getByRole('table')).toBeVisible();
+
+    const viewerResponse = await viewerPage.request.get('/api/audit');
+    expect(viewerResponse.status()).toBe(403);
+    expect(await viewerResponse.json()).toEqual({
+      success: false,
+      error: 'Insufficient permissions to view audit logs',
+    });
+  });
+});
+
+test.describe('Super admin console @admin @security', () => {
+  test.beforeAll(() => requireRbacUser('superAdmin'));
+
+  test('super admin dashboard exposes overview, users, organizations, locations, and queues @critical @security', async ({
+    superAdminPage: page,
+  }) => {
+    await page.goto('/super-admin', { waitUntil: 'load' });
+    await expect(page).toHaveURL(/\/super-admin(?:\?tab=overview)?$/);
+    await expect(page.getByText('Total Users', { exact: true }).first()).toBeVisible();
+    await expect(page.getByText('Organizations', { exact: true }).first()).toBeVisible();
+
+    for (const tabName of ['Users', 'Organizations', 'Locations', 'Queues']) {
+      const tab = page.getByRole('tab', { name: tabName, exact: true });
+      await tab.click();
+      await expect(tab).toHaveAttribute('data-state', 'active');
+      await expect(page).toHaveURL(new RegExp(`tab=${tabName.toLowerCase()}`));
+      const panel = page.getByRole('tabpanel', { name: tabName });
+      await expect(panel).toBeVisible();
+      await expect(panel.getByText(/^Loading /)).toHaveCount(0, { timeout: 30_000 });
+      if (tabName === 'Queues') {
+        const queueDashboard = panel.locator('iframe');
+        await expect(queueDashboard).toBeVisible({ timeout: 30_000 });
+        await expect(
+          queueDashboard.contentFrame().getByRole('searchbox', { name: 'Filter queues' }),
+        ).toBeVisible({ timeout: 30_000 });
+      } else {
+        await expect(panel.getByRole('table')).toBeVisible({ timeout: 30_000 });
+      }
     }
   });
+});
 
-  /**
-   * B4 - Super Admin - Dashboard
-   */
-  test('B4: Super admin dashboard shows system stats @critical @security', async ({ page }) => {
-    await page.goto('/super-admin');
-    
-    // Check if super admin is accessible for this user
-    if (page.url().includes('super-admin')) {
-      const stats = page.locator('text=/total users|total orgs/i').first();
-      expect(await stats.isVisible().catch(() => false)).toBe(true);
-    } else {
-      test.skip(true, 'Super admin not accessible for this test user');
-    }
-  });
+test.describe('Billing and audit authentication @admin @billing @security', () => {
+  test.use({ storageState: { cookies: [], origins: [] } });
 
-  /**
-   * B5 - Super Admin - User Management
-   */
-  test('B5: Super admin can view and manage users @high', async ({ page }) => {
-    await page.goto('/super-admin/users');
-    
-    // Check if we hit an error page
-    const isError = await page.locator('text=/forbidden|unauthorized|not found/i').isVisible().catch(() => false);
-    
-    if (page.url().includes('super-admin') && !isError) {
-      const usersTable = page.locator('table, [role="table"], [data-testid="empty-state"]');
-      await expect(usersTable.first()).toBeVisible({ timeout: 10000 });
-    } else {
-      test.skip(true, 'Super admin not accessible');
-    }
-  });
-
-  /**
-   * B6 - Super Admin - Impersonation
-   */
-  test('B6: Super admin impersonation flow @critical @security', async ({ page }) => {
-    test.skip(true, 'Requires specialized setup and is potentially dangerous in staging');
-  });
-
-  /**
-   * B7 - Super Admin - Location Management
-   */
-  test('B7: Super admin can manage execution locations @medium', async ({ page }) => {
-    await page.goto('/super-admin/locations');
-    
-    const isError = await page.locator('text=/forbidden|unauthorized|not found/i').isVisible().catch(() => false);
-    
-    if (page.url().includes('super-admin') && !isError) {
-      const locationsTable = page.locator('table, [role="table"], [data-testid="empty-state"]');
-      await expect(locationsTable.first()).toBeVisible({ timeout: 10000 });
-    } else {
-      test.skip(true, 'Super admin not accessible');
-    }
-  });
-
-  /**
-   * B8 - Audit Logging
-   */
-  test('B8: Audit logs are visible for organization @high @security', async ({ page }) => {
-    await page.goto('/org-admin/audit-logs');
-    
-    const isError = await page.locator('text=/forbidden|unauthorized|not found/i').isVisible().catch(() => false);
-    const logsTitle = page.locator('h1, h2').filter({ hasText: /audit logs/i }).first();
-    
-    if (!isError && await logsTitle.isVisible().catch(() => false)) {
-      const logsTable = page.locator('table, [role="table"], [data-testid="empty-state"]');
-      await expect(logsTable.first()).toBeVisible({ timeout: 10000 });
-    } else {
-      test.skip(true, 'Audit logs UI not accessible');
+  test('billing and audit APIs reject unauthenticated callers @high @security', async ({ request }) => {
+    for (const endpoint of ['/api/billing/current', '/api/billing/usage', '/api/audit']) {
+      const response = await request.get(endpoint);
+      expect(response.status()).toBe(401);
+      expect(await response.json()).toMatchObject({ error: expect.any(String) });
     }
   });
 });
