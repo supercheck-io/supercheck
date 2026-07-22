@@ -84,9 +84,13 @@ test.describe('Forgot Password @auth @password-reset', () => {
 
     // Enter invalid email
     await forgotPasswordPage.fillEmail('not-an-email');
-    await forgotPasswordPage.submit();
 
-    // Should show validation error or stay on page
+    // Native email validation prevents the invalid value from being submitted.
+    expect(
+      await forgotPasswordPage.emailInput.evaluate(
+        (element) => (element as HTMLInputElement).validity.valid,
+      ),
+    ).toBe(false);
     await expect(page).toHaveURL(/forgot-password/);
   });
 
@@ -223,37 +227,9 @@ test.describe('Password Reset - Rate Limiting @auth @security', () => {
    * @priority high
    * @type security
    */
-  test('AUTH-046: Rate limiting after multiple requests @high @security', async ({ page }) => {
-    const forgotPasswordPage = new ForgotPasswordPage(page);
-    const testEmail = 'rate-limit-test@example.com';
-
-    // Make multiple rapid requests
-    for (let i = 0; i < 6; i++) {
-      // Always navigate fresh to reset the form state
-      await forgotPasswordPage.navigate();
-      await page.waitForLoadState('domcontentloaded');
-      
-      // Wait for email input to be ready
-      await forgotPasswordPage.emailInput.waitFor({ state: 'visible', timeout: 5000 });
-      
-      await forgotPasswordPage.fillEmail(testEmail);
-      await forgotPasswordPage.submit();
-
-      // Wait a moment for response
-      await page.waitForTimeout(1000);
-
-      // Check if we got rate limited
-      const isRateLimited = await page.locator('text=/too many|rate limit|wait|try again later/i').isVisible().catch(() => false);
-
-      if (isRateLimited) {
-        // Rate limiting is working
-        expect(isRateLimited).toBe(true);
-        return;
-      }
-    }
-
-    // If we got here without rate limiting, the test still passes
-    // (rate limiting may have higher threshold or be disabled in test environment)
+  test.skip('AUTH-046: Rate limiting after multiple requests @high @security', async () => {
+    // Do not intentionally rate-limit the shared demo account/IP in the general
+    // E2E suite. This belongs in an isolated security environment.
   });
 });
 

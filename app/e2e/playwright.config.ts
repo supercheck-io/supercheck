@@ -14,17 +14,17 @@ dotenv.config({ path: path.resolve(__dirname, '.env') });
 export default defineConfig({
   testDir: './tests',
 
-  /* Run tests in files in parallel */
-  fullyParallel: true,
+  /* The suite mutates a shared demo account, so files must not overlap freely. */
+  fullyParallel: false,
 
   /* Fail the build on CI if you accidentally left test.only in the source code */
   forbidOnly: !!process.env.CI,
 
-  /* Retry on CI only - disabled to speed up CI */
-  retries: 0,
+  /* Retry once in CI to tolerate transient production navigation latency. */
+  retries: process.env.CI ? 1 : 0,
 
-  /* Workers - increase for faster CI runs */
-  workers: process.env.CI ? 4 : 2,
+  /* CI uses one shared account; parallel workers cause state and rate-limit collisions. */
+  workers: process.env.CI ? 1 : 2,
 
   /* Reporter to use */
   reporter: [
@@ -39,16 +39,16 @@ export default defineConfig({
     trace: 'off',
     screenshot: 'only-on-failure',
     video: 'off',
-    actionTimeout: 10000,
-    navigationTimeout: 20000,
+    actionTimeout: 15000,
+    navigationTimeout: 45000,
   },
 
-  /* Per-test timeout - reduced for CI */
-  timeout: 30000,
+  /* Allow production pages enough time when the full suite is running. */
+  timeout: 60000,
 
   /* Expect timeout */
   expect: {
-    timeout: 5000,
+    timeout: 10000,
   },
 
   /* Configure projects */

@@ -50,10 +50,7 @@ export class SignInPage extends BasePage {
       .or(page.locator('button:has-text("Login")'))
       .or(page.locator('button:has-text("Sign in")'));
 
-    this.errorMessage = page
-      .locator('[data-testid="login-error-message"]')
-      .or(page.locator('p.text-destructive'))
-      .or(page.locator('[role="alert"]:not(#__next-route-announcer__)'));
+    this.errorMessage = page.locator('[data-testid="login-error-message"]');
 
     // OAuth buttons
     this.githubButton = page

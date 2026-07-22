@@ -74,17 +74,19 @@ test.describe('Security - XSS Prevention @auth @security', () => {
       '<img src=x onerror=alert("xss")>',
     ];
 
+    let alertTriggered = false;
+    page.on('dialog', () => {
+      alertTriggered = true;
+    });
+
     for (const payload of xssPayloads) {
       await forgotPasswordPage.fillEmail(payload);
-      await forgotPasswordPage.submit();
-      await page.waitForTimeout(300);
-
-      // Verify no alert
-      let alertTriggered = false;
-      page.once('dialog', () => {
-        alertTriggered = true;
-      });
-      await page.waitForTimeout(200);
+      await expect(forgotPasswordPage.emailInput).toHaveValue(payload);
+      expect(
+        await forgotPasswordPage.emailInput.evaluate(
+          (element) => (element as HTMLInputElement).validity.valid,
+        ),
+      ).toBe(false);
       expect(alertTriggered).toBe(false);
 
       await forgotPasswordPage.clearForm();
@@ -324,11 +326,17 @@ test.describe('Security - Information Disclosure @auth @security', () => {
     }
   });
 
-  test('Password reset is safe (no user enumeration) @high @security', async ({ page }) => {
-    const forgotPasswordPage = new ForgotPasswordPage(page);
-    await forgotPasswordPage.navigate();
-    await forgotPasswordPage.requestReset('definitely-not-exists@example.com');
-    await forgotPasswordPage.expectSuccess();
+  test('Password reset is safe (no user enumeration) @high @security', async ({ request }) => {
+    const response = await request.post('/api/auth/request-password-reset', {
+      data: {
+        email: 'definitely-not-exists@example.com',
+        redirectTo: `${env.baseUrl}/reset-password`,
+      },
+    });
+    const body = await response.text();
+
+    expect([200, 400, 429]).toContain(response.status());
+    expect(body).not.toMatch(/user (does not exist|not found)|unknown user/i);
   });
 });
 

@@ -1,35 +1,29 @@
 import { test as setup } from '@playwright/test';
-import { SignInPage } from '../pages/auth';
 import { env } from '../utils/env';
 
 const authFile = 'user-auth-state.json';
 
-setup('authenticate as regular test user', async ({ page }) => {
+setup('authenticate as regular test user', async ({ request }) => {
   if (!env.testUser.email || !env.testUser.password) {
     throw new Error('E2E_TEST_USER credentials required for setup');
   }
 
-  const signInPage = new SignInPage(page);
-  await signInPage.navigate();
-  await signInPage.signIn(env.testUser.email, env.testUser.password);
+  const signInResponse = await request.post('/api/auth/sign-in/email', {
+    data: {
+      email: env.testUser.email.trim(),
+      password: env.testUser.password,
+      rememberMe: true,
+    },
+  });
 
-  try {
-    await page.waitForURL((url) => !url.pathname.includes('/sign-in'), { timeout: 15000 });
-  } catch (error) {
-    const message = (await signInPage.getErrorMessage())?.trim();
-    if (!message) {
-      throw error;
-    }
-
+  if (!signInResponse.ok()) {
+    const responseBody = await signInResponse.text();
     throw new Error(
-      `E2E authentication failed for ${env.testUser.email}: ${message}. ` +
+      `E2E authentication API failed for ${env.testUser.email} ` +
+        `(${signInResponse.status()}): ${responseBody}. ` +
         'Verify that the GitHub E2E_TEST_USER_EMAIL and E2E_TEST_USER_PASSWORD secrets match an existing invited user.',
     );
   }
 
-  await page.goto('/');
-  await page.waitForLoadState('domcontentloaded');
-
-  // Save storage state
-  await page.context().storageState({ path: authFile });
+  await request.storageState({ path: authFile });
 });
