@@ -103,8 +103,9 @@ export function EditSreIncidentDialog({
       toast.success(result.message);
       setOpen(false);
       await Promise.all([
-        queryClient.invalidateQueries({
+        queryClient.refetchQueries({
           queryKey: getSreIncidentDetailQueryKey(projectId, incident.id),
+          exact: true,
         }),
         queryClient.invalidateQueries({
           queryKey: getSreIncidentsQueryKey(projectId),

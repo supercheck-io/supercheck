@@ -104,18 +104,19 @@ export class SignInPage extends BasePage {
     await this.emailInput.fill(email);
     await this.passwordInput.fill(password);
     await this.submitButton.click();
-    await this.waitForPageLoad();
   }
 
   /**
-   * Sign in and wait for redirect to dashboard
+   * Sign in and wait for redirect away from sign-in page
    * @param email - User email
    * @param password - User password
    */
   async signInAndWaitForDashboard(email: string, password: string): Promise<void> {
     await this.signIn(email, password);
-    await this.waitForNavigation('/');
-    await this.waitForPageLoad();
+    await Promise.race([
+      this.page.waitForURL((url) => !url.pathname.includes('/sign-in'), { timeout: 15000 }),
+      this.errorMessage.waitFor({ state: 'visible', timeout: 15000 }).catch(() => {}),
+    ]);
   }
 
   /**

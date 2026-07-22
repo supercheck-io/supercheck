@@ -52,6 +52,14 @@ function detailFixture(): SreIncidentDetail {
       completedAt: now,
       createdAt: now,
     },
+    latestInvestigation: {
+      id: "018f0000-0000-7000-8000-000000000003",
+      modelId: "test-model",
+      status: "completed",
+      summary: "Checkout latency is correlated with dependency failures.",
+      completedAt: now,
+      createdAt: now,
+    },
     evidence: [
       {
         id: "ev-monitor-timeout",

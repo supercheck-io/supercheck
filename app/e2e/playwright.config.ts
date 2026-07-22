@@ -9,7 +9,7 @@ dotenv.config({ path: path.resolve(__dirname, '.env') });
  * Playwright E2E Test Configuration for Supercheck
  *
  * Authentication approach: Each test file that needs authentication
- * uses loginIfNeeded() in beforeEach hook. No shared auth state file.
+ * uses a setup project to create a shared authenticated storage state.
  */
 export default defineConfig({
   testDir: './tests',
@@ -54,10 +54,16 @@ export default defineConfig({
   /* Configure projects */
   projects: [
     {
+      name: 'setup',
+      testMatch: /auth\.setup\.ts/,
+    },
+    {
       name: 'chromium',
       use: {
         ...devices['Desktop Chrome'],
+        storageState: 'user-auth-state.json',
       },
+      dependencies: ['setup'],
     },
   ],
 

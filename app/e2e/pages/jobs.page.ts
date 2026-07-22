@@ -193,7 +193,8 @@ export class JobsPage extends BasePage {
    */
   async clickRow(index: number): Promise<void> {
     const row = this.tableRows.nth(index);
-    const cell = row.locator('td').or(row.locator('[role="cell"]')).first();
+    // Click the third cell (index 2: Name) to avoid intercepting action buttons in the first cell (Trigger)
+    const cell = row.locator('td').or(row.locator('[role="cell"]')).nth(2);
     await cell.click();
   }
 

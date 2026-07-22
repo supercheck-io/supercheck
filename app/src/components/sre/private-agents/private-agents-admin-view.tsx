@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import {
+  Copy,
   KeyRound,
   Loader2,
   MoreHorizontal,
@@ -143,6 +144,11 @@ export function PrivateAgentsAdminView({
     toast.success("Registration token copied");
   };
 
+  const copyAgentId = async (agentId: string) => {
+    await navigator.clipboard.writeText(agentId);
+    toast.success("Agent ID copied");
+  };
+
   if (loadError) {
     return (
       <DashboardEmptyState
@@ -195,6 +201,19 @@ export function PrivateAgentsAdminView({
                     <TableCell className="min-w-[240px] whitespace-normal">
                       <div className="space-y-1">
                         <p className="font-medium">{agent.name}</p>
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <code>{agent.id}</code>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            aria-label={`Copy Agent ID for ${agent.name}`}
+                            onClick={() => copyAgentId(agent.id)}
+                          >
+                            <Copy className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
                         <p className="text-xs text-muted-foreground">
                           {agent.version ?? "Version not reported"}
                         </p>

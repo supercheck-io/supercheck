@@ -15,6 +15,26 @@ Unlike a standard worker, the Private Agent:
 The Private Agent is used for executing connector queries for investigations. It does not run Playwright or K6 tests.
 </Callout>
 
+<Callout type="warning">
+If your Supercheck API is behind Cloudflare or another browser-oriented WAF,
+exclude the machine-to-machine Private Agent API routes from interactive browser
+challenges. Keep TLS, request-size limits, rate limits, logging, and normal WAF
+rules enabled.
+
+Required routes:
+- `/api/private-agents/registration/exchange`
+- `/api/private-agents/heartbeat`
+- `/api/private-agents/jobs/lease`
+- `/api/private-agents/jobs/result`
+
+A `403` response with `cf-mitigated: challenge` means the request was stopped at
+Cloudflare and never reached Supercheck. Use a narrowly scoped Skip rule when
+your Cloudflare plan and challenge source support it. Cloudflare Bot Fight Mode
+cannot be skipped by path; either disable that mode or use a separate machine
+endpoint with equivalent TLS, rate limits, logging, and non-interactive WAF
+protection. Do not weaken protection without a documented compensating control.
+</Callout>
+
 ## Deployment
 
 Deploy the agent on a server or Kubernetes cluster inside your internal network using the provided Docker Compose configuration.
@@ -59,10 +79,35 @@ docker compose -f docker-compose-private-agent.yml logs -f
 ```
 In the Supercheck dashboard, the agent status should now show as **Active**.
 
+### Kubernetes runtime identity and network policy
+
+Kubernetes `runAsUser` and `runAsGroup` values must match the `pwuser` identity
+inside the exact worker image tag you deploy. The current image uses `1001:1001`.
+Verify custom or older tags before writing the security context:
+
+```bash
+docker run --rm --entrypoint sh \
+  ghcr.io/supercheck-io/supercheck/worker:YOUR_VERSION \
+  -c 'id -u pwuser; id -g pwuser'
+```
+
+Mount persistent state at `/home/pwuser/.supercheck`, set
+`PRIVATE_AGENT_CREDENTIAL_FILE=/home/pwuser/.supercheck/private-agent-token`,
+and make the volume writable only by that identity. A mismatch can allow the
+one-time registration exchange to complete while preventing the runtime
+credential from being saved for restart recovery.
+
+Keep inbound traffic denied. Allow outbound DNS and HTTPS to Supercheck, plus
+only the internal provider endpoint ports used by configured connectors. Note
+that a Service port can differ from its pod target port; NetworkPolicy engines
+may require the target port (for example, Grafana Service `80` to pod `3000`).
+For optional Tempo access, allow the Private Agent explicitly in both the
+agent egress policy and Tempo ingress policy.
+
 ## Security Posture
 
 The provided Docker Compose configuration applies strict security constraints:
-- `user: "1000:1000"`: Runs as a non-root user.
+- `user: "pwuser:pwuser"`: Runs as the image's non-root account without relying on a stale numeric UID.
 - `read_only: true`: Mounts the root filesystem as read-only.
 - `tmpfs`: Uses memory-backed ephemeral storage for `/tmp` and cache directories.
 - `security_opt: [no-new-privileges:true]`: Prevents privilege escalation.

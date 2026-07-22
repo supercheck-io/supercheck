@@ -316,8 +316,8 @@ services:
     pull_policy: always
     # init: Use tini as PID 1 to avoid zombie processes (Playwright recommendation)
     init: true
-    # GVISOR-006: Run as non-root user (pwuser UID 1000 from Playwright image)
-    user: "1000:1000"
+    # GVISOR-006: Run as the Playwright image's non-root pwuser account.
+    user: "pwuser:pwuser"
     environment:
       <<: *common-env
       # Worker-specific configuration (inherits all common env vars)
@@ -329,8 +329,8 @@ services:
     read_only: true
     tmpfs:
       - /tmp:size=2G,uid=1000,gid=1000,mode=1777
-      - /home/pwuser/.cache:size=256M,uid=1000,gid=1000,mode=0700
-      - /home/pwuser/.npm:size=256M,uid=1000,gid=1000,mode=0700
+      - /home/pwuser/.cache:size=256M,uid=1001,gid=1001,mode=0700
+      - /home/pwuser/.npm:size=256M,uid=1001,gid=1001,mode=0700
     volumes:
       - worker-playwright-reports:/worker/playwright-reports
       - worker-k6-reports:/worker/k6-reports

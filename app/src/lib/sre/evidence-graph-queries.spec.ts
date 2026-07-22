@@ -1,4 +1,7 @@
-import { formatSreEvidenceGraphTitle } from "./evidence-graph-display";
+import {
+  formatSreEvidenceGraphTitle,
+  formatSreInvestigationTypeLabel,
+} from "./evidence-graph-display";
 
 describe("formatSreEvidenceGraphTitle", () => {
   it("uses a stable label instead of exposing a full markdown report", () => {
@@ -23,5 +26,16 @@ describe("formatSreEvidenceGraphTitle", () => {
     expect(
       formatSreEvidenceGraphTitle("   ", "investigator investigation"),
     ).toBe("investigator investigation");
+  });
+});
+
+describe("formatSreInvestigationTypeLabel", () => {
+  it.each([
+    ["investigation", "AI investigation"],
+    ["sre_ai", "Evidence brief"],
+    ["triage", "AI triage"],
+    ["background", "Background analysis"],
+  ])("formats %s as %s", (agentType, expected) => {
+    expect(formatSreInvestigationTypeLabel(agentType)).toBe(expected);
   });
 });

@@ -110,4 +110,24 @@ describe("SreInvestigationPanel", () => {
       "/org-admin?tab=services",
     );
   });
+
+  it("renders the latest investigation result persistently", () => {
+    render(
+      <SreInvestigationPanel
+        incidentId="018f0000-0000-7000-8000-000000000001"
+        hasPrimaryService={true}
+        serviceMappingHref="/org-admin?tab=services"
+        latestInvestigation={{
+          status: "completed",
+          summary: "Dependency latency is the leading hypothesis.",
+          completedAt: "2026-06-24T12:00:00.000Z",
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Latest result")).toBeInTheDocument();
+    expect(
+      screen.getByText("Dependency latency is the leading hypothesis."),
+    ).toBeInTheDocument();
+  });
 });

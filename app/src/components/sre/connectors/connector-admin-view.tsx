@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import {
   Cable,
+  ChevronDown,
   FileSearch,
   Loader2,
   Plus,
@@ -43,6 +44,11 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import {
   Dialog,
   DialogContent,
@@ -132,6 +138,13 @@ const evidenceSearchConnectorTypes = new Set([
   "opsgenie",
 ]);
 
+const connectorSearchWindows = [
+  { value: "15", label: "15 minutes" },
+  { value: "60", label: "1 hour" },
+  { value: "240", label: "4 hours" },
+  { value: "1440", label: "24 hours" },
+];
+
 function formatConnectorType(value: string) {
   return value
     .replace(/_/g, " ")
@@ -208,6 +221,8 @@ export function ConnectorAdminView({
   const [queryBuilderValues, setQueryBuilderValues] = useState<
     Record<string, string>
   >({});
+  const [isQueryGuideOpen, setIsQueryGuideOpen] = useState(false);
+  const [isQueryBuilderOpen, setIsQueryBuilderOpen] = useState(false);
   const [searchTimeWindowMinutes, setSearchTimeWindowMinutes] = useState("60");
   const [searchResult, setSearchResult] = useState<Extract<
     SreConnectorSearchResult,
@@ -382,6 +397,8 @@ export function ConnectorAdminView({
     setSearchQuery(guide.examples[0]?.query ?? "");
     setSearchFilters({});
     setQueryBuilderValues(builderValues);
+    setIsQueryGuideOpen(false);
+    setIsQueryBuilderOpen(false);
     setSearchTimeWindowMinutes(String(connector.defaultTimeWindowMinutes));
     setSearchResult(null);
   };
@@ -409,6 +426,7 @@ export function ConnectorAdminView({
     setSearchQuery(result.query);
     setSearchFilters(result.filters ?? {});
     setSearchResult(null);
+    setIsQueryBuilderOpen(false);
   };
 
   const submitConnectorSearch = () => {
@@ -433,20 +451,24 @@ export function ConnectorAdminView({
     });
   };
 
-  const viewLatestJobResult = (connector: SreConnectorListItem) => {
-    if (!connector.latestPrivateAgentJob) return;
-
+  const loadPrivateAgentJobResult = (jobId: string, closeSearch = false) => {
     startJobResultTransition(async () => {
       const result = await getPrivateAgentConnectorJobResult({
-        jobId: connector.latestPrivateAgentJob!.id,
+        jobId,
       });
       if (!result.success) {
         toast.error(result.error);
         return;
       }
 
+      if (closeSearch) setSearchConnector(null);
       setJobResult(result.job);
     });
+  };
+
+  const viewLatestJobResult = (connector: SreConnectorListItem) => {
+    if (!connector.latestPrivateAgentJob) return;
+    loadPrivateAgentJobResult(connector.latestPrivateAgentJob.id);
   };
 
   if (loadError) {
@@ -759,8 +781,8 @@ export function ConnectorAdminView({
         open={Boolean(searchConnector)}
         onOpenChange={(open) => !open && setSearchConnector(null)}
       >
-        <DialogContent className="max-h-[90vh] max-w-4xl min-w-2xl gap-3 overflow-y-auto p-5">
-          <DialogHeader>
+        <DialogContent className="max-h-[calc(100svh-1rem)] w-[calc(100vw-1rem)] max-w-2xl gap-0 overflow-hidden p-0 sm:max-h-[min(90svh,760px)] sm:w-[calc(100vw-2rem)]">
+          <DialogHeader className="border-b px-5 py-5 sm:px-6">
             <DialogTitle>Search connector evidence</DialogTitle>
             <DialogDescription>
               Run a bounded, read-only connector search for one service.
@@ -769,101 +791,56 @@ export function ConnectorAdminView({
           </DialogHeader>
 
           {searchConnector && (
-            <div className="space-y-4">
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 [scrollbar-width:thin] sm:px-6">
               {(() => {
                 const guide = getConnectorQueryGuide(searchConnector.type);
                 const builder = getConnectorQueryBuilder(searchConnector.type);
                 const availableServices = servicesForConnector(searchConnector);
                 const activeFilters = Object.entries(searchFilters);
+                const searchWindows = connectorSearchWindows
+                  .filter(
+                    (window) =>
+                      Number(window.value) <=
+                      searchConnector.defaultTimeWindowMinutes,
+                  )
+                  .concat(
+                    connectorSearchWindows.some(
+                      (window) =>
+                        Number(window.value) ===
+                        searchConnector.defaultTimeWindowMinutes,
+                    )
+                      ? []
+                      : [
+                          {
+                            value: String(
+                              searchConnector.defaultTimeWindowMinutes,
+                            ),
+                            label: `${searchConnector.defaultTimeWindowMinutes} minutes`,
+                          },
+                        ],
+                  )
+                  .sort((a, b) => Number(a.value) - Number(b.value));
 
                 return (
-                  <>
-                    <div className="rounded-lg border bg-muted/20 p-3">
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                        <div>
-                          <p className="text-sm font-medium">
-                            {guide.label} query guide
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {guide.setupHint}
-                          </p>
-                        </div>
-                        <Badge variant="outline">{guide.queryLabel}</Badge>
+                  <div className="space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/20 px-3 py-2.5">
+                      <div className="flex items-center gap-2">
+                        <ShieldCheck className="h-4 w-4 text-emerald-500" />
+                        <span className="text-sm font-medium">
+                          Bounded search
+                        </span>
+                        <Badge variant="outline">
+                          {formatConnectorType(searchConnector.type)}
+                        </Badge>
                       </div>
-                      <div className="mt-3 grid gap-2 md:grid-cols-2">
-                        {guide.examples.map((example) => (
-                          <button
-                            key={example.label}
-                            type="button"
-                            onClick={() => setSearchQuery(example.query)}
-                            className="rounded-md border bg-background p-2 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                          >
-                            <span className="block text-xs font-medium">
-                              {example.label}
-                            </span>
-                            <code className="mt-1 block break-words rounded bg-muted px-2 py-1 font-mono text-xs">
-                              {example.query}
-                            </code>
-                            <span className="mt-1 block text-xs text-muted-foreground">
-                              {example.description}
-                            </span>
-                          </button>
-                        ))}
-                      </div>
+                      <span className="text-xs text-muted-foreground">
+                        Up to {searchConnector.outputLimits.maxRows} rows ·{" "}
+                        {searchConnector.outputLimits.maxSeconds}s timeout
+                      </span>
                     </div>
 
-                    {builder && (
-                      <div className="rounded-lg border bg-background p-3">
-                        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                          <div className="space-y-1">
-                            <p className="text-sm font-medium">
-                              {builder.title}
-                            </p>
-                            <p className="max-w-3xl text-xs text-muted-foreground">
-                              {builder.description}
-                            </p>
-                          </div>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={applyQueryBuilder}
-                          >
-                            Build query
-                          </Button>
-                        </div>
-                        <div className="mt-3 grid gap-3 md:grid-cols-2">
-                          {builder.fields.map((field) => (
-                            <div key={field.id} className="space-y-1.5">
-                              <label
-                                htmlFor={`query-builder-${field.id}`}
-                                className="text-xs font-medium"
-                              >
-                                {field.label}
-                              </label>
-                              <Input
-                                id={`query-builder-${field.id}`}
-                                value={queryBuilderValues[field.id] ?? ""}
-                                onChange={(event) => {
-                                  const value = event.target.value;
-                                  setQueryBuilderValues((current) => ({
-                                    ...current,
-                                    [field.id]: value,
-                                  }));
-                                }}
-                                placeholder={field.placeholder}
-                              />
-                              <p className="text-[11px] leading-4 text-muted-foreground">
-                                {field.help}
-                              </p>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
                     <form
-                      className="grid gap-3 md:grid-cols-[1fr_160px]"
+                      className="grid gap-4 sm:grid-cols-[1fr_160px]"
                       onSubmit={(event) => {
                         event.preventDefault();
                         submitConnectorSearch();
@@ -907,14 +884,18 @@ export function ConnectorAdminView({
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="15">15 minutes</SelectItem>
-                            <SelectItem value="60">1 hour</SelectItem>
-                            <SelectItem value="240">4 hours</SelectItem>
-                            <SelectItem value="1440">24 hours</SelectItem>
+                            {searchWindows.map((window) => (
+                              <SelectItem
+                                key={window.value}
+                                value={window.value}
+                              >
+                                {window.label}
+                              </SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
                       </div>
-                      <div className="space-y-1.5 md:col-span-2">
+                      <div className="space-y-1.5 sm:col-span-2">
                         <label
                           htmlFor="connector-search-query"
                           className="text-sm font-medium"
@@ -929,8 +910,37 @@ export function ConnectorAdminView({
                           }
                           placeholder={guide.queryPlaceholder}
                         />
+                        {searchConnector.type === "kubernetes" && (
+                          <div className="space-y-1.5 pt-2">
+                            <label
+                              htmlFor="connector-search-namespace"
+                              className="text-sm font-medium"
+                            >
+                              Namespace
+                            </label>
+                            <Input
+                              id="connector-search-namespace"
+                              value={searchFilters.namespace ?? ""}
+                              onChange={(event) =>
+                                setSearchFilters((current) => ({
+                                  ...current,
+                                  namespace: event.target.value,
+                                }))
+                              }
+                              placeholder="supercheck"
+                              required
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              Kubernetes evidence searches are namespace-bound;
+                              cluster-wide pod listing is not allowed.
+                            </p>
+                          </div>
+                        )}
                         {activeFilters.length > 0 && (
-                          <div className="flex flex-wrap gap-2 pt-1">
+                          <div
+                            className="flex flex-wrap gap-2 pt-1"
+                            aria-label="Active search filters"
+                          >
                             {activeFilters.map(([key, value]) => (
                               <Badge
                                 key={key}
@@ -944,23 +954,20 @@ export function ConnectorAdminView({
                         )}
                       </div>
                       {availableServices.length === 0 && (
-                        <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200 md:col-span-2">
+                        <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200 sm:col-span-2">
                           No matching services are available for this connector
                           scope.
                         </div>
                       )}
-                      <div className="flex flex-col gap-2 md:col-span-2 md:flex-row md:items-center md:justify-between">
-                        <p className="text-xs text-muted-foreground">
-                          Results are capped by the connector limits:{" "}
-                          {searchConnector.outputLimits.maxRows} rows,{" "}
-                          {searchConnector.outputLimits.maxSeconds}s timeout.
-                        </p>
+                      <div className="flex justify-end sm:col-span-2">
                         <Button
                           type="submit"
                           disabled={
                             isSearchingConnector ||
                             !searchServiceId ||
-                            !searchQuery.trim()
+                            !searchQuery.trim() ||
+                            (searchConnector.type === "kubernetes" &&
+                              !searchFilters.namespace?.trim())
                           }
                         >
                           {isSearchingConnector && (
@@ -970,6 +977,140 @@ export function ConnectorAdminView({
                         </Button>
                       </div>
                     </form>
+
+                    <div className="divide-y rounded-lg border">
+                      <Collapsible
+                        open={isQueryGuideOpen}
+                        onOpenChange={setIsQueryGuideOpen}
+                      >
+                        <CollapsibleTrigger asChild>
+                          <button
+                            type="button"
+                            className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                          >
+                            <span>
+                              <span className="block text-sm font-medium">
+                                Query examples
+                              </span>
+                              <span className="block text-xs text-muted-foreground">
+                                Use a tested {guide.label} starting point.
+                              </span>
+                            </span>
+                            <ChevronDown
+                              className={cn(
+                                "h-4 w-4 shrink-0 text-muted-foreground transition-transform",
+                                isQueryGuideOpen && "rotate-180",
+                              )}
+                            />
+                          </button>
+                        </CollapsibleTrigger>
+                        <CollapsibleContent className="border-t bg-muted/10 p-3">
+                          <p className="mb-3 text-xs text-muted-foreground">
+                            {guide.setupHint}
+                          </p>
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            {guide.examples.map((example) => (
+                              <button
+                                key={example.label}
+                                type="button"
+                                onClick={() => {
+                                  setSearchQuery(example.query);
+                                  setSearchResult(null);
+                                  setIsQueryGuideOpen(false);
+                                }}
+                                className="rounded-md border bg-background p-2.5 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                              >
+                                <span className="block text-xs font-medium">
+                                  {example.label}
+                                </span>
+                                <code className="mt-1.5 block break-words rounded bg-muted px-2 py-1 font-mono text-xs">
+                                  {example.query}
+                                </code>
+                                <span className="mt-1.5 block text-xs text-muted-foreground">
+                                  {example.description}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        </CollapsibleContent>
+                      </Collapsible>
+
+                      {builder && (
+                        <Collapsible
+                          open={isQueryBuilderOpen}
+                          onOpenChange={setIsQueryBuilderOpen}
+                        >
+                          <CollapsibleTrigger asChild>
+                            <button
+                              type="button"
+                              className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                            >
+                              <span>
+                                <span className="block text-sm font-medium">
+                                  Build a query
+                                </span>
+                                <span className="block text-xs text-muted-foreground">
+                                  Create a valid query from structured fields.
+                                </span>
+                              </span>
+                              <ChevronDown
+                                className={cn(
+                                  "h-4 w-4 shrink-0 text-muted-foreground transition-transform",
+                                  isQueryBuilderOpen && "rotate-180",
+                                )}
+                              />
+                            </button>
+                          </CollapsibleTrigger>
+                          <CollapsibleContent className="border-t bg-muted/10 p-3">
+                            <div className="mb-3">
+                              <p className="text-sm font-medium">
+                                {builder.title}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {builder.description}
+                              </p>
+                            </div>
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              {builder.fields.map((field) => (
+                                <div key={field.id} className="space-y-1.5">
+                                  <label
+                                    htmlFor={`query-builder-${field.id}`}
+                                    className="text-xs font-medium"
+                                  >
+                                    {field.label}
+                                  </label>
+                                  <Input
+                                    id={`query-builder-${field.id}`}
+                                    value={queryBuilderValues[field.id] ?? ""}
+                                    onChange={(event) => {
+                                      const value = event.target.value;
+                                      setQueryBuilderValues((current) => ({
+                                        ...current,
+                                        [field.id]: value,
+                                      }));
+                                    }}
+                                    placeholder={field.placeholder}
+                                  />
+                                  <p className="text-[11px] leading-4 text-muted-foreground">
+                                    {field.help}
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
+                            <div className="mt-4 flex justify-end">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={applyQueryBuilder}
+                              >
+                                Use built query
+                              </Button>
+                            </div>
+                          </CollapsibleContent>
+                        </Collapsible>
+                      )}
+                    </div>
 
                     {searchResult && (
                       <div className="space-y-3 rounded-lg border p-3">
@@ -986,7 +1127,23 @@ export function ConnectorAdminView({
                             </p>
                           </div>
                           {searchResult.privateAgentJobId && (
-                            <Badge variant="secondary">Queued</Badge>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              disabled={isLoadingJobResult}
+                              onClick={() =>
+                                loadPrivateAgentJobResult(
+                                  searchResult.privateAgentJobId!,
+                                  true,
+                                )
+                              }
+                            >
+                              {isLoadingJobResult && (
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              )}
+                              View job result
+                            </Button>
                           )}
                         </div>
 
@@ -1024,7 +1181,7 @@ export function ConnectorAdminView({
                         )}
                       </div>
                     )}
-                  </>
+                  </div>
                 );
               })()}
             </div>
@@ -1104,7 +1261,13 @@ export function ConnectorAdminView({
                 <DashboardEmptyState
                   className="min-h-[260px]"
                   title="No evidence returned"
-                  description="The job has not completed yet or it completed without evidence summaries."
+                  description={
+                    jobResult.status === "failed"
+                      ? "The job failed before any evidence was returned. Review the sanitized error above."
+                      : jobResult.status === "completed"
+                        ? "The search completed successfully without matching evidence."
+                        : "The job is still waiting for a result."
+                  }
                   icon={<FileSearch className="h-10 w-10" />}
                 />
               ) : (

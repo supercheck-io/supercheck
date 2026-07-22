@@ -61,7 +61,7 @@ export function fallbackBrief(
         "- **Fact**: No stored native evidence was found for this incident.",
         "",
         "## Blast Radius",
-        "- Unknown until the incident is mapped to a service and evidence is available.",
+        "- Unknown because no cited evidence establishes an affected scope.",
         "",
         "## Strongest Signals",
         "- None available.",
@@ -70,7 +70,7 @@ export function fallbackBrief(
         "- No cited records are available to validate a cause or affected scope.",
         "",
         "## Next Safe Checks",
-        "- Map the incident to a service or alert source.",
+        "- Link a relevant monitor, job, run, alert, or connector evidence source.",
         "- Regenerate the brief after native evidence is available.",
         "",
         "---",
@@ -84,7 +84,10 @@ export function fallbackBrief(
   }
 
   return {
-    suspectedFailureDomain: first.evidenceType === "metric" ? "Monitoring signal" : "Execution artifact",
+    suspectedFailureDomain:
+      first.evidenceType === "metric"
+        ? "Monitoring signal"
+        : "Execution artifact",
     summary: [
       "# Incident Investigation Report",
       "",
@@ -269,7 +272,10 @@ function estimatedConfidence(evidence: BriefEvidenceInput[]) {
     return evidence.length > 0 ? 0.5 : 0.2;
   }
 
-  return Math.max(0, Math.min(1, scores.reduce((sum, value) => sum + value, 0) / scores.length));
+  return Math.max(
+    0,
+    Math.min(1, scores.reduce((sum, value) => sum + value, 0) / scores.length),
+  );
 }
 
 export async function generateEvidenceBrief(input: {
@@ -305,12 +311,17 @@ export async function generateEvidenceBrief(input: {
     const validIds = new Set(input.evidence.map((item) => item.id));
     return {
       ...parsed.data,
-      citedEvidenceIds: parsed.data.citedEvidenceIds.filter((id) => validIds.has(id)),
+      citedEvidenceIds: parsed.data.citedEvidenceIds.filter((id) =>
+        validIds.has(id),
+      ),
       provider: "ai",
       modelId,
     };
   } catch (error) {
-    console.warn("[SRE Evidence Brief] Falling back to deterministic brief:", error);
+    console.warn(
+      "[SRE Evidence Brief] Falling back to deterministic brief:",
+      error,
+    );
     return fallbackBrief(input.evidence, modelId);
   }
 }

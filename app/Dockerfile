@@ -47,14 +47,12 @@ ARG NEXT_PUBLIC_SOURCE_URL=https://github.com/supercheck-io/supercheck
 ENV NEXT_PUBLIC_SOURCE_URL=${NEXT_PUBLIC_SOURCE_URL}
 
 # Build with standalone output and static optimization
-# Use a build-time placeholder secret that will be overridden at runtime
-ENV BETTER_AUTH_SECRET=build-time-placeholder-will-be-overridden-at-runtime
 # Use --webpack flag because Next.js 16 defaults to Turbopack, but ARM64 cross-compilation
 # uses WASM fallback which doesn't support turbo.createProject
-RUN npm run build -- --webpack
-
-# Clear the build-time secret for security
-ENV BETTER_AUTH_SECRET=
+# Scope the non-sensitive placeholder to the build command so it is not persisted
+# in an image layer or mistaken for a runtime credential by image scanners.
+RUN BETTER_AUTH_SECRET=build-time-placeholder-will-be-overridden-at-runtime \
+    npm run build -- --webpack
 
 # Production image, copy all the files and run next
 FROM base AS runner

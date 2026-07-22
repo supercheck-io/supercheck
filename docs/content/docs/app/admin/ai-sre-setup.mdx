@@ -27,6 +27,11 @@ Use **Integrations** to add read-only evidence sources. Each connector has a ser
 
 Use the narrowest credential and service scope that supports your investigation queries. Validate the connector after setup. See [Connectors](/docs/app/investigate/connectors) for supported providers and query examples.
 
+Connectors are optional. AI SRE can investigate native Supercheck monitor, test,
+job, alert, and incident evidence without Grafana, Tempo, or another external
+observability system. Add only the evidence sources your team already operates
+or intentionally provisions for testing.
+
 ## Diagnostic Recipes
 
 Use **Diagnostic Recipes** to save approved, repeatable investigation queries. Recipes are connector-scoped and enforce row, byte, time, and allowlist limits.
@@ -36,6 +41,11 @@ Start with high-value checks such as service error rate, latency, recent error l
 ## Private Agents
 
 Use **Private Agents** only when Supercheck cannot reach a supported source directly. Private Agents connect outbound over HTTPS and return bounded, sanitized evidence summaries. They do not apply fixes or require inbound firewall access.
+
+Supercheck Cloud intentionally blocks direct connectors to private IP addresses,
+cluster-only DNS names, localhost, and cleartext HTTP endpoints. Use a Private
+Agent for Prometheus, Grafana, Loki, Tempo, Kubernetes, or other APIs that are
+reachable only inside your network.
 
 ## Setup Order
 

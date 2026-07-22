@@ -43,6 +43,11 @@ type SreInvestigationPanelProps = {
     errors: number;
     averageDurationMs: number;
   };
+  latestInvestigation?: {
+    status: "running" | "completed" | "failed" | "aborted" | "timed_out";
+    summary: string | null;
+    completedAt: Date | string | null;
+  } | null;
 };
 
 type ReadinessItem = {
@@ -87,6 +92,7 @@ export function SreInvestigationPanel({
   serviceMappingHref,
   evidenceReferences = [],
   toolMetrics = { total: 0, errors: 0, averageDurationMs: 0 },
+  latestInvestigation = null,
 }: SreInvestigationPanelProps) {
   const queryClient = useQueryClient();
   const { projectId } = useProjectContext();
@@ -243,6 +249,31 @@ export function SreInvestigationPanel({
             <ReadinessRow key={item.label} item={item} />
           ))}
         </div>
+
+        {latestInvestigation && (
+          <div className="overflow-hidden rounded-lg border">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/20 px-4 py-3">
+              <div>
+                <p className="text-sm font-medium">Latest result</p>
+                <p className="text-xs text-muted-foreground">
+                  {latestInvestigation.completedAt
+                    ? `Completed ${new Intl.DateTimeFormat(undefined, {
+                        dateStyle: "medium",
+                        timeStyle: "short",
+                      }).format(new Date(latestInvestigation.completedAt))}`
+                    : "Result is not complete"}
+                </p>
+              </div>
+              <Badge variant="outline" className="capitalize">
+                {latestInvestigation.status.replace(/_/g, " ")}
+              </Badge>
+            </div>
+            <div className="max-h-96 overflow-y-auto whitespace-pre-wrap break-words px-4 py-4 text-sm leading-6">
+              {latestInvestigation.summary ??
+                "No investigation summary was returned."}
+            </div>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

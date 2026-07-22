@@ -48,9 +48,11 @@ ENV K6_BIN_PATH=/usr/local/bin/k6
 
 # NOTE: Docker CLI removed — execution is orchestrated through Kubernetes Jobs.
 
-# Use the Playwright image's built-in pwuser (UID 1000) consistently for the
-# worker and child execution processes. This keeps HOME/cache ownership aligned
-# with the non-root runtime enforced by Compose/Kubernetes.
+# Use the Playwright image's built-in pwuser consistently for the worker and
+# child execution processes. Pin the expected numeric identity because
+# Kubernetes securityContext fields cannot use account names; fail the image
+# build if a future Playwright base image changes it.
+RUN test "$(id -u pwuser)" = "1001" && test "$(id -g pwuser)" = "1001"
 
 # Copy only necessary files with proper ownership
 COPY --from=builder --chown=pwuser:pwuser /worker/package*.json ./
@@ -63,7 +65,7 @@ COPY --from=builder --chown=pwuser:pwuser /worker/dist ./dist
 COPY --from=builder --chown=pwuser:pwuser /worker/playwright.config.js ./
 
 # Create directories for test execution with proper permissions
-# Note: Container execution runs as 'pwuser' (UID 1000) from Playwright image
+# Note: Container execution runs as the Playwright image's non-root pwuser.
 # We need /tmp directories writable by pwuser for inline script execution
 # Using chmod 777 for /tmp paths since they're ephemeral and pwuser needs write access
 RUN mkdir -p playwright-reports report \
@@ -97,8 +99,9 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD node -e "const http = require('http'); const port = process.env.PORT || 8000; const req = http.request({hostname: 'localhost', port: port, path: '/health', timeout: 5000}, (res) => process.exit(res.statusCode === 200 ? 0 : 1)); req.on('error', () => process.exit(1)); req.end();"
 
 # GVISOR-006: Run as non-root user by default.
-# pwuser (UID 1000) is from the Playwright base image and has access to browsers.
-USER 1000
+# Use the account name here so the image cannot silently run as a different
+# account that happens to inherit an outdated numeric UID.
+USER pwuser
 
 # EXPOSE 8000 # disabled per user request
 

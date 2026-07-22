@@ -1741,6 +1741,23 @@ async function submitResult(
   });
 }
 
+export async function processLeasedJob(
+  config: PrivateAgentConfig,
+  leased: { job: LeasedJob; leaseToken: string },
+): Promise<void> {
+  try {
+    const result = await executePrivateAgentConnectorJob(leased.job);
+    await submitResult(config, leased, 'completed', result);
+  } catch (error) {
+    const errorCode =
+      error instanceof Error
+        ? error.message.slice(0, 100)
+        : 'private_agent_job_error';
+    await submitResult(config, leased, 'failed', undefined, errorCode);
+    console.warn(`Private Agent job failed: ${errorCode}`);
+  }
+}
+
 export async function startPrivateAgentRunner(): Promise<void> {
   const config = await exchangeRegistrationToken(readConfig());
   let activeJobCount = 0;
@@ -1766,6 +1783,9 @@ export async function startPrivateAgentRunner(): Promise<void> {
   for (;;) {
     try {
       const leased = await leaseJob(config);
+      // A successful long-poll proves the control-plane connection recovered,
+      // even when there is no queued job to execute.
+      lastError = undefined;
       if (!leased) {
         if (config.leaseWaitMs <= 0) {
           await new Promise((resolve) =>
@@ -1776,17 +1796,7 @@ export async function startPrivateAgentRunner(): Promise<void> {
       }
 
       activeJobCount = 1;
-      try {
-        const result = await executePrivateAgentConnectorJob(leased.job);
-        await submitResult(config, leased, 'completed', result);
-      } catch (error) {
-        const errorCode =
-          error instanceof Error
-            ? error.message.slice(0, 100)
-            : 'private_agent_job_error';
-        await submitResult(config, leased, 'failed', undefined, errorCode);
-        throw error;
-      }
+      await processLeasedJob(config, leased);
       activeJobCount = 0;
       lastError = undefined;
     } catch (error) {

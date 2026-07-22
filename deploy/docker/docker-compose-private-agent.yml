@@ -29,11 +29,11 @@ services:
   private-agent:
     image: ghcr.io/supercheck-io/supercheck/worker:${SUPERCHECK_VERSION:-1.3.5}
     init: true
-    user: "1000:1000"
+    user: "pwuser:pwuser"
     read_only: true
     tmpfs:
-      - /tmp:size=256M,uid=1000,gid=1000,mode=1777
-      - /home/pwuser/.cache:size=128M,uid=1000,gid=1000,mode=0700
+      - /tmp:size=256M,uid=1001,gid=1001,mode=1777
+      - /home/pwuser/.cache:size=128M,uid=1001,gid=1001,mode=0700
     volumes:
       - private-agent-state:/home/pwuser/.supercheck
     environment:

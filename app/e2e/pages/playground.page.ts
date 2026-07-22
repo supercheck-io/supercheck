@@ -133,7 +133,7 @@ export class PlaygroundPage extends BasePage {
    * Navigate to the playground page
    */
   async navigate(): Promise<void> {
-    await this.page.goto('/playground');
+    await this.page.goto('/playground', { waitUntil: 'domcontentloaded' });
     await this.page.waitForLoadState('domcontentloaded');
     await this.page.waitForTimeout(1500);
   }
@@ -284,7 +284,9 @@ export class AICreatePage extends BasePage {
    * Navigate to AI Create page
    */
   async navigate(): Promise<void> {
-    await this.page.goto('/playground/ai-create');
+    await this.page.goto('/playground/ai-create', {
+      waitUntil: 'domcontentloaded',
+    });
     await this.page.waitForLoadState('domcontentloaded');
     await this.page.waitForTimeout(1500);
   }

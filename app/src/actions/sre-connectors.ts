@@ -23,6 +23,7 @@ import {
   encryptConnectorCredential,
   assertEndpointAllowedForExecution,
   createDirectConnector,
+  connectorRequiresCredentials,
   enforceConnectorPolicy,
   hashConnectorPayload,
   isDirectValidationConnectorType,
@@ -134,6 +135,16 @@ const searchConnectorSchema = z.object({
     .object({
       index: z.string().trim().min(1).max(200).optional(),
       timestampField: z.string().trim().min(1).max(100).optional(),
+      namespace: z
+        .string()
+        .trim()
+        .min(1)
+        .max(253)
+        .regex(
+          /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/,
+          "Enter a valid Kubernetes namespace",
+        )
+        .optional(),
     })
     .optional()
     .default({}),
@@ -949,7 +960,11 @@ export async function createSreConnector(
           riskLevel: parsed.data.riskLevel,
           permissionLevel: "read",
           sideEffectLevel: "none",
-          status: parsed.data.credential ? "configured" : "missing_credentials",
+          status:
+            parsed.data.credential ||
+            !connectorRequiresCredentials(parsed.data.type)
+              ? "configured"
+              : "missing_credentials",
           defaultTimeWindowMinutes: parsed.data.defaultTimeWindowMinutes,
           outputLimits: parsed.data.outputLimits,
           createdByUserId: userId,
@@ -1121,7 +1136,7 @@ export async function validateSreConnector(
       | "policy_blocked" = "valid";
     let outputSummary = "Connector validation passed";
 
-    if (!credentialRow && row.type !== "webhook") {
+    if (!credentialRow && connectorRequiresCredentials(row.type)) {
       status = "invalid_credentials";
       outputSummary = "Connector is missing credentials";
     } else if (row.privateAgentId) {
@@ -1144,6 +1159,10 @@ export async function validateSreConnector(
         status = "unreachable";
         outputSummary =
           "Configured Private Agent is not healthy or does not support SRE connectors";
+      } else {
+        status = "policy_blocked";
+        outputSummary =
+          "Private Agent is connected. Run a bounded evidence search to verify the connector endpoint and access.";
       }
     } else {
       await assertEndpointAllowedForExecution(endpointUrl, false);
@@ -1448,6 +1467,13 @@ export async function searchSreConnectorEvidence(
       return {
         success: false,
         error: `${connector.type.replace(/_/g, " ")} evidence search is not implemented yet. Configure the connector for future collaboration context, but do not use it for live investigation search.`,
+      };
+    }
+
+    if (connector.type === "kubernetes" && !parsed.data.filters.namespace) {
+      return {
+        success: false,
+        error: "Kubernetes connector searches require an explicit namespace",
       };
     }
 

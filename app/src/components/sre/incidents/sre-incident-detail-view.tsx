@@ -291,6 +291,7 @@ export function SreIncidentDetailView({
               evidenceType: item.evidenceType,
             }))}
             toolMetrics={detail.toolMetrics}
+            latestInvestigation={detail.latestInvestigation}
           />
         </TabsContent>
 

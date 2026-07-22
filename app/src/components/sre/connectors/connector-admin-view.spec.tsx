@@ -1,5 +1,10 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 
+import {
+  getPrivateAgentConnectorJobResult,
+  searchSreConnectorEvidence,
+} from "@/actions/sre-connectors";
+
 import { ConnectorAdminView } from "./connector-admin-view";
 import { SRE_CONNECTOR_CATALOG } from "./connector-catalog";
 
@@ -260,12 +265,155 @@ describe("ConnectorAdminView", () => {
       await screen.findByRole("menuitem", { name: /search evidence/i }),
     );
 
-    expect(screen.getByText("AWS CloudWatch query guide")).toBeInTheDocument();
+    const dialog = screen.getByRole("dialog", {
+      name: "Search connector evidence",
+    });
+    expect(dialog).toHaveClass("max-w-2xl");
+    expect(screen.getByText("Bounded search")).toBeInTheDocument();
+    expect(screen.getByLabelText("Alarm or metric query")).toBeInTheDocument();
+    expect(screen.queryByText("Active alarms")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText("Window"));
+    expect(screen.getByRole("option", { name: "1 hour" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("option", { name: "4 hours" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("option", { name: "24 hours" }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("option", { name: "1 hour" }));
+
+    fireEvent.click(screen.getByRole("button", { name: /query examples/i }));
     expect(screen.getByText("Active alarms")).toBeInTheDocument();
     expect(
       screen.getByDisplayValue("prefix:checkout state:ALARM"),
     ).toBeInTheDocument();
-    expect(screen.getByText(/100 rows, 10s timeout/i)).toBeInTheDocument();
+    expect(screen.getByText(/up to 100 rows/i)).toBeInTheDocument();
+  });
+
+  it("requires an explicit namespace for Kubernetes evidence searches", async () => {
+    const kubernetesConnector = {
+      ...connector,
+      name: "Kubernetes prod",
+      type: "kubernetes" as const,
+      endpointUrl: "https://kubernetes.default.svc",
+    };
+
+    render(
+      <ConnectorAdminView
+        loadError={null}
+        initialConnectors={[kubernetesConnector]}
+        setupOptions={{
+          services: [
+            {
+              id: "018f0000-0000-7000-8000-000000000003",
+              name: "checkout",
+              environment: "prod",
+              ownerTeam: "payments",
+            },
+          ],
+          privateAgents: [],
+        }}
+        initialBindings={[]}
+        bindingSetupOptions={{
+          notificationProviders: [],
+          connectors: [],
+          services: [],
+        }}
+      />,
+    );
+
+    openConnectorActions("Kubernetes prod");
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: /search evidence/i }),
+    );
+
+    const namespace = screen.getByLabelText("Namespace");
+    const submit = screen.getByRole("button", { name: "Search evidence" });
+    expect(namespace).toBeRequired();
+    expect(submit).toBeDisabled();
+
+    fireEvent.change(namespace, { target: { value: "supercheck" } });
+    expect(submit).toBeEnabled();
+  });
+
+  it("explains failed Private Agent jobs without implying they are pending", async () => {
+    jest.mocked(searchSreConnectorEvidence).mockResolvedValueOnce({
+      success: true,
+      message: "Queued Private Agent connector search",
+      privateAgentJobId: "018f0000-0000-7000-8000-000000000040",
+      evidence: [],
+      truncated: false,
+    });
+    jest.mocked(getPrivateAgentConnectorJobResult).mockResolvedValueOnce({
+      success: true,
+      job: {
+        id: "018f0000-0000-7000-8000-000000000040",
+        status: "failed",
+        connectorId: connector.id,
+        connectorName: "Kubernetes prod",
+        evidence: [],
+        truncated: false,
+        errorCode: "HTTP 401",
+        resultHash: null,
+        createdAt: "2026-07-21T09:59:59.000Z",
+        startedAt: "2026-07-21T10:00:00.000Z",
+        completedAt: "2026-07-21T10:00:01.000Z",
+        durationMs: 1000,
+      },
+    });
+
+    const kubernetesConnector = {
+      ...connector,
+      name: "Kubernetes prod",
+      type: "kubernetes" as const,
+      endpointUrl: "https://kubernetes.default.svc",
+    };
+
+    render(
+      <ConnectorAdminView
+        loadError={null}
+        initialConnectors={[kubernetesConnector]}
+        setupOptions={{
+          services: [
+            {
+              id: "018f0000-0000-7000-8000-000000000003",
+              name: "checkout",
+              environment: "prod",
+              ownerTeam: "payments",
+            },
+          ],
+          privateAgents: [],
+        }}
+        initialBindings={[]}
+        bindingSetupOptions={{
+          notificationProviders: [],
+          connectors: [],
+          services: [],
+        }}
+      />,
+    );
+
+    openConnectorActions("Kubernetes prod");
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: /search evidence/i }),
+    );
+    fireEvent.change(screen.getByLabelText("Namespace"), {
+      target: { value: "supercheck" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Search evidence" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "View job result" }),
+    );
+
+    expect(
+      await screen.findByText(
+        "The job failed before any evidence was returned. Review the sanitized error above.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/job has not completed yet/i),
+    ).not.toBeInTheDocument();
   });
 
   it("builds typed CloudWatch metric queries in the evidence search dialog", async () => {
@@ -297,6 +445,8 @@ describe("ConnectorAdminView", () => {
     fireEvent.click(
       await screen.findByRole("menuitem", { name: /search evidence/i }),
     );
+    expect(screen.queryByLabelText("Metric namespace")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /build a query/i }));
     fireEvent.change(screen.getByLabelText("Metric namespace"), {
       target: { value: "AWS/ApplicationELB" },
     });
@@ -306,13 +456,59 @@ describe("ConnectorAdminView", () => {
     fireEvent.change(screen.getByLabelText("Dimensions"), {
       target: { value: "LoadBalancer=app/checkout" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Build query" }));
+    fireEvent.click(screen.getByRole("button", { name: "Use built query" }));
 
     expect(
       screen.getByDisplayValue(
         "namespace:AWS/ApplicationELB metric:TargetResponseTime dimension:LoadBalancer=app/checkout stat:Average period:60",
       ),
     ).toBeInTheDocument();
+    expect(screen.queryByLabelText("Metric namespace")).not.toBeInTheDocument();
+  });
+
+  it("initializes Tempo builder state without values from another connector", async () => {
+    const tempoConnector = {
+      ...connector,
+      id: "018f0000-0000-7000-8000-000000000030",
+      name: "Tempo prod",
+      type: "tempo" as const,
+      endpointUrl: "http://tempo.observability.svc:3200",
+    };
+
+    render(
+      <ConnectorAdminView
+        loadError={null}
+        initialConnectors={[tempoConnector]}
+        setupOptions={{
+          services: [
+            {
+              id: "018f0000-0000-7000-8000-000000000003",
+              name: "checkout",
+              environment: "prod",
+              ownerTeam: "payments",
+            },
+          ],
+          privateAgents: [],
+        }}
+        initialBindings={[]}
+        bindingSetupOptions={{
+          notificationProviders: [],
+          connectors: [],
+          services: [],
+        }}
+      />,
+    );
+
+    openConnectorActions("Tempo prod");
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: /search evidence/i }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /build a query/i }));
+
+    expect(screen.getByLabelText("TraceQL")).toHaveValue("");
+    expect(screen.getByRole("textbox", { name: "Service" })).toHaveValue(
+      "checkout",
+    );
   });
 
   it("disables evidence search for collaboration connectors without live adapters", async () => {

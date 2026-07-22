@@ -20,9 +20,20 @@ The Add Connector dialog shows only providers with implemented validation and bo
 
 ## Execution Modes
 
-**Direct** connects from the Supercheck app to a reachable provider API.
+**Direct** connects from the Supercheck app to a reachable provider API. In
+Supercheck Cloud, direct endpoints must use HTTPS and resolve to a public
+address. Private IPs, cluster-only DNS, localhost, and cleartext HTTP are
+rejected to protect the service from server-side request forgery.
 
 **Private Agent** connects from an outbound-only agent inside your network. It is available for GitHub, Kubernetes, Prometheus, Grafana, Sentry, Datadog, Loki, Elasticsearch/OpenSearch, Tempo, and AWS CloudWatch.
+
+Use a Private Agent for in-cluster or on-premises endpoints. Do not expose an
+internal observability API publicly or weaken endpoint restrictions only to make
+a direct connector work.
+
+Kubernetes searches require an explicit namespace. Grant the connector service
+account read-only access only to the namespaces under test; do not grant
+cluster-admin or unrestricted write permissions.
 
 GitLab, PagerDuty, and Opsgenie currently support direct execution only.
 
@@ -34,6 +45,25 @@ GitLab, PagerDuty, and Opsgenie currently support direct execution only.
 4. Save, validate, and run a bounded search with known-safe data.
 
 Use **Context links** only when an alert destination should be correlated with a separate read-only connector.
+
+## Credential Checklist
+
+Use a separate read-only credential for Supercheck and limit it to the provider
+resources mapped to the affected service:
+
+- **GitHub:** fine-grained token limited to the required repositories and read-only metadata/content access.
+- **GitLab:** read-only personal, project, or group token limited to the required projects.
+- **Grafana:** service-account token with the `Viewer` role and dashboard search access. Do not use the Grafana administrator password.
+- **Sentry:** project-scoped token that can list issues but cannot change issue state.
+- **Datadog:** API and application keys with read-only event access for the account's regional API site.
+- **Elasticsearch/OpenSearch:** search-only credential limited to approved indices.
+- **AWS CloudWatch:** prefer short-lived STS credentials limited to `DescribeAlarms`, `GetMetricData`, and `ListMetrics` in the required account and region.
+- **PagerDuty:** read-only REST API key with incident-read access. An Events API integration key is not valid for searches.
+- **Opsgenie:** key from a read-only integration that can list alerts but cannot create, acknowledge, close, or delete them.
+
+After validation, run one known-result query and one no-result query. Revoke
+temporary credentials and remove disposable provider fixtures when testing is
+complete.
 
 ## Query Examples
 

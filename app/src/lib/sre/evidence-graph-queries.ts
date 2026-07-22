@@ -18,7 +18,10 @@ import {
 } from "@/db/schema";
 import { requireProjectContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
-import { formatSreEvidenceGraphTitle } from "@/lib/sre/evidence-graph-display";
+import {
+  formatSreEvidenceGraphTitle,
+  formatSreInvestigationTypeLabel,
+} from "@/lib/sre/evidence-graph-display";
 import { db } from "@/utils/db";
 
 export type SreEvidenceGraphNodeType =
@@ -587,7 +590,9 @@ export async function getSreEvidenceGraph(): Promise<
 
     for (const investigation of investigations) {
       const investigationNodeId = graphNodeId("investigation", investigation.id);
-      const investigationTitle = `${investigation.agentType.replace(/_/g, " ")} investigation`;
+      const investigationTitle = formatSreInvestigationTypeLabel(
+        investigation.agentType,
+      );
       nodes.push({
         id: investigationNodeId,
         sourceId: investigation.id,

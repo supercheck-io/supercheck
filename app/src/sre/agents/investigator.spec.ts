@@ -12,6 +12,9 @@ describe("SRE investigation prompt", () => {
       connectorEvidenceCount: 2,
       liveConnectorToolsEnabled: true,
       specializedSubagentsEnabled: true,
+      storedEvidenceContext: [
+        "id=evidence-1; type=topology; title=checkout pod; summary=Phase Running - 0 restarts; resultHash=abc123",
+      ],
     });
 
     expect(system).toContain("read-only SRE investigation agent");
@@ -19,10 +22,16 @@ describe("SRE investigation prompt", () => {
     expect(system).toContain("Never suggest executing shell commands");
     expect(system).toContain("start with statistics in a narrow window");
     expect(system).toContain("Fact, Inference, or Hypothesis");
+    expect(system).toContain("incident title and operator notes as unverified context");
+    expect(system).toContain("root cause is undetermined");
+    expect(system).toContain("do not describe connector evidence as absent");
     expect(prompt).toContain("checkout latency");
     expect(prompt).toContain("Live connector tools: available");
     expect(prompt).toContain("Specialized subagents: available");
     expect(prompt).toContain("pass cited context into the subagent task");
+    expect(prompt).toContain("Sanitized stored evidence");
+    expect(prompt).toContain("id=evidence-1");
+    expect(prompt).toContain("Phase Running - 0 restarts");
     expect(prompt).toContain("verification plan");
     expect(prompt).toContain("Blast radius");
   });

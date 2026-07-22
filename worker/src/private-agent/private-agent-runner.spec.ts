@@ -1,6 +1,7 @@
 import {
   exchangeRegistrationToken,
   executePrivateAgentConnectorJob,
+  processLeasedJob,
   type PrivateAgentConfig,
 } from './private-agent-runner';
 
@@ -375,6 +376,49 @@ describe('private agent connector execution', () => {
         jobSpec: { ...baseJob.jobSpec, endpointUrl: 'http://localhost:9090' },
       }),
     ).rejects.toThrow('cannot target localhost');
+  });
+
+  it('reports a failed connector job without failing the agent loop', async () => {
+    const warnSpy = jest
+      .spyOn(console, 'warn')
+      .mockImplementation(() => undefined);
+    const config: PrivateAgentConfig = {
+      apiUrl: 'https://app.supercheck.io',
+      agentId: '018f0000-0000-7000-8000-000000000001',
+      token: 'scpac_runtime_1234567890',
+      tokenSource: 'env',
+      credentialFile: null,
+      agentVersion: '1.3.5',
+      retryIntervalMs: 5_000,
+      leaseWaitMs: 25_000,
+      heartbeatIntervalMs: 30_000,
+    };
+
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        json: async () => ({ message: 'Forbidden' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({}),
+      }) as unknown as typeof fetch;
+
+    await expect(
+      processLeasedJob(config, { job: baseJob, leaseToken: 'lease-token' }),
+    ).resolves.toBeUndefined();
+
+    expect(global.fetch).toHaveBeenLastCalledWith(
+      'https://app.supercheck.io/api/private-agents/jobs/result',
+      expect.objectContaining({
+        method: 'POST',
+        body: expect.stringContaining('"status":"failed"'),
+      }),
+    );
+    warnSpy.mockRestore();
   });
 
   it('exchanges registration tokens for runtime credentials', async () => {

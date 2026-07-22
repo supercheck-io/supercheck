@@ -201,6 +201,14 @@ export type SreIncidentDetail = {
     completedAt: Date | null;
     createdAt: Date;
   } | null;
+  latestInvestigation: {
+    id: string;
+    modelId: string;
+    status: "running" | "completed" | "failed" | "aborted" | "timed_out";
+    summary: string | null;
+    completedAt: Date | null;
+    createdAt: Date;
+  } | null;
   evidence: Array<{
     id: string;
     title: string;
@@ -771,6 +779,29 @@ export async function getSreIncidentDetails(
           eq(sreInvestigationRuns.incidentId, incidentId),
           eq(sreInvestigationRuns.organizationId, organizationId),
           eq(sreInvestigationRuns.projectId, project.id),
+          eq(sreInvestigationRuns.agentType, "sre_ai"),
+        ),
+      )
+      .orderBy(desc(sreInvestigationRuns.createdAt))
+      .limit(1);
+
+    const [latestInvestigation] = await db
+      .select({
+        id: sreInvestigationRuns.id,
+        modelId: sreInvestigationRuns.modelId,
+        status: sreInvestigationRuns.status,
+        rootCauseHypothesis: sreInvestigationRuns.rootCauseHypothesis,
+        agentStateSnapshot: sreInvestigationRuns.agentStateSnapshot,
+        completedAt: sreInvestigationRuns.completedAt,
+        createdAt: sreInvestigationRuns.createdAt,
+      })
+      .from(sreInvestigationRuns)
+      .where(
+        and(
+          eq(sreInvestigationRuns.incidentId, incidentId),
+          eq(sreInvestigationRuns.organizationId, organizationId),
+          eq(sreInvestigationRuns.projectId, project.id),
+          eq(sreInvestigationRuns.agentType, "investigation"),
         ),
       )
       .orderBy(desc(sreInvestigationRuns.createdAt))
@@ -814,6 +845,7 @@ export async function getSreIncidentDetails(
               eq(sreInvestigationRuns.incidentId, incidentId),
               eq(sreInvestigationRuns.organizationId, organizationId),
               eq(sreInvestigationRuns.projectId, project.id),
+              eq(sreInvestigationRuns.agentType, "investigation"),
             ),
           )
           .limit(1),
@@ -836,6 +868,7 @@ export async function getSreIncidentDetails(
               eq(sreInvestigationRuns.incidentId, incidentId),
               eq(sreInvestigationRuns.organizationId, organizationId),
               eq(sreInvestigationRuns.projectId, project.id),
+              eq(sreInvestigationRuns.agentType, "investigation"),
             ),
           )
           .limit(1),
@@ -871,11 +904,26 @@ export async function getSreIncidentDetails(
           ...incident,
           evidenceCount: evidence.length,
           investigationCount: investigationCountRow[0]?.count ?? 0,
-          latestInvestigationStatus: latestBrief?.status ?? null,
-          latestInvestigationCompletedAt: latestBrief?.completedAt ?? null,
-          latestInvestigationCreatedAt: latestBrief?.createdAt ?? null,
+          latestInvestigationStatus: latestInvestigation?.status ?? null,
+          latestInvestigationCompletedAt:
+            latestInvestigation?.completedAt ?? null,
+          latestInvestigationCreatedAt: latestInvestigation?.createdAt ?? null,
         },
         latestBrief: latestBrief ?? null,
+        latestInvestigation: latestInvestigation
+          ? {
+              id: latestInvestigation.id,
+              modelId: latestInvestigation.modelId,
+              status: latestInvestigation.status,
+              summary:
+                typeof latestInvestigation.agentStateSnapshot?.summary ===
+                "string"
+                  ? latestInvestigation.agentStateSnapshot.summary
+                  : latestInvestigation.rootCauseHypothesis,
+              completedAt: latestInvestigation.completedAt,
+              createdAt: latestInvestigation.createdAt,
+            }
+          : null,
         evidence,
         chatHistory,
         chatHistories,

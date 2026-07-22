@@ -27,3 +27,14 @@ export function formatSreEvidenceGraphTitle(
     ? `${plainTitle.slice(0, maxLength - 3)}...`
     : plainTitle;
 }
+
+export function formatSreInvestigationTypeLabel(agentType: string) {
+  const labels: Record<string, string> = {
+    investigation: "AI investigation",
+    sre_ai: "Evidence brief",
+    triage: "AI triage",
+    background: "Background analysis",
+  };
+
+  return labels[agentType] ?? agentType.replace(/_/g, " ");
+}

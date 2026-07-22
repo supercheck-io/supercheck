@@ -15,7 +15,10 @@ import {
 import { runSreAgent } from "@/sre/lib/agent-runner";
 import { createSreInvestigationSubagentTools } from "@/sre/subagents/domain-subagents";
 import { createSreConnectorTools } from "@/sre/tools/connector-tools";
-import { createSreEvidenceTools } from "@/sre/tools/evidence-tools";
+import {
+  createSreEvidenceTools,
+  listStoredSreEvidence,
+} from "@/sre/tools/evidence-tools";
 import { db } from "@/utils/db";
 
 export type RunSreIncidentInvestigationInput = {
@@ -135,6 +138,36 @@ export async function executeSreIncidentInvestigation(
   const liveConnectorsEnabled = input.enableLiveConnectors === true;
 
   try {
+    const [nativeEvidence, connectorEvidence] = await Promise.all([
+      listStoredSreEvidence({
+        organizationId: input.organizationId,
+        projectId: input.projectId,
+        incidentId: incident.id,
+        sourceMode: "native",
+        limit: 8,
+      }),
+      listStoredSreEvidence({
+        organizationId: input.organizationId,
+        projectId: input.projectId,
+        incidentId: incident.id,
+        sourceMode: "connector",
+        limit: 8,
+      }),
+    ]);
+    const storedEvidenceContext = [...nativeEvidence, ...connectorEvidence].map(
+      (item) => {
+        const summary =
+          item.summary ?? item.rawContentExcerpt ?? "No summary available";
+        return [
+          `id=${item.id}`,
+          `type=${item.evidenceType}`,
+          `title=${item.title}`,
+          `summary=${summary.slice(0, 400)}`,
+          `observedAt=${item.observedAt ?? "unknown"}`,
+          `resultHash=${item.citationResultHash ?? "unavailable"}`,
+        ].join("; ");
+      },
+    );
     const toolScope = {
       organizationId: input.organizationId,
       projectId: input.projectId,
@@ -153,6 +186,7 @@ export async function executeSreIncidentInvestigation(
         connectorEvidenceCount: Number(incident.connectorEvidenceCount ?? 0),
         liveConnectorToolsEnabled: liveConnectorsEnabled,
         specializedSubagentsEnabled: liveConnectorsEnabled,
+        storedEvidenceContext,
       }),
       tools: {
         ...createSreEvidenceTools(toolScope),
