@@ -17,7 +17,7 @@ on:
         type: string
 
 env:
-  NODE_VERSION: "20"
+  NODE_VERSION: "24"
 
 # Explicit permissions following least-privilege principle
 permissions:
@@ -65,8 +65,13 @@ jobs:
         id: e2e-tests
         working-directory: ./app/e2e
         run: |
-          if [ -n "${{ github.event.inputs.test_filter }}" ]; then
-            npx playwright test --grep "${{ github.event.inputs.test_filter }}"
+          if [ -z "$E2E_BASE_URL" ] || [ -z "$E2E_TEST_USER_EMAIL" ] || [ -z "$E2E_TEST_USER_PASSWORD" ]; then
+            echo "::error::E2E_BASE_URL, E2E_TEST_USER_EMAIL, and E2E_TEST_USER_PASSWORD must be configured."
+            exit 1
+          fi
+
+          if [ -n "$TEST_FILTER" ]; then
+            npx playwright test --grep "$TEST_FILTER"
           else
             npx playwright test
           fi
@@ -74,6 +79,7 @@ jobs:
         continue-on-error: true
         env:
           CI: true
+          TEST_FILTER: ${{ github.event.inputs.test_filter }}
           E2E_BASE_URL: ${{ github.event.inputs.base_url || secrets.E2E_BASE_URL }}
           E2E_TEST_USER_EMAIL: ${{ secrets.E2E_TEST_USER_EMAIL }}
           E2E_TEST_USER_PASSWORD: ${{ secrets.E2E_TEST_USER_PASSWORD }}
@@ -96,12 +102,14 @@ jobs:
 
       - name: Create test summary
         if: always()
+        env:
+          TEST_FILTER: ${{ github.event.inputs.test_filter }}
         run: |
           echo "## 🎭 Full E2E Test Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          if [ -n "${{ github.event.inputs.test_filter }}" ]; then
-            echo "**Filter:** \`${{ github.event.inputs.test_filter }}\`" >> $GITHUB_STEP_SUMMARY
+          if [ -n "$TEST_FILTER" ]; then
+            echo "**Filter:** \`$TEST_FILTER\`" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
           fi
 
@@ -109,9 +117,8 @@ jobs:
             PASSED=$(jq '.stats.expected // 0' app/e2e/test-results/results.json)
             FAILED=$(jq '.stats.unexpected // 0' app/e2e/test-results/results.json)
             SKIPPED=$(jq '.stats.skipped // 0' app/e2e/test-results/results.json)
-            DURATION=$(jq '.stats.duration // 0' app/e2e/test-results/results.json)
-            DURATION_MIN=$((DURATION / 60000))
-            
+            DURATION_MIN=$(jq '((.stats.duration // 0) / 60000) | floor' app/e2e/test-results/results.json)
+
             echo "| Metric | Count |" >> $GITHUB_STEP_SUMMARY
             echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
             echo "| ✅ Passed | $PASSED |" >> $GITHUB_STEP_SUMMARY
@@ -119,7 +126,7 @@ jobs:
             echo "| ⏭️ Skipped | $SKIPPED |" >> $GITHUB_STEP_SUMMARY
             echo "| ⏱️ Duration | ${DURATION_MIN}m |" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            
+
             if [ "${{ steps.e2e-tests.outcome }}" == "failure" ]; then
               echo "> ⚠️ **Some tests failed.** Download the playwright-report-full artifact for details." >> $GITHUB_STEP_SUMMARY
             else
