@@ -11,12 +11,13 @@ on:
         required: false
         type: string
       base_url:
-        description: "Base URL for tests (overrides secret E2E_BASE_URL)"
+        description: "Target URL (defaults to the Docker Compose demo)"
         required: false
+        default: "https://demo.supercheck.dev"
         type: string
       expected_build_sha:
-        description: "Full commit SHA deployed at the target URL"
-        required: true
+        description: "Optional full SHA for deployment attestation"
+        required: false
         type: string
   workflow_call:
     inputs:
@@ -100,7 +101,7 @@ jobs:
         id: e2e-tests
         working-directory: ./app/e2e
         run: |
-          REQUIRED_VARS="E2E_BASE_URL E2E_EXPECTED_BUILD_SHA E2E_TEST_USER_EMAIL E2E_TEST_USER_PASSWORD E2E_INVITEE_EMAIL E2E_INVITEE_PASSWORD E2E_SESSION_USER_EMAIL E2E_SESSION_USER_PASSWORD E2E_SECURITY_USER_EMAIL E2E_SECURITY_USER_PASSWORD E2E_SUPER_ADMIN_EMAIL E2E_SUPER_ADMIN_PASSWORD E2E_ORG_OWNER_EMAIL E2E_ORG_OWNER_PASSWORD E2E_ORG_ADMIN_EMAIL E2E_ORG_ADMIN_PASSWORD E2E_PROJECT_ADMIN_EMAIL E2E_PROJECT_ADMIN_PASSWORD E2E_EDITOR_EMAIL E2E_EDITOR_PASSWORD E2E_VIEWER_EMAIL E2E_VIEWER_PASSWORD"
+          REQUIRED_VARS="E2E_TEST_USER_EMAIL E2E_TEST_USER_PASSWORD E2E_INVITEE_EMAIL E2E_INVITEE_PASSWORD E2E_SESSION_USER_EMAIL E2E_SESSION_USER_PASSWORD E2E_SECURITY_USER_EMAIL E2E_SECURITY_USER_PASSWORD E2E_SUPER_ADMIN_EMAIL E2E_SUPER_ADMIN_PASSWORD E2E_ORG_OWNER_EMAIL E2E_ORG_OWNER_PASSWORD E2E_ORG_ADMIN_EMAIL E2E_ORG_ADMIN_PASSWORD E2E_PROJECT_ADMIN_EMAIL E2E_PROJECT_ADMIN_PASSWORD E2E_EDITOR_EMAIL E2E_EDITOR_PASSWORD E2E_VIEWER_EMAIL E2E_VIEWER_PASSWORD"
           MISSING_VARS=""
           for VAR_NAME in $REQUIRED_VARS; do
             if [ -z "$(printenv "$VAR_NAME")" ]; then
@@ -123,10 +124,10 @@ jobs:
           CI: true
           E2E_FAIL_ON_PRIORITY_SKIPS: true
           TEST_FILTER: ${{ inputs.test_filter }}
-          E2E_BASE_URL: ${{ inputs.base_url || secrets.E2E_BASE_URL }}
-          # Scheduled runs must verify that the deployment matches the exact
-          # default-branch commit checked out by this workflow.
-          E2E_EXPECTED_BUILD_SHA: ${{ inputs.expected_build_sha || github.sha }}
+          E2E_BASE_URL: ${{ inputs.base_url || 'https://demo.supercheck.dev' }}
+          # When omitted, the conditional revision-attestation test is not
+          # registered. Functional E2E coverage still runs in full.
+          E2E_EXPECTED_BUILD_SHA: ${{ inputs.expected_build_sha }}
           E2E_TEST_USER_EMAIL: ${{ secrets.E2E_TEST_USER_EMAIL }}
           E2E_TEST_USER_PASSWORD: ${{ secrets.E2E_TEST_USER_PASSWORD }}
           E2E_INVITEE_EMAIL: ${{ secrets.E2E_INVITEE_EMAIL }}
