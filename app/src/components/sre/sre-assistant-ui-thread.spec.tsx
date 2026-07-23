@@ -1,3 +1,5 @@
+import { fireEvent, render, screen } from "@testing-library/react";
+
 import {
   buildAttachmentContextPrompt,
   createUserPromptMessage,
@@ -6,6 +8,34 @@ import {
   getQuickRepliesForAssistantText,
   SRE_INLINE_CAPABILITIES_PREVIEW,
 } from "./sre-generative-ui";
+import { CopilotChatHelp } from "./sre-copilot-chat-help";
+
+describe("CopilotChatHelp", () => {
+  it("explains commands, evidence boundaries, attachments, and read-only safety", () => {
+    render(<CopilotChatHelp />);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open Copilot chat help" }),
+    );
+
+    expect(
+      screen.getByRole("heading", { name: "Using Copilot chat" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("/health")).toBeInTheDocument();
+    expect(screen.getByText("/investigate")).toBeInTheDocument();
+    expect(screen.getByText("/evidence")).toBeInTheDocument();
+    expect(screen.getByText("/verify")).toBeInTheDocument();
+    expect(screen.getByText("Context and files")).toBeInTheDocument();
+    expect(screen.getByText("Where answers come from")).toBeInTheDocument();
+    expect(
+      screen.getByText(/does not automatically inspect an incident/i),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Read-only by design")).toBeInTheDocument();
+    expect(
+      screen.getByText(/cannot restart workloads, edit configuration, delete data/i),
+    ).toBeInTheDocument();
+  });
+});
 
 describe("getQuickRepliesForAssistantText", () => {
   it("suggests read-only recovery prompts after failures", () => {

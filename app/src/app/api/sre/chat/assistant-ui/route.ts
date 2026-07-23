@@ -160,6 +160,11 @@ function buildAssistantUiSystemPrompt(input: {
     input.incidentId && !input.liveConnectorToolsEnabled
       ? "- Live connector tools are not available for this chat; explain that verification is based on stored evidence and user-provided context only."
       : null,
+    "- Never invent evidence IDs, source systems, queries, observations, metric values, timestamps, or confidence levels.",
+    "- Treat evidence as verified only when it appears in tool output or was explicitly supplied by the user. Otherwise say that no supporting evidence is available.",
+    !input.incidentId
+      ? "- Standalone chat has no incident evidence or live connector scope. Slash commands describe a read-only plan unless the user supplies concrete data."
+      : null,
     "- Prefer concise headings, short bullets, markdown tables for comparisons, and fenced code blocks for commands or queries.",
     "- Do not emit raw markdown heading markers as decoration; use headings only when they add structure.",
     "- Supported slash commands are read-only aliases: /health for system health summaries, /investigate for incident/service triage, /evidence for evidence review, and /verify for verification planning.",

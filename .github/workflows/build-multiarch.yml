@@ -188,7 +188,7 @@ jobs:
 
       - name: Build and push app image
         id: build-app
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: ./app
           file: ./app/Dockerfile
@@ -201,8 +201,11 @@ jobs:
           build-args: |
             NEXT_PUBLIC_SOURCE_URL=https://github.com/supercheck-io/supercheck/tree/${{ github.sha }}
             SUPERCHECK_BUILD_SHA=${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # Keep release correctness independent of the GitHub Actions cache
+          # service. A failed GHA cache export used to fail this job after the
+          # image manifest had already been pushed successfully.
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/app:buildcache
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/app:buildcache,mode=max,ignore-error=true
 
       - name: Clean up after app build
         run: |
@@ -212,7 +215,7 @@ jobs:
 
       - name: Build and push worker image
         id: build-worker
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: ./worker
           file: ./worker/Dockerfile
@@ -222,8 +225,8 @@ jobs:
           sbom: true
           tags: ${{ steps.worker-meta.outputs.tags }}
           labels: ${{ steps.worker-meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/worker:buildcache
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/worker:buildcache,mode=max,ignore-error=true
 
       - name: Install Cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
@@ -243,12 +246,14 @@ jobs:
           echo "${{ steps.worker-meta.outputs.tags }}"
 
   e2e-tests:
-    if: false
-    name: E2E Tests
+    name: Full E2E Tests
+    # The full suite mutates projects, users, monitors, and other test data.
+    # Enable this only after the built SHA is deployed to the isolated E2E
+    # environment; production Turnstile intentionally blocks automation.
+    if: ${{ vars.E2E_RELEASE_GATE_ENABLED == 'true' }}
     needs: build-and-push
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    continue-on-error: true # Don't fail workflow on test failures
+    timeout-minutes: 60
 
     steps:
       - name: Checkout repository
@@ -257,7 +262,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: "20"
+          node-version: "24"
 
       - name: Cache npm dependencies
         uses: actions/cache@v5
@@ -281,33 +286,56 @@ jobs:
         working-directory: ./app/e2e
         run: npx playwright install --with-deps chromium
 
-      - name: Run E2E tests
+      - name: Run full E2E test suite
         id: e2e-tests
         working-directory: ./app/e2e
-        run: npx playwright test --grep "@smoke|@critical" --reporter=html,json,github
-        timeout-minutes: 20
+        run: |
+          REQUIRED_VARS="E2E_BASE_URL E2E_EXPECTED_BUILD_SHA E2E_TEST_USER_EMAIL E2E_TEST_USER_PASSWORD E2E_INVITEE_EMAIL E2E_INVITEE_PASSWORD E2E_SESSION_USER_EMAIL E2E_SESSION_USER_PASSWORD E2E_SECURITY_USER_EMAIL E2E_SECURITY_USER_PASSWORD E2E_SUPER_ADMIN_EMAIL E2E_SUPER_ADMIN_PASSWORD E2E_ORG_OWNER_EMAIL E2E_ORG_OWNER_PASSWORD E2E_ORG_ADMIN_EMAIL E2E_ORG_ADMIN_PASSWORD E2E_PROJECT_ADMIN_EMAIL E2E_PROJECT_ADMIN_PASSWORD E2E_EDITOR_EMAIL E2E_EDITOR_PASSWORD E2E_VIEWER_EMAIL E2E_VIEWER_PASSWORD"
+          MISSING_VARS=""
+          for VAR_NAME in $REQUIRED_VARS; do
+            if [ -z "$(printenv "$VAR_NAME")" ]; then
+              MISSING_VARS="$MISSING_VARS $VAR_NAME"
+            fi
+          done
+          if [ -n "$MISSING_VARS" ]; then
+            echo "::error::Missing required full-suite E2E variables:$MISSING_VARS"
+            exit 1
+          fi
+
+          npx playwright test
+        timeout-minutes: 50
         continue-on-error: true
         env:
           CI: true
+          E2E_FAIL_ON_PRIORITY_SKIPS: true
           E2E_BASE_URL: ${{ secrets.E2E_BASE_URL }}
+          E2E_EXPECTED_BUILD_SHA: ${{ github.sha }}
           E2E_TEST_USER_EMAIL: ${{ secrets.E2E_TEST_USER_EMAIL }}
           E2E_TEST_USER_PASSWORD: ${{ secrets.E2E_TEST_USER_PASSWORD }}
+          E2E_INVITEE_EMAIL: ${{ secrets.E2E_INVITEE_EMAIL }}
+          E2E_INVITEE_PASSWORD: ${{ secrets.E2E_INVITEE_PASSWORD }}
+          E2E_SESSION_USER_EMAIL: ${{ secrets.E2E_SESSION_USER_EMAIL }}
+          E2E_SESSION_USER_PASSWORD: ${{ secrets.E2E_SESSION_USER_PASSWORD }}
+          E2E_SECURITY_USER_EMAIL: ${{ secrets.E2E_SECURITY_USER_EMAIL }}
+          E2E_SECURITY_USER_PASSWORD: ${{ secrets.E2E_SECURITY_USER_PASSWORD }}
+          E2E_SUPER_ADMIN_EMAIL: ${{ secrets.E2E_SUPER_ADMIN_EMAIL }}
+          E2E_SUPER_ADMIN_PASSWORD: ${{ secrets.E2E_SUPER_ADMIN_PASSWORD }}
+          E2E_ORG_OWNER_EMAIL: ${{ secrets.E2E_ORG_OWNER_EMAIL }}
+          E2E_ORG_OWNER_PASSWORD: ${{ secrets.E2E_ORG_OWNER_PASSWORD }}
+          E2E_ORG_ADMIN_EMAIL: ${{ secrets.E2E_ORG_ADMIN_EMAIL }}
+          E2E_ORG_ADMIN_PASSWORD: ${{ secrets.E2E_ORG_ADMIN_PASSWORD }}
+          E2E_PROJECT_ADMIN_EMAIL: ${{ secrets.E2E_PROJECT_ADMIN_EMAIL }}
+          E2E_PROJECT_ADMIN_PASSWORD: ${{ secrets.E2E_PROJECT_ADMIN_PASSWORD }}
+          E2E_EDITOR_EMAIL: ${{ secrets.E2E_EDITOR_EMAIL }}
+          E2E_EDITOR_PASSWORD: ${{ secrets.E2E_EDITOR_PASSWORD }}
+          E2E_VIEWER_EMAIL: ${{ secrets.E2E_VIEWER_EMAIL }}
+          E2E_VIEWER_PASSWORD: ${{ secrets.E2E_VIEWER_PASSWORD }}
 
-      - name: Generate report on timeout
-        if: always()
-        working-directory: ./app/e2e
-        run: |
-          # Ensure report directory exists even if tests timed out
-          mkdir -p playwright-report
-          if [ ! -f playwright-report/index.html ]; then
-            echo "<html><body><h1>Tests timed out</h1><p>The E2E tests did not complete within the timeout. Check the workflow logs.</p></body></html>" > playwright-report/index.html
-          fi
-
-      - name: Upload test report
+      - name: Upload Playwright report
         uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: playwright-report
+          name: playwright-report-full
           path: app/e2e/playwright-report/
           retention-days: 30
 
@@ -315,41 +343,41 @@ jobs:
         uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: test-results
+          name: test-results-full
           path: app/e2e/test-results/
-          retention-days: 7
+          retention-days: 14
 
       - name: Create test summary
         if: always()
         run: |
-          echo "## 🎭 E2E Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "## 🎭 Full E2E Test Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
           if [ -f "app/e2e/test-results/results.json" ]; then
-            # Parse JSON results and create summary
             PASSED=$(jq '.stats.expected // 0' app/e2e/test-results/results.json)
             FAILED=$(jq '.stats.unexpected // 0' app/e2e/test-results/results.json)
             SKIPPED=$(jq '.stats.skipped // 0' app/e2e/test-results/results.json)
-            DURATION=$(jq '.stats.duration // 0' app/e2e/test-results/results.json)
-            
+            DURATION_MIN=$(jq '((.stats.duration // 0) / 60000) | floor' app/e2e/test-results/results.json)
+
             echo "| Metric | Count |" >> $GITHUB_STEP_SUMMARY
             echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
             echo "| ✅ Passed | $PASSED |" >> $GITHUB_STEP_SUMMARY
             echo "| ❌ Failed | $FAILED |" >> $GITHUB_STEP_SUMMARY
             echo "| ⏭️ Skipped | $SKIPPED |" >> $GITHUB_STEP_SUMMARY
-            echo "| ⏱️ Duration | ${DURATION}ms |" >> $GITHUB_STEP_SUMMARY
+            echo "| ⏱️ Duration | ${DURATION_MIN}m |" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            
+
             if [ "${{ steps.e2e-tests.outcome }}" == "failure" ]; then
-              echo "> ⚠️ **Some tests failed.** Download the playwright-report artifact and open index.html." >> $GITHUB_STEP_SUMMARY
+              echo "> ⚠️ **Some tests failed.** Download the playwright-report-full artifact for details." >> $GITHUB_STEP_SUMMARY
             else
               echo "> ✅ **All tests passed!**" >> $GITHUB_STEP_SUMMARY
             fi
           else
-            echo "⚠️ No test results found. Tests may have failed to start." >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "Check the workflow logs for more details." >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ No test results found. Tests may have failed to start or timed out." >> $GITHUB_STEP_SUMMARY
           fi
 
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "> **Note:** E2E test failures do not block the release. Download the **playwright-report** artifact for the full HTML report." >> $GITHUB_STEP_SUMMARY
+      - name: Fail if tests failed
+        if: steps.e2e-tests.outcome == 'failure'
+        run: |
+          echo "::error::E2E tests failed. Check the playwright-report-full artifact for details."
+          exit 1

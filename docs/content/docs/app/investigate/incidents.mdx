@@ -56,6 +56,7 @@ On small screens the launcher is icon-only and the chat fills the viewport. On l
 
 Copilot includes:
 
+- **Chat help**: Select the labeled **Chat help** control beside **Send** to see what each command does, how `@` context and file attachments work, where answers can come from, and the read-only safety boundary. Command chips also expose short descriptions on hover.
 - **Citations**: Direct links from chat responses to the specific evidence items anchoring the agent's claims.
 - **Incident-scoped verification**: When opened from an incident detail page, the floating Copilot is scoped to that incident. It can inspect stored evidence and, when the user has connector investigation permission, use the same bounded read-only live connector tools as the Investigation tab.
 - **Inline charts**: Responses can render bounded `bar`, `line`, and `area` charts when the answer includes connector, evidence, or user-provided numeric series.
@@ -63,6 +64,15 @@ Copilot includes:
 - **Log context**: Drag text, log, JSON, CSV, or Markdown files into the composer to add local read-only context. Copilot treats dropped files as user-provided context, not verified production state, until corroborated by evidence or connectors.
 - **Safe Tool Result Summaries**: Collapsible, read-only summaries of tool executions to keep the chat clean while providing deep context when needed.
 - **Standalone history**: Conversations stay in the Copilot console instead of cluttering the incident detail page.
+
+The four slash commands are intent shortcuts, not guarantees that live data is available:
+
+- `/health` summarizes available health signals or explains what to check when no evidence is attached.
+- `/investigate` triages the selected incident or service using stored evidence and permitted read-only connector results.
+- `/evidence` reviews supporting evidence, confidence, gaps, and the next safe checks.
+- `/verify` creates a concrete read-only checklist for validating a hypothesis before action.
+
+Standalone `/copilot` does not automatically inspect an incident, a Kubernetes cluster, or external observability systems. It uses the question and attached files. Live connector data is available only in an incident-scoped conversation when an enabled connector is scoped to the affected service and the user's role permits investigation. If supporting evidence is unavailable, Copilot reports the gap and provides a verification plan; it must not invent evidence IDs, source systems, queries, values, or timestamps.
 
 ## Incident Lifecycle & Verification
 

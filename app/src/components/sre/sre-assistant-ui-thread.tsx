@@ -45,6 +45,10 @@ import {
 import type { SreStandaloneChatHistory } from "@/actions/sre-ai";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 import {
+  CopilotChatHelp,
+  SRE_COMMAND_SHORTCUTS,
+} from "@/components/sre/sre-copilot-chat-help";
+import {
   buildAttachmentContextPrompt,
   createUserPromptMessage,
   formatCopilotError,
@@ -63,29 +67,6 @@ const SRE_AI_SUGGESTIONS = [
   "Plan checkout incident triage",
   "Summarize evidence gaps",
   "Draft a verification plan",
-];
-
-const SRE_COMMAND_SHORTCUTS = [
-  {
-    label: "/health",
-    prompt:
-      "/health Inspect current system health and summarize the most important signals as tables or charts when data is available.",
-  },
-  {
-    label: "/investigate",
-    prompt:
-      "/investigate Help me investigate the currently selected service or incident using only read-only evidence and verification steps.",
-  },
-  {
-    label: "/evidence",
-    prompt:
-      "/evidence Show the strongest evidence, gaps, and next read-only checks. Use inline charts for numeric series when possible.",
-  },
-  {
-    label: "/verify",
-    prompt:
-      "/verify Build a read-only verification plan with concrete checks I can run before taking action.",
-  },
 ];
 
 const SRE_MENTION_SHORTCUTS = [
@@ -576,6 +557,7 @@ function SreComposer({ onClearError }: { onClearError: () => void }) {
                 onClearError();
                 appendUserPrompt(thread, shortcut.prompt);
               }}
+              title={shortcut.description}
             >
               {shortcut.label}
             </Button>
@@ -672,6 +654,7 @@ function SreComposer({ onClearError }: { onClearError: () => void }) {
             </span>
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            <CopilotChatHelp />
             <ThreadPrimitive.If running>
               <ComposerPrimitive.Cancel asChild>
                 <Button type="button" variant="outline" size="sm">
