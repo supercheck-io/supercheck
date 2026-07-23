@@ -6,6 +6,13 @@ type Credentials = {
   password: string;
 };
 
+type StorageState = Awaited<ReturnType<APIRequestContext['storageState']>>;
+
+// Role fixtures create a fresh browser context for every test, but they do not
+// need to create a fresh server-side session every time. Reusing the immutable
+// storage-state snapshot keeps the full suite below production auth rate limits.
+const roleStorageStates = new Map<string, Promise<StorageState>>();
+
 export async function authenticateWithApi(
   apiRequest: APIRequest,
   baseURL: string,
@@ -80,7 +87,21 @@ export async function newAuthenticatedPage(
   baseURL: string,
   credentials: Credentials,
 ): Promise<Page> {
-  const storageState = await authenticateWithApi(apiRequest, baseURL, credentials);
+  const cacheKey = `${new URL(baseURL).origin}:${credentials.email.trim().toLowerCase()}`;
+  let storageStatePromise = roleStorageStates.get(cacheKey);
+  if (!storageStatePromise) {
+    storageStatePromise = authenticateWithApi(apiRequest, baseURL, credentials);
+    roleStorageStates.set(cacheKey, storageStatePromise);
+  }
+
+  let storageState: StorageState;
+  try {
+    storageState = await storageStatePromise;
+  } catch (error) {
+    roleStorageStates.delete(cacheKey);
+    throw error;
+  }
+
   const context = await browser.newContext({ baseURL, storageState });
   return context.newPage();
 }

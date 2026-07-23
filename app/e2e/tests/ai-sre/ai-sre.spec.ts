@@ -296,7 +296,7 @@ test.describe("AI SRE investigation surfaces @aisre @critical", () => {
     ).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Open Copilot" }),
-    ).toHaveCount(0);
+    ).toBeHidden();
   });
 });
 

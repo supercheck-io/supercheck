@@ -9,7 +9,9 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
   test("persists a manual incident, bounded brief, stored-evidence investigation, and legacy redirect", async ({
     orgOwnerPage: page,
   }) => {
-    test.setTimeout(120_000);
+    // This acceptance flow performs two bounded AI operations in addition to
+    // the incident, evidence, download, and cleanup lifecycle.
+    test.setTimeout(300_000);
     const projects = await page.request.get("/api/projects");
     expect(projects.status()).toBe(200);
     const originalProjectId = (
