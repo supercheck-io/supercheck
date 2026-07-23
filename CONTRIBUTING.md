@@ -12,6 +12,11 @@ For larger changes, start a GitHub Discussion or Issue before writing code so ma
 4. Run the relevant lint, test, and build commands.
 5. Open a pull request using the provided template.
 
+## Continuous Integration
+
+Automated checks run on every pull request. First-time contributors may need
+maintainer approval before the checks begin.
+
 All contributors must follow our [Code of Conduct](CODE_OF_CONDUCT.md). Please
 report security vulnerabilities through the process in [SECURITY.md](SECURITY.md)
 rather than opening a public issue.
