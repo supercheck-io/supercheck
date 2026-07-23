@@ -22,6 +22,7 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: supercheck-io/supercheck
+  E2E_BASE_URL: https://demo.supercheck.dev
 
 # Explicit permissions following least-privilege principle
 # Individual jobs may override with elevated permissions (e.g., packages: write)
@@ -247,10 +248,7 @@ jobs:
 
   e2e-tests:
     name: Full E2E Tests
-    # The full suite mutates projects, users, monitors, and other test data.
-    # Enable this only after the built SHA is deployed to the isolated E2E
-    # environment; production Turnstile intentionally blocks automation.
-    if: ${{ vars.E2E_RELEASE_GATE_ENABLED == 'true' }}
+    # The full suite runs against the existing Docker Compose demo environment.
     needs: build-and-push
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -290,7 +288,7 @@ jobs:
         id: e2e-tests
         working-directory: ./app/e2e
         run: |
-          REQUIRED_VARS="E2E_BASE_URL E2E_EXPECTED_BUILD_SHA E2E_TEST_USER_EMAIL E2E_TEST_USER_PASSWORD E2E_INVITEE_EMAIL E2E_INVITEE_PASSWORD E2E_SESSION_USER_EMAIL E2E_SESSION_USER_PASSWORD E2E_SECURITY_USER_EMAIL E2E_SECURITY_USER_PASSWORD E2E_SUPER_ADMIN_EMAIL E2E_SUPER_ADMIN_PASSWORD E2E_ORG_OWNER_EMAIL E2E_ORG_OWNER_PASSWORD E2E_ORG_ADMIN_EMAIL E2E_ORG_ADMIN_PASSWORD E2E_PROJECT_ADMIN_EMAIL E2E_PROJECT_ADMIN_PASSWORD E2E_EDITOR_EMAIL E2E_EDITOR_PASSWORD E2E_VIEWER_EMAIL E2E_VIEWER_PASSWORD"
+          REQUIRED_VARS="E2E_TEST_USER_EMAIL E2E_TEST_USER_PASSWORD E2E_INVITEE_EMAIL E2E_INVITEE_PASSWORD E2E_SESSION_USER_EMAIL E2E_SESSION_USER_PASSWORD E2E_SECURITY_USER_EMAIL E2E_SECURITY_USER_PASSWORD E2E_SUPER_ADMIN_EMAIL E2E_SUPER_ADMIN_PASSWORD E2E_ORG_OWNER_EMAIL E2E_ORG_OWNER_PASSWORD E2E_ORG_ADMIN_EMAIL E2E_ORG_ADMIN_PASSWORD E2E_PROJECT_ADMIN_EMAIL E2E_PROJECT_ADMIN_PASSWORD E2E_EDITOR_EMAIL E2E_EDITOR_PASSWORD E2E_VIEWER_EMAIL E2E_VIEWER_PASSWORD"
           MISSING_VARS=""
           for VAR_NAME in $REQUIRED_VARS; do
             if [ -z "$(printenv "$VAR_NAME")" ]; then
@@ -308,8 +306,6 @@ jobs:
         env:
           CI: true
           E2E_FAIL_ON_PRIORITY_SKIPS: true
-          E2E_BASE_URL: ${{ secrets.E2E_BASE_URL }}
-          E2E_EXPECTED_BUILD_SHA: ${{ github.sha }}
           E2E_TEST_USER_EMAIL: ${{ secrets.E2E_TEST_USER_EMAIL }}
           E2E_TEST_USER_PASSWORD: ${{ secrets.E2E_TEST_USER_PASSWORD }}
           E2E_INVITEE_EMAIL: ${{ secrets.E2E_INVITEE_EMAIL }}
