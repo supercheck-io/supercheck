@@ -232,9 +232,19 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
       await page
         .getByRole("tab", { name: "Investigation", exact: true })
         .click();
+      const investigationResponsePromise = page.waitForResponse(
+        (response) =>
+          response.request().method() === "POST" &&
+          response.url().endsWith("/api/sre/investigate"),
+      );
       await page
         .getByRole("button", { name: "Run investigation", exact: true })
         .click();
+      const investigationResponse = await investigationResponsePromise;
+      expect(
+        investigationResponse.status(),
+        await investigationResponse.text(),
+      ).toBe(200);
       await expect(
         page.getByText("Latest result", { exact: true }),
       ).toBeVisible({ timeout: 120_000 });

@@ -36,6 +36,31 @@ test.describe('Sign In @auth @smoke', () => {
   });
 
   /**
+   * AUTH-018: Sign out
+   * @priority high
+   * @type positive
+   *
+   * Keep positive authentication flows ahead of intentional failures so the
+   * production IP rate limiter cannot mask sign-out coverage.
+   */
+  test('AUTH-018: Sign out @high @positive', async ({ page }) => {
+    const signInPage = new SignInPage(page);
+    await signInPage.navigate();
+    await signInPage.signInAndWaitForDashboard(env.testUser.email, env.testUser.password);
+
+    // Act - Sign out via the user menu (Avatar button in top right)
+    await page.getByTestId('user-menu').click();
+    await page.getByTestId('sign-out-button').click();
+
+    // Assert
+    await expect(page).toHaveURL(/sign-in/, { timeout: 30_000 });
+
+    // Verify session is destroyed
+    await page.goto('/tests');
+    await expect(page).toHaveURL(/sign-in/);
+  });
+
+  /**
    * AUTH-005: Sign in with invalid password
    * @priority high
    * @type negative
@@ -69,27 +94,6 @@ test.describe('Sign In @auth @smoke', () => {
     await expect(page).toHaveURL(/sign-in/);
   });
 
-  /**
-   * AUTH-018: Sign out
-   * @priority high
-   * @type positive
-   */
-  test('AUTH-018: Sign out @high @positive', async ({ page }) => {
-    const signInPage = new SignInPage(page);
-    await signInPage.navigate();
-    await signInPage.signInAndWaitForDashboard(env.testUser.email, env.testUser.password);
-
-    // Act - Sign out via the user menu (Avatar button in top right)
-    await page.getByTestId('user-menu').click();
-    await page.getByTestId('sign-out-button').click();
-
-    // Assert
-    await expect(page).toHaveURL(/sign-in/, { timeout: 30_000 });
-
-    // Verify session is destroyed
-    await page.goto('/tests');
-    await expect(page).toHaveURL(/sign-in/);
-  });
 });
 
 test.describe('Sign In - Form Validation @auth', () => {

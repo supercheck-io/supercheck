@@ -71,6 +71,7 @@ x-common-env: &common-env # Database Configuration
   BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-CHANGE_THIS_GENERATE_32_CHAR_HEX}
   NODE_ENV: ${NODE_ENV:-production}
   SHOW_COMMUNITY_LINKS: ${SHOW_COMMUNITY_LINKS:-true}
+  SRE_INVESTIGATION_AGENT_ENABLED: ${SRE_INVESTIGATION_AGENT_ENABLED:-false}
 
   # CORS: Allow browser-based integrations (Azure DevOps widgets, Grafana panels, etc.)
   # Comma-separated origins. Supports wildcard subdomains (e.g., https://*.visualstudio.com)

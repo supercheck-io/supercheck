@@ -198,9 +198,9 @@ test.describe('RBAC - Org Owner Capabilities @auth @rbac', () => {
    * @type rbac
    */
   test('AUTH-030: Org Owner has full org access @critical @rbac', async ({ orgOwnerPage: page }) => {
-    // Should access billing
+    // The legacy billing route must resolve to the canonical subscription tab.
     await page.goto('/billing');
-    await expect(page).toHaveURL(/billing/);
+    await expect(page).toHaveURL(/\/org-admin\?tab=subscription$/);
 
     // Should access org admin
     await page.goto('/org-admin');
