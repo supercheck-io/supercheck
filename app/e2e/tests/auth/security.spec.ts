@@ -203,7 +203,7 @@ test.describe("Security - Session Management @auth @security", () => {
    * @priority high
    * @type security
    */
-  test("AUTH-047: Session regenerated after login @high @security", async ({
+  test("AUTH-047-050: Login regenerates a protected session cookie @high @security", async ({
     page,
   }) => {
     // Get cookies before login
@@ -224,35 +224,9 @@ test.describe("Security - Session Management @auth @security", () => {
     if (sessionBefore) {
       expect(sessionAfter.value).not.toBe(sessionBefore.value);
     }
-  });
-
-  /**
-   * AUTH-048: Session cookie has HttpOnly flag
-   * @priority high
-   * @type security
-   */
-  test("AUTH-048: Session cookie is HttpOnly @high @security", async ({
-    page,
-  }) => {
-    await authenticateContext(page);
-    const sessionCookie = await requireSessionCookie(page.context());
-    expect(sessionCookie.httpOnly).toBe(true);
-  });
-
-  test("AUTH-049: Cookies have Secure flag on HTTPS @high @security", async ({
-    page,
-  }) => {
-    await authenticateContext(page);
-    const sessionCookie = await requireSessionCookie(page.context());
-    expect(sessionCookie.secure).toBe(env.baseUrl.startsWith("https"));
-  });
-
-  test("AUTH-050: Cookies have SameSite protection @high @security", async ({
-    page,
-  }) => {
-    await authenticateContext(page);
-    const sessionCookie = await requireSessionCookie(page.context());
-    expect(["Strict", "Lax"]).toContain(sessionCookie.sameSite);
+    expect(sessionAfter.httpOnly).toBe(true);
+    expect(sessionAfter.secure).toBe(env.baseUrl.startsWith("https"));
+    expect(["Strict", "Lax"]).toContain(sessionAfter.sameSite);
   });
 });
 

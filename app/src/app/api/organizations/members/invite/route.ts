@@ -1,11 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
-import {
-  invitation,
-  user as userTable,
-  member,
-  projects,
-} from "@/db/schema";
+import { invitation, user as userTable, member, projects } from "@/db/schema";
 import { eq, and, inArray, sql, gte } from "drizzle-orm";
 import { getUserOrgRole } from "@/lib/rbac/middleware";
 import { requireUserAuthContext, isAuthError } from "@/lib/auth-context";
@@ -19,15 +14,25 @@ import { getRedisConnection } from "@/lib/queue";
 
 // Redis-based rate limiting for distributed/serverless environments
 const INVITE_RATE_LIMIT_KEY_PREFIX = "supercheck:invite:ratelimit";
-const INVITE_RATE_LIMIT_MAX = 10;
+const configuredInviteRateLimitMax = Number.parseInt(
+  process.env.INVITE_RATE_LIMIT_MAX ?? "10",
+  10,
+);
+const INVITE_RATE_LIMIT_MAX =
+  Number.isSafeInteger(configuredInviteRateLimitMax) &&
+  configuredInviteRateLimitMax > 0
+    ? configuredInviteRateLimitMax
+    : 10;
 const INVITE_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 
-async function checkInviteRateLimit(userId: string): Promise<{ allowed: boolean; retryAfter?: number }> {
+async function checkInviteRateLimit(
+  userId: string,
+): Promise<{ allowed: boolean; retryAfter?: number }> {
   try {
     const redis = await getRedisConnection();
     if (!redis) {
       // If Redis is unavailable, fail open but log a warning
-      console.warn('[INVITE_RATE_LIMIT] Redis unavailable, allowing request');
+      console.warn("[INVITE_RATE_LIMIT] Redis unavailable, allowing request");
       return { allowed: true };
     }
 
@@ -41,10 +46,12 @@ async function checkInviteRateLimit(userId: string): Promise<{ allowed: boolean;
 
     if (count >= INVITE_RATE_LIMIT_MAX) {
       // Get the oldest entry to calculate retry-after
-      const oldest = await redis.zrange(key, 0, 0, 'WITHSCORES');
+      const oldest = await redis.zrange(key, 0, 0, "WITHSCORES");
       if (oldest.length >= 2) {
         const oldestScore = Number(oldest[1]);
-        const retryAfter = Math.ceil((oldestScore + INVITE_RATE_LIMIT_WINDOW_MS - now) / 1000);
+        const retryAfter = Math.ceil(
+          (oldestScore + INVITE_RATE_LIMIT_WINDOW_MS - now) / 1000,
+        );
         return { allowed: false, retryAfter };
       }
       return { allowed: false, retryAfter: 3600 };
@@ -56,7 +63,7 @@ async function checkInviteRateLimit(userId: string): Promise<{ allowed: boolean;
 
     return { allowed: true };
   } catch (error) {
-    console.error('[INVITE_RATE_LIMIT] Error checking rate limit:', error);
+    console.error("[INVITE_RATE_LIMIT] Error checking rate limit:", error);
     // Fail open on error but log
     return { allowed: true };
   }
@@ -69,7 +76,7 @@ export async function POST(request: NextRequest) {
     if (!organizationId) {
       return NextResponse.json(
         { error: "No active organization found" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -77,13 +84,15 @@ export async function POST(request: NextRequest) {
     const rateLimitResult = await checkInviteRateLimit(userId);
     if (!rateLimitResult.allowed) {
       return NextResponse.json(
-        { error: "Rate limit exceeded. Maximum 10 invitations per hour." },
-        { 
+        {
+          error: `Rate limit exceeded. Maximum ${INVITE_RATE_LIMIT_MAX} invitations per hour.`,
+        },
+        {
           status: 429,
-          headers: rateLimitResult.retryAfter 
-            ? { 'Retry-After': String(rateLimitResult.retryAfter) }
-            : undefined
-        }
+          headers: rateLimitResult.retryAfter
+            ? { "Retry-After": String(rateLimitResult.retryAfter) }
+            : undefined,
+        },
       );
     }
 
@@ -94,7 +103,7 @@ export async function POST(request: NextRequest) {
     if (!isOrgAdmin) {
       return NextResponse.json(
         { error: "Insufficient permissions" },
-        { status: 403 }
+        { status: 403 },
       );
     }
 
@@ -108,11 +117,11 @@ export async function POST(request: NextRequest) {
             selectedProjects
               .filter(
                 (projectId: unknown): projectId is string =>
-                  typeof projectId === "string"
+                  typeof projectId === "string",
               )
               .map((projectId: string) => projectId.trim())
-              .filter((projectId: string) => projectId.length > 0)
-          )
+              .filter((projectId: string) => projectId.length > 0),
+          ),
         )
       : [];
 
@@ -121,7 +130,7 @@ export async function POST(request: NextRequest) {
     if (role === "org_admin" && orgRole !== Role.ORG_OWNER) {
       return NextResponse.json(
         { error: "Only organization owners can invite org_admin members" },
-        { status: 403 }
+        { status: 403 },
       );
     }
 
@@ -138,13 +147,13 @@ export async function POST(request: NextRequest) {
         if (zodError.errors && zodError.errors.length > 0) {
           return NextResponse.json(
             { error: zodError.errors[0].message },
-            { status: 400 }
+            { status: 400 },
           );
         }
       }
       return NextResponse.json(
         { error: "Invalid request data" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -162,14 +171,13 @@ export async function POST(request: NextRequest) {
 
     const limitCheck = await checkTeamMemberLimit(
       organizationId,
-      Number(currentMemberCount[0]?.count || 0)
+      Number(currentMemberCount[0]?.count || 0),
     );
     if (!limitCheck.allowed) {
-      console.warn(`Team member limit reached for organization ${organizationId}: ${limitCheck.error}`);
-      return NextResponse.json(
-        { error: limitCheck.error },
-        { status: 403 }
+      console.warn(
+        `Team member limit reached for organization ${organizationId}: ${limitCheck.error}`,
       );
+      return NextResponse.json({ error: limitCheck.error }, { status: 403 });
     }
 
     // Check if user already exists and is a member
@@ -200,7 +208,7 @@ export async function POST(request: NextRequest) {
         .where(eq(member.userId, user.id));
 
       const hasAdminRole = adminMemberships.some(
-        (m) => m.role === "org_owner" || m.role === "org_admin"
+        (m) => m.role === "org_owner" || m.role === "org_admin",
       );
 
       if (isSystemAdmin || hasAdminRole) {
@@ -209,7 +217,7 @@ export async function POST(request: NextRequest) {
             error:
               "Cannot invite users with administrative privileges from other organizations. Admins should manage their own organizations independently.",
           },
-          { status: 400 }
+          { status: 400 },
         );
       }
 
@@ -220,15 +228,15 @@ export async function POST(request: NextRequest) {
         .where(
           and(
             eq(member.userId, user.id),
-            eq(member.organizationId, organizationId)
-          )
+            eq(member.organizationId, organizationId),
+          ),
         )
         .limit(1);
 
       if (existingMember.length > 0) {
         return NextResponse.json(
           { error: "User is already a member of this organization" },
-          { status: 400 }
+          { status: 400 },
         );
       }
     }
@@ -242,15 +250,15 @@ export async function POST(request: NextRequest) {
           sql`LOWER(${invitation.email}) = ${normalizedEmail}`,
           eq(invitation.organizationId, organizationId),
           eq(invitation.status, "pending"),
-          gte(invitation.expiresAt, new Date())
-        )
+          gte(invitation.expiresAt, new Date()),
+        ),
       )
       .limit(1);
 
     if (existingInvitation.length > 0) {
       return NextResponse.json(
         { error: "Invitation already sent to this email" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -267,14 +275,17 @@ export async function POST(request: NextRequest) {
           and(
             inArray(projects.id, selectedProjectsForRole),
             eq(projects.status, "active"),
-            eq(projects.organizationId, organizationId)
-          )
+            eq(projects.organizationId, organizationId),
+          ),
         );
 
       if (selectedProjectDetails.length !== selectedProjectsForRole.length) {
         return NextResponse.json(
-          { error: "One or more selected projects do not belong to this organization" },
-          { status: 400 }
+          {
+            error:
+              "One or more selected projects do not belong to this organization",
+          },
+          { status: 400 },
         );
       }
     }
@@ -307,7 +318,7 @@ export async function POST(request: NextRequest) {
         projectInfo = `You'll have access to the <strong>${projectNames[0]}</strong> project.`;
       } else {
         projectInfo = `You'll have access to the following projects: <strong>${projectNames.join(
-          ", "
+          ", ",
         )}</strong>.`;
       }
     }
@@ -339,18 +350,18 @@ export async function POST(request: NextRequest) {
       console.error(
         "Failed to send invitation email to %s:",
         normalizedEmail,
-        emailResult.error
+        emailResult.error,
       );
       // Still return success since the invitation was created, just log the email error
       console.log(
         "Email failed, but invitation created. Manual link: %s",
-        inviteUrl
+        inviteUrl,
       );
     } else {
       console.log(
         "Email invitation sent successfully to %s for organization %s",
         normalizedEmail,
-        orgName
+        orgName,
       );
     }
 
@@ -392,14 +403,17 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     if (isAuthError(error)) {
       return NextResponse.json(
-        { error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 }
+        {
+          error:
+            error instanceof Error ? error.message : "Authentication required",
+        },
+        { status: 401 },
       );
     }
     console.error("Error sending invitation:", error);
     return NextResponse.json(
       { error: "Failed to send invitation" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
