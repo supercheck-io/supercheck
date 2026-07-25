@@ -157,6 +157,16 @@ export function SiteFooter({
                 <div className="mt-12 flex flex-col justify-between gap-4 border-t border-gray-200 dark:border-gray-800 pt-8 text-sm text-gray-500 dark:text-gray-400 md:flex-row md:items-center">
                     <p>{copyright}</p>
                     <ul className="flex items-center gap-6">
+                        <li>
+                            <Link href="/privacy" className="hover:text-gray-900 dark:hover:text-white transition-colors">
+                                Privacy
+                            </Link>
+                        </li>
+                        <li>
+                            <Link href="/terms" className="hover:text-gray-900 dark:hover:text-white transition-colors">
+                                Terms
+                            </Link>
+                        </li>
                         {socialLinks.map((social, idx) => (
                             <li key={idx}>
                                 <a

@@ -45,7 +45,7 @@ All services run on a single Linux server managed by Docker Compose. Workers con
 
 ## Docker Compose
 
-<Tabs items={['Quick Start', 'Production (HTTPS)']}>
+<Tabs items={['Quick Start', 'Production (HTTPS)', 'External Services']}>
   <Tab value="Quick Start">
     <Steps>
       <Step>
@@ -99,7 +99,7 @@ All services run on a single Linux server managed by Docker Compose. Workers con
 
         ```bash
         # Optional: grant super admin
-        docker compose exec app npm run setup:admin your-email@example.com
+        docker compose exec app node scripts/bootstrap-admin.js your-email@example.com
         ```
       </Step>
     </Steps>
@@ -201,10 +201,48 @@ All services run on a single Linux server managed by Docker Compose. Workers con
 
         ```bash
         # Optional: grant super admin
-        docker compose -f docker-compose-secure.yml exec app npm run setup:admin your-email@example.com
+        docker compose -f docker-compose-secure.yml exec app node scripts/bootstrap-admin.js your-email@example.com
         ```
       </Step>
     </Steps>
+  </Tab>
+  <Tab value="External Services">
+    Use `docker-compose-external.yml` when you want to connect Supercheck to managed external services (Neon, Supabase, Upstash, Cloudflare R2) instead of running PostgreSQL, Redis, and MinIO in Docker.
+
+    <Steps>
+      <Step>
+        ### Configure External Services
+
+        Set the connection details in your `.env`:
+
+        ```bash
+        # Managed PostgreSQL (Neon, Supabase, RDS)
+        DATABASE_URL=postgresql://user:password@host:5432/supercheck
+
+        # Managed Redis (Upstash, Redis Cloud)
+        REDIS_URL=redis://user:password@host:6379
+
+        # Managed S3-compatible storage (Cloudflare R2, AWS S3)
+        S3_ENDPOINT=https://your-account.r2.cloudflarestorage.com
+        S3_REGION=auto
+        S3_ACCESS_KEY_ID=your-access-key
+        S3_SECRET_ACCESS_KEY=your-secret-key
+        ```
+      </Step>
+      <Step>
+        ### Start Services
+
+        ```bash
+        cp deploy/docker/.env.example .env
+        # Edit .env with your managed service credentials
+        docker compose -f docker-compose-external.yml up -d
+        ```
+      </Step>
+    </Steps>
+
+    <Callout type="info">
+    This compose file skips the bundled PostgreSQL, Redis, and MinIO containers. Only the App, Worker, Traefik, and K3s services are started.
+    </Callout>
   </Tab>
 </Tabs>
 

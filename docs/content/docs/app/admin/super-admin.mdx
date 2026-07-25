@@ -10,31 +10,32 @@ Super Admin provides platform-level management for self-hosted deployments, incl
 
 There are two ways to enable super admin access:
 
-<Tabs items={['Environment Variable', 'Manual Script', 'Revoking Access']}>
-<Tab value="Environment Variable">
+<Tabs items={['Manual Script', 'Environment Variable', 'Revoking Access']}>
+<Tab value="Manual Script">
 
 ### Recommended
-
-Set the `SUPER_ADMIN_EMAIL` environment variable in your deployment:
-
-```bash
-SUPER_ADMIN_EMAIL=admin@yourdomain.com
-```
-
-The user with this email is promoted to super admin when the application starts. 
-
-<Callout type="info">
-**Note:** If the user has just signed up, you may need to **restart the application container** for the promotion to take effect, as this check runs during startup.
-</Callout>
-
-</Tab>
-<Tab value="Manual Script">
 
 Run the bootstrap script inside the app container:
 
 ```bash
-docker compose exec app npm run setup:admin admin@yourdomain.com
+docker compose exec app node scripts/bootstrap-admin.js admin@yourdomain.com
 ```
+
+<Callout type="info">
+Bootstrap is **manual** — run the script explicitly. For convenience, the script also reads `SUPER_ADMIN_EMAIL` from the environment as a fallback if no argument is provided, but it does **not** auto-promote on application startup.
+</Callout>
+
+</Tab>
+<Tab value="Environment Variable">
+
+Set `SUPER_ADMIN_EMAIL` and run the bootstrap script:
+
+```bash
+SUPER_ADMIN_EMAIL=admin@yourdomain.com
+docker compose exec app node scripts/bootstrap-admin.js
+```
+
+If `SUPER_ADMIN_EMAIL` is set and no email argument is provided, the script uses the environment variable value.
 
 </Tab>
 <Tab value="Revoking Access">
