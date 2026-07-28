@@ -233,8 +233,8 @@ All services run on a single Linux server managed by Docker Compose. Workers con
         ### Start Services
 
         ```bash
-        cp deploy/docker/.env.example .env
-        # Edit .env with your managed service credentials
+        # Create .env with your managed service credentials
+        # Use the template below or start from the compose file's documented variables
         docker compose -f docker-compose-external.yml up -d
         ```
       </Step>

@@ -6,7 +6,7 @@ strict cleanup, required identities, and an executable environment profile.
 
 Authoritative catalogs are the product implementation and the private testing
 specifications, especially
-`supercheck-ee/specs/08-operations/SRE_FEATURE_TESTING_GUIDE.md`.
+`supercheck-ee/specs/09-testing-qa/AI_SRE_TESTING_RUNBOOK.md`.
 
 ## Non-negotiable design rules
 

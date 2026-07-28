@@ -70,7 +70,7 @@ Email/password sign-up works in self-hosted mode. Configure GitHub OAuth only if
    - Open the **Terminal** for the `app` service in your Coolify dashboard.
    - Run the following command (replace with your email):
      ```bash
-     npm run setup:admin your-email@example.com
+     node scripts/bootstrap-admin.js your-email@example.com
      ```
 
 ---
