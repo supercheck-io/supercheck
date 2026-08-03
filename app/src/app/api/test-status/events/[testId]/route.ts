@@ -12,6 +12,8 @@ import {
 
 const encoder = new TextEncoder();
 
+const STATUS_RECONCILE_INTERVAL_MS = 3000;
+
 const serialize = (payload: Record<string, unknown>) =>
   `data: ${JSON.stringify(payload)}\n\n`;
 
@@ -110,6 +112,7 @@ export async function GET(request: Request) {
       // Track whether the stream has been closed to prevent
       // 'Controller is already closed' errors from async callbacks
       let isClosed = false;
+      let reconcileTimer: ReturnType<typeof setTimeout> | null = null;
 
       const safeEnqueue = (data: Uint8Array) => {
         if (isClosed) return;
@@ -165,6 +168,46 @@ export async function GET(request: Request) {
       const unsubscribe = hub.subscribe(send);
       safeEnqueue(encoder.encode(": connected\n\n"));
 
+      const reconcilePersistedStatus = async () => {
+        if (isClosed) return;
+
+        try {
+          const report = await fetchInitialStatusReport(
+            testId,
+            projectContext.project.id
+          );
+
+          if (report) {
+            const status = report.status ?? "running";
+            safeEnqueue(
+              encoder.encode(
+                serialize({
+                  status,
+                  reportStatus: status,
+                  derivedStatus: deriveFinalStatus(status, status),
+                  testId,
+                  reportPath: report.reportPath,
+                  s3Url: report.s3Url,
+                  errorDetails: report.errorDetails,
+                })
+              )
+            );
+          }
+        } catch (error) {
+          // Queue events remain the low-latency path. A transient database
+          // reconciliation failure must not terminate an otherwise healthy SSE
+          // stream; the next interval retries from authoritative state.
+          console.error("Failed to reconcile persisted test status:", error);
+        }
+
+        if (!isClosed) {
+          reconcileTimer = setTimeout(
+            reconcilePersistedStatus,
+            STATUS_RECONCILE_INTERVAL_MS
+          );
+        }
+      };
+
       const initialReport = await fetchInitialStatusReport(
         testId,
         projectContext.project.id
@@ -190,6 +233,11 @@ export async function GET(request: Request) {
         );
       }
 
+      reconcileTimer = setTimeout(
+        reconcilePersistedStatus,
+        STATUS_RECONCILE_INTERVAL_MS
+      );
+
       const keepAlive = setInterval(() => {
         safeEnqueue(encoder.encode(": ping\n\n"));
       }, 30000);
@@ -197,6 +245,10 @@ export async function GET(request: Request) {
       const cleanup = () => {
         isClosed = true;
         clearInterval(keepAlive);
+        if (reconcileTimer) {
+          clearTimeout(reconcileTimer);
+          reconcileTimer = null;
+        }
         unsubscribe();
         try {
           controller.close();
