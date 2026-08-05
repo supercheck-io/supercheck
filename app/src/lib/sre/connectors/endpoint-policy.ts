@@ -42,8 +42,7 @@ export function isPrivateConnectorAddress(address: string) {
     (first === 172 && second >= 16 && second <= 31) ||
     (first === 192 && second === 168) ||
     (first === 169 && second === 254) ||
-    (first === 192 && second === 0) ||
-    (first === 192 && second === 2) ||
+    (first === 192 && second === 0 && (parts[2] === 0 || parts[2] === 2)) ||
     (first === 192 && second === 88 && parts[2] === 99) ||
     (first === 198 && (second === 18 || second === 19)) ||
     (first === 198 && second === 51 && parts[2] === 100) ||

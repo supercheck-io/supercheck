@@ -19,6 +19,7 @@ jest.mock("@/lib/services/polar-usage.service", () => ({
 
 jest.mock("@/utils/db", () => ({
   db: {
+    select: jest.fn(),
     transaction: jest.fn(),
     query: {
       organization: { findFirst: jest.fn() },
@@ -35,6 +36,7 @@ import {
   assertCanStartSreInvestigation,
   consumeSreInvestigationCredit,
   getSreInvestigationUsage,
+  reconcileUnbilledSreInvestigations,
   SreInvestigationBillingError,
 } from "./investigation-billing";
 
@@ -42,6 +44,7 @@ const mockIsPolarEnabled = isPolarEnabled as jest.Mock;
 const mockSubscriptionService = subscriptionService as jest.Mocked<typeof subscriptionService>;
 const mockPolarUsageService = polarUsageService as jest.Mocked<typeof polarUsageService>;
 const mockDb = db as unknown as {
+  select: jest.Mock;
   transaction: jest.Mock;
   query: { organization: { findFirst: jest.Mock } };
 };
@@ -189,5 +192,73 @@ describe("SRE investigation billing", () => {
       included: 10,
       overage: 2,
     });
+  });
+
+  it("reconciles only full investigations and preserves live-connector metadata", async () => {
+    const candidateQuery = {
+      from: jest.fn().mockReturnThis(),
+      leftJoin: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      limit: jest.fn().mockResolvedValue([
+        {
+          id: "run-investigation",
+          organizationId: "org-1",
+          projectId: "project-1",
+          incidentId: "incident-1",
+          userId: "user-1",
+          agentType: "investigation",
+          promptInput: { liveConnectorsEnabled: true },
+        },
+        {
+          id: "run-triage",
+          organizationId: "org-1",
+          projectId: "project-1",
+          incidentId: "incident-1",
+          userId: "user-1",
+          agentType: "triage",
+          promptInput: { mode: "sre_triage_api" },
+        },
+      ]),
+    };
+    mockDb.select.mockReturnValue(candidateQuery);
+
+    const updateWhere = jest.fn().mockResolvedValue([]);
+    const updateSet = jest.fn(() => ({ where: updateWhere }));
+    const insertReturning = jest.fn().mockResolvedValue([{ id: "event-1" }]);
+    const insertValues = jest.fn(() => ({ returning: insertReturning }));
+    const tx = {
+      execute: jest.fn().mockResolvedValue([]),
+      query: {
+        organization: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: "org-1",
+            usagePeriodStart: new Date("2026-06-01T00:00:00Z"),
+            usagePeriodEnd: new Date("2026-07-01T00:00:00Z"),
+          }),
+        },
+        usageEvents: { findFirst: jest.fn().mockResolvedValue(null) },
+      },
+      update: jest.fn(() => ({ set: updateSet })),
+      insert: jest.fn(() => ({ values: insertValues })),
+    };
+    mockDb.transaction.mockImplementation(
+      async (callback: (transaction: typeof tx) => Promise<unknown>) => callback(tx),
+    );
+
+    await expect(reconcileUnbilledSreInvestigations()).resolves.toEqual({
+      processed: 1,
+      failed: 0,
+    });
+
+    expect(mockDb.transaction).toHaveBeenCalledTimes(1);
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          investigationRunId: "run-investigation",
+          useLiveConnectors: true,
+        }),
+      }),
+    );
   });
 });

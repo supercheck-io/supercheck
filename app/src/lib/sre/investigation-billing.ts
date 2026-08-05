@@ -165,6 +165,8 @@ export async function reconcileUnbilledSreInvestigations(options?: {
       projectId: sreInvestigationRuns.projectId,
       incidentId: sreInvestigationRuns.incidentId,
       userId: sreInvestigationRuns.createdByUserId,
+      agentType: sreInvestigationRuns.agentType,
+      promptInput: sreInvestigationRuns.promptInput,
     })
     .from(sreInvestigationRuns)
     .leftJoin(
@@ -178,6 +180,7 @@ export async function reconcileUnbilledSreInvestigations(options?: {
     .where(
       and(
         eq(sreInvestigationRuns.status, "completed"),
+        eq(sreInvestigationRuns.agentType, "investigation"),
         gte(sreInvestigationRuns.completedAt, since),
         isNull(usageEvents.id)
       )
@@ -188,7 +191,9 @@ export async function reconcileUnbilledSreInvestigations(options?: {
   let processed = 0;
   let failed = 0;
   for (const run of candidates) {
-    if (!run.incidentId) continue;
+    // The SQL predicate is the primary boundary; retain this guard so future
+    // query changes cannot accidentally bill triage or evidence-brief runs.
+    if (!run.incidentId || run.agentType !== "investigation") continue;
 
     try {
       await consumeSreInvestigationCredit({
@@ -197,7 +202,7 @@ export async function reconcileUnbilledSreInvestigations(options?: {
         userId: run.userId,
         incidentId: run.incidentId,
         investigationRunId: run.id,
-        useLiveConnectors: false,
+        useLiveConnectors: run.promptInput?.liveConnectorsEnabled === true,
       });
       processed += 1;
     } catch (error) {

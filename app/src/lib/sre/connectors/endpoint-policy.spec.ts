@@ -27,10 +27,13 @@ describe("connector endpoint policy", () => {
     expect(isPrivateConnectorAddress("192.168.1.10")).toBe(true);
     expect(isPrivateConnectorAddress("127.0.0.1")).toBe(true);
     expect(isPrivateConnectorAddress("169.254.169.254")).toBe(true);
+    expect(isPrivateConnectorAddress("192.0.0.10")).toBe(true);
     expect(isPrivateConnectorAddress("192.0.2.10")).toBe(true);
     expect(isPrivateConnectorAddress("198.51.100.10")).toBe(true);
     expect(isPrivateConnectorAddress("203.0.113.10")).toBe(true);
     expect(isPrivateConnectorAddress("224.0.0.1")).toBe(true);
+    expect(isPrivateConnectorAddress("192.0.1.10")).toBe(false);
+    expect(isPrivateConnectorAddress("192.2.1.10")).toBe(false);
     expect(isPrivateConnectorAddress("8.8.8.8")).toBe(false);
   });
 
