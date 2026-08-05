@@ -13,6 +13,7 @@ import {
   sreInvestigationToolCalls,
 } from "@/db/schema";
 import { routeSreConnectorQuery } from "@/lib/private-agents/job-router";
+import { checkSreConnectorSearchRateLimit } from "@/lib/sre/sre-rate-limiter";
 import {
   DEFAULT_CONNECTOR_OUTPUT_LIMITS,
   assertEndpointAllowedForExecution,
@@ -355,6 +356,17 @@ export async function searchIncidentLiveConnectorEvidence(
   }
 
   const connector = selected.row;
+  const rateLimit = await checkSreConnectorSearchRateLimit(
+    scope.userId ?? scope.investigationRunId ?? "system",
+    connector.id,
+  );
+  if (!rateLimit.allowed) {
+    throw new Error(
+      rateLimit.unavailable
+        ? "Connector search rate limiter is temporarily unavailable"
+        : "Connector search rate limit reached",
+    );
+  }
   const outputLimits = normalizeOutputLimits(connector.outputLimits);
   const stagedStage =
     isSreStagedEvidenceEnabled() &&

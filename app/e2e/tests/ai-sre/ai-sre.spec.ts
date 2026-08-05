@@ -152,7 +152,7 @@ test.describe("AI SRE investigation surfaces @aisre @critical", () => {
     await page.getByRole("button", { name: "New", exact: true }).click();
 
     const composer = page.getByPlaceholder(
-      "Ask Copilot about an incident, service, or verification plan...",
+      "Describe a symptom or paste evidence...",
     );
     await expect(composer).toBeEnabled({ timeout: 30_000 });
     await composer.fill(prompt);
@@ -196,11 +196,11 @@ test.describe("AI SRE investigation surfaces @aisre @critical", () => {
         await route.abort("aborted").catch(() => undefined);
       });
     });
-    const prompt = `List a detailed read-only verification plan ${Date.now()}`;
+    const prompt = `List the next read-only diagnostic checks ${Date.now()}`;
     await page.goto("/copilot", { waitUntil: "load" });
     await page.getByRole("button", { name: "New", exact: true }).click();
     const composer = page.getByPlaceholder(
-      "Ask Copilot about an incident, service, or verification plan...",
+      "Describe a symptom or paste evidence...",
     );
     await expect(composer).toBeEnabled({ timeout: 30_000 });
     await composer.fill(prompt);
@@ -220,55 +220,23 @@ test.describe("AI SRE investigation surfaces @aisre @critical", () => {
     ).toHaveCount(0);
   });
 
-  test("supports context mentions and enforces read-only attachment constraints", async ({
+  test("prefills a focused starter without sending and keeps input bounded", async ({
     page,
   }) => {
     await page.goto("/copilot", { waitUntil: "load" });
     const composer = page.getByPlaceholder(
-      "Ask Copilot about an incident, service, or verification plan...",
+      "Describe a symptom or paste evidence...",
     );
     await expect(composer).toBeEnabled({ timeout: 30_000 });
-
-    await composer.fill("@");
-    const references = page.getByRole("listbox", {
-      name: "Context references",
-    });
-    await expect(references.getByRole("option")).toHaveText([
-      /@incidentReference the selected incident context/,
-      /@serviceReference an affected service/,
-      /@recent-deployAsk Copilot to consider recent deploy context/,
-    ]);
-    await references.getByRole("option", { name: /@service/ }).click();
-    await expect(composer).toHaveValue("@service ");
-
-    await dispatchAttachmentDrop(
-      composer,
-      "payload.png",
-      "image/png",
-      "not-an-image",
-    );
-    await expect(
-      page.getByText(
-        "Attach text, log, JSON, CSV, or Markdown files only for Copilot context.",
-      ),
-    ).toBeVisible();
-
-    await dispatchAttachmentDrop(
-      composer,
-      "bounded-evidence.log",
-      "text/plain",
-      "level=error service=checkout correlation=e2e-only",
-    );
-    await expect(
-      page.getByText("bounded-evidence.log", { exact: true }),
-    ).toBeVisible();
-    await expect(page.getByText("Read-only", { exact: true })).toBeVisible();
+    await expect(composer).toHaveAttribute("maxlength", "4000");
     await page
-      .getByRole("button", { name: "Remove bounded-evidence.log" })
+      .getByRole("button", { name: "Review evidence", exact: true })
       .click();
-    await expect(
-      page.getByText("bounded-evidence.log", { exact: true }),
-    ).toHaveCount(0);
+    await expect(composer).toHaveValue(
+      "Review this evidence and explain what it supports: ",
+    );
+    await expect(page.getByLabel("User message")).toHaveCount(0);
+    await expect(page.getByText("Read-only", { exact: true })).toBeVisible();
   });
 
   test("opens the floating Copilot as a mobile full-screen dialog and hands off to the console", async ({
@@ -284,12 +252,12 @@ test.describe("AI SRE investigation surfaces @aisre @critical", () => {
     await expect(dialog).toBeVisible();
     await expect(dialog).toHaveCSS("width", "390px");
     await expect(
-      dialog.getByPlaceholder(
-        "Ask Copilot about an incident, service, or verification plan...",
-      ),
+      dialog.getByPlaceholder("Describe a symptom or paste evidence..."),
     ).toBeEnabled();
     await expect(dialog.getByText("Read-only", { exact: true })).toBeVisible();
-    await dialog.getByRole("link", { name: "Open", exact: true }).click();
+      await dialog
+        .getByRole("link", { name: "Full view", exact: true })
+        .click();
     await expect(page).toHaveURL(/\/copilot$/);
     await expect(
       page.getByRole("heading", { name: "Copilot", exact: true }),
@@ -297,6 +265,12 @@ test.describe("AI SRE investigation surfaces @aisre @critical", () => {
     await expect(
       page.getByRole("button", { name: "Open Copilot", exact: true }),
     ).toBeHidden();
+    const history = page.getByRole("button", { name: "History", exact: true });
+    await expect(history).toHaveAttribute("aria-expanded", "false");
+    await history.click();
+    await expect(
+      page.getByRole("dialog", { name: "Chat history" }),
+    ).toBeVisible();
   });
 });
 
@@ -366,30 +340,4 @@ async function findService(
   };
   expect(body.success).toBe(true);
   return body.services.find((service) => service.name === name);
-}
-
-async function dispatchAttachmentDrop(
-  composer: import("@playwright/test").Locator,
-  fileName: string,
-  mimeType: string,
-  content: string,
-): Promise<void> {
-  await composer.evaluate(
-    (element, file) => {
-      const form = element.closest("form");
-      if (!form) throw new Error("Copilot composer form was not found");
-      const transfer = new DataTransfer();
-      transfer.items.add(
-        new File([file.content], file.fileName, { type: file.mimeType }),
-      );
-      form.dispatchEvent(
-        new DragEvent("drop", {
-          bubbles: true,
-          cancelable: true,
-          dataTransfer: transfer,
-        }),
-      );
-    },
-    { fileName, mimeType, content },
-  );
 }

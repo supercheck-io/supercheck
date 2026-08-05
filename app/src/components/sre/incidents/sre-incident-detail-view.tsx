@@ -282,6 +282,7 @@ export function SreIncidentDetailView({
           className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden"
         >
           <SreInvestigationPanel
+            key={detail.latestInvestigation?.id ?? "no-investigation"}
             incidentId={detail.incident.id}
             hasPrimaryService={Boolean(detail.incident.primaryServiceName)}
             serviceMappingHref="/org-admin?tab=services"
@@ -292,6 +293,11 @@ export function SreIncidentDetailView({
             }))}
             toolMetrics={detail.toolMetrics}
             latestInvestigation={detail.latestInvestigation}
+            latestReportSnapshot={detail.latestReportSnapshot}
+            myReportFeedback={detail.myReportFeedback}
+            canInvestigate={detail.permissions.canInvestigate}
+            canUseLiveConnectors={detail.permissions.canUseLiveConnectors}
+            investigationEnabled={detail.capabilities.investigationEnabled}
           />
         </TabsContent>
 

@@ -126,13 +126,17 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
       await page.getByRole("button", { name: "Open Copilot" }).click();
       const copilotDialog = page.getByRole("dialog", { name: "Copilot" });
       await expect(copilotDialog).toContainText(
-        "Read-only incident evidence and verification.",
+        "Stored incident evidence with optional live sources.",
       );
-      const scopedPrompt = `/verify summarize stored evidence ${Date.now()}`;
+      const liveSources = copilotDialog.getByRole("switch", {
+        name: "Live sources",
+      });
+      await expect(liveSources).not.toBeChecked();
+      await liveSources.click();
+      await expect(liveSources).toBeChecked();
+      const scopedPrompt = `Summarize stored and live evidence ${Date.now()}`;
       await copilotDialog
-        .getByPlaceholder(
-          "Ask Copilot about an incident, service, or verification plan...",
-        )
+        .getByPlaceholder("Ask about this incident or its evidence...")
         .fill(scopedPrompt);
       const scopedResponsePromise = page.waitForResponse(
         (response) =>

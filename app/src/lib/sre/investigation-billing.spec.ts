@@ -109,6 +109,7 @@ describe("SRE investigation billing", () => {
     const insertReturning = jest.fn().mockResolvedValue([{ id: "event-1" }]);
     const insertValues = jest.fn(() => ({ returning: insertReturning }));
     const tx = {
+      execute: jest.fn().mockResolvedValue([]),
       query: {
         organization: {
           findFirst: jest.fn().mockResolvedValue({
@@ -116,6 +117,9 @@ describe("SRE investigation billing", () => {
             usagePeriodStart: new Date("2026-06-01T00:00:00Z"),
             usagePeriodEnd: new Date("2026-07-01T00:00:00Z"),
           }),
+        },
+        usageEvents: {
+          findFirst: jest.fn().mockResolvedValue(null),
         },
       },
       update: jest.fn(() => ({ set: updateSet })),
@@ -130,7 +134,7 @@ describe("SRE investigation billing", () => {
       incidentId: "incident-1",
       investigationRunId: "run-1",
       useLiveConnectors: true,
-    })).resolves.toEqual({ billed: true, usageEventId: "event-1" });
+    })).resolves.toEqual({ billed: true, usageEventId: "event-1", duplicate: false });
 
     expect(updateSet).toHaveBeenCalledWith(expect.objectContaining({ sreInvestigationUnitsUsed: expect.anything() }));
     expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({
@@ -140,6 +144,41 @@ describe("SRE investigation billing", () => {
       unitType: "investigation_units",
       metadata: expect.objectContaining({ investigationRunId: "run-1", useLiveConnectors: true }),
     }));
+  });
+
+  it("does not charge the same investigation run twice", async () => {
+    const tx = {
+      execute: jest.fn().mockResolvedValue([]),
+      query: {
+        usageEvents: {
+          findFirst: jest.fn().mockResolvedValue({ id: "event-existing" }),
+        },
+        organization: { findFirst: jest.fn() },
+      },
+      update: jest.fn(),
+      insert: jest.fn(),
+    };
+    mockDb.transaction.mockImplementation(
+      async (callback: (transaction: typeof tx) => Promise<unknown>) => callback(tx)
+    );
+
+    await expect(
+      consumeSreInvestigationCredit({
+        organizationId: "org-1",
+        projectId: "project-1",
+        userId: "user-1",
+        incidentId: "incident-1",
+        investigationRunId: "run-1",
+        useLiveConnectors: false,
+      })
+    ).resolves.toEqual({
+      billed: true,
+      usageEventId: "event-existing",
+      duplicate: true,
+    });
+
+    expect(tx.update).not.toHaveBeenCalled();
+    expect(tx.insert).not.toHaveBeenCalled();
   });
 
   it("returns current usage against plan allowance", async () => {

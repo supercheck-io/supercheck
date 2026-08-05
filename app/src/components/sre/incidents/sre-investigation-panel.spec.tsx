@@ -14,7 +14,19 @@ jest.mock("@/hooks/use-project-context", () => ({
   useProjectContext: () => ({ projectId: "project-1" }),
 }));
 
+jest.mock("@/actions/sre-investigation-reports", () => ({
+  createSreInvestigationReportSnapshot: jest.fn(),
+  saveSreInvestigationReportFeedback: jest.fn(),
+}));
+
+import {
+  createSreInvestigationReportSnapshot,
+  saveSreInvestigationReportFeedback,
+} from "@/actions/sre-investigation-reports";
 import { SreInvestigationPanel } from "./sre-investigation-panel";
+
+const mockCreateSnapshot = createSreInvestigationReportSnapshot as jest.Mock;
+const mockSaveFeedback = saveSreInvestigationReportFeedback as jest.Mock;
 
 describe("SreInvestigationPanel", () => {
   beforeEach(() => {
@@ -23,6 +35,13 @@ describe("SreInvestigationPanel", () => {
       ok: true,
       json: async () => ({ summary: "Root cause summary updated" }),
     }) as unknown as typeof fetch;
+    mockCreateSnapshot.mockResolvedValue({
+      success: true,
+      snapshotId: "018f0000-0000-7000-8000-000000000010",
+      createdAt: "2026-06-24T12:00:00.000Z",
+      reused: false,
+    });
+    mockSaveFeedback.mockResolvedValue({ success: true });
   });
 
   it("renders a simplified investigation action panel without embedded chat", () => {
@@ -118,6 +137,7 @@ describe("SreInvestigationPanel", () => {
         hasPrimaryService={true}
         serviceMappingHref="/org-admin?tab=services"
         latestInvestigation={{
+          id: "018f0000-0000-7000-8000-000000000009",
           status: "completed",
           summary: "Dependency latency is the leading hypothesis.",
           completedAt: "2026-06-24T12:00:00.000Z",
@@ -129,5 +149,129 @@ describe("SreInvestigationPanel", () => {
     expect(
       screen.getByText("Dependency latency is the leading hypothesis."),
     ).toBeInTheDocument();
+  });
+
+  it("saves a completed investigation snapshot and then feedback", async () => {
+    const runId = "018f0000-0000-7000-8000-000000000009";
+    render(
+      <SreInvestigationPanel
+        incidentId="018f0000-0000-7000-8000-000000000001"
+        hasPrimaryService={true}
+        serviceMappingHref="/org-admin?tab=services"
+        latestInvestigation={{
+          id: runId,
+          status: "completed",
+          summary: "Dependency latency is the leading hypothesis.",
+          completedAt: "2026-06-24T12:00:00.000Z",
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Save report snapshot" }));
+    await waitFor(() => expect(mockCreateSnapshot).toHaveBeenCalledWith({ investigationRunId: runId }));
+
+    fireEvent.change(screen.getByLabelText("Notes (optional)"), {
+      target: { value: "Validated against the deployment timeline." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save feedback" }));
+    await waitFor(() =>
+      expect(mockSaveFeedback).toHaveBeenCalledWith(
+        expect.objectContaining({
+          reportSnapshotId: "018f0000-0000-7000-8000-000000000010",
+          notes: "Validated against the deployment timeline.",
+        }),
+      ),
+    );
+  });
+
+  it("does not expose snapshot mutation controls to viewers", () => {
+    render(
+      <SreInvestigationPanel
+        incidentId="018f0000-0000-7000-8000-000000000001"
+        hasPrimaryService={true}
+        serviceMappingHref="/org-admin?tab=services"
+        canInvestigate={false}
+        latestInvestigation={{
+          id: "018f0000-0000-7000-8000-000000000009",
+          status: "completed",
+          summary: "Dependency latency is the leading hypothesis.",
+          completedAt: "2026-06-24T12:00:00.000Z",
+        }}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: "Save report snapshot" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Run investigation" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Use live connector tools")).not.toBeInTheDocument();
+    expect(screen.getByText("Read-only access")).toBeInTheDocument();
+  });
+
+  it("shows a persistent disabled state when investigation is not enabled", () => {
+    render(
+      <SreInvestigationPanel
+        incidentId="018f0000-0000-7000-8000-000000000001"
+        hasPrimaryService={true}
+        serviceMappingHref="/org-admin?tab=services"
+        investigationEnabled={false}
+      />,
+    );
+
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Investigation is unavailable",
+    );
+    expect(
+      screen.getByRole("button", { name: "Run investigation" }),
+    ).toBeDisabled();
+    expect(screen.getByLabelText("Use live connector tools")).toBeDisabled();
+  });
+
+  it("keeps investigation available without exposing live sources when connector permission is missing", () => {
+    render(
+      <SreInvestigationPanel
+        incidentId="018f0000-0000-7000-8000-000000000001"
+        hasPrimaryService={true}
+        serviceMappingHref="/org-admin?tab=services"
+        canInvestigate={true}
+        canUseLiveConnectors={false}
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Run investigation" }),
+    ).toBeEnabled();
+    expect(screen.queryByLabelText("Use live connector tools")).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/role does not permit live connector queries/i),
+    ).toBeInTheDocument();
+  });
+
+  it("enforces the ten-item rejected hypothesis limit before submission", () => {
+    render(
+      <SreInvestigationPanel
+        incidentId="018f0000-0000-7000-8000-000000000001"
+        hasPrimaryService={true}
+        serviceMappingHref="/org-admin?tab=services"
+        latestInvestigation={{
+          id: "018f0000-0000-7000-8000-000000000009",
+          status: "completed",
+          summary: "Dependency latency is the leading hypothesis.",
+          completedAt: "2026-06-24T12:00:00.000Z",
+        }}
+        latestReportSnapshot={{
+          id: "018f0000-0000-7000-8000-000000000010",
+          title: "Investigation report",
+          createdAt: "2026-06-24T12:00:00.000Z",
+        }}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText(/Rejected hypotheses/), {
+      target: {
+        value: Array.from({ length: 11 }, (_, index) => `Hypothesis ${index + 1}`).join("\n"),
+      },
+    });
+
+    expect(screen.getByText(/11 of 10 hypotheses/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save feedback" })).toBeDisabled();
   });
 });

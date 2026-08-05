@@ -283,6 +283,9 @@ export class UsageTrackerService {
             {
               customer_id: org.polarCustomerId,
               name: meterName,
+              // Use the durable local ledger ID as Polar's deduplication key.
+              // Scheduler retries send this same external_id.
+              external_id: eventId,
               timestamp: timestamp.toISOString(),
               metadata: {
                 event_id: eventId,

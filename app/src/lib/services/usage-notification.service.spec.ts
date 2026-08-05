@@ -129,6 +129,13 @@ describe("UsageNotificationService", () => {
         overageCostCents: 0,
         percentage: 0,
       },
+      sreInvestigations: {
+        used: 0,
+        included: 10,
+        overage: 0,
+        overageCostCents: 0,
+        percentage: 0,
+      },
       totalOverageCostCents: 9_000,
       periodStart: new Date("2026-06-01T00:00:00.000Z"),
       periodEnd: new Date("2026-07-01T00:00:00.000Z"),
@@ -146,6 +153,37 @@ describe("UsageNotificationService", () => {
       "org_123",
       "spending_90",
       undefined
+    );
+  });
+
+  it("sends AI SRE investigation quota notifications", async () => {
+    (billingSettingsService.getSettings as jest.Mock).mockResolvedValue({
+      enableSpendingLimit: false,
+      monthlySpendingLimitCents: null,
+      hardStopOnLimit: false,
+      notifyAt50Percent: false,
+      notifyAt80Percent: true,
+      notifyAt90Percent: false,
+      notifyAt100Percent: false,
+      notificationEmails: [],
+    });
+    (polarUsageService.getUsageMetrics as jest.Mock).mockResolvedValue({
+      playwrightMinutes: { used: 0, included: 100, percentage: 0 },
+      k6VuMinutes: { used: 0, included: 100, percentage: 0 },
+      aiCredits: { used: 0, included: 100, percentage: 0 },
+      sreInvestigations: { used: 8, included: 10, percentage: 80 },
+      totalOverageCostCents: 0,
+    });
+
+    const result = await usageNotificationService.checkAndNotify("org_123");
+
+    expect(result).toEqual([
+      expect.objectContaining({ sent: true, notificationId: "notif_123" }),
+    ]);
+    expect(billingSettingsService.markNotificationSent).toHaveBeenCalledWith(
+      "org_123",
+      "80",
+      "sre"
     );
   });
 });

@@ -53,7 +53,7 @@ export const SRE_CONNECTOR_CATALOG: SreConnectorCatalogItem[] = [
   {
     value: "datadog",
     label: "Datadog",
-    description: "Events, metrics, logs, and traces",
+    description: "Alert and deployment events",
     addable: true,
   },
   {

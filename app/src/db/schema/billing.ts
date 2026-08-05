@@ -193,9 +193,9 @@ export const usageNotifications = pgTable(
       >()
       .notNull(),
 
-    // Resource type (playwright, k6, ai, or combined)
+    // Resource type (playwright, k6, AI, SRE, combined, or spending)
     resourceType: text("resource_type")
-      .$type<"playwright" | "k6" | "ai" | "combined" | "spending">()
+      .$type<"playwright" | "k6" | "ai" | "sre" | "combined" | "spending">()
       .notNull(),
 
     // Usage details at time of notification

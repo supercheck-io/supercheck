@@ -1417,8 +1417,8 @@ export class DatadogConnector extends BaseDirectConnector {
     super({
       ...options,
       type: "datadog",
-      surfaces: ["metrics", "logs", "traces"],
-      evidenceTypes: ["event", "log", "metric"],
+      surfaces: ["events"],
+      evidenceTypes: ["event"],
       requires: ["credentials", "network", "service_scope", "time_window"],
       endpointUrl: options.endpointUrl ?? "https://api.datadoghq.com",
     });

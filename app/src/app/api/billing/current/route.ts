@@ -113,8 +113,6 @@ export async function GET() {
       subscription: {
         plan: effectivePlan,
         status: effectiveStatus,
-        subscriptionId: org.subscriptionId,
-        polarCustomerId: org.polarCustomerId,
         currentPeriodStart: periodStart,
         currentPeriodEnd: periodEnd,
         // Include pricing info for UI

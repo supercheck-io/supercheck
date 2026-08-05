@@ -27,6 +27,7 @@ interface PricingPlan {
     playwrightMinutes: string | number;
     k6VuMinutes: string | number;
     aiCredits: string | number;
+    sreInvestigationUnits: string | number;
     concurrentExecutions: string | number;
     queuedJobs: string | number;
     teamMembers: string | number;
@@ -45,6 +46,7 @@ interface PricingPlan {
     playwrightMinutes: number;
     k6VuMinutes: number;
     aiCredits: number;
+    sreInvestigationUnits: number;
   };
 }
 
@@ -66,11 +68,13 @@ interface OveragePricingData {
     playwrightMinutes: number;
     k6VuMinutes: number;
     aiCredits: number;
+    sreInvestigationUnits: number;
   };
   pro: {
     playwrightMinutes: number;
     k6VuMinutes: number;
     aiCredits: number;
+    sreInvestigationUnits: number;
   };
 }
 
@@ -85,12 +89,12 @@ const defaultFaqs = [
   {
     question: "How is usage tracked?",
     answer:
-      "Playwright Minutes count total browser execution time. K6 VU Minutes are calculated as Virtual Users × execution time in minutes. Monitors count against Playwright minutes for each check.",
+      "Playwright Minutes count browser execution time. K6 VU Minutes are Virtual Users × execution time. Monitors count against Playwright minutes. Each successful full AI SRE investigation consumes one investigation unit; chat, triage, and evidence briefs do not.",
   },
   {
     question: "What happens if I exceed my limits?",
     answer:
-      "For Playwright minutes and K6 VU minutes, usage-based overage billing automatically applies at the rates shown above. AI credits have a hard monthly limit — upgrade your plan for more. You'll receive email alerts at 80% and 100% of quota.",
+      "Playwright, K6, and successful full AI SRE investigations use the overage rates shown above. AI credits have a hard monthly limit. Configured billing contacts receive threshold alerts.",
   },
   {
     question: "Can I change plans?",
@@ -178,33 +182,19 @@ function SubscribePageContent() {
         console.log("Setup defaults call completed (may already exist):", setupError);
       }
 
-      // Get the user's organization ID to link the subscription
-      const orgsResponse = await fetch("/api/organizations");
-      const orgsResult = await orgsResponse.json();
-      // API returns { success: true, data: [...] }
-      const orgs = orgsResult.data || orgsResult;
-      const organizationId = orgs?.[0]?.id;
-
-      if (!organizationId) {
-        console.error("No organization found in response:", orgsResult);
-        throw new Error("No organization found. Please try refreshing the page.");
-      }
-
-      // Call the Better Auth Polar checkout endpoint directly
-      // (polarClient is not used on the client to avoid bundling server-side node: modules)
-      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || '';
-      const checkoutRes = await fetch(`${baseUrl}/api/auth/checkout`, {
+      // The server validates the active organization, owner role, product, and
+      // redirect URLs before creating a Polar checkout.
+      const checkoutRes = await fetch("/api/billing/checkout", {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({
-          slug: planSlug,
-          referenceId: organizationId,
-        }),
+        body: JSON.stringify({ plan: planSlug }),
       });
       if (!checkoutRes.ok) {
         const errData = await checkoutRes.json().catch(() => ({}));
-        throw new Error(errData?.message || 'Checkout request failed');
+        throw new Error(
+          errData?.error || errData?.message || 'Checkout request failed'
+        );
       }
       const checkoutData = await checkoutRes.json();
       if (checkoutData?.url) {
@@ -214,7 +204,12 @@ function SubscribePageContent() {
       }
     } catch (error) {
       console.error("Checkout error:", error);
-      toast.error("Failed to start checkout. Please try again.");
+      toast.error("Unable to start checkout", {
+        description:
+          error instanceof Error
+            ? error.message
+            : "Please refresh and try again.",
+      });
       setSubscribing(null);
     }
   };
@@ -284,6 +279,7 @@ function SubscribePageContent() {
                 `${Number(plan.features.playwrightMinutes).toLocaleString()} Playwright mins/mo`,
                 `${Number(plan.features.k6VuMinutes).toLocaleString()} K6 VU-mins/mo`,
                 `${Number(plan.features.aiCredits).toLocaleString()} AI credits/mo`,
+                `${Number(plan.features.sreInvestigationUnits).toLocaleString()} AI SRE investigations/mo`,
                 `${plan.features.teamMembers} team members`,
                 `${plan.features.projects} projects`,
                 `${plan.features.monitorDataRetention} monitor retention`,
@@ -292,7 +288,7 @@ function SubscribePageContent() {
                   ? "Custom domains"
                   : "Standard domains",
               ]}
-              overageText={`Overage: $${plan.overagePricing.playwrightMinutes}/min Playwright · $${plan.overagePricing.k6VuMinutes}/VU-min K6 · AI credits: hard limit`}
+              overageText={`Overage: $${plan.overagePricing.playwrightMinutes}/min Playwright · $${plan.overagePricing.k6VuMinutes}/VU-min K6 · $${plan.overagePricing.sreInvestigationUnits}/AI SRE investigation · AI credits: hard limit`}
               ctaText={`Get Started with ${plan.name}`}
               ctaVariant={plan.id === "pro" ? "default" : "outline"}
               onCtaClick={() => handleSubscribe(plan.id)}
@@ -312,6 +308,7 @@ function SubscribePageContent() {
               "Unlimited uptime monitors",
               "Unlimited Playwright & K6 minutes",
               "Unlimited AI credits",
+              "Custom AI SRE investigation volume",
               "Unlimited team members & projects",
               "Custom data retention policies",
               "Dedicated account manager",

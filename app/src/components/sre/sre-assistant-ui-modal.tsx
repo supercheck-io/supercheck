@@ -86,8 +86,8 @@ export function SreAssistantUiModal() {
                 <DialogTitle className="truncate text-sm">Copilot</DialogTitle>
                 <DialogDescription className="truncate text-xs">
                   {incidentId
-                    ? "Read-only incident evidence and verification."
-                    : "Read-only incident triage and verification planning."}
+                    ? "Stored incident evidence with optional live sources."
+                    : "Read-only triage from the context you provide."}
                 </DialogDescription>
               </div>
             </div>
@@ -102,7 +102,7 @@ export function SreAssistantUiModal() {
               </Button>
               <Button asChild variant="outline" size="sm">
                 <Link href="/copilot">
-                  Open
+                  Full view
                   <ExternalLink className="h-3.5 w-3.5" />
                 </Link>
               </Button>

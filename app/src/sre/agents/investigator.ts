@@ -28,10 +28,14 @@ export function buildSreInvestigationSystemPrompt() {
     "If stored connector evidence is present, do not describe connector evidence as absent. Distinguish healthy topology evidence from the missing logs, metrics, traces, or alerts needed to explain the incident.",
     "Always cite evidence identifiers, connector job IDs, or source URIs when available.",
     skills,
-  ].filter(Boolean).join("\n\n");
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 }
 
-export function buildSreInvestigationPrompt(input: SreInvestigationPromptInput) {
+export function buildSreInvestigationPrompt(
+  input: SreInvestigationPromptInput,
+) {
   return [
     `Incident: ${input.incidentTitle}`,
     `Severity: ${input.severity}`,
@@ -51,6 +55,8 @@ export function buildSreInvestigationPrompt(input: SreInvestigationPromptInput) 
     input.specializedSubagentsEnabled
       ? "Use telemetry, infrastructure, or code/delivery subagents only after gathering relevant evidence and pass cited context into the subagent task."
       : null,
-    "Return a concise report with: What changed, Blast radius, Strongest signals, Working theory, confidence, likely root cause, Evidence gaps, Next safe checks, recommended human fix steps, and verification plan.",
-  ].filter(Boolean).join("\n");
+    "Return a concise report with: What changed, Blast radius, Strongest signals, Working theory, confidence, likely root cause, Evidence gaps, Next safe checks, recommended human fix steps, and how the responder can confirm recovery after applying a fix outside Supercheck.",
+  ]
+    .filter(Boolean)
+    .join("\n");
 }

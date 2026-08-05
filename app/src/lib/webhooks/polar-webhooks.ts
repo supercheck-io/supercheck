@@ -13,10 +13,12 @@ import { subscriptionService } from "@/lib/services/subscription-service";
 import { billingSettingsService } from "@/lib/services/billing-settings.service";
 import { db } from "@/utils/db";
 import { organization, webhookIdempotency } from "@/db/schema";
-import { eq, and, lt, isNull } from "drizzle-orm";
+import { eq, and, lt, lte, isNull, or } from "drizzle-orm";
 import type { SubscriptionPlan } from "@/db/schema";
 
-// Idempotency TTL: 24 hours
+// A short processing lease prevents concurrent delivery from running twice.
+// Completed records are retained for 24 hours to suppress provider retries.
+const WEBHOOK_PROCESSING_LEASE_MS = 5 * 60 * 1000;
 const WEBHOOK_IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000;
 
 /**
@@ -30,7 +32,10 @@ async function tryClaimWebhook(
   eventType: string
 ): Promise<boolean> {
   try {
-    const expiresAt = new Date(Date.now() + WEBHOOK_IDEMPOTENCY_TTL_MS);
+    const now = new Date();
+    const processingLeaseEndsAt = new Date(
+      now.getTime() + WEBHOOK_PROCESSING_LEASE_MS
+    );
 
     // First, try to insert with null status (not yet processed)
     // This is the key to preventing race conditions in multi-instance deployments
@@ -40,7 +45,7 @@ async function tryClaimWebhook(
         webhookId,
         eventType,
         resultStatus: null,
-        expiresAt,
+        expiresAt: processingLeaseEndsAt,
       })
       .onConflictDoNothing({
         target: [webhookIdempotency.webhookId, webhookIdempotency.eventType],
@@ -52,8 +57,8 @@ async function tryClaimWebhook(
       return true;
     }
 
-    // Row exists - check if it was successfully processed
-    // If status is null (previous processing failed), allow retry
+    // Row exists. Completed/skipped events stay suppressed. Failed events may
+    // retry immediately; an in-flight event may retry only after its lease.
     const existing = await db.query.webhookIdempotency.findFirst({
       where: and(
         eq(webhookIdempotency.webhookId, webhookId),
@@ -61,46 +66,58 @@ async function tryClaimWebhook(
       ),
     });
 
-    // If status is "success", already processed - skip
-    if (existing?.resultStatus === "success") {
+    if (
+      existing?.resultStatus === "success" ||
+      existing?.resultStatus === "skipped"
+    ) {
       console.log(
         `[Polar] Webhook ${truncateId(webhookId)} already processed successfully, skipping`
       );
       return false;
     }
 
-    // If status is null or "error", allow retry by updating the record
-    // This handles the case where previous processing failed
-    if (existing && (existing.resultStatus === null || existing.resultStatus === "error")) {
-      console.log(
-        `[Polar] Webhook ${truncateId(webhookId)} previous status: ${existing.resultStatus || 'null'}, allowing retry`
-      );
-      // Update the expiry to extend the window
-      await db
+    if (existing) {
+      const reclaimed = await db
         .update(webhookIdempotency)
         .set({ 
-          expiresAt,
-          resultStatus: null, // Reset for retry
+          expiresAt: processingLeaseEndsAt,
+          resultStatus: null,
           resultMessage: null,
         })
         .where(
           and(
             eq(webhookIdempotency.webhookId, webhookId),
-            eq(webhookIdempotency.eventType, eventType)
+            eq(webhookIdempotency.eventType, eventType),
+            or(
+              eq(webhookIdempotency.resultStatus, "error"),
+              and(
+                isNull(webhookIdempotency.resultStatus),
+                lte(webhookIdempotency.expiresAt, now)
+              )
+            )
           )
+        )
+        .returning({ id: webhookIdempotency.id });
+
+      if (reclaimed.length > 0) {
+        console.log(
+          `[Polar] Webhook ${truncateId(webhookId)} reclaimed after error or expired processing lease`
         );
-      return true;
+        return true;
+      }
     }
 
-    // Status is "skipped" - don't retry
-    return false;
-  } catch (error) {
-    // If table doesn't exist yet (pre-migration), fall back to allowing processing
-    // This prevents blocking webhooks during migration period
-    console.warn(
-      `[Polar] Idempotency claim failed (table may not exist yet): ${error}`
+    // Do not acknowledge an overlapping delivery while the original handler is
+    // unresolved. If the original later fails, Polar must keep retrying until
+    // the lease expires and a replica can reclaim the event.
+    throw new Error(
+      `Polar webhook ${truncateId(webhookId)} is already being processed`
     );
-    return true; // Allow processing to avoid blocking webhooks
+  } catch (error) {
+    // Billing state changes must never run without idempotency. Throw so Polar
+    // retries after the database/migration issue is fixed.
+    console.error(`[Polar] Idempotency claim failed: ${error}`);
+    throw error;
   }
 }
 
@@ -120,6 +137,7 @@ async function updateWebhookResult(
       .set({
         resultStatus: status,
         resultMessage: message,
+        expiresAt: new Date(Date.now() + WEBHOOK_IDEMPOTENCY_TTL_MS),
       })
       .where(
         and(
@@ -128,8 +146,14 @@ async function updateWebhookResult(
         )
       );
   } catch (error) {
-    // Log but don't fail - updating status is non-critical
     console.warn(`[Polar] Failed to update webhook result: ${error}`);
+  }
+
+  // Never acknowledge a billing-state event that this application did not
+  // apply. Throwing makes the signature-verified webhook endpoint return a
+  // retryable failure; the next delivery can reclaim the recorded error.
+  if (status === "error") {
+    throw new Error(message ?? `Failed to process Polar ${eventType} webhook`);
   }
 }
 
@@ -165,7 +189,7 @@ function truncateId(id: string | undefined | null): string {
 interface PolarWebhookPayload {
   id?: string;
   type?: string;
-  timestamp?: string;
+  timestamp?: string | Date;
   data: {
     id: string;
     // Polar uses camelCase
@@ -511,14 +535,11 @@ function getOrganizationIdFromPayload(
     return payload.data.checkout.metadata.referenceId;
   }
   // Check subscription metadata (for order events)
-  const subscription = (payload.data as any).subscription;  
-  if (subscription?.metadata?.referenceId) {
-    return subscription.metadata.referenceId;
-  }
-  // Check product metadata
-  const product = (payload.data as any).product;  
-  if (product?.metadata?.referenceId) {
-    return product.metadata.referenceId;
+  const data = payload.data as Record<string, unknown>;
+  const subscriptionRecord = asRecord(data.subscription);
+  const subscriptionMetadata = asRecord(subscriptionRecord?.metadata);
+  if (typeof subscriptionMetadata?.referenceId === "string") {
+    return subscriptionMetadata.referenceId;
   }
   return null;
 }
@@ -550,7 +571,7 @@ async function findOrganizationByUserId(userId: string) {
 
   // Find the user's membership and get their organization
   const membership = await db.query.member.findFirst({
-    where: eq(member.userId, userId),
+    where: and(eq(member.userId, userId), eq(member.role, "org_owner")),
   });
 
   if (!membership) {
@@ -617,6 +638,94 @@ async function findOrganizationById(orgId: string) {
   }
 
   return org;
+}
+
+async function ensureCustomerBinding(
+  org: typeof organization.$inferSelect,
+  customerId: string | undefined,
+  userId: string | null,
+  eventType: string,
+  webhookEventKey: string
+) {
+  if (!customerId) {
+    await updateWebhookResult(
+      webhookEventKey,
+      eventType,
+      "error",
+      "Missing customer ID"
+    );
+    return false;
+  }
+
+  if (org.polarCustomerId) {
+    if (org.polarCustomerId === customerId) return true;
+
+    console.error(
+      `[Polar] ${eventType}: customer mismatch for org ${truncateId(org.id)}`
+    );
+    await updateWebhookResult(
+      webhookEventKey,
+      eventType,
+      "error",
+      "Polar customer does not match organization billing owner"
+    );
+    return false;
+  }
+
+  if (!userId) {
+    await updateWebhookResult(
+      webhookEventKey,
+      eventType,
+      "error",
+      "Organization has no customer binding and webhook has no owner identity"
+    );
+    return false;
+  }
+
+  const { member } = await import("@/db/schema");
+  const owner = await db.query.member.findFirst({
+    where: and(
+      eq(member.organizationId, org.id),
+      eq(member.userId, userId),
+      eq(member.role, "org_owner")
+    ),
+    columns: { id: true },
+  });
+
+  if (!owner) {
+    await updateWebhookResult(
+      webhookEventKey,
+      eventType,
+      "error",
+      "Webhook customer is not owned by the organization owner"
+    );
+    return false;
+  }
+
+  const linked = await db
+    .update(organization)
+    .set({ polarCustomerId: customerId })
+    .where(and(eq(organization.id, org.id), isNull(organization.polarCustomerId)))
+    .returning({ id: organization.id });
+
+  if (linked.length > 0) return true;
+
+  const current = await db.query.organization.findFirst({
+    where: eq(organization.id, org.id),
+    columns: { polarCustomerId: true },
+  });
+  if (current?.polarCustomerId === customerId) return true;
+
+  console.error(
+    `[Polar] ${eventType}: customer binding changed while processing org ${truncateId(org.id)}`
+  );
+  await updateWebhookResult(
+    webhookEventKey,
+    eventType,
+    "error",
+    "Organization billing customer changed while processing webhook"
+  );
+  return false;
 }
 
 /**
@@ -688,6 +797,18 @@ export async function handleSubscriptionActive(payload: PolarWebhookPayload) {
       "error",
       "Organization not found"
     );
+    return;
+  }
+
+  if (
+    !(await ensureCustomerBinding(
+      org,
+      customerId,
+      userId,
+      "subscription.active",
+      webhookEventKey
+    ))
+  ) {
     return;
   }
 
@@ -809,6 +930,7 @@ export async function handleSubscriptionUpdated(payload: PolarWebhookPayload) {
 
   const productId = getProductIdFromPayload(payload);
   const customerId = getCustomerIdFromPayload(payload);
+  const userId = getUserIdFromPayload(payload);
   const subscriptionDates = getSubscriptionDatesFromPayload(payload);
 
   // Try to find organization by subscription ID first
@@ -839,6 +961,18 @@ export async function handleSubscriptionUpdated(payload: PolarWebhookPayload) {
       "error",
       "Organization not found"
     );
+    return;
+  }
+
+  if (
+    !(await ensureCustomerBinding(
+      org,
+      customerId,
+      userId,
+      "subscription.updated",
+      webhookEventKey
+    ))
+  ) {
     return;
   }
 
@@ -989,6 +1123,7 @@ export async function handleSubscriptionPastDue(payload: PolarWebhookPayload) {
 
   const customerId = getCustomerIdFromPayload(payload);
   const productId = getProductIdFromPayload(payload);
+  const userId = getUserIdFromPayload(payload);
   const subscriptionDates = getSubscriptionDatesFromPayload(payload);
 
   let org = await db.query.organization.findFirst({
@@ -1013,6 +1148,18 @@ export async function handleSubscriptionPastDue(payload: PolarWebhookPayload) {
       "error",
       "Organization not found"
     );
+    return;
+  }
+
+  if (
+    !(await ensureCustomerBinding(
+      org,
+      customerId,
+      userId,
+      "subscription.past_due",
+      webhookEventKey
+    ))
+  ) {
     return;
   }
 
@@ -1155,10 +1302,12 @@ export async function handleOrderPaid(payload: PolarWebhookPayload) {
   const productId = getProductIdFromPayload(payload);
   const orgId = getOrganizationIdFromPayload(payload);
   const userId = getUserIdFromPayload(payload);
+  const orderData = payload.data as Record<string, unknown>;
+  const orderSubscription = asRecord(orderData.subscription);
   const subscriptionId =
-    (payload.data as any).subscription?.id ||
-    (payload.data as any).subscriptionId ||
-    (payload.data as any).subscription_id ||
+    (typeof orderSubscription?.id === "string" && orderSubscription.id) ||
+    (typeof orderData.subscriptionId === "string" && orderData.subscriptionId) ||
+    (typeof orderData.subscription_id === "string" && orderData.subscription_id) ||
     null;
   const subscriptionDates = getSubscriptionDatesFromPayload(payload);
 
@@ -1205,6 +1354,18 @@ export async function handleOrderPaid(payload: PolarWebhookPayload) {
       "error",
       "Organization not found"
     );
+    return;
+  }
+
+  if (
+    !(await ensureCustomerBinding(
+      org,
+      customerId,
+      userId,
+      "order.paid",
+      webhookEventKey
+    ))
+  ) {
     return;
   }
 
@@ -1274,8 +1435,18 @@ export async function handleCustomerCreated(payload: PolarWebhookPayload) {
 
   // Get userId from customer metadata or externalId
   // The Polar plugin sets externalId = user.id when creating customers
-  const externalId = (payload.data as any).externalId;  
-  const metadataUserId = (payload.data as any).metadata?.userId;  
+  const customerData = payload.data as Record<string, unknown>;
+  const customerMetadata = asRecord(customerData.metadata);
+  const externalId =
+    typeof customerData.externalId === "string"
+      ? customerData.externalId
+      : typeof customerData.external_id === "string"
+        ? customerData.external_id
+        : null;
+  const metadataUserId =
+    typeof customerMetadata?.userId === "string"
+      ? customerMetadata.userId
+      : null;
   const userId = externalId || metadataUserId;
 
   if (!userId) {
@@ -1365,6 +1536,7 @@ export async function handleSubscriptionUncanceled(
   const customerId = getCustomerIdFromPayload(payload);
   const productId = getProductIdFromPayload(payload);
   const orgId = getOrganizationIdFromPayload(payload);
+  const userId = getUserIdFromPayload(payload);
 
   // Try to find organization
   let org = orgId ? await findOrganizationById(orgId) : null;
@@ -1383,6 +1555,18 @@ export async function handleSubscriptionUncanceled(
       "error",
       "Organization not found"
     );
+    return;
+  }
+
+  if (
+    !(await ensureCustomerBinding(
+      org,
+      customerId,
+      userId,
+      "subscription.uncanceled",
+      webhookEventKey
+    ))
+  ) {
     return;
   }
 

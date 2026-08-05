@@ -30,7 +30,7 @@ describe("SreAssistantUiModal", () => {
     expect(launcher).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByRole("heading", { name: "Copilot" })).toBeInTheDocument();
     expect(screen.getByText("Copilot thread mounted")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /open/i })).toHaveAttribute("href", "/copilot");
+    expect(screen.getByRole("link", { name: /full view/i })).toHaveAttribute("href", "/copilot");
   });
 
   it("passes incident context to the floating Copilot on incident detail pages", async () => {

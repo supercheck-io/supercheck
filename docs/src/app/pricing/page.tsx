@@ -36,10 +36,10 @@ const plans = [
             '25 monitors',
             '3,000 Playwright minutes/month',
             '20,000 K6 VU minutes/month',
-            '500 AI credits/month',
-            '25 AI SRE investigation units/month',
-            '3 live evidence connectors',
-            '1 Private Agent',
+            '100 AI credits/month',
+            '10 AI SRE investigation units/month',
+            'Read-only evidence connectors',
+            'Private Agent support',
             '5 team members',
             '2 organizations, 10 projects',
             'CI/CD integration',
@@ -59,10 +59,10 @@ const plans = [
             '100 monitors',
             '10,000 Playwright minutes/month',
             '75,000 K6 VU minutes/month',
-            '2,500 AI credits/month',
-            '150 AI SRE investigation units/month',
-            '15 live evidence connectors',
-            '5 Private Agents',
+            '300 AI credits/month',
+            '50 AI SRE investigation units/month',
+            'Read-only evidence connectors',
+            'Private Agent support',
             '25 team members',
             '10 organizations, 50 projects',
             'CI/CD integration',
@@ -99,7 +99,7 @@ const plans = [
 const overagePricing = [
     { metric: 'Playwright minute', plus: '$0.03', pro: '$0.02' },
     { metric: 'K6 VU minute', plus: '$0.01', pro: '$0.01' },
-    { metric: 'AI credit', plus: '$0.02', pro: '$0.01' },
+    { metric: 'AI credit', plus: 'Hard limit', pro: 'Hard limit' },
     { metric: 'AI SRE investigation unit', plus: '$0.50', pro: '$0.50' },
 ];
 
@@ -109,20 +109,20 @@ const comparisonFeatures = [
             { name: 'Monitors', plus: '25', pro: '100', selfHosted: 'Unlimited' },
             { name: 'Playwright minutes/month', plus: '3,000', pro: '10,000', selfHosted: 'Unlimited' },
             { name: 'K6 VU minutes/month', plus: '20,000', pro: '75,000', selfHosted: 'Unlimited' },
-            { name: 'AI credits/month', plus: '500', pro: '2,500', selfHosted: 'Unlimited with BYO provider' },
-            { name: 'AI SRE investigation units/month', plus: '25', pro: '150', selfHosted: 'Unlimited' },
-            { name: 'Live evidence connectors', plus: '3', pro: '15', selfHosted: 'Unlimited' },
-            { name: 'Private Agents', plus: '1', pro: '5', selfHosted: 'Unlimited' },
+            { name: 'AI credits/month', plus: '100', pro: '300', selfHosted: 'Unlimited with BYO provider' },
+            { name: 'AI SRE investigation units/month', plus: '10', pro: '50', selfHosted: 'Unlimited' },
+            { name: 'Read-only evidence connectors', plus: 'Included', pro: 'Included', selfHosted: 'Self-managed' },
+            { name: 'Private Agent support', plus: 'Included', pro: 'Included', selfHosted: 'Self-managed' },
             { name: 'Concurrent jobs', plus: '5', pro: '10', selfHosted: 'Unlimited' },
         ]
     },
     {
         category: 'AI SRE', items: [
             { name: 'Standalone AI SRE Copilot', plus: '✓', pro: '✓', selfHosted: '✓' },
-            { name: 'Incident investigation chat', plus: '✓', pro: '✓', selfHosted: '✓' },
+            { name: 'Incident-scoped Copilot', plus: '✓', pro: '✓', selfHosted: '✓' },
             { name: 'Evidence graph and reports', plus: '✓', pro: '✓', selfHosted: '✓' },
             { name: 'Report snapshots and feedback', plus: '✓', pro: '✓', selfHosted: '✓' },
-            { name: 'Read-only connector evidence', plus: 'Limited', pro: 'Expanded', selfHosted: 'Self-managed' },
+            { name: 'Read-only connector evidence', plus: 'Included', pro: 'Included', selfHosted: 'Self-managed' },
         ]
     },
     {
@@ -135,9 +135,9 @@ const comparisonFeatures = [
     },
     {
         category: 'Data Retention', items: [
-            { name: 'Raw monitor data', plus: '7 days', pro: '30 days', selfHosted: '30 days' },
-            { name: 'Aggregated metrics', plus: '30 days', pro: '365 days', selfHosted: '180 days' },
-            { name: 'Job run history', plus: '30 days', pro: '90 days', selfHosted: '180 days' },
+            { name: 'Raw monitor data', plus: '7 days', pro: '7 days', selfHosted: '7 days' },
+            { name: 'Aggregated metrics', plus: '30 days', pro: '90 days', selfHosted: '90 days' },
+            { name: 'Job run history', plus: '30 days', pro: '90 days', selfHosted: '90 days' },
         ]
     },
     {
@@ -162,7 +162,7 @@ const faqs = [
     },
     {
         question: 'How do AI credits work?',
-        answer: 'AI credits are a monthly pool for model-backed features such as test generation, failure analysis, and AI SRE chat. AI SRE investigations also use investigation units because they can run multiple model/tool steps. Spending limits prevent surprise overages.',
+        answer: 'AI credits are a hard monthly pool for test generation and failure analysis. Each successful full AI SRE investigation uses one separate investigation unit; AI SRE chat, triage, and evidence briefs do not consume investigation units. Spending limits cap metered overages.',
     },
     {
         question: 'Can I change plans anytime?',

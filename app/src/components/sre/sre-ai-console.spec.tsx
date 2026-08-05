@@ -11,7 +11,11 @@ jest.mock("@/actions/sre-ai", () => ({
 }));
 
 jest.mock("@/components/sre/sre-assistant-ui-thread", () => ({
-  SreAssistantUiThread: ({ initialMessages }: { initialMessages: Array<{ content: string }> }) => (
+  SreAssistantUiThread: ({
+    initialMessages,
+  }: {
+    initialMessages: Array<{ content: string }>;
+  }) => (
     <div>
       {initialMessages.map((message, index) => (
         <p key={`${message.content}-${index}`}>{message.content}</p>
@@ -29,21 +33,37 @@ describe("SreAiConsole", () => {
             conversationId: "018f0000-0000-7000-8000-000000000001",
             title: "Checkout investigation",
             updatedAt: "2026-06-24T10:00:00.000Z",
-            messages: [{ id: "m1", role: "assistant", content: "Check database pool saturation.", modelId: "test-model" }],
+            messages: [
+              {
+                id: "m1",
+                role: "assistant",
+                content: "Check database pool saturation.",
+                modelId: "test-model",
+              },
+            ],
           },
           {
             conversationId: "018f0000-0000-7000-8000-000000000002",
             title: "Search incident",
             updatedAt: "2026-06-24T11:00:00.000Z",
-            messages: [{ id: "m2", role: "assistant", content: "Check search index health.", modelId: "test-model" }],
+            messages: [
+              {
+                id: "m2",
+                role: "assistant",
+                content: "Check search index health.",
+                modelId: "test-model",
+              },
+            ],
           },
         ]}
-      />
+      />,
     );
 
     expect(screen.getByText("Checkout investigation")).toBeInTheDocument();
     expect(screen.getAllByText("Jun 24").length).toBeGreaterThan(0);
-    expect(screen.getByText("Check database pool saturation.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Check database pool saturation."),
+    ).toBeInTheDocument();
 
     fireEvent.click(screen.getByText("Search incident"));
 
@@ -72,5 +92,14 @@ describe("SreAiConsole", () => {
     );
 
     expect(screen.getByText("Date unavailable")).toBeInTheDocument();
+  });
+
+  it("exposes saved chat history from the mobile header", () => {
+    render(<SreAiConsole />);
+
+    expect(screen.getByRole("button", { name: "History" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
   });
 });

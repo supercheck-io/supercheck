@@ -19,6 +19,10 @@ jest.mock("@/lib/rbac/middleware", () => ({
   checkPermissionWithContext: jest.fn(),
 }));
 
+jest.mock("@/lib/sre/sre-rate-limiter", () => ({
+  checkSreTriageRateLimit: jest.fn(),
+}));
+
 jest.mock("@/lib/ai/ai-provider", () => ({
   getActualModelName: jest.fn(() => "test-model"),
 }));
@@ -51,6 +55,9 @@ const { requireProjectContext: mockRequireProjectContext } = jest.requireMock("@
 };
 const { checkPermissionWithContext: mockCheckPermissionWithContext } = jest.requireMock("@/lib/rbac/middleware") as {
   checkPermissionWithContext: jest.Mock;
+};
+const { checkSreTriageRateLimit: mockCheckSreTriageRateLimit } = jest.requireMock("@/lib/sre/sre-rate-limiter") as {
+  checkSreTriageRateLimit: jest.Mock;
 };
 const { runSreAgent: mockRunSreAgent } = jest.requireMock("@/sre/lib/agent-runner") as {
   runSreAgent: jest.Mock;
@@ -127,6 +134,7 @@ describe("SRE triage API", () => {
     process.env.SRE_TRIAGE_AGENT_ENABLED = "true";
     mockRequireProjectContext.mockResolvedValue(context);
     mockCheckPermissionWithContext.mockReturnValue(true);
+    mockCheckSreTriageRateLimit.mockResolvedValue({ allowed: true });
     mockRunSreAgent.mockResolvedValue({ text: "Likely dependency latency", modelId: "test-model", finishReason: "stop" });
   });
 
@@ -175,6 +183,23 @@ describe("SRE triage API", () => {
     }));
 
     expect(response.status).toBe(400);
+    expect(mockDb.select).not.toHaveBeenCalled();
+    expect(mockDb.insert).not.toHaveBeenCalled();
+  });
+
+  it("rate limits expensive triage runs before database work", async () => {
+    mockCheckSreTriageRateLimit.mockResolvedValue({
+      allowed: false,
+      remaining: 0,
+      resetTime: Date.now() + 300_000,
+    });
+
+    const response = await POST(request({
+      incidentId: "018f0000-0000-7000-8000-000000000004",
+    }));
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get("Retry-After")).toBeTruthy();
     expect(mockDb.select).not.toHaveBeenCalled();
     expect(mockDb.insert).not.toHaveBeenCalled();
   });

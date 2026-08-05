@@ -108,10 +108,11 @@ const {
     code: "invalid_input" | "not_found" | "incident_not_found",
   ) => Error;
 };
-const { createSreEvidenceTools: mockCreateSreEvidenceTools } =
-  jest.requireMock("@/sre/tools/evidence-tools") as {
-    createSreEvidenceTools: jest.Mock;
-  };
+const { createSreEvidenceTools: mockCreateSreEvidenceTools } = jest.requireMock(
+  "@/sre/tools/evidence-tools",
+) as {
+  createSreEvidenceTools: jest.Mock;
+};
 const { createSreConnectorTools: mockCreateSreConnectorTools } =
   jest.requireMock("@/sre/tools/connector-tools") as {
     createSreConnectorTools: jest.Mock;
@@ -213,7 +214,7 @@ describe("Copilot assistant-ui chat API", () => {
     );
     expect(streamText).toHaveBeenCalledWith(
       expect.objectContaining({
-        system: expect.stringContaining("Supported slash commands"),
+        system: expect.stringContaining("next read-only checks"),
       }),
     );
     expect(streamText).toHaveBeenCalledWith(
@@ -296,8 +297,8 @@ describe("Copilot assistant-ui chat API", () => {
   });
 
   it("keeps live connector tools disabled when connector investigate permission is missing", async () => {
-    mockCheckPermissionWithContext.mockImplementation((resource: string) =>
-      resource === "sre_investigation",
+    mockCheckPermissionWithContext.mockImplementation(
+      (resource: string) => resource === "sre_investigation",
     );
     const incidentId = "018f0000-0000-7000-8000-000000000099";
     mockCreateSreConversation.mockResolvedValueOnce({
@@ -330,7 +331,9 @@ describe("Copilot assistant-ui chat API", () => {
     expect(mockCreateSreConnectorTools).not.toHaveBeenCalled();
     expect(streamText).toHaveBeenCalledWith(
       expect.objectContaining({
-        system: expect.stringContaining("Live connector tools are not available"),
+        system: expect.stringContaining(
+          "Live connector tools are not available",
+        ),
         tools: expect.not.objectContaining({
           listIncidentConnectors: expect.anything(),
         }),

@@ -19,6 +19,7 @@ jest.mock("@/utils/db", () => ({
     query: {
       webhookIdempotency: { findFirst: jest.fn() },
       organization: { findFirst: jest.fn() },
+      member: { findFirst: jest.fn() },
     },
   },
 }));
@@ -30,9 +31,17 @@ jest.mock("@/db/schema", () => ({
     subscriptionId: "organization.subscriptionId",
   },
   webhookIdempotency: {
+    id: "webhookIdempotency.id",
     webhookId: "webhookIdempotency.webhookId",
     eventType: "webhookIdempotency.eventType",
+    resultStatus: "webhookIdempotency.resultStatus",
     expiresAt: "webhookIdempotency.expiresAt",
+  },
+  member: {
+    id: "member.id",
+    organizationId: "member.organizationId",
+    userId: "member.userId",
+    role: "member.role",
   },
 }));
 
@@ -41,6 +50,8 @@ jest.mock("drizzle-orm", () => ({
   eq: jest.fn((left, right) => ({ op: "eq", left, right })),
   isNull: jest.fn((value) => ({ op: "isNull", value })),
   lt: jest.fn((left, right) => ({ op: "lt", left, right })),
+  lte: jest.fn((left, right) => ({ op: "lte", left, right })),
+  or: jest.fn((...args) => ({ op: "or", args })),
 }));
 
 import { db } from "@/utils/db";
@@ -200,6 +211,35 @@ describe("Polar webhook helpers", () => {
         })
       );
     });
+
+    it("does not reclaim an in-flight webhook before its processing lease expires", async () => {
+      const returning = jest.fn().mockResolvedValue([]);
+      const onConflictDoNothing = jest.fn().mockReturnValue({ returning });
+      (db.insert as jest.Mock).mockReturnValue({
+        values: jest.fn().mockReturnValue({ onConflictDoNothing }),
+      });
+      (db.query.webhookIdempotency.findFirst as jest.Mock).mockResolvedValue({
+        resultStatus: null,
+        expiresAt: new Date(Date.now() + 60_000),
+      });
+      const reclaimReturning = jest.fn().mockResolvedValue([]);
+      (db.update as jest.Mock).mockReturnValue({
+        set: jest.fn().mockReturnValue({
+          where: jest.fn().mockReturnValue({ returning: reclaimReturning }),
+        }),
+      });
+
+      await expect(
+        handleSubscriptionCreated({
+          id: "evt_in_flight",
+          type: "subscription.created",
+          data: { id: "sub_123" },
+        })
+      ).rejects.toThrow("already being processed");
+
+      expect(reclaimReturning).toHaveBeenCalled();
+      expect(subscriptionService.updateSubscription).not.toHaveBeenCalled();
+    });
   });
 
   describe("subscription lifecycle handlers", () => {
@@ -214,24 +254,107 @@ describe("Polar webhook helpers", () => {
         usagePeriodEnd: null,
       });
 
-      await handleSubscriptionActive({
-        id: "evt_active_unknown",
-        type: "subscription.active",
-        data: {
-          id: "sub_123",
-          product_id: "prod_unknown",
-          customer_id: "cus_123",
-          metadata: { referenceId: "org_123" },
-          current_period_start: "2026-06-01T00:00:00.000Z",
-          current_period_end: "2026-07-01T00:00:00.000Z",
-        },
-      });
+      await expect(
+        handleSubscriptionActive({
+          id: "evt_active_unknown",
+          type: "subscription.active",
+          data: {
+            id: "sub_123",
+            product_id: "prod_unknown",
+            customer_id: "cus_123",
+            metadata: { referenceId: "org_123" },
+            current_period_start: "2026-06-01T00:00:00.000Z",
+            current_period_end: "2026-07-01T00:00:00.000Z",
+          },
+        })
+      ).rejects.toThrow("Unknown product ID");
 
       expect(subscriptionService.updateSubscription).not.toHaveBeenCalled();
       expect(set).toHaveBeenCalledWith(
         expect.objectContaining({
           resultStatus: "error",
           resultMessage: "Unknown product ID: prod_unknown",
+        })
+      );
+    });
+
+    it("rejects a webhook customer that does not match the organization binding", async () => {
+      const { set } = mockWebhookClaim();
+      (db.query.organization.findFirst as jest.Mock).mockResolvedValue({
+        id: "org_123",
+        subscriptionStatus: "none",
+        subscriptionId: null,
+        polarCustomerId: "cus_owner",
+        usagePeriodStart: null,
+        usagePeriodEnd: null,
+      });
+
+      await expect(
+        handleSubscriptionActive({
+          id: "evt_customer_mismatch",
+          type: "subscription.active",
+          data: {
+            id: "sub_123",
+            product_id: "prod_plus",
+            customer_id: "cus_attacker",
+            metadata: { referenceId: "org_123" },
+          },
+        })
+      ).rejects.toThrow("does not match organization billing owner");
+
+      expect(subscriptionService.updateSubscription).not.toHaveBeenCalled();
+      expect(set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          resultStatus: "error",
+          resultMessage:
+            "Polar customer does not match organization billing owner",
+        })
+      );
+    });
+
+    it("fails retryably if the customer binding changes during first-time linking", async () => {
+      const { set } = mockWebhookClaim();
+      (db.query.organization.findFirst as jest.Mock)
+        .mockResolvedValueOnce({
+          id: "org_123",
+          subscriptionStatus: "none",
+          subscriptionId: null,
+          polarCustomerId: null,
+          usagePeriodStart: null,
+          usagePeriodEnd: null,
+        })
+        .mockResolvedValueOnce({ polarCustomerId: "cus_other" });
+      (db.query.member.findFirst as jest.Mock).mockResolvedValue({
+        id: "member_123",
+      });
+
+      const bindingReturning = jest.fn().mockResolvedValue([]);
+      (db.update as jest.Mock).mockReturnValueOnce({
+        set: jest.fn().mockReturnValue({
+          where: jest.fn().mockReturnValue({ returning: bindingReturning }),
+        }),
+      });
+
+      await expect(
+        handleSubscriptionActive({
+          id: "evt_binding_race",
+          type: "subscription.active",
+          data: {
+            id: "sub_123",
+            product_id: "prod_plus",
+            customer_id: "cus_123",
+            metadata: { referenceId: "org_123", userId: "user_owner" },
+          },
+        })
+      ).rejects.toThrow("customer changed while processing webhook");
+
+      expect(bindingReturning).toHaveBeenCalled();
+      expect(subscriptionService.updateSubscription).not.toHaveBeenCalled();
+      expect(set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          resultStatus: "error",
+          resultMessage:
+            "Organization billing customer changed while processing webhook",
         })
       );
     });

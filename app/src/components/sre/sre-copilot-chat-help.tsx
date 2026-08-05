@@ -12,37 +12,6 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
-export const SRE_COMMAND_SHORTCUTS = [
-  {
-    label: "/health",
-    description:
-      "Summarize available health signals. Without incident evidence, Copilot explains what to check.",
-    prompt:
-      "/health Inspect current system health and summarize the most important signals as tables or charts when data is available.",
-  },
-  {
-    label: "/investigate",
-    description:
-      "Triage the selected incident or service using stored and permitted live evidence.",
-    prompt:
-      "/investigate Help me investigate the currently selected service or incident using only read-only evidence and verification steps.",
-  },
-  {
-    label: "/evidence",
-    description:
-      "Review supporting evidence, confidence, gaps, and the next safe checks.",
-    prompt:
-      "/evidence Show the strongest evidence, gaps, and next read-only checks. Use inline charts for numeric series when possible.",
-  },
-  {
-    label: "/verify",
-    description:
-      "Build a concrete read-only checklist to validate a hypothesis before action.",
-    prompt:
-      "/verify Build a read-only verification plan with concrete checks I can run before taking action.",
-  },
-] as const;
-
 export function CopilotChatHelp() {
   return (
     <Dialog>
@@ -62,54 +31,47 @@ export function CopilotChatHelp() {
         <DialogHeader>
           <DialogTitle>Using Copilot chat</DialogTitle>
           <DialogDescription>
-            Ask read-only questions about incidents, services, evidence, and
-            verification. Copilot never changes your systems.
+            Ask about symptoms, incident evidence, and the next diagnostic
+            checks. Copilot never changes your systems.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-5 text-sm">
-          <section aria-labelledby="copilot-help-commands">
+          <section aria-labelledby="copilot-help-ask">
             <h3
-              id="copilot-help-commands"
+              id="copilot-help-ask"
               className="mb-2 font-medium text-foreground"
             >
-              Commands
+              Good questions to ask
             </h3>
-            <dl className="space-y-3">
-              {SRE_COMMAND_SHORTCUTS.map((shortcut) => (
-                <div
-                  key={shortcut.label}
-                  className="grid gap-1 sm:grid-cols-[6.5rem_1fr]"
-                >
-                  <dt>
-                    <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
-                      {shortcut.label}
-                    </code>
-                  </dt>
-                  <dd className="text-muted-foreground">
-                    {shortcut.description}
-                  </dd>
-                </div>
-              ))}
-            </dl>
+            <ul className="list-disc space-y-1.5 pl-5 text-muted-foreground">
+              <li>What facts support the leading hypothesis?</li>
+              <li>Which evidence is missing or contradictory?</li>
+              <li>What read-only check should I run next, and why?</li>
+            </ul>
           </section>
 
-          <section aria-labelledby="copilot-help-context">
+          <section aria-labelledby="copilot-help-sources">
             <h3
-              id="copilot-help-context"
+              id="copilot-help-sources"
               className="mb-2 font-medium text-foreground"
             >
-              Context and files
+              What Copilot can use
             </h3>
             <ul className="list-disc space-y-1.5 pl-5 text-muted-foreground">
               <li>
-                <strong className="text-foreground">@ context</strong> adds an
-                incident, service, or recent-deploy label to your question. A
-                label is not treated as verified until evidence confirms it.
+                Standalone chat uses only your question and text you paste into
+                the composer. It does not automatically inspect an incident or
+                connected system.
               </li>
               <li>
-                Drop text, log, JSON, CSV, or Markdown files to provide local
-                context. Files are read as evidence and cannot trigger actions.
+                Incident-scoped chat can inspect stored evidence for the open
+                incident.
+              </li>
+              <li>
+                <strong className="text-foreground">Live sources</strong> is off
+                by default. Turn it on only when the incident needs fresh data
+                from configured read-only connectors.
               </li>
             </ul>
           </section>
@@ -123,16 +85,12 @@ export function CopilotChatHelp() {
             </h3>
             <ul className="list-disc space-y-1.5 pl-5 text-muted-foreground">
               <li>
-                Standalone chat uses your question and attached files. It does
-                not automatically inspect an incident or Kubernetes cluster.
+                Copilot should distinguish verified facts, user-provided
+                context, assumptions, and missing evidence.
               </li>
               <li>
-                Incident-scoped chat can use stored Supercheck evidence and
-                enabled, service-scoped connectors when your role permits it.
-              </li>
-              <li>
-                If evidence is unavailable, Copilot should say so and provide a
-                verification plan instead of presenting unverified values.
+                If evidence is unavailable, it should say so and suggest the
+                next safe checks instead of presenting invented values.
               </li>
             </ul>
           </section>
@@ -142,9 +100,9 @@ export function CopilotChatHelp() {
               <ShieldCheck className="h-4 w-4" />
               Read-only by design
             </div>
-            Copilot can summarize, investigate, and plan checks. It cannot
-            restart workloads, edit configuration, delete data, or remediate an
-            incident.
+            Copilot can summarize evidence, evaluate hypotheses, and suggest
+            checks. It cannot restart workloads, edit configuration, delete
+            data, or remediate an incident.
           </div>
         </div>
       </DialogContent>

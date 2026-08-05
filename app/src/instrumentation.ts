@@ -19,14 +19,12 @@ export async function register() {
       validatePolarConfig();
       console.log('[Instrumentation] ✅ Polar configuration validated');
     } catch (error) {
-      // In cloud mode, Polar config is critical - fail fast
-      if (error instanceof Error && error.message.includes('Missing required Polar environment variables')) {
-        console.error('[Instrumentation] ❌ CRITICAL: Polar configuration error:', error.message);
-        console.error('[Instrumentation] 💡 Please set the required environment variables and restart the server');
-        // Don't throw here to allow the app to start in self-hosted mode, but log clearly
-      } else {
-        console.error('[Instrumentation] ❌ Polar configuration validation error:', error);
-      }
+      // validatePolarConfig() is a no-op in self-hosted mode. Any error here is
+      // therefore a cloud billing misconfiguration and must keep the pod from
+      // becoming ready with partial subscription enforcement.
+      console.error('[Instrumentation] ❌ CRITICAL: Polar configuration error:', error);
+      console.error('[Instrumentation] 💡 Set the required Polar variables and restart the server');
+      throw error;
     }
 
     // Initialize job schedulers (MOVED from SchedulerInitializer component)

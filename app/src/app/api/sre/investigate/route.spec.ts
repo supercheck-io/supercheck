@@ -10,6 +10,10 @@ jest.mock("@/lib/rbac/middleware", () => ({
   checkPermissionWithContext: jest.fn(),
 }));
 
+jest.mock("@/lib/sre/sre-rate-limiter", () => ({
+  checkSreInvestigationRateLimit: jest.fn(),
+}));
+
 jest.mock("@/sre/lib/feature-gates", () => ({
   isSreInvestigationAgentEnabled: jest.fn(),
 }));
@@ -35,6 +39,7 @@ jest.mock("@/lib/sre/investigation-billing", () => {
 });
 
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
+import { checkSreInvestigationRateLimit } from "@/lib/sre/sre-rate-limiter";
 import { requireProjectContext } from "@/lib/project-context";
 import { isSreInvestigationAgentEnabled } from "@/sre/lib/feature-gates";
 import { assertCanStartSreInvestigation, consumeSreInvestigationCredit, SreInvestigationBillingError } from "@/lib/sre/investigation-billing";
@@ -43,6 +48,7 @@ import { POST } from "./route";
 
 const mockRequireProjectContext = requireProjectContext as jest.Mock;
 const mockCheckPermissionWithContext = checkPermissionWithContext as jest.Mock;
+const mockCheckSreInvestigationRateLimit = checkSreInvestigationRateLimit as jest.Mock;
 const mockIsSreInvestigationAgentEnabled = isSreInvestigationAgentEnabled as jest.Mock;
 const mockStartSreIncidentInvestigation = startSreIncidentInvestigation as jest.Mock;
 const mockExecuteSreIncidentInvestigation = executeSreIncidentInvestigation as jest.Mock;
@@ -61,6 +67,7 @@ describe("SRE investigate API", () => {
     mockIsSreInvestigationAgentEnabled.mockReturnValue(true);
     mockRequireProjectContext.mockResolvedValue(context);
     mockCheckPermissionWithContext.mockReturnValue(true);
+    mockCheckSreInvestigationRateLimit.mockResolvedValue({ allowed: true });
     mockAssertCanStartSreInvestigation.mockResolvedValue({ billable: true });
     mockConsumeSreInvestigationCredit.mockResolvedValue({ billed: true, usageEventId: "event-1" });
     mockStartSreIncidentInvestigation.mockResolvedValue({
@@ -153,6 +160,25 @@ describe("SRE investigate API", () => {
     expect(body).toEqual({ error: "Monthly spending limit reached", code: "spending_limit" });
     expect(mockStartSreIncidentInvestigation).not.toHaveBeenCalled();
     expect(mockConsumeSreInvestigationCredit).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when the investigation rate limiter is unavailable", async () => {
+    mockCheckSreInvestigationRateLimit.mockResolvedValue({
+      allowed: false,
+      unavailable: true,
+      remaining: 0,
+      resetTime: Date.now() + 300_000,
+    });
+
+    const response = await POST(new NextRequest("http://localhost/api/sre/investigate", {
+      method: "POST",
+      body: JSON.stringify({ incidentId: "018f0000-0000-7000-8000-000000000005" }),
+    }));
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("Retry-After")).toBeTruthy();
+    expect(mockAssertCanStartSreInvestigation).not.toHaveBeenCalled();
+    expect(mockStartSreIncidentInvestigation).not.toHaveBeenCalled();
   });
 
   it("does not consume usage when investigation start fails", async () => {

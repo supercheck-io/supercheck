@@ -1,6 +1,6 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, asc, eq, gte, isNull, sql } from "drizzle-orm";
 
-import { organization, usageEvents } from "@/db/schema";
+import { organization, sreInvestigationRuns, usageEvents } from "@/db/schema";
 import { isPolarEnabled } from "@/lib/feature-flags";
 import { polarUsageService } from "@/lib/services/polar-usage.service";
 import { subscriptionService } from "@/lib/services/subscription-service";
@@ -51,6 +51,29 @@ export async function consumeSreInvestigationCredit(input: {
 
   const now = new Date();
   return db.transaction(async (tx) => {
+    // Serialize billing for a run ID, then check the durable usage ledger.
+    // This makes retries safe without coupling billing state to an API process.
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtext(${input.investigationRunId}))`
+    );
+
+    const existingEvent = await tx.query.usageEvents.findFirst({
+      where: and(
+        eq(usageEvents.organizationId, input.organizationId),
+        eq(usageEvents.eventType, "sre_investigation"),
+        sql`${usageEvents.metadata}->>'investigationRunId' = ${input.investigationRunId}`
+      ),
+      columns: { id: true },
+    });
+
+    if (existingEvent) {
+      return {
+        billed: true as const,
+        usageEventId: existingEvent.id,
+        duplicate: true as const,
+      };
+    }
+
     const org = await tx.query.organization.findFirst({
       where: eq(organization.id, input.organizationId),
       columns: {
@@ -96,7 +119,11 @@ export async function consumeSreInvestigationCredit(input: {
       })
       .returning({ id: usageEvents.id });
 
-    return { billed: true as const, usageEventId: event?.id ?? null };
+    return {
+      billed: true as const,
+      usageEventId: event?.id ?? null,
+      duplicate: false as const,
+    };
   });
 }
 
@@ -119,4 +146,68 @@ export async function getSreInvestigationUsage(organizationId: string) {
     included,
     overage: Math.max(0, used - included),
   };
+}
+
+export async function reconcileUnbilledSreInvestigations(options?: {
+  lookbackHours?: number;
+  batchSize?: number;
+}) {
+  if (!isPolarEnabled()) return { processed: 0, failed: 0 };
+
+  const lookbackHours = Math.max(1, options?.lookbackHours ?? 24);
+  const batchSize = Math.min(500, Math.max(1, options?.batchSize ?? 100));
+  const since = new Date(Date.now() - lookbackHours * 60 * 60 * 1000);
+
+  const candidates = await db
+    .select({
+      id: sreInvestigationRuns.id,
+      organizationId: sreInvestigationRuns.organizationId,
+      projectId: sreInvestigationRuns.projectId,
+      incidentId: sreInvestigationRuns.incidentId,
+      userId: sreInvestigationRuns.createdByUserId,
+    })
+    .from(sreInvestigationRuns)
+    .leftJoin(
+      usageEvents,
+      and(
+        eq(usageEvents.organizationId, sreInvestigationRuns.organizationId),
+        eq(usageEvents.eventType, "sre_investigation"),
+        sql`${usageEvents.metadata}->>'investigationRunId' = ${sreInvestigationRuns.id}`
+      )
+    )
+    .where(
+      and(
+        eq(sreInvestigationRuns.status, "completed"),
+        gte(sreInvestigationRuns.completedAt, since),
+        isNull(usageEvents.id)
+      )
+    )
+    .orderBy(asc(sreInvestigationRuns.completedAt))
+    .limit(batchSize);
+
+  let processed = 0;
+  let failed = 0;
+  for (const run of candidates) {
+    if (!run.incidentId) continue;
+
+    try {
+      await consumeSreInvestigationCredit({
+        organizationId: run.organizationId,
+        projectId: run.projectId,
+        userId: run.userId,
+        incidentId: run.incidentId,
+        investigationRunId: run.id,
+        useLiveConnectors: false,
+      });
+      processed += 1;
+    } catch (error) {
+      failed += 1;
+      console.error(
+        `[SRE Billing] Failed to reconcile investigation ${run.id.substring(0, 8)}...:`,
+        error
+      );
+    }
+  }
+
+  return { processed, failed };
 }

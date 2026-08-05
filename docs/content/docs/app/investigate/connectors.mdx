@@ -8,7 +8,8 @@ Connectors let Supercheck collect cited operational evidence during an investiga
 
 ## Supported Connectors
 
-- **Metrics and dashboards:** Prometheus, Grafana, Datadog
+- **Metrics and dashboards:** Prometheus, Grafana, AWS CloudWatch
+- **Operational events:** Datadog
 - **Logs and search:** Loki, Elasticsearch/OpenSearch
 - **Tracing:** Grafana Tempo
 - **Cloud and infrastructure:** Kubernetes, AWS CloudWatch
@@ -23,7 +24,9 @@ The Add Connector dialog shows only providers with implemented validation and bo
 **Direct** connects from the Supercheck app to a reachable provider API. In
 Supercheck Cloud, direct endpoints must use HTTPS and resolve to a public
 address. Private IPs, cluster-only DNS, localhost, and cleartext HTTP are
-rejected to protect the service from server-side request forgery.
+rejected to protect the service from server-side request forgery. Reserved IP
+ranges, non-HTTP(S) schemes, and credentials embedded in endpoint URLs are also
+rejected. Store credentials in the connector credential fields instead.
 
 **Private Agent** connects from an outbound-only agent inside your network. It is available for GitHub, Kubernetes, Prometheus, Grafana, Sentry, Datadog, Loki, Elasticsearch/OpenSearch, Tempo, and AWS CloudWatch.
 

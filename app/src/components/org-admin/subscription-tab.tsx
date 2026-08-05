@@ -28,8 +28,6 @@ interface SubscriptionData {
   subscription: {
     plan: "plus" | "pro" | "unlimited";
     status: "active" | "canceled" | "past_due" | "none";
-    subscriptionId?: string;
-    polarCustomerId?: string;
     currentPeriodStart: string;
     currentPeriodEnd: string;
     // Pricing info from API
@@ -179,15 +177,15 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
     setOpeningPortal(true);
     try {
 
-      // Call the Better Auth Polar customer portal endpoint directly
-      // (polarClient is not used on the client to avoid bundling server-side node: modules)
-      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || '';
-      const portalRes = await fetch(`${baseUrl}/api/auth/customer/portal`, {
-        method: 'GET',
+      const portalRes = await fetch("/api/billing/portal", {
+        method: 'POST',
         credentials: 'include',
       });
       if (!portalRes.ok) {
-        throw new Error('Failed to fetch portal URL');
+        const errorData = await portalRes.json().catch(() => ({}));
+        throw new Error(
+          errorData?.error || errorData?.message || 'Failed to fetch portal URL'
+        );
       }
       const portalData = await portalRes.json();
       if (portalData?.url) {

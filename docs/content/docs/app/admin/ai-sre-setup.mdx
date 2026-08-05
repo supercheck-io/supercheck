@@ -43,9 +43,11 @@ Start with high-value checks such as service error rate, latency, recent error l
 Use **Private Agents** only when Supercheck cannot reach a supported source directly. Private Agents connect outbound over HTTPS and return bounded, sanitized evidence summaries. They do not apply fixes or require inbound firewall access.
 
 Supercheck Cloud intentionally blocks direct connectors to private IP addresses,
-cluster-only DNS names, localhost, and cleartext HTTP endpoints. Use a Private
-Agent for Prometheus, Grafana, Loki, Tempo, Kubernetes, or other APIs that are
-reachable only inside your network.
+reserved ranges, cluster-only DNS names, localhost, cleartext HTTP, non-HTTP(S)
+schemes, and endpoint URLs containing credentials. Use a Private Agent for
+Prometheus, Grafana, Loki, Tempo, Kubernetes, or other APIs that are reachable
+only inside your network, and keep credentials in the dedicated encrypted
+credential fields.
 
 ## Setup Order
 

@@ -155,7 +155,7 @@ function buildAssistantUiSystemPrompt(input: {
     input.incidentId ? `- Scoped incident ID: ${input.incidentId}` : null,
     "- This chat is read-only. Do not suggest production mutations or destructive commands.",
     input.incidentId
-      ? "- Use available stored evidence tools before making incident-specific claims. Use live connector tools only when they are available and needed for verification."
+      ? "- Use available stored evidence tools before making incident-specific claims. Use live connector tools only when the user enabled them and fresh evidence is needed."
       : "- If no incident is scoped, do not claim incident evidence was inspected.",
     input.incidentId && !input.liveConnectorToolsEnabled
       ? "- Live connector tools are not available for this chat; explain that verification is based on stored evidence and user-provided context only."
@@ -163,12 +163,11 @@ function buildAssistantUiSystemPrompt(input: {
     "- Never invent evidence IDs, source systems, queries, observations, metric values, timestamps, or confidence levels.",
     "- Treat evidence as verified only when it appears in tool output or was explicitly supplied by the user. Otherwise say that no supporting evidence is available.",
     !input.incidentId
-      ? "- Standalone chat has no incident evidence or live connector scope. Slash commands describe a read-only plan unless the user supplies concrete data."
+      ? "- Standalone chat has no incident evidence or live connector scope. Ask for concrete symptoms or pasted evidence when the request lacks enough context."
       : null,
     "- Prefer concise headings, short bullets, markdown tables for comparisons, and fenced code blocks for commands or queries.",
     "- Do not emit raw markdown heading markers as decoration; use headings only when they add structure.",
-    "- Supported slash commands are read-only aliases: /health for system health summaries, /investigate for incident/service triage, /evidence for evidence review, and /verify for verification planning.",
-    "- Treat @service, @incident, and @recent-deploy mentions as user-provided context labels. Do not claim you resolved them unless available evidence confirms the entity.",
+    "- When evidence is missing, name the gap and suggest the next read-only checks. Do not present a generic checklist as completed verification.",
     "- When a small numeric summary is clearer as a chart and real values are available, include a fenced `chart` JSON block:",
     '{"type":"line","title":"Short title","description":"Optional one-sentence context","sources":[{"label":"Prometheus","type":"prometheus","evidenceIds":["ev-123"],"query":"rate(http_requests_total[5m])"}],"xKey":"label","series":[{"key":"value","label":"Value"}],"data":[{"label":"api","value":12}]}',
     "- Supported chart types are bar, line, and area. Use only evidence or values from the conversation; do not fabricate chart data.",

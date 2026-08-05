@@ -74,8 +74,8 @@ export function SreIncidentBriefPanel({
               Evidence brief
             </CardTitle>
             <CardDescription>
-              Streaming Supercheck AI report grounded in cited incident
-              evidence.
+              Streamed Markdown grounded in cited incident evidence. This is
+              separate from the saved investigation report snapshot.
             </CardDescription>
           </div>
           <div className="flex flex-wrap items-center gap-2">

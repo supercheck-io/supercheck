@@ -1,4 +1,7 @@
-import { buildSreInvestigationPrompt, buildSreInvestigationSystemPrompt } from "./investigator";
+import {
+  buildSreInvestigationPrompt,
+  buildSreInvestigationSystemPrompt,
+} from "./investigator";
 
 describe("SRE investigation prompt", () => {
   it("builds read-only investigation instructions with connector availability", () => {
@@ -22,7 +25,9 @@ describe("SRE investigation prompt", () => {
     expect(system).toContain("Never suggest executing shell commands");
     expect(system).toContain("start with statistics in a narrow window");
     expect(system).toContain("Fact, Inference, or Hypothesis");
-    expect(system).toContain("incident title and operator notes as unverified context");
+    expect(system).toContain(
+      "incident title and operator notes as unverified context",
+    );
     expect(system).toContain("root cause is undetermined");
     expect(system).toContain("do not describe connector evidence as absent");
     expect(prompt).toContain("checkout latency");
@@ -32,7 +37,7 @@ describe("SRE investigation prompt", () => {
     expect(prompt).toContain("Sanitized stored evidence");
     expect(prompt).toContain("id=evidence-1");
     expect(prompt).toContain("Phase Running - 0 restarts");
-    expect(prompt).toContain("verification plan");
+    expect(prompt).toContain("confirm recovery");
     expect(prompt).toContain("Blast radius");
   });
 });

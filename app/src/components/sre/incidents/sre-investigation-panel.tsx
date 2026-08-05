@@ -22,6 +22,18 @@ import {
 } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  createSreInvestigationReportSnapshot,
+  saveSreInvestigationReportFeedback,
+} from "@/actions/sre-investigation-reports";
 import { useProjectContext } from "@/hooks/use-project-context";
 import {
   getSreEvidenceGraphQueryKey,
@@ -44,16 +56,31 @@ type SreInvestigationPanelProps = {
     averageDurationMs: number;
   };
   latestInvestigation?: {
+    id: string;
     status: "running" | "completed" | "failed" | "aborted" | "timed_out";
     summary: string | null;
     completedAt: Date | string | null;
   } | null;
+  latestReportSnapshot?: {
+    id: string;
+    title: string | null;
+    createdAt: Date | string;
+  } | null;
+  myReportFeedback?: {
+    accuracy: "accurate" | "partially_accurate" | "incorrect" | "needs_more_evidence";
+    notes: string | null;
+    rejectedHypotheses: string[];
+  } | null;
+  canInvestigate?: boolean;
+  canUseLiveConnectors?: boolean;
+  investigationEnabled?: boolean;
 };
 
 type ReadinessItem = {
   label: string;
   description: string;
   ready: boolean;
+  optional?: boolean;
   action?: {
     label: string;
     href: string;
@@ -63,8 +90,14 @@ type ReadinessItem = {
 function ReadinessRow({ item }: { item: ReadinessItem }) {
   return (
     <div className="flex items-start gap-3 border-b py-3 last:border-b-0">
-      {item.ready ? (
-        <CheckCircle2 className="mt-0.5 h-4 w-4 text-emerald-500" />
+      {item.ready || item.optional ? (
+        <CheckCircle2
+          className={
+            item.optional
+              ? "mt-0.5 h-4 w-4 text-muted-foreground"
+              : "mt-0.5 h-4 w-4 text-emerald-500"
+          }
+        />
       ) : (
         <TriangleAlert className="mt-0.5 h-4 w-4 text-amber-500" />
       )}
@@ -72,7 +105,11 @@ function ReadinessRow({ item }: { item: ReadinessItem }) {
         <div className="flex flex-wrap items-center gap-2">
           <p className="text-sm font-medium">{item.label}</p>
           <Badge variant="outline" className="capitalize">
-            {item.ready ? "Ready" : "Needs attention"}
+            {item.optional
+              ? "Optional"
+              : item.ready
+                ? "Ready"
+                : "Needs attention"}
           </Badge>
         </div>
         <p className="mt-1 text-sm text-muted-foreground">{item.description}</p>
@@ -93,11 +130,34 @@ export function SreInvestigationPanel({
   evidenceReferences = [],
   toolMetrics = { total: 0, errors: 0, averageDurationMs: 0 },
   latestInvestigation = null,
+  latestReportSnapshot = null,
+  myReportFeedback = null,
+  canInvestigate = true,
+  canUseLiveConnectors = true,
+  investigationEnabled = true,
 }: SreInvestigationPanelProps) {
   const queryClient = useQueryClient();
   const { projectId } = useProjectContext();
   const [useLiveConnectors, setUseLiveConnectors] = useState(false);
   const [isInvestigating, startInvestigationTransition] = useTransition();
+  const [isSavingReport, startReportTransition] = useTransition();
+  const [reportSnapshotId, setReportSnapshotId] = useState(
+    latestReportSnapshot?.id ?? null,
+  );
+  const [accuracy, setAccuracy] = useState<
+    "accurate" | "partially_accurate" | "incorrect" | "needs_more_evidence"
+  >(myReportFeedback?.accuracy ?? "accurate");
+  const [feedbackNotes, setFeedbackNotes] = useState(myReportFeedback?.notes ?? "");
+  const [rejectedHypotheses, setRejectedHypotheses] = useState(
+    myReportFeedback?.rejectedHypotheses.join("\n") ?? "",
+  );
+  const rejectedHypothesisValues = rejectedHypotheses
+    .split("\n")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const rejectedHypothesesInvalid =
+    rejectedHypothesisValues.length > 10 ||
+    rejectedHypothesisValues.some((value) => value.length > 300);
 
   const readinessItems: ReadinessItem[] = [
     {
@@ -118,23 +178,31 @@ export function SreInvestigationPanel({
     {
       label: "Service mapping",
       ready: hasPrimaryService,
-      description: hasPrimaryService
-        ? "Live connector tools can be scoped to the incident service."
-        : "Map a primary service before using live connector tools.",
+      optional: !useLiveConnectors && !hasPrimaryService,
+      description: !useLiveConnectors
+        ? "Only required when live connector tools are enabled."
+        : hasPrimaryService
+          ? "Live connector tools will be scoped to the incident service."
+          : "Map a primary service before using live connector tools.",
       action: hasPrimaryService
         ? undefined
         : { label: "Map service", href: serviceMappingHref },
     },
     {
       label: "Connector tools",
-      ready: !useLiveConnectors || hasPrimaryService,
-      description: useLiveConnectors
+      ready:
+        !useLiveConnectors ||
+        (hasPrimaryService && canUseLiveConnectors),
+      description: !canUseLiveConnectors
+        ? "Your role does not permit live connector queries; stored evidence remains available."
+        : useLiveConnectors
         ? "Connectors will run read-only with service scope and output limits."
         : "Live connectors are optional; stored evidence can still support the investigation.",
     },
   ];
 
   const runInvestigation = () => {
+    if (!canInvestigate || !investigationEnabled) return;
     startInvestigationTransition(async () => {
       const response = await fetch("/api/sre/investigate", {
         method: "POST",
@@ -170,6 +238,49 @@ export function SreInvestigationPanel({
     });
   };
 
+  const refreshIncidentDetail = () =>
+    queryClient.invalidateQueries({
+      queryKey: getSreIncidentDetailQueryKey(projectId, incidentId),
+    });
+
+  const saveSnapshot = () => {
+    if (!latestInvestigation) return;
+    startReportTransition(async () => {
+      const result = await createSreInvestigationReportSnapshot({
+        investigationRunId: latestInvestigation.id,
+      });
+      if (!result.success) {
+        toast.error(result.error);
+        return;
+      }
+      setReportSnapshotId(result.snapshotId);
+      toast.success(
+        result.reused
+          ? "Already saved for this report content"
+          : "Snapshot saved",
+      );
+      await refreshIncidentDetail();
+    });
+  };
+
+  const saveFeedback = () => {
+    if (!reportSnapshotId || rejectedHypothesesInvalid) return;
+    startReportTransition(async () => {
+      const result = await saveSreInvestigationReportFeedback({
+        reportSnapshotId,
+        accuracy,
+        notes: feedbackNotes,
+        rejectedHypotheses: rejectedHypothesisValues,
+      });
+      if (!result.success) {
+        toast.error(result.error);
+        return;
+      }
+      toast.success("Feedback saved");
+      await refreshIncidentDetail();
+    });
+  };
+
   return (
     <Card className="overflow-hidden">
       <CardHeader className="border-b px-5 py-4">
@@ -181,21 +292,39 @@ export function SreInvestigationPanel({
               connector data.
             </CardDescription>
           </div>
-          <Button
-            className="w-full sm:w-auto"
-            onClick={runInvestigation}
-            disabled={isInvestigating}
-          >
-            {isInvestigating ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <SearchCheck className="mr-2 h-4 w-4" />
-            )}
-            Run investigation
-          </Button>
+          {canInvestigate ? (
+            <Button
+              className="w-full sm:w-auto"
+              onClick={runInvestigation}
+              disabled={isInvestigating || !investigationEnabled}
+            >
+              {isInvestigating ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <SearchCheck className="mr-2 h-4 w-4" />
+              )}
+              Run investigation
+            </Button>
+          ) : (
+            <Badge variant="outline">Read-only access</Badge>
+          )}
         </div>
       </CardHeader>
       <CardContent className="space-y-4 p-5">
+        {!investigationEnabled && (
+          <div
+            role="status"
+            className="flex items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-500/5 p-4"
+          >
+            <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+            <div>
+              <p className="text-sm font-medium">Investigation is unavailable</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                An administrator must enable the investigation service before a new run can start. Existing results and evidence remain available.
+              </p>
+            </div>
+          </div>
+        )}
         <div className="grid overflow-hidden rounded-lg border sm:grid-cols-3">
           <div className="border-b px-4 py-3 sm:border-b-0 sm:border-r">
             <p className="text-xs font-medium uppercase text-muted-foreground">
@@ -225,24 +354,26 @@ export function SreInvestigationPanel({
           </div>
         </div>
 
-        <div className="flex items-start gap-3 rounded-lg border bg-muted/10 p-4">
-          <Switch
-            id="live-connectors"
-            checked={useLiveConnectors}
-            disabled={!hasPrimaryService || isInvestigating}
-            onCheckedChange={setUseLiveConnectors}
-          />
-          <div className="space-y-1">
-            <Label htmlFor="live-connectors">Use live connector tools</Label>
-            <p className="text-sm text-muted-foreground">
-              Optional read-only connector execution. Requires a mapped primary
-              service.
-            </p>
-            {!hasPrimaryService && (
-              <Badge variant="outline">Primary service required</Badge>
-            )}
+        {canInvestigate && canUseLiveConnectors && (
+          <div className="flex items-start gap-3 rounded-lg border bg-muted/10 p-4">
+            <Switch
+              id="live-connectors"
+              checked={useLiveConnectors}
+              disabled={!hasPrimaryService || isInvestigating || !investigationEnabled}
+              onCheckedChange={setUseLiveConnectors}
+            />
+            <div className="space-y-1">
+              <Label htmlFor="live-connectors">Use live connector tools</Label>
+              <p className="text-sm text-muted-foreground">
+                Optional read-only connector execution. Requires a mapped primary
+                service.
+              </p>
+              {!hasPrimaryService && (
+                <Badge variant="outline">Primary service required</Badge>
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="rounded-lg border px-4">
           {readinessItems.map((item) => (
@@ -263,6 +394,9 @@ export function SreInvestigationPanel({
                       }).format(new Date(latestInvestigation.completedAt))}`
                     : "Result is not complete"}
                 </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Live agent summary; save a report snapshot below to lock a sanitized review copy.
+                </p>
               </div>
               <Badge variant="outline" className="capitalize">
                 {latestInvestigation.status.replace(/_/g, " ")}
@@ -272,6 +406,86 @@ export function SreInvestigationPanel({
               {latestInvestigation.summary ??
                 "No investigation summary was returned."}
             </div>
+          </div>
+        )}
+
+        {latestInvestigation?.status === "completed" && (
+          <div className="space-y-3 rounded-lg border px-4 py-3">
+            <div>
+              <p className="text-sm font-medium">Report snapshot &amp; feedback</p>
+              <p className="text-sm text-muted-foreground">
+                Save the current sanitized investigation report for audit and review.
+              </p>
+            </div>
+            {!reportSnapshotId ? (
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-sm text-muted-foreground">
+                  Save a snapshot to lock this investigation report for review.
+                </p>
+                {canInvestigate && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={saveSnapshot}
+                    disabled={isSavingReport}
+                  >
+                    {isSavingReport && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Save report snapshot
+                  </Button>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-xs text-muted-foreground">
+                  Snapshot saved{latestReportSnapshot?.title ? `: ${latestReportSnapshot.title}` : ""}.
+                </p>
+                {canInvestigate ? (
+                  <>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="report-accuracy">Accuracy</Label>
+                      <Select value={accuracy} onValueChange={(value) => setAccuracy(value as typeof accuracy)}>
+                        <SelectTrigger id="report-accuracy">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="accurate">Accurate</SelectItem>
+                          <SelectItem value="partially_accurate">Partially accurate</SelectItem>
+                          <SelectItem value="incorrect">Incorrect</SelectItem>
+                          <SelectItem value="needs_more_evidence">Needs more evidence</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="report-feedback-notes">Notes (optional)</Label>
+                      <Textarea id="report-feedback-notes" maxLength={2000} value={feedbackNotes} onChange={(event) => setFeedbackNotes(event.target.value)} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="rejected-hypotheses">Rejected hypotheses (optional, one per line)</Label>
+                      <Textarea
+                        id="rejected-hypotheses"
+                        aria-describedby="rejected-hypotheses-help"
+                        aria-invalid={rejectedHypothesesInvalid}
+                        maxLength={3009}
+                        value={rejectedHypotheses}
+                        onChange={(event) => setRejectedHypotheses(event.target.value)}
+                      />
+                      <p
+                        id="rejected-hypotheses-help"
+                        className={rejectedHypothesesInvalid ? "text-xs text-destructive" : "text-xs text-muted-foreground"}
+                      >
+                        {rejectedHypothesisValues.length} of 10 hypotheses. Each may contain up to 300 characters.
+                      </p>
+                    </div>
+                    <Button type="button" onClick={saveFeedback} disabled={isSavingReport || rejectedHypothesesInvalid}>
+                      {isSavingReport && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      Save feedback
+                    </Button>
+                  </>
+                ) : (
+                  <p className="text-sm text-muted-foreground">You have read-only access to this snapshot.</p>
+                )}
+              </div>
+            )}
           </div>
         )}
       </CardContent>

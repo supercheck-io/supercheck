@@ -20,7 +20,7 @@ import {
   billingSettings,
   overagePricing
 } from "@/db/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, gt, lte } from "drizzle-orm";
 import { isPolarEnabled, getPolarConfig } from "@/lib/feature-flags";
 import type { Polar } from "@polar-sh/sdk";
 
@@ -84,6 +84,32 @@ const FALLBACK_OVERAGE_PRICING_CENTS = {
 
 class PolarUsageService {
   private polarClient: InstanceType<typeof Polar> | null = null;
+
+  private async checkRecentUsageNotifications(scanUntil: Date) {
+    const scanSince = new Date(scanUntil.getTime() - 24 * 60 * 60 * 1000);
+    const changedOrganizations = await db
+      .selectDistinct({ organizationId: usageEvents.organizationId })
+      .from(usageEvents)
+      .where(
+        and(
+          gt(usageEvents.createdAt, scanSince),
+          lte(usageEvents.createdAt, scanUntil)
+        )
+      );
+
+    if (changedOrganizations.length === 0) {
+      return;
+    }
+
+    const { usageNotificationService } = await import(
+      "@/lib/services/usage-notification.service"
+    );
+
+    for (const { organizationId } of changedOrganizations) {
+      await usageNotificationService.checkAndNotify(organizationId);
+    }
+
+  }
 
   private async acquireSyncLock() {
     const reserved = await postgresClient.reserve();
@@ -213,6 +239,9 @@ class PolarUsageService {
               customer_id: org.polarCustomerId,
               // Event name matches the meter filter in Polar
               name: meterName,
+              // Polar deduplicates retries by external_id. Both the worker's
+              // immediate sender and this scheduler use the same ledger ID.
+              external_id: eventId,
               // Timestamp when the usage occurred
               timestamp: usageEvent.createdAt?.toISOString() || new Date().toISOString(),
               // Metadata including the usage value
@@ -240,7 +269,7 @@ class PolarUsageService {
         .update(usageEvents)
         .set({
           syncedToPolar: true,
-          polarEventId: result.id || eventId,
+          polarEventId: eventId,
           lastSyncAttempt: new Date(),
           syncError: null,
         })
@@ -458,6 +487,22 @@ class PolarUsageService {
     }
 
     try {
+      // Recover successful AI SRE runs whose post-run ledger write failed.
+      // consumeSreInvestigationCredit is idempotent by investigation run ID.
+      try {
+        const { reconcileUnbilledSreInvestigations } = await import(
+          "@/lib/sre/investigation-billing"
+        );
+        const reconciliation = await reconcileUnbilledSreInvestigations();
+        if (reconciliation.processed > 0 || reconciliation.failed > 0) {
+          console.log(
+            `[PolarUsage] Reconciled SRE billing: ${reconciliation.processed} processed, ${reconciliation.failed} failed`
+          );
+        }
+      } catch (error) {
+        console.error("[PolarUsage] SRE billing reconciliation failed:", error);
+      }
+
       // Find events that haven't been synced yet
       // Uses exponential backoff: only retry after appropriate delay based on attempt count
       // Delays: 1s, 5s, 30s, 120s, 300s (for attempts 1-5)
@@ -503,6 +548,14 @@ class PolarUsageService {
           errors.push(errorMsg);
           console.error(`[PolarUsage] Sync failed for event:`, errorMsg);
         }
+      }
+
+      // Run notification checks while this replica still owns the global usage
+      // sync lock. The durable notification ledger suppresses repeat thresholds.
+      try {
+        await this.checkRecentUsageNotifications(new Date());
+      } catch (error) {
+        console.error("[PolarUsage] Usage notification scan failed:", error);
       }
 
       if (pendingEvents.length > 0) {

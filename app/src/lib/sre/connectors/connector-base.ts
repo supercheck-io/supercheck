@@ -41,7 +41,7 @@ export type ConnectorRiskLevel = "low" | "medium" | "high" | "critical";
 export type ConnectorPermissionLevel = "read";
 export type ConnectorSideEffectLevel = "none";
 export type ConnectorStatus = "configured" | "valid" | "unreachable" | "missing_credentials" | "disabled";
-export type ConnectorSurface = "metrics" | "logs" | "traces" | "deploys" | "code" | "tickets" | "chat" | "infra" | "native";
+export type ConnectorSurface = "metrics" | "logs" | "traces" | "events" | "deploys" | "code" | "tickets" | "chat" | "infra" | "native";
 export type ConnectorEvidenceType = "metric" | "log" | "trace" | "artifact" | "deployment" | "event" | "document" | "topology";
 export type ConnectorRequirement = "credentials" | "network" | "service_scope" | "time_window" | "allowlist";
 

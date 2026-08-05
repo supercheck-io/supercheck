@@ -25,6 +25,8 @@ import {
   sreIncidentTimelineEvents,
   sreEvidenceItems,
   sreInvestigationRuns,
+  sreInvestigationReportFeedback,
+  sreInvestigationReports,
   sreInvestigationToolCalls,
   sreServiceDependencies,
   sreServiceResources,
@@ -48,7 +50,10 @@ import {
   maybeRunAutomaticSreTriage,
   type AutomaticSreTriageResult,
 } from "@/sre/lib/triage-automation";
-import { isSreAlertCorrelationEnabled } from "@/sre/lib/feature-gates";
+import {
+  isSreAlertCorrelationEnabled,
+  isSreInvestigationAgentEnabled,
+} from "@/sre/lib/feature-gates";
 import { db } from "@/utils/db";
 
 const logger = createLogger({ module: "sre-incidents" }) as {
@@ -209,6 +214,19 @@ export type SreIncidentDetail = {
     completedAt: Date | null;
     createdAt: Date;
   } | null;
+  latestReportSnapshot: {
+    id: string;
+    title: string | null;
+    createdAt: Date;
+    reportHash: string;
+    investigationRunId: string;
+  } | null;
+  myReportFeedback: {
+    accuracy: "accurate" | "partially_accurate" | "incorrect" | "needs_more_evidence";
+    notes: string | null;
+    rejectedHypotheses: string[];
+    updatedAt: Date;
+  } | null;
   evidence: Array<{
     id: string;
     title: string;
@@ -231,6 +249,11 @@ export type SreIncidentDetail = {
   };
   permissions: {
     canUpdate: boolean;
+    canInvestigate: boolean;
+    canUseLiveConnectors: boolean;
+  };
+  capabilities: {
+    investigationEnabled: boolean;
   };
 };
 
@@ -700,6 +723,24 @@ export async function getSreIncidentDetails(
       organizationId,
       project,
     });
+    const canInvestigate =
+      checkPermissionWithContext("sre_incident", "investigate", {
+        userId,
+        organizationId,
+        project,
+      }) &&
+      checkPermissionWithContext("sre_investigation", "investigate", {
+        userId,
+        organizationId,
+        project,
+      });
+    const canUseLiveConnectors =
+      canInvestigate &&
+      checkPermissionWithContext("sre_connector", "investigate", {
+        userId,
+        organizationId,
+        project,
+      });
 
     if (!canView) {
       return {
@@ -806,6 +847,45 @@ export async function getSreIncidentDetails(
       )
       .orderBy(desc(sreInvestigationRuns.createdAt))
       .limit(1);
+
+    const latestReportSnapshot = latestInvestigation
+      ? await db.query.sreInvestigationReports.findFirst({
+          where: and(
+            eq(sreInvestigationReports.organizationId, organizationId),
+            eq(sreInvestigationReports.projectId, project.id),
+            eq(
+              sreInvestigationReports.investigationRunId,
+              latestInvestigation.id,
+            ),
+            eq(sreInvestigationReports.status, "active"),
+          ),
+          columns: {
+            id: true,
+            title: true,
+            createdAt: true,
+            reportHash: true,
+            investigationRunId: true,
+          },
+          orderBy: desc(sreInvestigationReports.createdAt),
+        })
+      : null;
+
+    const myReportFeedback = latestReportSnapshot
+      ? await db.query.sreInvestigationReportFeedback.findFirst({
+          where: and(
+            eq(sreInvestigationReportFeedback.organizationId, organizationId),
+            eq(sreInvestigationReportFeedback.projectId, project.id),
+            eq(sreInvestigationReportFeedback.reportId, latestReportSnapshot.id),
+            eq(sreInvestigationReportFeedback.createdByUserId, userId),
+          ),
+          columns: {
+            accuracy: true,
+            notes: true,
+            rejectedHypotheses: true,
+            updatedAt: true,
+          },
+        })
+      : null;
 
     const [evidence, investigationCountRow, toolMetricsRow] = await Promise.all(
       [
@@ -924,6 +1004,8 @@ export async function getSreIncidentDetails(
               createdAt: latestInvestigation.createdAt,
             }
           : null,
+        latestReportSnapshot: latestReportSnapshot ?? null,
+        myReportFeedback: myReportFeedback ?? null,
         evidence,
         chatHistory,
         chatHistories,
@@ -934,6 +1016,11 @@ export async function getSreIncidentDetails(
         },
         permissions: {
           canUpdate,
+          canInvestigate,
+          canUseLiveConnectors,
+        },
+        capabilities: {
+          investigationEnabled: isSreInvestigationAgentEnabled(),
         },
       },
     };

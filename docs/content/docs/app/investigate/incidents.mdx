@@ -4,7 +4,7 @@ description: Resolve alerts faster with AI-powered incident workspaces
 icon: ShieldAlert
 ---
 
-Incidents are the responder queue for issues that need investigation, evidence review, or verification.
+Incidents are the responder queue for issues that need investigation, evidence review, or recovery confirmation.
 
 You can create an incident in two ways:
 
@@ -21,13 +21,15 @@ The incident detail page is intentionally focused. It shows the incident status,
 
 The page has three tabs:
 
-- **Investigation** — Run a read-only investigation from stored evidence, with optional live connector tools when a primary service is mapped.
+- **Investigation** — Run a read-only investigation from stored evidence, optionally opt in to live connector tools, then save a sanitized report snapshot and review its accuracy.
 - **Evidence** — Review native Supercheck evidence and citation anchors.
 - **Brief** — Read or regenerate the latest evidence brief. Brief generation is kept in this tab instead of the incident header to avoid cluttering the default investigation view.
 
-The Investigation tab includes a readiness checklist. Missing stored evidence links to brief generation, and missing service mapping links administrators to service setup so live connector tools remain properly scoped.
+The Investigation tab includes a readiness checklist. Live connector tools are off by default and must be enabled explicitly. Missing stored evidence links to brief generation, and missing service mapping links administrators to service setup so live connector tools remain properly scoped.
 
 Completed investigations also show bounded tool telemetry: total connector calls, failed calls, and average latency. These counters never expose connector inputs, raw results, or credentials.
+
+The latest completed result can be saved as a sanitized, immutable report snapshot. Authorized responders can record an accuracy rating, notes, and rejected hypotheses; viewers see the snapshot without mutation controls. Evidence briefs remain separate streamed Markdown artifacts in the Brief tab.
 
 This keeps the responder view simple: first confirm the incident, then run investigation, then review evidence and the summary.
 
@@ -40,7 +42,7 @@ Reports separate evidence from judgment using **Fact**, **Inference**, and **Hyp
 - Strongest signals
 - Likely cause and confidence
 - Evidence gaps
-- Next safe read-only checks and a human verification plan
+- Next safe read-only checks and how to confirm recovery after a human applies a fix
 
 If the available evidence cannot establish a cause or affected scope, the report states that explicitly instead of filling the gap with assumptions.
 
@@ -56,23 +58,21 @@ On small screens the launcher is icon-only and the chat fills the viewport. On l
 
 Copilot includes:
 
-- **Chat help**: Select the labeled **Chat help** control beside **Send** to see what each command does, how `@` context and file attachments work, where answers can come from, and the read-only safety boundary. Command chips also expose short descriptions on hover.
-- **Citations**: Direct links from chat responses to the specific evidence items anchoring the agent's claims.
-- **Incident-scoped verification**: When opened from an incident detail page, the floating Copilot is scoped to that incident. It can inspect stored evidence and, when the user has connector investigation permission, use the same bounded read-only live connector tools as the Investigation tab.
+- **Focused starters**: New chats offer three editable starting points for triage, evidence review, and next checks. Selecting one fills the composer without sending it, so you can add real context first.
+- **Editable follow-ups**: Suggested follow-ups also fill the composer instead of sending immediately. Selecting **Try without connectors** turns live sources off before filling the prompt.
+- **Chat help**: Select **Chat help** beside **Send** for example questions, available evidence sources, and the read-only safety boundary.
+- **Evidence references**: Incident-scoped answers name the stored evidence identifiers supporting material claims when those identifiers are available.
+- **Incident scope**: When opened from an incident detail page, the floating Copilot is scoped to that incident. It can inspect stored evidence and, when the user has connector investigation permission, query bounded read-only connector data after **Live sources** is explicitly enabled.
 - **Inline charts**: Responses can render bounded `bar`, `line`, and `area` charts when the answer includes connector, evidence, or user-provided numeric series.
-- **Slash commands and mentions**: `/health`, `/investigate`, `/evidence`, and `/verify` remain visible as read-only actions. Select **@ context** or type `@` to reference an incident, service, or recent deployment without keeping a row of mention chips in the composer.
-- **Log context**: Drag text, log, JSON, CSV, or Markdown files into the composer to add local read-only context. Copilot treats dropped files as user-provided context, not verified production state, until corroborated by evidence or connectors.
-- **Safe Tool Result Summaries**: Collapsible, read-only summaries of tool executions to keep the chat clean while providing deep context when needed.
-- **Standalone history**: Conversations stay in the Copilot console instead of cluttering the incident detail page.
+- **Standalone history**: Conversations stay in the Copilot console instead of cluttering the incident detail page. History remains available from a mobile drawer on narrow screens.
 
-The four slash commands are intent shortcuts, not guarantees that live data is available:
+Standalone `/copilot` does not automatically inspect an incident, a Kubernetes cluster, or external observability systems. It uses the question and text entered in the composer. Live connector data is available only in an incident-scoped conversation when an enabled connector is scoped to the affected service, the user's role permits investigation, and **Live sources** is explicitly enabled. If supporting evidence is unavailable, Copilot reports the gap and suggests the next safe checks; it must not invent evidence IDs, source systems, queries, values, or timestamps.
 
-- `/health` summarizes available health signals or explains what to check when no evidence is attached.
-- `/investigate` triages the selected incident or service using stored evidence and permitted read-only connector results.
-- `/evidence` reviews supporting evidence, confidence, gaps, and the next safe checks.
-- `/verify` creates a concrete read-only checklist for validating a hypothesis before action.
-
-Standalone `/copilot` does not automatically inspect an incident, a Kubernetes cluster, or external observability systems. It uses the question and attached files. Live connector data is available only in an incident-scoped conversation when an enabled connector is scoped to the affected service and the user's role permits investigation. If supporting evidence is unavailable, Copilot reports the gap and provides a verification plan; it must not invent evidence IDs, source systems, queries, values, or timestamps.
+If investigation runs are disabled by an administrator, the incident page shows
+**Investigation is unavailable** and disables Run and live-source controls
+before a request is made. Existing evidence and completed results stay readable.
+Viewers see a read-only state without investigation, connector, snapshot, or
+feedback mutation controls.
 
 ## Incident Lifecycle & Verification
 
@@ -82,7 +82,7 @@ Supercheck supports the incident lifecycle up to the point of remediation:
 2. **Investigation**: Run the read-only investigation from the incident detail page using native evidence and, when enabled, scoped [Connector Layer](/docs/app/investigate/connectors) data.
 3. **Recommendation**: The evidence brief and investigation report present cited findings and proposed next steps.
 4. **Human Verification**: A responder reviews the findings, makes a decision, and applies the fix outside of Supercheck in their respective systems.
-5. **Closed-Loop Verification**: Once the fix is applied, Supercheck validates the resolution by automatically re-running the very monitors or synthetic tests that initially detected the issue.
+5. **Recovery Confirmation**: After the fix is applied outside Supercheck, the responder re-runs or observes the existing detecting checks and records whether the incident recovered. AI SRE does not currently trigger that re-run automatically.
 
 ## Alerts and Incidents
 

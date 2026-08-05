@@ -10,6 +10,7 @@ const PLAN_LIMIT_FALLBACKS = {
     playwrightMinutesIncluded: 3000,
     k6VuMinutesIncluded: 20000,
     aiCreditsIncluded: 100,
+    sreInvestigationUnitsIncluded: 10,
     dataRetentionDays: 7,
     aggregatedDataRetentionDays: 30,
     jobDataRetentionDays: 30,
@@ -18,6 +19,7 @@ const PLAN_LIMIT_FALLBACKS = {
     playwrightMinutesIncluded: 10000,
     k6VuMinutesIncluded: 75000,
     aiCreditsIncluded: 300,
+    sreInvestigationUnitsIncluded: 50,
     dataRetentionDays: 7,
     aggregatedDataRetentionDays: 90,
     jobDataRetentionDays: 90,
@@ -100,6 +102,7 @@ export async function GET() {
             playwrightMinutes: plan.playwrightMinutesIncluded,
             k6VuMinutes: plan.k6VuMinutesIncluded,
             aiCredits: plan.aiCreditsIncluded,
+            sreInvestigationUnits: Number(plan.sreInvestigationUnitsIncluded),
             concurrentExecutions: plan.runningCapacity,
             queuedJobs: plan.queuedCapacity,
             teamMembers: plan.maxTeamMembers,
@@ -121,12 +124,15 @@ export async function GET() {
                 playwrightMinutes: overage.playwrightMinutePriceCents / 100,
                 k6VuMinutes: overage.k6VuMinutePriceCents / 100,
                 aiCredits: overage.aiCreditPriceCents / 100,
+                sreInvestigationUnits:
+                  overage.sreInvestigationUnitPriceCents / 100,
               }
             : {
                 // Fallback values if not in database
                 playwrightMinutes: planType === "pro" ? 0.02 : 0.03,
                 k6VuMinutes: 0.01,
                 aiCredits: planType === "pro" ? 0.03 : 0.05,
+                sreInvestigationUnits: 0.5,
               },
         };
       });
@@ -176,6 +182,12 @@ export async function GET() {
             plus: `${plans.find((p) => p.plan === "plus")?.aiCreditsIncluded || PLAN_LIMIT_FALLBACKS.plus.aiCreditsIncluded}/month`,
             pro: `${plans.find((p) => p.plan === "pro")?.aiCreditsIncluded || PLAN_LIMIT_FALLBACKS.pro.aiCreditsIncluded}/month`,
             enterprise: "Unlimited",
+          },
+          {
+            name: "AI SRE Investigation Units",
+            plus: `${Number(plans.find((p) => p.plan === "plus")?.sreInvestigationUnitsIncluded || PLAN_LIMIT_FALLBACKS.plus.sreInvestigationUnitsIncluded)}/month`,
+            pro: `${Number(plans.find((p) => p.plan === "pro")?.sreInvestigationUnitsIncluded || PLAN_LIMIT_FALLBACKS.pro.sreInvestigationUnitsIncluded)}/month`,
+            enterprise: "Custom",
           },
           {
             name: "Concurrent Executions",
@@ -290,12 +302,12 @@ export async function GET() {
       {
         question: "How is usage tracked?",
         answer:
-          "Playwright Minutes count total browser execution time. K6 VU Minutes are calculated as Virtual Users × execution time in minutes. Monitors count against Playwright minutes for each check.",
+          "Playwright Minutes count total browser execution time. K6 VU Minutes are Virtual Users × execution time in minutes. Monitors count against Playwright minutes. Each successful full AI SRE investigation consumes one investigation unit; chat, triage, and evidence briefs do not.",
       },
       {
         question: "What happens if I exceed my limits?",
         answer:
-          "For Playwright minutes and K6 VU minutes, usage-based overage billing automatically applies at the rates shown above. AI credits have a hard monthly limit — upgrade your plan for more. You'll receive email alerts at 80% and 100% of quota.",
+          "Playwright, K6, and successful full AI SRE investigations use the overage rates shown above. AI credits have a hard monthly limit. Configured billing contacts receive threshold alerts.",
       },
       {
         question: "Can I change plans?",
@@ -335,6 +347,9 @@ export async function GET() {
           ? plusOverage.k6VuMinutePriceCents / 100
           : 0.01,
         aiCredits: plusOverage ? plusOverage.aiCreditPriceCents / 100 : 0.05,
+        sreInvestigationUnits: plusOverage
+          ? plusOverage.sreInvestigationUnitPriceCents / 100
+          : 0.5,
       },
       pro: {
         playwrightMinutes: proOverage
@@ -342,6 +357,9 @@ export async function GET() {
           : 0.02,
         k6VuMinutes: proOverage ? proOverage.k6VuMinutePriceCents / 100 : 0.01,
         aiCredits: proOverage ? proOverage.aiCreditPriceCents / 100 : 0.03,
+        sreInvestigationUnits: proOverage
+          ? proOverage.sreInvestigationUnitPriceCents / 100
+          : 0.5,
       },
     };
 

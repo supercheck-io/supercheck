@@ -19,6 +19,7 @@ import { requireSreSameOriginRequest } from "../_auth";
 const chatRequestSchema = z.object({
   conversationId: z.string().uuid().optional().nullable(),
   incidentId: z.string().uuid().optional().nullable(),
+  useLiveConnectorTools: z.boolean().optional().default(false),
   message: z.string().trim().min(1).max(4000),
   title: z.string().trim().max(200).optional().nullable(),
   attachments: z
@@ -137,10 +138,9 @@ function buildChatPrompt(input: {
     "User request:",
     input.message,
     [
-      "Respond with read-only investigation guidance. If evidence is missing, state what should be gathered next.",
+      "Respond with read-only investigation guidance. If evidence is missing, state the gap and the next safe checks.",
       "Use concise sections, bullets, markdown tables for comparisons, and fenced code blocks for commands or queries.",
-      "Supported slash commands are read-only aliases: /health for system health summaries, /investigate for incident/service triage, /evidence for evidence review, and /verify for verification planning.",
-      "Treat @service, @incident, and @recent-deploy mentions as user-provided context labels. Do not claim you resolved them unless available evidence confirms the entity.",
+      "Do not present a generic checklist as completed verification.",
       "When a small numeric summary would be clearer as a chart, include a fenced `chart` JSON block with this exact shape:",
       '{"type":"line","title":"Short title","description":"Optional one-sentence context","sources":[{"label":"Prometheus","type":"prometheus","evidenceIds":["ev-123"],"query":"rate(http_requests_total[5m])"}],"xKey":"label","series":[{"key":"value","label":"Value"}],"data":[{"label":"api","value":12}]}',
       "Supported chart types are bar, line, and area. Use only real values already present in evidence or the user request; do not fabricate chart data.",
@@ -425,7 +425,7 @@ export async function POST(request: NextRequest) {
         tools: incidentToolScope
           ? {
               ...createSreEvidenceTools(incidentToolScope),
-              ...(canInvestigateConnectors
+              ...(parsed.data.useLiveConnectorTools && canInvestigateConnectors
                 ? createSreConnectorTools(incidentToolScope)
                 : {}),
             }

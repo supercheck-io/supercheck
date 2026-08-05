@@ -16,7 +16,7 @@ interface UsageNotificationEmailProps {
     | "usage_100_percent"
     | "spending_limit_warning"
     | "spending_limit_reached";
-  resourceType: "playwright" | "k6" | "ai" | "combined" | "spending";
+  resourceType: "playwright" | "k6" | "ai" | "sre" | "combined" | "spending";
   usageAmount: number;
   usageLimit: number;
   usagePercentage: number;
@@ -83,6 +83,8 @@ export const UsageNotificationEmail = ({
         return "K6 Virtual User Minutes";
       case "ai":
         return "AI Credits";
+      case "sre":
+        return "AI SRE Investigation Units";
       case "combined":
         return "Combined Usage";
       case "spending":
@@ -100,6 +102,8 @@ export const UsageNotificationEmail = ({
         return "VU minutes";
       case "ai":
         return "credits";
+      case "sre":
+        return "investigations";
       default:
         return "units";
     }

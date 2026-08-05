@@ -171,6 +171,13 @@ my-project/
 |-------|------|---------|-------------|
 | `baseUrl` | `string` | `https://app.supercheck.io` | API base URL |
 
+### `defaults`
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `runLocation` | `string` | Default execution location code (e.g. `us-east`) |
+| `timeout` | `number` | Default execution timeout in milliseconds |
+
 ### `tests.playwright`
 
 | Field | Type | Description |
@@ -207,6 +214,22 @@ my-project/
 | `enabled` | `boolean` | Whether the monitor is active |
 | `config` | `object` | Monitor-specific config (`method`, `timeoutSeconds`, `expectedStatusCodes`, `locationConfig`) |
 | `alertConfig` | `object` | Alert config with `notificationProviders` (UUIDs), `alertOnFailure`, `alertOnRecovery` |
+
+### `statusPages[]`
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | `string` | Database UUID (present for existing resources, omit for new) |
+| `name` | `string` | Status page display name |
+| `subdomain` | `string` | Status page subdomain identifier |
+| `status` | `string` | Status page state (`draft`, `published`, `archived`) |
+| `headline` | `string` | Public page headline |
+| `description` | `string` | Public description text |
+| `supportUrl` | `string` | External support URL |
+| `language` | `string` | ISO language code (e.g. `en`) |
+| `components` | `object[]` | List of status page components (`name`, `description`, `monitors`, `position`) |
+| `branding` | `object` | Page styling options (`bodyBackgroundColor`, `fontColor`, `greens`, `reds`) |
+| `notifications` | `object` | Subscription toggles (`allowEmailSubscribers`, `allowWebhookSubscribers`, `allowRssFeed`) |
 
 ### `variables[]`
 

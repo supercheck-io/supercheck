@@ -5,6 +5,7 @@ import { createLogger } from "@/lib/logger/index";
 import { requireProjectContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { assertCanStartSreInvestigation, consumeSreInvestigationCredit, SreInvestigationBillingError } from "@/lib/sre/investigation-billing";
+import { checkSreInvestigationRateLimit } from "@/lib/sre/sre-rate-limiter";
 import { isSreInvestigationAgentEnabled } from "@/sre/lib/feature-gates";
 import { startSreIncidentInvestigation, executeSreIncidentInvestigation } from "@/sre/lib/investigation-runner";
 import { requireSreSameOriginRequest } from "../_auth";
@@ -43,13 +44,13 @@ async function parseRequestJson(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  if (!isSreInvestigationAgentEnabled()) {
-    return featureDisabledResponse();
-  }
-
   const sameOriginError = requireSreSameOriginRequest(request);
   if (sameOriginError) {
     return sameOriginError;
+  }
+
+  if (!isSreInvestigationAgentEnabled()) {
+    return featureDisabledResponse();
   }
 
   let context: Awaited<ReturnType<typeof requireProjectContext>>;
@@ -74,6 +75,27 @@ export async function POST(request: NextRequest) {
   const parsed = investigateRequestSchema.safeParse(await parseRequestJson(request));
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid SRE investigation request" }, { status: 400 });
+  }
+
+  const rateLimit = await checkSreInvestigationRateLimit(
+    context.userId,
+    parsed.data.incidentId,
+  );
+  if (!rateLimit.allowed) {
+    const retryAfter = rateLimit.resetTime
+      ? Math.max(1, Math.ceil((rateLimit.resetTime - Date.now()) / 1000))
+      : 300;
+    return NextResponse.json(
+      {
+        error: rateLimit.unavailable
+          ? "Investigation rate limiter is temporarily unavailable. Please try again shortly."
+          : "Investigation rate limit reached. Please wait before starting another run.",
+      },
+      {
+        status: rateLimit.unavailable ? 503 : 429,
+        headers: { "Retry-After": String(retryAfter) },
+      },
+    );
   }
 
   try {

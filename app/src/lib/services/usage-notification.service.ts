@@ -29,7 +29,13 @@ type NotificationType =
   | "spending_limit_warning"
   | "spending_limit_reached";
 
-type ResourceType = "playwright" | "k6" | "ai" | "combined" | "spending";
+type ResourceType =
+  | "playwright"
+  | "k6"
+  | "ai"
+  | "sre"
+  | "combined"
+  | "spending";
 type NotificationThresholdKey =
   | "50"
   | "80"
@@ -118,6 +124,19 @@ class UsageNotificationService {
       );
       if (aiResult) results.push(aiResult);
 
+      const sreResult = await this.checkResourceThreshold(
+        organizationId,
+        org.name,
+        "sre",
+        metrics.sreInvestigations.used,
+        metrics.sreInvestigations.included,
+        metrics.sreInvestigations.percentage,
+        settings,
+        org.usagePeriodStart,
+        org.usagePeriodEnd
+      );
+      if (sreResult) results.push(sreResult);
+
       // Check spending limit
       if (settings.enableSpendingLimit && settings.monthlySpendingLimitCents) {
         const spendingResult = await this.checkSpendingThreshold(
@@ -145,7 +164,7 @@ class UsageNotificationService {
   private async checkResourceThreshold(
     organizationId: string,
     organizationName: string,
-    resourceType: "playwright" | "k6" | "ai",
+    resourceType: "playwright" | "k6" | "ai" | "sre",
     used: number,
     limit: number,
     percentage: number,
@@ -356,13 +375,14 @@ class UsageNotificationService {
       // Mark notification as sent in billing settings
       const thresholdKey =
         notificationThresholdKey ?? this.getThresholdKey(notificationType);
-      if (thresholdKey) {
+      if (thresholdKey && successCount > 0) {
         await billingSettingsService.markNotificationSent(
           organizationId,
           thresholdKey,
           resourceType === "playwright" ||
             resourceType === "k6" ||
-            resourceType === "ai"
+            resourceType === "ai" ||
+            resourceType === "sre"
             ? resourceType
             : undefined
         );

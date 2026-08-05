@@ -40,3 +40,97 @@ body {
 .animate-fade-in-up {
   animation: fade-in-up 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
+
+/* Landing page: refined technical grid + soft hero wash */
+.landing-atmosphere {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.landing-atmosphere__wash {
+  position: absolute;
+  inset: -20% 10% auto;
+  height: 70%;
+  background:
+    radial-gradient(
+      ellipse 70% 55% at 50% 35%,
+      color-mix(in oklab, var(--color-fd-primary) 14%, transparent) 0%,
+      transparent 70%
+    );
+  opacity: 0.9;
+}
+
+.dark .landing-atmosphere__wash {
+  background:
+    radial-gradient(
+      ellipse 70% 55% at 50% 35%,
+      color-mix(in oklab, var(--color-fd-primary) 22%, transparent) 0%,
+      transparent 72%
+    );
+}
+
+.landing-atmosphere__grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(
+      to right,
+      color-mix(in oklab, var(--color-fd-foreground) 5%, transparent) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      to bottom,
+      color-mix(in oklab, var(--color-fd-foreground) 5%, transparent) 1px,
+      transparent 1px
+    );
+  background-size: 64px 64px;
+  background-position: center top;
+  /* Keep grid in the upper hero only — fade out before the quick-start box */
+  -webkit-mask-image:
+    radial-gradient(ellipse 85% 42% at 50% 12%, #000 0%, #000 28%, transparent 68%);
+  mask-image:
+    radial-gradient(ellipse 85% 42% at 50% 12%, #000 0%, #000 28%, transparent 68%);
+}
+
+.dark .landing-atmosphere__grid {
+  background-image:
+    linear-gradient(
+      to right,
+      color-mix(in oklab, var(--color-fd-foreground) 8%, transparent) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      to bottom,
+      color-mix(in oklab, var(--color-fd-foreground) 8%, transparent) 1px,
+      transparent 1px
+    );
+}
+
+.landing-atmosphere__dots {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(
+    circle at center,
+    color-mix(in oklab, var(--color-fd-foreground) 14%, transparent) 1px,
+    transparent 1.5px
+  );
+  background-size: 64px 64px;
+  background-position: center top;
+  opacity: 0.35;
+  -webkit-mask-image:
+    radial-gradient(ellipse 70% 32% at 50% 14%, #000 0%, transparent 65%);
+  mask-image:
+    radial-gradient(ellipse 70% 32% at 50% 14%, #000 0%, transparent 65%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in-up {
+    animation: none;
+    opacity: 1;
+    filter: none;
+    transform: none;
+  }
+}

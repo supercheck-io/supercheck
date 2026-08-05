@@ -60,6 +60,8 @@ function detailFixture(): SreIncidentDetail {
       completedAt: now,
       createdAt: now,
     },
+    latestReportSnapshot: null,
+    myReportFeedback: null,
     evidence: [
       {
         id: "ev-monitor-timeout",
@@ -84,6 +86,11 @@ function detailFixture(): SreIncidentDetail {
     },
     permissions: {
       canUpdate: true,
+      canInvestigate: true,
+      canUseLiveConnectors: true,
+    },
+    capabilities: {
+      investigationEnabled: true,
     },
   };
 }

@@ -166,15 +166,19 @@ export async function POST() {
 
     // Check if user already has an organization
     const [existingMember] = await db
-      .select({ organizationId: member.organizationId })
+      .select({
+        organizationId: member.organizationId,
+        role: member.role,
+      })
       .from(member)
       .where(eq(member.userId, currentUser.id))
       .limit(1);
 
     if (existingMember) {
-      // User already has org, but in cloud mode we still need to ensure Polar customer exists
-      // This handles users who created accounts in self-hosted mode and switched to cloud
-      if (isCloudHosted()) {
+      // Only the organization owner may establish its Polar customer binding.
+      // Invited members also pass through this endpoint; allowing them to relink
+      // billing would let an ordinary member replace the organization's customer.
+      if (isCloudHosted() && existingMember.role === 'org_owner') {
         await ensurePolarCustomerAndLink(
           currentUser.id, 
           currentUser.email, 
@@ -228,14 +232,21 @@ export async function POST() {
 
       // Now safely check if user already has an organization (within the lock)
       const [existingMemberInTx] = await tx
-        .select({ organizationId: member.organizationId })
+        .select({
+          organizationId: member.organizationId,
+          role: member.role,
+        })
         .from(member)
         .where(eq(member.userId, currentUser.id))
         .limit(1);
 
       if (existingMemberInTx) {
         // Another call already created the org, return it
-        return { existed: true, organizationId: existingMemberInTx.organizationId };
+        return {
+          existed: true,
+          organizationId: existingMemberInTx.organizationId,
+          role: existingMemberInTx.role,
+        };
       }
 
       // Create default organization
@@ -286,7 +297,7 @@ export async function POST() {
       // Organization was created by another concurrent call
       console.log(`[setup-defaults] Race condition detected - org already exists for user ${currentUser.email}`);
       // Still ensure Polar customer exists in cloud mode
-      if (isCloudHosted()) {
+      if (isCloudHosted() && result.role === 'org_owner') {
         await ensurePolarCustomerAndLink(
           currentUser.id,
           currentUser.email,

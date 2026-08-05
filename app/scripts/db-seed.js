@@ -45,9 +45,9 @@ function logError(message) {
  * Single source of truth for subscription plans
  *
  * Data Retention Model:
- * - dataRetentionDays: Raw monitor check results (Plus: 7d, Pro: 30d, Unlimited: 365d)
- * - aggregatedDataRetentionDays: Aggregated metrics for monitors (Plus: 30d, Pro: 365d, Unlimited: 730d)
- * - jobDataRetentionDays: Job execution logs/results (Plus: 30d, Pro: 90d, Unlimited: 365d)
+ * - dataRetentionDays: Raw monitor check results (7d for all seeded plans)
+ * - aggregatedDataRetentionDays: Aggregated metrics (Plus: 30d, Pro/Self-hosted: 90d)
+ * - jobDataRetentionDays: Job execution logs/results (Plus: 30d, Pro/Self-hosted: 90d)
  *
  * Industry Standards Reference:
  * - GitHub Actions: 90 days default, up to 400 days for private repos

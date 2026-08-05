@@ -106,7 +106,7 @@ export function SiteFooter({
     copyright = `© ${new Date().getFullYear()} Supercheck. All rights reserved.`,
 }: FooterProps) {
     return (
-        <footer className="relative z-10 border-t border-gray-200 dark:border-gray-800 bg-white/95 dark:bg-gray-950/95 py-12 md:py-16">
+        <footer className="relative z-10 border-t border-fd-border bg-fd-background/95 py-12 md:py-16">
             <div className="mx-auto max-w-6xl px-6">
                 <div className="flex w-full flex-col justify-between gap-10 lg:flex-row lg:items-start lg:text-left">
                     <div className="flex w-full flex-col justify-between gap-6 lg:max-w-xs lg:items-start">
@@ -120,9 +120,9 @@ export function SiteFooter({
                                     height={28}
                                     className="rounded"
                                 />
-                                <h2 className="text-xl font-bold text-gray-900 dark:text-white">Supercheck</h2>
+                                <h2 className="text-xl font-bold text-fd-foreground">Supercheck</h2>
                             </div>
-                            <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mt-2">
+                            <p className="text-sm text-fd-muted-foreground leading-relaxed mt-2">
                                 {description}
                             </p>
                         </div>
@@ -132,15 +132,15 @@ export function SiteFooter({
                     <div className="grid w-full grid-cols-2 gap-8 md:grid-cols-3 lg:gap-12">
                         {sections.map((section, sectionIdx) => (
                             <div key={sectionIdx}>
-                                <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider text-gray-900 dark:text-white">
+                                <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider text-fd-foreground">
                                     {section.title}
                                 </h3>
-                                <ul className="space-y-3 text-sm text-gray-600 dark:text-gray-400">
+                                <ul className="space-y-3 text-sm text-fd-muted-foreground">
                                     {section.links.map((link, linkIdx) => (
                                         <li key={linkIdx}>
                                             <Link
                                                 href={link.href}
-                                                className="hover:text-gray-900 dark:hover:text-white transition-colors"
+                                                className="hover:text-fd-foreground transition-colors"
                                                 target={link.href.startsWith("http") ? "_blank" : undefined}
                                                 rel={link.href.startsWith("http") ? "noopener noreferrer" : undefined}
                                             >
@@ -154,16 +154,16 @@ export function SiteFooter({
                     </div>
                 </div>
 
-                <div className="mt-12 flex flex-col justify-between gap-4 border-t border-gray-200 dark:border-gray-800 pt-8 text-sm text-gray-500 dark:text-gray-400 md:flex-row md:items-center">
+                <div className="mt-12 flex flex-col justify-between gap-4 border-t border-fd-border pt-8 text-sm text-fd-muted-foreground md:flex-row md:items-center">
                     <p>{copyright}</p>
                     <ul className="flex items-center gap-6">
                         <li>
-                            <Link href="/privacy" className="hover:text-gray-900 dark:hover:text-white transition-colors">
+                            <Link href="/privacy" className="hover:text-fd-foreground transition-colors">
                                 Privacy
                             </Link>
                         </li>
                         <li>
-                            <Link href="/terms" className="hover:text-gray-900 dark:hover:text-white transition-colors">
+                            <Link href="/terms" className="hover:text-fd-foreground transition-colors">
                                 Terms
                             </Link>
                         </li>
@@ -171,7 +171,7 @@ export function SiteFooter({
                             <li key={idx}>
                                 <a
                                     href={social.href}
-                                    className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-colors"
+                                    className="text-fd-muted-foreground hover:text-fd-foreground transition-colors"
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     aria-label={social.label}

@@ -182,6 +182,36 @@ export async function checkSreEvidenceBriefRateLimit(
 }
 
 /**
+ * Rate limit full incident investigations.
+ * Per-user, per-incident: max 3 starts per 5 minutes.
+ */
+export async function checkSreInvestigationRateLimit(
+  userId: string,
+  incidentId: string,
+): Promise<SreRateLimitResult> {
+  return checkSreRateLimit(
+    `investigation:${userId}:${incidentId}`,
+    3,
+    5 * 60 * 1000,
+  );
+}
+
+/**
+ * Rate limit stored-evidence triage.
+ * Per-user, per-incident: max 10 starts per 5 minutes.
+ */
+export async function checkSreTriageRateLimit(
+  userId: string,
+  incidentId: string,
+): Promise<SreRateLimitResult> {
+  return checkSreRateLimit(
+    `triage:${userId}:${incidentId}`,
+    10,
+    5 * 60 * 1000,
+  );
+}
+
+/**
  * Rate limit SRE chat messages.
  * Per-user: max 30 messages per 60 seconds.
  * Each message may trigger an LLM call and optional connector tool calls.

@@ -1,5 +1,5 @@
 import { revalidatePath } from "next/cache";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
 import { streamEvidenceBrief } from "@/lib/sre/evidence-brief-generator";
@@ -7,6 +7,7 @@ import { runSreEvidenceBriefGeneration } from "@/lib/sre/evidence-brief-orchestr
 import { requireProjectContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { checkSreEvidenceBriefRateLimit } from "@/lib/sre/sre-rate-limiter";
+import { requireSreSameOriginRequest } from "../../_auth";
 
 const requestSchema = z.object({
   incidentId: z.string().uuid(),
@@ -40,7 +41,12 @@ function encodeData(data: unknown) {
   return encoder.encode(`data: ${JSON.stringify(data)}\n\n`);
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  const sameOriginError = requireSreSameOriginRequest(request);
+  if (sameOriginError) {
+    return sameOriginError;
+  }
+
   let parsed: z.infer<typeof requestSchema>;
 
   try {
@@ -62,8 +68,17 @@ export async function POST(request: Request) {
       project,
     },
   );
+  const canRunInvestigation = checkPermissionWithContext(
+    "sre_investigation",
+    "investigate",
+    {
+      userId,
+      organizationId,
+      project,
+    },
+  );
 
-  if (!canInvestigate) {
+  if (!canInvestigate || !canRunInvestigation) {
     return NextResponse.json(
       {
         success: false,

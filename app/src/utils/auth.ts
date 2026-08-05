@@ -30,7 +30,6 @@ import { nextCookies } from "better-auth/next-js";
 import {
   isPolarEnabled,
   getPolarConfig,
-  getPolarProducts,
   isCloudHosted,
   isCaptchaEnabled,
 } from "@/lib/feature-flags";
@@ -48,8 +47,6 @@ function getPolarPlugin() {
      
     const {
       polar,
-      checkout,
-      portal,
       usage,
       webhooks,
     } = require("@polar-sh/better-auth");
@@ -57,7 +54,6 @@ function getPolarPlugin() {
      
 
     const config = getPolarConfig()!;
-    const products = getPolarProducts();
 
     const polarClient = new Polar({
       accessToken: config.accessToken,
@@ -99,27 +95,9 @@ function getPolarPlugin() {
         };
       },
       use: [
-        checkout({
-          products: products
-            ? [
-                {
-                  productId: products.plusProductId,
-                  slug: "plus",
-                },
-                {
-                  productId: products.proProductId,
-                  slug: "pro",
-                },
-              ]
-            : [],
-          // Use absolute URL to ensure correct redirect after checkout
-          successUrl: `${process.env.NEXT_PUBLIC_APP_URL || process.env.BETTER_AUTH_URL || "http://localhost:3000"}/billing/success?checkout_id={CHECKOUT_ID}`,
-          authenticatedUsersOnly: true,
-        }),
-        portal({
-          returnUrl:
-            process.env.NEXT_PUBLIC_APP_URL || process.env.BETTER_AUTH_URL,
-        }),
+        // Checkout and portal are intentionally exposed through Supercheck's
+        // own billing routes. Those routes enforce active-organization
+        // ownership and fixed products/redirects before calling Polar.
         usage(),
         webhooks({
           secret: config.webhookSecret!,

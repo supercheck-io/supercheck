@@ -69,7 +69,7 @@ workflow, and runs daily at 02:00 UTC.
 | Billing, admin, audit                   | Role and settings contracts                       | Owner/admin surfaces                                  | Dedicated owner/super-admin identities             | Core contracts passed; Polar checkout excluded         |
 | AI SRE services                         | Project-scoped list and lifecycle                 | Create/edit/detail/archive                            | Disposable project cascade                         | Passed exact-revision full runtime                      |
 | AI SRE incidents, brief, investigation  | Alert promotion and stored run state              | Signal promotion plus incident/brief/run persistence  | Soft-deleted isolated project and resource cleanup | Passed exact-revision full runtime                      |
-| Copilot                                 | Auth/origin/scoped-request validation             | Prompt/history/archive/stop/mobile/mentions/files     | Read-only prompts and isolated incident            | Passed exact-revision full runtime                      |
+| Copilot                                 | Auth/origin/scoped-request validation             | Prompt/history/archive/stop/mobile/starters/input bounds/live-source opt-in | Read-only prompts and isolated incident            | Passed exact-revision full runtime                      |
 | Investigation Map                       | Authenticated project-scoped graph                | Empty-state rendering and navigation surface          | Authenticated project                              | Passed exact-revision full runtime                      |
 | Connectors                              | Catalog/setup and authorization contracts         | Exact implemented catalog                             | No third-party dependency                          | Covered without live external searches                 |
 | Private Agent                           | Registration exchange/replay/heartbeat/revocation | Register/status/rotate/disable                        | Disposable project cascade                         | Management lifecycle covered; runner lab excluded      |
@@ -100,9 +100,8 @@ can be claimed as a merge-blocking gate.
 
 These are not counted as covered and must remain visible until executable:
 
-- Investigation report snapshot/feedback server actions have no current product
-  UI or API caller. Their pure export/redaction contract has unit coverage, but
-  browser coverage cannot honestly exist until the product exposes the workflow.
+- Investigation report snapshot/feedback controls have component coverage. Full
+  browser acceptance remains in `AI_SRE_TESTING_RUNBOOK.md` section 3.2.
 - Delivered-email traversal, third-party webhook delivery, live external
   connector queries, Polar checkout, Recorder-extension transfer, and a real
   Private Agent runner are intentionally excluded from this deterministic suite.

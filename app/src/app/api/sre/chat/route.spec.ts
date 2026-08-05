@@ -28,6 +28,12 @@ jest.mock("@/sre/agents/triage", () => ({
   buildSreTriageSystemPrompt: jest.fn(() => "read-only system"),
 }));
 
+jest.mock("@/sre/tools/connector-tools", () => ({
+  createSreConnectorTools: jest.fn(() => ({
+    searchLiveConnectorEvidence: {},
+  })),
+}));
+
 import { POST } from "./route";
 
 const { requireProjectContext: mockRequireProjectContext } = jest.requireMock("@/lib/project-context") as {
@@ -125,6 +131,32 @@ describe("SRE chat API", () => {
         listConnectorEvidence: expect.any(Object),
       }),
     }));
+    expect(mockRunSreAgent.mock.calls[0][0].tools).not.toHaveProperty(
+      "searchLiveConnectorEvidence",
+    );
+  });
+
+  it("adds live connector tools only after explicit opt-in", async () => {
+    mockCreateSreConversation.mockResolvedValueOnce({
+      id: "018f0000-0000-7000-8000-000000000004",
+      incidentId: "018f0000-0000-7000-8000-000000000007",
+      status: "active",
+    });
+
+    const response = await POST(new NextRequest("http://localhost/api/sre/chat", {
+      method: "POST",
+      body: JSON.stringify({
+        incidentId: "018f0000-0000-7000-8000-000000000007",
+        message: "Use live evidence to triage",
+        useLiveConnectorTools: true,
+      }),
+    }));
+
+    await responseText(response);
+
+    expect(mockRunSreAgent.mock.calls[0][0].tools).toHaveProperty(
+      "searchLiveConnectorEvidence",
+    );
   });
 
   it("validates and redacts text attachments before prompt and persistence", async () => {

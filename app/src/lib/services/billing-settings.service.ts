@@ -47,7 +47,7 @@ type NotificationThreshold =
   | "spending_limit"
   | "spending_90";
 
-type NotificationResource = "playwright" | "k6" | "ai";
+type NotificationResource = "playwright" | "k6" | "ai" | "sre";
 
 class BillingSettingsService {
   /**
