@@ -174,7 +174,10 @@ export async function reconcileUnbilledSreInvestigations(options?: {
       and(
         eq(usageEvents.organizationId, sreInvestigationRuns.organizationId),
         eq(usageEvents.eventType, "sre_investigation"),
-        sql`${usageEvents.metadata}->>'investigationRunId' = ${sreInvestigationRuns.id}`
+        // JSON extraction returns text, while the run primary key is UUID.
+        // PostgreSQL does not implicitly compare text and UUID, so cast the
+        // typed column instead of casting untrusted metadata into UUID.
+        sql`${usageEvents.metadata}->>'investigationRunId' = CAST(${sreInvestigationRuns.id} AS text)`
       )
     )
     .where(

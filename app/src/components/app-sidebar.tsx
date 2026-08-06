@@ -240,7 +240,7 @@ const data = {
       title: "Docs",
       url: "https://supercheck.io/docs/app/welcome",
       icon: BookOpenText,
-      badge: "v1.3.6-aisre-22",
+      badge: "v1.3.6-aisre-23",
     },
   ],
   documents: [

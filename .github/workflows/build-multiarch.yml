@@ -29,6 +29,12 @@ env:
 permissions:
   contents: read
 
+# A newer release must not replace the demo while an older release is still
+# running its exact-revision E2E suite.
+concurrency:
+  group: demo-release-${{ github.repository }}
+  cancel-in-progress: false
+
 jobs:
   test:
     name: Run Tests
@@ -41,10 +47,12 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: "20"
           cache: "npm"
@@ -87,10 +95,16 @@ jobs:
       contents: read
       packages: write
       id-token: write
+    outputs:
+      image_tag: ${{ steps.app-meta.outputs.version }}
+      app_digest: ${{ steps.build-app.outputs.digest }}
+      worker_digest: ${{ steps.build-worker.outputs.digest }}
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
 
       - name: Clean up disk space
         run: |
@@ -109,47 +123,44 @@ jobs:
           # Clean up Docker system to reclaim space
           docker system prune -af --volumes
 
-          # Clean up npm cache
-          npm cache clean --force || true
-
-          # Clean up temp directories
-          rm -rf /tmp/* || true
-          rm -rf /var/tmp/* || true
-
-          # Clean up GitHub Actions cache
-          rm -rf /home/runner/actions-runner/cached/_diag/* || true
-
           echo "=== After cleanup ==="
           df -h
           docker system df
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
       - name: Set up QEMU for multi-arch builds
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Check registry access
+        env:
+          CUSTOM_VERSION: ${{ github.event.inputs.version }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_REF: ${{ github.ref }}
+          EVENT_REPOSITORY: ${{ github.repository }}
+          EVENT_USER: ${{ github.actor }}
+          PUSH_LATEST: ${{ github.event.inputs.push_latest }}
         run: |
           echo "Testing registry access..."
-          echo "Registry: ${{ env.REGISTRY }}"
-          echo "Username: ${{ github.actor }}"
-          echo "Repository: ${{ github.repository }}"
-          echo "Event: ${{ github.event_name }}"
-          echo "Ref: ${{ github.ref }}"
-          echo "Custom Version: ${{ github.event.inputs.version }}"
-          echo "Push Latest: ${{ github.event.inputs.push_latest }}"
+          echo "Registry: $REGISTRY"
+          echo "Username: $EVENT_USER"
+          echo "Repository: $EVENT_REPOSITORY"
+          echo "Event: $EVENT_NAME"
+          echo "Ref: $EVENT_REF"
+          echo "Custom Version: $CUSTOM_VERSION"
+          echo "Push Latest: $PUSH_LATEST"
 
       - name: Extract app metadata
         id: app-meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
         with:
           images: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/app
@@ -159,17 +170,17 @@ jobs:
             # Major.minor for stable releases only (e.g. 1.2)
             type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-') }}
             # Custom version from manual workflow input
-            type=raw,value=${{ github.event.inputs.version }},enable=${{ github.event.inputs.version != '' }}
+            type=raw,value=${{ github.event.inputs.version }},priority=800,enable=${{ github.event.inputs.version != '' }}
             # Latest tag ONLY for stable releases (no prerelease suffix like -canary, -beta, -alpha, -rc)
-            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-canary') && !contains(github.ref, '-beta') && !contains(github.ref, '-alpha') && !contains(github.ref, '-rc') }}
+            type=raw,value=latest,priority=50,enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-') }}
             # Latest tag override for manual builds (use with caution)
-            type=raw,value=latest,enable=${{ github.event.inputs.push_latest == 'true' }}
+            type=raw,value=latest,priority=50,enable=${{ github.event.inputs.push_latest == 'true' }}
             # Fallback tag using git SHA for manual builds without custom version
             type=sha,prefix={{branch}}-,suffix=-${{ github.run_number }},enable=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version == '' }}
 
       - name: Extract worker metadata
         id: worker-meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
         with:
           images: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/worker
@@ -179,17 +190,38 @@ jobs:
             # Major.minor for stable releases only (e.g. 1.2)
             type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-') }}
             # Custom version from manual workflow input
-            type=raw,value=${{ github.event.inputs.version }},enable=${{ github.event.inputs.version != '' }}
+            type=raw,value=${{ github.event.inputs.version }},priority=800,enable=${{ github.event.inputs.version != '' }}
             # Latest tag ONLY for stable releases (no prerelease suffix like -canary, -beta, -alpha, -rc)
-            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-canary') && !contains(github.ref, '-beta') && !contains(github.ref, '-alpha') && !contains(github.ref, '-rc') }}
+            type=raw,value=latest,priority=50,enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-') }}
             # Latest tag override for manual builds (use with caution)
-            type=raw,value=latest,enable=${{ github.event.inputs.push_latest == 'true' }}
+            type=raw,value=latest,priority=50,enable=${{ github.event.inputs.push_latest == 'true' }}
             # Fallback tag using git SHA for manual builds without custom version
             type=sha,prefix={{branch}}-,suffix=-${{ github.run_number }},enable=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version == '' }}
 
+      - name: Validate deployable image metadata
+        shell: bash
+        env:
+          APP_IMAGE_TAG: ${{ steps.app-meta.outputs.version }}
+          WORKER_IMAGE_TAG: ${{ steps.worker-meta.outputs.version }}
+        run: |
+          set -Eeuo pipefail
+
+          if [[ ! "$APP_IMAGE_TAG" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]]; then
+            echo "::error::Docker metadata did not produce a valid app image tag"
+            exit 1
+          fi
+          if [[ "$APP_IMAGE_TAG" == "latest" ]]; then
+            echo "::error::Use a version or generated SHA tag for deployment; latest is only an alias"
+            exit 1
+          fi
+          if [[ "$WORKER_IMAGE_TAG" != "$APP_IMAGE_TAG" ]]; then
+            echo "::error::App and worker metadata selected different deployment tags"
+            exit 1
+          fi
+
       - name: Build and push app image
         id: build-app
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: ./app
           file: ./app/Dockerfile
@@ -216,7 +248,7 @@ jobs:
 
       - name: Build and push worker image
         id: build-worker
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: ./worker
           file: ./worker/Dockerfile
@@ -233,44 +265,178 @@ jobs:
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
       - name: Sign published images
+        env:
+          APP_DIGEST: ${{ steps.build-app.outputs.digest }}
+          WORKER_DIGEST: ${{ steps.build-worker.outputs.digest }}
         run: |
-          cosign sign --yes "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/app@${{ steps.build-app.outputs.digest }}"
-          cosign sign --yes "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/worker@${{ steps.build-worker.outputs.digest }}"
+          cosign sign --yes "$REGISTRY/$IMAGE_NAME/app@$APP_DIGEST"
+          cosign sign --yes "$REGISTRY/$IMAGE_NAME/worker@$WORKER_DIGEST"
 
       - name: Output image names
+        env:
+          APP_TAGS: ${{ steps.app-meta.outputs.tags }}
+          WORKER_TAGS: ${{ steps.worker-meta.outputs.tags }}
         run: |
-          echo "App image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/app"
-          echo "Worker image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/worker"
+          echo "App image: $REGISTRY/$IMAGE_NAME/app"
+          echo "Worker image: $REGISTRY/$IMAGE_NAME/worker"
           echo "App tags:"
-          echo "${{ steps.app-meta.outputs.tags }}"
+          echo "$APP_TAGS"
           echo "Worker tags:"
-          echo "${{ steps.worker-meta.outputs.tags }}"
+          echo "$WORKER_TAGS"
+
+  deploy-demo:
+    name: Deploy Demo Environment
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: demo
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout deployment script
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - name: Configure verified SSH access
+        shell: bash
+        env:
+          DEMO_HOST: ${{ secrets.DEMO_HOST }}
+          DEMO_USER: ${{ secrets.DEMO_USER }}
+          DEMO_SSH_KEY: ${{ secrets.DEMO_SSH_KEY }}
+          DEMO_SSH_KNOWN_HOSTS: ${{ secrets.DEMO_SSH_KNOWN_HOSTS }}
+          DEMO_SSH_PORT: ${{ vars.DEMO_SSH_PORT || '22' }}
+        run: |
+          set -Eeuo pipefail
+
+          for required_name in DEMO_HOST DEMO_USER DEMO_SSH_KEY DEMO_SSH_KNOWN_HOSTS; do
+            if [ -z "${!required_name:-}" ]; then
+              echo "::error::Missing required demo environment secret: ${required_name}"
+              exit 1
+            fi
+          done
+
+          if [[ ! "$DEMO_HOST" =~ ^[A-Za-z0-9][A-Za-z0-9._:-]*$ ]]; then
+            echo "::error::DEMO_HOST is invalid"
+            exit 1
+          fi
+          if [[ ! "$DEMO_USER" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]*$ ]]; then
+            echo "::error::DEMO_USER is invalid"
+            exit 1
+          fi
+          if [[ ! "$DEMO_SSH_PORT" =~ ^[0-9]+$ ]] || (( DEMO_SSH_PORT < 1 || DEMO_SSH_PORT > 65535 )); then
+            echo "::error::DEMO_SSH_PORT must be between 1 and 65535"
+            exit 1
+          fi
+
+          install -d -m 700 "$RUNNER_TEMP/supercheck-demo-ssh"
+          printf '%s\n' "$DEMO_SSH_KEY" >"$RUNNER_TEMP/supercheck-demo-ssh/id"
+          printf '%s\n' "$DEMO_SSH_KNOWN_HOSTS" >"$RUNNER_TEMP/supercheck-demo-ssh/known_hosts"
+          chmod 600 "$RUNNER_TEMP/supercheck-demo-ssh/id" "$RUNNER_TEMP/supercheck-demo-ssh/known_hosts"
+
+          ssh-keygen -y -f "$RUNNER_TEMP/supercheck-demo-ssh/id" >/dev/null
+          ssh-keygen -l -f "$RUNNER_TEMP/supercheck-demo-ssh/known_hosts" >/dev/null
+
+      - name: Deploy exact release to demo
+        shell: bash
+        env:
+          IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
+          APP_DIGEST: ${{ needs.build-and-push.outputs.app_digest }}
+          WORKER_DIGEST: ${{ needs.build-and-push.outputs.worker_digest }}
+          DEMO_HOST: ${{ secrets.DEMO_HOST }}
+          DEMO_USER: ${{ secrets.DEMO_USER }}
+          DEMO_SSH_PORT: ${{ vars.DEMO_SSH_PORT || '22' }}
+          DEMO_DEPLOY_PATH: ${{ vars.DEMO_DEPLOY_PATH || '/root/supercheck/deploy/docker' }}
+        run: |
+          set -Eeuo pipefail
+
+          if [[ ! "$IMAGE_TAG" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ || "$IMAGE_TAG" == "latest" ]]; then
+            echo "::error::Docker metadata produced an invalid deployment tag"
+            exit 1
+          fi
+          if [[ ! "$APP_DIGEST" =~ ^sha256:[0-9a-f]{64}$ || ! "$WORKER_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::Build outputs did not contain valid app and worker digests"
+            exit 1
+          fi
+
+          printf -v REMOTE_COMMAND 'bash -s -- %q %q %q %q' \
+            "$IMAGE_TAG" "$APP_DIGEST" "$WORKER_DIGEST" "$DEMO_DEPLOY_PATH"
+
+          ssh \
+            -i "$RUNNER_TEMP/supercheck-demo-ssh/id" \
+            -p "$DEMO_SSH_PORT" \
+            -o BatchMode=yes \
+            -o ConnectTimeout=15 \
+            -o ConnectionAttempts=2 \
+            -o IdentitiesOnly=yes \
+            -o ServerAliveCountMax=3 \
+            -o ServerAliveInterval=15 \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/supercheck-demo-ssh/known_hosts" \
+            "$DEMO_USER@$DEMO_HOST" \
+            "$REMOTE_COMMAND" <.github/scripts/deploy-demo.sh
+
+      - name: Verify public demo revision
+        shell: bash
+        env:
+          EXPECTED_BUILD_SHA: ${{ github.sha }}
+        run: |
+          set -Eeuo pipefail
+
+          deadline=$((SECONDS + 300))
+          while (( SECONDS < deadline )); do
+            if response="$(curl --fail --silent --show-error \
+              --connect-timeout 5 --max-time 10 \
+              "${E2E_BASE_URL}/api/health" 2>/dev/null)"; then
+              revision="$(jq -r '.build.revision // empty' <<<"$response")"
+              status="$(jq -r '.status // empty' <<<"$response")"
+              database_status="$(jq -r '.checks.database.status // empty' <<<"$response")"
+              if [[ "$revision" == "$EXPECTED_BUILD_SHA" && "$status" =~ ^(ok|degraded)$ && "$database_status" == "ok" ]]; then
+                echo "Public demo is serving build ${EXPECTED_BUILD_SHA}"
+                exit 0
+              fi
+            fi
+            sleep 5
+          done
+
+          echo "::error::Public demo did not serve healthy build ${EXPECTED_BUILD_SHA} within five minutes"
+          exit 1
+
+      - name: Remove SSH credentials
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/supercheck-demo-ssh/id" "$RUNNER_TEMP/supercheck-demo-ssh/known_hosts"
 
   e2e-tests:
     name: Full E2E Tests
-    # The full suite runs against the existing Docker Compose demo environment.
-    needs: build-and-push
+    # The full suite runs only after the demo serves the triggering build SHA.
+    needs: deploy-demo
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: "24"
 
       - name: Cache npm dependencies
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: ~/.npm
           key: npm-e2e-${{ hashFiles('app/e2e/package-lock.json') }}
           restore-keys: npm-e2e-
 
       - name: Cache Playwright browsers
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ hashFiles('app/e2e/package-lock.json') }}
@@ -306,6 +472,7 @@ jobs:
         env:
           CI: true
           E2E_FAIL_ON_PRIORITY_SKIPS: true
+          E2E_EXPECTED_BUILD_SHA: ${{ github.sha }}
           E2E_TEST_USER_EMAIL: ${{ secrets.E2E_TEST_USER_EMAIL }}
           E2E_TEST_USER_PASSWORD: ${{ secrets.E2E_TEST_USER_PASSWORD }}
           E2E_INVITEE_EMAIL: ${{ secrets.E2E_INVITEE_EMAIL }}
@@ -328,7 +495,7 @@ jobs:
           E2E_VIEWER_PASSWORD: ${{ secrets.E2E_VIEWER_PASSWORD }}
 
       - name: Upload Playwright report
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: always()
         with:
           name: playwright-report-full
@@ -336,7 +503,7 @@ jobs:
           retention-days: 30
 
       - name: Upload test results
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: always()
         with:
           name: test-results-full

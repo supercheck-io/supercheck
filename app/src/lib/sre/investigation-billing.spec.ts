@@ -1,5 +1,8 @@
 /** @jest-environment node */
 
+import { sql } from "drizzle-orm";
+import { PgDialect } from "drizzle-orm/pg-core";
+
 jest.mock("@/lib/feature-flags", () => ({
   isPolarEnabled: jest.fn(),
 }));
@@ -250,6 +253,12 @@ describe("SRE investigation billing", () => {
       processed: 1,
       failed: 0,
     });
+
+    const joinPredicate = candidateQuery.leftJoin.mock.calls[0]?.[1];
+    const compiledJoinPredicate = new PgDialect().sqlToQuery(sql`${joinPredicate}`).sql;
+    expect(compiledJoinPredicate).toContain(
+      `->>'investigationRunId' = CAST("sre_investigation_runs"."id" AS text)`,
+    );
 
     expect(mockDb.transaction).toHaveBeenCalledTimes(1);
     expect(insertValues).toHaveBeenCalledWith(

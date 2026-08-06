@@ -40,6 +40,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Fixed
 
+- Fixed AI SRE billing recovery on PostgreSQL by comparing JSON investigation IDs to UUID run IDs with an explicit safe text cast.
 - Fixed long incident labels overflowing the Investigation Map filter.
 - Fixed sparse Investigation Map node details opening in a mostly empty fixed-height dialog.
 - Fixed connector fields and guidance wrapping into narrow, difficult-to-scan columns on common desktop widths.
