@@ -56,7 +56,7 @@ jobs:
         run: npm install -g @supercheck/cli
 
       - name: Run E2E Tests
-        run: supercheck job trigger ${{ vars.JOB_ID }} --wait --json
+        run: supercheck --json job trigger ${{ vars.JOB_ID }} --wait
         env:
           SUPERCHECK_TRIGGER_KEY: ${{ secrets.SUPERCHECK_TRIGGER_KEY }}
           SUPERCHECK_TOKEN: ${{ secrets.SUPERCHECK_TOKEN }}
@@ -75,7 +75,7 @@ Block deployments when tests fail:
 ```yaml
 - name: Gate Deployment
   run: |
-    result=$(supercheck job trigger ${{ vars.JOB_ID }} --wait --json)
+    result=$(supercheck --json job trigger ${{ vars.JOB_ID }} --wait)
     status=$(echo "$result" | jq -r '.status')
     if [ "$status" != "passed" ]; then
       echo "Tests failed — blocking deployment"
@@ -103,7 +103,7 @@ supercheck:
     - npm install -g @supercheck/cli
   script:
     - supercheck health
-    - supercheck job trigger $SUPERCHECK_JOB_ID --wait --json
+    - supercheck --json job trigger $SUPERCHECK_JOB_ID --wait
   variables:
     SUPERCHECK_TRIGGER_KEY: $SUPERCHECK_TRIGGER_KEY
     SUPERCHECK_TOKEN: $SUPERCHECK_TOKEN

@@ -111,7 +111,7 @@ The CLI resolves authentication in this order:
 | Trigger Key (`sck_trigger_*`) | 60 req/min | Per key |
 | Unauthenticated | 10 req/min | Per IP |
 
-The CLI automatically handles rate limiting with exponential backoff. Rate limit headers (`Retry-After`, `X-RateLimit-*`) are parsed and honored.
+The CLI automatically handles rate limiting with exponential backoff. When the API returns `429`, the CLI reads the `Retry-After` header (if present) and waits before retrying.
 
 ## Best Practices
 

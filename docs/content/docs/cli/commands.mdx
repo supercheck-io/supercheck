@@ -5,7 +5,12 @@ description: Complete reference for all Supercheck CLI commands
 
 ## Global Flags
 
-These flags are available on all commands:
+These flags are available on all commands. Place them **before** the subcommand (they are root-level Commander options):
+
+```bash
+supercheck --json job trigger <job-id> --wait
+supercheck --quiet whoami
+```
 
 | Flag | Description |
 |------|-------------|
@@ -202,7 +207,7 @@ Trigger a job and optionally wait for completion.
 ```bash
 supercheck job trigger <job-id>
 supercheck job trigger <job-id> --wait --timeout 300
-supercheck job trigger <job-id> --wait --json
+supercheck --json job trigger <job-id> --wait
 ```
 
 | Flag | Description |
@@ -806,7 +811,7 @@ Check that all dependencies and configuration are set up correctly.
 
 ```bash
 supercheck doctor
-supercheck doctor --fix    # Attempt to automatically install missing dependencies
+supercheck doctor --fix    # Auto-install Playwright browsers; prints install hints for other deps
 ```
 
 The doctor command checks:
@@ -816,3 +821,5 @@ The doctor command checks:
 - **k6** — binary for performance/load tests (optional)
 - **Authentication** — whether a valid token is stored
 - **Configuration** — whether `supercheck.config.ts` exists and is valid
+
+With `--fix`, doctor installs missing Playwright browsers automatically. For `@playwright/test` and `k6`, it prints the install command to run manually.
