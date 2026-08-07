@@ -54,7 +54,7 @@ ENV NEXT_PUBLIC_SOURCE_URL=${NEXT_PUBLIC_SOURCE_URL}
 # Scope the non-sensitive placeholder to the build command so it is not persisted
 # in an image layer or mistaken for a runtime credential by image scanners.
 RUN BETTER_AUTH_SECRET=build-time-placeholder-will-be-overridden-at-runtime \
-    npm run build -- --webpack
+    npm run build:webpack
 
 # Production image, copy all the files and run next
 FROM base AS runner

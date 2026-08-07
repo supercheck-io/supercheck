@@ -84,6 +84,9 @@ app/e2e/test-results/
 app/e2e/playwright-report/
 app/e2e/auth-state.json
 test-results/
+# Keep the Next.js API route sources trackable (path shares the test-results name).
+!app/src/app/api/test-results/
+!app/src/app/api/test-results/**
 
 ## Next.js
 .next/
