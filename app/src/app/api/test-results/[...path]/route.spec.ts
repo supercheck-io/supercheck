@@ -17,22 +17,32 @@ jest.mock("@/lib/report-results-utils", () => ({
 }));
 
 import { db } from "@/utils/db";
-import { getReportCacheControl, resolveAccessContext } from "@/lib/test-results-access";
+import {
+  getReportCacheControl,
+  resolveAccessContext,
+} from "@/lib/test-results-access";
 
 function selectResult(rows: unknown[]) {
+  const limit = jest.fn().mockResolvedValue(rows);
+  const where = jest.fn().mockReturnValue({
+    limit,
+    orderBy: jest.fn().mockReturnValue({ limit }),
+  });
+
   return {
     from: jest.fn().mockReturnValue({
-      leftJoin: jest.fn().mockReturnValue({
-        where: jest.fn().mockReturnValue({
-          limit: jest.fn().mockResolvedValue(rows),
-        }),
-      }),
+      leftJoin: jest.fn().mockReturnValue({ where }),
+      where,
     }),
   };
 }
 
 describe("test result authorization", () => {
-  it("resolves a modern playground report through its persisted run", async () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it("resolves a modern playground report through its persisted run id", async () => {
     (db.select as jest.Mock).mockReturnValueOnce(
       selectResult([{ organizationId: "org-owner", projectId: "project-owner" }]),
     );
@@ -42,6 +52,43 @@ describe("test result authorization", () => {
       projectId: "project-owner",
     });
     expect(db.select).toHaveBeenCalledTimes(1);
+  });
+
+  it("resolves an ephemeral playground testId through runs.metadata.testId", async () => {
+    (db.select as jest.Mock)
+      .mockReturnValueOnce(selectResult([]))
+      .mockReturnValueOnce(
+        selectResult([
+          { organizationId: "org-play", projectId: "project-play" },
+        ]),
+      );
+
+    await expect(
+      resolveAccessContext("test", "ephemeral-test-id"),
+    ).resolves.toEqual({
+      organizationId: "org-play",
+      projectId: "project-play",
+    });
+    expect(db.select).toHaveBeenCalledTimes(2);
+  });
+
+  it("falls back to the saved tests table for legacy test-id reports", async () => {
+    (db.select as jest.Mock)
+      .mockReturnValueOnce(selectResult([]))
+      .mockReturnValueOnce(selectResult([]))
+      .mockReturnValueOnce(
+        selectResult([
+          { organizationId: "org-saved", projectId: "project-saved" },
+        ]),
+      );
+
+    await expect(resolveAccessContext("test", "saved-test-id")).resolves.toEqual(
+      {
+        organizationId: "org-saved",
+        projectId: "project-saved",
+      },
+    );
+    expect(db.select).toHaveBeenCalledTimes(3);
   });
 
   it("marks authorization-gated report assets as non-cacheable", () => {

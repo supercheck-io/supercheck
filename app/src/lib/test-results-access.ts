@@ -8,7 +8,7 @@ import {
   tests,
   projects,
 } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 
 export type AccessContext = {
   organizationId: string | null;
@@ -25,9 +25,7 @@ export async function resolveAccessContext(
 ): Promise<AccessContext | null> {
   try {
     if (entityType === "test") {
-      // Modern playground reports use the run ID as reports.entityId. Resolve
-      // ownership from the run first; looking up tests.id alone misses these
-      // reports and must never fall back to the caller's current project.
+      // Prefer the persisted run id (modern playground + saved-test executions).
       const runResult = await db
         .select({
           organizationId: projects.organizationId,
@@ -45,7 +43,28 @@ export async function resolveAccessContext(
         };
       }
 
-      // Backward compatibility for legacy reports that stored a test ID.
+      // Playground historically keyed reports by an ephemeral testId while the
+      // owning run stored that id in metadata.testId. Resolve ownership from
+      // that run — never from the caller's current project.
+      const playgroundRunResult = await db
+        .select({
+          organizationId: projects.organizationId,
+          projectId: runs.projectId,
+        })
+        .from(runs)
+        .leftJoin(projects, eq(projects.id, runs.projectId))
+        .where(sql`${runs.metadata}->>'testId' = ${entityId}`)
+        .orderBy(desc(runs.createdAt))
+        .limit(1);
+
+      if (playgroundRunResult.length) {
+        return {
+          organizationId: playgroundRunResult[0].organizationId,
+          projectId: playgroundRunResult[0].projectId,
+        };
+      }
+
+      // Saved tests still publish reports under tests.id for some paths.
       const result = await db
         .select({
           organizationId: tests.organizationId,

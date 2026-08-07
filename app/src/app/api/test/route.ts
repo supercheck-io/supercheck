@@ -310,8 +310,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Return a stable internal report proxy URL for backward compatibility.
-    // The proxy endpoint returns 202 while reports are still being generated,
-    // avoiding broken external S3 links while keeping the client contract intact.
+    // Playwright playground reports are keyed by ephemeral testId (worker
+    // stores reports.entityId = testId); k6 reports are keyed by run id.
+    // /api/test-results authorizes playground testIds via runs.metadata.testId.
     const reportEntityId = isPerformanceTest
       ? runIdForQueue || testId
       : testId;
