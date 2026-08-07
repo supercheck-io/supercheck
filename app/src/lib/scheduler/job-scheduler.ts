@@ -10,11 +10,16 @@ import { Job } from 'bullmq';
 import crypto from 'crypto';
 import { db } from '@/utils/db';
 import { jobs, runs } from '@/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, inArray } from 'drizzle-orm';
 import { addJobToQueue, addK6JobToQueue, JobExecutionTask, K6ExecutionTask, queueLogger } from '@/lib/queue';
 import { prepareJobTestScripts } from '@/lib/job-execution-utils';
 import { getNextRunDate } from './cron-utils';
 import { resolveProjectK6Location } from '@/lib/location-registry';
+import {
+  SubscriptionAccessDeniedError,
+  subscriptionService,
+} from '@/lib/services/subscription-service';
+import { polarUsageService } from '@/lib/services/polar-usage.service';
 
 const logger = queueLogger;
 
@@ -64,17 +69,6 @@ export async function processScheduledJob(
     const data = job.data;
     logger.info({ jobId }, 'Processing scheduled job trigger');
 
-    // Check if job already has a running execution
-    const runningRuns = await db
-      .select()
-      .from(runs)
-      .where(and(eq(runs.jobId, jobId), eq(runs.status, 'running')));
-
-    if (runningRuns.length > 0) {
-      logger.warn({ jobId }, 'Job already has a running execution, skipping');
-      return { success: true };
-    }
-
     // Get job record
     const jobData = await db
       .select()
@@ -92,8 +86,60 @@ export async function processScheduledJob(
     const isK6Job = jobType === 'k6';
 
     const runId = crypto.randomUUID();
-    const projectId = jobRecord.projectId || data.projectId;
-    const organizationId = jobRecord.organizationId || data.organizationId;
+    const projectId = jobRecord.projectId;
+    const organizationId = jobRecord.organizationId;
+
+    if (!projectId || !organizationId) {
+      logger.error({ jobId }, 'Scheduled job is missing project or organization ownership');
+      return { success: false };
+    }
+
+    // A queued run already owns capacity/queue position and must also prevent
+    // the next cron tick from creating a duplicate execution.
+    const activeRuns = await db
+      .select({ id: runs.id })
+      .from(runs)
+      .where(
+        and(
+          eq(runs.jobId, jobId),
+          inArray(runs.status, ['queued', 'running']),
+        ),
+      )
+      .limit(1);
+
+    if (activeRuns.length > 0) {
+      logger.warn({ jobId }, 'Job already has a queued or running execution, skipping');
+      return { success: true };
+    }
+
+    // Scheduled executions must pass the same subscription and spending
+    // controls as user/API-triggered executions. Expected policy denials skip
+    // the tick; operational failures are rethrown for BullMQ retry/backoff.
+    try {
+      await subscriptionService.blockUntilSubscribed(organizationId);
+      await subscriptionService.requireValidPolarCustomer(organizationId);
+      const spendingBlock = await polarUsageService.shouldBlockUsage(organizationId);
+      if (spendingBlock.blocked) {
+        logger.warn(
+          { jobId, organizationId, reason: spendingBlock.reason },
+          'Scheduled execution blocked by spending limit',
+        );
+        return { success: true };
+      }
+    } catch (error) {
+      if (error instanceof SubscriptionAccessDeniedError) {
+        logger.warn(
+          { jobId, organizationId, reason: error.reason },
+          'Scheduled execution blocked by subscription validation',
+        );
+        return { success: true };
+      }
+      logger.error(
+        { jobId, organizationId, error },
+        'Scheduled execution billing validation failed',
+      );
+      throw error;
+    }
 
     // Resolve location using project-aware logic (respects project location restrictions)
     const resolvedLocation = isK6Job ? await resolveProjectK6Location(projectId) : null;
@@ -312,6 +358,6 @@ export async function processScheduledJob(
       logger.error({ jobId, dbError }, 'Failed to update job/run status to error');
     }
 
-    return { success: false };
+    throw error;
   }
 }

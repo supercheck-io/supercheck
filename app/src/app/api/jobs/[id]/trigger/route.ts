@@ -19,7 +19,7 @@ import {
   parseRateLimitConfig,
   createRateLimitHeaders,
 } from "@/lib/api-key-rate-limiter";
-import { verifyApiKey } from "@/lib/security/api-key-hash";
+import { hashApiKey } from "@/lib/security/api-key-hash";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { resolveProjectK6Location } from "@/lib/location-registry";
@@ -80,8 +80,9 @@ export async function POST(
 
     apiKeyUsed = trimmedApiKey.substring(0, 8); // For logging purposes
 
-    // SECURITY: Fetch all enabled API keys for this job and verify using hash comparison
-    // This prevents timing attacks by using constant-time comparison
+    // API keys use deterministic SHA-256 hashes, so use the indexed hash for a
+    // constant-size lookup instead of loading and iterating every key on a job.
+    const presentedKeyHash = hashApiKey(trimmedApiKey);
     const apiKeysForJob = await db
       .select({
         id: apikey.id,
@@ -100,17 +101,12 @@ export async function POST(
       .from(apikey)
       .where(and(
         eq(apikey.jobId, jobId),
-        eq(apikey.enabled, true)
-      ));
+        eq(apikey.enabled, true),
+        eq(apikey.key, presentedKeyHash),
+      ))
+      .limit(1);
 
-    // Find the matching API key using secure hash comparison
-    let matchedKey: typeof apiKeysForJob[0] | null = null;
-    for (const key of apiKeysForJob) {
-      if (verifyApiKey(trimmedApiKey, key.key)) {
-        matchedKey = key;
-        break;
-      }
-    }
+    const matchedKey = apiKeysForJob[0] ?? null;
 
     if (!matchedKey) {
       console.warn(

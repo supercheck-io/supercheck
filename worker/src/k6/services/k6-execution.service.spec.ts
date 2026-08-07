@@ -23,6 +23,7 @@ import { S3Service } from '../../execution/services/s3.service';
 import { DbService } from '../../execution/services/db.service';
 import { RedisService } from '../../execution/services/redis.service';
 import { ContainerExecutorService } from '../../common/security/container-executor.service';
+import { VariableResolverService } from '../../common/services/variable-resolver.service';
 
 // Mock execa
 jest.mock('execa', () => ({
@@ -123,6 +124,13 @@ describe('K6ExecutionService', () => {
       stderr: '',
     }),
   };
+  const mockVariableResolverService = {
+    resolveProjectVariables: jest.fn().mockResolvedValue({
+      variables: {},
+      secrets: {},
+      files: {},
+    }),
+  };
 
   // Test fixtures
   const mockTask: K6ExecutionTask = {
@@ -152,6 +160,10 @@ describe('K6ExecutionService', () => {
         {
           provide: ContainerExecutorService,
           useValue: mockContainerExecutorService,
+        },
+        {
+          provide: VariableResolverService,
+          useValue: mockVariableResolverService,
         },
       ],
     }).compile();

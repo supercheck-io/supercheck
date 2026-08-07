@@ -164,13 +164,16 @@ export class CapacityManager {
    * 
    * Atomic Lua script ensures no race conditions between concurrent requests.
    * Retries on transient Redis errors (e.g., during Sentinel failover) and
-   * fails open (allows job) if all retries are exhausted — capacity is a rate
-   * limiter, so allowing one extra job is preferable to rejecting the user.
+   * fails closed if Redis cannot authoritatively reserve capacity.
    * 
    * @param organizationId - Organization ID for plan-specific limits
    * @returns 0 = queue full (reject), 1 = can run immediately, 2 = must queue
    */
-  async reserveSlot(organizationId: string = 'global'): Promise<number> {
+  async reserveSlot(
+    organizationId: string = 'global',
+    jobId?: string,
+    queuedAt: number = Date.now(),
+  ): Promise<number> {
     // Atomic Lua script for capacity check
     // Returns: 0 = full, 1 = immediate, 2 = queued
     const luaScript = `
@@ -179,6 +182,8 @@ export class CapacityManager {
       local runningCapacity = tonumber(ARGV[1])
       local queuedCapacity = tonumber(ARGV[2])
       local ttl = tonumber(ARGV[3])
+      local jobId = ARGV[4]
+      local queuedAt = tonumber(ARGV[5])
       
       local running = tonumber(redis.call('GET', runningKey) or '0')
       local queued = redis.call('ZCARD', queuedKey)
@@ -196,6 +201,11 @@ export class CapacityManager {
       end
       
       -- Must wait in queue
+      if not jobId or jobId == '' then
+        return 0
+      end
+      redis.call('ZADD', queuedKey, 'NX', queuedAt, jobId)
+      redis.call('EXPIRE', queuedKey, ttl)
       return 2
     `;
 
@@ -213,7 +223,9 @@ export class CapacityManager {
           queuedKey,
           limits.runningCapacity,
           limits.queuedCapacity,
-          KEY_TTL
+          KEY_TTL,
+          jobId || '',
+          queuedAt
         ) as number;
 
         return result;
@@ -227,13 +239,14 @@ export class CapacityManager {
           continue;
         }
 
-        // Transient error after all retries: fail open (allow the job)
+        // Capacity is a billing and isolation boundary. If Redis cannot make
+        // the reservation authoritative, reject instead of under-counting.
         if (isTransientRedisError(error)) {
-          logger.warn(
+          logger.error(
             { err: error, organizationId, attempt },
-            "All retries exhausted for transient Redis error in reserveSlot, failing open"
+            "All retries exhausted for transient Redis error in reserveSlot, failing closed"
           );
-          return 1;
+          return 0;
         }
 
         // Non-transient error: fail closed
@@ -255,7 +268,8 @@ export class CapacityManager {
       const jobDataKey = KEYS.jobData(jobData.jobId);
       const jobOrgKey = KEYS.jobOrg(jobData.jobId);
 
-      // Use pipeline for atomic multi-key operations
+      // reserveSlot already inserted the sorted-set member atomically with the
+      // capacity decision. This pipeline fills in the durable promotion data.
       const pipeline = redis.pipeline();
       
       // Add to sorted set with timestamp as score (FIFO)
@@ -275,6 +289,8 @@ export class CapacityManager {
       return (position ?? 0) + 1;
     } catch (error) {
       logger.error({ err: error, jobId: jobData.jobId }, "Failed to add job to queue");
+      // Avoid leaking a placeholder reservation if persistence fails.
+      await this.removeFromQueuedSet(organizationId, jobData.jobId);
       throw error;
     }
   }
@@ -860,6 +876,19 @@ export async function setupCapacityManagement(
     return null;
   }
 
+  async function getExecutionJob(jobId: string) {
+    const allQueues = [
+      queues.playwrightQueues['global'],
+      ...Object.values(queues.k6Queues),
+    ].filter(Boolean);
+
+    for (const queue of allQueues) {
+      const job = await queue.getJob(jobId);
+      if (job) return job;
+    }
+    return null;
+  }
+
   // Setup minimal event listeners for job completion
   for (const queueEvent of allEvents) {
     // Release running slot on completion
@@ -881,6 +910,16 @@ export async function setupCapacityManagement(
     // Release running slot on failure
     queueEvent.on('failed', async ({ jobId }) => {
       try {
+        const job = await getExecutionJob(jobId);
+        const configuredAttempts = Math.max(1, job?.opts.attempts ?? 1);
+        if (job && job.attemptsMade < configuredAttempts) {
+          logger.debug(
+            { jobId, attemptsMade: job.attemptsMade, configuredAttempts },
+            "Keeping capacity reserved for retryable failure",
+          );
+          return;
+        }
+
         const orgId = await getOrgId(jobId, queues);
         if (orgId) {
           await manager.releaseRunningSlot(orgId, jobId);

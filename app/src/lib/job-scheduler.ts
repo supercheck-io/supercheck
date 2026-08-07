@@ -92,6 +92,8 @@ export async function scheduleJob(options: ScheduleOptions): Promise<string> {
         removeOnComplete: true,
         removeOnFail: 100,
         jobId: schedulerJobName, // Use a deterministic job ID for easier removal
+        attempts: 3,
+        backoff: { type: "exponential", delay: 5000 },
       }
     );
 

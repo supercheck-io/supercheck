@@ -360,9 +360,13 @@ jobs:
             exit 1
           fi
 
-          printf -v REMOTE_COMMAND 'bash -s -- %q %q %q %q' \
+          printf -v REMOTE_ARGS '%q %q %q %q' \
             "$IMAGE_TAG" "$APP_DIGEST" "$WORKER_DIGEST" "$DEMO_DEPLOY_PATH"
 
+          # Copy the script to a remote temp file, then execute it. Running via
+          # `bash -s` with the script on SSH stdin lets docker/cli children
+          # inherit that stream; a failed imagetools/digest step also surfaced
+          # only as SSH exit 255 with no script diagnostics.
           ssh \
             -i "$RUNNER_TEMP/supercheck-demo-ssh/id" \
             -p "$DEMO_SSH_PORT" \
@@ -375,7 +379,8 @@ jobs:
             -o StrictHostKeyChecking=yes \
             -o UserKnownHostsFile="$RUNNER_TEMP/supercheck-demo-ssh/known_hosts" \
             "$DEMO_USER@$DEMO_HOST" \
-            "$REMOTE_COMMAND" <.github/scripts/deploy-demo.sh
+            "set -Eeuo pipefail; script=\$(mktemp); trap 'rm -f -- \"\$script\"' EXIT; cat >\"\$script\"; chmod 700 \"\$script\"; bash \"\$script\" ${REMOTE_ARGS}" \
+            <.github/scripts/deploy-demo.sh
 
       - name: Verify public demo revision
         shell: bash

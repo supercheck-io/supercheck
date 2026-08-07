@@ -7,6 +7,7 @@ import {
   ContainerExecutorService,
 } from './container-executor.service';
 import { CancellationService } from '../services/cancellation.service';
+import { EventEmitter } from 'events';
 
 const defaultOptions: ContainerExecutionOptions = {
   inlineScriptContent: 'console.log("hello")',
@@ -62,7 +63,10 @@ describe('ContainerExecutorService', () => {
 
   describe('backend configuration', () => {
     it('initializes kubernetes clients on startup', async () => {
-      const ensureClients = jest.spyOn(service as any, 'ensureKubernetesClients');
+      const ensureClients = jest.spyOn(
+        service as any,
+        'ensureKubernetesClients',
+      );
       await service.onModuleInit();
       expect(ensureClients).toHaveBeenCalled();
     });
@@ -95,6 +99,28 @@ describe('ContainerExecutorService', () => {
           }),
         ]),
       );
+    });
+
+    it('fails startup when ephemeral storage exceeds the admission ceiling', () => {
+      expect(
+        () =>
+          new ContainerExecutorService(
+            {
+              get: jest.fn((key: string, defaultValue?: string) => {
+                const config: Record<string, string> = {
+                  WORKER_IMAGE: 'ghcr.io/supercheck-io/worker:test',
+                  EXECUTION_EPHEMERAL_STORAGE_LIMIT: '11Gi',
+                  EXECUTION_MAX_EPHEMERAL_STORAGE_LIMIT: '10Gi',
+                };
+                return config[key] ?? defaultValue;
+              }),
+            } as any,
+            {
+              isCancelled: jest.fn().mockResolvedValue(false),
+              clearCancellationSignal: jest.fn().mockResolvedValue(undefined),
+            } as any,
+          ),
+      ).toThrow('EXECUTION_EPHEMERAL_STORAGE_LIMIT (11Gi) exceeds');
     });
   });
 
@@ -147,7 +173,9 @@ describe('ContainerExecutorService', () => {
       });
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('must stay within the execution workspace');
+      expect(result.error).toContain(
+        'must stay within the execution workspace',
+      );
     });
 
     it('rejects extractFromContainer without extractToHost', async () => {
@@ -195,6 +223,23 @@ describe('ContainerExecutorService', () => {
       expect(result.stderr).toContain('exceeds maximum');
     });
 
+    it('rejects resources above the shipped execution LimitRange', () => {
+      expect(
+        service.validateResourceLimits({
+          memoryLimitMb: 3435,
+          cpuLimit: 1,
+          timeoutMs: 30_000,
+        }),
+      ).toMatchObject({ valid: false });
+      expect(
+        service.validateResourceLimits({
+          memoryLimitMb: 512,
+          cpuLimit: 2.1,
+          timeoutMs: 30_000,
+        }),
+      ).toMatchObject({ valid: false });
+    });
+
     it('rejects non-finite resource limits', async () => {
       const result = await service.executeInContainer(null, ['node'], {
         ...defaultOptions,
@@ -203,6 +248,76 @@ describe('ContainerExecutorService', () => {
 
       expect(result.success).toBe(false);
       expect(result.stderr).toContain('finite number');
+    });
+  });
+
+  describe('Kubernetes exec socket lifecycle', () => {
+    it('resolves immediately when the socket closed before listeners attached', async () => {
+      const socket = Object.assign(new EventEmitter(), {
+        readyState: 3,
+        close: jest.fn(),
+      });
+
+      await expect(
+        (service as any).waitForExecSocket(socket, 'short exec'),
+      ).resolves.toBeUndefined();
+    });
+
+    it('waits for a close event from an open socket', async () => {
+      const socket = Object.assign(new EventEmitter(), {
+        readyState: 1,
+        close: jest.fn(),
+      });
+      const completion = (service as any).waitForExecSocket(
+        socket,
+        'streaming exec',
+      );
+
+      socket.readyState = 3;
+      socket.emit('close');
+
+      await expect(completion).resolves.toBeUndefined();
+    });
+
+    it('uses the configured artifact socket timeout for tar capture', async () => {
+      const configuredService = new ContainerExecutorService(
+        {
+          get: jest.fn((key: string, defaultValue?: string) => {
+            const config: Record<string, string> = {
+              WORKER_IMAGE: 'ghcr.io/supercheck-io/worker:test',
+              EXECUTION_ARTIFACT_SOCKET_TIMEOUT_MS: '123456',
+            };
+            return config[key] ?? defaultValue;
+          }),
+        } as any,
+        {
+          isCancelled: jest.fn().mockResolvedValue(false),
+          clearCancellationSignal: jest.fn().mockResolvedValue(undefined),
+        } as any,
+      );
+      const socket = Object.assign(new EventEmitter(), {
+        readyState: 3,
+        close: jest.fn(),
+      });
+      (configuredService as any).execClient = {
+        exec: jest.fn().mockResolvedValue(socket),
+      };
+      const waitForExecSocket = jest.spyOn(
+        configuredService as any,
+        'waitForExecSocket',
+      );
+
+      await expect(
+        (configuredService as any).capturePodTarStream(
+          'execution-pod',
+          '/tmp/supercheck/run-test/report',
+        ),
+      ).resolves.toEqual(Buffer.alloc(0));
+      expect(waitForExecSocket).toHaveBeenCalledWith(
+        socket,
+        'artifact extraction from pod execution-pod',
+        123456,
+      );
     });
   });
 
@@ -295,7 +410,13 @@ describe('ContainerExecutorService', () => {
           ...defaultOptions,
           _workspace: '/tmp/supercheck/run-456',
         } as any,
-        ['k6', 'run', '--out', 'json=/tmp/k6-output/metrics.json', '/tmp/test.js'],
+        [
+          'k6',
+          'run',
+          '--out',
+          'json=/tmp/k6-output/metrics.json',
+          '/tmp/test.js',
+        ],
       );
 
       expect(script).toContain(
@@ -314,12 +435,82 @@ describe('ContainerExecutorService', () => {
       );
 
       expect(script).toContain(
-        "ln -s \"$PWD/node_modules\" '/tmp/supercheck/run-789/node_modules'",
+        'ln -s "$PWD/node_modules" \'/tmp/supercheck/run-789/node_modules\'',
       );
     });
   });
 
   describe('job spec building', () => {
+    it('mounts payload/runtime Secrets without exposing secret values in the Job', () => {
+      const job = (service as any).buildExecutionJob({
+        jobName: 'sc-exec-secure-payload',
+        workspace: '/tmp/supercheck/run-123',
+        workingDir: '/worker',
+        limits: {
+          valid: true,
+          memoryLimitMb: 512,
+          cpuLimit: 0.5,
+          timeoutMs: 30000,
+        },
+        options: {
+          ...defaultOptions,
+          env: {
+            PUBLIC_SETTING: 'visible',
+            SUPERCHECK_SECRETS_B64: 'plaintext-secret-material',
+          },
+        },
+        payloadSecretNames: [
+          'sc-exec-secure-payload-payload-0',
+          'sc-exec-secure-payload-payload-1',
+        ],
+        runtimeSecretName: 'sc-exec-secure-payload-runtime',
+      });
+
+      const podSpec = job.spec.template.spec;
+      const container = podSpec.containers[0];
+      const serializedJob = JSON.stringify(job);
+
+      expect(podSpec.serviceAccountName).toBe('execution-runner');
+      expect(podSpec.automountServiceAccountToken).toBe(false);
+      expect(container.env).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ name: 'PUBLIC_SETTING', value: 'visible' }),
+        ]),
+      );
+      expect(container.env).not.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ name: 'SUPERCHECK_SECRETS_B64' }),
+        ]),
+      );
+      expect(podSpec.volumes).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            name: 'runtime-secrets',
+            secret: expect.objectContaining({
+              secretName: 'sc-exec-secure-payload-runtime',
+            }),
+          }),
+          expect.objectContaining({
+            name: 'payload-0',
+            secret: expect.objectContaining({
+              secretName: 'sc-exec-secure-payload-payload-0',
+            }),
+          }),
+        ]),
+      );
+      expect(serializedJob).not.toContain('plaintext-secret-material');
+    });
+
+    it('uses a unique Kubernetes Job name for each attempt of the same run', () => {
+      const runId = '018f0000-0000-7000-8000-000000000001';
+      const first = (service as any).buildExecutionJobName(runId);
+      const second = (service as any).buildExecutionJobName(runId);
+
+      expect(first).toMatch(/^sc-exec-[a-f0-9]{16}-[a-f0-9]{8}$/);
+      expect(second).toMatch(/^sc-exec-[a-f0-9]{16}-[a-f0-9]{8}$/);
+      expect(second).not.toBe(first);
+    });
+
     it('does not hardcode node placement by default', () => {
       const job = (service as any).buildExecutionJob({
         jobName: 'sc-exec-test',
@@ -396,8 +587,8 @@ describe('ContainerExecutorService', () => {
         '/tmp/supercheck/run-123/.supercheck-exit-now',
       );
 
-      expect(script).toContain(".supercheck-exit-code");
-      expect(script).toContain(".supercheck-exit-now");
+      expect(script).toContain('.supercheck-exit-code');
+      expect(script).toContain('.supercheck-exit-now');
       expect(script).toContain('DEADLINE=$(( $(date +%s) + 300 ))');
       expect(script).toContain('while [ ! -f');
       expect(script).not.toContain('while true; do sleep 5; done');

@@ -1,4 +1,9 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 import { DbService } from './db.service';
@@ -6,6 +11,10 @@ import { eq, inArray } from 'drizzle-orm';
 import * as schema from '../../db/schema';
 import { TIMEOUTS } from '../../common/constants/timeouts.constants';
 import { buildRedisOptions } from '../../common/redis/redis-options';
+import { Queue } from 'bullmq';
+import { PLAYWRIGHT_QUEUE } from '../constants';
+import { K6_QUEUE, k6QueueName } from '../../k6/k6.constants';
+import { ContainerExecutorService } from '../../common/security/container-executor.service';
 
 /**
  * Service to handle stalled jobs
@@ -22,14 +31,18 @@ import { buildRedisOptions } from '../../common/redis/redis-options';
  * 5. So the job appears "stuck" in "running" state
  */
 @Injectable()
-export class StalledJobHandlerService implements OnModuleInit {
+export class StalledJobHandlerService implements OnModuleInit, OnModuleDestroy {
+  private static readonly REDIS_COMMAND_TIMEOUT_MS = 5_000;
   private readonly logger = new Logger(StalledJobHandlerService.name);
   private redisClient: Redis | null = null;
   private monitoringInterval: NodeJS.Timeout | null = null;
+  private monitoringInProgress = false;
+  private readonly queues = new Map<string, Queue>();
 
   constructor(
     private readonly dbService: DbService,
     private readonly configService: ConfigService,
+    private readonly containerExecutorService: ContainerExecutorService,
   ) {}
 
   onModuleInit() {
@@ -46,7 +59,11 @@ export class StalledJobHandlerService implements OnModuleInit {
   }
 
   private setupRedisConnection(): void {
-    this.redisClient = new Redis(buildRedisOptions(this.configService));
+    this.redisClient = new Redis(
+      buildRedisOptions(this.configService, {
+        commandTimeout: StalledJobHandlerService.REDIS_COMMAND_TIMEOUT_MS,
+      }),
+    );
 
     this.redisClient.on('error', (err) => {
       this.logger.error(`Redis connection error: ${err.message}`, err.stack);
@@ -61,12 +78,23 @@ export class StalledJobHandlerService implements OnModuleInit {
    */
   private startMonitoring(): void {
     this.monitoringInterval = setInterval(() => {
-      void this.checkAndHandleStalledJobs().catch((error: unknown) => {
-        this.logger.error(
-          `Error in stalled job monitoring: ${error instanceof Error ? error.message : String(error)}`,
-          error instanceof Error ? error.stack : undefined,
+      if (this.monitoringInProgress) {
+        this.logger.warn(
+          'Previous stalled job check is still running; skipping this interval',
         );
-      });
+        return;
+      }
+      this.monitoringInProgress = true;
+      void this.checkAndHandleStalledJobs()
+        .catch((error: unknown) => {
+          this.logger.error(
+            `Error in stalled job monitoring: ${error instanceof Error ? error.message : String(error)}`,
+            error instanceof Error ? error.stack : undefined,
+          );
+        })
+        .finally(() => {
+          this.monitoringInProgress = false;
+        });
     }, TIMEOUTS.STALLED_JOB_CHECK_INTERVAL_MS);
 
     this.logger.log(
@@ -92,6 +120,7 @@ export class StalledJobHandlerService implements OnModuleInit {
           startedAt: schema.runs.startedAt,
           createdAt: schema.runs.createdAt,
           status: schema.runs.status,
+          location: schema.runs.location,
         })
         .from(schema.runs)
         .where(eq(schema.runs.status, 'running'))
@@ -131,6 +160,20 @@ export class StalledJobHandlerService implements OnModuleInit {
           ageMs >
           TIMEOUTS.STALLED_JOB_THRESHOLD_MS + TIMEOUTS.STALLED_JOB_BUFFER_MS
         ) {
+          const bullMqActive = await this.isBullMqJobActive(
+            run.id,
+            run.location,
+          );
+          const kubernetesActive = bullMqActive
+            ? false
+            : await this.containerExecutorService.hasActiveExecution(run.id);
+          if (bullMqActive || kubernetesActive) {
+            this.logger.warn(
+              `[${run.id}] Run exceeded the stale threshold but still has ` +
+                `${bullMqActive ? 'BullMQ' : 'Kubernetes'} activity; leaving it running.`,
+            );
+            continue;
+          }
           stalledRuns.push({ id: run.id, jobId: run.jobId, ageMs });
           this.logger.warn(
             `[${run.id}] Run has been in "running" status for ${Math.floor(ageMs / 1000)}s. ` +
@@ -238,10 +281,32 @@ export class StalledJobHandlerService implements OnModuleInit {
   /**
    * Clean up resources
    */
-  destroy(): void {
+  async onModuleDestroy(): Promise<void> {
+    await this.destroy();
+  }
+
+  async destroy(): Promise<void> {
     if (this.monitoringInterval) {
       clearInterval(this.monitoringInterval);
       this.monitoringInterval = null;
+    }
+
+    const queues = Array.from(this.queues.values());
+    this.queues.clear();
+
+    const closeResults = await Promise.allSettled(
+      queues.map((queue) => queue.close()),
+    );
+    for (const result of closeResults) {
+      if (result.status === 'rejected') {
+        this.logger.warn(
+          `Failed to close stalled-job BullMQ queue: ${
+            result.reason instanceof Error
+              ? result.reason.message
+              : String(result.reason)
+          }`,
+        );
+      }
     }
 
     if (this.redisClient) {
@@ -250,5 +315,44 @@ export class StalledJobHandlerService implements OnModuleInit {
     }
 
     this.logger.log('StalledJobHandlerService cleaned up');
+  }
+
+  private async isBullMqJobActive(
+    runId: string,
+    location: string | null,
+  ): Promise<boolean> {
+    if (!this.redisClient) return true;
+    const queueNames = new Set([
+      PLAYWRIGHT_QUEUE,
+      K6_QUEUE,
+      ...(location ? [k6QueueName(location)] : []),
+    ]);
+    const activeStates = new Set([
+      'active',
+      'waiting',
+      'delayed',
+      'prioritized',
+      'waiting-children',
+    ]);
+
+    try {
+      for (const queueName of queueNames) {
+        let queue = this.queues.get(queueName);
+        if (!queue) {
+          queue = new Queue(queueName, { connection: this.redisClient });
+          this.queues.set(queueName, queue);
+        }
+        const bullJob = await queue.getJob(runId);
+        if (bullJob && activeStates.has(await bullJob.getState())) return true;
+      }
+      return false;
+    } catch (error) {
+      this.logger.warn(
+        `[${runId}] Unable to verify BullMQ state: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return true;
+    }
   }
 }

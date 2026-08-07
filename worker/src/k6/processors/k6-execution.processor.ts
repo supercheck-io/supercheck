@@ -25,6 +25,20 @@ function getErrorMessage(error: unknown): string {
   return String(error);
 }
 
+export function getFailedHttpRequestCount(
+  metrics: Record<string, Record<string, number>>,
+): number {
+  const httpReqs = metrics.http_reqs || {};
+  const httpReqFailed = metrics.http_req_failed || {};
+  const totalRequests = httpReqs.count || 0;
+  return (
+    httpReqFailed.passes ??
+    (typeof httpReqFailed.rate === 'number'
+      ? httpReqFailed.rate * totalRequests
+      : 0)
+  );
+}
+
 abstract class BaseK6ExecutionProcessor extends WorkerHost {
   protected readonly logger: Logger;
   protected readonly workerLocation: string;
@@ -103,10 +117,11 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
         })
         .where(eq(schema.runs.id, runId));
 
-      // Clear the cancellation signal
-      await this.cancellationService.clearCancellationSignal(runId);
-
-      throw new Error('Execution cancelled by user');
+      return {
+        success: false,
+        timedOut: false,
+        error: 'Cancellation requested by user',
+      };
     }
 
     // Check for hard stop before execution (billing limit enforcement)
@@ -544,11 +559,12 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
     const httpReqDuration = metrics['http_req_duration'] || {};
     const vus = metrics['vus'] || {};
     const vusMax = metrics['vus_max'] || {};
-    const checks = metrics['checks'] as Record<string, number> | undefined;
+    const totalRequests = httpReqs.count || 0;
+    const failedRequests = getFailedHttpRequestCount(metrics);
 
     return {
-      totalRequests: httpReqs.count || 0,
-      failedRequests: checks?.fails || 0,
+      totalRequests,
+      failedRequests,
       requestRate: httpReqs.rate || 0,
       avgResponseTimeMs: httpReqDuration.avg || 0,
       p95ResponseTimeMs: httpReqDuration['p(95)'] || 0,
@@ -592,7 +608,10 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
   }
 }
 
-@Processor(K6_QUEUE, { concurrency: 1 })
+@Processor(K6_QUEUE, {
+  concurrency: 1,
+  lockDuration: 70 * 60 * 1000,
+})
 export class K6ExecutionProcessor extends BaseK6ExecutionProcessor {
   constructor(
     k6ExecutionService: K6ExecutionService,

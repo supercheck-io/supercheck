@@ -452,11 +452,13 @@ export class UsageTrackerService {
 
       return { blocked: false };
     } catch (error) {
-      // Don't block on errors - fail open for reliability
-      this.logger.warn(
+      this.logger.error(
         `[Usage] Failed to check spending limit for org ${organizationId?.slice(0, 8)}...: ${error instanceof Error ? error.message : String(error)}`,
       );
-      return { blocked: false };
+      return {
+        blocked: true,
+        reason: 'Unable to verify the organization spending limit',
+      };
     }
   }
 
@@ -467,6 +469,16 @@ export class UsageTrackerService {
   async shouldBlockExecution(
     organizationId: string,
   ): Promise<{ blocked: boolean; reason?: string }> {
+    const isCloudProduction =
+      process.env.NODE_ENV === 'production' &&
+      process.env.SELF_HOSTED?.toLowerCase() !== 'true';
+    if (isCloudProduction && !process.env.POLAR_ACCESS_TOKEN) {
+      return {
+        blocked: true,
+        reason: 'Cloud billing enforcement is not configured',
+      };
+    }
+
     if (!isPolarEnabled()) {
       return { blocked: false };
     }

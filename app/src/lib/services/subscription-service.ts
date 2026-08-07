@@ -32,6 +32,20 @@ export interface SubscriptionAccessStatus {
   subscriptionEndsAt?: Date | null;
 }
 
+export class SubscriptionAccessDeniedError extends Error {
+  constructor(
+    message: string,
+    readonly reason:
+      | "organization_not_found"
+      | "polar_customer_missing"
+      | "polar_customer_invalid"
+      | "subscription_required"
+  ) {
+    super(message);
+    this.name = "SubscriptionAccessDeniedError";
+  }
+}
+
 // Fallback unlimited plan limits - extracted for maintainability
 const FALLBACK_UNLIMITED_LIMITS = {
   id: "fallback-unlimited",
@@ -235,13 +249,17 @@ export class SubscriptionService {
     });
 
     if (!org) {
-      throw new Error("Organization not found");
+      throw new SubscriptionAccessDeniedError(
+        "Organization not found",
+        "organization_not_found"
+      );
     }
 
     // If no Polar customer ID, user needs to subscribe
     if (!org.polarCustomerId) {
-      throw new Error(
-        "No Polar customer found. Please subscribe to a plan to continue."
+      throw new SubscriptionAccessDeniedError(
+        "No Polar customer found. Please subscribe to a plan to continue.",
+        "polar_customer_missing"
       );
     }
 
@@ -251,8 +269,9 @@ export class SubscriptionService {
       org.polarCustomerId
     );
     if (!customerExists) {
-      throw new Error(
-        "Polar customer not found. Please contact support or subscribe to a new plan."
+      throw new SubscriptionAccessDeniedError(
+        "Polar customer not found. Please contact support or subscribe to a new plan.",
+        "polar_customer_invalid"
       );
     }
   }
@@ -894,8 +913,9 @@ export class SubscriptionService {
 
     const hasSubscription = await this.hasActiveSubscription(organizationId);
     if (!hasSubscription) {
-      throw new Error(
-        "Active subscription required. Visit /billing to subscribe to Plus or Pro."
+      throw new SubscriptionAccessDeniedError(
+        "Active subscription required. Visit /billing to subscribe to Plus or Pro.",
+        "subscription_required"
       );
     }
   }

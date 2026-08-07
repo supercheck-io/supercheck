@@ -17,6 +17,7 @@ import { randomUUID } from "crypto";
 import { SubscriptionService } from "@/lib/services/subscription-service";
 import { polarUsageService } from "@/lib/services/polar-usage.service";
 import { buildBillingBlockedResponse } from "@/lib/billing-errors";
+import { checkExecutionRateLimit } from "@/lib/execution-rate-limiter";
 declare const Buffer: {
   from(data: string, encoding: string): { toString(encoding: string): string };
 };
@@ -32,7 +33,7 @@ type ExecuteContext = {
 export async function POST(request: NextRequest, context: ExecuteContext) {
   try {
     const authCtx = await requireAuthContext();
-    const { project, organizationId } = authCtx;
+    const { userId, project, organizationId } = authCtx;
     const params = await context.params;
     const testId = params.id;
 
@@ -43,6 +44,17 @@ export async function POST(request: NextRequest, context: ExecuteContext) {
       return NextResponse.json(
         { error: "Insufficient permissions to execute tests" },
         { status: 403 }
+      );
+    }
+
+    const rateLimit = await checkExecutionRateLimit(userId, organizationId);
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { error: "Execution rate limit reached. Please try again shortly." },
+        {
+          status: 429,
+          headers: { "Retry-After": String(rateLimit.retryAfter) },
+        },
       );
     }
 

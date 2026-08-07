@@ -14,7 +14,7 @@ import { eq, desc, or, sql } from "drizzle-orm";
 import { fetchFromS3 } from "@/lib/s3-proxy";
 import { notFound } from "next/navigation";
 import { hasPermissionForUser } from "@/lib/rbac/middleware";
-import { requireAuthContext, requireUserAuthContext, isAuthError } from "@/lib/auth-context";
+import { requireUserAuthContext, isAuthError } from "@/lib/auth-context";
 import {
   buildTimeoutResponse,
   isCancellationError,
@@ -133,12 +133,33 @@ function getPermissionResource(entityType: string): "test" | "monitor" | "run" |
   return null;
 }
 
-async function resolveAccessContext(
+export async function resolveAccessContext(
   entityType: string,
   entityId: string
 ): Promise<AccessContext | null> {
   try {
     if (entityType === "test") {
+      // Modern playground reports use the run ID as reports.entityId. Resolve
+      // ownership from the run first; looking up tests.id alone misses these
+      // reports and must never fall back to the caller's current project.
+      const runResult = await db
+        .select({
+          organizationId: projects.organizationId,
+          projectId: runs.projectId,
+        })
+        .from(runs)
+        .leftJoin(projects, eq(projects.id, runs.projectId))
+        .where(eq(runs.id, entityId))
+        .limit(1);
+
+      if (runResult.length) {
+        return {
+          organizationId: runResult[0].organizationId,
+          projectId: runResult[0].projectId,
+        };
+      }
+
+      // Backward compatibility for legacy reports that stored a test ID.
       const result = await db
         .select({
           organizationId: tests.organizationId,
@@ -428,22 +449,6 @@ export async function GET(request: Request) {
       entityId
     );
 
-    // Fallback for ad-hoc playground tests that don’t have a persisted test record
-    if (
-      (!accessContext?.organizationId || !accessContext.projectId) &&
-      permissionResource === "test"
-    ) {
-      try {
-        const projectContext = await requireAuthContext();
-        accessContext = {
-          organizationId: projectContext.organizationId,
-          projectId: projectContext.project.id,
-        };
-      } catch (error) {
-        console.warn("[TEST-RESULTS] Failed to resolve project context:", error);
-      }
-    }
-
     if (!permissionResource || !accessContext?.organizationId || !accessContext.projectId) {
       return notFound();
     }
@@ -576,11 +581,9 @@ export async function GET(request: Request) {
         headers[key] = value;
       });
 
-      // Cache successful report assets briefly, but never cache error responses.
-      // Caching 404/500 here can make freshly-uploaded reports appear missing.
-      headers["Cache-Control"] = s3Response.ok
-        ? "public, max-age=300"
-        : "no-store, no-cache, must-revalidate";
+      // Report assets are authorization-gated and may contain tenant data.
+      // Never allow shared caches or browsers to retain the response.
+      headers["Cache-Control"] = getReportCacheControl();
 
       // Only include Content-Disposition for downloads if not forcing iframe display
       const contentType =
@@ -611,4 +614,8 @@ export async function GET(request: Request) {
     console.error(`[TEST-RESULTS] Error processing request:`, error);
     return notFound();
   }
+}
+
+export function getReportCacheControl(): string {
+  return "private, no-store, no-cache, must-revalidate";
 }

@@ -67,9 +67,9 @@ export class K6DynamicWorkerService implements OnModuleInit, OnModuleDestroy {
     }
 
     // Subscribe to queue-refresh notifications so we pick up newly added locations
-    if (this.workerLocation === 'local') {
-      this.subscribeToQueueRefresh();
+    this.subscribeToQueueRefresh();
 
+    if (this.workerLocation === 'local') {
       // Always schedule a discovery retry in local mode. Even if Redis SCAN
       // found some queues, the DB may have been temporarily unreachable,
       // leaving the worker with an incomplete subset. The retry is a no-op
@@ -213,6 +213,11 @@ export class K6DynamicWorkerService implements OnModuleInit, OnModuleDestroy {
         parsed.locationCodes.length > 0
       ) {
         newQueues = parsed.locationCodes
+          .filter(
+            (code: string) =>
+              this.workerLocation === 'local' ||
+              code.toLowerCase() === this.workerLocation,
+          )
           .map((code: string) => k6QueueName(code))
           .filter((q: string) => q !== K6_QUEUE);
       } else {

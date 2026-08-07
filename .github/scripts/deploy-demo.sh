@@ -59,10 +59,6 @@ if ! docker compose version >/dev/null 2>&1; then
   echo "Docker Compose v2 is required on the demo host" >&2
   exit 69
 fi
-if ! docker buildx version >/dev/null 2>&1; then
-  echo "Docker Buildx is required to attest published image digests" >&2
-  exit 69
-fi
 
 # GitHub concurrency prevents ordinary overlap. The host lock also protects
 # against manual deployments or a second automation system racing this update.
@@ -211,20 +207,39 @@ rollback_release() {
 
   echo "Rolling the demo back to ${ROLLBACK_VERSION}" >&2
   export SUPERCHECK_VERSION="$ROLLBACK_VERSION"
-  docker compose -f "$COMPOSE_FILE" up -d app worker
+  compose_up_app_worker missing
 }
 
-verify_published_digest() {
-  local image_reference="$1"
-  local expected_digest="$2"
-  local published_digest
+compose_up_app_worker() {
+  local pull_mode="$1"
 
-  published_digest="$(
-    docker buildx imagetools inspect "$image_reference" |
-      awk '$1 == "Digest:" { print $2; exit }'
-  )"
-  if [[ "$published_digest" != "$expected_digest" ]]; then
-    echo "Digest mismatch for ${image_reference}: expected ${expected_digest}, got ${published_digest:-none}" >&2
+  # Prefer an explicit pull mode so worker's pull_policy: always cannot replace
+  # digest-pinned local tags. Fall back for hosts on older Compose builds.
+  if docker compose up --help 2>/dev/null | grep -q -- '--pull'; then
+    docker compose -f "$COMPOSE_FILE" up -d --pull "$pull_mode" app worker </dev/null
+  else
+    docker compose -f "$COMPOSE_FILE" up -d app worker </dev/null
+  fi
+}
+
+# Pull the exact build digest, then retag for Compose. Proves the digest exists
+# without `docker buildx imagetools`, which failed on the demo host immediately
+# after a successful image pull (SSH exit 255, no digest diagnostics).
+pull_exact_digest() {
+  local repository="$1"
+  local tag="$2"
+  local digest="$3"
+  local tagged_ref="${repository}:${tag}"
+  local digest_ref="${repository}@${digest}"
+
+  echo "Pulling ${digest_ref}"
+  if ! docker pull "$digest_ref" </dev/null; then
+    echo "Failed to pull exact digest ${digest_ref}" >&2
+    return 1
+  fi
+
+  if ! docker tag "$digest_ref" "$tagged_ref" </dev/null; then
+    echo "Failed to tag ${digest_ref} as ${tagged_ref}" >&2
     return 1
   fi
 }
@@ -266,11 +281,13 @@ persist_release_version() {
 echo "Deploying ${EXPECTED_APP_IMAGE}@${APP_DIGEST}"
 echo "Deploying ${EXPECTED_WORKER_IMAGE}@${WORKER_DIGEST}"
 
-docker compose -f "$COMPOSE_FILE" pull app worker
-verify_published_digest "$EXPECTED_APP_IMAGE" "$APP_DIGEST"
-verify_published_digest "$EXPECTED_WORKER_IMAGE" "$WORKER_DIGEST"
+trap 'echo "Demo deploy failed near ${BASH_SOURCE[0]}:${LINENO} (exit $?)" >&2' ERR
 
-if ! docker compose -f "$COMPOSE_FILE" up -d app worker; then
+pull_exact_digest "$APP_IMAGE_REPOSITORY" "$IMAGE_TAG" "$APP_DIGEST"
+pull_exact_digest "$WORKER_IMAGE_REPOSITORY" "$IMAGE_TAG" "$WORKER_DIGEST"
+
+# --pull never keeps Compose from re-fetching mutable tags after digest pin.
+if ! compose_up_app_worker never; then
   echo "Docker Compose failed to apply the demo release" >&2
   print_diagnostics
   rollback_release || true

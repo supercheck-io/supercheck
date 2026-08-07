@@ -13,6 +13,7 @@ import { ContainerExecutorService } from '../../common/security/container-execut
 import { CancellationService } from '../../common/services/cancellation.service';
 import { RequirementCoverageService } from './requirement-coverage.service';
 import { filterFileVariablesToUsedKeys } from '../../common/utils/script-analysis';
+import { VariableResolverService } from '../../common/services/variable-resolver.service';
 import {
   TestResult,
   TestExecutionResult,
@@ -169,6 +170,7 @@ export class ExecutionService implements OnModuleDestroy {
     private containerExecutorService: ContainerExecutorService,
     private cancellationService: CancellationService,
     private requirementCoverageService: RequirementCoverageService,
+    private variableResolverService: VariableResolverService,
   ) {
     // Set timeouts: configurable via env vars with sensible defaults
     // Note: Environment variables are always strings, so we must parse them as numbers
@@ -288,7 +290,9 @@ export class ExecutionService implements OnModuleDestroy {
    */
   private monitorActiveExecutions(): void {
     const now = Date.now();
-    const staleTimeout = 30 * 60 * 1000; // 30 minutes
+    const staleTimeout =
+      Math.max(this.testExecutionTimeoutMs, this.jobExecutionTimeoutMs) +
+      10 * 60 * 1000;
 
     // Only process if we have executions to monitor
     if (this.activeExecutions.size === 0) {
@@ -356,6 +360,18 @@ export class ExecutionService implements OnModuleDestroy {
     bypassConcurrencyCheck = false,
     isMonitorExecution = false,
   ): Promise<TestResult> {
+    if (task.projectId) {
+      const resolved =
+        await this.variableResolverService.resolveProjectVariables(
+          task.projectId,
+        );
+      task = {
+        ...task,
+        variables: resolved.variables,
+        secrets: resolved.secrets,
+        files: resolved.files,
+      };
+    }
     const { testId, code } = task;
     const runtimeVariables = task.variables ?? {};
     const runtimeSecrets = task.secrets ?? {};
@@ -691,6 +707,15 @@ export class ExecutionService implements OnModuleDestroy {
    * Uses the native Playwright test runner and HTML reporter.
    */
   async runJob(task: JobExecutionTask): Promise<TestExecutionResult> {
+    const resolved = await this.variableResolverService.resolveProjectVariables(
+      task.projectId,
+    );
+    task = {
+      ...task,
+      variables: resolved.variables,
+      secrets: resolved.secrets,
+      files: resolved.files,
+    };
     const { runId, testScripts } = task;
 
     if (task.jobType === 'k6') {
@@ -879,7 +904,10 @@ export class ExecutionService implements OnModuleDestroy {
       // Filter file variables to only those referenced by getFile()/readFile() in the scripts.
       // Use raw decoded scripts (before runtime helper injection) to avoid
       // false-positive detection from the injected getFile()/readFile() helper definitions.
-      const filteredJobFiles = filterFileVariablesToUsedKeys(task.files ?? {}, rawDecodedScripts);
+      const filteredJobFiles = filterFileVariablesToUsedKeys(
+        task.files ?? {},
+        rawDecodedScripts,
+      );
       const { additionalFiles: fileAdditionalFiles, filePaths } =
         await this.prepareFileVariables(filteredJobFiles);
       Object.assign(additionalFiles, fileAdditionalFiles);
@@ -901,7 +929,11 @@ export class ExecutionService implements OnModuleDestroy {
         true,
         additionalFiles, // Pass additional test files to execute in container
         runId, // Pass runId for cancellation tracking
-        this.buildVariableRuntimeEnv(task.variables ?? {}, task.secrets ?? {}, filePaths),
+        this.buildVariableRuntimeEnv(
+          task.variables ?? {},
+          task.secrets ?? {},
+          filePaths,
+        ),
       );
 
       const taskSecrets = task.secrets ?? {};
@@ -966,7 +998,6 @@ export class ExecutionService implements OnModuleDestroy {
       const startTimeMs = new Date(timestamp).getTime();
       const durationMs = endTime.getTime() - startTimeMs;
       const durationStr = this.formatDuration(durationMs);
-      const durationSeconds = this.getDurationSeconds(durationMs);
 
       // Evaluate report contents to determine real outcome; default to failed if unknown
       const reportOutcome =
@@ -1171,8 +1202,7 @@ export class ExecutionService implements OnModuleDestroy {
     const executionId = crypto.randomUUID().substring(0, 8);
 
     // Resolve working directory: /worker in Docker, process.cwd() locally
-    const workerDir =
-      await this.containerExecutorService.resolveWorkerDir();
+    const workerDir = await this.containerExecutorService.resolveWorkerDir();
     // Resolve browsers path: /ms-playwright in Docker, system default locally
     const browsersPath =
       await this.containerExecutorService.resolveBrowsersPath();
@@ -2078,8 +2108,19 @@ export class ExecutionService implements OnModuleDestroy {
    * and creating the file content map + path map for runtime helpers.
    */
   private async prepareFileVariables(
-    files: Record<string, { storagePath: string; fileName: string; mimeType: string; fileSize: number | null }>,
-  ): Promise<{ additionalFiles: Record<string, string>; filePaths: Record<string, string> }> {
+    files: Record<
+      string,
+      {
+        storagePath: string;
+        fileName: string;
+        mimeType: string;
+        fileSize: number | null;
+      }
+    >,
+  ): Promise<{
+    additionalFiles: Record<string, string>;
+    filePaths: Record<string, string>;
+  }> {
     return this.s3Service.prepareFileVariables(files);
   }
 

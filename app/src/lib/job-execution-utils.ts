@@ -1,6 +1,6 @@
 import { db } from "@/utils/db";
 import { tests, jobTests } from "@/db/schema";
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { resolveProjectVariables, extractVariableNames } from "./variable-resolver";
 import type { VariableResolutionResult } from "./variable-resolver";
 
@@ -133,7 +133,12 @@ export async function prepareJobTestScripts(
       type: tests.type,
     })
     .from(tests)
-    .where(inArray(tests.id, testIds));
+    .where(
+      and(
+        inArray(tests.id, testIds),
+        eq(tests.projectId, projectId),
+      ),
+    );
 
   // Prepare test scripts with proper decoding
   const testScripts: ProcessedTestScript[] = [];

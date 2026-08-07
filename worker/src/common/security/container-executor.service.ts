@@ -133,6 +133,13 @@ interface ValidatedLimits {
   timeoutMs: number;
 }
 
+interface ExecSocket {
+  readonly readyState: number;
+  close(): void;
+  on(event: 'close', listener: () => void): unknown;
+  on(event: 'error', listener: (error: Error) => void): unknown;
+}
+
 @Injectable()
 export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(ContainerExecutorService.name);
@@ -150,11 +157,13 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
   private static readonly OUTCOME_POLL_FAST_MS = 1_000;
   private static readonly OUTCOME_POLL_MEDIUM_MS = 2_000;
   private static readonly OUTCOME_POLL_SLOW_MS = 5_000;
-  private readonly activeCancellationIntervals: Set<NodeJS.Timeout> =
-    new Set();
+  private readonly activeCancellationIntervals: Set<NodeJS.Timeout> = new Set();
 
   /** Max combined stdout+stderr size in bytes (10 MB) */
   private static readonly MAX_OUTPUT_BYTES = 10 * 1024 * 1024;
+  private static readonly EXEC_SOCKET_TIMEOUT_MS = 30_000;
+  private static readonly DEFAULT_ARTIFACT_SOCKET_TIMEOUT_MS = 5 * 60_000;
+  private static readonly PAYLOAD_CHUNK_BYTES = 700 * 1024;
 
   /** Max artifact tar archive size in bytes (100 MB) */
   private static readonly MAX_ARTIFACT_ARCHIVE_BYTES = 100 * 1024 * 1024;
@@ -180,7 +189,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     /^([1-9]\d*)(m|Ki|Mi|Gi|Ti|Pi|Ei|k|M|G|T|P|E)?$/;
 
   /** Allowed filename pattern: alphanumeric, dots, hyphens, underscores */
-  private static readonly SAFE_FILENAME_RE = /^[\w.\-]+$/;
+  private static readonly SAFE_FILENAME_RE = /^[\w.-]+$/;
   private readonly defaultImage: string;
   private readonly executionNamespace: string;
   private readonly executionRuntimeClassName: string | undefined;
@@ -190,6 +199,10 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
   private readonly executionEphemeralStorageRequest: string;
   private readonly executionEphemeralStorageLimit: string;
   private readonly executionTmpSizeLimit: string;
+  private readonly maxExecutionEphemeralStorageLimit: string;
+  private readonly artifactSocketTimeoutMs: number;
+  private readonly maxExecutionMemoryLimitMb: number;
+  private readonly maxExecutionCpuLimit: number;
   private k8sModule: typeof import('@kubernetes/client-node') | null = null;
   private kubeConfig: k8s.KubeConfig | null = null;
   private batchApi: k8s.BatchV1Api | null = null;
@@ -204,10 +217,19 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     private configService: ConfigService,
     private cancellationService: CancellationService,
   ) {
-    this.defaultImage = this.configService.get<string>(
-      'WORKER_IMAGE',
-      'ghcr.io/supercheck-io/supercheck/worker:latest',
-    );
+    const configuredImage = this.configService
+      .get<string>('WORKER_IMAGE')
+      ?.trim();
+    const isCloudProduction =
+      process.env.NODE_ENV === 'production' &&
+      process.env.SELF_HOSTED?.toLowerCase() !== 'true';
+    if (isCloudProduction && !configuredImage) {
+      throw new Error(
+        'WORKER_IMAGE must be explicitly configured in cloud production',
+      );
+    }
+    this.defaultImage =
+      configuredImage || 'ghcr.io/supercheck-io/supercheck/worker:latest';
     this.executionNamespace = this.configService.get<string>(
       'EXECUTION_NAMESPACE',
       'supercheck-execution',
@@ -216,7 +238,14 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       .get<string>('EXECUTION_RUNTIME_CLASS_NAME', 'gvisor')
       ?.trim();
     this.executionRuntimeClassName =
-      runtimeClass === 'none' || runtimeClass === '' ? undefined : (runtimeClass || 'gvisor');
+      runtimeClass === 'none' || runtimeClass === ''
+        ? undefined
+        : runtimeClass || 'gvisor';
+    if (isCloudProduction && !this.executionRuntimeClassName) {
+      throw new Error(
+        'EXECUTION_RUNTIME_CLASS_NAME=gvisor is required in cloud production',
+      );
+    }
     this.executionNodeSelector = this.parseExecutionNodeSelector(
       this.configService.get<string>('EXECUTION_NODE_SELECTOR'),
     );
@@ -237,6 +266,25 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     this.executionTmpSizeLimit = this.resolveResourceQuantity(
       'EXECUTION_TMP_EMPTYDIR_SIZE_LIMIT',
       this.executionEphemeralStorageLimit,
+    );
+    this.maxExecutionEphemeralStorageLimit = this.resolveResourceQuantity(
+      'EXECUTION_MAX_EPHEMERAL_STORAGE_LIMIT',
+      '10Gi',
+    );
+    this.validateEphemeralStorageConfiguration();
+    this.artifactSocketTimeoutMs = this.resolvePositiveInteger(
+      'EXECUTION_ARTIFACT_SOCKET_TIMEOUT_MS',
+      ContainerExecutorService.DEFAULT_ARTIFACT_SOCKET_TIMEOUT_MS,
+    );
+    // These defaults match deploy/k8s/base/execution-limitrange.yaml. Memory
+    // excludes the fixed 662 MiB gVisor + /dev/shm overhead added to every Job.
+    this.maxExecutionMemoryLimitMb = this.resolvePositiveInteger(
+      'EXECUTION_MAX_MEMORY_LIMIT_MB',
+      3434,
+    );
+    this.maxExecutionCpuLimit = this.resolvePositiveNumber(
+      'EXECUTION_MAX_CPU_LIMIT',
+      2,
     );
   }
 
@@ -285,12 +333,40 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
 
     const jobCleanup = Array.from(this.runningJobs.entries()).map(
       async ([runId, jobName]) => {
-        this.logger.warn(`Deleting orphaned execution job ${jobName} for ${runId}`);
+        this.logger.warn(
+          `Deleting orphaned execution job ${jobName} for ${runId}`,
+        );
         await this.deleteExecutionJob(jobName);
       },
     );
     await Promise.allSettled(jobCleanup);
     this.runningJobs.clear();
+  }
+
+  async hasActiveExecution(runId: string): Promise<boolean> {
+    if (this.runningJobs.has(runId)) return true;
+
+    try {
+      await this.ensureKubernetesClients();
+      const jobs = await this.batchApi!.listNamespacedJob({
+        namespace: this.executionNamespace,
+        labelSelector: `supercheck.io/run-id=${this.buildLabelValue(runId)}`,
+      });
+      return jobs.items.some(
+        (job) =>
+          (job.status?.active ?? 0) > 0 &&
+          !job.status?.completionTime &&
+          (job.status?.failed ?? 0) === 0,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Unable to verify Kubernetes execution state for ${runId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      // Fail safe: uncertainty must not cause a live run to be marked terminal.
+      return true;
+    }
   }
 
   // =====================================================================
@@ -335,6 +411,11 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     command: string[],
     options: ContainerExecutionOptions = {},
   ): Promise<ContainerExecutionResult> {
+    if (options.networkMode && options.networkMode !== 'bridge') {
+      throw new Error(
+        `Unsupported Kubernetes execution network mode: ${options.networkMode}`,
+      );
+    }
     // Validate that scriptPath is null (legacy mode is not supported)
     if (scriptPath !== null) {
       return {
@@ -399,7 +480,9 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     // Validate additionalFiles keys — no path traversal, no absolute paths
     if (options.additionalFiles) {
       const sanitizedAdditionalFiles: Record<string, string> = {};
-      for (const [filePath, content] of Object.entries(options.additionalFiles)) {
+      for (const [filePath, content] of Object.entries(
+        options.additionalFiles,
+      )) {
         const normalizedFilePath = this.normalizeRelativeWorkspacePath(
           filePath,
           'additional file path',
@@ -443,7 +526,9 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
               'Ensure directory path contains invalid characters',
           };
         }
-        if (!sanitizedEnsureDirectories.includes(normalizedDirPath.normalized!)) {
+        if (
+          !sanitizedEnsureDirectories.includes(normalizedDirPath.normalized!)
+        ) {
           sanitizedEnsureDirectories.push(normalizedDirPath.normalized!);
         }
       }
@@ -479,19 +564,14 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
           duration: 0,
           timedOut: false,
           error:
-            normalizedExtractPath.error ||
-            'Invalid extractFromContainer path',
+            normalizedExtractPath.error || 'Invalid extractFromContainer path',
         };
       }
       normalizedOptions.extractFromContainer = normalizedExtractPath.normalized;
     }
 
     // Default options
-    const {
-      timeoutMs = 300000,
-      memoryLimitMb = 512,
-      cpuLimit = 0.5,
-    } = options;
+    const { timeoutMs = 300000, memoryLimitMb = 512, cpuLimit = 0.5 } = options;
 
     // Validate resource limits
     const validatedLimits = this.validateResourceLimits({
@@ -512,11 +592,21 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       };
     }
 
-    return this.executeInKubernetes(command, normalizedOptions, validatedLimits);
+    return this.executeInKubernetes(
+      command,
+      normalizedOptions,
+      validatedLimits,
+    );
   }
 
   private async ensureKubernetesClients(): Promise<void> {
-    if (this.kubeConfig && this.batchApi && this.coreApi && this.logClient && this.execClient) {
+    if (
+      this.kubeConfig &&
+      this.batchApi &&
+      this.coreApi &&
+      this.logClient &&
+      this.execClient
+    ) {
       return;
     }
 
@@ -554,7 +644,9 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       return value;
     }
     // Replace all occurrences of the host worker dir with /worker
-    return value.split(hostWorkerDir).join(ContainerExecutorService.CONTAINER_WORKER_DIR);
+    return value
+      .split(hostWorkerDir)
+      .join(ContainerExecutorService.CONTAINER_WORKER_DIR);
   }
 
   private async executeInKubernetes(
@@ -568,7 +660,8 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     // The K8s container image always has worker files at /worker.
     // When running locally, callers pass host-local paths (e.g. process.cwd())
     // which must be rewritten to /worker for the container.
-    const hostWorkerDir = options.workingDir || ContainerExecutorService.CONTAINER_WORKER_DIR;
+    const hostWorkerDir =
+      options.workingDir || ContainerExecutorService.CONTAINER_WORKER_DIR;
     const workingDir = ContainerExecutorService.CONTAINER_WORKER_DIR;
 
     // Rewrite host-local paths in command args
@@ -594,6 +687,21 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       containerCommand,
     );
     const jobName = this.buildExecutionJobName(options.runId);
+    const exitCodeFile = this.getWorkspaceExitCodeFile(workspace);
+    const exitSignalFile = this.getWorkspaceExitSignalFile(workspace);
+    const wrappedScript = this.buildKubernetesWrapperScript(
+      shellScript,
+      exitCodeFile,
+      exitSignalFile,
+    );
+    const payloadChunks = this.chunkExecutionPayload(wrappedScript);
+    const payloadSecretNames = payloadChunks.map(
+      (_chunk, index) => `${jobName}-payload-${index}`,
+    );
+    const encodedRuntimeSecrets = containerOptions.env?.SUPERCHECK_SECRETS_B64;
+    const runtimeSecretName = encodedRuntimeSecrets
+      ? `${jobName}-runtime`
+      : undefined;
 
     let podName: string | null = null;
     let logAbort: AbortController | null = null;
@@ -611,16 +719,48 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       const job = this.buildExecutionJob({
         jobName,
         workspace,
-        shellScript,
         workingDir,
         limits,
         options: containerOptions,
+        payloadSecretNames,
+        runtimeSecretName,
       });
 
-      await this.batchApi!.createNamespacedJob({
+      const createdJob = await this.batchApi!.createNamespacedJob({
         namespace: this.executionNamespace,
         body: job,
       });
+      const jobUid = createdJob.metadata?.uid;
+      if (!jobUid) {
+        throw new Error(
+          `Kubernetes did not return a UID for execution job ${jobName}`,
+        );
+      }
+
+      await Promise.all([
+        ...payloadChunks.map((chunk, index) =>
+          this.createExecutionSecret(
+            payloadSecretNames[index],
+            { chunk: chunk.toString('base64') },
+            jobName,
+            jobUid,
+          ),
+        ),
+        ...(runtimeSecretName && encodedRuntimeSecrets
+          ? [
+              this.createExecutionSecret(
+                runtimeSecretName,
+                {
+                  value: Buffer.from(encodedRuntimeSecrets, 'utf8').toString(
+                    'base64',
+                  ),
+                },
+                jobName,
+                jobUid,
+              ),
+            ]
+          : []),
+      ]);
 
       if (options.runId) {
         this.runningJobs.set(options.runId, jobName);
@@ -637,8 +777,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       podName = await this.waitForExecutionPod(jobName);
       podStartupDurationMs = Date.now() - podWaitStartedAt;
       if (
-        podStartupDurationMs >
-        ContainerExecutorService.SLOW_POD_STARTUP_WARN_MS
+        podStartupDurationMs > ContainerExecutorService.SLOW_POD_STARTUP_WARN_MS
       ) {
         this.logger.warn(
           `[${jobName}] Execution pod ${podName} became visible after ${podStartupDurationMs}ms. Slow startup usually indicates image pull, scheduling pressure, or cluster DNS/network latency.`,
@@ -663,11 +802,24 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       timedOut = outcome.timedOut;
       killed = killed || outcome.cancelled;
 
-      if (options.extractFromContainer && options.extractToHost && !timedOut && !killed) {
-        const extractSource = this.rewriteTmpPath(options.extractFromContainer, workspace);
+      if (
+        options.extractFromContainer &&
+        options.extractToHost &&
+        !timedOut &&
+        !killed
+      ) {
+        const extractSource = this.rewriteTmpPath(
+          options.extractFromContainer,
+          workspace,
+        );
         const extractionStartedAt = Date.now();
         try {
-          await this.extractPodArtifacts(podName, extractSource, options.extractToHost, workspace);
+          await this.extractPodArtifacts(
+            podName,
+            extractSource,
+            options.extractToHost,
+            workspace,
+          );
           artifactExtractionDurationMs = Date.now() - extractionStartedAt;
           this.logger.debug(
             `[${jobName}] Extracted artifacts from ${podName} in ${artifactExtractionDurationMs}ms`,
@@ -676,22 +828,27 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
           artifactExtractionDurationMs = Date.now() - extractionStartedAt;
           this.logger.error(
             `Failed to extract pod artifacts after ${artifactExtractionDurationMs}ms: ${
-              extractError instanceof Error ? extractError.message : String(extractError)
+              extractError instanceof Error
+                ? extractError.message
+                : String(extractError)
             }`,
           );
+          throw extractError;
         }
       }
 
       if (!timedOut && !killed && podName) {
-        await this.signalExecutionExit(podName, workspace).catch((signalError) => {
-          this.logger.debug(
-            `Failed to signal execution pod exit for ${podName}: ${
-              signalError instanceof Error
-                ? signalError.message
-                : String(signalError)
-            }`,
-          );
-        });
+        await this.signalExecutionExit(podName, workspace).catch(
+          (signalError) => {
+            this.logger.debug(
+              `Failed to signal execution pod exit for ${podName}: ${
+                signalError instanceof Error
+                  ? signalError.message
+                  : String(signalError)
+              }`,
+            );
+          },
+        );
       }
 
       if (logAbort) {
@@ -760,30 +917,87 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
   private buildExecutionJob(params: {
     jobName: string;
     workspace: string;
-    shellScript: string;
+    shellScript?: string;
     workingDir: string;
     limits: ValidatedLimits;
     options: ContainerExecutionOptions;
+    payloadSecretNames?: string[];
+    runtimeSecretName?: string;
   }): k8s.V1Job {
-    const { jobName, workspace, shellScript, workingDir, limits, options } = params;
+    const {
+      jobName,
+      workspace,
+      workingDir,
+      limits,
+      options,
+      payloadSecretNames: configuredPayloadSecretNames,
+      runtimeSecretName,
+    } = params;
+    const payloadSecretNames = configuredPayloadSecretNames ?? [];
     const image = options.image || this.defaultImage;
-    const envVars = this.buildKubernetesEnv(options.env, workspace);
+    const publicEnv = { ...(options.env ?? {}) };
+    delete publicEnv.SUPERCHECK_SECRETS_B64;
+    const envVars = this.buildKubernetesEnv(publicEnv, workspace);
     const dnsSettings = this.buildExecutionPodDnsSettings();
     const deadlineSeconds = Math.ceil((limits.timeoutMs + 120_000) / 1000);
     const resourceCpuLimit = `${Math.max(100, Math.round(limits.cpuLimit * 1000))}m`;
     const resourceCpuRequest = `${Math.max(100, Math.round(limits.cpuLimit * 500))}m`;
     // Add overhead for /dev/shm tmpfs (counts against cgroup in K8s) and gVisor Sentry
-    const effectiveMemoryMb = limits.memoryLimitMb + ContainerExecutorService.TOTAL_MEMORY_OVERHEAD_MB;
+    const effectiveMemoryMb =
+      limits.memoryLimitMb + ContainerExecutorService.TOTAL_MEMORY_OVERHEAD_MB;
     const resourceMemoryLimit = `${effectiveMemoryMb}Mi`;
     const resourceMemoryRequest = `${Math.max(128, Math.round(effectiveMemoryMb * 0.75))}Mi`;
-    const exitCodeFile = this.getWorkspaceExitCodeFile(workspace);
-    const exitSignalFile = this.getWorkspaceExitSignalFile(workspace);
-    const wrappedScript = this.buildKubernetesWrapperScript(
-      shellScript,
-      exitCodeFile,
-      exitSignalFile,
-    );
     const runLabel = this.buildLabelValue(options.runId);
+    const runnerPath = `${workspace}/.supercheck-runner.sh`;
+    const payloadPaths = payloadSecretNames.map(
+      (_name, index) => `/supercheck-payload-${index}/chunk`,
+    );
+    const bootstrapScript =
+      payloadSecretNames.length > 0
+        ? [
+            `cat ${payloadPaths.map((value) => this.escapeShellArg(value)).join(' ')} > ${this.escapeShellArg(runnerPath)}`,
+            ...(runtimeSecretName
+              ? [
+                  `export SUPERCHECK_SECRETS_B64="$(cat /supercheck-runtime/value)"`,
+                ]
+              : []),
+            `/bin/sh ${this.escapeShellArg(runnerPath)}`,
+          ].join(' && ')
+        : this.buildKubernetesWrapperScript(
+            params.shellScript ?? '',
+            this.getWorkspaceExitCodeFile(workspace),
+            this.getWorkspaceExitSignalFile(workspace),
+          );
+    const secretVolumeMounts: k8s.V1VolumeMount[] = [
+      ...payloadSecretNames.map((_name, index) => ({
+        name: `payload-${index}`,
+        mountPath: `/supercheck-payload-${index}`,
+        readOnly: true,
+      })),
+      ...(runtimeSecretName
+        ? [
+            {
+              name: 'runtime-secrets',
+              mountPath: '/supercheck-runtime',
+              readOnly: true,
+            },
+          ]
+        : []),
+    ];
+    const secretVolumes: k8s.V1Volume[] = [
+      ...payloadSecretNames.map((name, index) => ({
+        name: `payload-${index}`,
+        secret: { secretName: name, defaultMode: 0o440 },
+      })),
+      ...(runtimeSecretName
+        ? [
+            {
+              name: 'runtime-secrets',
+              secret: { secretName: runtimeSecretName, defaultMode: 0o440 },
+            },
+          ]
+        : []),
+    ];
 
     return {
       apiVersion: 'batch/v1',
@@ -814,6 +1028,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
               ? { runtimeClassName: this.executionRuntimeClassName }
               : {}),
             restartPolicy: 'Never',
+            serviceAccountName: 'execution-runner',
             automountServiceAccountToken: false,
             enableServiceLinks: false,
             terminationGracePeriodSeconds: 1,
@@ -832,7 +1047,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
                 name: 'execution',
                 image,
                 imagePullPolicy: 'IfNotPresent',
-                command: ['/bin/sh', '-c', wrappedScript],
+                command: ['/bin/sh', '-c', bootstrapScript],
                 workingDir,
                 env: envVars,
                 resources: {
@@ -860,6 +1075,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
                   },
                 },
                 volumeMounts: [
+                  ...secretVolumeMounts,
                   {
                     name: 'tmp',
                     mountPath: '/tmp',
@@ -872,6 +1088,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
               },
             ],
             volumes: [
+              ...secretVolumes,
               {
                 name: 'tmp',
                 emptyDir: {
@@ -896,9 +1113,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     k8s.V1PodSpec,
     'dnsPolicy' | 'dnsConfig'
   > {
-    const options = [
-      ...ContainerExecutorService.DEFAULT_DNS_OPTIONS,
-    ];
+    const options = [...ContainerExecutorService.DEFAULT_DNS_OPTIONS];
 
     if (this.executionDnsNameservers?.length) {
       return {
@@ -937,6 +1152,84 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     return value;
   }
 
+  private resolvePositiveInteger(envName: string, fallback: number): number {
+    const rawValue = this.configService.get<string>(envName);
+    const value = Number.parseInt(rawValue ?? '', 10);
+    if (!Number.isSafeInteger(value) || value <= 0) {
+      if (rawValue !== undefined) {
+        this.logger.warn(
+          `Invalid ${envName} value "${rawValue}"; using ${fallback}`,
+        );
+      }
+      return fallback;
+    }
+    return value;
+  }
+
+  private resolvePositiveNumber(envName: string, fallback: number): number {
+    const rawValue = this.configService.get<string>(envName);
+    const value = Number(rawValue);
+    if (!Number.isFinite(value) || value <= 0) {
+      if (rawValue !== undefined) {
+        this.logger.warn(
+          `Invalid ${envName} value "${rawValue}"; using ${fallback}`,
+        );
+      }
+      return fallback;
+    }
+    return value;
+  }
+
+  private validateEphemeralStorageConfiguration(): void {
+    const request = this.resourceQuantityToMilliBytes(
+      this.executionEphemeralStorageRequest,
+    );
+    const limit = this.resourceQuantityToMilliBytes(
+      this.executionEphemeralStorageLimit,
+    );
+    const maximum = this.resourceQuantityToMilliBytes(
+      this.maxExecutionEphemeralStorageLimit,
+    );
+
+    if (request > limit) {
+      throw new Error(
+        `EXECUTION_EPHEMERAL_STORAGE_REQUEST (${this.executionEphemeralStorageRequest}) must not exceed EXECUTION_EPHEMERAL_STORAGE_LIMIT (${this.executionEphemeralStorageLimit})`,
+      );
+    }
+    if (limit > maximum) {
+      throw new Error(
+        `EXECUTION_EPHEMERAL_STORAGE_LIMIT (${this.executionEphemeralStorageLimit}) exceeds EXECUTION_MAX_EPHEMERAL_STORAGE_LIMIT (${this.maxExecutionEphemeralStorageLimit})`,
+      );
+    }
+  }
+
+  private resourceQuantityToMilliBytes(value: string): bigint {
+    const match = ContainerExecutorService.RESOURCE_QUANTITY_RE.exec(value);
+    if (!match) {
+      throw new Error(`Invalid Kubernetes resource quantity: ${value}`);
+    }
+
+    const amount = BigInt(match[1]);
+    const suffix = match[2] ?? '';
+    const multipliers: Readonly<Record<string, bigint>> = {
+      m: 1n,
+      '': 1_000n,
+      k: 1_000_000n,
+      M: 1_000_000_000n,
+      G: 1_000_000_000_000n,
+      T: 1_000_000_000_000_000n,
+      P: 1_000_000_000_000_000_000n,
+      E: 1_000_000_000_000_000_000_000n,
+      Ki: 1_024_000n,
+      Mi: 1_048_576_000n,
+      Gi: 1_073_741_824_000n,
+      Ti: 1_099_511_627_776_000n,
+      Pi: 1_125_899_906_842_624_000n,
+      Ei: 1_152_921_504_606_846_976_000n,
+    };
+    return amount * multipliers[suffix];
+  }
+
   private buildKubernetesWrapperScript(
     shellScript: string,
     exitCodeFile: string,
@@ -953,6 +1246,60 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       `while [ ! -f ${escapedExitSignalFile} ] && [ "$(date +%s)" -lt "$DEADLINE" ]; do sleep 1; done`,
       'exit $EXIT_CODE',
     ].join('; ');
+  }
+
+  private chunkExecutionPayload(script: string): Buffer[] {
+    const payload = Buffer.from(script, 'utf8');
+    const chunks: Buffer[] = [];
+    for (
+      let offset = 0;
+      offset < payload.length;
+      offset += ContainerExecutorService.PAYLOAD_CHUNK_BYTES
+    ) {
+      chunks.push(
+        payload.subarray(
+          offset,
+          offset + ContainerExecutorService.PAYLOAD_CHUNK_BYTES,
+        ),
+      );
+    }
+    return chunks.length > 0 ? chunks : [Buffer.from('', 'utf8')];
+  }
+
+  private async createExecutionSecret(
+    name: string,
+    data: Record<string, string>,
+    jobName: string,
+    jobUid: string,
+  ): Promise<void> {
+    await this.coreApi!.createNamespacedSecret({
+      namespace: this.executionNamespace,
+      body: {
+        apiVersion: 'v1',
+        kind: 'Secret',
+        type: 'Opaque',
+        immutable: true,
+        metadata: {
+          name,
+          namespace: this.executionNamespace,
+          labels: {
+            'app.kubernetes.io/managed-by': 'supercheck-worker',
+            'app.kubernetes.io/component': 'execution-payload',
+          },
+          ownerReferences: [
+            {
+              apiVersion: 'batch/v1',
+              kind: 'Job',
+              name: jobName,
+              uid: jobUid,
+              controller: false,
+              blockOwnerDeletion: true,
+            },
+          ],
+        },
+        data,
+      },
+    });
   }
 
   private buildKubernetesEnv(
@@ -983,12 +1330,13 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
   }
 
   private buildExecutionJobName(runId?: string): string {
-    const suffix = crypto
+    const runSuffix = crypto
       .createHash('sha256')
       .update(runId || crypto.randomUUID())
       .digest('hex')
-      .slice(0, 20);
-    return `sc-exec-${suffix}`;
+      .slice(0, 16);
+    const attemptSuffix = crypto.randomUUID().replace(/-/g, '').slice(0, 8);
+    return `sc-exec-${runSuffix}-${attemptSuffix}`;
   }
 
   private buildLabelValue(value?: string): string {
@@ -1024,7 +1372,9 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       await this.sleep(1000);
     }
 
-    throw new Error(`Execution pod for job ${jobName} did not appear within 120s`);
+    throw new Error(
+      `Execution pod for job ${jobName} did not appear within 120s`,
+    );
   }
 
   private createLogCollector(options: ContainerExecutionOptions): {
@@ -1038,11 +1388,19 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
   } {
     let output = '';
     let suppressLive = false;
+    let truncated = false;
     const stream = new Writable({
       write: (chunk, _encoding, callback) => {
-        const text = Buffer.isBuffer(chunk) ? chunk.toString('utf8') : String(chunk);
+        const text = Buffer.isBuffer(chunk)
+          ? chunk.toString('utf8')
+          : String(chunk);
         if (output.length < ContainerExecutorService.MAX_OUTPUT_BYTES) {
-          output += text;
+          const remaining =
+            ContainerExecutorService.MAX_OUTPUT_BYTES - output.length;
+          output += text.slice(0, remaining);
+          if (text.length > remaining) truncated = true;
+        } else {
+          truncated = true;
         }
         // Skip forwarding during reconnect replay to avoid duplicating
         // lines in the live console. The buffer still accumulates for the
@@ -1068,7 +1426,10 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
 
     return {
       stream: streamWithControls,
-      getOutput: () => output,
+      getOutput: () =>
+        truncated
+          ? `${output}\n[Supercheck output truncated at 10 MiB]\n`
+          : output,
       suppressLiveForwarding: streamWithControls.suppressLiveForwarding,
       resumeLiveForwarding: streamWithControls.resumeLiveForwarding,
     };
@@ -1094,7 +1455,10 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
    */
   private startLogStreamWithReconnect(
     podName: string,
-    sink: Writable & { suppressLiveForwarding?: () => void; resumeLiveForwarding?: () => void },
+    sink: Writable & {
+      suppressLiveForwarding?: () => void;
+      resumeLiveForwarding?: () => void;
+    },
     jobName: string,
   ): AbortController {
     const controller = new AbortController();
@@ -1115,10 +1479,13 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       if (attempt > 0 && sink.suppressLiveForwarding) {
         sink.suppressLiveForwarding();
         // Resume after the replay window (sinceSeconds + reconnect delay buffer)
-        replayTimer = setTimeout(() => {
-          sink.resumeLiveForwarding?.();
-          replayTimer = null;
-        }, (sinceSecondsOnReconnect + 1) * 1_000);
+        replayTimer = setTimeout(
+          () => {
+            sink.resumeLiveForwarding?.();
+            replayTimer = null;
+          },
+          (sinceSecondsOnReconnect + 1) * 1_000,
+        );
       }
 
       try {
@@ -1156,7 +1523,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
               this.logger.warn(
                 `Log stream for ${jobName} disconnected (attempt ${attempt + 1}/${maxReconnects}), reconnecting in ${reconnectDelayMs}ms`,
               );
-              setTimeout(() => connect(attempt + 1), reconnectDelayMs);
+              setTimeout(() => void connect(attempt + 1), reconnectDelayMs);
             }
           },
           { once: true },
@@ -1173,7 +1540,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
               error instanceof Error ? error.message : String(error)
             }`,
           );
-          setTimeout(() => connect(attempt + 1), reconnectDelayMs);
+          setTimeout(() => void connect(attempt + 1), reconnectDelayMs);
         } else {
           this.logger.warn(
             `Exhausted log stream reconnect attempts for ${jobName}; final logs will be fetched via snapshot`,
@@ -1190,7 +1557,9 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     const chunks: Buffer[] = [];
     const sink = new Writable({
       write: (chunk, _encoding, callback) => {
-        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
+        chunks.push(
+          Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)),
+        );
         callback();
       },
     });
@@ -1211,7 +1580,12 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     podName: string,
     workspace: string,
     timeoutMs: number,
-  ): Promise<{ exitCode: number; timedOut: boolean; cancelled: boolean; message?: string }> {
+  ): Promise<{
+    exitCode: number;
+    timedOut: boolean;
+    cancelled: boolean;
+    message?: string;
+  }> {
     const startedAt = Date.now();
     const timeoutAt = Date.now() + timeoutMs;
     const exitCodeFile = this.getWorkspaceExitCodeFile(workspace);
@@ -1226,15 +1600,20 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
         };
       }
 
-      let pod;
+      let pod: k8s.V1Pod;
       try {
         pod = await this.coreApi!.readNamespacedPod({
           name: podName,
           namespace: this.executionNamespace,
         });
       } catch (podError) {
-        const msg = podError instanceof Error ? podError.message : String(podError);
-        if (msg.includes('404') || msg.includes('NotFound') || msg.includes('not found')) {
+        const msg =
+          podError instanceof Error ? podError.message : String(podError);
+        if (
+          msg.includes('404') ||
+          msg.includes('NotFound') ||
+          msg.includes('not found')
+        ) {
           // Pod was deleted externally — most likely by the cancellation poller.
           // Treat as a user-initiated cancellation so processors record it correctly
           // instead of returning a generic exitCode=1 failure.
@@ -1251,9 +1630,9 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
         throw podError;
       }
 
-      const terminated = pod.status?.containerStatuses
-        ?.find((container) => container.name === 'execution')
-        ?.state?.terminated;
+      const terminated = pod.status?.containerStatuses?.find(
+        (container) => container.name === 'execution',
+      )?.state?.terminated;
       if (terminated) {
         const timedOut =
           terminated.reason === 'DeadlineExceeded' ||
@@ -1318,9 +1697,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
           `Exit code read via exec failed for ${podName} (will retry silently): ${msg}`,
         );
       } else {
-        this.logger.debug(
-          `Exit code read failed for ${podName}: ${msg}`,
-        );
+        this.logger.debug(`Exit code read failed for ${podName}: ${msg}`);
       }
       return '';
     });
@@ -1338,18 +1715,22 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     const stderrChunks: Buffer[] = [];
     const stdout = new Writable({
       write: (chunk, _encoding, callback) => {
-        stdoutChunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
+        stdoutChunks.push(
+          Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)),
+        );
         callback();
       },
     });
     const stderr = new Writable({
       write: (chunk, _encoding, callback) => {
-        stderrChunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
+        stderrChunks.push(
+          Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)),
+        );
         callback();
       },
     });
 
-    const socket = await this.execClient!.exec(
+    const socket = (await this.execClient!.exec(
       this.executionNamespace,
       podName,
       'execution',
@@ -1358,12 +1739,9 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       stderr,
       null,
       false,
-    );
+    )) as unknown as ExecSocket;
 
-    await new Promise<void>((resolve, reject) => {
-      socket.on('close', () => resolve());
-      socket.on('error', (error) => reject(error));
-    });
+    await this.waitForExecSocket(socket, `exec in pod ${podName}`);
 
     const stderrText = Buffer.concat(stderrChunks).toString('utf8').trim();
     if (stderrText) {
@@ -1393,7 +1771,9 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
   ): Promise<void> {
     const cleanSource = sourcePath.replace(/\/\.$/g, '');
     if (!this.isPathWithinBase(cleanSource, workspaceRoot)) {
-      throw new Error(`Refusing to extract artifacts outside workspace: ${cleanSource}`);
+      throw new Error(
+        `Refusing to extract artifacts outside workspace: ${cleanSource}`,
+      );
     }
 
     const archive = await this.capturePodTarStream(podName, cleanSource);
@@ -1424,7 +1804,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     let totalBytes = 0;
     const stdout = new Writable({
       write: (chunk, _encoding, callback) => {
-        const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+        const buffer = Buffer.from(chunk as Uint8Array);
         totalBytes += buffer.length;
         if (totalBytes > ContainerExecutorService.MAX_ARTIFACT_ARCHIVE_BYTES) {
           callback(
@@ -1441,7 +1821,9 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     const stderrChunks: Buffer[] = [];
     const stderr = new Writable({
       write: (chunk, _encoding, callback) => {
-        stderrChunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
+        stderrChunks.push(
+          Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)),
+        );
         callback();
       },
     });
@@ -1451,7 +1833,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       '-c',
       `if [ -e ${this.escapeShellArg(sourcePath)} ]; then tar cf - -C ${this.escapeShellArg(sourcePath)} .; fi`,
     ];
-    const socket = await this.execClient!.exec(
+    const socket = (await this.execClient!.exec(
       this.executionNamespace,
       podName,
       'execution',
@@ -1460,12 +1842,13 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       stderr,
       null,
       false,
-    );
+    )) as unknown as ExecSocket;
 
-    await new Promise<void>((resolve, reject) => {
-      socket.on('close', () => resolve());
-      socket.on('error', (error) => reject(error));
-    });
+    await this.waitForExecSocket(
+      socket,
+      `artifact extraction from pod ${podName}`,
+      this.artifactSocketTimeoutMs,
+    );
 
     const stderrText = Buffer.concat(stderrChunks).toString('utf8').trim();
     if (stderrText) {
@@ -1485,10 +1868,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     await finished(Readable.from(archive).pipe(parser));
   }
 
-  private validateTarEntry(
-    entryPath: string,
-    entry: unknown,
-  ): void {
+  private validateTarEntry(entryPath: string, entry: unknown): void {
     const normalized = entryPath.replace(/\\/g, '/');
     if (
       path.posix.isAbsolute(normalized) ||
@@ -1554,7 +1934,6 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
           );
           onCancelled();
           await this.deleteExecutionJob(jobName);
-          await this.cancellationService.clearCancellationSignal(runId);
           clearInterval(interval);
           this.activeCancellationIntervals.delete(interval);
         } catch (error) {
@@ -1589,9 +1968,47 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
         !message.includes('NotFound') &&
         !message.includes('not found')
       ) {
-        this.logger.warn(`Failed to delete execution job ${jobName}: ${message}`);
+        this.logger.warn(
+          `Failed to delete execution job ${jobName}: ${message}`,
+        );
       }
     }
+  }
+
+  private async waitForExecSocket(
+    socket: ExecSocket,
+    operation: string,
+    timeoutMs = ContainerExecutorService.EXEC_SOCKET_TIMEOUT_MS,
+  ): Promise<void> {
+    await new Promise<void>((resolve, reject) => {
+      let settled = false;
+      const finish = (error?: Error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        if (error) reject(error);
+        else resolve();
+      };
+      const timeout = setTimeout(() => {
+        try {
+          socket.close();
+        } catch {
+          // Socket may already be closing.
+        }
+        finish(new Error(`${operation} timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+
+      socket.on('close', () => finish());
+      socket.on('error', (error: Error) => finish(error));
+
+      // A very short exec (for example, reading the exit-code file) can close
+      // between Exec.exec() resolving and this helper attaching listeners.
+      // WebSocket CLOSED is 3; checking after listener registration closes both
+      // sides of the race without relying on an event that has already fired.
+      if (socket.readyState === 3) {
+        finish();
+      }
+    });
   }
 
   private async sleep(ms: number): Promise<void> {
@@ -1649,7 +2066,10 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     }
 
     const normalizedInput = path.posix.normalize(value.replace(/\\/g, '/'));
-    if (allowAbsoluteTmp && (normalizedInput === '/tmp' || normalizedInput.startsWith('/tmp/'))) {
+    if (
+      allowAbsoluteTmp &&
+      (normalizedInput === '/tmp' || normalizedInput.startsWith('/tmp/'))
+    ) {
       return {
         valid: true,
         normalized: normalizedInput,
@@ -1663,10 +2083,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       };
     }
 
-    if (
-      normalizedInput === '..' ||
-      normalizedInput.startsWith('../')
-    ) {
+    if (normalizedInput === '..' || normalizedInput.startsWith('../')) {
       return {
         valid: false,
         error: `${label} must not escape the execution workspace`,
@@ -1695,8 +2112,13 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  private resolveWorkspacePath(workspace: string, containerPath: string): string {
-    const normalizedPath = path.posix.normalize(containerPath.replace(/\\/g, '/'));
+  private resolveWorkspacePath(
+    workspace: string,
+    containerPath: string,
+  ): string {
+    const normalizedPath = path.posix.normalize(
+      containerPath.replace(/\\/g, '/'),
+    );
     if (normalizedPath === '/tmp' || normalizedPath === '/tmp/') {
       return workspace;
     }
@@ -1719,7 +2141,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
 
     if (trimmed.startsWith('{')) {
       try {
-        const parsed = JSON.parse(trimmed);
+        const parsed: unknown = JSON.parse(trimmed) as unknown;
         if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') {
           throw new Error('value must be a JSON object');
         }
@@ -1770,12 +2192,12 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     }
 
     try {
-      const parsed = JSON.parse(trimmed);
+      const parsed: unknown = JSON.parse(trimmed) as unknown;
       if (!Array.isArray(parsed)) {
         throw new Error('value must be a JSON array');
       }
 
-      const tolerations = parsed.filter(
+      const tolerations = (parsed as unknown[]).filter(
         (item): item is k8s.V1Toleration =>
           !!item && typeof item === 'object' && !Array.isArray(item),
       );
@@ -1808,22 +2230,17 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     }
 
     const nameservers = Array.from(
-      new Set(
-        trimmed
-          .split(',')
-          .map((ns) => ns.trim()),
-      ),
-    )
-      .filter((ns) => {
-        if (!ns) return false;
-        if (!this.isValidIpv4Address(ns)) {
-          this.logger.warn(
-            `Invalid nameserver IP in EXECUTION_DNS_NAMESERVERS: "${ns}"; skipping`,
-          );
-          return false;
-        }
-        return true;
-      });
+      new Set(trimmed.split(',').map((ns) => ns.trim())),
+    ).filter((ns) => {
+      if (!ns) return false;
+      if (!this.isValidIpv4Address(ns)) {
+        this.logger.warn(
+          `Invalid nameserver IP in EXECUTION_DNS_NAMESERVERS: "${ns}"; skipping`,
+        );
+        return false;
+      }
+      return true;
+    });
 
     return nameservers.length > 0 ? nameservers : undefined;
   }
@@ -1962,9 +2379,9 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     timeoutMs: number;
   }): ValidatedLimits {
     const MIN_MEMORY_MB = 128;
-    const MAX_MEMORY_MB = 8192;
+    const MAX_MEMORY_MB = Math.min(8192, this.maxExecutionMemoryLimitMb);
     const MIN_CPU = 0.1;
-    const MAX_CPU = 4.0;
+    const MAX_CPU = Math.min(4.0, this.maxExecutionCpuLimit);
     const MIN_TIMEOUT_MS = 5000;
     const MAX_TIMEOUT_MS = 3600000;
 

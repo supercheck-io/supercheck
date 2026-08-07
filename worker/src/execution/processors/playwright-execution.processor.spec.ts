@@ -541,11 +541,14 @@ describe('PlaywrightExecutionProcessor', () => {
         mockCancellationService.isCancelled.mockResolvedValue(true);
         const job = createMockJob(mockJobTask);
 
-        await expect(processor.process(job)).rejects.toThrow('cancelled');
+        await expect(processor.process(job)).resolves.toMatchObject({
+          success: false,
+          error: 'Cancellation requested by user',
+        });
         expect(mockExecutionService.runJob).not.toHaveBeenCalled();
       });
 
-      it('should clear cancellation signal after handling', async () => {
+      it('should retain cancellation signal until its TTL expires', async () => {
         mockCancellationService.isCancelled.mockResolvedValue(true);
         const job = createMockJob(mockJobTask);
 
@@ -557,7 +560,7 @@ describe('PlaywrightExecutionProcessor', () => {
 
         expect(
           mockCancellationService.clearCancellationSignal,
-        ).toHaveBeenCalledWith(runId);
+        ).not.toHaveBeenCalled();
       });
 
       it('should update run status to error on cancellation', async () => {

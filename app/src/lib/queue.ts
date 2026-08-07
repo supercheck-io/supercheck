@@ -12,6 +12,7 @@ import {
   getAllEnabledLocationCodes,
   getFirstDefaultLocationCode,
 } from "./location-registry";
+import { omitExecutionSecrets } from "./execution-payload";
 import {
   partitionMonitorLocationsByAvailability,
   resolveMonitorLocations,
@@ -926,13 +927,15 @@ export async function addTestToQueue(task: TestExecutionTask): Promise<{
 }> {
   const jobId = task.runId ?? task.testId;
   const orgId = task.organizationId || "global";
+  const queuedAt = Date.now();
+  const safeTask = omitExecutionSecrets(task);
 
   try {
     const { getCapacityManager } = await import("./capacity-manager");
     const capacityManager = await getCapacityManager();
 
     // Check capacity atomically
-    const result = await capacityManager.reserveSlot(orgId);
+    const result = await capacityManager.reserveSlot(orgId, jobId, queuedAt);
 
     if (result === 0) {
       // Queue is full
@@ -955,7 +958,7 @@ export async function addTestToQueue(task: TestExecutionTask): Promise<{
         await queue.add(
           jobId,
           {
-            ...task,
+            ...safeTask,
             _capacityStatus: "immediate",
           },
           { jobId }
@@ -976,8 +979,8 @@ export async function addTestToQueue(task: TestExecutionTask): Promise<{
       runId: jobId,
       organizationId: orgId,
       projectId: task.projectId || "",
-      taskData: task as unknown as Record<string, unknown>,
-      queuedAt: Date.now(),
+      taskData: safeTask as unknown as Record<string, unknown>,
+      queuedAt,
     };
 
     const position = await capacityManager.addToQueue(orgId, queuedJobData);
@@ -1010,12 +1013,14 @@ export async function addJobToQueue(task: JobExecutionTask): Promise<{
 }> {
   const runId = task.runId;
   const orgId = task.organizationId || "global";
+  const queuedAt = Date.now();
+  const safeTask = omitExecutionSecrets(task);
 
   try {
     const { getCapacityManager } = await import("./capacity-manager");
     const capacityManager = await getCapacityManager();
 
-    const result = await capacityManager.reserveSlot(orgId);
+    const result = await capacityManager.reserveSlot(orgId, runId, queuedAt);
 
     if (result === 0) {
       const usage = await capacityManager.getCurrentUsage(orgId);
@@ -1036,7 +1041,7 @@ export async function addJobToQueue(task: JobExecutionTask): Promise<{
         await queue.add(
           runId,
           {
-            ...task,
+            ...safeTask,
             _capacityStatus: "immediate",
           },
           { jobId: runId }
@@ -1057,8 +1062,8 @@ export async function addJobToQueue(task: JobExecutionTask): Promise<{
       runId,
       organizationId: orgId,
       projectId: task.projectId || "",
-      taskData: task as unknown as Record<string, unknown>,
-      queuedAt: Date.now(),
+      taskData: safeTask as unknown as Record<string, unknown>,
+      queuedAt,
     };
 
     const position = await capacityManager.addToQueue(orgId, queuedJobData);
@@ -1094,6 +1099,8 @@ export async function addK6TestToQueue(
 }> {
   const runId = task.runId;
   const orgId = task.organizationId || "global";
+  const queuedAt = Date.now();
+  const safeTask = omitExecutionSecrets(task);
 
   // Resolve the queue location: use caller-provided location, or fall back to DB default.
   const k6TestLocation = task.location || await getFirstDefaultLocationCode();
@@ -1104,7 +1111,7 @@ export async function addK6TestToQueue(
     const { getCapacityManager } = await import("./capacity-manager");
     const capacityManager = await getCapacityManager();
 
-    const result = await capacityManager.reserveSlot(orgId);
+    const result = await capacityManager.reserveSlot(orgId, runId, queuedAt);
 
     if (result === 0) {
       const usage = await capacityManager.getCurrentUsage(orgId);
@@ -1125,7 +1132,7 @@ export async function addK6TestToQueue(
         await queue.add(
           jobName,
           {
-            ...task,
+            ...safeTask,
             location: k6TestLocation,
             _capacityStatus: "immediate",
           },
@@ -1147,11 +1154,11 @@ export async function addK6TestToQueue(
       runId,
       organizationId: orgId,
       projectId: task.projectId || "",
-      taskData: { ...task, _jobName: jobName, location: k6TestLocation } as unknown as Record<
+      taskData: { ...safeTask, _jobName: jobName, location: k6TestLocation } as unknown as Record<
         string,
         unknown
       >,
-      queuedAt: Date.now(),
+      queuedAt,
     };
 
     const position = await capacityManager.addToQueue(orgId, queuedJobData);
@@ -1191,6 +1198,8 @@ export async function addK6JobToQueue(
 }> {
   const runId = task.runId;
   const orgId = task.organizationId || "global";
+  const queuedAt = Date.now();
+  const safeTask = omitExecutionSecrets(task);
 
   // Respect the caller-provided location (already validated by resolveProjectK6Location);
   // fall back to the instance default only when no location was specified.
@@ -1202,7 +1211,7 @@ export async function addK6JobToQueue(
     const { getCapacityManager } = await import("./capacity-manager");
     const capacityManager = await getCapacityManager();
 
-    const result = await capacityManager.reserveSlot(orgId);
+    const result = await capacityManager.reserveSlot(orgId, runId, queuedAt);
 
     if (result === 0) {
       const usage = await capacityManager.getCurrentUsage(orgId);
@@ -1223,7 +1232,7 @@ export async function addK6JobToQueue(
         await queue.add(
           jobName,
           {
-            ...task,
+            ...safeTask,
             location: k6JobLocation,
             _capacityStatus: "immediate",
           },
@@ -1246,11 +1255,11 @@ export async function addK6JobToQueue(
       organizationId: orgId,
       projectId: task.projectId || "",
       taskData: {
-        ...task,
+        ...safeTask,
         _jobName: jobName,
         location: k6JobLocation,
       } as unknown as Record<string, unknown>,
-      queuedAt: Date.now(),
+      queuedAt,
     };
 
     const position = await capacityManager.addToQueue(orgId, queuedJobData);

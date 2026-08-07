@@ -44,7 +44,14 @@ jest.mock("@/lib/job-execution-utils", () => ({
 }));
 
 jest.mock("@/lib/security/api-key-hash", () => ({
-  verifyApiKey: jest.fn(),
+  hashApiKey: jest.fn(),
+}));
+
+jest.mock("@/lib/execution-rate-limiter", () => ({
+  checkExecutionRateLimit: jest.fn().mockResolvedValue({
+    allowed: true,
+    retryAfter: 1,
+  }),
 }));
 
 jest.mock("@/lib/api-key-rate-limiter", () => ({
@@ -127,9 +134,9 @@ const { prepareJobTestScripts: mockPrepareJobTestScripts } = jest.requireMock(
   "@/lib/job-execution-utils",
 ) as { prepareJobTestScripts: jest.Mock };
 
-const { verifyApiKey: mockVerifyApiKey } = jest.requireMock(
+const { hashApiKey: mockHashApiKey } = jest.requireMock(
   "@/lib/security/api-key-hash",
-) as { verifyApiKey: jest.Mock };
+) as { hashApiKey: jest.Mock };
 
 const {
   apiKeyRateLimiter,
@@ -177,7 +184,7 @@ describe("Execution route regressions", () => {
       variableResolution: { variables: {}, secrets: {} },
     });
 
-    mockVerifyApiKey.mockReturnValue(true);
+    mockHashApiKey.mockReturnValue("hashed-key");
     mockParseRateLimitConfig.mockReturnValue({ enabled: true, timeWindow: 60, maxRequests: 10 });
     apiKeyRateLimiter.checkAndIncrement.mockResolvedValue({
       allowed: true,
@@ -282,8 +289,8 @@ describe("Execution route regressions", () => {
 
     const apiKeySelect = {
       from: jest.fn().mockReturnValue({
-        where: jest.fn().mockResolvedValue([
-          {
+        where: jest.fn().mockReturnValue({
+          limit: jest.fn().mockResolvedValue([{
             id: "apikey-1",
             name: "key-1",
             key: "hashed-key",
@@ -296,8 +303,8 @@ describe("Execution route regressions", () => {
             rateLimitEnabled: true,
             rateLimitTimeWindow: 60,
             rateLimitMax: 10,
-          },
-        ]),
+          }]),
+        }),
       }),
     };
 

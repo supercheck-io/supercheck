@@ -19,6 +19,7 @@ import { subscriptionService } from "@/lib/services/subscription-service";
 import { polarUsageService } from "@/lib/services/polar-usage.service";
 import { resolveProjectK6Location } from "@/lib/location-registry";
 import { buildBillingBlockedResponse } from "@/lib/billing-errors";
+import { checkExecutionRateLimit } from "@/lib/execution-rate-limiter";
 
 export async function POST(request: Request) {
   let jobId: string | null = null;
@@ -35,16 +36,27 @@ export async function POST(request: Request) {
     const trigger = data.trigger as JobTrigger; // Requested trigger from request body
     
     // Validate trigger value
-    if (!trigger || !['manual', 'remote', 'schedule'].includes(trigger)) {
+    if (!trigger || !['manual', 'remote'].includes(trigger)) {
       console.error("Invalid trigger value:", trigger);
       return NextResponse.json(
-        { error: "Invalid trigger value. Must be one of 'manual', 'remote', or 'schedule'." },
+        { error: "Invalid trigger value. Must be 'manual' or 'remote'." },
         { status: 400 }
       );
     }
 
     // Normalize trigger source: CLI-initiated remote executions should always be tracked as remote.
     const effectiveTrigger: JobTrigger = isCliAuth ? "remote" : trigger;
+
+    const rateLimit = await checkExecutionRateLimit(userId, organizationId);
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { error: "Execution rate limit reached. Please try again shortly." },
+        {
+          status: 429,
+          headers: { "Retry-After": String(rateLimit.retryAfter) },
+        },
+      );
+    }
 
     console.log(`Received job execution request:`, { jobId, testCount: testData?.length });
     

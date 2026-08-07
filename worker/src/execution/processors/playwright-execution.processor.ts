@@ -18,7 +18,10 @@ import { eq } from 'drizzle-orm';
 import { jobs } from '../../db/schema';
 import { ErrorHandler } from '../../common/utils/error-handler';
 
-@Processor(PLAYWRIGHT_QUEUE, { concurrency: 1 })
+@Processor(PLAYWRIGHT_QUEUE, {
+  concurrency: 1,
+  lockDuration: 70 * 60 * 1000,
+})
 export class PlaywrightExecutionProcessor extends WorkerHost {
   private readonly logger = new Logger(PlaywrightExecutionProcessor.name);
 
@@ -225,10 +228,22 @@ export class PlaywrightExecutionProcessor extends WorkerHost {
           ),
         );
 
-      // Clear the cancellation signal
-      await this.cancellationService.clearCancellationSignal(runId);
-
-      throw new Error('Execution cancelled by user');
+      return {
+        jobId: originalJobId || jobData.jobId,
+        success: false,
+        error: 'Cancellation requested by user',
+        reportUrl: null,
+        results: jobData.testScripts.map((test) => ({
+          testId: test.id,
+          success: false,
+          error: 'Cancellation requested by user',
+          reportUrl: null,
+        })),
+        timestamp: new Date().toISOString(),
+        totalTests: jobData.testScripts.length,
+        passedTests: 0,
+        failedTests: jobData.testScripts.length,
+      };
     }
 
     // Check for hard stop before execution (billing limit enforcement)
