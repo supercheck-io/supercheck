@@ -16,6 +16,7 @@ function positiveLimit(value: string | undefined, fallback: number): number {
 export interface ExecutionRateLimitResult {
   allowed: boolean;
   retryAfter: number;
+  reason?: "rate_limited" | "unavailable";
 }
 
 /**
@@ -92,12 +93,17 @@ export async function checkExecutionRateLimit(
       allowed: allowed === 1,
       retryAfter:
         allowed === 1 ? 0 : Math.max(1, Math.ceil((retryAt - now) / 1000)),
+      reason: allowed === 1 ? undefined : "rate_limited",
     };
   } catch (error) {
     logger.error(
       { error, userId, organizationId },
       "Execution rate limiter unavailable",
     );
-    return { allowed: false, retryAfter: WINDOW_SECONDS };
+    return {
+      allowed: false,
+      retryAfter: WINDOW_SECONDS,
+      reason: "unavailable",
+    };
   }
 }

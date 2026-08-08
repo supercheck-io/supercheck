@@ -1,6 +1,7 @@
 /** @jest-environment node */
 
 import { NextRequest } from "next/server";
+import { ExecutionQueueError } from "@/lib/execution-errors";
 
 jest.mock("@/utils/db", () => ({
   db: {
@@ -31,12 +32,24 @@ jest.mock("@/lib/queue", () => ({
   addK6JobToQueue: jest.fn(),
 }));
 
+jest.mock("@/lib/playwright-validator", () => ({
+  playwrightValidationService: {
+    validateCode: jest.fn(),
+  },
+}));
+
+jest.mock("@/lib/audit-logger", () => ({
+  logAuditEvent: jest.fn(),
+}));
+
 jest.mock("@/lib/k6-validator", () => ({
+  isK6Script: jest.fn(),
   validateK6Script: jest.fn(),
 }));
 
 jest.mock("@/lib/variable-resolver", () => ({
   resolveProjectVariables: jest.fn(),
+  extractVariableNames: jest.fn(),
 }));
 
 jest.mock("@/lib/job-execution-utils", () => ({
@@ -88,8 +101,13 @@ jest.mock("@/lib/location-registry", () => ({
   getFirstDefaultLocationCode: jest.fn().mockResolvedValue("local"),
 }));
 
-import { GET as getTriggerInfo, POST as postTrigger } from "./jobs/[id]/trigger/route";
+import {
+  GET as getTriggerInfo,
+  POST as postTrigger,
+} from "./jobs/[id]/trigger/route";
+import { POST as executePlaygroundTest } from "./test/route";
 import { POST as executeSingleTest } from "./tests/[id]/execute/route";
+import { POST as executeJob } from "./jobs/run/route";
 
 const { db: mockDb } = jest.requireMock("@/utils/db") as {
   db: {
@@ -121,14 +139,28 @@ const {
   addJobToQueue: jest.Mock;
 };
 
-const { validateK6Script: mockValidateK6Script } = jest.requireMock(
-  "@/lib/k6-validator",
-) as { validateK6Script: jest.Mock };
-
-const { resolveProjectVariables: mockResolveProjectVariables } =
-  jest.requireMock("@/lib/variable-resolver") as {
-    resolveProjectVariables: jest.Mock;
+const { playwrightValidationService: mockPlaywrightValidationService } =
+  jest.requireMock("@/lib/playwright-validator") as {
+    playwrightValidationService: { validateCode: jest.Mock };
   };
+
+const { logAuditEvent: mockLogAuditEvent } = jest.requireMock(
+  "@/lib/audit-logger",
+) as { logAuditEvent: jest.Mock };
+
+const { isK6Script: mockIsK6Script, validateK6Script: mockValidateK6Script } =
+  jest.requireMock("@/lib/k6-validator") as {
+    isK6Script: jest.Mock;
+    validateK6Script: jest.Mock;
+  };
+
+const {
+  resolveProjectVariables: mockResolveProjectVariables,
+  extractVariableNames: mockExtractVariableNames,
+} = jest.requireMock("@/lib/variable-resolver") as {
+  resolveProjectVariables: jest.Mock;
+  extractVariableNames: jest.Mock;
+};
 
 const { prepareJobTestScripts: mockPrepareJobTestScripts } = jest.requireMock(
   "@/lib/job-execution-utils",
@@ -163,11 +195,17 @@ const { polarUsageService: mockPolarUsageService } =
     };
   };
 
+const { checkExecutionRateLimit: mockCheckExecutionRateLimit } =
+  jest.requireMock("@/lib/execution-rate-limiter") as {
+    checkExecutionRateLimit: jest.Mock;
+  };
+
 describe("Execution route regressions", () => {
   const authCtx = {
     userId: "user-1",
     organizationId: "org-1",
     project: { id: "project-1", name: "Project" },
+    isCliAuth: false,
   };
 
   beforeEach(() => {
@@ -177,8 +215,23 @@ describe("Execution route regressions", () => {
     mockIsAuthError.mockReturnValue(false);
     mockCheckPermissionWithContext.mockReturnValue(true);
 
-    mockValidateK6Script.mockReturnValue({ valid: true, errors: [], warnings: [] });
-    mockResolveProjectVariables.mockResolvedValue({ variables: {}, secrets: {} });
+    mockPlaywrightValidationService.validateCode.mockReturnValue({
+      valid: true,
+    });
+    mockLogAuditEvent.mockResolvedValue(undefined);
+    mockIsK6Script.mockReturnValue(false);
+    mockValidateK6Script.mockReturnValue({
+      valid: true,
+      errors: [],
+      warnings: [],
+    });
+    mockResolveProjectVariables.mockResolvedValue({
+      variables: {},
+      secrets: {},
+      files: {},
+      errors: [],
+    });
+    mockExtractVariableNames.mockReturnValue([]);
     mockPrepareJobTestScripts.mockResolvedValue({
       testScripts: [{ id: "test-1", name: "Test 1", script: "console.log('ok')", type: "playwright" }],
       variableResolution: { variables: {}, secrets: {} },
@@ -195,11 +248,23 @@ describe("Execution route regressions", () => {
     });
     mockCreateRateLimitHeaders.mockReturnValue({});
 
-	    mockSubscriptionServiceSingleton.blockUntilSubscribed.mockResolvedValue(undefined);
-	    mockSubscriptionServiceSingleton.requireValidPolarCustomer.mockResolvedValue(undefined);
-	    mockSubscriptionServiceSingleton.getOrganizationPlan.mockResolvedValue({ plan: "pro" });
-	    mockPolarUsageService.shouldBlockUsage.mockResolvedValue({ blocked: false });
-	  });
+    mockSubscriptionServiceSingleton.blockUntilSubscribed.mockResolvedValue(
+      undefined,
+    );
+    mockSubscriptionServiceSingleton.requireValidPolarCustomer.mockResolvedValue(
+      undefined,
+    );
+    mockSubscriptionServiceSingleton.getOrganizationPlan.mockResolvedValue({
+      plan: "pro",
+    });
+    mockPolarUsageService.shouldBlockUsage.mockResolvedValue({
+      blocked: false,
+    });
+    mockCheckExecutionRateLimit.mockResolvedValue({
+      allowed: true,
+      retryAfter: 0,
+    });
+  });
 
   it("GET /api/jobs/[id]/trigger returns 401 when auth fails", async () => {
     const authError = new Error("Authentication required");
@@ -213,6 +278,81 @@ describe("Execution route regressions", () => {
     });
 
     expect(response.status).toBe(401);
+  });
+
+  it("rejects cross-origin browser execution requests", async () => {
+    const playgroundResponse = await executePlaygroundTest(
+      new NextRequest("http://localhost/api/test", {
+        method: "POST",
+        body: JSON.stringify({ script: "test('smoke', async () => {})" }),
+        headers: {
+          "content-type": "application/json",
+          origin: "https://attacker.example",
+        },
+      }),
+    );
+    const savedTestResponse = await executeSingleTest(
+      new NextRequest("http://localhost/api/tests/test-1/execute", {
+        method: "POST",
+        body: JSON.stringify({}),
+        headers: {
+          "content-type": "application/json",
+          origin: "https://attacker.example",
+        },
+      }),
+      { params: Promise.resolve({ id: "test-1" }) },
+    );
+    const jobResponse = await executeJob(
+      new NextRequest("http://localhost/api/jobs/run", {
+        method: "POST",
+        body: JSON.stringify({ trigger: "manual" }),
+        headers: {
+          "content-type": "application/json",
+          origin: "https://attacker.example",
+        },
+      }),
+    );
+
+    expect(playgroundResponse.status).toBe(403);
+    expect(savedTestResponse.status).toBe(403);
+    expect(jobResponse.status).toBe(403);
+    expect(mockCheckExecutionRateLimit).not.toHaveBeenCalled();
+  });
+
+  it("allows origin-less authenticated CLI calls to reach job validation", async () => {
+    mockRequireAuthContext.mockResolvedValueOnce({
+      ...authCtx,
+      isCliAuth: true,
+    });
+
+    const response = await executeJob(
+      new NextRequest("http://localhost/api/jobs/run", {
+        method: "POST",
+        body: JSON.stringify({ trigger: "invalid" }),
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: expect.stringContaining("Invalid trigger value"),
+    });
+  });
+
+  it("rejects a non-string playground script before validation", async () => {
+    const response = await executePlaygroundTest(
+      new NextRequest("http://localhost/api/test", {
+        method: "POST",
+        body: JSON.stringify({ script: { source: "unexpected" } }),
+        headers: {
+          "content-type": "application/json",
+          origin: "http://localhost",
+        },
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(mockPlaywrightValidationService.validateCode).not.toHaveBeenCalled();
   });
 
 	  it("POST /api/tests/[id]/execute persists and returns queue status", async () => {
@@ -239,7 +379,10 @@ describe("Execution route regressions", () => {
     const request = new NextRequest("http://localhost/api/tests/test-1/execute", {
       method: "POST",
       body: JSON.stringify({}),
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        origin: "http://localhost",
+      },
     });
 
     const response = await executeSingleTest(request, {
@@ -265,7 +408,10 @@ describe("Execution route regressions", () => {
 	    const request = new NextRequest("http://localhost/api/tests/test-1/execute", {
 	      method: "POST",
 	      body: JSON.stringify({}),
-	      headers: { "content-type": "application/json" },
+	      headers: {
+	        "content-type": "application/json",
+	        origin: "http://localhost",
+	      },
 	    });
 
 	    const response = await executeSingleTest(request, {
@@ -283,6 +429,180 @@ describe("Execution route regressions", () => {
 	    expect(mockDb.query.tests.findFirst).not.toHaveBeenCalled();
 	    expect(mockAddTestToQueue).not.toHaveBeenCalled();
 	  });
+
+  it("POST /api/tests/[id]/execute returns 503 when admission is unavailable", async () => {
+    mockCheckExecutionRateLimit.mockResolvedValue({
+      allowed: false,
+      retryAfter: 60,
+      reason: "unavailable",
+    });
+
+    const response = await executeSingleTest(
+      new NextRequest("http://localhost/api/tests/test-1/execute", {
+        method: "POST",
+        body: JSON.stringify({}),
+        headers: {
+          "content-type": "application/json",
+          origin: "http://localhost",
+        },
+      }),
+      { params: Promise.resolve({ id: "test-1" }) },
+    );
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "EXECUTION_ADMISSION_UNAVAILABLE",
+    });
+    expect(mockDb.insert).not.toHaveBeenCalled();
+    expect(mockAddTestToQueue).not.toHaveBeenCalled();
+  });
+
+  it("POST /api/test returns 503 before creating a run when admission is unavailable", async () => {
+    mockCheckExecutionRateLimit.mockResolvedValue({
+      allowed: false,
+      retryAfter: 60,
+      reason: "unavailable",
+    });
+
+    const response = await executePlaygroundTest(
+      new NextRequest("http://localhost/api/test", {
+        method: "POST",
+        body: JSON.stringify({ script: "test('smoke', async () => {})" }),
+        headers: {
+          "content-type": "application/json",
+          origin: "http://localhost",
+        },
+      }),
+    );
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "EXECUTION_ADMISSION_UNAVAILABLE",
+    });
+    expect(mockDb.insert).not.toHaveBeenCalled();
+    expect(mockAddTestToQueue).not.toHaveBeenCalled();
+  });
+
+  it("POST /api/test finalizes the run when queue admission fails", async () => {
+    mockDb.insert.mockReturnValue({
+      values: jest.fn().mockReturnValue({
+        returning: jest.fn().mockResolvedValue([{ id: "playground-rejected" }]),
+      }),
+    });
+    const updateSet = jest.fn().mockReturnValue({
+      where: jest.fn().mockResolvedValue(undefined),
+    });
+    mockDb.update.mockReturnValue({ set: updateSet });
+    mockAddTestToQueue.mockRejectedValue(
+      new ExecutionQueueError(
+        "capacity_unavailable",
+        "capacity backend offline",
+      ),
+    );
+
+    const response = await executePlaygroundTest(
+      new NextRequest("http://localhost/api/test", {
+        method: "POST",
+        body: JSON.stringify({ script: "test('smoke', async () => {})" }),
+        headers: {
+          "content-type": "application/json",
+          origin: "http://localhost",
+        },
+      }),
+    );
+
+    expect(response.status).toBe(503);
+    expect(updateSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "failed",
+        errorDetails: "Execution capacity service temporarily unavailable",
+      }),
+    );
+  });
+
+  it("POST /api/test keeps an admitted run successful when audit logging fails", async () => {
+    mockDb.insert.mockReturnValue({
+      values: jest.fn().mockReturnValue({
+        returning: jest.fn().mockResolvedValue([{ id: "playground-admitted" }]),
+      }),
+    });
+    const updateSet = jest.fn().mockReturnValue({
+      where: jest.fn().mockResolvedValue(undefined),
+    });
+    mockDb.update.mockReturnValue({ set: updateSet });
+    mockAddTestToQueue.mockResolvedValue({
+      runId: "playground-admitted",
+      status: "queued",
+      position: 1,
+    });
+    mockLogAuditEvent.mockRejectedValue(new Error("audit unavailable"));
+
+    const response = await executePlaygroundTest(
+      new NextRequest("http://localhost/api/test", {
+        method: "POST",
+        body: JSON.stringify({ script: "test('smoke', async () => {})" }),
+        headers: {
+          "content-type": "application/json",
+          origin: "http://localhost",
+        },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      runId: "playground-admitted",
+    });
+    expect(updateSet).toHaveBeenCalledWith({ status: "queued" });
+    expect(updateSet).not.toHaveBeenCalledWith(
+      expect.objectContaining({ status: "failed" }),
+    );
+  });
+
+  it("POST /api/tests/[id]/execute finalizes the run when queue admission fails", async () => {
+    mockDb.query.tests.findFirst.mockResolvedValue({
+      id: "test-1",
+      type: "playwright",
+      script: Buffer.from("test('smoke', async () => {})").toString("base64"),
+      projectId: "project-1",
+      organizationId: "org-1",
+    });
+
+    mockDb.insert.mockReturnValue({
+      values: jest.fn().mockReturnValue({
+        returning: jest.fn().mockResolvedValue([{ id: "run-rejected" }]),
+      }),
+    });
+    const updateSet = jest.fn().mockReturnValue({
+      where: jest.fn().mockResolvedValue(undefined),
+    });
+    mockDb.update.mockReturnValue({ set: updateSet });
+    mockAddTestToQueue.mockRejectedValue(
+      new ExecutionQueueError(
+        "capacity_unavailable",
+        "capacity backend offline",
+      ),
+    );
+
+    const response = await executeSingleTest(
+      new NextRequest("http://localhost/api/tests/test-1/execute", {
+        method: "POST",
+        body: JSON.stringify({}),
+        headers: {
+          "content-type": "application/json",
+          origin: "http://localhost",
+        },
+      }),
+      { params: Promise.resolve({ id: "test-1" }) },
+    );
+
+    expect(response.status).toBe(503);
+    expect(updateSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "failed",
+        errorDetails: "Execution capacity service temporarily unavailable",
+      }),
+    );
+  });
 
   it("POST /api/jobs/[id]/trigger starts queued and updates status from queue result", async () => {
     const jobId = "00000000-0000-4000-8000-000000000010";

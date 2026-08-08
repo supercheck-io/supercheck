@@ -40,6 +40,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Fixed
 
+- Fixed Kubernetes execution startup by creating the per-run workspace before assembling the Secret-mounted runner payload, restoring playground and scheduled Playwright execution.
+- Finalized run records when queue admission fails and distinguished authoritative rate/capacity limits (HTTP 429) from retryable admission or queue outages (HTTP 503).
 - Fixed AI SRE billing recovery on PostgreSQL by comparing JSON investigation IDs to UUID run IDs with an explicit safe text cast.
 - Fixed long incident labels overflowing the Investigation Map filter.
 - Fixed sparse Investigation Map node details opening in a mostly empty fixed-height dialog.
@@ -56,6 +58,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Security
 
+- Kept execution admission fail-closed without misreporting Redis uncertainty as exhausted capacity, applied the authenticated execution rate limit consistently to playground runs, and prevented workers from executing with unresolved tenant secrets.
 - Enforced server-side service update/configure permissions, current-project ownership, active endpoint checks, duplicate/self-link rejection, and redacted audit metadata for every topology mutation.
 - Kept discovered and AI-suggested dependencies outside trusted topology until an authorized user explicitly approves them.
 - Kept alert correlation and staged evidence disabled by default, tenant/project scoped, bounded, reversible, and isolated so correlation failures cannot block normal incident creation.

@@ -955,6 +955,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     const bootstrapScript =
       payloadSecretNames.length > 0
         ? [
+            `mkdir -p ${this.escapeShellArg(workspace)}`,
             `cat ${payloadPaths.map((value) => this.escapeShellArg(value)).join(' ')} > ${this.escapeShellArg(runnerPath)}`,
             ...(runtimeSecretName
               ? [

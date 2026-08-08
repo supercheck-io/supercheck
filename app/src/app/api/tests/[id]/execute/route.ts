@@ -18,6 +18,12 @@ import { SubscriptionService } from "@/lib/services/subscription-service";
 import { polarUsageService } from "@/lib/services/polar-usage.service";
 import { buildBillingBlockedResponse } from "@/lib/billing-errors";
 import { checkExecutionRateLimit } from "@/lib/execution-rate-limiter";
+import {
+  buildExecutionQueueErrorResponse,
+  buildExecutionRateLimitResponse,
+  getSafeExecutionQueueErrorDetails,
+} from "@/lib/execution-api-responses";
+import { requireSameOriginRequest } from "@/lib/security/same-origin";
 declare const Buffer: {
   from(data: string, encoding: string): { toString(encoding: string): string };
 };
@@ -31,6 +37,11 @@ type ExecuteContext = {
 };
 
 export async function POST(request: NextRequest, context: ExecuteContext) {
+  const originError = requireSameOriginRequest(request);
+  if (originError) return originError;
+
+  let createdRunId: string | null = null;
+
   try {
     const authCtx = await requireAuthContext();
     const { userId, project, organizationId } = authCtx;
@@ -47,16 +58,10 @@ export async function POST(request: NextRequest, context: ExecuteContext) {
       );
     }
 
-    const rateLimit = await checkExecutionRateLimit(userId, organizationId);
-    if (!rateLimit.allowed) {
-      return NextResponse.json(
-        { error: "Execution rate limit reached. Please try again shortly." },
-        {
-          status: 429,
-          headers: { "Retry-After": String(rateLimit.retryAfter) },
-        },
-      );
-    }
+    const rateLimitResponse = buildExecutionRateLimitResponse(
+      await checkExecutionRateLimit(userId, organizationId),
+    );
+    if (rateLimitResponse) return rateLimitResponse;
 
     // Check subscription plan limits
     const subscriptionService = new SubscriptionService();
@@ -174,6 +179,7 @@ export async function POST(request: NextRequest, context: ExecuteContext) {
         startedAt: new Date(),
       })
       .returning();
+    createdRunId = run.id;
 
     // Decode script
     const decodedScript = Buffer.from(test.script, "base64").toString("utf-8");
@@ -226,9 +232,17 @@ export async function POST(request: NextRequest, context: ExecuteContext) {
     }
 
     // Update run status based on actual queue result
-    await db.update(runs)
-      .set({ status: queueStatus })
-      .where(eq(runs.id, run.id));
+    try {
+      await db
+        .update(runs)
+        .set({ status: queueStatus })
+        .where(eq(runs.id, run.id));
+    } catch (statusError) {
+      console.error(
+        `[Test Execute API] Failed to persist admitted run status for ${run.id}:`,
+        statusError,
+      );
+    }
 
     return NextResponse.json({
       runId: run.id,
@@ -244,6 +258,28 @@ export async function POST(request: NextRequest, context: ExecuteContext) {
         { status: 401 }
       );
     }
+
+    if (createdRunId) {
+      try {
+        await db
+          .update(runs)
+          .set({
+            status: "failed",
+            completedAt: new Date(),
+            errorDetails: getSafeExecutionQueueErrorDetails(error),
+          })
+          .where(eq(runs.id, createdRunId));
+      } catch (statusError) {
+        console.error(
+          `[Test Execute API] Failed to finalize rejected run ${createdRunId}:`,
+          statusError,
+        );
+      }
+    }
+
+    const queueErrorResponse = buildExecutionQueueErrorResponse(error);
+    if (queueErrorResponse) return queueErrorResponse;
+
     console.error("Error executing test:", error);
     return NextResponse.json(
       { error: "Failed to execute test" },

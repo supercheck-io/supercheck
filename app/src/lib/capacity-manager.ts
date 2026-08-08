@@ -61,6 +61,13 @@ export interface CapacityCheckResult {
   position?: number; // Queue position if status is 'queued'
 }
 
+export class CapacityReservationUnavailableError extends Error {
+  constructor(public readonly cause?: unknown) {
+    super("Unable to verify queue capacity");
+    this.name = "CapacityReservationUnavailableError";
+  }
+}
+
 // =============================================================================
 // LOGGER
 // =============================================================================
@@ -246,16 +253,19 @@ export class CapacityManager {
             { err: error, organizationId, attempt },
             "All retries exhausted for transient Redis error in reserveSlot, failing closed"
           );
-          return 0;
+          throw new CapacityReservationUnavailableError(error);
         }
 
         // Non-transient error: fail closed
-        logger.error({ err: error, organizationId }, "Failed to reserve capacity slot");
-        return 0;
+        logger.error(
+          { err: error, organizationId },
+          "Failed to reserve capacity slot",
+        );
+        throw new CapacityReservationUnavailableError(error);
       }
     }
 
-    return 0; // Unreachable, satisfies TypeScript
+    throw new CapacityReservationUnavailableError(); // Unreachable
   }
 
   /**

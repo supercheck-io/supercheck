@@ -18,12 +18,22 @@ import { runs, type K6Location } from "@/db/schema";
 import { resolveProjectK6Location } from "@/lib/location-registry";
 import { polarUsageService } from "@/lib/services/polar-usage.service";
 import { buildBillingBlockedResponse } from "@/lib/billing-errors";
+import { checkExecutionRateLimit } from "@/lib/execution-rate-limiter";
+import {
+  buildExecutionQueueErrorResponse,
+  buildExecutionRateLimitResponse,
+  getSafeExecutionQueueErrorDetails,
+} from "@/lib/execution-api-responses";
+import { requireSameOriginRequest } from "@/lib/security/same-origin";
 
 function buildReportProxyUrl(entityId: string): string {
   return `/api/test-results/${encodeURIComponent(entityId)}/report/index.html?forceIframe=true`;
 }
 
 export async function POST(request: NextRequest) {
+  const originError = requireSameOriginRequest(request);
+  if (originError) return originError;
+
   try {
     // Check authentication and permissions first
     const authCtx = await requireAuthContext();
@@ -48,11 +58,26 @@ export async function POST(request: NextRequest) {
 	      );
 	    }
 
-	    const data = await request.json();
-    const code = data.script as string;
+    const rateLimitResponse = buildExecutionRateLimitResponse(
+      await checkExecutionRateLimit(userId, organizationId),
+    );
+    if (rateLimitResponse) return rateLimitResponse;
+
+    let data;
+    try {
+      data = await request.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+
+    if (!data || typeof data !== "object" || Array.isArray(data)) {
+      return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+    }
+
+    const code = typeof data.script === "string" ? data.script : "";
     const requestedLocation = typeof data.location === "string" ? data.location : undefined;
 
-    if (!code) {
+    if (!code.trim()) {
       return NextResponse.json(
         { error: "No script provided" },
         { status: 400 }
@@ -238,9 +263,17 @@ export async function POST(request: NextRequest) {
         
         // Update run status based on actual queue result
         if (runIdForQueue) {
-          await db.update(runs)
-            .set({ status: queueResult.status })
-            .where(eq(runs.id, runIdForQueue));
+          try {
+            await db
+              .update(runs)
+              .set({ status: queueResult.status })
+              .where(eq(runs.id, runIdForQueue));
+          } catch (statusError) {
+            console.error(
+              `[Test API] Failed to persist admitted run status for ${runIdForQueue}:`,
+              statusError,
+            );
+          }
         }
       } else {
         // Route to Playwright test-execution queue
@@ -259,53 +292,79 @@ export async function POST(request: NextRequest) {
         
         // Update run status based on actual queue result
         if (runIdForQueue) {
-          await db.update(runs)
-            .set({ status: queueResult.status })
-            .where(eq(runs.id, runIdForQueue));
+          try {
+            await db
+              .update(runs)
+              .set({ status: queueResult.status })
+              .where(eq(runs.id, runIdForQueue));
+          } catch (statusError) {
+            console.error(
+              `[Test API] Failed to persist admitted run status for ${runIdForQueue}:`,
+              statusError,
+            );
+          }
         }
       }
-      
-      // Log the audit event for playground test execution
-      await logAuditEvent({
-        userId,
-        organizationId,
-        action: 'playground_test_executed',
-        resource: 'test',
-        resourceId: testId,
-        metadata: {
-          projectId: project.id,
-          projectName: project.name,
-          scriptLength: code.length,
-          executionMethod: 'playground',
-          testType: testType,
-          runId: runIdForQueue || testId,
-          location: resolvedLocation ?? undefined,
-          variablesCount: Object.keys(variableResolution.variables).length + Object.keys(variableResolution.secrets).length,
-          usedVariables: usedVariables,
-          missingVariables: missingVariables.length > 0 ? missingVariables : undefined
-        },
-        success: true
-      });
-      
-    } catch (error) {
-      // Check if this is a queue capacity error
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      
-      if (errorMessage.includes('capacity limit') || errorMessage.includes('Unable to verify queue capacity')) {
-        console.log(`[Test API] Capacity limit reached: ${errorMessage}`);
-        
-        // Return a 429 status code (Too Many Requests) with the error message
-        return NextResponse.json(
-          { error: "Queue capacity limit reached", message: errorMessage },
-          { status: 429 }
+
+      // The execution is already admitted at this point. Audit persistence is
+      // best-effort so an audit backend failure cannot turn an accepted run
+      // into a false enqueue failure or incorrectly mark it as failed.
+      try {
+        await logAuditEvent({
+          userId,
+          organizationId,
+          action: "playground_test_executed",
+          resource: "test",
+          resourceId: testId,
+          metadata: {
+            projectId: project.id,
+            projectName: project.name,
+            scriptLength: code.length,
+            executionMethod: "playground",
+            testType: testType,
+            runId: runIdForQueue || testId,
+            location: resolvedLocation ?? undefined,
+            variablesCount:
+              Object.keys(variableResolution.variables).length +
+              Object.keys(variableResolution.secrets).length,
+            usedVariables: usedVariables,
+            missingVariables:
+              missingVariables.length > 0 ? missingVariables : undefined,
+          },
+          success: true,
+        });
+      } catch (auditError) {
+        console.error(
+          `[Test API] Failed to record audit event for admitted run ${runIdForQueue}:`,
+          auditError,
         );
       }
-      
-      // For other errors, log and return a 500 status code
+    } catch (error) {
+      if (runIdForQueue) {
+        try {
+          await db
+            .update(runs)
+            .set({
+              status: "failed",
+              completedAt: new Date(),
+              errorDetails: getSafeExecutionQueueErrorDetails(error),
+            })
+            .where(eq(runs.id, runIdForQueue));
+        } catch (statusError) {
+          console.error(
+            `[Test API] Failed to finalize rejected run ${runIdForQueue}:`,
+            statusError,
+          );
+        }
+      }
+
+      const queueErrorResponse = buildExecutionQueueErrorResponse(error);
+      if (queueErrorResponse) return queueErrorResponse;
+
       console.error("Error adding test to queue:", error);
       return NextResponse.json(
-        { error: "Failed to queue test for execution", details: errorMessage },
-        { status: 500 }
+        { error: "Failed to queue test for execution" },
+        { status: 500 },
       );
     }
 

@@ -85,7 +85,8 @@ export class VariableResolverService {
 
       for (const variable of variables) {
         try {
-          const varType = variable.type || (variable.isSecret ? 'secret' : 'variable');
+          const varType =
+            variable.type || (variable.isSecret ? 'secret' : 'variable');
 
           if (varType === 'file') {
             if (variable.storagePath && variable.fileName) {
@@ -132,24 +133,25 @@ export class VariableResolverService {
         `Resolved ${Object.keys(resolvedVariables).length} variables, ${Object.keys(resolvedSecrets).length} secrets, and ${Object.keys(resolvedFiles).length} files for project ${projectId}`,
       );
 
+      if (errors.length > 0) {
+        throw new Error(
+          `Project variable resolution incomplete (${errors.length} error${errors.length === 1 ? '' : 's'})`,
+        );
+      }
+
       return {
         variables: resolvedVariables,
         secrets: resolvedSecrets,
         files: resolvedFiles,
-        errors: errors.length > 0 ? errors : undefined,
       };
     } catch (error) {
       this.logger.error(
         `Failed to resolve variables for project ${projectId}: ${error instanceof Error ? error.message : 'Unknown error'}`,
       );
-      return {
-        variables: {},
-        secrets: {},
-        files: {},
-        errors: [
-          `Failed to resolve variables: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        ],
-      };
+      // Queue payloads intentionally contain no decrypted secrets. Continuing
+      // with empty values would execute a tenant test with different semantics
+      // and could target the wrong system, so resolution uncertainty is fatal.
+      throw new Error('Failed to securely resolve project variables');
     }
   }
 
@@ -264,7 +266,7 @@ function getSecret(key, options = {}) {
           .join(', ')
       : '';
 
-const getFileFunction = `
+    const getFileFunction = `
 function getFile(key) {
   const files = {${fileEntries}};
   

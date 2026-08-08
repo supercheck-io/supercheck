@@ -34,9 +34,11 @@ describe("checkExecutionRateLimit", () => {
       eval: jest.fn().mockResolvedValue([0, 1_012_001]),
     });
 
-    await expect(
-      checkExecutionRateLimit("user-1", "org-1"),
-    ).resolves.toEqual({ allowed: false, retryAfter: 13 });
+    await expect(checkExecutionRateLimit("user-1", "org-1")).resolves.toEqual({
+      allowed: false,
+      retryAfter: 13,
+      reason: "rate_limited",
+    });
   });
 
   it("fails closed when Redis is unavailable", async () => {
@@ -44,6 +46,9 @@ describe("checkExecutionRateLimit", () => {
 
     await expect(
       checkExecutionRateLimit("user-1", "org-1"),
-    ).resolves.toMatchObject({ allowed: false });
+    ).resolves.toMatchObject({
+      allowed: false,
+      reason: "unavailable",
+    });
   });
 });

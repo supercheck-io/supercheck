@@ -13,6 +13,7 @@ import {
   getFirstDefaultLocationCode,
 } from "./location-registry";
 import { omitExecutionSecrets } from "./execution-payload";
+import { ExecutionQueueError } from "./execution-errors";
 import {
   partitionMonitorLocationsByAvailability,
   resolveMonitorLocations,
@@ -31,7 +32,30 @@ interface CleanupQueues {
 }
 
 // Import QueuedJobData type for queued job storage
-import type { QueuedJobData } from "./capacity-manager";
+import {
+  CapacityReservationUnavailableError,
+  type QueuedJobData,
+} from "./capacity-manager";
+
+function throwExecutionQueueError(error: unknown, operation: string): never {
+  if (error instanceof ExecutionQueueError) {
+    throw error;
+  }
+
+  if (error instanceof CapacityReservationUnavailableError) {
+    throw new ExecutionQueueError(
+      "capacity_unavailable",
+      "Execution capacity service is temporarily unavailable",
+      error,
+    );
+  }
+
+  throw new ExecutionQueueError(
+    "queue_unavailable",
+    `Execution queue is temporarily unavailable during ${operation}`,
+    error,
+  );
+}
 
 // Create queue logger
 export const queueLogger = createLogger({ module: "queue-client" }) as {
@@ -939,10 +963,9 @@ export async function addTestToQueue(task: TestExecutionTask): Promise<{
 
     if (result === 0) {
       // Queue is full
-      const usage = await capacityManager.getCurrentUsage(orgId);
-      throw new Error(
-        `Queue capacity limit reached (${usage.queued}/${usage.queuedCapacity} queued). ` +
-          `Please try again when running capacity (${usage.running}/${usage.runningCapacity}) is available.`
+      throw new ExecutionQueueError(
+        "capacity_exceeded",
+        "Queue capacity limit reached",
       );
     }
 
@@ -995,9 +1018,7 @@ export async function addTestToQueue(task: TestExecutionTask): Promise<{
       { err: error, jobId },
       `Error adding test ${jobId} to queue`
     );
-    throw new Error(
-      `Failed to add test execution job: ${error instanceof Error ? error.message : String(error)}`
-    );
+    throwExecutionQueueError(error, "test enqueue");
   }
 }
 
@@ -1023,10 +1044,9 @@ export async function addJobToQueue(task: JobExecutionTask): Promise<{
     const result = await capacityManager.reserveSlot(orgId, runId, queuedAt);
 
     if (result === 0) {
-      const usage = await capacityManager.getCurrentUsage(orgId);
-      throw new Error(
-        `Queue capacity limit reached (${usage.queued}/${usage.queuedCapacity} queued). ` +
-          `Please try again when running capacity (${usage.running}/${usage.runningCapacity}) is available.`
+      throw new ExecutionQueueError(
+        "capacity_exceeded",
+        "Queue capacity limit reached",
       );
     }
 
@@ -1078,9 +1098,7 @@ export async function addJobToQueue(task: JobExecutionTask): Promise<{
       { err: error, runId },
       `Error adding job ${runId} to queue`
     );
-    throw new Error(
-      `Failed to add job execution: ${error instanceof Error ? error.message : String(error)}`
-    );
+    throwExecutionQueueError(error, "job enqueue");
   }
 }
 
@@ -1114,10 +1132,9 @@ export async function addK6TestToQueue(
     const result = await capacityManager.reserveSlot(orgId, runId, queuedAt);
 
     if (result === 0) {
-      const usage = await capacityManager.getCurrentUsage(orgId);
-      throw new Error(
-        `Queue capacity limit reached (${usage.queued}/${usage.queuedCapacity} queued). ` +
-          `Please try again when running capacity (${usage.running}/${usage.runningCapacity}) is available.`
+      throw new ExecutionQueueError(
+        "capacity_exceeded",
+        "Queue capacity limit reached",
       );
     }
 
@@ -1173,9 +1190,7 @@ export async function addK6TestToQueue(
       { err: error, runId },
       `Error adding k6 test ${runId} to queue`
     );
-    throw new Error(
-      `Failed to add k6 test execution: ${error instanceof Error ? error.message : String(error)}`
-    );
+    throwExecutionQueueError(error, "k6 test enqueue");
   }
 }
 
@@ -1214,10 +1229,9 @@ export async function addK6JobToQueue(
     const result = await capacityManager.reserveSlot(orgId, runId, queuedAt);
 
     if (result === 0) {
-      const usage = await capacityManager.getCurrentUsage(orgId);
-      throw new Error(
-        `Queue capacity limit reached (${usage.queued}/${usage.queuedCapacity} queued). ` +
-          `Please try again when running capacity (${usage.running}/${usage.runningCapacity}) is available.`
+      throw new ExecutionQueueError(
+        "capacity_exceeded",
+        "Queue capacity limit reached",
       );
     }
 
@@ -1274,9 +1288,7 @@ export async function addK6JobToQueue(
       { err: error, runId },
       `Error adding k6 job ${runId} to queue`
     );
-    throw new Error(
-      `Failed to add k6 job execution: ${error instanceof Error ? error.message : String(error)}`
-    );
+    throwExecutionQueueError(error, "k6 job enqueue");
   }
 }
 

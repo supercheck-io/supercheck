@@ -469,6 +469,7 @@ describe('ContainerExecutorService', () => {
       const podSpec = job.spec.template.spec;
       const container = podSpec.containers[0];
       const serializedJob = JSON.stringify(job);
+      const bootstrapScript = container.command[2] as string;
 
       expect(podSpec.serviceAccountName).toBe('execution-runner');
       expect(podSpec.automountServiceAccountToken).toBe(false);
@@ -499,6 +500,10 @@ describe('ContainerExecutorService', () => {
         ]),
       );
       expect(serializedJob).not.toContain('plaintext-secret-material');
+      expect(bootstrapScript).toContain("mkdir -p '/tmp/supercheck/run-123'");
+      expect(bootstrapScript.indexOf('mkdir -p')).toBeLessThan(
+        bootstrapScript.indexOf('cat '),
+      );
     });
 
     it('uses a unique Kubernetes Job name for each attempt of the same run', () => {
