@@ -295,6 +295,7 @@ jobs:
   deploy-demo:
     name: Deploy Demo Environment
     needs: build-and-push
+    if: ${{ startsWith(github.ref, 'refs/heads/main') || startsWith(github.ref, 'refs/tags/v') }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     environment: demo
@@ -427,6 +428,7 @@ jobs:
     # Never fail the release workflow for E2E outcomes — results stay in the
     # summary/artifacts for inspection.
     needs: deploy-demo
+    if: ${{ startsWith(github.ref, 'refs/heads/main') || startsWith(github.ref, 'refs/tags/v') }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     continue-on-error: true
