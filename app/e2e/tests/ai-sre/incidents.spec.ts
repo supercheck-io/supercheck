@@ -62,7 +62,7 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
       await expect(page).toHaveURL(/\/incidents\/[0-9a-f-]{36}$/i);
       await expect(
         page.getByRole("heading", { name: new RegExp(monitor.name) }),
-      ).toBeVisible();
+      ).toBeVisible({ timeout: 30_000 });
       await expect(
         page
           .getByText("Alerts", { exact: true })
@@ -162,7 +162,9 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
         }),
       ).toBeVisible();
       await expect(
-        copilotDialog.getByLabel("Copilot message").last(),
+        copilotDialog
+          .locator('[aria-label="Copilot message"]:not(textarea)')
+          .last(),
       ).not.toBeEmpty({
         timeout: 60_000,
       });

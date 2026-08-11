@@ -162,7 +162,7 @@ test.describe("AI SRE investigation surfaces @aisre @critical", () => {
       .getByLabel("User message")
       .filter({ hasText: prompt });
     await expect(userMessage).toBeVisible();
-    const assistantMessage = page.getByLabel("Copilot message").last();
+    const assistantMessage = page.locator('[aria-label="Copilot message"]:not(textarea)').last();
     await expect(assistantMessage).toBeVisible({ timeout: 60_000 });
     await expect(assistantMessage).not.toBeEmpty();
 
@@ -224,6 +224,7 @@ test.describe("AI SRE investigation surfaces @aisre @critical", () => {
     page,
   }) => {
     await page.goto("/copilot", { waitUntil: "load" });
+    await page.getByRole("button", { name: "New", exact: true }).click();
     const composer = page.getByPlaceholder(
       "Describe a symptom or paste evidence...",
     );
@@ -271,6 +272,11 @@ test.describe("AI SRE investigation surfaces @aisre @critical", () => {
     await expect(
       page.getByRole("dialog", { name: "Chat history" }),
     ).toBeVisible();
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true);
   });
 });
 

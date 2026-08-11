@@ -443,7 +443,7 @@ function SreComposer({
           <textarea
             value={composer.value}
             disabled={composer.isDisabled}
-            aria-label="Copilot message"
+            aria-label="Message Copilot"
             onChange={(event) => composer.setText(event.target.value)}
             onKeyDown={handleInputKeyDown}
             maxLength={SRE_COPILOT_MESSAGE_MAX_LENGTH}
