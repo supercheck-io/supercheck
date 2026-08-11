@@ -61,6 +61,16 @@ type SupportedLiveConnectorType = (typeof supportedLiveConnectorTypes)[number];
 const connectorSearchInputSchema = z.object({
   connectorId: z.string().uuid(),
   query: z.string().trim().min(1).max(500),
+  namespace: z
+    .string()
+    .trim()
+    .min(1)
+    .max(63)
+    .regex(
+      /^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?$/,
+      "namespace must be a valid Kubernetes namespace",
+    )
+    .optional(),
   timeWindowMinutes: z
     .number()
     .int()
@@ -356,6 +366,11 @@ export async function searchIncidentLiveConnectorEvidence(
   }
 
   const connector = selected.row;
+  if (connector.type === "kubernetes" && !input.namespace) {
+    throw new Error(
+      "Kubernetes connector searches require an explicit namespace",
+    );
+  }
   const rateLimit = await checkSreConnectorSearchRateLimit(
     scope.userId ?? scope.investigationRunId ?? "system",
     connector.id,
@@ -472,6 +487,7 @@ export async function searchIncidentLiveConnectorEvidence(
       maxSeconds: Math.min(outputLimits.maxSeconds, input.maxSeconds, 15),
       maxCost: 0,
     },
+    filters: input.namespace ? { namespace: input.namespace } : undefined,
   };
   const definition = buildConnectorDefinition(
     connector,

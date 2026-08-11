@@ -239,6 +239,17 @@ metadata:
     pod-security.kubernetes.io/audit: restricted
     pod-security.kubernetes.io/warn: restricted
 ---
+# Zero-permission ServiceAccount mounted by execution Jobs. The worker creates
+# the per-run payload Secrets; this SA only runs the Job pod itself.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: execution-runner
+  namespace: supercheck-execution
+  labels:
+    app.kubernetes.io/part-of: supercheck
+automountServiceAccountToken: false
+---
 apiVersion: v1
 kind: ResourceQuota
 metadata:
@@ -354,6 +365,11 @@ rules:
   - apiGroups: [""]
     resources: ["pods/exec"]
     verbs: ["get", "create"]
+  # Ephemeral, Job-owned payload/runtime Secrets. The execution pod only mounts
+  # these objects; the zero-permission execution-runner SA cannot read them.
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["create"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

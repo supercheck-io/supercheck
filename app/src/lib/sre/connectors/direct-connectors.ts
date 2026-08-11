@@ -1,5 +1,7 @@
 import crypto from "node:crypto";
 
+import { fetchConnectorEndpoint } from "./pinned-fetch";
+
 import {
   DEFAULT_CONNECTOR_OUTPUT_LIMITS,
   hashConnectorPayload,
@@ -38,7 +40,7 @@ async function fetchJson({
   timeoutMs,
   headers = {},
 }: FetchJsonOptions): Promise<unknown> {
-  const response = await fetch(url, {
+  const response = await fetchConnectorEndpoint(url, {
     method: "GET",
     headers: {
       Accept: "application/json",
@@ -67,7 +69,7 @@ async function fetchOk({
   timeoutMs,
   headers = {},
 }: FetchJsonOptions): Promise<void> {
-  const response = await fetch(url, {
+  const response = await fetchConnectorEndpoint(url, {
     method: "GET",
     headers: {
       Accept: "text/plain, application/json",
@@ -1196,13 +1198,16 @@ export class KubernetesConnector extends BaseDirectConnector {
       typeof params.filters?.namespace === "string"
         ? params.filters.namespace
         : null;
+    if (!namespace) {
+      throw new Error(
+        "Kubernetes connector searches require an explicit namespace",
+      );
+    }
     const labelSelector =
       params.query.trim() && params.query.trim() !== "*"
         ? params.query.trim()
         : null;
-    const basePath = namespace
-      ? `/api/v1/namespaces/${encodeURIComponent(namespace)}/pods`
-      : "/api/v1/pods";
+    const basePath = `/api/v1/namespaces/${encodeURIComponent(namespace)}/pods`;
     const podUrl = new URL(`${endpointUrl}${basePath}`);
     podUrl.searchParams.set(
       "limit",
@@ -2123,7 +2128,7 @@ export class AwsCloudWatchConnector extends BaseDirectConnector {
       .digest("hex");
     const authorization = `AWS4-HMAC-SHA256 Credential=${credentials.accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
 
-    const response = await fetch(this.endpointUrl, {
+    const response = await fetchConnectorEndpoint(this.endpointUrl, {
       method: "POST",
       headers: {
         Accept: "application/xml",

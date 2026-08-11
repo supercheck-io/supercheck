@@ -1,12 +1,49 @@
-import { and, asc, eq, gte, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, gte, isNull, lt, sql } from "drizzle-orm";
 
 import { organization, sreInvestigationRuns, usageEvents } from "@/db/schema";
 import { isPolarEnabled } from "@/lib/feature-flags";
+import { createLogger } from "@/lib/logger/index";
 import { polarUsageService } from "@/lib/services/polar-usage.service";
 import { subscriptionService } from "@/lib/services/subscription-service";
 import { db } from "@/utils/db";
 
 const SRE_INVESTIGATION_UNITS_PER_RUN = "1.0000";
+const DEFAULT_STUCK_RUN_AGE_MINUTES = 15;
+const logger = createLogger({ module: "sre-investigation-billing" }) as {
+  error: (data: unknown, message?: string) => void;
+};
+
+export async function failStuckSreInvestigationRuns(options?: {
+  olderThanMinutes?: number;
+}) {
+  const olderThanMinutes = Math.max(
+    5,
+    options?.olderThanMinutes ?? DEFAULT_STUCK_RUN_AGE_MINUTES,
+  );
+  const cutoff = new Date(Date.now() - olderThanMinutes * 60_000);
+  const completedAt = new Date();
+
+  const failed = await db
+    .update(sreInvestigationRuns)
+    .set({
+      status: "failed",
+      completedAt,
+      agentStateSnapshot: {
+        mode: "sre_investigation_recovery",
+        error: "Investigation exceeded the execution recovery window",
+      },
+      durationMs: sql<number>`FLOOR(EXTRACT(EPOCH FROM (${completedAt} - ${sreInvestigationRuns.startedAt})) * 1000)::integer`,
+    })
+    .where(
+      and(
+        eq(sreInvestigationRuns.status, "running"),
+        lt(sreInvestigationRuns.startedAt, cutoff),
+      ),
+    )
+    .returning({ id: sreInvestigationRuns.id });
+
+  return { failed: failed.length };
+}
 
 export class SreInvestigationBillingError extends Error {
   constructor(message: string, readonly code: "spending_limit" | "subscription_required" | "organization_not_found") {
@@ -210,9 +247,9 @@ export async function reconcileUnbilledSreInvestigations(options?: {
       processed += 1;
     } catch (error) {
       failed += 1;
-      console.error(
-        `[SRE Billing] Failed to reconcile investigation ${run.id.substring(0, 8)}...:`,
-        error
+      logger.error(
+        { error, investigationRunId: run.id },
+        "Failed to reconcile SRE investigation billing",
       );
     }
   }

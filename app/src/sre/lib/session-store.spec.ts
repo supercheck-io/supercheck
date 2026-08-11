@@ -46,7 +46,9 @@ describe("SRE session store", () => {
   });
 
   it("rejects invalid scoped inputs before querying", async () => {
-    await expect(createSreConversation({ ...scope, organizationId: "bad" })).rejects.toMatchObject({
+    await expect(
+      createSreConversation({ ...scope, organizationId: "bad" }),
+    ).rejects.toMatchObject({
       code: "invalid_input",
     });
     expect(mockDb.insert).not.toHaveBeenCalled();
@@ -60,7 +62,7 @@ describe("SRE session store", () => {
         ...scope,
         incidentId: "018f0000-0000-7000-8000-000000000004",
         title: "Investigate checkout",
-      })
+      }),
     ).rejects.toBeInstanceOf(SreSessionStoreError);
 
     expect(mockDb.query.sreIncidents.findFirst).toHaveBeenCalledTimes(1);
@@ -73,38 +75,57 @@ describe("SRE session store", () => {
     const values = jest.fn(() => ({ returning }));
     mockDb.insert.mockReturnValue({ values });
 
-    const result = await createSreConversation({ ...scope, title: "  Checkout incident  " });
+    const result = await createSreConversation({
+      ...scope,
+      title: "  Checkout incident  ",
+    });
 
     expect(result).toEqual({ id: "conversation" });
-    expect(values).toHaveBeenCalledWith(expect.objectContaining({ title: "Checkout incident", status: "active" }));
+    expect(values).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Checkout incident", status: "active" }),
+    );
   });
 
   it("appends messages only to active scoped conversations", async () => {
     const message = { id: "message" };
+    const values = jest.fn(() => ({
+      returning: jest.fn().mockResolvedValue([message]),
+    }));
     const tx = {
       query: {
-        sreChatConversations: { findFirst: jest.fn().mockResolvedValue({ id: "018f0000-0000-7000-8000-000000000005" }) },
+        sreChatConversations: {
+          findFirst: jest
+            .fn()
+            .mockResolvedValue({ id: "018f0000-0000-7000-8000-000000000005" }),
+        },
       },
       insert: jest.fn(() => ({
-        values: jest.fn(() => ({ returning: jest.fn().mockResolvedValue([message]) })),
+        values,
       })),
       update: jest.fn(() => ({
         set: jest.fn(() => ({ where: jest.fn().mockResolvedValue([]) })),
       })),
     };
-    mockDb.transaction.mockImplementation(async (callback: (transaction: typeof tx) => Promise<unknown>) => callback(tx));
+    mockDb.transaction.mockImplementation(
+      async (callback: (transaction: typeof tx) => Promise<unknown>) =>
+        callback(tx),
+    );
 
     await expect(
       appendSreMessage({
         ...scope,
         conversationId: "018f0000-0000-7000-8000-000000000005",
+        id: "018f0000-0000-4000-8000-000000000006",
         role: "user",
         content: "What happened?",
-      })
+      }),
     ).resolves.toBe(message);
 
     expect(tx.query.sreChatConversations.findFirst).toHaveBeenCalledTimes(1);
     expect(tx.insert).toHaveBeenCalledTimes(1);
+    expect(values).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "018f0000-0000-4000-8000-000000000006" }),
+    );
     expect(tx.update).toHaveBeenCalledTimes(1);
   });
 
@@ -118,14 +139,21 @@ describe("SRE session store", () => {
     await listSreConversations(scope);
     expect(where).toHaveBeenCalledTimes(1);
 
-    const archiveReturning = jest.fn().mockResolvedValue([{ id: "conversation", status: "archived" }]);
+    const archiveReturning = jest
+      .fn()
+      .mockResolvedValue([{ id: "conversation", status: "archived" }]);
     const archiveWhere = jest.fn(() => ({ returning: archiveReturning }));
     const archiveSet = jest.fn(() => ({ where: archiveWhere }));
     mockDb.update.mockReturnValue({ set: archiveSet });
 
     await expect(
-      archiveSreConversation({ ...scope, conversationId: "018f0000-0000-7000-8000-000000000005" })
+      archiveSreConversation({
+        ...scope,
+        conversationId: "018f0000-0000-7000-8000-000000000005",
+      }),
     ).resolves.toMatchObject({ status: "archived" });
-    expect(archiveSet).toHaveBeenCalledWith(expect.objectContaining({ status: "archived" }));
+    expect(archiveSet).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "archived" }),
+    );
   });
 });

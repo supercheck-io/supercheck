@@ -22,7 +22,14 @@ import {
 } from "@/db/schema";
 import { eq, and, sql, gt, lte } from "drizzle-orm";
 import { isPolarEnabled, getPolarConfig } from "@/lib/feature-flags";
+import { createLogger } from "@/lib/logger/index";
 import type { Polar } from "@polar-sh/sdk";
+
+const logger = createLogger({ module: "polar-usage" }) as {
+  info: (data: unknown, message?: string) => void;
+  warn: (data: unknown, message?: string) => void;
+  error: (data: unknown, message?: string) => void;
+};
 
 export interface UsageMetrics {
   playwrightMinutes: {
@@ -148,7 +155,7 @@ class PolarUsageService {
       const config = getPolarConfig();
       
       if (!config?.accessToken) {
-        console.warn("[PolarUsage] No access token configured");
+        logger.warn({}, "No Polar access token configured");
         return null;
       }
 
@@ -159,7 +166,7 @@ class PolarUsageService {
 
       return this.polarClient;
     } catch (error) {
-      console.error("[PolarUsage] Failed to initialize Polar client:", error);
+      logger.error({ error }, "Failed to initialize Polar client");
       return null;
     }
   }
@@ -175,7 +182,7 @@ class PolarUsageService {
     try {
       const polar = await this.getPolarClient();
       if (!polar) {
-        console.warn("[PolarUsage] Polar client not available, skipping sync");
+        logger.warn({}, "Polar client unavailable; skipping usage sync");
         return false;
       }
 
@@ -185,7 +192,7 @@ class PolarUsageService {
       });
 
       if (!usageEvent) {
-        console.warn(`[PolarUsage] Event ${eventId} not found`);
+        logger.warn({ eventId }, "Polar usage event not found");
         return false;
       }
 
@@ -195,14 +202,17 @@ class PolarUsageService {
       });
 
       if (!org?.polarCustomerId) {
-        console.warn(`[PolarUsage] No Polar customer ID for org ${usageEvent.organizationId}`);
+        logger.warn(
+          { organizationId: usageEvent.organizationId },
+          "Organization has no Polar customer ID",
+        );
         return false;
       }
 
       // Get the Polar config
       const config = getPolarConfig();
       if (!config?.accessToken) {
-        console.warn("[PolarUsage] No Polar access token configured");
+        logger.warn({}, "No Polar access token configured");
         return false;
       }
 
@@ -275,10 +285,10 @@ class PolarUsageService {
         })
         .where(eq(usageEvents.id, eventId));
 
-      console.log(`[PolarUsage] ✅ Synced event ${eventId.substring(0, 8)}... to Polar`);
+      logger.info({ eventId }, "Synced usage event to Polar");
       return true;
     } catch (error) {
-      console.error("[PolarUsage] Failed to sync event to Polar:", error);
+      logger.error({ error, eventId }, "Failed to sync usage event to Polar");
       
       // Update sync status with error
       await database
@@ -482,7 +492,7 @@ class PolarUsageService {
     const lockConnection = await this.acquireSyncLock();
 
     if (!lockConnection) {
-      console.log("[PolarUsage] Usage sync already running, skipping this run");
+      logger.info({}, "Usage sync already running; skipping this run");
       return { processed: 0, succeeded: 0, failed: 0, errors: [] };
     }
 
@@ -490,17 +500,19 @@ class PolarUsageService {
       // Recover successful AI SRE runs whose post-run ledger write failed.
       // consumeSreInvestigationCredit is idempotent by investigation run ID.
       try {
-        const { reconcileUnbilledSreInvestigations } = await import(
+        const {
+          failStuckSreInvestigationRuns,
+          reconcileUnbilledSreInvestigations,
+        } = await import(
           "@/lib/sre/investigation-billing"
         );
+        await failStuckSreInvestigationRuns();
         const reconciliation = await reconcileUnbilledSreInvestigations();
         if (reconciliation.processed > 0 || reconciliation.failed > 0) {
-          console.log(
-            `[PolarUsage] Reconciled SRE billing: ${reconciliation.processed} processed, ${reconciliation.failed} failed`
-          );
+          logger.info(reconciliation, "Reconciled SRE billing");
         }
       } catch (error) {
-        console.error("[PolarUsage] SRE billing reconciliation failed:", error);
+        logger.error({ error }, "SRE billing reconciliation failed");
       }
 
       // Find events that haven't been synced yet
@@ -546,7 +558,7 @@ class PolarUsageService {
           failed++;
           const errorMsg = `Event ${event.id.substring(0, 8)}...: ${error instanceof Error ? error.message : 'Unknown error'}`;
           errors.push(errorMsg);
-          console.error(`[PolarUsage] Sync failed for event:`, errorMsg);
+          logger.error({ error, errorMsg }, "Polar event sync failed");
         }
       }
 
@@ -555,11 +567,14 @@ class PolarUsageService {
       try {
         await this.checkRecentUsageNotifications(new Date());
       } catch (error) {
-        console.error("[PolarUsage] Usage notification scan failed:", error);
+        logger.error({ error }, "Usage notification scan failed");
       }
 
       if (pendingEvents.length > 0) {
-        console.log(`[PolarUsage] Batch sync complete: ${succeeded}/${pendingEvents.length} succeeded, ${failed} failed`);
+        logger.info(
+          { succeeded, failed, processed: pendingEvents.length },
+          "Polar batch sync complete",
+        );
       }
 
       return {
@@ -569,7 +584,7 @@ class PolarUsageService {
         errors
       };
     } catch (error) {
-      console.error("[PolarUsage] Batch sync failed:", error);
+      logger.error({ error }, "Polar batch sync failed");
       return {
         processed: 0,
         succeeded: 0,

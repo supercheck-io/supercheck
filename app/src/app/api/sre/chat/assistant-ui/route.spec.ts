@@ -119,6 +119,8 @@ const { createSreConnectorTools: mockCreateSreConnectorTools } =
   };
 
 describe("Copilot assistant-ui chat API", () => {
+  let finishMetadata: Record<string, unknown> | undefined;
+
   beforeEach(() => {
     jest.clearAllMocks();
     mockRequireProjectContext.mockResolvedValue({
@@ -149,6 +151,9 @@ describe("Copilot assistant-ui chat API", () => {
       });
     jest.mocked(streamText).mockReturnValue({
       toUIMessageStreamResponse: jest.fn((options) => {
+        finishMetadata = options.messageMetadata?.({
+          part: { type: "finish" },
+        } as never) as Record<string, unknown> | undefined;
         void options.onFinish({
           responseMessage: {
             id: "assistant-ui-message",
@@ -201,9 +206,17 @@ describe("Copilot assistant-ui chat API", () => {
     );
     expect(mockAppendSreMessage).toHaveBeenCalledWith(
       expect.objectContaining({
+        id: finishMetadata?.assistantMessageId,
         role: "assistant",
         content: "Read-only guidance",
         modelId: "test-model",
+      }),
+    );
+    expect(finishMetadata).toEqual(
+      expect.objectContaining({
+        assistantMessageId: expect.stringMatching(
+          /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+        ),
       }),
     );
     expect(streamText).toHaveBeenCalledWith(

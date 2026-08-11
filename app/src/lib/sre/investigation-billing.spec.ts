@@ -23,6 +23,7 @@ jest.mock("@/lib/services/polar-usage.service", () => ({
 jest.mock("@/utils/db", () => ({
   db: {
     select: jest.fn(),
+    update: jest.fn(),
     transaction: jest.fn(),
     query: {
       organization: { findFirst: jest.fn() },
@@ -38,6 +39,7 @@ import { db } from "@/utils/db";
 import {
   assertCanStartSreInvestigation,
   consumeSreInvestigationCredit,
+  failStuckSreInvestigationRuns,
   getSreInvestigationUsage,
   reconcileUnbilledSreInvestigations,
   SreInvestigationBillingError,
@@ -48,6 +50,7 @@ const mockSubscriptionService = subscriptionService as jest.Mocked<typeof subscr
 const mockPolarUsageService = polarUsageService as jest.Mocked<typeof polarUsageService>;
 const mockDb = db as unknown as {
   select: jest.Mock;
+  update: jest.Mock;
   transaction: jest.Mock;
   query: { organization: { findFirst: jest.Mock } };
 };
@@ -84,6 +87,27 @@ describe("SRE investigation billing", () => {
     mockSubscriptionService.hasActiveSubscription.mockResolvedValue(true);
     mockSubscriptionService.getOrganizationPlanSafe.mockResolvedValue(planFixture);
     mockPolarUsageService.shouldBlockUsage.mockResolvedValue({ blocked: false });
+  });
+
+  it("marks investigations beyond the recovery window as failed", async () => {
+    const returning = jest.fn().mockResolvedValue([{ id: "stuck-run" }]);
+    const where = jest.fn(() => ({ returning }));
+    const set = jest.fn(() => ({ where }));
+    mockDb.update.mockReturnValue({ set });
+
+    await expect(
+      failStuckSreInvestigationRuns({ olderThanMinutes: 15 }),
+    ).resolves.toEqual({ failed: 1 });
+
+    expect(set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "failed",
+        completedAt: expect.any(Date),
+        agentStateSnapshot: expect.objectContaining({
+          mode: "sre_investigation_recovery",
+        }),
+      }),
+    );
   });
 
   it("skips billing in self-hosted mode", async () => {

@@ -10,6 +10,8 @@
  */
 
 import crypto from "crypto";
+import { fetchPublicEndpoint } from "@/lib/sre/connectors/pinned-fetch";
+import { validateWebhookUrlString } from "@/lib/url-validator";
 
 export type WebhookEvent = {
   type: "incident.created" | "incident.updated" | "incident.resolved";
@@ -93,12 +95,11 @@ export async function deliverWebhook(
   secret: string
 ): Promise<WebhookDeliveryResult> {
   // Validate endpoint URL
-  try {
-    new URL(endpoint);
-  } catch {
+  const endpointValidation = validateWebhookUrlString(endpoint);
+  if (!endpointValidation.valid) {
     return {
       success: false,
-      error: "Invalid webhook endpoint URL",
+      error: endpointValidation.error ?? "Invalid webhook endpoint URL",
       retriesAttempted: 0,
     };
   }
@@ -121,7 +122,7 @@ export async function deliverWebhook(
   // Retry loop with exponential backoff
   for (let attempt = 0; attempt <= WEBHOOK_CONFIG.MAX_RETRIES; attempt++) {
     try {
-      const response = await fetch(endpoint, {
+      const response = await fetchPublicEndpoint(endpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

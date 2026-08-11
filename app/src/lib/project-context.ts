@@ -22,6 +22,12 @@ import { Role } from "./rbac/permissions";
 import { roleToString } from "./rbac/role-normalizer";
 import { getCachedAuthSession } from "./session-cache";
 import { getUnifiedAuthContext } from "./rbac/unified-auth";
+import { createLogger } from "./logger/index";
+
+const logger = createLogger({ module: "project-context" }) as {
+  info: (data: unknown, message?: string) => void;
+  error: (data: unknown, message?: string) => void;
+};
 
 // getCachedAuthSession imported from session-cache.ts (DRY principle)
 
@@ -138,7 +144,7 @@ export async function getCurrentProjectContext(): Promise<ProjectContext | null>
       userRole: roleString,
     };
   } catch (error) {
-    console.error("Error getting project context:", error);
+    logger.error({ error }, "Failed to get project context");
     return null;
   }
 }
@@ -205,8 +211,9 @@ async function setDefaultProjectInSession(): Promise<ProjectContext | null> {
         // If user already has project access, they might have been added via invitation
         // Don't auto-assign - wait for proper project context to be established
         if (existingAccess.length > 0) {
-          console.log(
-            `ℹ️ User ${currentUser.email} already has project access in organization "${activeOrg.name}" - skipping auto-assignment`
+          logger.info(
+            { userId: currentUser.id, organizationId: activeOrg.id },
+            "User already has project access; skipping auto-assignment",
           );
           return null;
         }
@@ -222,8 +229,13 @@ async function setDefaultProjectInSession(): Promise<ProjectContext | null> {
             createdAt: new Date(),
           });
 
-          console.log(
-            `✅ Auto-assigned user ${currentUser.email} to project "${projectToAssign.name}" in organization "${activeOrg.name}"`
+          logger.info(
+            {
+              userId: currentUser.id,
+              projectId: projectToAssign.id,
+              organizationId: activeOrg.id,
+            },
+            "Auto-assigned user to project",
           );
 
           // Update session with this project
@@ -252,8 +264,9 @@ async function setDefaultProjectInSession(): Promise<ProjectContext | null> {
             dbError?.code === "23505" ||
             dbError?.message?.includes("duplicate key")
           ) {
-            console.log(
-              `ℹ️ User ${currentUser.email} was already assigned to project "${projectToAssign.name}" (likely via invitation)`
+            logger.info(
+              { userId: currentUser.id, projectId: projectToAssign.id },
+              "User was already assigned to project",
             );
 
             // Update session anyway since they do have access
@@ -272,7 +285,10 @@ async function setDefaultProjectInSession(): Promise<ProjectContext | null> {
             };
           }
 
-          console.error("Error auto-assigning user to project:", error);
+          logger.error(
+            { error, userId: currentUser.id, projectId: projectToAssign.id },
+            "Failed to auto-assign user to project",
+          );
           return null;
         }
       }
@@ -299,7 +315,7 @@ async function setDefaultProjectInSession(): Promise<ProjectContext | null> {
       userRole: defaultProject.role || "project_viewer",
     };
   } catch (error) {
-    console.error("Error setting default project:", error);
+    logger.error({ error }, "Failed to set default project");
     return null;
   }
 }
@@ -383,7 +399,7 @@ export async function switchProject(
       project: projectContext,
     };
   } catch (error) {
-    console.error("Error switching project:", error);
+    logger.error({ error, projectId }, "Failed to switch project");
     return { success: false, message: "Failed to switch project" };
   }
 }

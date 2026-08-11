@@ -1,3 +1,8 @@
+jest.mock("./pinned-fetch", () => ({
+  fetchConnectorEndpoint: (...args: Parameters<typeof fetch>) =>
+    global.fetch(...args),
+}));
+
 import { createDirectConnector } from "./direct-connectors";
 import {
   type ConnectorDefinition,
@@ -232,6 +237,21 @@ describe("direct connectors", () => {
     expect(global.fetch).toHaveBeenCalledWith(
       expect.stringContaining("/api/v1/namespaces/payments/pods"),
       expect.objectContaining({ method: "GET", cache: "no-store" }),
+    );
+  });
+
+  it("rejects cluster-wide Kubernetes searches without a namespace", async () => {
+    const connector = createDirectConnector({
+      ...baseDefinition,
+      type: "kubernetes",
+      endpointUrl: "https://kubernetes.example.com",
+      surfaces: ["infra"],
+      evidenceTypes: ["topology"],
+      credential: { secret: "token" },
+    });
+
+    await expect(connector.search(params)).rejects.toThrow(
+      "require an explicit namespace",
     );
   });
 

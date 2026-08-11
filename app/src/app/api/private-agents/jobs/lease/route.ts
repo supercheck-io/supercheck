@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import { externalConnectorCredentials, privateAgentCredentials, privateAgentJobs, privateAgents } from "@/db/schema";
 import { hashApiKey } from "@/lib/security/api-key-hash";
+import { createLogger } from "@/lib/logger/index";
 import { decryptConnectorCredential } from "@/lib/sre/connectors";
 import { db } from "@/utils/db";
 import { authenticatePrivateAgent, unauthorized } from "../auth";
@@ -12,6 +13,9 @@ import { authenticatePrivateAgent, unauthorized } from "../auth";
 const LEASE_TTL_MS = 5 * 60_000;
 const MAX_LONG_POLL_MS = 25_000;
 const LONG_POLL_INTERVAL_MS = 1_000;
+const logger = createLogger({ module: "private-agent-job-lease" }) as {
+  error: (data: unknown, message?: string) => void;
+};
 
 const leaseRequestSchema = z.object({
   waitMs: z.number().int().min(0).max(MAX_LONG_POLL_MS).default(0),
@@ -174,7 +178,7 @@ export async function POST(request: NextRequest) {
       leaseToken,
     });
   } catch (error) {
-    console.error("Private Agent job lease failed:", error);
+    logger.error({ error }, "Private Agent job lease failed");
     return NextResponse.json({ error: "Failed to lease job" }, { status: 500 });
   }
 }

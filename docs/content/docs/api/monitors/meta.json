@@ -6,6 +6,7 @@
     "getMonitor",
     "createMonitor",
     "updateMonitor",
+    "replaceMonitorConfiguration",
     "deleteMonitor",
     "getMonitorResults",
     "getMonitorStats",

@@ -8,6 +8,7 @@ import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import { normalizeWebhookMethod } from "@/lib/notification-providers/webhook-template";
 import { buildWebhookTestBody } from "@/lib/notification-providers/webhook-preview";
 import { normalizeWebhookHeaders } from "@/lib/notification-providers/validation";
+import { fetchPublicEndpoint } from "@/lib/sre/connectors/pinned-fetch";
 
 export async function POST(req: NextRequest) {
   try {
@@ -214,7 +215,7 @@ async function testSlackConnection(config: NotificationProviderConfig) {
       throw new Error("Invalid URL format");
     }
 
-    const response = await fetch(webhookUrl, {
+    const response = await fetchPublicEndpoint(webhookUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -280,7 +281,7 @@ async function testWebhookConnection(config: NotificationProviderConfig) {
     const timeout = setTimeout(() => controller.abort(), 10000);
 
     try {
-      const response = await fetch(targetUrl, {
+      const response = await fetchPublicEndpoint(targetUrl, {
         method,
         headers,
         body,
@@ -369,7 +370,7 @@ async function testTelegramConnection(config: NotificationProviderConfig) {
 
     // Construct URL with validated token - only allow official Telegram API
     const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
-    const response = await fetch(url, {
+    const response = await fetchPublicEndpoint(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -442,7 +443,7 @@ async function testDiscordConnection(config: NotificationProviderConfig) {
       throw new Error("Invalid URL format");
     }
 
-    const response = await fetch(webhookUrl, {
+    const response = await fetchPublicEndpoint(webhookUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -561,7 +562,7 @@ async function testTeamsConnection(config: NotificationProviderConfig) {
     const timeout = setTimeout(() => controller.abort(), 10000);
 
     try {
-      const response = await fetch(webhookUrl, {
+      const response = await fetchPublicEndpoint(webhookUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

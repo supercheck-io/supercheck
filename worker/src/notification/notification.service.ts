@@ -15,6 +15,7 @@ import {
   getTeamsWebhookDomainError,
 } from './notification.constants';
 import { isUrlSafeForOutbound } from '../common/utils/url-validator';
+import { fetchPublicEndpoint } from '../common/utils/pinned-public-fetch';
 
 // Utility function to safely get error message
 function getErrorMessage(error: unknown): string {
@@ -1035,7 +1036,7 @@ export class NotificationService {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
 
-      const response = await fetch(webhookUrl, {
+      const response = await fetchPublicEndpoint(webhookUrl, {
         method,
         headers,
         body: method === 'GET' ? undefined : body,

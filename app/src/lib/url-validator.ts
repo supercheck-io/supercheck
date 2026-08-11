@@ -23,6 +23,9 @@ const PRIVATE_IP_PATTERNS = [
   /^fc00:/i,
   /^fd00:/i,
   /^fe80:/i,
+  /^2001:(?:0|0000):/i, // Teredo
+  /^2002:/i, // 6to4
+  /^64:ff9b:/i, // NAT64 well-known prefix
   // AWS/Cloud metadata endpoints
   /^169\.254\.169\.254$/,
   /^metadata\.google\.internal$/i,

@@ -173,6 +173,110 @@
                           }
                         }
                       }
+                    },
+                    "build": {
+                      "type": "object",
+                      "properties": {
+                        "revision": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "revision"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "timestamp",
+                    "latencyMs",
+                    "checks",
+                    "build"
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service unhealthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok",
+                        "degraded",
+                        "unhealthy"
+                      ]
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "latencyMs": {
+                      "type": "integer"
+                    },
+                    "checks": {
+                      "type": "object",
+                      "properties": {
+                        "database": {
+                          "type": "object",
+                          "properties": {
+                            "status": {
+                              "type": "string",
+                              "enum": [
+                                "ok",
+                                "error"
+                              ]
+                            },
+                            "latencyMs": {
+                              "type": "integer"
+                            },
+                            "error": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        "redis": {
+                          "type": "object",
+                          "properties": {
+                            "status": {
+                              "type": "string",
+                              "enum": [
+                                "ok",
+                                "error"
+                              ]
+                            },
+                            "latencyMs": {
+                              "type": "integer"
+                            },
+                            "error": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        "s3": {
+                          "type": "object",
+                          "properties": {
+                            "status": {
+                              "type": "string",
+                              "enum": [
+                                "ok",
+                                "error"
+                              ]
+                            },
+                            "latencyMs": {
+                              "type": "integer"
+                            },
+                            "error": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
                     }
                   },
                   "required": [
@@ -184,9 +288,6 @@
                 }
               }
             }
-          },
-          "503": {
-            "description": "Service unavailable — one or more required services unhealthy"
           }
         }
       }
@@ -675,6 +776,48 @@
             "$ref": "#/components/responses/NotFound"
           }
         }
+      },
+      "put": {
+        "operationId": "replaceJobConfiguration",
+        "summary": "Update a job configuration",
+        "description": "Update job configuration. Only provided fields are changed. PUT is retained for CLI deploy and backward compatibility; interactive partial updates should prefer PATCH.",
+        "tags": [
+          "Jobs"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JobUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Job updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobUpdateResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid job update payload"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
       }
     },
     "/api/jobs/{id}/trigger": {
@@ -693,7 +836,7 @@
       "post": {
         "operationId": "triggerJob",
         "summary": "Trigger job execution",
-        "description": "Trigger a job run using a job-scoped trigger key in the `Authorization: Bearer <trigger-key>` header. For k6 jobs, an optional `location` query parameter can target an enabled location code or `global` for unrestricted any-worker routing.",
+        "description": "Trigger a job run using a job-scoped trigger key in the `Authorization: Bearer <trigger-key>` header. For k6 jobs, an optional `location` query parameter can target an enabled location code or `global` for unrestricted any-worker routing. Note: this endpoint only accepts a job trigger key (`sck_trigger_*` / legacy `job_*`) in the `Authorization` header. CLI tokens (`sck_live_*`) are rejected with 401.",
         "tags": [
           "Jobs"
         ],
@@ -851,8 +994,7 @@
                     "type": "string",
                     "enum": [
                       "manual",
-                      "remote",
-                      "schedule"
+                      "remote"
                     ],
                     "description": "Requested trigger source. CLI-authenticated calls are normalized to `remote` by the server."
                   },
@@ -1600,11 +1742,20 @@
                   },
                   "description": {
                     "type": "string"
+                  },
+                  "priority": {
+                    "type": "string",
+                    "enum": [
+                      "low",
+                      "medium",
+                      "high",
+                      "critical"
+                    ],
+                    "default": "medium"
                   }
                 },
                 "required": [
-                  "title",
-                  "script"
+                  "title"
                 ]
               }
             }
@@ -1782,6 +1933,63 @@
           },
           "409": {
             "description": "Test is in use by jobs or synthetic monitors and cannot be deleted"
+          }
+        }
+      },
+      "put": {
+        "operationId": "updateTestLegacyPut",
+        "summary": "Update a test using the legacy PUT alias",
+        "description": "Update test title, script, description, or type. PUT is retained for CLI deploy and backward compatibility; interactive partial updates should prefer PATCH.",
+        "tags": [
+          "Tests"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  },
+                  "script": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "browser",
+                      "api",
+                      "performance",
+                      "database",
+                      "custom"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Test updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Test"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
           }
         }
       }
@@ -2223,6 +2431,48 @@
             "$ref": "#/components/responses/NotFound"
           }
         }
+      },
+      "put": {
+        "operationId": "replaceMonitorConfiguration",
+        "summary": "Update a monitor configuration",
+        "description": "Update monitor configuration. Only provided fields are changed. PUT is retained for CLI deploy and backward compatibility; interactive partial updates should prefer PATCH.",
+        "tags": [
+          "Monitors"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MonitorUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Monitor updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Monitor"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid monitor update payload"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
       }
     },
     "/api/monitors/{id}/results": {
@@ -2644,6 +2894,98 @@
             "$ref": "#/components/responses/NotFound"
           }
         }
+      },
+      "get": {
+        "operationId": "getTag",
+        "summary": "Get a tag",
+        "description": "Return a single tag by ID.",
+        "tags": [
+          "Tags"
+        ],
+        "responses": {
+          "200": {
+            "description": "Tag",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Tag"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Tag ID is required"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      },
+      "put": {
+        "operationId": "updateTag",
+        "summary": "Update a tag",
+        "description": "Rename a tag or change its color.",
+        "tags": [
+          "Tags"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "color": {
+                    "type": "string",
+                    "nullable": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated tag",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Tag"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Tag name is required"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
       }
     },
     "/api/notification-providers": {
@@ -2972,6 +3314,90 @@
             "description": "Failed to fetch alert history"
           }
         }
+      },
+      "post": {
+        "operationId": "createAlertHistory",
+        "summary": "Create an alert history entry",
+        "description": "Record an alert event (for example a manually created failure or recovery signal). Requires monitor manage permission.",
+        "tags": [
+          "Alerts"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "type",
+                  "message",
+                  "target",
+                  "targetType",
+                  "provider"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "target": {
+                    "type": "string"
+                  },
+                  "targetType": {
+                    "type": "string"
+                  },
+                  "provider": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "monitorId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "nullable": true
+                  },
+                  "jobId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "nullable": true
+                  },
+                  "errorMessage": {
+                    "type": "string",
+                    "nullable": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Alert history entry created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlertHistoryEntry"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing required fields"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
       }
     },
     "/api/audit": {
@@ -3097,6 +3523,63 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "post": {
+        "operationId": "checkStatusPageSubdomainPost",
+        "summary": "Check status page subdomain (POST)",
+        "description": "Verify a status page subdomain is published and return its ID. Public endpoint (no authentication required).",
+        "tags": [
+          "Status Pages"
+        ],
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "subdomain"
+                ],
+                "properties": {
+                  "subdomain": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Status page lookup",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "description": "Internal server error"
           }
         }
       }
@@ -3367,6 +3850,490 @@
           },
           "500": {
             "description": "Validation service error"
+          }
+        }
+      }
+    },
+    "/api/monitors/{id}/status": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "description": "Monitor ID"
+        }
+      ],
+      "patch": {
+        "operationId": "updateMonitorStatus",
+        "summary": "Update monitor status",
+        "description": "Pause, resume, or otherwise set a monitor's status (for example `paused` or `maintenance`). Requires monitor manage or update permission. Automated status changes from checks are handled separately.",
+        "tags": [
+          "Monitors"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "status"
+                ],
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "up",
+                      "down",
+                      "paused",
+                      "pending",
+                      "maintenance",
+                      "error"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Monitor status updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "up",
+                        "down",
+                        "paused",
+                        "pending",
+                        "maintenance",
+                        "error"
+                      ]
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid status value"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/monitors/{id}/notifications": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "description": "Monitor ID"
+        }
+      ],
+      "get": {
+        "operationId": "getMonitorNotifications",
+        "summary": "List monitor notification links",
+        "description": "Return the notification providers linked to a monitor.",
+        "tags": [
+          "Monitors"
+        ],
+        "responses": {
+          "200": {
+            "description": "Linked notification providers",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MonitorNotificationLink"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createMonitorNotification",
+        "summary": "Link a notification provider to a monitor",
+        "description": "Attach a notification provider to a monitor. The provider must belong to the same project as the monitor.",
+        "tags": [
+          "Monitors"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "notificationProviderId"
+                ],
+                "properties": {
+                  "notificationProviderId": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Notification link created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonitorNotificationLink"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing notification provider ID"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "Monitor or provider not found"
+          },
+          "409": {
+            "description": "Monitor already linked to this provider"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteMonitorNotification",
+        "summary": "Unlink a notification provider from a monitor",
+        "description": "Remove a notification provider link from a monitor.",
+        "tags": [
+          "Monitors"
+        ],
+        "parameters": [
+          {
+            "name": "notificationProviderId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Notification provider to unlink"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Notification link removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing notification provider ID"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/monitors/{id}/permissions": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "description": "Monitor ID"
+        }
+      ],
+      "get": {
+        "operationId": "getMonitorPermissions",
+        "summary": "Get monitor permissions",
+        "description": "Return the current user's effective permissions for a monitor.",
+        "tags": [
+          "Monitors"
+        ],
+        "responses": {
+          "200": {
+            "description": "Effective permissions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonitorPermissionsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid monitor ID"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/monitors/{id}/location-stats": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "description": "Monitor ID"
+        },
+        {
+          "name": "days",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 90,
+            "default": 7
+          },
+          "description": "Number of days to look back (1-90)"
+        }
+      ],
+      "get": {
+        "operationId": "getMonitorLocationStats",
+        "summary": "Get monitor location stats",
+        "description": "Return per-location aggregated statistics (uptime, response times) for a monitor over the requested window.",
+        "tags": [
+          "Monitors"
+        ],
+        "responses": {
+          "200": {
+            "description": "Per-location statistics",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MonitorLocationStats"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Days must be between 1 and 90"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/status-pages/{id}/badge": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "description": "Status page ID"
+        }
+      ],
+      "get": {
+        "operationId": "getStatusPageBadge",
+        "summary": "Get status page badge",
+        "description": "Returns a public SVG status badge. Successful responses are cached for five minutes.",
+        "tags": [
+          "Status Pages"
+        ],
+        "security": [],
+        "parameters": [
+          {
+            "name": "style",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "flat",
+                "flat-square"
+              ],
+              "default": "flat"
+            }
+          },
+          {
+            "name": "label",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 64,
+              "default": "status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "SVG status badge",
+            "content": {
+              "image/svg+xml": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid status page ID"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "description": "Failed to generate badge"
+          }
+        }
+      }
+    },
+    "/api/status-pages/{id}/ical": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "description": "Status page ID"
+        }
+      ],
+      "get": {
+        "operationId": "getStatusPageIcal",
+        "summary": "Get status page calendar feed",
+        "description": "Returns an RFC 5545 iCalendar feed for a published status page.",
+        "tags": [
+          "Status Pages"
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "iCalendar feed",
+            "content": {
+              "text/calendar": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid status page ID"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "description": "Failed to generate calendar feed"
           }
         }
       }
@@ -4330,7 +5297,11 @@
             "format": "uuid"
           },
           "key": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]*$",
+            "minLength": 4,
+            "maxLength": 20,
+            "description": "Variable key. Uppercase letters, digits, and underscores only; 4-20 characters; must not use the `SUPERCHECK_` prefix or a reserved name (for example PATH, HOME)."
           },
           "type": {
             "type": "string",
@@ -5411,19 +6382,77 @@
             "type": "string",
             "nullable": true
           },
-          "suggestedType": {
-            "type": "string",
-            "enum": [
-              "browser",
-              "api",
-              "performance",
-              "database",
-              "custom"
-            ],
-            "nullable": true
-          },
           "isValidationError": {
             "type": "boolean"
+          }
+        }
+      },
+      "MonitorNotificationLink": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "monitorId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "notificationProviderId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "MonitorPermissionsResponse": {
+        "type": "object",
+        "properties": {
+          "canView": {
+            "type": "boolean"
+          },
+          "canEdit": {
+            "type": "boolean"
+          },
+          "canDelete": {
+            "type": "boolean"
+          },
+          "canToggle": {
+            "type": "boolean"
+          },
+          "userRole": {
+            "type": "string"
+          }
+        }
+      },
+      "MonitorLocationStats": {
+        "type": "object",
+        "properties": {
+          "location": {
+            "type": "string"
+          },
+          "totalChecks": {
+            "type": "integer",
+            "nullable": true
+          },
+          "upChecks": {
+            "type": "integer",
+            "nullable": true
+          },
+          "uptimePercentage": {
+            "type": "number",
+            "nullable": true
+          },
+          "avgResponseTime": {
+            "type": "number",
+            "nullable": true
+          },
+          "minResponseTime": {
+            "type": "number",
+            "nullable": true
+          },
+          "maxResponseTime": {
+            "type": "number",
+            "nullable": true
           }
         }
       }

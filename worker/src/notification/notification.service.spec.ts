@@ -14,6 +14,11 @@
  * - Multiple Providers (parallel delivery)
  */
 
+jest.mock('../common/utils/pinned-public-fetch', () => ({
+  fetchPublicEndpoint: (...args: Parameters<typeof fetch>) =>
+    global.fetch(...args),
+}));
+
 import { Test, TestingModule } from '@nestjs/testing';
 import {
   NotificationService,

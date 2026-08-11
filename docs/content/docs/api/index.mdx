@@ -4,7 +4,7 @@ description: Supercheck REST API documentation
 icon: Braces
 ---
 
-The Supercheck API provides programmatic access to all platform features — jobs, tests, monitors, variables, notifications, and more. The API is used by the [CLI](/docs/cli), the web dashboard, and can be integrated directly into your own tools.
+The supported public Supercheck API provides programmatic access to jobs, tests, monitors, variables, notifications, and other documented resources. The web dashboard also uses internal and streaming routes that are intentionally outside this public API contract.
 
 ## Base URL
 
@@ -15,7 +15,7 @@ The Supercheck API provides programmatic access to all platform features — job
 
 ## Authentication
 
-All API requests require authentication via `Authorization: Bearer <token>` header. See [Authentication](./authentication) for details on token types.
+Resource-management requests require authentication via an `Authorization: Bearer <token>` header. Explicitly public endpoints, such as health checks and published status-page feeds, do not. See [Authentication](./authentication) for details on token types.
 
 ```bash
 curl https://app.supercheck.io/api/jobs \
@@ -82,7 +82,7 @@ Health check and available execution locations
 
 ## OpenAPI Specification
 
-The full OpenAPI 3.1 specification is available for SDK generation and tooling:
+The OpenAPI 3.1 specification for the supported public API is available for SDK generation and tooling:
 
 | Format | URL |
 |--------|-----|

@@ -56,14 +56,8 @@ describe("checkSreChatRateLimit", () => {
   });
 
   it("fails closed and logs an alertable event when Redis transaction execution fails", async () => {
-    const multi = {
-      zremrangebyscore: jest.fn(),
-      zcard: jest.fn(),
-      zrange: jest.fn(),
-      exec: jest.fn().mockResolvedValueOnce(null),
-    };
     mockGetRedisConnection.mockResolvedValueOnce({
-      multi: jest.fn(() => multi),
+      eval: jest.fn().mockResolvedValueOnce(null),
     });
 
     const result = await checkSreChatRateLimit("user-2");
@@ -81,6 +75,33 @@ describe("checkSreChatRateLimit", () => {
       },
       "Redis transaction failed for SRE rate limiting, denying request",
     );
+  });
+
+  it("uses one atomic Redis script for admission and expiry", async () => {
+    const evalCommand = jest.fn().mockResolvedValueOnce([1, 1, Date.now()]);
+    mockGetRedisConnection.mockResolvedValueOnce({ eval: evalCommand });
+
+    const result = await checkSreChatRateLimit("user-atomic");
+
+    expect(result).toEqual({ allowed: true, remaining: 29 });
+    expect(evalCommand).toHaveBeenCalledTimes(1);
+    expect(evalCommand.mock.calls[0][1]).toBe(1);
+    expect(evalCommand.mock.calls[0][2]).toBe(
+      "supercheck:sre:ratelimit:chat:user-atomic",
+    );
+  });
+
+  it("returns the atomic script reset time when the limit is reached", async () => {
+    const oldest = Date.now() - 1_000;
+    mockGetRedisConnection.mockResolvedValueOnce({
+      eval: jest.fn().mockResolvedValueOnce([0, 30, oldest]),
+    });
+
+    const result = await checkSreChatRateLimit("user-limited");
+
+    expect(result.allowed).toBe(false);
+    expect(result.remaining).toBe(0);
+    expect(result.resetTime).toBe(oldest + 60_000);
   });
 
   it("fails closed and logs an alertable event when Redis throws", async () => {

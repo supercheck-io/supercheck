@@ -18,7 +18,11 @@ export function isPrivateConnectorAddress(address: string) {
     normalized.startsWith("fc") ||
     normalized.startsWith("fd") ||
     normalized.startsWith("ff") ||
-    normalized.startsWith("2001:db8:")
+    normalized.startsWith("2001:db8:") ||
+    normalized.startsWith("2001:0000:") ||
+    normalized.startsWith("2001:0:") ||
+    normalized.startsWith("2002:") ||
+    normalized.startsWith("64:ff9b:")
   ) {
     return true;
   }

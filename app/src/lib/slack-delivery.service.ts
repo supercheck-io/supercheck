@@ -9,6 +9,8 @@
  * - Rich formatting for incident notifications
  */
 
+import { fetchPublicEndpoint } from "@/lib/sre/connectors/pinned-fetch";
+
 export type SlackIncidentEvent = {
   type: "incident.created" | "incident.updated" | "incident.resolved";
   timestamp: string;
@@ -255,7 +257,7 @@ export async function deliverSlackMessage(
   // Retry loop with exponential backoff
   for (let attempt = 0; attempt <= SLACK_CONFIG.MAX_RETRIES; attempt++) {
     try {
-      const response = await fetch(webhookUrl, {
+      const response = await fetchPublicEndpoint(webhookUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

@@ -10,6 +10,8 @@
  * All keys use the `supercheck:sre:ratelimit:` prefix for consistency.
  */
 
+import crypto from "node:crypto";
+
 import { getRedisConnection } from "@/lib/queue";
 import { createLogger } from "@/lib/logger/index";
 
@@ -20,6 +22,28 @@ const sreRateLimitLogger = createLogger({ module: "sre-rate-limit" }) as {
 };
 
 const RATE_LIMIT_KEY_PREFIX = "supercheck:sre:ratelimit";
+
+const SLIDING_WINDOW_LUA = `
+local key = KEYS[1]
+local window_start = tonumber(ARGV[1])
+local now = tonumber(ARGV[2])
+local limit = tonumber(ARGV[3])
+local member = ARGV[4]
+local ttl_ms = tonumber(ARGV[5])
+
+redis.call('ZREMRANGEBYSCORE', key, 0, window_start)
+local count = redis.call('ZCARD', key)
+local oldest = redis.call('ZRANGE', key, 0, 0, 'WITHSCORES')
+
+if count >= limit then
+  redis.call('PEXPIRE', key, ttl_ms)
+  return {0, count, oldest[2] or now}
+end
+
+redis.call('ZADD', key, now, member)
+redis.call('PEXPIRE', key, ttl_ms)
+return {1, count + 1, oldest[2] or now}
+`;
 
 export type SreRateLimitResult = {
   allowed: boolean;
@@ -83,14 +107,19 @@ async function checkSreRateLimit(
     const now = Date.now();
     const windowStart = now - windowMs;
 
-    const multi = redis.multi();
-    multi.zremrangebyscore(redisKey, 0, windowStart);
-    multi.zcard(redisKey);
-    multi.zrange(redisKey, 0, 0, "WITHSCORES");
+    const member = `${now}:${crypto.randomUUID()}`;
+    const result = (await redis.eval(
+      SLIDING_WINDOW_LUA,
+      1,
+      redisKey,
+      windowStart,
+      now,
+      maxOperations,
+      member,
+      windowMs + 10_000,
+    )) as [number, number, number] | null;
 
-    const results = await multi.exec();
-
-    if (!results) {
+    if (!result) {
       logSreRateLimiterUnavailable(
         "warn",
         { key, reason: "redis_transaction_failed" },
@@ -99,16 +128,14 @@ async function checkSreRateLimit(
       return unavailableResult(windowMs);
     }
 
-    const currentCount = (results[1]?.[1] as number) ?? 0;
+    const [allowed, currentCount, oldestTimestamp] = result.map(Number) as [
+      number,
+      number,
+      number,
+    ];
 
-    if (currentCount >= maxOperations) {
-      const oldestEntry = results[2]?.[1] as string[] | undefined;
-      let resetTime = now + windowMs;
-
-      if (oldestEntry && oldestEntry.length >= 2) {
-        const oldestTimestamp = parseInt(oldestEntry[1], 10);
-        resetTime = oldestTimestamp + windowMs;
-      }
+    if (allowed !== 1) {
+      const resetTime = oldestTimestamp + windowMs;
 
       sreRateLimitLogger.debug(
         { key, count: currentCount, limit: maxOperations },
@@ -118,11 +145,7 @@ async function checkSreRateLimit(
       return { allowed: false, resetTime, remaining: 0 };
     }
 
-    const member = `${now}:${Math.random().toString(36).slice(2)}`;
-    await redis.zadd(redisKey, now, member);
-    await redis.expire(redisKey, Math.ceil(windowMs / 1000) + 10);
-
-    return { allowed: true, remaining: maxOperations - currentCount - 1 };
+    return { allowed: true, remaining: maxOperations - currentCount };
   } catch (error) {
     logSreRateLimiterUnavailable(
       "error",

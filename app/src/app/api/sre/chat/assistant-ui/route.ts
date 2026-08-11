@@ -4,6 +4,7 @@ import {
   stepCountIs,
   type UIMessage,
 } from "ai";
+import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -13,6 +14,7 @@ import {
   validateAIConfiguration,
 } from "@/lib/ai/ai-provider";
 import { requireProjectContext } from "@/lib/project-context";
+import { createLogger } from "@/lib/logger/index";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { checkSreChatRateLimit } from "@/lib/sre/sre-rate-limiter";
 import { buildSreTriageSystemPrompt } from "@/sre/agents/triage";
@@ -40,6 +42,9 @@ type SreAssistantUiMessage = UIMessage<SreAssistantUiMessageMetadata>;
 
 const MAX_MESSAGE_TEXT_LENGTH = 4000;
 const MAX_TOTAL_MESSAGE_TEXT_LENGTH = 20_000;
+const logger = createLogger({ module: "sre-assistant-ui" }) as {
+  error: (data: unknown, message?: string) => void;
+};
 
 const assistantUiPartSchema = z
   .object({
@@ -305,7 +310,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.error("Failed to load Copilot conversation:", error);
+    logger.error({ error }, "Failed to load Copilot conversation");
     return NextResponse.json(
       { error: "Copilot conversation could not be loaded" },
       { status: 500 },
@@ -343,7 +348,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      console.error("Failed to create Copilot conversation:", error);
+      logger.error({ error }, "Failed to create Copilot conversation");
       return NextResponse.json(
         { error: "Copilot conversation could not be created" },
         { status: 500 },
@@ -387,8 +392,8 @@ export async function POST(request: NextRequest) {
   assertSreAgentPromptWithinBudget(promptPreview, budget);
 
   const modelId = getActualModelName();
-  let assistantMessageId: string | undefined;
   const activeConversationId = conversation.id;
+  const assistantMessageId = randomUUID();
 
   const result = streamText({
     model: getProviderModel(),
@@ -433,7 +438,8 @@ export async function POST(request: NextRequest) {
         return;
       }
 
-      const assistantMessage = await appendSreMessage({
+      await appendSreMessage({
+        id: assistantMessageId,
         organizationId: context.organizationId,
         projectId: context.project.id,
         userId: context.userId,
@@ -442,7 +448,6 @@ export async function POST(request: NextRequest) {
         content: assistantText,
         modelId,
       });
-      assistantMessageId = assistantMessage.id;
     },
   });
 }

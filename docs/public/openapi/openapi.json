@@ -3,7 +3,7 @@
   "info": {
     "title": "Supercheck API",
     "version": "1.0.0",
-    "description": "API for test automation, monitoring, and CI/CD integration. Supercheck provides Playwright browser testing, k6 performance testing, uptime monitoring, and alerting \u2014 all managed via API or CLI.",
+    "description": "API for test automation, monitoring, and CI/CD integration. Supercheck provides Playwright browser testing, k6 performance testing, uptime monitoring, and alerting — all managed via API or CLI.",
     "contact": {
       "name": "Supercheck",
       "url": "https://supercheck.io"
@@ -173,13 +173,25 @@
                           }
                         }
                       }
+                    },
+                    "build": {
+                      "type": "object",
+                      "properties": {
+                        "revision": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "revision"
+                      ]
                     }
                   },
                   "required": [
                     "status",
                     "timestamp",
                     "latencyMs",
-                    "checks"
+                    "checks",
+                    "build"
                   ]
                 }
               }
@@ -352,7 +364,7 @@
       "post": {
         "operationId": "createCliToken",
         "summary": "Create a CLI token",
-        "description": "Create a new CLI token for API access. The plain token value is returned only once in the response \u2014 store it securely.",
+        "description": "Create a new CLI token for API access. The plain token value is returned only once in the response — store it securely.",
         "tags": [
           "Authentication"
         ],
@@ -385,7 +397,7 @@
         },
         "responses": {
           "201": {
-            "description": "Token created. The `key` field contains the plain token \u2014 store it securely, it cannot be retrieved again.",
+            "description": "Token created. The `key` field contains the plain token — store it securely, it cannot be retrieved again.",
             "content": {
               "application/json": {
                 "schema": {
@@ -764,6 +776,48 @@
             "$ref": "#/components/responses/NotFound"
           }
         }
+      },
+      "put": {
+        "operationId": "replaceJobConfiguration",
+        "summary": "Update a job configuration",
+        "description": "Update job configuration. Only provided fields are changed. PUT is retained for CLI deploy and backward compatibility; interactive partial updates should prefer PATCH.",
+        "tags": [
+          "Jobs"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JobUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Job updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobUpdateResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid job update payload"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
       }
     },
     "/api/jobs/{id}/trigger": {
@@ -824,7 +878,7 @@
             "$ref": "#/components/responses/NotFound"
           },
           "429": {
-            "description": "Rate limited \u2014 too many trigger requests",
+            "description": "Rate limited — too many trigger requests",
             "content": {
               "application/json": {
                 "schema": {
@@ -940,8 +994,7 @@
                     "type": "string",
                     "enum": [
                       "manual",
-                      "remote",
-                      "schedule"
+                      "remote"
                     ],
                     "description": "Requested trigger source. CLI-authenticated calls are normalized to `remote` by the server."
                   },
@@ -1057,7 +1110,7 @@
       "post": {
         "operationId": "createJobApiKey",
         "summary": "Create a trigger key",
-        "description": "Create a new API trigger key for a job. The plain key is returned only once \u2014 store it securely.",
+        "description": "Create a new API trigger key for a job. The plain key is returned only once — store it securely.",
         "tags": [
           "Trigger Keys"
         ],
@@ -1088,7 +1141,7 @@
         },
         "responses": {
           "201": {
-            "description": "Trigger key created. Store the `key` value securely \u2014 it cannot be retrieved again.",
+            "description": "Trigger key created. Store the `key` value securely — it cannot be retrieved again.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1619,7 +1672,7 @@
                 "custom"
               ]
             },
-            "description": "Filter by test type. Aliases: `playwright` \u2192 `browser`, `k6` \u2192 `performance`"
+            "description": "Filter by test type. Aliases: `playwright` → `browser`, `k6` → `performance`"
           }
         ],
         "responses": {
@@ -1685,15 +1738,24 @@
                       "custom"
                     ],
                     "default": "browser",
-                    "description": "Test type. Aliases accepted: `playwright` \u2192 `browser`, `k6` \u2192 `performance`"
+                    "description": "Test type. Aliases accepted: `playwright` → `browser`, `k6` → `performance`"
                   },
                   "description": {
                     "type": "string"
+                  },
+                  "priority": {
+                    "type": "string",
+                    "enum": [
+                      "low",
+                      "medium",
+                      "high",
+                      "critical"
+                    ],
+                    "default": "medium"
                   }
                 },
                 "required": [
-                  "title",
-                  "script"
+                  "title"
                 ]
               }
             }
@@ -1871,6 +1933,63 @@
           },
           "409": {
             "description": "Test is in use by jobs or synthetic monitors and cannot be deleted"
+          }
+        }
+      },
+      "put": {
+        "operationId": "updateTestLegacyPut",
+        "summary": "Update a test using the legacy PUT alias",
+        "description": "Update test title, script, description, or type. PUT is retained for CLI deploy and backward compatibility; interactive partial updates should prefer PATCH.",
+        "tags": [
+          "Tests"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  },
+                  "script": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "browser",
+                      "api",
+                      "performance",
+                      "database",
+                      "custom"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Test updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Test"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
           }
         }
       }
@@ -2301,6 +2420,48 @@
                 }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "put": {
+        "operationId": "replaceMonitorConfiguration",
+        "summary": "Update a monitor configuration",
+        "description": "Update monitor configuration. Only provided fields are changed. PUT is retained for CLI deploy and backward compatibility; interactive partial updates should prefer PATCH.",
+        "tags": [
+          "Monitors"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MonitorUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Monitor updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Monitor"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid monitor update payload"
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -4059,6 +4220,120 @@
           },
           "500": {
             "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/status-pages/{id}/badge": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "description": "Status page ID"
+        }
+      ],
+      "get": {
+        "operationId": "getStatusPageBadge",
+        "summary": "Get status page badge",
+        "description": "Returns a public SVG status badge. Successful responses are cached for five minutes.",
+        "tags": [
+          "Status Pages"
+        ],
+        "security": [],
+        "parameters": [
+          {
+            "name": "style",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "flat",
+                "flat-square"
+              ],
+              "default": "flat"
+            }
+          },
+          {
+            "name": "label",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 64,
+              "default": "status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "SVG status badge",
+            "content": {
+              "image/svg+xml": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid status page ID"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "description": "Failed to generate badge"
+          }
+        }
+      }
+    },
+    "/api/status-pages/{id}/ical": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "description": "Status page ID"
+        }
+      ],
+      "get": {
+        "operationId": "getStatusPageIcal",
+        "summary": "Get status page calendar feed",
+        "description": "Returns an RFC 5545 iCalendar feed for a published status page.",
+        "tags": [
+          "Status Pages"
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "iCalendar feed",
+            "content": {
+              "text/calendar": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid status page ID"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "description": "Failed to generate calendar feed"
           }
         }
       }
@@ -6105,17 +6380,6 @@
           },
           "errorType": {
             "type": "string",
-            "nullable": true
-          },
-          "suggestedType": {
-            "type": "string",
-            "enum": [
-              "browser",
-              "api",
-              "performance",
-              "database",
-              "custom"
-            ],
             "nullable": true
           },
           "isValidationError": {
