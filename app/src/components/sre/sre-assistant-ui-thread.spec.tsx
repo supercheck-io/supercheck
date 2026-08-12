@@ -51,13 +51,36 @@ describe("getQuickRepliesForAssistantText", () => {
       .toEqual(expect.objectContaining({ disableLiveConnectors: true }));
   });
 
-  it("suggests chart rendering for metric-heavy answers", () => {
+  it("suggests chart rendering only when metric answers contain a numeric series", () => {
     const replies = getQuickRepliesForAssistantText(
-      "The p95 latency and memory metrics changed over the last 15 minutes.",
+      "Checkout p95 latency was 240 ms at 10:00 and 310 ms at 10:05.",
     );
 
     expect(replies).toContainEqual(
       expect.objectContaining({ label: "Render chart", intent: "chart" }),
+    );
+  });
+
+  it("does not add generic follow-ups or chart actions without evidence values", () => {
+    const replies = getQuickRepliesForAssistantText(
+      "No supporting evidence is available for checkout-api latency or error rate.",
+    );
+
+    expect(replies).toEqual([]);
+  });
+
+  it("does not mistake numbered diagnostic steps for a numeric metric series", () => {
+    const replies = getQuickRepliesForAssistantText(
+      [
+        "I currently have no evidence regarding the health of checkout-api.",
+        "1. **Recent Logs**: Look for errors and warnings.",
+        "2. **Service Metrics**: Inspect response time and error rates.",
+        "3. **Health Checks**: Verify whether health checks are passing.",
+      ].join("\n"),
+    );
+
+    expect(replies).not.toContainEqual(
+      expect.objectContaining({ label: "Render chart" }),
     );
   });
 

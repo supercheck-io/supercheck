@@ -87,6 +87,9 @@ export function DiagnosticQueriesAdminView({
   setupStatus = null,
   onSetupChanged,
 }: DiagnosticQueriesAdminViewProps) {
+  const availableConnectors = setupOptions.connectors.filter(
+    (connector) => connector.status !== "disabled",
+  );
   const [queries, setQueries] = useState(initialQueries);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -94,7 +97,7 @@ export function DiagnosticQueriesAdminView({
     useState<SreDiagnosticQueryListItem | null>(null);
   const [isDisabling, startDisableTransition] = useTransition();
   const [form, setForm] = useState({
-    connectorId: setupOptions.connectors[0]?.id ?? "",
+    connectorId: availableConnectors[0]?.id ?? "",
     name: "",
     queryType: "promql",
     template: "",
@@ -105,7 +108,7 @@ export function DiagnosticQueriesAdminView({
     maxSeconds: "10",
   });
 
-  const selectedConnector = setupOptions.connectors.find(
+  const selectedConnector = availableConnectors.find(
     (connector) => connector.id === form.connectorId,
   );
   const adapterRecipes = selectedConnector
@@ -220,11 +223,11 @@ export function DiagnosticQueriesAdminView({
 
   return (
     <div className="space-y-4">
-      {setupOptions.connectors.length === 0 ? (
+      {availableConnectors.length === 0 ? (
         <DashboardEmptyState
           className="min-h-[420px]"
-          title="Connectors required"
-          description="Create an evidence connector first. Diagnostic recipes are scoped to one connector and stay read-only."
+          title="Enabled connector required"
+          description="Add or enable an evidence connector first. Diagnostic recipes are scoped to one connector and stay read-only."
           icon={<ShieldCheck className="h-10 w-10" />}
           action={<SreSetupGuideDialog status={setupStatus} />}
         />
@@ -292,7 +295,7 @@ export function DiagnosticQueriesAdminView({
                     <SelectValue placeholder="Choose connector" />
                   </SelectTrigger>
                   <SelectContent>
-                    {setupOptions.connectors.map((connector) => (
+                    {availableConnectors.map((connector) => (
                       <SelectItem key={connector.id} value={connector.id}>
                         {connector.name} ({connector.type})
                       </SelectItem>
@@ -464,7 +467,7 @@ export function DiagnosticQueriesAdminView({
               onClick={createQuery}
               disabled={
                 isPending ||
-                !form.connectorId ||
+                !selectedConnector ||
                 !form.name.trim() ||
                 !form.template.trim()
               }

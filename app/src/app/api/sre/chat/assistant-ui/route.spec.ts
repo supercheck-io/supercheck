@@ -238,6 +238,18 @@ describe("Copilot assistant-ui chat API", () => {
     expect(streamText).toHaveBeenCalledWith(
       expect.objectContaining({
         system: expect.stringContaining(
+          "Never invent or assign team names, owners, departments",
+        ),
+      }),
+    );
+    expect(streamText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        system: expect.stringContaining("Answer the user's exact question first"),
+      }),
+    );
+    expect(streamText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        system: expect.stringContaining(
           "Standalone chat has no incident evidence or live connector scope",
         ),
       }),

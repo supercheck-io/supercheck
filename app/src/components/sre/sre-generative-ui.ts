@@ -32,8 +32,22 @@ export function getQuickRepliesForAssistantText(
 ): SreQuickReply[] {
   const normalized = content.toLowerCase();
   const replies: SreQuickReply[] = [];
+  const reportsMissingEvidence =
+    /(?:no|without|missing|unavailable|insufficient)\s+(?:supporting\s+)?evidence|evidence\s+(?:is\s+)?(?:missing|unavailable|insufficient)/i.test(
+      content,
+    );
+  // Markdown list ordinals describe presentation, not observations. Strip them
+  // before looking for a numeric series so a three-step checklist does not
+  // incorrectly offer chart rendering.
+  const numericContent = content.replace(/^\s*\d+[.)]\s+/gm, "");
+  const numericValues =
+    numericContent.match(/(?:^|[^\p{L}\p{N}_])[-+]?\d+(?:\.\d+)?%?/gu) ?? [];
+  const reportsFailedCheck =
+    /(?:request|check|connector|tool|copilot|investigation)\s+(?:error|failed|failure|timed out|unavailable|blocked)|(?:error|failure)\s+(?:occurred|while|during)|\b(?:failed|failure|timeout|unavailable|blocked)\b/i.test(
+      content,
+    );
 
-  if (/(error|failed|failure|timeout|unavailable|blocked)/i.test(content)) {
+  if (reportsFailedCheck) {
     replies.push(
       {
         label: "Retry read-only check",
@@ -52,6 +66,7 @@ export function getQuickRepliesForAssistantText(
   }
 
   if (
+    !reportsMissingEvidence &&
     /(evidence|incident|investigat|root cause|hypothesis|theory)/.test(
       normalized,
     )
@@ -73,6 +88,7 @@ export function getQuickRepliesForAssistantText(
   }
 
   if (
+    numericValues.length >= 2 &&
     /(metric|latency|error rate|memory|cpu|throughput|duration|p95|p99)/.test(
       normalized,
     )
@@ -83,23 +99,6 @@ export function getQuickRepliesForAssistantText(
       prompt:
         "If numeric series are present, render them as an inline chart using the supported chart JSON block.",
     });
-  }
-
-  if (replies.length === 0) {
-    replies.push(
-      {
-        label: "List next checks",
-        intent: "prompt",
-        prompt:
-          "Summarize the next safest read-only checks and explain what each result would prove.",
-      },
-      {
-        label: "State assumptions",
-        intent: "check",
-        prompt:
-          "Separate verified facts, user-provided context, assumptions, and missing evidence in the current answer.",
-      },
-    );
   }
 
   return replies.slice(0, 3);

@@ -93,7 +93,12 @@ describe("SRE chat API", () => {
     expect(response.headers.get("content-type")).toContain("text/event-stream");
     expect(text).toContain("event: conversation");
     expect(text).toContain("Read-only guidance");
-    expect(mockRunSreAgent).toHaveBeenCalledWith(expect.objectContaining({ system: "read-only system" }));
+    expect(mockRunSreAgent).toHaveBeenCalledWith(expect.objectContaining({
+      system: "read-only system",
+      prompt: expect.stringContaining(
+        "Never invent or assign team names, owners, departments",
+      ),
+    }));
   });
 
   it("rejects unauthorized users before creating conversations", async () => {

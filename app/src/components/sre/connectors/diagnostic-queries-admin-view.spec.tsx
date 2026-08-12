@@ -62,4 +62,28 @@ describe("DiagnosticQueriesAdminView", () => {
     ).toBeInTheDocument();
     expect(screen.getByDisplayValue((value) => value.includes('"window"') && value.includes('"15m"'))).toBeInTheDocument();
   });
+
+  it("does not offer disabled connectors for new recipes", () => {
+    render(
+      <DiagnosticQueriesAdminView
+        loadError={null}
+        setupOptions={{
+          connectors: [
+            {
+              id: "c1",
+              name: "Disabled Prometheus",
+              type: "prometheus",
+              status: "disabled",
+            },
+          ],
+        }}
+        initialQueries={[]}
+      />,
+    );
+
+    expect(screen.getByText("Enabled connector required")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Add recipe" }),
+    ).not.toBeInTheDocument();
+  });
 });

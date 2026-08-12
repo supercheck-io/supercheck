@@ -320,7 +320,7 @@ export function PrivateAgentsAdminView({
         open={Boolean(rotatedToken)}
         onOpenChange={(open) => !open && setRotatedToken(null)}
       >
-        <DialogContent className="max-w-2xl min-w-2xl gap-3 p-5">
+        <DialogContent className="w-[calc(100vw-1rem)] max-w-2xl gap-3 p-5 sm:w-full">
           <DialogHeader>
             <DialogTitle>Token rotated</DialogTitle>
             <DialogDescription>

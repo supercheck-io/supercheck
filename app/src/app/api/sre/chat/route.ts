@@ -139,6 +139,10 @@ function buildChatPrompt(input: {
     input.message,
     [
       "Respond with read-only investigation guidance. If evidence is missing, state the gap and the next safe checks.",
+      "Answer the user's exact question first. Keep a simple health question concise when no evidence is available.",
+      "Never invent or assign team names, owners, departments, escalation paths, or handoff tasks unless the user explicitly asks for ownership planning and supplies that organization context.",
+      "Do not pad an answer with a generic multi-team checklist. Suggest only the smallest useful next action or bounded read-only check.",
+      "Do not ask vaguely for more context. State exactly which evidence boundary applies and the single most useful way to continue in Supercheck.",
       "Use concise sections, bullets, markdown tables for comparisons, and fenced code blocks for commands or queries.",
       "Do not present a generic checklist as completed verification.",
       "When a small numeric summary would be clearer as a chart, include a fenced `chart` JSON block with this exact shape:",

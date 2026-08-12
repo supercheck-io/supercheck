@@ -45,6 +45,7 @@ export function SreEvidenceGraphPageClient() {
 
     return (
       <SreEvidenceGraph
+        key={selectedServiceNodeId ?? "unscoped"}
         graph={EMPTY_GRAPH}
         loadError={
           query.error instanceof Error
@@ -58,6 +59,7 @@ export function SreEvidenceGraphPageClient() {
 
   return (
     <SreEvidenceGraph
+      key={selectedServiceNodeId ?? "unscoped"}
       graph={query.data.graph}
       loadError={query.data.success ? null : query.data.error}
       initialSelectedNodeId={selectedServiceNodeId}

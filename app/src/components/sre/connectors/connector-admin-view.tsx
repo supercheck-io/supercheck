@@ -1193,7 +1193,7 @@ export function ConnectorAdminView({
         open={Boolean(jobResult)}
         onOpenChange={(open) => !open && setJobResult(null)}
       >
-        <DialogContent className="max-h-[90vh] max-w-4xl min-w-2xl gap-3 overflow-y-auto p-5">
+        <DialogContent className="max-h-[calc(100svh-1rem)] w-[calc(100vw-1rem)] max-w-4xl gap-3 overflow-y-auto p-5 sm:w-full">
           <DialogHeader>
             <DialogTitle>Private Agent Job Result</DialogTitle>
             <DialogDescription>

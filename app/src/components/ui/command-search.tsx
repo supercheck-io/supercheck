@@ -157,13 +157,16 @@ export function CommandSearch({
       <Button
         variant="outline"
         onClick={() => setOpen(true)}
-        className="h-8 px-2 min-w-[96px] justify-between hover:bg-accent/50 transition-colors"
+        aria-label="Open command menu"
+        className="h-8 min-w-8 justify-center px-2 transition-colors hover:bg-accent/50 sm:min-w-[96px] sm:justify-between"
       >
         <div className="flex items-center space-x-1">
           <SearchIcon className="h-3.5 w-3.5 text-muted-foreground" />
-          <span className="text-[10px] text-muted-foreground">CMD</span>
+          <span className="hidden text-[10px] text-muted-foreground sm:inline">
+            CMD
+          </span>
         </div>
-        <kbd className="inline-flex h-4 items-center rounded border bg-muted px-1 text-[9px] font-mono text-muted-foreground">
+        <kbd className="hidden h-4 items-center rounded border bg-muted px-1 font-mono text-[9px] text-muted-foreground sm:inline-flex">
           ⌘K
         </kbd>
       </Button>

@@ -1,6 +1,6 @@
 "use server";
 
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
@@ -151,7 +151,7 @@ export async function getSreDiagnosticQuerySetupOptions(): Promise<
     const connectors = await db
       .select({ id: externalConnectors.id, name: externalConnectors.name, type: externalConnectors.type, status: externalConnectors.status })
       .from(externalConnectors)
-      .where(and(eq(externalConnectors.organizationId, organizationId), eq(externalConnectors.projectId, project.id)))
+      .where(and(eq(externalConnectors.organizationId, organizationId), eq(externalConnectors.projectId, project.id), ne(externalConnectors.status, "disabled")))
       .orderBy(externalConnectors.name);
 
     return { success: true, options: { connectors } };
@@ -179,6 +179,13 @@ export async function createSreDiagnosticQuery(input: z.infer<typeof createDiagn
 
     if (!connector) {
       return { success: false, error: "Connector not found for this project" };
+    }
+
+    if (connector.status === "disabled") {
+      return {
+        success: false,
+        error: "Enable or replace this connector before adding a diagnostic recipe",
+      };
     }
 
     if (!isDiagnosticQueryTypeCompatible(connector.type, parsed.data.queryType)) {
