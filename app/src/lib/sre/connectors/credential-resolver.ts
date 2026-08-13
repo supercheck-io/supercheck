@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, or } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 
 import {
   externalConnectorCredentials,
@@ -34,10 +34,7 @@ export async function resolveConnectorCredential(input: {
     .where(and(
       eq(externalConnectors.id, input.connectorId),
       eq(externalConnectors.organizationId, input.organizationId),
-      or(
-        eq(externalConnectors.projectId, input.projectId),
-        isNull(externalConnectors.projectId),
-      ),
+      eq(externalConnectors.projectId, input.projectId),
     ))
     .orderBy(desc(externalConnectorCredentials.updatedAt))
     .limit(1);

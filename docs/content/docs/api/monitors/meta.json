@@ -6,6 +6,7 @@
     "getMonitor",
     "createMonitor",
     "updateMonitor",
+    "updateMonitorByBodyId",
     "replaceMonitorConfiguration",
     "deleteMonitor",
     "getMonitorResults",

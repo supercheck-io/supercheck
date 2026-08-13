@@ -260,7 +260,11 @@ class PolarUsageService {
                 event_type: usageEvent.eventType,
                 unit_type: usageEvent.unitType,
                 value: Number(usageEvent.units),
-                ...(usageEvent.metadata ?? {}),
+                ...(typeof usageEvent.metadata?.useLiveConnectors === "boolean"
+                  ? {
+                      useLiveConnectors: usageEvent.metadata.useLiveConnectors,
+                    }
+                  : {}),
               },
             }],
           }),

@@ -18,12 +18,16 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { canInvestigateWithSreCopilot } from "@/lib/rbac/permissions-client";
+import { useProjectContext } from "@/hooks/use-project-context";
 
 const INCIDENT_PATH_PATTERN =
   /^\/incidents\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\/|$)/i;
 
 export function SreAssistantUiModal() {
   const pathname = usePathname();
+  const { currentProject } = useProjectContext();
+  const canInvestigate = canInvestigateWithSreCopilot(currentProject?.userRole);
   const incidentId = useMemo(() => {
     const match = pathname?.match(INCIDENT_PATH_PATTERN);
     return match?.[1] ?? null;
@@ -52,7 +56,7 @@ export function SreAssistantUiModal() {
     setThreadKey(`floating-new-${activeContextKey}-${Date.now()}`);
   };
 
-  if (pathname?.startsWith("/copilot")) {
+  if (pathname?.startsWith("/copilot") || !canInvestigate) {
     return null;
   }
 

@@ -83,12 +83,12 @@ export function useSreEvidenceGraph() {
   });
 }
 
-export function useSreCopilotHistories() {
+export function useSreCopilotHistories(options?: { enabled?: boolean }) {
   const { projectId } = useProjectContext();
   return useQuery({
     queryKey: getSreCopilotHistoriesQueryKey(projectId),
     queryFn: getSreStandaloneChatHistories,
-    enabled: Boolean(projectId),
+    enabled: Boolean(projectId) && options?.enabled !== false,
     staleTime: 30_000,
     meta: MEMORY_ONLY_QUERY,
   });

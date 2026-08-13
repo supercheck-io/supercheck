@@ -73,10 +73,7 @@ export async function getSreOnboardingStatus(): Promise<
           .where(
             and(
               eq(externalConnectors.organizationId, organizationId),
-              or(
-                eq(externalConnectors.projectId, project.id),
-                isNull(externalConnectors.projectId),
-              ),
+              eq(externalConnectors.projectId, project.id),
               inArray(externalConnectors.status, ["configured", "valid"]),
             ),
           ),

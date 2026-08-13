@@ -45,6 +45,12 @@ export function hasPermission(
           "tag",
           "status_page",
           "requirement",
+          "sre_service",
+          "sre_incident",
+          "sre_investigation",
+          "sre_connector",
+          "sre_runbook",
+          "sre_evidence",
         ].includes(resource)
       ) {
         result = true; // Full access to project resources including 'manage' action
@@ -73,6 +79,14 @@ export function hasPermission(
         result = ["view", "create", "update"].includes(action); // Cannot delete API keys
       } else if (resource === "notification") {
         result = ["create", "update", "view"].includes(action); // Cannot delete notifications
+      } else if (
+        ["sre_service", "sre_incident", "sre_investigation"].includes(resource)
+      ) {
+        result = ["create", "update", "view", "investigate"].includes(action);
+      } else if (resource === "sre_connector") {
+        result = action === "view";
+      } else if (["sre_runbook", "sre_evidence"].includes(resource)) {
+        result = ["create", "update", "view"].includes(action);
       } else if (["organization", "member", "project"].includes(resource)) {
         result = action === "view";
       } else {
@@ -447,4 +461,12 @@ export function canEditRequirements(role: Role): boolean {
  */
 export function canDeleteRequirements(role: Role): boolean {
   return hasPermission(role, "requirement", "delete");
+}
+
+export function canInvestigateSre(role: Role): boolean {
+  return hasPermission(role, "sre_investigation", "investigate");
+}
+
+export function canUseSreLiveConnectorTools(role: Role): boolean {
+  return hasPermission(role, "sre_connector", "investigate");
 }

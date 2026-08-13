@@ -43,6 +43,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { useProjectContext } from "@/hooks/use-project-context";
+import { canUseSreLiveConnectors } from "@/lib/rbac/permissions-client";
 
 const SRE_COPILOT_MESSAGE_MAX_LENGTH = 4000;
 
@@ -397,11 +399,13 @@ function SreFollowUpSuggestions({
 function SreComposer({
   incidentId,
   useLiveConnectorTools,
+  canUseLiveConnectors,
   onUseLiveConnectorToolsChange,
   onClearError,
 }: {
   incidentId: string | null;
   useLiveConnectorTools: boolean;
+  canUseLiveConnectors: boolean;
   onUseLiveConnectorToolsChange: (enabled: boolean) => void;
   onClearError: () => void;
 }) {
@@ -463,7 +467,7 @@ function SreComposer({
               Read-only
             </span>
           </div>
-          {incidentId ? (
+          {incidentId && canUseLiveConnectors ? (
             <div className="flex shrink-0 items-center gap-2">
               <Switch
                 id="copilot-live-connectors"
@@ -509,11 +513,13 @@ function SreComposer({
 export function SreThread({
   incidentId,
   useLiveConnectorTools,
+  canUseLiveConnectors,
   onUseLiveConnectorToolsChange,
   onClearError,
 }: {
   incidentId: string | null;
   useLiveConnectorTools: boolean;
+  canUseLiveConnectors: boolean;
   onUseLiveConnectorToolsChange: (enabled: boolean) => void;
   onClearError: () => void;
 }) {
@@ -552,6 +558,7 @@ export function SreThread({
         <SreComposer
           incidentId={incidentId}
           useLiveConnectorTools={useLiveConnectorTools}
+          canUseLiveConnectors={canUseLiveConnectors}
           onUseLiveConnectorToolsChange={onUseLiveConnectorToolsChange}
           onClearError={onClearError}
         />
@@ -568,6 +575,10 @@ export function SreAssistantUiThread({
   onClearError,
   onError,
 }: SreAssistantUiThreadProps) {
+  const { currentProject } = useProjectContext();
+  const canUseLiveConnectors = canUseSreLiveConnectors(
+    currentProject?.userRole,
+  );
   const [useLiveConnectorTools, setUseLiveConnectorTools] = useState(false);
   const uiMessages = useMemo(
     () => historyMessagesToUiMessages(initialMessages),
@@ -580,10 +591,10 @@ export function SreAssistantUiThread({
         body: {
           conversationId,
           incidentId,
-          useLiveConnectorTools,
+          useLiveConnectorTools: useLiveConnectorTools && canUseLiveConnectors,
         },
       }),
-    [conversationId, incidentId, useLiveConnectorTools],
+    [conversationId, incidentId, useLiveConnectorTools, canUseLiveConnectors],
   );
   const runtime = useChatRuntime<SreAssistantUiMessage>({
     id: conversationId ?? undefined,
@@ -612,7 +623,8 @@ export function SreAssistantUiThread({
     <AssistantRuntimeProvider runtime={runtime}>
       <SreThread
         incidentId={incidentId}
-        useLiveConnectorTools={useLiveConnectorTools}
+        useLiveConnectorTools={useLiveConnectorTools && canUseLiveConnectors}
+        canUseLiveConnectors={canUseLiveConnectors}
         onUseLiveConnectorToolsChange={setUseLiveConnectorTools}
         onClearError={onClearError}
       />

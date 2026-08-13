@@ -220,27 +220,63 @@ function assertAgentEndpointAllowed(url: string) {
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
     throw new Error('Connector endpoint must use http or https');
   }
+  if (parsed.username || parsed.password) {
+    throw new Error(
+      'Connector endpoints cannot include credentials in the URL',
+    );
+  }
 
-  const hostname = parsed.hostname.toLowerCase();
+  const hostname = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, '');
   if (
     hostname === 'localhost' ||
     hostname.endsWith('.localhost') ||
-    hostname === '127.0.0.1' ||
-    hostname === '::1'
+    hostname === '::1' ||
+    hostname === '::' ||
+    hostname === '0.0.0.0' ||
+    hostname === '169.254.169.254' ||
+    hostname === 'metadata.google.internal' ||
+    hostname === 'metadata.azure.internal'
   ) {
     throw new Error(
-      'Private Agent connector endpoints cannot target localhost',
+      'Private Agent connector endpoints cannot target localhost or cloud metadata endpoints',
     );
   }
 
+  const ipv4Host = ipv4FromPossiblyMappedHostname(hostname);
+  const ipv4Parts = ipv4Host.split('.').map((part) => Number(part));
   if (
-    hostname === '169.254.169.254' ||
-    hostname === 'metadata.google.internal'
+    ipv4Parts.length === 4 &&
+    ipv4Parts.every((part) => Number.isInteger(part) && part >= 0 && part <= 255) &&
+    (ipv4Parts[0] === 127 ||
+      ipv4Parts[0] === 0 ||
+      (ipv4Parts[0] === 169 &&
+        ipv4Parts[1] === 254 &&
+        ipv4Parts[2] === 169 &&
+        ipv4Parts[3] === 254))
   ) {
     throw new Error(
-      'Private Agent connector endpoints cannot target cloud metadata endpoints',
+      'Private Agent connector endpoints cannot target localhost or cloud metadata endpoints',
     );
   }
+}
+
+function ipv4FromPossiblyMappedHostname(hostname: string): string {
+  if (hostname.startsWith('::ffff:')) {
+    const mapped = hostname.slice('::ffff:'.length);
+    const hexMapped = mapped.match(/^([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i);
+    if (hexMapped) {
+      const high = Number.parseInt(hexMapped[1], 16);
+      const low = Number.parseInt(hexMapped[2], 16);
+      return [
+        (high >> 8) & 255,
+        high & 255,
+        (low >> 8) & 255,
+        low & 255,
+      ].join('.');
+    }
+    return mapped;
+  }
+  return hostname;
 }
 
 function dateFromUnixNs(value: string | number | undefined, fallback: string) {

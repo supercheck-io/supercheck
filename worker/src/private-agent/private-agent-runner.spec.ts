@@ -378,6 +378,35 @@ describe('private agent connector execution', () => {
     ).rejects.toThrow('cannot target localhost');
   });
 
+  it('blocks loopback IPs and URL-embedded credentials in private-agent mode', async () => {
+    await expect(
+      executePrivateAgentConnectorJob({
+        ...baseJob,
+        jobSpec: { ...baseJob.jobSpec, endpointUrl: 'http://127.0.0.2:9090' },
+      }),
+    ).rejects.toThrow('cannot target localhost');
+
+    await expect(
+      executePrivateAgentConnectorJob({
+        ...baseJob,
+        jobSpec: {
+          ...baseJob.jobSpec,
+          endpointUrl: 'https://user:secret@prometheus.internal',
+        },
+      }),
+    ).rejects.toThrow('cannot include credentials');
+
+    await expect(
+      executePrivateAgentConnectorJob({
+        ...baseJob,
+        jobSpec: {
+          ...baseJob.jobSpec,
+          endpointUrl: 'http://[::ffff:127.0.0.1]:9090',
+        },
+      }),
+    ).rejects.toThrow('cannot target localhost');
+  });
+
   it('reports a failed connector job without failing the agent loop', async () => {
     const warnSpy = jest
       .spyOn(console, 'warn')

@@ -132,8 +132,8 @@ export function SreInvestigationPanel({
   latestInvestigation = null,
   latestReportSnapshot = null,
   myReportFeedback = null,
-  canInvestigate = true,
-  canUseLiveConnectors = true,
+  canInvestigate = false,
+  canUseLiveConnectors = false,
   investigationEnabled = true,
 }: SreInvestigationPanelProps) {
   const queryClient = useQueryClient();

@@ -230,10 +230,7 @@ async function loadIncidentConnectors(scope: SreConnectorToolScope) {
     .where(
       and(
         eq(externalConnectors.organizationId, scope.organizationId),
-        or(
-          eq(externalConnectors.projectId, scope.projectId),
-          isNull(externalConnectors.projectId),
-        ),
+        eq(externalConnectors.projectId, scope.projectId),
         inArray(externalConnectors.type, supportedLiveConnectorTypes),
         inArray(externalConnectors.status, ["configured", "valid"]),
       ),

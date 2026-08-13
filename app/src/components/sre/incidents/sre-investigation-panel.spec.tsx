@@ -50,6 +50,8 @@ describe("SreInvestigationPanel", () => {
         incidentId="018f0000-0000-7000-8000-000000000001"
         hasPrimaryService={true}
         serviceMappingHref="/org-admin?tab=services"
+        canInvestigate={true}
+        canUseLiveConnectors={true}
         evidenceReferences={[
           {
             id: "ev-monitor-timeout",
@@ -83,6 +85,8 @@ describe("SreInvestigationPanel", () => {
         incidentId="018f0000-0000-7000-8000-000000000001"
         hasPrimaryService={true}
         serviceMappingHref="/org-admin?tab=services"
+        canInvestigate={true}
+        canUseLiveConnectors={true}
         evidenceReferences={[
           {
             id: "ev-monitor-timeout",
@@ -117,6 +121,7 @@ describe("SreInvestigationPanel", () => {
         incidentId={incidentId}
         hasPrimaryService={false}
         serviceMappingHref="/org-admin?tab=services"
+        canInvestigate={true}
         evidenceReferences={[]}
       />,
     );
@@ -136,6 +141,7 @@ describe("SreInvestigationPanel", () => {
         incidentId="018f0000-0000-7000-8000-000000000001"
         hasPrimaryService={true}
         serviceMappingHref="/org-admin?tab=services"
+        canInvestigate={true}
         latestInvestigation={{
           id: "018f0000-0000-7000-8000-000000000009",
           status: "completed",
@@ -158,6 +164,7 @@ describe("SreInvestigationPanel", () => {
         incidentId="018f0000-0000-7000-8000-000000000001"
         hasPrimaryService={true}
         serviceMappingHref="/org-admin?tab=services"
+        canInvestigate={true}
         latestInvestigation={{
           id: runId,
           status: "completed",
@@ -212,6 +219,8 @@ describe("SreInvestigationPanel", () => {
         incidentId="018f0000-0000-7000-8000-000000000001"
         hasPrimaryService={true}
         serviceMappingHref="/org-admin?tab=services"
+        canInvestigate={true}
+        canUseLiveConnectors={true}
         investigationEnabled={false}
       />,
     );
@@ -245,12 +254,27 @@ describe("SreInvestigationPanel", () => {
     ).toBeInTheDocument();
   });
 
+  it("hides mutation controls when permission props are omitted", () => {
+    render(
+      <SreInvestigationPanel
+        incidentId="018f0000-0000-7000-8000-000000000001"
+        hasPrimaryService={true}
+        serviceMappingHref="/org-admin?tab=services"
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: /run investigation/i })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Use live connector tools")).not.toBeInTheDocument();
+    expect(screen.getByText("Read-only access")).toBeInTheDocument();
+  });
+
   it("enforces the ten-item rejected hypothesis limit before submission", () => {
     render(
       <SreInvestigationPanel
         incidentId="018f0000-0000-7000-8000-000000000001"
         hasPrimaryService={true}
         serviceMappingHref="/org-admin?tab=services"
+        canInvestigate={true}
         latestInvestigation={{
           id: "018f0000-0000-7000-8000-000000000009",
           status: "completed",

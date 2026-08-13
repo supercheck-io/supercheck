@@ -284,3 +284,21 @@ export function checkRolePermissionsClient(
 
   return true;
 }
+
+export function canInvestigateWithSreCopilot(role: string | null | undefined) {
+  return Boolean(
+    role &&
+      checkRolePermissionsClient(role, {
+        sre_investigation: ["investigate"],
+      }),
+  );
+}
+
+export function canUseSreLiveConnectors(role: string | null | undefined) {
+  return Boolean(
+    role &&
+      checkRolePermissionsClient(role, {
+        sre_connector: ["investigate"],
+      }),
+  );
+}

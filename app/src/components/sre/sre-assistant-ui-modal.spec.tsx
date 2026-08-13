@@ -3,9 +3,16 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { SreAssistantUiModal } from "./sre-assistant-ui-modal";
 
 let mockPathname = "/dashboard";
+let mockUserRole = "project_admin";
 
 jest.mock("next/navigation", () => ({
   usePathname: () => mockPathname,
+}));
+
+jest.mock("@/hooks/use-project-context", () => ({
+  useProjectContext: () => ({
+    currentProject: { id: "project-1", userRole: mockUserRole },
+  }),
 }));
 
 jest.mock("@/components/sre/sre-assistant-ui-thread", () => ({
@@ -17,6 +24,7 @@ jest.mock("@/components/sre/sre-assistant-ui-thread", () => ({
 describe("SreAssistantUiModal", () => {
   beforeEach(() => {
     mockPathname = "/dashboard";
+    mockUserRole = "project_admin";
   });
 
   it("renders the floating Copilot launcher and opens the chat panel", async () => {
@@ -46,5 +54,15 @@ describe("SreAssistantUiModal", () => {
       "data-incident-id",
       incidentId,
     );
+  });
+
+  it("does not render the launcher for viewers", () => {
+    mockUserRole = "project_viewer";
+
+    render(<SreAssistantUiModal />);
+
+    expect(
+      screen.queryByRole("button", { name: "Open Copilot" }),
+    ).not.toBeInTheDocument();
   });
 });
