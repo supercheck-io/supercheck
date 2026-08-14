@@ -99,14 +99,24 @@ describe("SRE investigation billing", () => {
       failStuckSreInvestigationRuns({ olderThanMinutes: 15 }),
     ).resolves.toEqual({ failed: 1 });
 
-    expect(set).toHaveBeenCalledWith(
+    const payload = set.mock.calls[0]?.[0] as {
+      status: string;
+      completedAt: unknown;
+      durationMs: unknown;
+      agentStateSnapshot: { mode?: string };
+    };
+    expect(payload.status).toBe("failed");
+    expect(payload.completedAt).not.toBeInstanceOf(Date);
+    expect(payload.agentStateSnapshot).toEqual(
       expect.objectContaining({
-        status: "failed",
-        completedAt: expect.any(Date),
-        agentStateSnapshot: expect.objectContaining({
-          mode: "sre_investigation_recovery",
-        }),
+        mode: "sre_investigation_recovery",
       }),
+    );
+
+    const dialect = new PgDialect();
+    expect(dialect.sqlToQuery(sql`${payload.completedAt}`).sql).toContain("now()");
+    expect(dialect.sqlToQuery(sql`${payload.durationMs}`).sql).toContain(
+      "now() - \"sre_investigation_runs\".\"started_at\"",
     );
   });
 

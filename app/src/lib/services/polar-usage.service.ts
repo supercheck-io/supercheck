@@ -510,7 +510,12 @@ class PolarUsageService {
         } = await import(
           "@/lib/sre/investigation-billing"
         );
-        await failStuckSreInvestigationRuns();
+        try {
+          await failStuckSreInvestigationRuns();
+        } catch (error) {
+          logger.error({ error }, "Failed to recover stuck SRE investigation runs");
+        }
+
         const reconciliation = await reconcileUnbilledSreInvestigations();
         if (reconciliation.processed > 0 || reconciliation.failed > 0) {
           logger.info(reconciliation, "Reconciled SRE billing");

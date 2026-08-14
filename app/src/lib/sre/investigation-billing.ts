@@ -21,18 +21,21 @@ export async function failStuckSreInvestigationRuns(options?: {
     options?.olderThanMinutes ?? DEFAULT_STUCK_RUN_AGE_MINUTES,
   );
   const cutoff = new Date(Date.now() - olderThanMinutes * 60_000);
-  const completedAt = new Date();
 
+  // Use SQL `now()` for both completedAt and durationMs. Interpolating a JS Date
+  // into a raw sql fragment makes postgres-js bind it as text and fail the update
+  // (`date/time field value out of range` / invalid parameter type), which also
+  // skipped Polar reconciliation of completed investigations.
   const failed = await db
     .update(sreInvestigationRuns)
     .set({
       status: "failed",
-      completedAt,
+      completedAt: sql`now()`,
       agentStateSnapshot: {
         mode: "sre_investigation_recovery",
         error: "Investigation exceeded the execution recovery window",
       },
-      durationMs: sql<number>`FLOOR(EXTRACT(EPOCH FROM (${completedAt} - ${sreInvestigationRuns.startedAt})) * 1000)::integer`,
+      durationMs: sql<number>`GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (now() - ${sreInvestigationRuns.startedAt})) * 1000)::integer)`,
     })
     .where(
       and(
