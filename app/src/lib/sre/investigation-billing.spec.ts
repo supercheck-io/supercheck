@@ -92,7 +92,7 @@ describe("SRE investigation billing", () => {
   it("marks investigations beyond the recovery window as failed", async () => {
     const returning = jest.fn().mockResolvedValue([{ id: "stuck-run" }]);
     const where = jest.fn(() => ({ returning }));
-    const set = jest.fn(() => ({ where }));
+    const set: jest.Mock = jest.fn(() => ({ where }));
     mockDb.update.mockReturnValue({ set });
 
     await expect(
