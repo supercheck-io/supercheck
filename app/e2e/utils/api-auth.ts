@@ -1,5 +1,5 @@
 import type { Browser, Page } from '@playwright/test';
-import type { APIRequest, APIRequestContext } from 'playwright-core';
+import type { APIRequest, APIRequestContext, APIResponse } from 'playwright-core';
 
 type Credentials = {
   email: string;
@@ -12,6 +12,22 @@ type StorageState = Awaited<ReturnType<APIRequestContext['storageState']>>;
 // need to create a fresh server-side session every time. Reusing the immutable
 // storage-state snapshot keeps the full suite below production auth rate limits.
 const roleStorageStates = new Map<string, Promise<StorageState>>();
+
+const AUTH_MAX_ATTEMPTS = 3;
+const AUTH_RETRY_FALLBACK_SECONDS = 2;
+const AUTH_RETRY_MAX_SECONDS = 30;
+
+function getAuthRetryDelayMs(response: APIResponse, attempt: number) {
+  const retryAfterHeader =
+    response.headers()['retry-after'] ?? response.headers()['x-retry-after'];
+  const retryAfterSeconds = Number.parseInt(retryAfterHeader ?? '', 10);
+  const boundedSeconds = Number.isFinite(retryAfterSeconds)
+    ? Math.min(Math.max(retryAfterSeconds, 1), AUTH_RETRY_MAX_SECONDS)
+    : Math.min(AUTH_RETRY_FALLBACK_SECONDS ** attempt, AUTH_RETRY_MAX_SECONDS);
+
+  // Add a small boundary cushion because providers commonly round retry hints down.
+  return boundedSeconds * 1_000 + 250;
+}
 
 export async function authenticateWithApi(
   apiRequest: APIRequest,
@@ -29,13 +45,29 @@ export async function authenticateWithApi(
   });
 
   try {
-    const response = await api.post('/api/auth/sign-in/email', {
-      data: {
-        email: credentials.email.trim(),
-        password: credentials.password,
-        rememberMe: true,
-      },
-    });
+    let response: APIResponse | undefined;
+    for (let attempt = 1; attempt <= AUTH_MAX_ATTEMPTS; attempt += 1) {
+      const currentResponse = await api.post('/api/auth/sign-in/email', {
+        data: {
+          email: credentials.email.trim(),
+          password: credentials.password,
+          rememberMe: true,
+        },
+      });
+      response = currentResponse;
+
+      if (currentResponse.status() !== 429 || attempt === AUTH_MAX_ATTEMPTS) {
+        break;
+      }
+
+      await new Promise((resolve) =>
+        setTimeout(resolve, getAuthRetryDelayMs(currentResponse, attempt)),
+      );
+    }
+
+    if (!response) {
+      throw new Error('E2E API authentication did not return a response');
+    }
 
     if (!response.ok()) {
       throw new Error(

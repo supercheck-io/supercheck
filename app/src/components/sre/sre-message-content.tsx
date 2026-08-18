@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   Area,
   AreaChart,
@@ -36,6 +37,9 @@ const CHART_COLORS = [
   "var(--chart-3)",
   "var(--chart-4)",
 ];
+
+const LARGE_OUTPUT_LINE_THRESHOLD = 500;
+const LARGE_OUTPUT_LINE_HEIGHT = 20;
 
 type ParsedSreChart = {
   title?: string;
@@ -437,8 +441,62 @@ function SreInlineChart({ chart }: { chart: ParsedSreChart }) {
   );
 }
 
+function VirtualizedLargeOutput({ lines }: { lines: string[] }) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const virtualizer = useVirtualizer({
+    count: lines.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => LARGE_OUTPUT_LINE_HEIGHT,
+    overscan: 12,
+    initialRect: { width: 800, height: 384 },
+  });
+
+  return (
+    <div className="overflow-hidden rounded-lg border bg-muted/20">
+      <div className="border-b bg-background px-3 py-2 text-xs text-muted-foreground">
+        Large output · {lines.length.toLocaleString()} lines
+      </div>
+      <div
+        ref={scrollRef}
+        role="region"
+        aria-label={`Large Copilot output, ${lines.length} lines`}
+        tabIndex={0}
+        className="h-96 overflow-auto font-mono text-xs leading-5 [scrollbar-gutter:stable]"
+      >
+        <div
+          data-testid="virtualized-large-output"
+          className="relative min-w-max"
+          style={{ height: virtualizer.getTotalSize() }}
+        >
+          {virtualizer.getVirtualItems().map((virtualLine) => (
+            <div
+              key={virtualLine.key}
+              data-index={virtualLine.index}
+              className="absolute left-0 top-0 flex h-5 w-full min-w-max whitespace-pre px-3"
+              style={{ transform: `translateY(${virtualLine.start}px)` }}
+            >
+              <span
+                aria-hidden="true"
+                className="mr-3 inline-block w-12 shrink-0 select-none text-right text-muted-foreground/60"
+              >
+                {virtualLine.index + 1}
+              </span>
+              <span>{lines[virtualLine.index] || " "}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function SreMessageContent({ content }: { content: string }) {
   const lines = content.replace(/\r\n/g, "\n").split("\n");
+
+  if (lines.length >= LARGE_OUTPUT_LINE_THRESHOLD) {
+    return <VirtualizedLargeOutput lines={lines} />;
+  }
+
   const rendered: ReactNode[] = [];
 
   for (let index = 0; index < lines.length; index += 1) {

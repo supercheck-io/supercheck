@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 
 import { SreMessageContent } from "./sre-message-content";
@@ -131,5 +131,35 @@ describe("SreMessageContent", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("Memory %")).toBeInTheDocument();
     expect(screen.getByText("82")).toBeInTheDocument();
+  });
+
+  it("windows 10,000-line outputs instead of creating 10,000 DOM rows", async () => {
+    const heightSpy = jest
+      .spyOn(HTMLElement.prototype, "offsetHeight", "get")
+      .mockReturnValue(384);
+    const widthSpy = jest
+      .spyOn(HTMLElement.prototype, "offsetWidth", "get")
+      .mockReturnValue(800);
+    const content = Array.from(
+      { length: 10_000 },
+      (_, index) => `2026-08-18T00:00:00Z log line ${index + 1}`,
+    ).join("\n");
+
+    const renderStartedAt = performance.now();
+    const { container } = render(<SreMessageContent content={content} />);
+    expect(performance.now() - renderStartedAt).toBeLessThan(500);
+
+    expect(
+      screen.getByRole("region", {
+        name: "Large Copilot output, 10000 lines",
+      }),
+    ).toBeInTheDocument();
+    await waitFor(() => {
+      const renderedRows = container.querySelectorAll("[data-index]");
+      expect(renderedRows.length).toBeGreaterThan(0);
+      expect(renderedRows.length).toBeLessThan(100);
+    });
+    heightSpy.mockRestore();
+    widthSpy.mockRestore();
   });
 });

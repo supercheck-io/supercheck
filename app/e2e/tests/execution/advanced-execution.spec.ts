@@ -10,6 +10,34 @@ type ExecutionStart = {
   location?: string;
 };
 
+function sameOriginHeaders(projectId: string): Record<string, string> {
+  const baseURL = test.info().project.use.baseURL;
+  if (typeof baseURL !== 'string') {
+    throw new Error('Playwright baseURL is required for same-origin API requests');
+  }
+
+  const origin = new URL(baseURL).origin;
+  return {
+    Origin: origin,
+    Referer: `${origin}/tests`,
+    'x-project-id': projectId,
+  };
+}
+
+async function getActiveProjectId(
+  request: import('@playwright/test').APIRequestContext,
+): Promise<string> {
+  const response = await request.get('/api/projects');
+  expect(response.status()).toBe(200);
+  const projects = (await response.json()) as {
+    currentProject?: { id?: string } | null;
+    data?: Array<{ id: string }>;
+  };
+  const projectId = projects.currentProject?.id ?? projects.data?.[0]?.id;
+  expect(projectId).toEqual(expect.any(String));
+  return projectId as string;
+}
+
 async function deleteRun(
   request: import('@playwright/test').APIRequestContext,
   runId: string,
@@ -25,6 +53,8 @@ test.describe('Advanced execution contracts @execution', () => {
   }) => {
     const request = projectAdminPage.request;
     const page = projectAdminPage;
+    const projectId = await getActiveProjectId(request);
+    const projectHeaders = { 'x-project-id': projectId };
     const created = await createTest(request, {
       title: `E2E cancellable Playwright ${Date.now()}`,
       type: 'browser',
@@ -34,7 +64,10 @@ test.describe('Advanced execution contracts @execution', () => {
     });
     cleanup.add(`test ${created.id}`, () => deleteTest(request, created.id));
 
-    const executeResponse = await request.post(`/api/tests/${created.id}/execute`, { data: {} });
+    const executeResponse = await request.post(`/api/tests/${created.id}/execute`, {
+      headers: sameOriginHeaders(projectId),
+      data: {},
+    });
     expect(executeResponse.status()).toBe(200);
     const execution = (await executeResponse.json()) as ExecutionStart;
     expect(execution).toMatchObject({
@@ -43,7 +76,9 @@ test.describe('Advanced execution contracts @execution', () => {
     });
     cleanup.add(`run ${execution.runId}`, () => deleteRun(request, execution.runId));
 
-    const activeResponse = await request.get('/api/executions/running');
+    const activeResponse = await request.get('/api/executions/running', {
+      headers: projectHeaders,
+    });
     expect(activeResponse.status()).toBe(200);
     const active = (await activeResponse.json()) as {
       running: Array<{ runId: string }>;
@@ -57,7 +92,9 @@ test.describe('Advanced execution contracts @execution', () => {
       expect.objectContaining({ runId: execution.runId }),
     );
 
-    const cancelResponse = await request.post(`/api/runs/${execution.runId}/cancel`);
+    const cancelResponse = await request.post(`/api/runs/${execution.runId}/cancel`, {
+      headers: projectHeaders,
+    });
     expect(cancelResponse.status()).toBe(200);
     expect(await cancelResponse.json()).toMatchObject({
       success: true,
@@ -65,7 +102,9 @@ test.describe('Advanced execution contracts @execution', () => {
       message: 'Run cancelled successfully',
     });
 
-    const detailResponse = await request.get(`/api/runs/${execution.runId}`);
+    const detailResponse = await request.get(`/api/runs/${execution.runId}`, {
+      headers: projectHeaders,
+    });
     expect(detailResponse.status()).toBe(200);
     expect(await detailResponse.json()).toMatchObject({
       id: execution.runId,
@@ -75,7 +114,9 @@ test.describe('Advanced execution contracts @execution', () => {
       projectId: expect.any(String),
     });
 
-    const statusResponse = await request.get(`/api/runs/${execution.runId}/status`);
+    const statusResponse = await request.get(`/api/runs/${execution.runId}/status`, {
+      headers: projectHeaders,
+    });
     expect(statusResponse.status()).toBe(200);
     expect(await statusResponse.json()).toMatchObject({
       runId: execution.runId,
@@ -83,6 +124,7 @@ test.describe('Advanced execution contracts @execution', () => {
       errorDetails: 'Cancellation requested by user',
     });
 
+    await page.setExtraHTTPHeaders(projectHeaders);
     await page.goto(`/runs/${execution.runId}`, { waitUntil: 'load' });
     await expect(page).toHaveURL(new RegExp(`/runs/${execution.runId}$`));
     await expect(page.getByText('Status', { exact: true })).toBeVisible();
@@ -134,7 +176,9 @@ test.describe('Advanced execution contracts @execution', () => {
     });
     cleanup.add(`k6 test ${created.id}`, () => deleteTest(request, created.id));
 
+    const projectHeaders = { 'x-project-id': projectId as string };
     const executeResponse = await request.post(`/api/tests/${created.id}/execute`, {
+      headers: sameOriginHeaders(projectId as string),
       data: { location },
     });
     expect(executeResponse.status()).toBe(200);
@@ -147,9 +191,13 @@ test.describe('Advanced execution contracts @execution', () => {
     });
     cleanup.add(`k6 run ${execution.runId}`, () => deleteRun(request, execution.runId));
 
-    const cancelResponse = await request.post(`/api/runs/${execution.runId}/cancel`);
+    const cancelResponse = await request.post(`/api/runs/${execution.runId}/cancel`, {
+      headers: projectHeaders,
+    });
     expect(cancelResponse.status()).toBe(200);
-    const detailResponse = await request.get(`/api/runs/${execution.runId}`);
+    const detailResponse = await request.get(`/api/runs/${execution.runId}`, {
+      headers: projectHeaders,
+    });
     expect(detailResponse.status()).toBe(200);
     expect(await detailResponse.json()).toMatchObject({
       id: execution.runId,

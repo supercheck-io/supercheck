@@ -6,6 +6,7 @@ import {
   type VisibilityState,
   type RowSelectionState,
   type Row,
+  type Cell,
   flexRender,
   getCoreRowModel,
   getFacetedRowModel,
@@ -40,6 +41,10 @@ interface DataTableProps<TData, TValue> {
     table: import("@tanstack/react-table").Table<TData>,
   ) => React.ReactNode;
   entityLabel?: string;
+  initialColumnVisibility?: VisibilityState;
+  skeletonColumns?: number;
+  onRowPrefetch?: (row: Row<TData>) => void;
+  cellClassName?: (cell: Cell<TData, unknown>) => string | undefined;
   meta?: {
     [key: string]: unknown;
   };
@@ -99,13 +104,15 @@ export function DataTable<TData, TValue>({
   onRowClick,
   renderToolbar,
   entityLabel,
+  initialColumnVisibility = { updatedAt: false },
+  skeletonColumns = 5,
+  onRowPrefetch,
+  cellClassName,
   meta,
 }: DataTableProps<TData, TValue>) {
   const [rowSelection, setRowSelection] = React.useState({});
   const [columnVisibility, setColumnVisibility] =
-    React.useState<VisibilityState>({
-      updatedAt: false,
-    });
+    React.useState<VisibilityState>(initialColumnVisibility);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(
     [],
   );
@@ -255,7 +262,7 @@ export function DataTable<TData, TValue>({
 
   // Don't render the table until the component is mounted
   if (!mounted) {
-    return <DataTableSkeleton columns={5} rows={3} />;
+    return <DataTableSkeleton columns={skeletonColumns} rows={3} />;
   }
 
   const isInteractiveTarget = (target: HTMLElement) =>
@@ -350,7 +357,7 @@ export function DataTable<TData, TValue>({
 
                         // Start prefetch after 150ms hover (intent detection)
                         const timer = setTimeout(() => {
-                          // prefetch if needed
+                          onRowPrefetch?.(row);
                           hoverTimersRef.current.delete(rowId);
                         }, 150);
 
@@ -369,7 +376,10 @@ export function DataTable<TData, TValue>({
                     }}
                   >
                     {row.getVisibleCells().map((cell) => (
-                      <TableCell key={cell.id} className="py-2.5">
+                      <TableCell
+                        key={cell.id}
+                        className={cn("py-2.5", cellClassName?.(cell))}
+                      >
                         {flexRender(
                           cell.column.columnDef.cell,
                           cell.getContext(),

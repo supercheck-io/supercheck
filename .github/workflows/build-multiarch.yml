@@ -425,8 +425,8 @@ jobs:
   e2e-tests:
     name: Full E2E Tests
     # The full suite runs only after the demo serves the triggering build SHA.
-    # Never fail the release workflow for E2E outcomes — results stay in the
-    # summary/artifacts for inspection.
+    # E2E remains advisory for release builds; failures stay visible in the
+    # summary and artifacts without failing a successfully built image.
     needs: deploy-demo
     if: ${{ startsWith(github.ref, 'refs/heads/main') || startsWith(github.ref, 'refs/tags/v') }}
     runs-on: ubuntu-latest
@@ -486,8 +486,6 @@ jobs:
 
           npx playwright test
         timeout-minutes: 50
-        # Soft-fail: release success is build + demo deploy. E2E results remain
-        # in the job summary/artifacts even when individual suites fail.
         continue-on-error: true
         env:
           CI: true
@@ -551,18 +549,12 @@ jobs:
             echo "" >> $GITHUB_STEP_SUMMARY
 
             if [ "${{ steps.e2e-tests.outcome }}" == "failure" ]; then
-              echo "> ⚠️ **Some E2E tests failed.** This does **not** fail the release workflow." >> $GITHUB_STEP_SUMMARY
+              echo "> ⚠️ **Some E2E tests failed.** The release build remains available for explicit deployment and testing." >> $GITHUB_STEP_SUMMARY
               echo ">" >> $GITHUB_STEP_SUMMARY
-              echo "> Download the \`playwright-report-full\` artifact for details. Build, push, and demo deploy already succeeded." >> $GITHUB_STEP_SUMMARY
+              echo "> Download the \`playwright-report-full\` artifact for details." >> $GITHUB_STEP_SUMMARY
             else
               echo "> ✅ **All tests passed!**" >> $GITHUB_STEP_SUMMARY
             fi
-          else
-            echo "⚠️ No test results found. Tests may have failed to start or timed out." >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "> Release is not blocked by missing E2E results; inspect the job log and artifacts." >> $GITHUB_STEP_SUMMARY
-          fi
-
-      # E2E is advisory on this release workflow: known environment-dependent
-      # suites (e.g. AI SRE Copilot) can fail without rolling back a successful
-      # build/deploy. Failures still appear in the summary and artifacts above.
+            else
+              echo "⚠️ No test results found. Tests may have failed to start or timed out." >> $GITHUB_STEP_SUMMARY
+            fi

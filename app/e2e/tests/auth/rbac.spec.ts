@@ -87,11 +87,11 @@ test.describe('RBAC - Viewer Restrictions @auth @rbac', () => {
     await page.goto('/tests');
     await page.waitForLoadState('domcontentloaded');
 
-    // Create button should be hidden for viewer
-    const createButton = page.getByRole('link', { name: /create test/i }).or(
-      page.getByRole('button', { name: /create test/i }),
-    );
-    await expect(createButton).toBeHidden();
+    // Keep the action visible for discoverability, but make it non-actionable.
+    // Server-side authorization below remains the security boundary.
+    const createButton = page.getByRole('button', { name: /create test/i });
+    await expect(createButton).toBeVisible();
+    await expect(createButton).toBeDisabled();
 
     const response = await page.request.post('/api/tests', {
       data: {
