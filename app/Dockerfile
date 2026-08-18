@@ -2,7 +2,7 @@ ARG SUPERCHECK_BUILD_SHA=unknown
 
 # Use platform-agnostic base image with pinned LTS version for reproducible builds
 # Node 22.x LTS for compatibility with @noble/hashes and other modern packages
-FROM node:22-slim AS base
+FROM node:22-slim@sha256:d649c27dae7ba0137b3cef5dd75baa422c08dc3d9e3fc0c23dfb172dc3cc6436 AS base
 
 # Install system dependencies in base stage for better layer caching
 RUN apt-get update && apt-get install -y \

@@ -38,7 +38,9 @@ export function NavUser() {
     clearProjectsCache();
     clearQueryCache();
     await signOut();
-    window.location.href = "/sign-in";
+    // Sign-out crosses an authentication boundary. Replace the history entry
+    // with a same-origin document navigation to avoid reusing private UI state.
+    window.location.replace(new URL("/sign-in", window.location.origin));
   };
 
   if (!isMounted || (!hasData && isPending)) {

@@ -4,7 +4,7 @@ import { PHASE_DEVELOPMENT_SERVER } from "next/constants";
 /**
  * Content Security Policy configuration
  * Self-hosting friendly: uses existing APP_URL/TRUSTED_ORIGINS for domain configuration
- * 
+ *
  * Uses existing environment variables:
  * - APP_URL: Primary application URL (used for frame-ancestors)
  * - TRUSTED_ORIGINS: Additional trusted domains (comma-separated)
@@ -12,89 +12,108 @@ import { PHASE_DEVELOPMENT_SERVER } from "next/constants";
  */
 function buildFrameAncestors(): string {
   const origins: string[] = ["'self'"];
-  
+
   // Add APP_URL domain if set
   if (process.env.APP_URL) {
     try {
       const url = new URL(process.env.APP_URL);
-      origins.push(url.origin);
+      if (url.protocol === "https:" || url.protocol === "http:") {
+        origins.push(url.origin);
+      }
     } catch {
       // Invalid URL, skip
     }
   }
-  
+
   // Add TRUSTED_ORIGINS if set
   if (process.env.TRUSTED_ORIGINS) {
-    const trusted = process.env.TRUSTED_ORIGINS.split(",").map(o => o.trim()).filter(Boolean);
-    origins.push(...trusted);
+    for (const candidate of process.env.TRUSTED_ORIGINS.split(",")) {
+      try {
+        const url = new URL(candidate.trim());
+        if (url.protocol === "https:" || url.protocol === "http:") {
+          origins.push(url.origin);
+        }
+      } catch {
+        // Invalid URL, skip
+      }
+    }
   }
-  
-  return origins.join(" ");
+
+  return [...new Set(origins)].join(" ");
 }
 
-const ContentSecurityPolicy = `
-  default-src 'self';
-  script-src 'self' 'unsafe-eval' 'unsafe-inline' https: http:;
-  style-src 'self' 'unsafe-inline' https: http:;
-  img-src 'self' blob: data: https: http:;
-  font-src 'self' data: https: http:;
-  connect-src 'self' https: wss: http: ws:;
-  media-src 'self' blob: data: https: http:;
-  object-src 'none';
-  frame-src 'self' https: http:;
-  frame-ancestors ${buildFrameAncestors()};
-  worker-src 'self' blob:;
-  child-src 'self' blob:;
-  base-uri 'self';
-  form-action 'self' https: http:;
-  manifest-src 'self';
-`;
+function buildContentSecurityPolicy(isDev: boolean): string {
+  const developmentScriptSources = isDev ? " 'unsafe-eval' http:" : "";
+  const developmentConnectSources = isDev ? " http: ws:" : "";
+
+  return `
+    default-src 'self';
+    script-src 'self' 'unsafe-inline' https:${developmentScriptSources};
+    style-src 'self' 'unsafe-inline' https:${isDev ? " http:" : ""};
+    img-src 'self' blob: data: https:${isDev ? " http:" : ""};
+    font-src 'self' data: https:${isDev ? " http:" : ""};
+    connect-src 'self' https: wss:${developmentConnectSources};
+    media-src 'self' blob: data: https:${isDev ? " http:" : ""};
+    object-src 'none';
+    frame-src 'self' https:${isDev ? " http:" : ""};
+    frame-ancestors ${buildFrameAncestors()};
+    worker-src 'self' blob:;
+    child-src 'self' blob:;
+    base-uri 'self';
+    form-action 'self' https:${isDev ? " http:" : ""};
+    manifest-src 'self';
+  `
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
 
 /**
  * Security headers configuration
- * - HSTS enabled only for non-self-hosted (cloud) deployments with HTTPS
- * - Self-hosted deployments may use HTTP internally
+ * - HSTS enabled only when APP_URL explicitly uses HTTPS
+ * - HTTP development and self-hosted deployments are not upgraded implicitly
  */
 const isHttps = process.env.APP_URL?.startsWith("https://");
-const securityHeaders = [
-  {
-    key: "Content-Security-Policy",
-    value: ContentSecurityPolicy.replace(/\s{2,}/g, " ").trim(),
-  },
-  {
-    key: "X-DNS-Prefetch-Control",
-    value: "on",
-  },
-  // HSTS only for HTTPS deployments that aren't self-hosted (or self-hosted with HTTPS)
-  ...(isHttps
-    ? [
-        {
-          key: "Strict-Transport-Security",
-          value: "max-age=63072000; includeSubDomains; preload",
-        },
-      ]
-    : []),
-  {
-    key: "X-Frame-Options",
-    value: "SAMEORIGIN",
-  },
-  {
-    key: "X-Content-Type-Options",
-    value: "nosniff",
-  },
-  {
-    key: "X-XSS-Protection",
-    value: "1; mode=block",
-  },
-  {
-    key: "Referrer-Policy",
-    value: "strict-origin-when-cross-origin",
-  },
-  {
-    key: "Permissions-Policy",
-    value: "camera=(), microphone=(), geolocation=(), interest-cohort=()",
-  },
-];
+function buildSecurityHeaders(isDev: boolean) {
+  return [
+    {
+      key: "Content-Security-Policy",
+      value: buildContentSecurityPolicy(isDev),
+    },
+    {
+      key: "X-DNS-Prefetch-Control",
+      value: "on",
+    },
+    // HSTS only for HTTPS deployments that aren't self-hosted (or self-hosted with HTTPS)
+    ...(isHttps
+      ? [
+          {
+            key: "Strict-Transport-Security",
+            value: "max-age=63072000; includeSubDomains; preload",
+          },
+        ]
+      : []),
+    {
+      key: "X-Frame-Options",
+      value: "SAMEORIGIN",
+    },
+    {
+      key: "X-Content-Type-Options",
+      value: "nosniff",
+    },
+    {
+      key: "X-XSS-Protection",
+      value: "0",
+    },
+    {
+      key: "Referrer-Policy",
+      value: "strict-origin-when-cross-origin",
+    },
+    {
+      key: "Permissions-Policy",
+      value: "camera=(), microphone=(), geolocation=(), interest-cohort=()",
+    },
+  ];
+}
 
 const createNextConfig = (phase: string): NextConfig => {
   const isDev = phase === PHASE_DEVELOPMENT_SERVER;
@@ -102,6 +121,7 @@ const createNextConfig = (phase: string): NextConfig => {
   const baseConfig: NextConfig = {
     /* config options here */
     output: "standalone",
+    poweredByHeader: false,
     // Server Actions configuration - increase body size limit for document uploads
     // Default is 1MB, we need to support up to MAX_DOCUMENT_SIZE_MB (10MB default)
     experimental: {
@@ -147,7 +167,7 @@ const createNextConfig = (phase: string): NextConfig => {
           headers: async () => [
             {
               source: "/:path*",
-              headers: securityHeaders,
+              headers: buildSecurityHeaders(isDev),
             },
           ],
         }),

@@ -115,7 +115,9 @@ export function ImpersonateDialog({
         clearAuthSession();
         clearProjectsCache();
         clearQueryCache();
-        window.location.href = "/";
+        // Impersonation changes the server-side identity. Force a full,
+        // same-origin reload so no client or browser-history state is reused.
+        window.location.replace(new URL("/", window.location.origin));
       } else {
         toast.error(data.error || "Failed to impersonate user");
       }

@@ -123,7 +123,6 @@ export function SreAssistantUiModal() {
               setConversationContextKey(activeContextKey);
               setConversationId(input.conversationId);
               setMessages(input.messages);
-              setThreadKey(input.conversationId);
             }}
             onClearError={() => toast.dismiss()}
             onError={(message) => toast.error(message)}

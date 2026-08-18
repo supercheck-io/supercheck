@@ -25,17 +25,29 @@ log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+# Report configuration presence without ever writing credentials, connection
+# strings, hostnames, or account identifiers to application logs.
+log_env_presence() {
+    local variable_name="$1"
+
+    if [[ -n "${!variable_name:-}" ]]; then
+        log "  ${variable_name}: configured"
+    else
+        log "  ${variable_name}: not set"
+    fi
+}
+
 # Function to run migrations (includes seeding as part of migration)
 run_migrations() {
     log "Running database migrations..."
     
-    # Log environment for debugging
+    # Log presence only. Values such as DATABASE_URL may contain credentials.
     log "Environment check:"
-    log "  DB_HOST: ${DB_HOST:-not set}"
-    log "  DB_PORT: ${DB_PORT:-not set}"
-    log "  DB_USER: ${DB_USER:-not set}"
-    log "  DB_NAME: ${DB_NAME:-not set}"
-    log "  DATABASE_URL: ${DATABASE_URL:-not set}"
+    log_env_presence "DB_HOST"
+    log_env_presence "DB_PORT"
+    log_env_presence "DB_USER"
+    log_env_presence "DB_NAME"
+    log_env_presence "DATABASE_URL"
     log "  Current directory: $(pwd)"
     
     # Run the migration script (now includes seeding and verification)
@@ -51,26 +63,18 @@ run_migrations() {
 # Function to start the Next.js server
 start_server() {
     log "Starting Next.js server..."
-    
-    # Debug: List files in current directory
-    log "Files in /app directory:"
-    ls -la /app/ 2>/dev/null || log "Cannot list /app directory"
-    
-    # Check if we're in production (standalone build) or development
+
+    # The production image must contain a standalone build. Never fall back to
+    # the development server when an image is incomplete.
     if [ -f "server.js" ]; then
         log "Running in production mode with standalone server"
         exec node server.js
     elif [ -f "/app/server.js" ]; then
         log "Running in production mode with standalone server (from /app)"
         exec node /app/server.js
-    elif [ -f "package.json" ]; then
-        log "Running in development mode (server.js not found, using npm run dev)"
-        exec npm run dev
     else
-        log_error "Neither server.js nor package.json found. Build may have failed."
+        log_error "server.js not found. The standalone production build is incomplete."
         log_error "Current directory: $(pwd)"
-        log_error "Directory contents:"
-        ls -la
         exit 1
     fi
 }
@@ -95,4 +99,4 @@ main() {
 }
 
 # Execute main function
-main "$@" 
+main "$@"

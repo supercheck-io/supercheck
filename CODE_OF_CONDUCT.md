@@ -1,23 +1,20 @@
 # Code of Conduct
 
-## Our Standards
+We want the Supercheck community to be welcoming, respectful, and professional.
 
-We are committed to providing a welcoming and inclusive environment for everyone.
+## Standards
 
-**Expected Behavior:**
-- Be respectful and professional
-- Welcome diverse perspectives
-- Give and accept constructive feedback
-- Focus on what is best for the community
+- Be kind and constructive.
+- Respect different perspectives and experience levels.
+- Focus feedback on the work, not the person.
+- Do not harass, threaten, troll, discriminate, or publish private information.
 
-**Unacceptable Behavior:**
-- Harassment, trolling, or insulting comments
-- Personal or political attacks
-- Publishing others' private information
-- Any conduct inappropriate in a professional setting
+## Reporting and enforcement
 
-## Enforcement
+Report conduct concerns privately to `hello@supercheck.io` with the subject
+`Code of Conduct report`. Do not open a public issue. Reports will be handled as
+confidentially as practical, and anyone named in a report will not decide it.
 
-Instances of unacceptable behavior may be reported via [GitHub Issues](https://github.com/supercheck-io/supercheck/issues). All complaints will be reviewed and investigated.
-
-Project maintainers have the right to remove, edit, or reject contributions that do not align with this Code of Conduct.
+Maintainers may edit or remove content and temporarily or permanently restrict
+participation when behavior violates this policy. This policy applies in project
+spaces and when someone officially represents the project.

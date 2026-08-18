@@ -36,7 +36,9 @@ export function ImpersonationCard() {
         clearAuthSession();
         clearProjectsCache();
         clearQueryCache();
-        window.location.href = '/';
+        // Returning to the admin identity requires a full, same-origin reload
+        // so no impersonated client state can survive the boundary.
+        window.location.replace(new URL('/', window.location.origin));
       } else {
         toast.error(data.error || 'Failed to stop impersonation');
       }

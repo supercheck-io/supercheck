@@ -191,7 +191,7 @@ If Supercheck is useful to your team:
 
 ## License and Contributions
 
-Supercheck core is open source under the [GNU Affero General Public License v3.0 only](LICENSE). We welcome external contributions. Use [GitHub Discussions](https://github.com/supercheck-io/supercheck/discussions) for proposals and [GitHub Issues](https://github.com/supercheck-io/supercheck/issues) for reproducible bugs. See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidance.
+Supercheck core is open source under the [GNU Affero General Public License v3.0 only](LICENSE). We welcome external contributions. Use [GitHub Discussions](https://github.com/supercheck-io/supercheck/discussions) for proposals and [GitHub Issues](https://github.com/supercheck-io/supercheck/issues) for reproducible bugs. See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidance and [SECURITY.md](SECURITY.md) for private vulnerability reporting.
 
 ## Community
 

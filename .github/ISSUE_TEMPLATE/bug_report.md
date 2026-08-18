@@ -8,6 +8,7 @@ labels: "bug"
 ## Description
 
 <!-- What is the bug? -->
+<!-- Report security vulnerabilities privately through SECURITY.md. -->
 
 ## Steps to Reproduce
 

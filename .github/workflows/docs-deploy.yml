@@ -1,77 +1,85 @@
 name: Deploy Docs
 
 on:
-    push:
-        branches: [main]
-        paths:
-            - "docs/**"
-    pull_request:
-        branches: [main]
-        paths:
-            - "docs/**"
-    workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - ".github/workflows/docs-deploy.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - ".github/workflows/docs-deploy.yml"
+  workflow_dispatch:
 
 concurrency:
-    group: docs-deploy-${{ github.event.pull_request.number || github.ref }}
-    cancel-in-progress: true
+  group: docs-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 env:
-    NODE_VERSION: "20"
+  NODE_VERSION: "20"
 
 permissions:
-    contents: read
-    deployments: write
-    pull-requests: write
+  contents: read
 
 jobs:
-    deploy-docs:
-        name: Build & Deploy Docs
-        runs-on: ubuntu-latest
-        timeout-minutes: 20
+  validate-docs:
+    name: Validate Docs
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out code
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
-        steps:
-            - name: Checkout code
-              uses: actions/checkout@v5
+      - name: Set up Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: docs/package-lock.json
 
-            - name: Setup Node.js
-              uses: actions/setup-node@v5
-              with:
-                  node-version: ${{ env.NODE_VERSION }}
-                  cache: "npm"
-                  cache-dependency-path: docs/package-lock.json
+      - name: Install dependencies
+        working-directory: docs
+        run: npm ci --prefer-offline --no-audit
 
-            - name: Install dependencies
-              working-directory: ./docs
-              run: npm ci --prefer-offline --no-audit
+      - name: Build static site
+        working-directory: docs
+        run: npm run build
 
-            - name: Build static site
-              working-directory: ./docs
-              run: npm run build
+  deploy-docs:
+    name: Build and Deploy Docs
+    # Production Pages content must always come from the reviewed default branch.
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      deployments: write
+    steps:
+      - name: Check out code
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
-            # Deploy to Cloudflare Pages
-            # - Main branch: Production at supercheck.pages.dev / supercheck.io
-            # - PRs: Preview at <branch>.supercheck.pages.dev
-            - name: Deploy to Cloudflare Pages
-              uses: cloudflare/wrangler-action@v3
-              id: deploy
-              with:
-                  apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-                  accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-                  workingDirectory: docs
-                  command: pages deploy out --project-name=supercheck --branch=${{ github.head_ref || github.ref_name }} --commit-dirty=true
+      - name: Set up Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: docs/package-lock.json
 
-            # Comment preview URL on PRs
-            - name: Comment preview URL on PR
-              if: github.event_name == 'pull_request'
-              uses: actions/github-script@v7
-              with:
-                  script: |
-                      const deploymentUrl = '${{ steps.deploy.outputs.deployment-url }}';
-                      if (deploymentUrl) {
-                        github.rest.issues.createComment({
-                          issue_number: context.issue.number,
-                          owner: context.repo.owner,
-                          repo: context.repo.repo,
-                          body: `📚 **Docs Preview:** ${deploymentUrl}`
-                        });
-                      }
+      - name: Install dependencies
+        working-directory: docs
+        run: npm ci --prefer-offline --no-audit
+
+      - name: Build static site
+        working-directory: docs
+        run: npm run build
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: docs
+          command: pages deploy out --project-name=supercheck --branch=main --commit-dirty=true

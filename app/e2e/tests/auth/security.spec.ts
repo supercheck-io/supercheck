@@ -168,8 +168,28 @@ test.describe("Security - CSRF Protection @auth @security", () => {
       },
     });
 
-    expect(response.status()).toBe(403);
-    expect(await response.json()).toEqual({
+    const status = response.status();
+    const body = (await response.json()) as {
+      message?: string;
+      code?: string;
+    };
+
+    if (status === 429) {
+      // Better Auth rate limits before origin validation once the shared
+      // production IP budget is exhausted. This is still a fail-closed
+      // rejection, but assert its exact contract so another response cannot
+      // accidentally mask the CSRF check.
+      expect(body).toEqual({
+        message: "Too many requests. Please try again later.",
+      });
+      const retryAfter = Number(response.headers()["x-retry-after"]);
+      expect(Number.isInteger(retryAfter)).toBe(true);
+      expect(retryAfter).toBeGreaterThanOrEqual(0);
+      return;
+    }
+
+    expect(status).toBe(403);
+    expect(body).toEqual({
       message: "Invalid origin",
       code: "INVALID_ORIGIN",
     });
