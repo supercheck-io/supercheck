@@ -29,6 +29,7 @@ import {
   isDirectValidationConnectorType,
   isPrivateAgentConnectorType,
   isSetupOnlyConnectorType,
+  connectorCredentialRequirementError,
   redactConnectorText,
   sanitizeConnectorEvidence,
   SRE_CONNECTOR_TYPES,
@@ -917,6 +918,14 @@ export async function createSreConnector(
       };
     }
 
+    const credentialError = connectorCredentialRequirementError(
+      parsed.data.type,
+      parsed.data.credential?.value as ConnectorCredentialValue | undefined,
+    );
+    if (credentialError) {
+      return { success: false, error: credentialError };
+    }
+
     await assertEndpointAllowedForExecution(
       endpointUrl,
       Boolean(parsed.data.privateAgentId),
@@ -1345,6 +1354,14 @@ export async function rotateSreConnectorCredential(
 
     if (!connector || connector.status === "disabled") {
       return { success: false, error: "Connector not found or disabled" };
+    }
+
+    const credentialError = connectorCredentialRequirementError(
+      connector.type,
+      parsed.data.value as ConnectorCredentialValue,
+    );
+    if (credentialError) {
+      return { success: false, error: credentialError };
     }
 
     const encrypted = encryptConnectorCredential(

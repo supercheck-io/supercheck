@@ -58,7 +58,7 @@ resources mapped to the affected service:
 - **GitLab:** read-only personal, project, or group token limited to the required projects.
 - **Grafana:** service-account token with the `Viewer` role and dashboard search access. Do not use the Grafana administrator password.
 - **Sentry:** project-scoped token that can list issues but cannot change issue state.
-- **Datadog:** API and application keys with read-only event access for the account's regional API site.
+- **Datadog:** Enter **both** the API key and the application key in the connector form. Use read-only event access for the account's regional API site (`api.datadoghq.com` or `api.datadoghq.eu`). A single token is not enough.
 - **Elasticsearch/OpenSearch:** search-only credential limited to approved indices.
 - **AWS CloudWatch:** prefer short-lived STS credentials limited to `DescribeAlarms`, `GetMetricData`, and `ListMetrics` in the required account and region.
 - **PagerDuty:** read-only REST API key with incident-read access. An Events API integration key is not valid for searches.

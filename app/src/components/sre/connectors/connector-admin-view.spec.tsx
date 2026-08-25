@@ -66,6 +66,7 @@ describe("ConnectorAdminView", () => {
     expect(addableTypes).toEqual(
       expect.arrayContaining([
         "sentry",
+        "datadog",
         "elasticsearch",
         "tempo",
         "aws_cloudwatch",

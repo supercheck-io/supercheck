@@ -96,7 +96,10 @@ export function ConnectorFormDialog({
   const [awsAccessKeyId, setAwsAccessKeyId] = useState("");
   const [awsSecretAccessKey, setAwsSecretAccessKey] = useState("");
   const [awsSessionToken, setAwsSessionToken] = useState("");
+  const [datadogApiKey, setDatadogApiKey] = useState("");
+  const [datadogApplicationKey, setDatadogApplicationKey] = useState("");
   const isCloudWatch = type === "aws_cloudwatch";
+  const isDatadog = type === "datadog";
   const isApiKeyOnly = apiKeyOnlyConnectorTypes.has(type);
   const visibleCredentialTypeOptions = isApiKeyOnly
     ? credentialTypeOptions.filter((option) => option.value === "api_key")
@@ -123,6 +126,16 @@ export function ConnectorFormDialog({
     const trimmedAwsAccessKeyId = awsAccessKeyId.trim();
     const trimmedAwsSecretAccessKey = awsSecretAccessKey.trim();
     const trimmedAwsSessionToken = awsSessionToken.trim();
+    const trimmedDatadogApiKey = datadogApiKey.trim();
+    const trimmedDatadogApplicationKey = datadogApplicationKey.trim();
+
+    if (
+      isDatadog &&
+      Boolean(trimmedDatadogApiKey) !== Boolean(trimmedDatadogApplicationKey)
+    ) {
+      toast.error("Datadog requires both an API key and an application key");
+      return;
+    }
 
     startTransition(async () => {
       const result = await createSreConnector({
@@ -147,12 +160,20 @@ export function ConnectorFormDialog({
                     : {}),
                 },
               }
-            : trimmedCredential
+            : isDatadog && trimmedDatadogApiKey && trimmedDatadogApplicationKey
               ? {
-                  credentialType,
-                  value: { secret: trimmedCredential },
+                  credentialType: "api_key",
+                  value: {
+                    apiKey: trimmedDatadogApiKey,
+                    applicationKey: trimmedDatadogApplicationKey,
+                  },
                 }
-              : undefined,
+              : !isCloudWatch && !isDatadog && trimmedCredential
+                ? {
+                    credentialType,
+                    value: { secret: trimmedCredential },
+                  }
+                : undefined,
       });
 
       if (!result.success) {
@@ -170,6 +191,8 @@ export function ConnectorFormDialog({
       setAwsAccessKeyId("");
       setAwsSecretAccessKey("");
       setAwsSessionToken("");
+      setDatadogApiKey("");
+      setDatadogApplicationKey("");
       onOpenChange(false);
     });
   };
@@ -451,6 +474,40 @@ export function ConnectorFormDialog({
                           {queryGuide.credentialHint}
                         </p>
                       </div>
+                    </>
+                  ) : isDatadog ? (
+                    <>
+                      <div className="flex min-w-0 flex-col gap-1.5">
+                        <Label htmlFor="datadog-api-key">Datadog API key</Label>
+                        <Input
+                          id="datadog-api-key"
+                          value={datadogApiKey}
+                          onChange={(event) =>
+                            setDatadogApiKey(event.target.value)
+                          }
+                          type="password"
+                          autoComplete="new-password"
+                          placeholder="DD API key"
+                        />
+                      </div>
+                      <div className="flex min-w-0 flex-col gap-1.5">
+                        <Label htmlFor="datadog-application-key">
+                          Datadog application key
+                        </Label>
+                        <Input
+                          id="datadog-application-key"
+                          value={datadogApplicationKey}
+                          onChange={(event) =>
+                            setDatadogApplicationKey(event.target.value)
+                          }
+                          type="password"
+                          autoComplete="new-password"
+                          placeholder="DD application key"
+                        />
+                      </div>
+                      <p className="text-xs text-muted-foreground sm:col-span-2">
+                        {queryGuide.credentialHint}
+                      </p>
                     </>
                   ) : (
                     <>

@@ -60,7 +60,10 @@ export function ConnectorCredentialDialog({
   const [awsAccessKeyId, setAwsAccessKeyId] = useState("");
   const [awsSecretAccessKey, setAwsSecretAccessKey] = useState("");
   const [awsSessionToken, setAwsSessionToken] = useState("");
+  const [datadogApiKey, setDatadogApiKey] = useState("");
+  const [datadogApplicationKey, setDatadogApplicationKey] = useState("");
   const isCloudWatch = connector.type === "aws_cloudwatch";
+  const isDatadog = connector.type === "datadog";
   const visibleCredentialTypeOptions = apiKeyOnlyConnectorTypes.has(
     connector.type,
   )
@@ -73,6 +76,8 @@ export function ConnectorCredentialDialog({
     const trimmedAwsAccessKeyId = awsAccessKeyId.trim();
     const trimmedAwsSecretAccessKey = awsSecretAccessKey.trim();
     const trimmedAwsSessionToken = awsSessionToken.trim();
+    const trimmedDatadogApiKey = datadogApiKey.trim();
+    const trimmedDatadogApplicationKey = datadogApplicationKey.trim();
 
     if (
       isCloudWatch &&
@@ -82,7 +87,15 @@ export function ConnectorCredentialDialog({
       return;
     }
 
-    if (!isCloudWatch && !trimmedCredential) {
+    if (
+      isDatadog &&
+      (!trimmedDatadogApiKey || !trimmedDatadogApplicationKey)
+    ) {
+      toast.error("Datadog requires both an API key and an application key");
+      return;
+    }
+
+    if (!isCloudWatch && !isDatadog && !trimmedCredential) {
       toast.error("Credential value is required");
       return;
     }
@@ -90,7 +103,7 @@ export function ConnectorCredentialDialog({
     startTransition(async () => {
       const result = await rotateSreConnectorCredential({
         id: connector.id,
-        credentialType: isCloudWatch ? "api_key" : credentialType,
+        credentialType: isCloudWatch || isDatadog ? "api_key" : credentialType,
         value: isCloudWatch
           ? {
               apiKey: trimmedAwsAccessKeyId,
@@ -99,7 +112,12 @@ export function ConnectorCredentialDialog({
                 ? { sessionToken: trimmedAwsSessionToken }
                 : {}),
             }
-          : { secret: trimmedCredential },
+          : isDatadog
+            ? {
+                apiKey: trimmedDatadogApiKey,
+                applicationKey: trimmedDatadogApplicationKey,
+              }
+            : { secret: trimmedCredential },
       });
 
       if (!result.success) {
@@ -115,6 +133,8 @@ export function ConnectorCredentialDialog({
       setAwsAccessKeyId("");
       setAwsSecretAccessKey("");
       setAwsSessionToken("");
+      setDatadogApiKey("");
+      setDatadogApplicationKey("");
       toast.success(result.message);
       onOpenChange(false);
     });
@@ -173,6 +193,37 @@ export function ConnectorCredentialDialog({
                   type="password"
                   autoComplete="new-password"
                   placeholder="Optional STS session token"
+                />
+              </div>
+            </div>
+          ) : isDatadog ? (
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="rotate-datadog-api-key">
+                  Datadog API key *
+                </Label>
+                <Input
+                  id="rotate-datadog-api-key"
+                  value={datadogApiKey}
+                  onChange={(event) => setDatadogApiKey(event.target.value)}
+                  type="password"
+                  autoComplete="new-password"
+                  placeholder="DD API key"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="rotate-datadog-application-key">
+                  Datadog application key *
+                </Label>
+                <Input
+                  id="rotate-datadog-application-key"
+                  value={datadogApplicationKey}
+                  onChange={(event) =>
+                    setDatadogApplicationKey(event.target.value)
+                  }
+                  type="password"
+                  autoComplete="new-password"
+                  placeholder="DD application key"
                 />
               </div>
             </div>

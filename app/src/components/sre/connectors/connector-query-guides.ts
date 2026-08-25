@@ -223,7 +223,8 @@ const guides: Record<string, ConnectorQueryGuide> = {
     endpointPlaceholder: "https://api.datadoghq.com",
     setupHint:
       "Use the Datadog API site for the account region, such as api.datadoghq.eu for EU accounts.",
-    credentialHint: "Use API and application keys with read-only event access.",
+    credentialHint:
+      "Enter both a Datadog API key and an application key with read-only event access for the account region.",
     examples: [
       {
         label: "Service events",

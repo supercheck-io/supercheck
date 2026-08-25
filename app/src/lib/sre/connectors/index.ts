@@ -1,5 +1,6 @@
 export * from "./connector-base";
 export * from "./connector-capabilities";
+export * from "./connector-credential-requirements";
 export * from "./connector-registry";
 export * from "./credential-vault";
 export * from "./credential-resolver";
