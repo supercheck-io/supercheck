@@ -141,6 +141,13 @@
       "when": 1782612000000,
       "tag": "0019_canonical_rbac_roles",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1788172200000,
+      "tag": "0020_sre_active_run_guard",
+      "breakpoints": true
     }
   ]
 }

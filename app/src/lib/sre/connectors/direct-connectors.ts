@@ -113,6 +113,24 @@ function dateFromValue(value: unknown, fallback: Date) {
   return Number.isNaN(parsed.getTime()) ? fallback : parsed;
 }
 
+function isWithinTimeWindow(value: unknown, start: Date, end: Date) {
+  if (typeof value !== "string" && typeof value !== "number") return false;
+  const timestamp = new Date(value);
+  return (
+    !Number.isNaN(timestamp.getTime()) && timestamp >= start && timestamp <= end
+  );
+}
+
+function tokenizeConnectorQuery(query: string) {
+  return query.match(/(?:[^\s"]+|"[^"]*")+/g) ?? [];
+}
+
+function unquoteConnectorQueryValue(value: string) {
+  return value.length >= 2 && value.startsWith('"') && value.endsWith('"')
+    ? value.slice(1, -1)
+    : value;
+}
+
 function requireSecret(secret: string | null, connectorName: string) {
   if (!secret) {
     throw new Error(
@@ -497,7 +515,8 @@ export class GitHubConnector extends BaseDirectConnector {
     params: ConnectorSearchParams,
   ): Promise<ConnectorEvidenceItem[]> {
     const query = params.query.trim();
-    const url = `${this.endpointUrl}/search/commits?q=${encodeURIComponent(query)}&per_page=${Math.min(params.budget.maxRows, 20)}`;
+    const boundedQuery = `${query} committer-date:${params.timeWindow.start.toISOString()}..${params.timeWindow.end.toISOString()}`;
+    const url = `${this.endpointUrl}/search/commits?q=${encodeURIComponent(boundedQuery)}&per_page=${Math.min(Math.max(params.budget.maxRows * 2, params.budget.maxRows), 100)}`;
     const payload = await fetchJson({
       url,
       secret: this.secret(),
@@ -511,51 +530,66 @@ export class GitHubConnector extends BaseDirectConnector {
     const items = Array.isArray((payload as { items?: unknown[] }).items)
       ? (payload as { items: unknown[] }).items
       : [];
-    return items.slice(0, params.budget.maxRows).map((item) => {
-      const commit = item as {
-        html_url?: string;
-        sha?: string;
-        commit?: {
-          message?: string;
-          author?: { date?: string; name?: string };
+    return items
+      .filter((item) => {
+        const commit = item as {
+          commit?: { committer?: { date?: string }; author?: { date?: string } };
         };
-        repository?: { full_name?: string };
-      };
-      const title =
-        commit.commit?.message?.split("\n")[0]?.slice(0, 180) ||
-        commit.sha ||
-        "GitHub commit";
-      const sourceUri =
-        commit.html_url ??
-        `${this.endpointUrl}/search?q=${encodeURIComponent(query)}`;
+        return isWithinTimeWindow(
+          commit.commit?.committer?.date ?? commit.commit?.author?.date,
+          params.timeWindow.start,
+          params.timeWindow.end,
+        );
+      })
+      .slice(0, params.budget.maxRows)
+      .map((item) => {
+        const commit = item as {
+          html_url?: string;
+          sha?: string;
+          commit?: {
+            message?: string;
+            author?: { date?: string; name?: string };
+            committer?: { date?: string };
+          };
+          repository?: { full_name?: string };
+        };
+        const title =
+          commit.commit?.message?.split("\n")[0]?.slice(0, 180) ||
+          commit.sha ||
+          "GitHub commit";
+        const sourceUri =
+          commit.html_url ??
+          `${this.endpointUrl}/search?q=${encodeURIComponent(boundedQuery)}`;
+        const commitTimestamp =
+          commit.commit?.committer?.date ?? commit.commit?.author?.date;
 
-      return {
-        id: evidenceId(this.id, sourceUri, title),
-        source: "github",
-        sourceUri,
-        title,
-        summary: [
-          commit.repository?.full_name,
-          commit.commit?.author?.name,
-          commit.sha?.slice(0, 12),
-        ]
-          .filter(Boolean)
-          .join(" · "),
-        rawContent: commit.commit?.message,
-        evidenceType: "deployment",
-        metadata: {
-          timestamp: commit.commit?.author?.date
-            ? new Date(commit.commit.author.date)
-            : params.timeWindow.end,
-          tags: ["github", "commit"],
-        },
-        citation: {
-          connectorId: this.id,
-          query,
-          resultHash: hashConnectorPayload(commit),
-        },
-      };
-    });
+        return {
+          id: evidenceId(this.id, sourceUri, title),
+          source: "github",
+          sourceUri,
+          title,
+          summary: [
+            commit.repository?.full_name,
+            commit.commit?.author?.name,
+            commit.sha?.slice(0, 12),
+          ]
+            .filter(Boolean)
+            .join(" · "),
+          rawContent: commit.commit?.message,
+          evidenceType: "deployment",
+          metadata: {
+            timestamp: commitTimestamp
+              ? new Date(commitTimestamp)
+              : params.timeWindow.end,
+            tags: ["github", "commit"],
+          },
+          citation: {
+            connectorId: this.id,
+            query: boundedQuery,
+            resultHash: hashConnectorPayload(commit),
+          },
+        };
+      });
   }
 }
 
@@ -728,6 +762,26 @@ export class PagerDutyConnector extends BaseDirectConnector {
     url.searchParams.set("until", params.timeWindow.end.toISOString());
     url.searchParams.set("sort_by", "created_at:desc");
 
+    const queryTokens = params.query.trim().split(/\s+/).filter(Boolean);
+    let hasLocalTerms = false;
+    for (const token of queryTokens) {
+      const [rawKey, ...rawValueParts] = token.split(":");
+      const value = rawValueParts.join(":").trim();
+      const key = rawKey.toLowerCase();
+      if (key === "status" && value) {
+        url.searchParams.append("statuses[]", value.toLowerCase());
+      } else if (key === "urgency" && value) {
+        url.searchParams.append("urgencies[]", value.toLowerCase());
+      } else if (token !== "*") {
+        hasLocalTerms = true;
+      }
+    }
+    if (hasLocalTerms) {
+      // PagerDuty's incident-list API has no arbitrary free-text parameter.
+      // Fetch bounded provider headroom before applying title/service matching.
+      url.searchParams.set("limit", "100");
+    }
+
     const payload = await fetchJson({
       url: url.toString(),
       timeoutMs: this.timeoutMs(params),
@@ -871,7 +925,16 @@ export class OpsgenieConnector extends BaseDirectConnector {
     url.searchParams.set("limit", String(Math.min(params.budget.maxRows, 100)));
     url.searchParams.set("sort", "createdAt");
     url.searchParams.set("order", "desc");
-    if (params.query !== "*") url.searchParams.set("query", params.query);
+    const timeWindowQuery = [
+      `createdAt >= ${params.timeWindow.start.getTime()}`,
+      `createdAt <= ${params.timeWindow.end.getTime()}`,
+    ].join(" AND ");
+    url.searchParams.set(
+      "query",
+      params.query === "*"
+        ? timeWindowQuery
+        : `(${params.query}) AND ${timeWindowQuery}`,
+    );
 
     const payload = await fetchJson({
       url: url.toString(),
@@ -2165,7 +2228,7 @@ export class AwsCloudWatchConnector extends BaseDirectConnector {
     };
     const freeText: string[] = [];
 
-    for (const token of query.trim().split(/\s+/).filter(Boolean)) {
+    for (const token of tokenizeConnectorQuery(query)) {
       const separator = token.indexOf(":");
       if (separator === -1) {
         freeText.push(token);
@@ -2173,7 +2236,9 @@ export class AwsCloudWatchConnector extends BaseDirectConnector {
       }
 
       const key = token.slice(0, separator).toLowerCase();
-      const value = token.slice(separator + 1).trim();
+      const value = unquoteConnectorQueryValue(
+        token.slice(separator + 1).trim(),
+      );
       if (!value) continue;
 
       if (key === "namespace" || key === "ns") parsed.namespace = value;

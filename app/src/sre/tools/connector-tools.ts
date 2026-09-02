@@ -36,6 +36,8 @@ import {
   type ConnectorEvidenceItem,
   type StagedEvidenceStage,
 } from "@/lib/sre/connectors";
+import { normalizePrivateAgentEvidenceSummaries } from "@/lib/sre/connector-job-evidence";
+import { waitForPrivateAgentConnectorJob } from "@/lib/sre/private-agent-job-waiter";
 import { isSreStagedEvidenceEnabled } from "@/sre/lib/feature-gates";
 import { db } from "@/utils/db";
 
@@ -328,6 +330,73 @@ function evidenceInsertValue(
   };
 }
 
+async function persistPrivateAgentEvidence(input: {
+  scope: SreConnectorToolScope;
+  connector: ConnectorRow;
+  jobId: string;
+  query: string;
+  resultSummary: Record<string, unknown> | null;
+  maxItems: number;
+}) {
+  const summaries = normalizePrivateAgentEvidenceSummaries(
+    input.resultSummary,
+    input.maxItems,
+  );
+  if (summaries.length === 0) return [];
+
+  return db.transaction(async (tx) => {
+    const persisted = [];
+    for (const item of summaries) {
+      const [existing] = await tx
+        .select()
+        .from(sreEvidenceItems)
+        .where(
+          and(
+            eq(sreEvidenceItems.incidentId, input.scope.incidentId),
+            eq(sreEvidenceItems.sourceConnectorId, input.connector.id),
+            eq(sreEvidenceItems.citationResultHash, item.resultHash),
+          ),
+        )
+        .limit(1);
+      if (existing) {
+        persisted.push(existing);
+        continue;
+      }
+
+      const [created] = await tx
+        .insert(sreEvidenceItems)
+        .values({
+          organizationId: input.scope.organizationId,
+          projectId: input.scope.projectId,
+          incidentId: input.scope.incidentId,
+          investigationRunId: input.scope.investigationRunId ?? null,
+          sourceType: input.connector.type as SupportedLiveConnectorType,
+          sourceConnectorId: input.connector.id,
+          sourceUri: item.sourceUri,
+          title: item.title,
+          summary: item.summary,
+          rawContentExcerpt: item.summary.slice(0, 4000),
+          evidenceType: item.evidenceType,
+          severity: null,
+          confidence: "0.8000",
+          tags: { source: "private_agent_connector" },
+          metadata: {
+            privateAgentJobId: input.jobId,
+            connectorEvidenceId: item.id,
+            source: input.connector.type,
+          },
+          citationQuery: input.query,
+          citationResultHash: item.resultHash,
+          observedAt: item.observedAtDate,
+          createdAt: new Date(),
+        })
+        .returning();
+      persisted.push(created);
+    }
+    return persisted;
+  });
+}
+
 export async function listIncidentLiveConnectors(scope: SreConnectorToolScope) {
   const { primaryServiceId, connectors } = await loadIncidentConnectors(scope);
 
@@ -577,6 +646,82 @@ export async function searchIncidentLiveConnectorEvidence(
       throw new Error("Failed to queue Private Agent connector job");
     }
 
+    const waitResult = await waitForPrivateAgentConnectorJob({
+      timeoutMs: Math.min(input.maxSeconds * 1000, 15_000),
+      load: async () =>
+        (await db.query.privateAgentJobs.findFirst({
+          where: and(
+            eq(privateAgentJobs.id, jobId),
+            eq(privateAgentJobs.organizationId, scope.organizationId),
+            eq(privateAgentJobs.projectId, scope.projectId),
+            eq(privateAgentJobs.privateAgentId, route.privateAgentId),
+            eq(privateAgentJobs.connectorId, connector.id),
+          ),
+          columns: {
+            status: true,
+            resultHash: true,
+            resultSummary: true,
+            errorCode: true,
+          },
+        })) ?? null,
+    });
+
+    if (waitResult.state === "missing" || waitResult.state === "failed") {
+      await db.insert(sreInvestigationToolCalls).values({
+        investigationRunId: scope.investigationRunId ?? null,
+        connectorId: connector.id,
+        connectorType: connector.type,
+        toolName: "agent.connector.search.private_agent",
+        inputHash: hashConnectorPayload(route.jobSpec),
+        inputSummary: redactConnectorText(JSON.stringify(route.jobSpec)),
+        outputHash: route.jobSpecHash,
+        outputSummary: "Private Agent connector search did not complete",
+        status: "error",
+        errorMessage: "Private Agent connector search failed",
+        durationMs: Date.now() - startedAt,
+        costEstimateCents: 0,
+        executedAt: new Date(),
+      });
+      throw new Error("Private Agent connector search failed");
+    }
+
+    if (waitResult.state === "completed") {
+      const persistedEvidence = await persistPrivateAgentEvidence({
+        scope,
+        connector,
+        jobId,
+        query: input.query,
+        resultSummary: waitResult.job.resultSummary,
+        maxItems: Math.min(params.budget.maxRows, MAX_TOOL_ROWS),
+      });
+      const truncated = waitResult.job.resultSummary?.truncated === true;
+
+      await db.insert(sreInvestigationToolCalls).values({
+        investigationRunId: scope.investigationRunId ?? null,
+        connectorId: connector.id,
+        connectorType: connector.type,
+        toolName: "agent.connector.search.private_agent",
+        inputHash: hashConnectorPayload(route.jobSpec),
+        inputSummary: redactConnectorText(JSON.stringify(route.jobSpec)),
+        outputHash: waitResult.job.resultHash ?? route.jobSpecHash,
+        outputSummary: `Returned ${persistedEvidence.length} evidence item(s)${truncated ? " (truncated)" : ""}`,
+        status: "success",
+        durationMs: Date.now() - startedAt,
+        costEstimateCents: 0,
+        evidenceItemId: persistedEvidence[0]?.id ?? null,
+        executedAt: new Date(),
+      });
+
+      return {
+        executionMode: "private_agent" as const,
+        privateAgentJobId: jobId,
+        queued: false,
+        evidence: persistedEvidence.map(summarizeEvidenceItem),
+        truncated,
+        message: `Persisted ${persistedEvidence.length} connector evidence item(s)`,
+      };
+    }
+
     await db.insert(sreInvestigationToolCalls).values({
       investigationRunId: scope.investigationRunId ?? null,
       connectorId: connector.id,
@@ -598,8 +743,8 @@ export async function searchIncidentLiveConnectorEvidence(
       queued: true,
       evidence: [],
       message: insertedJob
-        ? "Queued Private Agent connector search"
-        : "Private Agent connector search is already queued",
+        ? "Private Agent connector search is still queued after the bounded wait"
+        : "Existing Private Agent connector search is still queued after the bounded wait",
     };
   }
 
@@ -858,7 +1003,7 @@ export function createSreConnectorTools(scope: SreConnectorToolScope) {
     }),
     searchLiveConnectorEvidence: tool({
       description:
-        "Search one live read-only connector for the scoped incident's primary service. When staged log evidence is enabled, direct Loki searches must progress through statistics, sample, signatures, temporal_context, then correlation. Loki statistics require a LogQL metric function. Direct connectors persist sanitized evidence immediately; Private Agent connectors queue a server-authorized job.",
+        "Search one live read-only connector for the scoped incident's primary service. When staged log evidence is enabled, direct Loki searches must progress through statistics, sample, signatures, temporal_context, then correlation. Loki statistics require a LogQL metric function. Direct connectors persist sanitized evidence immediately. Private Agent searches wait for a bounded server-authorized result and persist sanitized evidence when it completes; if queued is true, do not treat the pending search as evidence.",
       inputSchema: connectorSearchInputSchema,
       execute: async (input) =>
         searchIncidentLiveConnectorEvidence(scope, input),

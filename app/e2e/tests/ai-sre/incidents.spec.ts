@@ -4,10 +4,14 @@ import { requireRbacUser } from "../../utils/env";
 import { createMonitor, deleteMonitor } from "../../utils/test-data";
 
 test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @critical", () => {
-  test.beforeAll(() => requireRbacUser("orgOwner"));
+  test.beforeAll(() => {
+    requireRbacUser("orgOwner");
+    requireRbacUser("viewer");
+  });
 
   test("persists a manual incident, bounded brief, stored-evidence investigation, and legacy redirect", async ({
     orgOwnerPage: page,
+    viewerPage,
   }) => {
     // This acceptance flow performs two bounded AI operations in addition to
     // the incident, evidence, download, and cleanup lifecycle.
@@ -16,6 +20,11 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
     expect(projects.status()).toBe(200);
     const originalProjectId = (
       (await projects.json()) as { currentProject: { id: string } }
+    ).currentProject.id;
+    const viewerProjects = await viewerPage.request.get("/api/projects");
+    expect(viewerProjects.status(), await viewerProjects.text()).toBe(200);
+    const viewerOriginalProjectId = (
+      (await viewerProjects.json()) as { currentProject: { id: string } }
     ).currentProject.id;
     const createProject = await page.request.post("/api/projects", {
       data: { name: `E2E SRE incident lab ${Date.now()}` },
@@ -258,10 +267,49 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
         page.getByText(/completed|failed|error/i).last(),
       ).toBeVisible();
 
+      await page
+        .getByRole("button", { name: "Save report snapshot", exact: true })
+        .click();
+      await expect(page.getByText("Snapshot saved", { exact: true })).toBeVisible();
+      await page.getByLabel("Accuracy").click();
+      await page
+        .getByRole("option", { name: "Partially accurate", exact: true })
+        .click();
+      const feedbackNote = `E2E feedback ${Date.now()}`;
+      await page.getByLabel("Notes (optional)").fill(feedbackNote);
+      await page
+        .getByLabel("Rejected hypotheses (optional, one per line)")
+        .fill("Database saturation was not supported by the stored evidence.");
+      await page.getByRole("button", { name: "Save feedback" }).click();
+      await expect(page.getByText("Feedback saved", { exact: true })).toBeVisible();
+
       await page.reload();
       await expect(
         page.getByText("Latest result", { exact: true }),
       ).toBeVisible();
+      await expect(page.getByText(/^Snapshot saved/)).toBeVisible();
+      await expect(page.getByLabel("Notes (optional)")).toHaveValue(feedbackNote);
+
+      const viewerSwitch = await viewerPage.request.post(
+        "/api/projects/switch",
+        { data: { projectId } },
+      );
+      expect(viewerSwitch.status(), await viewerSwitch.text()).toBe(200);
+      await viewerPage.goto(`/incidents/${incidentId}`, {
+        waitUntil: "domcontentloaded",
+      });
+      await expect(viewerPage.getByText("Read-only access")).toBeVisible();
+      await expect(
+        viewerPage.getByRole("button", {
+          name: "Run investigation",
+          exact: true,
+        }),
+      ).toHaveCount(0);
+      await expect(viewerPage.getByText(/^Snapshot saved/)).toBeVisible();
+      await expect(
+        viewerPage.getByRole("button", { name: "Save feedback" }),
+      ).toHaveCount(0);
+
       await page.goto("/copilot/investigations");
       await expect(page).toHaveURL(/\/incidents$/);
     } finally {
@@ -272,6 +320,11 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
         data: { projectId: originalProjectId },
       });
       expect(restore.status(), await restore.text()).toBe(200);
+      const viewerRestore = await viewerPage.request.post(
+        "/api/projects/switch",
+        { data: { projectId: viewerOriginalProjectId } },
+      );
+      expect(viewerRestore.status(), await viewerRestore.text()).toBe(200);
       const remove = await page.request.delete(`/api/projects/${projectId}`);
       expect([200, 404]).toContain(remove.status());
     }

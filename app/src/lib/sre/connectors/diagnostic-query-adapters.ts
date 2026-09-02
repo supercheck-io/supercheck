@@ -122,11 +122,15 @@ export const diagnosticQueryAdapterRecipes: DiagnosticQueryAdapterRecipe[] = [
     name: "CloudWatch metric data",
     description: "CloudWatch metric-data query with allowlisted namespace, metric, dimension, statistic, and period.",
     queryType: "http_get",
-    template: "namespace:$namespace metric:$metric dimension:$dimension stat:$stat period:$period",
+    template: 'namespace:$namespace metric:$metric dimension:"$dimension" stat:$stat period:$period',
     parameterSchema: {
       namespace: { type: "string", maxLength: 120 },
       metric: { type: "string", maxLength: 120 },
-      dimension: { type: "string", maxLength: 300 },
+      dimension: {
+        type: "string",
+        maxLength: 300,
+        pattern: "^[a-zA-Z0-9_.:/+=,@ -]+$",
+      },
       stat: { type: "string", enum: ["Average", "Sum", "Maximum", "Minimum", "p95"], default: "Average" },
       period: { type: "number", min: 60, max: 3600, default: 60 },
     },
@@ -145,7 +149,8 @@ export const diagnosticQueryAdapterRecipes: DiagnosticQueryAdapterRecipe[] = [
     name: "Elasticsearch service errors",
     description: "Query-string diagnostic for indexed service error documents.",
     queryType: "http_get",
-    template: 'service.name:$service AND ($pattern)',
+    template:
+      'service.name:$service AND (log.level:$pattern OR message:$pattern OR error.message:$pattern)',
     parameterSchema: {
       service: { type: "string", maxLength: 100, pattern: "^[a-zA-Z0-9_.:-]+$" },
       pattern: { type: "string", enum: ["error", "exception", "timeout"], default: "error" },

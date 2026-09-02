@@ -75,6 +75,9 @@ describe("direct connectors", () => {
       evidenceType: "deployment",
     });
     expect(evidence[0].citation.resultHash).toHaveLength(64);
+    expect(evidence[0].citation.query).toContain(
+      "committer-date:2026-06-21T10:00:00.000Z..2026-06-21T11:00:00.000Z",
+    );
     expect(global.fetch).toHaveBeenCalledWith(
       expect.stringContaining("https://api.github.com/search/commits"),
       expect.objectContaining({
@@ -83,6 +86,47 @@ describe("direct connectors", () => {
         redirect: "error",
       }),
     );
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "committer-date%3A2026-06-21T10%3A00%3A00.000Z",
+      ),
+      expect.anything(),
+    );
+  });
+
+  it("excludes GitHub commits outside the requested incident window", async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        items: [
+          {
+            sha: "old-commit",
+            commit: {
+              message: "Old deploy",
+              committer: { date: "2026-06-21T09:59:59.000Z" },
+            },
+          },
+          {
+            sha: "current-commit",
+            commit: {
+              message: "Current deploy",
+              committer: { date: "2026-06-21T10:30:00.000Z" },
+            },
+          },
+        ],
+      }),
+    }) as unknown as typeof fetch;
+
+    const connector = createDirectConnector({
+      ...baseDefinition,
+      type: "github",
+      credential: { secret: "token" },
+    });
+    const evidence = await connector.search(params);
+
+    expect(evidence).toHaveLength(1);
+    expect(evidence[0].title).toBe("Current deploy");
   });
 
   it("normalizes Prometheus query_range results into metric evidence", async () => {
@@ -743,14 +787,14 @@ describe("direct connectors", () => {
     const evidence = await connector.search({
       ...params,
       query:
-        "namespace:AWS/EC2 metric:CPUUtilization dimension:InstanceId=i-123 stat:Average period:300",
+        'namespace:AWS/EC2 metric:CPUUtilization dimension:"InstanceName=checkout api" stat:Average period:300',
     });
 
     expect(evidence[0]).toMatchObject({
       source: "aws_cloudwatch",
       title: "CloudWatch metric: CPUUtilization",
       evidenceType: "metric",
-      summary: "1 datapoint · latest 42.5 · InstanceId=i-123",
+      summary: "1 datapoint · latest 42.5 · InstanceName=checkout api",
       metadata: expect.objectContaining({
         tags: expect.arrayContaining([
           "aws",
@@ -758,7 +802,7 @@ describe("direct connectors", () => {
           "metric",
           "AWS/EC2",
           "CPUUtilization",
-          "InstanceId:i-123",
+          "InstanceName:checkout api",
         ]),
       }),
     });
@@ -773,7 +817,15 @@ describe("direct connectors", () => {
       expect.any(String),
       expect.objectContaining({
         body: expect.stringContaining(
-          "MetricDataQueries.member.1.MetricStat.Metric.Dimensions.member.1.Name=InstanceId",
+          "MetricDataQueries.member.1.MetricStat.Metric.Dimensions.member.1.Name=InstanceName",
+        ),
+      }),
+    );
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        body: expect.stringContaining(
+          "MetricDataQueries.member.1.MetricStat.Metric.Dimensions.member.1.Value=checkout+api",
         ),
       }),
     );
@@ -875,6 +927,18 @@ describe("direct connectors", () => {
       expect.stringContaining("until=2026-06-21T11%3A00%3A00.000Z"),
       expect.anything(),
     );
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining("statuses%5B%5D=triggered"),
+      expect.anything(),
+    );
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining("limit=100"),
+      expect.anything(),
+    );
+    expect(global.fetch).not.toHaveBeenCalledWith(
+      expect.stringContaining("query=checkout"),
+      expect.anything(),
+    );
   });
 
   it("normalizes Opsgenie alerts and enforces the selected time window", async () => {
@@ -924,12 +988,16 @@ describe("direct connectors", () => {
       metadata: expect.objectContaining({ severity: "critical" }),
     });
     expect(global.fetch).toHaveBeenCalledWith(
-      expect.stringContaining("query=status%3Aopen+AND+priority%3AP1"),
+      expect.stringContaining("createdAt+%3E%3D+1782036000000"),
       expect.objectContaining({
         headers: expect.objectContaining({
           Authorization: "GenieKey opsgenie-key",
         }),
       }),
+    );
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining("createdAt+%3C%3D+1782039600000"),
+      expect.anything(),
     );
   });
 });

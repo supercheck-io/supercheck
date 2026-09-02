@@ -197,6 +197,26 @@ describe("SRE investigate API", () => {
     expect(mockConsumeSreInvestigationCredit).not.toHaveBeenCalled();
   });
 
+  it("returns conflict when the incident already has a running investigation", async () => {
+    mockStartSreIncidentInvestigation.mockResolvedValue({
+      success: false,
+      status: 409,
+      error: "An investigation is already running for this incident",
+    });
+
+    const response = await POST(new NextRequest("http://localhost/api/sre/investigate", {
+      method: "POST",
+      body: JSON.stringify({ incidentId: "018f0000-0000-7000-8000-000000000005" }),
+    }));
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      error: "An investigation is already running for this incident",
+    });
+    expect(mockExecuteSreIncidentInvestigation).not.toHaveBeenCalled();
+    expect(mockConsumeSreInvestigationCredit).not.toHaveBeenCalled();
+  });
+
   it("returns the failed run id when investigation execution fails", async () => {
     mockExecuteSreIncidentInvestigation.mockResolvedValue({
       success: false,

@@ -52,9 +52,34 @@ export type StartSreIncidentInvestigationResult =
     }
   | {
       success: false;
-      status: 404 | 502;
+      status: 404 | 409 | 502;
       error: string;
     };
+
+const ACTIVE_INCIDENT_RUN_CONSTRAINT =
+  "sre_investigation_runs_active_incident_unique";
+
+function isActiveIncidentRunConflict(error: unknown): boolean {
+  let current = error;
+  for (let depth = 0; depth < 3 && current; depth += 1) {
+    if (typeof current !== "object") return false;
+    const dbError = current as {
+      code?: string;
+      constraint?: string;
+      constraint_name?: string;
+      cause?: unknown;
+    };
+    if (
+      dbError.code === "23505" &&
+      (dbError.constraint === ACTIVE_INCIDENT_RUN_CONSTRAINT ||
+        dbError.constraint_name === ACTIVE_INCIDENT_RUN_CONSTRAINT)
+    ) {
+      return true;
+    }
+    current = dbError.cause;
+  }
+  return false;
+}
 
 export async function startSreIncidentInvestigation(
   input: RunSreIncidentInvestigationInput,
@@ -103,28 +128,42 @@ export async function startSreIncidentInvestigation(
 
   const initialModelId = getActualModelName();
   const liveConnectorsEnabled = input.enableLiveConnectors === true;
-  const [run] = await db
-    .insert(sreInvestigationRuns)
-    .values({
-      organizationId: input.organizationId,
-      projectId: input.projectId,
-      incidentId: incident.id,
-      agentType: "investigation",
-      status: "running",
-      modelId: initialModelId,
-      promptInput: {
-        mode: "sre_investigation_api",
+  let run: typeof sreInvestigationRuns.$inferSelect;
+  try {
+    [run] = await db
+      .insert(sreInvestigationRuns)
+      .values({
+        organizationId: input.organizationId,
+        projectId: input.projectId,
         incidentId: incident.id,
-        evidenceCount: Number(incident.evidenceCount ?? 0),
-        connectorEvidenceCount: Number(incident.connectorEvidenceCount ?? 0),
-        liveConnectorsEnabled,
-        specializedSubagentsEnabled: liveConnectorsEnabled,
-      },
-      createdByUserId: input.userId,
-      startedAt: new Date(),
-      createdAt: new Date(),
-    })
-    .returning();
+        agentType: "investigation",
+        status: "running",
+        modelId: initialModelId,
+        promptInput: {
+          mode: "sre_investigation_api",
+          incidentId: incident.id,
+          evidenceCount: Number(incident.evidenceCount ?? 0),
+          connectorEvidenceCount: Number(
+            incident.connectorEvidenceCount ?? 0,
+          ),
+          liveConnectorsEnabled,
+          specializedSubagentsEnabled: liveConnectorsEnabled,
+        },
+        createdByUserId: input.userId,
+        startedAt: new Date(),
+        createdAt: new Date(),
+      })
+      .returning();
+  } catch (error) {
+    if (isActiveIncidentRunConflict(error)) {
+      return {
+        success: false,
+        status: 409,
+        error: "An investigation is already running for this incident",
+      };
+    }
+    throw error;
+  }
 
   return { success: true, investigationRunId: run.id, incident };
 }
