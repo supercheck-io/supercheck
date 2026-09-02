@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 
 import { fetchConnectorEndpoint } from "./pinned-fetch";
+import { isValidKubernetesLabelSelector } from "./kubernetes-label-selector";
 
 import {
   DEFAULT_CONNECTOR_OUTPUT_LIMITS,
@@ -533,7 +534,10 @@ export class GitHubConnector extends BaseDirectConnector {
     return items
       .filter((item) => {
         const commit = item as {
-          commit?: { committer?: { date?: string }; author?: { date?: string } };
+          commit?: {
+            committer?: { date?: string };
+            author?: { date?: string };
+          };
         };
         return isWithinTimeWindow(
           commit.commit?.committer?.date ?? commit.commit?.author?.date,
@@ -1264,6 +1268,11 @@ export class KubernetesConnector extends BaseDirectConnector {
     if (!namespace) {
       throw new Error(
         "Kubernetes connector searches require an explicit namespace",
+      );
+    }
+    if (!isValidKubernetesLabelSelector(params.query)) {
+      throw new Error(
+        "Kubernetes connector query must be a valid label selector or *",
       );
     }
     const labelSelector =

@@ -17,6 +17,7 @@ import { logAuditEvent } from "@/lib/audit-logger";
 import { requireProjectContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { normalizePrivateAgentEvidenceSummaries } from "@/lib/sre/connector-job-evidence";
+import { isValidKubernetesLabelSelector } from "@/lib/sre/connectors/kubernetes-label-selector";
 import {
   DEFAULT_CONNECTOR_OUTPUT_LIMITS,
   decryptConnectorCredential,
@@ -1491,6 +1492,15 @@ export async function searchSreConnectorEvidence(
       return {
         success: false,
         error: "Kubernetes connector searches require an explicit namespace",
+      };
+    }
+    if (
+      connector.type === "kubernetes" &&
+      !isValidKubernetesLabelSelector(parsed.data.query)
+    ) {
+      return {
+        success: false,
+        error: "Kubernetes query must be a valid label selector or *",
       };
     }
 

@@ -87,9 +87,7 @@ describe("direct connectors", () => {
       }),
     );
     expect(global.fetch).toHaveBeenCalledWith(
-      expect.stringContaining(
-        "committer-date%3A2026-06-21T10%3A00%3A00.000Z",
-      ),
+      expect.stringContaining("committer-date%3A2026-06-21T10%3A00%3A00.000Z"),
       expect.anything(),
     );
   });
@@ -297,6 +295,27 @@ describe("direct connectors", () => {
     await expect(connector.search(params)).rejects.toThrow(
       "require an explicit namespace",
     );
+  });
+
+  it("rejects malformed Kubernetes label selectors before calling the API", async () => {
+    global.fetch = jest.fn();
+    const connector = createDirectConnector({
+      ...baseDefinition,
+      type: "kubernetes",
+      endpointUrl: "https://kubernetes.example.com",
+      surfaces: ["infra"],
+      evidenceTypes: ["topology"],
+      credential: { secret: "token" },
+    });
+
+    await expect(
+      connector.search({
+        ...params,
+        query: "{metadata.name=checkout status.phase=Running}",
+        filters: { namespace: "payments" },
+      }),
+    ).rejects.toThrow("valid label selector");
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 
   it("normalizes Sentry issues into event evidence", async () => {

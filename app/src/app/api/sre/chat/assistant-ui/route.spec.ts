@@ -120,9 +120,15 @@ const { createSreConnectorTools: mockCreateSreConnectorTools } =
 
 describe("Copilot assistant-ui chat API", () => {
   let finishMetadata: Record<string, unknown> | undefined;
+  let assistantResponseText: string;
+  let streamOnError: ((error: unknown) => string) | undefined;
+  let onFinishPromise: Promise<void> | undefined;
 
   beforeEach(() => {
     jest.clearAllMocks();
+    assistantResponseText = "Read-only guidance";
+    streamOnError = undefined;
+    onFinishPromise = undefined;
     mockRequireProjectContext.mockResolvedValue({
       userId: "018f0000-0000-7000-8000-000000000001",
       organizationId: "018f0000-0000-7000-8000-000000000002",
@@ -151,23 +157,28 @@ describe("Copilot assistant-ui chat API", () => {
       });
     jest.mocked(streamText).mockReturnValue({
       toUIMessageStreamResponse: jest.fn((options) => {
+        streamOnError = options.onError;
         finishMetadata = options.messageMetadata?.({
           part: { type: "finish" },
         } as never) as Record<string, unknown> | undefined;
-        void options.onFinish({
-          responseMessage: {
-            id: "assistant-ui-message",
-            role: "assistant",
-            metadata: {
-              conversationId: "018f0000-0000-7000-8000-000000000004",
+        onFinishPromise = Promise.resolve(
+          options.onFinish({
+            responseMessage: {
+              id: "assistant-ui-message",
+              role: "assistant",
+              metadata: {
+                conversationId: "018f0000-0000-7000-8000-000000000004",
+              },
+              parts: assistantResponseText
+                ? [{ type: "text", text: assistantResponseText }]
+                : [],
             },
-            parts: [{ type: "text", text: "Read-only guidance" }],
-          },
-          messages: [],
-          isContinuation: false,
-          isAborted: false,
-          finishReason: "stop",
-        });
+            messages: [],
+            isContinuation: false,
+            isAborted: false,
+            finishReason: "stop",
+          }),
+        );
         return new Response("assistant-ui-stream", { status: 200 });
       }),
     } as never);
@@ -244,7 +255,9 @@ describe("Copilot assistant-ui chat API", () => {
     );
     expect(streamText).toHaveBeenCalledWith(
       expect.objectContaining({
-        system: expect.stringContaining("Answer the user's exact question first"),
+        system: expect.stringContaining(
+          "Answer the user's exact question first",
+        ),
       }),
     );
     expect(streamText).toHaveBeenCalledWith(
@@ -263,6 +276,124 @@ describe("Copilot assistant-ui chat API", () => {
       expect.objectContaining({
         system: expect.stringContaining('"sources"'),
       }),
+    );
+  });
+
+  it("returns a sanitized explanation when the stream fails", async () => {
+    await POST(
+      new NextRequest("http://localhost/api/sre/chat/assistant-ui", {
+        method: "POST",
+        body: JSON.stringify({
+          messages: [
+            {
+              id: "user-message",
+              role: "user",
+              parts: [{ type: "text", text: "Inspect system health" }],
+            },
+          ],
+        }),
+      }),
+    );
+
+    expect(streamOnError?.(new Error("raw connector failure"))).toBe(
+      "Copilot could not complete the read-only check. No failed connector result was treated as evidence.",
+    );
+  });
+
+  it("persists a sanitized explanation when the model finishes without text", async () => {
+    assistantResponseText = "";
+
+    await POST(
+      new NextRequest("http://localhost/api/sre/chat/assistant-ui", {
+        method: "POST",
+        body: JSON.stringify({
+          messages: [
+            {
+              id: "user-message",
+              role: "user",
+              parts: [{ type: "text", text: "Inspect system health" }],
+            },
+          ],
+        }),
+      }),
+    );
+    await onFinishPromise;
+
+    expect(mockAppendSreMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        role: "assistant",
+        content:
+          "Copilot could not complete the read-only check. No failed connector result was treated as evidence.",
+      }),
+    );
+  });
+
+  it("drops non-text assistant history so a later user message can recover", async () => {
+    await POST(
+      new NextRequest("http://localhost/api/sre/chat/assistant-ui", {
+        method: "POST",
+        body: JSON.stringify({
+          messages: [
+            {
+              id: "first-user-message",
+              role: "user",
+              parts: [{ type: "text", text: "First check" }],
+            },
+            {
+              id: "empty-assistant-message",
+              role: "assistant",
+              parts: [{ type: "tool-kubernetes", state: "output-error" }],
+            },
+            {
+              id: "recovery-user-message",
+              role: "user",
+              parts: [{ type: "text", text: "Recovery check" }],
+            },
+          ],
+        }),
+      }),
+    );
+
+    expect(mockAppendSreMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        role: "user",
+        content: "Recovery check",
+      }),
+    );
+    expect(streamText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messages: [
+          { role: "user", content: "converted" },
+          { role: "user", content: "converted" },
+        ],
+      }),
+    );
+  });
+
+  it("does not duplicate the user message when regenerating a response", async () => {
+    await POST(
+      new NextRequest("http://localhost/api/sre/chat/assistant-ui", {
+        method: "POST",
+        body: JSON.stringify({
+          trigger: "regenerate-message",
+          messageId: "assistant-message",
+          messages: [
+            {
+              id: "user-message",
+              role: "user",
+              parts: [{ type: "text", text: "Inspect system health" }],
+            },
+          ],
+        }),
+      }),
+    );
+    await onFinishPromise;
+
+    expect(mockAppendSreMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ role: "user" }),
+    );
+    expect(mockAppendSreMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ role: "assistant" }),
     );
   });
 

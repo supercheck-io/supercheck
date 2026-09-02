@@ -36,6 +36,7 @@ import {
   type ConnectorEvidenceItem,
   type StagedEvidenceStage,
 } from "@/lib/sre/connectors";
+import { isValidKubernetesLabelSelector } from "@/lib/sre/connectors/kubernetes-label-selector";
 import { normalizePrivateAgentEvidenceSummaries } from "@/lib/sre/connector-job-evidence";
 import { waitForPrivateAgentConnectorJob } from "@/lib/sre/private-agent-job-waiter";
 import { isSreStagedEvidenceEnabled } from "@/sre/lib/feature-gates";
@@ -62,7 +63,14 @@ type SupportedLiveConnectorType = (typeof supportedLiveConnectorTypes)[number];
 
 const connectorSearchInputSchema = z.object({
   connectorId: z.string().uuid(),
-  query: z.string().trim().min(1).max(500),
+  query: z
+    .string()
+    .trim()
+    .min(1)
+    .max(500)
+    .describe(
+      "Connector-native read-only query. For Kubernetes, use only a Kubernetes label selector such as app=checkout-api, or * for a bounded pod list. Never use braces, object field paths, JSONPath, or natural language as a Kubernetes query.",
+    ),
   namespace: z
     .string()
     .trim()
@@ -435,6 +443,38 @@ export async function searchIncidentLiveConnectorEvidence(
   if (connector.type === "kubernetes" && !input.namespace) {
     throw new Error(
       "Kubernetes connector searches require an explicit namespace",
+    );
+  }
+  if (
+    connector.type === "kubernetes" &&
+    !isValidKubernetesLabelSelector(input.query)
+  ) {
+    await db.insert(sreInvestigationToolCalls).values({
+      investigationRunId: scope.investigationRunId ?? null,
+      connectorId: connector.id,
+      connectorType: connector.type,
+      toolName: "agent.connector.search.kubernetes.invalid_selector",
+      inputHash: hashConnectorPayload({
+        connectorId: connector.id,
+        query: input.query,
+        namespace: input.namespace,
+      }),
+      inputSummary: redactConnectorText(
+        JSON.stringify({
+          connectorId: connector.id,
+          connectorType: connector.type,
+          namespace: input.namespace,
+        }),
+      ),
+      status: "error",
+      errorMessage:
+        "Kubernetes connector query must be a valid label selector or *",
+      durationMs: Date.now() - startedAt,
+      costEstimateCents: 0,
+      executedAt: new Date(),
+    });
+    throw new Error(
+      "Kubernetes connector query must be a valid label selector such as app=checkout-api, or * for a bounded pod list",
     );
   }
   const rateLimit = await checkSreConnectorSearchRateLimit(
@@ -1005,8 +1045,21 @@ export function createSreConnectorTools(scope: SreConnectorToolScope) {
       description:
         "Search one live read-only connector for the scoped incident's primary service. When staged log evidence is enabled, direct Loki searches must progress through statistics, sample, signatures, temporal_context, then correlation. Loki statistics require a LogQL metric function. Direct connectors persist sanitized evidence immediately. Private Agent searches wait for a bounded server-authorized result and persist sanitized evidence when it completes; if queued is true, do not treat the pending search as evidence.",
       inputSchema: connectorSearchInputSchema,
-      execute: async (input) =>
-        searchIncidentLiveConnectorEvidence(scope, input),
+      execute: async (input) => {
+        try {
+          return await searchIncidentLiveConnectorEvidence(scope, input);
+        } catch {
+          return {
+            executionMode: "error" as const,
+            queued: false,
+            evidence: [],
+            truncated: false,
+            error: true,
+            message:
+              "The read-only connector search failed. For Kubernetes, retry with an explicit namespace and a label selector such as app=checkout-api. Do not treat this failed check as evidence.",
+          };
+        }
+      },
     }),
     listDiagnosticQueries: tool({
       description:

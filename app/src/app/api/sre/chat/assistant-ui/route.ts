@@ -66,8 +66,8 @@ const assistantUiMessageSchema = z
     id: z.string().trim().min(1).max(200).optional(),
     role: z.enum(["user", "assistant"]),
     metadata: assistantUiMessageMetadataSchema.optional(),
-    parts: z.array(assistantUiPartSchema).min(1).max(50).optional(),
-    content: z.array(assistantUiPartSchema).min(1).max(50).optional(),
+    parts: z.array(assistantUiPartSchema).max(50).optional(),
+    content: z.array(assistantUiPartSchema).max(50).optional(),
   })
   .passthrough()
   .superRefine((message, context) => {
@@ -76,7 +76,7 @@ const assistantUiMessageSchema = z
       (part) => part.type === "text" && typeof part.text === "string",
     );
 
-    if (!hasTextPart) {
+    if (message.role === "user" && !hasTextPart) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
         message: "Message text parts are required",
@@ -92,6 +92,11 @@ const assistantUiChatRequestSchema = z.object({
   conversationId: z.string().uuid().optional().nullable(),
   incidentId: z.string().uuid().optional().nullable(),
   useLiveConnectorTools: z.boolean().optional().default(false),
+  trigger: z
+    .enum(["submit-message", "regenerate-message"])
+    .optional()
+    .default("submit-message"),
+  messageId: z.string().trim().min(1).max(200).optional(),
   messages: z.array(assistantUiMessageSchema).min(1).max(50),
 });
 
@@ -268,6 +273,10 @@ export async function POST(request: NextRequest) {
   }
 
   const messages = parsed.data.messages.map(normalizeAssistantUiMessage);
+  const modelMessages = messages.filter(
+    (message) =>
+      message.role === "user" || Boolean(getTextFromUiMessage(message)),
+  );
   if (getTotalMessageTextLength(messages) > MAX_TOTAL_MESSAGE_TEXT_LENGTH) {
     return NextResponse.json(
       { error: "Copilot chat history is too large" },
@@ -360,15 +369,17 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  await appendSreMessage({
-    organizationId: context.organizationId,
-    projectId: context.project.id,
-    userId: context.userId,
-    conversationId: conversation.id,
-    role: "user",
-    content: latestUserText,
-    attachments: [],
-  });
+  if (parsed.data.trigger === "submit-message") {
+    await appendSreMessage({
+      organizationId: context.organizationId,
+      projectId: context.project.id,
+      userId: context.userId,
+      conversationId: conversation.id,
+      role: "user",
+      content: latestUserText,
+      attachments: [],
+    });
+  }
 
   const budget = resolveSreAgentBudget({
     maxSteps: 4,
@@ -402,7 +413,7 @@ export async function POST(request: NextRequest) {
   const result = streamText({
     model: getProviderModel(),
     system,
-    messages: await convertToModelMessages(messages),
+    messages: await convertToModelMessages(modelMessages),
     tools: incidentToolScope
       ? {
           ...createSreEvidenceTools(incidentToolScope),
@@ -432,15 +443,16 @@ export async function POST(request: NextRequest) {
         modelId,
       };
     },
+    onError: () =>
+      "Copilot could not complete the read-only check. No failed connector result was treated as evidence.",
     onFinish: async ({ responseMessage, isAborted }) => {
       if (isAborted) {
         return;
       }
 
-      const assistantText = getTextFromUiMessage(responseMessage);
-      if (!assistantText) {
-        return;
-      }
+      const assistantText =
+        getTextFromUiMessage(responseMessage) ||
+        "Copilot could not complete the read-only check. No failed connector result was treated as evidence.";
 
       await appendSreMessage({
         id: assistantMessageId,

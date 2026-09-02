@@ -660,6 +660,11 @@ export function SreAssistantUiThread({
     transport,
     onError: (error) => onError(formatCopilotError(error)),
     onFinish: ({ message, messages }) => {
+      if (message.role === "assistant" && !textFromUiMessage(message)) {
+        onError(
+          "Copilot could not complete the read-only check. No failed connector result was treated as evidence.",
+        );
+      }
       const resolvedConversationId = message.metadata?.conversationId;
       if (!resolvedConversationId) {
         return;
