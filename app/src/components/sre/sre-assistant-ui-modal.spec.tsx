@@ -32,7 +32,7 @@ jest.mock("@/components/sre/sre-assistant-ui-thread", () => {
         title: string;
       }) => void;
     }) => {
-      const [threadState, setThreadState] = React.useState(0);
+      const [visibleMessages, setVisibleMessages] = React.useState<string[]>([]);
 
       return (
         <div
@@ -41,12 +41,19 @@ jest.mock("@/components/sre/sre-assistant-ui-thread", () => {
           data-incident-id={incidentId ?? ""}
         >
           Copilot thread mounted
-          <span>Thread state {threadState}</span>
+          <span data-testid="visible-thread-messages">
+            {visibleMessages.join(" | ")}
+          </span>
           <button
             type="button"
-            onClick={() => setThreadState((current) => current + 1)}
+            onClick={() =>
+              setVisibleMessages([
+                "What is the pod phase?",
+                "The checkout pod is Running.",
+              ])
+            }
           >
-            Change thread state
+            Complete first response
           </button>
           <button
             type="button"
@@ -106,23 +113,27 @@ describe("SreAssistantUiModal", () => {
     );
   });
 
-  it("preserves the mounted thread when the first response resolves its conversation", async () => {
+  it("keeps first-response messages visible when the conversation id resolves", async () => {
     render(<SreAssistantUiModal />);
 
     fireEvent.click(screen.getByRole("button", { name: "Open Copilot" }));
     const thread = await screen.findByTestId("copilot-thread");
 
     fireEvent.click(
-      screen.getByRole("button", { name: "Change thread state" }),
+      screen.getByRole("button", { name: "Complete first response" }),
     );
-    expect(thread).toHaveTextContent("Thread state 1");
+    expect(screen.getByTestId("visible-thread-messages")).toHaveTextContent(
+      "What is the pod phase? | The checkout pod is Running.",
+    );
 
     fireEvent.click(
       screen.getByRole("button", { name: "Resolve conversation" }),
     );
 
     expect(thread).toHaveAttribute("data-conversation-id", "conversation-1");
-    expect(thread).toHaveTextContent("Thread state 1");
+    expect(screen.getByTestId("visible-thread-messages")).toHaveTextContent(
+      "What is the pod phase? | The checkout pod is Running.",
+    );
   });
 
   it("does not render the launcher for viewers", () => {

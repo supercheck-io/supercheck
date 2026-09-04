@@ -26,6 +26,10 @@ export function buildSreInvestigationSystemPrompt() {
     "Treat the incident title and operator notes as unverified context, not evidence. Never infer a component failure merely because its name appears in the title.",
     "When the available evidence only establishes healthy resources, state that the root cause is undetermined and identify the missing signal. Do not invent a failure in the service, connector, or Private Agent.",
     "If stored connector evidence is present, do not describe connector evidence as absent. Distinguish healthy topology evidence from the missing logs, metrics, traces, or alerts needed to explain the incident.",
+    "For Kubernetes, never infer a label selector from an incident title or service name. If the namespace is known but no label mapping has been verified by evidence or a tool result, query * for a bounded pod list and match returned pod names before using a selector.",
+    "Use each connector's queryGuidance and native query language. Never send a Kubernetes selector as PromQL or LogQL.",
+    "A connector response marked error, failed, or queued without evidence is not evidence. Query a failed connector at most once during this run unless the response explicitly says it is retryable; use another source or report the connector failure and evidence gap.",
+    "Always return a non-empty final report. If connector checks fail, name the failed source and what could not be verified instead of ending on tool calls.",
     "Always cite evidence identifiers, connector job IDs, or source URIs when available.",
     skills,
   ]

@@ -36,6 +36,11 @@ import {
   type ConnectorEvidenceItem,
   type StagedEvidenceStage,
 } from "@/lib/sre/connectors";
+import {
+  assertAgentConnectorQueryLanguage,
+  createAgentConnectorFailureGuard,
+  getAgentConnectorQueryGuidance,
+} from "@/lib/sre/connectors/agent-query-guidance";
 import { isValidKubernetesLabelSelector } from "@/lib/sre/connectors/kubernetes-label-selector";
 import { normalizePrivateAgentEvidenceSummaries } from "@/lib/sre/connector-job-evidence";
 import { waitForPrivateAgentConnectorJob } from "@/lib/sre/private-agent-job-waiter";
@@ -69,7 +74,7 @@ const connectorSearchInputSchema = z.object({
     .min(1)
     .max(500)
     .describe(
-      "Connector-native read-only query. For Kubernetes, use only a Kubernetes label selector such as app=checkout-api, or * for a bounded pod list. Never use braces, object field paths, JSONPath, or natural language as a Kubernetes query.",
+      "Connector-native read-only query. Kubernetes requires * or a verified label selector plus an explicit namespace; never infer labels from a service name. Prometheus requires PromQL, Loki requires LogQL with a stream selector, and Grafana uses dashboard search text. Never reuse one connector's query syntax for another connector.",
     ),
   namespace: z
     .string()
@@ -419,6 +424,7 @@ export async function listIncidentLiveConnectors(scope: SreConnectorToolScope) {
       scopedToPrimaryService: scopedServiceIds.includes(primaryServiceId),
       defaultTimeWindowMinutes: row.defaultTimeWindowMinutes,
       outputLimits: normalizeOutputLimits(row.outputLimits),
+      queryGuidance: getAgentConnectorQueryGuidance(row.type),
     })),
   };
 }
@@ -474,8 +480,39 @@ export async function searchIncidentLiveConnectorEvidence(
       executedAt: new Date(),
     });
     throw new Error(
-      "Kubernetes connector query must be a valid label selector such as app=checkout-api, or * for a bounded pod list",
+      "Kubernetes connector query must be * for a bounded pod list or a previously verified label selector",
     );
+  }
+  try {
+    assertAgentConnectorQueryLanguage(connector.type, input.query);
+  } catch (error) {
+    await db.insert(sreInvestigationToolCalls).values({
+      investigationRunId: scope.investigationRunId ?? null,
+      connectorId: connector.id,
+      connectorType: connector.type,
+      toolName: "agent.connector.search.invalid_query_language",
+      inputHash: hashConnectorPayload({
+        connectorId: connector.id,
+        query: input.query,
+        namespace: input.namespace,
+      }),
+      inputSummary: redactConnectorText(
+        JSON.stringify({
+          connectorId: connector.id,
+          connectorType: connector.type,
+          namespace: input.namespace,
+        }),
+      ),
+      status: "error",
+      errorMessage:
+        error instanceof Error
+          ? error.message
+          : "Connector query language is invalid",
+      durationMs: Date.now() - startedAt,
+      costEstimateCents: 0,
+      executedAt: new Date(),
+    });
+    throw error;
   }
   const rateLimit = await checkSreConnectorSearchRateLimit(
     scope.userId ?? scope.investigationRunId ?? "system",
@@ -1034,6 +1071,8 @@ export async function executeIncidentDiagnosticQuery(
 }
 
 export function createSreConnectorTools(scope: SreConnectorToolScope) {
+  const connectorFailureGuard = createAgentConnectorFailureGuard();
+
   return {
     listIncidentConnectors: tool({
       description:
@@ -1043,20 +1082,36 @@ export function createSreConnectorTools(scope: SreConnectorToolScope) {
     }),
     searchLiveConnectorEvidence: tool({
       description:
-        "Search one live read-only connector for the scoped incident's primary service. When staged log evidence is enabled, direct Loki searches must progress through statistics, sample, signatures, temporal_context, then correlation. Loki statistics require a LogQL metric function. Direct connectors persist sanitized evidence immediately. Private Agent searches wait for a bounded server-authorized result and persist sanitized evidence when it completes; if queued is true, do not treat the pending search as evidence.",
+        "Search one live read-only connector for the scoped incident's primary service. When staged log evidence is enabled, direct Loki searches must progress through statistics, sample, signatures, temporal_context, then correlation. Loki statistics require a LogQL metric function. Direct connectors persist sanitized evidence immediately. Private Agent searches wait for a bounded server-authorized result and persist sanitized evidence when it completes; if queued is true, do not treat the pending search as evidence. For Kubernetes, never infer a label selector from a service name: use * with an explicit namespace until a returned pod or stored evidence verifies the label mapping. If a response has error=true, do not call the same connector again during this run; report the failure or use a different source.",
       inputSchema: connectorSearchInputSchema,
       execute: async (input) => {
-        try {
-          return await searchIncidentLiveConnectorEvidence(scope, input);
-        } catch {
+        if (connectorFailureGuard.hasFailed(input.connectorId)) {
           return {
             executionMode: "error" as const,
             queued: false,
             evidence: [],
             truncated: false,
             error: true,
+            retryable: false,
+            retrySuppressed: true,
             message:
-              "The read-only connector search failed. For Kubernetes, retry with an explicit namespace and a label selector such as app=checkout-api. Do not treat this failed check as evidence.",
+              "A prior search for this connector failed during the current run. The repeated search was suppressed; use another source or report the evidence gap.",
+          };
+        }
+
+        try {
+          return await searchIncidentLiveConnectorEvidence(scope, input);
+        } catch {
+          connectorFailureGuard.markFailed(input.connectorId);
+          return {
+            executionMode: "error" as const,
+            queued: false,
+            evidence: [],
+            truncated: false,
+            error: true,
+            retryable: false,
+            message:
+              "The read-only connector search failed. Do not retry this connector during the current run or treat the failed check as evidence. For Kubernetes, a later run should use an explicit namespace and * unless a label mapping has already been verified.",
           };
         }
       },

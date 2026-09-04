@@ -43,4 +43,35 @@ describe("runSreAgent", () => {
     expect(model.doStreamCalls).toHaveLength(1);
     expect(stepEvents).toHaveLength(1);
   });
+
+  it("fails closed when the model ends on tool calls without a report", async () => {
+    const model = new MockLanguageModelV3({
+      provider: "supercheck-test",
+      modelId: "sre-agent-empty-report-test",
+      doStream: async (): Promise<LanguageModelV3StreamResult> => ({
+        stream: simulateReadableStream({
+          chunks: [
+            { type: "stream-start", warnings: [] },
+            {
+              type: "finish",
+              finishReason: { unified: "tool-calls", raw: "tool-calls" },
+              usage: emptyUsage,
+            },
+          ],
+        }),
+      }),
+    });
+
+    await expect(
+      runSreAgent({
+        model,
+        validateConfiguration: false,
+        system: "You are read-only.",
+        prompt: "Investigate checkout latency",
+        budget: { maxSteps: 2, maxOutputTokens: 500, timeoutMs: 10_000 },
+      }),
+    ).rejects.toThrow(
+      "SRE agent returned no report (finish reason: tool-calls)",
+    );
+  });
 });

@@ -20,6 +20,15 @@ export type RunSreAgentInput<TTools extends ToolSet = ToolSet> = {
   onStepFinish?: (event: SreAgentRunEvent) => void | Promise<void>;
 };
 
+export class SreAgentEmptyResponseError extends Error {
+  constructor(readonly finishReason: string) {
+    super(
+      `SRE agent returned no report (finish reason: ${finishReason || "unknown"})`,
+    );
+    this.name = "SreAgentEmptyResponseError";
+  }
+}
+
 export async function runSreAgent<TTools extends ToolSet = ToolSet>(input: RunSreAgentInput<TTools>) {
   const budget = resolveSreAgentBudget(input.budget);
   const prompt = input.prompt.trim();
@@ -55,9 +64,18 @@ export async function runSreAgent<TTools extends ToolSet = ToolSet>(input: RunSr
       : undefined,
   });
 
+  const [text, finishReason] = await Promise.all([
+    result.text,
+    result.finishReason,
+  ]);
+  const normalizedText = text.trim();
+  if (!normalizedText) {
+    throw new SreAgentEmptyResponseError(finishReason);
+  }
+
   return {
     modelId,
-    text: await result.text,
-    finishReason: await result.finishReason,
+    text: normalizedText,
+    finishReason,
   };
 }

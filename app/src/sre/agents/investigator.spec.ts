@@ -30,6 +30,11 @@ describe("SRE investigation prompt", () => {
     );
     expect(system).toContain("root cause is undetermined");
     expect(system).toContain("do not describe connector evidence as absent");
+    expect(system).toContain("never infer a label selector");
+    expect(system).toContain("query * for a bounded pod list");
+    expect(system).toContain("Never send a Kubernetes selector as PromQL");
+    expect(system).toContain("Query a failed connector at most once");
+    expect(system).toContain("Always return a non-empty final report");
     expect(prompt).toContain("checkout latency");
     expect(prompt).toContain("Live connector tools: available");
     expect(prompt).toContain("Specialized subagents: available");

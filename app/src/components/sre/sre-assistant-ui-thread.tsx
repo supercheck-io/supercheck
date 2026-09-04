@@ -2,14 +2,11 @@
 
 import {
   useMemo,
-  useRef,
   useState,
   type FormEvent,
   type KeyboardEvent,
-  type RefObject,
 } from "react";
 import type { UIMessage } from "ai";
-import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   AssistantRuntimeProvider,
   ComposerPrimitive,
@@ -18,7 +15,6 @@ import {
   ActionBarPrimitive,
   BranchPickerPrimitive,
   unstable_useComposerInput,
-  unstable_useThreadMessageIds,
   useAuiState,
   useMessagePartText,
 } from "@assistant-ui/react";
@@ -186,7 +182,7 @@ function AssistantTextPart() {
 function AssistantMessage() {
   return (
     <MessagePrimitive.Root
-      className="group flex gap-3"
+      className="group mb-5 flex gap-3"
       aria-label="Copilot message"
     >
       <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border bg-background shadow-sm">
@@ -244,7 +240,7 @@ function AssistantMessage() {
 function UserMessage() {
   return (
     <MessagePrimitive.Root
-      className="group flex justify-end gap-3"
+      className="group mb-5 flex justify-end gap-3"
       aria-label="User message"
     >
       <div className="max-w-[82%] rounded-2xl rounded-tr-md border bg-muted/70 px-4 py-3 text-sm leading-6 text-foreground shadow-sm sm:max-w-[62%]">
@@ -267,54 +263,6 @@ function UserMessage() {
         <UserRound className="h-4 w-4 text-muted-foreground" />
       </div>
     </MessagePrimitive.Root>
-  );
-}
-
-const SRE_MESSAGE_COMPONENTS = {
-  UserMessage,
-  AssistantMessage,
-} as const;
-
-function VirtualizedThreadMessages({
-  scrollElementRef,
-}: {
-  scrollElementRef: RefObject<HTMLDivElement | null>;
-}) {
-  const messageIds = unstable_useThreadMessageIds();
-  const virtualizer = useVirtualizer({
-    count: messageIds.length,
-    getScrollElement: () => scrollElementRef.current,
-    estimateSize: () => 180,
-    getItemKey: (index) => messageIds[index] ?? index,
-    overscan: 4,
-  });
-
-  return (
-    <div
-      data-testid="virtualized-copilot-messages"
-      className="relative w-full"
-      style={{ height: virtualizer.getTotalSize() }}
-    >
-      {virtualizer.getVirtualItems().map((virtualItem) => {
-        const messageId = messageIds[virtualItem.index];
-        if (!messageId) return null;
-
-        return (
-          <div
-            key={messageId}
-            ref={virtualizer.measureElement}
-            data-index={virtualItem.index}
-            className="absolute left-0 top-0 w-full pb-5"
-            style={{ transform: `translateY(${virtualItem.start}px)` }}
-          >
-            <ThreadPrimitive.Unstable_MessageById
-              messageId={messageId}
-              components={SRE_MESSAGE_COMPONENTS}
-            />
-          </div>
-        );
-      })}
-    </div>
   );
 }
 
@@ -580,12 +528,9 @@ export function SreThread({
   onUseLiveConnectorToolsChange: (enabled: boolean) => void;
   onClearError: () => void;
 }) {
-  const viewportRef = useRef<HTMLDivElement>(null);
-
   return (
     <ThreadPrimitive.Root className="flex h-full w-full min-h-0 min-w-0 flex-col overflow-hidden bg-muted/5">
       <ThreadPrimitive.Viewport
-        ref={viewportRef}
         autoScroll
         scrollToBottomOnRunStart
         scrollToBottomOnInitialize
@@ -593,7 +538,13 @@ export function SreThread({
       >
         <EmptyThread incidentId={incidentId} onClearError={onClearError} />
         <div className="mx-auto flex w-full min-w-0 max-w-4xl flex-col">
-          <VirtualizedThreadMessages scrollElementRef={viewportRef} />
+          <ThreadPrimitive.Messages>
+            {({ message }) => {
+              if (message.role === "user") return <UserMessage />;
+              if (message.role === "assistant") return <AssistantMessage />;
+              return null;
+            }}
+          </ThreadPrimitive.Messages>
           <AssistantThinking />
           <SreFollowUpSuggestions
             onClearError={onClearError}
