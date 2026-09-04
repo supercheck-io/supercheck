@@ -298,9 +298,9 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
       await viewerPage.goto(`/incidents/${incidentId}`, {
         waitUntil: "domcontentloaded",
       });
-      await expect(viewerPage.getByText("Read-only access")).toBeVisible({
-        timeout: 30_000,
-      });
+      await expect(
+        viewerPage.getByText("Read-only access", { exact: true }),
+      ).toBeVisible({ timeout: 30_000 });
       await expect(
         viewerPage.getByRole("button", {
           name: "Run investigation",
