@@ -52,9 +52,6 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar";
 import { useAdminStatus } from "@/hooks/use-admin-status";
-import { getSourceBuildBadge } from "@/lib/build-metadata";
-
-const sourceBuildBadge = getSourceBuildBadge(process.env.NEXT_PUBLIC_SOURCE_URL);
 
 // Sidebar navigation data
 const data = {
@@ -243,7 +240,7 @@ const data = {
       title: "Docs",
       url: "https://supercheck.io/docs/app/welcome",
       icon: BookOpenText,
-      badge: sourceBuildBadge,
+      badge: "v1.3.6-aisre-36",
     },
   ],
   documents: [
