@@ -14,6 +14,9 @@ test.use({ storageState: { cookies: [], origins: [] } });
 import { SignInPage } from '../../pages/auth';
 import { env, routes } from '../../utils/env';
 
+const AUTH_MAX_ATTEMPTS = 3;
+const AUTH_RETRY_MAX_SECONDS = 30;
+
 test.describe('Sign In @auth @smoke', () => {
   test.beforeEach(async ({ page }) => {
     // Clear any existing auth state for sign-in tests
@@ -29,7 +32,32 @@ test.describe('Sign In @auth @smoke', () => {
   test('AUTH-004: Sign in with valid credentials @critical @positive', async ({ page }) => {
     const signInPage = new SignInPage(page);
     await signInPage.navigate();
-    await signInPage.signIn(env.testUser.email, env.testUser.password);
+
+    for (let attempt = 1; attempt <= AUTH_MAX_ATTEMPTS; attempt += 1) {
+      const responsePromise = page.waitForResponse(
+        (response) =>
+          response.url().includes('/api/auth/sign-in/email') &&
+          response.request().method() === 'POST',
+      );
+      await signInPage.signIn(env.testUser.email, env.testUser.password);
+      const response = await responsePromise;
+
+      if (response.status() !== 429) {
+        break;
+      }
+      if (attempt === AUTH_MAX_ATTEMPTS) {
+        throw new Error('Valid E2E sign-in remained rate limited after retries');
+      }
+
+      const retryAfterHeader =
+        response.headers()['retry-after'] ??
+        response.headers()['x-retry-after'];
+      const retryAfterSeconds = Number.parseInt(retryAfterHeader ?? '', 10);
+      const boundedSeconds = Number.isFinite(retryAfterSeconds)
+        ? Math.min(Math.max(retryAfterSeconds, 1), AUTH_RETRY_MAX_SECONDS)
+        : Math.min(2 ** attempt, AUTH_RETRY_MAX_SECONDS);
+      await page.waitForTimeout(boundedSeconds * 1_000 + 250);
+    }
 
     // Wait for redirect away from sign-in page
     await expect(page).not.toHaveURL(/sign-in/, { timeout: 30000 });
