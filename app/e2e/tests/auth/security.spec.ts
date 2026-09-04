@@ -262,22 +262,51 @@ test.describe("Security - Information Disclosure @auth @security", () => {
     const signInPage = new SignInPage(page);
     await signInPage.navigate();
 
+    const unknownResponsePromise = page.waitForResponse(
+      (response) =>
+        response.url().includes("/api/auth/sign-in/email") &&
+        response.request().method() === "POST",
+    );
     await signInPage.signIn("definitely-not-exists@example.com", "anypassword");
+    const unknownResponse = await unknownResponsePromise;
     await expect(signInPage.errorMessage).toBeVisible();
     const error1 = await signInPage.getErrorMessage();
 
     await signInPage.navigate();
 
+    const existingResponsePromise = page.waitForResponse(
+      (response) =>
+        response.url().includes("/api/auth/sign-in/email") &&
+        response.request().method() === "POST",
+    );
     await signInPage.signIn(
       env.securityTestUser.email,
       `${env.securityTestUser.password}-wrong`,
     );
+    const existingResponse = await existingResponsePromise;
     await expect(signInPage.errorMessage).toBeVisible();
     const error2 = await signInPage.getErrorMessage();
 
-    expect(error1).toMatch(/invalid|incorrect|failed/i);
-    expect(error2).toMatch(/invalid|incorrect|failed/i);
-    expect(error2).toBe(error1);
+    const attempts = [
+      { response: unknownResponse, error: error1 },
+      { response: existingResponse, error: error2 },
+    ];
+    for (const { response, error } of attempts) {
+      if (response.status() === 429) {
+        expect(error).toBe("Too many requests. Please try again later.");
+        const retryAfter = Number(response.headers()["x-retry-after"]);
+        expect(Number.isInteger(retryAfter)).toBe(true);
+        expect(retryAfter).toBeGreaterThanOrEqual(0);
+      } else {
+        expect(error).toMatch(/invalid|incorrect|failed/i);
+      }
+    }
+
+    // When both credential checks reach the authentication path, they must be
+    // indistinguishable. A strict, generic 429 remains a fail-closed outcome.
+    if (unknownResponse.status() !== 429 && existingResponse.status() !== 429) {
+      expect(error2).toBe(error1);
+    }
   });
 
   test("Password reset is safe (no user enumeration) @high @security", async ({

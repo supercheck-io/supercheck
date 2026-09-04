@@ -34,17 +34,41 @@ export async function createStatusPageThroughUi(
     .click();
 
   await expect(dialog).toBeHidden();
+  let created: SeededStatusPage | undefined;
+  await expect
+    .poll(async () => {
+      const response = await request.get('/api/status-pages', {
+        params: { page: '1', limit: '100' },
+      });
+      expect(response.status()).toBe(200);
+      const body = (await response.json()) as {
+        data: Array<SeededStatusPage>;
+      };
+      created = body.data.find((statusPage) => statusPage.name === name);
+      return created;
+    })
+    .toEqual(
+      expect.objectContaining({
+        id: expect.any(String),
+        name,
+        headline,
+        status: 'draft',
+      }),
+    );
+
+  if (!created) {
+    throw new Error(`Created status page ${name} was not returned by the API`);
+  }
+  const createdStatusPage = created;
+  cleanup.add(`status page ${createdStatusPage.id}`, () =>
+    deleteStatusPage(request, createdStatusPage.id),
+  );
+
+  // Keep this UI assertion after cleanup registration so a rendering
+  // regression cannot leak another disposable status page.
   await expect(page.getByText(name, { exact: true })).toBeVisible();
 
-  const response = await request.get('/api/status-pages', {
-    params: { page: '1', limit: '100' },
-  });
-  expect(response.status()).toBe(200);
-  const body = (await response.json()) as {
-    data: Array<SeededStatusPage>;
-  };
-  const created = body.data.find((statusPage) => statusPage.name === name);
-  expect(created).toEqual(
+  expect(createdStatusPage).toEqual(
     expect.objectContaining({
       id: expect.any(String),
       name,
@@ -52,10 +76,5 @@ export async function createStatusPageThroughUi(
       status: 'draft',
     }),
   );
-  if (!created) {
-    throw new Error(`Created status page ${name} was not returned by the API`);
-  }
-
-  cleanup.add(`status page ${created.id}`, () => deleteStatusPage(request, created.id));
-  return created;
+  return createdStatusPage;
 }

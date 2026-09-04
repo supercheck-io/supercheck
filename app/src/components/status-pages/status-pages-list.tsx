@@ -197,12 +197,12 @@ export default function StatusPagesList() {
     setIsCreateDialogOpen(false);
     toast.success("Status page created successfully");
 
-    // Background revalidation: Ensure server data is in sync
-    // Uses 'none' refetchType to just mark as stale without immediate refetch
-    // Next navigation or window focus will get fresh data
-    queryClient.invalidateQueries({
+    // Revalidate the active list after the server action completes. The
+    // optimistic entry keeps the interaction instant, while the active fetch
+    // prevents a stale prefetched page from replacing it until navigation.
+    void queryClient.invalidateQueries({
       queryKey,
-      refetchType: 'none' // Don't refetch immediately, just mark stale
+      refetchType: 'active',
     });
   };
 
