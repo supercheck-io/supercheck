@@ -143,6 +143,23 @@ describe("SRE investigation billing", () => {
     } satisfies Partial<SreInvestigationBillingError>);
   });
 
+  it("blocks when the organization hard spending limit is reached", async () => {
+    mockPolarUsageService.shouldBlockUsage.mockResolvedValue({
+      blocked: true,
+      reason: "Monthly spending limit reached",
+    });
+
+    await expect(assertCanStartSreInvestigation("org-1")).rejects.toMatchObject({
+      message: "Monthly spending limit reached",
+      code: "spending_limit",
+    } satisfies Partial<SreInvestigationBillingError>);
+
+    expect(mockSubscriptionService.hasActiveSubscription).toHaveBeenCalledWith(
+      "org-1",
+    );
+    expect(mockPolarUsageService.shouldBlockUsage).toHaveBeenCalledWith("org-1");
+  });
+
   it("records usage event and increments organization counter", async () => {
     const updateWhere = jest.fn().mockResolvedValue([]);
     const updateSet = jest.fn(() => ({ where: updateWhere }));

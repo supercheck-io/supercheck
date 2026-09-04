@@ -603,9 +603,13 @@ class PolarUsageService {
     } finally {
       try {
         await lockConnection`
-          SELECT pg_advisory_unlock(${USAGE_SYNC_ADVISORY_LOCK_KEY})
+          SELECT pg_advisory_unlock_all()
         `;
       } finally {
+        // The lock is session-scoped and PostgreSQL advisory locks are
+        // re-entrant. Clear the reserved session completely before returning
+        // it to the shared pool so an interrupted or nested sync cannot strand
+        // the global scheduler lock on an otherwise idle connection.
         lockConnection.release();
       }
     }

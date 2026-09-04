@@ -156,6 +156,29 @@ describe("UsageNotificationService", () => {
     );
   });
 
+  it("does not send the same spending threshold notification twice", async () => {
+    (billingSettingsService.hasNotificationBeenSent as jest.Mock)
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(true);
+
+    await expect(
+      usageNotificationService.checkAndNotify("org_123"),
+    ).resolves.toEqual([
+      expect.objectContaining({ sent: true, notificationId: "notif_123" }),
+    ]);
+    await expect(
+      usageNotificationService.checkAndNotify("org_123"),
+    ).resolves.toEqual([]);
+
+    expect(db.insert).toHaveBeenCalledTimes(1);
+    expect(billingSettingsService.markNotificationSent).toHaveBeenCalledTimes(1);
+    expect(billingSettingsService.markNotificationSent).toHaveBeenCalledWith(
+      "org_123",
+      "spending_90",
+      undefined,
+    );
+  });
+
   it("sends AI SRE investigation quota notifications", async () => {
     (billingSettingsService.getSettings as jest.Mock).mockResolvedValue({
       enableSpendingLimit: false,
