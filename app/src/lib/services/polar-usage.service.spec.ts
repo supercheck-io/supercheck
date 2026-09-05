@@ -84,6 +84,10 @@ const mockPostgresClient = postgresClient as unknown as {
 describe("PolarUsageService retry idempotency", () => {
   const originalFetch = global.fetch;
 
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
   afterAll(() => {
     global.fetch = originalFetch;
   });
@@ -113,10 +117,14 @@ describe("PolarUsageService retry idempotency", () => {
     const changedFrom = jest.fn(() => ({ where: changedWhere }));
     mockDb.selectDistinct.mockReturnValue({ from: changedFrom });
 
-    const reserved = Object.assign(
-      jest.fn().mockResolvedValue([{ locked: true }]),
-      { release: jest.fn() },
-    );
+    const transaction = jest.fn().mockResolvedValue([{ locked: true }]);
+    const reserved = Object.assign(jest.fn(), {
+      begin: jest.fn(
+        async (callback: (sql: typeof transaction) => Promise<unknown>) =>
+          callback(transaction),
+      ),
+      release: jest.fn(),
+    });
     mockPostgresClient.reserve.mockResolvedValue(reserved);
 
     const fetchMock = jest
@@ -157,6 +165,7 @@ describe("PolarUsageService retry idempotency", () => {
     expect(payloads[1].events[0].external_id).toBe(
       payloads[0].events[0].external_id,
     );
+    expect(fetchMock.mock.calls[0]?.[1]?.signal).toBeInstanceOf(AbortSignal);
 
     expect(updateSet).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -166,11 +175,36 @@ describe("PolarUsageService retry idempotency", () => {
       }),
     );
 
-    const lockQueries = reserved.mock.calls.map(([strings]) =>
+    const lockQueries = transaction.mock.calls.map(([strings]) =>
       Array.from(strings as TemplateStringsArray).join(""),
     );
     expect(lockQueries).toEqual(
-      expect.arrayContaining([expect.stringContaining("pg_advisory_unlock_all")]),
+      expect.arrayContaining([
+        expect.stringContaining("pg_try_advisory_xact_lock"),
+      ]),
     );
+    expect(reserved.release).toHaveBeenCalledTimes(2);
+  });
+
+  it("skips safely when another scheduler owns the transaction lock", async () => {
+    const transaction = jest.fn().mockResolvedValue([{ locked: false }]);
+    const reserved = Object.assign(jest.fn(), {
+      begin: jest.fn(
+        async (callback: (sql: typeof transaction) => Promise<unknown>) =>
+          callback(transaction),
+      ),
+      release: jest.fn(),
+    });
+    mockPostgresClient.reserve.mockResolvedValue(reserved);
+
+    await expect(polarUsageService.syncPendingEvents()).resolves.toEqual({
+      processed: 0,
+      succeeded: 0,
+      failed: 0,
+      errors: [],
+    });
+
+    expect(mockDb.query.usageEvents.findMany).not.toHaveBeenCalled();
+    expect(reserved.release).toHaveBeenCalledTimes(1);
   });
 });

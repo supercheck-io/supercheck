@@ -76,6 +76,13 @@ export interface SpendingStatus {
 }
 
 const USAGE_SYNC_ADVISORY_LOCK_KEY = 792401305;
+const POLAR_INGEST_TIMEOUT_MS = 15_000;
+type UsageSyncResult = {
+  processed: number;
+  succeeded: number;
+  failed: number;
+  errors: string[];
+};
 const FALLBACK_OVERAGE_PRICING_CENTS = {
   plus: {
     playwright: 3,
@@ -116,26 +123,6 @@ class PolarUsageService {
       await usageNotificationService.checkAndNotify(organizationId);
     }
 
-  }
-
-  private async acquireSyncLock() {
-    const reserved = await postgresClient.reserve();
-
-    try {
-      const lockResult = (await reserved`
-        SELECT pg_try_advisory_lock(${USAGE_SYNC_ADVISORY_LOCK_KEY}) AS locked
-      `) as Array<{ locked: boolean }>;
-
-      if (!lockResult[0]?.locked) {
-        reserved.release();
-        return null;
-      }
-
-      return reserved;
-    } catch (error) {
-      reserved.release();
-      throw error;
-    }
   }
 
   /**
@@ -268,6 +255,7 @@ class PolarUsageService {
               },
             }],
           }),
+          signal: AbortSignal.timeout(POLAR_INGEST_TIMEOUT_MS),
         }
       );
 
@@ -482,23 +470,50 @@ class PolarUsageService {
    * Sync all pending usage events to Polar
    * Safe to call from the app scheduler, an external cron, or manually.
    */
-  async syncPendingEvents(batchSize: number = 50): Promise<{ 
-    processed: number; 
-    succeeded: number; 
-    failed: number;
-    errors: string[];
-  }> {
+  async syncPendingEvents(batchSize: number = 50): Promise<UsageSyncResult> {
     if (!isPolarEnabled()) {
       return { processed: 0, succeeded: 0, failed: 0, errors: [] };
     }
 
-    const errors: string[] = [];
-    const lockConnection = await this.acquireSyncLock();
+    const reserved = await postgresClient.reserve();
 
-    if (!lockConnection) {
-      logger.info({}, "Usage sync already running; skipping this run");
-      return { processed: 0, succeeded: 0, failed: 0, errors: [] };
+    try {
+      // The production database path uses transaction pooling, so consecutive
+      // statements can reach different PostgreSQL backends. A transaction-scoped
+      // advisory lock is pinned to one backend and releases automatically.
+      const result = await reserved.begin(async (transaction) => {
+        const lockResult = (await transaction`
+          SELECT pg_try_advisory_xact_lock(${USAGE_SYNC_ADVISORY_LOCK_KEY}) AS locked
+        `) as Array<{ locked: boolean }>;
+
+        if (!lockResult[0]?.locked) {
+          return null;
+        }
+
+        return this.syncPendingEventsLocked(batchSize);
+      });
+
+      if (!result) {
+        logger.info({}, "Usage sync already running; skipping this run");
+        return { processed: 0, succeeded: 0, failed: 0, errors: [] };
+      }
+
+      return result;
+    } catch (error) {
+      logger.error({ error }, "Polar batch sync failed");
+      return {
+        processed: 0,
+        succeeded: 0,
+        failed: 0,
+        errors: [error instanceof Error ? error.message : 'Unknown error']
+      };
+    } finally {
+      reserved.release();
     }
+  }
+
+  private async syncPendingEventsLocked(batchSize: number): Promise<UsageSyncResult> {
+    const errors: string[] = [];
 
     try {
       // Recover successful AI SRE runs whose post-run ledger write failed.
@@ -600,18 +615,6 @@ class PolarUsageService {
         failed: 0,
         errors: [error instanceof Error ? error.message : 'Unknown error']
       };
-    } finally {
-      try {
-        await lockConnection`
-          SELECT pg_advisory_unlock_all()
-        `;
-      } finally {
-        // The lock is session-scoped and PostgreSQL advisory locks are
-        // re-entrant. Clear the reserved session completely before returning
-        // it to the shared pool so an interrupted or nested sync cannot strand
-        // the global scheduler lock on an otherwise idle connection.
-        lockConnection.release();
-      }
     }
   }
 }
