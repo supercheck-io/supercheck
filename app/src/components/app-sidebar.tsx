@@ -52,6 +52,11 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar";
 import { useAdminStatus } from "@/hooks/use-admin-status";
+import { getReleaseVersionBadge } from "@/lib/release-metadata";
+
+const releaseVersionBadge = getReleaseVersionBadge(
+  process.env.NEXT_PUBLIC_SUPERCHECK_VERSION,
+);
 
 // Sidebar navigation data
 const data = {
@@ -240,7 +245,7 @@ const data = {
       title: "Docs",
       url: "https://supercheck.io/docs/app/welcome",
       icon: BookOpenText,
-      badge: "v1.3.6-aisre-40",
+      badge: releaseVersionBadge,
     },
   ],
   documents: [

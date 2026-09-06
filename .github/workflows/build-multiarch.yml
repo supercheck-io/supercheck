@@ -241,6 +241,7 @@ jobs:
           labels: ${{ steps.app-meta.outputs.labels }}
           build-args: |
             NEXT_PUBLIC_SOURCE_URL=https://github.com/supercheck-io/supercheck/tree/${{ github.sha }}
+            NEXT_PUBLIC_SUPERCHECK_VERSION=${{ steps.app-meta.outputs.version }}
             SUPERCHECK_BUILD_SHA=${{ github.sha }}
           # Keep release correctness independent of the GitHub Actions cache
           # service. A failed GHA cache export used to fail this job after the

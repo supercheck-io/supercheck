@@ -47,6 +47,8 @@ ENV NODE_OPTIONS="--max-old-space-size=4096"
 ENV NODE_ENV=production
 ARG NEXT_PUBLIC_SOURCE_URL=https://github.com/supercheck-io/supercheck
 ENV NEXT_PUBLIC_SOURCE_URL=${NEXT_PUBLIC_SOURCE_URL}
+ARG NEXT_PUBLIC_SUPERCHECK_VERSION
+ENV NEXT_PUBLIC_SUPERCHECK_VERSION=${NEXT_PUBLIC_SUPERCHECK_VERSION}
 
 # Build with standalone output and static optimization
 # Use --webpack flag because Next.js 16 defaults to Turbopack, but ARM64 cross-compilation
