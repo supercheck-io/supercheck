@@ -265,7 +265,7 @@ describe("SRE triage API", () => {
       connectorEvidenceCount: 0,
     }]);
     mockRunInsert({ id: runId });
-    mockRunSreAgent.mockRejectedValueOnce(new Error("provider unavailable"));
+    mockRunSreAgent.mockRejectedValueOnce(new Error('provider unavailable: {"api_key":"fixture-secret"}'));
     const setFailedValues = mockFailedRunUpdate();
 
     const response = await POST(request({ incidentId }));
@@ -275,7 +275,7 @@ describe("SRE triage API", () => {
     expect(body).toEqual({ error: "SRE triage failed", investigationRunId: runId });
     expect(setFailedValues).toHaveBeenCalledWith(expect.objectContaining({
       status: "failed",
-      agentStateSnapshot: { mode: "sre_triage_api", error: "provider unavailable" },
+      agentStateSnapshot: { mode: "sre_triage_api", error: "SRE triage failed" },
     }));
   });
 });

@@ -57,6 +57,11 @@ export function useSreIncidentPageData(incidentId: string) {
     },
     enabled: Boolean(projectId && incidentId),
     staleTime: 30_000,
+    refetchInterval: (query) =>
+      query.state.data?.incidentResult.detail?.latestInvestigation?.status ===
+      "running"
+        ? 5_000
+        : false,
     meta: MEMORY_ONLY_QUERY,
   });
 }

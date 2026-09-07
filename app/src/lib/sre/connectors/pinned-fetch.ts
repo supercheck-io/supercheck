@@ -71,20 +71,39 @@ async function fetchPinnedEndpoint(
         });
         response.on("error", reject);
         response.on("end", () => {
-          resolve(
-            new Response(Buffer.concat(chunks), {
-              status: response.statusCode ?? 500,
-              statusText: response.statusMessage,
-              headers: response.headers as HeadersInit,
-            }),
-          );
+          try {
+            const status = response.statusCode ?? 500;
+            // Fetch forbids bodies for these statuses, including an empty Buffer.
+            const body =
+              [204, 205, 304].includes(status) ||
+              init.method?.toUpperCase() === "HEAD"
+                ? null
+                : Buffer.concat(chunks);
+            resolve(
+              new Response(body, {
+                status,
+                statusText: response.statusMessage,
+                headers: response.headers as HeadersInit,
+              }),
+            );
+          } catch (error) {
+            // Event callbacks run outside the Promise executor's catch boundary.
+            reject(error);
+          }
         });
       },
     );
 
     request.on("error", reject);
     if (init.signal) {
-      const abort = () => request.destroy(init.signal?.reason);
+      const abort = () => {
+        const reason: unknown = init.signal?.reason;
+        request.destroy(
+          reason instanceof Error
+            ? reason
+            : new Error("Connector request aborted"),
+        );
+      };
       if (init.signal.aborted) abort();
       else init.signal.addEventListener("abort", abort, { once: true });
       request.on("close", () =>

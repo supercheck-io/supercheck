@@ -27,6 +27,7 @@ jest.mock("@/db/schema", () => ({
   },
   billingSettings: { organizationId: "billingSettings.organizationId" },
   overagePricing: { plan: "overagePricing.plan" },
+  planLimits: { plan: "planLimits.plan" },
 }));
 
 jest.mock("drizzle-orm", () => ({
@@ -57,6 +58,7 @@ jest.mock("@/lib/logger/index", () => ({
 jest.mock("@polar-sh/sdk", () => ({
   Polar: jest.fn(() => ({})),
 }));
+jest.mock("./subscription-service", () => ({ subscriptionService: { getOrganizationPlanSafe: jest.fn() } }));
 
 jest.mock("@/lib/sre/investigation-billing", () => ({
   failStuckSreInvestigationRuns: jest.fn().mockResolvedValue({ failed: 0 }),
@@ -90,6 +92,21 @@ describe("PolarUsageService retry idempotency", () => {
 
   afterAll(() => {
     global.fetch = originalFetch;
+  });
+
+  it("projects reserved units using the transaction's allowance and configured prices", async () => {
+    const database = { query: {
+      organization: { findFirst: jest.fn().mockResolvedValue({ subscriptionPlan: "plus", sreInvestigationUnitsUsed: "9", playwrightMinutesUsed: 105 }) },
+      planLimits: { findFirst: jest.fn().mockResolvedValue({ playwrightMinutesIncluded: 100, k6VuMinutesIncluded: 100, aiCreditsIncluded: 10, sreInvestigationUnitsIncluded: "10" }) },
+      overagePricing: { findFirst: jest.fn().mockResolvedValue({ playwrightMinutePriceCents: 2, sreInvestigationUnitPriceCents: 75 }) },
+      billingSettings: { findFirst: jest.fn().mockResolvedValue({ enableSpendingLimit: true, hardStopOnLimit: true, monthlySpendingLimitCents: 84 }) },
+    } } as unknown as Pick<typeof db, "query">;
+    const metrics = await polarUsageService.getUsageMetrics("org-1", { database, additionalSreUnits: 2 });
+    expect(metrics.sreInvestigations).toMatchObject({ used: 11, included: 10, overageCostCents: 75 });
+    expect(metrics.totalOverageCostCents).toBe(85);
+    const spending = await polarUsageService.getSpendingStatus("org-1", { database, additionalSreUnits: 2 });
+    expect(spending).toMatchObject({ currentSpendingCents: 85, isAtLimit: true });
+    expect(mockDb.query.organization.findFirst).not.toHaveBeenCalled();
   });
 
   it("reuses the usage ledger ID as external_id after a failed ingestion", async () => {

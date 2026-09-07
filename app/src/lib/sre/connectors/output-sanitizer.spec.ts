@@ -21,6 +21,22 @@ const item: ConnectorEvidenceItem = {
 };
 
 describe("sanitizeConnectorEvidence", () => {
+  it("redacts JSON secret fields including escaped quotes before persistence", () => {
+    const rawContent = JSON.stringify({
+      password: 'private "quoted" value',
+      access_token: "fixture-token",
+      apiKey: "fixture-key",
+      message: "Useful diagnostic evidence",
+    });
+    const result = sanitizeConnectorEvidence([{ ...item, rawContent }]);
+    expect(JSON.parse(result.items[0].rawContent!)).toEqual({
+      password: "[REDACTED]",
+      access_token: "[REDACTED]",
+      apiKey: "[REDACTED]",
+      message: "Useful diagnostic evidence",
+    });
+  });
+
   it("redacts secrets and PII before returning connector evidence", () => {
     const result = sanitizeConnectorEvidence([item], { maxRows: 10, maxBytes: 10_000, maxSeconds: 10 });
 

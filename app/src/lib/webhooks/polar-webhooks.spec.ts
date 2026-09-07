@@ -24,6 +24,13 @@ jest.mock("@/utils/db", () => ({
   },
 }));
 
+// Handler tests exercise binding/status logic; transaction/order invariants are
+// covered independently in polar-event-transaction.spec.ts.
+jest.mock("./polar-event-transaction", () => ({
+  getPolarWebhookDb: () => jest.requireMock("@/utils/db").db,
+  runOrderedPolarEvent: jest.fn((_input, apply) => apply()),
+}));
+
 jest.mock("@/db/schema", () => ({
   organization: {
     id: "organization.id",
@@ -56,17 +63,23 @@ jest.mock("drizzle-orm", () => ({
 
 import { db } from "@/utils/db";
 import { subscriptionService } from "@/lib/services/subscription-service";
+import { billingSettingsService } from "@/lib/services/billing-settings.service";
 import {
   getSubscriptionDatesFromPayload,
   handleSubscriptionActive,
   handleSubscriptionCreated,
   handleSubscriptionPastDue,
   handleSubscriptionUpdated,
+  handleOrderPaid,
 } from "./polar-webhooks";
+import { runOrderedPolarEvent } from "./polar-event-transaction";
 
 describe("Polar webhook helpers", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    (
+      subscriptionService.resetUsageCountersWithDates as jest.Mock
+    ).mockResolvedValue(true);
     process.env.POLAR_PLUS_PRODUCT_ID = "prod_plus";
     process.env.POLAR_PRO_PRODUCT_ID = "prod_pro";
   });
@@ -94,9 +107,7 @@ describe("Polar webhook helpers", () => {
         },
       });
 
-      expect(result.startsAt?.toISOString()).toBe(
-        "2026-06-01T00:00:00.000Z"
-      );
+      expect(result.startsAt?.toISOString()).toBe("2026-06-01T00:00:00.000Z");
       expect(result.endsAt?.toISOString()).toBe("2026-07-01T00:00:00.000Z");
     });
 
@@ -109,9 +120,7 @@ describe("Polar webhook helpers", () => {
         },
       });
 
-      expect(result.startsAt?.toISOString()).toBe(
-        "2026-06-01T00:00:00.000Z"
-      );
+      expect(result.startsAt?.toISOString()).toBe("2026-06-01T00:00:00.000Z");
       expect(result.endsAt?.toISOString()).toBe("2026-07-01T00:00:00.000Z");
     });
 
@@ -127,9 +136,7 @@ describe("Polar webhook helpers", () => {
         },
       });
 
-      expect(result.startsAt?.toISOString()).toBe(
-        "2026-06-01T00:00:00.000Z"
-      );
+      expect(result.startsAt?.toISOString()).toBe("2026-06-01T00:00:00.000Z");
       expect(result.endsAt?.toISOString()).toBe("2026-07-01T00:00:00.000Z");
       expect(result.startsAt).not.toBe(startsAt);
       expect(result.endsAt).not.toBe(endsAt);
@@ -147,9 +154,7 @@ describe("Polar webhook helpers", () => {
         },
       });
 
-      expect(result.startsAt?.toISOString()).toBe(
-        "2026-08-01T00:00:00.000Z"
-      );
+      expect(result.startsAt?.toISOString()).toBe("2026-08-01T00:00:00.000Z");
       expect(result.endsAt?.toISOString()).toBe("2026-09-01T00:00:00.000Z");
     });
 
@@ -165,9 +170,7 @@ describe("Polar webhook helpers", () => {
         },
       });
 
-      expect(result.startsAt?.toISOString()).toBe(
-        "2026-08-01T00:00:00.000Z"
-      );
+      expect(result.startsAt?.toISOString()).toBe("2026-08-01T00:00:00.000Z");
       expect(result.endsAt?.toISOString()).toBe("2026-09-01T00:00:00.000Z");
     });
 
@@ -182,6 +185,28 @@ describe("Polar webhook helpers", () => {
 
       expect(result).toEqual({ startsAt: null, endsAt: null });
     });
+  });
+
+  it.each(["canceled", "none", "past_due"])("a paid invoice cannot reactivate %s access or change its plan", async (subscriptionStatus) => {
+    mockWebhookClaim();
+    (db.query.organization.findFirst as jest.Mock).mockResolvedValue({
+      id: "org_123", subscriptionId: "sub_123", polarCustomerId: "cus_123",
+      subscriptionPlan: "pro", subscriptionStatus,
+      usagePeriodStart: new Date("2026-06-01T00:00:00Z"),
+      usagePeriodEnd: new Date("2026-07-01T00:00:00Z"),
+    });
+    await handleOrderPaid({
+      id: "evt_order", timestamp: new Date("2026-07-02T00:00:00Z"),
+      data: { id: "order_123", subscription_id: "sub_123", customer_id: "cus_123",
+        product_id: "prod_plus", current_period_start: "2026-07-01T00:00:00Z",
+        current_period_end: "2026-08-01T00:00:00Z" },
+    });
+    expect(subscriptionService.updateSubscription).not.toHaveBeenCalled();
+    expect(subscriptionService.resetUsageCountersWithDates).toHaveBeenCalledWith(
+      "org_123", new Date("2026-07-01T00:00:00Z"), new Date("2026-08-01T00:00:00Z"), db);
+    expect(runOrderedPolarEvent).toHaveBeenCalledWith(expect.objectContaining({
+      organizationId: "org_123", affectsSubscriptionState: false,
+    }), expect.any(Function));
   });
 
   describe("handleSubscriptionCreated", () => {
@@ -201,14 +226,14 @@ describe("Polar webhook helpers", () => {
 
       expect(subscriptionService.updateSubscription).not.toHaveBeenCalled();
       expect(
-        subscriptionService.resetUsageCountersWithDates
+        subscriptionService.resetUsageCountersWithDates,
       ).not.toHaveBeenCalled();
       expect(set).toHaveBeenCalledWith(
         expect.objectContaining({
           resultStatus: "success",
           resultMessage:
-            "Subscription created acknowledged; waiting for subscription.active or order.paid",
-        })
+            "Subscription created acknowledged; waiting for subscription.active",
+        }),
       );
     });
 
@@ -234,7 +259,7 @@ describe("Polar webhook helpers", () => {
           id: "evt_in_flight",
           type: "subscription.created",
           data: { id: "sub_123" },
-        })
+        }),
       ).rejects.toThrow("already being processed");
 
       expect(reclaimReturning).toHaveBeenCalled();
@@ -266,7 +291,7 @@ describe("Polar webhook helpers", () => {
             current_period_start: "2026-06-01T00:00:00.000Z",
             current_period_end: "2026-07-01T00:00:00.000Z",
           },
-        })
+        }),
       ).rejects.toThrow("Unknown product ID");
 
       expect(subscriptionService.updateSubscription).not.toHaveBeenCalled();
@@ -274,7 +299,7 @@ describe("Polar webhook helpers", () => {
         expect.objectContaining({
           resultStatus: "error",
           resultMessage: "Unknown product ID: prod_unknown",
-        })
+        }),
       );
     });
 
@@ -299,7 +324,7 @@ describe("Polar webhook helpers", () => {
             customer_id: "cus_attacker",
             metadata: { referenceId: "org_123" },
           },
-        })
+        }),
       ).rejects.toThrow("does not match organization billing owner");
 
       expect(subscriptionService.updateSubscription).not.toHaveBeenCalled();
@@ -308,13 +333,14 @@ describe("Polar webhook helpers", () => {
           resultStatus: "error",
           resultMessage:
             "Polar customer does not match organization billing owner",
-        })
+        }),
       );
     });
 
     it("fails retryably if the customer binding changes during first-time linking", async () => {
       const { set } = mockWebhookClaim();
       (db.query.organization.findFirst as jest.Mock)
+        .mockResolvedValueOnce({ id: "org_123" })
         .mockResolvedValueOnce({
           id: "org_123",
           subscriptionStatus: "none",
@@ -345,7 +371,7 @@ describe("Polar webhook helpers", () => {
             customer_id: "cus_123",
             metadata: { referenceId: "org_123", userId: "user_owner" },
           },
-        })
+        }),
       ).rejects.toThrow("customer changed while processing webhook");
 
       expect(bindingReturning).toHaveBeenCalled();
@@ -355,9 +381,45 @@ describe("Polar webhook helpers", () => {
           resultStatus: "error",
           resultMessage:
             "Organization billing customer changed while processing webhook",
-        })
+        }),
       );
     });
+
+    it.each([true, false])(
+      "resets notifications only when the database rolls the period over (%s)",
+      async (reset) => {
+        mockWebhookClaim();
+        (db.query.organization.findFirst as jest.Mock).mockResolvedValue({
+          id: "org_123",
+          subscriptionPlan: "plus",
+          subscriptionStatus: "active",
+          subscriptionId: "sub_123",
+          polarCustomerId: "cus_123",
+          usagePeriodStart: new Date("2026-06-01T00:00:00.000Z"),
+          usagePeriodEnd: new Date("2026-07-01T00:00:00.000Z"),
+        });
+        (
+          subscriptionService.resetUsageCountersWithDates as jest.Mock
+        ).mockResolvedValue(reset);
+
+        await handleSubscriptionUpdated({
+          id: "evt_renewal",
+          type: "subscription.updated",
+          data: {
+            id: "sub_123",
+            status: "active",
+            product_id: "prod_plus",
+            customer_id: "cus_123",
+            current_period_start: "2026-07-01T00:00:00.000Z",
+            current_period_end: "2026-08-01T00:00:00.000Z",
+          },
+        });
+
+        expect(
+          billingSettingsService.resetNotificationsForPeriod,
+        ).toHaveBeenCalledTimes(reset ? 1 : 0);
+      },
+    );
 
     it("defers pending next-period product updates", async () => {
       mockWebhookClaim();
@@ -394,7 +456,8 @@ describe("Polar webhook helpers", () => {
           subscriptionPlan: "pro",
           subscriptionStatus: "active",
           subscriptionId: "sub_123",
-        })
+        }),
+        db,
       );
     });
 
@@ -433,7 +496,8 @@ describe("Polar webhook helpers", () => {
           subscriptionPlan: "pro",
           subscriptionStatus: "active",
           subscriptionId: "sub_123",
-        })
+        }),
+        db,
       );
     });
 
@@ -468,7 +532,8 @@ describe("Polar webhook helpers", () => {
           subscriptionPlan: "plus",
           subscriptionStatus: "past_due",
           subscriptionId: "sub_123",
-        })
+        }),
+        db,
       );
     });
   });

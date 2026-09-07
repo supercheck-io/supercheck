@@ -12,6 +12,7 @@
  */
 
 import { SubscriptionService } from "./subscription-service";
+import { PgDialect } from "drizzle-orm/pg-core";
 
 // Mock dependencies
 jest.mock("@/utils/db", () => ({
@@ -129,7 +130,9 @@ describe("SubscriptionService", () => {
     mockDbQueryPlanLimitsFindFirst.mockResolvedValue(mockPlanLimits);
     mockDbUpdate.mockReturnValue({
       set: jest.fn().mockReturnValue({
-        where: jest.fn().mockResolvedValue(undefined),
+        where: jest.fn().mockReturnValue({
+          returning: jest.fn().mockResolvedValue([{ id: testOrgId }]),
+        }),
       }),
     });
 
@@ -176,7 +179,7 @@ describe("SubscriptionService", () => {
         it("should return unlimited plan in self-hosted mode", async () => {
           mockIsPolarEnabled.mockReturnValue(false);
           mockDbQueryPlanLimitsFindFirst.mockResolvedValue(
-            mockUnlimitedPlanLimits
+            mockUnlimitedPlanLimits,
           );
 
           const result = await service.getOrganizationPlan(testOrgId);
@@ -191,7 +194,7 @@ describe("SubscriptionService", () => {
           mockDbQueryOrgFindFirst.mockResolvedValue(null);
 
           await expect(service.getOrganizationPlan(testOrgId)).rejects.toThrow(
-            "Organization not found"
+            "Organization not found",
           );
         });
 
@@ -203,7 +206,7 @@ describe("SubscriptionService", () => {
           });
 
           await expect(service.getOrganizationPlan(testOrgId)).rejects.toThrow(
-            "No active subscription"
+            "No active subscription",
           );
         });
 
@@ -216,7 +219,7 @@ describe("SubscriptionService", () => {
           });
 
           await expect(service.getOrganizationPlan(testOrgId)).rejects.toThrow(
-            "No active subscription"
+            "No active subscription",
           );
         });
 
@@ -261,7 +264,7 @@ describe("SubscriptionService", () => {
           });
 
           await expect(service.getOrganizationPlan(testOrgId)).rejects.toThrow(
-            "No active subscription"
+            "No active subscription",
           );
         });
       });
@@ -274,7 +277,7 @@ describe("SubscriptionService", () => {
           });
 
           await expect(service.getOrganizationPlan(testOrgId)).rejects.toThrow(
-            "Invalid subscription plan detected"
+            "Invalid subscription plan detected",
           );
         });
 
@@ -285,7 +288,7 @@ describe("SubscriptionService", () => {
           });
 
           await expect(service.getOrganizationPlan(testOrgId)).rejects.toThrow(
-            "Invalid subscription plan"
+            "Invalid subscription plan",
           );
         });
 
@@ -296,7 +299,7 @@ describe("SubscriptionService", () => {
           });
 
           await expect(service.getOrganizationPlan(testOrgId)).rejects.toThrow(
-            "Invalid subscription plan"
+            "Invalid subscription plan",
           );
         });
       });
@@ -370,7 +373,7 @@ describe("SubscriptionService", () => {
           mockDbQueryPlanLimitsFindFirst.mockResolvedValue(null);
 
           await expect(service.getPlanLimits("plus")).rejects.toThrow(
-            "Plan limits not found"
+            "Plan limits not found",
           );
         });
 
@@ -522,7 +525,7 @@ describe("SubscriptionService", () => {
           mockDbQueryOrgFindFirst.mockResolvedValue(null);
 
           await expect(service.getUsage(testOrgId)).rejects.toThrow(
-            "Organization not found"
+            "Organization not found",
           );
         });
       });
@@ -696,9 +699,9 @@ describe("SubscriptionService", () => {
           await expect(
             service.updateSubscription(testOrgId, {
               subscriptionPlan: "unlimited",
-            })
+            }),
           ).rejects.toThrow(
-            "Unlimited plan is only available in self-hosted mode"
+            "Unlimited plan is only available in self-hosted mode",
           );
         });
 
@@ -706,7 +709,7 @@ describe("SubscriptionService", () => {
           await expect(
             service.updateSubscription(testOrgId, {
               subscriptionPlan: "enterprise" as "plus", // Invalid plan, cast to valid type to test runtime validation
-            })
+            }),
           ).rejects.toThrow("Invalid plan");
         });
 
@@ -749,7 +752,7 @@ describe("SubscriptionService", () => {
       describe("Positive Cases", () => {
         it("should not block with active subscription", async () => {
           await expect(
-            service.blockUntilSubscribed(testOrgId)
+            service.blockUntilSubscribed(testOrgId),
           ).resolves.not.toThrow();
         });
 
@@ -757,7 +760,7 @@ describe("SubscriptionService", () => {
           mockIsPolarEnabled.mockReturnValue(false);
 
           await expect(
-            service.blockUntilSubscribed(testOrgId)
+            service.blockUntilSubscribed(testOrgId),
           ).resolves.not.toThrow();
         });
       });
@@ -771,7 +774,7 @@ describe("SubscriptionService", () => {
           });
 
           await expect(service.blockUntilSubscribed(testOrgId)).rejects.toThrow(
-            "Active subscription required"
+            "Active subscription required",
           );
         });
       });
@@ -787,7 +790,7 @@ describe("SubscriptionService", () => {
       describe("Positive Cases", () => {
         it("should pass with valid Polar customer", async () => {
           await expect(
-            service.requireValidPolarCustomer(testOrgId)
+            service.requireValidPolarCustomer(testOrgId),
           ).resolves.not.toThrow();
         });
 
@@ -795,7 +798,7 @@ describe("SubscriptionService", () => {
           mockIsPolarEnabled.mockReturnValue(false);
 
           await expect(
-            service.requireValidPolarCustomer(testOrgId)
+            service.requireValidPolarCustomer(testOrgId),
           ).resolves.not.toThrow();
         });
       });
@@ -805,7 +808,7 @@ describe("SubscriptionService", () => {
           mockDbQueryOrgFindFirst.mockResolvedValue(null);
 
           await expect(
-            service.requireValidPolarCustomer(testOrgId)
+            service.requireValidPolarCustomer(testOrgId),
           ).rejects.toThrow("Organization not found");
         });
 
@@ -816,7 +819,7 @@ describe("SubscriptionService", () => {
           });
 
           await expect(
-            service.requireValidPolarCustomer(testOrgId)
+            service.requireValidPolarCustomer(testOrgId),
           ).rejects.toThrow("No Polar customer found");
         });
 
@@ -824,7 +827,7 @@ describe("SubscriptionService", () => {
           mockFetch.mockResolvedValue({ ok: false, status: 404 });
 
           await expect(
-            service.requireValidPolarCustomer(testOrgId)
+            service.requireValidPolarCustomer(testOrgId),
           ).rejects.toThrow("Polar customer not found");
         });
       });
@@ -832,12 +835,12 @@ describe("SubscriptionService", () => {
       describe("Edge Cases", () => {
         it("should handle Polar API timeout by failing open", async () => {
           mockFetch.mockRejectedValue(
-            Object.assign(new Error("Timeout"), { name: "AbortError" })
+            Object.assign(new Error("Timeout"), { name: "AbortError" }),
           );
 
           // Should NOT throw - fails open to avoid blocking legitimate users
           await expect(
-            service.requireValidPolarCustomer(testOrgId)
+            service.requireValidPolarCustomer(testOrgId),
           ).resolves.not.toThrow();
         });
 
@@ -845,7 +848,7 @@ describe("SubscriptionService", () => {
           mockFetch.mockResolvedValue({ ok: false, status: 500 });
 
           await expect(
-            service.requireValidPolarCustomer(testOrgId)
+            service.requireValidPolarCustomer(testOrgId),
           ).rejects.toThrow("Polar customer not found");
         });
 
@@ -859,7 +862,7 @@ describe("SubscriptionService", () => {
 
           expect(mockFetch).toHaveBeenCalledWith(
             expect.stringContaining("sandbox-api.polar.sh"),
-            expect.any(Object)
+            expect.any(Object),
           );
         });
 
@@ -873,7 +876,7 @@ describe("SubscriptionService", () => {
 
           expect(mockFetch).toHaveBeenCalledWith(
             expect.stringContaining("api.polar.sh"),
-            expect.any(Object)
+            expect.any(Object),
           );
         });
       });
@@ -895,7 +898,7 @@ describe("SubscriptionService", () => {
 
         // Should NOT throw - fails open on network errors
         await expect(
-          service.requireValidPolarCustomer(testOrgId)
+          service.requireValidPolarCustomer(testOrgId),
         ).resolves.not.toThrow();
 
         // Reset fetch to succeed
@@ -940,6 +943,49 @@ describe("SubscriptionService", () => {
     });
 
     describe("resetUsageCountersWithDates", () => {
+      it("guards rollover atomically by organization and strictly newer period", async () => {
+        const returning = jest.fn().mockResolvedValue([]);
+        const where = jest.fn().mockReturnValue({ returning });
+        mockDbUpdate.mockReturnValue({
+          set: jest.fn().mockReturnValue({ where }),
+        });
+        const start = new Date("2026-09-01T00:00:00Z");
+
+        await expect(
+          service.resetUsageCountersWithDates(testOrgId, start, null),
+        ).resolves.toBe(false);
+
+        const predicate = new PgDialect().sqlToQuery(where.mock.calls[0][0]);
+        expect(predicate.sql).toContain('"organization"."id" =');
+        expect(predicate.sql).toContain(
+          '"organization"."usage_period_start" is null',
+        );
+        expect(predicate.sql).toContain(
+          '"organization"."usage_period_start" <',
+        );
+        expect(predicate.params).toContain(testOrgId);
+        expect(predicate.params).toContain(start.toISOString());
+      });
+
+      it("allows missing-date initialization only when no usage period exists", async () => {
+        const returning = jest.fn().mockResolvedValue([{ id: testOrgId }]);
+        const where = jest.fn().mockReturnValue({ returning });
+        mockDbUpdate.mockReturnValue({
+          set: jest.fn().mockReturnValue({ where }),
+        });
+
+        await expect(
+          service.resetUsageCountersWithDates(testOrgId, null, null),
+        ).resolves.toBe(true);
+
+        const predicate = new PgDialect().sqlToQuery(where.mock.calls[0][0]);
+        expect(predicate.sql).toContain(
+          '"organization"."usage_period_start" is null',
+        );
+        expect(predicate.sql).not.toContain(" < ");
+        expect(predicate.params).toEqual([testOrgId]);
+      });
+
       it("should reset counters with provided dates", async () => {
         const startDate = new Date("2024-02-01");
         const endDate = new Date("2024-02-28");
@@ -947,7 +993,7 @@ describe("SubscriptionService", () => {
         await service.resetUsageCountersWithDates(
           testOrgId,
           startDate,
-          endDate
+          endDate,
         );
 
         expect(mockDbUpdate).toHaveBeenCalled();
@@ -993,7 +1039,7 @@ describe("SubscriptionService", () => {
         });
 
         await expect(service.getEffectivePlan(testOrgId)).rejects.toThrow(
-          "Subscription required"
+          "Subscription required",
         );
       });
 
@@ -1001,7 +1047,7 @@ describe("SubscriptionService", () => {
         mockDbQueryOrgFindFirst.mockRejectedValue(new Error("Database error"));
 
         await expect(service.getEffectivePlan(testOrgId)).rejects.toThrow(
-          "Database error"
+          "Database error",
         );
       });
     });
@@ -1123,7 +1169,7 @@ describe("SubscriptionService", () => {
         mockDbQueryOrgFindFirst.mockResolvedValue(null);
 
         await expect(service.getOrganizationPlan("")).rejects.toThrow(
-          "Organization not found"
+          "Organization not found",
         );
       });
 
@@ -1132,7 +1178,7 @@ describe("SubscriptionService", () => {
         mockDbQueryOrgFindFirst.mockResolvedValue(null);
 
         await expect(service.getOrganizationPlan(longId)).rejects.toThrow(
-          "Organization not found"
+          "Organization not found",
         );
       });
 
@@ -1141,7 +1187,7 @@ describe("SubscriptionService", () => {
         mockDbQueryOrgFindFirst.mockResolvedValue(null);
 
         await expect(service.getOrganizationPlan(specialId)).rejects.toThrow(
-          "Organization not found"
+          "Organization not found",
         );
       });
     });
@@ -1149,7 +1195,7 @@ describe("SubscriptionService", () => {
     describe("Concurrent Operations", () => {
       it("should handle concurrent usage tracking calls", async () => {
         const promises = Array.from({ length: 10 }, () =>
-          service.trackPlaywrightUsage(testOrgId, 5)
+          service.trackPlaywrightUsage(testOrgId, 5),
         );
 
         await expect(Promise.all(promises)).resolves.not.toThrow();
@@ -1157,7 +1203,7 @@ describe("SubscriptionService", () => {
 
       it("should handle concurrent plan lookups", async () => {
         const promises = Array.from({ length: 10 }, () =>
-          service.getOrganizationPlan(testOrgId)
+          service.getOrganizationPlan(testOrgId),
         );
 
         const results = await Promise.all(promises);
@@ -1176,21 +1222,21 @@ describe("SubscriptionService", () => {
     describe("Database Errors", () => {
       it("should propagate database connection errors", async () => {
         mockDbQueryOrgFindFirst.mockRejectedValue(
-          new Error("Database connection failed")
+          new Error("Database connection failed"),
         );
 
         await expect(service.getOrganizationPlan(testOrgId)).rejects.toThrow(
-          "Database connection failed"
+          "Database connection failed",
         );
       });
 
       it("should propagate database query errors", async () => {
         mockDbQueryPlanLimitsFindFirst.mockRejectedValue(
-          new Error("Query timeout")
+          new Error("Query timeout"),
         );
 
         await expect(service.getPlanLimits("plus")).rejects.toThrow(
-          "Query timeout"
+          "Query timeout",
         );
       });
     });
@@ -1200,7 +1246,7 @@ describe("SubscriptionService", () => {
         mockGetPolarConfig.mockReturnValue(null);
 
         await expect(
-          service.requireValidPolarCustomer(testOrgId)
+          service.requireValidPolarCustomer(testOrgId),
         ).rejects.toThrow();
       });
 
@@ -1211,7 +1257,7 @@ describe("SubscriptionService", () => {
         });
 
         await expect(
-          service.requireValidPolarCustomer(testOrgId)
+          service.requireValidPolarCustomer(testOrgId),
         ).rejects.toThrow();
       });
     });

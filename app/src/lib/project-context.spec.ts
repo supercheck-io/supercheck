@@ -94,4 +94,24 @@ describe("requireProjectContext", () => {
       },
     });
   });
+
+  it.each(["project_admin", "project_editor", "project_viewer"])(
+    "degrades unassigned organization role %s to project viewer",
+    async (organizationRole) => {
+      mockGetUnifiedAuthContext.mockResolvedValue({
+        isValid: true,
+        userId: "user-1",
+        projectId: "project-a",
+        projectName: "Project A",
+        organizationId: "org-1",
+        organizationRole,
+        projectRole: null,
+      });
+
+      const context = await requireProjectContext();
+
+      expect(context.project.userRole).toBe("project_viewer");
+      expect(context.organizationId).toBe("org-1");
+    },
+  );
 });

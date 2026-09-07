@@ -43,6 +43,7 @@ export async function runSreAgent<TTools extends ToolSet = ToolSet>(input: RunSr
   const startedAt = Date.now();
   let stepIndex = 0;
   const modelId = getActualModelName();
+  const abortSignal = AbortSignal.timeout(budget.timeoutMs);
   const result = streamText({
     model: input.model ?? getProviderModel(),
     system,
@@ -50,7 +51,7 @@ export async function runSreAgent<TTools extends ToolSet = ToolSet>(input: RunSr
     tools: input.tools,
     stopWhen: stepCountIs(budget.maxSteps),
     maxOutputTokens: budget.maxOutputTokens,
-    abortSignal: AbortSignal.timeout(budget.timeoutMs),
+    abortSignal,
     onStepFinish: input.onStepFinish
       ? async (event) => {
           stepIndex += 1;
@@ -68,6 +69,12 @@ export async function runSreAgent<TTools extends ToolSet = ToolSet>(input: RunSr
     result.text,
     result.finishReason,
   ]);
+  // Streams can resolve partial text after a provider error or cancellation.
+  // Such output must not become a completed, billable investigation.
+  abortSignal.throwIfAborted();
+  if (finishReason === "error") {
+    throw new Error("SRE agent did not complete successfully");
+  }
   const normalizedText = text.trim();
   if (!normalizedText) {
     throw new SreAgentEmptyResponseError(finishReason);

@@ -162,8 +162,9 @@ export async function runSreIncidentTriage(input: RunSreIncidentTriageInput): Pr
       modelId: result.modelId,
       finishReason: result.finishReason,
     };
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "SRE triage failed";
+  } catch {
+    // Raw provider errors may contain credentials or sensitive evidence.
+    const errorMessage = "SRE triage failed";
     await db
       .update(sreInvestigationRuns)
       .set({

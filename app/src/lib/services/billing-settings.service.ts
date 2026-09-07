@@ -184,8 +184,8 @@ class BillingSettingsService {
   /**
    * Reset notifications sent this period (called on billing period reset)
    */
-  async resetNotificationsForPeriod(organizationId: string): Promise<void> {
-    await db
+  async resetNotificationsForPeriod(organizationId: string, database: Pick<typeof db, "update"> = db): Promise<void> {
+    await database
       .update(billingSettings)
       .set({
         notificationsSentThisPeriod: null,

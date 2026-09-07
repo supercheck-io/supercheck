@@ -1,12 +1,18 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
+const mockInvalidateQueries = jest.fn().mockResolvedValue(undefined);
+
+jest.mock("sonner", () => ({
+  toast: { error: jest.fn(), success: jest.fn() },
+}));
+
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: jest.fn() }),
 }));
 
 jest.mock("@tanstack/react-query", () => ({
   useQueryClient: () => ({
-    invalidateQueries: jest.fn().mockResolvedValue(undefined),
+    invalidateQueries: mockInvalidateQueries,
   }),
 }));
 
@@ -42,6 +48,52 @@ describe("SreInvestigationPanel", () => {
       reused: false,
     });
     mockSaveFeedback.mockResolvedValue({ success: true });
+  });
+
+  it("shows an actionable connection error and refreshes server state", async () => {
+    (global.fetch as jest.Mock).mockRejectedValue(
+      new TypeError("Failed to fetch"),
+    );
+    render(
+      <SreInvestigationPanel
+        incidentId="incident-1"
+        hasPrimaryService={true}
+        serviceMappingHref="/org-admin"
+        canInvestigate={true}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Run investigation" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "may still be running",
+    );
+    await waitFor(() => expect(mockInvalidateQueries).toHaveBeenCalledTimes(3));
+  });
+
+  it("disables another run when the server reports an active investigation", () => {
+    render(
+      <SreInvestigationPanel
+        incidentId="incident-1"
+        hasPrimaryService={true}
+        serviceMappingHref="/org-admin"
+        canInvestigate={true}
+        latestInvestigation={{
+          id: "run-1",
+          status: "running",
+          summary: null,
+          completedAt: null,
+        }}
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Run investigation" }),
+    ).toBeDisabled();
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Investigation in progress",
+    );
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 
   it("renders a simplified investigation action panel without embedded chat", () => {
@@ -105,6 +157,7 @@ describe("SreInvestigationPanel", () => {
         "/api/sre/investigate",
         expect.objectContaining({
           method: "POST",
+          headers: expect.objectContaining({ "x-project-id": "project-1" }),
           body: JSON.stringify({
             incidentId: "018f0000-0000-7000-8000-000000000001",
             useLiveConnectors: true,
@@ -112,6 +165,45 @@ describe("SreInvestigationPanel", () => {
         }),
       );
     });
+  });
+
+  it("treats HTTP 202 as an accepted start, not a completed result", async () => {
+    const { toast } = jest.requireMock("sonner") as {
+      toast: { success: jest.Mock };
+    };
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      status: 202,
+      json: async () => ({
+        success: true,
+        accepted: true,
+        investigationRunId: "run-1",
+      }),
+    });
+
+    render(
+      <SreInvestigationPanel
+        incidentId="incident-1"
+        hasPrimaryService={true}
+        serviceMappingHref="/org-admin"
+        canInvestigate={true}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Run investigation" }));
+
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith(
+        "Investigation started",
+        expect.objectContaining({
+          description: expect.stringMatching(/when the run completes/i),
+        }),
+      ),
+    );
+    expect(toast.success).not.toHaveBeenCalledWith(
+      "Investigation completed",
+      expect.anything(),
+    );
   });
 
   it("links missing readiness requirements to the corrective workflow", () => {
@@ -174,8 +266,14 @@ describe("SreInvestigationPanel", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Save report snapshot" }));
-    await waitFor(() => expect(mockCreateSnapshot).toHaveBeenCalledWith({ investigationRunId: runId }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Save report snapshot" }),
+    );
+    await waitFor(() =>
+      expect(mockCreateSnapshot).toHaveBeenCalledWith({
+        investigationRunId: runId,
+      }),
+    );
 
     fireEvent.change(screen.getByLabelText("Notes (optional)"), {
       target: { value: "Validated against the deployment timeline." },
@@ -207,9 +305,15 @@ describe("SreInvestigationPanel", () => {
       />,
     );
 
-    expect(screen.queryByRole("button", { name: "Save report snapshot" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Run investigation" })).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Use live connector tools")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Save report snapshot" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Run investigation" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Use live connector tools"),
+    ).not.toBeInTheDocument();
     expect(screen.getByText("Read-only access")).toBeInTheDocument();
   });
 
@@ -248,7 +352,9 @@ describe("SreInvestigationPanel", () => {
     expect(
       screen.getByRole("button", { name: "Run investigation" }),
     ).toBeEnabled();
-    expect(screen.queryByLabelText("Use live connector tools")).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Use live connector tools"),
+    ).not.toBeInTheDocument();
     expect(
       screen.getByText(/role does not permit live connector queries/i),
     ).toBeInTheDocument();
@@ -263,8 +369,12 @@ describe("SreInvestigationPanel", () => {
       />,
     );
 
-    expect(screen.queryByRole("button", { name: /run investigation/i })).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Use live connector tools")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /run investigation/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Use live connector tools"),
+    ).not.toBeInTheDocument();
     expect(screen.getByText("Read-only access")).toBeInTheDocument();
   });
 
@@ -291,11 +401,16 @@ describe("SreInvestigationPanel", () => {
 
     fireEvent.change(screen.getByLabelText(/Rejected hypotheses/), {
       target: {
-        value: Array.from({ length: 11 }, (_, index) => `Hypothesis ${index + 1}`).join("\n"),
+        value: Array.from(
+          { length: 11 },
+          (_, index) => `Hypothesis ${index + 1}`,
+        ).join("\n"),
       },
     });
 
     expect(screen.getByText(/11 of 10 hypotheses/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Save feedback" })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Save feedback" }),
+    ).toBeDisabled();
   });
 });

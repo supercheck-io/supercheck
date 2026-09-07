@@ -1,4 +1,8 @@
-import type { LanguageModelV3CallOptions, LanguageModelV3StreamPart, LanguageModelV3StreamResult } from "@ai-sdk/provider";
+import type {
+  LanguageModelV3CallOptions,
+  LanguageModelV3StreamPart,
+  LanguageModelV3StreamResult,
+} from "@ai-sdk/provider";
 import { MockLanguageModelV3, simulateReadableStream } from "ai/test";
 
 import { runSreAgent } from "./agent-runner";
@@ -9,18 +13,61 @@ const emptyUsage = {
 };
 
 describe("runSreAgent", () => {
+  it("rejects partial text when the provider finishes with an error", async () => {
+    const model = new MockLanguageModelV3({
+      doStream: async (): Promise<LanguageModelV3StreamResult> => ({
+        stream: simulateReadableStream({
+          chunks: [
+            { type: "stream-start", warnings: [] },
+            { type: "text-start", id: "partial" },
+            {
+              type: "text-delta",
+              id: "partial",
+              delta: "Checking the evidence...",
+            },
+            { type: "text-end", id: "partial" },
+            {
+              type: "finish",
+              finishReason: { unified: "error", raw: "error" },
+              usage: emptyUsage,
+            },
+          ],
+        }),
+      }),
+    });
+
+    await expect(
+      runSreAgent({
+        model,
+        validateConfiguration: false,
+        system: "Read-only investigation",
+        prompt: "Investigate checkout latency",
+      }),
+    ).rejects.toThrow("SRE agent did not complete successfully");
+  });
+
   it("runs a bounded AI SDK v6 agent request with step auditing", async () => {
     const stepEvents: unknown[] = [];
     const model = new MockLanguageModelV3({
       provider: "supercheck-test",
       modelId: "sre-agent-runner-test",
-      doStream: async (_options: LanguageModelV3CallOptions): Promise<LanguageModelV3StreamResult> => {
+      doStream: async (
+        _options: LanguageModelV3CallOptions,
+      ): Promise<LanguageModelV3StreamResult> => {
         const chunks: LanguageModelV3StreamPart[] = [
           { type: "stream-start", warnings: [] },
           { type: "text-start", id: "text-1" },
-          { type: "text-delta", id: "text-1", delta: "Investigate checkout latency with read-only checks." },
+          {
+            type: "text-delta",
+            id: "text-1",
+            delta: "Investigate checkout latency with read-only checks.",
+          },
           { type: "text-end", id: "text-1" },
-          { type: "finish", finishReason: { unified: "stop", raw: "stop" }, usage: emptyUsage },
+          {
+            type: "finish",
+            finishReason: { unified: "stop", raw: "stop" },
+            usage: emptyUsage,
+          },
         ];
 
         return { stream: simulateReadableStream({ chunks }) };
@@ -38,7 +85,9 @@ describe("runSreAgent", () => {
       },
     });
 
-    expect(result.text).toBe("Investigate checkout latency with read-only checks.");
+    expect(result.text).toBe(
+      "Investigate checkout latency with read-only checks.",
+    );
     expect(result.finishReason).toBe("stop");
     expect(model.doStreamCalls).toHaveLength(1);
     expect(stepEvents).toHaveLength(1);

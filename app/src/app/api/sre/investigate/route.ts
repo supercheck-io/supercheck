@@ -1,13 +1,13 @@
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
 import { createLogger } from "@/lib/logger/index";
 import { requireProjectContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
-import { assertCanStartSreInvestigation, consumeSreInvestigationCredit, SreInvestigationBillingError } from "@/lib/sre/investigation-billing";
+import { assertCanStartSreInvestigation, SreInvestigationBillingError } from "@/lib/sre/investigation-billing";
 import { checkSreInvestigationRateLimit } from "@/lib/sre/sre-rate-limiter";
 import { isSreInvestigationAgentEnabled } from "@/sre/lib/feature-gates";
-import { startSreIncidentInvestigation, executeSreIncidentInvestigation } from "@/sre/lib/investigation-runner";
+import { completeSreIncidentInvestigation, startSreIncidentInvestigation } from "@/sre/lib/investigation-runner";
 import { requireSreSameOriginRequest } from "../_auth";
 
 const investigateRequestSchema = z.object({
@@ -125,68 +125,42 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  let execResult: Awaited<ReturnType<typeof executeSreIncidentInvestigation>>;
-  try {
-    execResult = await executeSreIncidentInvestigation(
+  const executionInput = {
+    userId: context.userId,
+    organizationId: context.organizationId,
+    projectId: context.project.id,
+    incidentId: parsed.data.incidentId,
+    enableLiveConnectors,
+  };
+
+  // Return before the 90s agent budget so Cloudflare/proxy timeouts cannot
+  // convert an accepted run into a false HTTP 502. Billing still settles
+  // only after a successful completion.
+  after(() =>
+    completeSreIncidentInvestigation(
       startResult.investigationRunId,
       startResult.incident,
-      {
-        userId: context.userId,
-        organizationId: context.organizationId,
-        projectId: context.project.id,
-        incidentId: parsed.data.incidentId,
-        enableLiveConnectors,
-      }
-    );
-  } catch (error) {
-    investigationLogger.error(
-      {
-        err: error,
-        organizationId: context.organizationId,
-        projectId: context.project.id,
-        incidentId: parsed.data.incidentId,
-        investigationRunId: startResult.investigationRunId,
-      },
-      "SRE investigation execution failed before returning run status"
-    );
-    return NextResponse.json(
-      { error: "SRE investigation failed", investigationRunId: startResult.investigationRunId },
-      { status: 502 }
-    );
-  }
+      executionInput,
+    ).catch((error) => {
+      investigationLogger.error(
+        {
+          err: error,
+          organizationId: context.organizationId,
+          projectId: context.project.id,
+          incidentId: parsed.data.incidentId,
+          investigationRunId: startResult.investigationRunId,
+        },
+        "SRE investigation execution failed after the run was accepted",
+      );
+    }),
+  );
 
-  if (!execResult.success) {
-    return NextResponse.json(
-      { error: execResult.error, investigationRunId: execResult.investigationRunId },
-      { status: execResult.status }
-    );
-  }
-
-  try {
-    await consumeSreInvestigationCredit({
-      organizationId: context.organizationId,
-      projectId: context.project.id,
-      userId: context.userId,
-      incidentId: parsed.data.incidentId,
+  return NextResponse.json(
+    {
+      success: true,
+      accepted: true,
       investigationRunId: startResult.investigationRunId,
-      useLiveConnectors: enableLiveConnectors,
-    });
-  } catch (error) {
-    investigationLogger.error(
-      {
-        err: error,
-        organizationId: context.organizationId,
-        projectId: context.project.id,
-        incidentId: parsed.data.incidentId,
-        investigationRunId: startResult.investigationRunId,
-      },
-      "SRE investigation billing consumption failed after successful run"
-    );
-  }
-
-  return NextResponse.json({
-    success: true,
-    investigationRunId: startResult.investigationRunId,
-    summary: execResult.summary,
-  });
+    },
+    { status: 202 },
+  );
 }

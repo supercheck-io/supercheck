@@ -29,6 +29,11 @@ The Investigation tab includes a readiness checklist. Live connector tools are o
 
 Completed investigations also show bounded tool telemetry: total connector calls, failed calls, and average latency. These counters never expose connector inputs, raw results, or credentials.
 
+While an investigation is running, another start is disabled and the open incident
+refreshes its status automatically. If your connection is interrupted, check the
+incident's status before starting again: the server may still be completing the
+original run. Failed or timed-out investigations do not consume investigation units.
+
 The latest completed result can be saved as a sanitized, immutable report snapshot. Authorized responders can record an accuracy rating, notes, and rejected hypotheses; viewers see the snapshot without mutation controls. Evidence briefs remain separate streamed Markdown artifacts in the Brief tab.
 
 This keeps the responder view simple: first confirm the incident, then run investigation, then review evidence and the summary.

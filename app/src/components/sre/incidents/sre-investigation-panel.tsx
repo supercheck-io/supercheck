@@ -23,6 +23,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { SreMessageContent } from "@/components/sre/sre-message-content";
 import {
   Select,
   SelectContent,
@@ -67,7 +68,11 @@ type SreInvestigationPanelProps = {
     createdAt: Date | string;
   } | null;
   myReportFeedback?: {
-    accuracy: "accurate" | "partially_accurate" | "incorrect" | "needs_more_evidence";
+    accuracy:
+      | "accurate"
+      | "partially_accurate"
+      | "incorrect"
+      | "needs_more_evidence";
     notes: string | null;
     rejectedHypotheses: string[];
   } | null;
@@ -140,6 +145,11 @@ export function SreInvestigationPanel({
   const { projectId } = useProjectContext();
   const [useLiveConnectors, setUseLiveConnectors] = useState(false);
   const [isInvestigating, startInvestigationTransition] = useTransition();
+  const investigationRunning =
+    isInvestigating || latestInvestigation?.status === "running";
+  const [investigationError, setInvestigationError] = useState<string | null>(
+    null,
+  );
   const [isSavingReport, startReportTransition] = useTransition();
   const [reportSnapshotId, setReportSnapshotId] = useState(
     latestReportSnapshot?.id ?? null,
@@ -147,7 +157,9 @@ export function SreInvestigationPanel({
   const [accuracy, setAccuracy] = useState<
     "accurate" | "partially_accurate" | "incorrect" | "needs_more_evidence"
   >(myReportFeedback?.accuracy ?? "accurate");
-  const [feedbackNotes, setFeedbackNotes] = useState(myReportFeedback?.notes ?? "");
+  const [feedbackNotes, setFeedbackNotes] = useState(
+    myReportFeedback?.notes ?? "",
+  );
   const [rejectedHypotheses, setRejectedHypotheses] = useState(
     myReportFeedback?.rejectedHypotheses.join("\n") ?? "",
   );
@@ -190,51 +202,74 @@ export function SreInvestigationPanel({
     },
     {
       label: "Connector tools",
-      ready:
-        !useLiveConnectors ||
-        (hasPrimaryService && canUseLiveConnectors),
+      ready: !useLiveConnectors || (hasPrimaryService && canUseLiveConnectors),
       description: !canUseLiveConnectors
         ? "Your role does not permit live connector queries; stored evidence remains available."
         : useLiveConnectors
-        ? "Connectors will run read-only with service scope and output limits."
-        : "Live connectors are optional; stored evidence can still support the investigation.",
+          ? "Connectors will run read-only with service scope and output limits."
+          : "Live connectors are optional; stored evidence can still support the investigation.",
     },
   ];
 
   const runInvestigation = () => {
-    if (!canInvestigate || !investigationEnabled) return;
+    if (!canInvestigate || !investigationEnabled || investigationRunning)
+      return;
+    setInvestigationError(null);
     startInvestigationTransition(async () => {
-      const response = await fetch("/api/sre/investigate", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ incidentId, useLiveConnectors }),
-      });
-      const body = (await response.json().catch(() => null)) as {
-        error?: string;
-        summary?: string;
-      } | null;
+      try {
+        const response = await fetch("/api/sre/investigate", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            ...(projectId ? { "x-project-id": projectId } : {}),
+          },
+          body: JSON.stringify({ incidentId, useLiveConnectors }),
+        });
+        const body = (await response.json().catch(() => null)) as {
+          error?: string;
+          summary?: string;
+        } | null;
 
-      if (!response.ok) {
-        toast.error(body?.error ?? "SRE investigation failed");
-        return;
+        if (!response.ok) {
+          const message =
+            body?.error ??
+            "Could not confirm the investigation result. Refresh the incident before starting another run.";
+          setInvestigationError(message);
+          toast.error(message);
+          return;
+        }
+
+        if (response.status === 202) {
+          toast.success("Investigation started", {
+            description:
+              "Results will appear when the run completes. Keep this incident open or refresh it.",
+          });
+          return;
+        }
+
+        toast.success("Investigation completed", {
+          description: body?.summary
+            ? body.summary.slice(0, 120)
+            : "Incident summary updated",
+        });
+      } catch {
+        const message =
+          "Connection interrupted. The investigation may still be running. Refresh the incident before starting another run.";
+        setInvestigationError(message);
+        toast.error(message);
+      } finally {
+        await Promise.allSettled([
+          queryClient.invalidateQueries({
+            queryKey: getSreIncidentDetailQueryKey(projectId, incidentId),
+          }),
+          queryClient.invalidateQueries({
+            queryKey: getSreIncidentsQueryKey(projectId),
+          }),
+          queryClient.invalidateQueries({
+            queryKey: getSreEvidenceGraphQueryKey(projectId),
+          }),
+        ]);
       }
-
-      toast.success("Investigation completed", {
-        description: body?.summary
-          ? body.summary.slice(0, 120)
-          : "Incident summary updated",
-      });
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: getSreIncidentDetailQueryKey(projectId, incidentId),
-        }),
-        queryClient.invalidateQueries({
-          queryKey: getSreIncidentsQueryKey(projectId),
-        }),
-        queryClient.invalidateQueries({
-          queryKey: getSreEvidenceGraphQueryKey(projectId),
-        }),
-      ]);
     });
   };
 
@@ -246,38 +281,48 @@ export function SreInvestigationPanel({
   const saveSnapshot = () => {
     if (!latestInvestigation) return;
     startReportTransition(async () => {
-      const result = await createSreInvestigationReportSnapshot({
-        investigationRunId: latestInvestigation.id,
-      });
-      if (!result.success) {
-        toast.error(result.error);
-        return;
+      try {
+        const result = await createSreInvestigationReportSnapshot({
+          investigationRunId: latestInvestigation.id,
+        });
+        if (!result.success) {
+          toast.error(result.error);
+          return;
+        }
+        setReportSnapshotId(result.snapshotId);
+        toast.success(
+          result.reused
+            ? "Already saved for this report content"
+            : "Snapshot saved",
+        );
+        await refreshIncidentDetail();
+      } catch {
+        toast.error(
+          "Could not confirm the saved snapshot. Refresh the incident and try again.",
+        );
       }
-      setReportSnapshotId(result.snapshotId);
-      toast.success(
-        result.reused
-          ? "Already saved for this report content"
-          : "Snapshot saved",
-      );
-      await refreshIncidentDetail();
     });
   };
 
   const saveFeedback = () => {
     if (!reportSnapshotId || rejectedHypothesesInvalid) return;
     startReportTransition(async () => {
-      const result = await saveSreInvestigationReportFeedback({
-        reportSnapshotId,
-        accuracy,
-        notes: feedbackNotes,
-        rejectedHypotheses: rejectedHypothesisValues,
-      });
-      if (!result.success) {
-        toast.error(result.error);
-        return;
+      try {
+        const result = await saveSreInvestigationReportFeedback({
+          reportSnapshotId,
+          accuracy,
+          notes: feedbackNotes,
+          rejectedHypotheses: rejectedHypothesisValues,
+        });
+        if (!result.success) {
+          toast.error(result.error);
+          return;
+        }
+        toast.success("Feedback saved");
+        await refreshIncidentDetail();
+      } catch {
+        toast.error("Could not confirm the saved feedback. Please try again.");
       }
-      toast.success("Feedback saved");
-      await refreshIncidentDetail();
     });
   };
 
@@ -296,9 +341,9 @@ export function SreInvestigationPanel({
             <Button
               className="w-full sm:w-auto"
               onClick={runInvestigation}
-              disabled={isInvestigating || !investigationEnabled}
+              disabled={investigationRunning || !investigationEnabled}
             >
-              {isInvestigating ? (
+              {investigationRunning ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
                 <SearchCheck className="mr-2 h-4 w-4" />
@@ -311,6 +356,20 @@ export function SreInvestigationPanel({
         </div>
       </CardHeader>
       <CardContent className="space-y-4 p-5">
+        {investigationError && (
+          <p
+            role="alert"
+            className="rounded-lg border border-destructive/40 p-4 text-sm text-destructive"
+          >
+            {investigationError}
+          </p>
+        )}
+        {investigationRunning && (
+          <p role="status" className="text-sm text-muted-foreground">
+            Investigation in progress. Results will appear when the run
+            finishes.
+          </p>
+        )}
         {!investigationEnabled && (
           <div
             role="status"
@@ -318,9 +377,13 @@ export function SreInvestigationPanel({
           >
             <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
             <div>
-              <p className="text-sm font-medium">Investigation is unavailable</p>
+              <p className="text-sm font-medium">
+                Investigation is unavailable
+              </p>
               <p className="mt-1 text-sm text-muted-foreground">
-                An administrator must enable the investigation service before a new run can start. Existing results and evidence remain available.
+                An administrator must enable the investigation service before a
+                new run can start. Existing results and evidence remain
+                available.
               </p>
             </div>
           </div>
@@ -359,14 +422,18 @@ export function SreInvestigationPanel({
             <Switch
               id="live-connectors"
               checked={useLiveConnectors}
-              disabled={!hasPrimaryService || isInvestigating || !investigationEnabled}
+              disabled={
+                !hasPrimaryService ||
+                investigationRunning ||
+                !investigationEnabled
+              }
               onCheckedChange={setUseLiveConnectors}
             />
             <div className="space-y-1">
               <Label htmlFor="live-connectors">Use live connector tools</Label>
               <p className="text-sm text-muted-foreground">
-                Optional read-only connector execution. Requires a mapped primary
-                service.
+                Optional read-only connector execution. Requires a mapped
+                primary service.
               </p>
               {!hasPrimaryService && (
                 <Badge variant="outline">Primary service required</Badge>
@@ -395,16 +462,21 @@ export function SreInvestigationPanel({
                     : "Result is not complete"}
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Live agent summary; save a report snapshot below to lock a sanitized review copy.
+                  Live agent summary; save a report snapshot below to lock a
+                  sanitized review copy.
                 </p>
               </div>
               <Badge variant="outline" className="capitalize">
                 {latestInvestigation.status.replace(/_/g, " ")}
               </Badge>
             </div>
-            <div className="max-h-96 overflow-y-auto whitespace-pre-wrap break-words px-4 py-4 text-sm leading-6">
-              {latestInvestigation.summary ??
-                "No investigation summary was returned."}
+            <div className="max-h-96 overflow-y-auto break-words px-4 py-4 text-sm leading-6">
+              <SreMessageContent
+                content={
+                  latestInvestigation.summary ??
+                  "No investigation summary was returned."
+                }
+              />
             </div>
           </div>
         )}
@@ -412,9 +484,12 @@ export function SreInvestigationPanel({
         {latestInvestigation?.status === "completed" && (
           <div className="space-y-3 rounded-lg border px-4 py-3">
             <div>
-              <p className="text-sm font-medium">Report snapshot &amp; feedback</p>
+              <p className="text-sm font-medium">
+                Report snapshot &amp; feedback
+              </p>
               <p className="text-sm text-muted-foreground">
-                Save the current sanitized investigation report for audit and review.
+                Save the current sanitized investigation report for audit and
+                review.
               </p>
             </div>
             {!reportSnapshotId ? (
@@ -429,7 +504,9 @@ export function SreInvestigationPanel({
                     onClick={saveSnapshot}
                     disabled={isSavingReport}
                   >
-                    {isSavingReport && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    {isSavingReport && (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    )}
                     Save report snapshot
                   </Button>
                 )}
@@ -437,52 +514,91 @@ export function SreInvestigationPanel({
             ) : (
               <div className="space-y-3">
                 <p className="text-xs text-muted-foreground">
-                  Snapshot saved{latestReportSnapshot?.title ? `: ${latestReportSnapshot.title}` : ""}.
+                  Snapshot saved
+                  {latestReportSnapshot?.title
+                    ? `: ${latestReportSnapshot.title}`
+                    : ""}
+                  .
                 </p>
                 {canInvestigate ? (
                   <>
                     <div className="space-y-1.5">
                       <Label htmlFor="report-accuracy">Accuracy</Label>
-                      <Select value={accuracy} onValueChange={(value) => setAccuracy(value as typeof accuracy)}>
+                      <Select
+                        value={accuracy}
+                        onValueChange={(value) =>
+                          setAccuracy(value as typeof accuracy)
+                        }
+                      >
                         <SelectTrigger id="report-accuracy">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="accurate">Accurate</SelectItem>
-                          <SelectItem value="partially_accurate">Partially accurate</SelectItem>
+                          <SelectItem value="partially_accurate">
+                            Partially accurate
+                          </SelectItem>
                           <SelectItem value="incorrect">Incorrect</SelectItem>
-                          <SelectItem value="needs_more_evidence">Needs more evidence</SelectItem>
+                          <SelectItem value="needs_more_evidence">
+                            Needs more evidence
+                          </SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
                     <div className="space-y-1.5">
-                      <Label htmlFor="report-feedback-notes">Notes (optional)</Label>
-                      <Textarea id="report-feedback-notes" maxLength={2000} value={feedbackNotes} onChange={(event) => setFeedbackNotes(event.target.value)} />
+                      <Label htmlFor="report-feedback-notes">
+                        Notes (optional)
+                      </Label>
+                      <Textarea
+                        id="report-feedback-notes"
+                        maxLength={2000}
+                        value={feedbackNotes}
+                        onChange={(event) =>
+                          setFeedbackNotes(event.target.value)
+                        }
+                      />
                     </div>
                     <div className="space-y-1.5">
-                      <Label htmlFor="rejected-hypotheses">Rejected hypotheses (optional, one per line)</Label>
+                      <Label htmlFor="rejected-hypotheses">
+                        Rejected hypotheses (optional, one per line)
+                      </Label>
                       <Textarea
                         id="rejected-hypotheses"
                         aria-describedby="rejected-hypotheses-help"
                         aria-invalid={rejectedHypothesesInvalid}
                         maxLength={3009}
                         value={rejectedHypotheses}
-                        onChange={(event) => setRejectedHypotheses(event.target.value)}
+                        onChange={(event) =>
+                          setRejectedHypotheses(event.target.value)
+                        }
                       />
                       <p
                         id="rejected-hypotheses-help"
-                        className={rejectedHypothesesInvalid ? "text-xs text-destructive" : "text-xs text-muted-foreground"}
+                        className={
+                          rejectedHypothesesInvalid
+                            ? "text-xs text-destructive"
+                            : "text-xs text-muted-foreground"
+                        }
                       >
-                        {rejectedHypothesisValues.length} of 10 hypotheses. Each may contain up to 300 characters.
+                        {rejectedHypothesisValues.length} of 10 hypotheses. Each
+                        may contain up to 300 characters.
                       </p>
                     </div>
-                    <Button type="button" onClick={saveFeedback} disabled={isSavingReport || rejectedHypothesesInvalid}>
-                      {isSavingReport && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    <Button
+                      type="button"
+                      onClick={saveFeedback}
+                      disabled={isSavingReport || rejectedHypothesesInvalid}
+                    >
+                      {isSavingReport && (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      )}
                       Save feedback
                     </Button>
                   </>
                 ) : (
-                  <p className="text-sm text-muted-foreground">You have read-only access to this snapshot.</p>
+                  <p className="text-sm text-muted-foreground">
+                    You have read-only access to this snapshot.
+                  </p>
                 )}
               </div>
             )}

@@ -17,6 +17,7 @@ jest.mock("@/lib/services/subscription-service", () => ({
 jest.mock("@/lib/services/polar-usage.service", () => ({
   polarUsageService: {
     shouldBlockUsage: jest.fn(),
+    getSpendingStatus: jest.fn(),
   },
 }));
 
@@ -43,6 +44,7 @@ import {
   getSreInvestigationUsage,
   reconcileUnbilledSreInvestigations,
   SreInvestigationBillingError,
+  withSreInvestigationAdmission,
 } from "./investigation-billing";
 
 const mockIsPolarEnabled = isPolarEnabled as jest.Mock;
@@ -54,6 +56,10 @@ const mockDb = db as unknown as {
   transaction: jest.Mock;
   query: { organization: { findFirst: jest.Mock } };
 };
+
+function lockedOrganizationSelect() {
+  return { from: jest.fn().mockReturnValue({ where: jest.fn().mockReturnValue({ for: jest.fn().mockResolvedValue([{ id: "org-1" }]) }) }) };
+}
 
 const planFixture = {
   id: "plan-1",
@@ -120,6 +126,70 @@ describe("SRE investigation billing", () => {
     );
   });
 
+  it.each([
+    { projected: 100, hardStop: true, allowed: true },
+    { projected: 101, hardStop: true, allowed: false },
+    { projected: 101, hardStop: false, allowed: true },
+  ])("checks reservations plus the new run before admission ($projected/$hardStop)", async ({ projected, hardStop, allowed }) => {
+    const locked = jest.fn().mockResolvedValue([{ id: "org-1", subscriptionPlan: "plus", subscriptionStatus: "active" }]);
+    const pendingWhere = jest.fn().mockResolvedValue([{ count: 2 }]);
+    const tx = {
+      insert: jest.fn(),
+      select: jest.fn()
+        .mockReturnValueOnce({ from: () => ({ where: () => ({ for: locked }) }) })
+        .mockReturnValueOnce({ from: () => ({ leftJoin: () => ({ where: pendingWhere }) }) }),
+    };
+    mockDb.transaction.mockImplementation(async (callback) => callback(tx));
+    mockPolarUsageService.getSpendingStatus.mockResolvedValue({
+      currentSpendingCents: projected, limitCents: 100, limitEnabled: true,
+      hardStopEnabled: hardStop, isAtLimit: projected >= 100, percentageUsed: projected, remainingCents: 0,
+    });
+    const create = jest.fn().mockResolvedValue("run-1");
+    const admission = withSreInvestigationAdmission("org-1", create);
+    if (allowed) await expect(admission).resolves.toBe("run-1");
+    else await expect(admission).rejects.toMatchObject({ code: "spending_limit" });
+    expect(locked).toHaveBeenCalledWith("update");
+    expect(mockPolarUsageService.getSpendingStatus).toHaveBeenCalledWith("org-1", { database: tx, additionalSreUnits: 3 });
+    expect(create).toHaveBeenCalledTimes(allowed ? 1 : 0);
+  });
+
+  it("does not reserve or check billing for self-hosted admission", async () => {
+    mockIsPolarEnabled.mockReturnValue(false);
+    const create = jest.fn().mockResolvedValue("run-1");
+    await expect(withSreInvestigationAdmission("org-1", create)).resolves.toBe("run-1");
+    expect(create).toHaveBeenCalledWith(db);
+    expect(mockDb.transaction).not.toHaveBeenCalled();
+  });
+
+  it("admits only one of two competing runs when one charge remains (transaction simulation)", async () => {
+    let reservations = 0;
+    let tail = Promise.resolve();
+    mockDb.transaction.mockImplementation(async (callback) => {
+      let release: (() => void) | undefined;
+      const tx = { insert: jest.fn(), select: jest.fn((fields) => fields
+        ? { from: () => ({ leftJoin: () => ({ where: async () => [{ count: reservations }] }) }) }
+        : { from: () => ({ where: () => ({ for: async () => {
+          const previous = tail;
+          tail = new Promise<void>((resolve) => { release = resolve; });
+          await previous;
+          return [{ id: "org-1", subscriptionPlan: "plus", subscriptionStatus: "active" }];
+        } }) }) }) };
+      try { return await callback(tx); } finally { release?.(); }
+    });
+    mockPolarUsageService.getSpendingStatus.mockImplementation(async (_org, projection) => ({
+      currentSpendingCents: (projection?.additionalSreUnits ?? 0) * 50,
+      limitCents: 50, limitEnabled: true, hardStopEnabled: true,
+      isAtLimit: false, percentageUsed: 0, remainingCents: 50,
+    }));
+    const create = jest.fn(async () => { reservations += 1; return "run-1"; });
+    const outcomes = await Promise.allSettled([
+      withSreInvestigationAdmission("org-1", create),
+      withSreInvestigationAdmission("org-1", create),
+    ]);
+    expect(outcomes.map((result) => result.status).sort()).toEqual(["fulfilled", "rejected"]);
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+
   it("skips billing in self-hosted mode", async () => {
     mockIsPolarEnabled.mockReturnValue(false);
 
@@ -166,6 +236,7 @@ describe("SRE investigation billing", () => {
     const insertReturning = jest.fn().mockResolvedValue([{ id: "event-1" }]);
     const insertValues = jest.fn(() => ({ returning: insertReturning }));
     const tx = {
+      select: jest.fn(lockedOrganizationSelect),
       execute: jest.fn().mockResolvedValue([]),
       query: {
         organization: {
@@ -293,6 +364,7 @@ describe("SRE investigation billing", () => {
         },
         usageEvents: { findFirst: jest.fn().mockResolvedValue(null) },
       },
+      select: jest.fn(lockedOrganizationSelect),
       update: jest.fn(() => ({ set: updateSet })),
       insert: jest.fn(() => ({ values: insertValues })),
     };

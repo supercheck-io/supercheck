@@ -257,9 +257,9 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
         .click();
       const investigationResponse = await investigationResponsePromise;
       expect(
-        investigationResponse.status(),
+        [200, 202],
         await investigationResponse.text(),
-      ).toBe(200);
+      ).toContain(investigationResponse.status());
       await expect(
         page.getByText("Latest result", { exact: true }),
       ).toBeVisible({ timeout: 120_000 });

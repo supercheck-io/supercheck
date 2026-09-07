@@ -334,6 +334,7 @@ export function SreAiConsole({
               variant="outline"
               size="sm"
               onClick={startNewChat}
+              aria-label="New"
             >
               <Plus className="h-4 w-4" />
               <span className="hidden sm:inline">New</span>

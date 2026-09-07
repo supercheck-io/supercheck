@@ -18,7 +18,8 @@ import {
   organization,
   usageEvents,
   billingSettings,
-  overagePricing
+  overagePricing,
+  planLimits,
 } from "@/db/schema";
 import { eq, and, sql, gt, lte } from "drizzle-orm";
 import { isPolarEnabled, getPolarConfig } from "@/lib/feature-flags";
@@ -299,8 +300,9 @@ class PolarUsageService {
   /**
    * Get detailed usage metrics for an organization
    */
-  async getUsageMetrics(organizationId: string): Promise<UsageMetrics> {
-    const org = await db.query.organization.findFirst({
+  async getUsageMetrics(organizationId: string, projection?: { database: Pick<typeof db, "query">; additionalSreUnits: number }): Promise<UsageMetrics> {
+    const database = projection?.database ?? db;
+    const org = await database.query.organization.findFirst({
       where: eq(organization.id, organizationId),
     });
 
@@ -310,15 +312,18 @@ class PolarUsageService {
 
     // Get plan limits
     const { subscriptionService } = await import("./subscription-service");
-    const plan = await subscriptionService.getOrganizationPlanSafe(organizationId);
+    const plan = projection
+      ? await database.query.planLimits.findFirst({ where: eq(planLimits.plan, org.subscriptionPlan ?? "plus") })
+      : await subscriptionService.getOrganizationPlanSafe(organizationId);
+    if (!plan) throw new Error("Billing plan configuration unavailable");
 
     // Get overage pricing
-    const pricing = await this.getOveragePricing(org.subscriptionPlan || "plus");
+    const pricing = await this.getOveragePricing(org.subscriptionPlan || "plus", database);
 
     const playwrightUsed = org.playwrightMinutesUsed || 0;
     const k6Used = org.k6VuMinutesUsed || 0;
     const aiCreditsUsed = org.aiCreditsUsed || 0;
-    const sreInvestigationsUsed = Number(org.sreInvestigationUnitsUsed || 0);
+    const sreInvestigationsUsed = Number(org.sreInvestigationUnitsUsed || 0) + (projection?.additionalSreUnits ?? 0);
 
     const playwrightOverage = Math.max(0, playwrightUsed - plan.playwrightMinutesIncluded);
     const k6Overage = Math.max(0, k6Used - plan.k6VuMinutesIncluded);
@@ -396,14 +401,14 @@ class PolarUsageService {
   /**
    * Get spending status for an organization
    */
-  async getSpendingStatus(organizationId: string): Promise<SpendingStatus> {
+  async getSpendingStatus(organizationId: string, projection?: { database: Pick<typeof db, "query">; additionalSreUnits: number }): Promise<SpendingStatus> {
     // Get billing settings
-    const settings = await db.query.billingSettings.findFirst({
+    const settings = await (projection?.database ?? db).query.billingSettings.findFirst({
       where: eq(billingSettings.organizationId, organizationId),
     });
 
     // Get current usage metrics
-    const metrics = await this.getUsageMetrics(organizationId);
+    const metrics = await this.getUsageMetrics(organizationId, projection);
     const currentSpendingCents = metrics.totalOverageCostCents;
 
     const limitEnabled = settings?.enableSpendingLimit || false;
@@ -434,12 +439,12 @@ class PolarUsageService {
   /**
    * Get overage pricing for a plan
    */
-  async getOveragePricing(plan: "plus" | "pro" | "unlimited") {
+  async getOveragePricing(plan: "plus" | "pro" | "unlimited", database: Pick<typeof db, "query"> = db) {
     if (plan === "unlimited") {
       return null; // No overage for unlimited plan
     }
 
-    return db.query.overagePricing.findFirst({
+    return database.query.overagePricing.findFirst({
       where: eq(overagePricing.plan, plan),
     });
   }

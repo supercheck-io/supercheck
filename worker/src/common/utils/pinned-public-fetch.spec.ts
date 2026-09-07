@@ -25,6 +25,41 @@ describe('worker pinned public fetch', () => {
     });
   });
 
+  it.each([204, 205, 304])(
+    'accepts the bodyless HTTP status %s',
+    async (statusCode) => {
+      (mockLookup as jest.Mock).mockResolvedValueOnce([
+        { address: '203.0.114.10', family: 4 },
+      ]);
+      const request = Object.assign(new EventEmitter(), {
+        end: jest.fn(),
+        write: jest.fn(),
+        destroy: jest.fn(),
+      });
+      (mockRequest as unknown as jest.Mock).mockImplementation(
+        (
+          _url: URL,
+          _options: unknown,
+          onResponse: (response: EventEmitter) => void,
+        ) => {
+          const response = Object.assign(new EventEmitter(), {
+            statusCode,
+            headers: {},
+          });
+          onResponse(response);
+          queueMicrotask(() => response.emit('end'));
+          return request;
+        },
+      );
+      const response = await fetchPublicEndpoint(
+        'https://hooks.example.com/events',
+      );
+      expect(response.status).toBe(statusCode);
+      expect(response.body).toBeNull();
+      await expect(response.text()).resolves.toBe('');
+    },
+  );
+
   afterAll(() => {
     Object.defineProperty(process.env, 'NODE_ENV', {
       value: originalNodeEnv,
@@ -69,7 +104,11 @@ describe('worker pinned public fetch', () => {
       destroy: jest.fn(),
     });
     (mockRequest as unknown as jest.Mock).mockImplementation(
-      (_url: URL, _options: unknown, onResponse: Function) => {
+      (
+        _url: URL,
+        _options: unknown,
+        onResponse: (response: EventEmitter) => void,
+      ) => {
         const response = Object.assign(new EventEmitter(), {
           statusCode: 200,
           statusMessage: 'OK',

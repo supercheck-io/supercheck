@@ -44,6 +44,10 @@ export const organization = pgTable("organization", {
     .$type<"active" | "canceled" | "past_due" | "none">()
     .default("none"),
   subscriptionId: text("subscription_id"), // Polar subscription ID
+  // Durable ordering state is not subject to webhook-delivery log cleanup.
+  polarWebhookTimestamp: timestamp("polar_webhook_timestamp", { withTimezone: true }),
+  polarWebhookEventKey: text("polar_webhook_event_key"),
+  polarRetiredSubscriptionIds: jsonb("polar_retired_subscription_ids").$type<string[]>().notNull().default([]),
   
   // Subscription period dates (from Polar webhook)
   // These track the actual subscription billing cycle dates

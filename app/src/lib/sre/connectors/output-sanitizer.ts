@@ -7,6 +7,8 @@ import {
 import { safeEvidenceSourceUri } from "@/lib/sre/evidence-source-uri";
 
 const REDACTION_PATTERNS: Array<[RegExp, string]> = [
+  // Provider payloads commonly serialize secrets as quoted JSON fields.
+  [/("(?:token|api[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token|secret|password|passwd|pwd)"\s*:\s*)"(?:\\.|[^"\\])*"/gi, '$1"[REDACTED]"'],
   [/([?&](?:token|api[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token|secret|password)=)[^&#\s]+/gi, "$1[REDACTED]"],
   [/\b(Authorization:\s*Bearer\s+)[A-Za-z0-9._~+/-]+=*/gi, "$1[REDACTED]"],
   [/\b(Bearer\s+)[A-Za-z0-9._~+/-]+=*/gi, "$1[REDACTED]"],

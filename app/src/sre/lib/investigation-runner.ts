@@ -20,6 +20,18 @@ import {
   listStoredSreEvidence,
 } from "@/sre/tools/evidence-tools";
 import { db } from "@/utils/db";
+import {
+  consumeSreInvestigationCredit,
+  withSreInvestigationAdmission,
+  SreInvestigationBillingError,
+} from "@/lib/sre/investigation-billing";
+import { createLogger } from "@/lib/logger/index";
+
+const investigationLogger = createLogger({
+  module: "sre-investigation-runner",
+}) as {
+  error: (data: unknown, msg?: string) => void;
+};
 
 export type RunSreIncidentInvestigationInput = {
   organizationId: string;
@@ -52,7 +64,7 @@ export type StartSreIncidentInvestigationResult =
     }
   | {
       success: false;
-      status: 404 | 409 | 502;
+      status: 402 | 404 | 409 | 502;
       error: string;
     };
 
@@ -130,7 +142,7 @@ export async function startSreIncidentInvestigation(
   const liveConnectorsEnabled = input.enableLiveConnectors === true;
   let run: typeof sreInvestigationRuns.$inferSelect;
   try {
-    [run] = await db
+    [run] = await withSreInvestigationAdmission(input.organizationId, async (database) => database
       .insert(sreInvestigationRuns)
       .values({
         organizationId: input.organizationId,
@@ -153,8 +165,11 @@ export async function startSreIncidentInvestigation(
         startedAt: new Date(),
         createdAt: new Date(),
       })
-      .returning();
+      .returning());
   } catch (error) {
+    if (error instanceof SreInvestigationBillingError) {
+      return { success: false, status: 402, error: error.message };
+    }
     if (isActiveIncidentRunConflict(error)) {
       return {
         success: false,
@@ -240,7 +255,7 @@ export async function executeSreIncidentInvestigation(
     });
 
     await db.transaction(async (tx) => {
-      await tx
+      const completed = await tx
         .update(sreInvestigationRuns)
         .set({
           status: "completed",
@@ -260,7 +275,9 @@ export async function executeSreIncidentInvestigation(
           completedAt: new Date(),
           durationMs: Date.now() - startedAt,
         })
-        .where(eq(sreInvestigationRuns.id, investigationRunId));
+        .where(and(eq(sreInvestigationRuns.id, investigationRunId), eq(sreInvestigationRuns.status, "running")))
+        .returning({ id: sreInvestigationRuns.id });
+      if (completed.length === 0) throw new Error("Investigation reservation is no longer active");
 
       await tx
         .update(sreIncidents)
@@ -301,9 +318,10 @@ export async function executeSreIncidentInvestigation(
       modelId: result.modelId,
       finishReason: result.finishReason,
     };
-  } catch (error) {
-    const errorMessage =
-      error instanceof Error ? error.message : "SRE investigation failed";
+  } catch {
+    // Provider errors can embed credentials or raw evidence. Persist only a
+    // fixed explanation in records exposed to incident readers and exports.
+    const errorMessage = "SRE investigation failed";
     await db.transaction(async (tx) => {
       await tx
         .update(sreInvestigationRuns)
@@ -316,7 +334,7 @@ export async function executeSreIncidentInvestigation(
           completedAt: new Date(),
           durationMs: Date.now() - startedAt,
         })
-        .where(eq(sreInvestigationRuns.id, investigationRunId));
+        .where(and(eq(sreInvestigationRuns.id, investigationRunId), eq(sreInvestigationRuns.status, "running")));
 
       await tx.insert(sreIncidentTimelineEvents).values({
         incidentId: incident.id,
@@ -341,4 +359,43 @@ export async function executeSreIncidentInvestigation(
       investigationRunId,
     };
   }
+}
+
+export async function completeSreIncidentInvestigation(
+  investigationRunId: string,
+  incident: any,
+  input: RunSreIncidentInvestigationInput,
+): Promise<RunSreIncidentInvestigationResult> {
+  const execResult = await executeSreIncidentInvestigation(
+    investigationRunId,
+    incident,
+    input,
+  );
+  if (!execResult.success) {
+    return execResult;
+  }
+
+  try {
+    await consumeSreInvestigationCredit({
+      organizationId: input.organizationId,
+      projectId: input.projectId,
+      userId: input.userId,
+      incidentId: input.incidentId,
+      investigationRunId,
+      useLiveConnectors: input.enableLiveConnectors === true,
+    });
+  } catch (error) {
+    investigationLogger.error(
+      {
+        err: error,
+        organizationId: input.organizationId,
+        projectId: input.projectId,
+        incidentId: input.incidentId,
+        investigationRunId,
+      },
+      "SRE investigation billing consumption failed after successful run",
+    );
+  }
+
+  return execResult;
 }

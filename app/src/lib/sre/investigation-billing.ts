@@ -1,4 +1,4 @@
-import { and, asc, eq, gte, isNull, lt, sql } from "drizzle-orm";
+import { and, asc, eq, gte, isNull, lt, or, sql } from "drizzle-orm";
 
 import { organization, sreInvestigationRuns, usageEvents } from "@/db/schema";
 import { isPolarEnabled } from "@/lib/feature-flags";
@@ -114,6 +114,11 @@ export async function consumeSreInvestigationCredit(input: {
       };
     }
 
+    // Serialize settlement with admission and subscription rollover before
+    // reading the period. Completed-but-unbilled runs remain reservations.
+    await tx.select({ id: organization.id }).from(organization)
+      .where(eq(organization.id, input.organizationId)).for("update");
+
     const org = await tx.query.organization.findFirst({
       where: eq(organization.id, input.organizationId),
       columns: {
@@ -167,6 +172,42 @@ export async function consumeSreInvestigationCredit(input: {
   });
 }
 
+/** The durable run row is the reservation: running/completed-unbilled consumes
+ * capacity; failure releases it; the usage ledger replaces it on settlement.
+ * Reservations carry across renewal and settle in the ledger-write billing period.
+ */
+export async function withSreInvestigationAdmission<T>(organizationId: string,
+  createRun: (database: Pick<typeof db, "insert">) => Promise<T>): Promise<T> {
+  if (!isPolarEnabled()) return createRun(db);
+  await assertCanStartSreInvestigation(organizationId);
+  return db.transaction(async (tx) => {
+    const [org] = await tx.select().from(organization)
+      .where(eq(organization.id, organizationId)).for("update");
+    if (!org) throw new SreInvestigationBillingError("Organization not found", "organization_not_found");
+    if (!["plus", "pro"].includes(org.subscriptionPlan ?? "") || !["active", "past_due", "canceled"].includes(org.subscriptionStatus ?? "") ||
+      (org.subscriptionStatus === "canceled" && (!org.subscriptionEndsAt || org.subscriptionEndsAt <= new Date()))) {
+      throw new SreInvestigationBillingError("Active subscription required", "subscription_required");
+    }
+    const [pending] = await tx.select({ count: sql<number>`count(*)::int` })
+      .from(sreInvestigationRuns).leftJoin(usageEvents, and(
+        eq(usageEvents.organizationId, sreInvestigationRuns.organizationId),
+        eq(usageEvents.eventType, "sre_investigation"),
+        sql`${usageEvents.metadata}->>'investigationRunId' = CAST(${sreInvestigationRuns.id} AS text)`))
+      .where(and(eq(sreInvestigationRuns.organizationId, organizationId),
+        eq(sreInvestigationRuns.agentType, "investigation"),
+        or(eq(sreInvestigationRuns.status, "running"), eq(sreInvestigationRuns.status, "completed")),
+        isNull(usageEvents.id)));
+    const spending = await polarUsageService.getSpendingStatus(organizationId, {
+      database: tx, additionalSreUnits: Number(pending?.count ?? 0) + 1,
+    });
+    if (spending.limitEnabled && spending.hardStopEnabled &&
+      (spending.limitCents === null || !Number.isFinite(spending.currentSpendingCents) || spending.currentSpendingCents > spending.limitCents)) {
+      throw new SreInvestigationBillingError("This investigation and reserved runs would exceed the spending limit", "spending_limit");
+    }
+    return createRun(tx);
+  });
+}
+
 export async function getSreInvestigationUsage(organizationId: string) {
   const org = await db.query.organization.findFirst({
     where: eq(organization.id, organizationId),
@@ -194,9 +235,10 @@ export async function reconcileUnbilledSreInvestigations(options?: {
 }) {
   if (!isPolarEnabled()) return { processed: 0, failed: 0 };
 
-  const lookbackHours = Math.max(1, options?.lookbackHours ?? 24);
+  const lookbackHours = options?.lookbackHours === undefined ? null : Math.max(1, options.lookbackHours);
   const batchSize = Math.min(500, Math.max(1, options?.batchSize ?? 100));
-  const since = new Date(Date.now() - lookbackHours * 60 * 60 * 1000);
+  // Do not strand durable reservations after a billing outage longer than 24h.
+  const since = lookbackHours === null ? null : new Date(Date.now() - lookbackHours * 60 * 60 * 1000);
 
   const candidates = await db
     .select({
@@ -224,7 +266,7 @@ export async function reconcileUnbilledSreInvestigations(options?: {
       and(
         eq(sreInvestigationRuns.status, "completed"),
         eq(sreInvestigationRuns.agentType, "investigation"),
-        gte(sreInvestigationRuns.completedAt, since),
+        since ? gte(sreInvestigationRuns.completedAt, since) : undefined,
         isNull(usageEvents.id)
       )
     )
