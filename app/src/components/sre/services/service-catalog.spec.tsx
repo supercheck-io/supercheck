@@ -39,6 +39,16 @@ describe("ServiceCatalog", () => {
     mockPush.mockClear();
   });
 
+  it("defaults to read-only controls", () => {
+    render(<ServiceCatalog initialServices={[service]} loadError={null} />);
+    expect(screen.queryByRole("button", { name: "Add service" })).not.toBeInTheDocument();
+  });
+
+  it("allows authorized creation", () => {
+    render(<ServiceCatalog initialServices={[]} loadError={null} permissions={{ canCreate: true, canUpdate: true, canArchive: false }} />);
+    expect(screen.getByRole("button", { name: "Add service" })).toBeInTheDocument();
+  });
+
   it("opens the service detail page from pointer and keyboard row selection", async () => {
     render(<ServiceCatalog initialServices={[service]} loadError={null} />);
 

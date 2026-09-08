@@ -26,7 +26,7 @@ export function SreSetupGuideDialog({ status }: SreSetupGuideDialogProps) {
       label: "Add a service",
       description: "Define the service, owner, environment, and repository.",
       complete: Boolean(status?.services),
-      href: "/org-admin?tab=services",
+      href: "/services",
       action: "Open Services",
     },
     {

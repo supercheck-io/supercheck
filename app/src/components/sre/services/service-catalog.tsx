@@ -35,6 +35,7 @@ type ServiceCatalogProps = {
   loadError: string | null;
   setupStatus?: SreOnboardingStatus | null;
   onSetupChanged?: () => void;
+  permissions?: { canCreate: boolean; canUpdate: boolean; canArchive: boolean };
 };
 
 export function ServiceCatalog({
@@ -42,6 +43,7 @@ export function ServiceCatalog({
   loadError,
   setupStatus = null,
   onSetupChanged,
+  permissions = { canCreate: false, canUpdate: false, canArchive: false },
 }: ServiceCatalogProps) {
   const router = useRouter();
   const [services, setServices] = useState(initialServices);
@@ -112,15 +114,17 @@ export function ServiceCatalog({
         <DashboardEmptyState
           className="min-h-[420px]"
           title="No services registered"
-          description="Add your first production service so incidents, alerts, diagnostic recipes, and evidence have a stable system of record."
+          description={permissions.canCreate ? "Add a service, then link its monitors and dependencies to give incidents useful context." : "No services have been added to this project yet. Ask a project editor or administrator to add one."}
           icon={<Boxes className="h-10 w-10" />}
           action={
             <div className="flex flex-col gap-2 sm:flex-row">
-              <SreSetupGuideDialog status={setupStatus} />
+              {setupStatus && <SreSetupGuideDialog status={setupStatus} />}
+              {permissions.canCreate && (
               <Button onClick={handleAdd} data-testid="add-service-btn">
                 <Plus className="mr-2 h-4 w-4" />
                 Add service
               </Button>
+              )}
             </div>
           }
         />
@@ -132,12 +136,14 @@ export function ServiceCatalog({
           renderToolbar={(table) => (
             <ServicesToolbar
               table={table}
-              onAdd={handleAdd}
-              setupGuide={<SreSetupGuideDialog status={setupStatus} />}
+              onAdd={permissions.canCreate ? handleAdd : undefined}
+              setupGuide={setupStatus ? <SreSetupGuideDialog status={setupStatus} /> : undefined}
             />
           )}
           entityLabel="services"
           meta={{
+            canUpdate: permissions.canUpdate,
+            canArchive: permissions.canArchive,
             onEdit: (service: SreServiceListItem) => {
               setEditingService(service);
               setIsFormOpen(true);

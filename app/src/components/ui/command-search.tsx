@@ -84,7 +84,7 @@ export function CommandSearch({
         admin: "/org-admin",
         ...(canConfigureSre
           ? {
-              "admin-services": "/org-admin?tab=services",
+              "admin-services": "/services",
               "admin-integrations": "/org-admin?tab=integrations",
               "admin-diagnostic-recipes": "/org-admin?tab=diagnostic-recipes",
               "admin-private-agents": "/org-admin?tab=private-agents",

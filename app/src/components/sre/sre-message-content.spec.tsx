@@ -65,6 +65,18 @@ describe("SreMessageContent", () => {
     ).toBeInTheDocument();
   });
 
+  it("keeps escaped query pipes inside the same table cell", () => {
+    render(<SreMessageContent content={'| Source | Query |\n| --- | --- |\n| Loki | `{service="checkout"} \\|= "error"` |'} />);
+    expect(screen.getByRole("cell", { name: '{service="checkout"} |= "error"' })).toBeInTheDocument();
+    expect(screen.getAllByRole("cell")).toHaveLength(2);
+  });
+
+  it("does not turn a missing chart observation into zero", () => {
+    render(<SreMessageContent content={["```chart", JSON.stringify({ type: "line", title: "Errors", xKey: "time", series: [{ key: "errors", label: "Error count" }], data: [{ time: "10:00", errors: 5 }, { time: "10:01" }] }), "```"].join("\n")} />);
+    expect(screen.getByText("No data")).toBeInTheDocument();
+    expect(screen.queryByText("0")).not.toBeInTheDocument();
+  });
+
   it("renders validated chart blocks", () => {
     render(
       <SreMessageContent

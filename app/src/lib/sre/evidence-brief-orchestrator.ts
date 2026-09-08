@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
 
 import {
   externalConnectors,
@@ -300,7 +300,24 @@ export async function runSreEvidenceBriefGeneration(input: {
         investigationRunId: run.id,
         window: collection.window,
       });
-    const allEvidenceRows = [...evidenceRows, ...connectorEvidenceRows];
+    // Reuse incident evidence from both direct and Private Agent queries.
+    // Keep the incident time window: historical evidence is not current proof.
+    const storedEvidenceRows = await db
+      .select()
+      .from(sreEvidenceItems)
+      .where(and(
+        eq(sreEvidenceItems.organizationId, input.organizationId),
+        eq(sreEvidenceItems.projectId, input.projectId),
+        eq(sreEvidenceItems.incidentId, input.incidentId),
+        gte(sreEvidenceItems.observedAt, collection.window.since),
+        lte(sreEvidenceItems.observedAt, collection.window.until),
+      ))
+      .orderBy(desc(sreEvidenceItems.observedAt))
+      .limit(100);
+    const allEvidenceRows = Array.from(new Map(
+      [...evidenceRows, ...connectorEvidenceRows, ...storedEvidenceRows].map((item) => [item.id, item]),
+    ).values()).slice(0, 100);
+    const connectorEvidenceCount = allEvidenceRows.filter((item) => item.sourceType !== "native").length;
 
     const brief = await input.generateBrief({
       incidentTitle: collection.incident.title,
@@ -333,7 +350,11 @@ export async function runSreEvidenceBriefGeneration(input: {
             summary: brief.summary,
             citedEvidenceIds: brief.citedEvidenceIds,
             evidenceCount: allEvidenceRows.length,
-            connectorEvidenceCount: connectorEvidenceRows.length,
+            connectorEvidenceCount,
+            evidenceWindow: {
+              since: collection.window.since.toISOString(),
+              until: collection.window.until.toISOString(),
+            },
           },
           completedAt: new Date(),
           durationMs: Date.now() - startedAt,
@@ -374,7 +395,7 @@ export async function runSreEvidenceBriefGeneration(input: {
           confidenceScore: brief.confidenceScore,
           citedEvidenceIds: brief.citedEvidenceIds,
           evidenceCount: allEvidenceRows.length,
-          connectorEvidenceCount: connectorEvidenceRows.length,
+          connectorEvidenceCount,
         },
         actorType: "agent",
         agentRunId: run.id,
@@ -392,7 +413,7 @@ export async function runSreEvidenceBriefGeneration(input: {
         projectId: input.projectId,
         investigationRunId: run.id,
         evidenceCount: allEvidenceRows.length,
-        connectorEvidenceCount: connectorEvidenceRows.length,
+        connectorEvidenceCount,
         provider: brief.provider,
       },
       success: true,
@@ -406,7 +427,7 @@ export async function runSreEvidenceBriefGeneration(input: {
           : "Native evidence gathered with fallback brief",
       brief,
       evidenceCount: allEvidenceRows.length,
-      connectorEvidenceCount: connectorEvidenceRows.length,
+      connectorEvidenceCount,
       investigationRunId: run.id,
     };
   } catch (error) {

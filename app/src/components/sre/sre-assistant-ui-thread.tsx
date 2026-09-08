@@ -556,10 +556,10 @@ export function SreThread({
             type="button"
             variant="secondary"
             size="sm"
-            className="sticky bottom-4 left-1/2 z-10 mx-auto mt-4 flex -translate-x-1/2 rounded-full shadow-sm"
+            className="sticky bottom-4 left-1/2 z-10 mx-auto mt-4 flex -translate-x-1/2 rounded-full shadow-sm disabled:hidden"
           >
             <ChevronDown className="h-4 w-4" />
-            New messages
+            Jump to latest
           </Button>
         </ThreadPrimitive.ScrollToBottom>
       </ThreadPrimitive.Viewport>

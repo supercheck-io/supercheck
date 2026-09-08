@@ -1,5 +1,4 @@
-import Link from "next/link";
-import { AlertTriangle, Clock, Database, ExternalLink } from "lucide-react";
+import { AlertTriangle, Clock, Database } from "lucide-react";
 
 import type { SreIncidentDetail } from "@/actions/sre-incidents";
 import type { SreServiceListItem } from "@/actions/sre-services";
@@ -23,7 +22,7 @@ import {
 } from "@/components/ui/table";
 import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { isSafeEvidenceSourceUri } from "@/lib/sre/evidence-source-uri";
+import { EvidenceDetailsDialog } from "@/components/sre/incidents/evidence-details-dialog";
 
 type SreIncidentDetailViewProps = {
   detail: SreIncidentDetail;
@@ -74,7 +73,7 @@ function getBriefSummary(detail: SreIncidentDetail) {
   const summary =
     snapshot && typeof snapshot.summary === "string"
       ? snapshot.summary
-      : detail.incident.rootCauseSummary;
+      : null;
   return summary ?? null;
 }
 
@@ -91,14 +90,13 @@ function NativeEvidenceCard({ detail }: { detail: SreIncidentDetail }) {
       <CardHeader className="shrink-0">
         <CardTitle className="flex items-center gap-2 text-lg">
           <Database className="h-5 w-5" />
-          Native evidence
+          Incident evidence
         </CardTitle>
         <CardDescription>
-          Stored citations from Supercheck alerts, monitors, runs, logs,
-          reports, and k6 results.
+          Saved observations from Supercheck and connected sources. Open an item to review its full summary and query reference.
         </CardDescription>
       </CardHeader>
-      <CardContent className="min-h-0 flex-1 overflow-hidden">
+      <CardContent className="min-h-0 flex-1 overflow-y-auto">
         {detail.evidence.length === 0 ? (
           <div className="rounded-lg border border-dashed p-8 text-center">
             <AlertTriangle className="mx-auto h-10 w-10 text-muted-foreground" />
@@ -106,12 +104,12 @@ function NativeEvidenceCard({ detail }: { detail: SreIncidentDetail }) {
               No evidence gathered yet
             </h3>
             <p className="mx-auto mt-1 max-w-lg text-sm text-muted-foreground">
-              Native evidence appears here after generating a brief.
+              Link a monitor or alert, then generate a brief to collect Supercheck evidence. Authorized live investigations can also collect connector evidence.
             </p>
           </div>
         ) : (
           <div className="min-h-0 min-w-0 overflow-hidden rounded-lg border">
-            <Table className="table-fixed">
+            <Table className="min-w-[760px] table-fixed">
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[28%]">Evidence</TableHead>
@@ -129,10 +127,10 @@ function NativeEvidenceCard({ detail }: { detail: SreIncidentDetail }) {
                     id={`sre-evidence-${item.id}`}
                     className="scroll-mt-24"
                   >
-                    <TableCell className="truncate font-medium">
+                    <TableCell className="truncate font-medium" title={item.title}>
                       {item.title}
                     </TableCell>
-                    <TableCell className="truncate text-muted-foreground">
+                    <TableCell className="truncate text-muted-foreground" title={item.summary ?? item.citationQuery ?? undefined}>
                       {item.summary ?? item.citationQuery ?? "No summary"}
                     </TableCell>
                     <TableCell>
@@ -153,31 +151,8 @@ function NativeEvidenceCard({ detail }: { detail: SreIncidentDetail }) {
                         </span>
                       </div>
                     </TableCell>
-                    <TableCell>
-                      {!isSafeEvidenceSourceUri(item.sourceUri) ? (
-                        <span className="text-sm text-muted-foreground">
-                          Unavailable
-                        </span>
-                      ) : item.sourceUri.startsWith("http://") ||
-                        item.sourceUri.startsWith("https://") ? (
-                        <a
-                          href={item.sourceUri}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center justify-end gap-1 text-sm text-primary hover:underline"
-                        >
-                          View
-                          <ExternalLink className="h-3 w-3" />
-                        </a>
-                      ) : (
-                        <Link
-                          href={item.sourceUri}
-                          className="inline-flex items-center justify-end gap-1 text-sm text-primary hover:underline"
-                        >
-                          View
-                          <ExternalLink className="h-3 w-3" />
-                        </Link>
-                      )}
+                    <TableCell className="text-right">
+                      <EvidenceDetailsDialog item={item} />
                     </TableCell>
                   </TableRow>
                 ))}
@@ -285,7 +260,7 @@ export function SreIncidentDetailView({
             key={detail.latestInvestigation?.id ?? "no-investigation"}
             incidentId={detail.incident.id}
             hasPrimaryService={Boolean(detail.incident.primaryServiceName)}
-            serviceMappingHref="/org-admin?tab=services"
+            serviceMappingHref={`/incidents/${detail.incident.id}?edit=service`}
             evidenceReferences={detail.evidence.map((item) => ({
               id: item.id,
               title: item.title,
@@ -310,6 +285,7 @@ export function SreIncidentDetailView({
 
         <TabsContent value="brief" className="min-h-0 flex-1 overflow-hidden">
           <SreIncidentBriefPanel
+            key={`${detail.incident.id}:${detail.latestBrief?.id ?? "no-brief"}`}
             incidentId={detail.incident.id}
             incidentNumber={detail.incident.incidentNumber}
             incidentTitle={detail.incident.title}
@@ -317,6 +293,9 @@ export function SreIncidentDetailView({
             initialProvider={provider}
             initialConfidenceScore={detail.latestBrief?.confidenceScore ?? null}
             hasBrief={Boolean(detail.latestBrief)}
+            canGenerate={detail.permissions.canInvestigate}
+            totalEvidenceCount={detail.evidence.length}
+            evidenceCount={typeof detail.latestBrief?.agentStateSnapshot?.evidenceCount === "number" ? detail.latestBrief.agentStateSnapshot.evidenceCount : null}
           />
         </TabsContent>
       </Tabs>

@@ -1,14 +1,11 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import Editor, { type Monaco, useMonaco } from "@monaco-editor/react";
-import type { editor } from "monaco-editor";
-import { useTheme } from "next-themes";
+import { useState } from "react";
 import { Copy, Download } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { getMonacoTheme, registerMonacoThemes } from "@/lib/monaco-config";
+import { SreMessageContent } from "@/components/sre/sre-message-content";
 
 type SreIncidentBriefReportProps = {
   content: string;
@@ -52,70 +49,18 @@ export function SreIncidentBriefReport({
   isStreaming = false,
 }: SreIncidentBriefReportProps) {
   const markdown = normalizeReportMarkdown(content, !isStreaming);
-  const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
-  const monaco = useMonaco();
-  const { resolvedTheme } = useTheme();
-  const editorTheme = getMonacoTheme(resolvedTheme);
-
-  useEffect(() => {
-    if (monaco && editorRef.current) {
-      monaco.editor.setTheme(editorTheme);
-    }
-  }, [monaco, editorTheme]);
-
-  useEffect(() => {
-    if (!isStreaming || !editorRef.current) {
-      return;
-    }
-
-    const model = editorRef.current.getModel();
-    if (!model) {
-      return;
-    }
-
-    editorRef.current.revealLine(model.getLineCount());
-  }, [isStreaming, markdown]);
-
-  const handleEditorMount = (
-    editorInstance: editor.IStandaloneCodeEditor,
-    monacoInstance: Monaco,
-  ) => {
-    editorRef.current = editorInstance;
-    registerMonacoThemes(monacoInstance);
-    monacoInstance.editor.setTheme(editorTheme);
-
-    monacoInstance.languages.setLanguageConfiguration("markdown", {
-      wordPattern:
-        /(-?\d*\.\d\w*)|([^\`\~\!\@\#\%\^\&\*\(\)\-\=\+\[\{\]\}\\\|\;\:\'\"\,\.\<\>\/\?\s]+)/g,
-    });
-  };
+  const [showSource, setShowSource] = useState(false);
 
   return (
-    <div className="h-full min-h-0 min-w-0 overflow-hidden rounded-md border bg-muted/20">
-      <Editor
-        height="100%"
-        language="markdown"
-        theme={editorTheme}
-        value={markdown}
-        onMount={handleEditorMount}
-        options={{
-          readOnly: true,
-          minimap: { enabled: false },
-          wordWrap: "on",
-          lineNumbers: "off",
-          scrollBeyondLastLine: false,
-          fontSize: 14,
-          padding: { top: 16, bottom: 16 },
-          folding: true,
-          renderWhitespace: "none",
-          automaticLayout: true,
-          scrollbar: {
-            vertical: "visible",
-            horizontal: "hidden",
-            verticalScrollbarSize: 8,
-          },
-        }}
-      />
+    <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-md border bg-muted/20">
+      <div className="flex justify-end border-b p-2">
+        <Button variant="ghost" size="sm" aria-pressed={showSource} onClick={() => setShowSource(!showSource)}>
+          {showSource ? "Show preview" : "Show Markdown"}
+        </Button>
+      </div>
+      <div role="region" aria-label="Evidence brief content" tabIndex={0} aria-busy={isStreaming} className="min-h-0 flex-1 overflow-auto break-words p-4 text-sm leading-6">
+        {showSource ? <pre className="whitespace-pre-wrap break-words font-mono text-xs">{markdown}</pre> : <SreMessageContent content={markdown} />}
+      </div>
     </div>
   );
 }

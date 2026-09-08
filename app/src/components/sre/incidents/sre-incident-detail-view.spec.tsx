@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 
 import type { SreIncidentDetail } from "@/actions/sre-incidents";
 
@@ -96,6 +96,36 @@ function detailFixture(): SreIncidentDetail {
 }
 
 describe("SreIncidentDetailView", () => {
+  it("opens saved evidence without navigating to a private provider", () => {
+    const detail = detailFixture();
+    detail.evidence[0].sourceUri = "http://prometheus.aisre-lab:9090/graph";
+    render(<SreIncidentDetailView detail={detail} services={[]} initialTab="evidence" />);
+    fireEvent.click(screen.getByRole("button", { name: "View evidence: Monitor timeout" }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByText("monitor_results.id = 1")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open original source" })).toHaveAttribute("rel", "noopener noreferrer");
+  });
+
+  it("does not render unsafe source links or interpret evidence as HTML", () => {
+    const detail = detailFixture();
+    detail.evidence[0].sourceUri = "javascript:alert(1)";
+    detail.evidence[0].rawContentExcerpt = '<img src=x onerror="alert(1)">';
+    render(<SreIncidentDetailView detail={detail} services={[]} initialTab="evidence" />);
+    fireEvent.click(screen.getByRole("button", { name: "View evidence: Monitor timeout" }));
+    expect(screen.queryByRole("link", { name: "Open original source" })).not.toBeInTheDocument();
+    expect(screen.getByText(detail.evidence[0].rawContentExcerpt)).toBeInTheDocument();
+    expect(screen.getByRole("dialog").querySelector("img")).toBeNull();
+  });
+
+  it("shows a readable brief and hides generation from viewers", () => {
+    const detail = detailFixture();
+    detail.permissions.canInvestigate = false;
+    render(<SreIncidentDetailView detail={detail} services={[]} initialTab="brief" />);
+    expect(screen.getByText("Brief summary")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Generate brief" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show Markdown" }));
+    expect(screen.getByRole("button", { name: "Show preview" })).toBeInTheDocument();
+  });
   it("renders simplified incident tabs and default investigation panel", () => {
     render(<SreIncidentDetailView detail={detailFixture()} services={[]} />);
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { Loader2, Pencil } from "lucide-react";
 import { toast } from "sonner";
@@ -58,6 +59,9 @@ export function EditSreIncidentDialog({
   canUpdate,
 }: EditSreIncidentDialogProps) {
   const queryClient = useQueryClient();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const mappingRequested = searchParams.get("edit") === "service";
   const { projectId } = useProjectContext();
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -72,6 +76,15 @@ export function EditSreIncidentDialog({
   const [primaryServiceId, setPrimaryServiceId] = useState(
     incident.primaryServiceId ?? noServiceValue,
   );
+
+  const closeDialog = () => {
+    setOpen(false);
+    if (mappingRequested) {
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete("edit");
+      router.replace(`/incidents/${incident.id}${params.size ? `?${params}` : ""}`, { scroll: false });
+    }
+  };
 
   if (!canUpdate) {
     return null;
@@ -101,7 +114,7 @@ export function EditSreIncidentDialog({
       }
 
       toast.success(result.message);
-      setOpen(false);
+      closeDialog();
       await Promise.all([
         queryClient.refetchQueries({
           queryKey: getSreIncidentDetailQueryKey(projectId, incident.id),
@@ -123,6 +136,7 @@ export function EditSreIncidentDialog({
   const handleOpenChange = (nextOpen: boolean) => {
     setOpen(nextOpen);
     if (!nextOpen) {
+      closeDialog();
       return;
     }
 
@@ -134,7 +148,7 @@ export function EditSreIncidentDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
+    <Dialog open={open || mappingRequested} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button type="button" variant="outline" size="sm">
           <Pencil className="h-4 w-4" />
@@ -246,7 +260,7 @@ export function EditSreIncidentDialog({
           <Button
             type="button"
             variant="outline"
-            onClick={() => setOpen(false)}
+            onClick={closeDialog}
             disabled={isPending}
           >
             Cancel

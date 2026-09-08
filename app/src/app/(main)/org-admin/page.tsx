@@ -32,7 +32,6 @@ import {
   RadioTower,
   Cable,
   SquareLibrary,
-  Boxes,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AuditLogsTable } from "@/components/admin/audit-logs-table";
@@ -43,7 +42,6 @@ import { ProjectLocationsDialog } from "@/components/org-admin/project-locations
 import { SubscriptionTab } from "@/components/org-admin/subscription-tab";
 import { MemberAccessDialog } from "@/components/members/MemberAccessDialog";
 import { PrivateAgentsAdminView } from "@/components/sre/private-agents/private-agents-admin-view";
-import { ServiceCatalog } from "@/components/sre/services/service-catalog";
 import { ConnectorAdminView } from "@/components/sre/connectors/connector-admin-view";
 import { DiagnosticQueriesAdminView } from "@/components/sre/connectors/diagnostic-queries-admin-view";
 import { FormInput } from "@/components/ui/form-input";
@@ -57,7 +55,6 @@ import { SupercheckLoading } from "@/components/shared/supercheck-loading";
 import { Loader2 } from "lucide-react";
 import type { PrivateAgentListItem } from "@/actions/private-agents";
 import type { SreOnboardingStatus } from "@/actions/sre-onboarding";
-import type { SreServiceListItem } from "@/actions/sre-services";
 import type {
   SreConnectorListItem,
   SreConnectorSetupOptions,
@@ -149,9 +146,6 @@ interface ProjectMember {
 type SreSetupResponse =
   | { success: true; status: SreOnboardingStatus }
   | { success: false; error: string; status: null };
-type SreServicesResponse =
-  | { success: true; services: SreServiceListItem[] }
-  | { success: false; error: string; services: [] };
 type SreIntegrationsResponse = {
   success: boolean;
   error: string | null;
@@ -172,7 +166,6 @@ type SrePrivateAgentsResponse =
 
 const ADMIN_SETUP_FETCH_TIMEOUT_MS = 15000;
 const SRE_SETUP_TABS = new Set([
-  "services",
   "integrations",
   "diagnostic-recipes",
   "private-agents",
@@ -243,7 +236,6 @@ function OrgAdminDashboardContent() {
             "members",
             "cli-tokens",
             "audit",
-            "services",
             "integrations",
             "diagnostic-recipes",
             "private-agents",
@@ -254,7 +246,6 @@ function OrgAdminDashboardContent() {
             "members",
             "cli-tokens",
             "audit",
-            "services",
             "integrations",
             "diagnostic-recipes",
             "private-agents",
@@ -294,9 +285,6 @@ function OrgAdminDashboardContent() {
   const cachedSetup = queryClient.getQueryData<SreSetupResponse>(
     getSreAdminQueryKey(projectId, "setup"),
   );
-  const cachedServices = queryClient.getQueryData<SreServicesResponse>(
-    getSreAdminQueryKey(projectId, "services"),
-  );
   const cachedIntegrations = queryClient.getQueryData<SreIntegrationsResponse>(
     getSreAdminQueryKey(projectId, "integrations"),
   );
@@ -309,14 +297,6 @@ function OrgAdminDashboardContent() {
       getSreAdminQueryKey(projectId, "private-agents"),
     );
 
-  const [services, setServices] = useState<SreServiceListItem[]>(
-    cachedServices?.services ?? [],
-  );
-  const [servicesLoadError, setServicesLoadError] = useState<string | null>(
-    null,
-  );
-  const [servicesLoading, setServicesLoading] = useState(false);
-  const [servicesLoaded, setServicesLoaded] = useState(Boolean(cachedServices));
   const [connectors, setConnectors] = useState<SreConnectorListItem[]>(
     cachedIntegrations?.connectors ?? [],
   );
@@ -445,6 +425,10 @@ function OrgAdminDashboardContent() {
   }, [safeTab]);
 
   useEffect(() => {
+    if (requestedTab === "services") {
+      router.replace("/services");
+      return;
+    }
     if (
       requestedTab &&
       normalizedRequestedTab !== requestedTab &&
@@ -463,44 +447,6 @@ function OrgAdminDashboardContent() {
     safeTab,
     searchParams,
   ]);
-
-  useEffect(() => {
-    if (activeTab !== "services" || servicesLoaded) {
-      return;
-    }
-
-    let isCancelled = false;
-    setServicesLoading(true);
-
-    queryClient
-      .fetchQuery({
-        queryKey: getSreAdminQueryKey(projectId, "services"),
-        queryFn: () =>
-          fetchAdminSetupJson<SreServicesResponse>("/api/sre/services"),
-        staleTime: 60_000,
-        meta: { persist: false },
-      })
-      .then((result) => {
-        if (isCancelled) return;
-        setServices(result.services);
-        setServicesLoadError(null);
-        setServicesLoaded(true);
-      })
-      .catch((error) => {
-        if (isCancelled) return;
-        console.error("Error loading services:", error);
-        setServices([]);
-        setServicesLoadError("Failed to fetch services");
-        setServicesLoaded(true);
-      })
-      .finally(() => {
-        if (!isCancelled) setServicesLoading(false);
-      });
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [activeTab, projectId, queryClient, servicesLoaded]);
 
   useEffect(() => {
     if (activeTab !== "integrations" || integrationsLoaded) {
@@ -910,10 +856,6 @@ function OrgAdminDashboardContent() {
                 <UserSearch className="h-4 w-4" />
                 <span className="hidden sm:inline">Audit</span>
               </TabsTrigger>
-              <TabsTrigger value="services" className="flex items-center gap-2">
-                <Boxes className="h-4 w-4" />
-                <span className="hidden sm:inline">Services</span>
-              </TabsTrigger>
               <TabsTrigger
                 value="integrations"
                 className="flex items-center gap-2"
@@ -1201,19 +1143,6 @@ function OrgAdminDashboardContent() {
 
             <TabsContent value="cli-tokens" className="space-y-4">
               <CliTokensTable />
-            </TabsContent>
-
-            <TabsContent value="services" className="space-y-4">
-              {servicesLoading && !servicesLoaded ? (
-                <TabLoadingSpinner message="Loading services..." />
-              ) : (
-                <ServiceCatalog
-                  initialServices={services}
-                  loadError={servicesLoadError}
-                  setupStatus={sreSetupStatus}
-                  onSetupChanged={handleSreSetupChanged}
-                />
-              )}
             </TabsContent>
 
             <TabsContent value="integrations" className="space-y-4">

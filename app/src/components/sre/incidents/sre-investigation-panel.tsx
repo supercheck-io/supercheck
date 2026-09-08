@@ -196,18 +196,19 @@ export function SreInvestigationPanel({
         : hasPrimaryService
           ? "Live connector tools will be scoped to the incident service."
           : "Map a primary service before using live connector tools.",
-      action: hasPrimaryService
+      action: hasPrimaryService || !canInvestigate
         ? undefined
         : { label: "Map service", href: serviceMappingHref },
     },
     {
       label: "Connector tools",
+      optional: !useLiveConnectors,
       ready: !useLiveConnectors || (hasPrimaryService && canUseLiveConnectors),
       description: !canUseLiveConnectors
         ? "Your role does not permit live connector queries; stored evidence remains available."
         : useLiveConnectors
           ? "Connectors will run read-only with service scope and output limits."
-          : "Live connectors are optional; stored evidence can still support the investigation.",
+          : "Live sources are off. This investigation will use stored evidence only.",
     },
   ];
 

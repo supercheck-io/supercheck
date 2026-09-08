@@ -32,6 +32,7 @@ import {
   BrainCircuit,
   Siren,
   Bot,
+  Boxes,
 } from "lucide-react";
 import { PlaywrightLogo } from "@/components/logo/playwright-logo";
 import { K6Logo } from "@/components/logo/k6-logo";
@@ -222,6 +223,11 @@ const data = {
       title: "Monitors",
       url: "/monitors",
       icon: Globe,
+    },
+    {
+      title: "Services",
+      url: "/services",
+      icon: Boxes,
     },
   ],
 

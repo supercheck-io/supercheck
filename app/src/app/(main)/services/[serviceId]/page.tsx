@@ -10,7 +10,7 @@ export default async function ServiceDetailPage({
   const { serviceId } = await params;
   const breadcrumbs = [
     { label: "Home", href: "/" },
-    { label: "Services", href: "/org-admin?tab=services" },
+    { label: "Services", href: "/services" },
     { label: "Service", isCurrentPage: true },
   ];
 

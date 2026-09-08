@@ -65,6 +65,7 @@ export function GenerateEvidenceBriefButton({
   const [isPending, setIsPending] = useState(false);
 
   const handleClick = async () => {
+    if (isPending) return;
     setIsPending(true);
     try {
       if (onStreamStart && onStreamContent && onStreamDone) {
@@ -73,7 +74,7 @@ export function GenerateEvidenceBriefButton({
 
           const response = await fetch("/api/sre/evidence-brief/stream", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", ...(projectId ? { "x-project-id": projectId } : {}) },
             body: JSON.stringify({ incidentId }),
           });
 
@@ -89,6 +90,7 @@ export function GenerateEvidenceBriefButton({
 
           const decoder = new TextDecoder();
           let buffer = "";
+          let completed = false;
 
           while (true) {
             const { done, value } = await reader.read();
@@ -120,6 +122,7 @@ export function GenerateEvidenceBriefButton({
               if (data.type === "content" && data.content) {
                 onStreamContent(data.content);
               } else if (data.type === "done") {
+                completed = true;
                 onStreamDone(data);
                 toast.success(data.message ?? "Evidence brief generated");
                 await invalidateIncidentQueries();
@@ -129,6 +132,9 @@ export function GenerateEvidenceBriefButton({
                 );
               }
             }
+          }
+          if (!completed) {
+            throw new Error("The connection ended before the brief was confirmed. Refresh the incident to check whether it completed before trying again.");
           }
         } catch (error) {
           const message = errorMessage(

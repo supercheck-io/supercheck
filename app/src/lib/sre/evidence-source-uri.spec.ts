@@ -15,6 +15,9 @@ describe("evidence source URI policy", () => {
     "data:text/html,unsafe",
     "//attacker.example/path",
     "not-a-url",
+    "/\\attacker.example/path",
+    "/\n/attacker.example/path",
+    "https://user:password@example.com/path",
   ])("blocks unsafe or ambiguous links: %s", (value) => {
     expect(isSafeEvidenceSourceUri(value)).toBe(false);
     expect(safeEvidenceSourceUri(value)).toBe("#");

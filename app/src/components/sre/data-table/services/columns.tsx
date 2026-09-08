@@ -111,6 +111,8 @@ export const columns: ColumnDef<SreServiceListItem>[] = [
     cell: ({ row, table }) => {
       const service = row.original;
       const meta = table.options.meta as {
+        canUpdate?: boolean;
+        canArchive?: boolean;
         onEdit: (service: SreServiceListItem) => void;
         onDelete: (service: SreServiceListItem) => void;
       };
@@ -133,13 +135,13 @@ export const columns: ColumnDef<SreServiceListItem>[] = [
                 View details
               </Link>
             </DropdownMenuItem>
-            <DropdownMenuItem
+            {meta?.canUpdate && <DropdownMenuItem
               onClick={() => meta?.onEdit?.(service)}
             >
               <Pencil className="mr-2 h-4 w-4" />
               Edit service
-            </DropdownMenuItem>
-            {service.status !== "deprecated" && (
+            </DropdownMenuItem>}
+            {meta?.canArchive && service.status !== "deprecated" && (
               <DropdownMenuItem
                 className="text-destructive focus:text-destructive"
                 onClick={() => meta?.onDelete?.(service)}

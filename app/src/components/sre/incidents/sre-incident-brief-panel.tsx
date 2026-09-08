@@ -26,6 +26,9 @@ type SreIncidentBriefPanelProps = {
   initialProvider: string | null;
   initialConfidenceScore: string | null;
   hasBrief: boolean;
+  canGenerate?: boolean;
+  evidenceCount?: number | null;
+  totalEvidenceCount?: number;
 };
 
 const providerBadgeClasses: Record<string, string> = {
@@ -56,6 +59,9 @@ export function SreIncidentBriefPanel({
   initialProvider,
   initialConfidenceScore,
   hasBrief,
+  canGenerate = false,
+  evidenceCount = null,
+  totalEvidenceCount = 0,
 }: SreIncidentBriefPanelProps) {
   const [summary, setSummary] = useState(initialSummary ?? "");
   const [provider, setProvider] = useState(initialProvider);
@@ -74,8 +80,7 @@ export function SreIncidentBriefPanel({
               Evidence brief
             </CardTitle>
             <CardDescription>
-              Streamed Markdown grounded in cited incident evidence. This is
-              separate from the saved investigation report snapshot.
+              A shareable summary of the evidence used for this brief, with findings and gaps. Regenerate after collecting new evidence.
             </CardDescription>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -87,7 +92,7 @@ export function SreIncidentBriefPanel({
                 disabled={isStreaming}
               />
             )}
-            <GenerateEvidenceBriefButton
+            {canGenerate && <GenerateEvidenceBriefButton
               incidentId={incidentId}
               hasBrief={hasBrief || Boolean(summary)}
               onStreamStart={() => {
@@ -110,13 +115,18 @@ export function SreIncidentBriefPanel({
               onStreamError={() => {
                 setIsStreaming(false);
               }}
-            />
+            />}
           </div>
         </div>
       </CardHeader>
       <CardContent className="min-h-0 flex-1 overflow-hidden">
         {summary || isStreaming ? (
           <div className="flex h-full min-h-0 flex-col gap-3">
+            {evidenceCount !== null && (
+              <p className="text-sm text-muted-foreground">
+                This saved brief used {evidenceCount} evidence item{evidenceCount === 1 ? "" : "s"}. The incident currently has {totalEvidenceCount} saved item{totalEvidenceCount === 1 ? "" : "s"}; evidence outside the incident time window is excluded. Regenerate to include newly collected evidence within that window.
+              </p>
+            )}
             <div className="flex shrink-0 flex-wrap items-center gap-2">
               {confidenceScore != null && (
                 <Badge

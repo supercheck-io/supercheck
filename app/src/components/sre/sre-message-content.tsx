@@ -45,7 +45,7 @@ type ParsedSreChart = {
   title?: string;
   description?: string;
   type: "area" | "bar" | "line";
-  data: Array<Record<string, string | number>>;
+  data: Array<Record<string, string | number | null>>;
   series: Array<{ key: string; label: string }>;
   sources: Array<{
     label: string;
@@ -104,8 +104,8 @@ function splitMarkdownTableRow(line: string) {
     .trim()
     .replace(/^\|/, "")
     .replace(/\|$/, "")
-    .split("|")
-    .map((cell) => cell.trim());
+    .split(/(?<!\\)\|/)
+    .map((cell) => cell.trim().replace(/\\\|/g, "|"));
 }
 
 function parseSreChartBlock(value: string): ParsedSreChart | null {
@@ -197,7 +197,7 @@ function parseSreChartBlock(value: string): ParsedSreChart | null {
 
     const itemRecord = item as Record<string, unknown>;
     const labelValue = itemRecord[xKey];
-    const row: Record<string, string | number> = {
+    const row: Record<string, string | number | null> = {
       label:
         typeof labelValue === "number" || typeof labelValue === "string"
           ? String(labelValue).slice(0, 80)
@@ -209,7 +209,7 @@ function parseSreChartBlock(value: string): ParsedSreChart | null {
       row[`series${index}`] =
         typeof rawValue === "number" && Number.isFinite(rawValue)
           ? rawValue
-          : 0;
+          : null;
     });
 
     return row.label ? [row] : [];
@@ -322,7 +322,7 @@ function SreInlineChart({ chart }: { chart: ParsedSreChart }) {
                     {metric.label}
                   </span>
                   <span className="block font-mono text-xs font-medium tabular-nums">
-                    {metric.value}
+                    {metric.value ?? "No data"}
                   </span>
                 </div>
               ))}

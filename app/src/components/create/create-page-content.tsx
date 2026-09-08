@@ -215,7 +215,7 @@ export function CreatePageContent({
           icon: <Boxes size={20} className="text-sky-500" />,
           title: "Service",
           description: "Define service topology",
-          onClick: () => router.push("/org-admin?tab=services"),
+          onClick: () => router.push("/services"),
         }
       : null,
     capabilities.canConfigureSreConnectors

@@ -39,6 +39,7 @@ export function SreIncidentDetailPageClient({
 
   return (
     <SreIncidentDetailView
+      key={`${incidentId}:${initialTab}`}
       detail={incidentResult.detail}
       services={servicesResult.success ? servicesResult.services : []}
       initialTab={initialTab}
