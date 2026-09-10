@@ -185,4 +185,4 @@ supercheck.config.local.js
 supercheck.config.local.mjs
 .opencode
 .tokensave
-.agents/
+
