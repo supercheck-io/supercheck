@@ -1,6 +1,7 @@
 import { streamText, stepCountIs, type LanguageModel, type ToolSet } from "ai";
 
 import { getActualModelName, getProviderModel, validateAIConfiguration } from "@/lib/ai/ai-provider";
+import { logger } from "@/lib/logger/index";
 import { assertSreAgentPromptWithinBudget, resolveSreAgentBudget, type SreAgentBudgetInput } from "./budget-manager";
 
 export type SreAgentRunEvent = {
@@ -52,22 +53,33 @@ export async function runSreAgent<TTools extends ToolSet = ToolSet>(input: RunSr
     stopWhen: stepCountIs(budget.maxSteps),
     maxOutputTokens: budget.maxOutputTokens,
     abortSignal,
-    onStepFinish: input.onStepFinish
-      ? async (event) => {
-          stepIndex += 1;
-          await input.onStepFinish?.({
-            modelId,
-            stepIndex,
-            elapsedMs: Date.now() - startedAt,
-            event,
-          });
-        }
-      : undefined,
+    onStepFinish: async (event) => {
+      stepIndex += 1;
+      // Record counts only, never prompts, evidence, tool arguments, or responses.
+      // Includes specialist calls and completed steps of subsequently failed runs.
+      logger.info({
+        module: "sre-agent-usage",
+        modelId,
+        stepIndex,
+        elapsedMs: Date.now() - startedAt,
+        inputTokens: event.usage.inputTokens ?? null,
+        outputTokens: event.usage.outputTokens ?? null,
+        totalTokens: event.usage.totalTokens ?? null,
+        finishReason: event.finishReason,
+      }, "SRE model step usage");
+      await input.onStepFinish?.({
+        modelId,
+        stepIndex,
+        elapsedMs: Date.now() - startedAt,
+        event,
+      });
+    },
   });
 
-  const [text, finishReason] = await Promise.all([
+  const [text, finishReason, usage] = await Promise.all([
     result.text,
     result.finishReason,
+    result.totalUsage,
   ]);
   // Streams can resolve partial text after a provider error or cancellation.
   // Such output must not become a completed, billable investigation.
@@ -83,6 +95,11 @@ export async function runSreAgent<TTools extends ToolSet = ToolSet>(input: RunSr
   return {
     modelId,
     text: normalizedText,
+    usage: {
+      inputTokens: usage.inputTokens ?? null,
+      outputTokens: usage.outputTokens ?? null,
+      totalTokens: usage.totalTokens ?? null,
+    },
     finishReason,
   };
 }

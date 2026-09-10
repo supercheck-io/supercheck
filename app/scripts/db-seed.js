@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+const { getDatabaseSSLConfig } = require("./db-ssl.js");
 
 /**
  * Database Seed Script
@@ -62,7 +63,7 @@ const PLAN_LIMITS_SEED = [
     playwrightMinutesIncluded: 3000,
     k6VuMinutesIncluded: 20000,
     aiCreditsIncluded: 100,
-    sreInvestigationUnitsIncluded: "10.0000",
+    sreInvestigationUnitsIncluded: "25.0000",
     runningCapacity: 5,
     queuedCapacity: 50,
     maxTeamMembers: 5,
@@ -83,7 +84,7 @@ const PLAN_LIMITS_SEED = [
     playwrightMinutesIncluded: 10000,
     k6VuMinutesIncluded: 75000,
     aiCreditsIncluded: 300,
-    sreInvestigationUnitsIncluded: "50.0000",
+    sreInvestigationUnitsIncluded: "100.0000",
     runningCapacity: 10,
     queuedCapacity: 100,
     maxTeamMembers: 25,
@@ -143,7 +144,7 @@ const OVERAGE_PRICING_SEED = [
 /**
  * Seed plan_limits table
  */
-async function seedPlanLimits(client) {
+async function seedPlanLimits(client, { preserveExisting = true } = {}) {
   log("Seeding plan_limits table...");
 
   // Check if table exists
@@ -221,6 +222,7 @@ async function seedPlanLimits(client) {
           aggregated_data_retention_days = EXCLUDED.aggregated_data_retention_days,
           job_data_retention_days = EXCLUDED.job_data_retention_days,
           updated_at = NOW()
+        WHERE ${!preserveExisting}
       `;
       log(`Upserted plan: ${plan.plan}`);
     } catch (err) {
@@ -236,7 +238,7 @@ async function seedPlanLimits(client) {
 /**
  * Seed overage_pricing table
  */
-async function seedOveragePricing(client) {
+async function seedOveragePricing(client, { preserveExisting = true } = {}) {
   log("Seeding overage_pricing table...");
 
   // Check if table exists
@@ -293,6 +295,7 @@ async function seedOveragePricing(client) {
           ai_credit_price_cents = EXCLUDED.ai_credit_price_cents,
           sre_investigation_unit_price_cents = EXCLUDED.sre_investigation_unit_price_cents,
           updated_at = NOW()
+        WHERE ${!preserveExisting}
       `;
       log(`Upserted overage pricing: ${pricing.plan}`);
     } catch (err) {
@@ -347,17 +350,20 @@ async function main() {
   log("Starting database seeding...");
   log(`Database: ${DATABASE_URL.replace(/:[^:@]*@/, ":***@")}`);
 
-  const client = postgres(DATABASE_URL);
+  const client = postgres(DATABASE_URL, { ssl: getDatabaseSSLConfig() });
 
   try {
+    // Replacing configured commercial terms requires an explicit operator flag.
+    const options = { preserveExisting: !process.argv.includes("--reset-plan-defaults") };
+
     // Seed plan_limits
-    if (!(await seedPlanLimits(client))) {
+    if (!(await seedPlanLimits(client, options))) {
       await client.end();
       process.exit(1);
     }
 
     // Seed overage_pricing
-    if (!(await seedOveragePricing(client))) {
+    if (!(await seedOveragePricing(client, options))) {
       await client.end();
       process.exit(1);
     }

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+const { getDatabaseSSLConfig } = require("./db-ssl.js");
 
 /**
  * Simple and Robust Database Migration Script
@@ -6,6 +7,7 @@
  */
 
 const postgres = require("postgres");
+const { isIgnorableMigrationStatementError } = require("./migration-errors.js");
 const fs = require("fs");
 const path = require("path");
 const {
@@ -126,39 +128,6 @@ function logWarning(message) {
   console.log(`[${new Date().toISOString()}] [WARNING] ${message}`);
 }
 
-function isIgnorableMigrationStatementError(statement, errorMessage) {
-  const normalizedStatement = statement.toLowerCase().replace(/\s+/g, " ").trim();
-
-  if (
-    errorMessage.includes("already exists") ||
-    errorMessage.includes("duplicate key value") ||
-    (errorMessage.includes("constraint") && errorMessage.includes("already exists"))
-  ) {
-    return true;
-  }
-
-  if (!errorMessage.includes("does not exist")) {
-    return false;
-  }
-
-  if (normalizedStatement.includes(" drop column ")) {
-    return errorMessage.includes("column");
-  }
-
-  if (normalizedStatement.includes(" drop constraint ")) {
-    return errorMessage.includes("constraint");
-  }
-
-  if (normalizedStatement.startsWith("drop index ")) {
-    return errorMessage.includes("index") || errorMessage.includes("relation");
-  }
-
-  if (normalizedStatement.startsWith("drop table ")) {
-    return errorMessage.includes("table") || errorMessage.includes("relation");
-  }
-
-  return false;
-}
 
 function isMissingDatabaseError(error) {
   if (!error) return false;
@@ -190,7 +159,7 @@ async function waitForConnection(connectionString, connectionLabel, options = {}
     let client;
 
     try {
-      client = postgres(connectionString);
+      client = postgres(connectionString, { ssl: getDatabaseSSLConfig() });
       await client`SELECT 1`;
       logSuccess(`${connectionLabel} is ready`);
       return true;
@@ -233,7 +202,7 @@ async function createDatabaseIfNotExists() {
 
   try {
     // Try to connect to the target database
-    const targetClient = postgres(TARGET_DATABASE_URL);
+    const targetClient = postgres(TARGET_DATABASE_URL, { ssl: getDatabaseSSLConfig() });
     await targetClient`SELECT 1`;
     await targetClient.end();
     logSuccess(`Database '${TARGET_DB_NAME}' exists and is accessible`);
@@ -243,7 +212,7 @@ async function createDatabaseIfNotExists() {
       log(`Database '${TARGET_DB_NAME}' does not exist, creating it...`);
 
       try {
-        const adminClient = postgres(ADMIN_DATABASE_URL);
+        const adminClient = postgres(ADMIN_DATABASE_URL, { ssl: getDatabaseSSLConfig() });
         const quotedName = `"${TARGET_DB_NAME.replace(/"/g, '""')}"`;  
         await adminClient.unsafe(`CREATE DATABASE ${quotedName}`);
         await adminClient.end();
@@ -373,7 +342,7 @@ async function runMigrations(client) {
 
             // Log but don't fail on certain expected errors
             const errorMsg = stmtErr.message.toLowerCase();
-            if (isIgnorableMigrationStatementError(statement, errorMsg)) {
+            if (isIgnorableMigrationStatementError(statement, errorMsg, stmtErr.code)) {
               log(`Skipping statement (idempotent): ${stmtErr.message}`);
             } else {
               // Re-throw unexpected errors

@@ -44,14 +44,8 @@ function getPolarPlugin() {
   }
 
   try {
-     
-    const {
-      polar,
-      usage,
-      webhooks,
-    } = require("@polar-sh/better-auth");
+    const { polar, webhooks } = require("@polar-sh/better-auth");
     const { Polar } = require("@polar-sh/sdk");
-     
 
     const config = getPolarConfig()!;
 
@@ -98,11 +92,10 @@ function getPolarPlugin() {
         // Checkout and portal are intentionally exposed through Supercheck's
         // own billing routes. Those routes enforce active-organization
         // ownership and fixed products/redirects before calling Polar.
-        usage(),
         webhooks({
           secret: config.webhookSecret!,
           // Customer lifecycle handlers - critical for linking customer to organization
-           
+
           onCustomerCreated: async (payload: any) => {
             console.log("[Polar] Webhook: customer.created");
             const { handleCustomerCreated } = await import(
@@ -111,7 +104,7 @@ function getPolarPlugin() {
             await handleCustomerCreated(payload);
           },
           // Subscription lifecycle handlers
-           
+
           onSubscriptionActive: async (payload: any) => {
             console.log("[Polar] Webhook: subscription.active");
             const { handleSubscriptionActive } = await import(
@@ -119,7 +112,7 @@ function getPolarPlugin() {
             );
             await handleSubscriptionActive(payload);
           },
-           
+
           onSubscriptionCreated: async (payload: any) => {
             console.log("[Polar] Webhook: subscription.created");
             const { handleSubscriptionCreated } = await import(
@@ -127,7 +120,7 @@ function getPolarPlugin() {
             );
             await handleSubscriptionCreated(payload);
           },
-           
+
           onSubscriptionUpdated: async (payload: any) => {
             console.log("[Polar] Webhook: subscription.updated");
             const { handleSubscriptionUpdated } = await import(
@@ -135,7 +128,7 @@ function getPolarPlugin() {
             );
             await handleSubscriptionUpdated(payload);
           },
-           
+
           onSubscriptionCanceled: async (payload: any) => {
             console.log("[Polar] Webhook: subscription.canceled");
             const { handleSubscriptionCanceled } = await import(
@@ -144,7 +137,7 @@ function getPolarPlugin() {
             await handleSubscriptionCanceled(payload);
           },
           // Handle subscription uncancellation - user reverses cancellation during grace period
-           
+
           onSubscriptionUncanceled: async (payload: any) => {
             console.log("[Polar] Webhook: subscription.uncanceled");
             const { handleSubscriptionUncanceled } = await import(
@@ -153,7 +146,7 @@ function getPolarPlugin() {
             await handleSubscriptionUncanceled(payload);
           },
           // CRITICAL: Handle subscription revocation - immediate access termination
-           
+
           onSubscriptionRevoked: async (payload: any) => {
             console.log("[Polar] Webhook: subscription.revoked");
             const { handleSubscriptionRevoked } = await import(
@@ -163,8 +156,8 @@ function getPolarPlugin() {
           },
           // Order creation handler
           // Do NOT activate subscription on order.created.
-          // Subscription activation must happen on subscription.active/order.paid.
-           
+          // Subscription activation must happen on subscription.active.
+
           onOrderCreated: async (payload: any) => {
             console.log("[Polar] Webhook: order.created");
             const { handleOrderCreated } = await import(
@@ -173,7 +166,7 @@ function getPolarPlugin() {
             await handleOrderCreated(payload);
           },
           // Payment confirmation handler
-           
+
           onOrderPaid: async (payload: any) => {
             console.log("[Polar] Webhook: order.paid");
             const { handleOrderPaid } = await import(
@@ -190,7 +183,7 @@ function getPolarPlugin() {
             await handleCustomerStateChanged();
           },
           // CRITICAL: Handle customer deletion - revoke access immediately
-           
+
           onCustomerDeleted: async (payload: any) => {
             console.log("[Polar] Webhook: customer.deleted");
             const { handleCustomerDeleted } = await import(
@@ -199,7 +192,7 @@ function getPolarPlugin() {
             await handleCustomerDeleted(payload);
           },
           // Catch-all for logging and handling any other events
-           
+
           onPayload: async (payload: any) => {
             // Log all events for debugging/monitoring
             console.log("[Polar] Webhook received:", payload.type);
@@ -240,7 +233,9 @@ function getCaptchaPlugin() {
     return null;
   }
 
-  console.log("[Better Auth] CAPTCHA protection enabled (Cloudflare Turnstile)");
+  console.log(
+    "[Better Auth] CAPTCHA protection enabled (Cloudflare Turnstile)",
+  );
 
   return captcha({
     provider: "cloudflare-turnstile",
@@ -260,21 +255,23 @@ export const auth = betterAuth({
     process.env.NODE_ENV === "production"
       ? (() => {
           const origins: string[] = [];
-          
+
           // Always include the app URL
           if (process.env.NEXT_PUBLIC_APP_URL) {
             origins.push(process.env.NEXT_PUBLIC_APP_URL);
           } else if (process.env.BETTER_AUTH_URL) {
             origins.push(process.env.BETTER_AUTH_URL);
           }
-          
+
           // Add status page domain if configured
           const statusDomain = process.env.STATUS_PAGE_DOMAIN;
           if (statusDomain) {
             // Support wildcard subdomains for status pages
-            origins.push(`https://*.${statusDomain.replace(/^https?:\/\//, "")}`);
+            origins.push(
+              `https://*.${statusDomain.replace(/^https?:\/\//, "")}`,
+            );
           }
-          
+
           // Add any additional trusted origins from env (comma-separated)
           const additionalOrigins = process.env.TRUSTED_ORIGINS;
           if (additionalOrigins) {
@@ -284,7 +281,7 @@ export const auth = betterAuth({
               .filter(Boolean)
               .forEach((o) => origins.push(o));
           }
-          
+
           return origins.length > 0 ? origins : undefined;
         })()
       : undefined,
@@ -318,21 +315,25 @@ export const auth = betterAuth({
           // proves email ownership. The sign-up page sends x-invite-token header.
           const inviteToken = request?.headers?.get?.("x-invite-token");
           if (inviteToken) {
-            console.log(`Skipping verification email for invited user: ${user.email} (invite: ${inviteToken})`);
+            console.log(
+              `Skipping verification email for invited user: ${user.email} (invite: ${inviteToken})`,
+            );
             return;
           }
 
           // Rate limit by email address to prevent abuse
-          const emailRateLimit = await checkEmailVerificationRateLimit(user.email);
+          const emailRateLimit = await checkEmailVerificationRateLimit(
+            user.email,
+          );
           if (!emailRateLimit.allowed) {
             const resetTime = emailRateLimit.resetTime
               ? new Date(emailRateLimit.resetTime)
               : new Date();
             const remainingTime = Math.ceil(
-              (resetTime.getTime() - Date.now()) / 1000 / 60
+              (resetTime.getTime() - Date.now()) / 1000 / 60,
             );
             throw new Error(
-              `Too many verification email requests. Please try again in ${remainingTime} minutes.`
+              `Too many verification email requests. Please try again in ${remainingTime} minutes.`,
             );
           }
 
@@ -344,10 +345,10 @@ export const auth = betterAuth({
               ? new Date(ipRateLimit.resetTime)
               : new Date();
             const remainingTime = Math.ceil(
-              (resetTime.getTime() - Date.now()) / 1000 / 60
+              (resetTime.getTime() - Date.now()) / 1000 / 60,
             );
             throw new Error(
-              `Too many verification email requests from this location. Please try again in ${remainingTime} minutes.`
+              `Too many verification email requests from this location. Please try again in ${remainingTime} minutes.`,
             );
           }
 
@@ -358,7 +359,7 @@ export const auth = betterAuth({
           // The callback URL after verification should be sign-in with verified flag
           verificationUrl.searchParams.set(
             "callbackURL",
-            "/sign-in?verified=true"
+            "/sign-in?verified=true",
           );
           const modifiedUrl = verificationUrl.toString();
 
@@ -409,10 +410,10 @@ export const auth = betterAuth({
           ? new Date(emailRateLimit.resetTime)
           : new Date();
         const remainingTime = Math.ceil(
-          (resetTime.getTime() - Date.now()) / 1000 / 60
+          (resetTime.getTime() - Date.now()) / 1000 / 60,
         );
         throw new Error(
-          `Too many password reset attempts. Please try again in ${remainingTime} minutes.`
+          `Too many password reset attempts. Please try again in ${remainingTime} minutes.`,
         );
       }
 
@@ -423,10 +424,10 @@ export const auth = betterAuth({
           ? new Date(ipRateLimit.resetTime)
           : new Date();
         const remainingTime = Math.ceil(
-          (resetTime.getTime() - Date.now()) / 1000 / 60
+          (resetTime.getTime() - Date.now()) / 1000 / 60,
         );
         throw new Error(
-          `Too many password reset attempts from this location. Please try again in ${remainingTime} minutes.`
+          `Too many password reset attempts from this location. Please try again in ${remainingTime} minutes.`,
         );
       }
 
@@ -485,7 +486,7 @@ export const auth = betterAuth({
       // Disable automatic organization creation - we handle this manually
       allowUserToCreateOrganization: false,
       organizationLimit: parseInt(
-        process.env.MAX_ORGANIZATIONS_PER_USER || "5"
+        process.env.MAX_ORGANIZATIONS_PER_USER || "5",
       ),
       creatorRole: "org_owner",
       membershipLimit: 100,

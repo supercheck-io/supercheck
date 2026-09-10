@@ -37,7 +37,7 @@ const plans = [
             '3,000 Playwright minutes/month',
             '20,000 K6 VU minutes/month',
             '100 AI credits/month',
-            '10 AI SRE investigation units/month',
+            '25 completed AI SRE investigations/month',
             'Read-only evidence connectors',
             'Private Agent support',
             '5 team members',
@@ -60,7 +60,7 @@ const plans = [
             '10,000 Playwright minutes/month',
             '75,000 K6 VU minutes/month',
             '300 AI credits/month',
-            '50 AI SRE investigation units/month',
+            '100 completed AI SRE investigations/month',
             'Read-only evidence connectors',
             'Private Agent support',
             '25 team members',
@@ -79,7 +79,7 @@ const plans = [
         description: 'For large organizations',
         features: [
             'Unlimited monitors',
-            'Unlimited Playwright & K6 minutes',
+            'Custom Playwright & K6 allowances',
             'Custom AI credit pool or bring-your-own-provider',
             'Custom AI SRE investigation volume',
             'Custom connector and Private Agent limits',
@@ -100,7 +100,7 @@ const overagePricing = [
     { metric: 'Playwright minute', plus: '$0.03', pro: '$0.02' },
     { metric: 'K6 VU minute', plus: '$0.01', pro: '$0.01' },
     { metric: 'AI credit', plus: 'Hard limit', pro: 'Hard limit' },
-    { metric: 'AI SRE investigation unit', plus: '$0.50', pro: '$0.50' },
+    { metric: 'Completed AI SRE investigation', plus: '$0.50', pro: '$0.50' },
 ];
 
 const comparisonFeatures = [
@@ -110,7 +110,7 @@ const comparisonFeatures = [
             { name: 'Playwright minutes/month', plus: '3,000', pro: '10,000', selfHosted: 'Unlimited' },
             { name: 'K6 VU minutes/month', plus: '20,000', pro: '75,000', selfHosted: 'Unlimited' },
             { name: 'AI credits/month', plus: '100', pro: '300', selfHosted: 'Unlimited with BYO provider' },
-            { name: 'AI SRE investigation units/month', plus: '10', pro: '50', selfHosted: 'Unlimited' },
+            { name: 'Completed AI SRE investigations/month', plus: '25', pro: '100', selfHosted: 'Unlimited' },
             { name: 'Read-only evidence connectors', plus: 'Included', pro: 'Included', selfHosted: 'Self-managed' },
             { name: 'Private Agent support', plus: 'Included', pro: 'Included', selfHosted: 'Self-managed' },
             { name: 'Concurrent jobs', plus: '5', pro: '10', selfHosted: 'Unlimited' },
@@ -153,20 +153,32 @@ const comparisonFeatures = [
 
 const faqs = [
     {
+        question: 'How are browser execution minutes measured?',
+        answer: 'Playwright tests and synthetic monitors share your minute allowance. We measure execution milliseconds and round to four decimal places in minutes per run, without a whole-minute minimum. A five-second run uses 0.0833 minutes. Each location and executed retry contributes usage. HTTP, ping, and port checks do not consume these minutes. Failed or canceled executions can still consume compute usage.',
+    },
+    {
+        question: 'What does frequent synthetic monitoring cost?',
+        answer: 'Five monitors running for five seconds every five minutes in one location use approximately 3,599 Playwright minutes in a 30-day month: about $66.96 total on Plus, or within Pro’s $149 allowance. Longer runs, additional locations, retries, and other tests increase usage. This is an estimate before taxes.',
+    },
+    {
+        question: 'How are load tests measured?',
+        answer: 'K6 usage is peak virtual users multiplied by execution duration in minutes, rounded up to a whole VU-minute per run. This can exceed average active VU-time for ramping tests. Review your load profile and spending settings before running a large test.',
+    },
+    {
         question: 'Can I try Supercheck before subscribing?',
         answer: 'Yes! Try our free demo at demo.supercheck.dev \u2014 no signup required. When you\u2019re ready, choose a plan to get started.',
     },
     {
         question: 'Do unused minutes roll over?',
-        answer: 'No. Execution minutes, AI credits, and AI SRE investigation units reset monthly on your billing date.',
+        answer: 'No. Execution minutes, AI credits, and AI SRE investigation allowances reset monthly on your billing date.',
     },
     {
         question: 'How do AI credits work?',
-        answer: 'AI credits are a hard monthly pool for test generation and failure analysis. Each successful full AI SRE investigation uses one separate investigation unit; AI SRE chat, triage, and evidence briefs do not consume investigation units. Spending limits cap metered overages.',
+        answer: 'AI credits are a hard monthly pool for test generation and failure analysis. Each completed full AI SRE investigation report uses one separate investigation unit; a report is not a guaranteed diagnosis or resolution. Failed or timed-out runs and billing retries are not charged; a new completed investigation is a new unit. AI SRE chat, triage, and evidence briefs do not consume investigation units. Spending alerts and optional usage blocking help control overages; in-flight usage can exceed the configured limit.',
     },
     {
         question: 'Can I change plans anytime?',
-        answer: 'Yes. Upgrades take effect immediately with pro-rated billing. Downgrades apply at the next billing cycle.',
+        answer: 'Yes. Review the effective date and any prorated charge in the billing portal before confirming a plan change.',
     },
     {
         question: 'What payment methods do you accept?',
@@ -178,7 +190,7 @@ const faqs = [
     },
     {
         question: 'Do you offer enterprise plans?',
-        answer: 'Yes! Enterprise plans include unlimited usage, custom SLAs, dedicated account managers, and personalized onboarding. Contact hello@supercheck.io to discuss your needs.',
+        answer: 'Yes! Enterprise plans include agreed usage allowances, custom SLAs, dedicated account managers, and personalized onboarding. Contact hello@supercheck.io to discuss your needs.',
     },
 ];
 
@@ -273,7 +285,7 @@ export default function PricingPage() {
                 <div className="mb-20">
                     <h2 className="text-2xl font-bold text-center mb-8">Overage Pricing</h2>
                     <p className="text-center text-fd-muted-foreground mb-8 max-w-2xl mx-auto">
-                        Only pay for what you use beyond your included quota. No surprises.
+                        Prices are in USD before applicable taxes. Usage beyond your allowance is billed at the rates below.
                     </p>
                     <div className="max-w-2xl mx-auto">
                         <div className="rounded-lg border overflow-hidden">

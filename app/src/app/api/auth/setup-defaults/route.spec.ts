@@ -4,13 +4,14 @@ import { NextRequest } from "next/server";
 
 const mockPolarGetExternal = jest.fn();
 const mockPolarUpdateExternal = jest.fn();
+const mockPolarCreate = jest.fn();
 
 jest.mock("@polar-sh/sdk", () => ({
   Polar: jest.fn().mockImplementation(() => ({
     customers: {
       getExternal: mockPolarGetExternal,
       list: jest.fn(),
-      create: jest.fn(),
+      create: mockPolarCreate,
       update: jest.fn(),
       updateExternal: mockPolarUpdateExternal,
     },
@@ -19,6 +20,7 @@ jest.mock("@polar-sh/sdk", () => ({
 
 jest.mock("@/utils/db", () => ({
   db: {
+    query: { organization: { findFirst: jest.fn() } },
     select: jest.fn(),
     update: jest.fn(),
     transaction: jest.fn(),
@@ -88,7 +90,14 @@ describe("POST /api/auth/setup-defaults", () => {
     });
     mockPolarGetExternal.mockResolvedValue({ id: "customer-1" });
     mockPolarUpdateExternal.mockResolvedValue({ id: "customer-1" });
-    updateWhere.mockResolvedValue(undefined);
+    (db.query.organization.findFirst as jest.Mock).mockResolvedValue({
+      polarCustomerId: null,
+    });
+    updateWhere.mockReturnValue({
+      returning: jest
+        .fn()
+        .mockResolvedValue([{ polarCustomerId: "customer-1" }]),
+    });
     mockDb.update.mockReturnValue({ set: updateSet });
   });
 
@@ -106,18 +115,65 @@ describe("POST /api/auth/setup-defaults", () => {
 
     expect(response.status).toBe(200);
     expect(mockPolarGetExternal).toHaveBeenCalledTimes(1);
+    expect(mockPolarGetExternal).toHaveBeenCalledWith({
+      externalId: "organization:org-owned",
+    });
     expect(updateSet).toHaveBeenCalledWith({ polarCustomerId: "customer-1" });
     expect(updateWhere).toHaveBeenCalledTimes(1);
     expect(mockDb.transaction).not.toHaveBeenCalled();
+  });
+
+  it("preserves an existing paid customer binding", async () => {
+    mockDb.select
+      .mockReturnValueOnce(selectResult([{ emailVerified: true }], true))
+      .mockReturnValueOnce(
+        selectResult([{ organizationId: "org-owned", role: "org_owner" }]),
+      );
+    (db.query.organization.findFirst as jest.Mock).mockResolvedValue({
+      polarCustomerId: "legacy-paid-customer",
+    });
+    expect((await POST(request())).status).toBe(200);
+    expect(mockPolarGetExternal).not.toHaveBeenCalled();
+    expect(mockDb.update).not.toHaveBeenCalled();
+  });
+
+  it("creates separate external customer identities for two owned organizations", async () => {
+    mockDb.select
+      .mockReturnValueOnce(selectResult([{ emailVerified: true }], true))
+      .mockReturnValueOnce(
+        selectResult([
+          { organizationId: "org-a", role: "org_owner" },
+          { organizationId: "org-b", role: "org_owner" },
+        ]),
+      );
+    mockPolarGetExternal.mockRejectedValue({ statusCode: 404 });
+    mockPolarCreate
+      .mockResolvedValueOnce({ id: "customer-a" })
+      .mockResolvedValueOnce({ id: "customer-b" });
+    expect((await POST(request())).status).toBe(200);
+    expect(mockPolarCreate).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        externalId: "organization:org-a",
+        metadata: expect.objectContaining({
+          referenceId: "org-a",
+          userId: "user-1",
+        }),
+      }),
+    );
+    expect(mockPolarCreate).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ externalId: "organization:org-b" }),
+    );
+    expect(updateSet).toHaveBeenCalledWith({ polarCustomerId: "customer-a" });
+    expect(updateSet).toHaveBeenCalledWith({ polarCustomerId: "customer-b" });
   });
 
   it("does not establish billing bindings for organizations the user does not own", async () => {
     mockDb.select
       .mockReturnValueOnce(selectResult([{ emailVerified: true }], true))
       .mockReturnValueOnce(
-        selectResult([
-          { organizationId: "org-invited", role: "org_admin" },
-        ]),
+        selectResult([{ organizationId: "org-invited", role: "org_admin" }]),
       );
 
     const response = await POST(request());

@@ -71,6 +71,7 @@ import {
   handleSubscriptionPastDue,
   handleSubscriptionUpdated,
   handleOrderPaid,
+  handleCustomerCreated,
 } from "./polar-webhooks";
 import { runOrderedPolarEvent } from "./polar-event-transaction";
 
@@ -96,6 +97,27 @@ describe("Polar webhook helpers", () => {
 
     return { set };
   }
+
+  it("binds organization-scoped customer events only after checking the metadata owner", async () => {
+    (db.query.organization.findFirst as jest.Mock).mockResolvedValue({ id: "org-a", polarCustomerId: null });
+    (db.query.member.findFirst as jest.Mock).mockResolvedValue({ id: "owner-membership" });
+    const returning = jest.fn().mockResolvedValue([{ id: "org-a" }]);
+    const where = jest.fn().mockReturnValue({ returning });
+    const set = jest.fn().mockReturnValue({ where });
+    (db.update as jest.Mock).mockReturnValue({ set });
+    await handleCustomerCreated({ data: {
+      id: "customer-a", externalId: "organization:org-a",
+      metadata: { referenceId: "org-a", userId: "owner-a" },
+    } });
+    expect(db.query.member.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: { op: "and", args: [
+        { op: "eq", left: "member.organizationId", right: "org-a" },
+        { op: "eq", left: "member.userId", right: "owner-a" },
+        { op: "eq", left: "member.role", right: "org_owner" },
+      ] },
+    }));
+    expect(set).toHaveBeenCalledWith({ polarCustomerId: "customer-a" });
+  });
 
   describe("getSubscriptionDatesFromPayload", () => {
     it("parses Polar snake_case current period dates", () => {

@@ -1,137 +1,114 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/utils/db';
-import { organization as orgTable, projects, member, projectMembers, session, invitation, user as userTable } from '@/db/schema';
-import { getCurrentUser } from '@/lib/session';
-import { eq, and, gte, desc, sql } from 'drizzle-orm';
-import { auth } from '@/utils/auth';
-import { headers } from 'next/headers';
-import { randomUUID } from 'crypto';
-import { isCloudHosted, isPolarEnabled, getPolarConfig } from '@/lib/feature-flags';
-import { requireSameOriginRequest } from '@/lib/security/same-origin';
+import { NextRequest, NextResponse } from "next/server";
+import { db } from "@/utils/db";
+import {
+  organization as orgTable,
+  projects,
+  member,
+  projectMembers,
+  session,
+  invitation,
+  user as userTable,
+} from "@/db/schema";
+import { getCurrentUser } from "@/lib/session";
+import { eq, and, gte, desc, sql, isNull } from "drizzle-orm";
+import { auth } from "@/utils/auth";
+import { headers } from "next/headers";
+import { randomUUID } from "crypto";
+import {
+  isCloudHosted,
+  isPolarEnabled,
+  getPolarConfig,
+} from "@/lib/feature-flags";
+import { requireSameOriginRequest } from "@/lib/security/same-origin";
 
 /**
- * Ensure Polar customer exists and is linked to organization
- * This is critical for social auth (GitHub/Google) signups where:
- * - The Polar customer may not have been created (if Better Auth plugin didn't trigger)
- * - The customer data (email, name) may be incomplete
- * 
- * This function will:
- * 1. Try to find existing customer by externalId (user.id)
- * 2. If not found, try to find by email
- * 3. If still not found, CREATE a new customer
- * 4. Link the customer to the organization
- * 5. Update the customer with correct email/name
+ * Provision one Polar customer per organization. Preserve existing customer IDs:
+ * legacy bindings may have paid subscriptions and require explicit migration.
  */
 async function ensurePolarCustomerAndLink(
-  userId: string, 
-  userEmail: string, 
+  userId: string,
+  userEmail: string,
   userName: string | null,
-  organizationId: string
+  organizationId: string,
 ): Promise<string | null> {
-  if (!isPolarEnabled()) {
-    return null;
-  }
-
+  if (!isPolarEnabled()) return null;
   const config = getPolarConfig();
-  if (!config) {
-    console.log('[Polar] Config not available, skipping customer setup');
-    return null;
-  }
+  if (!config) return null;
 
   try {
-    const { Polar } = await import('@polar-sh/sdk');
+    const org = await db.query.organization.findFirst({
+      where: eq(orgTable.id, organizationId),
+      columns: { polarCustomerId: true },
+    });
+    if (!org) return null;
+    if (org.polarCustomerId) return org.polarCustomerId;
+
+    const { Polar } = await import("@polar-sh/sdk");
     const polarClient = new Polar({
       accessToken: config.accessToken,
       server: config.server,
     });
-
-    let customerId: string | null = null;
-
-    // Step 1: Try to find customer by externalId (user.id)
+    // A person may own several organizations. User ID/email are not billing
+    // tenant identifiers and must never select another organization's customer.
+    const externalId = `organization:${organizationId}`;
+    let customerId: string;
     try {
-      const existingCustomer = await polarClient.customers.getExternal({
-        externalId: userId,
-      });
-      if (existingCustomer?.id) {
-        customerId = existingCustomer.id;
-        console.log(`[Polar] Found existing customer by externalId: ${customerId}`);
+      customerId = (await polarClient.customers.getExternal({ externalId })).id;
+    } catch (error) {
+      if (
+        !(
+          error &&
+          typeof error === "object" &&
+          "statusCode" in error &&
+          error.statusCode === 404
+        )
+      ) {
+        throw error;
       }
-    } catch {
-      console.log(`[Polar] No customer found by externalId for user ${userId}`);
-    }
-
-    // Step 2: If not found by externalId, try to find by email
-    if (!customerId) {
       try {
-        const { result: customersByEmail } = await polarClient.customers.list({
-          email: userEmail,
-        });
-        const existingCustomer = customersByEmail.items[0];
-        if (existingCustomer?.id) {
-          customerId = existingCustomer.id;
-          console.log(`[Polar] Found existing customer by email: ${customerId}`);
-          
-          // Link this customer to the user by setting externalId
-          await polarClient.customers.update({
-            id: customerId,
-            customerUpdate: {
-              externalId: userId,
-              name: userName || userEmail,
-            },
-          });
-          console.log(`[Polar] ✅ Linked existing customer to user ${userId}`);
-        }
-      } catch (emailLookupError) {
-        console.log(`[Polar] Could not lookup customer by email:`, emailLookupError instanceof Error ? emailLookupError.message : emailLookupError);
-      }
-    }
-
-    // Step 3: If still not found, CREATE a new customer
-    if (!customerId) {
-      try {
-        const newCustomer = await polarClient.customers.create({
-          email: userEmail,
-          name: userName || userEmail,
-          externalId: userId,
-          metadata: {
-            userId: userId,
-            source: 'supercheck-setup-defaults',
-          },
-        });
-        customerId = newCustomer.id;
-        console.log(`[Polar] ✅ Created new customer ${customerId} for user ${userId} (${userEmail})`);
-      } catch (createError) {
-        console.error(`[Polar] Failed to create customer for user ${userId}:`, createError instanceof Error ? createError.message : createError);
-        return null;
-      }
-    }
-
-    // Step 4: Link customer to organization
-    if (customerId) {
-      await db
-        .update(orgTable)
-        .set({ polarCustomerId: customerId })
-        .where(eq(orgTable.id, organizationId));
-      console.log(`[Polar] ✅ Linked customer ${customerId} to organization ${organizationId}`);
-
-      // Step 5: Update customer with correct email/name (in case it was created with incomplete data)
-      try {
-        await polarClient.customers.updateExternal({
-          externalId: userId,
-          customerUpdateExternalID: {
+        customerId = (
+          await polarClient.customers.create({
+            externalId,
             email: userEmail,
             name: userName || userEmail,
-          },
-        });
-        console.log(`[Polar] ✅ Updated customer data for user ${userId}`);
-      } catch (updateError) {
-        console.log(`[Polar] Could not update customer data:`, updateError instanceof Error ? updateError.message : updateError);
+            metadata: {
+              userId,
+              referenceId: organizationId,
+              source: "supercheck-setup-defaults",
+            },
+          })
+        ).id;
+      } catch (createError) {
+        // A concurrent setup may have created the same external ID first.
+        // Resolve only this organization's identity; never fall back to email.
+        try {
+          customerId = (await polarClient.customers.getExternal({ externalId }))
+            .id;
+        } catch {
+          throw createError;
+        }
       }
     }
 
-    return customerId;
+    const [linked] = await db
+      .update(orgTable)
+      .set({ polarCustomerId: customerId })
+      .where(
+        and(eq(orgTable.id, organizationId), isNull(orgTable.polarCustomerId)),
+      )
+      .returning({ polarCustomerId: orgTable.polarCustomerId });
+    if (linked) return linked.polarCustomerId;
+
+    const current = await db.query.organization.findFirst({
+      where: eq(orgTable.id, organizationId),
+      columns: { polarCustomerId: true },
+    });
+    return current?.polarCustomerId ?? null;
   } catch (error) {
-    console.error('[Polar] Error in ensurePolarCustomerAndLink:', error);
+    console.error(
+      "[Polar] Customer setup failed:",
+      error instanceof Error ? error.message : "Unknown error",
+    );
     return null;
   }
 }
@@ -144,8 +121,8 @@ export async function POST(request: NextRequest) {
     const currentUser = await getCurrentUser();
     if (!currentUser) {
       return NextResponse.json(
-        { success: false, error: 'Not authenticated' },
-        { status: 401 }
+        { success: false, error: "Not authenticated" },
+        { status: 401 },
       );
     }
 
@@ -157,14 +134,19 @@ export async function POST(request: NextRequest) {
         .from(userTable)
         .where(eq(userTable.id, currentUser.id))
         .limit(1);
-      
+
       if (!userData?.emailVerified) {
-        console.log(`[setup-defaults] Skipping for unverified email: ${currentUser.email}`);
-        return NextResponse.json({
-          success: false,
-          error: 'Email verification required',
-          message: 'Please verify your email before proceeding'
-        }, { status: 403 });
+        console.log(
+          `[setup-defaults] Skipping for unverified email: ${currentUser.email}`,
+        );
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Email verification required",
+            message: "Please verify your email before proceeding",
+          },
+          { status: 403 },
+        );
       }
     }
 
@@ -186,19 +168,19 @@ export async function POST(request: NextRequest) {
         // they own so an unordered non-owner membership cannot mask an owned org.
         // Keep this sequential to avoid concurrent Polar customer creation.
         for (const ownedMembership of existingMemberships.filter(
-          (membership) => membership.role === 'org_owner'
+          (membership) => membership.role === "org_owner",
         )) {
           await ensurePolarCustomerAndLink(
             currentUser.id,
             currentUser.email,
             currentUser.name,
-            ownedMembership.organizationId
+            ownedMembership.organizationId,
           );
         }
       }
       return NextResponse.json({
         success: true,
-        message: 'User already has organization setup'
+        message: "User already has organization setup",
       });
     }
 
@@ -212,18 +194,21 @@ export async function POST(request: NextRequest) {
       .where(
         and(
           sql`LOWER(${invitation.email}) = LOWER(${currentUser.email})`,
-          eq(invitation.status, 'pending'),
-          gte(invitation.expiresAt, new Date())
-        )
+          eq(invitation.status, "pending"),
+          gte(invitation.expiresAt, new Date()),
+        ),
       )
       .orderBy(desc(invitation.expiresAt))
       .limit(1);
 
     if (recentInvitation) {
-      console.log(`User ${currentUser.email} was recently invited - not creating default organization`);
+      console.log(
+        `User ${currentUser.email} was recently invited - not creating default organization`,
+      );
       return NextResponse.json({
         success: true,
-        message: 'User was recently invited - skipping default organization setup',
+        message:
+          "User was recently invited - skipping default organization setup",
         pendingInvitationId: recentInvitation.id,
       });
     }
@@ -234,8 +219,8 @@ export async function POST(request: NextRequest) {
       // CRITICAL: Acquire an advisory lock for this user to serialize concurrent requests
       // Using hashCode of the user ID to get a consistent lock key
       // pg_advisory_xact_lock is automatically released when transaction ends
-      const userIdHash = currentUser.id.split('').reduce((a, b) => {
-        a = ((a << 5) - a) + b.charCodeAt(0);
+      const userIdHash = currentUser.id.split("").reduce((a, b) => {
+        a = (a << 5) - a + b.charCodeAt(0);
         return a & a;
       }, 0);
       await tx.execute(`SELECT pg_advisory_xact_lock(${userIdHash})`);
@@ -255,58 +240,70 @@ export async function POST(request: NextRequest) {
         return {
           existed: true as const,
           ownedOrganizationIds: existingMembershipsInTx
-            .filter((membership) => membership.role === 'org_owner')
+            .filter((membership) => membership.role === "org_owner")
             .map((membership) => membership.organizationId),
         };
       }
 
       // Create default organization
       const isSelfHosted = !isCloudHosted();
-      const [newOrg] = await tx.insert(orgTable).values({
-        name: `${currentUser.name}'s Organization`,
-        slug: randomUUID(),
-        createdAt: new Date(),
-        // Self-hosted: unlimited plan immediately
-        // Cloud: null plan until Polar subscription via webhook
-        subscriptionPlan: isSelfHosted ? 'unlimited' : null,
-        subscriptionStatus: isSelfHosted ? 'active' : 'none',
-      }).returning();
+      const [newOrg] = await tx
+        .insert(orgTable)
+        .values({
+          name: `${currentUser.name}'s Organization`,
+          slug: randomUUID(),
+          createdAt: new Date(),
+          // Self-hosted: unlimited plan immediately
+          // Cloud: null plan until Polar subscription via webhook
+          subscriptionPlan: isSelfHosted ? "unlimited" : null,
+          subscriptionStatus: isSelfHosted ? "active" : "none",
+        })
+        .returning();
 
       // Add user as owner of the organization
       await tx.insert(member).values({
         organizationId: newOrg.id,
         userId: currentUser.id,
-        role: 'org_owner',
+        role: "org_owner",
         createdAt: new Date(),
       });
 
       // Create default project
-      const [newProject] = await tx.insert(projects).values({
-        organizationId: newOrg.id,
-        name: process.env.DEFAULT_PROJECT_NAME || 'Default Project',
-        slug: randomUUID(),
-        description: 'Your default project for getting started',
-        isDefault: true,
-        status: 'active',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      }).returning();
+      const [newProject] = await tx
+        .insert(projects)
+        .values({
+          organizationId: newOrg.id,
+          name: process.env.DEFAULT_PROJECT_NAME || "Default Project",
+          slug: randomUUID(),
+          description: "Your default project for getting started",
+          isDefault: true,
+          status: "active",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .returning();
 
       // Add user as project editor (in unified RBAC, project ownership is handled by org ownership)
       await tx.insert(projectMembers).values({
         userId: currentUser.id,
         projectId: newProject.id,
-        role: 'project_editor',
+        role: "project_editor",
         createdAt: new Date(),
       });
 
-      return { existed: false as const, organization: newOrg, project: newProject };
+      return {
+        existed: false as const,
+        organization: newOrg,
+        project: newProject,
+      };
     });
 
     // Handle transaction result
     if (result.existed) {
       // Organization was created by another concurrent call
-      console.log(`[setup-defaults] Race condition detected - org already exists for user ${currentUser.email}`);
+      console.log(
+        `[setup-defaults] Race condition detected - org already exists for user ${currentUser.email}`,
+      );
       // Still ensure Polar customer exists in cloud mode
       if (isCloudHosted()) {
         for (const organizationId of result.ownedOrganizationIds) {
@@ -314,13 +311,13 @@ export async function POST(request: NextRequest) {
             currentUser.id,
             currentUser.email,
             currentUser.name,
-            organizationId
+            organizationId,
           );
         }
       }
       return NextResponse.json({
         success: true,
-        message: 'Organization already created by concurrent call'
+        message: "Organization already created by concurrent call",
       });
     }
 
@@ -328,7 +325,7 @@ export async function POST(request: NextRequest) {
     const sessionData = await auth.api.getSession({
       headers: await headers(),
     });
-    
+
     if (sessionData?.session?.token) {
       await db
         .update(session)
@@ -336,28 +333,35 @@ export async function POST(request: NextRequest) {
         .where(eq(session.token, sessionData.session.token));
     }
 
-    console.log(`✅ Created default org "${result.organization!.name}" and project "${result.project!.name}" for user ${currentUser.email}`);
+    console.log(
+      `✅ Created default org "${result.organization!.name}" and project "${result.project!.name}" for user ${currentUser.email}`,
+    );
 
     // Create Polar customer and link to organization (CLOUD MODE ONLY)
     // In self-hosted mode, this is skipped completely - no Polar integration needed
     // In cloud mode, email verification is already confirmed above, so we can safely create the customer
     if (isCloudHosted()) {
-      await ensurePolarCustomerAndLink(currentUser.id, currentUser.email, currentUser.name, result.organization!.id);
+      await ensurePolarCustomerAndLink(
+        currentUser.id,
+        currentUser.email,
+        currentUser.name,
+        result.organization!.id,
+      );
     }
 
     return NextResponse.json({
       success: true,
       data: {
         organization: result.organization,
-        project: result.project
+        project: result.project,
       },
-      message: 'Default organization and project created successfully'
+      message: "Default organization and project created successfully",
     });
   } catch (error) {
-    console.error('❌ Failed to create default org/project:', error);
+    console.error("❌ Failed to create default org/project:", error);
     return NextResponse.json(
-      { success: false, error: 'Failed to setup defaults' },
-      { status: 500 }
+      { success: false, error: "Failed to setup defaults" },
+      { status: 500 },
     );
   }
 }

@@ -21,20 +21,20 @@ function BillingSuccessContent() {
   const [showRetry, setShowRetry] = useState(false);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
   const attemptsRef = useRef(0);
+  const pollingGeneration = useRef(0);
 
   const checkoutId = searchParams.get("checkout_id");
 
   // Verify subscription is active before redirecting
   const verifySubscription = useCallback(async () => {
     try {
-      const response = await fetch("/api/billing/current");
+      const response = await fetch("/api/subscription/status", {
+        cache: "no-store",
+      });
       if (response.ok) {
         const data = await response.json();
         // Check if subscription is active
-        if (data.subscription?.status === "active" && data.subscription?.plan) {
-          setSubscriptionVerified(true);
-          setIsVerifying(false);
-          setShowRetry(false);
+        if (data.isActive && (data.plan === "plus" || data.plan === "pro")) {
           return true;
         }
       }
@@ -44,14 +44,25 @@ function BillingSuccessContent() {
     }
   }, []);
 
+  const stopPolling = useCallback(() => {
+    pollingGeneration.current++;
+    if (pollingRef.current) clearTimeout(pollingRef.current);
+  }, []);
+
   const startPolling = useCallback(() => {
+    stopPolling();
+    const generation = pollingGeneration.current;
     setIsVerifying(true);
     setShowRetry(false);
     attemptsRef.current = 0;
 
     const pollSubscription = async () => {
       const verified = await verifySubscription();
+      if (generation !== pollingGeneration.current) return;
       if (verified) {
+        setSubscriptionVerified(true);
+        setIsVerifying(false);
+        setShowRetry(false);
         return;
       }
 
@@ -68,7 +79,7 @@ function BillingSuccessContent() {
     };
 
     pollSubscription();
-  }, [verifySubscription]);
+  }, [verifySubscription, stopPolling]);
 
   // Start polling on mount - wrapped in setTimeout to avoid synchronous setState warning
   useEffect(() => {
@@ -79,9 +90,9 @@ function BillingSuccessContent() {
 
     return () => {
       clearTimeout(timeoutId);
-      if (pollingRef.current) clearTimeout(pollingRef.current);
+      stopPolling();
     };
-  }, [startPolling]);
+  }, [startPolling, stopPolling]);
 
   useEffect(() => {
     // Only start countdown after subscription is verified
@@ -121,7 +132,7 @@ function BillingSuccessContent() {
           <CardDescription className="text-base">
             {isVerifying
               ? "Please wait while we confirm your account. This usually takes just a few seconds."
-              : "Thank you! Your account has been activated and you now have access to all features."}
+              : "Thank you! Your subscription is active and your plan is ready to use."}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -129,7 +140,7 @@ function BillingSuccessContent() {
             <p>
               {isVerifying
                 ? "We're confirming your account setup. This may take a moment..."
-                : "Your account is now active. A confirmation email has been sent to your registered email address."}
+                : "You can review your subscription and invoices in Manage subscription."}
             </p>
           </div>
 

@@ -1,3 +1,4 @@
+const { getDatabaseSSLConfig } = require("./db-ssl.js");
 const DEFAULT_LOCK_TIMEOUT_MS = 5 * 60 * 1000;
 const DEFAULT_RETRY_DELAY_MS = 2000;
 
@@ -20,7 +21,7 @@ async function acquireMigrationLock(
     logError = () => undefined,
   } = {},
 ) {
-  const lockClient = postgres(connectionString, { max: 1 });
+  const lockClient = postgres(connectionString, { max: 1, ssl: getDatabaseSSLConfig() });
   const deadline = Date.now() + timeoutMs;
 
   log(`Waiting up to ${timeoutMs}ms for the ${lockName} advisory lock...`);

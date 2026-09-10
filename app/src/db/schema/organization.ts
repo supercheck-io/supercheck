@@ -55,7 +55,7 @@ export const organization = pgTable("organization", {
   subscriptionEndsAt: timestamp("subscription_ends_at"), // When current subscription period ends
   
   // Usage tracking fields
-  playwrightMinutesUsed: integer("playwright_minutes_used").default(0),
+  playwrightMinutesUsed: numeric("playwright_minutes_used", { precision: 14, scale: 4, mode: "number" }).default(0),
   k6VuMinutesUsed: integer("k6_vu_minutes_used").default(0), // Changed from hours to minutes for consistency with Playwright
   aiCreditsUsed: integer("ai_credits_used").default(0), // AI credits used for AI fix and AI create features
   sreInvestigationUnitsUsed: numeric("sre_investigation_units_used", {
@@ -66,15 +66,9 @@ export const organization = pgTable("organization", {
     .default("0"),
   usagePeriodStart: timestamp("usage_period_start"),
   usagePeriodEnd: timestamp("usage_period_end"),
-}, () => ({
-  // SECURITY: Prevent unlimited plans in cloud mode
-  // Only allows unlimited plan when there's no Polar customer ID (self-hosted mode)
-  unlimitedPlanConstraint: sql`
-    CHECK (
-      subscription_plan != 'unlimited' OR polar_customer_id IS NULL
-    )
-  `,
-}));
+});
+// Cloud/self-hosted entitlement enforcement lives in SubscriptionService.
+// A database row cannot infer hosting mode from the presence of a Polar ID.
 
 /**
  * Maps users to organizations, defining their roles.

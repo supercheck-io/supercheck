@@ -264,6 +264,7 @@ export async function executeSreIncidentInvestigation(
           agentStateSnapshot: {
             mode: "sre_investigation_api",
             summary: result.text,
+            modelUsage: result.usage,
             finishReason: result.finishReason,
             evidenceCount: Number(incident.evidenceCount ?? 0),
             connectorEvidenceCount: Number(

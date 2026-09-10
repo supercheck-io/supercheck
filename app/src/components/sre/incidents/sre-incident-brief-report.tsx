@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { Copy, Download } from "lucide-react";
+import { Copy, Download, Maximize2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { MarkdownReportDialog } from "@/components/shared/markdown-report-dialog";
 import { SreMessageContent } from "@/components/sre/sre-message-content";
 
 type SreIncidentBriefReportProps = {
@@ -49,19 +50,44 @@ export function SreIncidentBriefReport({
   isStreaming = false,
 }: SreIncidentBriefReportProps) {
   const markdown = normalizeReportMarkdown(content, !isStreaming);
-  const [showSource, setShowSource] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   return (
-    <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-md border bg-muted/20">
-      <div className="flex justify-end border-b p-2">
-        <Button variant="ghost" size="sm" aria-pressed={showSource} onClick={() => setShowSource(!showSource)}>
-          {showSource ? "Show preview" : "Show Markdown"}
-        </Button>
+    <>
+      <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-md border bg-muted/20">
+        <div className="flex justify-end gap-1 border-b p-2">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setIsExpanded(true)}
+            aria-label="Expand evidence brief"
+            title="Expand evidence brief"
+          >
+            <Maximize2 className="h-4 w-4" />
+          </Button>
+        </div>
+        <div
+          role="region"
+          aria-label="Evidence brief content"
+          tabIndex={0}
+          aria-busy={isStreaming}
+          className="min-h-0 flex-1 overflow-auto break-words p-4 text-sm leading-6"
+        >
+          <SreMessageContent content={markdown} />
+        </div>
       </div>
-      <div role="region" aria-label="Evidence brief content" tabIndex={0} aria-busy={isStreaming} className="min-h-0 flex-1 overflow-auto break-words p-4 text-sm leading-6">
-        {showSource ? <pre className="whitespace-pre-wrap break-words font-mono text-xs">{markdown}</pre> : <SreMessageContent content={markdown} />}
-      </div>
-    </div>
+
+      <MarkdownReportDialog
+        open={isExpanded}
+        onClose={() => setIsExpanded(false)}
+        content={markdown}
+        isStreaming={isStreaming}
+        title="Evidence Brief"
+        description="Incident investigation report"
+        downloadFilename="incident-evidence-brief.md"
+        loadingMessage="Generating evidence brief..."
+      />
+    </>
   );
 }
 

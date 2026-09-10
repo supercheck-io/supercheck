@@ -1,6 +1,7 @@
+import { v7 as uuidv7 } from 'uuid';
 import { Injectable, Logger, Inject } from '@nestjs/common';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import * as schema from '../../db/schema';
 import { DB_PROVIDER_TOKEN } from './db.service';
 
@@ -42,34 +43,21 @@ export class UsageTrackerService {
     metadata?: Record<string, any>,
   ): Promise<{ blocked: boolean; reason?: string }> {
     try {
-      const minutes = Math.ceil(executionTimeMs / 1000 / 60);
-
-      // Get organization for billing period
-      const org = await this.db.query.organization.findFirst({
-        where: eq(schema.organization.id, organizationId),
-      });
-
-      // Update organization's usage counter
-      await this.db
-        .update(schema.organization)
-        .set({
-          playwrightMinutesUsed: sql`COALESCE(${schema.organization.playwrightMinutesUsed}, 0) + ${minutes}`,
-        })
-        .where(eq(schema.organization.id, organizationId));
-
-      // Record usage event for Polar sync (if cloud mode)
-      if (isPolarEnabled() && org) {
-        await this.recordUsageEvent(
-          organizationId,
-          'playwright_execution',
-          'playwright_minutes',
-          minutes,
-          'minutes',
-          metadata,
-          org.usagePeriodStart,
-          org.usagePeriodEnd,
-        );
+      if (!Number.isFinite(executionTimeMs) || executionTimeMs < 0) {
+        throw new Error('Invalid Playwright execution duration');
       }
+      // Match the four-decimal ledger precision before updating either sink.
+      // No whole-minute minimum: a five-second check uses 0.0833 minutes.
+      const minutes = Math.round((executionTimeMs / 60_000) * 10_000) / 10_000;
+
+      await this.recordUsageEvent(
+        organizationId,
+        'playwright_execution',
+        'playwright_minutes',
+        minutes,
+        'minutes',
+        metadata,
+      );
 
       this.logger.debug(
         `[Usage] Tracked ${minutes} Playwright minutes for org ${organizationId?.slice(0, 8)}...`,
@@ -102,32 +90,14 @@ export class UsageTrackerService {
       const durationMinutes = durationMs / 1000 / 60;
       const vuMinutes = Math.ceil(virtualUsers * durationMinutes);
 
-      // Get organization for billing period
-      const org = await this.db.query.organization.findFirst({
-        where: eq(schema.organization.id, organizationId),
-      });
-
-      // Update organization's usage counter
-      await this.db
-        .update(schema.organization)
-        .set({
-          k6VuMinutesUsed: sql`COALESCE(${schema.organization.k6VuMinutesUsed}, 0) + ${vuMinutes}`,
-        })
-        .where(eq(schema.organization.id, organizationId));
-
-      // Record usage event for Polar sync (if cloud mode)
-      if (isPolarEnabled() && org) {
-        await this.recordUsageEvent(
-          organizationId,
-          'k6_execution',
-          'k6_vu_minutes',
-          vuMinutes,
-          'vu_minutes',
-          metadata,
-          org.usagePeriodStart,
-          org.usagePeriodEnd,
-        );
-      }
+      await this.recordUsageEvent(
+        organizationId,
+        'k6_execution',
+        'k6_vu_minutes',
+        vuMinutes,
+        'vu_minutes',
+        metadata,
+      );
 
       this.logger.debug(
         `[Usage] Tracked ${vuMinutes} K6 VU minutes for org ${organizationId?.slice(0, 8)}...`,
@@ -168,62 +138,82 @@ export class UsageTrackerService {
     units: number,
     unitType: string,
     metadata: Record<string, any> | undefined,
-    periodStart: Date | null,
-    periodEnd: Date | null,
   ): Promise<void> {
-    const now = new Date();
-    const defaultPeriodStart = periodStart || now;
-    const defaultPeriodEnd =
-      periodEnd || new Date(now.getFullYear(), now.getMonth() + 1, 1);
-    let eventId: string | null = null;
-
-    try {
-      // Record usage event locally first
-      const result = await this.db.execute<{ id: string }>(sql`
-        INSERT INTO usage_events (
-          id, organization_id, event_type, event_name, units, unit_type,
-          metadata, synced_to_polar, billing_period_start, billing_period_end, created_at
-        ) VALUES (
-          gen_random_uuid(),
-          ${organizationId},
-          ${eventType},
-          ${eventName},
-          ${units},
-          ${unitType},
-          ${metadata ? JSON.stringify(metadata) : null},
-          false,
-          ${defaultPeriodStart.toISOString()},
-          ${defaultPeriodEnd.toISOString()},
-          NOW()
-        )
-        RETURNING id
-      `);
-
-      const resultArray = result as unknown as Array<{ id: string }>;
-      eventId = resultArray[0]?.id;
-
-      this.logger.debug(
-        `[Usage] Recorded usage event: ${eventType} for org ${organizationId?.slice(0, 8)}...`,
-      );
-    } catch (error) {
-      // Don't fail if usage_events table doesn't exist yet
-      this.logger.warn(
-        `[Usage] Failed to record usage event: ${error instanceof Error ? error.message : String(error)}`,
-      );
-      return;
+    if (!Number.isFinite(units) || units < 0) {
+      throw new Error('Invalid execution usage amount');
     }
+    const billable = isPolarEnabled();
+    const now = new Date();
+    const event = await this.db.transaction(async (tx) => {
+      // Serialize with subscription rollover and other usage writers before
+      // reading the period. Counter and durable ledger must commit together.
+      const [org] = await tx
+        .select()
+        .from(schema.organization)
+        .where(eq(schema.organization.id, organizationId))
+        .for('update');
+      if (!org) throw new Error('Billing organization not found');
 
-    // Sync to Polar immediately (non-blocking)
-    if (eventId) {
+      const runId = typeof metadata?.runId === 'string' ? metadata.runId : null;
+      if (billable && runId) {
+        const existing = await tx.query.usageEvents.findFirst({
+          where: and(
+            eq(schema.usageEvents.organizationId, organizationId),
+            eq(schema.usageEvents.eventType, eventType),
+            sql`${schema.usageEvents.metadata}->>'runId' = ${runId}`,
+          ),
+        });
+        // The scheduler will retry any unsynced existing event.
+        if (existing) return null;
+      }
+
+      await tx
+        .update(schema.organization)
+        .set(
+          eventType === 'k6_execution'
+            ? {
+                k6VuMinutesUsed: sql`COALESCE(${schema.organization.k6VuMinutesUsed}, 0) + ${units}`,
+              }
+            : {
+                playwrightMinutesUsed: sql`COALESCE(${schema.organization.playwrightMinutesUsed}, 0) + ${units}`,
+              },
+        )
+        .where(eq(schema.organization.id, organizationId));
+
+      if (!billable) return null;
+      const [created] = await tx
+        .insert(schema.usageEvents)
+        .values({
+          id: uuidv7(),
+          organizationId,
+          eventType,
+          eventName,
+          units: String(units),
+          unitType,
+          metadata,
+          syncedToPolar: false,
+          billingPeriodStart: org.usagePeriodStart ?? now,
+          billingPeriodEnd:
+            org.usagePeriodEnd ??
+            new Date(now.getFullYear(), now.getMonth() + 1, 1),
+          createdAt: now,
+        })
+        .returning({ id: schema.usageEvents.id });
+      if (!created) throw new Error('Usage ledger insert returned no event');
+      return created;
+    });
+
+    // External requests happen only after the ledger transaction commits.
+    if (event) {
       this.syncEventToPolar(
         organizationId,
-        eventId,
+        event.id,
         eventName,
         units,
         now,
-      ).catch((err: unknown) =>
+      ).catch((error: unknown) =>
         this.logger.warn(
-          `[Usage] Failed to sync to Polar: ${err instanceof Error ? err.message : String(err)}`,
+          `[Usage] Failed to sync to Polar: ${error instanceof Error ? error.message : String(error)}`,
         ),
       );
     }
@@ -273,6 +263,7 @@ export class UsageTrackerService {
 
       // Sync to Polar using the /v1/events/ingest endpoint
       const response = await fetch(`${polarUrl}/v1/events/ingest`, {
+        signal: AbortSignal.timeout(10000),
         method: 'POST',
         headers: {
           Authorization: `Bearer ${accessToken}`,

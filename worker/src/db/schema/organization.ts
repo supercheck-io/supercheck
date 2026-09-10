@@ -30,56 +30,50 @@ import { user } from './auth';
 /**
  * Represents an organization or a company account.
  */
-export const organization = pgTable(
-  'organization',
-  {
-    id: uuid('id')
-      .primaryKey()
-      .$defaultFn(() => sql`uuidv7()`),
-    name: text('name').notNull(),
-    slug: text('slug').unique(),
-    logo: text('logo'),
-    createdAt: timestamp('created_at').notNull(),
-    metadata: jsonb('metadata'),
+export const organization = pgTable('organization', {
+  id: uuid('id')
+    .primaryKey()
+    .$defaultFn(() => sql`uuidv7()`),
+  name: text('name').notNull(),
+  slug: text('slug').unique(),
+  logo: text('logo'),
+  createdAt: timestamp('created_at').notNull(),
+  metadata: jsonb('metadata'),
 
-    // Polar subscription fields
-    polarCustomerId: text('polar_customer_id'), // External customer ID in Polar
-    subscriptionPlan: text('subscription_plan').$type<
-      'plus' | 'pro' | 'unlimited'
-    >(), // Nullable: cloud users start without plan until subscription
-    subscriptionStatus: text('subscription_status')
-      .$type<'active' | 'canceled' | 'past_due' | 'none'>()
-      .default('none'),
-    subscriptionId: text('subscription_id'), // Polar subscription ID
+  // Polar subscription fields
+  polarCustomerId: text('polar_customer_id'), // External customer ID in Polar
+  subscriptionPlan: text('subscription_plan').$type<
+    'plus' | 'pro' | 'unlimited'
+  >(), // Nullable: cloud users start without plan until subscription
+  subscriptionStatus: text('subscription_status')
+    .$type<'active' | 'canceled' | 'past_due' | 'none'>()
+    .default('none'),
+  subscriptionId: text('subscription_id'), // Polar subscription ID
 
-    // Subscription period dates (from Polar webhook)
-    // These track the actual subscription billing cycle dates
-    subscriptionStartedAt: timestamp('subscription_started_at'), // When current subscription period started
-    subscriptionEndsAt: timestamp('subscription_ends_at'), // When current subscription period ends
+  // Subscription period dates (from Polar webhook)
+  // These track the actual subscription billing cycle dates
+  subscriptionStartedAt: timestamp('subscription_started_at'), // When current subscription period started
+  subscriptionEndsAt: timestamp('subscription_ends_at'), // When current subscription period ends
 
-    // Usage tracking fields
-    playwrightMinutesUsed: integer('playwright_minutes_used').default(0),
-    k6VuMinutesUsed: integer('k6_vu_minutes_used').default(0), // Changed from hours to minutes for consistency with Playwright
-    aiCreditsUsed: integer('ai_credits_used').default(0), // AI credits used for AI fix and AI create features
-    sreInvestigationUnitsUsed: numeric('sre_investigation_units_used', {
-      precision: 10,
-      scale: 4,
-    })
-      .notNull()
-      .default('0'),
-    usagePeriodStart: timestamp('usage_period_start'),
-    usagePeriodEnd: timestamp('usage_period_end'),
-  },
-  () => ({
-    // SECURITY: Prevent unlimited plans in cloud mode
-    // Only allows unlimited plan when there's no Polar customer ID (self-hosted mode)
-    unlimitedPlanConstraint: sql`
-    CHECK (
-      subscription_plan != 'unlimited' OR polar_customer_id IS NULL
-    )
-  `,
-  }),
-);
+  // Usage tracking fields
+  playwrightMinutesUsed: numeric('playwright_minutes_used', {
+    precision: 14,
+    scale: 4,
+    mode: 'number',
+  }).default(0),
+  k6VuMinutesUsed: integer('k6_vu_minutes_used').default(0), // Changed from hours to minutes for consistency with Playwright
+  aiCreditsUsed: integer('ai_credits_used').default(0), // AI credits used for AI fix and AI create features
+  sreInvestigationUnitsUsed: numeric('sre_investigation_units_used', {
+    precision: 10,
+    scale: 4,
+  })
+    .notNull()
+    .default('0'),
+  usagePeriodStart: timestamp('usage_period_start'),
+  usagePeriodEnd: timestamp('usage_period_end'),
+});
+// Cloud/self-hosted entitlement enforcement lives in the app SubscriptionService.
+// A database row cannot infer hosting mode from the presence of a Polar ID.
 
 /**
  * Maps users to organizations, defining their roles.

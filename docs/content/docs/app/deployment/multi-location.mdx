@@ -66,7 +66,7 @@ Queue names are dynamically created from enabled locations in Super Admin.
 | `eu-central` | `playwright-global`, `k6-eu-central`, `k6-global`, `monitor-eu-central` | EU Central worker |
 
 <Callout type="info">
-**Routing rules**: Playwright jobs go to `playwright-global` (any worker picks them up). K6 jobs target a single resolved location queue plus `k6-global`. Monitors run only on their configured location queues.
+**Routing rules**: Playwright jobs go to `playwright-global` (any worker picks them up). Each K6 job targets one resolved regional queue, or `k6-global` when any-location execution is allowed. Monitors run only on their configured location queues.
 </Callout>
 
 ---
@@ -94,8 +94,10 @@ Locations are managed in **Super Admin → Locations**.
 | **Disabled** | Toggled off — no queues created |
 
 <Callout type="info">
-Offline locations stay visible in the UI to prevent transient outages from silently removing regions from monitor configs. Monitors degrade gracefully to the online subset. K6 jobs remain queued until a matching worker comes online.
+Offline locations stay visible in the UI to prevent transient outages from silently removing regions from monitor configs. Monitors degrade gracefully to the online subset. New K6 submissions require a live worker advertising the resolved queue. Work already queued can wait for a matching worker to return.
 </Callout>
+
+Keep at least one worker running in each region where you offer monitoring. Monitor scheduling requires a live regional heartbeat and does not enqueue work to wake a region with zero workers. A region code labels the worker; it does not move execution geographically. Use a specific `WORKER_LOCATION` for each real region, since `local` consumes all regional queues.
 
 ### Project Location Restrictions
 

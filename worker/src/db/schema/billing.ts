@@ -159,6 +159,21 @@ export const usageEvents = pgTable(
       table.organizationId,
     ),
     eventTypeIdx: index('usage_events_event_type_idx').on(table.eventType),
+    // Durable billing retries look up a run within its organization and meter.
+    executionRunIdx: index('usage_events_execution_run_idx')
+      .on(
+        table.organizationId,
+        table.eventType,
+        sql`(${table.metadata}->>'runId')`,
+      )
+      .where(sql`(${table.metadata}->>'runId') IS NOT NULL`),
+    investigationRunIdx: index('usage_events_investigation_run_idx')
+      .on(
+        table.organizationId,
+        table.eventType,
+        sql`(${table.metadata}->>'investigationRunId')`,
+      )
+      .where(sql`(${table.metadata}->>'investigationRunId') IS NOT NULL`),
     syncedToPolarIdx: index('usage_events_synced_idx').on(table.syncedToPolar),
     billingPeriodIdx: index('usage_events_billing_period_idx').on(
       table.billingPeriodStart,

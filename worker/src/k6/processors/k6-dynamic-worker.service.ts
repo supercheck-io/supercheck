@@ -92,7 +92,9 @@ export class K6DynamicWorkerService implements OnModuleInit, OnModuleDestroy {
       this.subscriber = null;
     }
 
-    const closePromises = Array.from(this.workers.values()).map((w) => w.close());
+    const closePromises = Array.from(this.workers.values()).map((w) =>
+      w.close(),
+    );
     await Promise.allSettled(closePromises);
     this.workers.clear();
 
@@ -112,7 +114,9 @@ export class K6DynamicWorkerService implements OnModuleInit, OnModuleDestroy {
       queueName,
       async (job: Job<K6ExecutionTask>) => this.processJob(job),
       {
-        connection: this.connection.duplicate(),
+        // BullMQ creates and closes its own blocking connection. The service
+        // owns this shared command connection and closes it during shutdown.
+        connection: this.connection,
         concurrency: 1,
         lockDuration: 70 * 60 * 1000,
         stalledInterval: 30000,
@@ -208,10 +212,7 @@ export class K6DynamicWorkerService implements OnModuleInit, OnModuleDestroy {
       const parsed = message
         ? (JSON.parse(message) as { locationCodes?: string[] })
         : null;
-      if (
-        Array.isArray(parsed?.locationCodes) &&
-        parsed.locationCodes.length > 0
-      ) {
+      if (Array.isArray(parsed?.locationCodes)) {
         newQueues = parsed.locationCodes
           .filter(
             (code: string) =>
@@ -295,8 +296,8 @@ export class K6DynamicWorkerService implements OnModuleInit, OnModuleDestroy {
             if (stableRetries >= MAX_STABLE_RETRIES) {
               this.logger.log(
                 `Discovery retry: queue set stable for ${stableRetries} consecutive checks. ` +
-                `Stopping retry loop (${this.activeQueueNames.size} K6 queue(s)). ` +
-                `Pub/sub listener will handle further changes.`,
+                  `Stopping retry loop (${this.activeQueueNames.size} K6 queue(s)). ` +
+                  `Pub/sub listener will handle further changes.`,
               );
               this.discoveryRetryTimer = null;
               return;

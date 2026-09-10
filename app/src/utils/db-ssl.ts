@@ -5,7 +5,7 @@ import { isSelfHosted } from "@/lib/feature-flags";
  *
  * Simple, robust SSL detection for PostgreSQL connections:
  * - Self-hosted mode (SELF_HOSTED=true) → SSL OFF
- * - Cloud mode (SELF_HOSTED=false or not set) → SSL ON
+ * - Cloud mode (SELF_HOSTED=false or not set) → certificate-verified TLS ON
  *
  * @example
  * import { getSSLConfig } from '@/utils/db-ssl';
@@ -20,12 +20,12 @@ import { isSelfHosted } from "@/lib/feature-flags";
  * Determines the appropriate SSL configuration for PostgreSQL.
  *
  * - Self-hosted mode: SSL OFF (local PostgreSQL)
- * - Cloud mode: SSL ON (Neon, etc.)
+ * - Cloud mode: certificate-verified TLS ON (Neon, etc.)
  *
- * @returns 'require' for SSL connections, undefined for non-SSL
+ * @returns 'verify-full' for SSL connections, undefined for non-SSL
  */
-export function getSSLConfig(): "require" | undefined {
-  return isSelfHosted() ? undefined : "require";
+export function getSSLConfig(): "verify-full" | undefined {
+  return isSelfHosted() ? undefined : "verify-full";
 }
 
 /**
@@ -35,5 +35,5 @@ export function getSSLConfig(): "require" | undefined {
  * @returns true if SSL should be enabled
  */
 export function shouldEnableSSL(): boolean {
-  return getSSLConfig() === "require";
+  return getSSLConfig() === "verify-full";
 }

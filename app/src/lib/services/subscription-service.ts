@@ -200,7 +200,10 @@ export class SubscriptionService {
           console.error(
             `[SubscriptionService] Polar API error: ${response.status} (org: ${organizationId.substring(0, 8)}...)`,
           );
-          isValid = false;
+          // Only a definitive 404 proves the customer is missing. Preserve
+          // locally verified subscription access during provider/rate-limit
+          // failures, and do not cache them as an invalid customer.
+          return true;
         }
 
         // Cache the result

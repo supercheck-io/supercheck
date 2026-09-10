@@ -176,15 +176,16 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
   const handleManageSubscription = async () => {
     setOpeningPortal(true);
     try {
-
       const portalRes = await fetch("/api/billing/portal", {
-        method: 'POST',
-        credentials: 'include',
+        method: "POST",
+        credentials: "include",
       });
       if (!portalRes.ok) {
         const errorData = await portalRes.json().catch(() => ({}));
         throw new Error(
-          errorData?.error || errorData?.message || 'Failed to fetch portal URL'
+          errorData?.error ||
+            errorData?.message ||
+            "Failed to fetch portal URL",
         );
       }
       const portalData = await portalRes.json();
@@ -249,7 +250,7 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
   const periodEnd = new Date(data.subscription.currentPeriodEnd);
   const daysRemaining = Math.max(
     0,
-    Math.ceil((periodEnd.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+    Math.ceil((periodEnd.getTime() - Date.now()) / (1000 * 60 * 60 * 24)),
   );
 
   // Check if hard stop is active
@@ -257,9 +258,10 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
 
   // Calculate current period estimate using API-provided pricing
   // basePriceCents comes from API: Plus = 4900 ($49), Pro = 14900 ($149)
-  const basePrice = (data.subscription.basePriceCents || 4900) / 100;
-  const currentOverage = spending?.currentDollars || 0;
-  const estimatedTotal = basePrice + currentOverage;
+  const basePrice = (data.subscription.basePriceCents ?? 0) / 100;
+  const currentOverage = spending?.currentDollars;
+  const estimatedTotal =
+    currentOverage === undefined ? null : basePrice + currentOverage;
 
   return (
     <div className="space-y-4">
@@ -313,11 +315,13 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
             {/* Current Period Estimate - Minimal display */}
             <div className="text-right hidden sm:block">
               <p className="text-xs text-muted-foreground">
-                Estimated This Period
+                Estimated this period · USD, before tax
               </p>
               <p className="text-lg font-semibold">
-                ${estimatedTotal.toFixed(2)}
-                {currentOverage > 0 && (
+                {estimatedTotal === null
+                  ? "Usage estimate unavailable"
+                  : `$${estimatedTotal.toFixed(2)}`}
+                {currentOverage !== undefined && currentOverage > 0 && (
                   <span className="text-xs font-normal text-muted-foreground ml-1">
                     (${basePrice} + ${currentOverage.toFixed(2)} overage)
                   </span>

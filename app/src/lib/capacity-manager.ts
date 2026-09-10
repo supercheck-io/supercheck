@@ -921,10 +921,11 @@ export async function setupCapacityManagement(
     queueEvent.on('failed', async ({ jobId }) => {
       try {
         const job = await getExecutionJob(jobId);
-        const configuredAttempts = Math.max(1, job?.opts.attempts ?? 1);
-        if (job && job.attemptsMade < configuredAttempts) {
+        // Unrecoverable errors and exhausted stalled recovery can be terminal
+        // before attemptsMade reaches attempts. Use authoritative queue state.
+        if (job && (await job.getState()) !== 'failed') {
           logger.debug(
-            { jobId, attemptsMade: job.attemptsMade, configuredAttempts },
+            { jobId, attemptsMade: job.attemptsMade },
             "Keeping capacity reserved for retryable failure",
           );
           return;

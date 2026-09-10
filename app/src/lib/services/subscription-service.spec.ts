@@ -844,13 +844,21 @@ describe("SubscriptionService", () => {
           ).resolves.not.toThrow();
         });
 
-        it("should handle Polar API server error", async () => {
-          mockFetch.mockResolvedValue({ ok: false, status: 500 });
+        it.each([401, 403, 429, 500, 503])(
+          "preserves local access on Polar HTTP %s without caching the error",
+          async (status) => {
+            mockFetch.mockResolvedValueOnce({ ok: false, status });
 
-          await expect(
-            service.requireValidPolarCustomer(testOrgId),
-          ).rejects.toThrow("Polar customer not found");
-        });
+            await expect(
+              service.requireValidPolarCustomer(testOrgId),
+            ).resolves.not.toThrow();
+            mockFetch.mockResolvedValueOnce({ ok: false, status: 404 });
+            await expect(
+              service.requireValidPolarCustomer(testOrgId),
+            ).rejects.toThrow("Polar customer not found");
+            expect(mockFetch).toHaveBeenCalledTimes(2);
+          },
+        );
 
         it("should use sandbox URL in sandbox mode", async () => {
           mockGetPolarConfig.mockReturnValue({
@@ -1258,7 +1266,7 @@ describe("SubscriptionService", () => {
 
         await expect(
           service.requireValidPolarCustomer(testOrgId),
-        ).rejects.toThrow();
+        ).resolves.not.toThrow();
       });
     });
   });

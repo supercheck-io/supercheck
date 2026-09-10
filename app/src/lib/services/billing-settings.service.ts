@@ -1,6 +1,6 @@
 /**
  * Billing Settings Service
- * 
+ *
  * Manages organization billing settings including:
  * - Spending limits
  * - Notification preferences
@@ -8,7 +8,11 @@
  */
 
 import { db } from "@/utils/db";
-import { billingSettings, type BillingSettings, type BillingSettingsInsert } from "@/db/schema";
+import {
+  billingSettings,
+  type BillingSettings,
+  type BillingSettingsInsert,
+} from "@/db/schema";
 import { eq } from "drizzle-orm";
 
 export interface BillingSettingsUpdate {
@@ -61,15 +65,18 @@ class BillingSettingsService {
 
     // Create default settings if none exist
     if (!settings) {
-      const [newSettings] = await db.insert(billingSettings).values({
-        organizationId,
-        enableSpendingLimit: false,
-        hardStopOnLimit: false,
-        notifyAt50Percent: false,
-        notifyAt80Percent: true,
-        notifyAt90Percent: true,
-        notifyAt100Percent: true,
-      }).returning();
+      const [newSettings] = await db
+        .insert(billingSettings)
+        .values({
+          organizationId,
+          enableSpendingLimit: false,
+          hardStopOnLimit: false,
+          notifyAt50Percent: false,
+          notifyAt80Percent: true,
+          notifyAt90Percent: true,
+          notifyAt100Percent: true,
+        })
+        .returning();
       settings = newSettings;
     }
 
@@ -81,7 +88,7 @@ class BillingSettingsService {
    */
   async updateSettings(
     organizationId: string,
-    updates: BillingSettingsUpdate
+    updates: BillingSettingsUpdate,
   ): Promise<BillingSettingsResponse> {
     // Ensure settings exist
     await this.getSettings(organizationId);
@@ -138,9 +145,10 @@ class BillingSettingsService {
   async setSpendingLimit(
     organizationId: string,
     limitDollars: number | null,
-    hardStop: boolean = false
+    hardStop: boolean = false,
   ): Promise<BillingSettingsResponse> {
-    const limitCents = limitDollars !== null ? Math.round(limitDollars * 100) : null;
+    const limitCents =
+      limitDollars !== null ? Math.round(limitDollars * 100) : null;
 
     return this.updateSettings(organizationId, {
       monthlySpendingLimitCents: limitCents,
@@ -152,7 +160,9 @@ class BillingSettingsService {
   /**
    * Disable spending limit
    */
-  async disableSpendingLimit(organizationId: string): Promise<BillingSettingsResponse> {
+  async disableSpendingLimit(
+    organizationId: string,
+  ): Promise<BillingSettingsResponse> {
     return this.updateSettings(organizationId, {
       enableSpendingLimit: false,
       hardStopOnLimit: false,
@@ -170,7 +180,7 @@ class BillingSettingsService {
       notifyAt90Percent?: boolean;
       notifyAt100Percent?: boolean;
       emails?: string[];
-    }
+    },
   ): Promise<BillingSettingsResponse> {
     return this.updateSettings(organizationId, {
       notifyAt50Percent: preferences.notifyAt50Percent,
@@ -184,7 +194,10 @@ class BillingSettingsService {
   /**
    * Reset notifications sent this period (called on billing period reset)
    */
-  async resetNotificationsForPeriod(organizationId: string, database: Pick<typeof db, "update"> = db): Promise<void> {
+  async resetNotificationsForPeriod(
+    organizationId: string,
+    database: Pick<typeof db, "update"> = db,
+  ): Promise<void> {
     await database
       .update(billingSettings)
       .set({
@@ -200,7 +213,7 @@ class BillingSettingsService {
   async markNotificationSent(
     organizationId: string,
     threshold: NotificationThreshold,
-    resource?: NotificationResource
+    resource?: NotificationResource,
   ): Promise<void> {
     const settings = await db.query.billingSettings.findFirst({
       where: eq(billingSettings.organizationId, organizationId),
@@ -235,7 +248,7 @@ class BillingSettingsService {
   async hasNotificationBeenSent(
     organizationId: string,
     threshold: NotificationThreshold,
-    resource?: NotificationResource
+    resource?: NotificationResource,
   ): Promise<boolean> {
     const settings = await db.query.billingSettings.findFirst({
       where: eq(billingSettings.organizationId, organizationId),
@@ -253,7 +266,7 @@ class BillingSettingsService {
 
   private getNotificationSentKey(
     threshold: NotificationThreshold,
-    resource?: NotificationResource
+    resource?: NotificationResource,
   ): number {
     if (threshold === "spending_warning") return -1;
     if (threshold === "spending_limit") return -2;
@@ -262,6 +275,7 @@ class BillingSettingsService {
     const thresholdNum = parseInt(threshold, 10);
     if (resource === "k6") return 1000 + thresholdNum;
     if (resource === "ai") return 2000 + thresholdNum;
+    if (resource === "sre") return 3000 + thresholdNum;
     return thresholdNum;
   }
 

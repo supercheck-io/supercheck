@@ -5,7 +5,10 @@ import type {
 } from "@ai-sdk/provider";
 import { MockLanguageModelV3, simulateReadableStream } from "ai/test";
 
+import { logger } from "@/lib/logger/index";
 import { runSreAgent } from "./agent-runner";
+
+jest.mock("@/lib/logger/index", () => ({ logger: { info: jest.fn() } }));
 
 const emptyUsage = {
   inputTokens: { total: 0, noCache: 0, cacheRead: 0, cacheWrite: 0 },
@@ -66,7 +69,10 @@ describe("runSreAgent", () => {
           {
             type: "finish",
             finishReason: { unified: "stop", raw: "stop" },
-            usage: emptyUsage,
+            usage: {
+              inputTokens: { total: 120, noCache: 120, cacheRead: 0, cacheWrite: 0 },
+              outputTokens: { total: 30, text: 30, reasoning: 0 },
+            },
           },
         ];
 
@@ -89,6 +95,12 @@ describe("runSreAgent", () => {
       "Investigate checkout latency with read-only checks.",
     );
     expect(result.finishReason).toBe("stop");
+    expect(result.usage).toEqual({ inputTokens: 120, outputTokens: 30, totalTokens: 150 });
+    expect(logger.info).toHaveBeenLastCalledWith({
+      module: "sre-agent-usage", modelId: expect.any(String), stepIndex: 1,
+      elapsedMs: expect.any(Number), inputTokens: 120, outputTokens: 30,
+      totalTokens: 150, finishReason: "stop",
+    }, "SRE model step usage");
     expect(model.doStreamCalls).toHaveLength(1);
     expect(stepEvents).toHaveLength(1);
   });

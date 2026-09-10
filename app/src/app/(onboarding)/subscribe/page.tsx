@@ -14,7 +14,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { PricingTierCard } from "@/components/billing/pricing-tier-card";
 import { PricingComparisonTable } from "@/components/billing/pricing-comparison-table";
-import { RefreshCw, AlertCircle, ExternalLink, ArrowRight, Mail } from "lucide-react";
+import {
+  RefreshCw,
+  AlertCircle,
+  ExternalLink,
+  ArrowRight,
+  Mail,
+} from "lucide-react";
 
 interface PricingPlan {
   id: string;
@@ -89,7 +95,7 @@ const defaultFaqs = [
   {
     question: "How is usage tracked?",
     answer:
-      "Playwright Minutes count browser execution time. K6 VU Minutes are Virtual Users × execution time. Monitors count against Playwright minutes. Each successful full AI SRE investigation consumes one investigation unit; chat, triage, and evidence briefs do not.",
+      "Playwright minutes count browser execution time, including synthetic monitors, rounded to four decimal places per run with no whole-minute minimum. A five-second check uses 0.0833 minutes; each location and executed retry contributes usage. HTTP, ping, and port checks do not consume Playwright minutes. K6 VU minutes are peak virtual users × execution time in minutes, rounded up per run. Each completed full AI SRE investigation report consumes one investigation unit; completion does not guarantee a correct diagnosis or resolution. Failed runs and billing retries are not charged; chat, triage, and evidence briefs do not.",
   },
   {
     question: "What happens if I exceed my limits?",
@@ -99,7 +105,7 @@ const defaultFaqs = [
   {
     question: "Can I change plans?",
     answer:
-      "Yes! Upgrades take effect immediately. Downgrades take effect at the next billing cycle. Pro-rated billing applies for mid-cycle changes.",
+      "The organization owner can change plans in Manage subscription. Review the effective date and any prorated charges in the Polar portal before confirming.",
   },
   {
     question: "Do unused minutes roll over?",
@@ -170,7 +176,7 @@ function SubscribePageContent() {
   const handleSubscribe = async (planSlug: string) => {
     // Prevent double-click: if already subscribing, ignore
     if (subscribing) return;
-    
+
     setSubscribing(planSlug);
     try {
       // IMPORTANT: Ensure organization exists before checkout
@@ -179,28 +185,31 @@ function SubscribePageContent() {
       try {
         await fetch("/api/auth/setup-defaults", { method: "POST" });
       } catch (setupError) {
-        console.log("Setup defaults call completed (may already exist):", setupError);
+        console.log(
+          "Setup defaults call completed (may already exist):",
+          setupError,
+        );
       }
 
       // The server validates the active organization, owner role, product, and
       // redirect URLs before creating a Polar checkout.
       const checkoutRes = await fetch("/api/billing/checkout", {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ plan: planSlug }),
       });
       if (!checkoutRes.ok) {
         const errData = await checkoutRes.json().catch(() => ({}));
         throw new Error(
-          errData?.error || errData?.message || 'Checkout request failed'
+          errData?.error || errData?.message || "Checkout request failed",
         );
       }
       const checkoutData = await checkoutRes.json();
       if (checkoutData?.url) {
         window.location.href = checkoutData.url;
       } else {
-        throw new Error('No checkout URL returned');
+        throw new Error("No checkout URL returned");
       }
     } catch (error) {
       console.error("Checkout error:", error);
@@ -224,7 +233,8 @@ function SubscribePageContent() {
         <AlertCircle className="h-12 w-12 text-muted-foreground mx-auto" />
         <h2 className="text-xl font-semibold">Unable to load pricing</h2>
         <p className="text-sm text-muted-foreground">
-          We couldn&apos;t load the pricing information. Please check your connection and try again.
+          We couldn&apos;t load the pricing information. Please check your
+          connection and try again.
         </p>
         <Button variant="outline" onClick={fetchPricing}>
           <RefreshCw className="h-4 w-4 mr-2" />
@@ -242,7 +252,8 @@ function SubscribePageContent() {
       {/* Subscription Required Banner */}
       {isRequired && (
         <div className="max-w-2xl mx-auto bg-muted/50 border rounded-lg px-4 py-3 text-center text-sm text-muted-foreground">
-          A subscription is required to access the dashboard. Choose a plan below to get started.
+          A subscription is required to access the dashboard. Choose a plan
+          below to get started.
         </div>
       )}
 
@@ -257,7 +268,7 @@ function SubscribePageContent() {
         <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs text-muted-foreground pt-1">
           <span>Cancel anytime</span>
           <span className="hidden sm:inline">·</span>
-          <span>No hidden fees</span>
+          <span>Prices in USD, before applicable tax</span>
           <span className="hidden sm:inline">·</span>
           <span>Usage-based overage</span>
         </div>
@@ -306,7 +317,7 @@ function SubscribePageContent() {
             badge="Tailored"
             keyFeatures={[
               "Unlimited uptime monitors",
-              "Unlimited Playwright & K6 minutes",
+              "Custom Playwright & K6 allowances",
               "Unlimited AI credits",
               "Custom AI SRE investigation volume",
               "Unlimited team members & projects",
