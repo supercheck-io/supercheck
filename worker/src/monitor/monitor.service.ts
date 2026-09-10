@@ -35,6 +35,7 @@ import {
   ErrorContext,
 } from '../common/errors/standardized-error-handler';
 import { ResourceManagerService } from '../common/resources/resource-manager.service';
+import { decodeStoredTestScript } from '../common/utils/test-script';
 import {
   LocationService,
   MonitoringLocation,
@@ -2696,10 +2697,10 @@ export class MonitorService {
         };
       }
 
-      // 3. Decode test script (stored as Base64 in database)
+      // 3. Decode test script (Base64 UTF-8 source, or raw TypeScript from older CLI deploys)
       let decodedScript: string;
       try {
-        decodedScript = Buffer.from(test.script, 'base64').toString('utf8');
+        decodedScript = decodeStoredTestScript(test.script);
 
         // Validate decoded script is not empty
         if (!decodedScript || decodedScript.trim().length === 0) {

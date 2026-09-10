@@ -34,6 +34,30 @@ Use a Private Agent for in-cluster or on-premises endpoints. Do not expose an
 internal observability API publicly or weaken endpoint restrictions only to make
 a direct connector work.
 
+```mermaid
+flowchart TB
+    Incident[Incident investigation] --> Native[Native Supercheck evidence]
+    Incident --> Direct[Direct connector]
+    Incident --> Agent[Private Agent]
+    Direct --> Provider[Provider API]
+    Agent --> Provider
+```
+
+```mermaid
+sequenceDiagram
+    participant Responder
+    participant Supercheck
+    participant Connector as Connector or Private Agent
+    participant Provider as Observability API
+
+    Responder->>Supercheck: Start investigation or Copilot query
+    Supercheck->>Connector: Bounded, tenant-scoped read
+    Connector->>Provider: Search with allowlisted credentials
+    Provider-->>Connector: Rows, logs, or traces
+    Connector-->>Supercheck: Redacted, cited evidence
+    Supercheck-->>Responder: Brief with source identifiers
+```
+
 Kubernetes searches require an explicit namespace. Grant the connector service
 account read-only access only to the namespaces under test; do not grant
 cluster-admin or unrestricted write permissions.

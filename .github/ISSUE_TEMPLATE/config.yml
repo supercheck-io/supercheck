@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security report
+    url: https://github.com/supercheck-io/supercheck/security/advisories/new
+    about: Report vulnerabilities privately. Do not file a public issue.
+  - name: Discussions
+    url: https://github.com/supercheck-io/supercheck/discussions
+    about: Questions, ideas, and larger feature proposals.
+  - name: Discord
+    url: https://discord.gg/UVe327CSbm
+    about: Community chat.

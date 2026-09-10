@@ -1245,6 +1245,8 @@ export class NotificationService {
       alertAction,
       eventAction: alertAction,
       pagerDutyEventAction: alertAction,
+      victorOpsMessageType:
+        alertAction === 'resolve' ? 'RECOVERY' : 'CRITICAL',
       dedupKey: this.getWebhookDedupKey(payload),
     };
   }

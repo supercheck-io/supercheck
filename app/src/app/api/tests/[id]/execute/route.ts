@@ -18,6 +18,7 @@ import { SubscriptionService } from "@/lib/services/subscription-service";
 import { polarUsageService } from "@/lib/services/polar-usage.service";
 import { buildBillingBlockedResponse } from "@/lib/billing-errors";
 import { checkExecutionRateLimit } from "@/lib/execution-rate-limiter";
+import { decodeStoredTestScript } from "@/lib/test-script";
 import {
   buildExecutionQueueErrorResponse,
   buildExecutionRateLimitResponse,
@@ -136,9 +137,7 @@ export async function POST(request: NextRequest, context: ExecuteContext) {
         );
       }
       try {
-        const decodedScript = Buffer.from(test.script, "base64").toString(
-          "utf-8"
-        );
+        const decodedScript = decodeStoredTestScript(test.script);
         const validation = validateK6Script(decodedScript);
 
         if (!validation.valid) {
@@ -182,7 +181,7 @@ export async function POST(request: NextRequest, context: ExecuteContext) {
     createdRunId = run.id;
 
     // Decode script
-    const decodedScript = Buffer.from(test.script, "base64").toString("utf-8");
+    const decodedScript = decodeStoredTestScript(test.script);
 
     // Resolve project variables and secrets for runtime helper injection in worker
     const variableResolution = await resolveProjectVariables(project.id);

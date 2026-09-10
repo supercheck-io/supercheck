@@ -19,6 +19,28 @@ Create your first test — browser, API, database, or performance
 </Card>
 </Cards>
 
+## How Supercheck Fits Together
+
+```mermaid
+flowchart LR
+    Detect[Detect] --> Triage[Triage]
+    Triage --> Investigate[Investigate]
+    Investigate --> Explain[Explain]
+    Explain --> Confirm[Confirm recovery]
+
+    Detect -.- Monitors[Monitors, jobs, tests]
+    Triage -.- Alerts[Alerts and incidents]
+    Investigate -.- Agent[Read-only AI SRE]
+    Explain -.- Brief[Cited brief and report]
+    Confirm -.- Checks[Re-run existing checks]
+```
+
+1. **Detect** with monitors, jobs, and tests.
+2. **Triage** from alerts, then open an incident when the signal needs investigation.
+3. **Investigate** with native evidence and optional read-only connectors.
+4. **Explain** in the incident brief and investigation report.
+5. **Confirm recovery** by re-running the same checks. AI SRE does not apply fixes.
+
 ## Core Capabilities
 
 <Cards>

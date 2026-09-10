@@ -1,9 +1,5 @@
 "use server";
 
-declare const Buffer: {
-  from(data: string, encoding: string): { toString(encoding: string): string };
-};
-
 import { and, eq } from "drizzle-orm";
 import {
   requirements,
@@ -22,6 +18,7 @@ import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { updateCoverageSnapshot } from "@/actions/requirements";
 import { validateScriptTypeMatch, normalizeTestType } from "@/lib/script-type-validator";
+import { decodeStoredTestScript, encodeStoredTestScript } from "@/lib/test-script";
 
 // Create a schema for the save test action
 const saveTestSchema = testsInsertSchema.omit({
@@ -51,45 +48,11 @@ export async function saveTest(
 
     const validatedData = saveTestWithIdSchema.parse(data);
 
-    // Ensure script is properly base64 encoded
-    let scriptToSave = validatedData.script || "";
+    const scriptToSave = encodeStoredTestScript(validatedData.script || "");
+    const scriptForValidation = decodeStoredTestScript(validatedData.script || "");
 
-    // Check if the script is already base64 encoded
-    // This is a more robust check for base64 format
-    const isBase64 = (str: string): boolean => {
-      try {
-        // Check if the string matches base64 pattern
-        const base64Regex = /^[A-Za-z0-9+/=]+$/;
-        if (!base64Regex.test(str)) return false;
-
-        // Try to decode it
-        if (typeof window === "undefined") {
-          const decoded = Buffer.from(str, "base64").toString("utf-8");
-          // Re-encode it and check if it matches the original
-          const reEncoded = Buffer.from(decoded, "utf-8").toString("base64");
-          // If re-encoding gives the same result, it's likely base64
-          // Note: This is not 100% accurate due to padding differences
-          return str.length === reEncoded.length;
-        }
-        return false;
-      } catch {
-        return false;
-      }
-    };
-
-    // Only encode if it's not already base64
-    if (!isBase64(scriptToSave) && typeof window === "undefined") {
-      scriptToSave = Buffer.from(scriptToSave, "utf-8").toString("base64");
-    }
-
-    // Validate script-type compatibility before saving
     const resolvedType = normalizeTestType(validatedData.type);
-    if (validatedData.script && validatedData.script.trim().length > 0) {
-      // Decode base64 for validation (use original script if it wasn't base64)
-      let scriptForValidation = validatedData.script;
-      if (isBase64(validatedData.script) && typeof window === "undefined") {
-        scriptForValidation = Buffer.from(validatedData.script, "base64").toString("utf-8");
-      }
+    if (scriptForValidation.trim().length > 0) {
       const typeValidation = validateScriptTypeMatch(scriptForValidation, resolvedType);
       if (!typeValidation.valid) {
         return {
@@ -114,10 +77,7 @@ export async function saveTest(
         .limit(1);
 
       if (existingTest.length > 0 && existingTest[0].script) {
-        let existingScript = existingTest[0].script;
-        if (isBase64(existingScript) && typeof window === "undefined") {
-          existingScript = Buffer.from(existingScript, "base64").toString("utf-8");
-        }
+        const existingScript = decodeStoredTestScript(existingTest[0].script);
         const typeValidation = validateScriptTypeMatch(existingScript, resolvedType);
         if (!typeValidation.valid) {
           return {
@@ -319,34 +279,5 @@ export async function saveTest(
  * @returns The decoded script
  */
 export async function decodeTestScript(base64Script: string): Promise<string> {
-  // If the input is empty or not a string, return as is
-  if (!base64Script || typeof base64Script !== "string") {
-    return base64Script;
-  }
-
-  // Check if the string looks like base64
-  const isBase64 = (str: string): boolean => {
-    // Check if the string matches base64 pattern
-    const base64Regex = /^[A-Za-z0-9+/=]+$/;
-    return base64Regex.test(str);
-  };
-
-  // Only try to decode if it looks like base64
-  if (isBase64(base64Script)) {
-    try {
-      // For client-side usage
-      if (typeof window !== "undefined") {
-        return decodeURIComponent(escape(atob(base64Script)));
-      }
-      // For server-side usage
-      else {
-        return Buffer.from(base64Script, "base64").toString("utf-8");
-      }
-    } catch (error) {
-      console.error("Error decoding script:", error);
-    }
-  }
-
-  // Return the original script if it's not base64 or if decoding fails
-  return base64Script;
+  return decodeStoredTestScript(base64Script);
 }

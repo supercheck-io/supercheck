@@ -41,6 +41,7 @@
 # Example .env file:
 # ----------------------------------------
 # DATABASE_URL=postgresql://user:pass@main-server.example.com:5432/supercheck
+# SELF_HOSTED=true
 # REDIS_HOST=main-server.example.com
 # REDIS_PORT=6379
 # REDIS_PASSWORD=your-redis-password
@@ -68,8 +69,9 @@ services:
       EXECUTION_NAMESPACE: ${EXECUTION_NAMESPACE:-supercheck-execution}
       KUBECONFIG: /run/secrets/supercheck-kubeconfig
 
-      # Database connection (required)
+      // Database connection (required)
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required - PostgreSQL connection to main server}
+      SELF_HOSTED: ${SELF_HOSTED:-true}
 
       # Redis connection (required)
       # The worker uses REDIS_HOST/PORT/PASSWORD directly (not REDIS_URL)
@@ -134,7 +136,7 @@ services:
     restart: unless-stopped
 
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/health"]
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/health/ready"]
       interval: 30s
       timeout: 10s
       retries: 3

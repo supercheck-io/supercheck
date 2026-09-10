@@ -110,7 +110,7 @@ export const WEBHOOK_PRESETS: WebhookPreset[] = [
     id: "splunk_on_call",
     label: "Splunk On-Call REST endpoint",
     summary:
-      "Send VictorOps/Splunk On-Call events with trigger and resolve lifecycle state.",
+      "Send Splunk On-Call / VictorOps events with CRITICAL on trigger and RECOVERY on resolve.",
     docsUrl:
       "https://help.victorops.com/knowledge-base/rest-endpoint-integration-guide/",
     endpointPlaceholder:
@@ -120,7 +120,7 @@ export const WEBHOOK_PRESETS: WebhookPreset[] = [
       method: "POST",
       headers: {},
       bodyTemplate: stringifyTemplate({
-        message_type: "{{alertAction}}",
+        message_type: "{{victorOpsMessageType}}",
         entity_id: "{{dedupKey}}",
         entity_display_name: "{{title}}",
         state_message: "{{message}}",

@@ -14,6 +14,31 @@ The unified reliability loop works as follows:
 4. **Explain**: The incident detail page keeps investigation actions, cited evidence, and the latest brief in separate focused tabs.
 5. **Confirm recovery**: A responder applies the fix in their own systems, then re-runs or observes the existing detecting checks. AI SRE does not trigger remediation or the re-run automatically.
 
+```mermaid
+flowchart LR
+    Detect[Detect] --> Triage[Triage]
+    Triage --> Investigate[Investigate]
+    Investigate --> Explain[Explain]
+    Explain --> Confirm[Confirm recovery]
+```
+
+```mermaid
+sequenceDiagram
+    participant Check as Monitor, job, or test
+    participant Alert as Alerts
+    participant Incident as Incident
+    participant Agent as AI SRE agent
+    participant Human as Responder
+
+    Check->>Alert: Failure or recovery signal
+    Alert->>Incident: Promote a signal or create manually
+    Human->>Agent: Start a read-only investigation
+    Agent->>Agent: Gather native and connector evidence
+    Agent->>Incident: Cited brief and recommended checks
+    Human->>Human: Apply the fix outside Supercheck
+    Human->>Check: Confirm recovery with existing checks
+```
+
 ## Read-Only By Design
 
 **Supercheck's AI SRE layer is explicitly read-only.** It never writes to your production systems or executes remediation actions on your behalf.

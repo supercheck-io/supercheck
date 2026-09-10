@@ -6,6 +6,19 @@ icon: Bell
 
 Alerts notify you when monitors fail, tests break, or services recover. Configure multiple notification channels and use smart thresholds to avoid alert fatigue.
 
+```mermaid
+sequenceDiagram
+    participant Check as Monitor or job
+    participant Worker as Worker
+    participant Channel as Email, Slack, or webhook
+    participant OnCall as PagerDuty or Splunk On-Call
+
+    Check->>Worker: Failure or recovery
+    Worker->>Channel: Render template variables
+    Worker->>OnCall: trigger or CRITICAL / resolve or RECOVERY
+    Channel-->>Worker: Delivery status
+```
+
 ## Notification Providers
 
 <Cards>
@@ -199,7 +212,7 @@ The webhook channel includes presets that fill the method, headers, and JSON bod
 | Custom webhook | Default Supercheck payload or a custom JSON template | [Supercheck alerts](/docs/app/communicate/alerts) |
 | PagerDuty Events API v2 | Trigger and resolve incidents using `{{pagerDutyEventAction}}` and `{{dedupKey}}` | [PagerDuty Events API v2](https://developer.pagerduty.com/docs/events-api-v2/overview/) |
 | Opsgenie Alert API | Create alerts with an alias and API-key auth header | [Opsgenie Alert API](https://docs.opsgenie.com/docs/alert-api) |
-| Splunk On-Call REST endpoint | Send VictorOps/Splunk On-Call trigger and resolve events | [Splunk On-Call REST Endpoint](https://help.victorops.com/knowledge-base/rest-endpoint-integration-guide/) |
+| Splunk On-Call REST endpoint | Send VictorOps/Splunk On-Call `CRITICAL` and `RECOVERY` events | [Splunk On-Call REST Endpoint](https://help.victorops.com/knowledge-base/rest-endpoint-integration-guide/) |
 | Better Stack webhook | Forward alert context into Better Stack workflows | [Better Stack webhooks](https://betterstack.com/docs/uptime/integrations/webhooks/) |
 | incident.io alert source | Send alert-source events with deduplication context | [incident.io alert sources](https://incident.io/docs/alert-sources) |
 
@@ -273,6 +286,7 @@ Use a custom body template to match the format required by third-party services.
 | `{{alertAction}}` | Lifecycle action for event APIs | `trigger`, `resolve` |
 | `{{eventAction}}` | Same as alertAction | `trigger`, `resolve` |
 | `{{pagerDutyEventAction}}` | PagerDuty Events API action | `trigger`, `resolve` |
+| `{{victorOpsMessageType}}` | Splunk On-Call / VictorOps `message_type` | `CRITICAL`, `RECOVERY` |
 | `{{dedupKey}}` | Stable key for correlating related events | `monitor:uuid`, `job:uuid`, `ssl:uuid` |
 
 ### PagerDuty Integration
@@ -311,6 +325,31 @@ Use a webhook with a body template to send alerts to the [PagerDuty Events API v
 
 <Callout type="info">
 PagerDuty resolves an alert only when the resolve event has the same `dedup_key` as the original trigger event. Use `{{pagerDutyEventAction}}` and `{{dedupKey}}` together so Supercheck sends `trigger` for failures and `resolve` for recoveries using the same key. PagerDuty expects `severity` to be one of `critical`, `error`, `warning`, or `info`; `{{normalizedSeverity}}` maps Supercheck `success` alerts to `info`.
+</Callout>
+
+### Splunk On-Call / VictorOps Integration
+
+Use a webhook with a body template to send alerts to the [Splunk On-Call REST endpoint](https://help.splunk.com/en/splunk-enterprise/alert-and-respond/splunk-on-call/integrations-with-splunk-on-call/rest-endpoint-integration-for-splunk-on-call):
+
+1. In Splunk On-Call, create a **REST Endpoint** integration and copy the routing key.
+2. In Supercheck, create a Webhook notification channel and select the **Splunk On-Call REST endpoint** preset, or use:
+   - **URL:** `https://alert.victorops.com/integrations/generic/20131114/alert/<routing_key>/<entity_id>`
+   - **Method:** POST
+   - **Body Template:**
+
+```json
+{
+  "message_type": "{{victorOpsMessageType}}",
+  "entity_id": "{{dedupKey}}",
+  "entity_display_name": "{{title}}",
+  "state_message": "{{message}}",
+  "monitoring_tool": "supercheck",
+  "timestamp": "{{timestamp}}"
+}
+```
+
+<Callout type="info">
+Splunk On-Call only treats `CRITICAL` as an incident-opening event and `RECOVERY` as a resolve event. `{{victorOpsMessageType}}` maps Supercheck trigger alerts to `CRITICAL` and recoveries to `RECOVERY`. Use `{{dedupKey}}` as `entity_id` so the resolve event closes the same incident. Do not send `trigger` or `resolve` in `message_type`; those values are treated as INFO and will not auto-resolve.
 </Callout>
 
 ### OpsGenie Integration

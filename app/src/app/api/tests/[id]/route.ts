@@ -6,40 +6,7 @@ import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { requireAuthContext, isAuthError } from '@/lib/auth-context';
 import { logAuditEvent } from '@/lib/audit-logger';
 import { validateScriptTypeMatch, normalizeTestType } from '@/lib/script-type-validator';
-
-declare const Buffer: {
-  from(data: string, encoding: string): { toString(encoding: string): string };
-};
-
-/**
- * Helper function to decode base64-encoded test scripts
- * Works in both client and server environments
- */
-async function decodeTestScript(base64Script: string): Promise<string> {
-  // Check if the string is base64 encoded
-  // A valid base64 string should only contain these characters
-  const base64Regex = /^[A-Za-z0-9+/=]+$/;
-  const isBase64 = base64Regex.test(base64Script);
-
-  if (!isBase64) {
-    // If it's not base64, return as is
-    return base64Script;
-  }
-
-  try {
-    // In Node.js environment (server-side)
-    if (typeof window === "undefined") {
-      const decoded = Buffer.from(base64Script, "base64").toString("utf-8");
-      return decoded;
-    }
-    // Fallback for browser environment
-    return base64Script;
-  } catch (error) {
-    console.error("Error decoding base64:", error);
-    // Return original if decoding fails
-    return base64Script;
-  }
-}
+import { decodeStoredTestScript, encodeStoredTestScript } from '@/lib/test-script';
 
 export async function GET(
   request: NextRequest,
@@ -85,7 +52,7 @@ export async function GET(
     const test = result[0];
 
     const decodedScript = shouldIncludeScript
-      ? await decodeTestScript(test.script || "")
+      ? decodeStoredTestScript(test.script || "")
       : undefined;
 
     // Return the test data
@@ -158,7 +125,7 @@ export async function PUT(
 
     // Validate script-type compatibility
     if (effectiveScript && effectiveScript.length > 0) {
-      const decodedScript = await decodeTestScript(effectiveScript);
+      const decodedScript = decodeStoredTestScript(effectiveScript);
       const typeValidation = validateScriptTypeMatch(decodedScript, resolvedType);
       if (!typeValidation.valid) {
         return NextResponse.json(
@@ -177,7 +144,7 @@ export async function PUT(
       .set({
         title: body.title !== undefined ? body.title : existingTest.title,
         description: body.description !== undefined ? body.description : existingTest.description,
-        script: body.script !== undefined ? body.script : existingTest.script,
+        script: body.script !== undefined ? encodeStoredTestScript(body.script) : existingTest.script,
         priority: body.priority !== undefined ? body.priority : existingTest.priority,
         type: resolvedType,
         updatedAt: new Date(),

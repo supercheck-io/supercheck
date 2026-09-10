@@ -13,6 +13,19 @@ You can create an incident in two ways:
 
 Both paths create the same incident workspace.
 
+```mermaid
+sequenceDiagram
+    participant Alerts as Communicate Alerts
+    participant Queue as Incident queue
+    participant Detail as Incident detail
+    participant Copilot as Copilot
+
+    Alerts->>Queue: Create incident from a signal
+    Queue->>Detail: Open investigation workspace
+    Detail->>Detail: Investigation, Evidence, and Brief tabs
+    Detail->>Copilot: Optional read-only follow-up chat
+```
+
 The incident queue uses the same table behavior as Tests and Runs: incident number is a separate sortable column, long titles are constrained, rows open the incident detail page, filters sit in the header toolbar, and pagination is available for larger queues.
 
 ## Incident Detail

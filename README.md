@@ -159,9 +159,11 @@ Official docs:
 - [Deployment](https://supercheck.io/docs/app/deployment)
 - [Automate (Tests, Jobs, Runs)](https://supercheck.io/docs/app/automate)
 - [Monitor](https://supercheck.io/docs/app/monitor)
+- [Investigate (AI SRE)](https://supercheck.io/docs/app/investigate)
 - [Communicate (Alerts, Status Pages)](https://supercheck.io/docs/app/communicate)
 - [Admin](https://supercheck.io/docs/app/admin)
 - [CLI Reference](https://supercheck.io/docs/cli/commands)
+- [Contributing](CONTRIBUTING.md)
 
 ## Supercheck CLI
 

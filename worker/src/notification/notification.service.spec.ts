@@ -732,6 +732,46 @@ describe('NotificationService', () => {
       expect(resolveBody.payload.severity).toBe('info');
     });
 
+    it('should send VictorOps CRITICAL on trigger and RECOVERY on resolve', async () => {
+      const templateProvider: NotificationProvider = {
+        ...webhookProvider,
+        config: {
+          preset: 'splunk_on_call',
+          url: 'https://alert.victorops.com/integrations/generic/20131114/alert/routing/entity',
+          bodyTemplate: JSON.stringify({
+            message_type: '{{victorOpsMessageType}}',
+            entity_id: '{{dedupKey}}',
+            entity_display_name: '{{title}}',
+          }),
+        },
+      };
+
+      await service.sendNotification(templateProvider, {
+        ...basePayload,
+        type: 'monitor_failure',
+        severity: 'error',
+      });
+
+      await service.sendNotification(templateProvider, {
+        ...basePayload,
+        type: 'monitor_recovery',
+        title: 'Monitor Recovered',
+        severity: 'success',
+        metadata: {
+          ...basePayload.metadata,
+          status: 'up',
+        },
+      });
+
+      const triggerBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+      const resolveBody = JSON.parse(mockFetch.mock.calls[1][1].body);
+
+      expect(triggerBody.message_type).toBe('CRITICAL');
+      expect(resolveBody.message_type).toBe('RECOVERY');
+      expect(triggerBody.entity_id).toBe('monitor:monitor-123');
+      expect(resolveBody.entity_id).toBe(triggerBody.entity_id);
+    });
+
     it('should return sanitized delivery metadata for webhook deliveries', async () => {
       const templateProvider: NotificationProvider = {
         ...webhookProvider,

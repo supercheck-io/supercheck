@@ -18,6 +18,12 @@ describe("webhook-presets", () => {
     }
   });
 
+  it("uses VictorOps CRITICAL/RECOVERY placeholders in the Splunk On-Call preset", () => {
+    const preset = getWebhookPreset("splunk_on_call");
+    expect(preset?.config.bodyTemplate).toContain("{{victorOpsMessageType}}");
+    expect(preset?.config.bodyTemplate).not.toContain('"{{alertAction}}"');
+  });
+
   it("applies a preset without overwriting the target URL or provider name", () => {
     const config = applyWebhookPresetConfig("pagerduty", {
       name: "Primary incident route",

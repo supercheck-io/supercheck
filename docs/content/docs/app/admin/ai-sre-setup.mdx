@@ -57,6 +57,14 @@ credential fields.
 4. Add diagnostic recipes for common checks.
 5. Verify alert channels and run a test investigation.
 
+```mermaid
+flowchart TD
+    Services[Add services] --> Links[Link monitors, jobs, and tests]
+    Links --> Connectors[Add read-only connectors]
+    Connectors --> Recipes[Add diagnostic recipes]
+    Recipes --> Verify[Run a test investigation]
+```
+
 ## Permissions
 
 - Connector configuration permission is required for integrations, recipes, and Private Agents.

@@ -285,4 +285,6 @@ supercheck destroy --dry-run
 supercheck destroy --force
 ```
 
+`diff` includes notification provider settings such as webhook `bodyTemplate`. Deploy stores test **source**, not compiled JavaScript.
+
 Resources are reconciled using the database `id` — the CLI compares your local config with the server state and creates, updates, or deletes resources as needed. Resources pulled from the cloud include their `id` (UUID); new resources omit it and are created on deploy.

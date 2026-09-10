@@ -31,6 +31,7 @@ export const WEBHOOK_SAMPLE_TEMPLATE_VARIABLES: Record<string, string> = {
   alertAction: "trigger",
   eventAction: "trigger",
   pagerDutyEventAction: "trigger",
+  victorOpsMessageType: "CRITICAL",
   dedupKey: "monitor:test-target-id",
 };
 

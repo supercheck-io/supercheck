@@ -3,10 +3,7 @@ import { tests, jobTests } from "@/db/schema";
 import { and, eq, inArray } from "drizzle-orm";
 import { resolveProjectVariables, extractVariableNames } from "./variable-resolver";
 import type { VariableResolutionResult } from "./variable-resolver";
-
-declare const Buffer: {
-  from(data: string, encoding: string): { toString(encoding: string): string };
-};
+import { decodeStoredTestScript } from "./test-script";
 
 /**
  * Interface for processed test script
@@ -22,41 +19,7 @@ export interface ProcessedTestScript {
  * Helper function to decode base64-encoded test scripts with robust error handling
  */
 export async function decodeTestScript(base64Script: string): Promise<string> {
-  // Input validation
-  if (!base64Script || typeof base64Script !== 'string') {
-    console.warn('Invalid script input for decoding, using as-is');
-    return base64Script || '';
-  }
-
-  // Check if it's likely base64 (length should be multiple of 4, valid chars)
-  const base64Regex = /^[A-Za-z0-9+/=]+$/;
-  const isLikelyBase64 = base64Regex.test(base64Script) && base64Script.length % 4 === 0 && base64Script.length > 20;
-
-  if (!isLikelyBase64) {
-    // Script is probably already decoded
-    return base64Script;
-  }
-
-  try {
-    if (typeof window === "undefined") {
-      // Server-side decoding
-      const decoded = Buffer.from(base64Script, "base64").toString("utf-8");
-      
-      // Validate that the decoded content looks like JavaScript
-      if (decoded.includes('import') || decoded.includes('test(') || decoded.includes('function')) {
-        return decoded;
-      } else {
-        console.warn('Decoded content does not look like JavaScript, using original');
-        return base64Script;
-      }
-    }
-    // Client-side, return as-is (shouldn't happen in job execution)
-    return base64Script;
-  } catch (error) {
-    console.error("Error decoding base64 script:", error);
-    // Return original script as fallback
-    return base64Script;
-  }
+  return decodeStoredTestScript(base64Script);
 }
 
 /**

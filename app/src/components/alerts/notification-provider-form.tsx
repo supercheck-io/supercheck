@@ -870,7 +870,8 @@ export function NotificationProviderForm({
                     variables like{" "}
                     <code>{"{{title}}"}</code>, <code>{"{{status}}"}</code>,
                     <code>{"{{normalizedSeverity}}"}</code>,{" "}
-                    <code>{"{{pagerDutyEventAction}}"}</code>, and{" "}
+                    <code>{"{{pagerDutyEventAction}}"}</code>,{" "}
+                    <code>{"{{victorOpsMessageType}}"}</code>, and{" "}
                     <code>{"{{dedupKey}}"}</code> when sending webhook
                     payloads.
                   </div>
