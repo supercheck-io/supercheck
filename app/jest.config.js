@@ -16,6 +16,13 @@ const customJestConfig = {
   modulePathIgnorePatterns: ["<rootDir>/.next/"],
   moduleNameMapper: {
     "^@/(.*)$": "<rootDir>/src/$1",
+    // The schema-contract test loads worker source intentionally. In the app
+    // CI job only this package's dependencies are installed, so force the
+    // worker's Drizzle imports to resolve to the matching app dependency
+    // instead of walking from ../worker for a node_modules directory.
+    "^drizzle-orm$": "<rootDir>/node_modules/drizzle-orm/index.cjs",
+    "^drizzle-orm/pg-core$": "<rootDir>/node_modules/drizzle-orm/pg-core/index.cjs",
+    "^drizzle-zod$": "<rootDir>/node_modules/drizzle-zod/index.cjs",
   },
 
   collectCoverageFrom: [
