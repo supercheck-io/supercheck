@@ -1,0 +1,61 @@
+# Supercheck CLI — GitLab CI Template
+#
+# Usage: Include this template in your .gitlab-ci.yml:
+#
+#   include:
+#     - remote: 'https://raw.githubusercontent.com/supercheck-io/supercheck/main/cli/.gitlab-ci.yml'
+#
+#   variables:
+#     SUPERCHECK_TOKEN: $SUPERCHECK_TOKEN
+#     SUPERCHECK_JOB_ID: "your-job-id"
+#
+# Or copy the relevant jobs into your own pipeline.
+
+.supercheck-base:
+  image: node:20-slim
+  before_script:
+    - npm install -g @supercheck/cli@${SUPERCHECK_CLI_VERSION:-latest}
+    - supercheck --version
+  variables:
+    SUPERCHECK_CLI_VERSION: "latest"
+
+# Verify CLI token and API connectivity
+supercheck-health:
+  extends: .supercheck-base
+  stage: .pre
+  script:
+    - supercheck health
+    - supercheck whoami
+  rules:
+    - if: $SUPERCHECK_TOKEN
+      when: always
+
+# Trigger a job and wait for results
+supercheck-test:
+  extends: .supercheck-base
+  stage: test
+  script:
+    - |
+      if [ -z "$SUPERCHECK_JOB_ID" ]; then
+        echo "Error: SUPERCHECK_JOB_ID variable is not set"
+        exit 1
+      fi
+    - supercheck --json job trigger "$SUPERCHECK_JOB_ID" --wait --timeout "${SUPERCHECK_TIMEOUT:-300}"
+  variables:
+    SUPERCHECK_TIMEOUT: "300"
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# Deploy monitoring-as-code configuration
+supercheck-deploy:
+  extends: .supercheck-base
+  stage: deploy
+  script:
+    - supercheck diff
+    - supercheck deploy --force
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  needs:
+    - job: supercheck-test
+      optional: true

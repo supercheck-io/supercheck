@@ -26,10 +26,12 @@ Run npm commands from the package directory, not the repository root.
 |------|------------|
 | `app/` | Next.js UI and API |
 | `worker/` | NestJS workers (tests, monitors, notifications) |
+| `cli/` | `@supercheck/cli` and monitoring-as-code commands |
+| `recorder/` | Apache-2.0 browser recorder extension built on Playwright CRX |
 | `docs/` | User-facing documentation (Fumadocs) |
 | `deploy/` | Docker Compose, K3s, and self-hosted install files |
 
-The Supercheck CLI is published as [`@supercheck/cli`](https://www.npmjs.com/package/@supercheck/cli). File CLI bugs against this repository. CLI command docs live in `docs/content/docs/cli/`.
+The Supercheck CLI is published as [`@supercheck/cli`](https://www.npmjs.com/package/@supercheck/cli). File CLI and recorder bugs against this repository. CLI command docs live in `docs/content/docs/cli/`.
 
 ## Checks
 
@@ -63,6 +65,27 @@ npm ci
 npm run build
 ```
 
+### CLI
+
+```bash
+cd cli
+npm ci
+npm run typecheck
+npm run lint
+npm test
+npm run build
+```
+
+### Recorder
+
+```bash
+cd recorder
+npm ci
+npm run build
+npm run test:install
+npm test
+```
+
 You do not need to run every package for a docs-only change.
 
 ## Requirements
@@ -79,4 +102,4 @@ Use disposable fixtures for browser and provider tests and remove them afterward
 
 ## License
 
-Supercheck is licensed under `AGPL-3.0-only`. By submitting a contribution, you certify that you have the right to submit it under that license. All contributors must follow [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+The app, worker, CLI, and documentation are licensed under `AGPL-3.0-only`. The recorder remains under Apache-2.0 because it derives from Playwright CRX and Playwright; see `recorder/LICENSE` and `recorder/NOTICE`. By submitting a contribution, you certify that you have the right to submit it under the license of the files you change. All contributors must follow [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).

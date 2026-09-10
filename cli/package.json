@@ -1,0 +1,82 @@
+{
+  "name": "@supercheck/cli",
+  "version": "0.1.4",
+  "description": "Open-Source Testing, Monitoring, and Reliability — as Code",
+  "keywords": [
+    "monitoring",
+    "testing",
+    "playwright",
+    "k6",
+    "cli",
+    "devops",
+    "automation",
+    "ci-cd"
+  ],
+  "homepage": "https://supercheck.io",
+  "bugs": {
+    "url": "https://github.com/supercheck-io/supercheck/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/supercheck-io/supercheck.git"
+  },
+  "author": "Supercheck <hello@supercheck.io>",
+  "type": "module",
+  "license": "AGPL-3.0-only",
+  "publishConfig": {
+    "access": "public",
+    "tag": "latest"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "bin": {
+    "supercheck": "dist/bin/supercheck.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/",
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
+    "test:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --watch",
+    "test:cov": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage",
+    "release:latest": "npm run build && npm test && npm publish --tag latest --access public",
+    "supercheck": "tsx src/bin/supercheck.ts"
+  },
+  "dependencies": {
+    "cli-table3": "^0.6.5",
+    "commander": "^13.1.0",
+    "conf": "^13.1.0",
+    "deepmerge-ts": "^7.1.5",
+    "dotenv": "^17.2.4",
+    "jiti": "^2.4.2",
+    "ora": "^9.3.0",
+    "picocolors": "^1.1.1",
+    "undici": "^6.21.1",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@types/node": "^22.13.0",
+    "eslint": "^9.19.0",
+    "jest": "^30.2.0",
+    "ts-jest": "^29.4.6",
+    "tsup": "^8.4.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.55.0"
+  }
+}

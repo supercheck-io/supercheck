@@ -1,0 +1,60 @@
+name: Recorder
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "recorder/**"
+      - ".github/workflows/recorder.yml"
+  pull_request:
+    paths:
+      - "recorder/**"
+      - ".github/workflows/recorder.yml"
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: recorder
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: recorder/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --prefer-offline --no-audit
+
+      - name: Build recorder and extension
+        run: npm run build
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
+
+      - name: Install Chromium
+        run: npm run test:install
+
+      - name: Run browser tests
+        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" -- npm test
+
+      - name: Upload browser report
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: recorder-playwright-report
+          path: |
+            recorder/tests/playwright-report/
+            recorder/tests/test-results/
+          if-no-files-found: ignore
+          retention-days: 5

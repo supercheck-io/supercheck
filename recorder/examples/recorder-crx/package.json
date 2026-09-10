@@ -1,0 +1,44 @@
+{
+  "name": "supercheck-recorder",
+  "version": "1.0.0",
+  "description": "Supercheck Recorder - Record browser interactions and save them as Playwright tests",
+  "type": "module",
+  "keywords": [
+    "supercheck",
+    "playwright",
+    "recorder",
+    "chrome-extension",
+    "testing"
+  ],
+  "author": "Supercheck",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/supercheck-io/supercheck.git",
+    "directory": "recorder/examples/recorder-crx"
+  },
+  "scripts": {
+    "dev": "vite build --watch",
+    "build": "npx tsc && npx vite build",
+    "lint": "npx eslint src --ext .ts,.tsx"
+  },
+  "dependencies": {
+    "idb-keyval": "^6.2.1",
+    "playwright-crx": "0.15.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-modal-promise": "^1.0.2",
+    "web": "file:../../playwright/packages/web",
+    "yaml": "^2.6.0"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.281",
+    "@types/codemirror": "^5.60.15",
+    "@types/node": "^18.19.68",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@types/wicg-file-system-access": "^2023.10.5",
+    "typescript": "^5.9.3",
+    "vite": "^6.1.0"
+  }
+}

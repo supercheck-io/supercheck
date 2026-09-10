@@ -1,0 +1,120 @@
+name: Publish CLI to npm
+
+on:
+  push:
+    tags: ["cli-v*"]
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: "Perform a dry run without publishing"
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  id-token: write # Required for npm provenance
+
+defaults:
+  run:
+    working-directory: cli
+
+jobs:
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: cli/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --prefer-offline --no-audit
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Verify package contents
+        run: npm pack --dry-run
+
+  publish:
+    name: Publish to npm
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      NODE_AUTH_TOKEN: ${{ secrets['NPM_TOKEN'] }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+          cache: "npm"
+          cache-dependency-path: cli/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --prefer-offline --no-audit
+
+      - name: Build
+        run: npm run build
+
+      - name: Verify tag matches package version
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if [ "${{ github.event_name }}" = "push" ]; then
+            TAG_VERSION="${GITHUB_REF#refs/tags/cli-v}"
+            if [ "$PKG_VERSION" != "$TAG_VERSION" ]; then
+              echo "::error::Tag version ($TAG_VERSION) doesn't match package.json version ($PKG_VERSION)"
+              exit 1
+            fi
+          fi
+          echo "Publishing version: $PKG_VERSION"
+
+      - name: Determine npm tag
+        id: npm-tag
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if echo "$PKG_VERSION" | grep -qE '(alpha|beta|rc|canary|next|dev)'; then
+            echo "tag=next" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=latest" >> "$GITHUB_OUTPUT"
+          fi
+          echo "Npm dist-tag: $(grep tag= "$GITHUB_OUTPUT" | cut -d= -f2)"
+
+      - name: Publish (dry run)
+        if: inputs.dry-run == true
+        run: npm publish --dry-run --tag ${{ steps.npm-tag.outputs.tag }}
+
+      - name: Publish to npm
+        if: inputs.dry-run != true
+        run: npm publish --provenance --access public --tag ${{ steps.npm-tag.outputs.tag }}
+
+      - name: Summary
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          echo "### 📦 Published @supercheck/cli@$PKG_VERSION" >> "$GITHUB_SUMMARY"
+          echo "" >> "$GITHUB_SUMMARY"
+          echo "- **npm tag:** \`${{ steps.npm-tag.outputs.tag }}\`" >> "$GITHUB_SUMMARY"
+          echo "- **Registry:** https://www.npmjs.com/package/@supercheck/cli" >> "$GITHUB_SUMMARY"

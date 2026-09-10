@@ -4,47 +4,47 @@ on:
   workflow_call:
     inputs:
       job-id:
-        description: 'Job ID to trigger'
+        description: Job ID to trigger
         required: true
         type: string
       wait:
-        description: 'Wait for the run to complete'
+        description: Wait for the run to finish
         required: false
         type: boolean
         default: true
       timeout:
-        description: 'Maximum wait time in seconds'
+        description: Maximum wait time in seconds
         required: false
         type: number
         default: 300
       supercheck-url:
-        description: 'Supercheck API URL (for self-hosted)'
+        description: Supercheck API URL for self-hosted installations
         required: false
         type: string
-        default: ''
+        default: ""
       node-version:
-        description: 'Node.js version to use'
+        description: Node.js version
         required: false
         type: string
-        default: '20'
+        default: "20"
       cli-version:
-        description: 'Supercheck CLI version (npm tag or semver)'
+        description: Supercheck CLI npm tag or version
         required: false
         type: string
-        default: 'latest'
+        default: latest
     secrets:
       SUPERCHECK_TRIGGER_KEY:
-        description: 'Trigger key (sck_trigger_*) for the target job'
+        description: Job trigger key (sck_trigger_* or job_*)
         required: true
       SUPERCHECK_TOKEN:
-        description: 'CLI token (sck_live_*) used for --wait polling and other API calls'
+        description: CLI token required when wait is true
         required: false
     outputs:
       run-id:
-        description: 'The run ID created by the job trigger'
+        description: Triggered run ID
         value: ${{ jobs.supercheck.outputs.run-id }}
       status:
-        description: 'Final run status when wait=true (empty when wait=false)'
+        description: Final run status when wait is true
         value: ${{ jobs.supercheck.outputs.status }}
 
 permissions:
@@ -52,9 +52,9 @@ permissions:
 
 jobs:
   supercheck:
-    name: Run Supercheck Job
+    name: Run Supercheck job
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     outputs:
       run-id: ${{ steps.trigger.outputs.run-id }}
       status: ${{ steps.trigger.outputs.status }}
@@ -66,57 +66,70 @@ jobs:
           node-version: ${{ inputs.node-version }}
 
       - name: Install Supercheck CLI
-        run: npm install -g @supercheck/cli@${{ inputs.cli-version }}
+        run: npm install --global "@supercheck/cli@${CLI_VERSION}"
+        env:
+          CLI_VERSION: ${{ inputs.cli-version }}
 
-      - name: Validate Inputs
-        id: validate
+      - name: Validate wait credentials
+        if: inputs.wait
         run: |
-          if [ -n "$SUPERCHECK_TOKEN" ]; then
-            echo "has-cli-token=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "has-cli-token=false" >> "$GITHUB_OUTPUT"
-          fi
-
-          if [ "$INPUT_WAIT" = "true" ] && [ -z "$SUPERCHECK_TOKEN" ]; then
-            echo "SUPERCHECK_TOKEN is required when wait=true." >&2
+          if [ -z "$SUPERCHECK_TOKEN" ]; then
+            echo "::error::SUPERCHECK_TOKEN is required when wait is true"
             exit 1
           fi
         env:
-          INPUT_WAIT: ${{ inputs.wait }}
           SUPERCHECK_TOKEN: ${{ secrets.SUPERCHECK_TOKEN }}
 
-      - name: Verify CLI Token
-        if: steps.validate.outputs.has-cli-token == 'true'
-        run: supercheck whoami
-        env:
-          SUPERCHECK_TOKEN: ${{ secrets.SUPERCHECK_TOKEN }}
-          SUPERCHECK_URL: ${{ inputs.supercheck-url }}
-
-      - name: Trigger Job
+      - name: Trigger job
         id: trigger
+        shell: bash
         run: |
-          ARGS=("$INPUT_JOB_ID")
-          if [ "$INPUT_WAIT" = "true" ]; then
-            ARGS+=("--wait" "--timeout" "$INPUT_TIMEOUT")
+          args=("$JOB_ID")
+          if [ "$WAIT_FOR_RESULT" = "true" ]; then
+            args+=("--wait" "--timeout" "$WAIT_TIMEOUT")
           fi
-          ARGS+=("--json")
 
-          echo "Running: supercheck job trigger ${ARGS[*]}"
-          OUTPUT=$(supercheck job trigger "${ARGS[@]}" 2>&1) || EXIT_CODE=$?
+          set +e
+          output=$(supercheck --json job trigger "${args[@]}" 2>&1)
+          exit_code=$?
+          set -e
 
-          # Extract run ID and status from JSON output using node (already available)
-          RUN_ID=$(echo "$OUTPUT" | node -e "try{const d=JSON.parse(require('fs').readFileSync(0,'utf8'));console.log(d.runId||'')}catch{console.log('')}" || true)
-          STATUS=$(echo "$OUTPUT" | node -e "try{const d=JSON.parse(require('fs').readFileSync(0,'utf8'));console.log(d.status||'')}catch{console.log('')}" || true)
+          echo "$output"
 
-          echo "run-id=$RUN_ID" >> "$GITHUB_OUTPUT"
-          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+          run_id=$(printf '%s' "$output" | node -e '
+            const input = require("fs").readFileSync(0, "utf8");
+            try {
+              const value = JSON.parse(input);
+              process.stdout.write(String(value.runId || value.id || ""));
+            } catch {
+              const match = input.match(/Run ID:\s*([A-Za-z0-9_-]+)/);
+              process.stdout.write(match?.[1] || "");
+            }
+          ')
+          status=$(printf '%s' "$output" | node -e '
+            const input = require("fs").readFileSync(0, "utf8");
+            try {
+              const value = JSON.parse(input);
+              process.stdout.write(typeof value.status === "string" ? value.status : "");
+            } catch {
+              process.stdout.write("");
+            }
+          ')
 
-          echo "$OUTPUT"
-          exit ${EXIT_CODE:-0}
+          if [[ ! "$run_id" =~ ^[A-Za-z0-9_-]+$ ]]; then
+            run_id=""
+          fi
+          if [[ ! "$status" =~ ^[A-Za-z0-9_-]*$ ]]; then
+            status=""
+          fi
+
+          echo "run-id=$run_id" >> "$GITHUB_OUTPUT"
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit "$exit_code"
         env:
+          JOB_ID: ${{ inputs.job-id }}
+          WAIT_FOR_RESULT: ${{ inputs.wait }}
+          WAIT_TIMEOUT: ${{ inputs.timeout }}
+          SUPERCHECK_URL: ${{ inputs.supercheck-url }}
           SUPERCHECK_TRIGGER_KEY: ${{ secrets.SUPERCHECK_TRIGGER_KEY }}
           SUPERCHECK_TOKEN: ${{ secrets.SUPERCHECK_TOKEN }}
-          SUPERCHECK_URL: ${{ inputs.supercheck-url }}
-          INPUT_JOB_ID: ${{ inputs.job-id }}
-          INPUT_WAIT: ${{ inputs.wait }}
-          INPUT_TIMEOUT: ${{ inputs.timeout }}

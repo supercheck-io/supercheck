@@ -1,0 +1,245 @@
+/**
+ * Supercheck Recorder - Component Styles
+ */
+
+/* Project Selector */
+.project-selector {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  background: var(--vscode-sideBar-background, #1e1e1e);
+  border-bottom: 1px solid var(--vscode-panel-border, #3c3c3c);
+}
+
+.project-selector.error {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.project-selector .error-text {
+  flex: 1;
+  color: #ef4444;
+  font-size: 12px;
+}
+
+.project-select {
+  flex: 1;
+  padding: 6px 10px;
+  font-size: 12px;
+  background: var(--vscode-input-background, #3c3c3c);
+  color: var(--vscode-input-foreground, #cccccc);
+  border: 1px solid var(--vscode-input-border, #3c3c3c);
+  border-radius: 4px;
+  outline: none;
+}
+
+.project-select:focus {
+  border-color: var(--vscode-focusBorder, #007fd4);
+}
+
+.project-select:disabled {
+  opacity: 0.6;
+}
+
+.refresh-btn {
+  padding: 4px 8px;
+  font-size: 14px;
+  background: transparent;
+  color: var(--vscode-foreground, #cccccc);
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.refresh-btn:hover {
+  background: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31));
+}
+
+.refresh-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Save to Supercheck */
+.save-to-supercheck {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+}
+
+.save-to-supercheck.not-connected {
+  align-items: center;
+}
+
+.save-to-supercheck.name-input {
+  gap: 8px;
+}
+
+.test-name-input {
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 13px;
+  background: var(--vscode-input-background, #3c3c3c);
+  color: var(--vscode-input-foreground, #cccccc);
+  border: 1px solid var(--vscode-input-border, #3c3c3c);
+  border-radius: 4px;
+  outline: none;
+}
+
+.test-name-input:focus {
+  border-color: var(--vscode-focusBorder, #007fd4);
+}
+
+.name-input-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.save-btn,
+.connect-btn,
+.cancel-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 4px;
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.save-btn {
+  background: #50b748;
+  color: white;
+}
+
+.save-btn:hover:not(:disabled) {
+  background: #45a23f;
+}
+
+.save-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.save-btn.saving {
+  background: #3b82f6;
+}
+
+.save-btn.saved {
+  background: #22c55e;
+}
+
+.save-btn.error {
+  background: #ef4444;
+}
+
+.connect-btn {
+  background: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, white);
+}
+
+.connect-btn:hover {
+  background: var(--vscode-button-hoverBackground, #1177bb);
+}
+
+.cancel-btn {
+  background: transparent;
+  color: var(--vscode-foreground, #cccccc);
+  border: 1px solid var(--vscode-input-border, #3c3c3c);
+}
+
+.cancel-btn:hover {
+  background: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31));
+}
+
+.save-error {
+  color: #ef4444;
+  font-size: 11px;
+  text-align: center;
+}
+
+/* Spinner animation */
+.spinner {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Supercheck Header in side panel */
+.supercheck-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: linear-gradient(180deg, #1a1a1a 0%, #0d0d0d 100%);
+  border-bottom: 1px solid #333;
+}
+
+.supercheck-header .logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.supercheck-header .logo svg {
+  width: 20px;
+  height: 20px;
+}
+
+.supercheck-header .logo span {
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.supercheck-header .actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.supercheck-header .icon-btn {
+  padding: 4px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: #999;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.supercheck-header .icon-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+/* Connection indicator */
+.connection-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 4px;
+}
+
+.connection-dot.connected {
+  background: #22c55e;
+  box-shadow: 0 0 4px #22c55e;
+}
+
+.connection-dot.disconnected {
+  background: #6b7280;
+}
+
+.connection-dot.error {
+  background: #ef4444;
+}

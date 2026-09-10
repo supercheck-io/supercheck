@@ -91,6 +91,10 @@ export function RecorderAutoConnect() {
     }
 
     const handleMessage = (event: MessageEvent) => {
+      if (event.source !== window || event.origin !== window.location.origin) {
+        return;
+      }
+
       // Only handle messages from our extension
       if (event.data?.source !== "supercheck-recorder") {
         return;

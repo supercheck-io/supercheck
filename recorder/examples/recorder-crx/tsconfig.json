@@ -1,0 +1,28 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "useDefineForClassFields": true,
+    "lib": ["DOM", "DOM.Iterable", "ESNext"],
+    "types": ["chrome"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "esModuleInterop": false,
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "module": "ESNext",
+    "moduleResolution": "Node",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "baseUrl": ".",
+    "useUnknownInCatchVariables": false,
+    "paths": {
+      "@isomorphic/*": ["../../playwright/packages/playwright-core/src/utils/isomorphic/*"],
+      "@protocol/*": ["../../playwright/packages/protocol/src/*"],
+      "@web/*": ["../../playwright/packages/web/src/*"],
+      "@recorder/*": ["../../playwright/packages/recorder/src/*"],
+    }
+  },
+  "include": ["src"],
+}

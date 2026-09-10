@@ -98,7 +98,7 @@ Public pricing changes frequently; check the linked vendor pages for the latest 
 Record Playwright tests directly from your browser:
 
 - [Chrome Extension](https://chromewebstore.google.com/detail/supercheck-recorder/gfmbcelfhhfmifdkccnbgdadibdfhioe)
-- [Edge Extension](https://microsoftedge.microsoft.com/addons/detail/supercheck-recorder/ngmlkgfgmdnfpddohcbfdgihennolnem)
+- [Edge Extension](https://microsoftedge.microsoft.com/addons/detail/supercheck-recorder/0rdckc265vb9)
 
 ## Architecture
 
@@ -170,6 +170,14 @@ Official docs:
 Install and manage Supercheck resources from the command line with `@supercheck/cli`:
 
 - [npm package](https://www.npmjs.com/package/@supercheck/cli)
+- [source](cli/)
+
+## Supercheck Recorder
+
+Record browser interactions and save Playwright tests directly to Supercheck:
+
+- [Chrome Web Store](https://chromewebstore.google.com/detail/supercheck-recorder/gfmbcelfhhfmifdkccnbgdadibdfhioe)
+- [source and build instructions](recorder/)
 
 ## Community Integrations
 
@@ -193,7 +201,7 @@ If Supercheck is useful to your team:
 
 ## License and Contributions
 
-Supercheck core is open source under the [GNU Affero General Public License v3.0 only](LICENSE). We welcome external contributions. Use [GitHub Discussions](https://github.com/supercheck-io/supercheck/discussions) for proposals and [GitHub Issues](https://github.com/supercheck-io/supercheck/issues) for reproducible bugs. See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidance and [SECURITY.md](SECURITY.md) for private vulnerability reporting.
+The Supercheck app, worker, CLI, and documentation are open source under the [GNU Affero General Public License v3.0 only](LICENSE). The recorder remains Apache-2.0; its license and upstream attribution are in [`recorder/LICENSE`](recorder/LICENSE) and [`recorder/NOTICE`](recorder/NOTICE). We welcome external contributions. Use [GitHub Discussions](https://github.com/supercheck-io/supercheck/discussions) for proposals and [GitHub Issues](https://github.com/supercheck-io/supercheck/issues) for reproducible bugs. See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidance and [SECURITY.md](SECURITY.md) for private vulnerability reporting.
 
 ## Community
 

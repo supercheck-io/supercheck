@@ -1,0 +1,22 @@
+{
+  "version": "0.1.0",
+  "description": "CLI for Supercheck test automation and monitoring",
+  "homepage": "https://supercheck.io",
+  "license": "AGPL-3.0-only",
+  "depends": "nodejs",
+  "suggest": {
+    "Node.js": "nodejs"
+  },
+  "install_config": {
+    "npm": "@supercheck/cli@0.1.0"
+  },
+  "pre_install": "Invoke-Expression \"npm install -g @supercheck/cli@$version\"",
+  "bin": "supercheck",
+  "checkver": {
+    "url": "https://registry.npmjs.org/@supercheck/cli",
+    "jsonpath": "$.['dist-tags'].latest"
+  },
+  "autoupdate": {
+    "url": "https://registry.npmjs.org/@supercheck/cli/-/cli-$version.tgz"
+  }
+}

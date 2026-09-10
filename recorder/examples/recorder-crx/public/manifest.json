@@ -1,0 +1,73 @@
+{
+  "name": "Supercheck Recorder",
+  "version": "1.0.0",
+  "description": "Record browser interactions and save them as Playwright tests directly to Supercheck",
+  "manifest_version": 3,
+  "icons": {
+    "16": "icon-16x16.png",
+    "32": "icon-32x32.png",
+    "48": "icon-48x48.png",
+    "128": "icon-192x192.png"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_icon": {
+      "16": "icon-16x16.png",
+      "32": "icon-32x32.png"
+    },
+    "default_title": "Supercheck Recorder"
+  },
+  "commands": {
+    "record": {
+      "suggested_key": {
+        "default": "Shift+Alt+R"
+      },
+      "description": "Start recording"
+    },
+    "inspect": {
+      "suggested_key": {
+        "default": "Shift+Alt+C"
+      },
+      "description": "Start inspecting"
+    }
+  },
+  "side_panel": {
+    "default_path": "empty.html"
+  },
+  "permissions": [
+    "debugger",
+    "tabs",
+    "storage",
+    "sidePanel",
+    "scripting"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*/*",
+        "http://*/*"
+      ],
+      "js": [
+        "content-script.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "page-api.js"
+      ],
+      "matches": [
+        "https://*/*",
+        "http://*/*"
+      ]
+    }
+  ]
+}

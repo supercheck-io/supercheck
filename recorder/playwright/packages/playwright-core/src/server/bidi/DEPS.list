@@ -1,0 +1,12 @@
+[*]
+../../utils/
+../
+../isomorphic/
+../utils
+./third_party/
+
+[bidiOverCdp.ts]
+***
+
+[bidiChromium.ts]
+../chromium/chromiumSwitches.ts

@@ -1,0 +1,87 @@
+---
+title: Recorder
+description: Record browser interactions and save Playwright tests directly to Supercheck
+icon: MousePointerClick
+---
+
+The Supercheck Recorder is a Chrome and Edge extension that turns browser interactions into Playwright code. You can review and edit the generated test before saving it to a Supercheck project.
+
+## Install
+
+- [Install from the Chrome Web Store](https://chromewebstore.google.com/detail/supercheck-recorder/gfmbcelfhhfmifdkccnbgdadibdfhioe)
+- [Install from Microsoft Edge Add-ons](https://microsoftedge.microsoft.com/addons/detail/supercheck-recorder/0rdckc265vb9)
+- [View the source and build instructions](https://github.com/supercheck-io/supercheck/tree/main/recorder)
+
+The extension requires Chrome or Edge with Manifest V3 side-panel support.
+
+## Connect to Supercheck
+
+### From the dashboard
+
+1. Sign in to Supercheck in the same browser profile where the extension is installed.
+2. Open the recorder connection control in Supercheck.
+3. Approve the connection. Supercheck creates extension credentials without exposing your browser session to recorded sites.
+
+### Manually
+
+1. Open the extension's **Options** page.
+2. Enter `https://supercheck.io` or the HTTPS URL of your self-hosted deployment.
+3. Enter a Supercheck API key and select **Connect**.
+
+For local development only, the extension also accepts `http://localhost`. Other non-HTTPS instance URLs are rejected.
+
+## Record a test
+
+1. Open the page you want to test.
+2. Select the Supercheck Recorder extension, or press `Shift+Alt+R`.
+3. Interact with the page. The side panel displays the generated Playwright code.
+4. Review or edit the code.
+5. Select **Save** to send it to the originating Supercheck Playground.
+
+Use `Shift+Alt+C` to inspect elements without recording actions. Closing the recorder detaches controlled tabs and removes injected recorder scripts.
+
+## Permissions and data
+
+The extension requests debugger, tabs, storage, side-panel, scripting, and HTTP/HTTPS host access. These permissions are required to attach Playwright to a tab, observe browser actions, show the recorder, and communicate with Supercheck.
+
+The configured instance URL and extension API key are stored in Chrome sync storage. Treat the browser profile as sensitive: disconnect the extension before sharing the profile, and revoke the key from Supercheck if the profile or device is lost. Recorded page interactions can include text entered into forms; review generated code before saving and avoid recording real secrets.
+
+The extension requires HTTPS for cloud and self-hosted instances. Only localhost development may use HTTP.
+
+## Self-hosted deployments
+
+Configure the externally reachable HTTPS URL of your Supercheck app in the extension options. The recorder must be able to call the app's extension authentication, project, and recording endpoints. If connection fails, verify the URL, certificate trust, API key, and browser access to the deployment.
+
+## Build from source
+
+```bash
+git clone https://github.com/supercheck-io/supercheck.git
+cd supercheck/recorder
+npm ci
+npm run build
+```
+
+Then open `chrome://extensions`, enable **Developer mode**, choose **Load unpacked**, and select `recorder/examples/recorder-crx/dist`.
+
+Run validation before contributing:
+
+```bash
+npm run lint
+npm run build
+npm run test:install
+npm test
+```
+
+## Troubleshooting
+
+| Problem | Check |
+|---|---|
+| Extension is not detected | Reload the extension and the Supercheck tab, using the same browser profile |
+| Connection fails | Confirm the instance URL uses HTTPS and the API key is active |
+| Self-hosted instance is unreachable | Open the instance directly and verify its certificate and network access |
+| Recording does not start | Confirm the tab uses HTTP or HTTPS and no other debugger is attached |
+| Save is unavailable | Start the recording from Supercheck so the originating Playground context is available |
+
+## License
+
+The Supercheck Recorder is distributed under Apache-2.0. Its Playwright-derived copyright notices and license terms remain available in the source repository.

@@ -157,6 +157,8 @@ docker-compose.override.yml
 # Scripts and utilities
 .scripts/
 bin/
+!cli/src/bin/
+!cli/src/bin/**
 
 # Certificates and keys (keep separate from .env)
 certs/
@@ -183,3 +185,4 @@ supercheck.config.local.js
 supercheck.config.local.mjs
 .opencode
 .tokensave
+.agents/

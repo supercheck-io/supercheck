@@ -3,5 +3,10 @@ Copyright (C) 2026 Supercheck Contributors
 
 SPDX-License-Identifier: AGPL-3.0-only
 
-The Supercheck core in this repository is licensed under version 3 only of
+The Supercheck app, worker, CLI, and documentation in this repository are licensed under version 3 only of
 the GNU Affero General Public License. See LICENSE for the complete terms.
+
+Third-party components retain their original licenses and copyright notices.
+The recorder is licensed under Apache-2.0 and includes Playwright-derived code;
+see recorder/LICENSE, recorder/NOTICE, recorder/playwright/LICENSE, and
+recorder/playwright/NOTICE for its terms and attributions.
