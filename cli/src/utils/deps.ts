@@ -156,8 +156,13 @@ export async function installPlaywrightBrowsers(cwd: string, browser = 'chromium
 /**
  * Run all dependency checks and return a summary.
  */
-export function checkAllDependencies(cwd: string): DependencyStatus[] {
+export function checkAllDependencies(
+  cwd: string,
+  options?: { requirePlaywright?: boolean; requireK6?: boolean },
+): DependencyStatus[] {
   const deps: DependencyStatus[] = []
+  const pwRequired = options?.requirePlaywright ?? true
+  const k6Required = options?.requireK6 ?? false
 
   // Node.js
   const node = isNodeInstalled()
@@ -175,7 +180,7 @@ export function checkAllDependencies(cwd: string): DependencyStatus[] {
     name: '@playwright/test',
     installed: pwPkg,
     detail: pwPkg ? 'npm package found' : 'npm package not found',
-    required: true,
+    required: pwRequired,
     installHint: 'npm install --save-dev @playwright/test',
   })
 
@@ -186,7 +191,7 @@ export function checkAllDependencies(cwd: string): DependencyStatus[] {
       name: 'Playwright browsers',
       installed: browsersInstalled,
       detail: browsersInstalled ? 'chromium browser available' : 'run: npx playwright install chromium',
-      required: true,
+      required: pwRequired,
       installHint: 'npx playwright install chromium',
     })
   } else {
@@ -194,7 +199,7 @@ export function checkAllDependencies(cwd: string): DependencyStatus[] {
       name: 'Playwright browsers',
       installed: false,
       detail: 'install @playwright/test first',
-      required: true,
+      required: pwRequired,
       installHint: 'npm install --save-dev @playwright/test && npx playwright install chromium',
     })
   }
@@ -206,7 +211,7 @@ export function checkAllDependencies(cwd: string): DependencyStatus[] {
     installed: k6.installed,
     version: k6.version,
     detail: k6.installed ? undefined : 'needed for performance tests',
-    required: false,
+    required: k6Required,
     installHint: getK6InstallHint(),
   })
 

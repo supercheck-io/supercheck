@@ -760,18 +760,18 @@ function formatValue(value: unknown, indent = 0): string {
       // Bracket-notation reference: ${[VAR-NAME]} → process.env['VAR-NAME']
       if (inner.startsWith('[') && inner.endsWith(']')) {
         const varName = inner.slice(1, -1)
-        return `process.env['${varName.replace(/'/g, "\\'")}'] ?? ''`
+        return `process.env[${JSON.stringify(varName)}] ?? ''`
       }
       return `process.env.${inner} ?? ''`
     }
-    return `'${value.replace(/'/g, "\\'")}'`
+    return JSON.stringify(value)
   }
   if (typeof value === 'number' || typeof value === 'boolean') return String(value)
   if (value === null || value === undefined) return 'undefined'
   if (Array.isArray(value)) {
     if (value.length === 0) return '[]'
     if (value.every((v) => typeof v === 'string')) {
-      return `[${value.map((v) => `'${String(v).replace(/'/g, "\\'")}'`).join(', ')}]`
+      return `[${value.map((v) => JSON.stringify(v)).join(', ')}]`
     }
     // Array of objects or mixed
     const innerIndent = '  '.repeat(indent + 1)
@@ -797,7 +797,7 @@ function formatValue(value: unknown, indent = 0): string {
 export const pullCommand = new Command('pull')
   .description('Pull tests, monitors, jobs, status pages, and config from the Supercheck cloud into the local project')
   .option('--config <path>', 'Path to config file')
-  .option('--force', 'Overwrite existing local files without prompting')
+  .option('--force', 'Bypass confirmation prompt before overwriting local files')
   .option('--tests-only', 'Only pull test scripts')
   .option('--config-only', 'Only pull config (monitors, jobs, notification providers, variables, tags, status pages)')
   .option('--dry-run', 'Show what would be pulled without writing files')

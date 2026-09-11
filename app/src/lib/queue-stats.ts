@@ -8,10 +8,10 @@ import { eq, and, or, sql } from "drizzle-orm";
 // Self-hosted mode: uses RUNNING_CAPACITY/QUEUED_CAPACITY env vars
 // Cloud mode: uses plan limits from database (Plus=5/50, Pro=10/100)
 export const DEFAULT_RUNNING_CAPACITY = parseInt(
-  process.env.RUNNING_CAPACITY || "5"
+  process.env.RUNNING_CAPACITY || "1"
 );
 export const DEFAULT_QUEUED_CAPACITY = parseInt(
-  process.env.QUEUED_CAPACITY || "50"
+  process.env.QUEUED_CAPACITY || "10"
 );
 
 export interface QueueStats {

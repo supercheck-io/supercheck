@@ -6,7 +6,7 @@
  * Test Categories:
  * - HTTP Request Monitoring (GET, POST, status validation)
  * - Website Monitoring (SSL checks, content validation)
- * - Ping Monitoring (ICMP echo)
+ * - Ping Monitoring (TCP reachability on ports 443 and 80)
  * - Port Monitoring (TCP connection)
  * - Custom Playwright Monitoring
  * - Alert Handling (status changes, notifications)

@@ -173,6 +173,8 @@ my-project/
 
 ### `defaults`
 
+> Note: Reserved for future use. Defined in the configuration schema but not currently applied during local CLI execution.
+
 | Field | Type | Description |
 |-------|------|-------------|
 | `runLocation` | `string` | Default execution location code (e.g. `us-east`) |
@@ -183,7 +185,7 @@ my-project/
 | Field | Type | Description |
 |-------|------|-------------|
 | `testMatch` | `string` | Glob pattern for Playwright test files |
-| `browser` | `string` | Browser to use (default: `chromium`) |
+| `browser` | `string` | Browser to use (default: `chromium`; local runner executes with chromium) |
 
 ### `tests.k6`
 

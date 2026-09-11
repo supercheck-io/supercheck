@@ -63,7 +63,7 @@ const UUID_EXTRACT_REGEX =
  */
 export function extractUuidFromFilename(filename: string): string | undefined {
   const base = filename.split(/[/\\]/).pop() ?? filename
-  const stem = base.replace(/\.(pw|k6)\.ts$/, '')
+  const stem = base.replace(/\.(?:pw|k6|spec)\.[jt]s$/, '')
   const match = UUID_EXTRACT_REGEX.exec(stem)
   return match ? match[1] : undefined
 }

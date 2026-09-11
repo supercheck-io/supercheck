@@ -78,6 +78,7 @@ export interface SpendingStatus {
 
 const USAGE_SYNC_ADVISORY_LOCK_KEY = 792401305;
 const POLAR_INGEST_TIMEOUT_MS = 15_000;
+export const POLAR_API_VERSION = "2026-04";
 type UsageSyncResult = {
   processed: number;
   succeeded: number;
@@ -230,6 +231,7 @@ class PolarUsageService {
           headers: {
             'Authorization': `Bearer ${config.accessToken}`,
             'Content-Type': 'application/json',
+            'Polar-Version': POLAR_API_VERSION,
           },
           body: JSON.stringify({
             events: [{

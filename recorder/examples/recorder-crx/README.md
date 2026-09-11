@@ -74,7 +74,7 @@ The API-key field is only for an existing recorder-scoped credential. Ordinary C
 
 ### Instance URL
 
-- **Cloud**: `https://supercheck.io` (default)
+- **Cloud**: `https://app.supercheck.io` (default)
 - **Self-Hosted**: Your custom deployment URL (e.g., `https://check.yourcompany.com`)
 
 ### Recorder Settings
@@ -89,7 +89,6 @@ The API-key field is only for an existing recorder-scoped credential. Ordinary C
 |----------|--------|
 | `Shift+Alt+R` | Start recording |
 | `Shift+Alt+C` | Start inspecting |
-| `Ctrl+S` | Save code (when experimental mode enabled) |
 
 ## Security
 
@@ -105,17 +104,18 @@ The API-key field is only for an existing recorder-scoped credential. Ordinary C
 ```
 examples/recorder-crx/
 ├── public/
-│   └── manifest.json       # Extension manifest
+│   └── manifest.json         # Extension manifest
 ├── src/
-│   ├── background.ts       # Service worker
-│   ├── content-script.ts   # Content script for message bridge
-│   ├── index.tsx           # Side panel entry
-│   ├── options.tsx         # Options page
-│   └── supercheck/         # Supercheck integration
-│       ├── api-client.ts   # API client with retry logic
-│       ├── config.ts       # Configuration management
-│       ├── message-bridge.ts # Web app communication
-│       └── components/     # React components
+│   ├── background.ts         # Service worker
+│   ├── content-script.ts     # Content script for web app bridge
+│   ├── index.tsx             # Side panel entry
+│   ├── options.tsx           # Options page
+│   ├── settings.ts           # Settings storage & management
+│   └── supercheck/           # Supercheck integration
+│       ├── api-client.ts     # API client with retry logic
+│       ├── config.ts         # Configuration management
+│       ├── message-security.ts # Origin validation & security
+│       └── index.ts          # Public module exports
 ├── options.html
 ├── index.html
 └── package.json
@@ -123,22 +123,31 @@ examples/recorder-crx/
 
 ### Building
 
+Run build scripts from `examples/recorder-crx/` (or the repository root):
+
 ```bash
 # Development build with watch
 npm run dev
 
 # Production build
 npm run build
+
+# Typecheck & lint
+npm run lint
 ```
 
 ### Testing
 
-```bash
-# Run tests
-npm test
+End-to-end CRX browser tests are executed from the `recorder/` root directory:
 
-# Run tests with UI
-npm run test-ui
+```bash
+cd supercheck/recorder
+
+# Install browser test requirements
+npm run test:install
+
+# Run browser tests
+npm test
 ```
 
 ## API Reference
@@ -152,16 +161,16 @@ The extension communicates with the Supercheck web app using `window.postMessage
 | `SUPERCHECK_CHECK_EXTENSION` | App → Extension | Check if extension is installed |
 | `SUPERCHECK_RECORDER_READY` | Extension → App | Extension announces its presence |
 | `SUPERCHECK_START_RECORDING` | App → Extension | Request to start recording |
-| `SUPERCHECK_CONNECT_EXTENSION` | App → Extension | Connect extension with credentials |
+| `SUPERCHECK_AUTO_CONNECT` | App → Extension | Connect extension with credentials |
 | `SUPERCHECK_RECORDING_COMPLETE` | Extension → App | Recording finished and saved |
 
 ### REST API Endpoints
 
 The extension uses these Supercheck API endpoints:
 
-- `GET /api/projects` - List user's projects
+- `GET /api/extension/projects` - List projects available to the extension user
 - `POST /api/recordings` - Save recorded script as test
-- `GET /api/auth/me` - Verify API key
+- `POST /api/auth/verify-key` - Verify API key validity
 - `POST /api/extension/auth` - Generate extension API key
 
 ## License

@@ -197,6 +197,11 @@ describe("PolarUsageService retry idempotency", () => {
       payloads[0].events[0].external_id,
     );
     expect(fetchMock.mock.calls[0]?.[1]?.signal).toBeInstanceOf(AbortSignal);
+    expect(fetchMock.mock.calls[0]?.[1]?.headers).toEqual(
+      expect.objectContaining({
+        "Polar-Version": "2026-04",
+      }),
+    );
 
     expect(updateSet).toHaveBeenCalledWith(
       expect.objectContaining({

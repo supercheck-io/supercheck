@@ -118,7 +118,7 @@ async function runLocalJobTests(
     }
   } catch (err) {
     if (err instanceof DependencyError) {
-      throw new CLIError(err.message, ExitCode.GeneralError)
+      throw new CLIError(err.message, ExitCode.ConfigError)
     }
     throw err
   }

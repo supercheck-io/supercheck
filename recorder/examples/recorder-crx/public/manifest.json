@@ -3,11 +3,17 @@
   "version": "1.0.0",
   "description": "Record browser interactions and save them as Playwright tests directly to Supercheck",
   "manifest_version": 3,
+  "minimum_chrome_version": "114",
   "icons": {
     "16": "icon-16x16.png",
     "32": "icon-32x32.png",
     "48": "icon-48x48.png",
-    "128": "icon-192x192.png"
+    "128": "icon-192x192.png",
+    "192": "icon-192x192.png"
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
   },
   "background": {
     "service_worker": "background.js",

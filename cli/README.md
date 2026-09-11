@@ -77,9 +77,6 @@ supercheck upgrade
   supercheck test run --file _supercheck_/playwright/homepage-check.<id>.pw.ts
   supercheck test run --all --type browser
   supercheck test run --all --type performance
-  supercheck test run --all --type api
-  supercheck test run --all --type database
-  supercheck test run --all --type custom
   ```
 
   For remote execution with persisted run history, trigger a job:
@@ -106,9 +103,9 @@ supercheck upgrade
 | Command | Description |
 |---|---|
 | `supercheck init` | Initialize a new project with config and example tests |
-| `supercheck pull` | Sync cloud resources to local config |
+| `supercheck pull` | Sync cloud resources to local config (`--dry-run`, `--force`, `--tests-only`, `--config-only`) |
 | `supercheck diff` | Preview changes between local config and cloud |
-| `supercheck deploy` | Apply local config changes to the cloud |
+| `supercheck deploy` | Apply local config changes to the cloud (`--dry-run`, `--force`, `--no-delete`) |
 | `supercheck validate` | Validate local test scripts (same rules as Playground) |
 | `supercheck destroy` | Remove all managed resources from the cloud (`--dry-run`, `--force`) |
 | `supercheck config validate` | Validate your `supercheck.config.ts` |

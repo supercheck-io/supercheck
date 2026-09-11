@@ -6,4 +6,4 @@
 
 export * from './config';
 export * from './api-client';
-export * from './message-bridge';
+export * from './message-security';

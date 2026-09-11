@@ -5,7 +5,7 @@
  * Implements retry logic with exponential backoff for reliability.
  */
 
-import { getConfig, type SupercheckConfig } from './config';
+import { getConfig, DEFAULT_INSTANCE_URL, type SupercheckConfig } from './config';
 
 const MAX_RETRIES = 3;
 const RETRY_DELAY_BASE = 1000;
@@ -192,10 +192,24 @@ class SupercheckApiClient {
   /**
    * Verify API key and get user information
    */
-  async verifyConnection(): Promise<{ valid: boolean; user?: UserInfo }> {
+  async verifyConnection(testApiKey?: string, instanceUrl?: string): Promise<{ valid: boolean; user?: UserInfo }> {
     try {
-      const response = await this.request<{ success: boolean; data: UserInfo }>('/api/auth/me');
-      return { valid: true, user: response.data };
+      const config = await this.getCachedConfig();
+      const key = testApiKey || config?.apiKey;
+      if (!key)
+        return { valid: false };
+
+      const baseUrl = (instanceUrl || config?.instanceUrl || DEFAULT_INSTANCE_URL).replace(/\/$/, '');
+      const response = await fetch(`${baseUrl}/api/auth/verify-key`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apiKey: key }),
+      });
+
+      if (!response.ok)
+        return { valid: false };
+      const data = await response.json();
+      return { valid: Boolean(data.valid), user: data.user };
     } catch (error) {
       if (error instanceof AuthError)
         return { valid: false };
@@ -208,7 +222,7 @@ class SupercheckApiClient {
    * Get list of user's projects
    */
   async getProjects(): Promise<Project[]> {
-    const response = await this.request<{ success: boolean; data: Project[] }>('/api/projects');
+    const response = await this.request<{ success: boolean; data: Project[] }>('/api/extension/projects');
     return response.data;
   }
 

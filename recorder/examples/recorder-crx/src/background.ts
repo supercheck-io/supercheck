@@ -394,7 +394,7 @@ chrome.runtime.onInstalled.addListener(details => {
     return;
   // Show welcome page on install only (not on update)
   if (details.reason === chrome.runtime.OnInstalledReason.INSTALL)
-    chrome.tabs.create({ url: 'https://supercheck.io' }).catch(() => {});
+    chrome.tabs.create({ url: 'https://app.supercheck.io' }).catch(() => {});
 
 });
 

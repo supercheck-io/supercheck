@@ -168,10 +168,22 @@ export async function fetchAllPages<T = Record<string, unknown>>(
       limit: String(PAGE_LIMIT),
       page: String(page),
     })
-    items.push(...data.data)
 
-    if (data.pagination) {
-      totalPages = data.pagination.totalPages
+    const pageData = data as unknown
+    let pageItems: T[] = []
+    if (Array.isArray(pageData)) {
+      pageItems = pageData as T[]
+    } else if (pageData && typeof pageData === 'object' && Array.isArray((pageData as Record<string, unknown>).data)) {
+      pageItems = (pageData as Record<string, unknown>).data as T[]
+    }
+
+    items.push(...pageItems)
+
+    if (pageData && typeof pageData === 'object' && (pageData as Record<string, unknown>).pagination) {
+      const pagination = (pageData as Record<string, unknown>).pagination as { totalPages?: number }
+      if (typeof pagination.totalPages === 'number') {
+        totalPages = pagination.totalPages
+      }
     }
 
     page++
@@ -462,10 +474,11 @@ export async function fetchRemoteResources(client: ReturnType<typeof getApiClien
  */
 function logFetchError(resourceType: string, err: unknown): void {
   if (err instanceof ApiRequestError && err.statusCode === 404) {
-    logger.debug(`Could not fetch ${resourceType} (not found)`)
+    logger.debug(`Could not fetch ${resourceType} (not found / disabled)`)
   } else {
     const msg = err instanceof Error ? err.message : String(err)
-    logger.warn(`Could not fetch ${resourceType}: ${msg}`)
+    logger.error(`Failed to fetch ${resourceType}: ${msg}`)
+    throw err
   }
 }
 

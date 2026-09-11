@@ -1,0 +1,11 @@
+<!DOCTYPE html>
+<html>
+<head><title>Service Worker</title></head>
+<body>
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/serviceworkers/empty/sw.js').catch(() => {});
+}
+</script>
+</body>
+</html>

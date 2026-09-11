@@ -74,7 +74,7 @@ export const test = base.extend<CrxFixtureOptions & {
   _debug: Debug;
       }>({
 
-        basePath: [path.join(__dirname, '..', '..', 'playwright', 'tests', 'assets'), { option: true }],
+        basePath: [path.join(__dirname, '..', 'assets'), { option: true }],
 
         extensionPath: [path.join(__dirname, '..', 'test-extension', 'dist'), { option: true }],
 

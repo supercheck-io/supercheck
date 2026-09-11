@@ -16,6 +16,17 @@ configCommand
     logger.info(`  Organization: ${config.project.organization}`)
     logger.info(`  Project:      ${config.project.project}`)
   })
+function redactSecrets(config: Record<string, unknown>): Record<string, unknown> {
+  const cloned = JSON.parse(JSON.stringify(config)) as Record<string, unknown>
+  if (Array.isArray(cloned.variables)) {
+    for (const v of cloned.variables as Array<Record<string, unknown>>) {
+      if (v && typeof v === 'object' && (v.isSecret || v.type === 'secret')) {
+        v.value = '********'
+      }
+    }
+  }
+  return cloned
+}
 
 configCommand
   .command('print')
@@ -23,5 +34,5 @@ configCommand
   .option('--config <path>', 'Path to config file')
   .action(async (options: { config?: string }) => {
     const { config } = await loadConfig({ configPath: options.config })
-    output(config as unknown as Record<string, unknown>)
+    output(redactSecrets(config as unknown as Record<string, unknown>))
   })

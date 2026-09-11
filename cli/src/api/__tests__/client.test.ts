@@ -373,6 +373,32 @@ describe('ApiClient', () => {
       await expect(client.request('GET', '/api/jobs', { retries: 0 })).rejects.toThrow(ApiRequestError)
       expect(mockFetch).toHaveBeenCalledTimes(1)
     })
+
+    it('should not retry POST on network error', async () => {
+      mockFetch.mockRejectedValueOnce(new Error('Network connection reset'))
+
+      await expect(client.post('/api/jobs', { name: 'New Job' })).rejects.toThrow(ApiRequestError)
+      expect(mockFetch).toHaveBeenCalledTimes(1)
+    })
+
+    it('should retry GET on network error', async () => {
+      mockFetch
+        .mockRejectedValueOnce(new Error('Network connection reset'))
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          headers: new Headers(),
+          text: () => Promise.resolve('{"success": true}'),
+        } as Response)
+
+      // Mock sleep to avoid waiting during test
+      const sleepSpy = jest.spyOn(client as unknown as { sleep: (ms: number) => Promise<void> }, 'sleep').mockResolvedValue()
+
+      const res = await client.get('/api/jobs')
+      expect(res.status).toBe(200)
+      expect(mockFetch).toHaveBeenCalledTimes(2)
+      sleepSpy.mockRestore()
+    })
   })
 })
 

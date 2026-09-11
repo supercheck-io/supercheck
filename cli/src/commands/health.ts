@@ -5,7 +5,7 @@ import { getStoredBaseUrl } from '../auth/store.js'
 import { tryLoadConfig } from '../config/loader.js'
 import { logger } from '../utils/logger.js'
 import { getOutputFormat, output } from '../output/formatter.js'
-import { CLIError, ExitCode } from '../utils/errors.js'
+import { CLIError, ApiRequestError, ExitCode } from '../utils/errors.js'
 import { withSpinner } from '../utils/spinner.js'
 
 export const healthCommand = new Command('health')
@@ -63,12 +63,14 @@ export const healthCommand = new Command('health')
         throw new CLIError(`API reports degraded status at ${baseUrl}`, ExitCode.ApiError)
       }
     } catch (err) {
-      if (err instanceof CLIError) throw err
-      logger.error(`Cannot reach API at ${baseUrl}`)
-      if (err instanceof Error) {
-        logger.debug(err.message)
+      if (err instanceof ApiRequestError && err.statusCode) {
+        logger.error(`API error from ${baseUrl}: HTTP ${err.statusCode}`)
+        throw err
       }
-      throw new CLIError(`Cannot reach API at ${baseUrl}`, ExitCode.ApiError)
+      if (err instanceof CLIError) throw err
+      const msg = err instanceof Error ? err.message : String(err)
+      logger.error(`Cannot reach API at ${baseUrl}: ${msg}`)
+      throw new CLIError(`Cannot reach API at ${baseUrl}: ${msg}`, ExitCode.ApiError)
     }
   })
 

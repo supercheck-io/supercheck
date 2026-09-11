@@ -582,7 +582,7 @@
             "$ref": "#/components/parameters/Page"
           },
           {
-            "$ref": "#/components/parameters/Limit"
+            "$ref": "#/components/parameters/JobLimit"
           }
         ],
         "responses": {
@@ -1323,7 +1323,7 @@
             "$ref": "#/components/parameters/Page"
           },
           {
-            "$ref": "#/components/parameters/Limit"
+            "$ref": "#/components/parameters/RunLimit"
           },
           {
             "name": "jobId",
@@ -2237,7 +2237,7 @@
             "$ref": "#/components/parameters/Page"
           },
           {
-            "$ref": "#/components/parameters/Limit"
+            "$ref": "#/components/parameters/MonitorLimit"
           }
         ],
         "responses": {
@@ -5128,6 +5128,42 @@
           "example": 20
         },
         "description": "Items per page"
+      },
+      "JobLimit": {
+        "name": "limit",
+        "in": "query",
+        "schema": {
+          "type": "integer",
+          "default": 100,
+          "minimum": 1,
+          "maximum": 100,
+          "example": 100
+        },
+        "description": "Jobs per page"
+      },
+      "MonitorLimit": {
+        "name": "limit",
+        "in": "query",
+        "schema": {
+          "type": "integer",
+          "default": 50,
+          "minimum": 1,
+          "maximum": 100,
+          "example": 50
+        },
+        "description": "Monitors per page. For backward compatibility, omitting both page and limit returns all matching monitors."
+      },
+      "RunLimit": {
+        "name": "limit",
+        "in": "query",
+        "schema": {
+          "type": "integer",
+          "default": 1000,
+          "minimum": 1,
+          "maximum": 1000,
+          "example": 100
+        },
+        "description": "Runs per page. Omitting limit returns up to 1000 matching runs."
       }
     },
     "responses": {

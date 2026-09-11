@@ -31,7 +31,7 @@
     "build:tests": "npm run build --prefix ./tests",
     "clean:tests": "rimraf ./tests/playwright-report && rimraf ./tests/test-results",
     "generate:crx": "node ./utils/generate_test_types.js",
-    "lint": "eslint --cache && eslint -c eslint.config.mjs",
+    "lint": "eslint --cache",
     "build:crx": "npm run generate:pw && npm run generate:crx && vite build",
     "clean:crx": "rimraf ./lib",
     "build": "npm run lint && npm run ci:pw:bundles && npm run build:crx && npm run build:examples && npm run build:tests",
@@ -47,6 +47,9 @@
     "examples/todomvc-crx",
     "tests"
   ],
+  "main": "./lib/index.js",
+  "module": "./lib/index.mjs",
+  "types": "./index.d.ts",
   "exports": {
     ".": {
       "types": "./index.d.ts",

@@ -4,9 +4,8 @@ This is a traceability contract, not a test-count score. A capability is covered
 only when its current implementation has deterministic assertions, isolated data,
 strict cleanup, required identities, and an executable environment profile.
 
-Authoritative catalogs are the product implementation and the private testing
-specifications, especially
-`supercheck-ee/specs/09-testing-qa/AI_SRE_TESTING_RUNBOOK.md`.
+Authoritative catalogs are the product implementation and internal testing
+specifications.
 
 ## Non-negotiable design rules
 

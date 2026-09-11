@@ -133,6 +133,41 @@ describe('UsageTrackerService ledger settlement', () => {
     );
     expect(f.database.query.organization.findFirst).not.toHaveBeenCalled();
   });
+
+  it('syncs usage events to Polar with the pinned Polar-Version header', async () => {
+    const f = fixture();
+    f.database.query.organization.findFirst.mockResolvedValue({
+      polarCustomerId: 'polar-cust-1',
+    });
+    const executeMock = jest.fn().mockResolvedValue([]);
+    (f.database as any).execute = executeMock;
+
+    const originalFetch = global.fetch;
+    const fetchMock = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: jest.fn().mockResolvedValue(''),
+    });
+    global.fetch = fetchMock as never;
+
+    try {
+      await f.service.trackPlaywrightExecution('org-1', 60000, {
+        runId: 'run-polar-version',
+      });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining('/v1/events/ingest'),
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            'Polar-Version': '2026-04',
+          }),
+        }),
+      );
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
 });
 
 describe('UsageTrackerService execution blocking', () => {

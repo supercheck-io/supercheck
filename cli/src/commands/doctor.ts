@@ -19,9 +19,17 @@ export const doctorCommand = new Command('doctor')
     logger.header('Supercheck Doctor')
     logger.newline()
 
+    // Load config first to determine project requirements (Playwright vs k6 vs monitors only)
+    const configResult = await tryLoadConfig()
+    const hasConfig = Boolean(configResult)
+    const hasPlaywrightConfig = configResult?.config.tests?.playwright !== undefined
+    const hasK6Config = configResult?.config.tests?.k6 !== undefined
+    const requirePlaywright = !hasConfig || hasPlaywrightConfig || !hasK6Config
+    const requireK6 = hasK6Config
+
     // 1. Check dependencies
     logger.info(pc.bold('Dependencies:'))
-    const deps = checkAllDependencies(cwd)
+    let deps = checkAllDependencies(cwd, { requirePlaywright, requireK6 })
 
     if (format === 'json') {
       output(deps as unknown as Record<string, unknown>[], {
@@ -51,9 +59,8 @@ export const doctorCommand = new Command('doctor')
 
     logger.newline()
 
-    // 3. Check configuration
+    // 3. Configuration summary
     logger.info(pc.bold('Configuration:'))
-    const configResult = await tryLoadConfig()
     if (configResult) {
       logger.output(`  ${pc.green('✓')} supercheck.config.ts found`)
       const org = configResult.config.project?.organization
@@ -70,7 +77,7 @@ export const doctorCommand = new Command('doctor')
     logger.newline()
 
     // 4. Auto-fix if requested
-    const missingRequired = deps.filter((d) => !d.installed && d.required)
+    let missingRequired = deps.filter((d) => !d.installed && d.required)
     if (options.fix && missingRequired.length > 0) {
       logger.header('Attempting to fix missing dependencies...')
       logger.newline()
@@ -89,6 +96,10 @@ export const doctorCommand = new Command('doctor')
         }
       }
       logger.newline()
+
+      // Re-check dependencies after attempting fixes
+      deps = checkAllDependencies(cwd, { requirePlaywright, requireK6 })
+      missingRequired = deps.filter((d) => !d.installed && d.required)
     }
 
     // 5. Summary

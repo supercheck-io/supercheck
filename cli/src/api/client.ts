@@ -208,7 +208,14 @@ export class ApiClient {
 
         lastError = err as Error
 
-        if (attempt < maxRetries && isIdempotent) {
+        // Non-idempotent methods (POST, PATCH) must NOT be retried on network errors to prevent duplicate mutations
+        if (!isIdempotent) {
+          throw new ApiRequestError(
+            `Request failed: ${(err as Error).message ?? 'Network error'}`,
+          )
+        }
+
+        if (attempt < maxRetries) {
           const waitMs = RETRY_BACKOFF_MS * Math.pow(2, attempt)
           logger.debug(`Network error: ${(err as Error).message}. Retrying in ${waitMs}ms...`)
           await this.sleep(waitMs)

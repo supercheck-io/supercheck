@@ -59,9 +59,20 @@ function collectLocalTests(
   patterns: { playwright?: string; k6?: string },
   options: { file?: string; all?: boolean; type?: string },
 ): LocalTestFile[] {
+  if (options.type) {
+    const raw = options.type.trim().toLowerCase()
+    if (raw === 'api' || raw === 'database' || raw === 'custom') {
+      throw new CLIError(
+        `Local test execution only supports "browser" and "performance" tests. "${raw}" tests are executed remotely.`,
+        ExitCode.ConfigError,
+      )
+    }
+  }
+
   if (options.file) {
     const filePath = resolve(cwd, options.file)
-    const type = inferTestType(filePath) ?? (options.type === 'k6' ? 'k6' : 'playwright')
+    const isK6 = options.type === 'k6' || options.type === 'performance'
+    const type = inferTestType(filePath) ?? (isK6 ? 'k6' : 'playwright')
     const validationType = options.type
       ? requireApiTestType(options.type, '--type')
       : normalizeTestTypeForApi(type)
@@ -369,7 +380,7 @@ testCommand
   .description('Run tests locally')
   .option('--file <path>', 'Local test file path')
   .option('--all', 'Run all local tests')
-  .option('--type <type>', 'Test type filter (browser, performance, api, database, custom)')
+  .option('--type <type>', 'Test type filter (browser, performance)')
   .action(async (options: { file?: string; all?: boolean; type?: string }) => {
 
     if (!options.file && !options.all) {
@@ -493,7 +504,7 @@ testCommand
       return
     }
 
-    throw new CLIError(`Script validation failed: ${result?.error ?? 'Unknown error'}`, ExitCode.GeneralError)
+    throw new CLIError(`Script validation failed: ${result?.error ?? 'Unknown error'}`, ExitCode.ConfigError)
   })
 
 testCommand

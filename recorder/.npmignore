@@ -9,9 +9,12 @@
 !index.d.ts
 !test.d.ts
 !src/types/types.d.ts
+!src/types/test.d.ts
 !playwright/packages/playwright-core/types/types.d.ts
 !playwright/packages/playwright/types/test.d.ts
 # Include essentials.
 !README.md
 !LICENSE
 !NOTICE
+!playwright/LICENSE
+!playwright/NOTICE

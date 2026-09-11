@@ -18,7 +18,7 @@ curl https://demo.supercheck.dev/api/jobs \
 |------------|--------|--------------|----------|
 | **CLI Token** | `sck_live_` | Full project API access | CLI, automation, integrations |
 | **Trigger Key** | `sck_trigger_` | Single job trigger only | CI/CD pipelines |
-| **Test Token** | `sck_test_` | Full project API access | Development/staging |
+| **Test Token** | `sck_test_` | Full project API access | Reserved programmatic test-token format; the dashboard does not mint these |
 
 <Callout type="info">
   Legacy trigger keys with `job_` prefix continue to work. No migration is needed.
@@ -45,12 +45,16 @@ Content-Type: application/json
 
 ```json
 {
-  "id": "uuid",
-  "name": "CI/CD Pipeline",
-  "key": "sck_live_a1b2c3d4e5f6789012345678901234ab",
-  "start": "sck_live_a1b2...",
-  "expiresAt": "2027-04-15T10:30:00Z",
-  "createdAt": "2026-01-15T10:30:00Z"
+  "success": true,
+  "token": {
+    "id": "uuid",
+    "name": "CI/CD Pipeline",
+    "key": "sck_live_a1b2c3d4e5f6789012345678901234ab",
+    "start": "sck_live_a1b2...",
+    "enabled": true,
+    "expiresAt": "2027-04-15T10:30:00Z",
+    "createdAt": "2026-01-15T10:30:00Z"
+  }
 }
 ```
 

@@ -16,7 +16,7 @@ export interface SupercheckConfig {
 }
 
 const STORAGE_KEY = 'supercheckConfig';
-const DEFAULT_INSTANCE_URL = 'https://supercheck.io';
+const DEFAULT_INSTANCE_URL = 'https://app.supercheck.io';
 
 // Default config - extension works with supercheck.io out of the box
 const DEFAULT_CONFIG: SupercheckConfig = {

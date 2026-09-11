@@ -8,7 +8,14 @@ export function parseIntStrict(
   name: string,
   opts?: { min?: number; max?: number },
 ): number {
-  const parsed = parseInt(value, 10)
+  const trimmed = value.trim()
+  if (!/^-?\d+$/.test(trimmed)) {
+    throw new CLIError(
+      `Invalid value for ${name}: "${value}" is not a valid integer.`,
+      ExitCode.ConfigError,
+    )
+  }
+  const parsed = parseInt(trimmed, 10)
   if (!Number.isFinite(parsed)) {
     throw new CLIError(
       `Invalid value for ${name}: "${value}" is not a valid integer.`,

@@ -9,6 +9,7 @@ import { and, eq, isNull, lt, or, sql } from "drizzle-orm";
 import { isPolarEnabled, getPolarConfig } from "@/lib/feature-flags";
 
 // Constants for configuration
+export const POLAR_API_VERSION = "2026-04";
 const POLAR_API_TIMEOUT_MS = 5000; // 5 second timeout for Polar API calls
 const CUSTOMER_VALIDATION_CACHE_TTL_MS = 60000; // 60 second cache TTL
 const POLAR_SANDBOX_URL = "https://sandbox-api.polar.sh";
@@ -181,6 +182,7 @@ export class SubscriptionService {
             headers: {
               Authorization: `Bearer ${config.accessToken}`,
               "Content-Type": "application/json",
+              "Polar-Version": POLAR_API_VERSION,
             },
             signal: controller.signal,
           },

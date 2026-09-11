@@ -96,7 +96,8 @@ async function announceExtension(): Promise<void> {
   const canReachBackground = await pingBackground();
 
   if (canReachBackground) {
-    sendMessageToApp(MESSAGE_TYPES.EXTENSION_READY, { version: '1.0.0' });
+    const version = chrome.runtime?.getManifest?.()?.version || '1.0.0';
+    sendMessageToApp(MESSAGE_TYPES.EXTENSION_READY, { version });
   } else {
     sendMessageToApp(MESSAGE_TYPES.REFRESH_REQUIRED, {
       reason: 'Extension was updated. Please refresh the page.'

@@ -30,7 +30,7 @@ interface ConnectionState {
 }
 
 function OptionsPage() {
-  const [, setConfig] = React.useState<SupercheckConfig | null>(null);
+  const [config, setConfig] = React.useState<SupercheckConfig | null>(null);
   const [settings, setSettings] = React.useState<CrxSettings>(defaultSettings);
   const [connectionState, setConnectionState] = React.useState<ConnectionState>({ status: 'disconnected' });
   const [instanceUrl, setInstanceUrl] = React.useState(DEFAULT_INSTANCE_URL);
@@ -56,10 +56,12 @@ function OptionsPage() {
           setConnectionState({ status: 'connecting' });
           try {
             const result = await apiClient.verifyConnection();
-            if (result.valid && result.user) {
+            if (result.valid) {
               setConnectionState({
                 status: 'connected',
-                user: { email: result.user.email, name: result.user.name }
+                user: result.user
+                  ? { email: result.user.email, name: result.user.name }
+                  : (savedConfig.userEmail ? { email: savedConfig.userEmail } : undefined),
               });
             } else {
               setConnectionState({ status: 'disconnected' });
@@ -110,25 +112,25 @@ function OptionsPage() {
         return;
       }
 
-      // Save config first
-      await saveConfig({ instanceUrl, apiKey });
-      apiClient.clearCache();
+      // Verify connection first before saving
+      const result = await apiClient.verifyConnection(apiKey, instanceUrl);
 
-      // Verify connection
-      const result = await apiClient.verifyConnection();
-
-      if (result.valid && result.user) {
+      if (result.valid) {
         await saveConfig({
           instanceUrl,
           apiKey,
-          userId: result.user.id,
-          userEmail: result.user.email,
+          userId: result.user?.id || config?.userId,
+          userEmail: result.user?.email || config?.userEmail,
         });
+        apiClient.clearCache();
         setConnectionState({
           status: 'connected',
-          user: { email: result.user.email, name: result.user.name }
+          user: result.user
+            ? { email: result.user.email, name: result.user.name }
+            : (config?.userEmail ? { email: config.userEmail } : undefined),
         });
       } else {
+        apiClient.clearCache();
         setConnectionState({ status: 'error', error: 'Invalid API key' });
       }
     } catch (error) {
@@ -202,12 +204,12 @@ function OptionsPage() {
                   type='url'
                   value={instanceUrl}
                   onChange={e => setInstanceUrl(e.target.value)}
-                  placeholder='https://supercheck.io'
+                  placeholder='https://app.supercheck.io'
                   className={urlError ? 'error' : ''}
                 />
                 {urlError && <span className='field-error'>{urlError}</span>}
                 <span className='field-hint'>
-                  Use https://supercheck.io for cloud, or your self-hosted URL
+                  Use https://app.supercheck.io for cloud, or your self-hosted URL
                 </span>
               </div>
 

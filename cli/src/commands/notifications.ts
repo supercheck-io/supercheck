@@ -53,7 +53,7 @@ notificationCommand
     if (!validTypes.includes(options.type)) {
       throw new CLIError(
         `Invalid provider type. Must be one of: ${validTypes.join(', ')}`,
-        ExitCode.GeneralError,
+        ExitCode.ConfigError,
       )
     }
 
@@ -62,7 +62,7 @@ notificationCommand
       try {
         config = JSON.parse(options.config)
       } catch {
-        throw new CLIError('Invalid JSON in --config', ExitCode.GeneralError)
+        throw new CLIError('Invalid JSON in --config', ExitCode.ConfigError)
       }
     }
 
@@ -183,7 +183,7 @@ notificationCommand
     if (!validTypes.includes(options.type)) {
       throw new CLIError(
         `Invalid provider type. Must be one of: ${validTypes.join(', ')}`,
-        ExitCode.GeneralError,
+        ExitCode.ConfigError,
       )
     }
 
@@ -191,7 +191,7 @@ notificationCommand
     try {
       config = JSON.parse(options.config)
     } catch {
-      throw new CLIError('Invalid JSON in --config', ExitCode.GeneralError)
+      throw new CLIError('Invalid JSON in --config', ExitCode.ConfigError)
     }
 
     const client = createAuthenticatedClient()

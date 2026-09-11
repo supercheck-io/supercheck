@@ -887,6 +887,24 @@ describe("SubscriptionService", () => {
             expect.any(Object),
           );
         });
+
+        it("should include Polar-Version header in customer validation request", async () => {
+          mockGetPolarConfig.mockReturnValue({
+            server: "production",
+            accessToken: "test-token",
+          });
+
+          await service.requireValidPolarCustomer(testOrgId);
+
+          expect(mockFetch).toHaveBeenCalledWith(
+            expect.any(String),
+            expect.objectContaining({
+              headers: expect.objectContaining({
+                "Polar-Version": "2026-04",
+              }),
+            }),
+          );
+        });
       });
     });
 

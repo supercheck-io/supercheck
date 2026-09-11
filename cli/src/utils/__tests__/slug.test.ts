@@ -21,6 +21,9 @@ describe('slug utilities', () => {
     expect(extractUuidFromFilename(`${id}.pw.ts`)).toBe(id)
     expect(extractUuidFromFilename(`homepage.${id}.pw.ts`)).toBe(id)
     expect(extractUuidFromFilename(`/tmp/_supercheck_/homepage.${id}.k6.ts`)).toBe(id)
+    expect(extractUuidFromFilename(`homepage.${id}.pw.js`)).toBe(id)
+    expect(extractUuidFromFilename(`load.${id}.k6.js`)).toBe(id)
+    expect(extractUuidFromFilename(`e2e.${id}.spec.ts`)).toBe(id)
   })
 
   it('stripTitleMetadata should remove injected title lines', () => {

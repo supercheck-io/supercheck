@@ -60,7 +60,7 @@ Display the current authentication context.
 supercheck whoami
 ```
 
-Shows token name, user, project, organization, and expiry.
+Shows user, token name, API URL, and expiry.
 
 ### `supercheck logout`
 
@@ -157,7 +157,7 @@ supercheck job create --name "Smoke Tests" --tests id1,id2 --type k6 --dry-run
 | `--name` | Yes | Job name |
 | `--tests` | Yes | Test IDs (space or comma separated) |
 | `--description` | No | Job description |
-| `--type` | No | Job runner type: `playwright` (default) or `k6` |
+| `--type` | No | Job runner type: `playwright` or `k6` |
 | `--schedule` | No | Cron expression |
 | `--dry-run` | No | Preview what would be sent without creating |
 
@@ -404,7 +404,7 @@ supercheck test run --all --type performance
 |------|-------------|
 | `--file` | Path to a local test file to run |
 | `--all` | Run all local tests |
-| `--type` | Filter by test type (`browser`, `performance`, `api`, `database`, `custom`) |
+| `--type` | Filter by local test type (`browser`, `performance`) |
 
 ### `supercheck test status`
 
@@ -762,10 +762,11 @@ supercheck deploy --force        # Skip confirmation
 Tear down all managed resources.
 
 ```bash
-supercheck destroy
-supercheck destroy --dry-run
-supercheck destroy --force
+supercheck destroy --dry-run      # Preview resources to be deleted
+supercheck destroy --force        # Confirm and delete resources
 ```
+
+> Note: `supercheck destroy` requires `--force` to confirm deletion, or `--dry-run` to preview. Bare `supercheck destroy` errors without `--force`.
 
 ---
 

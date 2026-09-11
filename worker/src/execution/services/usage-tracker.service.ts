@@ -5,6 +5,9 @@ import { and, eq, sql } from 'drizzle-orm';
 import * as schema from '../../db/schema';
 import { DB_PROVIDER_TOKEN } from './db.service';
 
+// Polar API version pinned to match stable quarterly release
+const POLAR_API_VERSION = '2026-04';
+
 // Check if Polar is enabled (cloud mode)
 function isPolarEnabled(): boolean {
   return process.env.SELF_HOSTED !== 'true' && !!process.env.POLAR_ACCESS_TOKEN;
@@ -268,6 +271,7 @@ export class UsageTrackerService {
         headers: {
           Authorization: `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
+          'Polar-Version': POLAR_API_VERSION,
         },
         body: JSON.stringify({
           events: [

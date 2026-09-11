@@ -6,5 +6,5 @@
     "moduleResolution": "bundler",
     "allowSyntheticDefaultImports": true,
   },
-  "include": ["../recorder/vite.config.ts"]
+  "include": ["../recorder/vite.config.mts"]
 }

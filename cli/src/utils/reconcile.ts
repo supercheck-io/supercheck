@@ -158,6 +158,10 @@ function diffFields(local: Record<string, unknown>, remote: Record<string, unkno
     // Skip internal/metadata fields
     if (['id', 'createdAt', 'updatedAt', 'projectId', 'organizationId', 'createdByUserId', '__maskedFields'].includes(key)) continue
 
+    // For secret variables, the remote API returns an empty/masked value for security.
+    // Skip comparing secret values to prevent phantom diffs and secret leakage in stdout.
+    if (key === 'value' && (local.isSecret || remote.isSecret)) continue
+
     const remoteVal = remote[key]
     const [comparableLocal, comparableRemote] = key === 'config'
       ? stripMaskedConfigFields(localVal, remoteVal, maskedFields)

@@ -41,6 +41,10 @@ describe('parseIntStrict', () => {
       expect(() => parseIntStrict('abc', '--timeout')).toThrow(CLIError)
     })
 
+    it('should throw CLIError for partial numeric strings (e.g. 30abc)', () => {
+      expect(() => parseIntStrict('30abc', '--timeout')).toThrow(CLIError)
+    })
+
     it('should throw CLIError for empty string', () => {
       expect(() => parseIntStrict('', '--timeout')).toThrow(CLIError)
     })

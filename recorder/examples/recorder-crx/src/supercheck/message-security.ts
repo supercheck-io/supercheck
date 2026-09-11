@@ -21,13 +21,14 @@ export function isAllowedAppOrigin(origin: string, configuredInstanceUrl?: strin
     return false;
   }
 
+  // Pin cloud origins specifically to app.supercheck.io and supercheck.io
   const isSupercheckCloud = candidate.protocol === 'https:' &&
-    (candidate.hostname === 'supercheck.io' || candidate.hostname.endsWith('.supercheck.io'));
+    (candidate.hostname === 'app.supercheck.io' || candidate.hostname === 'supercheck.io');
   if (isSupercheckCloud)
     return true;
 
-  // Local HTTP is intentionally limited to the exact localhost hostname.
-  if (candidate.protocol === 'http:' && candidate.hostname === 'localhost')
+  // Local HTTP: allow localhost on standard dev port (3000) or without port
+  if (candidate.protocol === 'http:' && candidate.hostname === 'localhost' && (candidate.port === '3000' || !candidate.port))
     return true;
 
   if (!configuredInstanceUrl)

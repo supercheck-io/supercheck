@@ -65,4 +65,17 @@ describe('Playwright dependency detection', () => {
 
     expect(() => ensureDependenciesForTestType(cwd, 'playwright')).toThrow(/Playwright browsers are not installed/)
   })
+
+  it('supports conditional dependency requirements for k6-only or non-playwright projects', () => {
+    const cwd = createTempProject()
+    const deps = checkAllDependencies(cwd, { requirePlaywright: false, requireK6: true })
+
+    const pwDep = deps.find((dep) => dep.name === '@playwright/test')
+    const browserDep = deps.find((dep) => dep.name === 'Playwright browsers')
+    const k6Dep = deps.find((dep) => dep.name === 'k6')
+
+    expect(pwDep?.required).toBe(false)
+    expect(browserDep?.required).toBe(false)
+    expect(k6Dep?.required).toBe(true)
+  })
 })

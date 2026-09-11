@@ -1,5 +1,5 @@
 import { createJiti } from 'jiti'
-import { deepmerge } from 'deepmerge-ts'
+import { deepmergeCustom } from 'deepmerge-ts'
 import { existsSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { supercheckConfigSchema, type SupercheckConfig } from './schema.js'
@@ -155,7 +155,8 @@ export async function loadConfig(options: LoadConfigOptions = {}): Promise<LoadC
   const localConfigPath = resolveLocalConfigPath(cwd)
   if (localConfigPath) {
     const localConfig = await loadConfigFile(localConfigPath) as Partial<SupercheckConfig>
-    config = deepmerge(config, localConfig) as SupercheckConfig
+    const mergeLocalConfig = deepmergeCustom({ mergeArrays: false })
+    config = mergeLocalConfig(config, localConfig) as SupercheckConfig
   }
 
   config = applyEnvOverrides(config)

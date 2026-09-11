@@ -113,7 +113,7 @@ openapi-generator generate \
 
 ## Response Format
 
-All responses are JSON. Paginated endpoints return:
+Responses are JSON. Pagination shapes are endpoint-specific; for example, resource-list endpoints commonly return:
 
 ```json
 {
@@ -136,7 +136,7 @@ All responses are JSON. Paginated endpoints return:
 | Job trigger key (`sck_trigger_*`) | Configurable per key; default 100 requests per 60 seconds | Per key |
 | Other endpoints | Operation-specific | As documented by the endpoint |
 
-Rate limit headers are included in every response:
+Rate-limit headers are included on rate-limited responses:
 
 ```
 X-RateLimit-Limit: 1000

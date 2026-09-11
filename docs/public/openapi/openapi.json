@@ -80,6 +80,10 @@
     {
       "name": "Status Pages",
       "description": "Manage status pages for uptime dashboards"
+    },
+    {
+      "name": "Organizations",
+      "description": "Organization membership, settings, invitations, and usage stats. Session cookies or CLI bearer tokens are accepted. Organizations are created automatically at signup; POST is disabled."
     }
   ],
   "paths": {
@@ -578,7 +582,7 @@
             "$ref": "#/components/parameters/Page"
           },
           {
-            "$ref": "#/components/parameters/Limit"
+            "$ref": "#/components/parameters/JobLimit"
           }
         ],
         "responses": {
@@ -1319,7 +1323,7 @@
             "$ref": "#/components/parameters/Page"
           },
           {
-            "$ref": "#/components/parameters/Limit"
+            "$ref": "#/components/parameters/RunLimit"
           },
           {
             "name": "jobId",
@@ -2233,7 +2237,7 @@
             "$ref": "#/components/parameters/Page"
           },
           {
-            "$ref": "#/components/parameters/Limit"
+            "$ref": "#/components/parameters/MonitorLimit"
           }
         ],
         "responses": {
@@ -2306,6 +2310,48 @@
           },
           "403": {
             "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      },
+      "put": {
+        "operationId": "updateMonitorByBodyId",
+        "summary": "Update a monitor (collection PUT)",
+        "description": "Compatibility update that requires `id` in the JSON body. Prefer `PATCH /api/monitors/{id}` or `PUT /api/monitors/{id}` for new integrations. The monitor must belong to the current project.",
+        "tags": [
+          "Monitors"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MonitorCollectionUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Monitor updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Monitor"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Monitor ID missing or invalid payload"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
           }
         }
       }
@@ -4337,6 +4383,718 @@
           }
         }
       }
+    },
+    "/api/organizations": {
+      "get": {
+        "operationId": "listOrganizations",
+        "summary": "List organizations",
+        "description": "List organizations the authenticated user belongs to, including the member role and high-level subscription status. Does not return billing provider IDs.",
+        "tags": [
+          "Organizations"
+        ],
+        "responses": {
+          "200": {
+            "description": "Organizations for the current user",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/OrganizationSummary"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createOrganization",
+        "summary": "Create an organization (disabled)",
+        "description": "Always returns 403. Organizations are created automatically on user signup.",
+        "tags": [
+          "Organizations"
+        ],
+        "responses": {
+          "403": {
+            "description": "Manual organization creation is not allowed. Organizations are created automatically on user signup."
+          }
+        }
+      }
+    },
+    "/api/organizations/current": {
+      "get": {
+        "operationId": "getCurrentOrganization",
+        "summary": "Get the active organization",
+        "description": "Returns the organization from the current auth context. Requires org_admin or org_owner.",
+        "tags": [
+          "Organizations"
+        ],
+        "responses": {
+          "200": {
+            "description": "Active organization",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/OrganizationCurrent"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "No active organization found"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/organizations/stats": {
+      "get": {
+        "operationId": "getOrganizationStats",
+        "summary": "Get organization usage stats",
+        "description": "Counts of projects, jobs, tests, monitors, runs, and members for the active organization. Requires org_admin or org_owner.",
+        "tags": [
+          "Organizations"
+        ],
+        "responses": {
+          "200": {
+            "description": "Organization stats",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/OrganizationStats"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "No active organization found"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/organizations/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "description": "Organization ID"
+        }
+      ],
+      "get": {
+        "operationId": "getOrganization",
+        "summary": "Get organization details",
+        "description": "Returns organization details, the caller's role, and project/member counts. Requires membership.",
+        "tags": [
+          "Organizations"
+        ],
+        "responses": {
+          "200": {
+            "description": "Organization details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "organization": {
+                      "$ref": "#/components/schemas/OrganizationDetail"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      },
+      "put": {
+        "operationId": "updateOrganization",
+        "summary": "Update organization",
+        "description": "Update the organization name (2–50 characters after trim). Optional slug, logo, and metadata. Requires org_admin or org_owner.",
+        "tags": [
+          "Organizations"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrganizationUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Organization updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "organization": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid organization name"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteOrganization",
+        "summary": "Delete organization",
+        "description": "Permanently delete the organization. Owner only. Related records are removed by cascade.",
+        "tags": [
+          "Organizations"
+        ],
+        "responses": {
+          "200": {
+            "description": "Organization deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/organizations/members": {
+      "get": {
+        "operationId": "listOrganizationMembers",
+        "summary": "List members and invitations",
+        "description": "List members (with project assignments), pending/expired invitations, and the current user's org role. Requires org_admin or org_owner.",
+        "tags": [
+          "Organizations"
+        ],
+        "responses": {
+          "200": {
+            "description": "Members and invitations",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "members": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/OrganizationMember"
+                          }
+                        },
+                        "invitations": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/OrganizationInvitation"
+                          }
+                        },
+                        "currentUserRole": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "No active organization found"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/organizations/members/{memberId}": {
+      "parameters": [
+        {
+          "name": "memberId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "description": "User ID of the organization member"
+        }
+      ],
+      "put": {
+        "operationId": "updateOrganizationMember",
+        "summary": "Update member role and projects",
+        "description": "Update a member's role and project assignments. Cannot change the owner, your own role, or (as org_admin) another org_admin. Only org_owner can assign org_admin.",
+        "tags": [
+          "Organizations"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrganizationMemberUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Member updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "memberId": {
+                          "type": "string"
+                        },
+                        "newRole": {
+                          "type": "string"
+                        },
+                        "oldRole": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid role or project assignments"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "removeOrganizationMember",
+        "summary": "Remove a member",
+        "description": "Remove a member and their project assignments in this organization. Cannot remove the owner or yourself. Only org_owner can remove org_admin members.",
+        "tags": [
+          "Organizations"
+        ],
+        "responses": {
+          "200": {
+            "description": "Member removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "memberId": {
+                          "type": "string"
+                        },
+                        "removedRole": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "No active organization found"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/organizations/members/invite": {
+      "post": {
+        "operationId": "inviteOrganizationMember",
+        "summary": "Invite a member",
+        "description": "Create a pending invitation and send email. Rate limited per user (`INVITE_RATE_LIMIT_MAX`, default 10/hour). Requires org_admin or org_owner. Only org_owner can invite org_admin.",
+        "tags": [
+          "Organizations"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrganizationInviteRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Invitation created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "email": {
+                          "type": "string"
+                        },
+                        "role": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string"
+                        },
+                        "expiresAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "inviteLink": {
+                          "type": "string"
+                        },
+                        "emailSent": {
+                          "type": "boolean"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid invite payload or user already a member"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "description": "Rate limit exceeded"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/organizations/members/invite/{invitationId}": {
+      "parameters": [
+        {
+          "name": "invitationId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "description": "Invitation ID"
+        }
+      ],
+      "delete": {
+        "operationId": "cancelOrganizationInvitation",
+        "summary": "Cancel an invitation",
+        "description": "Cancel a pending invitation. Requires org_admin or org_owner.",
+        "tags": [
+          "Organizations"
+        ],
+        "responses": {
+          "200": {
+            "description": "Invitation cancelled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invitation is not pending"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "resendOrganizationInvitation",
+        "summary": "Resend an invitation",
+        "description": "Resend a pending invitation email. Rate limited (5/hour). Expired invitations have expiry extended by 7 days.",
+        "tags": [
+          "Organizations"
+        ],
+        "responses": {
+          "200": {
+            "description": "Invitation resent",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "emailSent": {
+                          "type": "boolean"
+                        },
+                        "expiryExtended": {
+                          "type": "boolean"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invitation is not pending"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "description": "Rate limit exceeded"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/organizations/invitations": {
+      "get": {
+        "operationId": "listOrganizationInvitations",
+        "summary": "List invitations",
+        "description": "List invitations for the active organization. Requires org_admin or org_owner.",
+        "tags": [
+          "Organizations"
+        ],
+        "responses": {
+          "200": {
+            "description": "Invitations",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/OrganizationInvitation"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "No active organization found"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -4370,6 +5128,42 @@
           "example": 20
         },
         "description": "Items per page"
+      },
+      "JobLimit": {
+        "name": "limit",
+        "in": "query",
+        "schema": {
+          "type": "integer",
+          "default": 100,
+          "minimum": 1,
+          "maximum": 100,
+          "example": 100
+        },
+        "description": "Jobs per page"
+      },
+      "MonitorLimit": {
+        "name": "limit",
+        "in": "query",
+        "schema": {
+          "type": "integer",
+          "default": 50,
+          "minimum": 1,
+          "maximum": 100,
+          "example": 50
+        },
+        "description": "Monitors per page. For backward compatibility, omitting both page and limit returns all matching monitors."
+      },
+      "RunLimit": {
+        "name": "limit",
+        "in": "query",
+        "schema": {
+          "type": "integer",
+          "default": 1000,
+          "minimum": 1,
+          "maximum": 1000,
+          "example": 100
+        },
+        "description": "Runs per page. Omitting limit returns up to 1000 matching runs."
       }
     },
     "responses": {
@@ -6453,6 +7247,329 @@
           "maxResponseTime": {
             "type": "number",
             "nullable": true
+          }
+        }
+      },
+      "MonitorCollectionUpdateRequest": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/MonitorUpdateRequest"
+          },
+          {
+            "type": "object",
+            "required": [
+              "id"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "description": "Monitor ID to update"
+              }
+            }
+          }
+        ]
+      },
+      "OrganizationSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "logo": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "org_owner",
+              "org_admin",
+              "project_admin",
+              "project_editor",
+              "project_viewer"
+            ]
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "subscriptionPlan": {
+            "type": "string",
+            "nullable": true
+          },
+          "subscriptionStatus": {
+            "type": "string",
+            "nullable": true
+          },
+          "subscriptionEndsAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        }
+      },
+      "OrganizationDetail": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string",
+            "nullable": true
+          },
+          "logo": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "metadata": {
+            "type": "object",
+            "nullable": true
+          },
+          "role": {
+            "type": "string"
+          },
+          "stats": {
+            "type": "object",
+            "properties": {
+              "projectCount": {
+                "type": "integer"
+              },
+              "memberCount": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      },
+      "OrganizationCurrent": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string",
+            "nullable": true
+          },
+          "logo": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "OrganizationStats": {
+        "type": "object",
+        "properties": {
+          "projects": {
+            "type": "integer"
+          },
+          "jobs": {
+            "type": "integer"
+          },
+          "tests": {
+            "type": "integer"
+          },
+          "monitors": {
+            "type": "integer"
+          },
+          "runs": {
+            "type": "integer"
+          },
+          "members": {
+            "type": "integer"
+          }
+        }
+      },
+      "OrganizationMember": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "org_owner",
+              "org_admin",
+              "project_admin",
+              "project_editor",
+              "project_viewer"
+            ]
+          },
+          "joinedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "projects": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "projectId": {
+                  "type": "string"
+                },
+                "projectName": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "OrganizationInvitation": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "inviterName": {
+            "type": "string"
+          },
+          "inviterEmail": {
+            "type": "string"
+          }
+        }
+      },
+      "OrganizationUpdateRequest": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 50,
+            "description": "Display name. Leading and trailing whitespace is trimmed."
+          },
+          "slug": {
+            "type": "string",
+            "nullable": true
+          },
+          "logo": {
+            "type": "string",
+            "nullable": true
+          },
+          "metadata": {
+            "type": "object",
+            "nullable": true
+          }
+        }
+      },
+      "OrganizationInviteRequest": {
+        "type": "object",
+        "required": [
+          "email",
+          "role"
+        ],
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "org_owner",
+              "org_admin",
+              "project_admin",
+              "project_editor",
+              "project_viewer"
+            ]
+          },
+          "selectedProjects": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Required for project_admin and project_editor. Must be active projects in the current organization."
+          }
+        }
+      },
+      "OrganizationMemberUpdateRequest": {
+        "type": "object",
+        "required": [
+          "role"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "org_owner",
+              "org_admin",
+              "project_admin",
+              "project_editor",
+              "project_viewer"
+            ]
+          },
+          "selectedProjects": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "projectAssignments": {
+            "type": "array",
+            "description": "Accepted as project ID strings or `{ projectId }` objects. Normalized to selectedProjects.",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "projectId": {
+                      "type": "string"
+                    }
+                  }
+                }
+              ]
+            }
           }
         }
       }
