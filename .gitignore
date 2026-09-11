@@ -32,14 +32,16 @@ AI_RULES.md
 !.vscode/extensions.json
 
 ## Logs / Debug files
-logs # General logs dir
+# General logs directory
+logs
 *.log
 npm-debug.log*
-pnpm-debug.log* # From runner
-.pnpm-debug.log* # From app
+# Package-manager logs
+pnpm-debug.log*
+.pnpm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-lerna-debug.log* # From runner
+lerna-debug.log*
 
 ## Environment / Secrets
 .env.local
@@ -57,7 +59,8 @@ pids
 *.seed
 *.pid.lock
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
-*.tsbuildinfo # General typescript build info
+# TypeScript build metadata
+*.tsbuildinfo
 *.claude
 kanpilot.toml
 
@@ -185,4 +188,3 @@ supercheck.config.local.js
 supercheck.config.local.mjs
 .opencode
 .tokensave
-

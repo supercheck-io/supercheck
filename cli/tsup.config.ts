@@ -5,7 +5,7 @@ export default defineConfig([
   {
     entry: { 'bin/supercheck': 'src/bin/supercheck.ts' },
     format: ['esm'],
-    target: 'node18',
+    target: 'node20',
     sourcemap: true,
     clean: true,
     shims: true,
@@ -19,7 +19,7 @@ export default defineConfig([
   {
     entry: { index: 'src/index.ts' },
     format: ['esm'],
-    target: 'node18',
+    target: 'node20',
     dts: true,
     sourcemap: true,
     splitting: true,

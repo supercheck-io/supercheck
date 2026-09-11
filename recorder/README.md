@@ -1,4 +1,4 @@
-# Playwright CRX
+# Supercheck Recorder (Playwright CRX)
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
@@ -27,8 +27,8 @@ In terms of chrome extension functionality, it provides:
 - [context menu](https://developer.chrome.com/docs/extensions/reference/contextMenus/) for the same purpose
 - [side panel](https://developer.chrome.com/docs/extensions/reference/api/sidePanel) to display the recorder by default (it can be disabled in the options, falling back to a popup window)
 - [command shortcuts](https://developer.chrome.com/docs/extensions/reference/api/commands):
-  - `Alt + Shift + R` starts recording
-  - `Alt + Shift + C` starts inspecting
+  - `Shift + Alt + R` starts recording
+  - `Shift + Alt + C` starts inspecting
 - [options page](https://developer.chrome.com/docs/extensions/develop/ui/options-page) to configure:
   - **Default language** (defaults to **Node Library**)
   - **TestID Attribute Name** (defaults to `data-testid`)
@@ -110,7 +110,7 @@ await filechooser.setFiles({
 });
 ```
 
-You can give it a try with `playwright-crx/examples/todomvc-crx`.
+You can give it a try with `examples/todomvc-crx`.
 
 ## Build
 

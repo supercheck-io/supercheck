@@ -2,7 +2,7 @@
 
 All notable changes to Supercheck are documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
@@ -250,7 +250,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Added
 
-- **Microsoft Edge browser extension** — Supercheck Recorder Extension for [Microsoft Edge](https://microsoftedge.microsoft.com/addons/detail/supercheck-recorder/ngmlkgfgmdnfpddohcbfdgihennolnem)
+- **Microsoft Edge browser extension** — Supercheck Recorder Extension for [Microsoft Edge](https://microsoftedge.microsoft.com/addons/detail/supercheck-recorder/0rdckc265vb9)
 - **Upside down monitor** — Monitor for services that should be DOWN ([#197](https://github.com/supercheck-io/supercheck/issues/197))
 - **Custom headers for HTTP monitors** — Pass custom headers in HTTP monitor requests ([#196](https://github.com/supercheck-io/supercheck/issues/196))
 - **Coolify deployment template** — Deployment configuration for Coolify ([#182](https://github.com/supercheck-io/supercheck/issues/182))

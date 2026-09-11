@@ -21,7 +21,7 @@ import { apiClient } from './supercheck/api-client';
 import { loadSettings, storeSettings, defaultSettings, type CrxSettings } from './settings';
 import './options.css';
 
-type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
+type ConnectionStatus = 'disconnected' | 'configured' | 'connecting' | 'connected' | 'error';
 
 interface ConnectionState {
   status: ConnectionStatus;
@@ -84,8 +84,8 @@ function OptionsPage() {
   }, [instanceUrl]);
 
   const handleConnect = async () => {
-    if (!instanceUrl || !apiKey) {
-      setConnectionState({ status: 'error', error: 'Instance URL and API Key are required' });
+    if (!instanceUrl) {
+      setConnectionState({ status: 'error', error: 'Instance URL is required' });
       return;
     }
 
@@ -99,6 +99,17 @@ function OptionsPage() {
     setSaving(true);
 
     try {
+      if (!apiKey) {
+        await saveConfig({ instanceUrl });
+        apiClient.clearCache();
+        await chrome.tabs.create({ url: instanceUrl });
+        setConnectionState({
+          status: 'configured',
+          error: 'Instance saved. Sign in to Supercheck to connect automatically.'
+        });
+        return;
+      }
+
       // Save config first
       await saveConfig({ instanceUrl, apiKey });
       apiClient.clearCache();
@@ -174,9 +185,11 @@ function OptionsPage() {
                 ? `Connected as ${connectionState.user.email}`
                 : connectionState.status === 'connecting'
                   ? 'Connecting...'
-                  : connectionState.status === 'error'
+                  : connectionState.status === 'configured'
                     ? connectionState.error
-                    : 'Not connected'}
+                    : connectionState.status === 'error'
+                      ? connectionState.error
+                      : 'Not connected'}
             </span>
           </div>
 
@@ -208,16 +221,16 @@ function OptionsPage() {
                   placeholder='Enter your API key'
                 />
                 <span className='field-hint'>
-                  Get your API key from Supercheck → Settings → API Keys
+                  Optional: only use an existing recorder-scoped credential
                 </span>
               </div>
 
               <button
                 className='btn btn-primary'
                 onClick={handleConnect}
-                disabled={saving || !instanceUrl || !apiKey || !!urlError}
+                disabled={saving || !instanceUrl || !!urlError}
               >
-                {saving ? 'Connecting...' : 'Connect'}
+                {saving ? 'Saving...' : apiKey ? 'Connect with API key' : 'Save URL and open Supercheck'}
               </button>
             </>
           )}

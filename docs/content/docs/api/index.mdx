@@ -133,9 +133,8 @@ All responses are JSON. Paginated endpoints return:
 
 | Token Type | Limit | Window |
 |------------|-------|--------|
-| CLI Token (`sck_live_*`) | 1000 req/min | Per user |
-| Trigger Key (`sck_trigger_*`) | 60 req/min | Per key |
-| Unauthenticated | 10 req/min | Per IP |
+| Job trigger key (`sck_trigger_*`) | Configurable per key; default 100 requests per 60 seconds | Per key |
+| Other endpoints | Operation-specific | As documented by the endpoint |
 
 Rate limit headers are included in every response:
 

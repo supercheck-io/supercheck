@@ -24,7 +24,7 @@ CLI tokens are the primary authentication method. They are **project-scoped** an
 ### Creating a Token
 
 **Via Dashboard:**
-1. Go to **Project Settings → CLI Tokens**
+1. Go to **Organization Admin → CLI Tokens**
 2. Click **Create Token**
 3. Enter a name and optional expiry date
 4. Copy the token — it is shown only once
@@ -79,8 +79,8 @@ curl -X POST https://app.supercheck.io/api/jobs/<id>/trigger \
 |----------|----------|-------------|
 | `SUPERCHECK_TOKEN` | Usually | CLI token for most commands and for `job trigger --wait` |
 | `SUPERCHECK_URL` | No | Base URL (default: `https://app.supercheck.io`) |
-| `SUPERCHECK_ORG` | No | Default organization slug |
-| `SUPERCHECK_PROJECT` | No | Default project slug |
+| `SUPERCHECK_ORG` | No | Default organization ID (UUID) |
+| `SUPERCHECK_PROJECT` | No | Default project ID (UUID) |
 | `SUPERCHECK_TRIGGER_KEY` | For `job trigger` | Job-specific trigger key |
 | `HTTP_PROXY` | No | Proxy URL for HTTP requests |
 | `HTTPS_PROXY` | No | Proxy URL for HTTPS requests |
@@ -105,13 +105,9 @@ The CLI resolves authentication in this order:
 
 ## Rate Limits
 
-| Token Type | Limit | Window |
-|------------|-------|--------|
-| CLI Token (`sck_live_*`) | 1000 req/min | Per user |
-| Trigger Key (`sck_trigger_*`) | 60 req/min | Per key |
-| Unauthenticated | 10 req/min | Per IP |
+Job trigger keys use their server-side per-key configuration. The default is 100 requests per 60-second window, but administrators can configure a different limit for an individual key. Other endpoints may apply their own operation-specific limits.
 
-The CLI automatically handles rate limiting with exponential backoff. When the API returns `429`, the CLI reads the `Retry-After` header (if present) and waits before retrying.
+The CLI automatically handles rate limiting with exponential backoff. When the API returns `429`, the CLI reads the `Retry-After` header (if present) and waits before retrying an idempotent request.
 
 ## Best Practices
 

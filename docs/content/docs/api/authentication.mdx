@@ -111,9 +111,8 @@ All endpoints enforce rate limiting. The CLI automatically handles `429` respons
 
 | Token Type | Limit | Window |
 |------------|-------|--------|
-| CLI Token | 1000 req/min | Per user |
-| Trigger Key | 60 req/min | Per key |
-| Unauthenticated | 10 req/min | Per IP |
+| Job trigger key | Configurable per key; default 100 requests per 60 seconds | Per key |
+| Other endpoints | Operation-specific | As documented by the endpoint |
 
 ### Rate Limit Headers
 

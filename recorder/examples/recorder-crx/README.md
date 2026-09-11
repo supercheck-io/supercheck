@@ -55,19 +55,20 @@ A Chrome extension for recording browser interactions and saving them as Playwri
 
 ### Connecting to Supercheck
 
-#### Option 1: Seamless Connection (Recommended)
+#### Supercheck Cloud (Recommended)
 
 1. Log in to Supercheck in your browser
-2. Go to Settings → Extensions
-3. Click "Connect Recorder Extension"
-4. The extension will be automatically configured
+2. Open any authenticated dashboard page in the same browser profile as the extension
+3. Supercheck detects and configures the extension automatically
 
-#### Option 2: Manual API Key
+#### Self-Hosted Supercheck
 
 1. Click the extension icon and select "Options"
-2. Enter your Supercheck instance URL
-3. Enter your API key (from Supercheck → Settings → API Keys)
-4. Click "Connect"
+2. Enter the HTTPS origin of your Supercheck instance
+3. Click "Save URL and open Supercheck"
+4. Sign in and open an authenticated dashboard page; the extension connects automatically
+
+The API-key field is only for an existing recorder-scoped credential. Ordinary CLI tokens and job trigger keys cannot upload recorder results.
 
 ## Configuration
 

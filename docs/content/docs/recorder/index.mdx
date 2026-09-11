@@ -16,17 +16,19 @@ The extension requires Chrome or Edge with Manifest V3 side-panel support.
 
 ## Connect to Supercheck
 
-### From the dashboard
+### Supercheck Cloud
 
-1. Sign in to Supercheck in the same browser profile where the extension is installed.
-2. Open the recorder connection control in Supercheck.
-3. Approve the connection. Supercheck creates extension credentials without exposing your browser session to recorded sites.
+1. Install the extension in the browser profile you use for Supercheck.
+2. Sign in at `https://app.supercheck.io` and open any authenticated dashboard page.
+3. The dashboard detects the extension and creates a recorder-scoped credential automatically. No approval dialog or copied API key is required.
 
-### Manually
+### Self-hosted Supercheck
 
 1. Open the extension's **Options** page.
-2. Enter `https://supercheck.io` or the HTTPS URL of your self-hosted deployment.
-3. Enter a Supercheck API key and select **Connect**.
+2. Enter the HTTPS origin of your self-hosted deployment and select **Save URL and open Supercheck**.
+3. Sign in to that Supercheck instance in the same browser profile. An authenticated dashboard page connects the extension automatically.
+
+The options page retains an advanced API-key field for an existing recorder-scoped credential. Ordinary CLI tokens and job trigger keys are not recorder credentials.
 
 For local development only, the extension also accepts `http://localhost`. Other non-HTTPS instance URLs are rejected.
 
@@ -77,7 +79,7 @@ npm test
 | Problem | Check |
 |---|---|
 | Extension is not detected | Reload the extension and the Supercheck tab, using the same browser profile |
-| Connection fails | Confirm the instance URL uses HTTPS and the API key is active |
+| Connection fails | Confirm the instance URL uses HTTPS, then sign in and open an authenticated dashboard page in the same browser profile |
 | Self-hosted instance is unreachable | Open the instance directly and verify its certificate and network access |
 | Recording does not start | Confirm the tab uses HTTP or HTTPS and no other debugger is attached |
 | Save is unavailable | Start the recording from Supercheck so the originating Playground context is available |

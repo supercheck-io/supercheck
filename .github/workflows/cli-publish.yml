@@ -114,7 +114,7 @@ jobs:
       - name: Summary
         run: |
           PKG_VERSION=$(node -p "require('./package.json').version")
-          echo "### 📦 Published @supercheck/cli@$PKG_VERSION" >> "$GITHUB_SUMMARY"
-          echo "" >> "$GITHUB_SUMMARY"
-          echo "- **npm tag:** \`${{ steps.npm-tag.outputs.tag }}\`" >> "$GITHUB_SUMMARY"
-          echo "- **Registry:** https://www.npmjs.com/package/@supercheck/cli" >> "$GITHUB_SUMMARY"
+          echo "### 📦 Published @supercheck/cli@$PKG_VERSION" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **npm tag:** \`${{ steps.npm-tag.outputs.tag }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Registry:** https://www.npmjs.com/package/@supercheck/cli" >> "$GITHUB_STEP_SUMMARY"

@@ -1,104 +1,91 @@
-<h1><img src="./supercheck-logo.png" alt="Supercheck Logo" width="40" height="40" align="top"> Supercheck</h1>
+<h1><img src="./supercheck-logo.png" alt="Supercheck logo" width="40" height="40" align="top"> Supercheck</h1>
 
-**Open-Source Testing, Monitoring, and Reliability — as Code**
+**Open-source testing, monitoring, and reliability as code.**
 
-The unified platform for AI-powered Playwright testing, multi-region k6 load testing, uptime monitoring, and subscriber-ready status pages.
+Supercheck brings Playwright test automation, k6 performance testing, uptime and synthetic monitoring, incident investigation, and public status communication into one platform. Use the web application, manage resources from the CLI, and record browser tests with the Supercheck Recorder.
 
 [![Website](https://img.shields.io/badge/Website-supercheck.io-orange?logo=firefox)](https://supercheck.io)
-[![Self-Host](https://img.shields.io/badge/Self--Host-Docker%20Compose%20+%20K3s-2496ED?logo=docker&logoColor=white)](https://supercheck.io/docs/app/deployment/self-hosted)
-[![npm](https://img.shields.io/npm/v/@supercheck/cli?logo=npm&label=Supercheck%20CLI)](https://www.npmjs.com/package/@supercheck/cli)
-[![Testing](https://img.shields.io/badge/Testing-Playwright-45ba4b?logo=googlechrome&logoColor=white)](https://playwright.dev)
-[![Load Testing](https://img.shields.io/badge/Load%20Testing-Grafana%20k6-7D64FF?logo=k6)](https://k6.io)
-[![AI](https://img.shields.io/badge/AI-Enabled-blueviolet?logo=openai&logoColor=white)](https://supercheck.io)
+[![Documentation](https://img.shields.io/badge/Docs-supercheck.io-blue)](https://supercheck.io/docs/app/welcome)
+[![npm](https://img.shields.io/npm/v/@supercheck/cli?logo=npm&label=CLI)](https://www.npmjs.com/package/@supercheck/cli)
+[![License](https://img.shields.io/badge/license-AGPL--3.0--only-blue.svg)](LICENSE)
 
-## Why Supercheck?
+## What Supercheck includes
 
-Supercheck combines **test automation**, **synthetic + uptime monitoring**, **performance testing**, and **status communication** in one self-hosted platform.
+- **Test automation:** browser, API, database, custom, and k6 performance tests, with AI-assisted creation and failure analysis.
+- **Monitoring:** HTTP, website and SSL, ping, port, and scheduled synthetic browser checks across configured execution locations.
+- **Investigation:** run logs, screenshots, traces, linked artifacts, and read-only AI SRE investigation over Supercheck evidence and configured connectors.
+- **Communication:** alerts through email, Slack, Discord, Telegram, Microsoft Teams, and webhooks, plus public status pages and subscriber notifications.
+- **Governance:** organizations, projects, six RBAC roles, API keys, audit trails, requirements traceability, and coverage snapshots.
+- **Secure execution:** ephemeral Kubernetes Jobs, gVisor isolation, network policies, and resource limits for Playwright and k6 workloads.
 
-### Competitive landscape
+## Competitive landscape
 
-Supercheck is an open-source reliability platform that combines test automation, synthetic and uptime monitoring, k6 performance testing, status pages, and read-only AI SRE investigation. Some competitors cover parts of this workflow, but they usually specialize in one layer: synthetic monitoring, browser/device clouds, load testing, status communication, incident response, or AI incident investigation.
+Supercheck combines capabilities that are commonly split across test automation, synthetic monitoring, load testing, status communication, and incident-investigation products. The comparison below describes each product's primary, natively documented scope; integrations or adjacent products may extend it.
 
-Public pricing changes frequently; check the linked vendor pages for the latest details.
+Pricing changes frequently, so the table links to each vendor's current official pricing or product page instead of copying amounts that can become stale. **Partial** means the capability is available only for a narrower use case or through an adjacent part of the vendor's platform. **—** means it is not a core, natively documented capability of the compared product.
 
-| Platform | Primary focus | Public pricing / model | Test automation | Synthetic / uptime | Load testing | Status pages | AI SRE / incident investigation | Unified AISRE loop | Self-hosted OSS | Notes |
-|----------|---------------|------------------------|:---------------:|:------------------:|:------------:|:------------:|:-------------------------------:|:----------------:|:---------------:|-------|
-| **Supercheck** | Unified reliability | **Open-source, self-hosted** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Tests, monitors, k6, incidents, status communication, native evidence, and read-only AI SRE investigation in one platform. |
-| [Checkly](https://www.checklyhq.com/pricing/) | Synthetic monitoring | Free; Starter $24/mo; Team $64/mo when billed annually | ✅ | ✅ | — | ✅ | Partial | — | — | Strong Playwright/API synthetic monitoring and AI root-cause analysis for check failures; not a self-hosted OSS testing + load + SRE platform. |
-| [Datadog Synthetic Monitoring](https://www.datadoghq.com/pricing/?product=synthetic-monitoring) | Observability + synthetics | API tests from $5/10K runs; browser tests from $12/1K runs when billed annually | Partial | ✅ | — | — | Partial | — | — | Broad observability suite with synthetics and AI features; pricing and deployment span multiple Datadog products. |
-| [Better Stack](https://betterstack.com/pricing) | Incident management + observability | Incident management starts at $29/license/mo when billed annually | — | ✅ | — | ✅ | Partial | — | — | Uptime, on-call, status pages, logs/traces/metrics, and AI SRE/postmortem features; not a test automation or load testing platform. |
-| [UptimeRobot](https://uptimerobot.com/pricing/) | Uptime monitoring | Free; Solo from $7/mo; Team from $29/mo when billed annually | — | ✅ | — | ✅ | — | — | — | Affordable uptime/API/status-page monitoring; limited synthetic browser and no native test/load execution. |
-| [BrowserStack](https://www.browserstack.com/pricing) | Browser/device cloud | Paid by product and parallel capacity | ✅ | — | — | — | — | — | — | Cross-browser and real-device execution infrastructure; does not own monitoring, incidents, status pages, or AI SRE workflows. |
-| [Sauce Labs](https://saucelabs.com/pricing) | Browser/device cloud | Virtual Device Cloud from $149/mo for 1 parallel test when billed annually | ✅ | — | — | — | — | — | — | Automated/manual cross-browser and mobile testing; not a monitoring/status/AISRE system. |
-| [Cypress Cloud](https://www.cypress.io/pricing) | Cypress test orchestration | Free; Team from $67/mo; Business from $267/mo when billed annually | ✅ | — | — | — | — | — | — | CI orchestration, analytics, flake detection, and AI test-generation support for Cypress projects. |
-| [Grafana k6 Cloud](https://grafana.com/pricing/) | Load testing | Free/paid Grafana Cloud tiers; usage-based k6 capacity | — | Partial | ✅ | — | — | — | — | Excellent load testing and observability integration; does not provide Supercheck's browser/API test, incident, and status-page workflow. |
-| [Azure App Testing](https://azure.microsoft.com/en-us/pricing/details/app-testing/) | Cloud test execution | Usage-based Virtual User Hours and Playwright test minutes | ✅ | — | ✅ | — | — | — | — | Azure-native Playwright workspaces and load testing; not a standalone self-hosted reliability platform. |
-| [Statuspage](https://www.atlassian.com/software/statuspage/pricing) | Status communication | Free; Hobby $29/mo; Startup $99/mo; Business $399/mo | — | — | — | ✅ | — | — | — | Mature hosted status pages and subscriber communication; monitoring/investigation require other tools. |
-| [Instatus](https://instatus.com/pricing) | Status pages + monitoring | Free; paid plans by monitor/status-page capacity | — | ✅ | — | ✅ | — | — | — | Lightweight status pages, on-call, and monitoring; not a test/load/AISRE platform. |
-| [HolmesGPT](https://github.com/HolmesGPT/holmesgpt) | AI SRE agent | Open-source | — | Partial | — | — | ✅ | — | ✅ | CNCF Sandbox SRE agent for incident investigation across observability tools; not a testing, monitoring, load, and status-page product. |
-| [PagerDuty AIOps](https://www.pagerduty.com/platform/aiops/) | Incident response + AIOps | SaaS; trial / sales-led plans | — | — | — | — | Partial | — | — | Alert correlation, event enrichment, automation, and incident response; depends on external monitors/tests. |
-| [Resolve AI](https://resolve.ai/) | AI SRE / production agents | Sales-led | — | — | — | — | ✅ | — | — | AI agents for on-call, incidents, and operational tasks; focused on production investigation/operations rather than Supercheck's test-monitor-verify loop. |
+| Platform | Primary focus | Pricing / model | Test automation | Synthetic / uptime | Load testing | Status pages | AI SRE / investigation | Unified Supercheck-style workflow | Self-hosted OSS | Notes |
+| --- | --- | --- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | --- |
+| **Supercheck** | Unified reliability | Open-source, self-hosted | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Tests, monitors, k6, incidents, status communication, native evidence, and read-only AI SRE investigation in one platform. |
+| [Checkly](https://www.checklyhq.com/pricing/) | Synthetic monitoring and continuous testing | Free and paid plans | ✅ | ✅ | — | ✅ | Partial | — | — | Playwright and API checks, monitoring as code, status pages, and check-focused analysis. |
+| [Datadog Synthetic Monitoring](https://www.datadoghq.com/pricing/?product=synthetic-monitoring) | Observability and synthetics | Usage-based SaaS | Partial | ✅ | — | — | Partial | — | — | API and browser synthetics within the broader Datadog observability platform. |
+| [Better Stack](https://betterstack.com/pricing) | Observability and incident management | Free and paid plans | — | ✅ | — | ✅ | Partial | — | — | Uptime monitoring, status pages, incident response, logs, metrics, traces, and AI-assisted operations. |
+| [UptimeRobot](https://uptimerobot.com/pricing/) | Uptime monitoring | Free and paid plans | — | ✅ | — | ✅ | — | — | — | Uptime, endpoint, port, keyword, and status-page monitoring. |
+| [BrowserStack](https://www.browserstack.com/pricing) | Browser and device testing cloud | Product and capacity-based SaaS | ✅ | Partial | — | — | Partial | — | — | Cross-browser and real-device testing, with separate observability and synthetic-monitoring products. |
+| [Sauce Labs](https://saucelabs.com/pricing) | Browser and device testing cloud | Product and capacity-based SaaS | ✅ | Partial | — | — | Partial | — | — | Automated and manual browser/mobile testing with separate error reporting and insights capabilities. |
+| [Cypress Cloud](https://www.cypress.io/pricing) | Cypress test orchestration | Free and paid plans | ✅ | — | — | — | Partial | — | — | CI orchestration, analytics, flake detection, and AI-assisted workflows for Cypress test suites. |
+| [Grafana Cloud k6](https://grafana.com/pricing/) | Performance and load testing | Free and usage-based paid plans | — | Partial | ✅ | — | Partial | — | — | k6 load testing integrated with the wider Grafana Cloud observability stack. |
+| [Azure Load Testing and Playwright Workspaces](https://azure.microsoft.com/en-us/pricing/details/app-testing/) | Cloud test execution | Usage-based cloud service | ✅ | — | ✅ | — | — | — | — | Managed Playwright browser testing and Apache JMeter-based load testing in Azure. |
+| [Atlassian Statuspage](https://www.atlassian.com/software/statuspage/pricing) | Status communication | Free and paid plans | — | — | — | ✅ | — | — | — | Hosted status pages, incidents, components, and subscriber communication. |
+| [Instatus](https://instatus.com/pricing) | Status pages and uptime | Free and paid plans | — | ✅ | — | ✅ | Partial | — | — | Hosted status pages, monitoring, incident communication, and operational tooling. |
+| [HolmesGPT](https://github.com/HolmesGPT/holmesgpt) | AI SRE investigation | Open-source and commercial offerings | — | Partial | — | — | ✅ | — | ✅ | Open-source AI investigation using observability and infrastructure data; not a test or status-page platform. |
+| [PagerDuty AIOps](https://www.pagerduty.com/platform/aiops/) | Event intelligence and incident response | Commercial SaaS | — | — | — | — | ✅ | — | — | Event correlation, triage, automation, and incident response built around signals from external systems. |
+| [Resolve AI](https://resolve.ai/) | AI production operations | Commercial service | — | — | — | — | ✅ | — | — | AI agents focused on investigating and operating production systems rather than authoring and executing tests. |
 
-## Features
+## Get started
 
-### Test Automation
+### Self-host Supercheck
 
-- **Browser Tests** — Playwright UI automation with screenshots, traces, and video
-- **API Tests** — HTTP/GraphQL request + response validation
-- **Database Tests** — SQL/DB validation workflows in custom test scripts
-- **Performance Tests** — k6 load testing with regional execution support
-- **Custom Tests** — Node.js-based custom test logic
+Production self-hosting requires a Linux server with Docker Compose v2. Supercheck uses local K3s and gVisor for isolated test execution; macOS, Windows, and WSL2 are not supported deployment targets.
 
-### Monitoring
+```bash
+git clone https://github.com/supercheck-io/supercheck.git
+cd supercheck/deploy/docker
+sudo bash init-secrets.sh
+sudo bash setup-k3s.sh
+KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig docker compose up -d
+```
 
-- **HTTP / Website** — Endpoint monitoring with SSL certificate tracking
-- **Ping / Port** — Network-level availability checks
-- **Synthetic Monitors** — Scheduled Playwright browser journeys
-- **Multi-Region** — US East, EU Central, Asia Pacific execution options
+Open `http://localhost:3000`, or follow the [self-hosting guide](https://supercheck.io/docs/app/deployment/self-hosted) to configure HTTPS, optional integrations, backups, and multi-location workers.
 
-### AI Workflows
+### Install the CLI
 
-- **AI Create** — Generate tests from natural language
-- **AI Fix** — Analyze failures and propose fixes
-- **AI Analyze** — Analyze monitor, job, and performance run outcomes
-- **AI SRE Investigation** — Read-only triage over native evidence, connectors, incidents, monitor history, and execution artifacts
+The CLI requires Node.js 20 or later.
 
-### Debugging & Reporting
+```bash
+npm install -g @supercheck/cli
+supercheck init
+```
 
-- **Screenshots, traces, video, and logs** for fast failure diagnosis
-- **Report artifacts** stored in object storage with run linkage
+Create a token under **Organization Admin > CLI Tokens**, then authenticate:
 
-### Communication
+```bash
+supercheck login --token sck_live_...
+supercheck pull
+supercheck diff
+supercheck deploy
+```
 
-- **Alerts** — Email, Slack, Discord, Telegram, Teams, and Webhooks
-- **Status Pages** — Public-facing service status with incident workflows
-- **Dashboards** — Real-time visibility into run and monitor health
+See the [CLI guide](cli/) and [command reference](https://supercheck.io/docs/cli/commands) for resource management, local execution, and CI/CD usage.
 
-### Administration & Governance
+### Install the recorder
 
-- **Organizations + Projects** — Multi-tenant workspace model
-- **RBAC** — 6 role levels from `super_admin` to `project_viewer`
-- **API Keys** — Programmatic access
-- **Audit Trails** — Change and action history
+Record browser interactions and save Playwright tests directly to Supercheck:
 
-### Execution Security
-
-- **gVisor Sandboxing** — Test execution runs in ephemeral Kubernetes Jobs under gVisor for kernel-level syscall isolation
-- **Network Segmentation** — Execution pods are restricted from accessing internal services and cloud metadata endpoints
-- **Resource Quotas** — Per-namespace limits prevent runaway test pods from exhausting cluster resources
-
-### Requirements Management
-
-- **AI extraction** from requirement documents (PDF, DOCX, text)
-- **Coverage snapshots** linked to test execution outcomes
-- **Requirement-to-test linking** with traceability metadata
-
-### Browser Extensions
-
-Record Playwright tests directly from your browser:
-
-- [Chrome Extension](https://chromewebstore.google.com/detail/supercheck-recorder/gfmbcelfhhfmifdkccnbgdadibdfhioe)
-- [Edge Extension](https://microsoftedge.microsoft.com/addons/detail/supercheck-recorder/0rdckc265vb9)
+- [Chrome Web Store](https://chromewebstore.google.com/detail/supercheck-recorder/gfmbcelfhhfmifdkccnbgdadibdfhioe)
+- [Microsoft Edge Add-ons](https://microsoftedge.microsoft.com/addons/detail/supercheck-recorder/0rdckc265vb9)
+- [Source and build instructions](recorder/)
+- [Recorder documentation](https://supercheck.io/docs/recorder)
 
 ## Architecture
 
@@ -141,67 +128,48 @@ flowchart TB
     style APAC fill:none,stroke:#64748b,stroke-width:2px,stroke-dasharray: 5 5
 ```
 
-Each server runs its own local [K3s](https://k3s.io) cluster with [gVisor](https://gvisor.dev/) sandboxing. Workers consume jobs from Redis via BullMQ and execute each test as an ephemeral Kubernetes Job in a sandboxed execution namespace. Remote workers connect to the primary server's Redis, PostgreSQL, and MinIO over the network. Deploy workers in a [single location](https://supercheck.io/docs/app/deployment/self-hosted) or across [multiple regions](https://supercheck.io/docs/app/deployment/multi-location).
+The application stores platform data in PostgreSQL, schedules work through Redis and BullMQ, and keeps execution artifacts in S3-compatible storage such as MinIO. Workers consume location-aware queues and run Playwright or k6 workloads as ephemeral Kubernetes Jobs in a restricted execution namespace. Deploy one local worker or add workers for other configured locations.
 
-## Deployment
+## Repository layout
 
-Self-host Supercheck on your own infrastructure. Docker Compose handles the app, worker, and data services while a local K3s cluster provides gVisor-sandboxed test execution:
-
-| Option | Description | Guide |
-|--------|-------------|-------|
-| [![Deploy with Docker](https://img.shields.io/badge/Deploy%20with-Docker%20Compose%20+%20K3s-2496ED?logo=docker&logoColor=white)](https://supercheck.io/docs/app/deployment/self-hosted) | Docker Compose + K3s self-hosted deployment | [Read guide](https://supercheck.io/docs/app/deployment/self-hosted) |
+| Path | Purpose | License |
+| --- | --- | --- |
+| [`app/`](app/) | Next.js web application and API | AGPL-3.0-only |
+| [`worker/`](worker/) | NestJS orchestration and execution worker | AGPL-3.0-only |
+| [`cli/`](cli/) | `@supercheck/cli` source and documentation | AGPL-3.0-only |
+| [`recorder/`](recorder/) | Browser recorder based on Playwright CRX | Apache-2.0 |
+| [`docs/`](docs/) | Product and deployment documentation | AGPL-3.0-only |
+| [`deploy/`](deploy/) | Docker Compose and Kubernetes deployment assets | AGPL-3.0-only |
 
 ## Documentation
 
-Official docs:
-
 - [Welcome](https://supercheck.io/docs/app/welcome)
 - [Deployment](https://supercheck.io/docs/app/deployment)
-- [Automate (Tests, Jobs, Runs)](https://supercheck.io/docs/app/automate)
+- [Automate: tests, jobs, and runs](https://supercheck.io/docs/app/automate)
 - [Monitor](https://supercheck.io/docs/app/monitor)
-- [Investigate (AI SRE)](https://supercheck.io/docs/app/investigate)
-- [Communicate (Alerts, Status Pages)](https://supercheck.io/docs/app/communicate)
-- [Admin](https://supercheck.io/docs/app/admin)
-- [CLI Reference](https://supercheck.io/docs/cli/commands)
-- [Contributing](CONTRIBUTING.md)
+- [Investigate with AI SRE](https://supercheck.io/docs/app/investigate)
+- [Communicate: alerts and status pages](https://supercheck.io/docs/app/communicate)
+- [Administration](https://supercheck.io/docs/app/admin)
+- [CLI](https://supercheck.io/docs/cli/commands)
+- [Recorder](https://supercheck.io/docs/recorder)
 
-## Supercheck CLI
+## Contributing and security
 
-Install and manage Supercheck resources from the command line with `@supercheck/cli`:
+Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request and follow the [Code of Conduct](CODE_OF_CONDUCT.md). Use [GitHub Issues](https://github.com/supercheck-io/supercheck/issues) for reproducible bugs and [GitHub Discussions](https://github.com/supercheck-io/supercheck/discussions) for proposals and questions.
 
-- [npm package](https://www.npmjs.com/package/@supercheck/cli)
-- [source](cli/)
+Please report vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
 
-## Supercheck Recorder
-
-Record browser interactions and save Playwright tests directly to Supercheck:
-
-- [Chrome Web Store](https://chromewebstore.google.com/detail/supercheck-recorder/gfmbcelfhhfmifdkccnbgdadibdfhioe)
-- [source and build instructions](recorder/)
-
-## Community Integrations
-
-Community-built tools and extensions that extend Supercheck:
+## Community integrations
 
 | Integration | Description |
-|-------------|-------------|
-| [Azure DevOps](https://marketplace.visualstudio.com/items?itemName=ClinicalSupportSystems.supercheck-integration) | Azure DevOps pipeline tasks and a dashboard widget |
+| --- | --- |
+| [Azure DevOps](https://marketplace.visualstudio.com/items?itemName=ClinicalSupportSystems.supercheck-integration) | Community-maintained pipeline tasks and dashboard widget |
 
-This extension is community-built and maintained outside the core Supercheck repository.
+Community integrations are maintained outside the core Supercheck repository. If you have built one, open a [Discussion](https://github.com/supercheck-io/supercheck/discussions) to share it.
 
-> Built an integration? Open a [Discussion](https://github.com/supercheck-io/supercheck/discussions) and we'll add it here.
+## License
 
-## Support
-
-If Supercheck is useful to your team:
-
-- ⭐ Star this repository
-- 💡 Suggest features in [Discussions](https://github.com/supercheck-io/supercheck/discussions)
-- 🐞 Report issues in [Issues](https://github.com/supercheck-io/supercheck/issues)
-
-## License and Contributions
-
-The Supercheck app, worker, CLI, and documentation are open source under the [GNU Affero General Public License v3.0 only](LICENSE). The recorder remains Apache-2.0; its license and upstream attribution are in [`recorder/LICENSE`](recorder/LICENSE) and [`recorder/NOTICE`](recorder/NOTICE). We welcome external contributions. Use [GitHub Discussions](https://github.com/supercheck-io/supercheck/discussions) for proposals and [GitHub Issues](https://github.com/supercheck-io/supercheck/issues) for reproducible bugs. See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidance and [SECURITY.md](SECURITY.md) for private vulnerability reporting.
+The Supercheck app, worker, CLI, documentation, and deployment assets are licensed under the [GNU Affero General Public License v3.0 only](LICENSE). The recorder remains Apache-2.0; see [`recorder/LICENSE`](recorder/LICENSE), [`recorder/NOTICE`](recorder/NOTICE), and its retained upstream attribution.
 
 ## Community
 

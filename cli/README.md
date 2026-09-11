@@ -15,10 +15,12 @@ The Supercheck CLI provides a first-class command-line interface for managing yo
 - **CI/CD Integration**: Trigger jobs and wait for results directly from your pipeline.
 - **Full Resource Management**: Manage all resources (tests, monitors, jobs, variables, tags, notifications) from the terminal.
 - **Local Development**: Run and debug tests locally before deploying.
-- **Security-First**: Token scanning in config files, SHA-256 hashed storage, prefix-validated authentication.
+- **Security-First**: Token scanning in config files, server-side token hashing, prefix-validated authentication, and locally obfuscated credential storage.
 - **Proxy Support**: Full HTTP/HTTPS proxy support with `NO_PROXY` awareness via `undici`.
 
 ## Installation
+
+Requires Node.js 20 or later.
 
 ```bash
 npm install -g @supercheck/cli
@@ -44,13 +46,14 @@ supercheck upgrade
    ```bash
    supercheck init
    ```
-  This creates a `supercheck.config.ts` and a `_supercheck_` directory with example tests under `_supercheck_/playwright` and `_supercheck_/k6`.
+   This creates a `supercheck.config.ts` and a `_supercheck_` directory with example tests under `_supercheck_/playwright` and `_supercheck_/k6`.
 
 2. **Authenticate**:
    ```bash
    supercheck login --token sck_live_...
    ```
-   You can generate a CLI token in your Dashboard under **Project Settings > CLI Tokens**.
+   You can generate a CLI token in your Dashboard under **Organization Admin > CLI Tokens**.
+   The server stores only the token hash. Local `supercheck login` credentials are stored by `conf` with obfuscation, not cryptographic protection; prefer `SUPERCHECK_TOKEN` from your CI secret store in automation.
 
 3. **Pull existing resources**:
    ```bash
@@ -64,10 +67,10 @@ supercheck upgrade
    ```
 
 5. **Validate scripts**:
-  ```bash
-  supercheck validate
-  ```
-  Validation runs automatically during deploy and cannot be skipped.
+   ```bash
+   supercheck validate
+   ```
+   Validation runs automatically during deploy and cannot be skipped.
 
 6. **Run tests locally (optional)**:
   ```bash
@@ -160,7 +163,7 @@ supercheck upgrade
 | `supercheck monitor update <id> ...` | Update a monitor (`--interval-minutes`, `--dry-run`) |
 | `supercheck monitor delete <id>` | Delete a monitor |
 
-> **Dry run support:** `test create`, `test update`, `job create`, `job update`, `monitor create`, `monitor update`, and `deploy` all support `--dry-run` to preview the API payload without making changes.
+> **Dry run support:** `test create`, `test update`, `job create`, `job update`, `monitor create`, `monitor update`, `pull`, `deploy`, and `destroy` support `--dry-run`. `upgrade --dry-run` prints the package-manager command without running it.
 
 `supercheck test run` is local-only. Cloud test execution has been replaced by `supercheck job run` / `supercheck job trigger`.
 
@@ -239,13 +242,22 @@ export default defineConfig({
 
 ```yaml
 test:
-  image: node:18
+  image: node:20
   script:
     - npm install -g @supercheck/cli
     - supercheck job trigger $SUPERCHECK_JOB_ID --wait
   variables:
     SUPERCHECK_TRIGGER_KEY: $SUPERCHECK_TRIGGER_KEY
     SUPERCHECK_TOKEN: $SUPERCHECK_TOKEN
+```
+
+### Docker
+
+The repository includes `cli/Dockerfile` for building a local CLI image. It is not currently published as an official container image:
+
+```bash
+docker build -t supercheck-cli cli
+docker run --rm -e SUPERCHECK_TOKEN supercheck-cli whoami
 ```
 
 ## Environment Variables

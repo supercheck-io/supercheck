@@ -20,7 +20,7 @@ flowchart TD
 
 ## CLI
 
-- Source: `cli`; package: `@supercheck/cli`; binary: `supercheck`; license: AGPL-3.0-only; supported Node runtime begins at 18 unless package metadata changes.
+- Source: `cli`; package: `@supercheck/cli`; binary: `supercheck`; license: AGPL-3.0-only; supported Node runtime begins at 20 unless package metadata changes.
 - Config is declarative monitoring-as-code. Config loading validates schema and rejects embedded live/test/trigger token patterns, including legacy trigger formats.
 - Secret variable values become environment references; file variables are excluded from generated config and use supported multipart/dashboard paths.
 - Authentication storage must use the platform-appropriate protected location and never print tokens.

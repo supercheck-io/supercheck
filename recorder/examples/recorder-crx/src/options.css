@@ -139,6 +139,10 @@ body {
   background-color: var(--sc-muted-foreground);
 }
 
+.status-indicator.configured {
+  background-color: var(--sc-success);
+}
+
 .status-indicator.error {
   background-color: var(--sc-destructive);
 }

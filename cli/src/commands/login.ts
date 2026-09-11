@@ -67,7 +67,7 @@ export const loginCommand = new Command('login')
     // Interactive login — not yet implemented
     logger.newline()
     logger.info('To authenticate, create a CLI token in the Dashboard:')
-    logger.info('  Dashboard → Project Settings → CLI Tokens → Create Token')
+    logger.info('  Dashboard → Organization Admin → CLI Tokens → Create Token')
     logger.newline()
     if (options.url) {
       logger.info(`Then run: supercheck login --token <your-token> --url ${options.url}`)
