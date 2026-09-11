@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
-import { requireProjectContext } from "@/lib/project-context";
+import { isAuthError, requireAuthContext } from "@/lib/auth-context";
 import { checkSreChatRateLimit } from "@/lib/sre/sre-rate-limiter";
 import { buildSreTriageSystemPrompt } from "@/sre/agents/triage";
 import { runSreAgent } from "@/sre/lib/agent-runner";
@@ -55,9 +55,10 @@ const SRE_ATTACHMENTS_BUCKET =
   process.env.S3_SRE_ATTACHMENTS_BUCKET_NAME || "sre-chat-attachments";
 
 function authErrorResponse(error: unknown) {
-  const message =
-    error instanceof Error ? error.message : "Authentication required";
-  return NextResponse.json({ error: message }, { status: 401 });
+  return NextResponse.json(
+    { error: isAuthError(error) ? "Authentication required" : "Unable to authorize Copilot" },
+    { status: isAuthError(error) ? 401 : 500 },
+  );
 }
 
 type SreChatTextAttachment = z.infer<
@@ -289,9 +290,9 @@ export async function POST(request: NextRequest) {
     return sameOriginError;
   }
 
-  let context: Awaited<ReturnType<typeof requireProjectContext>>;
+  let context: Awaited<ReturnType<typeof requireAuthContext>>;
   try {
-    context = await requireProjectContext();
+    context = await requireAuthContext();
   } catch (error) {
     return authErrorResponse(error);
   }

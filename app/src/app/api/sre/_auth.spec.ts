@@ -2,19 +2,20 @@
 
 import { NextRequest } from "next/server";
 
-jest.mock("@/lib/project-context", () => ({
-  requireProjectContext: jest.fn(),
+jest.mock("@/lib/auth-context", () => ({
+  requireAuthContext: jest.fn(),
+  isAuthError: jest.fn((error: unknown) => error instanceof Error && error.message === "Authentication required"),
 }));
 
 jest.mock("@/lib/rbac/middleware", () => ({
   checkPermissionWithContext: jest.fn(),
 }));
 
-import { requireProjectContext } from "@/lib/project-context";
+import { requireAuthContext } from "@/lib/auth-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireSreApiPermissions, requireSreSameOriginRequest } from "./_auth";
 
-const mockRequireProjectContext = requireProjectContext as jest.Mock;
+const mockRequireProjectContext = requireAuthContext as jest.Mock;
 const mockCheckPermissionWithContext = checkPermissionWithContext as jest.Mock;
 
 const context = {
@@ -87,6 +88,26 @@ describe("requireSreApiPermissions", () => {
         organizationId: context.organizationId,
         project: context.project,
       },
+    );
+  });
+
+  it("preserves project-scoped CLI bearer authentication", async () => {
+    const cliContext = { ...context, isCliAuth: true };
+    mockRequireProjectContext.mockResolvedValue(cliContext);
+
+    const result = await requireSreApiPermissions([
+      { resource: "sre_incident", action: "view" },
+    ]);
+
+    expect(result).toEqual({ success: true, context: cliContext });
+    expect(mockCheckPermissionWithContext).toHaveBeenCalledWith(
+      "sre_incident",
+      "view",
+      expect.objectContaining({
+        userId: context.userId,
+        organizationId: context.organizationId,
+        project: context.project,
+      }),
     );
   });
 });

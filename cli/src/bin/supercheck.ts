@@ -20,6 +20,9 @@ import { alertCommand } from '../commands/alerts.js'
 import { auditCommand } from '../commands/audit.js'
 import { doctorCommand } from '../commands/doctor.js'
 import { upgradeCommand } from '../commands/upgrade.js'
+import { incidentCommand } from '../commands/incidents.js'
+import { serviceCommand } from '../commands/services.js'
+import { sreCommand } from '../commands/sre.js'
 import { setOutputFormat, type OutputFormat } from '../output/formatter.js'
 import { setQuietMode, setLogLevel } from '../utils/logger.js'
 import { ApiRequestError, CLIError, ExitCode } from '../utils/errors.js'
@@ -29,7 +32,7 @@ import { resolveAndSetConfigBaseUrl } from '../api/authenticated-client.js'
 
 const program = new Command()
   .name('supercheck')
-  .description('Open-source testing, monitoring, and reliability — as code')
+  .description('Open-source testing, monitoring, and AI SRE — as code')
   .version(CLI_VERSION, '-v, --version')
   .option('--json', 'Output in JSON format')
   .option('--quiet', 'Suppress non-essential output')
@@ -54,7 +57,17 @@ const program = new Command()
       ? actionCommand.opts<Record<string, unknown>>()
       : {}
 
-    const configPath = typeof actionOpts.config === 'string' ? actionOpts.config : undefined
+    const isNotificationCommand =
+      actionCommand.name() === 'notification' ||
+      actionCommand.name() === 'notifications' ||
+      actionCommand.parent?.name() === 'notification' ||
+      actionCommand.parent?.name() === 'notifications'
+
+    const configPath =
+      !isNotificationCommand &&
+      typeof actionOpts.config === 'string'
+        ? actionOpts.config
+        : undefined
     await resolveAndSetConfigBaseUrl({ configPath })
   })
 
@@ -86,6 +99,11 @@ program.addCommand(pullCommand)
 program.addCommand(notificationCommand)
 program.addCommand(alertCommand)
 program.addCommand(auditCommand)
+
+// Register commands — AI SRE
+program.addCommand(incidentCommand)
+program.addCommand(serviceCommand)
+program.addCommand(sreCommand)
 
 // Register commands — utilities
 program.addCommand(healthCommand)

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { requireProjectContext } from "@/lib/project-context";
+import { isAuthError, requireAuthContext } from "@/lib/auth-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireSameOriginRequest } from "@/lib/security/same-origin";
 
@@ -12,7 +12,7 @@ type SreApiPermission = {
 type SreApiAuthResult =
   | {
       success: true;
-      context: Awaited<ReturnType<typeof requireProjectContext>>;
+      context: Awaited<ReturnType<typeof requireAuthContext>>;
     }
   | {
       success: false;
@@ -20,8 +20,10 @@ type SreApiAuthResult =
     };
 
 function authErrorResponse(error: unknown) {
-  const message = error instanceof Error ? error.message : "Authentication required";
-  return NextResponse.json({ error: message }, { status: 401 });
+  return NextResponse.json(
+    { error: isAuthError(error) ? "Authentication required" : "Unable to authorize SRE API request" },
+    { status: isAuthError(error) ? 401 : 500 },
+  );
 }
 
 export function requireSreSameOriginRequest(request: NextRequest) {
@@ -36,9 +38,9 @@ export function requireSreSameOriginRequest(request: NextRequest) {
 export async function requireSreApiPermissions(
   permissions: SreApiPermission[],
 ): Promise<SreApiAuthResult> {
-  let context: Awaited<ReturnType<typeof requireProjectContext>>;
+  let context: Awaited<ReturnType<typeof requireAuthContext>>;
   try {
-    context = await requireProjectContext();
+    context = await requireAuthContext();
   } catch (error) {
     return { success: false, response: authErrorResponse(error) };
   }

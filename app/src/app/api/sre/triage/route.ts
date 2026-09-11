@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
-import { requireProjectContext } from "@/lib/project-context";
+import { isAuthError, requireAuthContext } from "@/lib/auth-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { checkSreTriageRateLimit } from "@/lib/sre/sre-rate-limiter";
 import { isSreTriageAgentEnabled } from "@/sre/lib/feature-gates";
@@ -13,8 +13,10 @@ const triageRequestSchema = z.object({
 });
 
 function authErrorResponse(error: unknown) {
-  const message = error instanceof Error ? error.message : "Authentication required";
-  return NextResponse.json({ error: message }, { status: 401 });
+  return NextResponse.json(
+    { error: isAuthError(error) ? "Authentication required" : "Unable to authorize SRE triage" },
+    { status: isAuthError(error) ? 401 : 500 },
+  );
 }
 
 function featureDisabledResponse() {
@@ -46,9 +48,9 @@ export async function POST(request: NextRequest) {
     return featureDisabledResponse();
   }
 
-  let context: Awaited<ReturnType<typeof requireProjectContext>>;
+  let context: Awaited<ReturnType<typeof requireAuthContext>>;
   try {
-    context = await requireProjectContext();
+    context = await requireAuthContext();
   } catch (error) {
     return authErrorResponse(error);
   }

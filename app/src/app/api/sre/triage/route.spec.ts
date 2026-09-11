@@ -11,8 +11,9 @@ jest.mock("@/utils/db", () => ({
   },
 }));
 
-jest.mock("@/lib/project-context", () => ({
-  requireProjectContext: jest.fn(),
+jest.mock("@/lib/auth-context", () => ({
+  requireAuthContext: jest.fn(),
+  isAuthError: jest.fn((error: unknown) => error instanceof Error && error.message === "Authentication required"),
 }));
 
 jest.mock("@/lib/rbac/middleware", () => ({
@@ -50,8 +51,8 @@ const { db: mockDb } = jest.requireMock("@/utils/db") as {
     transaction: jest.Mock;
   };
 };
-const { requireProjectContext: mockRequireProjectContext } = jest.requireMock("@/lib/project-context") as {
-  requireProjectContext: jest.Mock;
+const { requireAuthContext: mockRequireProjectContext } = jest.requireMock("@/lib/auth-context") as {
+  requireAuthContext: jest.Mock;
 };
 const { checkPermissionWithContext: mockCheckPermissionWithContext } = jest.requireMock("@/lib/rbac/middleware") as {
   checkPermissionWithContext: jest.Mock;

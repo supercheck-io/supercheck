@@ -1,128 +1,219 @@
-# Supercheck Recorder (Playwright CRX)
+<h1><img src="https://raw.githubusercontent.com/supercheck-io/supercheck/main/supercheck-logo.png" alt="Supercheck logo" width="40" height="40" align="top"> Supercheck Recorder</h1>
 
+**Browser extension and Playwright CRX runtime for recording and syncing browser tests as code.**
+
+The Supercheck Recorder turns real browser interactions into maintainable Playwright code. Built on Chrome Extensions Manifest V3 and Playwright CRX, it operates directly inside Chrome and Microsoft Edge without requiring external drivers or local runner setups. Record user flows, assert DOM states, inspect selectors, and save generated tests straight to your Supercheck projects with zero manual token copying.
+
+[![Chrome Web Store](https://img.shields.io/badge/Chrome_Web_Store-Supercheck_Recorder-blue?logo=googlechrome)](https://chromewebstore.google.com/detail/supercheck-recorder/gfmbcelfhhfmifdkccnbgdadibdfhioe)
+[![Edge Add-ons](https://img.shields.io/badge/Microsoft_Edge-Supercheck_Recorder-0078D7?logo=microsoftedge)](https://microsoftedge.microsoft.com/addons/detail/supercheck-recorder/0rdckc265vb9)
+[![Documentation](https://img.shields.io/badge/Docs-supercheck.io-blue)](https://supercheck.io/docs/recorder)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-The Supercheck Recorder is distributed under Apache-2.0. It contains code derived from Playwright CRX and Microsoft Playwright; the required upstream license and attribution are retained in [`LICENSE`](LICENSE), [`NOTICE`](NOTICE), and [`playwright/NOTICE`](playwright/NOTICE).
+---
 
-This package contains the [Chrome Extensions](https://developer.chrome.com/docs/extensions/) flavor of the [Playwright](http://github.com/microsoft/playwright) library.
+## What Supercheck Recorder includes
 
-For that, it relies on [`chrome.debugger`](https://developer.chrome.com/docs/extensions/reference/debugger/) to implement [playwright's `ConnectionTransport`](https://github.com/microsoft/playwright/blob/f8a30fb726bc35d4058a2d010b2ed5f6ca2409a3/packages/playwright-core/src/server/transport.ts#L54) interface.
+- **In-Browser Recording**: Leverages [`chrome.debugger`](https://developer.chrome.com/docs/extensions/reference/debugger/) to capture clicks, navigation, inputs, form fills, and assertions without installing local Node.js or Python environments.
+- **1-Click Sync to Supercheck**: Saves generated scripts directly into cloud or self-hosted Supercheck projects, ready for scheduled execution and alerting.
+- **Multi-Language Display**: Displays recorded code in TypeScript, JavaScript, Python, C#, or Java; tests saved to Supercheck use JavaScript.
+- **Intelligent Selector Engine**: Prioritizes `getByTestId` (`data-testid`), accessible role locators, text, and resilient CSS attributes.
+- **Built-in Player & Step Execution**: Replays recorded instructions directly within the extension tab, highlighting lines as they execute.
+- **Playwright Trace Viewer Compatible**: Captures standard `.zip` traces compatible with [Playwright Trace Viewer](https://trace.playwright.dev).
+- **Seamless Auto-Connect**: Automatically recognizes authenticated Supercheck dashboard sessions to establish recorder-scoped credentials safely.
+- **Playwright CRX Source**: Includes the private `playwright-crx` workspace used to build the production Chrome/Edge extension (`examples/recorder-crx`).
 
-**NOTE:** If you want to write end-to-end tests, you should use [@playwright/test](https://playwright.dev/docs/intro) instead.
+---
 
-## Recorder / Player
+## Get started
 
-**Note:** The Supercheck Recorder (built on Playwright CRX) is available in the [Chrome Web Store](https://chromewebstore.google.com/detail/supercheck-recorder/gfmbcelfhhfmifdkccnbgdadibdfhioe). Upstream Playwright CRX remains at [jambeljnbnfbkcpnoiaedcabbgmnnlcd](https://chrome.google.com/webstore/detail/playwright-crx/jambeljnbnfbkcpnoiaedcabbgmnnlcd).
+### Install the extension
 
-A small demo of Playwright CRX recorder and player in action:
+Install the official extension from your browser's store:
 
-![Playwright CRX Recorder / Player](./docs/assets/recorder-player.gif)
+- **Google Chrome**: [Install from Chrome Web Store](https://chromewebstore.google.com/detail/supercheck-recorder/gfmbcelfhhfmifdkccnbgdadibdfhioe)
+- **Microsoft Edge**: [Install from Microsoft Edge Add-ons](https://microsoftedge.microsoft.com/addons/detail/supercheck-recorder/0rdckc265vb9)
 
-It provides playwright recorder (the same used in `playwright codegen`) bundled as a chrome extension, with no other dependencies.
-This way, with your normal chrome / chromium / edge browser, you can record playwright scripts in your prefered language.
+### Install from source (developer build)
 
-In terms of chrome extension functionality, it provides:
+Requires Node.js 18 or later.
 
-- [action button](https://developer.chrome.com/docs/extensions/reference/action/) for attaching current tab into recorder (it opens the recorder if it's closed)
-- [context menu](https://developer.chrome.com/docs/extensions/reference/contextMenus/) for the same purpose
-- [side panel](https://developer.chrome.com/docs/extensions/reference/api/sidePanel) to display the recorder by default (it can be disabled in the options, falling back to a popup window)
-- [command shortcuts](https://developer.chrome.com/docs/extensions/reference/api/commands):
-  - `Shift + Alt + R` starts recording
-  - `Shift + Alt + C` starts inspecting
-- [options page](https://developer.chrome.com/docs/extensions/develop/ui/options-page) to configure:
-  - **Default language** (defaults to **Node Library**)
-  - **TestID Attribute Name** (defaults to `data-testid`)
-  - **Open in Side Panel** (defaults to `true`, and falls back to a popup window if set to `false`)
-- pages must be explicitly attached to be recordable, except if they are opened from already attached pages
-- closing the recorder window will detach all pages and uninstall injected scripts (highlights and event listeners)
-- a player that will run the recorded instructions, in any supported language*
-   - it actually doesn't run Java, Python or C#, but it uses an internal JSONL format to know which instructions it needs to run and how to map them into the current selected code. This way, it can highlight the lines being executed.
+```bash
+git clone https://github.com/supercheck-io/supercheck.git
+cd supercheck/recorder
+npm ci
+npm run build
+```
 
-## API
+Then load the unpacked extension in your browser:
+1. Navigate to `chrome://extensions` (or `edge://extensions`).
+2. Enable **Developer mode** in the top right.
+3. Click **Load unpacked** and select the `recorder/examples/recorder-crx/dist` directory.
 
-It's possible to use `playwright-crx` as a library to create new chrome extensions.
+---
 
-Here's a simple example of a background service worker for a chrome extension using **playwright-crx**:
+## Connecting to Supercheck
 
-```ts
+### Supercheck Cloud (Recommended)
+
+1. Open `https://app.supercheck.io` in the same browser profile as the extension.
+2. Sign in and open any authenticated dashboard page.
+3. The dashboard detects the extension and creates a recorder-scoped credential automatically. No approval dialog or copied API key is required.
+
+### Self-Hosted Supercheck
+
+1. Right-click the extension icon and select **Options**.
+2. Enter the HTTPS origin of your self-hosted deployment (e.g. `https://supercheck.yourcompany.com`) or `http://localhost:3000` for local development.
+3. Click **Save URL and open Supercheck**.
+4. Sign in to your Supercheck instance. An authenticated dashboard page connects the extension automatically.
+
+> **Security Note:** The options page retains an advanced API-key field only for existing recorder-scoped credentials (`ext_*`). Ordinary CLI tokens and job trigger keys cannot upload recordings.
+
+---
+
+## Usage
+
+### Recording tests
+
+1. Open the page you want to test in Chrome or Edge.
+2. Click the Supercheck Recorder icon or press `Shift+Alt+R`.
+3. The recorder side panel opens.
+4. Interact with the page: clicks, typing, navigation, and dropdown selections are captured in real time.
+5. Review and customize the generated code in the side panel editor.
+6. Click **Save to Supercheck**, select your target project, and save the test.
+
+### Keyboard shortcuts
+
+| Shortcut | Action |
+|---|---|
+| `Shift+Alt+R` | Start / pause recording |
+| `Shift+Alt+C` | Inspect element and generate locator |
+
+Closing the recorder side panel detaches controlled tabs and uninstalls all injected scripts and event listeners.
+
+---
+
+## Architecture
+
+```mermaid
+flowchart TB
+    User[User in Browser] -->|Navigates & interacts| Tab[Active Chrome / Edge Tab]
+    Tab -->|CDP events via chrome.debugger| Background[Extension Background Worker<br/>playwright-crx transport]
+    Background -->|AST & code generation| SidePanel[Side Panel UI<br/>CodeMirror + Step Replayer]
+    SidePanel -->|Save recording| API[Supercheck API<br/>POST /api/recordings]
+    API -->|Persist test| DB[(Supercheck Project)]
+
+    style User fill:#6366f1,stroke:#4338ca,color:#fff
+    style Tab fill:#0ea5e9,stroke:#0369a1,color:#fff
+    style Background fill:#3b82f6,stroke:#1e40af,color:#fff
+    style SidePanel fill:#10b981,stroke:#047857,color:#fff
+    style API fill:#f59e0b,stroke:#b45309,color:#fff
+    style DB fill:#8b5cf6,stroke:#6d28d9,color:#fff
+```
+
+The extension uses `chrome.debugger` to implement Playwright's `ConnectionTransport` interface directly inside the browser. Injected highlighter scripts highlight hovered and clicked DOM elements while generating robust locator strategies. When saving, the extension communicates with the Supercheck backend via origin-validated API endpoints.
+
+---
+
+## Workspace library usage (`playwright-crx`)
+
+The repository workspace includes `playwright-crx` source for building automated workflows into Chrome extensions. The workspace is private and is not published as an official Supercheck npm package.
+
+```typescript
 import { crx, expect } from 'playwright-crx/test';
-
-// if you don't need assertions, you can reduce the bundle size by importing crx from playwright-crx
-// import { crx } from 'playwright-crx';
 
 chrome.action.onClicked.addListener(async ({ id: tabId }) => {
   const crxApp = await crx.start({ slowMo: 500 });
 
   try {
-    // tries to connect to the active tab, or creates a new one
     const page = await crxApp.attach(tabId!).catch(() => crxApp.newPage());
 
     await page.goto('https://demo.playwright.dev/todomvc/#/');
-    await page.getByPlaceholder('What needs to be done?').click();
-    await page.getByPlaceholder('What needs to be done?').fill('Hello World!');
+    await page.getByPlaceholder('What needs to be done?').fill('Buy groceries');
     await page.getByPlaceholder('What needs to be done?').press('Enter');
 
-    // assertions work too
-    await expect(page.getByTestId('todo-title')).toHaveText('Hello World!');
+    await expect(page.getByTestId('todo-title')).toHaveText('Buy groceries');
   } finally {
-    // page stays open, but no longer controlled by playwright
     await crxApp.detach(page);
-    // releases chrome.debugger
     await crxApp.close();
   }
 });
 ```
 
-A more complete example can be found in `examples/todomvc-crx`.
+### Trace capture
 
-### Tracing
+Playwright CRX supports tracing compatible with [trace.playwright.dev](https://trace.playwright.dev):
 
-Playwright CRX also supports [tracing](https://playwright.dev/docs/api/class-tracing), compatible with [Playwright Trace Viewer](https://trace.playwright.dev).
-
-Here's an example on how to run it:
-
-```ts
+```typescript
 await page.context().tracing.start({ screenshots: true, snapshots: true });
 
 await page.goto('https://demo.playwright.dev/todomvc');
-const newTodo = page.getByPlaceholder('What needs to be done?');
-await newTodo.fill('buy some cheese');
-await newTodo.press('Enter');
-await expect(page.getByTestId('todo-title')).toHaveText('buy some cheese');
+await page.getByPlaceholder('What needs to be done?').fill('Verify checkout');
+await page.getByPlaceholder('What needs to be done?').press('Enter');
 
-// stores in memfs and then reads its data
 await page.context().tracing.stop({ path: '/tmp/trace.zip' });
-const data = crx.fs.readFileSync('/tmp/trace.zip');
-
-// opens playwright traceviewer
-const tracePage = await crxApp.newPage();
-await tracePage.goto('https://trace.playwright.dev');
-const [filechooser] = await Promise.all([
-  tracePage.waitForEvent('filechooser'),
-  tracePage.getByRole('button', { name: 'Select file(s)' }).click(),
-]);
-
-// uploads the trace data buffer (file paths from memfs are not supported)
-await filechooser.setFiles({
-  name: 'trace.zip',
-  mimeType: 'application/zip',
-  buffer: Buffer.from(data),
-});
+const traceData = crx.fs.readFileSync('/tmp/trace.zip');
 ```
 
-You can give it a try with `examples/todomvc-crx`.
+---
 
-## Build
+## Repository layout
 
-To build `playwright-crx`:
+| Path | Purpose |
+|---|---|
+| [`src/`](src/) | Core `playwright-crx` library source and Chrome debugger transport |
+| [`examples/recorder-crx/`](examples/recorder-crx/) | Official Supercheck Recorder Chrome & Edge extension source |
+| [`examples/todomvc-crx/`](examples/todomvc-crx/) | Example extension demonstrating Playwright automation inside CRX |
+| [`playwright/`](playwright/) | Vendored subset of Playwright v1.51.0 source for reproducible builds |
+| [`tests/`](tests/) | Unit tests and browser extension integration test suites |
+
+---
+
+## Development & testing
 
 ```bash
+# Install dependencies
 npm ci
+
+# Lint codebase
+npm run lint
+
+# Build library, examples, and extension bundle
 npm run build
+
+# Install test browser dependencies
+npm run test:install
+
+# Run unit tests
+npm run test:unit
+
+# Run full browser extension test suite
+npm run test:browser
 ```
 
-## Vendored Playwright source
+### Vendored Playwright source
 
-The `playwright/` directory contains the subset of Playwright v1.51.0 source required to build the recorder. It is vendored so a clean checkout builds reproducibly without a private repository or a second Git checkout. Playwright's Apache-2.0 `LICENSE` and `NOTICE` are retained in that directory.
+The `playwright/` directory contains the exact subset of Microsoft Playwright v1.51.0 source needed to build the extension without external build dependencies or private repositories. When updating Playwright, replace vendored packages from an official release archive, update `playwright/VERSION`, and verify the build and browser test suites.
 
-When updating Playwright, replace the vendored packages from an official release archive, update `playwright/VERSION`, and run the complete recorder build and browser test suite. Do not copy Playwright tests, documentation, browser patches, build outputs, or dependency directories unless the recorder build starts requiring them.
+---
+
+## Contributing and security
+
+Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request and adhere to the project [Code of Conduct](../CODE_OF_CONDUCT.md).
+
+Please report security vulnerabilities privately according to [SECURITY.md](../SECURITY.md).
+
+> **Privacy Note:** Recorded page interactions can include text entered into input fields. Always review generated code before saving and avoid recording sensitive passwords, payment details, or personal data.
+
+---
+
+## License
+
+The Supercheck Recorder is distributed under the [Apache-2.0 License](LICENSE). It contains code derived from Playwright CRX and Microsoft Playwright; all upstream licenses and attribution notices are retained in [`LICENSE`](LICENSE), [`NOTICE`](NOTICE), and [`playwright/NOTICE`](playwright/NOTICE).
+
+---
+
+## Community
+
+[![Discord](https://img.shields.io/badge/Discord-Join%20Community-5865F2?logo=discord&logoColor=white)](https://discord.gg/UVe327CSbm)
+[![GitHub Issues](https://img.shields.io/badge/GitHub-Issues-181717?logo=github&logoColor=white)](https://github.com/supercheck-io/supercheck/issues)
+[![GitHub Discussions](https://img.shields.io/badge/GitHub-Discussions-181717?logo=github&logoColor=white)](https://github.com/supercheck-io/supercheck/discussions)

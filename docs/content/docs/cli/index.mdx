@@ -1,10 +1,10 @@
 ---
 title: CLI Overview
-description: Supercheck CLI for CI/CD integration, automation, and monitoring-as-code
+description: Open-source testing, monitoring, and AI SRE — as code with the Supercheck CLI
 icon: Terminal
 ---
 
-The Supercheck CLI (`@supercheck/cli`) provides a first-class command-line interface for CI/CD pipelines, automation workflows, and monitoring-as-code. Built with TypeScript, it supports all major Supercheck operations — jobs, tests, monitors, variables, and more.
+The Supercheck CLI (`@supercheck/cli`) provides a first-class command-line interface for CI/CD pipelines, automation workflows, monitoring-as-code, and AI-assisted incident response. Built with TypeScript, it supports jobs, tests, monitors, incidents, service topology, variables, and more.
 
 [View the package on npm](https://www.npmjs.com/package/@supercheck/cli).
 
@@ -14,7 +14,8 @@ The Supercheck CLI (`@supercheck/cli`) provides a first-class command-line inter
 - **Monitoring-as-Code** — Define monitors, tests, and jobs in `supercheck.config.ts`
 - **Full CRUD** — Manage all resources from the terminal
 - **JSON Output** — Machine-readable output for scripting with `--json`
-- **Retry & Rate Limiting** — Automatic retries with exponential backoff
+- **AI SRE** — Triage incidents, start investigations, stream Copilot answers, and inspect service dependencies
+- **Safe Retry & Rate Limiting** — Exponential backoff for rate limits and idempotent failures without replaying uncertain mutations
 - **Self-Hosted Support** — Works with any Supercheck deployment
 
 ## Quick Start
@@ -34,6 +35,10 @@ supercheck health
 supercheck job list
 supercheck monitor list
 supercheck test list
+
+# Investigate reliability incidents
+supercheck incident list
+supercheck sre ask "Summarize active reliability risks"
 ```
 
 <Callout type="info">

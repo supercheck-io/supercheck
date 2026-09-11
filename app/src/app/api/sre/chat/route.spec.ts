@@ -2,8 +2,9 @@
 
 import { NextRequest } from "next/server";
 
-jest.mock("@/lib/project-context", () => ({
-  requireProjectContext: jest.fn(),
+jest.mock("@/lib/auth-context", () => ({
+  requireAuthContext: jest.fn(),
+  isAuthError: jest.fn((error: unknown) => error instanceof Error && error.message === "Authentication required"),
 }));
 
 jest.mock("@/lib/rbac/middleware", () => ({
@@ -36,8 +37,8 @@ jest.mock("@/sre/tools/connector-tools", () => ({
 
 import { POST } from "./route";
 
-const { requireProjectContext: mockRequireProjectContext } = jest.requireMock("@/lib/project-context") as {
-  requireProjectContext: jest.Mock;
+const { requireAuthContext: mockRequireProjectContext } = jest.requireMock("@/lib/auth-context") as {
+  requireAuthContext: jest.Mock;
 };
 const { checkPermissionWithContext: mockCheckPermissionWithContext } = jest.requireMock("@/lib/rbac/middleware") as {
   checkPermissionWithContext: jest.Mock;

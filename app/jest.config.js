@@ -47,9 +47,9 @@ const customJestConfig = {
 // for better-auth ESM-only modules in v1.4.x
 module.exports = async () => {
   const jestConfig = await createJestConfig(customJestConfig)();
-  // Transform ESM modules from better-auth and @better-auth (ESM-only in v1.4.x)
+  // Transform ESM modules from better-auth, @better-auth, and their ESM deps
   jestConfig.transformIgnorePatterns = [
-    "/node_modules/(?!(better-auth|@better-auth)/)",
+    "/node_modules/(?!(better-auth|@better-auth|rou3|better-call|@noble|jose|nanostores)/)",
     "^.+\\.module\\.(css|sass|scss)$",
   ];
   return jestConfig;

@@ -78,19 +78,26 @@ export async function GET() {
     // Enhance providers with last used information (no N+1 queries)
     const enhancedProviders = providers.map((provider) => {
       const configContext = provider.projectId ?? undefined;
-      const decryptedConfig = decryptNotificationProviderConfig(
-        provider.config,
-        configContext ?? undefined
-      );
-      const { sanitizedConfig, maskedFields } = sanitizeConfigForClient(
-        provider.type as NotificationProviderType,
-        decryptedConfig
-      );
+      let sanitizedConfig: PlainNotificationProviderConfig = {};
+      let maskedFields: string[] = [];
+      let configUnavailable = false;
+      try {
+        const decryptedConfig = decryptNotificationProviderConfig(provider.config, configContext);
+        ({ sanitizedConfig, maskedFields } = sanitizeConfigForClient(
+          provider.type as NotificationProviderType,
+          decryptedConfig,
+        ));
+      } catch {
+        // Keep one stale/corrupt credential from hiding every provider, but do
+        // not represent an undecryptable value as valid configuration.
+        configUnavailable = true;
+      }
 
       return {
         ...provider,
         config: sanitizedConfig,
         maskedFields,
+        configUnavailable,
         lastUsed: lastAlertMap.get(provider.id) || null,
       };
     });

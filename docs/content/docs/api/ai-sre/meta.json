@@ -1,0 +1,16 @@
+{
+  "title": "AI SRE",
+  "description": "Incident response, investigations, Copilot, and service topology",
+  "pages": [
+    "listSreIncidents",
+    "getSreIncident",
+    "getSreIncidentTimeline",
+    "resolveSreIncident",
+    "triageSreIncident",
+    "startSreInvestigation",
+    "streamSreChat",
+    "streamSreEvidenceBrief",
+    "listSreServices",
+    "getSreService"
+  ]
+}

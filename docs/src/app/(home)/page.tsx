@@ -352,16 +352,15 @@ export default function HomePage() {
                 </div>
 
                 <h1 className="mt-16 animate-fade-in-up text-balance text-4xl leading-tight font-extrabold text-fd-foreground [animation-delay:200ms] md:text-5xl lg:text-6xl">
-                  Open-Source Testing, Monitoring, and Reliability —{" "}
+                  Open-Source Testing, Monitoring, and AI SRE —{" "}
                   <span className="bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 bg-clip-text text-transparent dark:from-indigo-400 dark:via-purple-400 dark:to-pink-400">
                     as Code
                   </span>
                 </h1>
 
                 <p className="mx-auto mt-6 max-w-4xl animate-fade-in-up text-balance text-lg leading-relaxed text-fd-muted-foreground [animation-delay:400ms] md:text-xl">
-                  The unified platform for AI-powered Playwright testing,
-                  multi-region k6 load testing & uptime monitoring, and
-                  subscriber-ready status pages.
+                  The unified platform for Playwright testing, k6 load testing,
+                  synthetic monitoring, and AI-assisted SRE incident investigation.
                 </p>
 
                 <CliCopyBox />

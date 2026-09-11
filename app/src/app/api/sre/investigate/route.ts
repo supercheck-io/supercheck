@@ -2,7 +2,7 @@ import { after, NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
 import { createLogger } from "@/lib/logger/index";
-import { requireProjectContext } from "@/lib/project-context";
+import { isAuthError, requireAuthContext } from "@/lib/auth-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { assertCanStartSreInvestigation, SreInvestigationBillingError } from "@/lib/sre/investigation-billing";
 import { checkSreInvestigationRateLimit } from "@/lib/sre/sre-rate-limiter";
@@ -20,8 +20,10 @@ const investigationLogger = createLogger({ module: "sre-investigate-api" }) as {
 };
 
 function authErrorResponse(error: unknown) {
-  const message = error instanceof Error ? error.message : "Authentication required";
-  return NextResponse.json({ error: message }, { status: 401 });
+  return NextResponse.json(
+    { error: isAuthError(error) ? "Authentication required" : "Unable to authorize SRE investigation" },
+    { status: isAuthError(error) ? 401 : 500 },
+  );
 }
 
 function featureDisabledResponse() {
@@ -53,9 +55,9 @@ export async function POST(request: NextRequest) {
     return featureDisabledResponse();
   }
 
-  let context: Awaited<ReturnType<typeof requireProjectContext>>;
+  let context: Awaited<ReturnType<typeof requireAuthContext>>;
   try {
-    context = await requireProjectContext();
+    context = await requireAuthContext();
   } catch (error) {
     return authErrorResponse(error);
   }

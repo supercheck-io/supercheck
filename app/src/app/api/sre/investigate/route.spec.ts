@@ -2,8 +2,9 @@
 
 import { NextRequest } from "next/server";
 
-jest.mock("@/lib/project-context", () => ({
-  requireProjectContext: jest.fn(),
+jest.mock("@/lib/auth-context", () => ({
+  requireAuthContext: jest.fn(),
+  isAuthError: jest.fn((error: unknown) => error instanceof Error && error.message === "Authentication required"),
 }));
 
 jest.mock("@/lib/rbac/middleware", () => ({
@@ -68,13 +69,13 @@ jest.mock("@/lib/sre/investigation-billing", () => {
 
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { checkSreInvestigationRateLimit } from "@/lib/sre/sre-rate-limiter";
-import { requireProjectContext } from "@/lib/project-context";
+import { requireAuthContext } from "@/lib/auth-context";
 import { isSreInvestigationAgentEnabled } from "@/sre/lib/feature-gates";
 import { assertCanStartSreInvestigation, SreInvestigationBillingError } from "@/lib/sre/investigation-billing";
 import { completeSreIncidentInvestigation, startSreIncidentInvestigation } from "@/sre/lib/investigation-runner";
 import { POST } from "./route";
 
-const mockRequireProjectContext = requireProjectContext as jest.Mock;
+const mockRequireProjectContext = requireAuthContext as jest.Mock;
 const mockCheckPermissionWithContext = checkPermissionWithContext as jest.Mock;
 const mockCheckSreInvestigationRateLimit = checkSreInvestigationRateLimit as jest.Mock;
 const mockIsSreInvestigationAgentEnabled = isSreInvestigationAgentEnabled as jest.Mock;

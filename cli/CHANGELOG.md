@@ -5,6 +5,21 @@ All notable changes to `@supercheck/cli` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-09-11
+
+### Added
+
+- AI SRE incident commands for listing, inspecting, resolving, and viewing timelines.
+- AI triage, asynchronous deep-investigation, streaming Copilot chat, and streaming evidence-brief commands.
+- Read-only service catalog, health, and dependency commands.
+- `--payload` and `--data` aliases for notification provider JSON; `--config` remains supported for compatibility.
+
+### Security
+
+- AI SRE API routes now support project-scoped CLI bearer tokens without weakening existing RBAC or tenant boundaries.
+- Stream clients enforce idle timeouts, cancellation, and a 1 MiB per-event safety limit.
+- Incident resolution requires an explicit confirmation unless `--force` is supplied and records both timeline and audit events.
+
 ## [0.1.4] - 2026-09-10
 
 ### Fixed

@@ -2,7 +2,10 @@
 
 import { NextRequest } from "next/server";
 
-jest.mock("@/lib/project-context", () => ({ requireProjectContext: jest.fn() }));
+jest.mock("@/lib/auth-context", () => ({
+  requireAuthContext: jest.fn(),
+  isAuthError: jest.fn((error: unknown) => error instanceof Error && error.message === "Authentication required"),
+}));
 jest.mock("@/lib/rbac/middleware", () => ({ checkPermissionWithContext: jest.fn() }));
 jest.mock("@/lib/sre/sre-rate-limiter", () => ({
   checkSreEvidenceBriefRateLimit: jest.fn(),
@@ -14,12 +17,12 @@ jest.mock("@/lib/sre/evidence-brief-generator", () => ({
   streamEvidenceBrief: jest.fn(),
 }));
 
-import { requireProjectContext } from "@/lib/project-context";
+import { requireAuthContext } from "@/lib/auth-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { checkSreEvidenceBriefRateLimit } from "@/lib/sre/sre-rate-limiter";
 import { POST } from "./route";
 
-const mockRequireProjectContext = requireProjectContext as jest.Mock;
+const mockRequireProjectContext = requireAuthContext as jest.Mock;
 const mockCheckPermissionWithContext = checkPermissionWithContext as jest.Mock;
 const mockRateLimit = checkSreEvidenceBriefRateLimit as jest.Mock;
 

@@ -263,7 +263,7 @@ function SubscribePageContent() {
           Simple, transparent pricing
         </h1>
         <p className="text-base md:text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed">
-          Open-Source Testing, Monitoring, and Reliability — as Code
+          Open-Source Testing, Monitoring, and AI SRE — as Code
         </p>
         <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs text-muted-foreground pt-1">
           <span>Cancel anytime</span>

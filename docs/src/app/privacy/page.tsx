@@ -20,8 +20,8 @@ export default function PrivacyPage() {
                         <h2 className="text-2xl font-semibold mb-4">1. Introduction</h2>
                         <p className="text-fd-muted-foreground mb-4">
                             This Privacy Policy describes how Supercheck (&ldquo;we&rdquo;, &ldquo;our&rdquo;, or &ldquo;the Service&rdquo;)
-                            collects, uses, and protects your information when you use our test automation
-                            and monitoring platform.
+                            collects, uses, and protects your information when you use our testing, monitoring,
+                            and AI SRE platform.
                         </p>
                     </section>
 

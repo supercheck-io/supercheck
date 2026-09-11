@@ -4,7 +4,7 @@ import { z } from "zod";
 
 import { streamEvidenceBrief } from "@/lib/sre/evidence-brief-generator";
 import { runSreEvidenceBriefGeneration } from "@/lib/sre/evidence-brief-orchestrator";
-import { requireProjectContext } from "@/lib/project-context";
+import { isAuthError, requireAuthContext } from "@/lib/auth-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { checkSreEvidenceBriefRateLimit } from "@/lib/sre/sre-rate-limiter";
 import { requireSreSameOriginRequest } from "../../_auth";
@@ -58,7 +58,16 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { userId, organizationId, project } = await requireProjectContext();
+  let context: Awaited<ReturnType<typeof requireAuthContext>>;
+  try {
+    context = await requireAuthContext();
+  } catch (error) {
+    return NextResponse.json(
+      { success: false, error: "Authentication required" },
+      { status: isAuthError(error) ? 401 : 500 },
+    );
+  }
+  const { userId, organizationId, project } = context;
   const canInvestigate = checkPermissionWithContext(
     "sre_incident",
     "investigate",

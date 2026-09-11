@@ -21,6 +21,8 @@ supercheck --quiet whoami
 
 Config-aware commands (for example `config`, `diff`, `deploy`, `pull`, `validate`, `destroy`) accept `--config <path>` to point at a specific config file.
 
+For streaming commands, global `--json` produces newline-delimited JSON (NDJSON), one event per line.
+
 ## Exit Codes
 
 | Code | Meaning | Example |
@@ -637,31 +639,35 @@ Create a notification provider.
 
 ```bash
 supercheck notification create --type slack --name "Slack Alerts" \
-  --config '{"webhookUrl":"https://hooks.slack.com/..."}'
+  --payload '{"webhookUrl":"https://hooks.slack.com/..."}'
 ```
 
 | Flag | Required | Description |
 |------|----------|-------------|
 | `--type` | Yes | `email`, `slack`, `webhook`, `telegram`, `discord`, `teams` |
 | `--name` | Yes | Provider name |
-| `--config` | No | JSON configuration string |
+| `--payload` | No | Provider configuration as a JSON object |
+| `--data` | No | Alias for `--payload` |
+| `--config` | No | Legacy alias for `--payload` |
 
 ### `supercheck notification update`
 
 Update a notification provider.
 
 ```bash
-supercheck notification update <id> --name "Updated Name" --config '{...}'
-supercheck notification update <id> --type webhook --config '{...}'
+supercheck notification update <id> --name "Updated Name" --payload '{...}'
+supercheck notification update <id> --type webhook --payload '{...}'
 ```
 
 | Flag | Description |
 |------|-------------|
 | `--name` | Provider name |
 | `--type` | Provider type |
-| `--config` | JSON configuration string (replaces entire config — include all fields) |
+| `--payload` | JSON configuration object (replaces the entire config; include all fields) |
+| `--data` | Alias for `--payload` |
+| `--config` | Legacy alias for `--payload` |
 
-When a provider has secret fields (for example webhook URLs or API keys), the CLI never merges your input with masked values from the server. If you omit `--config`, only `--name` and `--type` are updated and existing secrets are preserved.
+When a provider has secret fields (for example webhook URLs or API keys), the CLI never merges your input with masked values from the server. If you omit the payload, only `--name` and `--type` are updated and existing secrets are preserved.
 
 ### `supercheck notification delete`
 
@@ -677,13 +683,17 @@ supercheck notification delete <id> --force
 Send a test notification to verify configuration.
 
 ```bash
-supercheck notification test --type slack --config '{"webhookUrl":"https://hooks.slack.com/..."}'
+supercheck notification test --type slack --payload '{"webhookUrl":"https://hooks.slack.com/..."}'
 ```
 
 | Flag | Required | Description |
 |------|----------|-------------|
 | `--type` | Yes | Provider type (`email`, `slack`, `webhook`, `telegram`, `discord`, `teams`) |
-| `--config` | Yes | JSON configuration string |
+| `--payload` | Yes* | Provider configuration as a JSON object |
+| `--data` | Yes* | Alias for `--payload` |
+| `--config` | Yes* | Legacy alias for `--payload` |
+
+*Supply exactly one payload option.
 
 ---
 
@@ -719,6 +729,55 @@ supercheck audit --search "deploy"
 | `--limit` | `20` | Items per page |
 | `--search` | — | Search by action |
 | `--action` | — | Filter by action type |
+
+---
+
+## AI SRE
+
+AI SRE commands use the active project from the CLI token and preserve the same tenant and RBAC boundaries as the dashboard.
+
+### Incidents
+
+```bash
+supercheck incident list --status investigating --severity sev1
+supercheck incident get <incident-id>
+supercheck incident timeline <incident-id>
+supercheck incident resolve <incident-id> --comment "Traffic restored after rollback"
+```
+
+Resolution prompts for confirmation and stores the required comment in the incident timeline and audit log. Use `--force` only in reviewed automation.
+
+### Triage and investigation
+
+```bash
+supercheck sre triage <incident-id>
+supercheck sre investigate <incident-id>
+supercheck sre investigate <incident-id> --live-connectors
+supercheck sre brief <incident-id>
+```
+
+Deep investigation is asynchronous: a successful command returns an accepted investigation-run ID. Follow progress with `incident get` and `incident timeline`. `--live-connectors` enables configured read-only telemetry tools only when the caller also has `sre_connector:investigate` permission.
+
+### Copilot
+
+```bash
+supercheck sre ask "Why did checkout latency increase?"
+supercheck sre ask "Summarize the strongest evidence" --incident <incident-id>
+supercheck sre ask "Check current telemetry" --incident <incident-id> --live-connectors
+```
+
+Copilot is read-only. The server validates project scope, incident ownership, permissions, feature flags, plan limits, and rate limits. `--idle-timeout` controls stream inactivity (minimum 10 seconds). Ctrl-C cancels the client stream. Global `--json` emits NDJSON events for automation.
+
+### Service catalog
+
+```bash
+supercheck service list
+supercheck service get <service-id>
+supercheck service health <service-id>
+supercheck service dependencies <service-id>
+```
+
+These commands are read-only and require `sre_service:view`.
 
 ---
 

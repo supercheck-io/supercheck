@@ -19,7 +19,7 @@ RUN npm run build
 FROM node:20-slim
 
 LABEL org.opencontainers.image.title="Supercheck CLI"
-LABEL org.opencontainers.image.description="CLI for Supercheck test automation and monitoring"
+LABEL org.opencontainers.image.description="Open-source testing, monitoring, and AI SRE — as code"
 LABEL org.opencontainers.image.source="https://github.com/supercheck-io/supercheck"
 LABEL org.opencontainers.image.vendor="Supercheck"
 

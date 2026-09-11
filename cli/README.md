@@ -1,22 +1,46 @@
-# @supercheck/cli
+<h1><img src="https://raw.githubusercontent.com/supercheck-io/supercheck/main/supercheck-logo.png" alt="Supercheck logo" width="40" height="40" align="top"> Supercheck CLI</h1>
 
-CLI for Supercheck testing, monitoring, and reliability workflows.
+**Open-source testing, monitoring, and AI SRE — as code.**
 
-[![npm version](https://img.shields.io/npm/v/@supercheck/cli.svg)](https://www.npmjs.com/package/@supercheck/cli)
-[![License](https://img.shields.io/badge/license-AGPL--3.0--only-blue.svg)](LICENSE)
+The Supercheck CLI provides a first-class command-line interface for managing testing and monitoring infrastructure as code. Designed for CI/CD pipelines, GitOps workflows, and local development, it enables teams to version, validate, and deploy monitors, tests, scheduled jobs, variables, tags, and status pages alongside their application source code.
 
-The Supercheck CLI is open source under the GNU Affero General Public License v3.0 only (AGPL-3.0-only), matching the app and worker.
+[![Website](https://img.shields.io/badge/Website-supercheck.io-orange?logo=firefox)](https://supercheck.io)
+[![Documentation](https://img.shields.io/badge/Docs-supercheck.io-blue)](https://supercheck.io/docs/cli/commands)
+[![npm](https://img.shields.io/npm/v/@supercheck/cli?logo=npm&label=CLI)](https://www.npmjs.com/package/@supercheck/cli)
+[![License](https://img.shields.io/badge/license-AGPL--3.0--only-blue.svg)](../LICENSE)
 
-The Supercheck CLI provides a first-class command-line interface for managing your testing and monitoring infrastructure as code. It is designed for CI/CD integration, automation, and power-user workflows.
+---
 
-## Features
+## What the Supercheck CLI includes
 
-- **Monitoring-as-Code**: Define monitors, tests, jobs, and status pages in TypeScript.
-- **CI/CD Integration**: Trigger jobs and wait for results directly from your pipeline.
-- **Full Resource Management**: Manage all resources (tests, monitors, jobs, variables, tags, notifications) from the terminal.
-- **Local Development**: Run and debug tests locally before deploying.
-- **Security-First**: Token scanning in config files, server-side token hashing, prefix-validated authentication, and locally obfuscated credential storage.
-- **Proxy Support**: Full HTTP/HTTPS proxy support with `NO_PROXY` awareness via `undici`.
+- **Monitoring-as-Code**: Define monitors, Playwright tests, k6 load tests, jobs, and status pages in TypeScript with full type safety (`supercheck.config.ts`).
+- **GitOps & Declarative Sync**: Preview changes with `supercheck diff`, apply updates with `supercheck deploy`, and pull existing cloud state with `supercheck pull`.
+- **CI/CD Automation**: Trigger scheduled or on-demand jobs with trigger keys and poll execution results directly from GitHub Actions, GitLab CI, or Jenkins (`supercheck job trigger --wait`).
+- **Unified Resource Management**: Complete command suite for tests, monitors, jobs, execution runs, variables, secrets, tags, and notification providers.
+- **Local Validation & Execution**: Run Playwright and k6 tests locally against local or staging endpoints before deploying (`supercheck test run`).
+- **Security-First Architecture**: Server-side token hashing, zero secret storage in plain text, client-side secret obfuscation, and strict pre-deploy token scanning.
+- **Enterprise Network Support**: Full HTTP/HTTPS proxy support with `NO_PROXY` awareness via `undici`.
+- **Diagnostics & Self-Healing**: Environment check with `supercheck doctor` and API diagnostics with `supercheck health`.
+- **AI SRE for On-Call**: Triage and investigate incidents, stream grounded Copilot answers, and inspect service topology from the terminal.
+
+---
+
+## Architecture
+
+```mermaid
+flowchart LR
+    LocalConfig["supercheck.config.ts<br/>Playwright & k6 tests"] -->|supercheck diff / deploy| CLI["@supercheck/cli<br/>Monitoring as Code"]
+    CLI -->|HTTPS API| API["Supercheck API<br/>(Cloud or Self-Hosted)"]
+    API -->|Schedule / Dispatch| Workers["Kubernetes Workers<br/>Playwright & k6 Jobs"]
+    API -->|Pull / Sync| CLI
+
+    style LocalConfig fill:#6366f1,stroke:#4338ca,color:#fff
+    style CLI fill:#0ea5e9,stroke:#0369a1,color:#fff
+    style API fill:#3b82f6,stroke:#1e40af,color:#fff
+    style Workers fill:#10b981,stroke:#047857,color:#fff
+```
+
+---
 
 ## Installation
 
@@ -26,13 +50,13 @@ Requires Node.js 20 or later.
 npm install -g @supercheck/cli
 ```
 
-Or run directly with `npx`:
+Or run directly without global installation using `npx`:
 
 ```bash
 npx @supercheck/cli --help
 ```
 
-## Upgrade
+### Upgrading
 
 Upgrade the CLI to the latest release:
 
@@ -40,55 +64,57 @@ Upgrade the CLI to the latest release:
 supercheck upgrade
 ```
 
-## Quick Start
+---
+
+## Quick start
 
 1. **Initialize a new project**:
    ```bash
    supercheck init
    ```
-   This creates a `supercheck.config.ts` and a `_supercheck_` directory with example tests under `_supercheck_/playwright` and `_supercheck_/k6`.
+   This generates a `supercheck.config.ts` file and scaffold directories under `_supercheck_/playwright` and `_supercheck_/k6`.
 
 2. **Authenticate**:
    ```bash
    supercheck login --token sck_live_...
    ```
-   You can generate a CLI token in your Dashboard under **Organization Admin > CLI Tokens**.
-   The server stores only the token hash. Local `supercheck login` credentials are stored by `conf` with obfuscation, not cryptographic protection; prefer `SUPERCHECK_TOKEN` from your CI secret store in automation.
+   Generate a CLI token in your Supercheck Dashboard under **Organization Admin > CLI Tokens**.
+   The server stores only the token hash. In CI/CD pipelines, export `SUPERCHECK_TOKEN` in your environment secrets.
 
-3. **Pull existing resources**:
+3. **Pull existing cloud resources**:
    ```bash
    supercheck pull
    ```
 
-4. **Preview & Deploy**:
+4. **Preview & deploy changes**:
    ```bash
    supercheck diff
    supercheck deploy
    ```
 
-5. **Validate scripts**:
+5. **Validate test scripts locally**:
    ```bash
    supercheck validate
    ```
-   Validation runs automatically during deploy and cannot be skipped.
+   Validation runs automatically during deploy and guarantees that scripts pass linting and bundling checks.
 
-6. **Run tests locally (optional)**:
-  ```bash
-  supercheck test run --file _supercheck_/playwright/homepage-check.<id>.pw.ts
-  supercheck test run --all --type browser
-  supercheck test run --all --type performance
-  ```
+6. **Run tests locally**:
+   ```bash
+   supercheck test run --file _supercheck_/playwright/homepage-check.pw.ts
+   supercheck test run --all --type browser
+   supercheck test run --all --type performance
+   ```
 
-  For remote execution with persisted run history, trigger a job:
-  ```bash
-  supercheck job run --id <job-id>
-  # or (CI/CD trigger key flow)
-  SUPERCHECK_TRIGGER_KEY=sck_trigger_... supercheck job trigger <job-id>
-  ```
+   For remote execution with persisted run history, trigger a job:
+   ```bash
+   supercheck job run --id <job-id>
+   # or via CI/CD trigger key:
+   SUPERCHECK_TRIGGER_KEY=sck_trigger_... supercheck job trigger <job-id> --wait
+   ```
 
-  `supercheck job trigger` requires `SUPERCHECK_TRIGGER_KEY`. If you also pass `--wait`, set `SUPERCHECK_TOKEN` so the CLI can poll the resulting run.
+---
 
-## Command Reference
+## Command reference
 
 ### Authentication
 
@@ -98,7 +124,7 @@ supercheck upgrade
 | `supercheck logout` | Clear stored credentials |
 | `supercheck whoami` | Show current authentication context |
 
-### Monitoring-as-Code
+### Monitoring-as-code
 
 | Command | Description |
 |---|---|
@@ -111,12 +137,9 @@ supercheck upgrade
 | `supercheck config validate` | Validate your `supercheck.config.ts` |
 | `supercheck config print` | Print resolved `supercheck.config.ts` |
 
-> Note: In the current API, status pages are readable/deletable from CLI sync flows, but create/update endpoints are not available.
-> Pull preserves non-default status page language values (for example `es`, `fr`) for config visibility.
+> In the current API, status pages are readable and deletable from CLI sync flows. Create and update endpoints will be available in an upcoming release.
 
-> Note: Self-hosted email/password sign-in is for dashboard access. CLI authentication remains token-based (`supercheck login --token ...`).
-
-### Jobs & Runs
+### Jobs & runs
 
 | Command | Description |
 |---|---|
@@ -128,7 +151,7 @@ supercheck upgrade
 | `supercheck job keys <jobId>` | List trigger keys for a job |
 | `supercheck job keys create <jobId> --name <name>` | Create a trigger key |
 | `supercheck job keys delete <jobId> <keyId>` | Revoke a trigger key |
-| `supercheck job run --id <job-id>` | Run a job immediately |
+| `supercheck job run --id <job-id>` | Run a job immediately in the cloud |
 | `supercheck job run --local` | Run a job locally using local test files |
 | `supercheck job trigger <id> --wait` | Trigger a job with a trigger key and wait for completion (CI/CD) |
 | `supercheck run list` | List recent execution runs (`--job`, `--status`, `--page`, `--limit`) |
@@ -138,7 +161,7 @@ supercheck upgrade
 | `supercheck run stream <id>` | Stream live console output |
 | `supercheck run cancel <id>` | Cancel a running execution |
 
-### Tests & Monitors
+### Tests & monitors
 
 | Command | Description |
 |---|---|
@@ -147,8 +170,8 @@ supercheck upgrade
 | `supercheck test create` | Create a new test (`--dry-run`) |
 | `supercheck test update <id>` | Update a test (`--dry-run`) |
 | `supercheck test delete <id>` | Delete a test |
-| `supercheck test validate` | Validate local test scripts (same rules as Playground) |
-| `supercheck test run` | Run tests locally |
+| `supercheck test validate` | Validate local test scripts |
+| `supercheck test run` | Run tests locally (`--file`, `--all`, `--type`) |
 | `supercheck test tags <id>` | List tags for a test |
 | `supercheck test status <id>` | Stream live status events for a test |
 | `supercheck monitor list` | List all monitors |
@@ -162,9 +185,7 @@ supercheck upgrade
 
 > **Dry run support:** `test create`, `test update`, `job create`, `job update`, `monitor create`, `monitor update`, `pull`, `deploy`, and `destroy` support `--dry-run`. `upgrade --dry-run` prints the package-manager command without running it.
 
-`supercheck test run` is local-only. Cloud test execution has been replaced by `supercheck job run` / `supercheck job trigger`.
-
-### Variables, Tags & Notifications
+### Variables, tags & notifications
 
 | Command | Description |
 |---|---|
@@ -174,24 +195,39 @@ supercheck upgrade
 | `supercheck alert history` | View alert history |
 | `supercheck audit` | View audit logs (admin) |
 
-`supercheck notification test` validates an ad-hoc provider configuration before creation or update. It does not take an existing provider ID.
-
 ```bash
-supercheck notification test --type slack --config '{"webhookUrl":"https://hooks.slack.com/..."}'
+# Test an ad-hoc notification provider before saving:
+supercheck notification test --type slack --payload '{"webhookUrl":"https://hooks.slack.com/..."}'
 ```
+
+### AI SRE
+
+| Command | Description |
+|---|---|
+| `supercheck incident list` | List incidents; optionally filter by `--status` or `--severity` |
+| `supercheck incident get <id>` | Inspect an incident and its current RCA summary |
+| `supercheck incident timeline <id>` | View the incident timeline |
+| `supercheck incident resolve <id> --comment <text>` | Resolve with confirmation and an audited comment |
+| `supercheck sre triage <incident-id>` | Correlate alerts and classify an incident |
+| `supercheck sre investigate <incident-id>` | Start an asynchronous deep investigation |
+| `supercheck sre ask <question>` | Stream a read-only Copilot answer, optionally scoped with `--incident` |
+| `supercheck sre brief <incident-id>` | Generate and stream an evidence brief |
+| `supercheck service list / get / health / dependencies` | Inspect the service catalog and topology |
 
 ### Utilities
 
 | Command | Description |
 |---|---|
-| `supercheck health` | Check API health |
+| `supercheck health` | Check API health and subsystem statuses |
 | `supercheck locations` | List available execution locations |
 | `supercheck doctor` | Validate local CLI dependencies and config (`--fix`) |
 | `supercheck upgrade` | Upgrade the CLI to the latest release |
 
+---
+
 ## Configuration
 
-The `supercheck.config.ts` file is the source of truth for your project configuration.
+The `supercheck.config.ts` file is the source of truth for your project configuration:
 
 ```typescript
 import { defineConfig } from '@supercheck/cli'
@@ -216,24 +252,32 @@ export default defineConfig({
       type: 'http_request',
       target: 'https://api.example.com/health',
       frequencyMinutes: 5,
-    }
-  ]
+    },
+  ],
 })
 ```
 
-## CI/CD Integration
+---
+
+## CI/CD integration
 
 ### GitHub Actions
 
 ```yaml
-- name: Run E2E Tests
-  run: npx @supercheck/cli --json job trigger ${{ secrets.SUPERCHECK_JOB_ID }} --wait
-  env:
-    SUPERCHECK_TRIGGER_KEY: ${{ secrets.SUPERCHECK_TRIGGER_KEY }}
-    SUPERCHECK_TOKEN: ${{ secrets.SUPERCHECK_TOKEN }}
-```
+name: Supercheck E2E Tests
+on: [push, pull_request]
 
-`SUPERCHECK_TRIGGER_KEY` is required to start the run. `SUPERCHECK_TOKEN` is only needed here because the example uses `--wait`.
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Supercheck Job
+        run: npx @supercheck/cli --json job trigger ${{ secrets.SUPERCHECK_JOB_ID }} --wait
+        env:
+          SUPERCHECK_TRIGGER_KEY: ${{ secrets.SUPERCHECK_TRIGGER_KEY }}
+          SUPERCHECK_TOKEN: ${{ secrets.SUPERCHECK_TOKEN }}
+```
 
 ### GitLab CI
 
@@ -250,40 +294,62 @@ test:
 
 ### Docker
 
-The repository includes `cli/Dockerfile` for building a local CLI image. It is not currently published as an official container image:
+Build and run the CLI inside a container:
 
 ```bash
 docker build -t supercheck-cli cli
 docker run --rm -e SUPERCHECK_TOKEN supercheck-cli whoami
 ```
 
-## Environment Variables
+---
+
+## Environment variables & global options
 
 | Variable | Description |
 |---|---|
-| `SUPERCHECK_TOKEN` | CLI token for authentication (CI/CD) |
-| `SUPERCHECK_TRIGGER_KEY` | Trigger key for `job trigger` |
-| `SUPERCHECK_URL` | Custom API URL (self-hosted) |
+| `SUPERCHECK_TOKEN` | CLI token for authentication (`sck_live_*`) |
+| `SUPERCHECK_TRIGGER_KEY` | Trigger key for `job trigger` (`sck_trigger_*`) |
+| `SUPERCHECK_URL` | API base URL for self-hosted instances |
 | `SUPERCHECK_ORG` | Override organization ID from config |
 | `SUPERCHECK_PROJECT` | Override project ID from config |
 | `HTTPS_PROXY` | Proxy URL for HTTPS requests |
 | `HTTP_PROXY` | Proxy URL for HTTP requests |
-| `NO_PROXY` | Hosts to bypass proxy (comma-separated) |
-
-## Global Options
+| `NO_PROXY` | Comma-separated hosts to bypass proxy |
 
 | Flag | Description |
 |---|---|
-| `--json` | Output in JSON format |
-| `--quiet` | Suppress non-essential output |
+| `--json` | Output in JSON format (or NDJSON for streams) |
+| `--quiet` | Suppress non-essential output (IDs and errors only) |
 | `--debug` | Enable debug logging |
 | `-v, --version` | Show CLI version |
 
-Config-aware commands such as `config`, `diff`, `deploy`, `pull`, `validate`, and `destroy` accept `--config <path>`.
+---
 
-## Links
+## Documentation & links
 
-- [Website](https://supercheck.io)
-- [CLI Documentation](https://supercheck.io/docs/cli/commands)
-- [App Documentation](https://supercheck.io/docs/app/welcome)
-- [GitHub](https://github.com/supercheck-io/supercheck)
+- [Official Website](https://supercheck.io)
+- [CLI Command Documentation](https://supercheck.io/docs/cli/commands)
+- [Platform Documentation](https://supercheck.io/docs/app/welcome)
+- [GitHub Repository](https://github.com/supercheck-io/supercheck)
+
+---
+
+## Contributing and security
+
+Contributions are welcome. Please read [CONTRIBUTING.md](../CONTRIBUTING.md) before opening a pull request and follow the [Code of Conduct](../CODE_OF_CONDUCT.md).
+
+Report security vulnerabilities privately as described in [SECURITY.md](../SECURITY.md).
+
+---
+
+## License
+
+The Supercheck CLI is open source under the [GNU Affero General Public License v3.0 only](LICENSE), matching the app and worker.
+
+---
+
+## Community
+
+[![Discord](https://img.shields.io/badge/Discord-Join%20Community-5865F2?logo=discord&logoColor=white)](https://discord.gg/UVe327CSbm)
+[![GitHub Issues](https://img.shields.io/badge/GitHub-Issues-181717?logo=github&logoColor=white)](https://github.com/supercheck-io/supercheck/issues)
+[![GitHub Discussions](https://img.shields.io/badge/GitHub-Discussions-181717?logo=github&logoColor=white)](https://github.com/supercheck-io/supercheck/discussions)

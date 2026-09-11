@@ -1,6 +1,8 @@
+import { and, desc, eq, ne } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
-import { getSreServices } from "@/actions/sre-services";
+import { sreServices } from "@/db/schema";
+import { db } from "@/utils/db";
 import { requireSreApiPermissions } from "../_auth";
 
 export async function GET() {
@@ -12,11 +14,25 @@ export async function GET() {
     return auth.response;
   }
 
-  const result = await getSreServices();
+  const services = await db.select({
+    id: sreServices.id,
+    name: sreServices.name,
+    description: sreServices.description,
+    tier: sreServices.tier,
+    environment: sreServices.environment,
+    ownerTeam: sreServices.ownerTeam,
+    repoUrl: sreServices.repoUrl,
+    otelServiceName: sreServices.otelServiceName,
+    slackChannel: sreServices.slackChannel,
+    tags: sreServices.tags,
+    status: sreServices.status,
+    createdAt: sreServices.createdAt,
+    updatedAt: sreServices.updatedAt,
+  }).from(sreServices).where(and(
+    eq(sreServices.organizationId, auth.context.organizationId),
+    eq(sreServices.projectId, auth.context.project.id),
+    ne(sreServices.status, "merged"),
+  )).orderBy(desc(sreServices.updatedAt)).limit(500);
 
-  if (!result.success) {
-    return NextResponse.json(result, { status: 403 });
-  }
-
-  return NextResponse.json(result);
+  return NextResponse.json({ success: true, services });
 }

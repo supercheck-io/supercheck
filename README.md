@@ -1,6 +1,6 @@
 <h1><img src="./supercheck-logo.png" alt="Supercheck logo" width="40" height="40" align="top"> Supercheck</h1>
 
-**Open-source testing, monitoring, and reliability as code.**
+**Open-source testing, monitoring, and AI SRE — as code.**
 
 Supercheck brings Playwright test automation, k6 performance testing, uptime and synthetic monitoring, incident investigation, and public status communication into one platform. Use the web application, manage resources from the CLI, and record browser tests with the Supercheck Recorder.
 
@@ -74,6 +74,15 @@ supercheck login --token sck_live_...
 supercheck pull
 supercheck diff
 supercheck deploy
+```
+
+On-call engineers can also work with AI SRE from the terminal:
+
+```bash
+supercheck incident list
+supercheck sre triage <incident-id>
+supercheck sre investigate <incident-id> --live-connectors
+supercheck sre ask "Summarize the strongest evidence" --incident <incident-id>
 ```
 
 See the [CLI guide](cli/) and [command reference](https://supercheck.io/docs/cli/commands) for resource management, local execution, and CI/CD usage.

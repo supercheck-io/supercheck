@@ -5,6 +5,26 @@ import { output, outputDetail } from '../output/formatter.js'
 import { CLIError, ExitCode } from '../utils/errors.js'
 import { withSpinner } from '../utils/spinner.js'
 
+type PayloadOptions = { config?: string; payload?: string; data?: string }
+
+function parsePayload(options: PayloadOptions, required = false): Record<string, unknown> | undefined {
+  const values = [options.config, options.payload, options.data].filter((value): value is string => value !== undefined)
+  if (values.length > 1) {
+    throw new CLIError('Use only one of --payload, --data, or the legacy --config option', ExitCode.ConfigError)
+  }
+  if (values.length === 0) {
+    if (required) throw new CLIError('Provider payload is required; use --payload <json>', ExitCode.ConfigError)
+    return undefined
+  }
+  try {
+    const parsed: unknown = JSON.parse(values[0])
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('not an object')
+    return parsed as Record<string, unknown>
+  } catch {
+    throw new CLIError('Provider payload must be a valid JSON object', ExitCode.ConfigError)
+  }
+}
+
 export const notificationCommand = new Command('notification')
   .alias('notifications')
   .description('Manage notification providers')
@@ -47,8 +67,10 @@ notificationCommand
   .description('Create a notification provider')
   .requiredOption('--type <type>', 'Provider type (email, slack, webhook, telegram, discord, teams)')
   .requiredOption('--name <name>', 'Provider name')
-  .option('--config <json>', 'Provider config as JSON string')
-  .action(async (options: { type: string; name: string; config?: string }) => {
+  .option('--payload <json>', 'Provider configuration as a JSON object')
+  .option('--data <json>', 'Alias for --payload')
+  .option('--config <json>', 'Legacy alias for --payload')
+  .action(async (options: { type: string; name: string } & PayloadOptions) => {
     const validTypes = ['email', 'slack', 'webhook', 'telegram', 'discord', 'teams']
     if (!validTypes.includes(options.type)) {
       throw new CLIError(
@@ -57,14 +79,7 @@ notificationCommand
       )
     }
 
-    let config: Record<string, unknown> = {}
-    if (options.config) {
-      try {
-        config = JSON.parse(options.config)
-      } catch {
-        throw new CLIError('Invalid JSON in --config', ExitCode.ConfigError)
-      }
-    }
+    const config = parsePayload(options) ?? {}
 
     const client = createAuthenticatedClient()
     const { data } = await withSpinner(
@@ -85,12 +100,15 @@ notificationCommand
   .description('Update a notification provider')
   .option('--name <name>', 'Provider name')
   .option('--type <type>', 'Provider type')
-  .option('--config <json>', 'Provider config as JSON string (replaces entire config — include all fields)')
-  .action(async (id: string, options: { name?: string; type?: string; config?: string }) => {
+  .option('--payload <json>', 'Provider configuration as JSON (replaces the entire configuration)')
+  .option('--data <json>', 'Alias for --payload')
+  .option('--config <json>', 'Legacy alias for --payload')
+  .action(async (id: string, options: { name?: string; type?: string } & PayloadOptions) => {
     const client = createAuthenticatedClient()
 
-    if (!options.name && !options.type && !options.config) {
-      logger.warn('No fields to update. Use --name, --type, or --config.')
+    const suppliedConfig = parsePayload(options)
+    if (!options.name && !options.type && !suppliedConfig) {
+      logger.warn('No fields to update. Use --name, --type, or --payload.')
       return
     }
 
@@ -110,13 +128,9 @@ notificationCommand
 
     // Build config for the update
     let updatedConfig: Record<string, unknown>
-    if (options.config) {
+    if (suppliedConfig) {
       // User provided explicit config — use it directly (don't merge with masked values)
-      try {
-        updatedConfig = JSON.parse(options.config)
-      } catch {
-        throw new CLIError('Invalid JSON in --config', ExitCode.GeneralError)
-      }
+      updatedConfig = suppliedConfig
     } else if (maskedFields.length > 0) {
       // No config provided AND existing config has masked fields.
       // Cannot safely send the masked config back — it would overwrite real credentials.
@@ -177,8 +191,10 @@ notificationCommand
   .command('test')
   .description('Send a test notification to verify provider configuration')
   .requiredOption('--type <type>', 'Provider type (email, slack, webhook, telegram, discord, teams)')
-  .requiredOption('--config <json>', 'Provider config as JSON string')
-  .action(async (options: { type: string; config: string }) => {
+  .option('--payload <json>', 'Provider configuration as a JSON object')
+  .option('--data <json>', 'Alias for --payload')
+  .option('--config <json>', 'Legacy alias for --payload')
+  .action(async (options: { type: string } & PayloadOptions) => {
     const validTypes = ['email', 'slack', 'webhook', 'telegram', 'discord', 'teams']
     if (!validTypes.includes(options.type)) {
       throw new CLIError(
@@ -187,12 +203,7 @@ notificationCommand
       )
     }
 
-    let config: Record<string, unknown> = {}
-    try {
-      config = JSON.parse(options.config)
-    } catch {
-      throw new CLIError('Invalid JSON in --config', ExitCode.ConfigError)
-    }
+    const config = parsePayload(options, true)!
 
     const client = createAuthenticatedClient()
     const { data } = await withSpinner(

@@ -23,6 +23,10 @@ jest.mock("@/lib/project-context", () => ({
   requireProjectContext: jest.fn(),
 }));
 
+jest.mock("@/lib/auth-context", () => ({
+  requireAuthContext: jest.fn(),
+}));
+
 jest.mock("@/lib/rbac/middleware", () => ({
   checkPermissionWithContext: jest.fn(),
 }));

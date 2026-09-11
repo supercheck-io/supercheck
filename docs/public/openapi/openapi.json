@@ -74,6 +74,10 @@
       "description": "Audit log access"
     },
     {
+      "name": "AI SRE",
+      "description": "Project-scoped incident response, investigation, Copilot, and service topology"
+    },
+    {
       "name": "System",
       "description": "Health checks and metadata"
     },
@@ -87,6 +91,99 @@
     }
   ],
   "paths": {
+    "/api/sre/incidents": {
+      "get": {
+        "operationId": "listSreIncidents",
+        "summary": "List AI SRE incidents",
+        "tags": ["AI SRE"],
+        "parameters": [
+          { "name": "status", "in": "query", "schema": { "type": "string", "enum": ["triggered", "investigating", "identified", "recommendations_ready", "user_applying_fix", "verifying", "resolved"] } },
+          { "name": "severity", "in": "query", "schema": { "type": "string", "enum": ["sev1", "sev2", "sev3", "sev4"] } }
+        ],
+        "responses": { "200": { "description": "Tenant-scoped incident list" }, "400": { "description": "Invalid filters" }, "401": { "description": "Authentication required" }, "403": { "description": "Insufficient permission" } }
+      }
+    },
+    "/api/sre/incidents/{id}": {
+      "get": {
+        "operationId": "getSreIncident",
+        "summary": "Get an AI SRE incident",
+        "tags": ["AI SRE"],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "responses": { "200": { "description": "Incident details" }, "404": { "description": "Incident not found in the active project" } }
+      }
+    },
+    "/api/sre/incidents/{id}/timeline": {
+      "get": {
+        "operationId": "getSreIncidentTimeline",
+        "summary": "Get an incident timeline",
+        "tags": ["AI SRE"],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "responses": { "200": { "description": "Chronological incident timeline" }, "404": { "description": "Incident not found in the active project" } }
+      }
+    },
+    "/api/sre/incidents/{id}/resolve": {
+      "post": {
+        "operationId": "resolveSreIncident",
+        "summary": "Resolve an incident with an audit comment",
+        "tags": ["AI SRE"],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["comment"], "properties": { "comment": { "type": "string", "minLength": 1, "maxLength": 2000 } } } } } },
+        "responses": { "200": { "description": "Incident resolved; timeline and audit events recorded" }, "400": { "description": "Invalid ID or comment" }, "403": { "description": "Insufficient permission" }, "404": { "description": "Incident not found in the active project" } }
+      }
+    },
+    "/api/sre/triage": {
+      "post": {
+        "operationId": "triageSreIncident",
+        "summary": "Run AI incident triage",
+        "tags": ["AI SRE"],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["incidentId"], "properties": { "incidentId": { "type": "string", "format": "uuid" } } } } } },
+        "responses": { "200": { "description": "Triage result" }, "429": { "description": "Rate limited" }, "503": { "description": "Feature disabled or temporarily unavailable" } }
+      }
+    },
+    "/api/sre/investigate": {
+      "post": {
+        "operationId": "startSreInvestigation",
+        "summary": "Start an asynchronous deep investigation",
+        "tags": ["AI SRE"],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["incidentId"], "properties": { "incidentId": { "type": "string", "format": "uuid" }, "useLiveConnectors": { "type": "boolean", "default": false } } } } } },
+        "responses": { "202": { "description": "Investigation accepted" }, "402": { "description": "Plan or usage limit reached" }, "429": { "description": "Rate limited" }, "503": { "description": "Feature disabled or temporarily unavailable" } }
+      }
+    },
+    "/api/sre/chat": {
+      "post": {
+        "operationId": "streamSreChat",
+        "summary": "Stream a read-only Copilot conversation",
+        "tags": ["AI SRE"],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["message"], "properties": { "message": { "type": "string", "minLength": 1, "maxLength": 4000 }, "incidentId": { "type": ["string", "null"], "format": "uuid" }, "conversationId": { "type": ["string", "null"], "format": "uuid" }, "useLiveConnectorTools": { "type": "boolean", "default": false } } } } } },
+        "responses": { "200": { "description": "Server-sent event stream" }, "429": { "description": "Rate limited" } }
+      }
+    },
+    "/api/sre/evidence-brief/stream": {
+      "post": {
+        "operationId": "streamSreEvidenceBrief",
+        "summary": "Generate and stream an incident evidence brief",
+        "tags": ["AI SRE"],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["incidentId"], "properties": { "incidentId": { "type": "string", "format": "uuid" } } } } } },
+        "responses": { "200": { "description": "Server-sent event stream" }, "429": { "description": "Rate limited" } }
+      }
+    },
+    "/api/sre/services": {
+      "get": {
+        "operationId": "listSreServices",
+        "summary": "List AI SRE services",
+        "tags": ["AI SRE"],
+        "responses": { "200": { "description": "Tenant-scoped service catalog" }, "403": { "description": "Insufficient permission" } }
+      }
+    },
+    "/api/sre/services/{id}": {
+      "get": {
+        "operationId": "getSreService",
+        "summary": "Get service details, health, and dependencies",
+        "tags": ["AI SRE"],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "responses": { "200": { "description": "Service, latest health snapshot, and dependency edges" }, "404": { "description": "Service not found in the active project" } }
+      }
+    },
     "/api/health": {
       "get": {
         "operationId": "getHealth",

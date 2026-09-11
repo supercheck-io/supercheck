@@ -1,7 +1,7 @@
 {
   "name": "@supercheck/cli",
-  "version": "0.1.4",
-  "description": "Open-Source Testing, Monitoring, and Reliability — as Code",
+  "version": "0.2.0",
+  "description": "Open-source testing, monitoring, and AI SRE — as code",
   "keywords": [
     "monitoring",
     "testing",

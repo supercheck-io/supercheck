@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- Added `@supercheck/cli` AI SRE commands for project-scoped incidents, triage, investigations, Copilot/evidence streaming, and read-only service topology.
+- Added public, bearer-authenticated AI SRE REST endpoints and generated OpenAPI reference pages for the CLI command surface.
 - Added the read-only AI SRE Investigation Map with task-oriented views, incident focus, directed service and evidence relationships, bounded evidence nodes, and click-open provenance details.
 - Added guided three-stage connector onboarding for connection routing, encrypted read-only access, and service scope.
 - Added Sentry and Elasticsearch/OpenSearch to the shared Add Connector catalog and synchronized connector table filters with the same catalog.
@@ -22,6 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- Added unambiguous notification `--payload`/`--data` options while preserving the legacy CLI `--config` spelling.
 - Standardized AISRE service, integration, diagnostic recipe, Private Agent, alert, and incident table rows and status badges using the shared SRE table conventions.
 - Aligned the incident heading, filters, Trends, and New incident actions with the Tests toolbar pattern and replaced inline onboarding with an explicit setup-guide dialog beside primary Add actions.
 - Expanded the Integrations table with execution mode, service scope, and last-validation context.
