@@ -1560,7 +1560,7 @@ function readConfig(): PrivateAgentConfig {
     agentVersion:
       process.env.PRIVATE_AGENT_VERSION ??
       process.env.npm_package_version ??
-      '1.3.5',
+      '1.3.6',
     retryIntervalMs: Number(
       process.env.PRIVATE_AGENT_RETRY_INTERVAL_MS ??
         process.env.PRIVATE_AGENT_POLL_INTERVAL_MS ??

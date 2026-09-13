@@ -54,7 +54,7 @@
 
 services:
   worker:
-    image: ghcr.io/supercheck-io/supercheck/worker:${SUPERCHECK_VERSION:-1.3.5}
+    image: ghcr.io/supercheck-io/supercheck/worker:${SUPERCHECK_VERSION:-1.3.6}
     init: true
     # GVISOR-006: Run as the Playwright image's non-root pwuser account.
     user: "pwuser:pwuser"
@@ -65,11 +65,11 @@ services:
       - /home/pwuser/.cache:size=256M,uid=1001,gid=1001,mode=0700
       - /home/pwuser/.npm:size=256M,uid=1001,gid=1001,mode=0700
     environment:
-      WORKER_IMAGE: ghcr.io/supercheck-io/supercheck/worker:${SUPERCHECK_VERSION:-1.3.5}
+      WORKER_IMAGE: ghcr.io/supercheck-io/supercheck/worker:${SUPERCHECK_VERSION:-1.3.6}
       EXECUTION_NAMESPACE: ${EXECUTION_NAMESPACE:-supercheck-execution}
       KUBECONFIG: /run/secrets/supercheck-kubeconfig
 
-      // Database connection (required)
+      # Database connection (required)
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required - PostgreSQL connection to main server}
       SELF_HOSTED: ${SELF_HOSTED:-true}
 

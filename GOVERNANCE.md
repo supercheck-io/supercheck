@@ -4,7 +4,7 @@ This document describes how the Supercheck project is maintained. It is intentio
 
 ## Roles
 
-- **Maintainers** — review and merge pull requests, manage releases, triage issues, and set technical direction. Maintainers are listed in [`.github/CODEOWNERS`](.github/CODEOWNERS).
+- **Maintainers** — review and merge pull requests, manage releases, triage issues, and set technical direction.
 - **Contributors** — anyone who opens an issue, reviews a pull request, or submits a change. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Decision making
@@ -16,7 +16,7 @@ This document describes how the Supercheck project is maintained. It is intentio
 
 ## Pull requests and reviews
 
-- A maintainer review is required before merge. CODEOWNERS routes review requests automatically.
+- A maintainer review is required before merge.
 - Pull requests are squashed on merge, and Conventional Commit style titles are used for the resulting history. See [CONTRIBUTING.md](CONTRIBUTING.md).
 - Maintainers may close stale or out-of-scope pull requests with an explanation.
 
