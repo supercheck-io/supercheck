@@ -67,6 +67,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Kept alert correlation and staged evidence disabled by default, tenant/project scoped, bounded, reversible, and isolated so correlation failures cannot block normal incident creation.
 - Kept AISRE query data project-keyed and memory-only so connector, incident, and topology results are not persisted across browser sessions or reused across projects.
 
+### Removed
+
+- Removed the Coolify deployment template and documentation. Self-hosting is supported through Docker Compose with K3s and gVisor.
+
 ## [1.3.5] - 2026-06-17
 
 ### Added

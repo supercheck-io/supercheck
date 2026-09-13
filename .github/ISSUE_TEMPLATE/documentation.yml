@@ -1,0 +1,37 @@
+name: Documentation issue
+description: Report incorrect, missing, or outdated documentation
+title: "[Docs]: "
+labels: ["documentation"]
+body:
+  - type: input
+    id: location
+    attributes:
+      label: Location
+      description: Link or path to the affected page or file.
+      placeholder: "https://supercheck.io/docs/... or docs/content/docs/..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What is wrong, missing, or out of date?
+    validations:
+      required: true
+
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggested change
+      description: How should it read, and what is the correct information?
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: conduct
+    attributes:
+      label: Code of Conduct
+      options:
+        - label: I agree to follow this project's [Code of Conduct](https://github.com/supercheck-io/supercheck/blob/main/CODE_OF_CONDUCT.md).
+          required: true

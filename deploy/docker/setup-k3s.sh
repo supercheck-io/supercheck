@@ -445,7 +445,7 @@ chmod 0640 "$WORKER_KUBECONFIG"
 # host admin restrict access to a specific group while still allowing the
 # non-root container to read the file.
 # If the deployer adds UID 1000 to the owning group, 0640 is sufficient.
-# For simpler setups (Coolify/Dokploy), 0644 also works.
+# For simpler setups without a shared group, 0644 also works.
 chown root:1000 "$WORKER_KUBECONFIG" 2>/dev/null || chmod 0644 "$WORKER_KUBECONFIG"
 log "Restricted worker kubeconfig written to $WORKER_KUBECONFIG (readable by UID 1000)"
 

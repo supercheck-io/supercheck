@@ -224,9 +224,9 @@ All services run on a single Linux server managed by Docker Compose. Workers con
 
         # Managed S3-compatible storage (Cloudflare R2, AWS S3)
         S3_ENDPOINT=https://your-account.r2.cloudflarestorage.com
-AWS_REGION=auto
-AWS_ACCESS_KEY_ID=your-access-key
-AWS_SECRET_ACCESS_KEY=your-secret-key
+        AWS_REGION=auto
+        AWS_ACCESS_KEY_ID=your-access-key
+        AWS_SECRET_ACCESS_KEY=your-secret-key
         ```
       </Step>
       <Step>
@@ -235,13 +235,13 @@ AWS_SECRET_ACCESS_KEY=your-secret-key
         ```bash
         # Create .env with your managed service credentials
         # Use the template below or start from the compose file's documented variables
-        docker compose -f docker-compose-external.yml up -d
+        KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig docker compose -f docker-compose-external.yml up -d
         ```
       </Step>
     </Steps>
 
     <Callout type="info">
-    This compose file skips the bundled PostgreSQL, Redis, and MinIO containers. Only the App, Worker, Traefik, and K3s services are started.
+    This compose file skips the bundled PostgreSQL, Redis, and MinIO containers. It starts the App, Worker, and Traefik containers; the Worker submits sandboxed jobs to the host K3s cluster configured earlier.
     </Callout>
   </Tab>
 </Tabs>

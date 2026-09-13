@@ -1,6 +1,6 @@
 ---
 name: supercheck-infrastructure-deployment
-description: Work on Supercheck Docker Compose, Coolify, K3s, Kubernetes manifests, gVisor, OpenTofu/Hetzner, secrets, external services, autoscaling, backups, disaster recovery, DNS/TLS, or production deployment.
+description: Work on Supercheck Docker Compose, K3s, Kubernetes manifests, gVisor, OpenTofu/Hetzner, secrets, external services, autoscaling, backups, disaster recovery, DNS/TLS, or production deployment.
 ---
 
 # Supercheck infrastructure and deployment
@@ -21,7 +21,6 @@ flowchart TD
 ## Deployment surfaces
 
 - `deploy/docker` contains public self-hosted Compose assets. Inspect current files to choose bundled dependencies, secure/TLS, external services, remote worker, or local-source behavior.
-- Coolify uses its checked-in template and supported variable model; verify generated domains, persistent storage, health, and version selection.
 - Production K3s/OpenTofu assets may be maintained outside this repository, but contributors must preserve the contracts described here when changing app/worker/deploy code.
 - Local macOS Kubernetes may use OrbStack. Local exceptions must not weaken production defaults.
 

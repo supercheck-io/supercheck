@@ -46,7 +46,9 @@ curl -fsSL https://get.docker.com | sh
 |------|----------|
 | `docker-compose.yml` | Self-hosted deployment (HTTP, localhost:3000) |
 | `docker-compose-secure.yml` | Production with HTTPS |
+| `docker-compose-external.yml` | Connect to managed external PostgreSQL, Redis, and S3 services |
 | `docker-compose-worker.yml` | Remote regional worker |
+| `docker-compose-private-agent.yml` | Outbound-only private agent for internal network testing |
 | `docker-compose-local.yml` | Source-based local development |
 | `docker-compose-aisre-lab.yml` | Optional AI SRE integration lab with OSS telemetry and webhook capture |
 

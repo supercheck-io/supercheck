@@ -128,6 +128,46 @@ jobs:
         working-directory: ./worker
         run: npm run build
 
+  cli-quality-checks:
+    name: CLI Quality Checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: cli/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./cli
+        run: npm ci --prefer-offline --no-audit
+
+      - name: Type check
+        working-directory: ./cli
+        run: npm run typecheck
+
+      - name: Lint code
+        working-directory: ./cli
+        run: npm run lint
+
+      - name: Run tests
+        working-directory: ./cli
+        run: npm test
+
+      - name: Build package
+        working-directory: ./cli
+        run: npm run build
+
+      - name: Verify package contents
+        working-directory: ./cli
+        run: npm pack --dry-run
+
   e2e-quality-checks:
     name: E2E Suite Quality Checks
     runs-on: ubuntu-latest
@@ -159,16 +199,17 @@ jobs:
   summary:
     name: Quality Checks Summary
     runs-on: ubuntu-latest
-    needs: [app-quality-checks, worker-quality-checks, e2e-quality-checks]
+    needs: [app-quality-checks, worker-quality-checks, cli-quality-checks, e2e-quality-checks]
     if: always()
 
     steps:
       - name: Check results
         run: |
-          if [ "${{ needs.app-quality-checks.result }}" != "success" ] || [ "${{ needs.worker-quality-checks.result }}" != "success" ] || [ "${{ needs.e2e-quality-checks.result }}" != "success" ]; then
+          if [ "${{ needs.app-quality-checks.result }}" != "success" ] || [ "${{ needs.worker-quality-checks.result }}" != "success" ] || [ "${{ needs.cli-quality-checks.result }}" != "success" ] || [ "${{ needs.e2e-quality-checks.result }}" != "success" ]; then
             echo "❌ Quality checks failed"
             echo "App checks: ${{ needs.app-quality-checks.result }}"
             echo "Worker checks: ${{ needs.worker-quality-checks.result }}"
+            echo "CLI checks: ${{ needs.cli-quality-checks.result }}"
             echo "E2E suite checks: ${{ needs.e2e-quality-checks.result }}"
             exit 1
           else

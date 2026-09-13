@@ -1,0 +1,76 @@
+name: Feature request
+description: Propose a new capability or improvement for Supercheck
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve Supercheck. For open-ended ideas or questions, use
+        [GitHub Discussions](https://github.com/supercheck-io/supercheck/discussions) instead.
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Preflight checklist
+      options:
+        - label: I searched [existing issues](https://github.com/supercheck-io/supercheck/issues) and [discussions](https://github.com/supercheck-io/supercheck/discussions) and this is not a duplicate.
+          required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - app (Next.js UI / API)
+        - worker (NestJS execution)
+        - cli (@supercheck/cli)
+        - recorder (browser extension)
+        - deploy (Docker Compose / K3s / gVisor)
+        - docs
+        - other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What problem does this solve, and who is affected?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the behavior you would like to see.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches or workarounds you evaluated.
+    validations:
+      required: false
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: How would we know this is done? List concrete, testable outcomes.
+      placeholder: |
+        - [ ]
+        - [ ]
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: conduct
+    attributes:
+      label: Code of Conduct
+      options:
+        - label: I agree to follow this project's [Code of Conduct](https://github.com/supercheck-io/supercheck/blob/main/CODE_OF_CONDUCT.md).
+          required: true
