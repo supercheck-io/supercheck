@@ -111,8 +111,13 @@ export class ApiClient {
   ): Promise<ApiResponse<T>> {
     const url = this.buildUrl(path, options?.params)
     const parsedUrl = new URL(url)
+    // Show only the origin in connection errors. This helps users spot a stale
+    // configured target without exposing URL credentials, paths, or query data.
+    const targetOrigin = parsedUrl.origin
     const headers = this.buildHeaders(options?.headers)
     const maxRetries = options?.retries ?? MAX_RETRIES
+    const attemptCount = maxRetries + 1
+    const attemptLabel = `${attemptCount} ${attemptCount === 1 ? 'attempt' : 'attempts'}`
 
     // Only retry idempotent methods on server errors and network failures.
     // POST and PATCH are non-idempotent — retrying them risks duplicate creates/triggers/deletes.
@@ -149,7 +154,7 @@ export class ApiClient {
         if (response.status === 429) {
           if (attempt >= maxRetries) {
             throw new ApiRequestError(
-              `Rate limited after ${maxRetries + 1} attempts: ${method} ${path}`,
+              `Rate limited after ${attemptLabel}: ${method} ${path}`,
               429,
             )
           }
@@ -203,7 +208,7 @@ export class ApiClient {
         if (err instanceof ApiRequestError) throw err
 
         if (err instanceof DOMException && err.name === 'AbortError') {
-          throw new TimeoutError(`Request timed out after ${this.timeout}ms: ${method} ${path}`)
+          throw new TimeoutError(`Request to ${targetOrigin} timed out after ${this.timeout}ms: ${method} ${path}`)
         }
 
         lastError = err as Error
@@ -211,13 +216,13 @@ export class ApiClient {
         // Non-idempotent methods (POST, PATCH) must NOT be retried on network errors to prevent duplicate mutations
         if (!isIdempotent) {
           throw new ApiRequestError(
-            `Request failed: ${(err as Error).message ?? 'Network error'}`,
+            `Request to ${targetOrigin} failed: ${(err as Error).message ?? 'Network error'}`,
           )
         }
 
         if (attempt < maxRetries) {
           const waitMs = RETRY_BACKOFF_MS * Math.pow(2, attempt)
-          logger.debug(`Network error: ${(err as Error).message}. Retrying in ${waitMs}ms...`)
+          logger.debug(`Network error reaching ${targetOrigin}: ${(err as Error).message}. Retrying in ${waitMs}ms...`)
           await this.sleep(waitMs)
         }
       } finally {
@@ -226,7 +231,7 @@ export class ApiClient {
     }
 
     throw new ApiRequestError(
-      `Request failed after ${maxRetries + 1} attempts: ${lastError?.message ?? 'Unknown error'}`,
+      `Request to ${targetOrigin} failed after ${attemptLabel}: ${lastError?.message ?? 'Unknown error'}`,
     )
   }
 

@@ -6,70 +6,46 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.3.6]
+
 ### Added
 
-- Added `@supercheck/cli` AI SRE commands for project-scoped incidents, triage, investigations, Copilot/evidence streaming, and read-only service topology.
-- Added public, bearer-authenticated AI SRE REST endpoints and generated OpenAPI reference pages for the CLI command surface.
-- Added the read-only AI SRE Investigation Map with task-oriented views, incident focus, directed service and evidence relationships, bounded evidence nodes, and click-open provenance details.
-- Added guided three-stage connector onboarding for connection routing, encrypted read-only access, and service scope.
-- Added Sentry and Elasticsearch/OpenSearch to the shared Add Connector catalog and synchronized connector table filters with the same catalog.
-- Added dedicated AI SRE service detail screens with explainable health, trusted inbound/outbound dependencies, native resource links, incident/alert/deployment context, and an explicit topology suggestion review queue.
-- Added audited, tenant-scoped service dependency/resource lifecycle actions and idempotent approval/rejection controls for discovered topology suggestions.
-- Added the shared Supercheck loading state to cold Copilot, Investigation Map, incident, and service reads.
-- Added feature-flagged correlation of high-confidence related alerts into active incidents, with bounded temporal/topology matching and audit provenance.
-- Added feature-flagged staged log evidence collection for direct Loki connectors, including LogQL statistics validation and bounded early windows.
-- Added 30-day incident trend analytics and a user-invoked AI SRE setup guide for services, connectors, and diagnostic recipes.
-- Added per-incident connector tool call, failure, and average latency summaries.
-- Added bounded, read-only direct evidence adapters for GitLab commits, PagerDuty incidents, and Opsgenie alerts with provider-specific authentication and query guidance.
+- Added AI SRE incident management, service topology, investigation workflows, Copilot, diagnostic recipes, and Private Agents.
+- Added AI SRE support to the public API and CLI 0.2.0, including incident operations, service topology, Copilot chat, and evidence-brief streaming.
+- Expanded observability and incident integrations, including Datadog, Sentry, Elasticsearch/OpenSearch, GitLab, PagerDuty, and Opsgenie.
 
 ### Changed
 
-- Added unambiguous notification `--payload`/`--data` options while preserving the legacy CLI `--config` spelling.
-- Standardized AISRE service, integration, diagnostic recipe, Private Agent, alert, and incident table rows and status badges using the shared SRE table conventions.
-- Aligned the incident heading, filters, Trends, and New incident actions with the Tests toolbar pattern and replaced inline onboarding with an explicit setup-guide dialog beside primary Add actions.
-- Expanded the Integrations table with execution mode, service scope, and last-validation context.
-- Aligned AI SRE admin tabs with the existing Organization Admin toolbar pattern, made service rows keyboard-accessible navigation targets, and simplified service and incident detail hierarchy for faster scanning.
-- Matched AI SRE table row density to the existing Tests table, standardized the service Investigation Map action icon, and linked incident readiness gaps directly to their corrective workflows.
-- Simplified the Investigation Map to use the full page width and show node or relationship details in an accessible modal dialog instead of a permanent details rail.
-- Made Investigation Map details content-sized and responsive, with an internal height cap only for long relationship or provenance content.
-- Reworked Add Connector into a wider, lower-density layout with separate Connection and Endpoint/access work areas, a bounded service-scope list, and a persistent security summary and action footer.
-- Standardized Investigation Map and connector capability badges on the shared semantic badge palette and grouped repeated map relationships into concise typed rows.
-- Improved responsive Copilot behavior with an icon-only mobile launcher, full-viewport mobile chat, consistent desktop placement, and non-overlapping customer-support chat positioning.
-- Simplified Copilot context mentions and aligned inline chart navigation brushes with application theme colors.
-- Service nodes now deep-link between the service detail screen and the matching Investigation Map node.
-- Investigation reports now separate what changed, blast radius, strongest signals, evidence gaps, and next safe checks while labeling facts, inferences, and hypotheses.
-- Direct connector credential access now passes through a tenant-scoped resolver boundary, rejects expired credentials, and remains ready for a future external injection broker.
-- Project-scoped React Query caching now backs Copilot history, incidents, incident trends/details, service details, Investigation Map data, and AI SRE admin setup reads. Sidebar hover prefetch warms responder routes, while mutations invalidate dependent list, detail, analytics, and topology queries.
+- Improved AI SRE workflows and consolidated the CLI and Recorder with the main open-source project.
 
 ### Fixed
 
-- Fixed Kubernetes execution startup by creating the per-run workspace before assembling the Secret-mounted runner payload, restoring playground and scheduled Playwright execution.
-- Finalized run records when queue admission fails and distinguished authoritative rate/capacity limits (HTTP 429) from retryable admission or queue outages (HTTP 503).
-- Fixed AI SRE billing recovery on PostgreSQL by comparing JSON investigation IDs to UUID run IDs with an explicit safe text cast.
-- Fixed long incident labels overflowing the Investigation Map filter.
-- Fixed sparse Investigation Map node details opening in a mostly empty fixed-height dialog.
-- Fixed connector fields and guidance wrapping into narrow, difficult-to-scan columns on common desktop widths.
-- Fixed shared responsive dialog constraints overriding the intended Add Connector width.
-- Fixed blank and raw Markdown investigation titles appearing in Investigation Map relationship details.
-- Fixed dark strips and mismatched colors in React Flow controls, edge labels, minimap, and inline chart brushes.
-- Preserved the Chatwoot identity-validation hash when refreshing identified user data.
-- Fixed investigation report exports so bounded database queries retain the true evidence/tool/recommendation totals and accurately disclose truncation.
-- Prevented unsafe repository and evidence-link schemes from becoming clickable; connector evidence now allows only HTTP(S) or same-origin source paths.
-- Removed per-connector service-scope queries from investigation connector loading and added audited error records for failed direct connector searches.
-- Removed repeated forced-dynamic loading transitions from new AISRE read screens while preserving branded cold-load and error states.
-- Rejected unsafe Investigation Map detail-link schemes before rendering external connector or deployment URLs.
+- Improved Kubernetes execution reliability and failure reporting.
+- Fixed Polar usage synchronization and reliability issues across AI SRE investigations, connectors, and reports.
 
 ### Security
 
-- Kept execution admission fail-closed without misreporting Redis uncertainty as exhausted capacity, applied the authenticated execution rate limit consistently to playground runs, and prevented workers from executing with unresolved tenant secrets.
-- Enforced server-side service update/configure permissions, current-project ownership, active endpoint checks, duplicate/self-link rejection, and redacted audit metadata for every topology mutation.
-- Kept discovered and AI-suggested dependencies outside trusted topology until an authorized user explicitly approves them.
-- Kept alert correlation and staged evidence disabled by default, tenant/project scoped, bounded, reversible, and isolated so correlation failures cannot block normal incident creation.
-- Kept AISRE query data project-keyed and memory-only so connector, incident, and topology results are not persisted across browser sessions or reused across projects.
+- Strengthened tenant isolation, RBAC, connector safety, execution safeguards, and self-hosted secret generation.
 
 ### Removed
 
-- Removed the Coolify deployment template and documentation. Self-hosting is supported through Docker Compose with K3s and gVisor.
+- Removed the unsupported Coolify deployment template; self-hosting remains supported through Docker Compose, K3s, and gVisor.
+
+## [CLI 0.1.4] - 2026-09-10
+
+### Fixed
+
+- Improved test-source uploads and notification configuration drift detection.
+
+## [CLI 0.1.3] - 2026-06-26
+
+### Fixed
+
+- Preserved notification secrets safely across pull, diff, and deploy workflows.
+
+## [CLI 0.1.2]
+
+- Initial tracked release of `@supercheck/cli`.
 
 ## [1.3.5] - 2026-06-17
 

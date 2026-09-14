@@ -42,7 +42,7 @@ body:
     attributes:
       label: Version
       description: Release tag, image digest, CLI version, or commit SHA, if known.
-      placeholder: "1.3.6 / @supercheck/cli 0.1.4 / <commit sha> / unknown"
+      placeholder: "1.3.6 / @supercheck/cli 0.2.0 / <commit sha> / unknown"
     validations:
       required: false
 

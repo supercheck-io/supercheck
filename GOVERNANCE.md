@@ -22,8 +22,7 @@ This document describes how the Supercheck project is maintained. It is intentio
 
 ## Releases
 
-- Supercheck follows [Semantic Versioning](https://semver.org/). Release notes live in [CHANGELOG.md](CHANGELOG.md).
-- The `@supercheck/cli` package is versioned and released independently; see [`cli/CHANGELOG.md`](cli/CHANGELOG.md).
+- Supercheck follows [Semantic Versioning](https://semver.org/). Platform and independently versioned CLI release notes live in [CHANGELOG.md](CHANGELOG.md).
 - Release tags and changelog entries are the source of truth for what shipped.
 
 ## Community

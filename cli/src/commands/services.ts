@@ -29,5 +29,20 @@ serviceCommand.command('health <id>').description('Get the latest service health
 
 serviceCommand.command('dependencies <id>').description('List upstream and downstream dependencies').action(async (id: string) => {
   const { data } = await getService(id)
-  output((data.dependencies as Record<string, unknown>[]) ?? [])
+  output((data.dependencies as Record<string, unknown>[]) ?? [], { columns: [
+    {
+      key: 'sourceServiceId',
+      header: 'Direction',
+      format: (_value, row) => row.sourceServiceId === id ? 'downstream' : row.targetServiceId === id ? 'upstream' : 'related',
+    },
+    {
+      key: 'targetServiceId',
+      header: 'Related Service ID',
+      format: (_value, row) => String(row.sourceServiceId === id ? row.targetServiceId ?? '-' : row.sourceServiceId ?? '-'),
+    },
+    { key: 'source', header: 'Source' },
+    { key: 'confidence', header: 'Confidence' },
+    { key: 'status', header: 'Status' },
+    { key: 'lastSeenAt', header: 'Last Seen' },
+  ] })
 })

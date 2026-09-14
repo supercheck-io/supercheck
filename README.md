@@ -148,7 +148,7 @@ The application stores platform data in PostgreSQL, schedules work through Redis
 | [`cli/`](cli/) | `@supercheck/cli` source and documentation | AGPL-3.0-only |
 | [`recorder/`](recorder/) | Browser recorder based on Playwright CRX | Apache-2.0 |
 | [`docs/`](docs/) | Product and deployment documentation | AGPL-3.0-only |
-| [`deploy/`](deploy/) | Docker Compose and Kubernetes deployment assets | AGPL-3.0-only |
+| [`deploy/`](deploy/) | Docker Compose deployment assets | AGPL-3.0-only |
 
 ## Documentation
 

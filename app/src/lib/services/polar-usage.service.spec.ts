@@ -12,7 +12,7 @@ jest.mock("@/utils/db", () => ({
     selectDistinct: jest.fn(),
     update: jest.fn(),
   },
-  postgresClient: { reserve: jest.fn() },
+  postgresClient: { begin: jest.fn() },
 }));
 
 jest.mock("@/db/schema", () => ({
@@ -80,7 +80,7 @@ const mockDb = db as unknown as {
   update: jest.Mock;
 };
 const mockPostgresClient = postgresClient as unknown as {
-  reserve: jest.Mock;
+  begin: jest.Mock;
 };
 
 describe("PolarUsageService retry idempotency", () => {
@@ -149,14 +149,10 @@ describe("PolarUsageService retry idempotency", () => {
     mockDb.selectDistinct.mockReturnValue({ from: changedFrom });
 
     const transaction = jest.fn().mockResolvedValue([{ locked: true }]);
-    const reserved = Object.assign(jest.fn(), {
-      begin: jest.fn(
-        async (callback: (sql: typeof transaction) => Promise<unknown>) =>
-          callback(transaction),
-      ),
-      release: jest.fn(),
-    });
-    mockPostgresClient.reserve.mockResolvedValue(reserved);
+    mockPostgresClient.begin.mockImplementation(
+      async (callback: (sql: typeof transaction) => Promise<unknown>) =>
+        callback(transaction),
+    );
 
     const fetchMock = jest
       .fn()
@@ -219,19 +215,15 @@ describe("PolarUsageService retry idempotency", () => {
         expect.stringContaining("pg_try_advisory_xact_lock"),
       ]),
     );
-    expect(reserved.release).toHaveBeenCalledTimes(2);
+    expect(mockPostgresClient.begin).toHaveBeenCalledTimes(2);
   });
 
   it("skips safely when another scheduler owns the transaction lock", async () => {
     const transaction = jest.fn().mockResolvedValue([{ locked: false }]);
-    const reserved = Object.assign(jest.fn(), {
-      begin: jest.fn(
-        async (callback: (sql: typeof transaction) => Promise<unknown>) =>
-          callback(transaction),
-      ),
-      release: jest.fn(),
-    });
-    mockPostgresClient.reserve.mockResolvedValue(reserved);
+    mockPostgresClient.begin.mockImplementation(
+      async (callback: (sql: typeof transaction) => Promise<unknown>) =>
+        callback(transaction),
+    );
 
     await expect(polarUsageService.syncPendingEvents()).resolves.toEqual({
       processed: 0,
@@ -241,6 +233,6 @@ describe("PolarUsageService retry idempotency", () => {
     });
 
     expect(mockDb.query.usageEvents.findMany).not.toHaveBeenCalled();
-    expect(reserved.release).toHaveBeenCalledTimes(1);
+    expect(mockPostgresClient.begin).toHaveBeenCalledTimes(1);
   });
 });

@@ -399,6 +399,19 @@ describe('ApiClient', () => {
       expect(mockFetch).toHaveBeenCalledTimes(2)
       sleepSpy.mockRestore()
     })
+
+    it('should identify the configured target without exposing URL credentials', async () => {
+      const credentialedClient = new ApiClient({
+        baseUrl: 'https://user:secret@stale.example.com',
+      })
+      mockFetch.mockRejectedValueOnce(new Error('fetch failed'))
+
+      await expect(
+        credentialedClient.request('GET', '/api/health', { retries: 0 }),
+      ).rejects.toThrow(
+        'Request to https://stale.example.com failed after 1 attempt: fetch failed',
+      )
+    })
   })
 })
 

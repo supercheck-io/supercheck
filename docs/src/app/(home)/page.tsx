@@ -7,13 +7,11 @@ import { useTheme } from "next-themes";
 import { useSearchContext } from "fumadocs-ui/contexts/search";
 import {
   ArrowRight,
-  Building2,
   Check,
   Container,
   Copy,
   GitBranch,
   Globe,
-  Zap,
   Moon,
   Sun,
   Tally4,
@@ -31,33 +29,33 @@ const CLI_INSTALL = "npm install -g @supercheck/cli";
 const features = [
   {
     icon: Sparkles,
-    title: "AI-Powered",
+    title: "AI SRE",
     description:
-      "Create, debug, and analyze Playwright tests, k6 scripts, and monitors with AI assistance.",
+      "Investigate incidents with cited evidence, read-only connectors, Copilot, and service topology.",
   },
   {
-    icon: Terminal,
-    title: "Supercheck CLI",
+    icon: GitBranch,
+    title: "Testing as Code",
     description:
-      "Define tests, monitors, and jobs in code. Deploy with supercheck deploy, integrate with any CI/CD pipeline.",
+      "Manage Playwright and k6 tests, monitors, and jobs through version-controlled configuration.",
   },
   {
-    icon: Zap,
-    title: "Parallel Execution",
+    icon: Container,
+    title: "Sandboxed Execution",
     description:
-      "Lightning-fast test execution with intelligent parallel processing and job orchestration.",
-  },
-  {
-    icon: Chromium,
-    title: "Multi-Test Automation",
-    description:
-      "Browser, API, database, and custom tests across Chromium, Firefox, and WebKit.",
+      "Run user-authored tests in ephemeral K3s jobs isolated with gVisor.",
   },
   {
     icon: Globe,
-    title: "Real-time Monitoring",
+    title: "Synthetic Monitoring",
     description:
-      "Continuous monitoring with real-time alerts and comprehensive dashboard reporting.",
+      "Continuously check websites, APIs, hosts, ports, and synthetic user journeys.",
+  },
+  {
+    icon: ChartSpline,
+    title: "k6 Performance Testing",
+    description:
+      "Run distributed load tests with streaming logs and performance reports.",
   },
   {
     icon: Tally4,
@@ -66,28 +64,16 @@ const features = [
       "Public and private status pages with real-time incident updates and subscriber notifications.",
   },
   {
-    icon: ChartSpline,
-    title: "k6 Performance Testing",
+    icon: Terminal,
+    title: "CLI and CI/CD",
     description:
-      "Run k6 load tests from multiple global regions with real-time streaming logs.",
+      "Automate reliability workflows from your terminal and existing pipelines.",
   },
   {
-    icon: Container,
-    title: "Docker Deployment",
+    icon: Chromium,
+    title: "Browser Recorder",
     description:
-      "Easy deployment with Docker support and scalable distributed architecture.",
-  },
-  {
-    icon: GitBranch,
-    title: "CI/CD Integration",
-    description:
-      "Seamless integration with CI/CD workflows and comprehensive test reporting.",
-  },
-  {
-    icon: Building2,
-    title: "Multi-Organization",
-    description:
-      "Multi-organization and multi-project architecture with unified role management.",
+      "Capture browser interactions and turn them into editable Playwright tests.",
   },
 ];
 
@@ -334,7 +320,7 @@ export default function HomePage() {
                     className="group mx-auto flex w-fit items-center gap-4 rounded-full border border-fd-border/80 bg-fd-background/70 px-4 py-2 shadow-sm shadow-fd-foreground/5 backdrop-blur-md transition-colors duration-300 hover:bg-fd-accent/40"
                   >
                     <span className="text-base text-fd-foreground">
-                      Checkout Live Demo
+                      Check out the live demo
                     </span>
                     <span className="block h-4 w-0.5 border-l border-fd-border" />
 
@@ -455,8 +441,8 @@ export default function HomePage() {
                   Ready to automate testing & monitoring?
                 </h2>
                 <p className="mx-auto mt-3 max-w-xl text-fd-muted-foreground">
-                  Deploy on your infrastructure in minutes, or start with the
-                  docs and CLI.
+                  Start with the CLI, or deploy on Linux with Docker Compose,
+                  K3s, and gVisor.
                 </p>
                 <div className="mt-8 flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:items-center">
                   <Link

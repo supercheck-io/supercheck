@@ -482,13 +482,11 @@ class PolarUsageService {
       return { processed: 0, succeeded: 0, failed: 0, errors: [] };
     }
 
-    const reserved = await postgresClient.reserve();
-
     try {
       // The production database path uses transaction pooling, so consecutive
       // statements can reach different PostgreSQL backends. A transaction-scoped
       // advisory lock is pinned to one backend and releases automatically.
-      const result = await reserved.begin(async (transaction) => {
+      const result = await postgresClient.begin(async (transaction) => {
         const lockResult = (await transaction`
           SELECT pg_try_advisory_xact_lock(${USAGE_SYNC_ADVISORY_LOCK_KEY}) AS locked
         `) as Array<{ locked: boolean }>;
@@ -514,8 +512,6 @@ class PolarUsageService {
         failed: 0,
         errors: [error instanceof Error ? error.message : 'Unknown error']
       };
-    } finally {
-      reserved.release();
     }
   }
 

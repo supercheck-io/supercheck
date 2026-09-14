@@ -2,7 +2,7 @@
  * Supercheck Recorder - Configuration Management
  *
  * Manages Supercheck instance URL and authentication configuration.
- * Default: supercheck.io (cloud) - works seamlessly without any setup.
+ * Default: app.supercheck.io (cloud) - works seamlessly without any setup.
  * Self-hosted users can configure via options page.
  */
 
@@ -18,7 +18,7 @@ export interface SupercheckConfig {
 const STORAGE_KEY = 'supercheckConfig';
 const DEFAULT_INSTANCE_URL = 'https://app.supercheck.io';
 
-// Default config - extension works with supercheck.io out of the box
+// Default config - extension works with app.supercheck.io out of the box
 const DEFAULT_CONFIG: SupercheckConfig = {
   instanceUrl: DEFAULT_INSTANCE_URL,
   autoConnected: false,
