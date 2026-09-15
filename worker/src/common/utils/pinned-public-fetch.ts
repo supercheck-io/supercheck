@@ -2,6 +2,7 @@ import { lookup } from 'node:dns/promises';
 import https from 'node:https';
 import { isIP } from 'node:net';
 
+import { createPinnedLookup } from './pinned-lookup';
 import { isPrivateOrReservedAddress } from './url-validator';
 
 const MAX_RESPONSE_BYTES = 10 * 1024 * 1024;
@@ -41,8 +42,7 @@ export async function fetchPublicEndpoint(
       {
         method: init.method ?? 'GET',
         headers: Object.fromEntries(headers.entries()),
-        lookup: (_hostname, _options, callback) =>
-          callback(null, selected.address, selected.family),
+        lookup: createPinnedLookup(selected),
       },
       (response) => {
         const chunks: Buffer[] = [];

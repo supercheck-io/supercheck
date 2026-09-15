@@ -103,8 +103,22 @@ describe("pinned public fetch", () => {
           response.emit("end");
         });
         const callback = jest.fn();
-        options.lookup("hooks.example.com", {}, callback);
-        expect(callback).toHaveBeenCalledWith(null, "203.0.114.10", 4);
+        options.lookup("hooks.example.com", { all: true }, callback);
+        expect(callback).toHaveBeenCalledWith(null, [
+          { address: "203.0.114.10", family: 4 },
+        ]);
+
+        const singleAddressCallback = jest.fn();
+        options.lookup(
+          "hooks.example.com",
+          { all: false },
+          singleAddressCallback,
+        );
+        expect(singleAddressCallback).toHaveBeenCalledWith(
+          null,
+          "203.0.114.10",
+          4,
+        );
         return request;
       },
     );

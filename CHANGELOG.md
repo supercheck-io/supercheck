@@ -25,7 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Security
 
-- Strengthened tenant isolation, RBAC, connector safety, execution safeguards, and self-hosted secret generation.
+- Strengthened tenant isolation, RBAC, outbound request safety, execution safeguards, and self-hosted secret generation.
 
 ### Removed
 

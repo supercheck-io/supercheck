@@ -46,6 +46,9 @@ describe("connector endpoint policy", () => {
     expect(isPrivateConnectorAddress("2001:0000:4136:e378::1")).toBe(true);
     expect(isPrivateConnectorAddress("2002:7f00:1::")).toBe(true);
     expect(isPrivateConnectorAddress("64:ff9b::7f00:1")).toBe(true);
+    expect(isPrivateConnectorAddress("::ffff:ac12:5")).toBe(true);
+    expect(isPrivateConnectorAddress("[::ffff:ac12:5]")).toBe(true);
+    expect(isPrivateConnectorAddress("::ffff:8.8.8.8")).toBe(false);
     expect(isPrivateConnectorAddress("2606:4700:4700::1111")).toBe(false);
   });
 

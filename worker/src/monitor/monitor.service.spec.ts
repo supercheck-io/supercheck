@@ -29,6 +29,16 @@ jest.mock('../execution/services/execution.service', () => ({
   })),
 }));
 
+jest.mock('../common/utils/pinned-monitor-request', () => ({
+  requestPinnedMonitorTarget: jest.fn(
+    async (
+      config: unknown,
+      _options: unknown,
+      execute: (requestConfig: unknown) => Promise<unknown>,
+    ) => execute(config),
+  ),
+}));
+
 import { MonitorService } from './monitor.service';
 import { DbService } from '../db/db.service';
 import { ExecutionService } from '../execution/services/execution.service';

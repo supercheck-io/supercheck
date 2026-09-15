@@ -1,3 +1,6 @@
+import { Address4, Address6 } from 'ip-address';
+import { isIP } from 'node:net';
+
 /**
  * URL Validation Utilities for SSRF Protection (Worker-side)
  *
@@ -7,6 +10,40 @@
  * Mirrors the validation logic from app/src/lib/url-validator.ts to stay
  * consistent (DRY across services won't work due to separate packages).
  */
+
+const RESERVED_IPV4_NETWORKS = [
+  '0.0.0.0/8',
+  '10.0.0.0/8',
+  '100.64.0.0/10',
+  '127.0.0.0/8',
+  '169.254.0.0/16',
+  '172.16.0.0/12',
+  '192.0.0.0/24',
+  '192.0.2.0/24',
+  '192.88.99.0/24',
+  '192.168.0.0/16',
+  '198.18.0.0/15',
+  '198.51.100.0/24',
+  '203.0.113.0/24',
+  '224.0.0.0/4',
+  '240.0.0.0/4',
+].map((network) => new Address4(network));
+
+const RESERVED_IPV6_NETWORKS = [
+  '::/96',
+  '64:ff9b::/96',
+  '100::/64',
+  '2001::/32',
+  '2001:2::/48',
+  '2001:10::/28',
+  '2001:20::/28',
+  '2001:db8::/32',
+  '2002::/16',
+  'fc00::/7',
+  'fec0::/10',
+  'fe80::/10',
+  'ff00::/8',
+].map((network) => new Address6(network));
 
 // Private IP ranges that should not be accessible via webhooks
 const PRIVATE_IP_PATTERNS = [
@@ -66,50 +103,30 @@ export function isPrivateHost(hostname: string): boolean {
  */
 export function isPrivateOrReservedAddress(address: string): boolean {
   const normalized = address.toLowerCase().replace(/^\[|\]$/g, '');
-  if (normalized.startsWith('::ffff:')) {
-    return isPrivateOrReservedAddress(normalized.slice('::ffff:'.length));
+  const family = isIP(normalized);
+
+  if (family === 4) {
+    const candidate = new Address4(normalized);
+    return RESERVED_IPV4_NETWORKS.some((network) =>
+      candidate.isHostInSubnet(network),
+    );
   }
 
-  if (
-    normalized === '::' ||
-    normalized === '::1' ||
-    /^fe[89ab][0-9a-f]:/.test(normalized) ||
-    normalized.startsWith('fc') ||
-    normalized.startsWith('fd') ||
-    normalized.startsWith('ff') ||
-    normalized.startsWith('2001:db8:') ||
-    normalized.startsWith('2001:0000:') ||
-    normalized.startsWith('2001:0:') ||
-    normalized.startsWith('2002:') ||
-    normalized.startsWith('64:ff9b:')
-  ) {
-    return true;
+  if (family === 6) {
+    const candidate = new Address6(normalized);
+    const embeddedIpv4 = candidate.embeddedIPv4();
+    if (embeddedIpv4 && candidate.isMapped4()) {
+      return RESERVED_IPV4_NETWORKS.some((network) =>
+        embeddedIpv4.isHostInSubnet(network),
+      );
+    }
+
+    return RESERVED_IPV6_NETWORKS.some((network) =>
+      candidate.isHostInSubnet(network),
+    );
   }
 
-  const parts = normalized.split('.').map((part) => Number(part));
-  if (
-    parts.length !== 4 ||
-    parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)
-  ) {
-    return false;
-  }
-
-  const [first, second] = parts;
-  return (
-    first === 0 ||
-    first === 10 ||
-    first === 127 ||
-    (first === 100 && second >= 64 && second <= 127) ||
-    (first === 172 && second >= 16 && second <= 31) ||
-    (first === 192 && second === 168) ||
-    (first === 169 && second === 254) ||
-    (first === 192 && second === 0 && (parts[2] === 0 || parts[2] === 2)) ||
-    (first === 192 && second === 88 && parts[2] === 99) ||
-    (first === 198 && (second === 18 || second === 19)) ||
-    (first === 198 && second === 51 && parts[2] === 100) ||
-    (first === 203 && second === 0 && parts[2] === 113) ||
-    first >= 224
-  );
+  return false;
 }
 
 /**

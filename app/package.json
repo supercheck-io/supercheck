@@ -139,6 +139,7 @@
     "esbuild": "^0.28.1",
     "express": "^5.2.1",
     "ioredis": "^5.8.2",
+    "ip-address": "10.5.0",
     "jsdom": "^27.0.0",
     "lucide-react": "^0.476.0",
     "mammoth": "^1.11.0",

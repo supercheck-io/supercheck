@@ -2,8 +2,6 @@ import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios'; // Import HttpService
 import { AxiosError, AxiosRequestConfig, Method } from 'axios'; // Import Method from axios
 import * as tls from 'tls';
-import { Agent as HttpAgent } from 'http';
-import { Agent as HttpsAgent } from 'https';
 import { firstValueFrom } from 'rxjs'; // To convert Observable to Promise
 import { MonitorJobDataDto } from './dto/monitor-job.dto';
 import { MonitorExecutionResult } from './types/monitor-result.type';
@@ -59,6 +57,7 @@ import {
 } from '../common/validation';
 import { RedisService } from '../execution/services/redis.service';
 import { VariableResolverService } from '../common/services/variable-resolver.service';
+import { requestPinnedMonitorTarget } from '../common/utils/pinned-monitor-request';
 
 // Use the Monitor type from schema
 type Monitor = z.infer<typeof monitorsSelectSchema>;
@@ -1020,8 +1019,6 @@ export class MonitorService {
         },
         // Enable automatic decompression for proper response parsing
         decompress: true,
-        // Follow redirects but limit for security
-        maxRedirects: SECURITY.MAX_REDIRECTS,
         // Handle various response types - keep as text for consistent keyword searching
         responseType: 'text',
         // Accept all status codes, we'll handle validation
@@ -1035,10 +1032,6 @@ export class MonitorService {
           this.resourceManager.getResourceStats().limits.maxResponseSizeMB *
           1024 *
           1024,
-        // 🔴 CRITICAL: Force IPv4 to avoid IPv6 timeout issues on some datacenter networks
-        // Hetzner APAC and other regions may have unreachable IPv6, causing ETIMEDOUT errors
-        httpAgent: new HttpAgent({ family: 4 }),
-        httpsAgent: new HttpsAgent({ family: 4 }),
       };
 
       // 🔴 CRITICAL: Secure authentication handling
@@ -1138,8 +1131,14 @@ export class MonitorService {
       }
 
       // Execute request with connection tracking
-      const response = await firstValueFrom(
-        this.httpService.request(requestConfig),
+      const response = await requestPinnedMonitorTarget(
+        requestConfig,
+        {
+          allowInternalTargets: process.env.ALLOW_INTERNAL_TARGETS === 'true',
+          maxRedirects: SECURITY.MAX_REDIRECTS,
+        },
+        (validatedConfig) =>
+          firstValueFrom(this.httpService.request(validatedConfig)),
       );
 
       // Calculate response time in milliseconds with high precision

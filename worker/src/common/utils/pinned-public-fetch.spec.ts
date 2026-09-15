@@ -94,6 +94,43 @@ describe('worker pinned public fetch', () => {
     expect(mockRequest).not.toHaveBeenCalled();
   });
 
+  it('pins Node multi-address lookup to the validated public address', async () => {
+    (mockLookup as jest.Mock).mockResolvedValueOnce([
+      { address: '203.0.114.10', family: 4 },
+    ]);
+    const request = Object.assign(new EventEmitter(), {
+      end: jest.fn(),
+      write: jest.fn(),
+      destroy: jest.fn(),
+    });
+    (mockRequest as unknown as jest.Mock).mockImplementation(
+      (
+        _url: URL,
+        options: { lookup: Function },
+        onResponse: (response: EventEmitter) => void,
+      ) => {
+        const response = Object.assign(new EventEmitter(), {
+          statusCode: 200,
+          statusMessage: 'OK',
+          headers: {},
+        });
+        onResponse(response);
+        queueMicrotask(() => response.emit('end'));
+
+        const callback = jest.fn();
+        options.lookup('hooks.example.com', { all: true }, callback);
+        expect(callback).toHaveBeenCalledWith(null, [
+          { address: '203.0.114.10', family: 4 },
+        ]);
+        return request;
+      },
+    );
+
+    await expect(
+      fetchPublicEndpoint('https://hooks.example.com/events'),
+    ).resolves.toMatchObject({ status: 200 });
+  });
+
   it('rejects immediately when the HTTPS response stream errors', async () => {
     (mockLookup as jest.Mock).mockResolvedValueOnce([
       { address: '203.0.114.10', family: 4 },

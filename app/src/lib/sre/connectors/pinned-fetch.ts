@@ -3,6 +3,7 @@ import https from "node:https";
 import { isIP } from "node:net";
 
 import { isPrivateConnectorAddress } from "./endpoint-policy";
+import { createPinnedLookup } from "./pinned-lookup";
 
 const MAX_RESPONSE_BYTES = 10 * 1024 * 1024;
 
@@ -53,9 +54,7 @@ async function fetchPinnedEndpoint(
       {
         method: init.method ?? "GET",
         headers: Object.fromEntries(headers.entries()),
-        lookup: (_hostname, _options, callback) => {
-          callback(null, selected.address, selected.family);
-        },
+        lookup: createPinnedLookup(selected),
       },
       (response) => {
         const chunks: Buffer[] = [];

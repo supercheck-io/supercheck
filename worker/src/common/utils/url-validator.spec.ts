@@ -24,11 +24,18 @@ describe('worker outbound address policy', () => {
     '2002:7f00:1::',
     '64:ff9b::7f00:1',
     '::ffff:127.0.0.1',
+    '::ffff:ac12:5',
+    '[::ffff:ac12:5]',
   ])('rejects non-public address %s', (address) => {
     expect(isPrivateOrReservedAddress(address)).toBe(true);
   });
 
-  it.each(['8.8.8.8', '203.0.114.10', '2606:4700:4700::1111'])(
+  it.each([
+    '8.8.8.8',
+    '203.0.114.10',
+    '::ffff:8.8.8.8',
+    '2606:4700:4700::1111',
+  ])(
     'allows public address %s',
     (address) => {
       expect(isPrivateOrReservedAddress(address)).toBe(false);
