@@ -4,7 +4,7 @@ description: Write custom Node.js test scripts
 icon: SquareFunction
 ---
 
-Write custom test scripts for advanced scenarios that don't fit into browser, API, or database categories. Custom tests have full access to Node.js and popular npm packages.
+Write custom test scripts for advanced scenarios that don't fit into browser, API, or database categories. Custom tests run in a sandbox with an approved set of testing, HTTP, data, and database packages.
 
 ## Create Test
 
@@ -71,8 +71,8 @@ test.describe.serial('posts CRUD', () => {
 
 ## Features
 
-- Full Node.js environment
-- Popular npm packages available
+- Sandboxed TypeScript and JavaScript execution
+- Approved packages including Playwright, Axios, Zod, date-fns, Faker, and supported database drivers
 - Access to variables with `getVariable()`
 - Access to secrets with `getSecret()`
 - Custom assertions and complex logic
@@ -82,4 +82,8 @@ test.describe.serial('posts CRUD', () => {
 - **Multi-step workflows** — Create, update, delete sequences
 - **Data validation** — Complex business logic checks
 - **Integration tests** — Multiple services in one test
-- **Custom protocols** — WebSocket, gRPC, etc.
+- **API and database workflows** — Exercise supported services with approved clients
+
+<Callout type="info">
+System APIs such as `process`, `child_process`, `fs`, native `http`/`https`, and `net` are blocked. Use Playwright's request client or Axios for HTTP calls and Supercheck helpers for variables and secrets.
+</Callout>

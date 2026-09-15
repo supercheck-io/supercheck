@@ -51,7 +51,7 @@ Production self-hosting requires a Linux server with Docker Compose v2. Superche
 ```bash
 git clone https://github.com/supercheck-io/supercheck.git
 cd supercheck/deploy/docker
-sudo bash init-secrets.sh
+./init-secrets.sh
 sudo bash setup-k3s.sh
 KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig docker compose up -d
 ```

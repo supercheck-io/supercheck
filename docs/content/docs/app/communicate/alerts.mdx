@@ -42,17 +42,17 @@ Bot messages to chats or groups with Markdown formatting
 Embedded messages to server channels with color-coded status
 </Card>
 
-<Card icon={<Users className="text-blue-500" />} title="Microsoft Teams">
+<Card icon={<Users className="text-blue-500" />} title="Teams">
 Adaptive Card notifications via Power Automate workflows
 </Card>
 </Cards>
 
 ## Setting Up Providers
 
-1. Go to **Alerts → Notification Channels**
-2. Click **Add Provider**
+1. Go to **Alerts → Channels**
+2. Click **Add Channel**
 3. Select the provider type and enter credentials
-4. Click **Test** to verify the connection
+4. Click **Test Connection** to verify the connection
 5. Save the provider
 
 After creating providers, attach them to monitors or jobs in their **Alerts** settings.
@@ -75,7 +75,7 @@ After creating providers, attach them to monitors or jobs in their **Alerts** se
 |-------|---------|----------|
 | **Failure** | One or more tests in the job failed | Error |
 | **Success** | All tests passed (optional) | Success |
-| **Timeout** | Job exceeded maximum execution time | Error |
+| **Timeout** | Job exceeded maximum execution time | Warning |
 
 </Tab>
 </Tabs>
@@ -232,9 +232,9 @@ When no body template is provided, Supercheck sends a JSON payload similar to th
     { "title": "Monitor", "value": "API Health", "short": true },
     { "title": "Type", "value": "http_request", "short": true },
     { "title": "Status", "value": "down", "short": true },
-    { "title": "Response Time", "value": "5200ms", "short": true }
+    { "title": "Response Time", "value": "5.20s", "short": true }
   ],
-  "color": "#dc2626",
+  "color": "#ef4444",
   "footer": "",
   "timestamp": 1735689600,
   "originalPayload": {

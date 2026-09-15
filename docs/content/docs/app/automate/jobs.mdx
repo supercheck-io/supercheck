@@ -79,9 +79,9 @@ Set up notifications for job results:
 
 | Setting | Description |
 |---------|-------------|
-| **Alert on Failure** | Notify when any test in the job fails |
-| **Alert on Success** | Notify when all tests pass (optional) |
-| **Alert on Timeout** | Notify if job exceeds maximum execution time |
+| **Job failures** | Notify when any test in the job fails |
+| **Job success completion** | Notify when all tests pass (optional) |
+| **Job timeouts** | Notify if the job exceeds its maximum execution time |
 | **Notification Channels** | Select Slack, email, Discord, Telegram, or webhook |
 
 ## Parallel Execution
@@ -130,12 +130,12 @@ sequenceDiagram
 ### Setting Up API Triggers
 
 1. Open the job you want to trigger
-2. Go to the **CI/CD** tab
-3. Click **Generate API Key**
+2. Open the job's **Edit** action and continue to **CI/CD Settings**
+3. Click **Create Key**
 
 ![CI/CD Tab](/screenshots/edit-job-add-cicd-apikey-1.png)
 
-![Generate API Key](/screenshots/edit-job-add-cicd-apikey-2.png)
+![Create API Key](/screenshots/edit-job-add-cicd-apikey-2.png)
 
 4. Copy the trigger URL and API key
 

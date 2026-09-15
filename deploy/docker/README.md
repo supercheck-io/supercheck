@@ -9,7 +9,7 @@ git clone https://github.com/supercheck-io/supercheck.git
 cd supercheck/deploy/docker
 
 # Generate secrets and set up the execution sandbox
-sudo bash init-secrets.sh
+./init-secrets.sh
 sudo bash setup-k3s.sh
 
 # Edit .env for optional integrations (SMTP, AI, OAuth)
@@ -193,10 +193,10 @@ docker compose up -d
 
 ```bash
 # Create backup
-docker compose exec postgres pg_dump -U postgres supercheck > backup.sql
+docker compose exec postgres sh -c 'pg_dump -U "$DB_USER" "$DB_NAME"' > backup.sql
 
 # Restore backup
-docker compose exec -T postgres psql -U postgres supercheck < backup.sql
+docker compose exec -T postgres sh -c 'psql -U "$DB_USER" "$DB_NAME"' < backup.sql
 ```
 
 ---

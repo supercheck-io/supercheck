@@ -324,9 +324,9 @@ Detailed network security configuration is beyond the scope of this documentatio
 
 | Issue | Diagnostic Command |
 |-------|-------------------|
-| Worker can't reach DB | `docker compose -f docker-compose-worker.yml exec worker curl -sf http://127.0.0.1:8000/health/ready` and `docker run --rm postgres:18 psql "$DATABASE_URL" -c "SELECT 1"` |
+| Worker can't reach DB | Check readiness with `docker compose -f docker-compose-worker.yml exec worker curl -sf http://127.0.0.1:8000/health/ready`, then test the database directly with `docker run --rm postgres:18 psql "postgresql://USER:PASSWORD@MAIN_SERVER_IP:5432/supercheck" -c "SELECT 1"` |
 | Worker visible in Super Admin but monitors do not run | Heartbeat uses Redis. Monitor jobs also need PostgreSQL. Confirm `DATABASE_URL` points at the **same** database as the app, `SELF_HOSTED=true` for Docker Postgres without TLS, and ports 5432/6379/9000 are reachable. |
 | Worker can't reach Redis | `docker run --rm redis:8 redis-cli -h MAIN_SERVER_IP -a PASSWORD ping` |
-| Verify worker location | `docker compose logs worker \| grep WORKER_LOCATION` |
+| Verify worker location | `docker compose logs worker \| grep "initialized for location"` |
 | K6 jobs stuck queued | Ensure a worker has the matching `WORKER_LOCATION` running |
 | "No monitor queues available" | Verify workers are running in the monitor's configured locations |

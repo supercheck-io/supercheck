@@ -128,4 +128,4 @@ Use disposable fixtures for browser and provider tests and remove them afterward
 
 ## License
 
-The app, worker, CLI, and documentation are licensed under `AGPL-3.0-only`. The recorder remains under Apache-2.0 because it derives from Playwright CRX and Playwright; see `recorder/LICENSE` and `recorder/NOTICE`. By submitting a contribution, you certify that you have the right to submit it under the license of the files you change. All contributors must follow [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+The app, worker, CLI, deployment assets, and documentation are licensed under `AGPL-3.0-only`. The recorder remains under Apache-2.0 because it derives from Playwright CRX and Playwright; see `recorder/LICENSE` and `recorder/NOTICE`. By submitting a contribution, you certify that you have the right to submit it under the license of the files you change. All contributors must follow [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).

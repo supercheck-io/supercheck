@@ -12,7 +12,7 @@
 # Usage:
 #   1. Copy this file to your remote VPS
 #   2. Run: sudo bash setup-k3s.sh
-#   3. Create .env with connection details (see .env.example below)
+#   3. Create .env with the required connection details listed below
 #   4. Run: KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig docker compose -f docker-compose-worker.yml up -d
 #
 # Upgrading:

@@ -318,7 +318,7 @@ docker run --rm -e SUPERCHECK_TOKEN supercheck-cli whoami
 
 | Flag | Description |
 |---|---|
-| `--json` | Output in JSON format (or NDJSON for streams) |
+| `--json` | Output in JSON format (`sre ask` and `sre brief` use NDJSON) |
 | `--quiet` | Suppress non-essential output (IDs and errors only) |
 | `--debug` | Enable debug logging |
 | `-v, --version` | Show CLI version |

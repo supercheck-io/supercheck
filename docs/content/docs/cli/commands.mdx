@@ -21,7 +21,7 @@ supercheck --quiet whoami
 
 Config-aware commands (for example `config`, `diff`, `deploy`, `pull`, `validate`, `destroy`) accept `--config <path>` to point at a specific config file.
 
-For streaming commands, global `--json` produces newline-delimited JSON (NDJSON), one event per line.
+For `sre ask` and `sre brief`, global `--json` produces newline-delimited JSON (NDJSON), one event per line.
 
 ## Exit Codes
 
@@ -49,7 +49,7 @@ supercheck login --token <token> --url https://supercheck.yourdomain.com
 
 | Flag | Required | Description |
 |------|----------|-------------|
-| `--token <token>` | Yes | CLI token (`sck_live_*`) |
+| `--token <token>` | No | CLI token (`sck_live_*` or `sck_test_*`). Without it, the CLI prints token-creation instructions. |
 | `--url <url>` | No | API base URL for self-hosted |
 
 The token is verified against the API before being stored locally.
@@ -617,6 +617,8 @@ supercheck tag delete <id> --force    # Skip confirmation
 
 ## Notification Providers
 
+`notifications` is an alias for `notification`.
+
 ### `supercheck notification list`
 
 List notification providers.
@@ -699,6 +701,8 @@ supercheck notification test --type slack --payload '{"webhookUrl":"https://hook
 
 ## Alerts & Audit
 
+`alerts` is an alias for `alert`.
+
 ### `supercheck alert history`
 
 View alert history.
@@ -736,6 +740,8 @@ supercheck audit --search "deploy"
 
 AI SRE commands use the active project from the CLI token and preserve the same tenant and RBAC boundaries as the dashboard.
 
+The plural aliases `incidents` and `services` are also supported.
+
 ### Incidents
 
 ```bash
@@ -754,6 +760,7 @@ supercheck sre triage <incident-id>
 supercheck sre investigate <incident-id>
 supercheck sre investigate <incident-id> --live-connectors
 supercheck sre brief <incident-id>
+supercheck sre brief <incident-id> --idle-timeout 120
 ```
 
 Deep investigation is asynchronous: a successful command returns an accepted investigation-run ID. Follow progress with `incident get` and `incident timeline`. `--live-connectors` enables configured read-only telemetry tools only when the caller also has `sre_connector:investigate` permission.
@@ -814,7 +821,7 @@ supercheck deploy --no-delete    # Skip deletions
 supercheck deploy --force        # Skip confirmation
 ```
 
-`--force` skips the confirmation prompt. Test scripts are stored as source text, not precompiled output.
+`--force` skips the confirmation prompt. Test scripts are sanitized and stored as UTF-8 source through the API's Base64 transport format, not as precompiled output or generated sourcemap data.
 
 ### `supercheck destroy`
 

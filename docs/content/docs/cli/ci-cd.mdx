@@ -201,7 +201,8 @@ Set these in your CI/CD platform's secret management:
 | Variable | Description |
 |----------|-------------|
 | `SUPERCHECK_URL` | Self-hosted instance URL |
-| `SUPERCHECK_JOB_ID` | Default job ID for triggers |
+
+Pass the job ID as the argument to `supercheck job trigger`; the CLI does not read a default job ID from an environment variable.
 
 ### Self-Hosted
 

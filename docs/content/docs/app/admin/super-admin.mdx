@@ -123,7 +123,6 @@ Organization admins can restrict which locations a project is allowed to use. Se
 | **Organizations** | View and manage all organizations |
 | **Users** | Manage all users system-wide, ban/unban accounts |
 | **Impersonation** | Log in as any user for troubleshooting |
-| **Scheduler Control** | Initialize schedulers, view status, manually trigger jobs |
 | **Queue Monitoring** | Real-time BullMQ queue stats via Bull Dashboard |
 | **Location Management** | Add, edit, enable/disable geographic locations for multi-region deployments |
 
@@ -174,18 +173,10 @@ To suspend a user account:
 **Reversible Action**: Banning is reversible. The user will be unable to sign in until unbanned, but all their data is preserved. To unban, click **Unban** from the same menu.
 </Callout>
 
-Banned users see a "403 Account suspended" message when attempting to log in.
+Banned users see a "User is banned" message when attempting to log in.
 
 </Tab>
 </Tabs>
-
-## Scheduler Control
-
-Manage the job scheduling system:
-
-- **Initialize Schedulers** — Start or restart the scheduling service
-- **View Status** — Check scheduler health and active jobs
-- **Manual Triggers** — Force-run scheduled jobs for testing
 
 ## Security
 

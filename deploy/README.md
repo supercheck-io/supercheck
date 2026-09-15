@@ -13,7 +13,7 @@ git clone https://github.com/supercheck-io/supercheck.git
 cd supercheck/deploy/docker
 
 # Generate secrets and set up the execution sandbox
-sudo bash init-secrets.sh
+./init-secrets.sh
 sudo bash setup-k3s.sh
 
 # Start services
