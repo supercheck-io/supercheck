@@ -8,7 +8,7 @@
     "serve": "vite ./server --host 127.0.0.1 --port 3000"
   },
   "devDependencies": {
-    "@playwright/test": "1.51.0",
+    "@playwright/test": "1.53.0",
     "yauzl": "^3.2.0"
   }
 }

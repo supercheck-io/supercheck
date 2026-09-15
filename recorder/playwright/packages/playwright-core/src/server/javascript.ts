@@ -15,13 +15,13 @@
  */
 
 import { SdkObject } from './instrumentation';
-import * as utilityScriptSource from '../generated/utilityScriptSource';
+import * as rawUtilityScriptSource from '../generated/utilityScriptSource';
 import { isUnderTest } from '../utils';
-import { serializeAsCallArgument } from './isomorphic/utilityScriptSerializers';
+import { serializeAsCallArgument } from '../utils/isomorphic/utilityScriptSerializers';
 import { LongStandingScope } from '../utils/isomorphic/manualPromise';
 
 import type * as dom from './dom';
-import type { UtilityScript } from './injected/utilityScript';
+import type { UtilityScript } from '@injected/utilityScript';
 
 interface TaggedAsJSHandle<T> {
   __jshandle: T;
@@ -82,7 +82,7 @@ export class ExecutionContext extends SdkObject {
   }
 
   async evaluateWithArguments(expression: string, returnByValue: boolean, values: any[], handles: JSHandle[]): Promise<any> {
-    const utilityScript = await this._utilityScript();
+    const utilityScript = await this.utilityScript();
     return this._raceAgainstContextDestroyed(this.delegate.evaluateWithArguments(expression, returnByValue, utilityScript, values, handles));
   }
 
@@ -98,13 +98,13 @@ export class ExecutionContext extends SdkObject {
     return null;
   }
 
-  private _utilityScript(): Promise<JSHandle<UtilityScript>> {
+  utilityScript(): Promise<JSHandle<UtilityScript>> {
     if (!this._utilityScriptPromise) {
       const source = `
       (() => {
         const module = {};
-        ${utilityScriptSource.source}
-        return new (module.exports.UtilityScript())(${isUnderTest()});
+        ${rawUtilityScriptSource.source}
+        return new (module.exports.UtilityScript())(globalThis, ${isUnderTest()});
       })();`;
       this._utilityScriptPromise = this._raceAgainstContextDestroyed(this.delegate.rawEvaluateHandle(this, source))
           .then(handle => {
@@ -292,17 +292,20 @@ export function normalizeEvaluationExpression(expression: string, isFunction: bo
     try {
       new Function('(' + expression + ')');
     } catch (e1) {
-      // This means we might have a function shorthand. Try another
-      // time prefixing 'function '.
-      if (expression.startsWith('async '))
-        expression = 'async function ' + expression.substring('async '.length);
-      else
-        expression = 'function ' + expression;
-      try {
-        new Function('(' + expression  + ')');
-      } catch (e2) {
-        // We tried hard to serialize, but there's a weird beast here.
-        throw new Error('Passed function is not well-serializable!');
+      // check if CSP doesn't allow 'unsafe-eval'
+      if (!(e1 instanceof EvalError) || !e1.message.includes('unsafe-eval')) {
+        // This means we might have a function shorthand. Try another
+        // time prefixing 'function '.
+        if (expression.startsWith('async '))
+          expression = 'async function ' + expression.substring('async '.length);
+        else
+          expression = 'function ' + expression;
+        try {
+          new Function('(' + expression  + ')');
+        } catch (e2) {
+          // We tried hard to serialize, but there's a weird beast here.
+          throw new Error('Passed function is not well-serializable!');
+        }
       }
     }
   }

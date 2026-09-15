@@ -19,7 +19,7 @@
   },
   "scripts": {
     "dev": "vite build --watch",
-    "build": "npx tsc && npx vite build",
+    "build": "npx tsc && npx vite build && npx vite build --config vite.content-script.config.ts",
     "lint": "npx eslint src --ext .ts,.tsx"
   },
   "dependencies": {

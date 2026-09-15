@@ -34,6 +34,7 @@ import {
   toBeInViewport,
   toBeOK,
   toBeVisible,
+  toContainClass,
   toContainText,
   toHaveAccessibleDescription,
   toHaveAccessibleErrorMessage,
@@ -61,12 +62,13 @@ import {
   printReceived,
 } from '../common/expectBundle';
 import { currentTestInfo } from '../common/globals';
-import { filteredStackTrace, trimLongString } from '../util';
+import { filteredStackTrace } from '../util';
 import { TestInfoImpl } from '../worker/testInfo';
 
 import type { ExpectMatcherStateInternal } from './matchers';
 import type { Expect } from '../../types/test';
 import type { TestStepInfoImpl } from '../worker/testInfo';
+import type { TestStepCategory } from '../util';
 
 
 // #region
@@ -209,10 +211,12 @@ function setMatcherCallContext(context: MatcherCallContext) {
   matcherCallContext = context;
 }
 
-function takeMatcherCallContext(): MatcherCallContext {
+function takeMatcherCallContext(): MatcherCallContext | undefined {
   try {
-    return matcherCallContext!;
+    return matcherCallContext;
   } finally {
+    // Any subsequent matcher following the first is assumed to be an unsupported legacy asymmetric matcher.
+    // Lacking call context in these scenarios is not particularly important.
     matcherCallContext = undefined;
   }
 }
@@ -223,13 +227,13 @@ function wrapPlaywrightMatcherToPassNiceThis(matcher: any) {
   return function(this: any, ...args: any[]) {
     const { isNot, promise, utils } = this;
     const context = takeMatcherCallContext();
-    const timeout = context.expectInfo.timeout ?? context.testInfo?._projectInternal?.expect?.timeout ?? defaultExpectTimeout;
+    const timeout = context?.expectInfo.timeout ?? context?.testInfo?._projectInternal?.expect?.timeout ?? defaultExpectTimeout;
     const newThis: ExpectMatcherStateInternal = {
       isNot,
       promise,
       utils,
       timeout,
-      _stepInfo: context.step,
+      _stepInfo: context?.step,
     };
     (newThis as any).equals = throwUnsupportedExpectMatcherError;
     return matcher.call(newThis, ...args);
@@ -255,6 +259,7 @@ const customAsyncMatchers = {
   toBeOK,
   toBeVisible,
   toContainText,
+  toContainClass,
   toHaveAccessibleDescription,
   toHaveAccessibleName,
   toHaveAccessibleErrorMessage,
@@ -339,18 +344,22 @@ class ExpectMetaInfoProxyHandler implements ProxyHandler<any> {
       const customMessage = this._info.message || '';
       const argsSuffix = computeArgsSuffix(matcherName, args);
 
-      const defaultTitle = `expect${this._info.poll ? '.poll' : ''}${this._info.isSoft ? '.soft' : ''}${this._info.isNot ? '.not' : ''}.${matcherName}${argsSuffix}`;
+      const defaultTitle = `${this._info.poll ? 'poll ' : ''}${this._info.isSoft ? 'soft ' : ''}${this._info.isNot ? 'not ' : ''}${matcherName}${argsSuffix}`;
       const title = customMessage || defaultTitle;
+      const apiName = `expect${this._info.poll ? '.poll ' : ''}${this._info.isSoft ? '.soft ' : ''}${this._info.isNot ? '.not' : ''}.${matcherName}${argsSuffix}`;
 
       // This looks like it is unnecessary, but it isn't - we need to filter
       // out all the frames that belong to the test runner from caught runtime errors.
       const stackFrames = filteredStackTrace(captureRawStack());
+      const category = matcherName === 'toPass' || this._info.poll ? 'test.step' : 'expect' as TestStepCategory;
+      const formattedTitle = category === 'expect' ? title : `Expect "${title}"`;
 
       // toPass and poll matchers can contain other steps, expects and API calls,
       // so they behave like a retriable step.
       const stepInfo = {
-        category: (matcherName === 'toPass' || this._info.poll) ? 'step' : 'expect',
-        title: trimLongString(title, 1024),
+        category,
+        apiName,
+        title: formattedTitle,
         params: args[0] ? { expected: args[0] } : undefined,
         infectParentStepsWithError: this._info.isSoft,
       };
@@ -381,10 +390,8 @@ class ExpectMetaInfoProxyHandler implements ProxyHandler<any> {
         setMatcherCallContext({ expectInfo: this._info, testInfo, step: step.info });
         const callback = () => matcher.call(target, ...args);
         const result = currentZone().with('stepZone', step).run(callback);
-        if (result instanceof Promise) {
-          const promise = result.then(finalizer).catch(reportStepError);
-          return testInfo._floatingPromiseScope.wrapPromiseAPIResult(promise);
-        }
+        if (result instanceof Promise)
+          return result.then(finalizer).catch(reportStepError);
         finalizer();
         return result;
       } catch (e) {

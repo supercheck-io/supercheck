@@ -21,7 +21,9 @@ defaults:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # The complete extension suite contains 141 browser tests and can exceed
+    # 30 minutes on a loaded GitHub runner.
+    timeout-minutes: 45
 
     steps:
       - name: Checkout

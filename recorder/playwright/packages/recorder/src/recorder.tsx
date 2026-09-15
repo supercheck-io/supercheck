@@ -31,15 +31,13 @@ import { copy, useSetting } from '@web/uiUtils';
 import yaml from 'yaml';
 import { parseAriaSnapshot } from '@isomorphic/ariaSnapshot';
 
-// Modified by Supercheck to support editing recorded code inside the extension.
-
 export interface RecorderProps {
   sources: Source[],
   paused: boolean,
   log: Map<string, CallLog>,
   mode: Mode,
-  onEditedCode?: (code: string) => void,
-  onCursorActivity?: (position: { line: number }) => void,
+  onEditedCode?: (code: string) => any,
+  onCursorActivity?: (position: { line: number }) => any,
 }
 
 export const Recorder: React.FC<RecorderProps> = ({
@@ -55,6 +53,7 @@ export const Recorder: React.FC<RecorderProps> = ({
   const [selectedTab, setSelectedTab] = useSetting<string>('recorderPropertiesTab', 'log');
   const [ariaSnapshot, setAriaSnapshot] = React.useState<string | undefined>();
   const [ariaSnapshotErrors, setAriaSnapshotErrors] = React.useState<SourceHighlight[]>();
+  const [selectorFocusOnChange, setSelectorFocusOnChange] = React.useState<boolean | undefined>(true);
 
   const fileId = selectedFileId || runningFileId || sources[0]?.id;
 
@@ -73,13 +72,16 @@ export const Recorder: React.FC<RecorderProps> = ({
     setLocator(asLocator(language, elementInfo.selector));
     setAriaSnapshot(elementInfo.ariaSnapshot);
     setAriaSnapshotErrors([]);
+    setSelectorFocusOnChange(userGesture);
+
     if (userGesture && selectedTab !== 'locator' && selectedTab !== 'aria')
       setSelectedTab('locator');
 
     if (mode === 'inspecting' && selectedTab === 'aria') {
       // Keep exploring aria.
     } else {
-      window.dispatch({ event: 'setMode', params: { mode: mode === 'inspecting' ? 'standby' : 'recording' } }).catch(() => { });
+      const isRecording = ['recording', 'assertingText', 'assertingVisibility', 'assertingValue', 'assertingSnapshot'].includes(mode);
+      window.dispatch({ event: 'setMode', params: { mode: isRecording ? 'recording' : 'standby' } }).catch(() => { });
     }
   };
 
@@ -196,14 +198,14 @@ export const Recorder: React.FC<RecorderProps> = ({
     </Toolbar>
     <SplitView
       sidebarSize={200}
-      main={<CodeMirrorWrapper text={source.text} language={source.language} highlight={source.highlight} revealLine={source.revealLine} readOnly={!onEditedCode} lineNumbers={true} onChange={onEditedCode} onCursorActivity={onCursorActivity} />}
+      main={<CodeMirrorWrapper text={source.text} language={source.language} highlight={source.highlight} revealLine={source.revealLine} readOnly={source.id !== 'playwright-test'} onChange={onEditedCode} onCursorActivity={onCursorActivity} lineNumbers={true} />}
       sidebar={<TabbedPane
         rightToolbar={selectedTab === 'locator' || selectedTab === 'aria' ? [<ToolbarButton key={1} icon='files' title='Copy' onClick={() => copy((selectedTab === 'locator' ? locator : ariaSnapshot) || '')} />] : []}
         tabs={[
           {
             id: 'locator',
             title: 'Locator',
-            render: () => <CodeMirrorWrapper text={locator} placeholder='Type locator to inspect' language={source.language} focusOnChange={true} onChange={onEditorChange} wrapLines={true} />
+            render: () => <CodeMirrorWrapper text={locator} placeholder='Type locator to inspect' language={source.language} focusOnChange={selectorFocusOnChange} onChange={onEditorChange} wrapLines={true} />
           },
           {
             id: 'log',

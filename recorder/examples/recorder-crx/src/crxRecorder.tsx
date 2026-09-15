@@ -250,7 +250,7 @@ export const CrxRecorder: React.FC = ({
       <div
         className={`supercheck-save-link ${!isEnabled ? 'disabled' : ''}`}
         onClick={() => isEnabled && saveToPlayground()}
-        title={recordingContext ? 'Save to Supercheck Playground' : 'Start recording from Supercheck to enable'}
+        title={recordingContext ? 'Save to Supercheck Playground' : 'Open from Supercheck to enable saving'}
       >
         <span className='codicon codicon-save' />
         <span>{savingToPlayground ? 'Saving...' : 'Save'}</span>

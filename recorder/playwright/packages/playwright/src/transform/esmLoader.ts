@@ -40,12 +40,23 @@ async function resolve(specifier: string, context: { parentURL?: string }, defau
   return result;
 }
 
+// non-js files have undefined
+// some js files have null
+// {module/commonjs}-typescript are changed to {module,commonjs} because we handle typescript ourselves
+const kSupportedFormats = new Map([
+  ['commonjs', 'commonjs'],
+  ['module', 'module'],
+  ['commonjs-typescript', 'commonjs'],
+  ['module-typescript', 'module'],
+  [null, null],
+  [undefined, undefined]
+]);
+
 // Node < 18.6: defaultLoad takes 3 arguments.
 // Node >= 18.6: nextLoad from the chain takes 2 arguments.
 async function load(moduleUrl: string, context: { format?: string }, defaultLoad: Function) {
   // Bail out for wasm, json, etc.
-  // non-js files have context.format === undefined
-  if (context.format !== 'commonjs' && context.format !== 'module' && context.format !== undefined)
+  if (!kSupportedFormats.has(context.format))
     return defaultLoad(moduleUrl, context, defaultLoad);
 
   // Bail for built-in modules.
@@ -61,31 +72,28 @@ async function load(moduleUrl: string, context: { format?: string }, defaultLoad
   const transformed = transformHook(code, filename, moduleUrl);
 
   // Flush the source maps to the main thread, so that errors during import() are source-mapped.
-  if (transformed.serializedCache)
-    await transport?.send('pushToCompilationCache', { cache: transformed.serializedCache });
+  if (transformed.serializedCache) {
+    if (legacyWaitForSourceMaps)
+      await transport?.send('pushToCompilationCache', { cache: transformed.serializedCache });
+    else
+      transport?.post('pushToCompilationCache', { cache: transformed.serializedCache });
+  }
 
   // Output format is required, so we determine it manually when unknown.
   // shortCircuit is required by Node >= 18.6 to designate no more loaders should be called.
   return {
-    format: context.format || (fileIsModule(filename) ? 'module' : 'commonjs'),
+    format: kSupportedFormats.get(context.format) || (fileIsModule(filename) ? 'module' : 'commonjs'),
     source: transformed.code,
     shortCircuit: true,
   };
 }
 
 let transport: PortTransport | undefined;
+let legacyWaitForSourceMaps = false;
 
-// Node.js < 20
-function globalPreload(context: { port: MessagePort }) {
-  transport = createTransport(context.port);
-  return `
-    globalThis.__esmLoaderPortPreV20 = port;
-  `;
-}
-
-// Node.js >= 20
 function initialize(data: { port: MessagePort }) {
   transport = createTransport(data?.port);
+  legacyWaitForSourceMaps = !!process.env.PLAYWRIGHT_WAIT_FOR_SOURCE_MAPS;
 }
 
 function createTransport(port: MessagePort) {
@@ -121,4 +129,4 @@ function createTransport(port: MessagePort) {
 }
 
 
-module.exports = { globalPreload, initialize, load, resolve };
+module.exports = { initialize, load, resolve };

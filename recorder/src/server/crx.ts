@@ -241,7 +241,7 @@ export class CrxApplication extends SdkObject {
         mode: mode === 'none' ? undefined : mode,
         ...otherOptions
       };
-      Recorder.show(this._context, recorder => this._createRecorderApp(recorder), recorderParams);
+      await Recorder.show(this._context, recorder => this._createRecorderApp(recorder), recorderParams);
     }
 
     await this._recorderApp!.open(options);

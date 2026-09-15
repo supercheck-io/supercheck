@@ -36,7 +36,6 @@ export type FixturesWithLocation = {
   fixtures: Fixtures;
   location: Location;
 };
-export type Annotation = { type: string, description?: string };
 
 export const defaultTimeout = 30000;
 
@@ -49,6 +48,7 @@ export class FullConfigInternal {
   readonly projects: FullProjectInternal[] = [];
   readonly singleTSConfigPath?: string;
   readonly captureGitInfo: Config['captureGitInfo'];
+  readonly failOnFlakyTests: boolean;
   cliArgs: string[] = [];
   cliGrep: string | undefined;
   cliGrepInvert: string | undefined;
@@ -56,7 +56,6 @@ export class FullConfigInternal {
   cliProjectFilter?: string[];
   cliListOnly = false;
   cliPassWithNoTests?: boolean;
-  cliFailOnFlakyTests?: boolean;
   cliLastFailed?: boolean;
   testIdMatcher?: Matcher;
   lastFailedTestIdMatcher?: Matcher;
@@ -79,6 +78,7 @@ export class FullConfigInternal {
     this.plugins = (privateConfiguration?.plugins || []).map((p: any) => ({ factory: p }));
     this.singleTSConfigPath = pathResolve(configDir, userConfig.tsconfig);
     this.captureGitInfo = userConfig.captureGitInfo;
+    this.failOnFlakyTests = takeFirst(configCLIOverrides.failOnFlakyTests, userConfig.failOnFlakyTests, false);
 
     this.globalSetups = (Array.isArray(userConfig.globalSetup) ? userConfig.globalSetup : [userConfig.globalSetup]).map(s => resolveScript(s, configDir)).filter(script => script !== undefined);
     this.globalTeardowns = (Array.isArray(userConfig.globalTeardown) ? userConfig.globalTeardown : [userConfig.globalTeardown]).map(s => resolveScript(s, configDir)).filter(script => script !== undefined);
@@ -108,7 +108,7 @@ export class FullConfigInternal {
       updateSnapshots: takeFirst(configCLIOverrides.updateSnapshots, userConfig.updateSnapshots, 'missing'),
       updateSourceMethod: takeFirst(configCLIOverrides.updateSourceMethod, userConfig.updateSourceMethod, 'patch'),
       version: require('../../package.json').version,
-      workers: 0,
+      workers: resolveWorkers(takeFirst(configCLIOverrides.debug ? 1 : undefined, configCLIOverrides.workers, userConfig.workers, '50%')),
       webServer: null,
     };
     for (const key in userConfig) {
@@ -117,18 +117,6 @@ export class FullConfigInternal {
     }
 
     (this.config as any)[configInternalSymbol] = this;
-
-    const workers = takeFirst(configCLIOverrides.debug ? 1 : undefined, configCLIOverrides.workers, userConfig.workers, '50%');
-    if (typeof workers === 'string') {
-      if (workers.endsWith('%')) {
-        const cpus = os.cpus().length;
-        this.config.workers = Math.max(1, Math.floor(cpus * (parseInt(workers, 10) / 100)));
-      } else {
-        this.config.workers = parseWorkers(workers);
-      }
-    } else {
-      this.config.workers = workers;
-    }
 
     const webServers = takeFirst(userConfig.webServer, null);
     if (Array.isArray(webServers)) { // multiple web server mode
@@ -174,6 +162,7 @@ export class FullProjectInternal {
   readonly respectGitIgnore: boolean;
   readonly snapshotPathTemplate: string | undefined;
   readonly ignoreSnapshots: boolean;
+  readonly workers: number | undefined;
   id = '';
   deps: FullProjectInternal[] = [];
   teardown: FullProjectInternal | undefined;
@@ -210,6 +199,9 @@ export class FullProjectInternal {
     }
     this.respectGitIgnore = takeFirst(projectConfig.respectGitIgnore, config.respectGitIgnore, !projectConfig.testDir && !config.testDir);
     this.ignoreSnapshots = takeFirst(configCLIOverrides.ignoreSnapshots,  projectConfig.ignoreSnapshots, config.ignoreSnapshots, false);
+    this.workers = projectConfig.workers ? resolveWorkers(projectConfig.workers) : undefined;
+    if (configCLIOverrides.debug && this.workers)
+      this.workers = 1;
   }
 }
 
@@ -235,12 +227,18 @@ function resolveReporters(reporters: Config['reporter'], rootDir: string): Repor
   });
 }
 
-function parseWorkers(workers: string) {
-  const parsedWorkers = parseInt(workers, 10);
-  if (isNaN(parsedWorkers))
-    throw new Error(`Workers ${workers} must be a number or percentage.`);
-
-  return parsedWorkers;
+function resolveWorkers(workers: string | number): number {
+  if (typeof workers === 'string') {
+    if (workers.endsWith('%')) {
+      const cpus = os.cpus().length;
+      return Math.max(1, Math.floor(cpus * (parseInt(workers, 10) / 100)));
+    }
+    const parsedWorkers = parseInt(workers, 10);
+    if (isNaN(parsedWorkers))
+      throw new Error(`Workers ${workers} must be a number or percentage.`);
+    return parsedWorkers;
+  }
+  return workers;
 }
 
 function resolveProjectDependencies(projects: FullProjectInternal[]) {

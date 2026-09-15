@@ -41,6 +41,10 @@ export class RecorderCollection extends EventEmitter {
     this.emit('change', []);
   }
 
+  loadActions(actions: actions.ActionInContext[]) {
+    this._actions = Array.from(actions);
+  }
+
   setEnabled(enabled: boolean) {
     this._enabled = enabled;
   }

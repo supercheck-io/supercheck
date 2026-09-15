@@ -16,7 +16,6 @@
 
 import fs from 'fs';
 
-import * as consoleApiSource from '../generated/consoleApiSource';
 import { isUnderTest } from '../utils';
 import { BrowserContext } from './browserContext';
 import { Debugger } from './debugger';
@@ -40,7 +39,7 @@ const recorderSymbol = Symbol('recorderSymbol');
 
 export class Recorder implements InstrumentationListener, IRecorder {
   readonly handleSIGINT: boolean | undefined;
-  private _context: BrowserContext;
+  readonly _context: BrowserContext;
   private _mode: Mode;
   private _highlightedElement: { selector?: string, ariaTemplate?: AriaTemplateNode } = {};
   private _overlayState: OverlayState = { offsetX: 0 };
@@ -204,8 +203,6 @@ export class Recorder implements InstrumentationListener, IRecorder {
     await this._context.exposeBinding('__pw_resume', false, () => {
       this._debugger.resume(false);
     });
-    await this._context.extendInjectedScript(consoleApiSource.source);
-
     await this._contextRecorder.install();
 
     if (this._debugger.isPaused())
@@ -222,7 +219,7 @@ export class Recorder implements InstrumentationListener, IRecorder {
         this.onBeforeCall(sdkObject, metadata);
     }
     this._recorderApp?.setPaused(this._debugger.isPaused());
-    this._updateUserSources();
+    this._updateSources();
     this.updateCallLog([...this._currentCallsMetadata.keys()]);
   }
 
@@ -237,6 +234,11 @@ export class Recorder implements InstrumentationListener, IRecorder {
     if (this._mode !== 'none' && this._mode !== 'standby' && this._context.pages().length === 1)
       this._context.pages()[0].bringToFront().catch(() => {});
     this._refreshOverlay();
+  }
+  
+  loadScript(script: { actions: actions.ActionInContext[], deviceName: string, contextOptions: LanguageGeneratorOptions['contextOptions'], text: string, highlight?: SourceHighlight[] }) {
+    this._recorderSources = this._contextRecorder.loadScript(script);
+    this._pushAllSources();
   }
 
   resume() {
@@ -298,11 +300,15 @@ export class Recorder implements InstrumentationListener, IRecorder {
     }
   }
 
+  async _uninstallInjectedRecorder(page: Page) {
+    await Promise.all(page.frames().map(f => f.evaluateExpression('window.__pw_uninstall()').catch(() => {})));
+  }
+
   async onBeforeCall(sdkObject: SdkObject, metadata: CallMetadata) {
     if (this._omitCallTracking || this._isRecording())
       return;
     this._currentCallsMetadata.set(metadata, sdkObject);
-    this._updateUserSources();
+    this._updateSources();
     this.updateCallLog([metadata]);
     if (isScreenshotCommand(metadata))
       this.hideHighlightedSelector();
@@ -315,13 +321,21 @@ export class Recorder implements InstrumentationListener, IRecorder {
       return;
     if (!metadata.error)
       this._currentCallsMetadata.delete(metadata);
-    this._updateUserSources();
+    this._updateSources();
     this.updateCallLog([metadata]);
   }
 
-  private _updateUserSources() {
+  clearErrors() {
+    const errors = [...this._currentCallsMetadata.keys()].filter(c => c.error);
+    for (const error of errors)
+      this._currentCallsMetadata.delete(error);
+
+    this._updateSources();
+  }
+
+  private _updateSources() {
     // Remove old decorations.
-    for (const source of this._userSources.values()) {
+    for (const source of [...this._recorderSources, ...this._userSources.values()]) {
       source.highlight = [];
       source.revealLine = undefined;
     }
@@ -332,14 +346,14 @@ export class Recorder implements InstrumentationListener, IRecorder {
       if (!metadata.location)
         continue;
       const { file, line } = metadata.location;
-      let source = this._userSources.get(file);
+      let source = this._userSources.get(file) ?? this._recorderSources.find(rs => rs.id === file);
       if (!source) {
         source = { isRecorded: false, label: file, id: file, text: this._readSource(file), highlight: [], language: languageForFile(file) };
         this._userSources.set(file, source);
       }
       if (line) {
         const paused = this._debugger.isPaused(metadata);
-        source.highlight.push({ line, type: metadata.error ? 'error' : (paused ? 'paused' : 'running') });
+        source.highlight.push({ line, type: metadata.error ? 'error' : (paused ? 'paused' : 'running'), message: metadata.error?.error?.message });
         source.revealLine = line;
         fileToSelect = source.id;
       }
@@ -378,7 +392,7 @@ export class Recorder implements InstrumentationListener, IRecorder {
     this._recorderApp?.updateCallLogs(logs);
   }
 
-  private _isRecording() {
+  _isRecording() {
     return ['recording', 'assertingText', 'assertingVisibility', 'assertingValue', 'assertingSnapshot'].includes(this._mode);
   }
 

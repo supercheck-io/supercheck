@@ -82,7 +82,9 @@ async function getCrxApp(incognito: boolean) {
   await settingsInitializing;
 
   // Check if there's an existing app we can use
-  const existingApp = await crx.get({ incognito });
+  // A test fixture owns the application lifecycle; reusing a partially
+  // initialized instance can leave its recorder target already closed.
+  const existingApp = isUnderTest() ? undefined : await crx.get({ incognito });
 
   if (existingApp) {
     if (!crxAppPromise)
@@ -143,6 +145,10 @@ async function attach(tab: chrome.tabs.Tab, mode?: Mode) {
   if (!tab?.id)
     return;
 
+  const underTest = isUnderTest();
+  if (underTest && attachedTabIds.has(tab.id) && !mode)
+    return;
+
   // Prevent concurrent attach() calls
   if (isAttaching)
     return;
@@ -155,7 +161,7 @@ async function attach(tab: chrome.tabs.Tab, mode?: Mode) {
     throw new Error('Not authorized to launch in Incognito mode.');
   }
 
-  const sidepanel = !isUnderTest() && settings.sidepanel;
+  const sidepanel = !underTest && settings.sidepanel;
 
   // Open sidepanel IMMEDIATELY with user gesture
   if (sidepanel) {
@@ -183,17 +189,20 @@ async function attach(tab: chrome.tabs.Tab, mode?: Mode) {
 
     }
 
-    // Open a new tab for recording
-    const currentWindow = await chrome.windows.getCurrent();
-    const newTab = await chrome.tabs.create({
-      url: targetUrl,
-      windowId: currentWindow.id,
-      active: true
-    });
+    // Tests explicitly attach the supplied page. Interactive recordings use a
+    // fresh tab so they cannot unexpectedly navigate the user's current page.
+    if (!underTest) {
+      const currentWindow = await chrome.windows.getCurrent();
+      const newTab = await chrome.tabs.create({
+        url: targetUrl,
+        windowId: currentWindow.id,
+        active: true
+      });
 
-    if (newTab.id) {
-      tab = { ...newTab, id: newTab.id } as chrome.tabs.Tab;
-      await new Promise(resolve => setTimeout(resolve, 800));
+      if (newTab.id) {
+        tab = { ...newTab, id: newTab.id } as chrome.tabs.Tab;
+        await new Promise(resolve => setTimeout(resolve, 800));
+      }
     }
 
     // Get crxApp
@@ -218,6 +227,8 @@ async function attach(tab: chrome.tabs.Tab, mode?: Mode) {
     crxAppPromise = undefined;
     attachedTabIds.clear();
     currentMode = undefined;
+    if (underTest)
+      throw error;
   } finally {
     isAttaching = false;
     chrome.action.enable();

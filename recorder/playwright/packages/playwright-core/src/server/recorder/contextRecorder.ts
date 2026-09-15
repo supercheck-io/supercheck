@@ -17,7 +17,7 @@
 import { EventEmitter } from 'events';
 
 import { RecorderCollection } from './recorderCollection';
-import * as recorderSource from '../../generated/pollingRecorderSource';
+import * as rawRecorderSource from '../../generated/pollingRecorderSource';
 import { eventsHelper, monotonicTime, quoteCSSAttributeValue  } from '../../utils';
 import { raceAgainstDeadline } from '../../utils/isomorphic/timeoutRunner';
 import { BrowserContext } from '../browserContext';
@@ -29,10 +29,9 @@ import { generateCode } from '../codegen/language';
 
 import type { RegisteredListener } from '../../utils';
 import type { Language, LanguageGenerator, LanguageGeneratorOptions } from '../codegen/types';
-import type { Dialog } from '../dialog';
 import type * as channels from '@protocol/channels';
 import type * as actions from '@recorder/actions';
-import type { Source } from '@recorder/recorderTypes';
+import type { Source, SourceHighlight } from '@recorder/recorderTypes';
 
 type BindingSource = { frame: Frame, page: Page };
 
@@ -66,18 +65,17 @@ export class ContextRecorder extends EventEmitter {
     this._recorderSources = [];
     const language = params.language || context.attribution.playwright.options.sdkLanguage;
     this.setOutput(language, params.outputFile);
-
-    // Make a copy of options to modify them later.
-    const languageGeneratorOptions: LanguageGeneratorOptions = {
-      browserName: context._browser.options.name,
-      launchOptions: { headless: false, ...params.launchOptions, tracesDir: undefined },
-      contextOptions: { ...params.contextOptions },
-      deviceName: params.device,
-      saveStorage: params.saveStorage,
-    };
-
+    
     this._collection = new RecorderCollection(this._pageAliases);
     this._collection.on('change', (actions: actions.ActionInContext[]) => {
+      const languageGeneratorOptions: LanguageGeneratorOptions = {
+        browserName: context._browser.options.name,
+        launchOptions: { headless: false, ...params.launchOptions, tracesDir: undefined },
+        contextOptions: { ...params.contextOptions },
+        deviceName: params.device,
+        saveStorage: params.saveStorage,
+      };
+
       this._recorderSources = [];
       for (const languageGenerator of this._orderedLanguages) {
         const { header, footer, actionTexts, text } = generateCode(actions, languageGenerator, languageGeneratorOptions);
@@ -135,7 +133,11 @@ export class ContextRecorder extends EventEmitter {
     this._context.on(BrowserContext.Events.Page, (page: Page) => this._onPage(page));
     for (const page of this._context.pages())
       this._onPage(page);
-    this._context.on(BrowserContext.Events.Dialog, (dialog: Dialog) => this._onDialog(dialog.page()));
+    this._context.dialogManager.addDialogHandler(dialog => {
+      this._onDialog(dialog.page());
+      // Not handling the dialog, let it automatically close.
+      return false;
+    });
 
     // Input actions that potentially lead to navigation are intercepted on the page and are
     // performed by the Playwright.
@@ -146,7 +148,7 @@ export class ContextRecorder extends EventEmitter {
     await this._context.exposeBinding('__pw_recorderRecordAction', false,
         (source: BindingSource, action: actions.Action) => this._recordAction(source.frame, action));
 
-    await this._context.extendInjectedScript(recorderSource.source);
+    await this._context.extendInjectedScript(rawRecorderSource.source);
   }
 
   setEnabled(enabled: boolean) {
@@ -205,6 +207,27 @@ export class ContextRecorder extends EventEmitter {
 
   runTask(task: string): void {
     // TODO: implement
+  }
+
+  loadScript({ actions, deviceName, contextOptions, text, highlight }: { actions: actions.ActionInContext[], deviceName: string, contextOptions: LanguageGeneratorOptions['contextOptions'], text: string, highlight?: SourceHighlight[] }): Source[] {
+    if (highlight) {
+      const index = this._recorderSources.findIndex(source => source.id === 'playwright-test');
+      const toReplace = this._recorderSources[index];
+      this._recorderSources[index] = {
+        ...toReplace,
+        text,
+        actions: [],
+        highlight,
+      };
+    } else {
+      this._params.contextOptions = contextOptions;
+      this._params.device = deviceName;
+
+      this._collection.loadActions(actions);
+      // it will update recorderSources both here in contextRecorder and in the recorder
+      this._collection.emit('change', actions);
+    }
+    return Array.from(this._recorderSources);
   }
 
   private _describeMainFrame(page: Page): actions.FrameDescription {

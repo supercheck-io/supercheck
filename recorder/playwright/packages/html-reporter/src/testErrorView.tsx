@@ -20,22 +20,6 @@ import './testErrorView.css';
 import type { ImageDiff } from '@web/shared/imageDiffView';
 import { ImageDiffView } from '@web/shared/imageDiffView';
 
-export const TestErrorView: React.FC<{
-  error: string;
-  testId?: string;
-  prompt?: string;
-}> = ({ error, testId, prompt }) => {
-  return (
-    <CodeSnippet code={error} testId={testId}>
-      {prompt && (
-        <div style={{ float: 'right', margin: 10 }}>
-          <PromptButton prompt={prompt} />
-        </div>
-      )}
-    </CodeSnippet>
-  );
-};
-
 export const CodeSnippet = ({ code, children, testId }: React.PropsWithChildren<{ code: string; testId?: string; }>) => {
   const html = React.useMemo(() => ansiErrorToHtml(code), [code]);
   return (
@@ -46,7 +30,7 @@ export const CodeSnippet = ({ code, children, testId }: React.PropsWithChildren<
   );
 };
 
-const PromptButton: React.FC<{ prompt: string }> = ({ prompt }) => {
+export const PromptButton: React.FC<{ prompt: string }> = ({ prompt }) => {
   const [copied, setCopied] = React.useState(false);
   return <button
     className='button'

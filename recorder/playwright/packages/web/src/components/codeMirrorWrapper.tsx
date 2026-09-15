@@ -20,8 +20,6 @@ import type { CodeMirror } from './codeMirrorModule';
 import { ansi2html } from '../ansi2html';
 import { useMeasure, kWebLinkRe } from '../uiUtils';
 
-// Modified by Supercheck to expose cursor movement to the recorder extension.
-
 export type SourceHighlight = {
   line: number;
   column?: number;
@@ -192,7 +190,10 @@ export const CodeMirrorWrapper: React.FC<SourceProps> = ({
 
     let cursorActivityListener: () => void | undefined;
     if (onCursorActivity) {
-      cursorActivityListener = () => onCursorActivity(codemirror.getCursor());
+      cursorActivityListener = () => {
+        if (codemirrorRef.current!.cm.hasFocus())
+          onCursorActivity(codemirrorRef.current!.cm.getCursor());
+      };
       codemirror.on('cursorActivity', cursorActivityListener);
     }
 

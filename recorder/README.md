@@ -163,7 +163,7 @@ const traceData = crx.fs.readFileSync('/tmp/trace.zip');
 | [`src/`](src/) | Core `playwright-crx` library source and Chrome debugger transport |
 | [`examples/recorder-crx/`](examples/recorder-crx/) | Official Supercheck Recorder Chrome & Edge extension source |
 | [`examples/todomvc-crx/`](examples/todomvc-crx/) | Example extension demonstrating Playwright automation inside CRX |
-| [`playwright/`](playwright/) | Vendored subset of Playwright v1.51.0 source for reproducible builds |
+| [`playwright/`](playwright/) | Vendored subset of Playwright v1.53.0 source for reproducible builds |
 | [`tests/`](tests/) | Unit tests and browser extension integration test suites |
 
 ---
@@ -192,7 +192,7 @@ npm run test:browser
 
 ### Vendored Playwright source
 
-The `playwright/` directory contains the exact subset of Microsoft Playwright v1.51.0 source needed to build the extension without external build dependencies or private repositories. When updating Playwright, replace vendored packages from an official release archive, update `playwright/VERSION`, and verify the build and browser test suites.
+The `playwright/` directory contains the exact subset of Microsoft Playwright v1.53.0 source needed to build the extension without external build dependencies or private repositories. When updating Playwright, replace vendored packages from the corresponding upstream source, update `playwright/VERSION`, and verify the build and browser test suites.
 
 ---
 

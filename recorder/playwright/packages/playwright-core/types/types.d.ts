@@ -3974,9 +3974,9 @@ export interface Page {
    *
    * **NOTE** Enabling routing disables http cache.
    *
-   * @param url A glob pattern, regex pattern or predicate receiving [URL] to match while routing. When a
-   * [`baseURL`](https://playwright.dev/docs/api/class-browser#browser-new-context-option-base-url) via the context
-   * options was provided and the passed URL is a path, it gets merged via the
+   * @param url A glob pattern, regex pattern, or predicate that receives a [URL] to match during routing. If
+   * [`baseURL`](https://playwright.dev/docs/api/class-browser#browser-new-context-option-base-url) is set in the
+   * context options and the provided URL is a string that does not start with `*`, it is resolved using the
    * [`new URL()`](https://developer.mozilla.org/en-US/docs/Web/API/URL/URL) constructor.
    * @param handler handler function to route the request.
    * @param options
@@ -9068,9 +9068,9 @@ export interface BrowserContext {
    *
    * **NOTE** Enabling routing disables http cache.
    *
-   * @param url A glob pattern, regex pattern or predicate receiving [URL] to match while routing. When a
-   * [`baseURL`](https://playwright.dev/docs/api/class-browser#browser-new-context-option-base-url) via the context
-   * options was provided and the passed URL is a path, it gets merged via the
+   * @param url A glob pattern, regex pattern, or predicate that receives a [URL] to match during routing. If
+   * [`baseURL`](https://playwright.dev/docs/api/class-browser#browser-new-context-option-base-url) is set in the
+   * context options and the provided URL is a string that does not start with `*`, it is resolved using the
    * [`new URL()`](https://developer.mozilla.org/en-US/docs/Web/API/URL/URL) constructor.
    * @param handler handler function to route the request.
    * @param options
@@ -9274,9 +9274,6 @@ export interface BrowserContext {
      * Set to `true` to include [IndexedDB](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API) in the storage
      * state snapshot. If your application uses IndexedDB to store authentication tokens, like Firebase Authentication,
      * enable this.
-     *
-     * **NOTE** IndexedDBs with typed arrays are currently not supported.
-     *
      */
     indexedDB?: boolean;
 
@@ -9885,6 +9882,7 @@ export interface Browser {
 
     /**
      * Logger sink for Playwright logging.
+     * @deprecated The logs received by the logger are incomplete. Please use tracing instead.
      */
     logger?: Logger;
 
@@ -12200,6 +12198,17 @@ export interface Locator {
    * rejects, this method throws.
    *
    * **Usage**
+   *
+   * Passing argument to
+   * [`pageFunction`](https://playwright.dev/docs/api/class-locator#locator-evaluate-option-expression):
+   *
+   * ```js
+   * const result = await page.getByTestId('myId').evaluate((element, [x, y]) => {
+   *   return element.textContent + ' ' + x * y;
+   * }, [7, 8]);
+   * console.log(result); // prints "myId text 56"
+   * ```
+   *
    * @param pageFunction Function to be evaluated in the page context.
    * @param arg Optional argument to pass to
    * [`pageFunction`](https://playwright.dev/docs/api/class-locator#locator-evaluate-option-expression).
@@ -12225,6 +12234,17 @@ export interface Locator {
    * rejects, this method throws.
    *
    * **Usage**
+   *
+   * Passing argument to
+   * [`pageFunction`](https://playwright.dev/docs/api/class-locator#locator-evaluate-option-expression):
+   *
+   * ```js
+   * const result = await page.getByTestId('myId').evaluate((element, [x, y]) => {
+   *   return element.textContent + ' ' + x * y;
+   * }, [7, 8]);
+   * console.log(result); // prints "myId text 56"
+   * ```
+   *
    * @param pageFunction Function to be evaluated in the page context.
    * @param arg Optional argument to pass to
    * [`pageFunction`](https://playwright.dev/docs/api/class-locator#locator-evaluate-option-expression).
@@ -12889,6 +12909,21 @@ export interface Locator {
      */
     trial?: boolean;
   }): Promise<void>;
+
+  /**
+   * Describes the locator, description is used in the trace viewer and reports. Returns the locator pointing to the
+   * same element.
+   *
+   * **Usage**
+   *
+   * ```js
+   * const button = page.getByTestId('btn-sub').describe('Subscribe button');
+   * await button.click();
+   * ```
+   *
+   * @param description Locator description.
+   */
+  describe(description: string): Locator;
 
   /**
    * Programmatically dispatch an event on the matching element.
@@ -14704,11 +14739,15 @@ export interface BrowserType<Unused = {}> {
    * Launches browser that uses persistent storage located at
    * [`userDataDir`](https://playwright.dev/docs/api/class-browsertype#browser-type-launch-persistent-context-option-user-data-dir)
    * and returns the only context. Closing this context will automatically close the browser.
-   * @param userDataDir Path to a User Data Directory, which stores browser session data like cookies and local storage. More details for
+   * @param userDataDir Path to a User Data Directory, which stores browser session data like cookies and local storage. Pass an empty
+   * string to create a temporary directory.
+   *
+   * More details for
    * [Chromium](https://chromium.googlesource.com/chromium/src/+/master/docs/user_data_dir.md#introduction) and
-   * [Firefox](https://developer.mozilla.org/en-US/docs/Mozilla/Command_Line_Options#User_Profile). Note that Chromium's
-   * user data directory is the **parent** directory of the "Profile Path" seen at `chrome://version`. Pass an empty
-   * string to use a temporary directory instead.
+   * [Firefox](https://wiki.mozilla.org/Firefox/CommandLineOptions#User_profile). Chromium's user data directory is the
+   * **parent** directory of the "Profile Path" seen at `chrome://version`.
+   *
+   * Note that browsers do not allow launching multiple instances with the same User Data Directory.
    * @param options
    */
   launchPersistentContext(userDataDir: string, options?: {
@@ -14876,6 +14915,9 @@ export interface BrowserType<Unused = {}> {
     /**
      * Firefox user preferences. Learn more about the Firefox user preferences at
      * [`about:config`](https://support.mozilla.org/en-US/kb/about-config-editor-firefox).
+     *
+     * You can also provide a path to a custom [`policies.json` file](https://mozilla.github.io/policy-templates/) via
+     * `PLAYWRIGHT_FIREFOX_POLICIES_JSON` environment variable.
      */
     firefoxUserPrefs?: { [key: string]: string|number|boolean; };
 
@@ -14927,7 +14969,7 @@ export interface BrowserType<Unused = {}> {
     /**
      * Whether to run browser in headless mode. More details for
      * [Chromium](https://developers.google.com/web/updates/2017/04/headless-chrome) and
-     * [Firefox](https://developer.mozilla.org/en-US/docs/Mozilla/Firefox/Headless_mode). Defaults to `true` unless the
+     * [Firefox](https://hacks.mozilla.org/2017/12/using-headless-mode-in-firefox/). Defaults to `true` unless the
      * [`devtools`](https://playwright.dev/docs/api/class-browsertype#browser-type-launch-option-devtools) option is
      * `true`.
      */
@@ -14992,6 +15034,7 @@ export interface BrowserType<Unused = {}> {
 
     /**
      * Logger sink for Playwright logging.
+     * @deprecated The logs received by the logger are incomplete. Please use tracing instead.
      */
     logger?: Logger;
 
@@ -15300,6 +15343,9 @@ export interface BrowserType<Unused = {}> {
     /**
      * Firefox user preferences. Learn more about the Firefox user preferences at
      * [`about:config`](https://support.mozilla.org/en-US/kb/about-config-editor-firefox).
+     *
+     * You can also provide a path to a custom [`policies.json` file](https://mozilla.github.io/policy-templates/) via
+     * `PLAYWRIGHT_FIREFOX_POLICIES_JSON` environment variable.
      */
     firefoxUserPrefs?: { [key: string]: string|number|boolean; };
 
@@ -15321,7 +15367,7 @@ export interface BrowserType<Unused = {}> {
     /**
      * Whether to run browser in headless mode. More details for
      * [Chromium](https://developers.google.com/web/updates/2017/04/headless-chrome) and
-     * [Firefox](https://developer.mozilla.org/en-US/docs/Mozilla/Firefox/Headless_mode). Defaults to `true` unless the
+     * [Firefox](https://hacks.mozilla.org/2017/12/using-headless-mode-in-firefox/). Defaults to `true` unless the
      * [`devtools`](https://playwright.dev/docs/api/class-browsertype#browser-type-launch-option-devtools) option is
      * `true`.
      */
@@ -15343,6 +15389,7 @@ export interface BrowserType<Unused = {}> {
 
     /**
      * Logger sink for Playwright logging.
+     * @deprecated The logs received by the logger are incomplete. Please use tracing instead.
      */
     logger?: Logger;
 
@@ -15456,7 +15503,7 @@ export interface CDPSession {
  *
  * **Mocking**
  *
- * By default, the routed WebSocket will not connect to the server. This way, you can mock entire communcation over
+ * By default, the routed WebSocket will not connect to the server. This way, you can mock entire communication over
  * the WebSocket. Here is an example that responds to a `"request"` with a `"response"`.
  *
  * ```js
@@ -16745,6 +16792,7 @@ export interface AndroidDevice {
 
     /**
      * Logger sink for Playwright logging.
+     * @deprecated The logs received by the logger are incomplete. Please use tracing instead.
      */
     logger?: Logger;
 
@@ -17562,6 +17610,13 @@ export interface APIRequest {
      * Whether to ignore HTTPS errors when sending network requests. Defaults to `false`.
      */
     ignoreHTTPSErrors?: boolean;
+
+    /**
+     * Maximum number of request redirects that will be followed automatically. An error will be thrown if the number is
+     * exceeded. Defaults to `20`. Pass `0` to not follow redirects. This can be overwritten for each request
+     * individually.
+     */
+    maxRedirects?: number;
 
     /**
      * Network proxy settings.
@@ -20769,6 +20824,11 @@ export interface Route {
    * request to the network, other matching handlers won't be invoked. Use
    * [route.fallback([options])](https://playwright.dev/docs/api/class-route#route-fallback) If you want next matching
    * handler in the chain to be invoked.
+   *
+   * **NOTE** The `Cookie` header cannot be overridden using this method. If a value is provided, it will be ignored,
+   * and the cookie will be loaded from the browser's cookie store. To set custom cookies, use
+   * [browserContext.addCookies(cookies)](https://playwright.dev/docs/api/class-browsercontext#browser-context-add-cookies).
+   *
    * @param options
    */
   continue(options?: {
@@ -21129,6 +21189,15 @@ export interface Touchscreen {
  * API for collecting and saving Playwright traces. Playwright traces can be opened in
  * [Trace Viewer](https://playwright.dev/docs/trace-viewer) after Playwright script runs.
  *
+ * **NOTE** You probably want to
+ * [enable tracing in your config file](https://playwright.dev/docs/api/class-testoptions#test-options-trace) instead
+ * of using `context.tracing`.
+ *
+ * The `context.tracing` API captures browser operations and network activity, but it doesn't record test assertions
+ * (like `expect` calls). We recommend
+ * [enabling tracing through Playwright Test configuration](https://playwright.dev/docs/api/class-testoptions#test-options-trace),
+ * which includes those assertions and provides a more complete trace for debugging test failures.
+ *
  * Start recording a trace before performing actions. At the end, stop tracing and save it to a file.
  *
  * ```js
@@ -21137,6 +21206,7 @@ export interface Touchscreen {
  * await context.tracing.start({ screenshots: true, snapshots: true });
  * const page = await context.newPage();
  * await page.goto('https://playwright.dev');
+ * expect(page.url()).toBe('https://playwright.dev');
  * await context.tracing.stop({ path: 'trace.zip' });
  * ```
  *
@@ -21184,12 +21254,22 @@ export interface Tracing {
   /**
    * Start tracing.
    *
+   * **NOTE** You probably want to
+   * [enable tracing in your config file](https://playwright.dev/docs/api/class-testoptions#test-options-trace) instead
+   * of using `Tracing.start`.
+   *
+   * The `context.tracing` API captures browser operations and network activity, but it doesn't record test assertions
+   * (like `expect` calls). We recommend
+   * [enabling tracing through Playwright Test configuration](https://playwright.dev/docs/api/class-testoptions#test-options-trace),
+   * which includes those assertions and provides a more complete trace for debugging test failures.
+   *
    * **Usage**
    *
    * ```js
    * await context.tracing.start({ screenshots: true, snapshots: true });
    * const page = await context.newPage();
    * await page.goto('https://playwright.dev');
+   * expect(page.url()).toBe('https://playwright.dev');
    * await context.tracing.stop({ path: 'trace.zip' });
    * ```
    *
@@ -21675,6 +21755,9 @@ export interface LaunchOptions {
   /**
    * Firefox user preferences. Learn more about the Firefox user preferences at
    * [`about:config`](https://support.mozilla.org/en-US/kb/about-config-editor-firefox).
+   *
+   * You can also provide a path to a custom [`policies.json` file](https://mozilla.github.io/policy-templates/) via
+   * `PLAYWRIGHT_FIREFOX_POLICIES_JSON` environment variable.
    */
   firefoxUserPrefs?: { [key: string]: string|number|boolean; };
 
@@ -21696,7 +21779,7 @@ export interface LaunchOptions {
   /**
    * Whether to run browser in headless mode. More details for
    * [Chromium](https://developers.google.com/web/updates/2017/04/headless-chrome) and
-   * [Firefox](https://developer.mozilla.org/en-US/docs/Mozilla/Firefox/Headless_mode). Defaults to `true` unless the
+   * [Firefox](https://hacks.mozilla.org/2017/12/using-headless-mode-in-firefox/). Defaults to `true` unless the
    * [`devtools`](https://playwright.dev/docs/api/class-browsertype#browser-type-launch-option-devtools) option is
    * `true`.
    */
@@ -21711,6 +21794,7 @@ export interface LaunchOptions {
 
   /**
    * Logger sink for Playwright logging.
+   * @deprecated The logs received by the logger are incomplete. Please use tracing instead.
    */
   logger?: Logger;
 
@@ -21760,7 +21844,7 @@ export interface LaunchOptions {
 
 export interface ConnectOverCDPOptions {
   /**
-   * Deprecated, use the first argument instead. Optional.
+   * @deprecated Use the first argument instead.
    */
   endpointURL?: string;
 
@@ -21771,6 +21855,7 @@ export interface ConnectOverCDPOptions {
 
   /**
    * Logger sink for Playwright logging. Optional.
+   * @deprecated The logs received by the logger are incomplete. Please use tracing instead.
    */
   logger?: Logger;
 
@@ -21812,6 +21897,7 @@ export interface ConnectOptions {
 
   /**
    * Logger sink for Playwright logging. Optional.
+   * @deprecated The logs received by the logger are incomplete. Please use tracing instead.
    */
   logger?: Logger;
 
@@ -22094,6 +22180,7 @@ export interface BrowserContextOptions {
 
   /**
    * Logger sink for Playwright logging.
+   * @deprecated The logs received by the logger are incomplete. Please use tracing instead.
    */
   logger?: Logger;
 
@@ -22590,14 +22677,22 @@ type Devices = {
   "Galaxy S8 landscape": DeviceDescriptor;
   "Galaxy S9+": DeviceDescriptor;
   "Galaxy S9+ landscape": DeviceDescriptor;
+  "Galaxy S24": DeviceDescriptor;
+  "Galaxy S24 landscape": DeviceDescriptor;
+  "Galaxy A55": DeviceDescriptor;
+  "Galaxy A55 landscape": DeviceDescriptor;
   "Galaxy Tab S4": DeviceDescriptor;
   "Galaxy Tab S4 landscape": DeviceDescriptor;
+  "Galaxy Tab S9": DeviceDescriptor;
+  "Galaxy Tab S9 landscape": DeviceDescriptor;
   "iPad (gen 5)": DeviceDescriptor;
   "iPad (gen 5) landscape": DeviceDescriptor;
   "iPad (gen 6)": DeviceDescriptor;
   "iPad (gen 6) landscape": DeviceDescriptor;
   "iPad (gen 7)": DeviceDescriptor;
   "iPad (gen 7) landscape": DeviceDescriptor;
+  "iPad (gen 11)": DeviceDescriptor;
+  "iPad (gen 11) landscape": DeviceDescriptor;
   "iPad Mini": DeviceDescriptor;
   "iPad Mini landscape": DeviceDescriptor;
   "iPad Pro 11": DeviceDescriptor;
@@ -22616,6 +22711,8 @@ type Devices = {
   "iPhone 8 Plus landscape": DeviceDescriptor;
   "iPhone SE": DeviceDescriptor;
   "iPhone SE landscape": DeviceDescriptor;
+  "iPhone SE (3rd gen)": DeviceDescriptor;
+  "iPhone SE (3rd gen) landscape": DeviceDescriptor;
   "iPhone X": DeviceDescriptor;
   "iPhone X landscape": DeviceDescriptor;
   "iPhone XR": DeviceDescriptor;
