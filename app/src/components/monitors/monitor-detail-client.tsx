@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useMemo, useCallback } from "react";
-import { LoadingBadge, Spinner } from "@/components/ui/spinner";
+import { Spinner } from "@/components/ui/spinner";
 import { Button } from "@/components/ui/button";
 import { deleteMonitor } from "@/actions/delete-monitor";
 import {
@@ -168,6 +168,7 @@ export function MonitorDetailClient({
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [reportModalOpen, setReportModalOpen] = useState(false);
+  const [hasHydrated, setHasHydrated] = useState(false);
   const [selectedReportUrl, setSelectedReportUrl] = useState<string | null>(
     null
   );
@@ -194,6 +195,7 @@ export function MonitorDetailClient({
     canToggle: canToggleMonitor,
     isLoading: permissionsLoading,
   } = useMonitorPermissions(monitor.id);
+  const permissionsReady = hasHydrated && !permissionsLoading;
 
   // Dynamic location metadata
   const { locations: dynamicLocations } = useLocations();
@@ -223,6 +225,10 @@ export function MonitorDetailClient({
       .catch(() => {
         toast.error(`Failed to copy ${label}`);
       });
+  }, []);
+
+  useEffect(() => {
+    setHasHydrated(true);
   }, []);
 
   // Sync monitor state when props change
@@ -781,66 +787,94 @@ export function MonitorDetailClient({
                 )}
 
               {/* Action buttons - only show if user has manage permissions and not notification view */}
-              {!isNotificationView &&
-                !permissionsLoading &&
-                (
-                  <>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={canToggleMonitor ? handleToggleStatus : undefined}
-                      disabled={!canToggleMonitor}
-                      className={!canToggleMonitor ? "opacity-50 cursor-not-allowed" : ""}
-                      title={canToggleMonitor ? "Pause or resume monitor" : "Insufficient permissions to control monitors"}
-                    >
-                      {monitor.status === "paused" ? (
-                        <Play className="mr-2 h-4 w-4" />
-                      ) : (
-                        <Pause className="mr-2 h-4 w-4" />
-                      )}
-                      {monitor.status === "paused" ? "Resume" : "Pause"}
-                    </Button>
-
-
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={canEditMonitor ? () => router.push(`/monitors/${monitor.id}/edit`) : undefined}
-                      disabled={!canEditMonitor}
-                      className="flex items-center"
-                      title={canEditMonitor ? "Edit monitor" : "Insufficient permissions to edit monitors"}
-                    >
-                      <Edit3 className="h-4 w-4 mr-1" />
-                      <span className="hidden sm:inline">Edit</span>
-                    </Button>
-
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={canDeleteMonitor ? () => setShowDeleteDialog(true) : undefined}
-                      disabled={!canDeleteMonitor}
-                      className={`flex items-center ${!canDeleteMonitor
-                        ? "opacity-50 cursor-not-allowed text-muted-foreground"
-                        : "text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/50"}`}
-                      title={canDeleteMonitor ? "Delete monitor" : "Insufficient permissions to delete monitors"}
-                    >
-                      <Trash2 className="h-4 w-4 mr-1" />
-                      <span className="hidden sm:inline">Delete</span>
-                    </Button>
-
-                    {canEditMonitor && (
-                      <AIMonitorAnalyzeButton
-                        monitorId={monitor.id}
-                        monitorName={monitor.name}
-                        monitorType={monitor.type}
-                      />
+              {!isNotificationView && (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={
+                      permissionsReady && canToggleMonitor
+                        ? handleToggleStatus
+                        : undefined
+                    }
+                    disabled={!permissionsReady || !canToggleMonitor}
+                    className={
+                      !permissionsReady || !canToggleMonitor
+                        ? "opacity-50 cursor-not-allowed"
+                        : ""
+                    }
+                    title={
+                      !permissionsReady
+                        ? "Checking permissions"
+                        : canToggleMonitor
+                          ? "Pause or resume monitor"
+                          : "Insufficient permissions to control monitors"
+                    }
+                  >
+                    {monitor.status === "paused" ? (
+                      <Play className="mr-2 h-4 w-4" />
+                    ) : (
+                      <Pause className="mr-2 h-4 w-4" />
                     )}
+                    {monitor.status === "paused" ? "Resume" : "Pause"}
+                  </Button>
 
-                  </>
-                )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={
+                      permissionsReady && canEditMonitor
+                        ? () => router.push(`/monitors/${monitor.id}/edit`)
+                        : undefined
+                    }
+                    disabled={!permissionsReady || !canEditMonitor}
+                    className="flex items-center"
+                    title={
+                      !permissionsReady
+                        ? "Checking permissions"
+                        : canEditMonitor
+                          ? "Edit monitor"
+                          : "Insufficient permissions to edit monitors"
+                    }
+                  >
+                    <Edit3 className="h-4 w-4 mr-1" />
+                    <span className="hidden sm:inline">Edit</span>
+                  </Button>
 
-              {/* Show loading state while fetching permissions - only in non-notification view */}
-              {!isNotificationView && permissionsLoading && <LoadingBadge />}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={
+                      permissionsReady && canDeleteMonitor
+                        ? () => setShowDeleteDialog(true)
+                        : undefined
+                    }
+                    disabled={!permissionsReady || !canDeleteMonitor}
+                    className={`flex items-center ${
+                      !permissionsReady || !canDeleteMonitor
+                        ? "opacity-50 cursor-not-allowed text-muted-foreground"
+                        : "text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/50"
+                    }`}
+                    title={
+                      !permissionsReady
+                        ? "Checking permissions"
+                        : canDeleteMonitor
+                          ? "Delete monitor"
+                          : "Insufficient permissions to delete monitors"
+                    }
+                  >
+                    <Trash2 className="h-4 w-4 mr-1" />
+                    <span className="hidden sm:inline">Delete</span>
+                  </Button>
+
+                  <AIMonitorAnalyzeButton
+                    monitorId={monitor.id}
+                    monitorName={monitor.name}
+                    monitorType={monitor.type}
+                    disabled={!permissionsReady || !canEditMonitor}
+                  />
+                </>
+              )}
 
               {/* In notification view, just show project name without action buttons */}
               {isNotificationView && monitor.projectName && (

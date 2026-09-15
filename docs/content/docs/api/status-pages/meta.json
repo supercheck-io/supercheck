@@ -4,7 +4,10 @@
   "pages": [
     "listStatusPages",
     "checkStatusPageSubdomain",
+    "checkStatusPageSubdomainPost",
     "getStatusPage",
+    "getStatusPageBadge",
+    "getStatusPageIcal",
     "uploadStatusPageAsset",
     "getStatusPageRss",
     "deleteStatusPage"

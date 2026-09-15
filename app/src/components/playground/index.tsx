@@ -675,7 +675,7 @@ const Playground: React.FC<PlaygroundProps> = ({
     }
   }, []);
 
-  // Listen for recorded code from SuperCheck Recorder extension
+  // Listen for recorded code from Supercheck Recorder extension
   useEffect(() => {
     const handleRecordedCode = (event: MessageEvent) => {
       // Security: Validate origin to prevent cross-origin attacks
@@ -884,9 +884,11 @@ const Playground: React.FC<PlaygroundProps> = ({
           `/api/test-status/events/${result.testId}`
         );
         let eventSourceClosed = false;
+        let reconnectNoticeShown = false;
 
         eventSource.onmessage = (event) => {
           try {
+            reconnectNoticeShown = false;
             const data = JSON.parse(event.data);
             if (data?.status) {
               const normalizedStatus =
@@ -999,32 +1001,19 @@ const Playground: React.FC<PlaygroundProps> = ({
 
         eventSource.onerror = (e) => {
           console.error("SSE connection error:", e);
-          setIsRunning(false);
-          setCurrentRunId(null);
-          setIsReportLoading(false);
 
-          // Mark test as failed when SSE connection fails
-          setTestExecutionStatus("failed");
-
-          toast.error("Script execution error", {
-            description:
-              "Connection to test status updates was lost. The test may still be running in the background.",
-            duration: 5000,
-          });
-
-          if (!eventSourceClosed) {
-            eventSource.close();
-            eventSourceClosed = true;
-
-            if (result.testId) {
-              const apiUrl = buildReportViewerUrl(result.testId);
-              setReportUrl(apiUrl);
-              setActiveTab("report");
-            } else {
-              console.error(
-                "SSE error fallback: Cannot construct report URL: testId from initial API call is missing."
-              );
-            }
+          // EventSource reconnects automatically. Do not convert a transient
+          // transport interruption during a scale-from-zero cold start into a
+          // failed execution or close the stream. On reconnect, the server
+          // sends an authoritative persisted report snapshot, so missed queue
+          // events converge to the actual run result.
+          if (!eventSourceClosed && !reconnectNoticeShown) {
+            reconnectNoticeShown = true;
+            toast.info("Reconnecting to execution status", {
+              description:
+                "The test is still running. Status updates will resume automatically.",
+              duration: 5000,
+            });
           }
         };
       } else {
@@ -1578,7 +1567,7 @@ const Playground: React.FC<PlaygroundProps> = ({
                               <div>
                                 <span className="text-sm font-medium text-red-400">Record Browser Test</span>
                                 <span className="text-sm text-muted-foreground ml-2">
-                                  Use SuperCheck Recorder to capture interactions, then save directly to Playground.
+                                  Use Supercheck Recorder to capture interactions, then save directly to Playground.
                                 </span>
                               </div>
                             </div>

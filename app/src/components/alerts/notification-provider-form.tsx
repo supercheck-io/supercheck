@@ -5,7 +5,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
-import { Loader2 } from "lucide-react";
+import { ExternalLink, Loader2 } from "lucide-react";
 
 import {
   Form,
@@ -36,6 +36,14 @@ import {
 } from "@/lib/error-utils";
 import { parseWebhookJsonTemplate } from "@/lib/notification-providers/webhook-template";
 import { notificationProviders } from "@/components/alerts/data";
+import {
+  WEBHOOK_PRESET_IDS,
+  WEBHOOK_PRESETS,
+  applyWebhookPresetConfig,
+  getWebhookPreset,
+  type WebhookPresetId,
+} from "@/lib/notification-providers/webhook-presets";
+import { buildWebhookPayloadPreview } from "@/lib/notification-providers/webhook-preview";
 
 const notificationProviderSchema = z
   .object({
@@ -95,6 +103,7 @@ const notificationProviderSchema = z
         ),
 
       // Webhook fields
+      preset: z.enum(WEBHOOK_PRESET_IDS).optional(),
       url: z
         .string()
         .optional()
@@ -231,13 +240,24 @@ const notificationProviderSchema = z
 const MASKED_FIELD_LABELS: Record<string, string> = {
   webhookUrl: "Webhook URL",
   url: "Target URL",
-  headers: "Headers",
+  headers: "Custom headers",
   botToken: "Bot Token",
   discordWebhookUrl: "Discord Webhook URL",
   teamsWebhookUrl: "Teams Webhook URL",
 };
 
 type FormValues = z.infer<typeof notificationProviderSchema>;
+
+type WebhookTestDetails = {
+  method?: string;
+  targetHost?: string;
+  headerNames?: string[];
+  requestBodyHash?: string;
+  responseStatus?: number;
+  responseStatusText?: string;
+  responseHash?: string;
+  elapsedMs?: number;
+};
 
 interface NotificationProviderFormProps {
   onSuccess?: (data: FormValues) => void;
@@ -258,6 +278,17 @@ export function NotificationProviderForm({
 }: NotificationProviderFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
+  const [lastWebhookTestDetails, setLastWebhookTestDetails] =
+    useState<WebhookTestDetails | null>(null);
+  const [headersText, setHeadersText] = useState(() => {
+    const headers = initialData
+      ? ((initialData.config as Record<string, unknown>)
+          .headers as Record<string, string> | undefined)
+      : undefined;
+    return headers && Object.keys(headers).length > 0
+      ? JSON.stringify(headers, null, 2)
+      : "";
+  });
 
   const maskedFields = initialData?.maskedFields ?? [];
   const friendlyMaskedFields = maskedFields.map(
@@ -286,6 +317,10 @@ export function NotificationProviderForm({
           url:
             ((initialData.config as Record<string, unknown>).url as string) ||
             "",
+          preset:
+            (getWebhookPreset(
+              (initialData.config as Record<string, unknown>).preset,
+            )?.id as WebhookPresetId | undefined) || "custom",
           method:
             ((initialData.config as Record<string, unknown>).method as
               | "GET"
@@ -319,6 +354,7 @@ export function NotificationProviderForm({
           webhookUrl: "",
           channel: "",
           url: "",
+          preset: "custom",
           method: "POST",
           headers: {},
           bodyTemplate: "",
@@ -331,11 +367,111 @@ export function NotificationProviderForm({
   });
 
   const selectedType = form.watch("type");
+  const selectedPresetId = form.watch("config.preset") || "custom";
+  const selectedPreset = getWebhookPreset(selectedPresetId);
+  const selectedWebhookMethod = form.watch("config.method");
+  const selectedWebhookBodyTemplate = form.watch("config.bodyTemplate");
+  const webhookPayloadPreview =
+    selectedType === "webhook"
+      ? buildWebhookPayloadPreview({
+        method: selectedWebhookMethod,
+        bodyTemplate: selectedWebhookBodyTemplate,
+      })
+      : null;
+
+  const parseHeadersText = (): Record<string, string> | undefined => {
+    const trimmed = headersText.trim();
+    if (!trimmed) {
+      return undefined;
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch {
+      throw new Error("Webhook headers must be valid JSON.");
+    }
+
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("Webhook headers must be a JSON object.");
+    }
+
+    const headers = parsed as Record<string, unknown>;
+    const invalidHeader = Object.entries(headers).find(
+      ([, value]) => typeof value !== "string",
+    );
+    if (invalidHeader) {
+      throw new Error(
+        `Webhook header "${invalidHeader[0]}" value must be a string.`,
+      );
+    }
+
+    return Object.keys(headers).length > 0
+      ? (headers as Record<string, string>)
+      : undefined;
+  };
+
+  const prepareWebhookData = (data: FormValues): FormValues => {
+    if (data.type !== "webhook") {
+      return data;
+    }
+
+    const nextConfig = { ...data.config };
+    const parsedHeaders = parseHeadersText();
+    if (parsedHeaders) {
+      nextConfig.headers = parsedHeaders;
+    } else {
+      delete nextConfig.headers;
+    }
+
+    return {
+      ...data,
+      config: nextConfig,
+    };
+  };
+
+  const handleWebhookPresetChange = (presetId: WebhookPresetId) => {
+    const currentConfig = form.getValues("config") as NotificationProviderConfig;
+    const nextConfig = applyWebhookPresetConfig(presetId, currentConfig);
+    const preset = getWebhookPreset(presetId);
+    setLastWebhookTestDetails(null);
+
+    form.setValue("config.preset", presetId, { shouldDirty: true });
+    form.setValue("config.method", nextConfig.method || "POST", {
+      shouldDirty: true,
+    });
+    form.setValue("config.bodyTemplate", nextConfig.bodyTemplate || "", {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+    form.setValue("config.headers", nextConfig.headers || {}, {
+      shouldDirty: true,
+    });
+    setHeadersText(
+      nextConfig.headers && Object.keys(nextConfig.headers).length > 0
+        ? JSON.stringify(nextConfig.headers, null, 2)
+        : "",
+    );
+
+    const currentUrl = form.getValues("config.url");
+    if (
+      !currentUrl &&
+      preset?.endpointPlaceholder.startsWith("https://") &&
+      !preset.endpointPlaceholder.includes("<") &&
+      !preset.endpointPlaceholder.includes("...")
+    ) {
+      form.setValue("config.url", preset.endpointPlaceholder, {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+    }
+  };
 
   const testConnection = async () => {
     setIsTesting(true);
+    setLastWebhookTestDetails(null);
     try {
-      const data = form.getValues();
+      const data = prepareWebhookData(form.getValues());
 
       const response = await fetch("/api/notification-providers/test", {
         method: "POST",
@@ -349,9 +485,22 @@ export function NotificationProviderForm({
       });
 
       const result = await response.json();
+      if (
+        data.type === "webhook" &&
+        result.details &&
+        typeof result.details === "object"
+      ) {
+        setLastWebhookTestDetails(result.details as WebhookTestDetails);
+      }
 
       if (result.success) {
-        toast.success(result.message || "Connection test successful!");
+        const status =
+          data.type === "webhook" && result.details?.responseStatus
+            ? ` (HTTP ${result.details.responseStatus})`
+            : "";
+        toast.success(
+          `${result.message || "Connection test successful!"}${status}`,
+        );
       } else {
         const friendlyError = getUserFriendlyError(result.error, data.type);
         toast.error(friendlyError);
@@ -369,8 +518,10 @@ export function NotificationProviderForm({
   const onSubmit = async (data: FormValues) => {
     setIsSubmitting(true);
     try {
+      const preparedData = prepareWebhookData(data);
+
       // Pass the data to the parent component - parent handles toast
-      await onSuccess?.(data);
+      await onSuccess?.(preparedData);
 
       // Reset form only if not in edit mode
       if (!initialData) {
@@ -405,7 +556,10 @@ export function NotificationProviderForm({
               <FormItem>
                 <FormLabel>Channel Type</FormLabel>
                 <Select
-                  onValueChange={field.onChange}
+                  onValueChange={(value) => {
+                    field.onChange(value);
+                    setLastWebhookTestDetails(null);
+                  }}
                   defaultValue={field.value}
                   disabled={isSubmitting || isTesting}
                 >
@@ -546,6 +700,68 @@ export function NotificationProviderForm({
         {selectedType === "webhook" && (
           <div className="space-y-4">
             <h3 className="text-lg font-medium">Webhook Configuration</h3>
+            <FormField
+              control={form.control}
+              name="config.preset"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Integration preset</FormLabel>
+                  <Select
+                    onValueChange={(value) =>
+                      handleWebhookPresetChange(value as WebhookPresetId)
+                    }
+                    value={field.value || "custom"}
+                    disabled={isSubmitting || isTesting}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select preset" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {WEBHOOK_PRESETS.map((preset) => (
+                        <SelectItem key={preset.id} value={preset.id}>
+                          {preset.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            {selectedPreset && (
+              <div className="rounded-md border border-border bg-muted/30 p-3 text-sm">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="space-y-1">
+                    <div className="font-medium">{selectedPreset.label}</div>
+                    <p className="text-muted-foreground">
+                      {selectedPreset.summary}
+                    </p>
+                    <p className="text-muted-foreground">
+                      Endpoint:{" "}
+                      <code className="rounded bg-background px-1 py-0.5">
+                        {selectedPreset.endpointPlaceholder}
+                      </code>
+                    </p>
+                    {selectedPreset.secretHint && (
+                      <p className="text-muted-foreground">
+                        {selectedPreset.secretHint}
+                      </p>
+                    )}
+                  </div>
+                  <a
+                    href={selectedPreset.docsUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+                  >
+                    Setup docs
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </a>
+                </div>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-4">
               <FormField
                 control={form.control}
@@ -557,6 +773,10 @@ export function NotificationProviderForm({
                       <Input
                         placeholder="https://api.yourservice.com/alerts"
                         {...field}
+                        onChange={(event) => {
+                          field.onChange(event);
+                          setLastWebhookTestDetails(null);
+                        }}
                         disabled={isSubmitting || isTesting}
                       />
                     </FormControl>
@@ -571,7 +791,10 @@ export function NotificationProviderForm({
                   <FormItem>
                     <FormLabel>Method</FormLabel>
                     <Select
-                      onValueChange={field.onChange}
+                      onValueChange={(value) => {
+                        field.onChange(value);
+                        setLastWebhookTestDetails(null);
+                      }}
                       defaultValue={field.value}
                       disabled={isSubmitting || isTesting}
                     >
@@ -591,6 +814,35 @@ export function NotificationProviderForm({
                 )}
               />
             </div>
+            <FormItem>
+              <FormLabel>
+                Headers JSON{" "}
+                <span className="text-xs text-muted-foreground bg-muted rounded-sm px-1.5 py-0.5">
+                  Optional
+                </span>
+              </FormLabel>
+              <FormControl>
+                <Textarea
+                  placeholder={
+                    '{\n  "Authorization": "Bearer your-token"\n}'
+                  }
+                  value={headersText}
+                  onChange={(event) => {
+                    setHeadersText(event.target.value);
+                    setLastWebhookTestDetails(null);
+                  }}
+                  className="min-h-[90px] font-mono text-sm"
+                  disabled={isSubmitting || isTesting}
+                />
+              </FormControl>
+              <div className="text-sm text-muted-foreground">
+                Use this for provider API keys such as{" "}
+                <code>Authorization</code>. Supercheck validates and encrypts
+                headers, and blocks transport headers like{" "}
+                <code>Host</code>, <code>Content-Type</code>, and{" "}
+                <code>User-Agent</code>.
+              </div>
+            </FormItem>
             <FormField
               control={form.control}
               name="config.bodyTemplate"
@@ -607,6 +859,10 @@ export function NotificationProviderForm({
                       placeholder='{"payload": {"summary": "{{title}}", "severity": "{{normalizedSeverity}}"}}'
                       disabled={isSubmitting || isTesting}
                       {...field}
+                      onChange={(event) => {
+                        field.onChange(event);
+                        setLastWebhookTestDetails(null);
+                      }}
                     />
                   </FormControl>
                   <div className="text-sm text-muted-foreground">
@@ -614,7 +870,8 @@ export function NotificationProviderForm({
                     variables like{" "}
                     <code>{"{{title}}"}</code>, <code>{"{{status}}"}</code>,
                     <code>{"{{normalizedSeverity}}"}</code>,{" "}
-                    <code>{"{{pagerDutyEventAction}}"}</code>, and{" "}
+                    <code>{"{{pagerDutyEventAction}}"}</code>,{" "}
+                    <code>{"{{victorOpsMessageType}}"}</code>, and{" "}
                     <code>{"{{dedupKey}}"}</code> when sending webhook
                     payloads.
                   </div>
@@ -622,6 +879,97 @@ export function NotificationProviderForm({
                 </FormItem>
               )}
             />
+            {webhookPayloadPreview && (
+              <div className="rounded-lg border border-border bg-muted/20">
+                <div className="flex flex-col gap-1 border-b border-border px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <div className="text-sm font-medium">
+                      Rendered sample payload
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Uses sample alert values only. Header values and endpoint
+                      secrets are never rendered here.
+                    </p>
+                  </div>
+                  <span className="w-fit rounded-full bg-background px-2 py-1 text-xs font-medium text-muted-foreground">
+                    {webhookPayloadPreview.method}
+                  </span>
+                </div>
+                <div className="p-3">
+                  {!webhookPayloadPreview.hasBody ? (
+                    <p className="text-sm text-muted-foreground">
+                      GET requests do not send a request body.
+                    </p>
+                  ) : webhookPayloadPreview.error ? (
+                    <p className="text-sm text-destructive">
+                      {webhookPayloadPreview.error}
+                    </p>
+                  ) : (
+                    <pre className="max-h-56 overflow-auto rounded-md bg-background p-3 text-xs leading-relaxed text-foreground">
+                      {webhookPayloadPreview.body}
+                    </pre>
+                  )}
+                </div>
+              </div>
+            )}
+            {lastWebhookTestDetails && (
+              <div className="rounded-lg border border-border bg-background p-3 text-sm">
+                <div className="mb-2 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="font-medium">Last webhook test</div>
+                  {typeof lastWebhookTestDetails.elapsedMs === "number" && (
+                    <span className="text-xs text-muted-foreground">
+                      {lastWebhookTestDetails.elapsedMs} ms
+                    </span>
+                  )}
+                </div>
+                <div className="grid gap-2 text-muted-foreground sm:grid-cols-2">
+                  <div>
+                    Method:{" "}
+                    <span className="font-medium text-foreground">
+                      {lastWebhookTestDetails.method || "unknown"}
+                    </span>
+                  </div>
+                  <div>
+                    Host:{" "}
+                    <span className="font-medium text-foreground">
+                      {lastWebhookTestDetails.targetHost || "unknown"}
+                    </span>
+                  </div>
+                  <div>
+                    Status:{" "}
+                    <span className="font-medium text-foreground">
+                      {lastWebhookTestDetails.responseStatus
+                        ? `HTTP ${lastWebhookTestDetails.responseStatus}`
+                        : "No response"}
+                    </span>
+                  </div>
+                  <div>
+                    Headers:{" "}
+                    <span className="font-medium text-foreground">
+                      {lastWebhookTestDetails.headerNames?.length
+                        ? lastWebhookTestDetails.headerNames.join(", ")
+                        : "none"}
+                    </span>
+                  </div>
+                </div>
+                {lastWebhookTestDetails.requestBodyHash && (
+                  <div className="mt-2 text-xs text-muted-foreground">
+                    Request hash:{" "}
+                    <code className="break-all rounded bg-muted px-1 py-0.5 text-foreground">
+                      {lastWebhookTestDetails.requestBodyHash}
+                    </code>
+                  </div>
+                )}
+                {lastWebhookTestDetails.responseHash && (
+                  <div className="mt-2 text-xs text-muted-foreground">
+                    Response hash:{" "}
+                    <code className="break-all rounded bg-muted px-1 py-0.5 text-foreground">
+                      {lastWebhookTestDetails.responseHash}
+                    </code>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 

@@ -1,6 +1,6 @@
 {
   "title": "Supercheck App",
-  "description": "Platform documentation for testing, monitoring, and communication",
+  "description": "Platform documentation for testing, monitoring, and AI SRE",
   "root": true,
   "icon": "AppWindow",
   "defaultOpen": true,
@@ -14,7 +14,9 @@
     "automate",
     "---Monitor---",
     "monitor",
-    "---Settings---",
+    "---Investigate---",
+    "investigate",
+    "---Admin---",
     "admin"
   ]
 }

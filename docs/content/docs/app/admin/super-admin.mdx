@@ -10,40 +10,43 @@ Super Admin provides platform-level management for self-hosted deployments, incl
 
 There are two ways to enable super admin access:
 
-<Tabs items={['Environment Variable', 'Manual Script', 'Revoking Access']}>
-<Tab value="Environment Variable">
+<Tabs items={['Manual Script', 'Environment Variable', 'Revoking Access']}>
+<Tab value="Manual Script">
 
 ### Recommended
-
-Set the `SUPER_ADMIN_EMAIL` environment variable in your deployment:
-
-```bash
-SUPER_ADMIN_EMAIL=admin@yourdomain.com
-```
-
-The user with this email is promoted to super admin when the application starts. 
-
-<Callout type="info">
-**Note:** If the user has just signed up, you may need to **restart the application container** for the promotion to take effect, as this check runs during startup.
-</Callout>
-
-</Tab>
-<Tab value="Manual Script">
 
 Run the bootstrap script inside the app container:
 
 ```bash
-docker compose exec app npm run setup:admin admin@yourdomain.com
+docker compose exec app node scripts/bootstrap-admin.js admin@yourdomain.com
 ```
+
+<Callout type="info">
+Bootstrap is **manual** — run the script explicitly. For convenience, the script also reads `SUPER_ADMIN_EMAIL` from the environment as a fallback if no argument is provided, but it does **not** auto-promote on application startup.
+</Callout>
+
+</Tab>
+<Tab value="Environment Variable">
+
+Set `SUPER_ADMIN_EMAIL` and run the bootstrap script:
+
+```bash
+SUPER_ADMIN_EMAIL=admin@yourdomain.com
+docker compose exec app node scripts/bootstrap-admin.js
+```
+
+If `SUPER_ADMIN_EMAIL` is set and no email argument is provided, the script uses the environment variable value.
 
 </Tab>
 <Tab value="Revoking Access">
 
-To downgrade a super admin to organization admin:
+To revoke the system-level super admin role:
 
 ```bash
 docker compose exec app npm run revoke:admin admin@yourdomain.com
 ```
+
+This changes only the user's system role back to `project_viewer` and invalidates active sessions for that user. Organization memberships and project assignments are managed separately.
 
 </Tab>
 </Tabs>
@@ -120,7 +123,6 @@ Organization admins can restrict which locations a project is allowed to use. Se
 | **Organizations** | View and manage all organizations |
 | **Users** | Manage all users system-wide, ban/unban accounts |
 | **Impersonation** | Log in as any user for troubleshooting |
-| **Scheduler Control** | Initialize schedulers, view status, manually trigger jobs |
 | **Queue Monitoring** | Real-time BullMQ queue stats via Bull Dashboard |
 | **Location Management** | Add, edit, enable/disable geographic locations for multi-region deployments |
 
@@ -171,18 +173,10 @@ To suspend a user account:
 **Reversible Action**: Banning is reversible. The user will be unable to sign in until unbanned, but all their data is preserved. To unban, click **Unban** from the same menu.
 </Callout>
 
-Banned users see a "403 Account suspended" message when attempting to log in.
+Banned users see a "User is banned" message when attempting to log in.
 
 </Tab>
 </Tabs>
-
-## Scheduler Control
-
-Manage the job scheduling system:
-
-- **Initialize Schedulers** — Start or restart the scheduling service
-- **View Status** — Check scheduler health and active jobs
-- **Manual Triggers** — Force-run scheduled jobs for testing
 
 ## Security
 

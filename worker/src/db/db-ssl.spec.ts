@@ -6,6 +6,7 @@ describe('getSSLConfig', () => {
   beforeEach(() => {
     process.env = { ...originalEnv };
     delete process.env.SELF_HOSTED;
+    delete process.env.DATABASE_URL;
   });
 
   afterAll(() => {
@@ -17,17 +18,39 @@ describe('getSSLConfig', () => {
     expect(getSSLConfig()).toBeUndefined();
   });
 
-  it('returns require when SELF_HOSTED=false', () => {
+  it('returns verify-full when SELF_HOSTED=false', () => {
     process.env.SELF_HOSTED = 'false';
-    expect(getSSLConfig()).toBe('require');
+    expect(getSSLConfig()).toBe('verify-full');
   });
 
-  it('returns require when SELF_HOSTED is not set', () => {
-    expect(getSSLConfig()).toBe('require');
+  it('returns verify-full when SELF_HOSTED is not set', () => {
+    expect(getSSLConfig()).toBe('verify-full');
   });
 
   it('treats SELF_HOSTED as case-insensitive', () => {
     process.env.SELF_HOSTED = 'TRUE';
     expect(getSSLConfig()).toBeUndefined();
+  });
+
+  it.each(['1', ' true ', ' TRUE '])(
+    'recognizes self-hosted value %s consistently',
+    (value) => {
+      process.env.SELF_HOSTED = value;
+      expect(getSSLConfig()).toBeUndefined();
+    },
+  );
+
+  it('disables SSL when DATABASE_URL sets sslmode=disable even in cloud mode', () => {
+    process.env.SELF_HOSTED = 'false';
+    process.env.DATABASE_URL =
+      'postgresql://postgres:pass@db.example.com:5432/supercheck?sslmode=disable';
+    expect(getSSLConfig()).toBeUndefined();
+  });
+
+  it('enables TLS when DATABASE_URL sets sslmode=require in self-hosted mode', () => {
+    process.env.SELF_HOSTED = 'true';
+    process.env.DATABASE_URL =
+      'postgresql://postgres:pass@db.example.com:5432/supercheck?sslmode=require';
+    expect(getSSLConfig()).toBe('verify-full');
   });
 });

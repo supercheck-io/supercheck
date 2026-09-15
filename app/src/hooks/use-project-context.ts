@@ -157,7 +157,9 @@ export function useProjectContextState(
         setCurrentProject(data.project);
         sessionStorage.setItem('projectSwitchSuccess', data.project.name);
         await new Promise(resolve => setTimeout(resolve, 200));
-        window.location.href = '/';
+        // The active project is consumed by server components and API context.
+        // Use a full, same-origin reload so every tenant-scoped cache is reset.
+        window.location.replace(new URL('/', window.location.origin));
         return true;
       } else {
         throw new Error(data.error || 'Failed to switch project');
@@ -216,4 +218,4 @@ export function ProjectContextProvider({
     { value: contextState },
     children
   );
-} 
+}

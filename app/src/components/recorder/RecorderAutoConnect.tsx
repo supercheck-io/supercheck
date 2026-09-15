@@ -3,8 +3,8 @@
 /**
  * RecorderAutoConnect - Seamless Extension Authentication
  * 
- * This component runs on SuperCheck pages and automatically:
- * 1. Detects if the SuperCheck Recorder extension is installed
+ * This component runs on Supercheck pages and automatically:
+ * 1. Detects if the Supercheck Recorder extension is installed
  * 2. If installed and user is logged in, auto-connects the extension
  * 3. No user interaction required - completely seamless
  * 
@@ -44,14 +44,15 @@ export function RecorderAutoConnect() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: "SuperCheck Recorder Extension",
+          name: "Supercheck Recorder Extension",
         }),
       });
 
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || "Failed to generate API key");
+        console.warn(data.error || "Failed to generate API key for extension");
+        return;
       }
 
       // If extension already connected, no new key was generated
@@ -79,7 +80,7 @@ export function RecorderAutoConnect() {
         window.location.origin
       );
     } catch (error) {
-      console.error("[SuperCheck] Failed to auto-connect extension:", error);
+      console.error("[Supercheck] Failed to auto-connect extension:", error);
       apiKeyGeneratedRef.current = false; // Allow retry
     }
   }, [session]);
@@ -90,6 +91,10 @@ export function RecorderAutoConnect() {
     }
 
     const handleMessage = (event: MessageEvent) => {
+      if (event.source !== window || event.origin !== window.location.origin) {
+        return;
+      }
+
       // Only handle messages from our extension
       if (event.data?.source !== "supercheck-recorder") {
         return;
@@ -100,14 +105,14 @@ export function RecorderAutoConnect() {
       switch (message.type) {
         case MESSAGE_TYPES.EXTENSION_READY:
           // Extension is installed and ready - auto-connect it
-          console.log("[SuperCheck] Recorder extension detected, auto-connecting...");
+          console.log("[Supercheck] Recorder extension detected, auto-connecting...");
           connectExtension();
           break;
 
         case MESSAGE_TYPES.EXTENSION_CONNECTED:
           if (message.payload?.success) {
             extensionConnectedRef.current = true;
-            console.log("[SuperCheck] Recorder extension connected successfully");
+            console.log("[Supercheck] Recorder extension connected successfully");
           }
           break;
 

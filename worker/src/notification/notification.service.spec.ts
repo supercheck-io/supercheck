@@ -14,6 +14,11 @@
  * - Multiple Providers (parallel delivery)
  */
 
+jest.mock('../common/utils/pinned-public-fetch', () => ({
+  fetchPublicEndpoint: (...args: Parameters<typeof fetch>) =>
+    global.fetch(...args),
+}));
+
 import { Test, TestingModule } from '@nestjs/testing';
 import {
   NotificationService,
@@ -134,6 +139,8 @@ describe('NotificationService', () => {
     // Default fetch mock
     mockFetch.mockResolvedValue({
       ok: true,
+      status: 202,
+      statusText: 'Accepted',
       text: jest.fn().mockResolvedValue('ok'),
     });
 
@@ -488,6 +495,34 @@ describe('NotificationService', () => {
       expect(body.provider).toBe('webhook');
     });
 
+    it('should preserve stored custom webhook payloads without integration lifecycle fields', async () => {
+      await service.sendNotification(webhookProvider, basePayload);
+
+      const callArgs = mockFetch.mock.calls[0];
+      const body = JSON.parse(callArgs[1].body);
+
+      expect(callArgs[1].headers).toEqual(
+        expect.objectContaining({
+          'Content-Type': 'application/json',
+          'User-Agent': 'Supercheck-Monitor/1.0',
+        }),
+      );
+      expect(body).toEqual(
+        expect.objectContaining({
+          title: 'Monitor Down',
+          message: 'Your monitor is down',
+          provider: 'webhook',
+          version: '1.0',
+          originalPayload: expect.objectContaining({
+            type: 'monitor_down',
+            targetId: 'monitor-123',
+          }),
+        }),
+      );
+      expect(body).not.toHaveProperty('event_action');
+      expect(body).not.toHaveProperty('dedup_key');
+    });
+
     it('should use custom method from config', async () => {
       const putProvider: NotificationProvider = {
         ...webhookProvider,
@@ -523,6 +558,24 @@ describe('NotificationService', () => {
           Authorization: 'Bearer test-token',
         }),
       );
+    });
+
+    it('should reject custom headers that override managed transport headers', async () => {
+      const headerProvider: NotificationProvider = {
+        ...webhookProvider,
+        config: {
+          url: 'https://api.example.com/webhook',
+          headers: { Host: 'metadata.google.internal' },
+        },
+      };
+
+      const result = await service.sendNotification(
+        headerProvider,
+        basePayload,
+      );
+
+      expect(result).toBe(false);
+      expect(mockFetch).not.toHaveBeenCalled();
     });
 
     it('should use body template with variable substitution', async () => {
@@ -679,13 +732,15 @@ describe('NotificationService', () => {
       expect(resolveBody.payload.severity).toBe('info');
     });
 
-    it('should expose VictorOps lifecycle message type values', async () => {
+    it('should send VictorOps CRITICAL on trigger and RECOVERY on resolve', async () => {
       const templateProvider: NotificationProvider = {
         ...webhookProvider,
         config: {
-          url: 'https://alert.victorops.com/integrations/generic/20131114/alert/key/route',
+          preset: 'splunk_on_call',
+          url: 'https://alert.victorops.com/integrations/generic/20131114/alert/routing/entity',
           bodyTemplate: JSON.stringify({
             message_type: '{{victorOpsMessageType}}',
+            splunk_message_type: '{{splunkOnCallMessageType}}',
             entity_id: '{{dedupKey}}',
             entity_display_name: '{{title}}',
             state_message: '{{message}}',
@@ -705,6 +760,10 @@ describe('NotificationService', () => {
         type: 'monitor_recovery',
         title: 'Monitor Recovered',
         severity: 'success',
+        metadata: {
+          ...basePayload.metadata,
+          status: 'up',
+        },
       });
 
       const triggerBody = JSON.parse(mockFetch.mock.calls[0][1].body);
@@ -712,9 +771,115 @@ describe('NotificationService', () => {
 
       expect(triggerBody.message_type).toBe('CRITICAL');
       expect(resolveBody.message_type).toBe('RECOVERY');
+      expect(triggerBody.splunk_message_type).toBe('CRITICAL');
+      expect(resolveBody.splunk_message_type).toBe('RECOVERY');
+      expect(triggerBody.entity_id).toBe('monitor:monitor-123');
       expect(resolveBody.entity_id).toBe(triggerBody.entity_id);
     });
 
+    it('should return sanitized delivery metadata for webhook deliveries', async () => {
+      const templateProvider: NotificationProvider = {
+        ...webhookProvider,
+        config: {
+          preset: 'pagerduty',
+          url: 'https://events.pagerduty.com/v2/enqueue',
+          bodyTemplate: JSON.stringify({
+            event_action: '{{pagerDutyEventAction}}',
+            dedup_key: '{{dedupKey}}',
+          }),
+        },
+      };
+
+      const result = await service.sendNotificationToMultipleProviders(
+        [templateProvider],
+        basePayload,
+      );
+
+      expect(result.results[0].deliveryMetadata).toEqual(
+        expect.objectContaining({
+          version: 1,
+          provider: {
+            id: 'provider-webhook',
+            type: 'webhook',
+            preset: 'pagerduty',
+          },
+          source: expect.objectContaining({
+            alertType: 'monitor_down',
+            targetType: 'monitor',
+            targetId: 'monitor-123',
+            projectId: 'project-456',
+          }),
+          correlation: {
+            dedupKey: 'monitor:monitor-123',
+            eventAction: 'trigger',
+            externalIncidentKey: 'monitor:monitor-123',
+          },
+          delivery: expect.objectContaining({
+            status: 'sent',
+            attempts: 1,
+            responseStatus: 202,
+            responseHash: expect.any(String),
+          }),
+        }),
+      );
+      expect(
+        result.results[0].deliveryMetadata?.delivery.responseHash,
+      ).toHaveLength(64);
+    });
+
+    it('should record recovery lifecycle metadata for custom webhook deliveries', async () => {
+      const result = await service.sendNotificationToMultipleProviders(
+        [webhookProvider],
+        {
+          ...basePayload,
+          type: 'monitor_recovery',
+          title: 'Monitor Recovered',
+          severity: 'success',
+          metadata: {
+            ...basePayload.metadata,
+            status: 'up',
+          },
+        },
+      );
+
+      expect(result.results[0].deliveryMetadata).toEqual(
+        expect.objectContaining({
+          version: 1,
+          provider: {
+            id: 'provider-webhook',
+            type: 'webhook',
+            preset: undefined,
+          },
+          source: expect.objectContaining({
+            alertType: 'monitor_recovery',
+            targetType: 'monitor',
+            targetId: 'monitor-123',
+            projectId: 'project-456',
+          }),
+          correlation: {
+            dedupKey: 'monitor:monitor-123',
+            eventAction: 'resolve',
+          },
+          delivery: expect.objectContaining({
+            status: 'sent',
+            attempts: 1,
+            responseStatus: 202,
+            responseHash: expect.any(String),
+          }),
+        }),
+      );
+
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(body.originalPayload).toEqual(
+        expect.objectContaining({
+          type: 'monitor_recovery',
+          severity: 'success',
+          metadata: expect.objectContaining({ status: 'up' }),
+        }),
+      );
+      expect(body).not.toHaveProperty('event_action');
+      expect(body).not.toHaveProperty('dedup_key');
+    });
     it('should allow metadata to override webhook dedup key', async () => {
       const templateProvider: NotificationProvider = {
         ...webhookProvider,

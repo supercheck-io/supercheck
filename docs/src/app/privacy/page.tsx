@@ -13,15 +13,15 @@ export default function PrivacyPage() {
 
             <main className="container py-12 md:py-20 max-w-4xl">
                 <h1 className="text-4xl font-bold tracking-tight mb-4">Privacy Policy</h1>
-                <p className="text-fd-muted-foreground mb-8">Last updated: December 2025</p>
+                <p className="text-fd-muted-foreground mb-8">Last updated: July 2026</p>
 
                 <div className="prose prose-neutral dark:prose-invert max-w-none">
                     <section className="mb-10">
                         <h2 className="text-2xl font-semibold mb-4">1. Introduction</h2>
                         <p className="text-fd-muted-foreground mb-4">
                             This Privacy Policy describes how Supercheck (&ldquo;we&rdquo;, &ldquo;our&rdquo;, or &ldquo;the Service&rdquo;)
-                            collects, uses, and protects your information when you use our test automation
-                            and monitoring platform.
+                            collects, uses, and protects your information when you use our testing, monitoring,
+                            and AI SRE platform.
                         </p>
                     </section>
 
@@ -148,7 +148,7 @@ export default function PrivacyPage() {
                     <section className="mb-10">
                         <h2 className="text-2xl font-semibold mb-4">10. Open Source</h2>
                         <p className="text-fd-muted-foreground mb-4">
-                            Supercheck is open source software. You can review how data is handled by
+                            Supercheck core is open source under AGPL-3.0-only. You can review how data is handled by
                             examining our{' '}
                             <a href="https://github.com/supercheck-io/supercheck" className="text-fd-primary hover:underline">
                                 source code on GitHub

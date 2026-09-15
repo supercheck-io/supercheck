@@ -12,7 +12,7 @@
 # Usage:
 #   1. Copy this file to your remote VPS
 #   2. Run: sudo bash setup-k3s.sh
-#   3. Create .env with connection details (see .env.example below)
+#   3. Create .env with the required connection details listed below
 #   4. Run: KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig docker compose -f docker-compose-worker.yml up -d
 #
 # Upgrading:
@@ -42,6 +42,7 @@
 # Example .env file:
 # ----------------------------------------
 # DATABASE_URL=postgresql://user:pass@main-server.example.com:5432/supercheck
+# SELF_HOSTED=true
 # REDIS_HOST=main-server.example.com
 # REDIS_PORT=6379
 # REDIS_PASSWORD=your-redis-password
@@ -50,23 +51,22 @@
 # AWS_SECRET_ACCESS_KEY=minioadmin
 # WORKER_LOCATION=us-east
 # WORKER_REPLICAS=1
-# SELF_HOSTED=true
 # ----------------------------------------
 
 services:
   worker:
-    image: ghcr.io/supercheck-io/supercheck/worker:${SUPERCHECK_VERSION:-1.3.5}
+    image: ghcr.io/supercheck-io/supercheck/worker:${SUPERCHECK_VERSION:-1.3.6}
     init: true
-    # GVISOR-006: Run as non-root user (pwuser UID 1000 from Playwright image)
-    user: "1000:1000"
+    # GVISOR-006: Run as the Playwright image's non-root pwuser account.
+    user: "pwuser:pwuser"
     # GVISOR-006: Read-only root filesystem with writable tmpfs mounts
     read_only: true
     tmpfs:
       - /tmp:size=2G,uid=1000,gid=1000,mode=1777
-      - /home/pwuser/.cache:size=256M,uid=1000,gid=1000,mode=0700
-      - /home/pwuser/.npm:size=256M,uid=1000,gid=1000,mode=0700
+      - /home/pwuser/.cache:size=256M,uid=1001,gid=1001,mode=0700
+      - /home/pwuser/.npm:size=256M,uid=1001,gid=1001,mode=0700
     environment:
-      WORKER_IMAGE: ghcr.io/supercheck-io/supercheck/worker:${SUPERCHECK_VERSION:-1.3.5}
+      WORKER_IMAGE: ghcr.io/supercheck-io/supercheck/worker:${SUPERCHECK_VERSION:-1.3.6}
       EXECUTION_NAMESPACE: ${EXECUTION_NAMESPACE:-supercheck-execution}
       KUBECONFIG: /run/secrets/supercheck-kubeconfig
 

@@ -19,11 +19,15 @@ import {
   parseRateLimitConfig,
   createRateLimitHeaders,
 } from "@/lib/api-key-rate-limiter";
-import { verifyApiKey } from "@/lib/security/api-key-hash";
+import { hashApiKey } from "@/lib/security/api-key-hash";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { resolveProjectK6Location } from "@/lib/location-registry";
 import { buildBillingBlockedResponse } from "@/lib/billing-errors";
+import {
+  buildExecutionQueueErrorResponse,
+  getSafeExecutionQueueErrorDetails,
+} from "@/lib/execution-api-responses";
 
 // POST /api/jobs/[id]/trigger - Trigger job remotely via API key
 export async function POST(
@@ -31,6 +35,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   let apiKeyUsed: string | null = null;
+  let createdRunId: string | null = null;
 
   try {
     const { id } = await params;
@@ -80,8 +85,9 @@ export async function POST(
 
     apiKeyUsed = trimmedApiKey.substring(0, 8); // For logging purposes
 
-    // SECURITY: Fetch all enabled API keys for this job and verify using hash comparison
-    // This prevents timing attacks by using constant-time comparison
+    // API keys use deterministic SHA-256 hashes, so use the indexed hash for a
+    // constant-size lookup instead of loading and iterating every key on a job.
+    const presentedKeyHash = hashApiKey(trimmedApiKey);
     const apiKeysForJob = await db
       .select({
         id: apikey.id,
@@ -100,17 +106,12 @@ export async function POST(
       .from(apikey)
       .where(and(
         eq(apikey.jobId, jobId),
-        eq(apikey.enabled, true)
-      ));
+        eq(apikey.enabled, true),
+        eq(apikey.key, presentedKeyHash),
+      ))
+      .limit(1);
 
-    // Find the matching API key using secure hash comparison
-    let matchedKey: typeof apiKeysForJob[0] | null = null;
-    for (const key of apiKeysForJob) {
-      if (verifyApiKey(trimmedApiKey, key.key)) {
-        matchedKey = key;
-        break;
-      }
-    }
+    const matchedKey = apiKeysForJob[0] ?? null;
 
     if (!matchedKey) {
       console.warn(
@@ -375,6 +376,7 @@ export async function POST(
           : { executionEngine: "playwright" }),
       },
     });
+    createdRunId = runId;
 
     console.log(
       `[${jobId}/${runId}] Created queued test run record: ${runId}`
@@ -493,9 +495,17 @@ export async function POST(
         queuePosition = queueResult.position;
 
         // Update run status based on actual queue result
-        await db.update(runs)
-          .set({ status: queueResult.status })
-          .where(eq(runs.id, runId));
+        try {
+          await db
+            .update(runs)
+            .set({ status: queueResult.status })
+            .where(eq(runs.id, runId));
+        } catch (statusError) {
+          console.error(
+            `[${jobId}/${runId}] Failed to persist admitted K6 run status:`,
+            statusError,
+          );
+        }
 
         console.log(`[${jobId}/${runId}] K6 job ${queueResult.status} (position: ${queueResult.position ?? 'N/A'})`);
       } else {
@@ -518,39 +528,39 @@ export async function POST(
         queuePosition = queueResult.position;
 
         // Update run status based on actual queue result
-        await db.update(runs)
-          .set({ status: queueResult.status })
-          .where(eq(runs.id, runId));
+        try {
+          await db
+            .update(runs)
+            .set({ status: queueResult.status })
+            .where(eq(runs.id, runId));
+        } catch (statusError) {
+          console.error(
+            `[${jobId}/${runId}] Failed to persist admitted Playwright run status:`,
+            statusError,
+          );
+        }
 
         console.log(`[${jobId}/${runId}] Playwright job ${queueResult.status} (position: ${queueResult.position ?? 'N/A'})`);
       }
     } catch (error) {
-      // Check if this is a queue capacity error
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-
-      if (
-        errorMessage.includes("capacity limit") ||
-        errorMessage.includes("Unable to verify queue capacity")
-      ) {
-        console.log(
-          `[Job Trigger API] Capacity limit reached: ${errorMessage}`
-        );
-
-        // Update the run status to failed with capacity limit error
-        await db
-          .update(runs)
-          .set({
-            status: "failed",
-            completedAt: new Date(),
-            errorDetails: errorMessage,
-          })
-          .where(eq(runs.id, runId));
-
-        return NextResponse.json(
-          { error: "Queue capacity limit reached", message: errorMessage },
-          { status: 429 }
-        );
+      const queueErrorResponse = buildExecutionQueueErrorResponse(error);
+      if (queueErrorResponse) {
+        try {
+          await db
+            .update(runs)
+            .set({
+              status: "failed",
+              completedAt: new Date(),
+              errorDetails: getSafeExecutionQueueErrorDetails(error),
+            })
+            .where(eq(runs.id, runId));
+        } catch (statusError) {
+          console.error(
+            `[Job Trigger API] Failed to finalize rejected run ${runId}:`,
+            statusError,
+          );
+        }
+        return queueErrorResponse;
       }
 
       // For other errors, log and re-throw
@@ -579,14 +589,32 @@ export async function POST(
     });
   } catch (error) {
     console.error(`Error triggering job via API key ${apiKeyUsed}...:`, error);
-    const errorMessage =
-      error instanceof Error ? error.message : "An unexpected error occurred";
+
+    if (createdRunId) {
+      try {
+        await db
+          .update(runs)
+          .set({
+            status: "failed",
+            completedAt: new Date(),
+            errorDetails: getSafeExecutionQueueErrorDetails(error),
+          })
+          .where(eq(runs.id, createdRunId));
+      } catch (statusError) {
+        console.error(
+          `[Job Trigger API] Failed to finalize rejected run ${createdRunId}:`,
+          statusError,
+        );
+      }
+    }
+
+    const queueErrorResponse = buildExecutionQueueErrorResponse(error);
+    if (queueErrorResponse) return queueErrorResponse;
 
     return NextResponse.json(
       {
         error: "Failed to trigger job",
-        message: errorMessage,
-        details: null,
+        message: "The job could not be queued",
       },
       { status: 500 }
     );

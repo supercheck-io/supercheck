@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { isPrivateOrReservedAddress } from '../utils/url-validator';
 
 export interface ValidationResult {
   valid: boolean;
@@ -334,77 +335,7 @@ export class EnhancedValidationService {
    * SECURITY: Includes all ranges that could be used for SSRF attacks
    */
   private isPrivateIP(ip: string): boolean {
-    // First, validate that the input is actually a valid IPv4 address
-    // This prevents hostnames like 'docs.bullmq.io' from being incorrectly matched
-    const ipv4Regex = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
-    const match = ip.match(ipv4Regex);
-    if (!match) {
-      return false; // Not an IPv4 address, skip range check
-    }
-
-    // Validate each octet is in valid range (0-255)
-    const octets = [
-      parseInt(match[1], 10),
-      parseInt(match[2], 10),
-      parseInt(match[3], 10),
-      parseInt(match[4], 10),
-    ];
-    if (octets.some((o) => o < 0 || o > 255)) {
-      return false; // Invalid IP address
-    }
-
-    // IPv4 private and special-use ranges that should be blocked for SSRF
-    const privateRanges = [
-      // RFC 1918 - Private networks
-      { start: '10.0.0.0', end: '10.255.255.255' },
-      { start: '172.16.0.0', end: '172.31.255.255' },
-      { start: '192.168.0.0', end: '192.168.255.255' },
-      // Loopback (RFC 1122)
-      { start: '127.0.0.0', end: '127.255.255.255' },
-      // Link-local / APIPA (RFC 3927) - includes cloud metadata (169.254.169.254)
-      { start: '169.254.0.0', end: '169.254.255.255' },
-      // Carrier-grade NAT (RFC 6598) - can sometimes access cloud metadata
-      { start: '100.64.0.0', end: '100.127.255.255' },
-      // Documentation ranges (RFC 5737) - should not be routable
-      { start: '192.0.2.0', end: '192.0.2.255' },
-      { start: '198.51.100.0', end: '198.51.100.255' },
-      { start: '203.0.113.0', end: '203.0.113.255' },
-      // Current network (RFC 1122) - can be used for SSRF
-      { start: '0.0.0.0', end: '0.255.255.255' },
-    ];
-
-    for (const range of privateRanges) {
-      if (this.isIPInRange(ip, range.start, range.end)) {
-        return true;
-      }
-    }
-
-    return false;
-  }
-
-  /**
-   * Check if IP is in a specific range
-   */
-  private isIPInRange(ip: string, startIP: string, endIP: string): boolean {
-    const ipNum = this.ipToNumber(ip);
-    const startNum = this.ipToNumber(startIP);
-    const endNum = this.ipToNumber(endIP);
-
-    return ipNum >= startNum && ipNum <= endNum;
-  }
-
-  /**
-   * Convert IP to number for range comparison
-   */
-  private ipToNumber(ip: string): number {
-    const parts = ip.split('.');
-    return (
-      ((parseInt(parts[0]) << 24) +
-        (parseInt(parts[1]) << 16) +
-        (parseInt(parts[2]) << 8) +
-        parseInt(parts[3])) >>>
-      0
-    ); // Unsigned right shift to handle large numbers
+    return isPrivateOrReservedAddress(ip);
   }
 
   /**

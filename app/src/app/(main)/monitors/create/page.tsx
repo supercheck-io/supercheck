@@ -7,7 +7,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { MonitorTypesPopover } from "@/components/monitors/monitor-types-popover";
-import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
+import { SupercheckLoading } from "@/components/shared/supercheck-loading";
 
 export const metadata: Metadata = {
   title: "Create Monitor | Supercheck",
@@ -47,7 +47,7 @@ export default async function CreateMonitorPage({ searchParams }: CreateMonitorP
         <Suspense
           fallback={
             <div className="flex min-h-[400px] items-center justify-center">
-              <SuperCheckLoading size="md" message="Loading monitor wizard..." />
+              <SupercheckLoading size="md" message="Loading monitor wizard..." />
             </div>
           }
         >
@@ -119,7 +119,7 @@ export default async function CreateMonitorPage({ searchParams }: CreateMonitorP
       <Suspense
         fallback={
           <div className="flex min-h-[400px] items-center justify-center">
-            <SuperCheckLoading size="md" message="Loading monitor wizard..." />
+            <SupercheckLoading size="md" message="Loading monitor wizard..." />
           </div>
         }
       >

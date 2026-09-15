@@ -72,7 +72,7 @@ const recordingSchema = z.object({
  * Save a recorded script as a new test
  * 
  * Authentication: API Key (X-API-Key header)
- * Used by: SuperCheck Recorder Chrome Extension
+ * Used by: Supercheck Recorder Chrome Extension
  */
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
@@ -271,7 +271,7 @@ export async function POST(request: NextRequest) {
         organizationId: project[0].organizationId,
         createdByUserId: userId,
         title: data.name,
-        description: `Recorded with SuperCheck Recorder on ${new Date(
+        description: `Recorded with Supercheck Recorder on ${new Date(
           data.metadata.recordedAt
         ).toLocaleString()}\n\nBase URL: ${data.metadata.baseUrl}\nSteps: ${data.metadata.stepsCount}\nDuration: ${Math.round(data.metadata.duration / 1000)}s`,
         type: "browser",

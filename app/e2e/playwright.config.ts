@@ -6,58 +6,67 @@ import dotenv from 'dotenv';
 dotenv.config({ path: path.resolve(__dirname, '.env') });
 
 /**
- * Playwright E2E Test Configuration for SuperCheck
+ * Playwright E2E Test Configuration for Supercheck
  *
  * Authentication approach: Each test file that needs authentication
- * uses loginIfNeeded() in beforeEach hook. No shared auth state file.
+ * uses a setup project to create a shared authenticated storage state.
  */
 export default defineConfig({
   testDir: './tests',
 
-  /* Run tests in files in parallel */
-  fullyParallel: true,
+  /* The suite mutates a shared demo account, so files must not overlap freely. */
+  fullyParallel: false,
 
   /* Fail the build on CI if you accidentally left test.only in the source code */
   forbidOnly: !!process.env.CI,
 
-  /* Retry on CI only - disabled to speed up CI */
+  /* Flakes are failures: CI must prove every test passes on its first attempt. */
   retries: 0,
 
-  /* Workers - increase for faster CI runs */
-  workers: process.env.CI ? 4 : 2,
+  /* CI uses one shared account; parallel workers cause state and rate-limit collisions. */
+  workers: process.env.CI ? 1 : 2,
 
   /* Reporter to use */
   reporter: [
     ['html', { outputFolder: 'playwright-report', open: 'never' }],
     ['json', { outputFile: 'test-results/results.json' }],
     ['list'],
+    ...(process.env.E2E_FAIL_ON_PRIORITY_SKIPS === 'true'
+      ? [['./reporters/priority-skip-reporter.ts'] as [string]]
+      : []),
   ],
 
   /* Shared settings for all the projects below */
   use: {
-    baseURL: process.env.E2E_BASE_URL || 'http://localhost:3000',
-    trace: 'off',
+    baseURL: process.env.E2E_BASE_URL || 'https://demo.supercheck.dev',
+    trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'off',
-    actionTimeout: 10000,
-    navigationTimeout: 20000,
+    actionTimeout: 15000,
+    navigationTimeout: 45000,
   },
 
-  /* Per-test timeout - reduced for CI */
-  timeout: 30000,
+  /* Allow production pages enough time when the full suite is running. */
+  timeout: 60000,
 
   /* Expect timeout */
   expect: {
-    timeout: 5000,
+    timeout: 10000,
   },
 
-  /* Configure projects - single project, no storageState */
+  /* Configure projects */
   projects: [
+    {
+      name: 'setup',
+      testMatch: /auth\.setup\.ts/,
+    },
     {
       name: 'chromium',
       use: {
         ...devices['Desktop Chrome'],
+        storageState: 'user-auth-state.json',
       },
+      dependencies: ['setup'],
     },
   ],
 

@@ -1,33 +1,27 @@
 import { NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import {
-  jobs,
-  k6PerformanceRuns,
-  monitors,
-  monitorResults,
   reports,
   runs,
-  tests,
   projects,
 } from "@/db/schema";
 import { eq, desc, or, sql } from "drizzle-orm";
 import { fetchFromS3 } from "@/lib/s3-proxy";
 import { notFound } from "next/navigation";
 import { hasPermissionForUser } from "@/lib/rbac/middleware";
-import { requireAuthContext, requireUserAuthContext, isAuthError } from "@/lib/auth-context";
+import { requireUserAuthContext, isAuthError } from "@/lib/auth-context";
 import {
   buildTimeoutResponse,
   isCancellationError,
   resolveExecutionErrorDetails,
 } from "@/lib/report-results-utils";
+import {
+  getReportCacheControl,
+  resolveAccessContext,
+} from "@/lib/test-results-access";
 
 const DEFAULT_REPORT_ASSET_MAX_RETRIES = 2;
 const DEFAULT_REPORT_ASSET_RETRY_DELAY_MS = 250;
-
-type AccessContext = {
-  organizationId: string | null;
-  projectId: string | null;
-};
 
 function getReportAssetRetryConfig() {
   const maxRetries = Number.parseInt(
@@ -131,104 +125,6 @@ function getPermissionResource(entityType: string): "test" | "monitor" | "run" |
   if (entityType === "monitor") return "monitor";
   if (entityType === "job" || entityType === "k6_test" || entityType === "k6_job") return "run";
   return null;
-}
-
-async function resolveAccessContext(
-  entityType: string,
-  entityId: string
-): Promise<AccessContext | null> {
-  try {
-    if (entityType === "test") {
-      const result = await db
-        .select({
-          organizationId: tests.organizationId,
-          projectId: tests.projectId,
-        })
-        .from(tests)
-        .where(eq(tests.id, entityId))
-        .limit(1);
-
-      if (!result.length) return null;
-      return {
-        organizationId: result[0].organizationId,
-        projectId: result[0].projectId,
-      };
-    }
-
-    if (entityType === "job") {
-      const result = await db
-        .select({
-          organizationId: jobs.organizationId,
-          projectId: runs.projectId,
-        })
-        .from(runs)
-        .leftJoin(jobs, eq(jobs.id, runs.jobId))
-        .where(eq(runs.id, entityId))
-        .limit(1);
-
-      if (!result.length) return null;
-      return {
-        organizationId: result[0].organizationId,
-        projectId: result[0].projectId,
-      };
-    }
-
-    if (entityType === "k6_test" || entityType === "k6_job") {
-      const result = await db
-        .select({
-          organizationId: k6PerformanceRuns.organizationId,
-          projectId: k6PerformanceRuns.projectId,
-        })
-        .from(k6PerformanceRuns)
-        .where(eq(k6PerformanceRuns.runId, entityId))
-        .limit(1);
-
-      if (!result.length) return null;
-      return {
-        organizationId: result[0].organizationId,
-        projectId: result[0].projectId,
-      };
-    }
-
-    if (entityType === "monitor") {
-      const result = await db
-        .select({
-          organizationId: monitors.organizationId,
-          projectId: monitors.projectId,
-        })
-        .from(monitorResults)
-        .leftJoin(monitors, eq(monitors.id, monitorResults.monitorId))
-        .where(eq(monitorResults.testExecutionId, entityId))
-        .limit(1);
-
-      if (result.length) {
-        return {
-          organizationId: result[0].organizationId,
-          projectId: result[0].projectId,
-        };
-      }
-
-      const monitorRecord = await db
-        .select({
-          organizationId: monitors.organizationId,
-          projectId: monitors.projectId,
-        })
-        .from(monitors)
-        .where(eq(monitors.id, entityId))
-        .limit(1);
-
-      if (!monitorRecord.length) return null;
-      return {
-        organizationId: monitorRecord[0].organizationId,
-        projectId: monitorRecord[0].projectId,
-      };
-    }
-
-    return null;
-  } catch (error) {
-    console.error("[TEST-RESULTS] Error resolving access context:", error);
-    return null;
-  }
 }
 
 export async function GET(request: Request) {
@@ -428,22 +324,6 @@ export async function GET(request: Request) {
       entityId
     );
 
-    // Fallback for ad-hoc playground tests that don’t have a persisted test record
-    if (
-      (!accessContext?.organizationId || !accessContext.projectId) &&
-      permissionResource === "test"
-    ) {
-      try {
-        const projectContext = await requireAuthContext();
-        accessContext = {
-          organizationId: projectContext.organizationId,
-          projectId: projectContext.project.id,
-        };
-      } catch (error) {
-        console.warn("[TEST-RESULTS] Failed to resolve project context:", error);
-      }
-    }
-
     if (!permissionResource || !accessContext?.organizationId || !accessContext.projectId) {
       return notFound();
     }
@@ -576,11 +456,9 @@ export async function GET(request: Request) {
         headers[key] = value;
       });
 
-      // Cache successful report assets briefly, but never cache error responses.
-      // Caching 404/500 here can make freshly-uploaded reports appear missing.
-      headers["Cache-Control"] = s3Response.ok
-        ? "public, max-age=300"
-        : "no-store, no-cache, must-revalidate";
+      // Report assets are authorization-gated and may contain tenant data.
+      // Never allow shared caches or browsers to retain the response.
+      headers["Cache-Control"] = getReportCacheControl();
 
       // Only include Content-Disposition for downloads if not forcing iframe display
       const contentType =

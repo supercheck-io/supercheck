@@ -1,5 +1,5 @@
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
-import { Queue, QueueEvents, type IRedisClient } from 'bullmq';
+import { Queue, QueueEvents, type RedisClient } from 'bullmq';
 import { InjectQueue } from '@nestjs/bullmq';
 import { PLAYWRIGHT_QUEUE } from '../constants';
 
@@ -20,7 +20,7 @@ import { PLAYWRIGHT_QUEUE } from '../constants';
 export class QueueStatusService implements OnModuleDestroy {
   private readonly logger = new Logger(QueueStatusService.name);
   private queueEvents?: QueueEvents;
-  private queueEventsConnection: IRedisClient | null = null;
+  private queueEventsConnection: RedisClient | null = null;
 
   constructor(@InjectQueue(PLAYWRIGHT_QUEUE) private readonly queue: Queue) {
     void this.initializeQueueListeners();

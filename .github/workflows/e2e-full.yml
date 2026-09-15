@@ -1,9 +1,8 @@
 name: Full E2E Test Suite
 
 on:
-  # Run on schedule (e.g., nightly)
-  # schedule:
-  #   - cron: "0 2 * * *" # 2 AM UTC daily
+  schedule:
+    - cron: "0 2 * * *" # Daily at 02:00 UTC
   # Manual trigger
   workflow_dispatch:
     inputs:
@@ -11,9 +10,50 @@ on:
         description: "Test filter (e.g., @auth, @monitors, leave empty for all)"
         required: false
         type: string
+      base_url:
+        description: "Target URL (defaults to the Docker Compose demo)"
+        required: false
+        default: "https://demo.supercheck.dev"
+        type: string
+      expected_build_sha:
+        description: "Optional full SHA for deployment attestation"
+        required: false
+        type: string
+  workflow_call:
+    inputs:
+      test_filter:
+        required: false
+        type: string
+      base_url:
+        required: true
+        type: string
+      expected_build_sha:
+        required: true
+        type: string
+    secrets:
+      E2E_TEST_USER_EMAIL: { required: true }
+      E2E_TEST_USER_PASSWORD: { required: true }
+      E2E_INVITEE_EMAIL: { required: true }
+      E2E_INVITEE_PASSWORD: { required: true }
+      E2E_SESSION_USER_EMAIL: { required: true }
+      E2E_SESSION_USER_PASSWORD: { required: true }
+      E2E_SECURITY_USER_EMAIL: { required: true }
+      E2E_SECURITY_USER_PASSWORD: { required: true }
+      E2E_SUPER_ADMIN_EMAIL: { required: true }
+      E2E_SUPER_ADMIN_PASSWORD: { required: true }
+      E2E_ORG_OWNER_EMAIL: { required: true }
+      E2E_ORG_OWNER_PASSWORD: { required: true }
+      E2E_ORG_ADMIN_EMAIL: { required: true }
+      E2E_ORG_ADMIN_PASSWORD: { required: true }
+      E2E_PROJECT_ADMIN_EMAIL: { required: true }
+      E2E_PROJECT_ADMIN_PASSWORD: { required: true }
+      E2E_EDITOR_EMAIL: { required: true }
+      E2E_EDITOR_PASSWORD: { required: true }
+      E2E_VIEWER_EMAIL: { required: true }
+      E2E_VIEWER_PASSWORD: { required: true }
 
 env:
-  NODE_VERSION: "20"
+  NODE_VERSION: "24"
 
 # Explicit permissions following least-privilege principle
 permissions:
@@ -22,29 +62,28 @@ permissions:
 
 jobs:
   e2e-full:
-    if: false
     name: Full E2E Tests
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: ${{ env.NODE_VERSION }}
 
       - name: Cache npm dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: ~/.npm
           key: npm-e2e-${{ hashFiles('app/e2e/package-lock.json') }}
           restore-keys: npm-e2e-
 
       - name: Cache Playwright browsers
-        uses: actions/cache@v4
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ hashFiles('app/e2e/package-lock.json') }}
@@ -62,21 +101,55 @@ jobs:
         id: e2e-tests
         working-directory: ./app/e2e
         run: |
-          if [ -n "${{ github.event.inputs.test_filter }}" ]; then
-            npx playwright test --grep "${{ github.event.inputs.test_filter }}"
+          REQUIRED_VARS="E2E_TEST_USER_EMAIL E2E_TEST_USER_PASSWORD E2E_INVITEE_EMAIL E2E_INVITEE_PASSWORD E2E_SESSION_USER_EMAIL E2E_SESSION_USER_PASSWORD E2E_SECURITY_USER_EMAIL E2E_SECURITY_USER_PASSWORD E2E_SUPER_ADMIN_EMAIL E2E_SUPER_ADMIN_PASSWORD E2E_ORG_OWNER_EMAIL E2E_ORG_OWNER_PASSWORD E2E_ORG_ADMIN_EMAIL E2E_ORG_ADMIN_PASSWORD E2E_PROJECT_ADMIN_EMAIL E2E_PROJECT_ADMIN_PASSWORD E2E_EDITOR_EMAIL E2E_EDITOR_PASSWORD E2E_VIEWER_EMAIL E2E_VIEWER_PASSWORD"
+          MISSING_VARS=""
+          for VAR_NAME in $REQUIRED_VARS; do
+            if [ -z "$(printenv "$VAR_NAME")" ]; then
+              MISSING_VARS="$MISSING_VARS $VAR_NAME"
+            fi
+          done
+          if [ -n "$MISSING_VARS" ]; then
+            echo "::error::Missing required full-suite E2E variables:$MISSING_VARS"
+            exit 1
+          fi
+
+          if [ -n "$TEST_FILTER" ]; then
+            npx playwright test --grep "$TEST_FILTER"
           else
             npx playwright test
           fi
         timeout-minutes: 50
-        continue-on-error: true
         env:
           CI: true
-          E2E_BASE_URL: ${{ secrets.E2E_BASE_URL }}
+          E2E_FAIL_ON_PRIORITY_SKIPS: true
+          TEST_FILTER: ${{ inputs.test_filter }}
+          E2E_BASE_URL: ${{ inputs.base_url || 'https://demo.supercheck.dev' }}
+          # When omitted, the conditional revision-attestation test is not
+          # registered. Functional E2E coverage still runs in full.
+          E2E_EXPECTED_BUILD_SHA: ${{ inputs.expected_build_sha }}
           E2E_TEST_USER_EMAIL: ${{ secrets.E2E_TEST_USER_EMAIL }}
           E2E_TEST_USER_PASSWORD: ${{ secrets.E2E_TEST_USER_PASSWORD }}
+          E2E_INVITEE_EMAIL: ${{ secrets.E2E_INVITEE_EMAIL }}
+          E2E_INVITEE_PASSWORD: ${{ secrets.E2E_INVITEE_PASSWORD }}
+          E2E_SESSION_USER_EMAIL: ${{ secrets.E2E_SESSION_USER_EMAIL }}
+          E2E_SESSION_USER_PASSWORD: ${{ secrets.E2E_SESSION_USER_PASSWORD }}
+          E2E_SECURITY_USER_EMAIL: ${{ secrets.E2E_SECURITY_USER_EMAIL }}
+          E2E_SECURITY_USER_PASSWORD: ${{ secrets.E2E_SECURITY_USER_PASSWORD }}
+          E2E_SUPER_ADMIN_EMAIL: ${{ secrets.E2E_SUPER_ADMIN_EMAIL }}
+          E2E_SUPER_ADMIN_PASSWORD: ${{ secrets.E2E_SUPER_ADMIN_PASSWORD }}
+          E2E_ORG_OWNER_EMAIL: ${{ secrets.E2E_ORG_OWNER_EMAIL }}
+          E2E_ORG_OWNER_PASSWORD: ${{ secrets.E2E_ORG_OWNER_PASSWORD }}
+          E2E_ORG_ADMIN_EMAIL: ${{ secrets.E2E_ORG_ADMIN_EMAIL }}
+          E2E_ORG_ADMIN_PASSWORD: ${{ secrets.E2E_ORG_ADMIN_PASSWORD }}
+          E2E_PROJECT_ADMIN_EMAIL: ${{ secrets.E2E_PROJECT_ADMIN_EMAIL }}
+          E2E_PROJECT_ADMIN_PASSWORD: ${{ secrets.E2E_PROJECT_ADMIN_PASSWORD }}
+          E2E_EDITOR_EMAIL: ${{ secrets.E2E_EDITOR_EMAIL }}
+          E2E_EDITOR_PASSWORD: ${{ secrets.E2E_EDITOR_PASSWORD }}
+          E2E_VIEWER_EMAIL: ${{ secrets.E2E_VIEWER_EMAIL }}
+          E2E_VIEWER_PASSWORD: ${{ secrets.E2E_VIEWER_PASSWORD }}
 
       - name: Upload Playwright report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: always()
         with:
           name: playwright-report-full
@@ -84,7 +157,7 @@ jobs:
           retention-days: 30
 
       - name: Upload test results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: always()
         with:
           name: test-results-full
@@ -93,12 +166,14 @@ jobs:
 
       - name: Create test summary
         if: always()
+        env:
+          TEST_FILTER: ${{ inputs.test_filter }}
         run: |
           echo "## 🎭 Full E2E Test Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          if [ -n "${{ github.event.inputs.test_filter }}" ]; then
-            echo "**Filter:** \`${{ github.event.inputs.test_filter }}\`" >> $GITHUB_STEP_SUMMARY
+          if [ -n "$TEST_FILTER" ]; then
+            echo "**Filter:** \`$TEST_FILTER\`" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
           fi
 
@@ -106,9 +181,8 @@ jobs:
             PASSED=$(jq '.stats.expected // 0' app/e2e/test-results/results.json)
             FAILED=$(jq '.stats.unexpected // 0' app/e2e/test-results/results.json)
             SKIPPED=$(jq '.stats.skipped // 0' app/e2e/test-results/results.json)
-            DURATION=$(jq '.stats.duration // 0' app/e2e/test-results/results.json)
-            DURATION_MIN=$((DURATION / 60000))
-            
+            DURATION_MIN=$(jq '((.stats.duration // 0) / 60000) | floor' app/e2e/test-results/results.json)
+
             echo "| Metric | Count |" >> $GITHUB_STEP_SUMMARY
             echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
             echo "| ✅ Passed | $PASSED |" >> $GITHUB_STEP_SUMMARY
@@ -116,7 +190,7 @@ jobs:
             echo "| ⏭️ Skipped | $SKIPPED |" >> $GITHUB_STEP_SUMMARY
             echo "| ⏱️ Duration | ${DURATION_MIN}m |" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            
+
             if [ "${{ steps.e2e-tests.outcome }}" == "failure" ]; then
               echo "> ⚠️ **Some tests failed.** Download the playwright-report-full artifact for details." >> $GITHUB_STEP_SUMMARY
             else
@@ -126,8 +200,24 @@ jobs:
             echo "⚠️ No test results found. Tests may have failed to start or timed out." >> $GITHUB_STEP_SUMMARY
           fi
 
-      - name: Fail if tests failed
-        if: steps.e2e-tests.outcome == 'failure'
+      - name: Enforce E2E result integrity
+        if: always()
         run: |
-          echo "::error::E2E tests failed. Check the playwright-report-full artifact for details."
-          exit 1
+          set -Eeuo pipefail
+
+          if [ "${{ steps.e2e-tests.outcome }}" != "success" ]; then
+            echo "::error::E2E tests failed. Check the playwright-report-full artifact for details."
+            exit 1
+          fi
+
+          RESULTS_FILE="app/e2e/test-results/results.json"
+          if [ ! -s "$RESULTS_FILE" ]; then
+            echo "::error::E2E results are missing or empty."
+            exit 1
+          fi
+
+          FAILED="$(jq -er '.stats.unexpected // 0' "$RESULTS_FILE")"
+          if ! [[ "$FAILED" =~ ^[0-9]+$ ]] || (( FAILED > 0 )); then
+            echo "::error::E2E results contain ${FAILED} unexpected failures."
+            exit 1
+          fi

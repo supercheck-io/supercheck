@@ -1,0 +1,8 @@
+name: Supercheck CodeQL configuration
+
+paths-ignore:
+  # Vendored upstream Playwright source is tracked for the recorder build and
+  # is reviewed through its upstream security process.
+  - recorder/playwright/**
+  # Browser fixtures intentionally exercise HTTP-only test scenarios.
+  - recorder/tests/**

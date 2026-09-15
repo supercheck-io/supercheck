@@ -78,35 +78,10 @@ export async function POST(
     const run = runResult[0];
 
     if (!run) {
-      // Run not found in database - could be a playground test
-      // Try to set cancellation signal in Redis anyway
-      logger.warn(
-        { runId },
-        "Run not found in database - attempting direct cancellation"
-      );
-      try {
-        await setCancellationSignal(runId);
-        logger.info(
-          { runId },
-          "Cancellation signal set for non-database run (likely playground)"
-        );
-        return NextResponse.json({
-          success: true,
-          message: "Run cancelled successfully",
-          runId,
-          queueRemoved: false,
-          jobType: "playground",
-        });
-      } catch (signalError) {
-        logger.error(
-          { error: signalError, runId },
-          "Failed to set cancellation signal for non-database run"
-        );
-        return NextResponse.json(
-          { error: "Run not found and cancellation failed" },
-          { status: 404 }
-        );
-      }
+      // A cancellation signal is a privileged cross-process command. Never
+      // create one unless ownership can be established from a persisted run.
+      logger.warn({ runId }, "Run not found");
+      return NextResponse.json({ error: "Run not found" }, { status: 404 });
     }
 
     // Determine if this is a playground run (no jobId but has projectId)
@@ -226,23 +201,19 @@ export async function POST(
     // For active jobs, the worker will see the cancellation signal and stop
     let jobWasRemoved = false; // Track if we successfully removed the job
     try {
-      // Check Playwright queue
+      // Job IDs are the run IDs. Direct lookup is O(1) and avoids scanning all
+      // active/waiting/delayed jobs for every cancellation request.
       const playwrightQueue = queues.playwrightQueues["global"];
-      const playwrightJobs = await playwrightQueue.getJobs([
-        "active",
-        "waiting",
-        "delayed",
-      ]);
+      const playwrightJob = await playwrightQueue.getJob(runId);
 
-      for (const job of playwrightJobs) {
-        if (job.data.runId === runId) {
+      if (playwrightJob) {
           try {
-            await job.remove();
+            await playwrightJob.remove();
             queueToSearch = "playwright-global";
             jobType = "playwright";
-            jobWasRemoved = true; // Job was successfully removed from queue
+            jobWasRemoved = true;
             logger.info(
-              { runId, jobId: job.id, queue: queueToSearch },
+              { runId, jobId: playwrightJob.id, queue: queueToSearch },
               "Removed job from BullMQ queue"
             );
           } catch (removeError) {
@@ -254,7 +225,7 @@ export async function POST(
                 : String(removeError);
             if (errorMessage.includes("locked")) {
               logger.warn(
-                { runId, jobId: job.id },
+                { runId, jobId: playwrightJob.id },
                 "Job is locked by worker (already executing) - will update database status only"
               );
               queueToSearch = "playwright-global";
@@ -264,28 +235,20 @@ export async function POST(
               throw removeError; // Re-throw unexpected errors
             }
           }
-          break;
-        }
       }
 
       // If not found in Playwright, check K6 queues
       if (!queueToSearch) {
         for (const [region, k6Queue] of Object.entries(queues.k6Queues)) {
-          const k6Jobs = await k6Queue.getJobs([
-            "active",
-            "waiting",
-            "delayed",
-          ]);
-
-          for (const job of k6Jobs) {
-            if (job.data.runId === runId) {
+          const k6Job = await k6Queue.getJob(runId);
+          if (k6Job) {
               try {
-                await job.remove();
+                await k6Job.remove();
                 queueToSearch = `k6-${region}`;
                 jobType = "k6";
-                jobWasRemoved = true; // Job was successfully removed from queue
+                jobWasRemoved = true;
                 logger.info(
-                  { runId, jobId: job.id, queue: queueToSearch },
+                  { runId, jobId: k6Job.id, queue: queueToSearch },
                   "Removed job from BullMQ queue"
                 );
               } catch (removeError) {
@@ -297,7 +260,7 @@ export async function POST(
                     : String(removeError);
                 if (errorMessage.includes("locked")) {
                   logger.warn(
-                    { runId, jobId: job.id },
+                    { runId, jobId: k6Job.id },
                     "Job is locked by worker (already executing) - will update database status only"
                   );
                   queueToSearch = `k6-${region}`;
@@ -307,8 +270,6 @@ export async function POST(
                   throw removeError; // Re-throw unexpected errors
                 }
               }
-              break;
-            }
           }
 
           if (queueToSearch) break;
@@ -348,18 +309,15 @@ export async function POST(
         );
       }
 
-      // STEP 3.5: Release capacity slot if job was found in ANY queue
-      // CRITICAL FIX: Release for BOTH removed jobs AND locked (running) jobs
-      // For locked jobs, the worker will also try to release when it detects cancellation,
-      // but releaseRunningSlot is now idempotent (uses atomic Lua script with released flag)
-      // This prevents the race condition where user starts new job before worker stops
-      if (queueToSearch && organizationIdForRbac) {
+      // A locked job still consumes resources until the worker confirms terminal
+      // completion. Release immediately only when BullMQ actually removed it.
+      if (jobWasRemoved && organizationIdForRbac) {
         try {
           const capacityManager = await getCapacityManager();
           await capacityManager.releaseRunningSlot(organizationIdForRbac, runId);
           logger.info(
             { runId, organizationId: organizationIdForRbac, jobType, wasRemoved: jobWasRemoved },
-            "Released capacity slot (idempotent - safe if worker also releases)"
+            "Released capacity slot after removing queued BullMQ job"
           );
         } catch (capacityError) {
           logger.error(

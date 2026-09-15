@@ -6,7 +6,7 @@
  * Test Categories:
  * - HTTP Request Monitoring (GET, POST, status validation)
  * - Website Monitoring (SSL checks, content validation)
- * - Ping Monitoring (ICMP echo)
+ * - Ping Monitoring (TCP reachability on ports 443 and 80)
  * - Port Monitoring (TCP connection)
  * - Custom Playwright Monitoring
  * - Alert Handling (status changes, notifications)
@@ -27,6 +27,16 @@ jest.mock('../execution/services/execution.service', () => ({
   ExecutionService: jest.fn().mockImplementation(() => ({
     execute: jest.fn().mockResolvedValue({ success: true }),
   })),
+}));
+
+jest.mock('../common/utils/pinned-monitor-request', () => ({
+  requestPinnedMonitorTarget: jest.fn(
+    async (
+      config: unknown,
+      _options: unknown,
+      execute: (requestConfig: unknown) => Promise<unknown>,
+    ) => execute(config),
+  ),
 }));
 
 import { MonitorService } from './monitor.service';
@@ -125,14 +135,10 @@ describe('MonitorService', () => {
   };
 
   const mockLocationService = {
-    getCurrentLocation: jest
-      .fn()
-      .mockReturnValue('eu-central'),
+    getCurrentLocation: jest.fn().mockReturnValue('eu-central'),
     getLocationName: jest.fn().mockReturnValue('EU Central'),
     getLocationDisplayName: jest.fn().mockReturnValue('EU Central'),
-    getEffectiveLocations: jest
-      .fn()
-      .mockReturnValue(['eu-central']),
+    getEffectiveLocations: jest.fn().mockReturnValue(['eu-central']),
     calculateAggregatedStatus: jest.fn().mockReturnValue('up'),
   };
 

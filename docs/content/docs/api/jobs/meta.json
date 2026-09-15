@@ -6,8 +6,10 @@
     "getJob",
     "createJob",
     "updateJob",
+    "replaceJobConfiguration",
     "deleteJob",
     "triggerJob",
+    "getJobTriggerInfo",
     "runJob"
   ]
 }

@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { runs, JobTrigger, tests, jobs } from "@/db/schema";
 import type { JobType, K6Location } from "@/db/schema";
@@ -19,8 +19,15 @@ import { subscriptionService } from "@/lib/services/subscription-service";
 import { polarUsageService } from "@/lib/services/polar-usage.service";
 import { resolveProjectK6Location } from "@/lib/location-registry";
 import { buildBillingBlockedResponse } from "@/lib/billing-errors";
+import { checkExecutionRateLimit } from "@/lib/execution-rate-limiter";
+import {
+  buildExecutionQueueErrorResponse,
+  buildExecutionRateLimitResponse,
+  getSafeExecutionQueueErrorDetails,
+} from "@/lib/execution-api-responses";
+import { requireSameOriginRequest } from "@/lib/security/same-origin";
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   let jobId: string | null = null;
   let runId: string | null = null;
 
@@ -28,6 +35,13 @@ export async function POST(request: Request) {
     // Check authentication and get project context
     const authCtx = await requireAuthContext();
     const { userId, project, organizationId, isCliAuth } = authCtx;
+
+    // Browser sessions must be same-origin. CLI-token calls do not carry
+    // browser Origin headers and are authenticated independently.
+    if (!isCliAuth) {
+      const originError = requireSameOriginRequest(request);
+      if (originError) return originError;
+    }
     
     const data = await request.json();
     jobId = data.jobId as string;
@@ -35,16 +49,21 @@ export async function POST(request: Request) {
     const trigger = data.trigger as JobTrigger; // Requested trigger from request body
     
     // Validate trigger value
-    if (!trigger || !['manual', 'remote', 'schedule'].includes(trigger)) {
+    if (!trigger || !['manual', 'remote'].includes(trigger)) {
       console.error("Invalid trigger value:", trigger);
       return NextResponse.json(
-        { error: "Invalid trigger value. Must be one of 'manual', 'remote', or 'schedule'." },
+        { error: "Invalid trigger value. Must be 'manual' or 'remote'." },
         { status: 400 }
       );
     }
 
     // Normalize trigger source: CLI-initiated remote executions should always be tracked as remote.
     const effectiveTrigger: JobTrigger = isCliAuth ? "remote" : trigger;
+
+    const rateLimitResponse = buildExecutionRateLimitResponse(
+      await checkExecutionRateLimit(userId, organizationId),
+    );
+    if (rateLimitResponse) return rateLimitResponse;
 
     console.log(`Received job execution request:`, { jobId, testCount: testData?.length });
     
@@ -366,11 +385,22 @@ export async function POST(request: Request) {
         const queueResult = await addK6JobToQueue(k6Task, "k6-job-execution");
         
         // Update run status based on actual queue result
-        await db.update(runs)
-          .set({ status: queueResult.status })
-          .where(eq(runs.id, runId));
-          
-        console.log(`[${jobId}/${runId}] K6 job ${queueResult.status} (position: ${queueResult.position ?? 'N/A'})`);
+        try {
+          await db
+            .update(runs)
+            .set({ status: queueResult.status })
+            .where(eq(runs.id, runId));
+        } catch (statusError) {
+          console.error("Failed to persist admitted K6 run status:", {
+            jobId,
+            runId,
+            error: statusError,
+          });
+        }
+
+        console.log(
+          `[${jobId}/${runId}] K6 job ${queueResult.status} (position: ${queueResult.position ?? "N/A"})`,
+        );
       } else {
         const task: JobExecutionTask = {
           jobId: jobId,
@@ -389,60 +419,54 @@ export async function POST(request: Request) {
         const queueResult = await addJobToQueue(task);
         
         // Update run status based on actual queue result
-        await db.update(runs)
-          .set({ status: queueResult.status })
-          .where(eq(runs.id, runId));
-          
-        console.log(`[${jobId}/${runId}] Playwright job ${queueResult.status} (position: ${queueResult.position ?? 'N/A'})`);
-      }
-      
-      // Log the audit event for job execution trigger
-      await logAuditEvent({
-        userId,
-        organizationId,
-        action: 'job_triggered',
-        resource: 'job',
-        resourceId: jobId,
-        metadata: {
-          runId,
-          trigger: effectiveTrigger,
-          testsCount: testScripts.length,
-          projectId: project.id,
-          projectName: project.name,
-          jobType,
-          executionEngine: isPerformanceJob ? "k6" : "playwright",
-          location: resolvedLocation ?? undefined,
-        },
-        success: true
-      });
-      
-    } catch (error) {
-      // Check if this is a queue capacity error
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      
-      if (errorMessage.includes('capacity limit') || errorMessage.includes('Unable to verify queue capacity')) {
-        console.log(`[Job API] Capacity limit reached: ${errorMessage}`);
-        
-        // Update the run status to failed with capacity limit error
-        await db.update(runs)
-          .set({
-            status: "failed",
-            completedAt: new Date(),
-            errorDetails: errorMessage
-          })
-          .where(eq(runs.id, runId));
-          
-        // Return a 429 status code (Too Many Requests) with the error message
-        return NextResponse.json(
-          { error: "Queue capacity limit reached", message: errorMessage },
-          { status: 429 }
+        try {
+          await db
+            .update(runs)
+            .set({ status: queueResult.status })
+            .where(eq(runs.id, runId));
+        } catch (statusError) {
+          console.error("Failed to persist admitted Playwright run status:", {
+            jobId,
+            runId,
+            error: statusError,
+          });
+        }
+
+        console.log(
+          `[${jobId}/${runId}] Playwright job ${queueResult.status} (position: ${queueResult.position ?? "N/A"})`,
         );
       }
-      
-      // For other errors, log and return a 500 status code
-      console.error(`[${jobId}/${runId}] Error processing job:`, error);
-      
-      // Re-throw for other errors to be caught by the main catch block
+
+      // Queue admission already succeeded. Do not turn an audit persistence
+      // failure into a false enqueue failure or terminal run state.
+      try {
+        await logAuditEvent({
+          userId,
+          organizationId,
+          action: "job_triggered",
+          resource: "job",
+          resourceId: jobId,
+          metadata: {
+            runId,
+            trigger: effectiveTrigger,
+            testsCount: testScripts.length,
+            projectId: project.id,
+            projectName: project.name,
+            jobType,
+            executionEngine: isPerformanceJob ? "k6" : "playwright",
+            location: resolvedLocation ?? undefined,
+          },
+          success: true,
+        });
+      } catch (auditError) {
+        console.error("Failed to record audit event for admitted run:", {
+          jobId,
+          runId,
+          error: auditError,
+        });
+      }
+    } catch (error) {
+      console.error("Error processing job:", { jobId, runId, error });
       throw error;
     }
 
@@ -452,7 +476,11 @@ export async function POST(request: Request) {
       runId: runId,
     });
   } catch (error) {
-    console.error(`[${jobId || 'unknown'}/${runId || 'unknown'}] Error queuing job:`, error);
+    console.error("Error queuing job:", {
+      jobId: jobId || "unknown",
+      runId: runId || "unknown",
+      error,
+    });
     const errorMessage = error instanceof Error ? error.message : "An unknown error occurred";
 
     // Handle authentication/authorization errors
@@ -463,7 +491,11 @@ export async function POST(request: Request) {
       );
     }
     
-    if (errorMessage.includes('No active project found') || errorMessage.includes('not found')) {
+    if (
+      !runId &&
+      (errorMessage.includes('No active project found') ||
+        errorMessage.includes('not found'))
+    ) {
       return NextResponse.json(
         { error: 'Project access denied or not found' },
         { status: 404 }
@@ -476,7 +508,7 @@ export async function POST(request: Request) {
           .set({
             status: "failed",
             completedAt: new Date(),
-            errorDetails: `Failed to queue job: ${errorMessage}`
+            errorDetails: getSafeExecutionQueueErrorDetails(error),
           })
           .where(eq(runs.id, runId));
       } catch (dbError) {
@@ -484,10 +516,13 @@ export async function POST(request: Request) {
       }
     }
 
+    const queueErrorResponse = buildExecutionQueueErrorResponse(error);
+    if (queueErrorResponse) return queueErrorResponse;
+
     return NextResponse.json(
       {
         success: false,
-        error: `Failed to queue job execution: ${errorMessage}`,
+        error: "Failed to queue job execution",
         jobId: jobId,
         runId: runId,
       },

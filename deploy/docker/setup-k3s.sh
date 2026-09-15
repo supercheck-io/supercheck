@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SuperCheck K3s + gVisor Setup Script
+# Supercheck K3s + gVisor Setup Script
 #
 # Installs K3s with containerd and gVisor (runsc) runtime for secure
 # sandboxed test execution. Replaces Docker-socket-based execution.
@@ -79,7 +79,7 @@ fi
 
 info "Architecture: $ARCH"
 info "Host IP: $HOST_IP"
-info "Starting SuperCheck K3s + gVisor setup..."
+info "Starting Supercheck K3s + gVisor setup..."
 
 # ─── Configuration ────────────────────────────────────────────────────────────
 
@@ -239,6 +239,17 @@ metadata:
     pod-security.kubernetes.io/audit: restricted
     pod-security.kubernetes.io/warn: restricted
 ---
+# Zero-permission ServiceAccount mounted by execution Jobs. The worker creates
+# the per-run payload Secrets; this SA only runs the Job pod itself.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: execution-runner
+  namespace: supercheck-execution
+  labels:
+    app.kubernetes.io/part-of: supercheck
+automountServiceAccountToken: false
+---
 apiVersion: v1
 kind: ResourceQuota
 metadata:
@@ -354,6 +365,11 @@ rules:
   - apiGroups: [""]
     resources: ["pods/exec"]
     verbs: ["get", "create"]
+  # Ephemeral, Job-owned payload/runtime Secrets. The execution pod only mounts
+  # these objects; the zero-permission execution-runner SA cannot read them.
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["create"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -429,7 +445,7 @@ chmod 0640 "$WORKER_KUBECONFIG"
 # host admin restrict access to a specific group while still allowing the
 # non-root container to read the file.
 # If the deployer adds UID 1000 to the owning group, 0640 is sufficient.
-# For simpler setups (Coolify/Dokploy), 0644 also works.
+# For simpler setups without a shared group, 0644 also works.
 chown root:1000 "$WORKER_KUBECONFIG" 2>/dev/null || chmod 0644 "$WORKER_KUBECONFIG"
 log "Restricted worker kubeconfig written to $WORKER_KUBECONFIG (readable by UID 1000)"
 
@@ -496,7 +512,7 @@ k3s kubectl delete pod gvisor-test -n supercheck-execution --ignore-not-found 2>
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-log "SuperCheck K3s + gVisor setup complete!"
+log "Supercheck K3s + gVisor setup complete!"
 echo ""
 info "K3s:       $(k3s --version 2>&1 | head -1)"
 info "gVisor:    $(runsc --version 2>&1 | head -1)"

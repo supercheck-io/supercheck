@@ -1,0 +1,11 @@
+[*]
+../../types.ts
+../common/
+../reporters/
+../third_party/
+../transform/
+../plugins/
+../util.ts
+../utilsBundle.ts
+../isomorphic/
+../fsWatcher.ts

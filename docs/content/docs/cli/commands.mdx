@@ -5,16 +5,23 @@ description: Complete reference for all Supercheck CLI commands
 
 ## Global Flags
 
-These flags are available on all commands:
+These flags are available on all commands. Place them **before** the subcommand (they are root-level Commander options):
+
+```bash
+supercheck --json job trigger <job-id> --wait
+supercheck --quiet whoami
+```
 
 | Flag | Description |
 |------|-------------|
 | `--json` | Output in JSON format (for CI/CD scripting) |
 | `--quiet` | Suppress non-essential output (only IDs and errors) |
 | `--debug` | Enable debug logging |
-| `-v` | Show version |
+| `-v`, `--version` | Show version |
 
 Config-aware commands (for example `config`, `diff`, `deploy`, `pull`, `validate`, `destroy`) accept `--config <path>` to point at a specific config file.
+
+For `sre ask` and `sre brief`, global `--json` produces newline-delimited JSON (NDJSON), one event per line.
 
 ## Exit Codes
 
@@ -42,7 +49,7 @@ supercheck login --token <token> --url https://supercheck.yourdomain.com
 
 | Flag | Required | Description |
 |------|----------|-------------|
-| `--token <token>` | Yes | CLI token (`sck_live_*`) |
+| `--token <token>` | No | CLI token (`sck_live_*` or `sck_test_*`). Without it, the CLI prints token-creation instructions. |
 | `--url <url>` | No | API base URL for self-hosted |
 
 The token is verified against the API before being stored locally.
@@ -55,7 +62,7 @@ Display the current authentication context.
 supercheck whoami
 ```
 
-Shows token name, user, project, organization, and expiry.
+Shows user, token name, API URL, and expiry.
 
 ### `supercheck logout`
 
@@ -152,7 +159,7 @@ supercheck job create --name "Smoke Tests" --tests id1,id2 --type k6 --dry-run
 | `--name` | Yes | Job name |
 | `--tests` | Yes | Test IDs (space or comma separated) |
 | `--description` | No | Job description |
-| `--type` | No | Job runner type: `playwright` (default) or `k6` |
+| `--type` | No | Job runner type: `playwright` or `k6` |
 | `--schedule` | No | Cron expression |
 | `--dry-run` | No | Preview what would be sent without creating |
 
@@ -191,8 +198,8 @@ Run a job immediately, bypassing the cron schedule.
 
 ```bash
 supercheck job run --id <job-id>
-supercheck job run --local --id <job-id>     # Run locally
-supercheck job run --cloud --id <job-id>     # Run in the cloud
+supercheck job run --id <job-id> --local     # Run locally
+supercheck job run --id <job-id> --cloud     # Run in the cloud
 ```
 
 ### `supercheck job trigger`
@@ -202,7 +209,7 @@ Trigger a job and optionally wait for completion.
 ```bash
 supercheck job trigger <job-id>
 supercheck job trigger <job-id> --wait --timeout 300
-supercheck job trigger <job-id> --wait --json
+supercheck --json job trigger <job-id> --wait
 ```
 
 | Flag | Description |
@@ -399,7 +406,7 @@ supercheck test run --all --type performance
 |------|-------------|
 | `--file` | Path to a local test file to run |
 | `--all` | Run all local tests |
-| `--type` | Filter by test type (`browser`, `performance`, `api`, `database`, `custom`) |
+| `--type` | Filter by local test type (`browser`, `performance`) |
 
 ### `supercheck test status`
 
@@ -610,6 +617,8 @@ supercheck tag delete <id> --force    # Skip confirmation
 
 ## Notification Providers
 
+`notifications` is an alias for `notification`.
+
 ### `supercheck notification list`
 
 List notification providers.
@@ -632,31 +641,35 @@ Create a notification provider.
 
 ```bash
 supercheck notification create --type slack --name "Slack Alerts" \
-  --config '{"webhookUrl":"https://hooks.slack.com/..."}'
+  --payload '{"webhookUrl":"https://hooks.slack.com/..."}'
 ```
 
 | Flag | Required | Description |
 |------|----------|-------------|
 | `--type` | Yes | `email`, `slack`, `webhook`, `telegram`, `discord`, `teams` |
 | `--name` | Yes | Provider name |
-| `--config` | No | JSON configuration string |
+| `--payload` | No | Provider configuration as a JSON object |
+| `--data` | No | Alias for `--payload` |
+| `--config` | No | Legacy alias for `--payload` |
 
 ### `supercheck notification update`
 
 Update a notification provider.
 
 ```bash
-supercheck notification update <id> --name "Updated Name" --config '{...}'
-supercheck notification update <id> --type webhook --config '{...}'
+supercheck notification update <id> --name "Updated Name" --payload '{...}'
+supercheck notification update <id> --type webhook --payload '{...}'
 ```
 
 | Flag | Description |
 |------|-------------|
 | `--name` | Provider name |
 | `--type` | Provider type |
-| `--config` | JSON configuration string (replaces entire config — include all fields) |
+| `--payload` | JSON configuration object (replaces the entire config; include all fields) |
+| `--data` | Alias for `--payload` |
+| `--config` | Legacy alias for `--payload` |
 
-When a provider has secret fields (for example webhook URLs or API keys), the CLI never merges your input with masked values from the server. If you omit `--config`, only `--name` and `--type` are updated and existing secrets are preserved.
+When a provider has secret fields (for example webhook URLs or API keys), the CLI never merges your input with masked values from the server. If you omit the payload, only `--name` and `--type` are updated and existing secrets are preserved.
 
 ### `supercheck notification delete`
 
@@ -672,17 +685,23 @@ supercheck notification delete <id> --force
 Send a test notification to verify configuration.
 
 ```bash
-supercheck notification test --type slack --config '{"webhookUrl":"https://hooks.slack.com/..."}'
+supercheck notification test --type slack --payload '{"webhookUrl":"https://hooks.slack.com/..."}'
 ```
 
 | Flag | Required | Description |
 |------|----------|-------------|
 | `--type` | Yes | Provider type (`email`, `slack`, `webhook`, `telegram`, `discord`, `teams`) |
-| `--config` | Yes | JSON configuration string |
+| `--payload` | Yes* | Provider configuration as a JSON object |
+| `--data` | Yes* | Alias for `--payload` |
+| `--config` | Yes* | Legacy alias for `--payload` |
+
+*Supply exactly one payload option.
 
 ---
 
 ## Alerts & Audit
+
+`alerts` is an alias for `alert`.
 
 ### `supercheck alert history`
 
@@ -714,6 +733,58 @@ supercheck audit --search "deploy"
 | `--limit` | `20` | Items per page |
 | `--search` | — | Search by action |
 | `--action` | — | Filter by action type |
+
+---
+
+## AI SRE
+
+AI SRE commands use the active project from the CLI token and preserve the same tenant and RBAC boundaries as the dashboard.
+
+The plural aliases `incidents` and `services` are also supported.
+
+### Incidents
+
+```bash
+supercheck incident list --status investigating --severity sev1
+supercheck incident get <incident-id>
+supercheck incident timeline <incident-id>
+supercheck incident resolve <incident-id> --comment "Traffic restored after rollback"
+```
+
+Resolution prompts for confirmation and stores the required comment in the incident timeline and audit log. Use `--force` only in reviewed automation.
+
+### Triage and investigation
+
+```bash
+supercheck sre triage <incident-id>
+supercheck sre investigate <incident-id>
+supercheck sre investigate <incident-id> --live-connectors
+supercheck sre brief <incident-id>
+supercheck sre brief <incident-id> --idle-timeout 120
+```
+
+Deep investigation is asynchronous: a successful command returns an accepted investigation-run ID. Follow progress with `incident get` and `incident timeline`. `--live-connectors` enables configured read-only telemetry tools only when the caller also has `sre_connector:investigate` permission.
+
+### Copilot
+
+```bash
+supercheck sre ask "Why did checkout latency increase?"
+supercheck sre ask "Summarize the strongest evidence" --incident <incident-id>
+supercheck sre ask "Check current telemetry" --incident <incident-id> --live-connectors
+```
+
+Copilot is read-only. The server validates project scope, incident ownership, permissions, feature flags, plan limits, and rate limits. `--idle-timeout` controls stream inactivity (minimum 10 seconds). Ctrl-C cancels the client stream. Global `--json` emits NDJSON events for automation.
+
+### Service catalog
+
+```bash
+supercheck service list
+supercheck service get <service-id>
+supercheck service health <service-id>
+supercheck service dependencies <service-id>
+```
+
+These commands are read-only and require `sre_service:view`.
 
 ---
 
@@ -750,15 +821,18 @@ supercheck deploy --no-delete    # Skip deletions
 supercheck deploy --force        # Skip confirmation
 ```
 
+`--force` skips the confirmation prompt. Test scripts are sanitized and stored as UTF-8 source through the API's Base64 transport format, not as precompiled output or generated sourcemap data.
+
 ### `supercheck destroy`
 
 Tear down all managed resources defined with IDs in the local config, including notification providers.
 
 ```bash
-supercheck destroy
-supercheck destroy --dry-run
-supercheck destroy --force
+supercheck destroy --dry-run      # Preview resources to be deleted
+supercheck destroy --force        # Confirm and delete resources
 ```
+
+> Note: `supercheck destroy` requires `--force` to confirm deletion, or `--dry-run` to preview. Bare `supercheck destroy` errors without `--force`.
 
 ---
 
@@ -787,7 +861,7 @@ Upgrade the CLI to the latest release.
 
 ```bash
 supercheck upgrade
-supercheck upgrade --tag 0.1.1-rc.2      # Install a specific version
+supercheck upgrade --tag <version>       # Install a specific version
 supercheck upgrade --package-manager pnpm  # Use specific package manager
 supercheck upgrade --dry-run               # Preview without installing
 supercheck upgrade -y                      # Skip confirmation
@@ -806,7 +880,7 @@ Check that all dependencies and configuration are set up correctly.
 
 ```bash
 supercheck doctor
-supercheck doctor --fix    # Attempt to automatically install missing dependencies
+supercheck doctor --fix    # Auto-install Playwright browsers; prints install hints for other deps
 ```
 
 The doctor command checks:
@@ -816,3 +890,5 @@ The doctor command checks:
 - **k6** — binary for performance/load tests (optional)
 - **Authentication** — whether a valid token is stored
 - **Configuration** — whether `supercheck.config.ts` exists and is valid
+
+With `--fix`, doctor installs missing Playwright browsers automatically. For `@playwright/test` and `k6`, it prints the install command to run manually.

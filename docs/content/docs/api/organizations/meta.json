@@ -1,0 +1,20 @@
+{
+  "title": "Organizations API",
+  "icon": "Building2",
+  "pages": [
+    "listOrganizations",
+    "createOrganization",
+    "getCurrentOrganization",
+    "getOrganization",
+    "updateOrganization",
+    "deleteOrganization",
+    "getOrganizationStats",
+    "listOrganizationMembers",
+    "updateOrganizationMember",
+    "removeOrganizationMember",
+    "inviteOrganizationMember",
+    "resendOrganizationInvitation",
+    "cancelOrganizationInvitation",
+    "listOrganizationInvitations"
+  ]
+}

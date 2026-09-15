@@ -2,8 +2,6 @@ import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios'; // Import HttpService
 import { AxiosError, AxiosRequestConfig, Method } from 'axios'; // Import Method from axios
 import * as tls from 'tls';
-import { Agent as HttpAgent } from 'http';
-import { Agent as HttpsAgent } from 'https';
 import { firstValueFrom } from 'rxjs'; // To convert Observable to Promise
 import { MonitorJobDataDto } from './dto/monitor-job.dto';
 import { MonitorExecutionResult } from './types/monitor-result.type';
@@ -35,6 +33,7 @@ import {
   ErrorContext,
 } from '../common/errors/standardized-error-handler';
 import { ResourceManagerService } from '../common/resources/resource-manager.service';
+import { decodeStoredTestScript } from '../common/utils/test-script';
 import {
   LocationService,
   MonitoringLocation,
@@ -58,12 +57,32 @@ import {
 } from '../common/validation';
 import { RedisService } from '../execution/services/redis.service';
 import { VariableResolverService } from '../common/services/variable-resolver.service';
+import { requestPinnedMonitorTarget } from '../common/utils/pinned-monitor-request';
 
 // Use the Monitor type from schema
 type Monitor = z.infer<typeof monitorsSelectSchema>;
 
 // Use the MonitorResult type from schema
 type MonitorResult = z.infer<typeof monitorResultsSelectSchema>;
+
+function serializeResponseData(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (value === null || value === undefined) return '';
+  if (
+    typeof value === 'number' ||
+    typeof value === 'boolean' ||
+    typeof value === 'bigint'
+  ) {
+    return String(value);
+  }
+
+  try {
+    const serialized = JSON.stringify(value);
+    return typeof serialized === 'string' ? serialized : '';
+  } catch {
+    return '';
+  }
+}
 
 // Redis key constants for aggregation coordination
 const REDIS_AGGREGATION_KEY_PREFIX = 'monitor:aggr:';
@@ -100,7 +119,8 @@ export class MonitorService {
 
   async executeMonitor(
     jobData: MonitorJobDataDto,
-    location: MonitoringLocation = (process.env.WORKER_LOCATION?.toLowerCase() || 'local') as MonitoringLocation,
+    location: MonitoringLocation = process.env.WORKER_LOCATION?.toLowerCase() ||
+      'local',
   ): Promise<MonitorExecutionResult | null> {
     // Removed log - only log warnings, errors, and status changes
 
@@ -599,7 +619,7 @@ export class MonitorService {
     // Build map of latest results by location
     const latestByLocation = new Map<MonitoringLocation, MonitorResultRow>();
     for (const row of groupRows) {
-      const rowLocation = row.location as MonitoringLocation;
+      const rowLocation = row.location;
       if (!latestByLocation.has(rowLocation)) {
         latestByLocation.set(rowLocation, row as MonitorResultRow);
       }
@@ -633,7 +653,7 @@ export class MonitorService {
       )
       .map((row) => ({
         monitorId: row.monitorId,
-        location: row.location as MonitoringLocation,
+        location: row.location,
         status: row.status as MonitorResultStatus,
         checkedAt: row.checkedAt,
         responseTimeMs: row.responseTimeMs ?? undefined,
@@ -1019,8 +1039,6 @@ export class MonitorService {
         },
         // Enable automatic decompression for proper response parsing
         decompress: true,
-        // Follow redirects but limit for security
-        maxRedirects: SECURITY.MAX_REDIRECTS,
         // Handle various response types - keep as text for consistent keyword searching
         responseType: 'text',
         // Accept all status codes, we'll handle validation
@@ -1034,10 +1052,6 @@ export class MonitorService {
           this.resourceManager.getResourceStats().limits.maxResponseSizeMB *
           1024 *
           1024,
-        // 🔴 CRITICAL: Force IPv4 to avoid IPv6 timeout issues on some datacenter networks
-        // Hetzner APAC and other regions may have unreachable IPv6, causing ETIMEDOUT errors
-        httpAgent: new HttpAgent({ family: 4 }),
-        httpsAgent: new HttpsAgent({ family: 4 }),
       };
 
       // 🔴 CRITICAL: Secure authentication handling
@@ -1137,8 +1151,14 @@ export class MonitorService {
       }
 
       // Execute request with connection tracking
-      const response = await firstValueFrom(
-        this.httpService.request(requestConfig),
+      const response = await requestPinnedMonitorTarget(
+        requestConfig,
+        {
+          allowInternalTargets: process.env.ALLOW_INTERNAL_TARGETS === 'true',
+          maxRedirects: SECURITY.MAX_REDIRECTS,
+        },
+        (validatedConfig) =>
+          firstValueFrom(this.httpService.request(validatedConfig)),
       );
 
       // Calculate response time in milliseconds with high precision
@@ -1149,17 +1169,13 @@ export class MonitorService {
       connection.trackRequest(responseTimeMs);
 
       // 🔴 CRITICAL: Sanitize response data before processing
+      const responseBody = serializeResponseData(response.data);
       const _sanitizedResponseData =
         this.credentialSecurityService.maskCredentials(
-          typeof response.data === 'string'
-            ? response.data.substring(
-                0,
-                MEMORY_LIMITS.MAX_SANITIZED_RESPONSE_LENGTH,
-              )
-            : String(response.data).substring(
-                0,
-                MEMORY_LIMITS.MAX_SANITIZED_RESPONSE_LENGTH,
-              ),
+          responseBody.substring(
+            0,
+            MEMORY_LIMITS.MAX_SANITIZED_RESPONSE_LENGTH,
+          ),
         );
 
       details = {
@@ -1174,30 +1190,20 @@ export class MonitorService {
         isUp = true;
 
         if (config?.keywordInBody) {
-          // Ensure we have a string to search in
-          let bodyString: string;
-          if (typeof response.data === 'string') {
-            bodyString = response.data;
-          } else if (response.data && typeof response.data === 'object') {
-            bodyString = JSON.stringify(response.data);
-          } else {
-            bodyString = String(response.data || '');
-          }
-
           // Perform case-insensitive keyword matching for better reliability
           const keyword = config.keywordInBody;
-          const keywordFound = bodyString
+          const keywordFound = responseBody
             .toLowerCase()
             .includes(keyword.toLowerCase());
 
           // Store sanitized response for debugging (security improvement)
           details.responseBodySnippet = sanitizeResponseBody(
-            bodyString,
+            responseBody,
             MEMORY_LIMITS.RESPONSE_BODY_SNIPPET_LENGTH,
           );
 
           this.logger.debug(
-            `Keyword search: looking for '${keyword}' in response body (${bodyString.length} chars): found=${keywordFound}`,
+            `Keyword search: looking for '${keyword}' in response body (${responseBody.length} chars): found=${keywordFound}`,
           );
 
           if (
@@ -2380,7 +2386,7 @@ export class MonitorService {
   }): Promise<{ alertSent: boolean; alertType?: string }> {
     const { monitorId, previousStatus, currentStatus, reason, metadata } =
       options;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+
     const monitor = options.monitor;
 
     // Don't send alerts if alerts are disabled
@@ -2696,10 +2702,10 @@ export class MonitorService {
         };
       }
 
-      // 3. Decode test script (stored as Base64 in database)
+      // 3. Decode test script (Base64 UTF-8 source, or raw TypeScript from older CLI deploys)
       let decodedScript: string;
       try {
-        decodedScript = Buffer.from(test.script, 'base64').toString('utf8');
+        decodedScript = decodeStoredTestScript(test.script);
 
         // Validate decoded script is not empty
         if (!decodedScript || decodedScript.trim().length === 0) {
@@ -2729,7 +2735,15 @@ export class MonitorService {
       // to prevent ReferenceError when user's script calls getVariable/getSecret
       let resolvedVariables: Record<string, string> = {};
       let resolvedSecrets: Record<string, string> = {};
-      let resolvedFiles: Record<string, { storagePath: string; fileName: string; mimeType: string; fileSize: number | null }> = {};
+      let resolvedFiles: Record<
+        string,
+        {
+          storagePath: string;
+          fileName: string;
+          mimeType: string;
+          fileSize: number | null;
+        }
+      > = {};
       const projectId = test.projectId;
 
       if (projectId) {

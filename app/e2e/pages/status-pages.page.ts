@@ -37,7 +37,7 @@ export class StatusPagesPage extends BasePage {
 
     // Page elements
     this.pageTitle = page
-      .locator("h1, h2")
+      .locator("h1, h2, h3")
       .filter({ hasText: /status pages/i })
       .first();
 
@@ -167,7 +167,7 @@ export class StatusPagesPage extends BasePage {
    * Check if empty state is visible
    */
   async isEmptyStateVisible(): Promise<boolean> {
-    return this.emptyState.isVisible();
+    return this.emptyState.first().isVisible().catch(() => false);
   }
 
   /**

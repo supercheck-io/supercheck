@@ -14,7 +14,7 @@ const systemFonts = {
 
 export const metadata: Metadata = {
   title: "Dashboard | Supercheck",
-  description: "Automate and Monitor your applications",
+  description: "Open-source testing, monitoring, and AI SRE — as code",
 };
 
 export default function RootLayout({

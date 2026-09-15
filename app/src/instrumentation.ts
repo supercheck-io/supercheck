@@ -19,14 +19,12 @@ export async function register() {
       validatePolarConfig();
       console.log('[Instrumentation] ✅ Polar configuration validated');
     } catch (error) {
-      // In cloud mode, Polar config is critical - fail fast
-      if (error instanceof Error && error.message.includes('Missing required Polar environment variables')) {
-        console.error('[Instrumentation] ❌ CRITICAL: Polar configuration error:', error.message);
-        console.error('[Instrumentation] 💡 Please set the required environment variables and restart the server');
-        // Don't throw here to allow the app to start in self-hosted mode, but log clearly
-      } else {
-        console.error('[Instrumentation] ❌ Polar configuration validation error:', error);
-      }
+      // validatePolarConfig() is a no-op in self-hosted mode. Any error here is
+      // therefore a cloud billing misconfiguration and must keep the pod from
+      // becoming ready with partial subscription enforcement.
+      console.error('[Instrumentation] ❌ CRITICAL: Polar configuration error:', error);
+      console.error('[Instrumentation] 💡 Set the required Polar variables and restart the server');
+      throw error;
     }
 
     // Initialize job schedulers (MOVED from SchedulerInitializer component)
@@ -99,6 +97,17 @@ export async function register() {
       console.log('[Instrumentation] ✅ Email template processor initialized');
     } catch (error) {
       console.error('[Instrumentation] ❌ Failed to initialize email template processor:', error);
+    }
+
+    // Initialize SRE alert triage processor only when explicitly enabled.
+    try {
+      const { initializeSreAlertTriageProcessor } = await import('@/sre/lib/background-alert-triage-processor');
+      const initialized = await initializeSreAlertTriageProcessor();
+      if (initialized) {
+        console.log('[Instrumentation] ✅ SRE alert triage processor initialized');
+      }
+    } catch (error) {
+      console.error('[Instrumentation] ❌ Failed to initialize SRE alert triage processor:', error);
     }
 
     console.log('[Instrumentation] ✨ Background services startup complete');

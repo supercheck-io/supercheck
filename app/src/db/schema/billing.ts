@@ -126,6 +126,7 @@ export const usageEvents = pgTable(
         | "k6_execution"
         | "monitor_execution"
         | "ai_usage"
+        | "sre_investigation"
       >()
       .notNull(),
     eventName: text("event_name").notNull(), // e.g., "playwright_minutes", "k6_vu_minutes", "ai_credits"
@@ -156,6 +157,13 @@ export const usageEvents = pgTable(
       table.organizationId
     ),
     eventTypeIdx: index("usage_events_event_type_idx").on(table.eventType),
+    // Durable billing retries look up a run within its organization and meter.
+    executionRunIdx: index("usage_events_execution_run_idx")
+      .on(table.organizationId, table.eventType, sql`(${table.metadata}->>'runId')`)
+      .where(sql`(${table.metadata}->>'runId') IS NOT NULL`),
+    investigationRunIdx: index("usage_events_investigation_run_idx")
+      .on(table.organizationId, table.eventType, sql`(${table.metadata}->>'investigationRunId')`)
+      .where(sql`(${table.metadata}->>'investigationRunId') IS NOT NULL`),
     syncedToPolarIdx: index("usage_events_synced_idx").on(table.syncedToPolar),
     billingPeriodIdx: index("usage_events_billing_period_idx").on(
       table.billingPeriodStart,
@@ -192,9 +200,9 @@ export const usageNotifications = pgTable(
       >()
       .notNull(),
 
-    // Resource type (playwright, k6, ai, or combined)
+    // Resource type (playwright, k6, AI, SRE, combined, or spending)
     resourceType: text("resource_type")
-      .$type<"playwright" | "k6" | "ai" | "combined" | "spending">()
+      .$type<"playwright" | "k6" | "ai" | "sre" | "combined" | "spending">()
       .notNull(),
 
     // Usage details at time of notification
@@ -256,6 +264,11 @@ export const overagePricing = pgTable("overage_pricing", {
   ).notNull(), // e.g., 10 = $0.10
   k6VuMinutePriceCents: integer("k6_vu_minute_price_cents").notNull(), // e.g., 1 = $0.01 per VU minute
   aiCreditPriceCents: integer("ai_credit_price_cents").notNull().default(5), // e.g., 5 = $0.05 per AI credit
+  sreInvestigationUnitPriceCents: integer(
+    "sre_investigation_unit_price_cents"
+  )
+    .notNull()
+    .default(50), // e.g., 50 = $0.50 per full investigation unit
 
   // Metadata
   createdAt: timestamp("created_at").defaultNow().notNull(),

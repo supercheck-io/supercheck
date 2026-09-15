@@ -44,6 +44,9 @@ public/tests/*
 public/test-results/*
 public/artifacts/*
 test-results/*
+# Do not ignore the Next.js API route that shares this path name.
+!src/app/api/test-results/
+!src/app/api/test-results/**
 
 # db
 src/db/supercheck.db

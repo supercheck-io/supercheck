@@ -26,6 +26,7 @@ import { jobs } from './job';
 import type {
   NotificationProviderType,
   NotificationProviderConfig,
+  AlertDeliveryMetadata,
   AlertType,
   AlertStatus,
   NotificationType,
@@ -83,6 +84,7 @@ export const alertHistory = pgTable(
       .default('pending'),
     sentAt: timestamp('sent_at').defaultNow(),
     errorMessage: text('error_message'),
+    deliveryMetadata: jsonb('delivery_metadata').$type<AlertDeliveryMetadata>(),
   },
   (table) => ({
     // PERFORMANCE: Indexes for alert history queries

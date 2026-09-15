@@ -9,7 +9,7 @@ git clone https://github.com/supercheck-io/supercheck.git
 cd supercheck/deploy/docker
 
 # Generate secrets and set up the execution sandbox
-sudo bash init-secrets.sh
+./init-secrets.sh
 sudo bash setup-k3s.sh
 
 # Edit .env for optional integrations (SMTP, AI, OAuth)
@@ -46,8 +46,57 @@ curl -fsSL https://get.docker.com | sh
 |------|----------|
 | `docker-compose.yml` | Self-hosted deployment (HTTP, localhost:3000) |
 | `docker-compose-secure.yml` | Production with HTTPS |
+| `docker-compose-external.yml` | Connect to managed external PostgreSQL, Redis, and S3 services |
 | `docker-compose-worker.yml` | Remote regional worker |
+| `docker-compose-private-agent.yml` | Outbound-only private agent for internal network testing |
 | `docker-compose-local.yml` | Source-based local development |
+| `docker-compose-aisre-lab.yml` | Optional AI SRE integration lab with OSS telemetry and webhook capture |
+
+## Optional AI SRE Integration Lab
+
+The AI SRE lab is an opt-in Docker Compose overlay for testing read-only connectors, webhook delivery, alert fire/recovery behavior, and seeded live evals without connecting to customer production systems.
+
+```bash
+cd supercheck/deploy/docker
+
+# Start Supercheck plus the full OSS lab profile.
+KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig \
+docker compose -f docker-compose.yml -f docker-compose-aisre-lab.yml \
+  --profile aisre-lab up -d
+
+# Trigger deterministic demo signals.
+curl http://127.0.0.1:18080/checkout
+curl http://127.0.0.1:18080/checkout/slow
+curl http://127.0.0.1:18080/checkout/error
+
+# Inspect captured Alertmanager or Supercheck webhook payloads.
+curl http://127.0.0.1:18081/payloads
+```
+
+Lab endpoints bind to `127.0.0.1` by default:
+
+| Endpoint | Default URL |
+| --- | --- |
+| Demo service | `http://127.0.0.1:18080` |
+| Webhook capture | `http://127.0.0.1:18081` |
+| Grafana | `http://127.0.0.1:13000` |
+| Prometheus | `http://127.0.0.1:19090` |
+| Alertmanager | `http://127.0.0.1:19093` |
+| Loki | `http://127.0.0.1:13100` |
+| Tempo | `http://127.0.0.1:13200` |
+
+Use the `core`, `logs`, and `traces` profiles when you want only part of the lab:
+
+```bash
+# Metrics, alerts, Grafana, demo service, and webhook capture only.
+docker compose -f docker-compose.yml -f docker-compose-aisre-lab.yml --profile core up -d
+
+# Add logs or traces independently.
+docker compose -f docker-compose.yml -f docker-compose-aisre-lab.yml --profile logs up -d
+docker compose -f docker-compose.yml -f docker-compose-aisre-lab.yml --profile traces up -d
+```
+
+Keep this lab behind a firewall on shared hosts. It is not a production observability stack.
 
 All worker Docker definitions use the worker readiness endpoint (`/health/ready`) for healthchecks. A worker is marked unhealthy when it cannot reach required dependencies such as PostgreSQL, Redis, or its queues.
 
@@ -146,10 +195,10 @@ docker compose up -d
 
 ```bash
 # Create backup
-docker compose exec postgres pg_dump -U postgres supercheck > backup.sql
+docker compose exec postgres sh -c 'pg_dump -U "$DB_USER" "$DB_NAME"' > backup.sql
 
 # Restore backup
-docker compose exec -T postgres psql -U postgres supercheck < backup.sql
+docker compose exec -T postgres sh -c 'psql -U "$DB_USER" "$DB_NAME"' < backup.sql
 ```
 
 ---

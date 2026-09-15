@@ -1,0 +1,11 @@
+Playwright CRX
+Copyright (c) Rui Figueira
+
+Supercheck modifications
+Copyright (c) Supercheck contributors
+
+This software contains code derived from the Playwright project (https://github.com/microsoft/playwright),
+available under the Apache 2.0 license (https://github.com/microsoft/playwright/blob/master/LICENSE).
+
+The Supercheck Recorder and its Playwright-derived portions are distributed
+under Apache-2.0. See LICENSE, playwright/LICENSE, and playwright/NOTICE.

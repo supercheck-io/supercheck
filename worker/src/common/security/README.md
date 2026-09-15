@@ -75,8 +75,20 @@ The Kubernetes pod spec adds execution overhead automatically:
 
 - `512 Mi` for `/dev/shm`
 - `150 Mi` for gVisor Sentry overhead
+- `1 Gi` ephemeral-storage request by default
+- `8 Gi` ephemeral-storage limit and `/tmp` `emptyDir.sizeLimit` by default
 
 This avoids under-sizing the pod compared with the caller-visible memory budget.
+
+Storage defaults can be tuned with:
+
+- `EXECUTION_EPHEMERAL_STORAGE_REQUEST`
+- `EXECUTION_EPHEMERAL_STORAGE_LIMIT`
+- `EXECUTION_TMP_EMPTYDIR_SIZE_LIMIT`
+
+Keep the `/tmp` size limit at or below the container ephemeral-storage limit so
+Playwright/k6 temp files cannot exhaust node inodes or disk outside Kubernetes
+eviction accounting.
 
 ## DNS and Networking
 

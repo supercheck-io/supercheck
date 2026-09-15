@@ -71,7 +71,7 @@ export const monitorTypes = [
     value: "ping_host",
     icon: ChevronsLeftRightEllipsis,
     color: "text-indigo-500",
-    description: "ICMP ping to a host",
+    description: "Check host reachability over TCP on ports 443 and 80",
   },
   {
     label: "Port Monitor",

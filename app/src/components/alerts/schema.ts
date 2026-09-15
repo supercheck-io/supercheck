@@ -11,7 +11,15 @@ export const alertHistorySchema = z.object({
   status: z.enum(["sent", "failed", "pending"]),
   timestamp: z.string(),
   notificationProvider: z.string(),
-  metadata: z.record(z.unknown()).optional(),
+  metadata: z
+    .object({
+      errorMessage: z.string().nullable().optional(),
+      provider: z.record(z.unknown()).optional(),
+      correlation: z.record(z.unknown()).optional(),
+      delivery: z.record(z.unknown()).optional(),
+    })
+    .catchall(z.unknown())
+    .optional(),
 });
 
 export type AlertHistory = z.infer<typeof alertHistorySchema>;

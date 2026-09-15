@@ -1,0 +1,9 @@
+# text files must be lf for golden file tests to work
+* text=auto eol=lf
+# make project show as TS on GitHub
+*.js linguist-detectable=false
+
+# Preserve vendored/generated Playwright files byte-for-byte. Their upstream
+# snapshots include intentional whitespace that should not block migrations.
+playwright/** whitespace=-trailing-space,-blank-at-eof
+src/types/*.d.ts whitespace=-trailing-space,-blank-at-eof

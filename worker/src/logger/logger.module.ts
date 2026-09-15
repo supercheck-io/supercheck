@@ -84,7 +84,12 @@ import { LoggerService } from './logger.service';
         autoLogging: {
           ignore: (req) => {
             // Don't log health check endpoints
-            return req.url === '/health' || req.url === '/api/health';
+            return (
+              req.url === '/health' ||
+              req.url === '/health/ready' ||
+              req.url === '/health/live' ||
+              req.url === '/api/health'
+            );
           },
         },
 

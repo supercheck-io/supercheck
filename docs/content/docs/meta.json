@@ -3,6 +3,7 @@
   "pages": [
     "app",
     "cli",
+    "recorder",
     "api"
   ]
 }

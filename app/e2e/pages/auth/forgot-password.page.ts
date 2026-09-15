@@ -68,7 +68,8 @@ export class ForgotPasswordPage extends BasePage {
    */
   async navigate(): Promise<void> {
     await this.goto(routes.forgotPassword);
-    await this.waitForPageLoad();
+    await this.page.waitForLoadState('load');
+    await expect(this.emailInput).toBeEditable();
   }
 
   /**
@@ -77,6 +78,7 @@ export class ForgotPasswordPage extends BasePage {
    */
   async requestReset(email: string): Promise<void> {
     await this.emailInput.fill(email);
+    await expect(this.submitButton).toBeEnabled();
     await this.submitButton.click();
   }
 

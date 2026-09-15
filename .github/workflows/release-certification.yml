@@ -1,0 +1,64 @@
+name: Release Certification
+
+on:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  certify:
+    name: Certify ${{ matrix.package }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [app, worker]
+    steps:
+      - name: Check out code
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: ${{ matrix.package }}/package-lock.json
+
+      - name: Install reproducible dependencies
+        working-directory: ${{ matrix.package }}
+        run: npm ci --prefer-offline --no-audit
+
+      - name: Audit production dependencies
+        working-directory: ${{ matrix.package }}
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Type check
+        working-directory: ${{ matrix.package }}
+        run: npx tsc --noEmit
+
+      - name: Lint
+        working-directory: ${{ matrix.package }}
+        run: |
+          if [ "${{ matrix.package }}" = "app" ]; then
+            npm run lint
+          else
+            npx eslint "src/**/*.ts" --max-warnings 0
+          fi
+
+      - name: Test
+        working-directory: ${{ matrix.package }}
+        run: npm test -- --runInBand
+        env:
+          NODE_ENV: test
+
+      - name: Build shipped toolchain
+        working-directory: ${{ matrix.package }}
+        run: |
+          if [ "${{ matrix.package }}" = "app" ]; then
+            SKIP_ENV_VALIDATION=true npm run build:webpack
+          else
+            npm run build
+          fi

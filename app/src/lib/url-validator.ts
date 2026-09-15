@@ -5,6 +5,8 @@
  * by blocking requests to private/internal networks.
  */
 
+import { isPrivateOrReservedAddress } from "./outbound-address-policy";
+
 // Private IP ranges that should not be accessible via webhooks
 const PRIVATE_IP_PATTERNS = [
   // Loopback
@@ -23,6 +25,9 @@ const PRIVATE_IP_PATTERNS = [
   /^fc00:/i,
   /^fd00:/i,
   /^fe80:/i,
+  /^2001:(?:0|0000):/i, // Teredo
+  /^2002:/i, // 6to4
+  /^64:ff9b:/i, // NAT64 well-known prefix
   // AWS/Cloud metadata endpoints
   /^169\.254\.169\.254$/,
   /^metadata\.google\.internal$/i,
@@ -42,6 +47,10 @@ const BLOCKED_HOSTNAMES = [
  * Check if a hostname resolves to a private/internal IP address
  */
 export function isPrivateHost(hostname: string): boolean {
+  if (isPrivateOrReservedAddress(hostname)) {
+    return true;
+  }
+
   // Check against blocked hostnames
   if (BLOCKED_HOSTNAMES.includes(hostname.toLowerCase())) {
     return true;

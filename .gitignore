@@ -32,14 +32,16 @@ AI_RULES.md
 !.vscode/extensions.json
 
 ## Logs / Debug files
-logs # General logs dir
+# General logs directory
+logs
 *.log
 npm-debug.log*
-pnpm-debug.log* # From runner
-.pnpm-debug.log* # From app
+# Package-manager logs
+pnpm-debug.log*
+.pnpm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-lerna-debug.log* # From runner
+lerna-debug.log*
 
 ## Environment / Secrets
 .env.local
@@ -57,7 +59,8 @@ pids
 *.seed
 *.pid.lock
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
-*.tsbuildinfo # General typescript build info
+# TypeScript build metadata
+*.tsbuildinfo
 *.claude
 kanpilot.toml
 
@@ -84,6 +87,9 @@ app/e2e/test-results/
 app/e2e/playwright-report/
 app/e2e/auth-state.json
 test-results/
+# Keep the Next.js API route sources trackable (path shares the test-results name).
+!app/src/app/api/test-results/
+!app/src/app/api/test-results/**
 
 ## Next.js
 .next/
@@ -154,6 +160,8 @@ docker-compose.override.yml
 # Scripts and utilities
 .scripts/
 bin/
+!cli/src/bin/
+!cli/src/bin/**
 
 # Certificates and keys (keep separate from .env)
 certs/
@@ -179,3 +187,4 @@ supercheck.config.local.ts
 supercheck.config.local.js
 supercheck.config.local.mjs
 .opencode
+.tokensave

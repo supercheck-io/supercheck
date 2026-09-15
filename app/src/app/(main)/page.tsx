@@ -73,7 +73,7 @@ import { K6AnalyticsTab } from "@/components/dashboard/k6-analytics-tab";
 import { PlaywrightAnalyticsTab } from "@/components/dashboard/playwright-analytics-tab";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 import { SupercheckLogo } from "@/components/logo/supercheck-logo";
-import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
+import { SupercheckLoading } from "@/components/shared/supercheck-loading";
 import { useDashboard, type DashboardData } from "@/hooks/use-dashboard";
 import { useRequirementsStats } from "@/hooks/use-requirements-stats";
 // Types are now exported from useDashboard hook
@@ -634,7 +634,7 @@ export default function Home() {
       <div className="overflow-hidden">
         <PageBreadcrumbs items={breadcrumbs} />
         <div className="flex min-h-[60vh] items-center justify-center">
-          <SuperCheckLoading size="md" message="Loading dashboard..." />
+          <SupercheckLoading size="md" message="Loading dashboard..." />
         </div>
       </div>
     );

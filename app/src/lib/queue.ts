@@ -12,6 +12,8 @@ import {
   getAllEnabledLocationCodes,
   getFirstDefaultLocationCode,
 } from "./location-registry";
+import { omitExecutionSecrets } from "./execution-payload";
+import { ExecutionQueueError } from "./execution-errors";
 import {
   partitionMonitorLocationsByAvailability,
   resolveMonitorLocations,
@@ -30,7 +32,30 @@ interface CleanupQueues {
 }
 
 // Import QueuedJobData type for queued job storage
-import type { QueuedJobData } from "./capacity-manager";
+import {
+  CapacityReservationUnavailableError,
+  type QueuedJobData,
+} from "./capacity-manager";
+
+function throwExecutionQueueError(error: unknown, operation: string): never {
+  if (error instanceof ExecutionQueueError) {
+    throw error;
+  }
+
+  if (error instanceof CapacityReservationUnavailableError) {
+    throw new ExecutionQueueError(
+      "capacity_unavailable",
+      "Execution capacity service is temporarily unavailable",
+      error,
+    );
+  }
+
+  throw new ExecutionQueueError(
+    "queue_unavailable",
+    `Execution queue is temporarily unavailable during ${operation}`,
+    error,
+  );
+}
 
 // Create queue logger
 export const queueLogger = createLogger({ module: "queue-client" }) as {
@@ -216,10 +241,32 @@ export function buildRedisOptions(
   const tlsEnabled = process.env.REDIS_TLS_ENABLED === "true";
   const tlsRejectUnauthorized =
     process.env.REDIS_TLS_REJECT_UNAUTHORIZED !== "false";
+  const sentinels = process.env.REDIS_SENTINELS?.split(",").map((entry) => {
+    const trimmed = entry.trim();
+    const separator = trimmed.lastIndexOf(":");
+    const sentinelHost = trimmed.slice(0, separator);
+    const sentinelPort = Number(trimmed.slice(separator + 1));
+    if (
+      separator <= 0 ||
+      !sentinelHost ||
+      !Number.isInteger(sentinelPort) ||
+      sentinelPort < 1 ||
+      sentinelPort > 65535
+    ) {
+      throw new Error(`Invalid REDIS_SENTINELS entry: ${trimmed}`);
+    }
+    return { host: sentinelHost, port: sentinelPort };
+  });
 
   return {
-    host,
-    port,
+    ...(sentinels?.length
+      ? {
+          sentinels,
+          name: process.env.REDIS_SENTINEL_MASTER || "mymaster",
+          sentinelPassword: process.env.REDIS_SENTINEL_PASSWORD || undefined,
+          sentinelRetryStrategy: (times: number) => Math.min(times * 250, 3000),
+        }
+      : { host, port }),
     password: password || undefined,
     maxRetriesPerRequest: null,
     enableReadyCheck: false,
@@ -904,20 +951,21 @@ export async function addTestToQueue(task: TestExecutionTask): Promise<{
 }> {
   const jobId = task.runId ?? task.testId;
   const orgId = task.organizationId || "global";
+  const queuedAt = Date.now();
+  const safeTask = omitExecutionSecrets(task);
 
   try {
     const { getCapacityManager } = await import("./capacity-manager");
     const capacityManager = await getCapacityManager();
 
     // Check capacity atomically
-    const result = await capacityManager.reserveSlot(orgId);
+    const result = await capacityManager.reserveSlot(orgId, jobId, queuedAt);
 
     if (result === 0) {
       // Queue is full
-      const usage = await capacityManager.getCurrentUsage(orgId);
-      throw new Error(
-        `Queue capacity limit reached (${usage.queued}/${usage.queuedCapacity} queued). ` +
-          `Please try again when running capacity (${usage.running}/${usage.runningCapacity}) is available.`
+      throw new ExecutionQueueError(
+        "capacity_exceeded",
+        "Queue capacity limit reached",
       );
     }
 
@@ -933,7 +981,7 @@ export async function addTestToQueue(task: TestExecutionTask): Promise<{
         await queue.add(
           jobId,
           {
-            ...task,
+            ...safeTask,
             _capacityStatus: "immediate",
           },
           { jobId }
@@ -954,8 +1002,8 @@ export async function addTestToQueue(task: TestExecutionTask): Promise<{
       runId: jobId,
       organizationId: orgId,
       projectId: task.projectId || "",
-      taskData: task as unknown as Record<string, unknown>,
-      queuedAt: Date.now(),
+      taskData: safeTask as unknown as Record<string, unknown>,
+      queuedAt,
     };
 
     const position = await capacityManager.addToQueue(orgId, queuedJobData);
@@ -970,9 +1018,7 @@ export async function addTestToQueue(task: TestExecutionTask): Promise<{
       { err: error, jobId },
       `Error adding test ${jobId} to queue`
     );
-    throw new Error(
-      `Failed to add test execution job: ${error instanceof Error ? error.message : String(error)}`
-    );
+    throwExecutionQueueError(error, "test enqueue");
   }
 }
 
@@ -988,18 +1034,19 @@ export async function addJobToQueue(task: JobExecutionTask): Promise<{
 }> {
   const runId = task.runId;
   const orgId = task.organizationId || "global";
+  const queuedAt = Date.now();
+  const safeTask = omitExecutionSecrets(task);
 
   try {
     const { getCapacityManager } = await import("./capacity-manager");
     const capacityManager = await getCapacityManager();
 
-    const result = await capacityManager.reserveSlot(orgId);
+    const result = await capacityManager.reserveSlot(orgId, runId, queuedAt);
 
     if (result === 0) {
-      const usage = await capacityManager.getCurrentUsage(orgId);
-      throw new Error(
-        `Queue capacity limit reached (${usage.queued}/${usage.queuedCapacity} queued). ` +
-          `Please try again when running capacity (${usage.running}/${usage.runningCapacity}) is available.`
+      throw new ExecutionQueueError(
+        "capacity_exceeded",
+        "Queue capacity limit reached",
       );
     }
 
@@ -1014,7 +1061,7 @@ export async function addJobToQueue(task: JobExecutionTask): Promise<{
         await queue.add(
           runId,
           {
-            ...task,
+            ...safeTask,
             _capacityStatus: "immediate",
           },
           { jobId: runId }
@@ -1035,8 +1082,8 @@ export async function addJobToQueue(task: JobExecutionTask): Promise<{
       runId,
       organizationId: orgId,
       projectId: task.projectId || "",
-      taskData: task as unknown as Record<string, unknown>,
-      queuedAt: Date.now(),
+      taskData: safeTask as unknown as Record<string, unknown>,
+      queuedAt,
     };
 
     const position = await capacityManager.addToQueue(orgId, queuedJobData);
@@ -1051,9 +1098,7 @@ export async function addJobToQueue(task: JobExecutionTask): Promise<{
       { err: error, runId },
       `Error adding job ${runId} to queue`
     );
-    throw new Error(
-      `Failed to add job execution: ${error instanceof Error ? error.message : String(error)}`
-    );
+    throwExecutionQueueError(error, "job enqueue");
   }
 }
 
@@ -1072,6 +1117,8 @@ export async function addK6TestToQueue(
 }> {
   const runId = task.runId;
   const orgId = task.organizationId || "global";
+  const queuedAt = Date.now();
+  const safeTask = omitExecutionSecrets(task);
 
   // Resolve the queue location: use caller-provided location, or fall back to DB default.
   const k6TestLocation = task.location || await getFirstDefaultLocationCode();
@@ -1082,13 +1129,12 @@ export async function addK6TestToQueue(
     const { getCapacityManager } = await import("./capacity-manager");
     const capacityManager = await getCapacityManager();
 
-    const result = await capacityManager.reserveSlot(orgId);
+    const result = await capacityManager.reserveSlot(orgId, runId, queuedAt);
 
     if (result === 0) {
-      const usage = await capacityManager.getCurrentUsage(orgId);
-      throw new Error(
-        `Queue capacity limit reached (${usage.queued}/${usage.queuedCapacity} queued). ` +
-          `Please try again when running capacity (${usage.running}/${usage.runningCapacity}) is available.`
+      throw new ExecutionQueueError(
+        "capacity_exceeded",
+        "Queue capacity limit reached",
       );
     }
 
@@ -1103,7 +1149,7 @@ export async function addK6TestToQueue(
         await queue.add(
           jobName,
           {
-            ...task,
+            ...safeTask,
             location: k6TestLocation,
             _capacityStatus: "immediate",
           },
@@ -1125,11 +1171,11 @@ export async function addK6TestToQueue(
       runId,
       organizationId: orgId,
       projectId: task.projectId || "",
-      taskData: { ...task, _jobName: jobName, location: k6TestLocation } as unknown as Record<
+      taskData: { ...safeTask, _jobName: jobName, location: k6TestLocation } as unknown as Record<
         string,
         unknown
       >,
-      queuedAt: Date.now(),
+      queuedAt,
     };
 
     const position = await capacityManager.addToQueue(orgId, queuedJobData);
@@ -1144,9 +1190,7 @@ export async function addK6TestToQueue(
       { err: error, runId },
       `Error adding k6 test ${runId} to queue`
     );
-    throw new Error(
-      `Failed to add k6 test execution: ${error instanceof Error ? error.message : String(error)}`
-    );
+    throwExecutionQueueError(error, "k6 test enqueue");
   }
 }
 
@@ -1169,6 +1213,8 @@ export async function addK6JobToQueue(
 }> {
   const runId = task.runId;
   const orgId = task.organizationId || "global";
+  const queuedAt = Date.now();
+  const safeTask = omitExecutionSecrets(task);
 
   // Respect the caller-provided location (already validated by resolveProjectK6Location);
   // fall back to the instance default only when no location was specified.
@@ -1180,13 +1226,12 @@ export async function addK6JobToQueue(
     const { getCapacityManager } = await import("./capacity-manager");
     const capacityManager = await getCapacityManager();
 
-    const result = await capacityManager.reserveSlot(orgId);
+    const result = await capacityManager.reserveSlot(orgId, runId, queuedAt);
 
     if (result === 0) {
-      const usage = await capacityManager.getCurrentUsage(orgId);
-      throw new Error(
-        `Queue capacity limit reached (${usage.queued}/${usage.queuedCapacity} queued). ` +
-          `Please try again when running capacity (${usage.running}/${usage.runningCapacity}) is available.`
+      throw new ExecutionQueueError(
+        "capacity_exceeded",
+        "Queue capacity limit reached",
       );
     }
 
@@ -1201,7 +1246,7 @@ export async function addK6JobToQueue(
         await queue.add(
           jobName,
           {
-            ...task,
+            ...safeTask,
             location: k6JobLocation,
             _capacityStatus: "immediate",
           },
@@ -1224,11 +1269,11 @@ export async function addK6JobToQueue(
       organizationId: orgId,
       projectId: task.projectId || "",
       taskData: {
-        ...task,
+        ...safeTask,
         _jobName: jobName,
         location: k6JobLocation,
       } as unknown as Record<string, unknown>,
-      queuedAt: Date.now(),
+      queuedAt,
     };
 
     const position = await capacityManager.addToQueue(orgId, queuedJobData);
@@ -1243,9 +1288,7 @@ export async function addK6JobToQueue(
       { err: error, runId },
       `Error adding k6 job ${runId} to queue`
     );
-    throw new Error(
-      `Failed to add k6 job execution: ${error instanceof Error ? error.message : String(error)}`
-    );
+    throwExecutionQueueError(error, "k6 job enqueue");
   }
 }
 

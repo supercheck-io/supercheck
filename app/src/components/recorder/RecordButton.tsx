@@ -25,14 +25,14 @@ interface RecordButtonProps {
 }
 
 // Extension API interface exposed by content script
-interface SuperCheckRecorderAPI {
+interface SupercheckRecorderAPI {
   version: string;
   isConnected: () => Promise<boolean>;
   storeRecordingContext: (payload: Record<string, unknown>) => Promise<void>;
 }
 
 // Get the extension API from window (set by content script)
-function getExtensionAPI(): SuperCheckRecorderAPI | null {
+function getExtensionAPI(): SupercheckRecorderAPI | null {
   return (window as any).__SUPERCHECK_RECORDER__ || null;
 }
 
@@ -54,7 +54,7 @@ function detectBrowser(): 'chrome' | 'edge' | 'unsupported' {
 
 // Extension URLs
 const CHROME_WEB_STORE_URL = "https://chromewebstore.google.com/detail/supercheck-recorder/gfmbcelfhhfmifdkccnbgdadibdfhioe";
-const EDGE_ADDONS_URL = "https://microsoftedge.microsoft.com/addons/detail/supercheck-recorder/ngmlkgfgmdnfpddohcbfdgihennolnem";
+const EDGE_ADDONS_URL = "https://microsoftedge.microsoft.com/addons/detail/supercheck-recorder/0rdckc265vb9";
 
 export function RecordButton({
   projectId,
@@ -338,4 +338,3 @@ export function RecordButton({
     </>
   );
 }
-

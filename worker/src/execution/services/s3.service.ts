@@ -73,6 +73,7 @@ export class S3Service implements OnModuleInit {
   private readonly s3Endpoint: string;
   private readonly maxRetries: number;
   private readonly operationTimeout: number;
+  private readonly isSelfHosted: boolean;
 
   constructor(private configService: ConfigService) {
     // Playwright buckets
@@ -135,6 +136,8 @@ export class S3Service implements OnModuleInit {
       'S3_OPERATION_TIMEOUT',
       5000,
     );
+    this.isSelfHosted =
+      this.configService.get<string>('SELF_HOSTED')?.toLowerCase() === 'true';
 
     this.logger.debug(
       `S3 initialized with buckets: playwright=[test=${this.testBucketName}, job=${this.jobBucketName}, monitor=${this.monitorBucketName}], k6=[test=${this.k6TestBucketName}, job=${this.k6JobBucketName}], status=${this.statusBucketName}`,
@@ -267,11 +270,7 @@ export class S3Service implements OnModuleInit {
       ) {
         // Only attempt to create bucket in self-hosted mode
         // In cloud mode, buckets should be created via Terraform/Wrangler
-        const isSelfHosted =
-          this.configService.get<string>('SELF_HOSTED')?.toLowerCase() ===
-          'true';
-
-        if (!isSelfHosted) {
+        if (!this.isSelfHosted) {
           const message = `Bucket '${bucketName}' does not exist. Auto-creation is disabled in Cloud mode (SELF_HOSTED!=true). Please create the bucket manually.`;
           this.logger.error(message);
           throw new Error(message);
@@ -429,8 +428,19 @@ export class S3Service implements OnModuleInit {
    * Returns additionalFiles (containerPath -> content) and filePaths (key -> containerPath).
    */
   async prepareFileVariables(
-    files: Record<string, { storagePath: string; fileName: string; mimeType: string; fileSize: number | null }>,
-  ): Promise<{ additionalFiles: Record<string, string>; filePaths: Record<string, string> }> {
+    files: Record<
+      string,
+      {
+        storagePath: string;
+        fileName: string;
+        mimeType: string;
+        fileSize: number | null;
+      }
+    >,
+  ): Promise<{
+    additionalFiles: Record<string, string>;
+    filePaths: Record<string, string>;
+  }> {
     const additionalFiles: Record<string, string> = {};
     const filePaths: Record<string, string> = {};
 
@@ -439,15 +449,20 @@ export class S3Service implements OnModuleInit {
     }
 
     const totalBytes = Object.values(files).reduce(
-      (sum, m) => sum + (typeof m.fileSize === 'number' && m.fileSize > 0 ? m.fileSize : 0),
+      (sum, m) =>
+        sum +
+        (typeof m.fileSize === 'number' && m.fileSize > 0 ? m.fileSize : 0),
       0,
     );
     if (totalBytes > MEMORY_LIMITS.MAX_TOTAL_FILE_VARIABLES_BYTES) {
       const totalMB = (totalBytes / (1024 * 1024)).toFixed(1);
-      const limitMB = (MEMORY_LIMITS.MAX_TOTAL_FILE_VARIABLES_BYTES / (1024 * 1024)).toFixed(0);
+      const limitMB = (
+        MEMORY_LIMITS.MAX_TOTAL_FILE_VARIABLES_BYTES /
+        (1024 * 1024)
+      ).toFixed(0);
       throw new Error(
         `Total file variable size (${totalMB} MB) exceeds the ${limitMB} MB per-run limit. ` +
-        `Remove unused file variables or reduce file sizes.`,
+          `Remove unused file variables or reduce file sizes.`,
       );
     }
 
@@ -462,7 +477,10 @@ export class S3Service implements OnModuleInit {
         throw new Error('Total file variable size exceeds the per-run limit.');
       }
 
-      if (typeof meta.fileSize === 'number' && meta.fileSize > remainingBudget) {
+      if (
+        typeof meta.fileSize === 'number' &&
+        meta.fileSize > remainingBudget
+      ) {
         const requestedMB = (meta.fileSize / (1024 * 1024)).toFixed(1);
         const remainingMB = (remainingBudget / (1024 * 1024)).toFixed(1);
         throw new Error(
@@ -504,7 +522,8 @@ export class S3Service implements OnModuleInit {
       // Preserve original bytes via base64 to avoid UTF-8 re-encoding corruption
       // (e.g. Windows-1252 CSV files). buildShellScript detects the prefix
       // and skips the double-encode.
-      additionalFiles[containerFileName] = `base64:${buffer.toString('base64')}`;
+      additionalFiles[containerFileName] =
+        `base64:${buffer.toString('base64')}`;
       // Store relative path — the runtime helper resolves it against TMPDIR
       // (which buildKubernetesEnv sets to the per-run workspace root).
       filePaths[key] = containerFileName;
@@ -567,41 +586,8 @@ export class S3Service implements OnModuleInit {
       throw err;
     }
 
-    // Verify bucket exists before attempting upload
-    try {
-      await this.withRetry(
-        () =>
-          this.s3Client.send(
-            new ListObjectsV2Command({ Bucket: targetBucket, MaxKeys: 1 }),
-          ),
-        `Check bucket ${targetBucket} before upload`,
-      );
-    } catch (error) {
-      this.logger.warn(
-        `[S3 UPLOAD] Bucket '${targetBucket}' verification failed, attempting to create it: ${getErrorMessage(error)}`,
-      );
-
-      // Try to create the bucket as a fallback
-      try {
-        await this.withRetry(
-          () =>
-            this.s3Client.send(
-              new CreateBucketCommand({ Bucket: targetBucket }),
-            ),
-          `Create bucket ${targetBucket} as fallback`,
-        );
-        this.logger.log(
-          `[S3 UPLOAD] Successfully created bucket '${targetBucket}' as fallback.`,
-        );
-      } catch (createError) {
-        this.logger.error(
-          `[S3 UPLOAD] Failed to create bucket '${targetBucket}' as fallback: ${getErrorMessage(createError)}`,
-          getErrorStack(createError),
-        );
-        throw new Error(
-          `S3 bucket verification and creation failed: ${getErrorMessage(error)}`,
-        );
-      }
+    if (this.isSelfHosted) {
+      await this.ensureBucketExists(targetBucket);
     }
 
     const uploadedKeys: string[] = [];

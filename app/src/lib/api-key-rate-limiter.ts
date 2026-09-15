@@ -10,12 +10,13 @@
  * This service implements:
  * - Sliding window rate limiting algorithm
  * - Per-API-key limits
- * - Fail-open behavior on Redis errors
+ * - Fail-closed behavior on Redis errors
  * - Detailed rate limit headers for responses
  */
 
 import { getRedisConnection } from "@/lib/queue";
 import { createLogger } from "@/lib/logger/index";
+import { randomUUID } from "crypto";
 
 const logger = createLogger({ module: "api-key-rate-limiter" }) as {
   debug: (data: unknown, msg?: string) => void;
@@ -119,62 +120,54 @@ export class ApiKeyRateLimiter {
     const key = `${KEY_PREFIX}:${apiKeyId}`;
     const now = nowSeconds();
     const windowStart = now - config.timeWindow;
-    const resetAt = new Date((now + config.timeWindow) * 1000);
+    const fallbackResetAt = new Date((now + config.timeWindow) * 1000);
 
     try {
       const redis = await getRedisConnection();
 
-      // Use Redis MULTI for atomic operations
-      const pipeline = redis.multi();
+      const luaScript = `
+        local key = KEYS[1]
+        local windowStart = tonumber(ARGV[1])
+        local now = tonumber(ARGV[2])
+        local maxRequests = tonumber(ARGV[3])
+        local ttl = tonumber(ARGV[4])
+        local entryId = ARGV[5]
 
-      // Remove old entries outside the window
-      pipeline.zremrangebyscore(key, 0, windowStart);
+        redis.call('ZREMRANGEBYSCORE', key, 0, windowStart)
+        local currentCount = redis.call('ZCARD', key)
+        if currentCount >= maxRequests then
+          local oldest = redis.call('ZRANGE', key, 0, 0, 'WITHSCORES')
+          local oldestTimestamp = oldest[2] or now
+          return {0, currentCount, oldestTimestamp}
+        end
 
-      // Count current entries in window (before adding new one)
-      pipeline.zcard(key);
+        redis.call('ZADD', key, now, entryId)
+        redis.call('EXPIRE', key, ttl)
+        local oldest = redis.call('ZRANGE', key, 0, 0, 'WITHSCORES')
+        return {1, currentCount + 1, oldest[2] or now}
+      `;
 
-      // Execute first part to get current count
-      const countResults = await pipeline.exec();
+      const result = (await redis.eval(
+        luaScript,
+        1,
+        key,
+        windowStart,
+        now,
+        config.maxRequests,
+        config.timeWindow + 60,
+        `${now}:${randomUUID()}`,
+      )) as [number, number, number];
+      const [allowed, currentCount, rawOldestTimestamp] = result;
+      const oldestTimestamp = Number(rawOldestTimestamp) || now;
+      const resetAt = new Date(
+        (oldestTimestamp + config.timeWindow) * 1000,
+      );
 
-      if (!countResults) {
-        // Redis error - fail open
-        logger.warn(
-          { apiKeyId },
-          "Redis pipeline returned null, allowing request"
+      if (allowed !== 1) {
+        const retryAfter = Math.max(
+          1,
+          oldestTimestamp + config.timeWindow - now,
         );
-        return {
-          allowed: true,
-          remaining: config.maxRequests,
-          limit: config.maxRequests,
-          resetAt,
-        };
-      }
-
-      const currentCount = (countResults[1]?.[1] as number) || 0;
-
-      // Check if we're at the limit
-      if (currentCount >= config.maxRequests) {
-        // Rate limited - don't add new entry
-        // To calculate accurate retry-after, get the oldest entry in the window
-        // The oldest entry will be the first to expire from the sliding window
-        let retryAfter = config.timeWindow; // Default fallback
-
-        try {
-          // Get the oldest entry (lowest score) from the sorted set
-          const oldestEntries = await redis.zrange(key, 0, 0, "WITHSCORES");
-          if (oldestEntries && oldestEntries.length >= 2) {
-            const oldestTimestamp = parseInt(oldestEntries[1], 10);
-            // Retry after = when oldest entry will leave the window
-            // oldestTimestamp + timeWindow - now = seconds until oldest entry expires
-            retryAfter = Math.max(1, (oldestTimestamp + config.timeWindow) - now);
-          }
-        } catch (oldestError) {
-          // If we can't get oldest entry, use full window as fallback
-          logger.debug(
-            { error: oldestError },
-            "Could not get oldest entry for retry calculation"
-          );
-        }
 
         logger.warn(
           {
@@ -195,20 +188,12 @@ export class ApiKeyRateLimiter {
         };
       }
 
-      // Under limit - add new entry with timestamp as score
-      // Use random suffix to allow multiple requests in same second
-      const entryId = `${now}:${Math.random().toString(36).substring(2, 10)}`;
-      await redis.zadd(key, now, entryId);
-
-      // Set expiry to prevent orphaned keys (window + buffer)
-      await redis.expire(key, config.timeWindow + 60);
-
-      const remaining = Math.max(0, config.maxRequests - currentCount - 1);
+      const remaining = Math.max(0, config.maxRequests - currentCount);
 
       logger.debug(
         {
           apiKeyId: apiKeyId.substring(0, 8) + "...",
-          currentCount: currentCount + 1,
+          currentCount,
           remaining,
           limit: config.maxRequests,
         },
@@ -222,17 +207,19 @@ export class ApiKeyRateLimiter {
         resetAt,
       };
     } catch (error) {
-      // Redis error - fail open with warning
+      // Rate limits protect a public credential endpoint. Redis uncertainty
+      // must not silently disable the configured control.
       logger.error(
         { error, apiKeyId: apiKeyId.substring(0, 8) + "..." },
-        "Rate limit check failed, allowing request"
+        "Rate limit check failed, rejecting request"
       );
 
       return {
-        allowed: true,
-        remaining: config.maxRequests,
+        allowed: false,
+        remaining: 0,
         limit: config.maxRequests,
-        resetAt,
+        resetAt: fallbackResetAt,
+        retryAfter: config.timeWindow,
       };
     }
   }
@@ -257,24 +244,33 @@ export class ApiKeyRateLimiter {
     const key = `${KEY_PREFIX}:${apiKeyId}`;
     const now = nowSeconds();
     const windowStart = now - config.timeWindow;
-    const resetAt = new Date((now + config.timeWindow) * 1000);
 
     try {
       const redis = await getRedisConnection();
 
       // Clean up old entries and get count
       await redis.zremrangebyscore(key, 0, windowStart);
-      const currentCount = await redis.zcard(key);
+      const [currentCount, oldest] = await Promise.all([
+        redis.zcard(key),
+        redis.zrange(key, 0, 0, 'WITHSCORES'),
+      ]);
 
       const remaining = Math.max(0, config.maxRequests - currentCount);
       const allowed = remaining > 0;
+      const oldestTimestamp = Number(oldest[1]) || now;
+      const retryAfter = Math.max(
+        1,
+        oldestTimestamp + config.timeWindow - now,
+      );
 
       return {
         allowed,
         remaining,
         limit: config.maxRequests,
-        resetAt,
-        retryAfter: allowed ? undefined : config.timeWindow,
+        resetAt: new Date(
+          (oldestTimestamp + config.timeWindow) * 1000,
+        ),
+        retryAfter: allowed ? undefined : retryAfter,
       };
     } catch (error) {
       logger.error({ error, apiKeyId }, "Failed to get rate limit status");
@@ -282,7 +278,7 @@ export class ApiKeyRateLimiter {
         allowed: true,
         remaining: config.maxRequests,
         limit: config.maxRequests,
-        resetAt,
+        resetAt: new Date((now + config.timeWindow) * 1000),
       };
     }
   }

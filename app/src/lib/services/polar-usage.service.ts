@@ -18,11 +18,19 @@ import {
   organization,
   usageEvents,
   billingSettings,
-  overagePricing
+  overagePricing,
+  planLimits,
 } from "@/db/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, gt, lte } from "drizzle-orm";
 import { isPolarEnabled, getPolarConfig } from "@/lib/feature-flags";
+import { createLogger } from "@/lib/logger/index";
 import type { Polar } from "@polar-sh/sdk";
+
+const logger = createLogger({ module: "polar-usage" }) as {
+  info: (data: unknown, message?: string) => void;
+  warn: (data: unknown, message?: string) => void;
+  error: (data: unknown, message?: string) => void;
+};
 
 export interface UsageMetrics {
   playwrightMinutes: {
@@ -46,6 +54,13 @@ export interface UsageMetrics {
     overageCostCents: number;
     percentage: number;
   };
+  sreInvestigations: {
+    used: number;
+    included: number;
+    overage: number;
+    overageCostCents: number;
+    percentage: number;
+  };
   totalOverageCostCents: number;
   periodStart: Date | null;
   periodEnd: Date | null;
@@ -62,38 +77,54 @@ export interface SpendingStatus {
 }
 
 const USAGE_SYNC_ADVISORY_LOCK_KEY = 792401305;
+const POLAR_INGEST_TIMEOUT_MS = 15_000;
+export const POLAR_API_VERSION = "2026-04";
+type UsageSyncResult = {
+  processed: number;
+  succeeded: number;
+  failed: number;
+  errors: string[];
+};
 const FALLBACK_OVERAGE_PRICING_CENTS = {
   plus: {
     playwright: 3,
     k6: 1,
+    sreInvestigation: 50,
   },
   pro: {
     playwright: 2,
     k6: 1,
+    sreInvestigation: 50,
   },
 } as const;
 
 class PolarUsageService {
   private polarClient: InstanceType<typeof Polar> | null = null;
 
-  private async acquireSyncLock() {
-    const reserved = await postgresClient.reserve();
+  private async checkRecentUsageNotifications(scanUntil: Date) {
+    const scanSince = new Date(scanUntil.getTime() - 24 * 60 * 60 * 1000);
+    const changedOrganizations = await db
+      .selectDistinct({ organizationId: usageEvents.organizationId })
+      .from(usageEvents)
+      .where(
+        and(
+          gt(usageEvents.createdAt, scanSince),
+          lte(usageEvents.createdAt, scanUntil)
+        )
+      );
 
-    try {
-      const lockResult = (await reserved`
-        SELECT pg_try_advisory_lock(${USAGE_SYNC_ADVISORY_LOCK_KEY}) AS locked
-      `) as Array<{ locked: boolean }>;
-
-      if (!lockResult[0]?.locked) {
-        reserved.release();
-        return null;
-      }
-
-      return reserved;
-    } catch (error) {
-      reserved.release();
-      throw error;
+    if (changedOrganizations.length === 0) {
+      return;
     }
+
+    const { usageNotificationService } = await import(
+      "@/lib/services/usage-notification.service"
+    );
+
+    for (const { organizationId } of changedOrganizations) {
+      await usageNotificationService.checkAndNotify(organizationId);
+    }
+
   }
 
   /**
@@ -113,7 +144,7 @@ class PolarUsageService {
       const config = getPolarConfig();
       
       if (!config?.accessToken) {
-        console.warn("[PolarUsage] No access token configured");
+        logger.warn({}, "No Polar access token configured");
         return null;
       }
 
@@ -124,7 +155,7 @@ class PolarUsageService {
 
       return this.polarClient;
     } catch (error) {
-      console.error("[PolarUsage] Failed to initialize Polar client:", error);
+      logger.error({ error }, "Failed to initialize Polar client");
       return null;
     }
   }
@@ -140,7 +171,7 @@ class PolarUsageService {
     try {
       const polar = await this.getPolarClient();
       if (!polar) {
-        console.warn("[PolarUsage] Polar client not available, skipping sync");
+        logger.warn({}, "Polar client unavailable; skipping usage sync");
         return false;
       }
 
@@ -150,7 +181,7 @@ class PolarUsageService {
       });
 
       if (!usageEvent) {
-        console.warn(`[PolarUsage] Event ${eventId} not found`);
+        logger.warn({ eventId }, "Polar usage event not found");
         return false;
       }
 
@@ -160,14 +191,17 @@ class PolarUsageService {
       });
 
       if (!org?.polarCustomerId) {
-        console.warn(`[PolarUsage] No Polar customer ID for org ${usageEvent.organizationId}`);
+        logger.warn(
+          { organizationId: usageEvent.organizationId },
+          "Organization has no Polar customer ID",
+        );
         return false;
       }
 
       // Get the Polar config
       const config = getPolarConfig();
       if (!config?.accessToken) {
-        console.warn("[PolarUsage] No Polar access token configured");
+        logger.warn({}, "No Polar access token configured");
         return false;
       }
 
@@ -178,6 +212,8 @@ class PolarUsageService {
         meterName = 'k6_vu_minutes';
       } else if (usageEvent.eventType === 'ai_usage') {
         meterName = 'ai_credits';
+      } else if (usageEvent.eventType === 'sre_investigation') {
+        meterName = 'sre_investigations';
       } else {
         meterName = 'playwright_minutes';
       }
@@ -195,6 +231,7 @@ class PolarUsageService {
           headers: {
             'Authorization': `Bearer ${config.accessToken}`,
             'Content-Type': 'application/json',
+            'Polar-Version': POLAR_API_VERSION,
           },
           body: JSON.stringify({
             events: [{
@@ -202,6 +239,9 @@ class PolarUsageService {
               customer_id: org.polarCustomerId,
               // Event name matches the meter filter in Polar
               name: meterName,
+              // Polar deduplicates retries by external_id. Both the worker's
+              // immediate sender and this scheduler use the same ledger ID.
+              external_id: eventId,
               // Timestamp when the usage occurred
               timestamp: usageEvent.createdAt?.toISOString() || new Date().toISOString(),
               // Metadata including the usage value
@@ -210,10 +250,15 @@ class PolarUsageService {
                 event_type: usageEvent.eventType,
                 unit_type: usageEvent.unitType,
                 value: Number(usageEvent.units),
-                ...(usageEvent.metadata ?? {}),
+                ...(typeof usageEvent.metadata?.useLiveConnectors === "boolean"
+                  ? {
+                      useLiveConnectors: usageEvent.metadata.useLiveConnectors,
+                    }
+                  : {}),
               },
             }],
           }),
+          signal: AbortSignal.timeout(POLAR_INGEST_TIMEOUT_MS),
         }
       );
 
@@ -229,16 +274,16 @@ class PolarUsageService {
         .update(usageEvents)
         .set({
           syncedToPolar: true,
-          polarEventId: result.id || eventId,
+          polarEventId: eventId,
           lastSyncAttempt: new Date(),
           syncError: null,
         })
         .where(eq(usageEvents.id, eventId));
 
-      console.log(`[PolarUsage] ✅ Synced event ${eventId.substring(0, 8)}... to Polar`);
+      logger.info({ eventId }, "Synced usage event to Polar");
       return true;
     } catch (error) {
-      console.error("[PolarUsage] Failed to sync event to Polar:", error);
+      logger.error({ error, eventId }, "Failed to sync usage event to Polar");
       
       // Update sync status with error
       await database
@@ -257,8 +302,9 @@ class PolarUsageService {
   /**
    * Get detailed usage metrics for an organization
    */
-  async getUsageMetrics(organizationId: string): Promise<UsageMetrics> {
-    const org = await db.query.organization.findFirst({
+  async getUsageMetrics(organizationId: string, projection?: { database: Pick<typeof db, "query">; additionalSreUnits: number }): Promise<UsageMetrics> {
+    const database = projection?.database ?? db;
+    const org = await database.query.organization.findFirst({
       where: eq(organization.id, organizationId),
     });
 
@@ -268,18 +314,24 @@ class PolarUsageService {
 
     // Get plan limits
     const { subscriptionService } = await import("./subscription-service");
-    const plan = await subscriptionService.getOrganizationPlanSafe(organizationId);
+    const plan = projection
+      ? await database.query.planLimits.findFirst({ where: eq(planLimits.plan, org.subscriptionPlan ?? "plus") })
+      : await subscriptionService.getOrganizationPlanSafe(organizationId);
+    if (!plan) throw new Error("Billing plan configuration unavailable");
 
     // Get overage pricing
-    const pricing = await this.getOveragePricing(org.subscriptionPlan || "plus");
+    const pricing = await this.getOveragePricing(org.subscriptionPlan || "plus", database);
 
     const playwrightUsed = org.playwrightMinutesUsed || 0;
     const k6Used = org.k6VuMinutesUsed || 0;
     const aiCreditsUsed = org.aiCreditsUsed || 0;
+    const sreInvestigationsUsed = Number(org.sreInvestigationUnitsUsed || 0) + (projection?.additionalSreUnits ?? 0);
 
     const playwrightOverage = Math.max(0, playwrightUsed - plan.playwrightMinutesIncluded);
     const k6Overage = Math.max(0, k6Used - plan.k6VuMinutesIncluded);
     const aiCreditsOverage = Math.max(0, aiCreditsUsed - plan.aiCreditsIncluded);
+    const sreInvestigationsIncluded = Number(plan.sreInvestigationUnitsIncluded || 0);
+    const sreInvestigationsOverage = Math.max(0, sreInvestigationsUsed - sreInvestigationsIncluded);
 
     const planForPricing = org.subscriptionPlan === "pro" ? "pro" : "plus";
     const fallbackPricing = FALLBACK_OVERAGE_PRICING_CENTS[planForPricing];
@@ -291,6 +343,10 @@ class PolarUsageService {
     );
     // AI credits use hard-limit model (no overage billing)
     const aiCreditsOverageCost = 0;
+    const sreInvestigationsOverageCost = Math.ceil(
+      sreInvestigationsOverage *
+        (pricing?.sreInvestigationUnitPriceCents ?? fallbackPricing.sreInvestigation)
+    );
 
     const playwrightPercentage =
       plan.playwrightMinutesIncluded > 0
@@ -303,6 +359,10 @@ class PolarUsageService {
     const aiPercentage =
       plan.aiCreditsIncluded > 0
         ? Math.round((aiCreditsUsed / plan.aiCreditsIncluded) * 100)
+        : 100;
+    const sreInvestigationsPercentage =
+      sreInvestigationsIncluded > 0
+        ? Math.round((sreInvestigationsUsed / sreInvestigationsIncluded) * 100)
         : 100;
 
     return {
@@ -327,7 +387,14 @@ class PolarUsageService {
         overageCostCents: aiCreditsOverageCost,
         percentage: aiPercentage,
       },
-      totalOverageCostCents: playwrightOverageCost + k6OverageCost,
+      sreInvestigations: {
+        used: sreInvestigationsUsed,
+        included: sreInvestigationsIncluded,
+        overage: sreInvestigationsOverage,
+        overageCostCents: sreInvestigationsOverageCost,
+        percentage: sreInvestigationsPercentage,
+      },
+      totalOverageCostCents: playwrightOverageCost + k6OverageCost + sreInvestigationsOverageCost,
       periodStart: org.usagePeriodStart,
       periodEnd: org.usagePeriodEnd,
     };
@@ -336,14 +403,14 @@ class PolarUsageService {
   /**
    * Get spending status for an organization
    */
-  async getSpendingStatus(organizationId: string): Promise<SpendingStatus> {
+  async getSpendingStatus(organizationId: string, projection?: { database: Pick<typeof db, "query">; additionalSreUnits: number }): Promise<SpendingStatus> {
     // Get billing settings
-    const settings = await db.query.billingSettings.findFirst({
+    const settings = await (projection?.database ?? db).query.billingSettings.findFirst({
       where: eq(billingSettings.organizationId, organizationId),
     });
 
     // Get current usage metrics
-    const metrics = await this.getUsageMetrics(organizationId);
+    const metrics = await this.getUsageMetrics(organizationId, projection);
     const currentSpendingCents = metrics.totalOverageCostCents;
 
     const limitEnabled = settings?.enableSpendingLimit || false;
@@ -374,12 +441,12 @@ class PolarUsageService {
   /**
    * Get overage pricing for a plan
    */
-  async getOveragePricing(plan: "plus" | "pro" | "unlimited") {
+  async getOveragePricing(plan: "plus" | "pro" | "unlimited", database: Pick<typeof db, "query"> = db) {
     if (plan === "unlimited") {
       return null; // No overage for unlimited plan
     }
 
-    return db.query.overagePricing.findFirst({
+    return database.query.overagePricing.findFirst({
       where: eq(overagePricing.plan, plan),
     });
   }
@@ -410,25 +477,71 @@ class PolarUsageService {
    * Sync all pending usage events to Polar
    * Safe to call from the app scheduler, an external cron, or manually.
    */
-  async syncPendingEvents(batchSize: number = 50): Promise<{ 
-    processed: number; 
-    succeeded: number; 
-    failed: number;
-    errors: string[];
-  }> {
+  async syncPendingEvents(batchSize: number = 50): Promise<UsageSyncResult> {
     if (!isPolarEnabled()) {
       return { processed: 0, succeeded: 0, failed: 0, errors: [] };
     }
 
-    const errors: string[] = [];
-    const lockConnection = await this.acquireSyncLock();
+    try {
+      // The production database path uses transaction pooling, so consecutive
+      // statements can reach different PostgreSQL backends. A transaction-scoped
+      // advisory lock is pinned to one backend and releases automatically.
+      const result = await postgresClient.begin(async (transaction) => {
+        const lockResult = (await transaction`
+          SELECT pg_try_advisory_xact_lock(${USAGE_SYNC_ADVISORY_LOCK_KEY}) AS locked
+        `) as Array<{ locked: boolean }>;
 
-    if (!lockConnection) {
-      console.log("[PolarUsage] Usage sync already running, skipping this run");
-      return { processed: 0, succeeded: 0, failed: 0, errors: [] };
+        if (!lockResult[0]?.locked) {
+          return null;
+        }
+
+        return this.syncPendingEventsLocked(batchSize);
+      });
+
+      if (!result) {
+        logger.info({}, "Usage sync already running; skipping this run");
+        return { processed: 0, succeeded: 0, failed: 0, errors: [] };
+      }
+
+      return result;
+    } catch (error) {
+      logger.error({ error }, "Polar batch sync failed");
+      return {
+        processed: 0,
+        succeeded: 0,
+        failed: 0,
+        errors: [error instanceof Error ? error.message : 'Unknown error']
+      };
     }
+  }
+
+  private async syncPendingEventsLocked(batchSize: number): Promise<UsageSyncResult> {
+    const errors: string[] = [];
 
     try {
+      // Recover successful AI SRE runs whose post-run ledger write failed.
+      // consumeSreInvestigationCredit is idempotent by investigation run ID.
+      try {
+        const {
+          failStuckSreInvestigationRuns,
+          reconcileUnbilledSreInvestigations,
+        } = await import(
+          "@/lib/sre/investigation-billing"
+        );
+        try {
+          await failStuckSreInvestigationRuns();
+        } catch (error) {
+          logger.error({ error }, "Failed to recover stuck SRE investigation runs");
+        }
+
+        const reconciliation = await reconcileUnbilledSreInvestigations();
+        if (reconciliation.processed > 0 || reconciliation.failed > 0) {
+          logger.info(reconciliation, "Reconciled SRE billing");
+        }
+      } catch (error) {
+        logger.error({ error }, "SRE billing reconciliation failed");
+      }
+
       // Find events that haven't been synced yet
       // Uses exponential backoff: only retry after appropriate delay based on attempt count
       // Delays: 1s, 5s, 30s, 120s, 300s (for attempts 1-5)
@@ -472,12 +585,23 @@ class PolarUsageService {
           failed++;
           const errorMsg = `Event ${event.id.substring(0, 8)}...: ${error instanceof Error ? error.message : 'Unknown error'}`;
           errors.push(errorMsg);
-          console.error(`[PolarUsage] Sync failed for event:`, errorMsg);
+          logger.error({ error, errorMsg }, "Polar event sync failed");
         }
       }
 
+      // Run notification checks while this replica still owns the global usage
+      // sync lock. The durable notification ledger suppresses repeat thresholds.
+      try {
+        await this.checkRecentUsageNotifications(new Date());
+      } catch (error) {
+        logger.error({ error }, "Usage notification scan failed");
+      }
+
       if (pendingEvents.length > 0) {
-        console.log(`[PolarUsage] Batch sync complete: ${succeeded}/${pendingEvents.length} succeeded, ${failed} failed`);
+        logger.info(
+          { succeeded, failed, processed: pendingEvents.length },
+          "Polar batch sync complete",
+        );
       }
 
       return {
@@ -487,21 +611,13 @@ class PolarUsageService {
         errors
       };
     } catch (error) {
-      console.error("[PolarUsage] Batch sync failed:", error);
+      logger.error({ error }, "Polar batch sync failed");
       return {
         processed: 0,
         succeeded: 0,
         failed: 0,
         errors: [error instanceof Error ? error.message : 'Unknown error']
       };
-    } finally {
-      try {
-        await lockConnection`
-          SELECT pg_advisory_unlock(${USAGE_SYNC_ADVISORY_LOCK_KEY})
-        `;
-      } finally {
-        lockConnection.release();
-      }
     }
   }
 }

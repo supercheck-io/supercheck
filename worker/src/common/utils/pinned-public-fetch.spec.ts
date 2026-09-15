@@ -1,0 +1,170 @@
+import { lookup } from 'node:dns/promises';
+import { EventEmitter } from 'node:events';
+import https from 'node:https';
+
+jest.mock('node:dns/promises', () => ({ lookup: jest.fn() }));
+jest.mock('node:https', () => ({
+  __esModule: true,
+  default: { request: jest.fn() },
+}));
+
+import { fetchPublicEndpoint } from './pinned-public-fetch';
+
+const mockLookup = lookup as jest.MockedFunction<typeof lookup>;
+const mockRequest = https.request as jest.MockedFunction<typeof https.request>;
+
+describe('worker pinned public fetch', () => {
+  const originalNodeEnv = process.env.NODE_ENV;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    Object.defineProperty(process.env, 'NODE_ENV', {
+      value: 'production',
+      configurable: true,
+      writable: true,
+    });
+  });
+
+  it.each([204, 205, 304])(
+    'accepts the bodyless HTTP status %s',
+    async (statusCode) => {
+      (mockLookup as jest.Mock).mockResolvedValueOnce([
+        { address: '203.0.114.10', family: 4 },
+      ]);
+      const request = Object.assign(new EventEmitter(), {
+        end: jest.fn(),
+        write: jest.fn(),
+        destroy: jest.fn(),
+      });
+      (mockRequest as unknown as jest.Mock).mockImplementation(
+        (
+          _url: URL,
+          _options: unknown,
+          onResponse: (response: EventEmitter) => void,
+        ) => {
+          const response = Object.assign(new EventEmitter(), {
+            statusCode,
+            headers: {},
+          });
+          onResponse(response);
+          queueMicrotask(() => response.emit('end'));
+          return request;
+        },
+      );
+      const response = await fetchPublicEndpoint(
+        'https://hooks.example.com/events',
+      );
+      expect(response.status).toBe(statusCode);
+      expect(response.body).toBeNull();
+      await expect(response.text()).resolves.toBe('');
+    },
+  );
+
+  afterAll(() => {
+    Object.defineProperty(process.env, 'NODE_ENV', {
+      value: originalNodeEnv,
+      configurable: true,
+      writable: true,
+    });
+  });
+
+  it('rejects private DNS answers before webhook delivery connects', async () => {
+    (mockLookup as jest.Mock).mockResolvedValueOnce([
+      { address: '127.0.0.1', family: 4 },
+    ]);
+
+    await expect(
+      fetchPublicEndpoint('https://hooks.example.com/events'),
+    ).rejects.toThrow('private or internal networks');
+    expect(mockRequest).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    '100.64.0.1',
+    '192.0.0.1',
+    '198.18.0.1',
+    '203.0.113.1',
+    '224.0.0.1',
+  ])('rejects the reserved DNS answer %s', async (address) => {
+    (mockLookup as jest.Mock).mockResolvedValueOnce([{ address, family: 4 }]);
+
+    await expect(
+      fetchPublicEndpoint('https://hooks.example.com/events'),
+    ).rejects.toThrow('private or internal networks');
+    expect(mockRequest).not.toHaveBeenCalled();
+  });
+
+  it('pins Node multi-address lookup to the validated public address', async () => {
+    (mockLookup as jest.Mock).mockResolvedValueOnce([
+      { address: '203.0.114.10', family: 4 },
+    ]);
+    const request = Object.assign(new EventEmitter(), {
+      end: jest.fn(),
+      write: jest.fn(),
+      destroy: jest.fn(),
+    });
+    (mockRequest as unknown as jest.Mock).mockImplementation(
+      (
+        _url: URL,
+        options: {
+          lookup: (
+            hostname: string,
+            options: { all?: boolean },
+            callback: (...args: unknown[]) => void,
+          ) => void;
+        },
+        onResponse: (response: EventEmitter) => void,
+      ) => {
+        const response = Object.assign(new EventEmitter(), {
+          statusCode: 200,
+          statusMessage: 'OK',
+          headers: {},
+        });
+        onResponse(response);
+        queueMicrotask(() => response.emit('end'));
+
+        const callback = jest.fn();
+        options.lookup('hooks.example.com', { all: true }, callback);
+        expect(callback).toHaveBeenCalledWith(null, [
+          { address: '203.0.114.10', family: 4 },
+        ]);
+        return request;
+      },
+    );
+
+    await expect(
+      fetchPublicEndpoint('https://hooks.example.com/events'),
+    ).resolves.toMatchObject({ status: 200 });
+  });
+
+  it('rejects immediately when the HTTPS response stream errors', async () => {
+    (mockLookup as jest.Mock).mockResolvedValueOnce([
+      { address: '203.0.114.10', family: 4 },
+    ]);
+    const request = Object.assign(new EventEmitter(), {
+      end: jest.fn(),
+      write: jest.fn(),
+      destroy: jest.fn(),
+    });
+    (mockRequest as unknown as jest.Mock).mockImplementation(
+      (
+        _url: URL,
+        _options: unknown,
+        onResponse: (response: EventEmitter) => void,
+      ) => {
+        const response = Object.assign(new EventEmitter(), {
+          statusCode: 200,
+          statusMessage: 'OK',
+          headers: {},
+        });
+        onResponse(response);
+        queueMicrotask(() => response.emit('error', new Error('read failed')));
+        return request;
+      },
+    );
+
+    await expect(
+      fetchPublicEndpoint('https://hooks.example.com/events'),
+    ).rejects.toThrow('read failed');
+  });
+});

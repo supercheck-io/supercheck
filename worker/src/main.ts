@@ -1,6 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { Logger } from 'nestjs-pino';
+import { startPrivateAgentRunner } from './private-agent/private-agent-runner';
 
 async function bootstrap() {
   // Create the application with buffer logs until logger is ready
@@ -19,4 +20,8 @@ async function bootstrap() {
   const logger = app.get(Logger);
   logger.log(`Worker service running on port ${port}`, 'Bootstrap');
 }
-void bootstrap();
+if (process.env.SUPERCHECK_RUNTIME_MODE === 'private-agent') {
+  void startPrivateAgentRunner();
+} else {
+  void bootstrap();
+}

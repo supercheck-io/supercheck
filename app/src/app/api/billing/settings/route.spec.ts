@@ -44,13 +44,35 @@ describe("PATCH /api/billing/settings", () => {
     });
   });
 
+  it.each([0.001, 21474836.48])(
+    "rejects an unrepresentable dollar limit: %s",
+    async (amount) => {
+      const response = await PATCH({
+        json: async () => ({
+          monthlySpendingLimitDollars: amount,
+          enableSpendingLimit: true,
+        }),
+      } as Request);
+      expect(response.status).toBe(400);
+      expect(billingSettingsService.updateSettings).not.toHaveBeenCalled();
+    },
+  );
+
+  it("rejects malformed JSON as a client error", async () => {
+    const response = await PATCH({
+      json: jest.fn().mockRejectedValue(new SyntaxError("Invalid JSON")),
+    } as unknown as Request);
+    expect(response.status).toBe(400);
+    expect(billingSettingsService.updateSettings).not.toHaveBeenCalled();
+  });
+
   it("rejects enabled spending limits without a positive cap", async () => {
     const response = await PATCH({
       json: async () => ({
-          enableSpendingLimit: true,
-          monthlySpendingLimitDollars: null,
-          hardStopOnLimit: true,
-        }),
+        enableSpendingLimit: true,
+        monthlySpendingLimitDollars: null,
+        hardStopOnLimit: true,
+      }),
     } as Request);
 
     expect(response.status).toBe(400);
@@ -58,7 +80,7 @@ describe("PATCH /api/billing/settings", () => {
       expect.objectContaining({
         error:
           "A positive monthly spending limit is required when spending limits are enabled",
-      })
+      }),
     );
     expect(billingSettingsService.updateSettings).not.toHaveBeenCalled();
   });

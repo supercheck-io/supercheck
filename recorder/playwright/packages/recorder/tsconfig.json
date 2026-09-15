@@ -1,0 +1,28 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "useDefineForClassFields": true,
+    "lib": ["DOM", "DOM.Iterable", "ESNext"],
+    "allowJs": true,
+    "skipLibCheck": false,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "baseUrl": ".",
+    "useUnknownInCatchVariables": false,
+    "paths": {
+      "@isomorphic/*": ["../playwright-core/src/utils/isomorphic/*"],
+      "@protocol/*": ["../protocol/src/*"],
+      "@recorder/*": ["../recorder/src/*"],
+      "@web/*": ["../web/src/*"],
+    }
+  },
+  "include": ["src", "../web/src"],
+  "references": [{ "path": "./tsconfig.node.json" }]
+}

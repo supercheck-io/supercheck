@@ -1,9 +1,10 @@
 import { NextResponse, NextRequest } from "next/server";
 import { db } from "@/utils/db";
-import { alertHistory } from "@/db/schema";
+import { alertHistory, type AlertDeliveryMetadata } from "@/db/schema";
 import { sql } from "drizzle-orm";
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { requireAuthContext, isAuthError } from '@/lib/auth-context';
+import { enqueueSreAlertTriageJob } from '@/sre/lib/background-alert-triage-queue';
 
 export async function GET(request: NextRequest) {
   try {
@@ -52,9 +53,15 @@ export async function GET(request: NextRequest) {
         providerName: string | null;
         providerType: string | null;
         errorMessage: string | null;
+        deliveryMetadata: AlertDeliveryMetadata | null;
         jobName: string | null;
         monitorName: string | null;
       };
+      const hasDeliveryMetadataColumn =
+        await alertHistoryDeliveryMetadataColumnExists(dbInstance);
+      const deliveryMetadataSelect = hasDeliveryMetadataColumn
+        ? sql`ah.delivery_metadata`
+        : sql`NULL::jsonb`;
 
       const total = isPaginatedRequest
         ? await dbInstance.execute(sql`
@@ -95,6 +102,7 @@ export async function GET(request: NextRequest) {
             np.name as "providerName",
             np.type as "providerType",
             ah.error_message as "errorMessage",
+            ${deliveryMetadataSelect} as "deliveryMetadata",
             j.name as "jobName",
             NULL as "monitorName"
           FROM alert_history ah
@@ -119,6 +127,7 @@ export async function GET(request: NextRequest) {
             np.name as "providerName",
             np.type as "providerType",
             ah.error_message as "errorMessage",
+            ${deliveryMetadataSelect} as "deliveryMetadata",
             NULL as "jobName",
             m.name as "monitorName"
           FROM alert_history ah
@@ -151,6 +160,9 @@ export async function GET(request: NextRequest) {
           'Unknown',
         metadata: {
           errorMessage: item.errorMessage,
+          delivery: item.deliveryMetadata?.delivery,
+          correlation: item.deliveryMetadata?.correlation,
+          provider: item.deliveryMetadata?.provider,
         },
       }));
 
@@ -191,6 +203,23 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+async function alertHistoryDeliveryMetadataColumnExists(
+  dbInstance: Pick<typeof db, "execute">,
+): Promise<boolean> {
+  const result = await dbInstance.execute(sql`
+    SELECT EXISTS (
+      SELECT 1
+      FROM information_schema.columns
+      WHERE table_schema = current_schema()
+        AND table_name = 'alert_history'
+        AND column_name = 'delivery_metadata'
+    ) as "exists"
+  `);
+  const rows = result as unknown as Array<{ exists?: boolean | string | number }>;
+  const value = rows[0]?.exists;
+  return value === true || value === "true" || value === 1;
 }
 
 export async function POST(request: NextRequest) {
@@ -281,6 +310,12 @@ export async function POST(request: NextRequest) {
         sentAt: new Date(),
       })
       .returning();
+
+    try {
+      await enqueueSreAlertTriageJob({ alertHistoryId: result.id });
+    } catch (error) {
+      console.error("Error enqueueing SRE alert triage job:", error);
+    }
 
     return NextResponse.json(result);
   } catch (error) {

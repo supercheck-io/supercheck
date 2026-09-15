@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireUserAuthContext, isAuthError } from "@/lib/auth-context";
 import { usageNotificationService } from "@/lib/services/usage-notification.service";
+import { getUserOrgRole } from "@/lib/rbac/middleware";
+import { Role } from "@/lib/rbac/permissions";
 
 /**
  * GET /api/billing/notifications
@@ -8,7 +10,7 @@ import { usageNotificationService } from "@/lib/services/usage-notification.serv
  */
 export async function GET(request: Request) {
   try {
-    const { organizationId } = await requireUserAuthContext();
+    const { userId, organizationId } = await requireUserAuthContext();
 
     if (!organizationId) {
       return NextResponse.json(
@@ -17,9 +19,23 @@ export async function GET(request: Request) {
       );
     }
 
+    const role = await getUserOrgRole(userId, organizationId);
+    if (role !== Role.ORG_OWNER && role !== Role.ORG_ADMIN) {
+      return NextResponse.json(
+        { error: "Insufficient permissions" },
+        { status: 403 }
+      );
+    }
+
     const { searchParams } = new URL(request.url);
-    const limit = parseInt(searchParams.get("limit") || "50");
-    const offset = parseInt(searchParams.get("offset") || "0");
+    const requestedLimit = Number.parseInt(searchParams.get("limit") || "50", 10);
+    const requestedOffset = Number.parseInt(searchParams.get("offset") || "0", 10);
+    const limit = Number.isFinite(requestedLimit)
+      ? Math.min(100, Math.max(1, requestedLimit))
+      : 50;
+    const offset = Number.isFinite(requestedOffset)
+      ? Math.max(0, requestedOffset)
+      : 0;
 
     const notifications = await usageNotificationService.getNotificationHistory(
       organizationId,

@@ -50,10 +50,7 @@ export class SignInPage extends BasePage {
       .or(page.locator('button:has-text("Login")'))
       .or(page.locator('button:has-text("Sign in")'));
 
-    this.errorMessage = page
-      .locator('[data-testid="login-error-message"]')
-      .or(page.locator('p.text-destructive'))
-      .or(page.locator('[role="alert"]:not(#__next-route-announcer__)'));
+    this.errorMessage = page.locator('[data-testid="login-error-message"]');
 
     // OAuth buttons
     this.githubButton = page
@@ -91,8 +88,8 @@ export class SignInPage extends BasePage {
    * Navigate to the sign-in page
    */
   async navigate(): Promise<void> {
-    await this.goto(routes.signIn);
-    await this.waitForPageLoad();
+    await this.page.goto(routes.signIn, { waitUntil: 'load' });
+    await expect(this.submitButton).toBeVisible();
   }
 
   /**
@@ -104,18 +101,16 @@ export class SignInPage extends BasePage {
     await this.emailInput.fill(email);
     await this.passwordInput.fill(password);
     await this.submitButton.click();
-    await this.waitForPageLoad();
   }
 
   /**
-   * Sign in and wait for redirect to dashboard
+   * Sign in and wait for redirect away from sign-in page
    * @param email - User email
    * @param password - User password
    */
   async signInAndWaitForDashboard(email: string, password: string): Promise<void> {
     await this.signIn(email, password);
-    await this.waitForNavigation('/');
-    await this.waitForPageLoad();
+    await this.page.waitForURL((url) => !url.pathname.includes('/sign-in'), { timeout: 15000 });
   }
 
   /**
@@ -153,10 +148,8 @@ export class SignInPage extends BasePage {
    * @returns Error message text or null
    */
   async getErrorMessage(): Promise<string | null> {
-    if (await this.errorMessage.isVisible()) {
-      return this.errorMessage.textContent();
-    }
-    return null;
+    await expect(this.errorMessage).toBeVisible();
+    return this.errorMessage.textContent();
   }
 
   /**

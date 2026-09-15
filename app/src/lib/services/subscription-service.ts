@@ -5,10 +5,11 @@
 
 import { db } from "@/utils/db";
 import { organization, planLimits, type SubscriptionPlan } from "@/db/schema";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, isNull, lt, or, sql } from "drizzle-orm";
 import { isPolarEnabled, getPolarConfig } from "@/lib/feature-flags";
 
 // Constants for configuration
+export const POLAR_API_VERSION = "2026-04";
 const POLAR_API_TIMEOUT_MS = 5000; // 5 second timeout for Polar API calls
 const CUSTOMER_VALIDATION_CACHE_TTL_MS = 60000; // 60 second cache TTL
 const POLAR_SANDBOX_URL = "https://sandbox-api.polar.sh";
@@ -32,6 +33,20 @@ export interface SubscriptionAccessStatus {
   subscriptionEndsAt?: Date | null;
 }
 
+export class SubscriptionAccessDeniedError extends Error {
+  constructor(
+    message: string,
+    readonly reason:
+      | "organization_not_found"
+      | "polar_customer_missing"
+      | "polar_customer_invalid"
+      | "subscription_required",
+  ) {
+    super(message);
+    this.name = "SubscriptionAccessDeniedError";
+  }
+}
+
 // Fallback unlimited plan limits - extracted for maintainability
 const FALLBACK_UNLIMITED_LIMITS = {
   id: "fallback-unlimited",
@@ -41,6 +56,7 @@ const FALLBACK_UNLIMITED_LIMITS = {
   playwrightMinutesIncluded: 999999,
   k6VuMinutesIncluded: 999999,
   aiCreditsIncluded: 999999,
+  sreInvestigationUnitsIncluded: "999999",
   runningCapacity: 999,
   queuedCapacity: 9999,
   maxTeamMembers: 999,
@@ -64,6 +80,7 @@ const BLOCKED_PLAN_LIMITS = {
   playwrightMinutesIncluded: 0,
   k6VuMinutesIncluded: 0,
   aiCreditsIncluded: 0,
+  sreInvestigationUnitsIncluded: "0",
   runningCapacity: 0,
   queuedCapacity: 0,
   maxTeamMembers: 0,
@@ -119,7 +136,7 @@ export class SubscriptionService {
    */
   private async validatePolarCustomer(
     organizationId: string,
-    polarCustomerId: string
+    polarCustomerId: string,
   ): Promise<boolean> {
     if (!isPolarEnabled() || !polarCustomerId) {
       return true; // No validation needed if Polar disabled or no customer ID
@@ -142,7 +159,6 @@ export class SubscriptionService {
       this.cacheAccessCount = 0;
     }
 
-
     try {
       const config = getPolarConfig();
       if (!config) {
@@ -156,7 +172,7 @@ export class SubscriptionService {
       const controller = new AbortController();
       const timeoutId = setTimeout(
         () => controller.abort(),
-        POLAR_API_TIMEOUT_MS
+        POLAR_API_TIMEOUT_MS,
       );
 
       try {
@@ -166,9 +182,10 @@ export class SubscriptionService {
             headers: {
               Authorization: `Bearer ${config.accessToken}`,
               "Content-Type": "application/json",
+              "Polar-Version": POLAR_API_VERSION,
             },
             signal: controller.signal,
-          }
+          },
         );
 
         clearTimeout(timeoutId);
@@ -178,14 +195,17 @@ export class SubscriptionService {
           isValid = true; // Customer exists in Polar
         } else if (response.status === 404) {
           console.warn(
-            `[SubscriptionService] Polar customer not found (org: ${organizationId.substring(0, 8)}...)`
+            `[SubscriptionService] Polar customer not found (org: ${organizationId.substring(0, 8)}...)`,
           );
           isValid = false;
         } else {
           console.error(
-            `[SubscriptionService] Polar API error: ${response.status} (org: ${organizationId.substring(0, 8)}...)`
+            `[SubscriptionService] Polar API error: ${response.status} (org: ${organizationId.substring(0, 8)}...)`,
           );
-          isValid = false;
+          // Only a definitive 404 proves the customer is missing. Preserve
+          // locally verified subscription access during provider/rate-limit
+          // failures, and do not cache them as an invalid customer.
+          return true;
         }
 
         // Cache the result
@@ -204,13 +224,13 @@ export class SubscriptionService {
       // separately, so a temporary inability to reach Polar shouldn't revoke access.
       if (error instanceof Error && error.name === "AbortError") {
         console.error(
-          "[SubscriptionService] Polar API timeout - failing open to avoid blocking legitimate users"
+          "[SubscriptionService] Polar API timeout - failing open to avoid blocking legitimate users",
         );
         return true;
       } else {
         console.error(
           "[SubscriptionService] Error validating Polar customer:",
-          error
+          error,
         );
       }
       // Don't cache errors - allow retry on next request
@@ -233,24 +253,29 @@ export class SubscriptionService {
     });
 
     if (!org) {
-      throw new Error("Organization not found");
+      throw new SubscriptionAccessDeniedError(
+        "Organization not found",
+        "organization_not_found",
+      );
     }
 
     // If no Polar customer ID, user needs to subscribe
     if (!org.polarCustomerId) {
-      throw new Error(
-        "No Polar customer found. Please subscribe to a plan to continue."
+      throw new SubscriptionAccessDeniedError(
+        "No Polar customer found. Please subscribe to a plan to continue.",
+        "polar_customer_missing",
       );
     }
 
     // Validate customer exists in Polar
     const customerExists = await this.validatePolarCustomer(
       organizationId,
-      org.polarCustomerId
+      org.polarCustomerId,
     );
     if (!customerExists) {
-      throw new Error(
-        "Polar customer not found. Please contact support or subscribe to a new plan."
+      throw new SubscriptionAccessDeniedError(
+        "Polar customer not found. Please contact support or subscribe to a new plan.",
+        "polar_customer_invalid",
       );
     }
   }
@@ -283,7 +308,7 @@ export class SubscriptionService {
    * This is the single source of truth for UI guards and API enforcement.
    */
   async getSubscriptionAccessStatus(
-    organizationId: string
+    organizationId: string,
   ): Promise<SubscriptionAccessStatus> {
     if (!isPolarEnabled()) {
       return {
@@ -310,7 +335,7 @@ export class SubscriptionService {
     if (org.polarCustomerId) {
       const customerExists = await this.validatePolarCustomer(
         organizationId,
-        org.polarCustomerId
+        org.polarCustomerId,
       );
       if (!customerExists) {
         return {
@@ -335,7 +360,7 @@ export class SubscriptionService {
 
     if (org.subscriptionPlan === "unlimited") {
       console.error(
-        `[SubscriptionService] SECURITY: rejecting unlimited plan for org ${organizationId.substring(0, 8)}... in cloud mode`
+        `[SubscriptionService] SECURITY: rejecting unlimited plan for org ${organizationId.substring(0, 8)}... in cloud mode`,
       );
       return {
         isActive: false,
@@ -348,7 +373,7 @@ export class SubscriptionService {
 
     if (!["plus", "pro"].includes(org.subscriptionPlan)) {
       console.error(
-        `[SubscriptionService] SECURITY: rejecting invalid plan ${org.subscriptionPlan} for org ${organizationId.substring(0, 8)}... in cloud mode`
+        `[SubscriptionService] SECURITY: rejecting invalid plan ${org.subscriptionPlan} for org ${organizationId.substring(0, 8)}... in cloud mode`,
       );
       return {
         isActive: false,
@@ -383,7 +408,7 @@ export class SubscriptionService {
           }
         } else {
           console.warn(
-            `[SubscriptionService] Canceled subscription for org ${organizationId.substring(0, 8)}... has no end date`
+            `[SubscriptionService] Canceled subscription for org ${organizationId.substring(0, 8)}... has no end date`,
           );
         }
 
@@ -441,19 +466,22 @@ export class SubscriptionService {
     // This catches tampered plans before checking subscription status
     if (org.subscriptionPlan === "unlimited") {
       console.error(
-        `[SubscriptionService] SECURITY: Organization ${organizationId.substring(0, 8)}... has unlimited plan in cloud mode - possible database tampering`
+        `[SubscriptionService] SECURITY: Organization ${organizationId.substring(0, 8)}... has unlimited plan in cloud mode - possible database tampering`,
       );
       throw new Error(
-        "Invalid subscription plan detected. Please contact support."
+        "Invalid subscription plan detected. Please contact support.",
       );
     }
 
-    if (org.subscriptionPlan && !["plus", "pro"].includes(org.subscriptionPlan)) {
+    if (
+      org.subscriptionPlan &&
+      !["plus", "pro"].includes(org.subscriptionPlan)
+    ) {
       console.error(
-        `[SubscriptionService] SECURITY: Organization ${organizationId.substring(0, 8)}... has invalid plan ${org.subscriptionPlan} in cloud mode`
+        `[SubscriptionService] SECURITY: Organization ${organizationId.substring(0, 8)}... has invalid plan ${org.subscriptionPlan} in cloud mode`,
       );
       throw new Error(
-        `Invalid subscription plan: ${org.subscriptionPlan}. Only plus and pro plans are available.`
+        `Invalid subscription plan: ${org.subscriptionPlan}. Only plus and pro plans are available.`,
       );
     }
 
@@ -462,7 +490,7 @@ export class SubscriptionService {
     const hasAccess = await this.hasActiveSubscription(organizationId);
     if (!org.subscriptionPlan || !hasAccess) {
       throw new Error(
-        "No active subscription. Please subscribe to a plan to continue."
+        "No active subscription. Please subscribe to a plan to continue.",
       );
     }
 
@@ -493,7 +521,7 @@ export class SubscriptionService {
     if (org.polarCustomerId) {
       const customerExists = await this.validatePolarCustomer(
         organizationId,
-        org.polarCustomerId
+        org.polarCustomerId,
       );
       if (!customerExists) {
         // Customer doesn't exist in Polar, return blocked state for UI
@@ -508,7 +536,7 @@ export class SubscriptionService {
       // This catches tampered unlimited/invalid plans even if hasActiveSubscription returns false
       if (org.subscriptionPlan === "unlimited") {
         console.error(
-          `[SubscriptionService] SECURITY: Organization ${organizationId.substring(0, 8)}... has unlimited plan in cloud mode (getOrganizationPlanSafe) - possible database tampering`
+          `[SubscriptionService] SECURITY: Organization ${organizationId.substring(0, 8)}... has unlimited plan in cloud mode (getOrganizationPlanSafe) - possible database tampering`,
         );
         // Return blocked state instead of unlimited for security
         return this.getPlanLimits("blocked");
@@ -516,7 +544,7 @@ export class SubscriptionService {
 
       if (!["plus", "pro"].includes(org.subscriptionPlan)) {
         console.error(
-          `[SubscriptionService] SECURITY: Organization ${organizationId.substring(0, 8)}... has invalid plan ${org.subscriptionPlan} in cloud mode (getOrganizationPlanSafe)`
+          `[SubscriptionService] SECURITY: Organization ${organizationId.substring(0, 8)}... has invalid plan ${org.subscriptionPlan} in cloud mode (getOrganizationPlanSafe)`,
         );
         // Return blocked state for invalid plans
         return this.getPlanLimits("blocked");
@@ -539,7 +567,7 @@ export class SubscriptionService {
    * Special handling for "blocked" plan when Polar customer doesn't exist
    */
   async getPlanLimits(
-    plan: SubscriptionPlan | "blocked"
+    plan: SubscriptionPlan | "blocked",
   ): Promise<typeof planLimits.$inferSelect> {
     // Handle special "blocked" plan for deleted Polar customers
     if (plan === "blocked") {
@@ -558,15 +586,15 @@ export class SubscriptionService {
       if (isPolarEnabled()) {
         // Cloud mode: NEVER fall back to unlimited - this is a critical error
         console.error(
-          `CRITICAL: Plan limits not found for plan: ${plan} in cloud mode. Database may not be seeded.`
+          `CRITICAL: Plan limits not found for plan: ${plan} in cloud mode. Database may not be seeded.`,
         );
         throw new Error(
-          `Plan limits not found for plan: ${plan}. Please contact support or ensure database is properly seeded.`
+          `Plan limits not found for plan: ${plan}. Please contact support or ensure database is properly seeded.`,
         );
       } else {
         // Self-hosted mode: fall back to unlimited (expected behavior)
         console.warn(
-          `Plan limits not found for plan: ${plan} in self-hosted mode, falling back to unlimited`
+          `Plan limits not found for plan: ${plan} in self-hosted mode, falling back to unlimited`,
         );
         // Fallback to extracted constants to prevent infinite recursion
         return {
@@ -595,12 +623,13 @@ export class SubscriptionService {
       // Polar subscription billing period dates
       subscriptionStartedAt?: Date | null;
       subscriptionEndsAt?: Date | null;
-    }
+    },
+    database: Pick<typeof db, "update"> = db,
   ) {
     // SECURITY: Block unlimited plans in cloud mode
     if (isPolarEnabled() && data.subscriptionPlan === "unlimited") {
       console.error(
-        `[SubscriptionService] SECURITY: Attempted to set unlimited plan in cloud mode for org ${organizationId.substring(0, 8)}...`
+        `[SubscriptionService] SECURITY: Attempted to set unlimited plan in cloud mode for org ${organizationId.substring(0, 8)}...`,
       );
       throw new Error("Unlimited plan is only available in self-hosted mode");
     }
@@ -612,14 +641,14 @@ export class SubscriptionService {
       !["plus", "pro"].includes(data.subscriptionPlan)
     ) {
       console.error(
-        `[SubscriptionService] SECURITY: Invalid plan ${data.subscriptionPlan} attempted in cloud mode for org ${organizationId.substring(0, 8)}...`
+        `[SubscriptionService] SECURITY: Invalid plan ${data.subscriptionPlan} attempted in cloud mode for org ${organizationId.substring(0, 8)}...`,
       );
       throw new Error(
-        `Invalid plan ${data.subscriptionPlan}. Only plus and pro plans are available in cloud mode.`
+        `Invalid plan ${data.subscriptionPlan}. Only plus and pro plans are available in cloud mode.`,
       );
     }
 
-    await db
+    await database
       .update(organization)
       .set({
         ...data,
@@ -702,7 +731,7 @@ export class SubscriptionService {
         included: plan.playwrightMinutesIncluded,
         overage: Math.max(
           0,
-          (org.playwrightMinutesUsed || 0) - plan.playwrightMinutesIncluded
+          (org.playwrightMinutesUsed || 0) - plan.playwrightMinutesIncluded,
         ),
       },
       k6VuMinutes: {
@@ -710,13 +739,22 @@ export class SubscriptionService {
         included: plan.k6VuMinutesIncluded,
         overage: Math.max(
           0,
-          (org.k6VuMinutesUsed || 0) - plan.k6VuMinutesIncluded
+          (org.k6VuMinutesUsed || 0) - plan.k6VuMinutesIncluded,
         ),
       },
       aiCredits: {
         used: org.aiCreditsUsed || 0,
         included: plan.aiCreditsIncluded,
         overage: Math.max(0, (org.aiCreditsUsed || 0) - plan.aiCreditsIncluded),
+      },
+      sreInvestigations: {
+        used: Number(org.sreInvestigationUnitsUsed || 0),
+        included: Number(plan.sreInvestigationUnitsIncluded || 0),
+        overage: Math.max(
+          0,
+          Number(org.sreInvestigationUnitsUsed || 0) -
+            Number(plan.sreInvestigationUnitsIncluded || 0),
+        ),
       },
       periodStart: org.usagePeriodStart,
       periodEnd: org.usagePeriodEnd,
@@ -744,7 +782,7 @@ export class SubscriptionService {
         included: plan.playwrightMinutesIncluded,
         overage: Math.max(
           0,
-          (org.playwrightMinutesUsed || 0) - plan.playwrightMinutesIncluded
+          (org.playwrightMinutesUsed || 0) - plan.playwrightMinutesIncluded,
         ),
       },
       k6VuMinutes: {
@@ -752,13 +790,22 @@ export class SubscriptionService {
         included: plan.k6VuMinutesIncluded,
         overage: Math.max(
           0,
-          (org.k6VuMinutesUsed || 0) - plan.k6VuMinutesIncluded
+          (org.k6VuMinutesUsed || 0) - plan.k6VuMinutesIncluded,
         ),
       },
       aiCredits: {
         used: org.aiCreditsUsed || 0,
         included: plan.aiCreditsIncluded,
         overage: Math.max(0, (org.aiCreditsUsed || 0) - plan.aiCreditsIncluded),
+      },
+      sreInvestigations: {
+        used: Number(org.sreInvestigationUnitsUsed || 0),
+        included: Number(plan.sreInvestigationUnitsIncluded || 0),
+        overage: Math.max(
+          0,
+          Number(org.sreInvestigationUnitsUsed || 0) -
+            Number(plan.sreInvestigationUnitsIncluded || 0),
+        ),
       },
       periodStart: org.usagePeriodStart,
       periodEnd: org.usagePeriodEnd,
@@ -781,7 +828,7 @@ export class SubscriptionService {
       await this.resetUsageCountersWithDates(
         organizationId,
         org.subscriptionStartedAt,
-        org.subscriptionEndsAt
+        org.subscriptionEndsAt,
       );
     } else {
       // Fallback: calculate 30-day period from now (for testing or self-hosted)
@@ -795,6 +842,7 @@ export class SubscriptionService {
           playwrightMinutesUsed: 0,
           k6VuMinutesUsed: 0,
           aiCreditsUsed: 0,
+          sreInvestigationUnitsUsed: "0",
           usagePeriodStart: now,
           usagePeriodEnd: thirtyDaysLater,
         })
@@ -812,7 +860,8 @@ export class SubscriptionService {
   async resetUsageCountersWithDates(
     organizationId: string,
     startsAt: Date | null,
-    endsAt: Date | null
+    endsAt: Date | null,
+    database: Pick<typeof db, "update"> = db,
   ) {
     const now = new Date();
 
@@ -828,19 +877,35 @@ export class SubscriptionService {
       periodEnd.setDate(periodEnd.getDate() + 30);
     }
 
-    await db
+    const reset = await database
       .update(organization)
       .set({
         playwrightMinutesUsed: 0,
         k6VuMinutesUsed: 0,
         aiCreditsUsed: 0,
+        sreInvestigationUnitsUsed: "0",
         usagePeriodStart: periodStart,
         usagePeriodEnd: periodEnd,
-        // Also update the subscription dates for reference
-        subscriptionStartedAt: startsAt,
-        subscriptionEndsAt: endsAt,
+        // Lifecycle handlers own subscription dates; a paid invoice must not
+        // extend canceled access or overwrite a newer subscription snapshot.
       })
-      .where(eq(organization.id, organizationId));
+      .where(
+        and(
+          eq(organization.id, organizationId),
+          // PostgreSQL rechecks this predicate after waiting for a concurrent
+          // writer. Duplicate/older periods must never erase newly consumed usage.
+          // Missing provider dates may initialize usage, but cannot renew it.
+          startsAt
+            ? or(
+                isNull(organization.usagePeriodStart),
+                lt(organization.usagePeriodStart, periodStart),
+              )
+            : isNull(organization.usagePeriodStart),
+        ),
+      )
+      .returning({ id: organization.id });
+
+    return reset.length > 0;
   }
 
   /**
@@ -856,7 +921,7 @@ export class SubscriptionService {
         error.message.includes("No active subscription")
       ) {
         throw new Error(
-          "Subscription required. Please upgrade to Plus or Pro to create resources."
+          "Subscription required. Please upgrade to Plus or Pro to create resources.",
         );
       }
       throw error;
@@ -874,8 +939,9 @@ export class SubscriptionService {
 
     const hasSubscription = await this.hasActiveSubscription(organizationId);
     if (!hasSubscription) {
-      throw new Error(
-        "Active subscription required. Visit /billing to subscribe to Plus or Pro."
+      throw new SubscriptionAccessDeniedError(
+        "Active subscription required. Visit /billing to subscribe to Plus or Pro.",
+        "subscription_required",
       );
     }
   }

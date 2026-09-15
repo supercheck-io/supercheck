@@ -12,6 +12,7 @@ import {
   ClipboardListIcon,
   FileIcon,
   Code,
+  SquareLibrary,
   BookOpenText,
   Plus,
   Chrome,
@@ -28,6 +29,10 @@ import {
   type LucideIcon,
   ClipboardList,
   Target,
+  BrainCircuit,
+  Siren,
+  Bot,
+  Boxes,
 } from "lucide-react";
 import { PlaywrightLogo } from "@/components/logo/playwright-logo";
 import { K6Logo } from "@/components/logo/k6-logo";
@@ -48,6 +53,11 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar";
 import { useAdminStatus } from "@/hooks/use-admin-status";
+import { getReleaseVersionBadge } from "@/lib/release-metadata";
+
+const releaseVersionBadge = getReleaseVersionBadge(
+  process.env.NEXT_PUBLIC_SUPERCHECK_VERSION,
+);
 
 // Sidebar navigation data
 const data = {
@@ -66,9 +76,28 @@ const data = {
     },
 
     {
+      title: "Incidents",
+      url: "/incidents",
+      icon: Siren,
+    },
+
+    {
       title: "Status Pages",
       url: "/status-pages",
       icon: Tally4,
+    },
+  ],
+
+  Investigate: [
+    {
+      title: "Copilot",
+      url: "/copilot",
+      icon: Bot,
+    },
+    {
+      title: "Investigation Map",
+      url: "/copilot/evidence-graph",
+      icon: BrainCircuit,
     },
   ],
 
@@ -195,6 +224,11 @@ const data = {
       url: "/monitors",
       icon: Globe,
     },
+    {
+      title: "Services",
+      url: "/services",
+      icon: Boxes,
+    },
   ],
 
   SuperAdmin: [
@@ -217,7 +251,7 @@ const data = {
       title: "Docs",
       url: "https://supercheck.io/docs/app/welcome",
       icon: BookOpenText,
-      badge: "v1.3.6-canary.1",
+      badge: releaseVersionBadge,
     },
   ],
   documents: [
@@ -318,6 +352,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <NavMain groupLabel="Communicate" items={data.Communicate} />
         <NavMain groupLabel="Automate" items={data.Automate} />
         <NavMain groupLabel="Monitor" items={data.Monitor} />
+        <NavMain groupLabel="Investigate" items={data.Investigate} />
         {adminItems.length > 0 && (
           <NavMain groupLabel="Settings" items={adminItems} />
         )}

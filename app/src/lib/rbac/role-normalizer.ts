@@ -29,13 +29,20 @@ export function normalizeRole(
     return Role.PROJECT_VIEWER; // Safe default
   }
 
+  if (typeof roleInput !== "string") {
+    console.warn(
+      `[RoleNormalizer] Unknown role format: "${String(roleInput)}", defaulting to PROJECT_VIEWER`
+    );
+    return Role.PROJECT_VIEWER;
+  }
+
   // If already a Role enum, return as-is
   if (Object.values(Role).includes(roleInput as Role)) {
     return roleInput as Role;
   }
 
   // Normalize string input to lowercase for consistent matching
-  const roleString = String(roleInput).toLowerCase().trim();
+  const roleString = roleInput.toLowerCase().trim();
 
   switch (roleString) {
     case "super_admin":

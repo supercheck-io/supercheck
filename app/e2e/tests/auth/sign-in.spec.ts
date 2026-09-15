@@ -8,8 +8,14 @@
  */
 
 import { test, expect } from '../../fixtures/auth.fixture';
+
+test.use({ storageState: { cookies: [], origins: [] } });
+
 import { SignInPage } from '../../pages/auth';
 import { env, routes } from '../../utils/env';
+
+const AUTH_MAX_ATTEMPTS = 3;
+const AUTH_RETRY_MAX_SECONDS = 30;
 
 test.describe('Sign In @auth @smoke', () => {
   test.beforeEach(async ({ page }) => {
@@ -26,10 +32,60 @@ test.describe('Sign In @auth @smoke', () => {
   test('AUTH-004: Sign in with valid credentials @critical @positive', async ({ page }) => {
     const signInPage = new SignInPage(page);
     await signInPage.navigate();
-    await signInPage.signIn(env.testUser.email, env.testUser.password);
+
+    for (let attempt = 1; attempt <= AUTH_MAX_ATTEMPTS; attempt += 1) {
+      const responsePromise = page.waitForResponse(
+        (response) =>
+          response.url().includes('/api/auth/sign-in/email') &&
+          response.request().method() === 'POST',
+      );
+      await signInPage.signIn(env.testUser.email, env.testUser.password);
+      const response = await responsePromise;
+
+      if (response.status() !== 429) {
+        break;
+      }
+      if (attempt === AUTH_MAX_ATTEMPTS) {
+        throw new Error('Valid E2E sign-in remained rate limited after retries');
+      }
+
+      const retryAfterHeader =
+        response.headers()['retry-after'] ??
+        response.headers()['x-retry-after'];
+      const retryAfterSeconds = Number.parseInt(retryAfterHeader ?? '', 10);
+      const boundedSeconds = Number.isFinite(retryAfterSeconds)
+        ? Math.min(Math.max(retryAfterSeconds, 1), AUTH_RETRY_MAX_SECONDS)
+        : Math.min(2 ** attempt, AUTH_RETRY_MAX_SECONDS);
+      await page.waitForTimeout(boundedSeconds * 1_000 + 250);
+    }
 
     // Wait for redirect away from sign-in page
     await expect(page).not.toHaveURL(/sign-in/, { timeout: 30000 });
+  });
+
+  /**
+   * AUTH-018: Sign out
+   * @priority high
+   * @type positive
+   *
+   * Keep positive authentication flows ahead of intentional failures so the
+   * production IP rate limiter cannot mask sign-out coverage.
+   */
+  test('AUTH-018: Sign out @high @positive', async ({ page }) => {
+    const signInPage = new SignInPage(page);
+    await signInPage.navigate();
+    await signInPage.signInAndWaitForDashboard(env.testUser.email, env.testUser.password);
+
+    // Act - Sign out via the user menu (Avatar button in top right)
+    await page.getByTestId('user-menu').click();
+    await page.getByTestId('sign-out-button').click();
+
+    // Assert
+    await expect(page).toHaveURL(/sign-in/, { timeout: 30_000 });
+
+    // Verify session is destroyed
+    await page.goto('/tests');
+    await expect(page).toHaveURL(/sign-in/);
   });
 
   /**
@@ -66,39 +122,6 @@ test.describe('Sign In @auth @smoke', () => {
     await expect(page).toHaveURL(/sign-in/);
   });
 
-  /**
-   * AUTH-018: Sign out
-   * @priority high
-   * @type positive
-   */
-  test.skip('AUTH-018: Sign out @high @positive', async ({ page }) => {
-    // Skipped: Times out waiting for dashboard redirect on demo site
-    const signInPage = new SignInPage(page);
-    await signInPage.navigate();
-    await signInPage.signInAndWaitForDashboard(env.testUser.email, env.testUser.password);
-
-    // Act - Sign out via the user menu (Avatar button in top right)
-    const userMenu = page
-      .locator('[data-testid="user-menu"]')
-      .or(page.locator('button:has(img[alt])')  // Avatar button
-      .or(page.locator('button.rounded-full:has(.rounded-full)')));  // Fallback for avatar
-
-    await userMenu.click();
-
-    const signOutButton = page
-      .locator('[data-testid="sign-out-button"]')
-      .or(page.getByRole('menuitem', { name: /log out/i }))
-      .or(page.locator('[role="menuitem"]:has-text("Log out")'));
-
-    await signOutButton.click();
-
-    // Assert
-    await expect(page).toHaveURL(/sign-in/);
-
-    // Verify session is destroyed
-    await page.goto('/tests');
-    await expect(page).toHaveURL(/sign-in/);
-  });
 });
 
 test.describe('Sign In - Form Validation @auth', () => {

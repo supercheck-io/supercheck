@@ -5,6 +5,7 @@
     "pages": [
         "roles-and-permissions",
         "organization",
+        "ai-sre-setup",
         "super-admin"
     ]
 }

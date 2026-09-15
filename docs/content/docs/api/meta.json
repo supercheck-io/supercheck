@@ -10,6 +10,8 @@
     "---OpenAPI---",
     "system",
     "cli-tokens",
+    "organizations",
+    "ai-sre",
     "jobs",
     "trigger-keys",
     "runs",

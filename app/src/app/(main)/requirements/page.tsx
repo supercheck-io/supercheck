@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
 import Requirements from "@/components/requirements";
 import { Card, CardContent } from "@/components/ui/card";
-import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
+import { SupercheckLoading } from "@/components/shared/supercheck-loading";
 
 export default function RequirementsPage() {
     const breadcrumbs = [
@@ -19,7 +19,7 @@ export default function RequirementsPage() {
                     <Suspense
                         fallback={
                             <div className="flex min-h-[400px] items-center justify-center">
-                                <SuperCheckLoading size="md" message="Loading requirements..." />
+                                <SupercheckLoading size="md" message="Loading requirements..." />
                             </div>
                         }
                     >

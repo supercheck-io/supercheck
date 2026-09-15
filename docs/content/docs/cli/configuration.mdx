@@ -171,12 +171,21 @@ my-project/
 |-------|------|---------|-------------|
 | `baseUrl` | `string` | `https://app.supercheck.io` | API base URL |
 
+### `defaults`
+
+> Note: Reserved for future use. Defined in the configuration schema but not currently applied during local CLI execution.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `runLocation` | `string` | Default execution location code (e.g. `us-east`) |
+| `timeout` | `number` | Default execution timeout in milliseconds |
+
 ### `tests.playwright`
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `testMatch` | `string` | Glob pattern for Playwright test files |
-| `browser` | `string` | Browser to use (default: `chromium`) |
+| `browser` | `string` | Browser to use (default: `chromium`; local runner executes with chromium) |
 
 ### `tests.k6`
 
@@ -208,6 +217,22 @@ my-project/
 | `config` | `object` | Monitor-specific config (`method`, `timeoutSeconds`, `expectedStatusCodes`, `locationConfig`) |
 | `alertConfig` | `object` | Alert config with `notificationProviders` (UUIDs), `alertOnFailure`, `alertOnRecovery` |
 
+### `statusPages[]`
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | `string` | Database UUID (present for existing resources, omit for new) |
+| `name` | `string` | Status page display name |
+| `subdomain` | `string` | Status page subdomain identifier |
+| `status` | `string` | Status page state (`draft`, `published`, `archived`) |
+| `headline` | `string` | Public page headline |
+| `description` | `string` | Public description text |
+| `supportUrl` | `string` | External support URL |
+| `language` | `string` | ISO language code (e.g. `en`) |
+| `components` | `object[]` | List of status page components (`name`, `description`, `monitors`, `position`) |
+| `branding` | `object` | Page styling options (`bodyBackgroundColor`, `fontColor`, `greens`, `reds`) |
+| `notifications` | `object` | Subscription toggles (`allowEmailSubscribers`, `allowWebhookSubscribers`, `allowRssFeed`) |
+
 ### `variables[]`
 
 | Field | Type | Description |
@@ -232,7 +257,9 @@ my-project/
 | `id` | `string` | Database UUID |
 | `name` | `string` | Provider display name |
 | `type` | `string` | Provider type (`email`, `slack`, `webhook`, `telegram`, `discord`, `teams`) |
-| `config` | `object` | Provider-specific configuration (e.g., `webhookUrl` for Slack) |
+| `config` | `object` | Provider-specific configuration, including webhook `method`, `headers`, and `bodyTemplate` |
+
+`pull` omits masked provider secrets such as webhook URLs and credentials. You can still edit non-secret settings such as `bodyTemplate`; `diff` detects those changes without exposing stored secrets.
 
 For webhook notification providers, `config.bodyTemplate` is part of the managed configuration and should be kept in source control with the rest of the provider config. `supercheck pull` exports it, `supercheck diff` reports edits to it, and `supercheck deploy` applies those edits as provider configuration changes.
 
@@ -269,5 +296,7 @@ supercheck destroy
 supercheck destroy --dry-run
 supercheck destroy --force
 ```
+
+`diff` includes notification provider settings such as webhook `bodyTemplate`. Deploy removes generated sourcemap references and unexpected binary suffixes, then stores the UTF-8 test source using the API's Base64 transport format. `--force` only skips confirmation; it does not change script processing.
 
 Resources are reconciled using the database `id` — the CLI compares your local config with the server state and creates, updates, or deletes resources as needed. Resources pulled from the cloud include their `id` (UUID); new resources omit it and are created on deploy.

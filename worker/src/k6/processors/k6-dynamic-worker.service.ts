@@ -9,6 +9,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { Worker, Job } from 'bullmq';
 import Redis from 'ioredis';
+import { buildRedisOptions } from '../../common/redis/redis-options';
 import { K6ExecutionTask } from '../services/k6-execution.service';
 import { K6ExecutionProcessor } from './k6-execution.processor';
 import { K6_QUEUE, k6QueueName } from '../k6.constants';
@@ -66,9 +67,9 @@ export class K6DynamicWorkerService implements OnModuleInit, OnModuleDestroy {
     }
 
     // Subscribe to queue-refresh notifications so we pick up newly added locations
-    if (this.workerLocation === 'local') {
-      this.subscribeToQueueRefresh();
+    this.subscribeToQueueRefresh();
 
+    if (this.workerLocation === 'local') {
       // Always schedule a discovery retry in local mode. Even if Redis SCAN
       // found some queues, the DB may have been temporarily unreachable,
       // leaving the worker with an incomplete subset. The retry is a no-op
@@ -91,7 +92,9 @@ export class K6DynamicWorkerService implements OnModuleInit, OnModuleDestroy {
       this.subscriber = null;
     }
 
-    const closePromises = Array.from(this.workers.values()).map((w) => w.close());
+    const closePromises = Array.from(this.workers.values()).map((w) =>
+      w.close(),
+    );
     await Promise.allSettled(closePromises);
     this.workers.clear();
 
@@ -111,7 +114,9 @@ export class K6DynamicWorkerService implements OnModuleInit, OnModuleDestroy {
       queueName,
       async (job: Job<K6ExecutionTask>) => this.processJob(job),
       {
-        connection: this.connection.duplicate(),
+        // BullMQ creates and closes its own blocking connection. The service
+        // owns this shared command connection and closes it during shutdown.
+        connection: this.connection,
         concurrency: 1,
         lockDuration: 70 * 60 * 1000,
         stalledInterval: 30000,
@@ -207,11 +212,13 @@ export class K6DynamicWorkerService implements OnModuleInit, OnModuleDestroy {
       const parsed = message
         ? (JSON.parse(message) as { locationCodes?: string[] })
         : null;
-      if (
-        Array.isArray(parsed?.locationCodes) &&
-        parsed.locationCodes.length > 0
-      ) {
+      if (Array.isArray(parsed?.locationCodes)) {
         newQueues = parsed.locationCodes
+          .filter(
+            (code: string) =>
+              this.workerLocation === 'local' ||
+              code.toLowerCase() === this.workerLocation,
+          )
           .map((code: string) => k6QueueName(code))
           .filter((q: string) => q !== K6_QUEUE);
       } else {
@@ -289,8 +296,8 @@ export class K6DynamicWorkerService implements OnModuleInit, OnModuleDestroy {
             if (stableRetries >= MAX_STABLE_RETRIES) {
               this.logger.log(
                 `Discovery retry: queue set stable for ${stableRetries} consecutive checks. ` +
-                `Stopping retry loop (${this.activeQueueNames.size} K6 queue(s)). ` +
-                `Pub/sub listener will handle further changes.`,
+                  `Stopping retry loop (${this.activeQueueNames.size} K6 queue(s)). ` +
+                  `Pub/sub listener will handle further changes.`,
               );
               this.discoveryRetryTimer = null;
               return;
@@ -412,27 +419,6 @@ export class K6DynamicWorkerService implements OnModuleInit, OnModuleDestroy {
   }
 
   private createRedisConnection(): Redis {
-    const tlsEnabled =
-      this.configService.get<string>('REDIS_TLS_ENABLED', 'false') === 'true';
-    const password = this.configService.get<string>('REDIS_PASSWORD');
-    const username = this.configService.get<string>('REDIS_USERNAME');
-
-    return new Redis({
-      host: this.configService.get<string>('REDIS_HOST', 'localhost'),
-      port: this.configService.get<number>('REDIS_PORT', 6379),
-      password: password || undefined,
-      username: username || undefined,
-      maxRetriesPerRequest: null,
-      enableReadyCheck: false,
-      ...(tlsEnabled && {
-        tls: {
-          rejectUnauthorized:
-            this.configService.get<string>(
-              'REDIS_TLS_REJECT_UNAUTHORIZED',
-              'true',
-            ) !== 'false',
-        },
-      }),
-    });
+    return new Redis(buildRedisOptions(this.configService));
   }
 }

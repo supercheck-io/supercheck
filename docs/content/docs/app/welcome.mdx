@@ -1,15 +1,49 @@
 ---
 title: Welcome to Supercheck
-description: The unified platform for AI-powered Playwright testing, multi-region k6 load testing & uptime monitoring, and subscriber-ready status pages.
+description: Open-source testing, monitoring, and AI SRE — as code.
 ---
 
 ## Get Started
 
 <Cards>
 <Card icon={<Server className="text-emerald-500" />} title="Deploy" href="/docs/app/deployment">
-Self-host with Docker Compose in under 10 minutes
+Self-host with Docker Compose and isolated K3s execution
+</Card>
+
+<Card icon={<Terminal className="text-amber-500" />} title="CLI" href="/docs/cli">
+Install the Supercheck CLI for CI/CD integration and monitoring-as-code
+</Card>
+
+<Card icon={<MousePointerClick className="text-sky-500" />} title="Recorder" href="/docs/recorder">
+Record browser interactions and save Playwright tests to Supercheck
+</Card>
+
+<Card icon={<CalendarClock className="text-purple-500" />} title="Automate" href="/docs/app/automate">
+Create your first test — browser, API, database, or performance
 </Card>
 </Cards>
+
+## How Supercheck Fits Together
+
+```mermaid
+flowchart LR
+    Detect[Detect] --> Triage[Triage]
+    Triage --> Investigate[Investigate]
+    Investigate --> Explain[Explain]
+    Explain --> Confirm[Confirm recovery]
+
+    Detect -.- Monitors[Monitors, jobs, tests]
+    Triage -.- Alerts[Alerts and incidents]
+    Investigate -.- Agent[Read-only AI SRE]
+    Explain -.- Brief[Cited brief and report]
+    Confirm -.- Checks[Re-run existing checks]
+```
+
+1. **Detect** with monitors, jobs, and tests.
+2. **Triage** from alerts, then open an incident when the signal needs investigation.
+3. **Investigate** with native evidence and optional read-only connectors.
+4. **Explain** in the incident brief and investigation report.
+5. **Confirm recovery** by re-running the same checks. AI SRE does not apply fixes.
 
 ## Core Capabilities
 
@@ -23,7 +57,11 @@ Track uptime with HTTP, website, ping, port, and synthetic monitors running from
 </Card>
 
 <Card icon={<Radio className="text-rose-500" />} title="Communicate" href="/docs/app/communicate">
-Send alerts through Slack, email, Discord, Telegram, and webhooks. Create public status pages to keep users informed during incidents
+Send alerts through Slack, email, Discord, Telegram, Microsoft Teams, and webhooks. Create public status pages to keep users informed during incidents
+</Card>
+
+<Card icon={<Search className="text-indigo-500" />} title="Investigate" href="/docs/app/investigate">
+Resolve incidents faster with an AI SRE layer that gathers read-only evidence from external tools and recommends fixes
 </Card>
 
 <Card icon={<UserCog className="text-amber-500" />} title="Admin" href="/docs/app/admin">

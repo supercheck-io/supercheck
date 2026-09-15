@@ -1,6 +1,7 @@
-import { test as base, Page, BrowserContext } from "@playwright/test";
-import { SignInPage } from "../pages/auth";
-import { env, routes } from "../utils/env";
+import { test as base, Page } from "@playwright/test";
+import type { APIRequest } from "playwright-core";
+import { env } from "../utils/env";
+import { newAuthenticatedPage } from "../utils/api-auth";
 
 /**
  * Role-Based Test Fixtures
@@ -53,42 +54,12 @@ type RoleFixtures = {
  */
 async function authenticateWithRole(
   browser: import("@playwright/test").Browser,
+  apiRequest: APIRequest,
+  baseURL: string,
   email: string,
   password: string,
-  storageStateFile: string
 ): Promise<Page> {
-  // Try to use existing auth state first
-  try {
-    const context = await browser.newContext({
-      storageState: storageStateFile,
-    });
-    const page = await context.newPage();
-    await page.goto("/");
-    await page.waitForLoadState("networkidle");
-
-    // Check if still authenticated
-    if (!page.url().includes("/sign-in")) {
-      return page;
-    }
-
-    // Auth state expired, close and re-authenticate
-    await context.close();
-  } catch {
-    // Storage state file doesn't exist, continue to authenticate
-  }
-
-  // Create fresh context and authenticate
-  const context = await browser.newContext();
-  const page = await context.newPage();
-  const signInPage = new SignInPage(page);
-
-  await signInPage.navigate();
-  await signInPage.signInAndWaitForDashboard(email, password);
-
-  // Save auth state for future use
-  await context.storageState({ path: storageStateFile });
-
-  return page;
+  return newAuthenticatedPage(browser, apiRequest, baseURL, { email, password });
 }
 
 /**
@@ -96,7 +67,7 @@ async function authenticateWithRole(
  */
 export const test = base.extend<RoleFixtures>({
   // Super Admin page
-  superAdminPage: async ({ browser }, use) => {
+  superAdminPage: async ({ browser, playwright, baseURL }, use) => {
     const superAdmin = env.rbacUsers.superAdmin;
     if (!superAdmin.email || !superAdmin.password) {
       throw new Error(
@@ -106,9 +77,10 @@ export const test = base.extend<RoleFixtures>({
 
     const page = await authenticateWithRole(
       browser,
+      playwright.request,
+      requireBaseURL(baseURL),
       superAdmin.email,
       superAdmin.password,
-      "super-admin-auth-state.json"
     );
 
     await use(page);
@@ -116,7 +88,7 @@ export const test = base.extend<RoleFixtures>({
   },
 
   // Org Owner page
-  orgOwnerPage: async ({ browser }, use) => {
+  orgOwnerPage: async ({ browser, playwright, baseURL }, use) => {
     const credentials = env.rbacUsers.orgOwner;
     if (!credentials.email || !credentials.password) {
       throw new Error(
@@ -126,9 +98,10 @@ export const test = base.extend<RoleFixtures>({
 
     const page = await authenticateWithRole(
       browser,
+      playwright.request,
+      requireBaseURL(baseURL),
       credentials.email,
       credentials.password,
-      "org-owner-auth-state.json"
     );
 
     await use(page);
@@ -136,7 +109,7 @@ export const test = base.extend<RoleFixtures>({
   },
 
   // Org Admin page
-  orgAdminPage: async ({ browser }, use) => {
+  orgAdminPage: async ({ browser, playwright, baseURL }, use) => {
     const credentials = env.rbacUsers.orgAdmin;
     if (!credentials.email || !credentials.password) {
       throw new Error(
@@ -146,9 +119,10 @@ export const test = base.extend<RoleFixtures>({
 
     const page = await authenticateWithRole(
       browser,
+      playwright.request,
+      requireBaseURL(baseURL),
       credentials.email,
       credentials.password,
-      "org-admin-auth-state.json"
     );
 
     await use(page);
@@ -156,7 +130,7 @@ export const test = base.extend<RoleFixtures>({
   },
 
   // Project Admin page
-  projectAdminPage: async ({ browser }, use) => {
+  projectAdminPage: async ({ browser, playwright, baseURL }, use) => {
     const credentials = env.rbacUsers.projectAdmin;
     if (!credentials.email || !credentials.password) {
       throw new Error(
@@ -166,9 +140,10 @@ export const test = base.extend<RoleFixtures>({
 
     const page = await authenticateWithRole(
       browser,
+      playwright.request,
+      requireBaseURL(baseURL),
       credentials.email,
       credentials.password,
-      "project-admin-auth-state.json"
     );
 
     await use(page);
@@ -176,7 +151,7 @@ export const test = base.extend<RoleFixtures>({
   },
 
   // Editor page
-  editorPage: async ({ browser }, use) => {
+  editorPage: async ({ browser, playwright, baseURL }, use) => {
     const credentials = env.rbacUsers.editor;
     if (!credentials.email || !credentials.password) {
       throw new Error(
@@ -186,9 +161,10 @@ export const test = base.extend<RoleFixtures>({
 
     const page = await authenticateWithRole(
       browser,
+      playwright.request,
+      requireBaseURL(baseURL),
       credentials.email,
       credentials.password,
-      "editor-auth-state.json"
     );
 
     await use(page);
@@ -196,7 +172,7 @@ export const test = base.extend<RoleFixtures>({
   },
 
   // Viewer page
-  viewerPage: async ({ browser }, use) => {
+  viewerPage: async ({ browser, playwright, baseURL }, use) => {
     const credentials = env.rbacUsers.viewer;
     if (!credentials.email || !credentials.password) {
       throw new Error(
@@ -206,9 +182,10 @@ export const test = base.extend<RoleFixtures>({
 
     const page = await authenticateWithRole(
       browser,
+      playwright.request,
+      requireBaseURL(baseURL),
       credentials.email,
       credentials.password,
-      "viewer-auth-state.json"
     );
 
     await use(page);
@@ -216,7 +193,7 @@ export const test = base.extend<RoleFixtures>({
   },
 
   // Helper to get page for any role
-  getPageForRole: async ({ browser }, use) => {
+  getPageForRole: async ({ browser, playwright, baseURL }, use) => {
     const pages: Map<RoleType, Page> = new Map();
 
     const getPage = async (role: RoleType): Promise<Page> => {
@@ -226,32 +203,24 @@ export const test = base.extend<RoleFixtures>({
       }
 
       let credentials: { email: string; password: string };
-      let storageFile: string;
-
       switch (role) {
         case Role.SuperAdmin:
           credentials = env.rbacUsers.superAdmin;
-          storageFile = "super-admin-auth-state.json";
           break;
         case Role.OrgOwner:
           credentials = env.rbacUsers.orgOwner;
-          storageFile = "org-owner-auth-state.json";
           break;
         case Role.OrgAdmin:
           credentials = env.rbacUsers.orgAdmin;
-          storageFile = "org-admin-auth-state.json";
           break;
         case Role.ProjectAdmin:
           credentials = env.rbacUsers.projectAdmin;
-          storageFile = "project-admin-auth-state.json";
           break;
         case Role.Editor:
           credentials = env.rbacUsers.editor;
-          storageFile = "editor-auth-state.json";
           break;
         case Role.Viewer:
           credentials = env.rbacUsers.viewer;
-          storageFile = "viewer-auth-state.json";
           break;
         default:
           throw new Error(`Unknown role: ${role}`);
@@ -263,9 +232,10 @@ export const test = base.extend<RoleFixtures>({
 
       const page = await authenticateWithRole(
         browser,
+        playwright.request,
+        requireBaseURL(baseURL),
         credentials.email,
         credentials.password,
-        storageFile
       );
 
       pages.set(role, page);
@@ -280,6 +250,13 @@ export const test = base.extend<RoleFixtures>({
     }
   },
 });
+
+function requireBaseURL(baseURL: string | undefined): string {
+  if (!baseURL) {
+    throw new Error("Playwright baseURL is required for role fixtures");
+  }
+  return baseURL;
+}
 
 // Re-export expect
 export { expect } from "@playwright/test";
