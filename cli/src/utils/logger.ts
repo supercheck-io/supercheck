@@ -62,7 +62,7 @@ export const logger = {
    * This is for machine-readable output (JSON, tables).
    */
   output(data: string): void {
-    console.log(data)
+    process.stdout.write(`${data}\n`)
   },
 
   newline(): void {

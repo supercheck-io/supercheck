@@ -24,6 +24,8 @@ async function fetchPinnedEndpoint(
 ): Promise<Response> {
   const url = new URL(input);
   if (allowSelfHostedPrivateNetworks && isSelfHosted()) {
+    // Self-hosted connector administrators intentionally may target private services.
+    // codeql[js/request-forgery]
     return fetch(url, init);
   }
 
@@ -49,6 +51,8 @@ async function fetchPinnedEndpoint(
   headers.set("Accept-Encoding", "identity");
 
   return new Promise<Response>((resolve, reject) => {
+    // Every DNS answer is public and the socket lookup is pinned to that result.
+    // codeql[js/request-forgery]
     const request = https.request(
       url,
       {
@@ -134,6 +138,8 @@ export async function fetchPublicEndpoint(
   init: RequestInit = {},
 ): Promise<Response> {
   if (process.env.NODE_ENV === "development" && isSelfHosted()) {
+    // Local development intentionally supports private self-hosted endpoints.
+    // codeql[js/request-forgery]
     return fetch(input, init);
   }
 

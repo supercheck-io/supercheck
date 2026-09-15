@@ -391,10 +391,11 @@ export async function POST(request: NextRequest) {
             .set({ status: queueResult.status })
             .where(eq(runs.id, runId));
         } catch (statusError) {
-          console.error(
-            `[${jobId}/${runId}] Failed to persist admitted K6 run status:`,
-            statusError,
-          );
+          console.error("Failed to persist admitted K6 run status:", {
+            jobId,
+            runId,
+            error: statusError,
+          });
         }
 
         console.log(
@@ -424,10 +425,11 @@ export async function POST(request: NextRequest) {
             .set({ status: queueResult.status })
             .where(eq(runs.id, runId));
         } catch (statusError) {
-          console.error(
-            `[${jobId}/${runId}] Failed to persist admitted Playwright run status:`,
-            statusError,
-          );
+          console.error("Failed to persist admitted Playwright run status:", {
+            jobId,
+            runId,
+            error: statusError,
+          });
         }
 
         console.log(
@@ -457,13 +459,14 @@ export async function POST(request: NextRequest) {
           success: true,
         });
       } catch (auditError) {
-        console.error(
-          `[${jobId}/${runId}] Failed to record audit event for admitted run:`,
-          auditError,
-        );
+        console.error("Failed to record audit event for admitted run:", {
+          jobId,
+          runId,
+          error: auditError,
+        });
       }
     } catch (error) {
-      console.error(`[${jobId}/${runId}] Error processing job:`, error);
+      console.error("Error processing job:", { jobId, runId, error });
       throw error;
     }
 
@@ -473,7 +476,11 @@ export async function POST(request: NextRequest) {
       runId: runId,
     });
   } catch (error) {
-    console.error(`[${jobId || 'unknown'}/${runId || 'unknown'}] Error queuing job:`, error);
+    console.error("Error queuing job:", {
+      jobId: jobId || "unknown",
+      runId: runId || "unknown",
+      error,
+    });
     const errorMessage = error instanceof Error ? error.message : "An unknown error occurred";
 
     // Handle authentication/authorization errors

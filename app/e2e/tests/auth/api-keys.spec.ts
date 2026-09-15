@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import { expect } from '@playwright/test';
 import { test } from '../../fixtures';
 
@@ -19,7 +21,7 @@ type ProjectVariable = {
 };
 
 function uniqueSuffix(): string {
-  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
+  return `${Date.now().toString(36)}${randomUUID().replaceAll('-', '').slice(0, 5)}`;
 }
 
 test.describe('CLI tokens and project variables @auth @security', () => {
