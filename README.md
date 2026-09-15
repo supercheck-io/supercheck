@@ -24,23 +24,23 @@ Supercheck combines capabilities that are commonly split across test automation,
 
 Pricing changes frequently, so the table links to each vendor's current official pricing or product page instead of copying amounts that can become stale. **Partial** means the capability is available only for a narrower use case or through an adjacent part of the vendor's platform. **—** means it is not a core, natively documented capability of the compared product.
 
-| Platform | Primary focus | Pricing / model | Test automation | Synthetic / uptime | Load testing | Status pages | AI SRE / investigation | Unified Supercheck-style workflow | Self-hosted OSS |
-| --- | --- | --- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Supercheck** | Unified reliability | Open-source, self-hosted | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| [Checkly](https://www.checklyhq.com/pricing/) | Synthetic monitoring and continuous testing | Free and paid plans | ✅ | ✅ | — | ✅ | Partial | — | — |
-| [Datadog Synthetic Monitoring](https://www.datadoghq.com/pricing/?product=synthetic-monitoring) | Observability and synthetics | Usage-based SaaS | Partial | ✅ | — | — | Partial | — | — |
-| [Better Stack](https://betterstack.com/pricing) | Observability and incident management | Free and paid plans | — | ✅ | — | ✅ | Partial | — | — |
-| [UptimeRobot](https://uptimerobot.com/pricing/) | Uptime monitoring | Free and paid plans | — | ✅ | — | ✅ | — | — | — |
-| [BrowserStack](https://www.browserstack.com/pricing) | Browser and device testing cloud | Product and capacity-based SaaS | ✅ | Partial | — | — | Partial | — | — |
-| [Sauce Labs](https://saucelabs.com/pricing) | Browser and device testing cloud | Product and capacity-based SaaS | ✅ | Partial | — | — | Partial | — | — |
-| [Cypress Cloud](https://www.cypress.io/pricing) | Cypress test orchestration | Free and paid plans | ✅ | — | — | — | Partial | — | — |
-| [Grafana Cloud k6](https://grafana.com/pricing/) | Performance and load testing | Free and usage-based paid plans | — | Partial | ✅ | — | Partial | — | — |
-| [Azure Load Testing and Playwright Workspaces](https://azure.microsoft.com/en-us/pricing/details/app-testing/) | Cloud test execution | Usage-based cloud service | ✅ | — | ✅ | — | — | — | — |
-| [Atlassian Statuspage](https://www.atlassian.com/software/statuspage/pricing) | Status communication | Free and paid plans | — | — | — | ✅ | — | — | — |
-| [Instatus](https://instatus.com/pricing) | Status pages and uptime | Free and paid plans | — | ✅ | — | ✅ | Partial | — | — |
-| [HolmesGPT](https://github.com/HolmesGPT/holmesgpt) | AI SRE investigation | Open-source and commercial offerings | — | Partial | — | — | ✅ | — | ✅ |
-| [PagerDuty AIOps](https://www.pagerduty.com/platform/aiops/) | Event intelligence and incident response | Commercial SaaS | — | — | — | — | ✅ | — | — |
-| [Resolve AI](https://resolve.ai/) | AI production operations | Commercial service | — | — | — | — | ✅ | — | — |
+| Platform | Primary focus | Pricing | Test automation | Synthetic / uptime | Load testing | Status pages | AI SRE |
+| --- | --- | --- | :---: | :---: | :---: | :---: | :---: |
+| **Supercheck** | Unified reliability | Open source (self-hosted) | ✅ | ✅ | ✅ | ✅ | ✅ |
+| [Checkly](https://www.checklyhq.com/pricing/) | Synthetic monitoring & testing | Free + paid | ✅ | ✅ | — | ✅ | Partial |
+| [Datadog](https://www.datadoghq.com/pricing/?product=synthetic-monitoring) | Observability & synthetics | Usage-based SaaS | Partial | ✅ | — | — | Partial |
+| [Better Stack](https://betterstack.com/pricing) | Observability & incident management | Free + paid | — | ✅ | — | ✅ | Partial |
+| [UptimeRobot](https://uptimerobot.com/pricing/) | Uptime monitoring | Free + paid | — | ✅ | — | ✅ | — |
+| [BrowserStack](https://www.browserstack.com/pricing) | Browser & device cloud | Capacity-based SaaS | ✅ | Partial | — | — | Partial |
+| [Sauce Labs](https://saucelabs.com/pricing) | Browser & device cloud | Capacity-based SaaS | ✅ | Partial | — | — | Partial |
+| [Cypress Cloud](https://www.cypress.io/pricing) | Cypress orchestration | Free + paid | ✅ | — | — | — | Partial |
+| [Grafana k6](https://grafana.com/pricing/) | Performance & load testing | Free + usage-based | — | Partial | ✅ | — | Partial |
+| [Azure](https://azure.microsoft.com/en-us/pricing/details/app-testing/) | Cloud test execution | Usage-based | ✅ | — | ✅ | — | — |
+| [Statuspage](https://www.atlassian.com/software/statuspage/pricing) | Status communication | Free + paid | — | — | — | ✅ | — |
+| [Instatus](https://instatus.com/pricing) | Status pages & uptime | Free + paid | — | ✅ | — | ✅ | Partial |
+| [HolmesGPT](https://github.com/HolmesGPT/holmesgpt) | AI SRE investigation | Open source + commercial | — | Partial | — | — | ✅ |
+| [PagerDuty](https://www.pagerduty.com/platform/aiops/) | Event intelligence & response | Commercial SaaS | — | — | — | — | ✅ |
+| [Resolve AI](https://resolve.ai/) | AI production ops | Commercial | — | — | — | — | ✅ |
 
 ## Get started
 
