@@ -22,11 +22,9 @@ Supercheck brings Playwright test automation, k6 performance testing, uptime and
 
 Supercheck combines capabilities that are commonly split across test automation, synthetic monitoring, load testing, status communication, and incident-investigation products. The comparison below describes each product's primary, natively documented scope; integrations or adjacent products may extend it.
 
-Pricing changes frequently, so the table links to each vendor's current official pricing or product page instead of copying amounts that can become stale. **Partial** means the capability is available only for a narrower use case or through an adjacent part of the vendor's platform. **—** means it is not a core, natively documented capability of the compared product.
-
 | Platform | Primary focus | Pricing | Test automation | Synthetic / uptime | Load testing | Status pages | AI SRE |
 | --- | --- | --- | :---: | :---: | :---: | :---: | :---: |
-| **Supercheck** | Unified reliability | Open source (self-hosted) | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Supercheck** | Unified reliability | Open source | ✅ | ✅ | ✅ | ✅ | ✅ |
 | [Checkly](https://www.checklyhq.com/pricing/) | Synthetic monitoring & testing | Free + paid | ✅ | ✅ | — | ✅ | Partial |
 | [Datadog](https://www.datadoghq.com/pricing/?product=synthetic-monitoring) | Observability & synthetics | Usage-based SaaS | Partial | ✅ | — | — | Partial |
 | [Better Stack](https://betterstack.com/pricing) | Observability & incident management | Free + paid | — | ✅ | — | ✅ | Partial |
@@ -38,7 +36,7 @@ Pricing changes frequently, so the table links to each vendor's current official
 | [Azure](https://azure.microsoft.com/en-us/pricing/details/app-testing/) | Cloud test execution | Usage-based | ✅ | — | ✅ | — | — |
 | [Statuspage](https://www.atlassian.com/software/statuspage/pricing) | Status communication | Free + paid | — | — | — | ✅ | — |
 | [Instatus](https://instatus.com/pricing) | Status pages & uptime | Free + paid | — | ✅ | — | ✅ | Partial |
-| [HolmesGPT](https://github.com/HolmesGPT/holmesgpt) | AI SRE investigation | Open source + commercial | — | Partial | — | — | ✅ |
+| [HolmesGPT](https://github.com/HolmesGPT/holmesgpt) | AI SRE investigation | Open source | — | Partial | — | — | ✅ |
 | [PagerDuty](https://www.pagerduty.com/platform/aiops/) | Event intelligence & response | Commercial SaaS | — | — | — | — | ✅ |
 | [Resolve AI](https://resolve.ai/) | AI production ops | Commercial | — | — | — | — | ✅ |
 
