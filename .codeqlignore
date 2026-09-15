@@ -1,0 +1,5 @@
+# Vendored upstream Playwright source is tracked for the recorder build.
+recorder/playwright/**
+
+# Recorder browser fixtures are test-only code.
+recorder/tests/**
