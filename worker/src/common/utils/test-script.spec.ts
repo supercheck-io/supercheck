@@ -1,7 +1,4 @@
-import {
-  decodeStoredTestScript,
-  sanitizeTestScript,
-} from './test-script';
+import { decodeStoredTestScript, sanitizeTestScript } from './test-script';
 
 describe('sanitizeTestScript', () => {
   it('strips sourceMappingURL comments and trailing binary bytes', () => {

@@ -98,6 +98,8 @@ docker compose -f docker-compose.yml -f docker-compose-aisre-lab.yml --profile t
 
 Keep this lab behind a firewall on shared hosts. It is not a production observability stack.
 
+All worker Docker definitions use the worker readiness endpoint (`/health/ready`) for healthchecks. A worker is marked unhealthy when it cannot reach required dependencies such as PostgreSQL, Redis, or its queues.
+
 ---
 
 ## Environment Variables

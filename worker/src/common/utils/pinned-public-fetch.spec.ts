@@ -106,7 +106,13 @@ describe('worker pinned public fetch', () => {
     (mockRequest as unknown as jest.Mock).mockImplementation(
       (
         _url: URL,
-        options: { lookup: Function },
+        options: {
+          lookup: (
+            hostname: string,
+            options: { all?: boolean },
+            callback: (...args: unknown[]) => void,
+          ) => void;
+        },
         onResponse: (response: EventEmitter) => void,
       ) => {
         const response = Object.assign(new EventEmitter(), {

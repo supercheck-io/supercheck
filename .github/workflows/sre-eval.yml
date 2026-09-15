@@ -24,6 +24,9 @@ on:
       - "app/src/lib/sre/**"
       - ".github/workflows/sre-eval.yml"
 
+permissions:
+  contents: read
+
 jobs:
   deterministic-sre-eval:
     runs-on: ubuntu-latest

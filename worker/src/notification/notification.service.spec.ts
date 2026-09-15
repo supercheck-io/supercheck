@@ -740,8 +740,11 @@ describe('NotificationService', () => {
           url: 'https://alert.victorops.com/integrations/generic/20131114/alert/routing/entity',
           bodyTemplate: JSON.stringify({
             message_type: '{{victorOpsMessageType}}',
+            splunk_message_type: '{{splunkOnCallMessageType}}',
             entity_id: '{{dedupKey}}',
             entity_display_name: '{{title}}',
+            state_message: '{{message}}',
+            monitoring_tool: 'supercheck',
           }),
         },
       };
@@ -768,6 +771,8 @@ describe('NotificationService', () => {
 
       expect(triggerBody.message_type).toBe('CRITICAL');
       expect(resolveBody.message_type).toBe('RECOVERY');
+      expect(triggerBody.splunk_message_type).toBe('CRITICAL');
+      expect(resolveBody.splunk_message_type).toBe('RECOVERY');
       expect(triggerBody.entity_id).toBe('monitor:monitor-123');
       expect(resolveBody.entity_id).toBe(triggerBody.entity_id);
     });
@@ -875,7 +880,6 @@ describe('NotificationService', () => {
       expect(body).not.toHaveProperty('event_action');
       expect(body).not.toHaveProperty('dedup_key');
     });
-
     it('should allow metadata to override webhook dedup key', async () => {
       const templateProvider: NotificationProvider = {
         ...webhookProvider,

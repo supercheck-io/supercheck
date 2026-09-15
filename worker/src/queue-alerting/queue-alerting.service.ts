@@ -377,7 +377,10 @@ export class QueueAlertingService implements OnModuleInit, OnModuleDestroy {
           const queueAlerts = this.evaluateThresholds(metrics);
           alerts.push(...queueAlerts);
         } catch (error) {
-          this.logger.error(`Error collecting metrics for queue ${name}:`, error);
+          this.logger.error(
+            `Error collecting metrics for queue ${name}:`,
+            error,
+          );
         }
       }
 

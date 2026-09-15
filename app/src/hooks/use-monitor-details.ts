@@ -44,6 +44,14 @@ export const MONITOR_STATS_KEY = ["monitor-stats"] as const;
 export const MONITOR_RESULTS_KEY = ["monitor-results"] as const;
 export const MONITOR_PERMISSIONS_KEY = ["monitor-permissions"] as const;
 
+export function formatLocalDateParam(date: Date): string {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
 async function fetchMonitorStats(
   monitorId: string,
   location?: string
@@ -69,6 +77,7 @@ async function fetchMonitorResults(
     page: number;
     limit: number;
     date?: string;
+    timezoneOffset?: number;
     location?: string;
   }
 ): Promise<MonitorResultsResponse> {
@@ -79,6 +88,9 @@ async function fetchMonitorResults(
 
   if (options.date) {
     params.append("date", options.date);
+    if (typeof options.timezoneOffset === "number") {
+      params.append("timezoneOffset", options.timezoneOffset.toString());
+    }
   }
   if (options.location && options.location !== "all") {
     params.append("location", options.location);
@@ -162,7 +174,8 @@ export function useMonitorResults(
 ) {
   const queryClient = useQueryClient();
   const isRestoring = useIsRestoring();
-  const dateString = options.date?.toISOString().split("T")[0];
+  const dateString = options.date ? formatLocalDateParam(options.date) : undefined;
+  const timezoneOffset = options.date?.getTimezoneOffset();
 
   const query = useQuery({
     queryKey: [
@@ -178,6 +191,7 @@ export function useMonitorResults(
         page: options.page,
         limit: options.limit,
         date: dateString,
+        timezoneOffset,
         location: options.location,
       }),
     enabled: !!monitorId,

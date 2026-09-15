@@ -13,9 +13,7 @@ export function createPinnedLookup(selected: LookupAddress): LookupFunction {
 
   return (_hostname, options, callback) => {
     if (options.all) {
-      callback(null, [
-        { address: selected.address, family: selected.family },
-      ]);
+      callback(null, [{ address: selected.address, family: selected.family }]);
       return;
     }
 

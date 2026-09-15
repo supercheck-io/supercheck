@@ -287,6 +287,7 @@ Use a custom body template to match the format required by third-party services.
 | `{{eventAction}}` | Same as alertAction | `trigger`, `resolve` |
 | `{{pagerDutyEventAction}}` | PagerDuty Events API action | `trigger`, `resolve` |
 | `{{victorOpsMessageType}}` | Splunk On-Call / VictorOps `message_type` | `CRITICAL`, `RECOVERY` |
+| `{{splunkOnCallMessageType}}` | Alias for `victorOpsMessageType` | `CRITICAL`, `RECOVERY` |
 | `{{dedupKey}}` | Stable key for correlating related events | `monitor:uuid`, `job:uuid`, `ssl:uuid` |
 
 ### PagerDuty Integration
@@ -349,7 +350,7 @@ Use a webhook with a body template to send alerts to the [Splunk On-Call REST en
 ```
 
 <Callout type="info">
-Splunk On-Call only treats `CRITICAL` as an incident-opening event and `RECOVERY` as a resolve event. `{{victorOpsMessageType}}` maps Supercheck trigger alerts to `CRITICAL` and recoveries to `RECOVERY`. Use `{{dedupKey}}` as `entity_id` so the resolve event closes the same incident. Do not send `trigger` or `resolve` in `message_type`; those values are treated as INFO and will not auto-resolve.
+Splunk On-Call only treats `CRITICAL` as an incident-opening event and `RECOVERY` as a resolve event. `{{victorOpsMessageType}}` (or its `{{splunkOnCallMessageType}}` alias) maps Supercheck trigger alerts to `CRITICAL` and recoveries to `RECOVERY`. Use `{{dedupKey}}` as `entity_id` so the resolve event closes the same incident. Do not send `trigger` or `resolve` in `message_type`; those values are treated as INFO and will not auto-resolve.
 </Callout>
 
 ### OpsGenie Integration

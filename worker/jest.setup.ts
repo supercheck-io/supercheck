@@ -36,7 +36,7 @@ const suppressedPatterns = [
 beforeAll(() => {
   process.stdout.write = ((chunk: string | Uint8Array, ...args: unknown[]) => {
     const str = typeof chunk === 'string' ? chunk : chunk.toString();
-    if (suppressedPatterns.some(pattern => str.includes(pattern))) {
+    if (suppressedPatterns.some((pattern) => str.includes(pattern))) {
       return true;
     }
     return originalStdoutWrite(chunk, ...args);
@@ -44,7 +44,7 @@ beforeAll(() => {
 
   process.stderr.write = ((chunk: string | Uint8Array, ...args: unknown[]) => {
     const str = typeof chunk === 'string' ? chunk : chunk.toString();
-    if (suppressedPatterns.some(pattern => str.includes(pattern))) {
+    if (suppressedPatterns.some((pattern) => str.includes(pattern))) {
       return true;
     }
     return originalStderrWrite(chunk, ...args);

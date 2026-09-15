@@ -8,19 +8,37 @@
  */
 
 export function sanitizeTestScript(script: string): string {
-  let text = script.replace(/\u0000/g, '');
+  let text = script.split('\0').join('');
 
   text = text.replace(/^\s*\/\/[#@]\s*sourceMappingURL=.*$/gm, '');
   text = text.replace(/\/\*[#@]\s*sourceMappingURL=[\s\S]*?\*\//g, '');
 
-  const binaryIndex = text.search(
-    /[\uFFFD\u0001-\u0008\u000B\u000C\u000E-\u001F]/,
-  );
+  const binaryIndex = findBinaryControlCharacter(text);
   if (binaryIndex >= 0) {
     text = text.slice(0, binaryIndex);
   }
 
-  return text.replace(/[ \t]+$/gm, '').replace(/\s+$/g, '') + (text.length > 0 ? '\n' : '');
+  return (
+    text.replace(/[ \t]+$/gm, '').replace(/\s+$/g, '') +
+    (text.length > 0 ? '\n' : '')
+  );
+}
+
+function findBinaryControlCharacter(value: string): number {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (
+      code === 0xfffd ||
+      (code >= 1 && code <= 8) ||
+      code === 11 ||
+      code === 12 ||
+      (code >= 14 && code <= 31)
+    ) {
+      return index;
+    }
+  }
+
+  return -1;
 }
 
 export function isGenuineBase64(value: string): boolean {

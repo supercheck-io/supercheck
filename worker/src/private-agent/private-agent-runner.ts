@@ -246,7 +246,9 @@ function assertAgentEndpointAllowed(url: string) {
   const ipv4Parts = ipv4Host.split('.').map((part) => Number(part));
   if (
     ipv4Parts.length === 4 &&
-    ipv4Parts.every((part) => Number.isInteger(part) && part >= 0 && part <= 255) &&
+    ipv4Parts.every(
+      (part) => Number.isInteger(part) && part >= 0 && part <= 255,
+    ) &&
     (ipv4Parts[0] === 127 ||
       ipv4Parts[0] === 0 ||
       (ipv4Parts[0] === 169 &&
@@ -267,12 +269,9 @@ function ipv4FromPossiblyMappedHostname(hostname: string): string {
     if (hexMapped) {
       const high = Number.parseInt(hexMapped[1], 16);
       const low = Number.parseInt(hexMapped[2], 16);
-      return [
-        (high >> 8) & 255,
-        high & 255,
-        (low >> 8) & 255,
-        low & 255,
-      ].join('.');
+      return [(high >> 8) & 255, high & 255, (low >> 8) & 255, low & 255].join(
+        '.',
+      );
     }
     return mapped;
   }

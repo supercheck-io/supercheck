@@ -41,7 +41,15 @@ export interface K6ExecutionTask {
   script: string; // Decoded k6 script
   variables?: Record<string, string>; // Resolved variables for runtime helper injection
   secrets?: Record<string, string>; // Resolved secrets for runtime helper injection
-  files?: Record<string, { storagePath: string; fileName: string; mimeType: string; fileSize: number | null }>; // File variable metadata
+  files?: Record<
+    string,
+    {
+      storagePath: string;
+      fileName: string;
+      mimeType: string;
+      fileSize: number | null;
+    }
+  >; // File variable metadata
   jobId?: string | null;
   tests: Array<{ id: string; script: string }>;
   location?: string; // Execution location
@@ -304,7 +312,9 @@ export class K6ExecutionService {
 
       // Filter file variables to only those referenced by getFile() in the script,
       // then download from S3
-      const filteredFiles = filterFileVariablesToUsedKeys(task.files ?? {}, [script]);
+      const filteredFiles = filterFileVariablesToUsedKeys(task.files ?? {}, [
+        script,
+      ]);
       const { additionalFiles: fileAdditionalFiles, filePaths } =
         await this.s3Service.prepareFileVariables(filteredFiles);
 
@@ -347,7 +357,11 @@ export class K6ExecutionService {
           K6_WEB_DASHBOARD_PORT: dashboardPort.toString(), // Use unique port
           K6_WEB_DASHBOARD_ADDR: this.dashboardBindAddress,
           K6_NO_COLOR: '1', // Disable ANSI colors in output
-          ...this.buildVariableRuntimeEnv(runtimeVariables, runtimeSecrets, filePaths),
+          ...this.buildVariableRuntimeEnv(
+            runtimeVariables,
+            runtimeSecrets,
+            filePaths,
+          ),
         };
 
         try {

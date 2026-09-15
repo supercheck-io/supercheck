@@ -1192,7 +1192,10 @@ export const privateAgentJobs = pgTable(
       length: 128,
     }).notNull(),
     jobSpecHash: varchar('job_spec_hash', { length: 128 }).notNull(),
-    jobSpec: jsonb('job_spec').$type<Record<string, unknown>>().notNull().default({}),
+    jobSpec: jsonb('job_spec')
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
     leaseTokenHash: varchar('lease_token_hash', { length: 128 }),
     leaseExpiresAt: timestamp('lease_expires_at'),
     idempotencyKey: varchar('idempotency_key', { length: 128 }).notNull(),
@@ -1991,7 +1994,10 @@ export const sreEvidenceGraphFocusedViews = pgTable(
       .$type<SreEvidenceGraphFocusedViewStatus>()
       .notNull()
       .default('active'),
-    viewData: jsonb('view_data').$type<Record<string, unknown>>().notNull().default({}),
+    viewData: jsonb('view_data')
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
     createdByUserId: uuid('created_by_user_id').references(() => user.id, {
       onDelete: 'set null',
     }),

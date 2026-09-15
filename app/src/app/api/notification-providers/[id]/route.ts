@@ -14,6 +14,7 @@ import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import {
   decryptNotificationProviderConfig,
   encryptNotificationProviderConfig,
+  mergeNotificationProviderConfig,
   sanitizeConfigForClient,
 } from "@/lib/notification-providers/crypto";
 import {
@@ -138,6 +139,8 @@ export async function PUT(
     const rawData = await req.json();
     const transformedData = {
       ...rawData,
+      name: rawData.name ?? existingProvider.name,
+      type: rawData.type ?? existingProvider.type,
       organizationId,
       projectId: project.id,
       createdByUserId: existingProvider.createdByUserId ?? userId,
@@ -147,6 +150,17 @@ export async function PUT(
     // This allows partial updates (e.g., name-only) without requiring the
     // client to send back the full config (which may contain masked secrets).
     const hasConfigUpdate = rawData.config !== undefined;
+    const providerTypeChanged = transformedData.type !== existingProvider.type;
+
+    if (providerTypeChanged && !hasConfigUpdate) {
+      return NextResponse.json(
+        {
+          error:
+            "Changing a notification provider type requires a complete replacement config.",
+        },
+        { status: 400 }
+      );
+    }
 
     const validationResult =
       notificationProvidersInsertSchema.safeParse(
@@ -172,10 +186,25 @@ export async function PUT(
     if (hasConfigUpdate) {
       const plainConfig = (updateData.config ?? {}) as Record<string, unknown>;
 
+      // Merge with the existing config so that sensitive fields omitted from
+      // the update (e.g. webhook URLs stripped by `supercheck pull`) are
+      // preserved instead of overwritten with empty/masked values.
+      const existingPlainConfig = decryptNotificationProviderConfig(
+        existingProvider.config,
+        project.id
+      );
+      const mergedConfig = providerTypeChanged
+        ? (plainConfig as PlainNotificationProviderConfig)
+        : mergeNotificationProviderConfig(
+            updateData.type as NotificationProviderType,
+            existingPlainConfig,
+            plainConfig as PlainNotificationProviderConfig
+          );
+
       try {
         validateProviderConfig(
           updateData.type as NotificationProviderType,
-          plainConfig
+          mergedConfig
         );
       } catch (validationError) {
         return NextResponse.json(
@@ -191,7 +220,7 @@ export async function PUT(
 
       const normalizedConfig = normalizeProviderConfig(
         updateData.type as NotificationProviderType,
-        plainConfig,
+        mergedConfig,
       );
 
       const encryptedConfig = encryptNotificationProviderConfig(
@@ -207,7 +236,13 @@ export async function PUT(
           config: encryptedConfig,
           updatedAt: new Date(),
         })
-        .where(eq(notificationProviders.id, id))
+        .where(
+          and(
+            eq(notificationProviders.id, id),
+            eq(notificationProviders.organizationId, organizationId),
+            eq(notificationProviders.projectId, project.id)
+          )
+        )
         .returning();
 
       const decryptedConfig = decryptNotificationProviderConfig(
@@ -233,7 +268,13 @@ export async function PUT(
           type: updateData.type as NotificationProviderType,
           updatedAt: new Date(),
         })
-        .where(eq(notificationProviders.id, id))
+        .where(
+          and(
+            eq(notificationProviders.id, id),
+            eq(notificationProviders.organizationId, organizationId),
+            eq(notificationProviders.projectId, project.id)
+          )
+        )
         .returning();
 
       const decryptedConfig = decryptNotificationProviderConfig(
@@ -329,7 +370,13 @@ export async function DELETE(
 
     const [deletedProvider] = await db
       .delete(notificationProviders)
-      .where(eq(notificationProviders.id, id))
+      .where(
+        and(
+          eq(notificationProviders.id, id),
+          eq(notificationProviders.organizationId, organizationId),
+          eq(notificationProviders.projectId, project.id)
+        )
+      )
       .returning();
 
     if (!deletedProvider) {

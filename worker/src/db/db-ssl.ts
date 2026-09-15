@@ -36,11 +36,7 @@ function readSslModeFromDatabaseUrl(): string | undefined {
 export function getSSLConfig(): PostgresSslConfig {
   const sslMode = readSslModeFromDatabaseUrl();
 
-  if (
-    sslMode === 'disable' ||
-    sslMode === 'allow' ||
-    sslMode === 'prefer'
-  ) {
+  if (sslMode === 'disable' || sslMode === 'allow' || sslMode === 'prefer') {
     return undefined;
   }
 

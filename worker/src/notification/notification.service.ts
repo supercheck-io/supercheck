@@ -1245,10 +1245,16 @@ export class NotificationService {
       alertAction,
       eventAction: alertAction,
       pagerDutyEventAction: alertAction,
-      victorOpsMessageType:
-        alertAction === 'resolve' ? 'RECOVERY' : 'CRITICAL',
+      victorOpsMessageType: this.getVictorOpsMessageType(alertAction),
+      splunkOnCallMessageType: this.getVictorOpsMessageType(alertAction),
       dedupKey: this.getWebhookDedupKey(payload),
     };
+  }
+
+  private getVictorOpsMessageType(
+    alertAction: string,
+  ): 'CRITICAL' | 'RECOVERY' {
+    return alertAction === 'resolve' ? 'RECOVERY' : 'CRITICAL';
   }
 
   private getWebhookAlertAction(payload: NotificationPayload): string {

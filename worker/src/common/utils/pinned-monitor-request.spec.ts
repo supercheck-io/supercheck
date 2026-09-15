@@ -1,6 +1,10 @@
 import { lookup } from 'node:dns/promises';
 import { createServer } from 'node:http';
-import { AxiosHeaders, type AxiosRequestConfig, type AxiosResponse } from 'axios';
+import {
+  AxiosHeaders,
+  type AxiosRequestConfig,
+  type AxiosResponse,
+} from 'axios';
 import axios from 'axios';
 
 jest.mock('node:dns/promises', () => ({ lookup: jest.fn() }));
@@ -67,9 +71,11 @@ describe('pinned HTTP monitor requests', () => {
       expect(config.httpAgent).toBeDefined();
       expect(config.httpsAgent).toBeDefined();
 
-      const pinnedLookup = (config.httpAgent as {
-        options: { lookup: unknown };
-      }).options.lookup as (
+      const pinnedLookup = (
+        config.httpAgent as {
+          options: { lookup: unknown };
+        }
+      ).options.lookup as (
         hostname: string,
         options: unknown,
         callback: (
@@ -148,9 +154,11 @@ describe('pinned HTTP monitor requests', () => {
     (mockLookup as jest.Mock)
       .mockResolvedValueOnce([{ address: '203.0.114.10', family: 4 }])
       .mockResolvedValueOnce([{ address: '127.0.0.1', family: 4 }]);
-    const execute = jest.fn().mockResolvedValueOnce(
-      response(302, { location: 'http://internal.example/admin' }),
-    );
+    const execute = jest
+      .fn()
+      .mockResolvedValueOnce(
+        response(302, { location: 'http://internal.example/admin' }),
+      );
 
     await expect(
       requestPinnedMonitorTarget(
@@ -179,7 +187,10 @@ describe('pinned HTTP monitor requests', () => {
         method: 'POST',
         data: 'secret body',
         auth: { username: 'monitor', password: 'secret' },
-        headers: { Authorization: 'Bearer secret', 'Content-Type': 'text/plain' },
+        headers: {
+          Authorization: 'Bearer secret',
+          'Content-Type': 'text/plain',
+        },
       },
       { allowInternalTargets: false, maxRedirects: 5 },
       execute,

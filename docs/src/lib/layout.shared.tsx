@@ -126,4 +126,3 @@ export function baseOptions(): BaseLayoutProps {
     links: linkItems,
   };
 }
-

@@ -3,7 +3,11 @@ import { aiRateLimiter } from "./ai-rate-limiter";
 import { aiCodeValidator } from "./ai-code-validator";
 import { getRedisConnection } from "@/lib/queue";
 import { isSelfHosted } from "@/lib/feature-flags";
-import { validateAIConfiguration, getProviderModel } from "./ai-provider";
+import {
+  getProviderGenerationOptions,
+  getProviderModel,
+  validateAIConfiguration,
+} from "./ai-provider";
 
 // Idempotency key configuration
 const IDEMPOTENCY_KEY_PREFIX = "supercheck:ai:idempotency";
@@ -197,7 +201,9 @@ export class AIStreamingService {
       const result = await streamText({
         model: this.getProviderModel(),
         prompt,
-        temperature: temperature || config.temperature,
+        ...getProviderGenerationOptions({
+          temperature: temperature || config.temperature,
+        }),
         maxRetries: config.maxRetries,
         abortSignal: AbortSignal.timeout(config.timeout),
         maxOutputTokens: maxTokens,

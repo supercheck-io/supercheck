@@ -200,12 +200,12 @@ Org admins can restrict which locations a project may use via **Settings → Adm
     ```bash
     # Worker location (must match an enabled location code in Super Admin)
     WORKER_LOCATION=us-east
+    SELF_HOSTED=true
 
     # Same PostgreSQL database as the main server. Remote workers default to
     # SELF_HOSTED=true (no TLS), matching Docker Compose Postgres. If your
     # database requires TLS, set SELF_HOSTED=false or add ?sslmode=require.
     DATABASE_URL=postgresql://postgres:YOUR_DB_PASSWORD@MAIN_SERVER_IP:5432/supercheck
-    SELF_HOSTED=true
 
     # Redis
     REDIS_HOST=MAIN_SERVER_IP
@@ -249,10 +249,10 @@ WORKER_LOCATION=eu-central
 ```bash
 # Worker location
 WORKER_LOCATION=us-east
+SELF_HOSTED=true
 
 # Connection to main server (replace with your values)
 DATABASE_URL=postgresql://postgres:YOUR_DB_PASSWORD@YOUR_MAIN_SERVER_IP:5432/supercheck
-SELF_HOSTED=true
 REDIS_HOST=YOUR_MAIN_SERVER_IP
 REDIS_PORT=6379
 REDIS_PASSWORD=YOUR_REDIS_PASSWORD
@@ -265,10 +265,10 @@ AWS_SECRET_ACCESS_KEY=YOUR_MINIO_SECRET_KEY
 ```bash
 # Worker location
 WORKER_LOCATION=asia-pacific
+SELF_HOSTED=true
 
 # Connection to main server (replace with your values)
 DATABASE_URL=postgresql://postgres:YOUR_DB_PASSWORD@YOUR_MAIN_SERVER_IP:5432/supercheck
-SELF_HOSTED=true
 REDIS_HOST=YOUR_MAIN_SERVER_IP
 REDIS_PORT=6379
 REDIS_PASSWORD=YOUR_REDIS_PASSWORD
@@ -325,6 +325,7 @@ Detailed network security configuration is beyond the scope of this documentatio
 | Issue | Diagnostic Command |
 |-------|-------------------|
 | Worker can't reach DB | Check readiness with `docker compose -f docker-compose-worker.yml exec worker curl -sf http://127.0.0.1:8000/health/ready`, then test the database directly with `docker run --rm postgres:18 psql "postgresql://USER:PASSWORD@MAIN_SERVER_IP:5432/supercheck" -c "SELECT 1"` |
+| Worker logs `Failed query` for every database call | Set `SELF_HOSTED=true` when connecting to the bundled PostgreSQL database without TLS. For a TLS-enabled external database, set `SELF_HOSTED=false` or add `?sslmode=require` to `DATABASE_URL`. |
 | Worker visible in Super Admin but monitors do not run | Heartbeat uses Redis. Monitor jobs also need PostgreSQL. Confirm `DATABASE_URL` points at the **same** database as the app, `SELF_HOSTED=true` for Docker Postgres without TLS, and ports 5432/6379/9000 are reachable. |
 | Worker can't reach Redis | `docker run --rm redis:8 redis-cli -h MAIN_SERVER_IP -a PASSWORD ping` |
 | Verify worker location | `docker compose logs worker \| grep "initialized for location"` |

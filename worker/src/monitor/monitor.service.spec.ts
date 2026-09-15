@@ -135,14 +135,10 @@ describe('MonitorService', () => {
   };
 
   const mockLocationService = {
-    getCurrentLocation: jest
-      .fn()
-      .mockReturnValue('eu-central'),
+    getCurrentLocation: jest.fn().mockReturnValue('eu-central'),
     getLocationName: jest.fn().mockReturnValue('EU Central'),
     getLocationDisplayName: jest.fn().mockReturnValue('EU Central'),
-    getEffectiveLocations: jest
-      .fn()
-      .mockReturnValue(['eu-central']),
+    getEffectiveLocations: jest.fn().mockReturnValue(['eu-central']),
     calculateAggregatedStatus: jest.fn().mockReturnValue('up'),
   };
 

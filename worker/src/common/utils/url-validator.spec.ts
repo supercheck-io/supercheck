@@ -35,10 +35,7 @@ describe('worker outbound address policy', () => {
     '203.0.114.10',
     '::ffff:8.8.8.8',
     '2606:4700:4700::1111',
-  ])(
-    'allows public address %s',
-    (address) => {
-      expect(isPrivateOrReservedAddress(address)).toBe(false);
-    },
-  );
+  ])('allows public address %s', (address) => {
+    expect(isPrivateOrReservedAddress(address)).toBe(false);
+  });
 });

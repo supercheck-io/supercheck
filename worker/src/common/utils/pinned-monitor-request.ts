@@ -12,8 +12,8 @@ import { createPinnedLookup } from './pinned-lookup';
 import { isPrivateOrReservedAddress } from './url-validator';
 
 type RequestExecutor = (
-  config: AxiosRequestConfig,
-) => Promise<AxiosResponse>;
+  config: AxiosRequestConfig<unknown>,
+) => Promise<AxiosResponse<unknown>>;
 
 export interface PinnedMonitorRequestOptions {
   allowInternalTargets: boolean;
@@ -21,7 +21,7 @@ export interface PinnedMonitorRequestOptions {
 }
 
 interface PinnedConfig {
-  config: AxiosRequestConfig;
+  config: AxiosRequestConfig<unknown>;
   destroyAgents: () => void;
 }
 
@@ -33,7 +33,7 @@ const SENSITIVE_REDIRECT_HEADERS = [
 ];
 
 async function pinRequestConfig(
-  input: AxiosRequestConfig,
+  input: AxiosRequestConfig<unknown>,
   allowInternalTargets: boolean,
 ): Promise<PinnedConfig> {
   if (!input.url) throw new Error('Monitor URL is required');
@@ -64,8 +64,7 @@ async function pinRequestConfig(
 
   // Prefer IPv4 where available to preserve existing monitor behavior in
   // regions without reliable IPv6 routing, while still supporting IPv6-only hosts.
-  const selected =
-    addresses.find(({ family }) => family === 4) ?? addresses[0];
+  const selected = addresses.find(({ family }) => family === 4) ?? addresses[0];
   const pinnedLookup = createPinnedLookup(selected);
 
   const httpAgent = new HttpAgent({ lookup: pinnedLookup });
@@ -88,18 +87,26 @@ async function pinRequestConfig(
   };
 }
 
-function redirectLocation(response: AxiosResponse): string | undefined {
-  const value = response.headers?.location;
-  return Array.isArray(value) ? value[0] : value;
+function redirectLocation(
+  response: AxiosResponse<unknown>,
+): string | undefined {
+  const value: unknown = response.headers?.location;
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) {
+    return value.find((entry): entry is string => typeof entry === 'string');
+  }
+  return undefined;
 }
 
 function buildRedirectConfig(
-  previous: AxiosRequestConfig,
+  previous: AxiosRequestConfig<unknown>,
   currentUrl: URL,
   nextUrl: URL,
   status: number,
-): AxiosRequestConfig {
-  const headers = AxiosHeaders.from(previous.headers as AxiosHeaders | undefined);
+): AxiosRequestConfig<unknown> {
+  const headers = AxiosHeaders.from(
+    previous.headers as AxiosHeaders | undefined,
+  );
   headers.delete('host');
 
   const crossOrigin = currentUrl.origin !== nextUrl.origin;
@@ -134,10 +141,10 @@ function buildRedirectConfig(
  * Redirects are followed explicitly so each hop receives the same SSRF check.
  */
 export async function requestPinnedMonitorTarget(
-  initialConfig: AxiosRequestConfig,
+  initialConfig: AxiosRequestConfig<unknown>,
   options: PinnedMonitorRequestOptions,
   execute: RequestExecutor,
-): Promise<AxiosResponse> {
+): Promise<AxiosResponse<unknown>> {
   let requestConfig = initialConfig;
 
   for (let redirectCount = 0; ; redirectCount += 1) {
@@ -147,7 +154,7 @@ export async function requestPinnedMonitorTarget(
       options.allowInternalTargets,
     );
 
-    let response: AxiosResponse;
+    let response: AxiosResponse<unknown>;
     try {
       response = await execute(pinned.config);
     } finally {

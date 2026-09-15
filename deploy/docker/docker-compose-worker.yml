@@ -29,6 +29,7 @@
 #   WORKER_LOCATION - This worker's region (must match an enabled Super Admin location code, e.g. us-east, eu-west, ap-south)
 #   AWS_ACCESS_KEY_ID - S3 credentials
 #   AWS_SECRET_ACCESS_KEY - S3 credentials
+#   SELF_HOSTED - true for workers connecting to a self-hosted Supercheck stack
 #
 # NOTE: RUNNING_CAPACITY and QUEUED_CAPACITY are App-side settings.
 #   Set them only on the main server's App service, not here.
@@ -71,7 +72,6 @@ services:
 
       # Database connection (required)
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required - PostgreSQL connection to main server}
-      SELF_HOSTED: ${SELF_HOSTED:-true}
 
       # Redis connection (required)
       # The worker uses REDIS_HOST/PORT/PASSWORD directly (not REDIS_URL)
@@ -109,6 +109,7 @@ services:
 
       # Execution configuration
       NODE_ENV: ${NODE_ENV:-production}
+      SELF_HOSTED: ${SELF_HOSTED:-true}
       # Note: RUNNING_CAPACITY and QUEUED_CAPACITY are App-side settings only.
       # Set RUNNING_CAPACITY on the App (main server) equal to total WORKER_REPLICAS across all hosts.
       CONTAINER_CPU_LIMIT: ${CONTAINER_CPU_LIMIT:-1.5}
