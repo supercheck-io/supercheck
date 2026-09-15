@@ -1,0 +1,159 @@
+# Publishes the Supercheck Recorder browser extension to the Chrome Web Store
+# and Microsoft Edge Add-ons.
+#
+# Release flow:
+#   1. Bump the version in
+#      recorder/examples/recorder-crx/public/manifest.json (and package.json).
+#   2. Merge to main.
+#   3. Tag the merge commit: git tag recorder-v<version> && git push origin recorder-v<version>
+#   The tag must match the manifest version or the run fails before publishing.
+#
+# Required repository/environment secrets (see the runbook in supercheck-ops):
+#   BPP_KEYS - JSON credentials consumed by PlasmoHQ/bpp, e.g.
+#     {
+#       "chrome": {
+#         "extId": "<chrome extension id>",
+#         "clientId": "<oauth client id>",
+#         "clientSecret": "<oauth client secret>",
+#         "refreshToken": "<oauth refresh token>"
+#       },
+#       "edge": {
+#         "productId": "<edge product id>",
+#         "clientId": "<partner center api client id>",
+#         "apiKey": "<partner center api key>"
+#       }
+#     }
+#
+# The `publish` job targets the `recorder-release` environment so credentials
+# can be gated behind required reviewers.
+
+name: Publish Recorder Extension
+
+on:
+  push:
+    tags: ["recorder-v*"]
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: "Build and validate the package without publishing"
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: recorder-publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build and validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: recorder
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: recorder/package-lock.json
+
+      - name: Read and verify extension version
+        id: version
+        run: |
+          manifest_version=$(node -p "require('./examples/recorder-crx/public/manifest.json').version")
+          package_version=$(node -p "require('./examples/recorder-crx/package.json').version")
+          if [ "$manifest_version" != "$package_version" ]; then
+            echo "::error::recorder/examples/recorder-crx manifest.json ($manifest_version) and package.json ($package_version) versions differ"
+            exit 1
+          fi
+          echo "version=$manifest_version" >> "$GITHUB_OUTPUT"
+          echo "Extension version: $manifest_version"
+
+      - name: Verify release tag matches extension version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          tag_version="${GITHUB_REF_NAME#recorder-v}"
+          if [ "$tag_version" != "${{ steps.version.outputs.version }}" ]; then
+            echo "::error::Tag '${GITHUB_REF_NAME}' does not match extension version '${{ steps.version.outputs.version }}'. Bump recorder/examples/recorder-crx/public/manifest.json first."
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: npm ci --prefer-offline --no-audit
+
+      - name: Build recorder and extension
+        run: npm run build
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
+
+      - name: Package extension
+        run: |
+          cd examples/recorder-crx/dist
+          zip -r "../supercheck-recorder-v${{ steps.version.outputs.version }}.zip" .
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: supercheck-recorder
+          path: recorder/examples/recorder-crx/supercheck-recorder-v${{ steps.version.outputs.version }}.zip
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: Publish to browser stores
+    needs: build
+    if: github.event_name == 'push' || inputs.dry-run == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: recorder-release
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Download package artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: supercheck-recorder
+          path: recorder/examples/recorder-crx
+
+      - name: Submit to Chrome Web Store and Edge Add-ons
+        uses: PlasmoHQ/bpp@c15984c0a74f452851c605cab46f34d9fd6cb158 # v3.8.0
+        with:
+          keys: ${{ secrets.BPP_KEYS }}
+          chrome-file: recorder/examples/recorder-crx/supercheck-recorder-v${{ needs.build.outputs.version }}.zip
+          edge-file: recorder/examples/recorder-crx/supercheck-recorder-v${{ needs.build.outputs.version }}.zip
+          edge-notes: "Supercheck Recorder v${{ needs.build.outputs.version }}"
+          version-file: recorder/examples/recorder-crx/public/manifest.json
+
+  release:
+    name: Create GitHub release
+    needs: [build, publish]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download package artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: supercheck-recorder
+          path: release-assets
+
+      - name: Publish GitHub release
+        run: gh release create "${GITHUB_REF_NAME}" release-assets/*.zip --title "Supercheck Recorder v${GITHUB_REF_NAME#recorder-v}" --generate-notes --verify-tag
+        env:
+          GH_TOKEN: ${{ github.token }}
