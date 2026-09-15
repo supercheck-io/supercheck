@@ -1,0 +1,14 @@
+# Dependency Review configuration.
+#
+# The advisories below are reported only for the vendored upstream Playwright
+# sources under recorder/playwright/**. Those files are tracked solely for the
+# recorder build and are reviewed through the upstream Playwright security
+# process, so their lockfiles should not gate this repository. First-party
+# dependencies are still evaluated against the default `low` severity threshold.
+fail-on-severity: low
+allow-ghsas:
+  - GHSA-3jxr-9vmj-r5cp
+  - GHSA-mh99-v99m-4gvg
+  - GHSA-rgw5-rvv9-x895
+  - GHSA-f886-m6hf-6m8v
+  - GHSA-v6h2-p8h4-qcjw
