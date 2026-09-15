@@ -20,9 +20,11 @@ import { AuthGuard } from "@/components/auth-guard";
 import { DataPrefetcher } from "@/components/data-prefetcher";
 import { MonacoPrefetcher } from "@/components/monaco-prefetcher";
 import { RecorderAutoConnect } from "@/components/recorder/RecorderAutoConnect";
+import { SreAssistantUiModal } from "@/components/sre/sre-assistant-ui-modal";
 import { getCurrentUser, getActiveOrganization, getUserProjects } from "@/lib/session";
 import { getCurrentProjectContext } from "@/lib/project-context";
 import { isSelfHosted } from "@/lib/feature-flags";
+import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 
 function deriveInitialSubscriptionStatus(
   org: NonNullable<Awaited<ReturnType<typeof getActiveOrganization>>>,
@@ -75,6 +77,10 @@ export default async function MainLayout({
   let initialCurrentProject: ProjectContext | null = null;
   let initialSession: { user: { id: string; name: string; email: string; image?: string | null } } | null = null;
   let initialSubscriptionStatus: SubscriptionStatus | null = null;
+  let commandSearchCapabilities = {
+    canInvestigateSre: false,
+    canConfigureSre: false,
+  };
   const initialIsSelfHosted = isSelfHosted();
 
   if (user && org) {
@@ -100,6 +106,28 @@ export default async function MainLayout({
       }));
 
       initialCurrentProject = currentProjectResult;
+      if (currentProjectResult) {
+        const permissionContext = {
+          userId: user.id,
+          organizationId: currentProjectResult.organizationId,
+          project: {
+            id: currentProjectResult.id,
+            userRole: currentProjectResult.userRole,
+          },
+        };
+        commandSearchCapabilities = {
+          canInvestigateSre: checkPermissionWithContext(
+            "sre_investigation",
+            "investigate",
+            permissionContext
+          ),
+          canConfigureSre: checkPermissionWithContext(
+            "sre_connector",
+            "configure",
+            permissionContext
+          ),
+        };
+      }
 
       initialSession = {
         user: {
@@ -139,20 +167,28 @@ export default async function MainLayout({
               <SetupChecker />
               <AppSidebar />
               <SidebarInset>
-                <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center justify-between gap-2 border-b bg-background transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12 border-t">
-                  <div className="flex items-center gap-2 px-4">
+                <header className="sticky top-0 z-10 flex h-14 min-w-0 shrink-0 items-center justify-between gap-2 border-b border-t bg-background transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12">
+                  <div className="flex min-w-0 flex-1 items-center gap-2 px-2 sm:px-4">
                     <SidebarTrigger className="-ml-1" />
                     <Separator
                       orientation="vertical"
                       className="mr-2 data-[orientation=vertical]:h-4"
                     />
-                    <BreadcrumbDisplay />
+                    <div className="min-w-0 overflow-hidden">
+                      <BreadcrumbDisplay />
+                    </div>
                   </div>
-                  <div className="flex items-center gap-4 px-4">
-                    <DemoBadge />
-                    <CommandSearch />
-                    <ParallelThreads />
-                    <CommunityLinks />
+                  <div className="flex shrink-0 items-center gap-2 px-2 sm:gap-4 sm:px-4">
+                    <div className="hidden xl:block">
+                      <DemoBadge />
+                    </div>
+                    <CommandSearch {...commandSearchCapabilities} />
+                    <div className="hidden xl:block">
+                      <ParallelThreads />
+                    </div>
+                    <div className="hidden lg:block">
+                      <CommunityLinks />
+                    </div>
                     <NavUser />
                   </div>
                 </header>
@@ -162,6 +198,7 @@ export default async function MainLayout({
                     initialIsSelfHosted={initialIsSelfHosted}
                   >
                     {children}
+                    <SreAssistantUiModal />
                   </SubscriptionGuard>
                 </main>
               </SidebarInset>

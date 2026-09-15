@@ -1,0 +1,12 @@
+[*]
+../
+../codegen/language.ts
+../codegen/languages.ts
+../isomorphic/**
+../registry/**
+../utils/**
+../../generated/pollingRecorderSource.ts
+../../protocol/
+../../utils/**
+../../utilsBundle.ts
+../../zipBundle.ts

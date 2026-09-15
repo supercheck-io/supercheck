@@ -7,6 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { Worker, Job } from 'bullmq';
 import Redis from 'ioredis';
+import { buildRedisOptions } from '../../common/redis/redis-options';
 import { MonitorService } from '../monitor.service';
 import { MonitorJobDataDto } from '../dto/monitor-job.dto';
 import { MonitorExecutionResult } from '../types/monitor-result.type';
@@ -92,7 +93,9 @@ export class MonitorDynamicWorkerService
       this.subscriber = null;
     }
 
-    await Promise.allSettled(Array.from(this.workers.values()).map((w) => w.close()));
+    await Promise.allSettled(
+      Array.from(this.workers.values()).map((w) => w.close()),
+    );
     this.workers.clear();
 
     if (this.connection) {
@@ -111,7 +114,9 @@ export class MonitorDynamicWorkerService
       queueName,
       async (job: Job<MonitorJobDataDto>) => this.processJob(job),
       {
-        connection: this.connection.duplicate(),
+        // BullMQ creates and closes its own blocking connection. The service
+        // owns this shared command connection and closes it during shutdown.
+        connection: this.connection,
         concurrency: 1,
         lockDuration: 5 * 60 * 1000,
         stalledInterval: 30000,
@@ -142,7 +147,7 @@ export class MonitorDynamicWorkerService
       // gate (Redis SCARD vs expectedLocations.length) can still complete.
       // Without this, one failed location would stall aggregation for the
       // entire execution cycle.
-      if (job?.data && this.isFinalFailure(job)) {
+      if (job?.data) {
         this.handleFinalJobFailure(job as Job<MonitorJobDataDto>, error).catch(
           (err) => {
             this.logger.error(
@@ -223,10 +228,7 @@ export class MonitorDynamicWorkerService
       const parsed = message
         ? (JSON.parse(message) as { locationCodes?: string[] })
         : null;
-      if (
-        Array.isArray(parsed?.locationCodes) &&
-        parsed.locationCodes.length > 0
-      ) {
+      if (Array.isArray(parsed?.locationCodes)) {
         newQueues = parsed.locationCodes.map((code: string) =>
           monitorQueueName(code),
         );
@@ -305,8 +307,8 @@ export class MonitorDynamicWorkerService
             if (stableRetries >= MAX_STABLE_RETRIES) {
               this.logger.log(
                 `Discovery retry: queue set stable for ${stableRetries} consecutive checks. ` +
-                `Stopping retry loop (${this.activeQueueNames.size} monitor queue(s)). ` +
-                `Pub/sub listener will handle further changes.`,
+                  `Stopping retry loop (${this.activeQueueNames.size} monitor queue(s)). ` +
+                  `Pub/sub listener will handle further changes.`,
               );
               this.discoveryRetryTimer = null;
               return;
@@ -353,14 +355,6 @@ export class MonitorDynamicWorkerService
   }
 
   /**
-   * Check whether a BullMQ job failure is the final attempt (all retries exhausted).
-   */
-  private isFinalFailure(job: Job): boolean {
-    const maxAttempts = job.opts?.attempts ?? 1;
-    return job.attemptsMade >= maxAttempts;
-  }
-
-  /**
    * Generate an error MonitorResult for a job that failed after all retries.
    * This ensures the distributed aggregation gate can still complete —
    * without it, the Redis SCARD never reaches expectedLocations.length
@@ -375,10 +369,18 @@ export class MonitorDynamicWorkerService
     job: Job<MonitorJobDataDto>,
     error: Error,
   ): Promise<void> {
-    const { executionGroupId, executionLocation, expectedLocations, monitorId } =
-      job.data;
+    const {
+      executionGroupId,
+      executionLocation,
+      expectedLocations,
+      monitorId,
+    } = job.data;
 
     if (!executionGroupId || !executionLocation) return;
+
+    // Stalled recovery and unrecoverable errors can fail permanently before
+    // attemptsMade reaches attempts. Never synthesize an error for a retry.
+    if ((await job.getState()) !== 'failed') return;
 
     // Check whether a real result for this location + execution group
     // was already persisted by processJob() before it threw.
@@ -394,7 +396,7 @@ export class MonitorDynamicWorkerService
     if (existing) {
       this.logger.log(
         `Skipping synthetic error for ${monitorId}/${executionLocation}: ` +
-        `real result already persisted (executionGroupId=${executionGroupId})`,
+          `real result already persisted (executionGroupId=${executionGroupId})`,
       );
       return;
     }
@@ -504,27 +506,6 @@ export class MonitorDynamicWorkerService
   }
 
   private createRedisConnection(): Redis {
-    const tlsEnabled =
-      this.configService.get<string>('REDIS_TLS_ENABLED', 'false') === 'true';
-    const password = this.configService.get<string>('REDIS_PASSWORD');
-    const username = this.configService.get<string>('REDIS_USERNAME');
-
-    return new Redis({
-      host: this.configService.get<string>('REDIS_HOST', 'localhost'),
-      port: this.configService.get<number>('REDIS_PORT', 6379),
-      password: password || undefined,
-      username: username || undefined,
-      maxRetriesPerRequest: null,
-      enableReadyCheck: false,
-      ...(tlsEnabled && {
-        tls: {
-          rejectUnauthorized:
-            this.configService.get<string>(
-              'REDIS_TLS_REJECT_UNAUTHORIZED',
-              'true',
-            ) !== 'false',
-        },
-      }),
-    });
+    return new Redis(buildRedisOptions(this.configService));
   }
 }

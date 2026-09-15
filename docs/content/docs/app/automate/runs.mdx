@@ -14,17 +14,17 @@ Every test or job execution creates a run with results, logs, and artifacts.
 |--------|-------------|
 | **Passed** | All tests completed successfully |
 | **Failed** | One or more tests failed |
-| **Error** | Execution error (timeout, crash) |
+| **Error** | Execution error (timeout, crash, infrastructure) |
 | **Running** | Currently executing |
 | **Queued** | Waiting to execute |
 | **Blocked** | Blocked by plan limits |
 
 ## View Runs
 
-1. Go to **Jobs** or **Tests**
-2. Select the item
-3. Click **Runs** tab
-4. Select a run to view details
+1. Go to **Runs**
+2. Select a run to view its details
+
+When a running execution is cancelled, Supercheck stops it and records the run as **Error** with cancellation details.
 
 ## Run Details
 
@@ -59,6 +59,5 @@ Click **AI Analyze** on any job run to generate an AI-powered analysis report.
 - **K6** — Analyzes performance metrics and threshold breaches
 
 <Callout type="info">
-AI Analyze requires a configured AI provider. See [Deployment](/docs/app/deployment/self-hosted#ai-configuration) for setup.
+AI Analyze requires a configured AI provider. See [Deployment](/docs/app/deployment/self-hosted#optional-configuration) for setup.
 </Callout>
-

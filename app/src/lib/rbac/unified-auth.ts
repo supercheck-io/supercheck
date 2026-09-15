@@ -2,6 +2,7 @@ import { db } from "@/utils/db";
 import { session, user, member, projects, projectMembers, organization } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { normalizeRole } from "./role-normalizer";
+import { Role } from "./permissions-client";
 
 type UnifiedAuthContext = {
   // Session / User
@@ -59,6 +60,7 @@ export async function getUnifiedAuthContext(
         activeOrgId: session.activeOrganizationId,
         impersonatedBy: session.impersonatedBy,
         email: user.email,
+        role: user.role,
         banned: user.banned,
       })
       .from(session)
@@ -155,10 +157,10 @@ export async function getUnifiedAuthContext(
            // Without this check, a user could pass an x-project-id header for a project
            // in a different organization and get a valid context with null roles,
            // enabling cross-tenant context confusion.
+           // Super admins bypass organization membership and retain their
+           // system-level role in project-scoped permission contexts.
+           const isSA = s.role === Role.SUPER_ADMIN;
            if (!ctx.orgRole) {
-             // Check if the user is a super admin (they bypass org membership)
-             const { isSuperAdmin } = await import("./super-admin");
-             const isSA = await isSuperAdmin(s.userId);
              if (!isSA) {
                return {
                  isValid: false,
@@ -187,11 +189,19 @@ export async function getUnifiedAuthContext(
                projectId: ctx.projectId,
                projectName: ctx.projectName,
                isDefaultProject: ctx.projectIsDefault,
-               projectRole: normalizeRole(ctx.projectRole),
+               projectRole: isSA
+                 ? Role.SUPER_ADMIN
+                 : ctx.projectRole
+                   ? normalizeRole(ctx.projectRole)
+                   : null,
                
                organizationId: ctx.projectOrgId,
                organizationSlug: ctx.orgSlug,
-               organizationRole: normalizeRole(ctx.orgRole),
+               organizationRole: isSA
+                 ? Role.SUPER_ADMIN
+                 : ctx.orgRole
+                   ? normalizeRole(ctx.orgRole)
+                   : null,
                
                subscriptionStatus: ctx.subStatus,
                polarCustomerId: ctx.polarId

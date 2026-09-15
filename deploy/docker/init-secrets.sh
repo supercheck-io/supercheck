@@ -38,7 +38,9 @@ generate_secret() {
 
 echo -e "${GREEN}🔐 Generating secure secrets...${NC}"
 
-BETTER_AUTH_SECRET=$(generate_secret 16)
+# Better Auth recommends 32 random bytes. Hex encoding produces a 64-character
+# secret with enough entropy to avoid weak-secret warnings.
+BETTER_AUTH_SECRET=$(generate_secret 32)
 SECRET_ENCRYPTION_KEY=$(generate_secret 16)
 DB_PASSWORD=$(generate_secret 16)
 REDIS_PASSWORD=$(generate_secret 16)

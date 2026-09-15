@@ -7,40 +7,7 @@ import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import { subscriptionService } from "@/lib/services/subscription-service";
 import type { TestType } from "@/db/schema/types";
 import { validateScriptTypeMatch, normalizeTestType } from "@/lib/script-type-validator";
-
-declare const Buffer: {
-  from(data: string, encoding: string): { toString(encoding: string): string };
-};
-
-/**
- * Helper function to decode base64-encoded test scripts
- * Works in both client and server environments
- */
-async function decodeTestScript(base64Script: string): Promise<string> {
-  // Check if the string is base64 encoded
-  // A valid base64 string should only contain these characters
-  const base64Regex = /^[A-Za-z0-9+/=]+$/;
-  const isBase64 = base64Regex.test(base64Script);
-
-  if (!isBase64) {
-    // If it's not base64, return as is
-    return base64Script;
-  }
-
-  try {
-    // In Node.js environment (server-side)
-    if (typeof window === "undefined") {
-      const decoded = Buffer.from(base64Script, "base64").toString("utf-8");
-      return decoded;
-    }
-    // Fallback for browser environment
-    return base64Script;
-  } catch (error) {
-    console.error("Error decoding base64:", error);
-    // Return original if decoding fails
-    return base64Script;
-  }
-}
+import { decodeStoredTestScript, encodeStoredTestScript } from "@/lib/test-script";
 
 /**
  * GET /api/tests
@@ -164,7 +131,7 @@ export async function GET(request: NextRequest) {
         // Only decode and include script if explicitly requested
         const script =
           includeScript && test.script
-            ? await decodeTestScript(test.script)
+            ? decodeStoredTestScript(test.script)
             : undefined;
 
         return {
@@ -245,7 +212,7 @@ export async function POST(request: NextRequest) {
     // Validate script-type compatibility if a script is provided
     if (typeof script === "string" && script.length > 0) {
       // Decode base64 if needed for validation
-      const decodedScript = await decodeTestScript(script);
+      const decodedScript = decodeStoredTestScript(script);
       const typeValidation = validateScriptTypeMatch(decodedScript, resolvedType);
       if (!typeValidation.valid) {
         return NextResponse.json(
@@ -279,7 +246,7 @@ export async function POST(request: NextRequest) {
         description: description || null,
         priority: priority || "medium",
         type: resolvedType,
-        script: (typeof script === "string" ? script : ""),
+        script: encodeStoredTestScript(typeof script === "string" ? script : ""),
         projectId: targetProjectId,
         organizationId: context.organizationId,
         createdByUserId: context.userId,

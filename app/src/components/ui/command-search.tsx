@@ -21,6 +21,14 @@ import {
   Tally4,
   ClipboardList,
   Target,
+  Bot,
+  Network,
+  BrainCircuit,
+  Siren,
+  UserCog,
+  Boxes,
+  SquareLibrary,
+  RadioTower,
 } from "lucide-react";
 import { PlaywrightLogo } from "@/components/logo/playwright-logo";
 import { K6Logo } from "@/components/logo/k6-logo";
@@ -44,9 +52,15 @@ import { Button } from "@/components/ui/button";
 
 interface CommandSearchProps {
   className?: string;
+  canInvestigateSre?: boolean;
+  canConfigureSre?: boolean;
 }
 
-export function CommandSearch({ className }: CommandSearchProps) {
+export function CommandSearch({
+  className,
+  canInvestigateSre = false,
+  canConfigureSre = false,
+}: CommandSearchProps) {
   const [open, setOpen] = React.useState(false);
   const router = useRouter();
 
@@ -65,7 +79,23 @@ export function CommandSearch({ className }: CommandSearchProps) {
         runs: "/runs",
         variables: "/variables",
         alerts: "/alerts",
+        incidents: "/incidents",
         "status-pages": "/status-pages",
+        admin: "/org-admin",
+        ...(canConfigureSre
+          ? {
+              "admin-services": "/services",
+              "admin-integrations": "/org-admin?tab=integrations",
+              "admin-diagnostic-recipes": "/org-admin?tab=diagnostic-recipes",
+              "admin-private-agents": "/org-admin?tab=private-agents",
+            }
+          : {}),
+        ...(canInvestigateSre
+          ? {
+              "investigation-chat": "/copilot",
+              "evidence-graph": "/copilot/evidence-graph",
+            }
+          : {}),
 
         // Create Actions
         "create-monitor-http": "/monitors/create?type=http_request",
@@ -99,7 +129,7 @@ export function CommandSearch({ className }: CommandSearchProps) {
         }
       }
     },
-    [router]
+    [canConfigureSre, canInvestigateSre, router]
   );
 
   // Command palette toggle only
@@ -127,13 +157,16 @@ export function CommandSearch({ className }: CommandSearchProps) {
       <Button
         variant="outline"
         onClick={() => setOpen(true)}
-        className="h-8 px-2 min-w-[96px] justify-between hover:bg-accent/50 transition-colors"
+        aria-label="Open command menu"
+        className="h-8 min-w-8 justify-center px-2 transition-colors hover:bg-accent/50 sm:min-w-[96px] sm:justify-between"
       >
         <div className="flex items-center space-x-1">
           <SearchIcon className="h-3.5 w-3.5 text-muted-foreground" />
-          <span className="text-[10px] text-muted-foreground">CMD</span>
+          <span className="hidden text-[10px] text-muted-foreground sm:inline">
+            CMD
+          </span>
         </div>
-        <kbd className="inline-flex h-4 items-center rounded border bg-muted px-1 text-[9px] font-mono text-muted-foreground">
+        <kbd className="hidden h-4 items-center rounded border bg-muted px-1 font-mono text-[9px] text-muted-foreground sm:inline-flex">
           ⌘K
         </kbd>
       </Button>
@@ -158,6 +191,10 @@ export function CommandSearch({ className }: CommandSearchProps) {
                 <CommandItem onSelect={() => handleCommand("alerts")}>
                   <BellRing className="mr-2 h-4 w-4 !text-amber-600" />
                   <span>Alerts</span>
+                </CommandItem>
+                <CommandItem onSelect={() => handleCommand("incidents")}>
+                  <Siren className="mr-2 h-4 w-4 !text-rose-500" />
+                  <span>Incidents</span>
                 </CommandItem>
                 <CommandItem onSelect={() => handleCommand("status-pages")}>
                   <Tally4 className="mr-2 h-4 w-4 !text-green-600" />
@@ -187,6 +224,62 @@ export function CommandSearch({ className }: CommandSearchProps) {
                   <Globe className="mr-2 h-4 w-4 !text-cyan-600" />
                   <span>Monitors</span>
                 </CommandItem>
+              </CommandGroup>
+
+              <CommandSeparator />
+
+              {canInvestigateSre && (
+                <>
+                  <CommandGroup heading="Investigate">
+                    <CommandItem
+                      onSelect={() => handleCommand("investigation-chat")}
+                    >
+                      <Bot className="mr-2 h-4 w-4 !text-zinc-400" />
+                      <span>Copilot</span>
+                    </CommandItem>
+                    <CommandItem onSelect={() => handleCommand("evidence-graph")}>
+                      <BrainCircuit className="mr-2 h-4 w-4 !text-violet-500" />
+                      <span>Investigation Map</span>
+                    </CommandItem>
+                  </CommandGroup>
+
+                  <CommandSeparator />
+                </>
+              )}
+
+              <CommandGroup heading="Admin">
+                <CommandItem onSelect={() => handleCommand("admin")}>
+                  <UserCog className="mr-2 h-4 w-4 !text-zinc-400" />
+                  <span>Organization Admin</span>
+                </CommandItem>
+                {canConfigureSre && (
+                  <>
+                    <CommandItem onSelect={() => handleCommand("admin-services")}>
+                      <Boxes className="mr-2 h-4 w-4 !text-sky-600" />
+                      <span>Services</span>
+                    </CommandItem>
+                    <CommandItem
+                      onSelect={() => handleCommand("admin-integrations")}
+                    >
+                      <Network className="mr-2 h-4 w-4 !text-emerald-500" />
+                      <span>Integrations</span>
+                    </CommandItem>
+                    <CommandItem
+                      onSelect={() =>
+                        handleCommand("admin-diagnostic-recipes")
+                      }
+                    >
+                      <SquareLibrary className="mr-2 h-4 w-4 !text-cyan-600" />
+                      <span>Diagnostic Recipes</span>
+                    </CommandItem>
+                    <CommandItem
+                      onSelect={() => handleCommand("admin-private-agents")}
+                    >
+                      <RadioTower className="mr-2 h-4 w-4 !text-violet-500" />
+                      <span>Private Agents</span>
+                    </CommandItem>
+                  </>
+                )}
               </CommandGroup>
 
               <CommandSeparator />

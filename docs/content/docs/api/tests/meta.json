@@ -7,9 +7,11 @@
     "getTestTags",
     "createTest",
     "updateTest",
+    "updateTestLegacyPut",
     "deleteTest",
     "executeTest",
     "replaceTestTags",
-    "deleteTestTag"
+    "deleteTestTag",
+    "validateScript"
   ]
 }

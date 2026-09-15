@@ -25,7 +25,7 @@ type ProjectLocationEntry = {
 
 /**
  * Verify the target project belongs to the caller's organization.
- * Org-level roles (owner/admin) can manage any project in their org,
+ * Org-level roles (org_owner/org_admin) can manage any project in their org,
  * not just the one set as their active project.
  */
 async function verifyProjectOrgMembership(

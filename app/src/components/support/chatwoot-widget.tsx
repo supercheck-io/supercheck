@@ -170,6 +170,7 @@ export function ChatwootWidget({
             email: user.email,
             name: user.name || user.email,
             avatar_url: user.image || undefined,
+            identifier_hash: user.identityValidationToken,
         });
 
         if (customAttributes) {

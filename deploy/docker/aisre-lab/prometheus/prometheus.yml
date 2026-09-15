@@ -1,0 +1,31 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - /etc/prometheus/rules.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager:9093
+
+scrape_configs:
+  - job_name: aisre-demo-service
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - aisre-demo-service:8080
+        labels:
+          service: checkout-api
+          fixture: oss-lab-checkout-degradation
+
+  - job_name: aisre-webhook-capture
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - aisre-webhook-capture:8080
+        labels:
+          service: webhook-capture
+          fixture: oss-lab-webhook-delivery

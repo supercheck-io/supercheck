@@ -2,7 +2,7 @@
 
 import { useEffect, useSyncExternalStore } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
+import { SupercheckLoading } from "@/components/shared/supercheck-loading";
 import { useAppConfig } from "@/hooks/use-app-config";
 import { useQuery } from "@tanstack/react-query";
 
@@ -146,7 +146,7 @@ export function SubscriptionGuard({
     <>
       {needsOverlay && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-background">
-          <SuperCheckLoading size="md" message={loadingMessage} />
+          <SupercheckLoading size="md" message={loadingMessage} />
         </div>
       )}
       {children}

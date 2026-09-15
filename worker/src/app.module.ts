@@ -13,6 +13,7 @@ import { EmailTemplateModule } from './email-template/email-template.module';
 import { LoggerModule } from './logger/logger.module';
 import { QueueAlertingModule } from './queue-alerting/queue-alerting.module';
 import { HeartbeatModule } from './common/heartbeat/heartbeat.module';
+import { buildRedisOptions } from './common/redis/redis-options';
 
 @Module({
   imports: [
@@ -23,34 +24,9 @@ import { HeartbeatModule } from './common/heartbeat/heartbeat.module';
     LoggerModule,
     BullModule.forRootAsync({
       imports: [ConfigModule],
-      useFactory: (configService: ConfigService) => {
-        const tlsEnabled =
-          configService.get<string>('REDIS_TLS_ENABLED', 'false') === 'true';
-        const redisPassword = configService.get<string>('REDIS_PASSWORD');
-        const redisUsername = configService.get<string>('REDIS_USERNAME');
-
-        return {
-          connection: {
-            host: configService.get<string>('REDIS_HOST', 'localhost'),
-            port: configService.get<number>('REDIS_PORT', 6379),
-            password: redisPassword,
-            username: redisUsername,
-            maxRetriesPerRequest: null,
-            enableReadyCheck: false,
-            retryStrategy: (attempt: number) =>
-              Math.min(1000 * Math.pow(2, attempt), 10000),
-            tls: tlsEnabled
-              ? {
-                  rejectUnauthorized:
-                    configService.get<string>(
-                      'REDIS_TLS_REJECT_UNAUTHORIZED',
-                      'true',
-                    ) !== 'false',
-                }
-              : undefined,
-          },
-        };
-      },
+      useFactory: (configService: ConfigService) => ({
+        connection: buildRedisOptions(configService),
+      }),
       inject: [ConfigService],
     }),
     ExecutionModule,

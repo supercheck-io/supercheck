@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { buildRedisOptions } from '../common/redis/redis-options';
 import { Queue, QueueEvents } from 'bullmq';
 import Redis from 'ioredis';
 
@@ -57,32 +58,7 @@ export class EmailTemplateService {
     }
 
     try {
-      // Create Redis connection
-      const redisHost = this.configService.get<string>(
-        'REDIS_HOST',
-        'localhost',
-      );
-      const redisPort = this.configService.get<number>('REDIS_PORT', 6379);
-      const redisPassword = this.configService.get<string>('REDIS_PASSWORD');
-      const redisTlsEnabled =
-        this.configService.get<string>('REDIS_TLS_ENABLED', 'false') === 'true';
-
-      this.redisConnection = new Redis({
-        host: redisHost,
-        port: redisPort,
-        password: redisPassword,
-        maxRetriesPerRequest: null,
-        enableReadyCheck: false,
-        tls: redisTlsEnabled
-          ? {
-              rejectUnauthorized:
-                this.configService.get<string>(
-                  'REDIS_TLS_REJECT_UNAUTHORIZED',
-                  'true',
-                ) !== 'false',
-            }
-          : undefined,
-      });
+      this.redisConnection = new Redis(buildRedisOptions(this.configService));
 
       // Create queue for adding jobs
       this.queue = new Queue<EmailTemplateJob, RenderedEmail>(

@@ -260,7 +260,7 @@ export async function POST(
     const emailContent = await renderOrganizationInvitationEmail({
       inviteUrl,
       organizationName: invite.orgName,
-      role: invite.role ?? "member",
+      role: invite.role ?? "project_viewer",
       projectInfo: "",
     });
 

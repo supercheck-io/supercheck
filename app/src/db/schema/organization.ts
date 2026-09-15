@@ -12,10 +12,12 @@ import {
   uuid,
   boolean,
   integer,
+  numeric,
   unique,
   index,
   jsonb,
   uniqueIndex,
+  check,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema, createSelectSchema, createUpdateSchema } from "drizzle-zod";
@@ -42,6 +44,10 @@ export const organization = pgTable("organization", {
     .$type<"active" | "canceled" | "past_due" | "none">()
     .default("none"),
   subscriptionId: text("subscription_id"), // Polar subscription ID
+  // Durable ordering state is not subject to webhook-delivery log cleanup.
+  polarWebhookTimestamp: timestamp("polar_webhook_timestamp", { withTimezone: true }),
+  polarWebhookEventKey: text("polar_webhook_event_key"),
+  polarRetiredSubscriptionIds: jsonb("polar_retired_subscription_ids").$type<string[]>().notNull().default([]),
   
   // Subscription period dates (from Polar webhook)
   // These track the actual subscription billing cycle dates
@@ -49,20 +55,20 @@ export const organization = pgTable("organization", {
   subscriptionEndsAt: timestamp("subscription_ends_at"), // When current subscription period ends
   
   // Usage tracking fields
-  playwrightMinutesUsed: integer("playwright_minutes_used").default(0),
+  playwrightMinutesUsed: numeric("playwright_minutes_used", { precision: 14, scale: 4, mode: "number" }).default(0),
   k6VuMinutesUsed: integer("k6_vu_minutes_used").default(0), // Changed from hours to minutes for consistency with Playwright
   aiCreditsUsed: integer("ai_credits_used").default(0), // AI credits used for AI fix and AI create features
+  sreInvestigationUnitsUsed: numeric("sre_investigation_units_used", {
+    precision: 10,
+    scale: 4,
+  })
+    .notNull()
+    .default("0"),
   usagePeriodStart: timestamp("usage_period_start"),
   usagePeriodEnd: timestamp("usage_period_end"),
-}, () => ({
-  // SECURITY: Prevent unlimited plans in cloud mode
-  // Only allows unlimited plan when there's no Polar customer ID (self-hosted mode)
-  unlimitedPlanConstraint: sql`
-    CHECK (
-      subscription_plan != 'unlimited' OR polar_customer_id IS NULL
-    )
-  `,
-}));
+});
+// Cloud/self-hosted entitlement enforcement lives in SubscriptionService.
+// A database row cannot infer hosting mode from the presence of a Polar ID.
 
 /**
  * Maps users to organizations, defining their roles.
@@ -86,6 +92,10 @@ export const member = pgTable(
     uniqueUserOrg: unique().on(table.userId, table.organizationId),
     // Index for efficient "list members by org" queries
     organizationIdIdx: index("member_organization_id_idx").on(table.organizationId),
+    roleCanonicalCheck: check(
+      "member_role_canonical_check",
+      sql`${table.role} IN ('org_owner', 'org_admin', 'project_admin', 'project_editor', 'project_viewer')`
+    ),
   })
 );
 
@@ -191,6 +201,10 @@ export const projectMembers = pgTable(
     uniqueUserProject: unique().on(table.userId, table.projectId),
     // Index for efficient "list members by project" queries
     projectIdIdx: index("project_members_project_id_idx").on(table.projectId),
+    roleCanonicalCheck: check(
+      "project_members_role_canonical_check",
+      sql`${table.role} IN ('project_admin', 'project_editor', 'project_viewer')`
+    ),
   })
 );
 

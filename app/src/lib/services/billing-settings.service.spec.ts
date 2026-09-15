@@ -32,21 +32,44 @@ describe("BillingSettingsService notification keys", () => {
     });
 
     await expect(
-      billingSettingsService.hasNotificationBeenSent("org_123", "80", "playwright")
+      billingSettingsService.hasNotificationBeenSent(
+        "org_123",
+        "80",
+        "playwright",
+      ),
     ).resolves.toBe(true);
   });
 
-  it("does not let a Playwright threshold suppress K6 or AI alerts", async () => {
+  it("does not let a Playwright threshold suppress K6, AI or SRE alerts", async () => {
     (db.query.billingSettings.findFirst as jest.Mock).mockResolvedValue({
       notificationsSentThisPeriod: [80],
       lastNotificationSentAt: null,
     });
 
     await expect(
-      billingSettingsService.hasNotificationBeenSent("org_123", "80", "k6")
+      billingSettingsService.hasNotificationBeenSent("org_123", "80", "k6"),
     ).resolves.toBe(false);
     await expect(
-      billingSettingsService.hasNotificationBeenSent("org_123", "80", "ai")
+      billingSettingsService.hasNotificationBeenSent("org_123", "80", "ai"),
+    ).resolves.toBe(false);
+    await expect(
+      billingSettingsService.hasNotificationBeenSent("org_123", "80", "sre"),
+    ).resolves.toBe(false);
+  });
+
+  it("deduplicates SRE alerts independently of Playwright", async () => {
+    (db.query.billingSettings.findFirst as jest.Mock).mockResolvedValue({
+      notificationsSentThisPeriod: [3090],
+    });
+    await expect(
+      billingSettingsService.hasNotificationBeenSent("org_123", "90", "sre"),
+    ).resolves.toBe(true);
+    await expect(
+      billingSettingsService.hasNotificationBeenSent(
+        "org_123",
+        "90",
+        "playwright",
+      ),
     ).resolves.toBe(false);
   });
 
@@ -64,7 +87,7 @@ describe("BillingSettingsService notification keys", () => {
     expect(set).toHaveBeenCalledWith(
       expect.objectContaining({
         notificationsSentThisPeriod: [1090],
-      })
+      }),
     );
   });
 });

@@ -8,7 +8,7 @@ import { useEffect } from "react";
 import { EditJobSkeleton } from "@/components/jobs/edit-job-skeleton";
 import { toast } from "sonner";
 import { useJob } from "@/hooks/use-jobs";
-import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
+import { SupercheckLoading } from "@/components/shared/supercheck-loading";
 
 export default function EditJobPage() {
   const params = useParams();
@@ -83,7 +83,7 @@ export default function EditJobPage() {
       <Suspense
         fallback={
           <div className="flex min-h-[400px] items-center justify-center">
-            <SuperCheckLoading size="md" message="Loading job editor..." />
+            <SupercheckLoading size="md" message="Loading job editor..." />
           </div>
         }
       >

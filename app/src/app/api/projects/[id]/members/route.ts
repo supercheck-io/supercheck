@@ -138,7 +138,7 @@ export async function POST(
     }
     
     // Validate role
-    const validRoles = ['org_owner', 'project_admin', 'project_editor', 'project_viewer'];
+    const validRoles = ['project_admin', 'project_editor', 'project_viewer'];
     if (!validRoles.includes(role)) {
       return NextResponse.json(
         { error: 'Invalid role specified' },
@@ -263,7 +263,7 @@ export async function PUT(
     }
     
     // Validate role
-    const validRoles = ['org_owner', 'project_admin', 'project_editor', 'project_viewer'];
+    const validRoles = ['project_admin', 'project_editor', 'project_viewer'];
     if (!validRoles.includes(role)) {
       return NextResponse.json(
         { error: 'Invalid role specified' },

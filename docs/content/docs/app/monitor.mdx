@@ -22,7 +22,7 @@ Simple website availability checks with SSL certificate expiration tracking
 </Card>
 
 <Card icon={<ChevronsLeftRightEllipsis className="text-cyan-600" />} title="Ping Monitor">
-Network-level ICMP ping checks for server availability and latency measurement
+TCP reachability checks on ports 443/80 for server availability
 </Card>
 
 <Card icon={<EthernetPort className="text-blue-600" />} title="Port Monitor">
@@ -43,7 +43,6 @@ The most versatile monitor type for APIs and web services.
 - Response status codes (2xx, 3xx, 4xx, 5xx)
 - Response time and latency
 - Response body content (keyword validation)
-- JSON response structure (JSON path validation)
 - SSL certificate validity and expiration
 
 **Configuration options:**
@@ -80,12 +79,11 @@ Simplified monitoring for web pages with built-in SSL tracking.
 
 ## Ping Monitor
 
-Network-level monitoring using ICMP ping.
+TCP reachability monitoring for hosts that do not expose an HTTP endpoint.
 
 **What it checks:**
-- Host is reachable on the network
-- Round-trip latency (response time)
-- Packet loss percentage
+- Host is reachable over TCP on port 443 or 80
+- Connection latency (response time)
 
 **Best for:**
 - Server availability
@@ -96,7 +94,7 @@ Network-level monitoring using ICMP ping.
 ![Create Ping Monitor](/screenshots/create-ping-monitor.png)
 
 <Callout type="warn">
-Some cloud providers and firewalls block ICMP traffic. If ping monitors fail unexpectedly, verify that ICMP is allowed on your target host.
+Ping monitors use TCP connectivity on ports 443 and 80 rather than ICMP. If the target host does not accept TCP connections on either port, the check fails.
 </Callout>
 
 ## Port Monitor
@@ -277,7 +275,7 @@ Click **AI Analyze** in the header to generate an AI-powered analysis report for
 - **Recommendations** — Actionable next steps based on observed issues (only when problems exist)
 
 <Callout type="info">
-AI Analyze requires a configured AI provider. See [Deployment](/docs/app/deployment/self-hosted#ai-configuration) for setup.
+AI Analyze requires a configured AI provider. See [Deployment](/docs/app/deployment/self-hosted#optional-configuration) for setup.
 </Callout>
 
 ### Key Metrics Bar
@@ -315,7 +313,7 @@ This visualization helps you quickly identify patterns like intermittent failure
 An interactive line chart displaying response times over time:
 
 - **100 Data Points** — Shows the most recent 100 check results
-- **Multi-Location Lines** — Different colored lines for each monitoring region
+- **Multi-Location Data** — Region is shown in the hover details
 - **Hover Details** — View exact response time and timestamp on hover
 - **Visual Patterns** — Identify latency spikes, trends, and anomalies
 
@@ -380,13 +378,3 @@ Use **Copy Prompt** to copy error details for AI-assisted debugging.
 <Callout type="info">
 **Synthetic Monitors**: Minimum interval is 5 minutes to prevent overlapping Playwright executions. Set intervals longer than your test execution time—for a 2-minute test, use 5+ minute intervals.
 </Callout>
-
-## Tags
-
-Organize monitors with color-coded tags for easy filtering and categorization.
-
-- **Create tags** — Add custom tags with any of 8 available colors
-- **Filter by tags** — Quickly find monitors by tag in the list view
-- **Bulk operations** — Apply or remove tags from multiple monitors
-
-Tags are project-scoped, so each project can have its own tagging system.

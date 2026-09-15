@@ -1,0 +1,408 @@
+import * as React from "react";
+import {
+  type ColumnDef,
+  type ColumnFiltersState,
+  type SortingState,
+  type VisibilityState,
+  type RowSelectionState,
+  type Row,
+  type Cell,
+  flexRender,
+  getCoreRowModel,
+  getFacetedRowModel,
+  getFacetedUniqueValues,
+  getFilteredRowModel,
+  getPaginationRowModel,
+  getSortedRowModel,
+  useReactTable,
+  TableMeta,
+} from "@tanstack/react-table";
+import { Loader2 } from "lucide-react";
+
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+
+import { DataTablePagination } from "./data-table-pagination";
+import { DataTableSkeleton } from "@/components/ui/data-table-skeleton";
+import { cn } from "@/lib/utils";
+
+interface DataTableProps<TData, TValue> {
+  columns: ColumnDef<TData, TValue>[];
+  data: TData[];
+  isLoading?: boolean;
+  onRowClick?: (row: Row<TData>) => void;
+  renderToolbar?: (
+    table: import("@tanstack/react-table").Table<TData>,
+  ) => React.ReactNode;
+  entityLabel?: string;
+  initialColumnVisibility?: VisibilityState;
+  skeletonColumns?: number;
+  onRowPrefetch?: (row: Row<TData>) => void;
+  cellClassName?: (cell: Cell<TData, unknown>) => string | undefined;
+  meta?: {
+    [key: string]: unknown;
+  };
+}
+
+// Define the extended meta type locally
+interface ExtendedTableMeta<TData> extends TableMeta<TData> {
+  globalFilterColumns?: string[];
+}
+
+// Generic global filter function
+function genericGlobalFilterFn(
+  row: Row<unknown>,
+  _columnId: string,
+  filterValue: string,
+) {
+  if (!filterValue) return true;
+  const search = String(filterValue).toLowerCase();
+  // We check the columns passed in meta.globalFilterColumns if available
+  const meta = row.getAllCells()[0]?.getContext().table.options
+    .meta as ExtendedTableMeta<unknown>;
+  const columns = meta?.globalFilterColumns || [
+    "id",
+    "title",
+    "name",
+    "description",
+  ];
+  const availableColumnIds = new Set(
+    row.getAllCells().map((cell) => cell.column.id),
+  );
+  const original = row.original as Record<string, unknown>;
+
+  return columns.some((id: string) => {
+    const value = availableColumnIds.has(id) ? row.getValue(id) : original[id];
+    if (typeof value === "string" || typeof value === "number") {
+      return String(value).toLowerCase().includes(search);
+    }
+    if (Array.isArray(value)) {
+      return value.some((item) => {
+        if (typeof item === "string")
+          return item.toLowerCase().includes(search);
+        if (item && typeof item === "object" && "name" in item) {
+          return String((item as { name: unknown }).name)
+            .toLowerCase()
+            .includes(search);
+        }
+        return false;
+      });
+    }
+    return false;
+  });
+}
+export function DataTable<TData, TValue>({
+  columns,
+  data,
+  isLoading,
+  onRowClick,
+  renderToolbar,
+  entityLabel,
+  initialColumnVisibility = { updatedAt: false },
+  skeletonColumns = 5,
+  onRowPrefetch,
+  cellClassName,
+  meta,
+}: DataTableProps<TData, TValue>) {
+  const [rowSelection, setRowSelection] = React.useState({});
+  const [columnVisibility, setColumnVisibility] =
+    React.useState<VisibilityState>(initialColumnVisibility);
+  const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(
+    [],
+  );
+  const [sorting, setSorting] = React.useState<SortingState>([]);
+  const [globalFilter, setGlobalFilter] = React.useState("");
+  const [mounted, setMounted] = React.useState(false);
+
+  // Track hover timers for debouncing
+  const hoverTimersRef = React.useRef<
+    Map<string, ReturnType<typeof setTimeout>>
+  >(new Map());
+
+  // Set mounted to true after initial render
+  React.useEffect(() => {
+    setMounted(true);
+
+    // Copy ref value to local variable for cleanup
+    const hoverTimers = hoverTimersRef.current;
+
+    return () => {
+      setMounted(false);
+      // Clear all hover timers on unmount
+      hoverTimers.forEach((timer) => clearTimeout(timer));
+      hoverTimers.clear();
+    };
+  }, []);
+
+  // Safe state setters that only run when component is mounted
+  const safeSetRowSelection = React.useCallback(
+    (
+      updaterOrValue:
+        | RowSelectionState
+        | ((old: RowSelectionState) => RowSelectionState),
+    ) => {
+      if (mounted) {
+        setRowSelection(updaterOrValue);
+      }
+    },
+    [mounted],
+  );
+
+  const safeSetSorting = React.useCallback(
+    (updaterOrValue: SortingState | ((old: SortingState) => SortingState)) => {
+      if (mounted) {
+        setSorting(updaterOrValue);
+      }
+    },
+    [mounted],
+  );
+
+  const safeSetColumnFilters = React.useCallback(
+    (
+      updaterOrValue:
+        | ColumnFiltersState
+        | ((old: ColumnFiltersState) => ColumnFiltersState),
+    ) => {
+      if (mounted) {
+        setColumnFilters(updaterOrValue);
+      }
+    },
+    [mounted],
+  );
+
+  const safeSetColumnVisibility = React.useCallback(
+    (
+      updaterOrValue:
+        | VisibilityState
+        | ((old: VisibilityState) => VisibilityState),
+    ) => {
+      if (mounted) {
+        setColumnVisibility(updaterOrValue);
+      }
+    },
+    [mounted],
+  );
+
+  const safeSetGlobalFilter = React.useCallback(
+    (updaterOrValue: string | ((old: string) => string)) => {
+      if (mounted) {
+        setGlobalFilter(updaterOrValue);
+      }
+    },
+    [mounted],
+  );
+
+  const table = useReactTable({
+    data,
+    columns,
+    initialState: {
+      pagination: {
+        pageSize: 12,
+      },
+    },
+    state: mounted
+      ? {
+          sorting,
+          columnVisibility,
+          rowSelection,
+          columnFilters,
+          globalFilter,
+        }
+      : {
+          sorting: [],
+          columnVisibility: {},
+          rowSelection: {},
+          columnFilters: [],
+          globalFilter: "",
+        },
+    enableRowSelection: true,
+    onRowSelectionChange: safeSetRowSelection,
+    onSortingChange: safeSetSorting,
+    onColumnFiltersChange: safeSetColumnFilters,
+    onColumnVisibilityChange: safeSetColumnVisibility,
+    onGlobalFilterChange: safeSetGlobalFilter,
+    getCoreRowModel: getCoreRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getFacetedRowModel: getFacetedRowModel(),
+    getFacetedUniqueValues: getFacetedUniqueValues(),
+    globalFilterFn: genericGlobalFilterFn,
+    meta: {
+      globalFilterColumns: meta?.globalFilterColumns || [
+        "id",
+        "title",
+        "name",
+        "description",
+      ],
+      ...meta,
+    } as ExtendedTableMeta<TData>,
+  });
+
+  // Use useEffect to reset pagination after the component has mounted
+  React.useEffect(() => {
+    // Only reset if there's data and the component is mounted
+    if (data.length > 0 && mounted) {
+      // Use setTimeout to ensure this runs after the current render cycle
+      const timeoutId = setTimeout(() => {
+        if (mounted) {
+          table.resetPageIndex(true);
+        }
+      }, 0);
+
+      return () => clearTimeout(timeoutId);
+    }
+  }, [data, table, mounted]);
+
+  // Don't render the table until the component is mounted
+  if (!mounted) {
+    return <DataTableSkeleton columns={skeletonColumns} rows={3} />;
+  }
+
+  const isInteractiveTarget = (target: HTMLElement) =>
+    !!(
+      target.closest("button") ||
+      target.closest("a") ||
+      target.closest("input") ||
+      target.closest("select") ||
+      target.closest("textarea") ||
+      target.closest('[role="button"]') ||
+      target.closest('[role="menu"]') ||
+      target.closest('[role="menuitem"]')
+    );
+
+  const handleRowClick = (event: React.MouseEvent, row: Row<TData>) => {
+    const target = event.target as HTMLElement;
+    if (isInteractiveTarget(target)) {
+      return;
+    }
+    onRowClick?.(row);
+  };
+
+  const handleRowKeyDown = (event: React.KeyboardEvent, row: Row<TData>) => {
+    const target = event.target as HTMLElement;
+    if (isInteractiveTarget(target)) {
+      return;
+    }
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      onRowClick?.(row);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      {renderToolbar?.(table)}
+      <div className="relative max-w-full overflow-x-auto rounded-t-lg border">
+        <Table className="w-full min-w-[900px]">
+          <TableHeader>
+            {table.getHeaderGroups().map((headerGroup) => (
+              <TableRow key={headerGroup.id}>
+                {headerGroup.headers.map((header) => {
+                  return (
+                    <TableHead key={header.id}>
+                      {header.isPlaceholder
+                        ? null
+                        : flexRender(
+                            header.column.columnDef.header,
+                            header.getContext(),
+                          )}
+                    </TableHead>
+                  );
+                })}
+              </TableRow>
+            ))}
+          </TableHeader>
+          <TableBody>
+            {isLoading ? (
+              <TableRow>
+                <TableCell
+                  colSpan={columns.length}
+                  className="h-24 text-center"
+                >
+                  <div className="flex justify-center items-center space-x-2">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                    <span className="text-muted-foreground">
+                      Loading data...
+                    </span>
+                  </div>
+                </TableCell>
+              </TableRow>
+            ) : table.getRowModel().rows?.length ? (
+              table.getRowModel().rows.map((row) => {
+                // Get row ID for prefetch tracking
+                const rowId = (row.original as { id?: string })?.id;
+
+                return (
+                  <TableRow
+                    key={row.id}
+                    data-state={row.getIsSelected() && "selected"}
+                    className={cn(
+                      onRowClick && "cursor-pointer hover:bg-muted/50",
+                    )}
+                    tabIndex={onRowClick ? 0 : undefined}
+                    onClick={(event) => handleRowClick(event, row)}
+                    onKeyDown={(event) => handleRowKeyDown(event, row)}
+                    onMouseEnter={() => {
+                      if (rowId && onRowClick) {
+                        // Clear any existing timer for this row
+                        const existingTimer = hoverTimersRef.current.get(rowId);
+                        if (existingTimer) clearTimeout(existingTimer);
+
+                        // Start prefetch after 150ms hover (intent detection)
+                        const timer = setTimeout(() => {
+                          onRowPrefetch?.(row);
+                          hoverTimersRef.current.delete(rowId);
+                        }, 150);
+
+                        hoverTimersRef.current.set(rowId, timer);
+                      }
+                    }}
+                    onMouseLeave={() => {
+                      // Cancel prefetch if user leaves before 150ms
+                      if (rowId) {
+                        const timer = hoverTimersRef.current.get(rowId);
+                        if (timer) {
+                          clearTimeout(timer);
+                          hoverTimersRef.current.delete(rowId);
+                        }
+                      }
+                    }}
+                  >
+                    {row.getVisibleCells().map((cell) => (
+                      <TableCell
+                        key={cell.id}
+                        className={cn("py-2.5", cellClassName?.(cell))}
+                      >
+                        {flexRender(
+                          cell.column.columnDef.cell,
+                          cell.getContext(),
+                        )}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                );
+              })
+            ) : (
+              <TableRow>
+                <TableCell
+                  colSpan={columns.length}
+                  className="h-24 text-center"
+                >
+                  No results.
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
+      <DataTablePagination table={table} entityLabel={entityLabel} />
+    </div>
+  );
+}

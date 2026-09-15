@@ -23,7 +23,7 @@ jest.mock('./queue', () => ({
   getQueues: jest.fn(),
 }));
 
-import { CapacityManager, QueuedJobData, setCapacityLogger } from './capacity-manager';
+import { CapacityManager, CapacityReservationUnavailableError, QueuedJobData, setCapacityLogger } from './capacity-manager';
 import { checkCapacityLimits } from './middleware/plan-enforcement';
 import { getRedisConnection } from './queue';
 
@@ -156,6 +156,8 @@ describe('CapacityManager', () => {
             'capacity:queued:global',
             expect.any(Number),
             expect.any(Number),
+            expect.any(Number),
+            expect.any(String),
             expect.any(Number)
           );
         });
@@ -172,6 +174,8 @@ describe('CapacityManager', () => {
             `capacity:queued:${testOrgId}`,
             expect.any(Number),
             expect.any(Number),
+            expect.any(Number),
+            expect.any(String),
             expect.any(Number)
           );
         });
@@ -192,7 +196,9 @@ describe('CapacityManager', () => {
             expect.any(String),
             10,
             100,
-            86400
+            86400,
+            expect.any(String),
+            expect.any(Number)
           );
         });
       });
@@ -209,30 +215,29 @@ describe('CapacityManager', () => {
         it('should fail closed on non-transient Redis error', async () => {
           mockRedisEval.mockRejectedValue(new Error('Redis connection failed'));
           
-          const result = await capacityManager.reserveSlot(testOrgId);
-          
-          expect(result).toBe(0);
+          await expect(
+            capacityManager.reserveSlot(testOrgId)
+          ).rejects.toBeInstanceOf(CapacityReservationUnavailableError);
           expect(mockLogger.error).toHaveBeenCalled();
         });
 
-        it('should fail open after retries on transient Redis error (ECONNREFUSED)', async () => {
+        it('should fail closed after retries on transient Redis error (ECONNREFUSED)', async () => {
           mockRedisEval.mockRejectedValue(new Error('connect ECONNREFUSED 10.43.0.1:6379'));
           
-          const result = await capacityManager.reserveSlot(testOrgId);
-          
-          // Fail open: allow the job through
-          expect(result).toBe(1);
+          await expect(
+            capacityManager.reserveSlot(testOrgId)
+          ).rejects.toBeInstanceOf(CapacityReservationUnavailableError);
           // Should have retried 3 times (3 calls to eval)
           expect(mockRedisEval).toHaveBeenCalledTimes(3);
           expect(mockLogger.warn).toHaveBeenCalled();
         });
 
-        it('should fail open after retries on transient Redis error (READONLY)', async () => {
+        it('should fail closed after retries on transient Redis error (READONLY)', async () => {
           mockRedisEval.mockRejectedValue(new Error('READONLY You can\'t write against a read only replica'));
           
-          const result = await capacityManager.reserveSlot(testOrgId);
-          
-          expect(result).toBe(1);
+          await expect(
+            capacityManager.reserveSlot(testOrgId)
+          ).rejects.toBeInstanceOf(CapacityReservationUnavailableError);
           expect(mockRedisEval).toHaveBeenCalledTimes(3);
         });
 
@@ -250,9 +255,9 @@ describe('CapacityManager', () => {
         it('should fail closed on capacity check error', async () => {
           mockCheckCapacityLimits.mockRejectedValue(new Error('Plan not found'));
           
-          const result = await capacityManager.reserveSlot(testOrgId);
-          
-          expect(result).toBe(0);
+          await expect(
+            capacityManager.reserveSlot(testOrgId)
+          ).rejects.toBeInstanceOf(CapacityReservationUnavailableError);
         });
       });
 
@@ -280,7 +285,9 @@ describe('CapacityManager', () => {
             expect.any(String),
             expect.any(Number),
             expect.any(Number),
-            86400
+            86400,
+            expect.any(String),
+            expect.any(Number)
           );
         });
       });
@@ -535,9 +542,9 @@ describe('CapacityManager', () => {
       it('should reject reservation on any error', async () => {
         mockRedisEval.mockRejectedValue(new Error('Unknown error'));
         
-        const result = await capacityManager.reserveSlot(testOrgId);
-        
-        expect(result).toBe(0);
+        await expect(
+          capacityManager.reserveSlot(testOrgId)
+        ).rejects.toBeInstanceOf(CapacityReservationUnavailableError);
       });
     });
 
@@ -574,6 +581,8 @@ describe('CapacityManager', () => {
           'capacity:queued:',
           expect.any(Number),
           expect.any(Number),
+          expect.any(Number),
+          expect.any(String),
           expect.any(Number)
         );
       });
@@ -591,6 +600,8 @@ describe('CapacityManager', () => {
           `capacity:queued:${specialId}`,
           expect.any(Number),
           expect.any(Number),
+          expect.any(Number),
+          expect.any(String),
           expect.any(Number)
         );
       });

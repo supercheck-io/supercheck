@@ -162,11 +162,10 @@ function SignInPageContent() {
           return;
         }
 
-        // Show lockout message if locked, otherwise show error with warning
+        // Keep pre-lockout errors generic. Exposing attempts remaining only for
+        // known accounts enables account enumeration.
         if (failedData.isLocked) {
           setError(failedData.message || "Too many failed attempts. Account temporarily locked.");
-        } else if (failedData.message) {
-          setError(`${error.message || "An error occurred"}. ${failedData.message}`);
         } else {
           setError(error.message || "An error occurred");
         }

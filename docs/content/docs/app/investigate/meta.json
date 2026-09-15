@@ -1,0 +1,9 @@
+{
+  "title": "Investigate (AI SRE)",
+  "description": "AI incident investigation and resolution",
+  "pages": [
+    "index",
+    "incidents",
+    "connectors"
+  ]
+}

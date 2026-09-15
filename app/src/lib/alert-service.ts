@@ -2,6 +2,7 @@ import { db } from "@/utils/db";
 import {
   alerts,
   Alert,
+  AlertDeliveryMetadata,
   alertHistory,
   AlertType,
   AlertStatus,
@@ -31,6 +32,7 @@ export class AlertService {
     providerId: string;
     status: AlertStatus;
     errorMessage?: string;
+    deliveryMetadata?: AlertDeliveryMetadata;
   }): Promise<void> {
     try {
       await db.insert(alertHistory).values({
@@ -43,6 +45,7 @@ export class AlertService {
         provider: alertData.providerId,
         status: alertData.status,
         errorMessage: alertData.errorMessage || null,
+        deliveryMetadata: alertData.deliveryMetadata,
         sentAt: new Date(),
       });
 

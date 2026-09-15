@@ -1,0 +1,9 @@
+{
+  "title": "Supercheck Recorder",
+  "description": "Record browser flows and save Playwright tests",
+  "root": true,
+  "icon": "MousePointerClick",
+  "pages": [
+    "index"
+  ]
+}

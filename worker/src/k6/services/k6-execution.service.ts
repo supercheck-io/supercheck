@@ -15,6 +15,7 @@ import {
   pathExists,
 } from '../../common/utils/file-search';
 import { filterFileVariablesToUsedKeys } from '../../common/utils/script-analysis';
+import { VariableResolverService } from '../../common/services/variable-resolver.service';
 
 // Utility function to safely get error message
 function getErrorMessage(error: unknown): string {
@@ -98,6 +99,7 @@ export class K6ExecutionService {
     private dbService: DbService,
     private redisService: RedisService,
     private containerExecutorService: ContainerExecutorService,
+    private variableResolverService: VariableResolverService,
   ) {
     // Check for k6 binary in multiple common locations
     const configuredPath = this.configService.get<string>('K6_BIN_PATH', '');
@@ -245,6 +247,15 @@ export class K6ExecutionService {
    * Execute a k6 performance test
    */
   async runK6Test(task: K6ExecutionTask): Promise<K6ExecutionResult> {
+    const resolved = await this.variableResolverService.resolveProjectVariables(
+      task.projectId,
+    );
+    task = {
+      ...task,
+      variables: resolved.variables,
+      secrets: resolved.secrets,
+      files: resolved.files,
+    };
     const { runId, testId: _testId, script, location } = task;
     const runtimeVariables = task.variables ?? {};
     const runtimeSecrets = task.secrets ?? {};

@@ -38,6 +38,7 @@ const LOCKOUT_THRESHOLDS = [
 
 // Attempts expire after 24 hours of no activity
 const ATTEMPTS_TTL_SECONDS = 24 * 60 * 60;
+type RedisConnection = Awaited<ReturnType<typeof getRedisConnection>>;
 
 export interface LockoutStatus {
   isLocked: boolean;
@@ -78,6 +79,19 @@ function calculateAttemptsRemaining(attempts: number): number {
   return 0; // Already at max lockout
 }
 
+async function getReadyRedisConnection(identifier: string, operation: string): Promise<RedisConnection | null> {
+  const redis = await getRedisConnection();
+  if (!redis || redis.status !== "ready") {
+    logger.warn(
+      { identifier: identifier.substring(0, 8), operation, status: redis?.status ?? "unavailable" },
+      "Redis unavailable for login lockout, failing open"
+    );
+    return null;
+  }
+
+  return redis;
+}
+
 /**
  * Check if an identifier is currently locked out
  * 
@@ -88,13 +102,9 @@ export async function checkLockout(identifier: string): Promise<LockoutStatus> {
   const normalizedId = normalizeIdentifier(identifier);
   
   try {
-    const redis = await getRedisConnection();
+    const redis = await getReadyRedisConnection(normalizedId, "check");
     if (!redis) {
       // Fail open if Redis unavailable
-      logger.warn(
-        { identifier: normalizedId.substring(0, 8) },
-        "Redis unavailable for lockout check, allowing request"
-      );
       return {
         isLocked: false,
         attemptsRemaining: LOCKOUT_THRESHOLDS[0].attempts,
@@ -147,12 +157,8 @@ export async function recordFailedAttempt(identifier: string): Promise<LockoutSt
   const normalizedId = normalizeIdentifier(identifier);
   
   try {
-    const redis = await getRedisConnection();
+    const redis = await getReadyRedisConnection(normalizedId, "record_failed_attempt");
     if (!redis) {
-      logger.warn(
-        { identifier: normalizedId.substring(0, 8) },
-        "Redis unavailable for recording failed attempt"
-      );
       return {
         isLocked: false,
         attemptsRemaining: LOCKOUT_THRESHOLDS[0].attempts,
@@ -227,7 +233,7 @@ export async function clearLockout(identifier: string): Promise<void> {
   const normalizedId = normalizeIdentifier(identifier);
   
   try {
-    const redis = await getRedisConnection();
+    const redis = await getReadyRedisConnection(normalizedId, "clear");
     if (!redis) {
       return;
     }
@@ -252,7 +258,7 @@ export async function getAttemptCount(identifier: string): Promise<number> {
   const normalizedId = normalizeIdentifier(identifier);
   
   try {
-    const redis = await getRedisConnection();
+    const redis = await getReadyRedisConnection(normalizedId, "get_attempt_count");
     if (!redis) {
       return 0;
     }
@@ -289,7 +295,7 @@ export async function adminUnlock(identifier: string): Promise<boolean> {
   const normalizedId = normalizeIdentifier(identifier);
   
   try {
-    const redis = await getRedisConnection();
+    const redis = await getReadyRedisConnection(normalizedId, "admin_unlock");
     if (!redis) {
       return false;
     }

@@ -1,4 +1,4 @@
-# Copilot Instructions for SuperCheck
+# Copilot Instructions for Supercheck
 
 ## Development Commands
 
@@ -32,10 +32,12 @@ npm run generate-docs
 
 ## High-Level Architecture
 
-- Supercheck is split into three runnable apps:
+- Supercheck is organized into five primary packages:
   - `/app`: Next.js frontend + API
   - `/worker`: NestJS BullMQ workers for Playwright, k6, and monitor execution
   - `/docs`: Next.js docs site
+  - `/cli`: Command-line client
+  - `/recorder`: Browser recorder and extension packages
 - Execution flow is: UI/API request -> App API route creates/updates DB run rows -> App enqueues BullMQ jobs in Redis -> Worker processors execute and update statuses/artifacts -> results are stored in Postgres + S3/MinIO.
 - Queue topology is intentionally mixed:
   - Playwright: single global queue (`playwright-global`)
@@ -85,9 +87,9 @@ npm run generate-docs
 - **Docker vs local dev paths**: `ContainerExecutorService` exposes `resolveWorkerDir()` (`/worker` in Docker, `process.cwd()` locally) and `resolveBrowsersPath()` (`/ms-playwright` in Docker, `undefined` locally). Use these instead of hardcoding Docker paths.
 
 ### E2E auth convention
-- E2E tests use `loginIfNeeded()` in each test file's `beforeEach` (see `/app/e2e/playwright.config.ts` and `/app/e2e/tests/**`); no shared Playwright storage-state auth file.
+- E2E authentication is prepared by the Playwright setup project and saved to `user-auth-state.json`; the Chromium project consumes that storage state. Use `loginIfNeeded()` only for tests that explicitly need to establish or repair a session.
 
 ## Repository Notes
 
 - `README.md` is the primary product/architecture overview for this monorepo.
-- `CONTRIBUTING.md` currently states that external contributions are not being accepted.
+- External pull requests are welcome. See `CONTRIBUTING.md` for the current policy and operational boundaries.

@@ -2,42 +2,92 @@
 
 All notable changes to Supercheck are documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+## [1.3.6]
+
+### Added
+
+- Added AI SRE incident management, service topology, investigation workflows, Copilot, diagnostic recipes, and Private Agents.
+- Added AI SRE support to the public API and CLI 0.2.0, including incident operations, service topology, Copilot chat, and evidence-brief streaming.
+- Expanded observability and incident integrations, including Datadog, Sentry, Elasticsearch/OpenSearch, GitLab, PagerDuty, and Opsgenie.
+
+### Changed
+
+- Improved AI SRE workflows and consolidated the CLI and Recorder with the main open-source project.
+
+### Fixed
+
+- Improved Kubernetes execution reliability and failure reporting.
+- Fixed Polar usage synchronization and reliability issues across AI SRE investigations, connectors, and reports.
+
+### Security
+
+- Strengthened tenant isolation, RBAC, outbound request safety, execution safeguards, and self-hosted secret generation.
+
+### Removed
+
+- Removed the unsupported Coolify deployment template; self-hosting remains supported through Docker Compose, K3s, and gVisor.
+
+## [CLI 0.1.4] - 2026-09-10
+
+### Fixed
+
+- Improved test-source uploads and notification configuration drift detection.
+
+## [CLI 0.1.3] - 2026-06-26
+
+### Fixed
+
+- Preserved notification secrets safely across pull, diff, and deploy workflows.
+
+## [CLI 0.1.2]
+
+- Initial tracked release of `@supercheck/cli`.
 
 ## [1.3.5] - 2026-06-17
 
 ### Added
+
 - PagerDuty and OpsGenie integration via webhook provider now supports custom JSON body templates and configurable HTTP methods for full compatibility with third-party alerting systems. See [#294](https://github.com/supercheck-io/supercheck/issues/294) for details and usage examples.
 - PagerDuty alert lifecycle actions and deduplication keys to reduce noise and support auto-resolution flows.
 - Billing spending limits with notifications and usage synchronization to prevent runaway costs.
 - Blocked job status and billing error handling for clearer visibility into quota- or payment-related execution failures.
 
 ### Fixed
+
 - Webhook body template rendering now parses and re-serializes JSON before delivery so interpolated alert values stay escaped safely.
 - Webhook methods are now normalized consistently across provider validation, connection testing, and worker delivery to avoid GET requests with request bodies.
 
 ### Security
+
 - Updated dependencies to patch known security vulnerabilities.
 
 ## [1.3.4] - 2026-04-13
 
 ### Added
+
 - Configurable API CORS allowlist for self-hosted deployments via `CORS_ALLOWED_ORIGINS`, including support for browser-based integrations such as Azure DevOps dashboard widgets and wildcard subdomains like `https://*.visualstudio.com` ([#280](https://github.com/supercheck-io/supercheck/issues/280))
 - **File variables for reusable test data** — Project variables can now store text-based files such as CSV, JSON, YAML, XML, TSV, and plain-text fixtures for runtime use in Playwright and k6 tests ([#271](https://github.com/supercheck-io/supercheck/issues/271))
 - Database migration `0011_deep_hellcat.sql` adding `config_id` column to `apikey` table (required by `@better-auth/api-key` v1.6.0)
 
 ### Changed
+
 - Self-hosted Docker Compose variants now expose `CORS_ALLOWED_ORIGINS` consistently on App deployments while keeping the default value empty for secure-by-default behavior
 - Self-hosted custom-domain deployment guidance now clarifies that the Traefik catch-all router preserves routing for verified hostnames, while TLS certificates for arbitrary custom domains must be provided explicitly
 - Upgraded `better-auth` from v1.4.5 to v1.6.0 and migrated the api-key plugin to standalone `@better-auth/api-key` package
 - Renamed `apikey.userId` → `apikey.referenceId` in Drizzle schema to match the `@better-auth/api-key` v1.6.0 field rename (database column stays as `user_id` for backward compatibility)
 
 ### Fixed
+
 - Fixed the organization member invite dialog layout so the modal renders correctly without the previous blowout/overflow issue ([#277](https://github.com/supercheck-io/supercheck/issues/277))
 - Fixed self-hosted status page domain handling so dashboard View/Copy actions preserve the full configured `STATUS_PAGE_DOMAIN` value, including subdomains when used ([#282](https://github.com/supercheck-io/supercheck/issues/282))
 - Fixed self-hosted status page custom-domain routing and guidance so verified custom domains load correctly and consistently use the full configured `STATUS_PAGE_DOMAIN` value for CNAME targets and troubleshooting ([#253](https://github.com/supercheck-io/supercheck/issues/253))
 
 ### Security
+
 - Security upgrades and dependency patching for improved runtime, template, parser, email, and session handling safety.
 
 ## [1.3.3] - 2026-03-22
@@ -47,6 +97,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 > This release replaces the Docker socket-based test execution with a new sandboxed execution model powered by **K3s** and **gVisor**. Self-hosted deployments that previously used Docker Compose will need to run the new setup script (`setup-k3s.sh`) before upgrading. The worker container no longer requires access to the Docker socket.
 >
 > **What this means for self-hosted users:**
+>
 > - A one-time infrastructure setup is required — run `sudo bash setup-k3s.sh` on your Linux host before starting services
 > - Linux (amd64/arm64) is required — Ubuntu 22.04+, Debian 12+, or equivalent
 > - The Docker Compose configuration has changed — the worker now mounts a Kubernetes kubeconfig instead of the Docker socket
@@ -55,36 +106,41 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 > Please refer to the updated [self-hosted deployment guide](https://supercheck.io/docs/app/deployment/self-hosted) for step-by-step upgrade instructions.
 
 ### Added
+
 - **Sandboxed execution with gVisor** — Test and monitor execution now runs inside gVisor-sandboxed Kubernetes pods, providing kernel-level isolation for all user-submitted scripts ([#276](https://github.com/supercheck-io/supercheck/issues/276))
 - **Dynamic locations system** — Locations are now database-managed instead of hardcoded constants. Super Admins can add, edit, and enable/disable locations from the admin dashboard. Workers dynamically discover regional queues. Per-project location restrictions are available ([#248](https://github.com/supercheck-io/supercheck/issues/248), [#249](https://github.com/supercheck-io/supercheck/issues/249), [#250](https://github.com/supercheck-io/supercheck/issues/250))
 
 ### Changed
+
 - **Execution model migration** — Replaced Docker socket-based container execution with Kubernetes Jobs running under gVisor. Workers now use a scoped kubeconfig instead of mounting the Docker socket
 - Updated Docker Compose configuration — worker runs as non-root (UID 1000), read-only filesystem with tmpfs mounts, all capabilities dropped
 - Worker services now use Kubernetes API for container lifecycle management, log streaming, and artifact extraction
 - Improved deployment documentation with detailed infrastructure requirements and setup guides
 
 ### Fixed
+
 - Improved dynamic worker stability — fixed queue discovery retry loops, heartbeat timing windows, stale queue cleanup, and graceful degradation when Redis is unavailable
 - Fixed multi-recipient alert email delivery for comma-separated email channels by sending messages sequentially over SMTP and reporting partial delivery failures accurately ([#269](https://github.com/supercheck-io/supercheck/issues/269))
 
 ### Security
+
 - **gVisor sandboxing** — All user-submitted test scripts now execute under gVisor's userspace kernel, replacing the previous shared-kernel Docker isolation
 - Worker containers run with restricted Pod Security Standards — non-root user, read-only filesystem, all capabilities dropped, no privilege escalation
 - Network policies restrict execution pods from accessing internal services and cloud metadata endpoints
 - Updated Next.js to 16.1.7 — fixes request smuggling, CSRF bypass, and DoS vulnerabilities
 - Patched fast-xml-parser, file-type, yauzl, flatted, and ajv for various CVEs and DoS vulnerabilities
 
-
 ## [1.3.2] - 2026-03-12
 
 ### Added
+
 - **Registration controls for self-hosted deployments** — New `SIGNUP_ENABLED` environment variable to enable/disable new user registration, and `ALLOWED_EMAIL_DOMAINS` to restrict signup to specific email domains ([#246](https://github.com/supercheck-io/supercheck/issues/246))
 - **Organization rename** — Organization owners and admins can now rename their organization from the Organization Admin page ([#247](https://github.com/supercheck-io/supercheck/issues/247))
 - Added a UI callout on the self-hosted sign-up page to inform users about organization invitations
 - **Status page support contact CTA** — Public status pages and incident notifications can now expose a `Get in touch` action backed by either an email address or a support URL ([#263](https://github.com/supercheck-io/supercheck/issues/263))
 
 ### Changed
+
 - Streamlined admin interface by removing unused user creation functionality ([#245](https://github.com/supercheck-io/supercheck/issues/245))
 - Clarified self-hosted scaling semantics across deployment docs and compose templates: `RUNNING_CAPACITY` and `QUEUED_CAPACITY` are App-side gating controls, while `WORKER_REPLICAS` remains the worker-side scaling knob
 - Improved admin impersonation handling and session management flows
@@ -93,6 +149,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - Reduced the monitor form name minimum from 10 to 3 characters to better support short operational labels ([#259](https://github.com/supercheck-io/supercheck/discussions/259))
 
 ### Fixed
+
 - Fixed Playwright report loading performance. Implemented report caching across Playground, Runs, and Monitor views to prevent unnecessary re-fetching on tab switches
 - Prevented caching of error responses from report proxy to avoid stale missing-report states after uploads complete
 - Fixed false "Queue capacity limit reached" errors during Redis Sentinel failover
@@ -105,6 +162,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - Added a failed linked monitors overview card on status pages so operators can see linked monitor failures without paging through the full monitor table ([#259](https://github.com/supercheck-io/supercheck/discussions/259))
 
 ### Security
+
 - Fixed DoS vulnerability in underscore via unlimited recursion in `_.flatten` and `_.isEqual` (patched to 1.13.8)
 - Fixed DoS vulnerabilities in multer via resource exhaustion and incomplete cleanup (patched to 2.1.0)
 - Fixed RCE vulnerability in serialize-javascript via `RegExp.flags` and `Date.prototype.toISOString()` (patched to 7.0.3)
@@ -114,12 +172,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ## [1.3.1] - 2026-02-25
 
 ### Added
+
 - **Multi-language support for status pages** — Localized UI strings in 20+ languages (Arabic, Chinese, Czech, Danish, Dutch, English, Finnish, French, German, Hindi, Croatian, Hungarian, Italian, Japanese, Korean, Norwegian, Polish, Portuguese, Romanian, Russian, Spanish, Swedish, Turkish, Ukrainian) ([#237](https://github.com/supercheck-io/supercheck/issues/237))
 - **Status badges** — SVG badges for embedding current system status on external websites and READMEs
 - **iCal calendar feed** — Subscribe to status page incidents in calendar applications (Google Calendar, Apple Calendar, Outlook)
 - Email sign-up functionality for improved user onboarding ([#241](https://github.com/supercheck-io/supercheck/issues/241))
 
 ### Changed
+
 - Enhanced public status page UI with improved incident details and subscription management
 - Improved custom domain setup instructions with dynamic DNS record table, numbered steps, and Cloudflare proxy warning
 - Improved mobile responsiveness across status page components and public views
@@ -132,17 +192,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - SMTP_USER and SMTP_PASSWORD environment variables are now optional to support email services that do not require authentication
 
 ### Security
+
 - Fixed vulnerability in fast-xml-parser
 - Added hex color validation for status badge SVG generation to prevent injection
 - Fixed ReDoS vulnerability in minimatch (patched via dependency overrides)
 
 ### Fixed
+
 - Fixed bug where custom domains could not be removed from status pages
+
 ---
 
 ## [1.3.0] - 2026-02-16
 
 ### Added
+
 - **New CLI** — Command-line interface for Testing, Monitoring, and Reliability — as Code (`npm install -g @supercheck/cli`)
 - **AI Analyze for Monitors** — Generate AI-powered health assessments and performance analysis for any monitor
 - **AI Analyze for Job Runs** — Get AI-powered failure diagnosis and execution insights for Playwright and K6 runs
@@ -150,6 +214,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - API proxy helper used by the CLI and documentation
 
 ### Changed
+
 - Improved invitation flows and member project assignment handling
 - Org members API now returns both pending and expired invitations for explicit client-side state handling
 - Updated CLI command flags and documentation
@@ -157,6 +222,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - Refactored secret handling and execution logging for safer runtime behavior
 
 ### Security
+
 - Fixed DoS vulnerability in fast-xml-parser (CVE)
 - Added organization authorization checks for AI analysis endpoints
 - Strengthened secret redaction flow in execution outputs before persistence/return
@@ -166,19 +232,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ## [1.2.3] - 2026-01-22
 
 ### Added
-- **Microsoft Edge browser extension** — Supercheck Recorder Extension for [Microsoft Edge](https://microsoftedge.microsoft.com/addons/detail/supercheck-recorder/ngmlkgfgmdnfpddohcbfdgihennolnem)
+
+- **Microsoft Edge browser extension** — Supercheck Recorder Extension for [Microsoft Edge](https://microsoftedge.microsoft.com/addons/detail/supercheck-recorder/0rdckc265vb9)
 - **Upside down monitor** — Monitor for services that should be DOWN ([#197](https://github.com/supercheck-io/supercheck/issues/197))
 - **Custom headers for HTTP monitors** — Pass custom headers in HTTP monitor requests ([#196](https://github.com/supercheck-io/supercheck/issues/196))
 - **Coolify deployment template** — Deployment configuration for Coolify ([#182](https://github.com/supercheck-io/supercheck/issues/182))
 - Variable and secret resolution support for synthetic monitor scripts ([#201](https://github.com/supercheck-io/supercheck/issues/201))
 
 ### Changed
+
 - Improved data freshness with optimized React Query refetch strategies
 - Enhanced self-hosting documentation
 - Standardized loading spinners and loading states across main routes
 - Updated logo and community links in navigation
 
 ### Fixed
+
 - Monitor creation wizard button labels and icon inconsistency ([#198](https://github.com/supercheck-io/supercheck/issues/198))
 - New MS Teams webhook URLs not allowed for notifications ([#195](https://github.com/supercheck-io/supercheck/issues/195))
 - Cache invalidation for requirements and cross-entity data consistency
@@ -189,6 +258,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ## [1.2.2] - 2026-01-17
 
 ### Added
+
 - **Supercheck Recorder extension** — Browser extension for Chromium based browsers to record user interactions and generate Playwright tests
 - Extension auto-connect feature from Playground to Recorder with seamless handshake
 - Requirements management system with AI-powered extraction from documents
@@ -199,12 +269,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - Centralized AI provider configuration system
 
 ### Changed
+
 - Enhanced React Query caching strategy for faster page loads
 - Updated new logo and added community links to the navigation header
 - Enhanced webhook URL validation with allowlist for Teams
 - Improved text sanitization for security
 
 ### Fixed
+
 - Race condition in cache restoration during page navigation
 - Unnecessary loading spinners when cached data is available
 - CVE-2026-0621: ReDoS vulnerability in @modelcontextprotocol/sdk (GHSA-8r9q-7v3j-jr4g) by downgrading shadcn CLI to v2.5.0
@@ -218,6 +290,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ## [1.2.1] - 2025-12-17
 
 ### Added
+
 - Multi-region worker architecture with location-aware queue processing
 - Live health check endpoint for workers
 - Data table row hover prefetching for improved UX
@@ -230,6 +303,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - Server-side data fetching for status pages
 
 ### Changed
+
 - Consolidated data fetching with React Query hooks for improved caching
 - Optimized dashboard API by aggregating execution times in SQL
 - Reduced logging verbosity in production
@@ -237,6 +311,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - Centralized Monaco editor theme definitions
 
 ### Fixed
+
 - System health calculation accuracy
 - Dashboard monitor count reliability
 - Job status event cache eviction
@@ -245,6 +320,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - Exclude 'error' status from failed run counts in analytics
 
 ### Performance
+
 - Optimized data fetching with project context caching
 - Increased stale times for better cache utilization
 - Chunked script fetches to prevent timeouts
@@ -255,6 +331,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ## [1.2.0] - 2025-11-16
 
 ### Added
+
 - AI-powered test generation for Browser, API, and Performance tests
 - AI-powered K6 performance test analysis with comparison UI
 - K6 performance testing integration with xk6-dashboard extension
@@ -278,6 +355,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - Atomic job capacity enforcement using Redis Lua scripts
 
 ### Changed
+
 - Redesigned dashboard with K6 performance statistics
 - Migrated run duration to milliseconds for precision
 - Standardized execution time display and K6 usage tracking to minutes
@@ -288,12 +366,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - Updated status page list UI
 
 ### Fixed
+
 - App build issue with Next.js standalone build path in Dockerfile
 - Multiple ESLint issues across the application
 - SSE reconnection logic
 - Self-hosted deployment documentation link path
 
 ### Security
+
 - Hardened input sanitization and validation
 - SSRF and ReDoS protection across components
 - Tightened Slack and Discord webhook URL validation
@@ -306,6 +386,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ## [1.1.0] - 2025-09-22
 
 ### Added
+
 - Initial monitoring system (HTTP, Ping, Port checks)
 - Alert configuration with multiple notification providers
 - Job scheduling with cron expressions
@@ -314,6 +395,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - AI model configuration (GPT-4o-mini default)
 
 ### Changed
+
 - Refactored environment variables for improved configurability
 - Enhanced Docker Compose for production readiness
 
@@ -322,6 +404,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ## [1.0.0] - 2025-08-29
 
 ### Added
+
 - Initial release of Supercheck
 - Playwright-based browser testing
 - API testing capabilities

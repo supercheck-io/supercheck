@@ -25,6 +25,9 @@ jest.mock("@/lib/auth-context", () => ({
 }));
 
 import { db } from "@/utils/db";
+import { getQueueEventHub } from "@/lib/queue-event-hub";
+import { requireAuthContext } from "@/lib/auth-context";
+import { GET } from "./route";
 import { shouldStreamTestStatusEvent } from "./route.helpers";
 import {
   fetchEventStatusReport,
@@ -33,6 +36,9 @@ import {
 
 const mockReportsFindFirst = db.query.reports.findFirst as jest.Mock;
 const mockRunsFindFirst = db.query.runs.findFirst as jest.Mock;
+const mockTestsFindFirst = db.query.tests.findFirst as jest.Mock;
+const mockGetQueueEventHub = getQueueEventHub as jest.Mock;
+const mockRequireAuthContext = requireAuthContext as jest.Mock;
 
 describe("test-status event filtering", () => {
   beforeEach(() => {
@@ -140,5 +146,60 @@ describe("test-status event filtering", () => {
 
     expect(mockReportsFindFirst).toHaveBeenCalledTimes(2);
     expect(mockRunsFindFirst).toHaveBeenCalledTimes(1);
+  });
+
+  it("reconciles a persisted terminal report when no queue event arrives", async () => {
+    jest.useFakeTimers();
+    try {
+      const unsubscribe = jest.fn();
+      mockRequireAuthContext.mockResolvedValue({
+        organizationId: "org-1",
+        project: { id: "project-1" },
+      });
+      mockTestsFindFirst.mockResolvedValue({ id: "test-1" });
+      mockGetQueueEventHub.mockReturnValue({
+        ready: jest.fn().mockResolvedValue(undefined),
+        subscribe: jest.fn().mockReturnValue(unsubscribe),
+      });
+      mockReportsFindFirst
+        .mockResolvedValueOnce({
+          status: "running",
+          reportPath: "test-1/report",
+          s3Url: null,
+        })
+        .mockResolvedValueOnce({
+          status: "passed",
+          reportPath: "test-1/report",
+          s3Url: "https://example.com/test-1/report/index.html",
+        });
+
+      const abortController = new AbortController();
+      const response = await GET(
+        new Request("http://localhost/api/test-status/events/test-1", {
+          signal: abortController.signal,
+        })
+      );
+      const reader = response.body?.getReader();
+      expect(reader).toBeDefined();
+
+      const decoder = new TextDecoder();
+      expect(decoder.decode((await reader!.read()).value)).toBe(
+        ": connected\n\n"
+      );
+      expect(decoder.decode((await reader!.read()).value)).toContain(
+        '"derivedStatus":"running"'
+      );
+
+      await jest.advanceTimersByTimeAsync(3000);
+      const reconciled = decoder.decode((await reader!.read()).value);
+      expect(reconciled).toContain('"derivedStatus":"passed"');
+      expect(reconciled).toContain('"reportStatus":"passed"');
+
+      abortController.abort();
+      await jest.runOnlyPendingTimersAsync();
+      expect(unsubscribe).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });

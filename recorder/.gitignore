@@ -1,0 +1,16 @@
+node_modules/
+lib/
+.eslintcache
+./dist
+./*dist
+./*node_modules
+
+# Build artifacts
+*.tsbuildinfo
+
+# Test outputs
+test-results/
+playwright-report/
+
+# IDE
+.idea/

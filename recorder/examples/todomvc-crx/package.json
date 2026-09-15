@@ -1,0 +1,19 @@
+{
+  "name": "todomvc-crx",
+  "version": "0.15.0",
+  "type": "module",
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "scripts": {
+    "build": "tsc && vite build"
+  },
+  "dependencies": {
+    "playwright-crx": "0.15.0"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.281",
+    "typescript": "^5.7.3",
+    "vite": "^6.1.0"
+  }
+}

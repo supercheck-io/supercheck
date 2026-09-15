@@ -48,19 +48,25 @@ export default async function AdminLayout({
         <SidebarProvider>
           <AppSidebar />
           <SidebarInset>
-            <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center justify-between gap-2 border-b bg-background transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12">
-              <div className="flex items-center gap-2 px-4">
+            <header className="sticky top-0 z-10 flex h-14 min-w-0 shrink-0 items-center justify-between gap-2 border-b bg-background transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12">
+              <div className="flex min-w-0 flex-1 items-center gap-2 px-2 sm:px-4">
                 <SidebarTrigger className="-ml-1" />
                 <Separator
                   orientation="vertical"
                   className="mr-2 data-[orientation=vertical]:h-4"
                 />
-                <BreadcrumbDisplay />
+                <div className="min-w-0 overflow-hidden">
+                  <BreadcrumbDisplay />
+                </div>
               </div>
-              <div className="flex items-center gap-4 px-4">
-                <DemoBadge />
+              <div className="flex shrink-0 items-center gap-2 px-2 sm:gap-4 sm:px-4">
+                <div className="hidden xl:block">
+                  <DemoBadge />
+                </div>
                 <CommandSearch />
-                <CommunityLinks />
+                <div className="hidden lg:block">
+                  <CommunityLinks />
+                </div>
                 <NavUser />
               </div>
             </header>

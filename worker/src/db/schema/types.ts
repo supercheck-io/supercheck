@@ -176,6 +176,38 @@ export type AlertType =
 
 export type AlertStatus = 'sent' | 'failed' | 'pending';
 
+export type AlertDeliveryMetadata = {
+  version: 1;
+  provider: {
+    id: string;
+    type?: NotificationProviderType;
+    preset?: string;
+  };
+  source: {
+    alertType: AlertType;
+    targetType: 'monitor' | 'job';
+    targetId: string;
+    projectId?: string;
+    monitorId?: string;
+    jobId?: string;
+    runId?: string;
+  };
+  correlation?: {
+    dedupKey?: string;
+    eventAction?: string;
+    externalIncidentKey?: string;
+    externalUrl?: string;
+  };
+  delivery: {
+    status: AlertStatus;
+    sentAt: string;
+    attempts?: number;
+    responseStatus?: number;
+    responseHash?: string;
+    errorHash?: string;
+  };
+};
+
 // Notification types
 export type NotificationProviderType =
   | 'email'
@@ -198,6 +230,13 @@ export type PlainNotificationProviderConfig = {
   emails?: string;
   webhookUrl?: string;
   channel?: string;
+  preset?:
+    | 'custom'
+    | 'pagerduty'
+    | 'opsgenie'
+    | 'splunk_on_call'
+    | 'better_stack'
+    | 'incident_io';
   url?: string;
   method?: 'GET' | 'POST' | 'PUT';
   headers?: Record<string, string>;

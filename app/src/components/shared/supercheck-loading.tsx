@@ -4,25 +4,25 @@ import { cn } from "@/lib/utils";
 
 import { SupercheckLogo } from "@/components/logo/supercheck-logo";
 
-interface SuperCheckLoadingProps {
+interface SupercheckLoadingProps {
     message?: string;
     size?: "sm" | "md" | "lg";
     className?: string;
 }
 
 /**
- * SuperCheckLoading - A clean, professional branded loading component
+ * SupercheckLoading - A clean, professional branded loading component
  * 
  * Features:
  * - Prominent Bolder Logo
  * - Muted spinner ring
  * - Static, professional text (no flashing)
  */
-export function SuperCheckLoading({
+export function SupercheckLoading({
     message = "Loading...",
     size = "md",
     className
-}: SuperCheckLoadingProps) {
+}: SupercheckLoadingProps) {
     // Config: Logo size and Spinner size
     // Spinner is tighter to logo now
     const sizeConfig = {
@@ -64,7 +64,7 @@ export function SuperCheckLoading({
 }
 
 /**
- * FullPageLoading - Full page loading overlay with SuperCheck branding
+ * FullPageLoading - Full page loading overlay with Supercheck branding
  */
 export function FullPageLoading({
     message = "Loading..."
@@ -73,7 +73,7 @@ export function FullPageLoading({
 }) {
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
-            <SuperCheckLoading size="md" message={message} />
+            <SupercheckLoading size="md" message={message} />
         </div>
     );
 }

@@ -1,26 +1,28 @@
 # Security Policy
 
-## Reporting a Vulnerability
+Security fixes target the latest release and `main`. Older releases receive
+backports only when explicitly announced.
 
-We take security seriously. If you discover a security vulnerability, please report it privately.
+## Report a vulnerability
 
-**Do not** open a public issue for security vulnerabilities.
+Do not open a public issue, discussion, or pull request. Use
+[GitHub private vulnerability reporting](https://github.com/supercheck-io/supercheck/security/advisories/new)
+or email `hello@supercheck.io` with the subject `Security report`.
 
-### How to Report
+Include the affected version, impact, and reproducible steps. Remove credentials,
+personal data, tenant identifiers, and destructive proof-of-concept actions.
 
-Email security concerns to: **hello@supercheck.io**
+## Safe research
 
-Include:
+Good-faith research must use accounts and data you own or have permission to
+test, avoid disruption and privacy violations, stop after proving the issue, and
+report it promptly. This policy does not authorize testing third-party providers
+or infrastructure outside Supercheck's control.
 
-- Description of the vulnerability
-- Steps to reproduce
-- Potential impact
-- Suggested fix (if any)
+We will acknowledge reports, investigate them, keep reporters informed when the
+timeline changes, and coordinate disclosure after users have a reasonable time
+to update.
 
-## Security Best Practices
-
-When deploying Supercheck:
-
-- Enable HTTPS in production
-- Use strong passwords
-- Restrict database and Redis access
+Operators should use HTTPS, strong unique secrets, private database and Redis
+networking, least-privilege service accounts, immutable images, and tested
+backups.

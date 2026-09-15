@@ -33,6 +33,10 @@ const drizzleProvider: Provider = {
       idle_timeout: parseInt(process.env.DB_IDLE_TIMEOUT || '30', 10),
       connect_timeout: parseInt(process.env.DB_CONNECT_TIMEOUT || '10', 10),
       max_lifetime: parseInt(process.env.DB_MAX_LIFETIME || '1800', 10),
+      prepare:
+        process.env.DB_PREPARE != null
+          ? process.env.DB_PREPARE !== 'false'
+          : process.env.NODE_ENV === 'production',
     });
 
     // eslint-disable-next-line @typescript-eslint/no-unsafe-argument

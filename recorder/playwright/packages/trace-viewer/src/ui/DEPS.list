@@ -1,0 +1,10 @@
+[*]
+@injected/**
+@isomorphic/**
+@trace/**
+@web/**
+../entries.ts
+../geometry.ts
+../../../playwright/src/isomorphic/**
+../third_party/devtools.ts
+./shared/**

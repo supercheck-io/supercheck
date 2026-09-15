@@ -385,6 +385,56 @@ describe('Session Management', () => {
         expect(result[0].id).toBe(testProjectId);
         expect(result[0].role).toBe(Role.ORG_ADMIN);
       });
+
+      it('should not inherit project-limited org role for unassigned projects', async () => {
+        mockRbacModule.getUserOrgRole.mockResolvedValue(Role.PROJECT_ADMIN);
+
+        const mockAssignedProject = {
+          id: testProjectId,
+          name: 'Assigned Project',
+          slug: 'assigned-project',
+          description: 'Assigned project',
+          organizationId: testOrgId,
+          isDefault: true,
+          status: 'active',
+          createdAt: new Date(),
+        };
+        const mockUnassignedProject = {
+          id: 'project-unassigned',
+          name: 'Unassigned Project',
+          slug: 'unassigned-project',
+          description: 'Unassigned project',
+          organizationId: testOrgId,
+          isDefault: false,
+          status: 'active',
+          createdAt: new Date(),
+        };
+
+        let callCount = 0;
+        const selectChain = {
+          from: jest.fn().mockReturnThis(),
+          where: jest.fn().mockImplementation(() => {
+            callCount++;
+            if (callCount === 1) {
+              return Promise.resolve([mockAssignedProject, mockUnassignedProject]);
+            }
+            return Promise.resolve([
+              { projectId: testProjectId, role: 'project_admin' },
+            ]);
+          }),
+        };
+        mockDbModule.select.mockReturnValue(selectChain);
+
+        const result = await getUserProjects(testUserId, testOrgId);
+
+        expect(result).toHaveLength(2);
+        expect(result.find((project) => project.id === testProjectId)?.role).toBe(
+          Role.PROJECT_ADMIN
+        );
+        expect(result.find((project) => project.id === 'project-unassigned')?.role).toBe(
+          Role.PROJECT_VIEWER
+        );
+      });
     });
 
     describe('Negative Cases', () => {

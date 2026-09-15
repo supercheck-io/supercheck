@@ -45,7 +45,7 @@ All services run on a single Linux server managed by Docker Compose. Workers con
 
 ## Docker Compose
 
-<Tabs items={['Quick Start', 'Production (HTTPS)']}>
+<Tabs items={['Quick Start', 'Production (HTTPS)', 'External Services']}>
   <Tab value="Quick Start">
     <Steps>
       <Step>
@@ -68,7 +68,7 @@ All services run on a single Linux server managed by Docker Compose. Workers con
         ```bash
         git clone https://github.com/supercheck-io/supercheck.git
         cd supercheck/deploy/docker
-        sudo bash init-secrets.sh
+        ./init-secrets.sh
         ```
 
         Edit `.env` for optional integrations (SMTP, AI, OAuth).
@@ -99,7 +99,7 @@ All services run on a single Linux server managed by Docker Compose. Workers con
 
         ```bash
         # Optional: grant super admin
-        docker compose exec app npm run setup:admin your-email@example.com
+        docker compose exec app node scripts/bootstrap-admin.js your-email@example.com
         ```
       </Step>
     </Steps>
@@ -144,6 +144,10 @@ All services run on a single Linux server managed by Docker Compose. Workers con
         <Callout type="warn">
         **Cloudflare Users**: Set SSL/TLS mode to **"Full"** or **"Full (Strict)"**.
         </Callout>
+
+        <Callout type="warn">
+        Keep inbound TCP ports **80** and **443** open. Traefik uses port 80 for the ACME HTTP challenge and redirects HTTP traffic to HTTPS.
+        </Callout>
       </Step>
 
       <Step>
@@ -152,7 +156,7 @@ All services run on a single Linux server managed by Docker Compose. Workers con
         ```bash
         git clone https://github.com/supercheck-io/supercheck.git
         cd supercheck/deploy/docker
-        sudo bash init-secrets.sh
+        ./init-secrets.sh
         ```
 
         Edit `.env`:
@@ -201,10 +205,78 @@ All services run on a single Linux server managed by Docker Compose. Workers con
 
         ```bash
         # Optional: grant super admin
-        docker compose -f docker-compose-secure.yml exec app npm run setup:admin your-email@example.com
+        docker compose -f docker-compose-secure.yml exec app node scripts/bootstrap-admin.js your-email@example.com
         ```
       </Step>
     </Steps>
+  </Tab>
+  <Tab value="External Services">
+    Use `docker-compose-external.yml` when you want to connect Supercheck to managed external services (Neon, Supabase, Upstash, Cloudflare R2) instead of running PostgreSQL, Redis, and MinIO in Docker.
+
+    <Steps>
+      <Step>
+        ### Configure External Services
+
+        Generate a secure `.env`, then replace its database, Redis, storage, and public URL values with your managed-service settings:
+
+        ```bash
+        ./init-secrets.sh
+
+        # Managed PostgreSQL (Neon, Supabase, RDS)
+        DATABASE_URL=postgresql://user:password@host:5432/supercheck
+        DB_HOST=host
+        DB_PORT=5432
+        DB_USER=user
+        DB_PASSWORD=password
+        DB_NAME=supercheck
+
+        # Managed Redis (Upstash, Redis Cloud)
+        REDIS_URL=redis://user:password@host:6379
+        REDIS_HOST=host
+        REDIS_PORT=6379
+        REDIS_PASSWORD=password
+        REDIS_TLS_ENABLED=true
+
+        # Managed S3-compatible storage (Cloudflare R2, AWS S3)
+        S3_ENDPOINT=https://your-account.r2.cloudflarestorage.com
+        AWS_REGION=auto
+        AWS_ACCESS_KEY_ID=your-access-key
+        AWS_SECRET_ACCESS_KEY=your-secret-key
+
+        # Public HTTPS configuration
+        APP_DOMAIN=app.example.com
+        APP_URL=https://app.example.com
+        NEXT_PUBLIC_APP_URL=https://app.example.com
+        BETTER_AUTH_URL=https://app.example.com
+        STATUS_PAGE_DOMAIN=example.com
+        ACME_EMAIL=admin@example.com
+        ```
+
+        Keep the generated `BETTER_AUTH_SECRET` and `SECRET_ENCRYPTION_KEY`. For Redis providers that do not use TLS, set `REDIS_TLS_ENABLED=false`.
+      </Step>
+      <Step>
+        ### Set Up Execution Sandbox
+
+        ```bash
+        sudo bash setup-k3s.sh
+        ```
+
+        This installs K3s with gVisor for sandboxed test execution.
+      </Step>
+      <Step>
+        ### Start Services
+
+        ```bash
+        # Create .env with your managed service credentials
+        # Use the template below or start from the compose file's documented variables
+        KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig docker compose -f docker-compose-external.yml up -d
+        ```
+      </Step>
+    </Steps>
+
+    <Callout type="info">
+    This compose file skips the bundled PostgreSQL, Redis, and MinIO containers. It starts the App, Worker, and Traefik containers; the Worker submits sandboxed jobs to the host K3s cluster.
+    </Callout>
   </Tab>
 </Tabs>
 
@@ -362,14 +434,14 @@ docker compose -f docker-compose-secure.yml up -d
 | **Large** | 4 | 4 | 8 vCPU / 16GB |
 
 <Callout type="info">
-`RUNNING_CAPACITY` and `QUEUED_CAPACITY` are App-side gates set on the **app service only** — do not set them on worker services. `WORKER_REPLICAS` controls the number of worker containers. Keep `RUNNING_CAPACITY` equal to the total number of worker replicas.
+`RUNNING_CAPACITY` and `QUEUED_CAPACITY` are enforced by the App. Set them in `.env`; workers may receive the shared values but do not use them. `WORKER_REPLICAS` controls the number of worker containers. Keep `RUNNING_CAPACITY` equal to the total number of worker replicas.
 </Callout>
 
 ### Backups
 
 ```bash
-docker compose exec postgres pg_dump -U postgres supercheck > backup.sql        # Create
-docker compose exec -T postgres psql -U postgres supercheck < backup.sql        # Restore
+docker compose exec postgres sh -c 'pg_dump -U "$DB_USER" "$DB_NAME"' > backup.sql        # Create
+docker compose exec -T postgres sh -c 'psql -U "$DB_USER" "$DB_NAME"' < backup.sql        # Restore
 ```
 
 ### Updates
@@ -391,7 +463,7 @@ docker compose -f docker-compose-secure.yml up -d
 
 ```bash
 # 1. Back up your database first
-docker compose exec postgres pg_dump -U postgres supercheck > backup-pre-k3s-migration.sql
+docker compose exec postgres sh -c 'pg_dump -U "$DB_USER" "$DB_NAME"' > backup-pre-k3s-migration.sql
 
 # 2. Install K3s + gVisor execution sandbox
 sudo bash setup-k3s.sh

@@ -7,7 +7,11 @@ export class HealthController {
 
   @Get()
   async check() {
-    return this.healthService.getHealthStatus();
+    const health = await this.healthService.getHealthStatus();
+    if (health.status !== 'healthy') {
+      throw new ServiceUnavailableException(health);
+    }
+    return health;
   }
 
   @Get('ready')

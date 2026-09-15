@@ -6,8 +6,16 @@
     "getMonitor",
     "createMonitor",
     "updateMonitor",
+    "updateMonitorByBodyId",
+    "replaceMonitorConfiguration",
     "deleteMonitor",
     "getMonitorResults",
-    "getMonitorStats"
+    "getMonitorStats",
+    "updateMonitorStatus",
+    "getMonitorNotifications",
+    "createMonitorNotification",
+    "deleteMonitorNotification",
+    "getMonitorPermissions",
+    "getMonitorLocationStats"
   ]
 }

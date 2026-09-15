@@ -426,9 +426,7 @@ function collectHelperCallsWithRegex(
     // globalThis.helperName(...) always refers to the runtime helper
     // regardless of any local bindings, so collect these unconditionally.
     const globalThisPattern = new RegExp(
-      'globalThis\\.' +
-        escapedName +
-        '\\s*\\(\\s*(?:[\'"`]([^\'"`]+)[\'"`])?',
+      'globalThis\\.' + escapedName + '\\s*\\(\\s*(?:[\'"`]([^\'"`]+)[\'"`])?',
       'g',
     );
 

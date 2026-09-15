@@ -1,0 +1,16 @@
+[*]
+../../
+../generated/
+../server/
+../server/trace
+../server/utils
+../utils
+../utilsBundle.ts
+
+[program.ts]
+../server/trace/viewer/traceViewer.ts
+../server/
+
+[driver.ts]
+../**
+../../

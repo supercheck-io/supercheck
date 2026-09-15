@@ -29,11 +29,9 @@ describe('HealthService', () => {
   };
 
   const mockHeartbeatService = {
-    getQueues: jest.fn().mockReturnValue([
-      'playwright-global',
-      'k6-global',
-      'monitor-local',
-    ]),
+    getQueues: jest
+      .fn()
+      .mockReturnValue(['playwright-global', 'k6-global', 'monitor-local']),
   };
 
   beforeEach(async () => {
@@ -107,6 +105,23 @@ describe('HealthService', () => {
 
       expect(result.status).toBe('degraded');
       expect(result.checks.database.status).toBe('unhealthy');
+    });
+
+    it('should return a bounded degraded response when a queue check stalls', async () => {
+      jest.useFakeTimers();
+      try {
+        mockRedisService.getQueueHealth.mockReturnValue(new Promise(() => {}));
+
+        const resultPromise = service.getHealthStatus();
+        await jest.advanceTimersByTimeAsync(3_000);
+        const result = await resultPromise;
+
+        expect(result.status).toBe('degraded');
+        expect(result.checks.queues.status).toBe('unhealthy');
+        expect(result.checks.queues.message).toContain('timed out');
+      } finally {
+        jest.useRealTimers();
+      }
     });
   });
 

@@ -1,11 +1,11 @@
 # Use official Playwright image which includes all browsers and dependencies
 # This avoids the heavy "npx playwright install" step that causes OOM on runners
 # Includes Chromium, Firefox, and WebKit (Safari) browsers
-FROM mcr.microsoft.com/playwright:v1.58.2-noble AS base
+FROM mcr.microsoft.com/playwright:v1.58.2-noble@sha256:6446946a1d9fd62d9ae501312a2d76a43ee688542b21622056a372959b65d63d AS base
 
 # Build k6 with xk6-dashboard extension
 # Pin golang to specific patch version for reproducible builds
-FROM golang:1.25.8-alpine AS k6-builder
+FROM golang:1.25.8-alpine@sha256:8e02eb337d9e0ea459e041f1ee5eece41cbb61f1d83e7d883a3e2fb4862063fa AS k6-builder
 RUN apk add --no-cache git
 RUN go install go.k6.io/xk6/cmd/xk6@v1.3.6
 # Pin k6 to v1.6.1 and xk6-dashboard to v0.8.1 for reproducible builds
@@ -48,9 +48,11 @@ ENV K6_BIN_PATH=/usr/local/bin/k6
 
 # NOTE: Docker CLI removed — execution is orchestrated through Kubernetes Jobs.
 
-# Use the Playwright image's built-in pwuser (UID 1000) consistently for the
-# worker and child execution processes. This keeps HOME/cache ownership aligned
-# with the non-root runtime enforced by Compose/Kubernetes.
+# Use the Playwright image's built-in pwuser consistently for the worker and
+# child execution processes. Pin the expected numeric identity because
+# Kubernetes securityContext fields cannot use account names; fail the image
+# build if a future Playwright base image changes it.
+RUN test "$(id -u pwuser)" = "1001" && test "$(id -g pwuser)" = "1001"
 
 # Copy only necessary files with proper ownership
 COPY --from=builder --chown=pwuser:pwuser /worker/package*.json ./
@@ -63,7 +65,7 @@ COPY --from=builder --chown=pwuser:pwuser /worker/dist ./dist
 COPY --from=builder --chown=pwuser:pwuser /worker/playwright.config.js ./
 
 # Create directories for test execution with proper permissions
-# Note: Container execution runs as 'pwuser' (UID 1000) from Playwright image
+# Note: Container execution runs as the Playwright image's non-root pwuser.
 # We need /tmp directories writable by pwuser for inline script execution
 # Using chmod 777 for /tmp paths since they're ephemeral and pwuser needs write access
 RUN mkdir -p playwright-reports report \
@@ -97,8 +99,9 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD node -e "const http = require('http'); const port = process.env.PORT || 8000; const req = http.request({hostname: 'localhost', port: port, path: '/health/ready', timeout: 5000}, (res) => process.exit(res.statusCode === 200 ? 0 : 1)); req.on('error', () => process.exit(1)); req.end();"
 
 # GVISOR-006: Run as non-root user by default.
-# pwuser (UID 1000) is from the Playwright base image and has access to browsers.
-USER 1000
+# Use the account name here so the image cannot silently run as a different
+# account that happens to inherit an outdated numeric UID.
+USER pwuser
 
 # EXPOSE 8000 # disabled per user request
 

@@ -76,7 +76,7 @@ function getLocalStatusPagePath(subdomain: string): string {
 
 /**
  * Extracts the base domain from NEXT_PUBLIC_APP_URL or current window location
- * @returns The base domain (e.g., "supercheck.io" from "https://demo.supercheck.io")
+ * @returns The base domain (e.g., "supercheck.dev" from "https://demo.supercheck.dev")
  */
 export function getBaseDomain(requestHostname?: string): string {
   // On client side, use the actual window location as source of truth

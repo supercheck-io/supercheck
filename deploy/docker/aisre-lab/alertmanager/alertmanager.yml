@@ -1,0 +1,17 @@
+global:
+  resolve_timeout: 2m
+
+route:
+  receiver: aisre-webhook-capture
+  group_by:
+    - alertname
+    - service
+  group_wait: 5s
+  group_interval: 30s
+  repeat_interval: 10m
+
+receivers:
+  - name: aisre-webhook-capture
+    webhook_configs:
+      - url: http://aisre-webhook-capture:8080/alertmanager
+        send_resolved: true

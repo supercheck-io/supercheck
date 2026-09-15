@@ -15,6 +15,7 @@ import { StandardizedErrorHandler } from '../common/errors/standardized-error-ha
 import { ResourceManagerService } from '../common/resources/resource-manager.service';
 import { LocationModule } from '../common/location/location.module';
 import { VariableResolverService } from '../common/services/variable-resolver.service';
+import { SreAlertTriageQueueService } from './services/sre-alert-triage-queue.service';
 
 // Define job options for monitor execution queues
 const monitorJobOptions = {
@@ -44,6 +45,7 @@ const commonProviders = [
   StandardizedErrorHandler,
   ResourceManagerService,
   VariableResolverService,
+  SreAlertTriageQueueService,
 ];
 
 /**

@@ -113,8 +113,6 @@ export async function GET() {
       subscription: {
         plan: effectivePlan,
         status: effectiveStatus,
-        subscriptionId: org.subscriptionId,
-        polarCustomerId: org.polarCustomerId,
         currentPeriodStart: periodStart,
         currentPeriodEnd: periodEnd,
         // Include pricing info for UI
@@ -142,6 +140,15 @@ export async function GET() {
           included: usage.aiCredits.included,
           overage: usage.aiCredits.overage,
           percentage: toPercent(usage.aiCredits.used, usage.aiCredits.included),
+        },
+        sreInvestigations: {
+          used: usage.sreInvestigations.used,
+          included: usage.sreInvestigations.included,
+          overage: usage.sreInvestigations.overage,
+          percentage: toPercent(
+            usage.sreInvestigations.used,
+            usage.sreInvestigations.included
+          ),
         },
       },
       limits: {

@@ -1,38 +1,56 @@
 /**
  * Database SSL Configuration Utility
  *
- * Simple, robust SSL detection for PostgreSQL connections:
- * - Self-hosted mode (SELF_HOSTED=true) → SSL OFF
- * - Cloud mode (SELF_HOSTED=false or not set) → SSL ON
- *
- * @example
- * import { getSSLConfig } from './db-ssl';
- *
- * const client = postgres(connectionString, {
- *   ssl: getSSLConfig(),
- *   // ... other options
- * });
+ * - Honor sslmode in DATABASE_URL when present
+ * - Self-hosted mode (SELF_HOSTED=true) → SSL OFF unless sslmode requires it
+ * - Cloud mode → certificate-verified TLS ON unless sslmode=disable
  */
 
-/**
- * Determines the appropriate SSL configuration for PostgreSQL.
- *
- * - Self-hosted mode: SSL OFF (local PostgreSQL)
- * - Cloud mode: SSL ON (Neon, etc.)
- *
- * @returns 'require' for SSL connections, undefined for non-SSL
- */
-export function getSSLConfig(): 'require' | undefined {
-  const isSelfHosted = process.env.SELF_HOSTED?.toLowerCase() === 'true';
-  return isSelfHosted ? undefined : 'require';
+type PostgresSslConfig = 'verify-full' | undefined;
+
+function isSelfHosted(): boolean {
+  return ['true', '1'].includes(
+    process.env.SELF_HOSTED?.trim().toLowerCase() ?? '',
+  );
+}
+
+function readSslModeFromDatabaseUrl(): string | undefined {
+  const connectionString = process.env.DATABASE_URL?.trim();
+  if (!connectionString) {
+    return undefined;
+  }
+
+  try {
+    const normalized = connectionString.replace(/^postgresql:/i, 'http:');
+    const url = new URL(normalized);
+    const sslMode = url.searchParams.get('sslmode')?.trim().toLowerCase();
+    return sslMode || undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
- * Checks if SSL should be enabled.
- * Convenience wrapper that returns a boolean.
- *
- * @returns true if SSL should be enabled
+ * @returns 'verify-full' for TLS connections, undefined for non-TLS
  */
+export function getSSLConfig(): PostgresSslConfig {
+  const sslMode = readSslModeFromDatabaseUrl();
+
+  if (sslMode === 'disable' || sslMode === 'allow' || sslMode === 'prefer') {
+    return undefined;
+  }
+
+  if (
+    sslMode === 'require' ||
+    sslMode === 'verify-ca' ||
+    sslMode === 'verify-full'
+  ) {
+    return 'verify-full';
+  }
+
+  return isSelfHosted() ? undefined : 'verify-full';
+}
+
 export function shouldEnableSSL(): boolean {
-  return getSSLConfig() === 'require';
+  return getSSLConfig() === 'verify-full';
 }

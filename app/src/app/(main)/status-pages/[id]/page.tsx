@@ -6,7 +6,7 @@ import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatusPageDetail } from "@/components/status-pages/status-page-detail";
 import { useStatusPageDetail } from "@/hooks/use-status-pages";
-import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
+import { SupercheckLoading } from "@/components/shared/supercheck-loading";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { AlertCircle, ArrowLeft } from "lucide-react";
@@ -54,7 +54,7 @@ export default function StatusPagePage() {
   if (!isMounted || isRestoring || (!hasData && isLoading)) {
     return (
       <div className="flex min-h-[calc(100vh-3.5rem)] items-center justify-center">
-        <SuperCheckLoading size="md" message="Loading status page..." />
+        <SupercheckLoading size="md" message="Loading status page..." />
       </div>
     );
   }
@@ -66,7 +66,7 @@ export default function StatusPagePage() {
     if (error) {
       return (
         <div className="flex min-h-[calc(100vh-3.5rem)] items-center justify-center">
-          <SuperCheckLoading size="md" message="Redirecting..." />
+          <SupercheckLoading size="md" message="Redirecting..." />
         </div>
       );
     }

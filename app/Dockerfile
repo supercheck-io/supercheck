@@ -1,6 +1,8 @@
+ARG SUPERCHECK_BUILD_SHA=unknown
+
 # Use platform-agnostic base image with pinned LTS version for reproducible builds
 # Node 22.x LTS for compatibility with @noble/hashes and other modern packages
-FROM node:22-slim AS base
+FROM node:22-slim@sha256:d649c27dae7ba0137b3cef5dd75baa422c08dc3d9e3fc0c23dfb172dc3cc6436 AS base
 
 # Install system dependencies in base stage for better layer caching
 RUN apt-get update && apt-get install -y \
@@ -43,19 +45,22 @@ COPY . .
 # Note: CHATWOOT_* variables are read at runtime via /api/config/chatwoot (not build-time)
 ENV NODE_OPTIONS="--max-old-space-size=4096"
 ENV NODE_ENV=production
+ARG NEXT_PUBLIC_SOURCE_URL=https://github.com/supercheck-io/supercheck
+ENV NEXT_PUBLIC_SOURCE_URL=${NEXT_PUBLIC_SOURCE_URL}
+ARG NEXT_PUBLIC_SUPERCHECK_VERSION
+ENV NEXT_PUBLIC_SUPERCHECK_VERSION=${NEXT_PUBLIC_SUPERCHECK_VERSION}
 
 # Build with standalone output and static optimization
-# Use a build-time placeholder secret that will be overridden at runtime
-ENV BETTER_AUTH_SECRET=build-time-placeholder-will-be-overridden-at-runtime
 # Use --webpack flag because Next.js 16 defaults to Turbopack, but ARM64 cross-compilation
 # uses WASM fallback which doesn't support turbo.createProject
-RUN npm run build -- --webpack
-
-# Clear the build-time secret for security
-ENV BETTER_AUTH_SECRET=
+# Scope the non-sensitive placeholder to the build command so it is not persisted
+# in an image layer or mistaken for a runtime credential by image scanners.
+RUN BETTER_AUTH_SECRET=build-time-placeholder-will-be-overridden-at-runtime \
+    npm run build:webpack
 
 # Production image, copy all the files and run next
 FROM base AS runner
+ARG SUPERCHECK_BUILD_SHA
 WORKDIR /app
 
 # Add OCI labels to link package to repository
@@ -64,6 +69,7 @@ LABEL org.opencontainers.image.title="Supercheck App"
 LABEL org.opencontainers.image.description="Next.js frontend service for Supercheck - A comprehensive automation & monitoring platform for modern apps. Includes dashboard, job scheduling, test execution, and monitoring capabilities with multi-tenant support."
 
 ENV NODE_ENV=production
+ENV SUPERCHECK_BUILD_SHA=${SUPERCHECK_BUILD_SHA}
 
 # Create user
 RUN groupadd --system --gid 1001 nodejs && \

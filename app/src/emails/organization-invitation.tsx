@@ -17,7 +17,7 @@ interface OrganizationInvitationEmailProps {
 export const OrganizationInvitationEmail = ({
   inviteUrl = "https://supercheck.io/invite/abc123",
   organizationName = "Acme Corp",
-  role = "member",
+  role = "project_viewer",
   projectInfo = "",
 }: OrganizationInvitationEmailProps) => {
   return (

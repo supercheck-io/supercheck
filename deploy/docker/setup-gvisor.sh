@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SuperCheck gVisor Setup Script for Docker
+# Supercheck gVisor Setup Script for Docker
 #
 # Installs gVisor (runsc) as an optional Docker runtime for local
 # verification and legacy troubleshooting.
@@ -78,7 +78,7 @@ fi
 
 info "Architecture: $ARCH"
 info "Docker: $(docker --version)"
-info "Starting SuperCheck gVisor setup for Docker..."
+info "Starting Supercheck gVisor setup for Docker..."
 
 # ─── Configuration ────────────────────────────────────────────────────────────
 
@@ -174,7 +174,7 @@ fi
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-log "SuperCheck gVisor setup for Docker complete!"
+log "Supercheck gVisor setup for Docker complete!"
 echo ""
 info "Docker:  $(docker --version)"
 info "gVisor:  $(runsc --version 2>&1 | head -1)"
@@ -185,5 +185,5 @@ info "Untrusted code runs exclusively in gVisor-sandboxed K8s execution Jobs."
 echo ""
 info "Next steps:"
 info "  1. Run setup-k3s.sh to configure K3s with gVisor for execution Jobs"
-info "  2. Start SuperCheck with: docker compose -f docker-compose.yml up -d"
+info "  2. Start Supercheck with: docker compose -f docker-compose.yml up -d"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

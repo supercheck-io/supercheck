@@ -17,13 +17,13 @@ describe("getSSLConfig", () => {
     expect(getSSLConfig()).toBeUndefined();
   });
 
-  it("returns require when SELF_HOSTED=false", () => {
+  it("returns verify-full when SELF_HOSTED=false", () => {
     process.env.SELF_HOSTED = "false";
-    expect(getSSLConfig()).toBe("require");
+    expect(getSSLConfig()).toBe("verify-full");
   });
 
-  it("returns require when SELF_HOSTED is not set", () => {
-    expect(getSSLConfig()).toBe("require");
+  it("returns verify-full when SELF_HOSTED is not set", () => {
+    expect(getSSLConfig()).toBe("verify-full");
   });
 
   it("treats SELF_HOSTED as case-insensitive", () => {

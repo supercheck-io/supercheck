@@ -1,7 +1,7 @@
 /**
  * Revoke Super Admin Privileges
  * 
- * This script removes super_admin privileges and downgrades to admin.
+ * This script removes super_admin privileges and downgrades to project_viewer.
  * 
  * Usage: 
  *   node scripts/revoke-admin.js <email>
@@ -55,13 +55,23 @@ async function main() {
       return;
     }
 
-    // Downgrade role to 'admin' (Organization Admin)
-    await sql`
-      UPDATE "user" SET role = 'admin' WHERE id = ${user.id}
-    `;
+    // Downgrade the system-level role and invalidate active sessions together
+    // so cached auth state cannot keep super_admin access after revocation.
+    const revokedSessionCount = await sql.begin(async (tx) => {
+      await tx`
+        UPDATE "user" SET role = 'project_viewer' WHERE id = ${user.id}
+      `;
+
+      const revokedSessions = await tx`
+        DELETE FROM "session" WHERE user_id = ${user.id} RETURNING id
+      `;
+
+      return revokedSessions.length;
+    });
 
     console.log(`✅ Successfully revoked super admin privileges from ${email}.`);
-    console.log(`   User role is now 'admin' (Organization Admin).`);
+    console.log(`   User system role is now 'project_viewer'.`);
+    console.log(`   Invalidated ${revokedSessionCount} active session(s).`);
 
   } catch (error) {
     console.error('❌ Error revoking super admin:', error);

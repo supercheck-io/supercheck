@@ -168,7 +168,9 @@ export class TestsPage extends BasePage {
    * @param index - Row index (0-based)
    */
   async clickRow(index: number): Promise<void> {
-    await this.tableRows.nth(index).click();
+    const row = this.tableRows.nth(index);
+    const cell = row.locator('td').or(row.locator('[role="cell"]')).first();
+    await cell.click();
   }
 
   /**
@@ -177,10 +179,16 @@ export class TestsPage extends BasePage {
    */
   async openRowActions(index: number): Promise<void> {
     const row = this.tableRows.nth(index);
-    const actionsButton = row
-      .locator('button[aria-haspopup="menu"]')
-      .or(row.locator("button").last());
-    await actionsButton.click();
+    let btn = row.locator('button[aria-haspopup="menu"], [data-testid*="action"], [aria-label*="action"]').first();
+    if (await btn.isVisible().catch(() => false)) {
+      await btn.click();
+    } else {
+      const fallbackBtn = row.locator("button").last();
+      if (await fallbackBtn.isVisible().catch(() => false)) {
+        await fallbackBtn.click();
+      }
+    }
+    await this.page.waitForSelector('[role="menu"], [data-state="open"]', { timeout: 2000 }).catch(() => {});
   }
 
   /**

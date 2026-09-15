@@ -53,6 +53,22 @@ flowchart TB
 
 Each server runs its own local K3s cluster with gVisor. Workers consume jobs from Redis via BullMQ and execute each test as an ephemeral Kubernetes Job in a sandboxed `supercheck-execution` namespace. Remote workers connect to the primary server's Redis, PostgreSQL, and MinIO over the network.
 
+```mermaid
+sequenceDiagram
+    participant App as App
+    participant Redis
+    participant Remote as Remote worker
+    participant PG as PostgreSQL
+
+    App->>Redis: Enqueue monitor or test job
+    Remote->>Redis: Consume location queue
+    Remote->>PG: Read monitor or test definition
+    Remote->>Remote: Execute check
+    Remote->>PG: Write result
+```
+
+A worker can appear in Super Admin (heartbeat over Redis) and still fail monitor jobs if PostgreSQL is unreachable. Redis connectivity is not enough.
+
 ---
 
 ## Queue Routing
@@ -66,7 +82,7 @@ Queue names are dynamically created from enabled locations in Super Admin.
 | `eu-central` | `playwright-global`, `k6-eu-central`, `k6-global`, `monitor-eu-central` | EU Central worker |
 
 <Callout type="info">
-**Routing rules**: Playwright jobs go to `playwright-global` (any worker picks them up). K6 jobs target a single resolved location queue plus `k6-global`. Monitors run only on their configured location queues.
+**Routing rules**: Playwright jobs go to `playwright-global` (any worker picks them up). Each K6 job targets one resolved regional queue, or `k6-global` when any-location execution is allowed. Monitors run only on their configured location queues.
 </Callout>
 
 ---
@@ -94,8 +110,10 @@ Locations are managed in **Super Admin → Locations**.
 | **Disabled** | Toggled off — no queues created |
 
 <Callout type="info">
-Offline locations stay visible in the UI to prevent transient outages from silently removing regions from monitor configs. Monitors degrade gracefully to the online subset. K6 jobs remain queued until a matching worker comes online.
+Offline locations stay visible in the UI to prevent transient outages from silently removing regions from monitor configs. Monitors degrade gracefully to the online subset. New K6 submissions require a live worker advertising the resolved queue. Work already queued can wait for a matching worker to return.
 </Callout>
+
+Keep at least one worker running in each region where you offer monitoring. Monitor scheduling requires a live regional heartbeat and does not enqueue work to wake a region with zero workers. A region code labels the worker; it does not move execution geographically. Use a specific `WORKER_LOCATION` for each real region, since `local` consumes all regional queues.
 
 ### Project Location Restrictions
 
@@ -184,7 +202,9 @@ Org admins can restrict which locations a project may use via **Settings → Adm
     WORKER_LOCATION=us-east
     SELF_HOSTED=true
 
-    # Database
+    # Same PostgreSQL database as the main server. Remote workers default to
+    # SELF_HOSTED=true (no TLS), matching Docker Compose Postgres. If your
+    # database requires TLS, set SELF_HOSTED=false or add ?sslmode=require.
     DATABASE_URL=postgresql://postgres:YOUR_DB_PASSWORD@MAIN_SERVER_IP:5432/supercheck
 
     # Redis
@@ -304,9 +324,10 @@ Detailed network security configuration is beyond the scope of this documentatio
 
 | Issue | Diagnostic Command |
 |-------|-------------------|
-| Worker can't reach DB | `docker run --rm postgres:18 psql "$DATABASE_URL" -c "SELECT 1"` |
-| Worker logs `Failed query` for every database call | Set `SELF_HOSTED=true` on remote workers that connect to the bundled self-hosted Postgres so the worker does not require PostgreSQL SSL |
+| Worker can't reach DB | Check readiness with `docker compose -f docker-compose-worker.yml exec worker curl -sf http://127.0.0.1:8000/health/ready`, then test the database directly with `docker run --rm postgres:18 psql "postgresql://USER:PASSWORD@MAIN_SERVER_IP:5432/supercheck" -c "SELECT 1"` |
+| Worker logs `Failed query` for every database call | Set `SELF_HOSTED=true` when connecting to the bundled PostgreSQL database without TLS. For a TLS-enabled external database, set `SELF_HOSTED=false` or add `?sslmode=require` to `DATABASE_URL`. |
+| Worker visible in Super Admin but monitors do not run | Heartbeat uses Redis. Monitor jobs also need PostgreSQL. Confirm `DATABASE_URL` points at the **same** database as the app, `SELF_HOSTED=true` for Docker Postgres without TLS, and ports 5432/6379/9000 are reachable. |
 | Worker can't reach Redis | `docker run --rm redis:8 redis-cli -h MAIN_SERVER_IP -a PASSWORD ping` |
-| Verify worker location | `docker compose logs worker \| grep WORKER_LOCATION` |
+| Verify worker location | `docker compose logs worker \| grep "initialized for location"` |
 | K6 jobs stuck queued | Ensure a worker has the matching `WORKER_LOCATION` running |
 | "No monitor queues available" | Verify workers are running in the monitor's configured locations |

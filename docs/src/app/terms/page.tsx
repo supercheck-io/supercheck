@@ -3,7 +3,7 @@ import { SiteHeader } from '../../lib/layout.shared';
 
 export const metadata: Metadata = {
     title: 'Terms of Service | Supercheck',
-    description: 'Terms of Service for Supercheck - AI-powered test automation and monitoring platform.',
+    description: 'Terms of Service for Supercheck - Open-source testing, monitoring, and AI SRE — as code.',
 };
 
 export default function TermsPage() {
@@ -13,7 +13,7 @@ export default function TermsPage() {
 
             <main className="container py-12 md:py-20 max-w-4xl">
                 <h1 className="text-4xl font-bold tracking-tight mb-4">Terms of Service</h1>
-                <p className="text-fd-muted-foreground mb-8">Last updated: December 2025</p>
+                <p className="text-fd-muted-foreground mb-8">Last updated: July 2026</p>
 
                 <div className="prose prose-neutral dark:prose-invert max-w-none">
                     <section className="mb-10">
@@ -27,13 +27,14 @@ export default function TermsPage() {
                     <section className="mb-10">
                         <h2 className="text-2xl font-semibold mb-4">2. Description of Service</h2>
                         <p className="text-fd-muted-foreground mb-4">
-                            Supercheck is an open source test automation and monitoring platform that provides:
+                            Supercheck is an open-source testing, monitoring, and AI SRE platform that provides:
                         </p>
                         <ul className="list-disc pl-6 text-fd-muted-foreground space-y-2 mb-4">
                             <li>Browser test automation using Playwright</li>
                             <li>Performance testing using Grafana k6</li>
                             <li>Uptime and synthetic monitoring</li>
-                            <li>AI-powered test creation and fix suggestions</li>
+                              <li>AI-powered test creation and fix suggestions</li>
+                              <li>AI-assisted SRE root cause analysis and incident investigation</li>
                             <li>Public status pages</li>
                             <li>Alert notifications via email, Slack, Discord, Telegram, and webhooks</li>
                         </ul>
@@ -99,8 +100,11 @@ export default function TermsPage() {
                     <section className="mb-10">
                         <h2 className="text-2xl font-semibold mb-4">7. Self-Hosted Deployments</h2>
                         <p className="text-fd-muted-foreground mb-4">
-                            Supercheck is available as open source software for self-hosted deployments.
-                            Self-hosted users are responsible for their own infrastructure, security, and data management.
+                            Use, modification, and distribution of the self-hosted Supercheck core are governed by the{' '}
+                            <a href="https://github.com/supercheck-io/supercheck/blob/main/LICENSE" className="text-fd-primary hover:underline">
+                                GNU Affero General Public License v3.0 only (AGPL-3.0-only)
+                            </a>, not these hosted-service Terms. Self-hosted users are responsible for their own
+                            infrastructure, security, and data management.
                         </p>
                     </section>
 

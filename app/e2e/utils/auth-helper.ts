@@ -21,14 +21,25 @@ import { env } from './env';
  * ```
  */
 export async function loginIfNeeded(page: Page): Promise<void> {
-  // Navigate to home to check auth status
-  await page.goto('/');
-  await page.waitForLoadState('domcontentloaded');
+  const currentUrl = page.url();
 
-  // Give time for redirect
-  await page.waitForTimeout(1500);
+  // If already logged in and not on auth pages, return early
+  if (
+    currentUrl !== 'about:blank' &&
+    !currentUrl.includes('/sign-in') &&
+    !currentUrl.includes('/sign-up') &&
+    !currentUrl.includes('/forgot-password')
+  ) {
+    return;
+  }
 
-  // If on sign-in page, login
+  // Navigate to home to check auth status if blank or on sign-in
+  if (currentUrl === 'about:blank') {
+    await page.goto('/');
+    await page.waitForLoadState('domcontentloaded');
+  }
+
+  // If redirected to sign-in or currently on sign-in, perform login
   if (page.url().includes('/sign-in')) {
     if (!env.testUser.email || !env.testUser.password) {
       throw new Error(
@@ -36,24 +47,26 @@ export async function loginIfNeeded(page: Page): Promise<void> {
         'Set E2E_TEST_USER_EMAIL and E2E_TEST_USER_PASSWORD in app/e2e/.env'
       );
     }
+
     const signInPage = new SignInPage(page);
     await signInPage.signIn(env.testUser.email, env.testUser.password);
 
-    // Wait for redirect away from sign-in with more generous timeout
-    try {
-      await page.waitForURL((url) => !url.pathname.includes('/sign-in'), { timeout: 30000 });
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(1500);
-    } catch (error) {
-      // If still on sign-in page, check if there's an error message
-      if (page.url().includes('/sign-in')) {
-        const errorVisible = await page.locator('[role="alert"], .error, [data-testid="error-message"]').first().isVisible().catch(() => false);
-        if (errorVisible) {
-          const errorText = await page.locator('[role="alert"], .error, [data-testid="error-message"]').first().textContent().catch(() => '');
-          throw new Error(`Login failed: ${errorText}`);
-        }
-        throw new Error('Login did not redirect from sign-in page. Check credentials or rate limiting.');
-      }
+    // Race URL redirect vs error alert visibility
+    const errorLocator = page.locator('[role="alert"], .text-destructive, [data-testid*="error"]').first();
+    const result = await Promise.race([
+      page.waitForURL((url) => !url.pathname.includes('/sign-in'), { timeout: 15000 }).then(() => 'redirected' as const),
+      errorLocator.waitFor({ state: 'visible', timeout: 15000 }).then(() => 'error' as const).catch(() => 'timeout' as const),
+    ]);
+
+    if (result === 'error') {
+      const errorText = await errorLocator.textContent().catch(() => '');
+      throw new Error(`Login failed on sign-in page: ${errorText?.trim() || 'Unknown authentication error'}`);
     }
+
+    if (page.url().includes('/sign-in')) {
+      throw new Error('Login failed: did not redirect away from sign-in page within 15 seconds.');
+    }
+
+    await page.waitForLoadState('domcontentloaded');
   }
 }

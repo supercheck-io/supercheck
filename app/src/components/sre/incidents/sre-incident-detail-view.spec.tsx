@@ -1,0 +1,180 @@
+import { fireEvent, render, screen } from "@testing-library/react";
+
+import type { SreIncidentDetail } from "@/actions/sre-incidents";
+
+import { SreIncidentDetailView } from "./sre-incident-detail-view";
+
+jest.mock("@/components/sre/incidents/generate-evidence-brief-button", () => ({
+  GenerateEvidenceBriefButton: () => (
+    <button type="button">Generate brief</button>
+  ),
+}));
+
+jest.mock("@/components/sre/incidents/edit-sre-incident-dialog", () => ({
+  EditSreIncidentDialog: () => <button type="button">Edit incident</button>,
+}));
+
+jest.mock("@/components/sre/incidents/sre-investigation-panel", () => ({
+  SreInvestigationPanel: () => <div>Mock AI investigation panel</div>,
+}));
+
+function detailFixture(): SreIncidentDetail {
+  const now = new Date("2026-06-24T12:00:00Z");
+
+  return {
+    incident: {
+      id: "018f0000-0000-7000-8000-000000000001",
+      incidentNumber: 42,
+      title: "Checkout latency",
+      severity: "sev2",
+      status: "investigating",
+      primaryServiceId: "018f0000-0000-7000-8000-000000000010",
+      primaryServiceName: "checkout-api",
+      alertCount: 2,
+      evidenceCount: 1,
+      investigationCount: 1,
+      latestInvestigationStatus: "completed",
+      latestInvestigationCompletedAt: now,
+      latestInvestigationCreatedAt: now,
+      createdAt: now,
+      updatedAt: now,
+      resolvedAt: null,
+      rootCauseSummary: "Latency correlates with monitor failures.",
+      confidenceScore: "0.7000",
+    },
+    latestBrief: {
+      id: "018f0000-0000-7000-8000-000000000002",
+      modelId: "test-model",
+      status: "completed",
+      rootCauseHypothesis: "Monitoring signal",
+      confidenceScore: "0.7000",
+      agentStateSnapshot: { provider: "ai", summary: "Brief summary" },
+      completedAt: now,
+      createdAt: now,
+    },
+    latestInvestigation: {
+      id: "018f0000-0000-7000-8000-000000000003",
+      modelId: "test-model",
+      status: "completed",
+      summary: "Checkout latency is correlated with dependency failures.",
+      completedAt: now,
+      createdAt: now,
+    },
+    latestReportSnapshot: null,
+    myReportFeedback: null,
+    evidence: [
+      {
+        id: "ev-monitor-timeout",
+        title: "Monitor timeout",
+        summary: "Checkout monitor timed out.",
+        sourceUri: "https://example.com/evidence",
+        evidenceType: "event",
+        severity: "sev2",
+        confidence: "0.8000",
+        rawContentExcerpt: null,
+        citationQuery: "monitor_results.id = 1",
+        observedAt: now,
+        createdAt: now,
+      },
+    ],
+    chatHistory: null,
+    chatHistories: [],
+    toolMetrics: {
+      total: 3,
+      errors: 1,
+      averageDurationMs: 240,
+    },
+    permissions: {
+      canUpdate: true,
+      canInvestigate: true,
+      canUseLiveConnectors: true,
+    },
+    capabilities: {
+      investigationEnabled: true,
+    },
+  };
+}
+
+describe("SreIncidentDetailView", () => {
+  it("opens saved evidence without navigating to a private provider", () => {
+    const detail = detailFixture();
+    detail.evidence[0].sourceUri = "http://prometheus.aisre-lab:9090/graph";
+    render(
+      <SreIncidentDetailView
+        detail={detail}
+        services={[]}
+        initialTab="evidence"
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "View evidence: Monitor timeout" }),
+    );
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByText("monitor_results.id = 1")).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Open original source" }),
+    ).toHaveAttribute("rel", "noopener noreferrer");
+  });
+
+  it("does not render unsafe source links or interpret evidence as HTML", () => {
+    const detail = detailFixture();
+    detail.evidence[0].sourceUri = "javascript:alert(1)";
+    detail.evidence[0].rawContentExcerpt = '<img src=x onerror="alert(1)">';
+    render(
+      <SreIncidentDetailView
+        detail={detail}
+        services={[]}
+        initialTab="evidence"
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "View evidence: Monitor timeout" }),
+    );
+    expect(
+      screen.queryByRole("link", { name: "Open original source" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText(detail.evidence[0].rawContentExcerpt),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("dialog").querySelector("img")).toBeNull();
+  });
+
+  it("shows a readable brief and hides generation from viewers", () => {
+    const detail = detailFixture();
+    detail.permissions.canInvestigate = false;
+    render(
+      <SreIncidentDetailView
+        detail={detail}
+        services={[]}
+        initialTab="brief"
+      />,
+    );
+    expect(screen.getByText("Brief summary")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Generate brief" }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Expand evidence brief" }),
+    );
+    expect(
+      screen.getByRole("dialog", { name: "Evidence Brief" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Download" })).toBeEnabled();
+  });
+  it("renders simplified incident tabs and default investigation panel", () => {
+    render(<SreIncidentDetailView detail={detailFixture()} services={[]} />);
+
+    expect(
+      screen.getByRole("tab", { name: "Investigation" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Evidence" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Brief" })).toBeInTheDocument();
+    expect(screen.getByText("Mock AI investigation panel")).toBeInTheDocument();
+    expect(screen.getByText("Incident #42")).toBeInTheDocument();
+    expect(screen.getByText("Alerts")).toBeInTheDocument();
+    expect(screen.getByText("2")).toBeInTheDocument();
+    expect(
+      screen.queryByText("Investigation workspace"),
+    ).not.toBeInTheDocument();
+  });
+});

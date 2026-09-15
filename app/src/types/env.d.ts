@@ -40,6 +40,9 @@ declare namespace NodeJS {
     REDIS_PORT: string;
     REDIS_PASSWORD: string;
     REDIS_URL: string;
+    REDIS_SENTINELS?: string;
+    REDIS_SENTINEL_MASTER?: string;
+    REDIS_SENTINEL_PASSWORD?: string;
 
 
     // Playground Cleanup Configuration
