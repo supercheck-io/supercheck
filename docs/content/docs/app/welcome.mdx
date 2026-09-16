@@ -27,16 +27,16 @@ Create your first test — browser, API, database, or performance
 
 ```mermaid
 flowchart LR
-    Detect[Detect] --> Triage[Triage]
-    Triage --> Investigate[Investigate]
-    Investigate --> Explain[Explain]
-    Explain --> Confirm[Confirm recovery]
+    Detect["<b>Detect</b><br/>Monitors, jobs, tests"] --> Triage["<b>Triage</b><br/>Alerts & incidents"]
+    Triage --> Investigate["<b>Investigate</b><br/>Read-only AI SRE"]
+    Investigate --> Explain["<b>Explain</b><br/>Cited brief & report"]
+    Explain --> Confirm["<b>Confirm Recovery</b><br/>Re-run existing checks"]
 
-    Detect -.- Monitors[Monitors, jobs, tests]
-    Triage -.- Alerts[Alerts and incidents]
-    Investigate -.- Agent[Read-only AI SRE]
-    Explain -.- Brief[Cited brief and report]
-    Confirm -.- Checks[Re-run existing checks]
+    style Detect fill:#6366f1,stroke:#4338ca,color:#fff
+    style Triage fill:#f59e0b,stroke:#b45309,color:#fff
+    style Investigate fill:#8b5cf6,stroke:#6d28d9,color:#fff
+    style Explain fill:#0ea5e9,stroke:#0369a1,color:#fff
+    style Confirm fill:#10b981,stroke:#047857,color:#fff
 ```
 
 1. **Detect** with monitors, jobs, and tests.

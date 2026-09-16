@@ -25,12 +25,12 @@ Supercheck uses a **6-role RBAC system** with granular permissions across organi
 
 ```mermaid
 graph TD
-    SA["🔴 Super Admin<br/>System-wide Control"]
-    OO["🟠 Org Owner<br/>Organization Control"]
-    OA["🟡 Org Admin<br/>Organization Management"]
-    PA["🟣 Project Admin<br/>Assigned Projects"]
-    PE["🔵 Project Editor<br/>Assigned Projects"]
-    PV["⚪ Project Viewer<br/>Read-Only All Projects"]
+    SA["<b>Super Admin</b><br/>System-wide Control"]
+    OO["<b>Org Owner</b><br/>Organization Control"]
+    OA["<b>Org Admin</b><br/>Organization Management"]
+    PA["<b>Project Admin</b><br/>Assigned Projects"]
+    PE["<b>Project Editor</b><br/>Assigned Projects"]
+    PV["<b>Project Viewer</b><br/>Read-Only All Projects"]
 
     SA --> OO
     SA --> OA
@@ -38,11 +38,18 @@ graph TD
     OA --> PA
     PA --> PE
     PE --> PV
+
+    style SA fill:#ef4444,stroke:#b91c1c,color:#fff
+    style OO fill:#f59e0b,stroke:#b45309,color:#fff
+    style OA fill:#d97706,stroke:#92400e,color:#fff
+    style PA fill:#8b5cf6,stroke:#6d28d9,color:#fff
+    style PE fill:#3b82f6,stroke:#1e40af,color:#fff
+    style PV fill:#64748b,stroke:#475569,color:#fff
 ```
 
 ## Permission Matrix
 
-<Tabs items={['Organization', 'Project', 'Tests & Jobs', 'Monitors & Status Pages', 'Test Runs', 'CLI Tokens', 'Notifications', 'Tags']}>
+<Tabs items={['Organization', 'Project', 'Tests & Jobs', 'Monitors & Status Pages', 'Test Runs', 'CLI Tokens', 'Notifications', 'Tags', 'AI SRE']}>
 <Tab value="Organization">
 
 | Resource | Super Admin | Org Owner | Org Admin | Project Admin | Project Editor | Project Viewer |
@@ -129,6 +136,24 @@ graph TD
 | **Create** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
 | **Edit** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
 | **Delete** | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
+
+</Tab>
+<Tab value="AI SRE">
+
+| Action | Super Admin | Org Owner | Org Admin | Project Admin* | Project Editor* | Project Viewer |
+|--------|:-----------:|:---------:|:---------:|:--------------:|:---------------:|:--------------:|
+| **View services & incidents** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Create & update services** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
+| **Delete services** | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
+| **Create & update incidents** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
+| **Delete incidents** | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
+| **Investigate stored evidence** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
+| **Configure & investigate live connectors** | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
+| **Approve topology suggestions** | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
+
+<Callout type="info">
+*\* Project Admin and Project Editor permissions apply only to their assigned projects. Project Editors can investigate stored evidence and manage incidents, but cannot query or configure live external connectors (`sre_connector:investigate`).*
+</Callout>
 
 </Tab>
 </Tabs>

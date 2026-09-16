@@ -36,11 +36,17 @@ a direct connector work.
 
 ```mermaid
 flowchart TB
-    Incident[Incident investigation] --> Native[Native Supercheck evidence]
-    Incident --> Direct[Direct connector]
-    Incident --> Agent[Private Agent]
-    Direct --> Provider[Provider API]
+    Incident["<b>Incident Investigation</b><br/>Scoped inquiry"] --> Native["<b>Native Evidence</b><br/>Tests, monitors, alerts"]
+    Incident --> Direct["<b>Direct Connector</b><br/>HTTPS provider API"]
+    Incident --> Agent["<b>Private Agent</b><br/>Outbound internal proxy"]
+    Direct --> Provider["<b>Provider API</b><br/>Prometheus, Loki, Tempo, etc."]
     Agent --> Provider
+
+    style Incident fill:#6366f1,stroke:#4338ca,color:#fff
+    style Native fill:#10b981,stroke:#047857,color:#fff
+    style Direct fill:#3b82f6,stroke:#1e40af,color:#fff
+    style Agent fill:#8b5cf6,stroke:#6d28d9,color:#fff
+    style Provider fill:#f59e0b,stroke:#b45309,color:#fff
 ```
 
 ```mermaid

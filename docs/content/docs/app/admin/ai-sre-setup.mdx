@@ -8,6 +8,10 @@ Project administrators configure AI SRE from **Organization Admin**. Responders 
 
 Select **Setup guide** beside **Add service**, **Add connector**, or **Add recipe** to review setup status. The guide opens only when selected and does not open another form automatically.
 
+<Callout type="info">
+**Self-Hosted Requirement**: AI SRE requires an AI provider configured in your `.env` and `SRE_INVESTIGATION_AGENT_ENABLED=true`. See [Self-Hosted AI SRE Features](/docs/app/deployment/self-hosted#optional-configuration) for details.
+</Callout>
+
 ## Services
 
 Use **Services** to define the systems responders recognize, such as `checkout-api` or `payments-worker`.
@@ -59,10 +63,16 @@ credential fields.
 
 ```mermaid
 flowchart TD
-    Services[Add services] --> Links[Link monitors, jobs, and tests]
-    Links --> Connectors[Add read-only connectors]
-    Connectors --> Recipes[Add diagnostic recipes]
-    Recipes --> Verify[Run a test investigation]
+    Services["<b>1. Add Services</b><br/>Define systems & telemetry names"] --> Links["<b>2. Link Checks</b><br/>Monitors, jobs, tests, status"]
+    Links --> Connectors["<b>3. Add Connectors</b><br/>Read-only evidence sources"]
+    Connectors --> Recipes["<b>4. Add Recipes</b><br/>Approved diagnostic queries"]
+    Recipes --> Verify["<b>5. Test Investigation</b><br/>Run a test incident investigation"]
+
+    style Services fill:#6366f1,stroke:#4338ca,color:#fff
+    style Links fill:#3b82f6,stroke:#1e40af,color:#fff
+    style Connectors fill:#8b5cf6,stroke:#6d28d9,color:#fff
+    style Recipes fill:#f59e0b,stroke:#b45309,color:#fff
+    style Verify fill:#10b981,stroke:#047857,color:#fff
 ```
 
 ## Permissions
