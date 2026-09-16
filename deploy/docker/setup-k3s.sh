@@ -440,14 +440,17 @@ users:
 EOF
 
 chmod 0640 "$WORKER_KUBECONFIG"
-# The worker container runs as UID 1000 (pwuser). The kubeconfig is bind-mounted
-# read-only, so the file must be group- or world-readable. Mode 0640 lets the
-# host admin restrict access to a specific group while still allowing the
-# non-root container to read the file.
-# If the deployer adds UID 1000 to the owning group, 0640 is sufficient.
-# For simpler setups without a shared group, 0644 also works.
-chown root:1000 "$WORKER_KUBECONFIG" 2>/dev/null || chmod 0644 "$WORKER_KUBECONFIG"
-log "Restricted worker kubeconfig written to $WORKER_KUBECONFIG (readable by UID 1000)"
+# The worker container runs as pwuser (UID/GID 1001 per the Playwright image;
+# compose runs it as "pwuser:pwuser" with NO supplemental groups, and docker
+# --user does not apply the host's group database). The kubeconfig is
+# bind-mounted read-only, so the file must be group-readable by GID 1001.
+# NOTE: GID 1000 is the first created user's group on typical hosts (e.g.
+# "ubuntu"), so chown root:1000 makes the file readable by that host user but
+# NOT by the worker container — verified live: the worker fails with
+# EACCES on /run/secrets/supercheck-kubeconfig and crash-loops.
+chgrp 1001 "$WORKER_KUBECONFIG"
+chmod 0440 "$WORKER_KUBECONFIG"
+log "Restricted worker kubeconfig written to $WORKER_KUBECONFIG (group-readable by GID 1001 / pwuser)"
 
 # ─── Step 8: Label the node for gVisor scheduling ────────────────────────────
 
