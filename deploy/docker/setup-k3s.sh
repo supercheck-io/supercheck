@@ -128,18 +128,23 @@ if command -v runsc &>/dev/null; then
 else
   log "Installing gVisor (runsc) release ${GVISOR_RELEASE}..."
 
-  # Install from gVisor release repository
-  GVISOR_URL="https://storage.googleapis.com/gvisor/releases/release/${GVISOR_RELEASE}/${GVISOR_ARCH}"
+  # gVisor retired the standalone runsc / containerd-shim-runsc-v1 assets
+  # from storage.googleapis.com (curl 404s since the distribution format
+  # change — verified live 2026-09-16). The shim now ships inside
+  # gvisor-<arch>.tar.bz2 on the GitHub release, checksummed by SHA512SUMS.
+  if [ "${GVISOR_RELEASE}" = "latest" ]; then
+    GVISOR_BASE="https://github.com/google/gvisor/releases/latest/download"
+  else
+    GVISOR_BASE="https://github.com/google/gvisor/releases/download/${GVISOR_RELEASE}"
+  fi
 
-  curl -fsSL "${GVISOR_URL}/runsc" -o "${TMP_DIR}/runsc"
-  curl -fsSL "${GVISOR_URL}/runsc.sha512" -o "${TMP_DIR}/runsc.sha512"
-  curl -fsSL "${GVISOR_URL}/containerd-shim-runsc-v1" -o "${TMP_DIR}/containerd-shim-runsc-v1"
-  curl -fsSL "${GVISOR_URL}/containerd-shim-runsc-v1.sha512" -o "${TMP_DIR}/containerd-shim-runsc-v1.sha512"
+  curl -fsSL "${GVISOR_BASE}/gvisor-${GVISOR_ARCH}.tar.bz2" -o "${TMP_DIR}/gvisor-${GVISOR_ARCH}.tar.bz2"
+  curl -fsSL "${GVISOR_BASE}/SHA512SUMS" -o "${TMP_DIR}/SHA512SUMS"
 
   (
     cd "$TMP_DIR"
-    sha512sum -c runsc.sha512
-    sha512sum -c containerd-shim-runsc-v1.sha512
+    grep "gvisor-${GVISOR_ARCH}.tar.bz2" SHA512SUMS | sha512sum -c -
+    tar -xjf "gvisor-${GVISOR_ARCH}.tar.bz2"
   )
 
   install -m 0755 "${TMP_DIR}/runsc" /usr/local/bin/runsc
