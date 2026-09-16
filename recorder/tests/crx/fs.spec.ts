@@ -25,5 +25,7 @@ test('should work with memfs @smoke', async ({ runCrxTest }) => {
     const data = await fs.promises.readFile('/screenshots/grid.png');
     return data.toString('base64');
   });
-  expect(Buffer.from(base64, 'base64')).toMatchSnapshot('screenshot-grid.png');
+  // Screenshot rendering differs slightly across Chromium/font builds; allow a
+  // small pixel ratio so the smoke test is not flaky across runner images.
+  expect(Buffer.from(base64, 'base64')).toMatchSnapshot('screenshot-grid.png', { maxDiffPixelRatio: 0.02 });
 });
