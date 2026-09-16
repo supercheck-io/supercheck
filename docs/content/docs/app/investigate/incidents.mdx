@@ -14,13 +14,23 @@ You can create an incident in two ways:
 Both paths create the same incident workspace.
 
 ```mermaid
-%%{init: {"theme":"base","themeVariables":{"fontFamily":"ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif","primaryColor":"#6366f1","primaryTextColor":"#ffffff","primaryBorderColor":"#4338ca","lineColor":"#94a3b8","actorBkg":"#6366f1","actorBorder":"#4338ca","actorTextColor":"#ffffff","actorLineColor":"#94a3b8","signalColor":"#6366f1","signalTextColor":"#64748b","labelBoxBkgColor":"#f59e0b","labelBoxBorderColor":"#b45309","labelTextColor":"#ffffff","loopTextColor":"#64748b","activationBkgColor":"#8b5cf6","activationBorderColor":"#6d28d9","noteBkgColor":"#f59e0b","noteBorderColor":"#b45309","noteTextColor":"#ffffff","textColor":"#64748b","mainBkg":"#ffffff"}}}%%
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif","primaryColor":"#6366f1","primaryTextColor":"#ffffff","primaryBorderColor":"#4338ca","lineColor":"#94a3b8","actorBkg":"transparent","actorBorder":"transparent","actorTextColor":"#ffffff","actorLineColor":"#94a3b8","signalColor":"#6366f1","signalTextColor":"#64748b","labelBoxBkgColor":"#d97706","labelBoxBorderColor":"#b45309","labelTextColor":"#ffffff","loopTextColor":"#64748b","activationBkgColor":"#7c3aed","activationBorderColor":"#6d28d9","noteBkgColor":"#d97706","noteBorderColor":"#b45309","noteTextColor":"#ffffff","textColor":"#64748b","mainBkg":"#ffffff"}}}%%
 sequenceDiagram
-    participant Alerts as Communicate Alerts
-    participant Inc as Incident queue
-    participant Detail as Incident detail
-    participant Agent as AI SRE agent
-    participant Copilot as Copilot
+    box rgb(79,70,229)
+        participant Alerts as Communicate Alerts
+    end
+    box rgb(37,99,235)
+        participant Inc as Incident queue
+    end
+    box rgb(5,150,105)
+        participant Detail as Incident detail
+    end
+    box rgb(124,58,237)
+        participant Agent as AI SRE agent
+    end
+    box rgb(147,51,234)
+        participant Copilot as Copilot
+    end
 
     Alerts->>Inc: Promote a signal or create manually
     Inc->>Detail: Open incident workspace

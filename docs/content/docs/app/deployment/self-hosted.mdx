@@ -9,40 +9,67 @@ Deploy Supercheck on a single server with Docker Compose.
 ## Architecture
 
 ```mermaid
-flowchart TB
-    Users[Users / CI/CD] --> T[Traefik Proxy<br/>SSL / Load Balancer]
-    T --> App[Next.js App<br/>UI + API + AI SRE Engine]
-    App --> DB[(PostgreSQL<br/>Primary DB)] & Redis[(Redis + BullMQ<br/>Queue + Cache)] & S3[(MinIO<br/>Artifacts)]
-    App -->|read-only queries| Direct[Direct Connectors<br/>Prometheus · Loki · Tempo · K8s]
-    App -.->|job lease| Private[Private Agents<br/>Outbound HTTPS only]
+flowchart LR
+    Users["Users / CI/CD"] --> Traefik["Traefik Proxy<br/>SSL · Load Balancing"]
 
-    Redis --> W1
-    Redis --> W2
-    Redis --> WN
-
-    subgraph SERVER["Single Server"]
-        W1[Worker 1<br/>NestJS + BullMQ<br/>WORKER_LOCATION=local] --> K3S_1[K3s + gVisor<br/>Sandboxed Execution]
-        W2[Worker 2<br/>NestJS + BullMQ<br/>WORKER_LOCATION=local] --> K3S_2[K3s + gVisor<br/>Sandboxed Execution]
-        WN[Worker N<br/>NestJS + BullMQ<br/>WORKER_LOCATION=local] --> K3S_N[K3s + gVisor<br/>Sandboxed Execution]
-        App -.-> SRE_WS[AI SRE Agent Workspace<br/>gVisor-sandboxed pod]
+    subgraph APP["Next.js App"]
+        Dashboard["Dashboard · REST API<br/>AI SRE Engine"]
+        Scheduler["Schedulers<br/>Tests · Jobs · Monitors"]
     end
 
+    subgraph DATA["Data Layer"]
+        Postgres[("PostgreSQL<br/>Primary DB")]
+        Redis[("Redis + BullMQ<br/>Queues · Cache")]
+        Storage[("MinIO / S3<br/>Artifacts · Evidence")]
+    end
+
+    subgraph EXEC["Execution — K3s + gVisor"]
+        Worker["NestJS Worker (x N)<br/>Playwright · K6 · Monitors<br/>WORKER_LOCATION=local"]
+        TestJobs["Sandboxed Test Jobs"]
+        AgentWS["AI SRE Agent Workspace<br/>Per-investigation pod"]
+    end
+
+    subgraph CONN["Connector Layer — Read-Only"]
+        Direct["Direct Connectors<br/>Prometheus · Loki · Tempo · K8s"]
+        Private["Private Agents<br/>Outbound HTTPS only"]
+    end
+
+    Providers["Observability Providers"]
+    Notify["Notifications<br/>Email · Slack · Webhooks"]
+
+    Traefik --> Dashboard
+    Dashboard --> Scheduler
+    Dashboard --> Postgres
+    Dashboard --> Redis
+    Dashboard --> Storage
+    Scheduler --> Redis
+    Redis --> Worker
+    Worker --> TestJobs
+    Dashboard -.-> AgentWS
+    Dashboard -->|read-only queries| Direct
+    Dashboard -.->|job lease| Private
+    Direct --> Providers
+    Private --> Providers
+    Worker --> Notify
+
     style Users fill:#6366f1,stroke:#4338ca,color:#fff
-    style T fill:#0ea5e9,stroke:#0369a1,color:#fff
-    style App fill:#3b82f6,stroke:#1e40af,color:#fff
-    style DB fill:#f59e0b,stroke:#b45309,color:#fff
+    style Traefik fill:#0ea5e9,stroke:#0369a1,color:#fff
+    style Dashboard fill:#3b82f6,stroke:#1e40af,color:#fff
+    style Scheduler fill:#6366f1,stroke:#4338ca,color:#fff
+    style Postgres fill:#f59e0b,stroke:#b45309,color:#fff
     style Redis fill:#ef4444,stroke:#b91c1c,color:#fff
-    style S3 fill:#8b5cf6,stroke:#6d28d9,color:#fff
-    style W1 fill:#10b981,stroke:#047857,color:#fff
-    style W2 fill:#10b981,stroke:#047857,color:#fff
-    style WN fill:#10b981,stroke:#047857,color:#fff
-    style K3S_1 fill:#059669,stroke:#047857,color:#fff
-    style K3S_2 fill:#059669,stroke:#047857,color:#fff
-    style K3S_N fill:#059669,stroke:#047857,color:#fff
-    style Direct fill:#0ea5e9,stroke:#0369a1,color:#fff
-    style Private fill:#8b5cf6,stroke:#6d28d9,color:#fff
-    style SRE_WS fill:#059669,stroke:#047857,color:#fff
-    style SERVER fill:none,stroke:#3b82f6,stroke-width:2px
+    style Storage fill:#8b5cf6,stroke:#6d28d9,color:#fff
+    style Worker fill:#10b981,stroke:#047857,color:#fff
+    style TestJobs fill:#0d9488,stroke:#0f766e,color:#fff
+    style AgentWS fill:#a855f7,stroke:#7e22ce,color:#fff
+    style Direct fill:#06b6d4,stroke:#0e7490,color:#fff
+    style Private fill:#ec4899,stroke:#be185d,color:#fff
+    style Providers fill:#64748b,stroke:#475569,color:#fff
+    style Notify fill:#f97316,stroke:#c2410c,color:#fff
+    style APP fill:none,stroke:#94a3b8,stroke-dasharray: 4 4
+    style DATA fill:none,stroke:#94a3b8,stroke-dasharray: 4 4
+    style EXEC fill:none,stroke:#94a3b8,stroke-dasharray: 4 4
+    style CONN fill:none,stroke:#94a3b8,stroke-dasharray: 4 4
 ```
 
 All services run on a single Linux server managed by Docker Compose. Workers consume jobs from Redis via BullMQ and execute each test as an ephemeral Kubernetes Job in a local [K3s](https://k3s.io) cluster, sandboxed with [gVisor](https://gvisor.dev/) for kernel-level isolation. Scale by increasing `WORKER_REPLICAS` or expanding to [multiple regions](/docs/app/deployment/multi-location).

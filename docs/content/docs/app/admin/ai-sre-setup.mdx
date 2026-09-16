@@ -62,11 +62,8 @@ credential fields.
 5. Verify alert channels and run a test investigation.
 
 ```mermaid
-flowchart TD
-    Services["<b>1. Add Services</b><br/>Define systems & telemetry names"] --> Links["<b>2. Link Checks</b><br/>Monitors, jobs, tests, status"]
-    Links --> Connectors["<b>3. Add Connectors</b><br/>Read-only evidence sources"]
-    Connectors --> Recipes["<b>4. Add Recipes</b><br/>Approved diagnostic queries"]
-    Recipes --> Verify["<b>5. Test Investigation</b><br/>Run a test incident investigation"]
+flowchart LR
+    Services["<b>1. Add Services</b><br/>Systems & telemetry"] --> Links["<b>2. Link Checks</b><br/>Monitors, jobs, tests"] --> Connectors["<b>3. Add Connectors</b><br/>Read-only evidence"] --> Recipes["<b>4. Add Recipes</b><br/>Approved queries"] --> Verify["<b>5. Test Investigation</b><br/>Run a test investigation"]
 
     style Services fill:#6366f1,stroke:#4338ca,color:#fff
     style Links fill:#3b82f6,stroke:#1e40af,color:#fff

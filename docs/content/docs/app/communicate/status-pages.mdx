@@ -337,14 +337,26 @@ Subscribers receive notifications for:
 - Scheduled maintenance reminders
 
 ```mermaid
-%%{init: {"theme":"base","themeVariables":{"fontFamily":"ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif","primaryColor":"#6366f1","primaryTextColor":"#ffffff","primaryBorderColor":"#4338ca","lineColor":"#94a3b8","actorBkg":"#6366f1","actorBorder":"#4338ca","actorTextColor":"#ffffff","actorLineColor":"#94a3b8","signalColor":"#6366f1","signalTextColor":"#64748b","labelBoxBkgColor":"#f59e0b","labelBoxBorderColor":"#b45309","labelTextColor":"#ffffff","loopTextColor":"#64748b","activationBkgColor":"#8b5cf6","activationBorderColor":"#6d28d9","noteBkgColor":"#f59e0b","noteBorderColor":"#b45309","noteTextColor":"#ffffff","textColor":"#64748b","mainBkg":"#ffffff"}}}%%
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif","primaryColor":"#6366f1","primaryTextColor":"#ffffff","primaryBorderColor":"#4338ca","lineColor":"#94a3b8","actorBkg":"transparent","actorBorder":"transparent","actorTextColor":"#ffffff","actorLineColor":"#94a3b8","signalColor":"#6366f1","signalTextColor":"#64748b","labelBoxBkgColor":"#d97706","labelBoxBorderColor":"#b45309","labelTextColor":"#ffffff","loopTextColor":"#64748b","activationBkgColor":"#7c3aed","activationBorderColor":"#6d28d9","noteBkgColor":"#d97706","noteBorderColor":"#b45309","noteTextColor":"#ffffff","textColor":"#64748b","mainBkg":"#ffffff"}}}%%
 sequenceDiagram
-    participant Team as Responder
-    participant Page as Status Page
-    participant Email as Email (SMTP)
-    participant Slack as Slack
-    participant Hook as Webhook
-    participant Feed as RSS · iCal · Badge
+    box rgb(79,70,229)
+        participant Team as Responder
+    end
+    box rgb(37,99,235)
+        participant Page as Status Page
+    end
+    box rgb(217,119,6)
+        participant Email as Email (SMTP)
+    end
+    box rgb(124,58,237)
+        participant Slack as Slack
+    end
+    box rgb(8,145,178)
+        participant Hook as Webhook
+    end
+    box rgb(5,150,105)
+        participant Feed as RSS · iCal · Badge
+    end
 
     Team->>Page: Create, update, or resolve an incident
     Page->>Page: Update component status and timeline
