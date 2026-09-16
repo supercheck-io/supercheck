@@ -42,15 +42,15 @@ flowchart TB
     Direct --> Provider["<b>Provider API</b><br/>Prometheus, Loki, Tempo, etc."]
     Agent --> Provider
 
-    style Incident fill:#eef2ff,stroke:#4338ca,color:#3730a3
-    style Native fill:#ecfdf5,stroke:#047857,color:#065f46
-    style Direct fill:#eff6ff,stroke:#1e40af,color:#1e40af
-    style Agent fill:#f5f3ff,stroke:#6d28d9,color:#5b21b6
-    style Provider fill:#fffbeb,stroke:#b45309,color:#92400e
+    style Incident fill:#6366f1,stroke:#4338ca,color:#fff
+    style Native fill:#10b981,stroke:#047857,color:#fff
+    style Direct fill:#3b82f6,stroke:#1e40af,color:#fff
+    style Agent fill:#8b5cf6,stroke:#6d28d9,color:#fff
+    style Provider fill:#f59e0b,stroke:#b45309,color:#fff
 ```
 
 ```mermaid
-%%{init: {"theme":"base","themeVariables":{"fontFamily":"ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif","primaryColor":"#eef2ff","primaryTextColor":"#3730a3","primaryBorderColor":"#6366f1","lineColor":"#94a3b8","secondaryColor":"#fffbeb","secondaryTextColor":"#92400e","secondaryBorderColor":"#f59e0b","tertiaryColor":"#ecfdf5","tertiaryTextColor":"#065f46","tertiaryBorderColor":"#10b981","clusterBkg":"#f8fafc","clusterBorder":"#cbd5e1","edgeLabelBackground":"#ffffff","actorBkg":"#eef2ff","actorBorder":"#6366f1","actorTextColor":"#3730a3","actorLineColor":"#94a3b8","signalColor":"#64748b","signalTextColor":"#64748b","labelBoxBkgColor":"#fffbeb","labelBoxBorderColor":"#f59e0b","labelTextColor":"#92400e","loopTextColor":"#64748b","activationBkgColor":"#ddd6fe","activationBorderColor":"#7c3aed","noteBkgColor":"#fef9c3","noteBorderColor":"#eab308","noteTextColor":"#713f12","textColor":"#475569","mainBkg":"#ffffff"}}}%%
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif","actorBkg":"#eef2ff","actorBorder":"#6366f1","actorTextColor":"#312e81","actorLineColor":"#94a3b8","signalColor":"#6366f1","signalTextColor":"#64748b","labelBoxBkgColor":"#fef3c7","labelBoxBorderColor":"#d97706","labelTextColor":"#78350f","loopTextColor":"#64748b","activationBkgColor":"#ddd6fe","activationBorderColor":"#7c3aed","noteBkgColor":"#fef3c7","noteBorderColor":"#d97706","noteTextColor":"#78350f","textColor":"#64748b","lineColor":"#94a3b8","mainBkg":"transparent"}}}%%
 sequenceDiagram
     participant Responder
     participant Supercheck

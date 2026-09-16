@@ -286,11 +286,11 @@ flowchart LR
     C --> D[Resolved]
     S[Scheduled] --> C
 
-    style A fill:#fffbeb,stroke:#b45309,color:#92400e
-    style B fill:#fff7ed,stroke:#c2410c,color:#9a3412
-    style C fill:#eff6ff,stroke:#1e40af,color:#1e40af
-    style D fill:#ecfdf5,stroke:#047857,color:#065f46
-    style S fill:#eef2ff,stroke:#4338ca,color:#3730a3
+    style A fill:#f59e0b,stroke:#b45309,color:#fff
+    style B fill:#f97316,stroke:#c2410c,color:#fff
+    style C fill:#3b82f6,stroke:#1e40af,color:#fff
+    style D fill:#10b981,stroke:#047857,color:#fff
+    style S fill:#6366f1,stroke:#4338ca,color:#fff
 ```
 
 | Status | Description |
@@ -337,7 +337,7 @@ Subscribers receive notifications for:
 - Scheduled maintenance reminders
 
 ```mermaid
-%%{init: {"theme":"base","themeVariables":{"fontFamily":"ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif","primaryColor":"#eef2ff","primaryTextColor":"#3730a3","primaryBorderColor":"#6366f1","lineColor":"#94a3b8","secondaryColor":"#fffbeb","secondaryTextColor":"#92400e","secondaryBorderColor":"#f59e0b","tertiaryColor":"#ecfdf5","tertiaryTextColor":"#065f46","tertiaryBorderColor":"#10b981","clusterBkg":"#f8fafc","clusterBorder":"#cbd5e1","edgeLabelBackground":"#ffffff","actorBkg":"#eef2ff","actorBorder":"#6366f1","actorTextColor":"#3730a3","actorLineColor":"#94a3b8","signalColor":"#64748b","signalTextColor":"#64748b","labelBoxBkgColor":"#fffbeb","labelBoxBorderColor":"#f59e0b","labelTextColor":"#92400e","loopTextColor":"#64748b","activationBkgColor":"#ddd6fe","activationBorderColor":"#7c3aed","noteBkgColor":"#fef9c3","noteBorderColor":"#eab308","noteTextColor":"#713f12","textColor":"#475569","mainBkg":"#ffffff"}}}%%
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif","actorBkg":"#eef2ff","actorBorder":"#6366f1","actorTextColor":"#312e81","actorLineColor":"#94a3b8","signalColor":"#6366f1","signalTextColor":"#64748b","labelBoxBkgColor":"#fef3c7","labelBoxBorderColor":"#d97706","labelTextColor":"#78350f","loopTextColor":"#64748b","activationBkgColor":"#ddd6fe","activationBorderColor":"#7c3aed","noteBkgColor":"#fef3c7","noteBorderColor":"#d97706","noteTextColor":"#78350f","textColor":"#64748b","lineColor":"#94a3b8","mainBkg":"transparent"}}}%%
 sequenceDiagram
     participant Team as Responder
     participant Page as Status Page
@@ -392,10 +392,10 @@ Use your own domain (e.g., `status.example.net`) instead of the default subdomai
 ```mermaid
 flowchart LR
     A["1. Configure Domain"] --> B["2. Add CNAME Record"] --> C["3. Verify DNS"] --> D["4. Active"]
-    style A fill:#eef2ff,stroke:#4338ca,color:#3730a3
-    style B fill:#eff6ff,stroke:#1e40af,color:#1e40af
-    style C fill:#fffbeb,stroke:#b45309,color:#92400e
-    style D fill:#ecfdf5,stroke:#047857,color:#065f46
+    style A fill:#6366f1,stroke:#4338ca,color:#fff
+    style B fill:#3b82f6,stroke:#1e40af,color:#fff
+    style C fill:#f59e0b,stroke:#b45309,color:#fff
+    style D fill:#10b981,stroke:#047857,color:#fff
 ```
 
 #### Step-by-Step Setup

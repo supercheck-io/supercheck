@@ -62,17 +62,14 @@ credential fields.
 5. Verify alert channels and run a test investigation.
 
 ```mermaid
-flowchart TD
-    Services["<b>1. Add Services</b><br/>Define systems & telemetry"] --> Links["<b>2. Link Checks</b><br/>Monitors · jobs · tests"]
-    Links --> Connectors["<b>3. Add Connectors</b><br/>Read-only evidence sources"]
-    Connectors --> Recipes["<b>4. Add Recipes</b><br/>Approved diagnostic queries"]
-    Recipes --> Verify["<b>5. Test Investigation</b><br/>Run a test investigation"]
+flowchart LR
+    Services["<b>1. Add Services</b><br/>Systems & telemetry"] --> Links["<b>2. Link Checks</b><br/>Monitors, jobs, tests"] --> Connectors["<b>3. Add Connectors</b><br/>Read-only evidence"] --> Recipes["<b>4. Add Recipes</b><br/>Approved queries"] --> Verify["<b>5. Test Investigation</b><br/>Run a test investigation"]
 
-    style Services fill:#eef2ff,stroke:#4338ca,color:#3730a3
-    style Links fill:#eff6ff,stroke:#1e40af,color:#1e40af
-    style Connectors fill:#f5f3ff,stroke:#6d28d9,color:#5b21b6
-    style Recipes fill:#fffbeb,stroke:#b45309,color:#92400e
-    style Verify fill:#ecfdf5,stroke:#047857,color:#065f46
+    style Services fill:#6366f1,stroke:#4338ca,color:#fff
+    style Links fill:#3b82f6,stroke:#1e40af,color:#fff
+    style Connectors fill:#8b5cf6,stroke:#6d28d9,color:#fff
+    style Recipes fill:#f59e0b,stroke:#b45309,color:#fff
+    style Verify fill:#10b981,stroke:#047857,color:#fff
 ```
 
 ## Permissions
