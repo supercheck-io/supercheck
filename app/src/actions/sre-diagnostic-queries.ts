@@ -6,7 +6,7 @@ import { z } from "zod";
 
 import { diagnosticQueries, externalConnectors } from "@/db/schema";
 import { logAuditEvent } from "@/lib/audit-logger";
-import { requireProjectContext, type ProjectContext } from "@/lib/project-context";
+import { requireProjectContext, type ProjectAuthContext, type ProjectContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { isDiagnosticQueryTypeCompatible } from "@/lib/sre/connectors/diagnostic-query-adapters";
 import { validateDiagnosticQueryParameterSchema, validateTemplatePlaceholderCoverage } from "@/lib/sre/connectors/diagnostic-query";
@@ -99,12 +99,12 @@ async function getDiagnosticQueryListItem(id: string, organizationId: string, pr
   return row ?? null;
 }
 
-export async function getSreDiagnosticQueries(): Promise<
+export async function getSreDiagnosticQueries(requestContext?: ProjectAuthContext): Promise<
   | { success: true; queries: SreDiagnosticQueryListItem[] }
   | { success: false; error: string; queries: [] }
 > {
   try {
-    const { userId, organizationId, project } = await requireProjectContext();
+    const { userId, organizationId, project } = requestContext ?? await requireProjectContext();
     assertCanConfigureDiagnosticQueries(userId, organizationId, project);
 
     const rows = await db
@@ -138,14 +138,14 @@ export async function getSreDiagnosticQueries(): Promise<
   }
 }
 
-export async function getSreDiagnosticQuerySetupOptions(): Promise<
+export async function getSreDiagnosticQuerySetupOptions(requestContext?: ProjectAuthContext): Promise<
   | { success: true; options: SreDiagnosticQuerySetupOptions }
   | { success: false; error: string; options: SreDiagnosticQuerySetupOptions }
 > {
   const emptyOptions = { connectors: [] };
 
   try {
-    const { userId, organizationId, project } = await requireProjectContext();
+    const { userId, organizationId, project } = requestContext ?? await requireProjectContext();
     assertCanConfigureDiagnosticQueries(userId, organizationId, project);
 
     const connectors = await db

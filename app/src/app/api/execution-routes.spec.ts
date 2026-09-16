@@ -399,6 +399,38 @@ describe("Execution route regressions", () => {
 	    expect(updateSet).toHaveBeenCalledWith({ status: "queued" });
 	  });
 
+  it("POST /api/tests/[id]/execute accepts CLI bearer auth without an Origin header", async () => {
+    mockRequireAuthContext.mockResolvedValue({ ...authCtx, isCliAuth: true });
+    mockDb.query.tests.findFirst.mockResolvedValue({
+      id: "test-1",
+      type: "playwright",
+      script: Buffer.from("test('smoke', async () => {})").toString("base64"),
+      projectId: "project-1",
+      organizationId: "org-1",
+    });
+    mockDb.insert.mockReturnValue({
+      values: jest.fn().mockReturnValue({
+        returning: jest.fn().mockResolvedValue([{ id: "run-1" }]),
+      }),
+    });
+    mockDb.update.mockReturnValue({
+      set: jest.fn().mockReturnValue({ where: jest.fn().mockResolvedValue(undefined) }),
+    });
+    mockAddTestToQueue.mockResolvedValue({ status: "queued", position: 1 });
+
+    const response = await executeSingleTest(
+      new NextRequest("http://localhost/api/tests/test-1/execute", {
+        method: "POST",
+        body: JSON.stringify({}),
+        headers: { "content-type": "application/json" },
+      }),
+      { params: Promise.resolve({ id: "test-1" }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(mockAddTestToQueue).toHaveBeenCalledTimes(1);
+  });
+
 	  it("POST /api/tests/[id]/execute returns a billing block payload before queueing", async () => {
 	    mockPolarUsageService.shouldBlockUsage.mockResolvedValue({
 	      blocked: true,

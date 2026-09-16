@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { polarUsageService } from "@/lib/services/polar-usage.service";
 import { isPolarEnabled } from "@/lib/feature-flags";
-import { requireAdmin } from "@/lib/admin";
+import { isAdminAccessDeniedError, requireAdmin } from "@/lib/admin";
+import { isAuthError, requireUserAuthContext } from "@/lib/auth-context";
 
 /**
  * Sync pending usage events to Polar
@@ -26,7 +27,8 @@ export async function POST(request: NextRequest) {
     
     // If not a cron job, require admin privileges (security fix)
     if (!isCronJob) {
-      await requireAdmin();
+      const auth = await requireUserAuthContext();
+      await requireAdmin(auth.userId);
     }
 
     if (!isPolarEnabled()) {
@@ -50,10 +52,22 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error("[Cron] Usage sync error:", error);
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { success: false, error: "Authentication required" },
+        { status: 401 }
+      );
+    }
+    if (isAdminAccessDeniedError(error)) {
+      return NextResponse.json(
+        { success: false, error: "Admin privileges required" },
+        { status: 403 }
+      );
+    }
     return NextResponse.json(
       { 
         success: false, 
-        error: error instanceof Error ? error.message : "Unknown error" 
+        error: "Failed to sync usage events"
       },
       { status: 500 }
     );

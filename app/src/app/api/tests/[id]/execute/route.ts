@@ -38,13 +38,15 @@ type ExecuteContext = {
 };
 
 export async function POST(request: NextRequest, context: ExecuteContext) {
-  const originError = requireSameOriginRequest(request);
-  if (originError) return originError;
-
   let createdRunId: string | null = null;
 
   try {
     const authCtx = await requireAuthContext();
+    if (!authCtx.isCliAuth) {
+      const originError = requireSameOriginRequest(request);
+      if (originError) return originError;
+    }
+
     const { userId, project, organizationId } = authCtx;
     const params = await context.params;
     const testId = params.id;

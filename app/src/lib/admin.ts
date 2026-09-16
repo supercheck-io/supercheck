@@ -14,6 +14,17 @@ import { getCurrentUser, getActiveOrganization } from "./session";
 import { getUserRole, getUserOrgRole } from "./rbac/middleware";
 import { Role } from "./rbac/permissions";
 
+export class AdminAccessDeniedError extends Error {
+  constructor() {
+    super("Admin privileges required");
+    this.name = "AdminAccessDeniedError";
+  }
+}
+
+export function isAdminAccessDeniedError(error: unknown): boolean {
+  return error instanceof AdminAccessDeniedError;
+}
+
 export async function isAdmin(): Promise<boolean> {
   try {
     const currentUser = await getCurrentUser();
@@ -62,10 +73,12 @@ export async function isOrgAdmin(): Promise<boolean> {
   }
 }
 
-export async function requireAdmin() {
-  const isUserAdmin = await isAdmin();
+export async function requireAdmin(userId?: string) {
+  const isUserAdmin = userId
+    ? (await getUserRole(userId)) === Role.SUPER_ADMIN
+    : await isAdmin();
   if (!isUserAdmin) {
-    throw new Error("Admin privileges required");
+    throw new AdminAccessDeniedError();
   }
 }
 

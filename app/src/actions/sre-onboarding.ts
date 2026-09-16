@@ -9,7 +9,10 @@ import {
   sreServices,
 } from "@/db/schema";
 import { createLogger } from "@/lib/logger/index";
-import { requireProjectContext } from "@/lib/project-context";
+import {
+  requireProjectContext,
+  type ProjectAuthContext,
+} from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { db } from "@/utils/db";
 
@@ -27,12 +30,15 @@ export type SreOnboardingStatus = {
   complete: boolean;
 };
 
-export async function getSreOnboardingStatus(): Promise<
+export async function getSreOnboardingStatus(
+  requestContext?: ProjectAuthContext,
+): Promise<
   | { success: true; status: SreOnboardingStatus }
   | { success: false; error: string; status: null }
 > {
   try {
-    const { userId, organizationId, project } = await requireProjectContext();
+    const { userId, organizationId, project } =
+      requestContext ?? (await requireProjectContext());
     const canViewServices = checkPermissionWithContext("sre_service", "view", {
       userId,
       organizationId,

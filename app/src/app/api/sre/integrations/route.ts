@@ -23,10 +23,10 @@ export async function GET() {
     bindingsResult,
     bindingSetupOptionsResult,
   ] = await Promise.all([
-    getSreConnectors(),
-    getSreConnectorSetupOptions(),
-    getSreIntegrationBindings(),
-    getSreIntegrationBindingSetupOptions(),
+    getSreConnectors(auth.context),
+    getSreConnectorSetupOptions(auth.context),
+    getSreIntegrationBindings(auth.context),
+    getSreIntegrationBindingSetupOptions(auth.context),
   ]);
 
   const success =

@@ -10,6 +10,6 @@ export async function GET() {
   ]);
   if (!auth.success) return auth.response;
 
-  const result = await getSreOnboardingStatus();
+  const result = await getSreOnboardingStatus(auth.context);
   return NextResponse.json(result, { status: result.success ? 200 : 403 });
 }

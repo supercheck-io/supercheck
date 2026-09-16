@@ -8,7 +8,7 @@ import { z } from "zod";
 import { privateAgentCredentials, privateAgents } from "@/db/schema";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { buildPrivateAgentRegistrationMetadata } from "@/lib/private-agents/registration-token";
-import { requireProjectContext } from "@/lib/project-context";
+import { requireProjectContext, type ProjectAuthContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { hashApiKey } from "@/lib/security/api-key-hash";
 import { db } from "@/utils/db";
@@ -98,12 +98,12 @@ async function requireConnectorConfigurationPermission() {
   return { ...context, allowed: true as const };
 }
 
-export async function getPrivateAgents(): Promise<
+export async function getPrivateAgents(requestContext?: ProjectAuthContext): Promise<
   | { success: true; agents: PrivateAgentListItem[] }
   | { success: false; error: string; agents: [] }
 > {
   try {
-    const { userId, organizationId, project } = await requireProjectContext();
+    const { userId, organizationId, project } = requestContext ?? await requireProjectContext();
     const canView = checkPermissionWithContext("sre_connector", "view", { userId, organizationId, project });
 
     if (!canView) {

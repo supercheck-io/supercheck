@@ -88,9 +88,35 @@
     {
       "name": "Organizations",
       "description": "Organization membership, settings, invitations, and usage stats. Session cookies or CLI bearer tokens are accepted. Organizations are created automatically at signup; POST is disabled."
+    },
+    {
+      "name": "Billing",
+      "description": "Subscription, pricing, usage, spending controls, and interactive Polar billing sessions"
     }
   ],
   "paths": {
+    "/api/billing/current": {
+      "get": { "operationId": "getCurrentBilling", "summary": "Get current subscription and plan usage", "tags": ["Billing"], "responses": { "200": { "description": "Current subscription, limits, usage, and resource counts" }, "400": { "description": "No active organization" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "404": { "$ref": "#/components/responses/NotFound" } } }
+    },
+    "/api/billing/pricing": {
+      "get": { "operationId": "getBillingPricing", "summary": "Get public plan pricing", "tags": ["Billing"], "security": [], "responses": { "200": { "description": "Available plans, limits, overage pricing, and locations" }, "500": { "description": "Pricing is unavailable or not configured" } } }
+    },
+    "/api/billing/usage": {
+      "get": { "operationId": "getBillingUsage", "summary": "Get organization usage and spending", "tags": ["Billing"], "responses": { "200": { "description": "Usage metrics and spending-limit status" }, "400": { "description": "No active organization" }, "401": { "$ref": "#/components/responses/Unauthorized" } } }
+    },
+    "/api/billing/settings": {
+      "get": { "operationId": "getBillingSettings", "summary": "Get organization billing settings", "tags": ["Billing"], "responses": { "200": { "description": "Billing and notification settings" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" } } },
+      "patch": { "operationId": "updateBillingSettings", "summary": "Update organization billing settings", "description": "Updates spending limits and usage-notification preferences. Requires organization owner or admin permission.", "tags": ["Billing"], "responses": { "200": { "description": "Updated billing settings" }, "400": { "description": "Invalid settings" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" } } }
+    },
+    "/api/billing/notifications": {
+      "get": { "operationId": "listBillingNotifications", "summary": "List usage notification history", "tags": ["Billing"], "responses": { "200": { "description": "Paginated notification history" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" } } }
+    },
+    "/api/billing/checkout": {
+      "post": { "operationId": "createBillingCheckout", "summary": "Create an interactive Polar checkout", "description": "Browser-session-only operation for organization owners. CLI bearer tokens are intentionally rejected.", "tags": ["Billing"], "security": [{ "sessionCookie": [] }], "responses": { "200": { "description": "Checkout URL" }, "400": { "description": "Invalid plan or organization context" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "503": { "description": "Billing provider is not configured" } } }
+    },
+    "/api/billing/portal": {
+      "post": { "operationId": "createBillingPortalSession", "summary": "Create an interactive Polar customer portal session", "description": "Browser-session-only operation for organization owners. CLI bearer tokens are intentionally rejected.", "tags": ["Billing"], "security": [{ "sessionCookie": [] }], "responses": { "200": { "description": "Customer portal URL" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "409": { "description": "Billing customer setup is incomplete" }, "503": { "description": "Billing provider is not configured" } } }
+    },
     "/api/sre/incidents": {
       "get": {
         "operationId": "listSreIncidents",
@@ -2315,8 +2341,17 @@
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
+          "402": {
+            "description": "Active subscription or available spending capacity required"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "description": "Execution rate limit exceeded"
           }
         }
       }
@@ -4013,7 +4048,7 @@
       "patch": {
         "operationId": "updateMonitorStatus",
         "summary": "Update monitor status",
-        "description": "Pause, resume, or otherwise set a monitor's status (for example `paused` or `maintenance`). Requires monitor manage or update permission. Automated status changes from checks are handled separately.",
+        "description": "Pause, resume, or otherwise set a monitor's status (for example `paused` or `maintenance`). Requires monitor manage or update permission. Automated status changes from checks are handled separately. Read current monitor status with `GET /api/monitors/{id}`; this route does not support GET.",
         "tags": [
           "Monitors"
         ],
@@ -5199,7 +5234,13 @@
       "bearerAuth": {
         "type": "http",
         "scheme": "bearer",
-        "description": "CLI token (`sck_live_*`) for full API access, or trigger key (`sck_trigger_*` / legacy `job_*`) for job trigger endpoint only."
+        "description": "Project-scoped CLI token (`sck_live_*` or `sck_test_*`) for documented API operations that accept bearer authentication. Interactive browser operations may require a session cookie. Trigger keys (`sck_trigger_*` / legacy `job_*`) are accepted only by job trigger endpoints."
+      },
+      "sessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "better-auth.session_token",
+        "description": "Interactive Better Auth browser session. Secure deployments may use the `__Secure-` cookie prefix."
       }
     },
     "parameters": {
