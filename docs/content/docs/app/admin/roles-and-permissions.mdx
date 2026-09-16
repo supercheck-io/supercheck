@@ -24,20 +24,13 @@ Supercheck uses a **6-role RBAC system** with granular permissions across organi
 ## Role Hierarchy
 
 ```mermaid
-graph TD
-    SA["<b>Super Admin</b><br/>System-wide Control"]
-    OO["<b>Org Owner</b><br/>Organization Control"]
-    OA["<b>Org Admin</b><br/>Organization Management"]
-    PA["<b>Project Admin</b><br/>Assigned Projects"]
-    PE["<b>Project Editor</b><br/>Assigned Projects"]
-    PV["<b>Project Viewer</b><br/>Read-Only All Projects"]
-
-    SA --> OO
-    SA --> OA
-    OO --> PA
+flowchart LR
+    SA["<b>Super Admin</b><br/>System-wide"] --> OO["<b>Org Owner</b><br/>Organization"]
+    SA --> OA["<b>Org Admin</b><br/>Organization"]
+    OO --> PA["<b>Project Admin</b><br/>Project"]
     OA --> PA
-    PA --> PE
-    PE --> PV
+    PA --> PE["<b>Project Editor</b><br/>Project"]
+    PE --> PV["<b>Project Viewer</b><br/>Read-only"]
 
     style SA fill:#ef4444,stroke:#b91c1c,color:#fff
     style OO fill:#f59e0b,stroke:#b45309,color:#fff
