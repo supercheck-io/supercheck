@@ -286,11 +286,11 @@ flowchart LR
     C --> D[Resolved]
     S[Scheduled] --> C
 
-    style A fill:#f59e0b,stroke:#b45309,color:#fff
-    style B fill:#f97316,stroke:#c2410c,color:#fff
-    style C fill:#3b82f6,stroke:#1e40af,color:#fff
-    style D fill:#10b981,stroke:#047857,color:#fff
-    style S fill:#6366f1,stroke:#4338ca,color:#fff
+    style A fill:#fffbeb,stroke:#b45309,color:#92400e
+    style B fill:#fff7ed,stroke:#c2410c,color:#9a3412
+    style C fill:#eff6ff,stroke:#1e40af,color:#1e40af
+    style D fill:#ecfdf5,stroke:#047857,color:#065f46
+    style S fill:#eef2ff,stroke:#4338ca,color:#3730a3
 ```
 
 | Status | Description |
@@ -336,6 +336,26 @@ Subscribers receive notifications for:
 - Incident resolution
 - Scheduled maintenance reminders
 
+```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif","primaryColor":"#eef2ff","primaryTextColor":"#3730a3","primaryBorderColor":"#6366f1","lineColor":"#94a3b8","secondaryColor":"#fffbeb","secondaryTextColor":"#92400e","secondaryBorderColor":"#f59e0b","tertiaryColor":"#ecfdf5","tertiaryTextColor":"#065f46","tertiaryBorderColor":"#10b981","clusterBkg":"#f8fafc","clusterBorder":"#cbd5e1","edgeLabelBackground":"#ffffff","actorBkg":"#eef2ff","actorBorder":"#6366f1","actorTextColor":"#3730a3","actorLineColor":"#94a3b8","signalColor":"#64748b","signalTextColor":"#64748b","labelBoxBkgColor":"#fffbeb","labelBoxBorderColor":"#f59e0b","labelTextColor":"#92400e","loopTextColor":"#64748b","activationBkgColor":"#ddd6fe","activationBorderColor":"#7c3aed","noteBkgColor":"#fef9c3","noteBorderColor":"#eab308","noteTextColor":"#713f12","textColor":"#475569","mainBkg":"#ffffff"}}}%%
+sequenceDiagram
+    participant Team as Responder
+    participant Page as Status Page
+    participant Email as Email (SMTP)
+    participant Slack as Slack
+    participant Hook as Webhook
+    participant Feed as RSS · iCal · Badge
+
+    Team->>Page: Create, update, or resolve an incident
+    Page->>Page: Update component status and timeline
+    opt Notify subscribers enabled
+        Page->>Email: Incident notification email
+        Page->>Slack: Channel message (color-coded by impact)
+        Page->>Hook: JSON incident event
+    end
+    Page->>Feed: Refresh RSS, iCal, and status badge
+```
+
 ## Settings
 
 Configure branding and notification settings.
@@ -372,10 +392,10 @@ Use your own domain (e.g., `status.example.net`) instead of the default subdomai
 ```mermaid
 flowchart LR
     A["1. Configure Domain"] --> B["2. Add CNAME Record"] --> C["3. Verify DNS"] --> D["4. Active"]
-    style A fill:#6366f1,stroke:#4338ca,color:#fff
-    style B fill:#3b82f6,stroke:#1e40af,color:#fff
-    style C fill:#f59e0b,stroke:#b45309,color:#fff
-    style D fill:#10b981,stroke:#047857,color:#fff
+    style A fill:#eef2ff,stroke:#4338ca,color:#3730a3
+    style B fill:#eff6ff,stroke:#1e40af,color:#1e40af
+    style C fill:#fffbeb,stroke:#b45309,color:#92400e
+    style D fill:#ecfdf5,stroke:#047857,color:#065f46
 ```
 
 #### Step-by-Step Setup

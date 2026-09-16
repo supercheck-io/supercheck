@@ -98,44 +98,72 @@ Record browser interactions and save Playwright tests directly to Supercheck:
 
 ```mermaid
 flowchart TB
-    Users[Users / CI/CD] --> T[Traefik Proxy<br/>SSL / Load Balancer]
-    T --> App[Next.js App<br/>UI + API]
-    App --> DB[(PostgreSQL<br/>Primary DB)] & Redis[(Redis + BullMQ<br/>Queue + Cache)] & S3[(MinIO<br/>Artifacts)]
+    Users["Users / CI/CD"]
 
-    Redis --> W_EU
-    Redis -.->|Internet| W_US
-    Redis -.->|Internet| W_APAC
+    subgraph PRIMARY["Primary Server — Docker Compose"]
+        T["Traefik Proxy<br/>SSL · Load Balancing"]
+        App["Next.js App<br/>Dashboard · REST API · AI SRE Engine"]
+        Scheduler["Schedulers<br/>Tests · Jobs · Monitors"]
+        DB[("PostgreSQL<br/>Primary DB")]
+        Redis[("Redis + BullMQ<br/>Queues · Cache")]
+        S3[("MinIO / S3<br/>Artifacts · Evidence")]
+        W_EU["Worker EU<br/>WORKER_LOCATION=eu-central"]
+        K3S_EU["K3s + gVisor<br/>Sandboxed Execution"]
 
-    subgraph PRIMARY["Primary Server"]
-        W_EU[Worker EU<br/>NestJS + BullMQ<br/>WORKER_LOCATION=eu-central] --> K3S_EU[K3s + gVisor<br/>Sandboxed Execution]
+        T --> App
+        App --> Scheduler
+        App --> DB
+        App --> Redis
+        App --> S3
+        Scheduler --> Redis
+        Redis --> W_EU
+        W_EU --> K3S_EU
     end
 
     subgraph US["US Server"]
-        W_US[Worker US<br/>NestJS + BullMQ<br/>WORKER_LOCATION=us-east] --> K3S_US[K3s + gVisor<br/>Sandboxed Execution]
+        W_US["Worker US<br/>WORKER_LOCATION=us-east"] --> K3S_US["K3s + gVisor<br/>Sandboxed Execution"]
     end
 
     subgraph APAC["Asia Pacific Server"]
-        W_APAC[Worker APAC<br/>NestJS + BullMQ<br/>WORKER_LOCATION=asia-pacific] --> K3S_APAC[K3s + gVisor<br/>Sandboxed Execution]
+        W_APAC["Worker APAC<br/>WORKER_LOCATION=asia-pacific"] --> K3S_APAC["K3s + gVisor<br/>Sandboxed Execution"]
     end
 
-    style Users fill:#6366f1,stroke:#4338ca,color:#fff
-    style T fill:#0ea5e9,stroke:#0369a1,color:#fff
-    style App fill:#3b82f6,stroke:#1e40af,color:#fff
-    style DB fill:#f59e0b,stroke:#b45309,color:#fff
-    style Redis fill:#ef4444,stroke:#b91c1c,color:#fff
-    style S3 fill:#8b5cf6,stroke:#6d28d9,color:#fff
-    style W_EU fill:#10b981,stroke:#047857,color:#fff
-    style W_US fill:#10b981,stroke:#047857,color:#fff
-    style W_APAC fill:#10b981,stroke:#047857,color:#fff
-    style K3S_EU fill:#059669,stroke:#047857,color:#fff
-    style K3S_US fill:#059669,stroke:#047857,color:#fff
-    style K3S_APAC fill:#059669,stroke:#047857,color:#fff
-    style PRIMARY fill:none,stroke:#3b82f6,stroke-width:2px
-    style US fill:none,stroke:#64748b,stroke-width:2px,stroke-dasharray: 5 5
-    style APAC fill:none,stroke:#64748b,stroke-width:2px,stroke-dasharray: 5 5
+    Users --> T
+    Redis -.->|"Internet"| W_US
+    Redis -.->|"Internet"| W_APAC
+    App -->|"read-only queries"| Direct["Direct Connectors<br/>Prometheus · Loki · Tempo · Kubernetes"]
+    App -.->|"job lease"| Private["Private Agents<br/>Outbound HTTPS · Zero inbound ports"]
+    Direct --> Providers["Observability Providers"]
+    Private -.->|"outbound HTTPS"| Providers
+    W_EU --> Notify["Notifications<br/>Email · Slack · Webhooks"]
+    W_US --> Notify
+    W_APAC --> Notify
+
+    classDef proxy fill:#f0f9ff,stroke:#0ea5e9,color:#075985
+    classDef app fill:#eef2ff,stroke:#6366f1,color:#3730a3
+    classDef data fill:#fffbeb,stroke:#f59e0b,color:#92400e
+    classDef queue fill:#fef2f2,stroke:#ef4444,color:#991b1b
+    classDef worker fill:#ecfdf5,stroke:#10b981,color:#065f46
+    classDef sandbox fill:#ecfdf5,stroke:#059669,color:#065f46
+    classDef connector fill:#f0f9ff,stroke:#0ea5e9,color:#075985
+    classDef external fill:#f8fafc,stroke:#64748b,color:#334155
+    classDef notify fill:#fdf2f8,stroke:#ec4899,color:#9d174d
+
+    class Users,Providers external
+    class T proxy
+    class App,Scheduler app
+    class DB data
+    class Redis queue
+    class W_EU,W_US,W_APAC worker
+    class K3S_EU,K3S_US,K3S_APAC sandbox
+    class Direct,Private connector
+    class Notify notify
+    style PRIMARY fill:#f8fafc,stroke:#cbd5e1,color:#334155
+    style US fill:#ffffff,stroke:#cbd5e1,stroke-dasharray: 4 4,color:#334155
+    style APAC fill:#ffffff,stroke:#cbd5e1,stroke-dasharray: 4 4,color:#334155
 ```
 
-The application stores platform data in PostgreSQL, schedules work through Redis and BullMQ, and keeps execution artifacts in S3-compatible storage such as MinIO. Workers consume location-aware queues and run Playwright or k6 workloads as ephemeral Kubernetes Jobs in a restricted execution namespace. Deploy one local worker or add workers for other configured locations.
+The application stores platform data in PostgreSQL, schedules work through Redis and BullMQ, and keeps execution artifacts in S3-compatible storage such as MinIO. Workers consume location-aware queues and run Playwright or k6 workloads as ephemeral Kubernetes Jobs in a restricted execution namespace. Deploy one local worker or add workers for other configured locations. The AI SRE engine runs inside the app and worker processes and reaches external observability systems through read-only Direct Connectors or outbound-only Private Agents, optionally using a gVisor-sandboxed agent workspace.
 
 ## Repository layout
 
