@@ -25,12 +25,12 @@ Supercheck uses a **6-role RBAC system** with granular permissions across organi
 
 ```mermaid
 graph TD
-    SA["<b>Super Admin</b><br/>System-wide"]
-    OO["<b>Org Owner</b><br/>Organization"]
-    OA["<b>Org Admin</b><br/>Organization"]
-    PA["<b>Project Admin</b><br/>Project"]
-    PE["<b>Project Editor</b><br/>Project"]
-    PV["<b>Project Viewer</b><br/>Read-only"]
+    SA["<b>Super Admin</b><br/>System-wide Control"]
+    OO["<b>Org Owner</b><br/>Organization Control"]
+    OA["<b>Org Admin</b><br/>Organization Management"]
+    PA["<b>Project Admin</b><br/>Assigned Projects"]
+    PE["<b>Project Editor</b><br/>Assigned Projects"]
+    PV["<b>Project Viewer</b><br/>Read-Only All Projects"]
 
     SA --> OO
     SA --> OA
@@ -39,12 +39,12 @@ graph TD
     PA --> PE
     PE --> PV
 
-    style SA fill:#fef2f2,stroke:#b91c1c,color:#991b1b
-    style OO fill:#fffbeb,stroke:#b45309,color:#92400e
-    style OA fill:#fffbeb,stroke:#92400e,color:#92400e
-    style PA fill:#f5f3ff,stroke:#6d28d9,color:#5b21b6
-    style PE fill:#eff6ff,stroke:#1e40af,color:#1e40af
-    style PV fill:#f8fafc,stroke:#475569,color:#334155
+    style SA fill:#ef4444,stroke:#b91c1c,color:#fff
+    style OO fill:#f59e0b,stroke:#b45309,color:#fff
+    style OA fill:#d97706,stroke:#92400e,color:#fff
+    style PA fill:#8b5cf6,stroke:#6d28d9,color:#fff
+    style PE fill:#3b82f6,stroke:#1e40af,color:#fff
+    style PV fill:#64748b,stroke:#475569,color:#fff
 ```
 
 ## Permission Matrix

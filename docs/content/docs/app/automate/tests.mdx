@@ -41,27 +41,6 @@ k6 load testing from multiple regions
 5. Click **Run** to validate
 6. **Save** when passing
 
-```mermaid
-%%{init: {"theme":"base","themeVariables":{"fontFamily":"ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif","primaryColor":"#eef2ff","primaryTextColor":"#3730a3","primaryBorderColor":"#6366f1","lineColor":"#94a3b8","secondaryColor":"#fffbeb","secondaryTextColor":"#92400e","secondaryBorderColor":"#f59e0b","tertiaryColor":"#ecfdf5","tertiaryTextColor":"#065f46","tertiaryBorderColor":"#10b981","clusterBkg":"#f8fafc","clusterBorder":"#cbd5e1","edgeLabelBackground":"#ffffff","actorBkg":"#eef2ff","actorBorder":"#6366f1","actorTextColor":"#3730a3","actorLineColor":"#94a3b8","signalColor":"#64748b","signalTextColor":"#64748b","labelBoxBkgColor":"#fffbeb","labelBoxBorderColor":"#f59e0b","labelTextColor":"#92400e","loopTextColor":"#64748b","activationBkgColor":"#ddd6fe","activationBorderColor":"#7c3aed","noteBkgColor":"#fef9c3","noteBorderColor":"#eab308","noteTextColor":"#713f12","textColor":"#475569","mainBkg":"#ffffff"}}}%%
-sequenceDiagram
-    participant You as You
-    participant App as Supercheck App
-    participant Queue as Redis + BullMQ
-    participant Worker as Worker
-    participant Sandbox as K3s + gVisor
-    participant Store as PostgreSQL / S3
-
-    You->>App: Run or schedule a test
-    App->>Queue: Enqueue test job
-    App-->>You: Live run status (SSE)
-    Queue->>Worker: Dequeue job
-    Worker->>Sandbox: Create sandboxed run
-    Sandbox-->>Worker: Results, traces, screenshots
-    Worker->>Store: Save results and artifacts
-    Worker->>App: Publish completion
-    App-->>You: Report, screenshots, and traces
-```
-
 ## AI Features
 
 - **AI Create** — Generate tests from plain English descriptions (beta for browser tests)

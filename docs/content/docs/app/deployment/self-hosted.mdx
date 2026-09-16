@@ -10,55 +10,39 @@ Deploy Supercheck on a single server with Docker Compose.
 
 ```mermaid
 flowchart TB
-    Users["Users / CI/CD"]
+    Users[Users / CI/CD] --> T[Traefik Proxy<br/>SSL / Load Balancer]
+    T --> App[Next.js App<br/>UI + API + AI SRE Engine]
+    App --> DB[(PostgreSQL<br/>Primary DB)] & Redis[(Redis + BullMQ<br/>Queue + Cache)] & S3[(MinIO<br/>Artifacts)]
+    App -->|read-only queries| Direct[Direct Connectors<br/>Prometheus · Loki · Tempo · K8s]
+    App -.->|job lease| Private[Private Agents<br/>Outbound HTTPS only]
 
-    subgraph SERVER["Single Server — Docker Compose"]
-        T["Traefik Proxy<br/>SSL · Load Balancing"]
-        App["Next.js App<br/>Dashboard · REST API · AI SRE Engine"]
-        Scheduler["Schedulers<br/>Tests · Jobs · Monitors"]
-        DB[("PostgreSQL<br/>Primary DB")]
-        Redis[("Redis + BullMQ<br/>Queues · Cache")]
-        S3[("MinIO / S3<br/>Artifacts · Evidence")]
-        Worker["NestJS Worker (x N)<br/>Playwright · K6 · Monitors<br/>WORKER_LOCATION=local"]
-        K3S["K3s + gVisor Sandbox<br/>Ephemeral Jobs · SRE Agent Workspaces"]
+    Redis --> W1
+    Redis --> W2
+    Redis --> WN
 
-        T --> App
-        App --> Scheduler
-        App --> DB
-        App --> Redis
-        App --> S3
-        Scheduler --> Redis
-        Redis --> Worker
-        Worker --> K3S
+    subgraph SERVER["Single Server"]
+        W1[Worker 1<br/>NestJS + BullMQ<br/>WORKER_LOCATION=local] --> K3S_1[K3s + gVisor<br/>Sandboxed Execution]
+        W2[Worker 2<br/>NestJS + BullMQ<br/>WORKER_LOCATION=local] --> K3S_2[K3s + gVisor<br/>Sandboxed Execution]
+        WN[Worker N<br/>NestJS + BullMQ<br/>WORKER_LOCATION=local] --> K3S_N[K3s + gVisor<br/>Sandboxed Execution]
+        App -.-> SRE_WS[AI SRE Agent Workspace<br/>gVisor-sandboxed pod]
     end
 
-    Users --> T
-    App -->|"read-only queries"| Direct["Direct Connectors<br/>Prometheus · Loki · Tempo · Kubernetes"]
-    App -.->|"job lease"| Private["Private Agents<br/>Outbound HTTPS · Zero inbound ports"]
-    Direct --> Providers["Observability Providers"]
-    Private -.->|"outbound HTTPS"| Providers
-    Worker --> Notify["Notifications<br/>Email · Slack · Webhooks"]
-
-    classDef proxy fill:#f0f9ff,stroke:#0ea5e9,color:#075985
-    classDef app fill:#eef2ff,stroke:#6366f1,color:#3730a3
-    classDef data fill:#fffbeb,stroke:#f59e0b,color:#92400e
-    classDef queue fill:#fef2f2,stroke:#ef4444,color:#991b1b
-    classDef worker fill:#ecfdf5,stroke:#10b981,color:#065f46
-    classDef sandbox fill:#ecfdf5,stroke:#059669,color:#065f46
-    classDef connector fill:#f0f9ff,stroke:#0ea5e9,color:#075985
-    classDef external fill:#f8fafc,stroke:#64748b,color:#334155
-    classDef notify fill:#fdf2f8,stroke:#ec4899,color:#9d174d
-
-    class Users,Providers external
-    class T proxy
-    class App,Scheduler app
-    class DB data
-    class Redis queue
-    class Worker worker
-    class K3S sandbox
-    class Direct,Private connector
-    class Notify notify
-    style SERVER fill:#f8fafc,stroke:#cbd5e1,color:#334155
+    style Users fill:#6366f1,stroke:#4338ca,color:#fff
+    style T fill:#0ea5e9,stroke:#0369a1,color:#fff
+    style App fill:#3b82f6,stroke:#1e40af,color:#fff
+    style DB fill:#f59e0b,stroke:#b45309,color:#fff
+    style Redis fill:#ef4444,stroke:#b91c1c,color:#fff
+    style S3 fill:#8b5cf6,stroke:#6d28d9,color:#fff
+    style W1 fill:#10b981,stroke:#047857,color:#fff
+    style W2 fill:#10b981,stroke:#047857,color:#fff
+    style WN fill:#10b981,stroke:#047857,color:#fff
+    style K3S_1 fill:#059669,stroke:#047857,color:#fff
+    style K3S_2 fill:#059669,stroke:#047857,color:#fff
+    style K3S_N fill:#059669,stroke:#047857,color:#fff
+    style Direct fill:#0ea5e9,stroke:#0369a1,color:#fff
+    style Private fill:#8b5cf6,stroke:#6d28d9,color:#fff
+    style SRE_WS fill:#059669,stroke:#047857,color:#fff
+    style SERVER fill:none,stroke:#3b82f6,stroke-width:2px
 ```
 
 All services run on a single Linux server managed by Docker Compose. Workers consume jobs from Redis via BullMQ and execute each test as an ephemeral Kubernetes Job in a local [K3s](https://k3s.io) cluster, sandboxed with [gVisor](https://gvisor.dev/) for kernel-level isolation. Scale by increasing `WORKER_REPLICAS` or expanding to [multiple regions](/docs/app/deployment/multi-location).
