@@ -97,89 +97,46 @@ Record browser interactions and save Playwright tests directly to Supercheck:
 ## Architecture
 
 ```mermaid
-flowchart LR
-    Users["Users / CI/CD"] --> Traefik["Traefik Proxy<br/>SSL · Load Balancing"]
+flowchart TB
+    Users[Users / CI/CD] --> T[Traefik Proxy<br/>SSL / Load Balancer]
+    T --> App[Next.js App<br/>UI + API]
+    App --> DB[(PostgreSQL<br/>Primary DB)] & Redis[(Redis + BullMQ<br/>Queue + Cache)] & S3[(MinIO<br/>Artifacts)]
+    App --> SRE[AI SRE Engine<br/>Read-only investigations]
+    SRE -.-> Private[Private Agents<br/>Outbound HTTPS only]
 
-    subgraph APP["Primary — Next.js App"]
-        Dashboard["Dashboard · REST API<br/>AI SRE Engine"]
-        Scheduler["Schedulers<br/>Tests · Jobs · Monitors"]
-    end
-
-    subgraph DATA["Data Layer"]
-        Postgres[("PostgreSQL<br/>Primary DB")]
-        Redis[("Redis + BullMQ<br/>Queues · Cache")]
-        Storage[("MinIO / S3<br/>Artifacts · Evidence")]
-    end
-
-    subgraph EXEC_EU["EU — K3s + gVisor"]
-        W_EU["Worker EU<br/>WORKER_LOCATION=eu-central"]
-        K3S_EU["Sandboxed Execution"]
-        AgentWS["AI SRE Agent Workspace"]
-        W_EU --> K3S_EU
-    end
-
-    subgraph EXEC_US["US — K3s + gVisor"]
-        W_US["Worker US<br/>WORKER_LOCATION=us-east"]
-        K3S_US["Sandboxed Execution"]
-        W_US --> K3S_US
-    end
-
-    subgraph EXEC_APAC["APAC — K3s + gVisor"]
-        W_APAC["Worker APAC<br/>WORKER_LOCATION=asia-pacific"]
-        K3S_APAC["Sandboxed Execution"]
-        W_APAC --> K3S_APAC
-    end
-
-    subgraph CONN["Connector Layer — Read-Only"]
-        Direct["Direct Connectors<br/>Prometheus · Loki · Tempo · K8s"]
-        Private["Private Agents<br/>Outbound HTTPS only"]
-    end
-
-    Providers["Observability Providers"]
-    Notify["Notifications<br/>Email · Slack · Webhooks"]
-
-    Traefik --> Dashboard
-    Dashboard --> Scheduler
-    Dashboard --> Postgres
-    Dashboard --> Redis
-    Dashboard --> Storage
-    Scheduler --> Redis
     Redis --> W_EU
     Redis -.->|Internet| W_US
     Redis -.->|Internet| W_APAC
-    Dashboard -.-> AgentWS
-    Dashboard -->|read-only queries| Direct
-    Dashboard -.->|job lease| Private
-    Direct --> Providers
-    Private --> Providers
-    W_EU --> Notify
-    W_US --> Notify
-    W_APAC --> Notify
+
+    subgraph PRIMARY["Primary Server"]
+        W_EU[Worker EU<br/>NestJS + BullMQ<br/>WORKER_LOCATION=eu-central] --> K3S_EU[K3s + gVisor<br/>Sandboxed Execution]
+    end
+
+    subgraph US["US Server"]
+        W_US[Worker US<br/>NestJS + BullMQ<br/>WORKER_LOCATION=us-east] --> K3S_US[K3s + gVisor<br/>Sandboxed Execution]
+    end
+
+    subgraph APAC["Asia Pacific Server"]
+        W_APAC[Worker APAC<br/>NestJS + BullMQ<br/>WORKER_LOCATION=asia-pacific] --> K3S_APAC[K3s + gVisor<br/>Sandboxed Execution]
+    end
 
     style Users fill:#6366f1,stroke:#4338ca,color:#fff
-    style Traefik fill:#0ea5e9,stroke:#0369a1,color:#fff
-    style Dashboard fill:#3b82f6,stroke:#1e40af,color:#fff
-    style Scheduler fill:#6366f1,stroke:#4338ca,color:#fff
-    style Postgres fill:#f59e0b,stroke:#b45309,color:#fff
+    style T fill:#0ea5e9,stroke:#0369a1,color:#fff
+    style App fill:#3b82f6,stroke:#1e40af,color:#fff
+    style DB fill:#f59e0b,stroke:#b45309,color:#fff
     style Redis fill:#ef4444,stroke:#b91c1c,color:#fff
-    style Storage fill:#8b5cf6,stroke:#6d28d9,color:#fff
+    style S3 fill:#8b5cf6,stroke:#6d28d9,color:#fff
+    style SRE fill:#0ea5e9,stroke:#0369a1,color:#fff
+    style Private fill:#8b5cf6,stroke:#6d28d9,color:#fff
     style W_EU fill:#10b981,stroke:#047857,color:#fff
     style W_US fill:#10b981,stroke:#047857,color:#fff
     style W_APAC fill:#10b981,stroke:#047857,color:#fff
-    style K3S_EU fill:#0d9488,stroke:#0f766e,color:#fff
-    style K3S_US fill:#0d9488,stroke:#0f766e,color:#fff
-    style K3S_APAC fill:#0d9488,stroke:#0f766e,color:#fff
-    style AgentWS fill:#a855f7,stroke:#7e22ce,color:#fff
-    style Direct fill:#06b6d4,stroke:#0e7490,color:#fff
-    style Private fill:#ec4899,stroke:#be185d,color:#fff
-    style Providers fill:#64748b,stroke:#475569,color:#fff
-    style Notify fill:#f97316,stroke:#c2410c,color:#fff
-    style APP fill:none,stroke:#94a3b8,stroke-dasharray: 4 4
-    style DATA fill:none,stroke:#94a3b8,stroke-dasharray: 4 4
-    style EXEC_EU fill:none,stroke:#94a3b8,stroke-dasharray: 4 4
-    style EXEC_US fill:none,stroke:#94a3b8,stroke-dasharray: 4 4
-    style EXEC_APAC fill:none,stroke:#94a3b8,stroke-dasharray: 4 4
-    style CONN fill:none,stroke:#94a3b8,stroke-dasharray: 4 4
+    style K3S_EU fill:#059669,stroke:#047857,color:#fff
+    style K3S_US fill:#059669,stroke:#047857,color:#fff
+    style K3S_APAC fill:#059669,stroke:#047857,color:#fff
+    style PRIMARY fill:none,stroke:#3b82f6,stroke-width:2px
+    style US fill:none,stroke:#64748b,stroke-width:2px,stroke-dasharray: 5 5
+    style APAC fill:none,stroke:#64748b,stroke-width:2px,stroke-dasharray: 5 5
 ```
 
 The application stores platform data in PostgreSQL, schedules work through Redis and BullMQ, and keeps execution artifacts in S3-compatible storage such as MinIO. Workers consume location-aware queues and run Playwright or k6 workloads as ephemeral Kubernetes Jobs in a restricted execution namespace. Deploy one local worker or add workers for other configured locations.
