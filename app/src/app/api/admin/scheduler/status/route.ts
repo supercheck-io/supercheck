@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from '@/lib/admin';
+import { isAdminAccessDeniedError, requireAdmin } from '@/lib/admin';
 import { getQueues } from '@/lib/queue';
 import { db } from "@/utils/db";
 import { jobs, monitors } from "@/db/schema";
@@ -89,6 +89,12 @@ export async function GET() {
 
   } catch (error: unknown) {
     console.error('Scheduler status check error:', error);
+    if (isAdminAccessDeniedError(error)) {
+      return NextResponse.json(
+        { success: false, error: 'Admin privileges required' },
+        { status: 403 }
+      );
+    }
     return NextResponse.json(
       { success: false, error: 'Failed to get scheduler status' },
       { status: 500 }

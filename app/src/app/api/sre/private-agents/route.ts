@@ -12,7 +12,7 @@ export async function GET() {
     return auth.response;
   }
 
-  const result = await getPrivateAgents();
+  const result = await getPrivateAgents(auth.context);
 
   return NextResponse.json(result, { status: result.success ? 200 : 403 });
 }

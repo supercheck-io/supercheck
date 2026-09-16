@@ -40,6 +40,12 @@ export interface ProjectContext {
   userRole: string;
 }
 
+export interface ProjectAuthContext {
+  userId: string;
+  project: ProjectContext;
+  organizationId: string;
+}
+
 /**
  * Get current project context from session - single source of truth
  */
@@ -407,11 +413,7 @@ export async function switchProject(
 /**
  * Require project context middleware for API routes
  */
-export async function requireProjectContext(): Promise<{
-  userId: string;
-  project: ProjectContext;
-  organizationId: string;
-}> {
+export async function requireProjectContext(): Promise<ProjectAuthContext> {
   // Use cached session to avoid duplicate DB round-trips
   const sessionData = await getCachedAuthSession();
   

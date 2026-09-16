@@ -14,7 +14,10 @@ import {
   sreServices,
 } from "@/db/schema";
 import { logAuditEvent } from "@/lib/audit-logger";
-import { requireProjectContext } from "@/lib/project-context";
+import {
+  requireProjectContext,
+  type ProjectAuthContext,
+} from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { normalizePrivateAgentEvidenceSummaries } from "@/lib/sre/connector-job-evidence";
 import { isValidKubernetesLabelSelector } from "@/lib/sre/connectors/kubernetes-label-selector";
@@ -542,12 +545,15 @@ async function getConnectorListItem(
   };
 }
 
-export async function getSreConnectors(): Promise<
+export async function getSreConnectors(
+  requestContext?: ProjectAuthContext,
+): Promise<
   | { success: true; connectors: SreConnectorListItem[] }
   | { success: false; error: string; connectors: [] }
 > {
   try {
-    const { userId, organizationId, project } = await requireProjectContext();
+    const { userId, organizationId, project } =
+      requestContext ?? (await requireProjectContext());
     const canView = checkPermissionWithContext("sre_connector", "view", {
       userId,
       organizationId,
@@ -776,7 +782,9 @@ export async function getPrivateAgentConnectorJobResult(
   }
 }
 
-export async function getSreConnectorSetupOptions(): Promise<
+export async function getSreConnectorSetupOptions(
+  requestContext?: ProjectAuthContext,
+): Promise<
   | { success: true; options: SreConnectorSetupOptions }
   | { success: false; error: string; options: SreConnectorSetupOptions }
 > {
@@ -786,7 +794,8 @@ export async function getSreConnectorSetupOptions(): Promise<
   };
 
   try {
-    const { userId, organizationId, project } = await requireProjectContext();
+    const { userId, organizationId, project } =
+      requestContext ?? (await requireProjectContext());
     const canView = checkPermissionWithContext("sre_connector", "view", {
       userId,
       organizationId,

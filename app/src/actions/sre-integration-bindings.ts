@@ -15,7 +15,7 @@ import {
   type NotificationProviderType,
 } from "@/db/schema";
 import { logAuditEvent } from "@/lib/audit-logger";
-import { requireProjectContext, type ProjectContext } from "@/lib/project-context";
+import { requireProjectContext, type ProjectAuthContext, type ProjectContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import {
   SRE_INTEGRATION_CORRELATION_STRATEGIES,
@@ -310,12 +310,12 @@ async function assertValidServiceScope(input: {
   }
 }
 
-export async function getSreIntegrationBindings(): Promise<
+export async function getSreIntegrationBindings(requestContext?: ProjectAuthContext): Promise<
   | { success: true; bindings: SreIntegrationBindingListItem[] }
   | { success: false; error: string; bindings: [] }
 > {
   try {
-    const { userId, organizationId, project } = await requireProjectContext();
+    const { userId, organizationId, project } = requestContext ?? await requireProjectContext();
     assertCanViewBindings(userId, organizationId, project);
 
     const bindings = await getBindingListItems(organizationId, project.id);
@@ -330,7 +330,7 @@ export async function getSreIntegrationBindings(): Promise<
   }
 }
 
-export async function getSreIntegrationBindingSetupOptions(): Promise<
+export async function getSreIntegrationBindingSetupOptions(requestContext?: ProjectAuthContext): Promise<
   | { success: true; options: SreIntegrationBindingSetupOptions }
   | { success: false; error: string; options: SreIntegrationBindingSetupOptions }
 > {
@@ -341,7 +341,7 @@ export async function getSreIntegrationBindingSetupOptions(): Promise<
   };
 
   try {
-    const { userId, organizationId, project } = await requireProjectContext();
+    const { userId, organizationId, project } = requestContext ?? await requireProjectContext();
     assertCanViewBindings(userId, organizationId, project);
 
     const [providerRows, connectorRows, serviceRows] = await Promise.all([

@@ -16,8 +16,8 @@ export async function GET() {
   }
 
   const [queriesResult, setupOptionsResult] = await Promise.all([
-    getSreDiagnosticQueries(),
-    getSreDiagnosticQuerySetupOptions(),
+    getSreDiagnosticQueries(auth.context),
+    getSreDiagnosticQuerySetupOptions(auth.context),
   ]);
 
   const success = queriesResult.success && setupOptionsResult.success;

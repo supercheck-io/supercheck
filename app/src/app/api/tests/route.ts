@@ -4,7 +4,7 @@ import { tests, testTags, tags } from "@/db/schema";
 import { desc, eq, and, inArray, like, count } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
-import { subscriptionService } from "@/lib/services/subscription-service";
+import { subscriptionService, SubscriptionAccessDeniedError } from "@/lib/services/subscription-service";
 import type { TestType } from "@/db/schema/types";
 import { validateScriptTypeMatch, normalizeTestType } from "@/lib/script-type-validator";
 import { decodeStoredTestScript, encodeStoredTestScript } from "@/lib/test-script";
@@ -279,6 +279,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : "Authentication required" },
         { status: 401 }
+      );
+    }
+    if (error instanceof SubscriptionAccessDeniedError) {
+      return NextResponse.json(
+        { error: error.message, code: error.reason },
+        { status: 402 }
       );
     }
     console.error("Error creating test:", error);
