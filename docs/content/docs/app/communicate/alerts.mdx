@@ -7,20 +7,12 @@ icon: Bell
 Alerts notify you when monitors fail, tests break, or services recover. Configure multiple notification channels and use smart thresholds to avoid alert fatigue.
 
 ```mermaid
-%%{init: {"theme":"base","themeVariables":{"fontFamily":"ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif","primaryColor":"#6366f1","primaryTextColor":"#ffffff","primaryBorderColor":"#4338ca","lineColor":"#94a3b8","actorBkg":"transparent","actorBorder":"transparent","actorTextColor":"#ffffff","actorLineColor":"#94a3b8","signalColor":"#6366f1","signalTextColor":"#64748b","labelBoxBkgColor":"#d97706","labelBoxBorderColor":"#b45309","labelTextColor":"#ffffff","loopTextColor":"#64748b","activationBkgColor":"#7c3aed","activationBorderColor":"#6d28d9","noteBkgColor":"#d97706","noteBorderColor":"#b45309","noteTextColor":"#ffffff","textColor":"#64748b","mainBkg":"#ffffff"}}}%%
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif","actorBkg":"#eef2ff","actorBorder":"#6366f1","actorTextColor":"#312e81","actorLineColor":"#94a3b8","signalColor":"#6366f1","signalTextColor":"#64748b","labelBoxBkgColor":"#fef3c7","labelBoxBorderColor":"#d97706","labelTextColor":"#78350f","loopTextColor":"#64748b","activationBkgColor":"#ddd6fe","activationBorderColor":"#7c3aed","noteBkgColor":"#fef3c7","noteBorderColor":"#d97706","noteTextColor":"#78350f","textColor":"#64748b","lineColor":"#94a3b8","mainBkg":"transparent"}}}%%
 sequenceDiagram
-    box rgb(8,145,178)
-        participant Check as Monitor, test, or job
-    end
-    box rgb(5,150,105)
-        participant Worker as Worker
-    end
-    box rgb(234,88,12)
-        participant Channel as Email / Slack / Telegram / Webhook
-    end
-    box rgb(217,119,6)
-        participant OnCall as PagerDuty / Splunk On-Call
-    end
+    participant Check as Monitor, test, or job
+    participant Worker as Worker
+    participant Channel as Email / Slack / Telegram / Webhook
+    participant OnCall as PagerDuty / Splunk On-Call
 
     Check->>Worker: Failure or recovery detected
     Worker->>Worker: Resolve channels and smart thresholds

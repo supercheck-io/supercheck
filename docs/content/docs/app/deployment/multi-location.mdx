@@ -58,20 +58,12 @@ flowchart TB
 Each server runs its own local K3s cluster with gVisor. Workers consume jobs from Redis via BullMQ and execute each test as an ephemeral Kubernetes Job in a sandboxed `supercheck-execution` namespace. Remote workers connect to the primary server's Redis, PostgreSQL, and MinIO over the network.
 
 ```mermaid
-%%{init: {"theme":"base","themeVariables":{"fontFamily":"ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif","primaryColor":"#6366f1","primaryTextColor":"#ffffff","primaryBorderColor":"#4338ca","lineColor":"#94a3b8","actorBkg":"transparent","actorBorder":"transparent","actorTextColor":"#ffffff","actorLineColor":"#94a3b8","signalColor":"#6366f1","signalTextColor":"#64748b","labelBoxBkgColor":"#d97706","labelBoxBorderColor":"#b45309","labelTextColor":"#ffffff","loopTextColor":"#64748b","activationBkgColor":"#7c3aed","activationBorderColor":"#6d28d9","noteBkgColor":"#d97706","noteBorderColor":"#b45309","noteTextColor":"#ffffff","textColor":"#64748b","mainBkg":"#ffffff"}}}%%
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif","actorBkg":"#eef2ff","actorBorder":"#6366f1","actorTextColor":"#312e81","actorLineColor":"#94a3b8","signalColor":"#6366f1","signalTextColor":"#64748b","labelBoxBkgColor":"#fef3c7","labelBoxBorderColor":"#d97706","labelTextColor":"#78350f","loopTextColor":"#64748b","activationBkgColor":"#ddd6fe","activationBorderColor":"#7c3aed","noteBkgColor":"#fef3c7","noteBorderColor":"#d97706","noteTextColor":"#78350f","textColor":"#64748b","lineColor":"#94a3b8","mainBkg":"transparent"}}}%%
 sequenceDiagram
-    box rgb(37,99,235)
-        participant App as App
-    end
-    box rgb(220,38,38)
-        participant Redis
-    end
-    box rgb(5,150,105)
-        participant Remote as Remote worker
-    end
-    box rgb(217,119,6)
-        participant PG as PostgreSQL
-    end
+    participant App as App
+    participant Redis
+    participant Remote as Remote worker
+    participant PG as PostgreSQL
 
     App->>Redis: Enqueue monitor or test job
     Remote->>Redis: Consume location queue

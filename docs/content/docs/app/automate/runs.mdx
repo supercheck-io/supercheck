@@ -20,23 +20,13 @@ Every test or job execution creates a run with results, logs, and artifacts.
 | **Blocked** | Blocked by plan limits |
 
 ```mermaid
-%%{init: {"theme":"base","themeVariables":{"fontFamily":"ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif","primaryColor":"#6366f1","primaryTextColor":"#ffffff","primaryBorderColor":"#4338ca","lineColor":"#94a3b8","actorBkg":"transparent","actorBorder":"transparent","actorTextColor":"#ffffff","actorLineColor":"#94a3b8","signalColor":"#6366f1","signalTextColor":"#64748b","labelBoxBkgColor":"#d97706","labelBoxBorderColor":"#b45309","labelTextColor":"#ffffff","loopTextColor":"#64748b","activationBkgColor":"#7c3aed","activationBorderColor":"#6d28d9","noteBkgColor":"#d97706","noteBorderColor":"#b45309","noteTextColor":"#ffffff","textColor":"#64748b","mainBkg":"#ffffff"}}}%%
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif","actorBkg":"#eef2ff","actorBorder":"#6366f1","actorTextColor":"#312e81","actorLineColor":"#94a3b8","signalColor":"#6366f1","signalTextColor":"#64748b","labelBoxBkgColor":"#fef3c7","labelBoxBorderColor":"#d97706","labelTextColor":"#78350f","loopTextColor":"#64748b","activationBkgColor":"#ddd6fe","activationBorderColor":"#7c3aed","noteBkgColor":"#fef3c7","noteBorderColor":"#d97706","noteTextColor":"#78350f","textColor":"#64748b","lineColor":"#94a3b8","mainBkg":"transparent"}}}%%
 sequenceDiagram
-    box rgb(79,70,229)
-        participant You
-    end
-    box rgb(37,99,235)
-        participant App as Supercheck
-    end
-    box rgb(220,38,38)
-        participant Queue as Queue
-    end
-    box rgb(5,150,105)
-        participant Worker
-    end
-    box rgb(13,148,136)
-        participant Sandbox as K3s + gVisor
-    end
+    participant You
+    participant App as Supercheck
+    participant Queue as Queue
+    participant Worker
+    participant Sandbox as K3s + gVisor
 
     You->>App: Trigger a test or job
     App->>Queue: Enqueue run

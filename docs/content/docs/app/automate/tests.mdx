@@ -42,26 +42,14 @@ k6 load testing from multiple regions
 6. **Save** when passing
 
 ```mermaid
-%%{init: {"theme":"base","themeVariables":{"fontFamily":"ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif","primaryColor":"#6366f1","primaryTextColor":"#ffffff","primaryBorderColor":"#4338ca","lineColor":"#94a3b8","actorBkg":"transparent","actorBorder":"transparent","actorTextColor":"#ffffff","actorLineColor":"#94a3b8","signalColor":"#6366f1","signalTextColor":"#64748b","labelBoxBkgColor":"#d97706","labelBoxBorderColor":"#b45309","labelTextColor":"#ffffff","loopTextColor":"#64748b","activationBkgColor":"#7c3aed","activationBorderColor":"#6d28d9","noteBkgColor":"#d97706","noteBorderColor":"#b45309","noteTextColor":"#ffffff","textColor":"#64748b","mainBkg":"#ffffff"}}}%%
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif","actorBkg":"#eef2ff","actorBorder":"#6366f1","actorTextColor":"#312e81","actorLineColor":"#94a3b8","signalColor":"#6366f1","signalTextColor":"#64748b","labelBoxBkgColor":"#fef3c7","labelBoxBorderColor":"#d97706","labelTextColor":"#78350f","loopTextColor":"#64748b","activationBkgColor":"#ddd6fe","activationBorderColor":"#7c3aed","noteBkgColor":"#fef3c7","noteBorderColor":"#d97706","noteTextColor":"#78350f","textColor":"#64748b","lineColor":"#94a3b8","mainBkg":"transparent"}}}%%
 sequenceDiagram
-    box rgb(79,70,229)
-        participant You
-    end
-    box rgb(37,99,235)
-        participant API as Supercheck API
-    end
-    box rgb(220,38,38)
-        participant Queue as Redis + BullMQ
-    end
-    box rgb(5,150,105)
-        participant Worker
-    end
-    box rgb(13,148,136)
-        participant Sandbox as K3s + gVisor
-    end
-    box rgb(217,119,6)
-        participant Store as PostgreSQL + S3
-    end
+    participant You
+    participant API as Supercheck API
+    participant Queue as Redis + BullMQ
+    participant Worker
+    participant Sandbox as K3s + gVisor
+    participant Store as PostgreSQL + S3
 
     You->>API: Run or schedule a test
     API->>API: Validate script and capacity
