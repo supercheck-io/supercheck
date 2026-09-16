@@ -1,1 +1,4 @@
 dist/
+
+# Release packages built locally for store upload
+supercheck-recorder-*.zip
