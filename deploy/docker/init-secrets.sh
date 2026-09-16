@@ -127,8 +127,14 @@ S3_ENDPOINT=http://minio:9000
 # SMTP_SECURE=false
 
 # ────────────────────────────────────────────────────────────
-# OPTIONAL: AI Features
+# OPTIONAL: AI Features & AI SRE
 # ────────────────────────────────────────────────────────────
+# Enable the AI SRE investigation agent (required for AI SRE investigations and /api/sre/investigate)
+# SRE_INVESTIGATION_AGENT_ENABLED=true
+
+# Note: optional SRE workflows (automatic triage, alert correlation, staged
+# evidence) also require forwarding their flags through your Compose file.
+
 # OpenAI (default provider)
 # AI_PROVIDER=openai
 # AI_MODEL=gpt-4o-mini

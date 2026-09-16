@@ -403,6 +403,23 @@ All services run on a single Linux server managed by Docker Compose. Workers con
       </Tab>
     </Tabs>
   </Accordion>
+
+  <Accordion title="AI SRE Features">
+    AI SRE requires an AI provider configured above. The SRE investigation agent is disabled by default in the shipped Compose files, so enable it in `.env`:
+
+    ```bash
+    # Required for AI SRE investigations and /api/sre/investigate
+    SRE_INVESTIGATION_AGENT_ENABLED=true
+    ```
+
+    <Callout type="info">
+    Optional SRE workflows — automatic triage, alert correlation, and staged evidence — are controlled by `SRE_TRIAGE_AGENT_ENABLED`, `SRE_ALERT_CORRELATION_ENABLED`, and `SRE_STAGED_EVIDENCE_ENABLED`. All of these default to `false`, and the shipped Compose files do not forward them from `.env`. To use them, add the flags to the `x-common-env` block of your Compose file in addition to `.env`.
+    </Callout>
+
+    <Callout type="warning">
+    If `SRE_INVESTIGATION_AGENT_ENABLED` is not set to `true`, AI SRE investigations return `503 Service Unavailable` with `feature_disabled`. See [AI SRE Setup](/docs/app/admin/ai-sre-setup) for end-to-end configuration.
+    </Callout>
+  </Accordion>
 </Accordions>
 
 ---
