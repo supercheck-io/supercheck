@@ -23,22 +23,27 @@ The Playground uses Monaco Editor (the same editor that powers VS Code) with fea
 Click **Run** to execute your test in an isolated container environment.
 
 ```mermaid
-%%{init: {"theme":"base","themeVariables":{"fontFamily":"ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif","primaryColor":"#eef2ff","primaryTextColor":"#3730a3","primaryBorderColor":"#6366f1","lineColor":"#94a3b8","secondaryColor":"#fffbeb","secondaryTextColor":"#92400e","secondaryBorderColor":"#f59e0b","tertiaryColor":"#ecfdf5","tertiaryTextColor":"#065f46","tertiaryBorderColor":"#10b981","clusterBkg":"#f8fafc","clusterBorder":"#cbd5e1","edgeLabelBackground":"#ffffff","actorBkg":"#eef2ff","actorBorder":"#6366f1","actorTextColor":"#3730a3","actorLineColor":"#94a3b8","signalColor":"#64748b","signalTextColor":"#64748b","labelBoxBkgColor":"#fffbeb","labelBoxBorderColor":"#f59e0b","labelTextColor":"#92400e","loopTextColor":"#64748b","activationBkgColor":"#ddd6fe","activationBorderColor":"#7c3aed","noteBkgColor":"#fef9c3","noteBorderColor":"#eab308","noteTextColor":"#713f12","textColor":"#475569","mainBkg":"#ffffff"}}}%%
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif","actorBkg":"#eef2ff","actorBorder":"#6366f1","actorTextColor":"#312e81","actorLineColor":"#94a3b8","signalColor":"#6366f1","signalTextColor":"#64748b","labelBoxBkgColor":"#fef3c7","labelBoxBorderColor":"#d97706","labelTextColor":"#78350f","loopTextColor":"#64748b","activationBkgColor":"#ddd6fe","activationBorderColor":"#7c3aed","noteBkgColor":"#fef3c7","noteBorderColor":"#d97706","noteTextColor":"#78350f","textColor":"#64748b","lineColor":"#94a3b8","mainBkg":"transparent"}}}%%
 sequenceDiagram
     participant User
-    participant Editor
-    participant API
+    participant Editor as Playground editor
+    participant API as Supercheck API
     participant Worker
-    participant Container
+    participant Sandbox as K3s + gVisor job
 
     User->>Editor: Click Run
-    Editor->>API: Submit code
-    API->>Worker: Queue job
-    API-->>Editor: Run ID + SSE
-    Worker->>Container: Execute test
-    Container-->>Worker: Results
-    Worker-->>API: Complete
-    API-->>Editor: Report URL
+    activate Editor
+    Editor->>API: Submit script
+    API->>API: Validate script and capacity
+    API->>Worker: Queue run
+    API-->>Editor: Run ID (SSE stream)
+    deactivate Editor
+    activate Worker
+    Worker->>Sandbox: Execute in isolated container
+    Sandbox-->>Worker: Results, screenshots, traces
+    Worker->>API: Publish completion
+    deactivate Worker
+    API-->>Editor: Live logs, then report URL
 ```
 
 <Callout type="info">
