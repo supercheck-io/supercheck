@@ -35,6 +35,32 @@ endpoint with equivalent TLS, rate limits, logging, and non-interactive WAF
 protection. Do not weaken protection without a documented compensating control.
 </Callout>
 
+## Outbound-Only Flow
+
+The agent only ever initiates outbound HTTPS requests to the Supercheck API. It is granted short-lived work, queries the internal provider, and returns sanitized summaries. No inbound firewall ports are required.
+
+```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif","primaryColor":"#6366f1","primaryTextColor":"#ffffff","primaryBorderColor":"#4338ca","lineColor":"#94a3b8","actorBkg":"#6366f1","actorBorder":"#4338ca","actorTextColor":"#ffffff","actorLineColor":"#94a3b8","signalColor":"#6366f1","signalTextColor":"#64748b","labelBoxBkgColor":"#f59e0b","labelBoxBorderColor":"#b45309","labelTextColor":"#ffffff","loopTextColor":"#64748b","activationBkgColor":"#8b5cf6","activationBorderColor":"#6d28d9","noteBkgColor":"#f59e0b","noteBorderColor":"#b45309","noteTextColor":"#ffffff","textColor":"#64748b","mainBkg":"#ffffff"}}}%%
+sequenceDiagram
+    participant Agent as Private Agent (your network)
+    participant API as Supercheck API
+    participant Provider as Internal provider API
+
+    Agent->>API: Registration token exchange (one time)
+    API-->>Agent: Runtime credential
+    loop Heartbeat interval
+        Agent->>API: POST /heartbeat
+    end
+    loop Long-poll lease
+        Agent->>API: POST /jobs/lease
+        API-->>Agent: Connector query job
+        Agent->>Provider: Read-only query (allowlisted credentials)
+        Provider-->>Agent: Rows, logs, or traces
+        Agent->>API: POST /jobs/result (sanitized summary)
+    end
+    Note over Agent,API: Outbound HTTPS only — zero inbound firewall rules
+```
+
 ## Deployment
 
 Deploy the agent on a server or Kubernetes cluster inside your internal network using the provided Docker Compose configuration.

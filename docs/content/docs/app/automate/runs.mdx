@@ -19,6 +19,31 @@ Every test or job execution creates a run with results, logs, and artifacts.
 | **Queued** | Waiting to execute |
 | **Blocked** | Blocked by plan limits |
 
+```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif","primaryColor":"#6366f1","primaryTextColor":"#ffffff","primaryBorderColor":"#4338ca","lineColor":"#94a3b8","actorBkg":"#6366f1","actorBorder":"#4338ca","actorTextColor":"#ffffff","actorLineColor":"#94a3b8","signalColor":"#6366f1","signalTextColor":"#64748b","labelBoxBkgColor":"#f59e0b","labelBoxBorderColor":"#b45309","labelTextColor":"#ffffff","loopTextColor":"#64748b","activationBkgColor":"#8b5cf6","activationBorderColor":"#6d28d9","noteBkgColor":"#f59e0b","noteBorderColor":"#b45309","noteTextColor":"#ffffff","textColor":"#64748b","mainBkg":"#ffffff"}}}%%
+sequenceDiagram
+    participant You
+    participant App as Supercheck
+    participant Queue as Queue
+    participant Worker
+    participant Sandbox as K3s + gVisor
+
+    You->>App: Trigger a test or job
+    App->>Queue: Enqueue run
+    Queue->>Worker: Dequeue run
+    activate Worker
+    Worker->>Sandbox: Execute in isolated container
+    Sandbox-->>Worker: Results and artifacts
+    Worker->>App: Mark Passed / Failed / Error
+    deactivate Worker
+    App-->>You: Live updates, then results and artifacts
+    opt Cancel a running run
+        You->>App: Cancel
+        App->>Worker: Signal cancellation
+        App->>App: Record run as Error (cancelled)
+    end
+```
+
 ## View Runs
 
 1. Go to **Runs**

@@ -14,16 +14,25 @@ You can create an incident in two ways:
 Both paths create the same incident workspace.
 
 ```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif","primaryColor":"#6366f1","primaryTextColor":"#ffffff","primaryBorderColor":"#4338ca","lineColor":"#94a3b8","actorBkg":"#6366f1","actorBorder":"#4338ca","actorTextColor":"#ffffff","actorLineColor":"#94a3b8","signalColor":"#6366f1","signalTextColor":"#64748b","labelBoxBkgColor":"#f59e0b","labelBoxBorderColor":"#b45309","labelTextColor":"#ffffff","loopTextColor":"#64748b","activationBkgColor":"#8b5cf6","activationBorderColor":"#6d28d9","noteBkgColor":"#f59e0b","noteBorderColor":"#b45309","noteTextColor":"#ffffff","textColor":"#64748b","mainBkg":"#ffffff"}}}%%
 sequenceDiagram
     participant Alerts as Communicate Alerts
-    participant Queue as Incident queue
+    participant Inc as Incident queue
     participant Detail as Incident detail
+    participant Agent as AI SRE agent
     participant Copilot as Copilot
 
-    Alerts->>Queue: Create incident from a signal
-    Queue->>Detail: Open investigation workspace
-    Detail->>Detail: Investigation, Evidence, and Brief tabs
-    Detail->>Copilot: Optional read-only follow-up chat
+    Alerts->>Inc: Promote a signal or create manually
+    Inc->>Detail: Open incident workspace
+    Note over Detail: Investigation · Evidence · Brief tabs
+    Detail->>Agent: Run read-only investigation
+    opt Live sources enabled by an authorized role
+        Agent->>Agent: Query scoped read-only connectors
+    end
+    Agent-->>Detail: Cited brief and recommended checks
+    Detail->>Detail: Save sanitized report snapshot
+    Detail->>Copilot: Optional incident-scoped follow-up chat
+    Note over Copilot: Viewers get read-only access without a composer
 ```
 
 The incident queue uses the same table behavior as Tests and Runs: incident number is a separate sortable column, long titles are constrained, rows open the incident detail page, filters sit in the header toolbar, and pagination is available for larger queues.

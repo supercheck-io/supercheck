@@ -41,6 +41,30 @@ k6 load testing from multiple regions
 5. Click **Run** to validate
 6. **Save** when passing
 
+```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif","primaryColor":"#6366f1","primaryTextColor":"#ffffff","primaryBorderColor":"#4338ca","lineColor":"#94a3b8","actorBkg":"#6366f1","actorBorder":"#4338ca","actorTextColor":"#ffffff","actorLineColor":"#94a3b8","signalColor":"#6366f1","signalTextColor":"#64748b","labelBoxBkgColor":"#f59e0b","labelBoxBorderColor":"#b45309","labelTextColor":"#ffffff","loopTextColor":"#64748b","activationBkgColor":"#8b5cf6","activationBorderColor":"#6d28d9","noteBkgColor":"#f59e0b","noteBorderColor":"#b45309","noteTextColor":"#ffffff","textColor":"#64748b","mainBkg":"#ffffff"}}}%%
+sequenceDiagram
+    participant You
+    participant API as Supercheck API
+    participant Queue as Redis + BullMQ
+    participant Worker
+    participant Sandbox as K3s + gVisor
+    participant Store as PostgreSQL + S3
+
+    You->>API: Run or schedule a test
+    API->>API: Validate script and capacity
+    API->>Queue: Enqueue run
+    API-->>You: Live status (SSE)
+    Queue->>Worker: Dequeue run
+    activate Worker
+    Worker->>Sandbox: Launch sandboxed execution
+    Sandbox-->>Worker: Results, logs, screenshots, traces
+    Worker->>Store: Save results and artifacts
+    Worker->>API: Publish completion
+    deactivate Worker
+    API-->>You: Report, screenshots, and traces
+```
+
 ## AI Features
 
 - **AI Create** — Generate tests from plain English descriptions (beta for browser tests)
