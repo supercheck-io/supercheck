@@ -4,53 +4,90 @@ updates:
     directory: /app
     schedule:
       interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      app-minor-patch:
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: npm
     directory: /app/e2e
     schedule:
       interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      app-e2e-minor-patch:
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: npm
     directory: /worker
     schedule:
       interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      worker-minor-patch:
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: npm
     directory: /docs
     schedule:
       interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      docs-minor-patch:
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: npm
     directory: /cli
     schedule:
       interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      cli-minor-patch:
+        update-types: ["minor", "patch"]
 
+  # The recorder vendors upstream Playwright under recorder/playwright/**, which
+  # is reviewed through the upstream security process. Only the recorder
+  # workspace's own dependencies are maintained here.
   - package-ecosystem: npm
     directory: /recorder
     schedule:
       interval: weekly
+    open-pull-requests-limit: 3
+    exclude-paths:
+      - "playwright/**"
+    groups:
+      recorder-minor-patch:
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      actions-minor-patch:
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: docker
     directory: /app
     schedule:
       interval: weekly
+    open-pull-requests-limit: 5
 
   - package-ecosystem: docker
     directory: /worker
     schedule:
       interval: weekly
+    open-pull-requests-limit: 5
 
   - package-ecosystem: docker
     directory: /cli
     schedule:
       interval: weekly
+    open-pull-requests-limit: 5
 
   - package-ecosystem: docker
     directory: /docs
     schedule:
       interval: weekly
+    open-pull-requests-limit: 5
