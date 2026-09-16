@@ -307,8 +307,11 @@ const langs = {
   'csharp': ['Example.cs', 'csharp.cs'],
 };
 
+// The Supercheck extension enforces a single target language (Playwright Test)
+// and no longer exposes the experimental source chooser, so these upstream
+// multi-language save tests are not applicable.
 for (const [lang, [suggestedFilename, filename]] of Object.entries(langs)) {
-  test(`should save ${lang}`, async ({ page, attachRecorder, recordAction, baseURL, configureRecorder }) => {
+  test.fixme(`should save ${lang}`, async ({ page, attachRecorder, recordAction, baseURL, configureRecorder }) => {
     await configureRecorder({ experimental: true });
     const recorderPage = await attachRecorder(page);
 

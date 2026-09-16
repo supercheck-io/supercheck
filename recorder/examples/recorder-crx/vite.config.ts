@@ -40,6 +40,7 @@ export default defineConfig({
       input: {
         'index': path.resolve(__dirname, 'index.html'),
         'options': path.resolve(__dirname, 'options.html'),
+        'preferences': path.resolve(__dirname, 'preferences.html'),
         'background': path.resolve(__dirname, 'src/background.ts'),
       },
       output: {
