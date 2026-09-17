@@ -33,5 +33,6 @@
 - [ ] Tests cover the change, or I have explained why they are not needed.
 - [ ] User-facing documentation is updated in the same PR where needed.
 - [ ] Relevant lint, type, test, and build checks pass for every package I touched.
+- [ ] Deployment assets are validated with `./deploy/docker/validate.sh` when `deploy/` changes.
 - [ ] No secrets, private identifiers, generated artifacts, or tenant data are included.
 - [ ] Any migration, configuration, or environment-variable change is documented.

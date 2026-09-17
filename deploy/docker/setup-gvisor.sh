@@ -143,7 +143,7 @@ systemctl restart docker
 
 # Wait for Docker to be ready
 info "Waiting for Docker to be ready..."
-for i in $(seq 1 30); do
+for _ in $(seq 1 30); do
   if docker info &>/dev/null; then
     break
   fi

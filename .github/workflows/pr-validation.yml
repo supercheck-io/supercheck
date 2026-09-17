@@ -196,21 +196,81 @@ jobs:
         working-directory: ./app/e2e
         run: npx playwright test --list
 
+  deploy-validation:
+    name: Deploy Validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Validate Compose files and deploy scripts
+        run: ./deploy/docker/validate.sh
+
+      - name: Ensure ShellCheck
+        run: |
+          if ! command -v shellcheck >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y shellcheck
+          fi
+
+      - name: ShellCheck deploy and CI scripts
+        run: |
+          shellcheck \
+            deploy/docker/*.sh \
+            .github/scripts/*.sh \
+            app/scripts/*.sh
+
+      - name: Lint GitHub Actions workflows
+        run: |
+          ACTIONLINT_VERSION="1.7.7"
+          base="https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}"
+          tarball="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          curl -fsSL -o "/tmp/${tarball}" "${base}/${tarball}"
+          curl -fsSL -o /tmp/actionlint_checksums.txt "${base}/actionlint_${ACTIONLINT_VERSION}_checksums.txt"
+          (cd /tmp && grep -F "${tarball}" actionlint_checksums.txt | sha256sum -c -)
+          tar -xzf "/tmp/${tarball}" -C /tmp actionlint
+          # actionlint also runs ShellCheck on inline "run:" blocks when it is
+          # available on PATH (installed in the step above). Repository shell
+          # scripts are linted directly in the previous step.
+          /tmp/actionlint .github/workflows/*.yml
+
+      - name: Lint Dockerfiles
+        run: |
+          HADOLINT_VERSION="2.15.1"
+          base="https://github.com/hadolint/hadolint/releases/download/v${HADOLINT_VERSION}"
+          curl -fsSL -o /tmp/hadolint-linux-x86_64 "${base}/hadolint-linux-x86_64"
+          curl -fsSL -o /tmp/hadolint_checksums.txt "${base}/checksums.sha256"
+          (cd /tmp && grep 'hadolint-linux-x86_64$' hadolint_checksums.txt | sha256sum -c -)
+          chmod +x /tmp/hadolint-linux-x86_64
+          # Vendored Playwright Dockerfiles are reviewed upstream.
+          dockerfiles=()
+          while IFS= read -r file; do
+            dockerfiles+=("$file")
+          done < <(git ls-files '*Dockerfile*' | grep -v '^recorder/playwright/')
+          if [ "${#dockerfiles[@]}" -eq 0 ]; then
+            echo "No Dockerfiles found"
+            exit 0
+          fi
+          /tmp/hadolint-linux-x86_64 "${dockerfiles[@]}"
+
   summary:
     name: Quality Checks Summary
     runs-on: ubuntu-latest
-    needs: [app-quality-checks, worker-quality-checks, cli-quality-checks, e2e-quality-checks]
+    needs: [app-quality-checks, worker-quality-checks, cli-quality-checks, e2e-quality-checks, deploy-validation]
     if: always()
 
     steps:
       - name: Check results
         run: |
-          if [ "${{ needs.app-quality-checks.result }}" != "success" ] || [ "${{ needs.worker-quality-checks.result }}" != "success" ] || [ "${{ needs.cli-quality-checks.result }}" != "success" ] || [ "${{ needs.e2e-quality-checks.result }}" != "success" ]; then
+          if [ "${{ needs.app-quality-checks.result }}" != "success" ] || [ "${{ needs.worker-quality-checks.result }}" != "success" ] || [ "${{ needs.cli-quality-checks.result }}" != "success" ] || [ "${{ needs.e2e-quality-checks.result }}" != "success" ] || [ "${{ needs.deploy-validation.result }}" != "success" ]; then
             echo "❌ Quality checks failed"
             echo "App checks: ${{ needs.app-quality-checks.result }}"
             echo "Worker checks: ${{ needs.worker-quality-checks.result }}"
             echo "CLI checks: ${{ needs.cli-quality-checks.result }}"
             echo "E2E suite checks: ${{ needs.e2e-quality-checks.result }}"
+            echo "Deploy validation: ${{ needs.deploy-validation.result }}"
             exit 1
           else
             echo "✅ All quality checks passed"

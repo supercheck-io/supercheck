@@ -1,0 +1,13 @@
+# Hadolint configuration.
+#
+# The failure threshold is set to "error" so this is a real gate that catches
+# broken Dockerfiles, while informational/warning rules (unpinned packages,
+# consecutive RUN layers, non-numeric users) are reported without blocking.
+# Tighten to "warning" once the existing findings are addressed.
+failure-threshold: error
+
+ignored:
+  # Base images are pinned by digest and refreshed via Dependabot, so exact
+  # apt/apk package pinning inside the Dockerfile is intentionally not done.
+  - DL3008
+  - DL3018
