@@ -132,10 +132,13 @@ else
   # from storage.googleapis.com (curl 404s since the distribution format
   # change — verified live 2026-09-16). The shim now ships inside
   # gvisor-<arch>.tar.bz2 on the GitHub release, checksummed by SHA512SUMS.
-  if [ "${GVISOR_RELEASE}" = "latest" ]; then
+  # GVISOR_RELEASE normalization: strip an optional "release-" prefix so both
+  # the legacy "20240101.0" and the GitHub tag form "release-20240101.0" work.
+  GVISOR_TAG="${GVISOR_RELEASE#release-}"
+  if [ "${GVISOR_TAG}" = "latest" ]; then
     GVISOR_BASE="https://github.com/google/gvisor/releases/latest/download"
   else
-    GVISOR_BASE="https://github.com/google/gvisor/releases/download/${GVISOR_RELEASE}"
+    GVISOR_BASE="https://github.com/google/gvisor/releases/download/release-${GVISOR_TAG}"
   fi
 
   curl -fsSL "${GVISOR_BASE}/gvisor-${GVISOR_ARCH}.tar.bz2" -o "${TMP_DIR}/gvisor-${GVISOR_ARCH}.tar.bz2"
@@ -444,15 +447,10 @@ users:
       token: ${TOKEN}
 EOF
 
-chmod 0640 "$WORKER_KUBECONFIG"
 # The worker container runs as pwuser (UID/GID 1001 per the Playwright image;
 # compose runs it as "pwuser:pwuser" with NO supplemental groups, and docker
 # --user does not apply the host's group database). The kubeconfig is
-# bind-mounted read-only, so the file must be group-readable by GID 1001.
-# NOTE: GID 1000 is the first created user's group on typical hosts (e.g.
-# "ubuntu"), so chown root:1000 makes the file readable by that host user but
-# NOT by the worker container — verified live: the worker fails with
-# EACCES on /run/secrets/supercheck-kubeconfig and crash-loops.
+# bind-mounted read-only, so the file must be group-readable by gid 1001.
 chgrp 1001 "$WORKER_KUBECONFIG"
 chmod 0440 "$WORKER_KUBECONFIG"
 log "Restricted worker kubeconfig written to $WORKER_KUBECONFIG (group-readable by GID 1001 / pwuser)"
