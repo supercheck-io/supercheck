@@ -169,36 +169,38 @@ jobs:
         env:
           TEST_FILTER: ${{ inputs.test_filter }}
         run: |
-          echo "## 🎭 Full E2E Test Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "## 🎭 Full E2E Test Results"
+            echo ""
 
-          if [ -n "$TEST_FILTER" ]; then
-            echo "**Filter:** \`$TEST_FILTER\`" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-          fi
-
-          if [ -f "app/e2e/test-results/results.json" ]; then
-            PASSED=$(jq '.stats.expected // 0' app/e2e/test-results/results.json)
-            FAILED=$(jq '.stats.unexpected // 0' app/e2e/test-results/results.json)
-            SKIPPED=$(jq '.stats.skipped // 0' app/e2e/test-results/results.json)
-            DURATION_MIN=$(jq '((.stats.duration // 0) / 60000) | floor' app/e2e/test-results/results.json)
-
-            echo "| Metric | Count |" >> $GITHUB_STEP_SUMMARY
-            echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
-            echo "| ✅ Passed | $PASSED |" >> $GITHUB_STEP_SUMMARY
-            echo "| ❌ Failed | $FAILED |" >> $GITHUB_STEP_SUMMARY
-            echo "| ⏭️ Skipped | $SKIPPED |" >> $GITHUB_STEP_SUMMARY
-            echo "| ⏱️ Duration | ${DURATION_MIN}m |" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-
-            if [ "${{ steps.e2e-tests.outcome }}" == "failure" ]; then
-              echo "> ⚠️ **Some tests failed.** Download the playwright-report-full artifact for details." >> $GITHUB_STEP_SUMMARY
-            else
-              echo "> ✅ **All tests passed!**" >> $GITHUB_STEP_SUMMARY
+            if [ -n "$TEST_FILTER" ]; then
+              echo "**Filter:** \`$TEST_FILTER\`"
+              echo ""
             fi
-          else
-            echo "⚠️ No test results found. Tests may have failed to start or timed out." >> $GITHUB_STEP_SUMMARY
-          fi
+
+            if [ -f "app/e2e/test-results/results.json" ]; then
+              PASSED=$(jq '.stats.expected // 0' app/e2e/test-results/results.json)
+              FAILED=$(jq '.stats.unexpected // 0' app/e2e/test-results/results.json)
+              SKIPPED=$(jq '.stats.skipped // 0' app/e2e/test-results/results.json)
+              DURATION_MIN=$(jq '((.stats.duration // 0) / 60000) | floor' app/e2e/test-results/results.json)
+
+              echo "| Metric | Count |"
+              echo "|--------|-------|"
+              echo "| ✅ Passed | $PASSED |"
+              echo "| ❌ Failed | $FAILED |"
+              echo "| ⏭️ Skipped | $SKIPPED |"
+              echo "| ⏱️ Duration | ${DURATION_MIN}m |"
+              echo ""
+
+              if [ "${{ steps.e2e-tests.outcome }}" == "failure" ]; then
+                echo "> ⚠️ **Some tests failed.** Download the playwright-report-full artifact for details."
+              else
+                echo "> ✅ **All tests passed!**"
+              fi
+            else
+              echo "⚠️ No test results found. Tests may have failed to start or timed out."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Enforce E2E result integrity
         if: always()

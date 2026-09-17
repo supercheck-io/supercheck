@@ -104,7 +104,7 @@ else
 
   # Wait for K3s to be ready
   info "Waiting for K3s to be ready..."
-  for i in $(seq 1 60); do
+  for _ in $(seq 1 60); do
     if k3s kubectl get nodes &>/dev/null; then
       break
     fi
@@ -197,7 +197,7 @@ systemctl restart k3s
 
 # Wait for K3s to be ready after restart
 info "Waiting for K3s to be ready after restart..."
-for i in $(seq 1 60); do
+for _ in $(seq 1 60); do
   if k3s kubectl get nodes 2>/dev/null | grep -q " Ready"; then
     break
   fi
@@ -413,7 +413,7 @@ CA_DATA=$(k3s kubectl config view --raw -o jsonpath='{.clusters[0].cluster.certi
 TOKEN=""
 
 info "Waiting for worker service-account token..."
-for i in $(seq 1 30); do
+for _ in $(seq 1 30); do
   TOKEN=$(k3s kubectl get secret supercheck-worker-token -n supercheck-workers -o jsonpath='{.data.token}' 2>/dev/null | base64 -d || true)
   if [[ -n "$TOKEN" ]]; then
     break
@@ -493,7 +493,7 @@ YAML
 
 # Wait for test pod to complete
 info "Waiting for test pod to complete..."
-for i in $(seq 1 60); do
+for _ in $(seq 1 60); do
   STATUS=$(k3s kubectl get pod gvisor-test -n supercheck-execution -o jsonpath='{.status.phase}' 2>/dev/null || echo "Pending")
   if [[ "$STATUS" == "Succeeded" ]] || [[ "$STATUS" == "Failed" ]]; then
     break

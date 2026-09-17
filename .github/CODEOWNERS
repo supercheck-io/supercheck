@@ -1,0 +1,6 @@
+# Default owner for the entire repository.
+#
+# Only the primary maintainer is listed, so it is the sole account GitHub
+# requests reviews from. Contributors should tag @krish-kant.
+#
+* @krish-kant

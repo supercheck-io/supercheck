@@ -532,30 +532,32 @@ jobs:
       - name: Create test summary
         if: always()
         run: |
-          echo "## 🎭 Full E2E Test Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "## 🎭 Full E2E Test Results"
+            echo ""
 
-          if [ -f "app/e2e/test-results/results.json" ]; then
-            PASSED=$(jq '.stats.expected // 0' app/e2e/test-results/results.json)
-            FAILED=$(jq '.stats.unexpected // 0' app/e2e/test-results/results.json)
-            SKIPPED=$(jq '.stats.skipped // 0' app/e2e/test-results/results.json)
-            DURATION_MIN=$(jq '((.stats.duration // 0) / 60000) | floor' app/e2e/test-results/results.json)
+            if [ -f "app/e2e/test-results/results.json" ]; then
+              PASSED=$(jq '.stats.expected // 0' app/e2e/test-results/results.json)
+              FAILED=$(jq '.stats.unexpected // 0' app/e2e/test-results/results.json)
+              SKIPPED=$(jq '.stats.skipped // 0' app/e2e/test-results/results.json)
+              DURATION_MIN=$(jq '((.stats.duration // 0) / 60000) | floor' app/e2e/test-results/results.json)
 
-            echo "| Metric | Count |" >> $GITHUB_STEP_SUMMARY
-            echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
-            echo "| ✅ Passed | $PASSED |" >> $GITHUB_STEP_SUMMARY
-            echo "| ❌ Failed | $FAILED |" >> $GITHUB_STEP_SUMMARY
-            echo "| ⏭️ Skipped | $SKIPPED |" >> $GITHUB_STEP_SUMMARY
-            echo "| ⏱️ Duration | ${DURATION_MIN}m |" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
+              echo "| Metric | Count |"
+              echo "|--------|-------|"
+              echo "| ✅ Passed | $PASSED |"
+              echo "| ❌ Failed | $FAILED |"
+              echo "| ⏭️ Skipped | $SKIPPED |"
+              echo "| ⏱️ Duration | ${DURATION_MIN}m |"
+              echo ""
 
-            if [ "${{ steps.e2e-tests.outcome }}" == "failure" ]; then
-              echo "> ⚠️ **Some E2E tests failed.** The release build remains available for explicit deployment and testing." >> $GITHUB_STEP_SUMMARY
-              echo ">" >> $GITHUB_STEP_SUMMARY
-              echo "> Download the \`playwright-report-full\` artifact for details." >> $GITHUB_STEP_SUMMARY
+              if [ "${{ steps.e2e-tests.outcome }}" == "failure" ]; then
+                echo "> ⚠️ **Some E2E tests failed.** The release build remains available for explicit deployment and testing."
+                echo ">"
+                echo "> Download the \`playwright-report-full\` artifact for details."
+              else
+                echo "> ✅ **All tests passed!**"
+              fi
             else
-              echo "> ✅ **All tests passed!**" >> $GITHUB_STEP_SUMMARY
+              echo "⚠️ No test results found. Tests may have failed to start or timed out."
             fi
-            else
-              echo "⚠️ No test results found. Tests may have failed to start or timed out." >> $GITHUB_STEP_SUMMARY
-            fi
+          } >> "$GITHUB_STEP_SUMMARY"

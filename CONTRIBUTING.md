@@ -105,6 +105,18 @@ npm run test:install
 npm test
 ```
 
+### Deploy / self-hosted
+
+```bash
+./deploy/docker/validate.sh
+```
+
+`validate.sh` shell-checks the deploy scripts and interpolates every Compose file with placeholder values, so it catches broken `${VAR:?}` interpolation and malformed YAML without starting containers. If [ShellCheck](https://www.shellcheck.net/) is installed, also run:
+
+```bash
+shellcheck deploy/docker/*.sh .github/scripts/*.sh app/scripts/*.sh
+```
+
 You do not need to run every package for a docs-only change.
 
 ## Requirements
