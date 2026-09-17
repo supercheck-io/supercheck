@@ -5,6 +5,7 @@ import { z } from "zod";
 import { streamEvidenceBrief } from "@/lib/sre/evidence-brief-generator";
 import { runSreEvidenceBriefGeneration } from "@/lib/sre/evidence-brief-orchestrator";
 import { isAuthError, requireAuthContext } from "@/lib/auth-context";
+import { createLogger } from "@/lib/logger/index";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { checkSreEvidenceBriefRateLimit } from "@/lib/sre/sre-rate-limiter";
 import { requireSreSameOriginRequest } from "../../_auth";
@@ -12,6 +13,10 @@ import { requireSreSameOriginRequest } from "../../_auth";
 const requestSchema = z.object({
   incidentId: z.string().uuid(),
 });
+
+const streamLogger = createLogger({ module: "sre-evidence-brief-stream" }) as {
+  error: (data: unknown, msg?: string) => void;
+};
 
 const encoder = new TextEncoder();
 
@@ -152,7 +157,10 @@ export async function POST(request: NextRequest) {
           },
         });
       } catch (error) {
-        console.error("Error streaming SRE evidence brief:", error);
+        streamLogger.error(
+          { err: error },
+          "Error streaming SRE evidence brief",
+        );
         send({
           type: "error",
           error: errorMessage(error, "Failed to generate evidence brief"),

@@ -147,7 +147,7 @@ describe("SRE triage API", () => {
     }
   });
 
-  it("returns 503 without touching auth or database when disabled", async () => {
+  it("returns 503 without database work when disabled for an authenticated caller", async () => {
     process.env.SRE_TRIAGE_AGENT_ENABLED = "false";
 
     const response = await POST(request({ incidentId: "018f0000-0000-7000-8000-000000000004" }));
@@ -159,7 +159,18 @@ describe("SRE triage API", () => {
       code: "feature_disabled",
       enabledBy: "SRE_TRIAGE_AGENT_ENABLED",
     });
-    expect(mockRequireProjectContext).not.toHaveBeenCalled();
+    expect(mockRequireProjectContext).toHaveBeenCalled();
+    expect(mockDb.select).not.toHaveBeenCalled();
+    expect(mockDb.insert).not.toHaveBeenCalled();
+  });
+
+  it("rejects unauthenticated callers before disclosing the feature flag", async () => {
+    process.env.SRE_TRIAGE_AGENT_ENABLED = "false";
+    mockRequireProjectContext.mockRejectedValueOnce(new Error("Authentication required"));
+
+    const response = await POST(request({ incidentId: "018f0000-0000-7000-8000-000000000004" }));
+
+    expect(response.status).toBe(401);
     expect(mockDb.select).not.toHaveBeenCalled();
     expect(mockDb.insert).not.toHaveBeenCalled();
   });

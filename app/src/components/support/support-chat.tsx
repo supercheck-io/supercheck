@@ -142,7 +142,7 @@ export function SupportChat() {
         supercheck_user_id: user.id,
         organization_id: session.session?.activeOrganizationId || "unknown",
         source: "supercheck-app",
-        app_version: process.env.NEXT_PUBLIC_APP_VERSION || "unknown",
+        app_version: process.env.NEXT_PUBLIC_SUPERCHECK_VERSION || "unknown",
     };
 
     return (

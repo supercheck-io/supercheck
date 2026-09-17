@@ -16,6 +16,7 @@ import {
   sreServiceResources,
   sreServices,
 } from "@/db/schema";
+import { createLogger } from "@/lib/logger/index";
 import { requireProjectContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import {
@@ -23,6 +24,10 @@ import {
   formatSreInvestigationTypeLabel,
 } from "@/lib/sre/evidence-graph-display";
 import { db } from "@/utils/db";
+
+const graphLogger = createLogger({ module: "sre-evidence-graph" }) as {
+  error: (data: unknown, msg?: string) => void;
+};
 
 export type SreEvidenceGraphNodeType =
   | "service"
@@ -749,7 +754,7 @@ export async function getSreEvidenceGraph(): Promise<
 
     return { success: true, graph: { nodes, edges: validEdges, stats } };
   } catch (error) {
-    console.error("Error fetching SRE evidence graph:", error);
+    graphLogger.error({ err: error }, "Error fetching SRE evidence graph");
     return { success: false, error: "Failed to fetch SRE evidence graph", graph: emptyGraph };
   }
 }

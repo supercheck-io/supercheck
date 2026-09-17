@@ -36,6 +36,66 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  validate-release-tag:
+    name: Validate Release Tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      # The release tag is the single source of truth for the version baked
+      # into the images. Stable tags must also match every other version
+      # location, so npm metadata, image identity, and the self-hosted Compose
+      # defaults cannot drift. Prerelease tags (for example v1.3.7-rc.1) are cut
+      # before the version bump and are intentionally exempt. This job always
+      # runs and no-ops for non-tag/manual runs so dependent jobs are never
+      # cascade-skipped.
+      - name: Require stable tag to match all version locations
+        shell: bash
+        env:
+          RELEASE_REF: ${{ github.ref }}
+        run: |
+          set -Eeuo pipefail
+          if [[ "$RELEASE_REF" != refs/tags/v* ]]; then
+            echo "Ref '$RELEASE_REF' is not a version tag; skipping version match."
+            exit 0
+          fi
+          tag="${RELEASE_REF#refs/tags/v}"
+          if [[ "$tag" == *-* ]]; then
+            echo "Prerelease tag '$tag' detected; skipping version match."
+            exit 0
+          fi
+
+          app_version=$(node -p "require('./app/package.json').version")
+          worker_version=$(node -p "require('./worker/package.json').version")
+          if [[ "$app_version" != "$tag" || "$worker_version" != "$tag" ]]; then
+            echo "::error::Stable tag v$tag must match app package.json ($app_version) and worker package.json ($worker_version)."
+            exit 1
+          fi
+
+          compose_default_count=0
+          while IFS= read -r compose_default; do
+            [[ -n "$compose_default" ]] || continue
+            compose_default_count=$((compose_default_count + 1))
+            if [[ "$compose_default" != "$tag" ]]; then
+              echo "::error::deploy/docker compose default '$compose_default' must match release tag v$tag."
+              exit 1
+            fi
+          done < <(
+            grep -rhoE '\$\{SUPERCHECK_VERSION:-[0-9A-Za-z._-]+' deploy/docker/*.yml \
+              | sed 's/.*:-//' \
+              | sort -u
+          )
+          if [[ "$compose_default_count" -eq 0 ]]; then
+            echo "::error::No SUPERCHECK_VERSION defaults found in deploy/docker compose files."
+            exit 1
+          fi
+          echo "Release tag v$tag matches package.json and deploy/docker compose defaults."
+
   test:
     name: Run Tests
     runs-on: ubuntu-latest
@@ -96,7 +156,7 @@ jobs:
 
   build-and-push:
     name: Build and Push Docker Images
-    needs: test
+    needs: [test, validate-release-tag]
     runs-on: ubuntu-latest
     timeout-minutes: 120
     permissions:
@@ -267,6 +327,8 @@ jobs:
           sbom: true
           tags: ${{ steps.worker-meta.outputs.tags }}
           labels: ${{ steps.worker-meta.outputs.labels }}
+          build-args: |
+            SUPERCHECK_VERSION=${{ steps.worker-meta.outputs.version }}
           cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/worker:buildcache
           cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/worker:buildcache,mode=max,ignore-error=true
 

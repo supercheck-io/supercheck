@@ -2,6 +2,7 @@ import * as crypto from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { z } from 'zod';
+import { getServiceVersion } from '../common/version';
 
 const PROTOCOL_VERSION = '2026-06-22';
 const DEFAULT_RETRY_INTERVAL_MS = 5_000;
@@ -1557,9 +1558,7 @@ function readConfig(): PrivateAgentConfig {
       : null,
     credentialFile,
     agentVersion:
-      process.env.PRIVATE_AGENT_VERSION ??
-      process.env.npm_package_version ??
-      '1.3.6',
+      process.env.PRIVATE_AGENT_VERSION?.trim() || getServiceVersion(),
     retryIntervalMs: Number(
       process.env.PRIVATE_AGENT_RETRY_INTERVAL_MS ??
         process.env.PRIVATE_AGENT_POLL_INTERVAL_MS ??
