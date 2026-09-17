@@ -112,7 +112,7 @@ describe("SRE investigate API", () => {
     });
   });
 
-  it("returns 503 without auth or DB work when disabled", async () => {
+  it("returns 503 without DB work when disabled for an authenticated caller", async () => {
     mockIsSreInvestigationAgentEnabled.mockReturnValue(false);
 
     const response = await POST(new NextRequest("http://localhost/api/sre/investigate", {
@@ -127,7 +127,20 @@ describe("SRE investigate API", () => {
       code: "feature_disabled",
       enabledBy: "SRE_INVESTIGATION_AGENT_ENABLED",
     });
-    expect(mockRequireProjectContext).not.toHaveBeenCalled();
+    expect(mockRequireProjectContext).toHaveBeenCalled();
+    expect(mockStartSreIncidentInvestigation).not.toHaveBeenCalled();
+  });
+
+  it("rejects unauthenticated callers before disclosing the feature flag", async () => {
+    mockIsSreInvestigationAgentEnabled.mockReturnValue(false);
+    mockRequireProjectContext.mockRejectedValueOnce(new Error("Authentication required"));
+
+    const response = await POST(new NextRequest("http://localhost/api/sre/investigate", {
+      method: "POST",
+      body: JSON.stringify({ incidentId: "018f0000-0000-7000-8000-000000000005" }),
+    }));
+
+    expect(response.status).toBe(401);
     expect(mockStartSreIncidentInvestigation).not.toHaveBeenCalled();
   });
 

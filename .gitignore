@@ -188,3 +188,6 @@ supercheck.config.local.js
 supercheck.config.local.mjs
 .opencode
 .tokensave
+
+# Serena agent tooling
+.serena/

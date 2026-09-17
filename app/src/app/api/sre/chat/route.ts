@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { isAuthError, requireAuthContext } from "@/lib/auth-context";
+import { createLogger } from "@/lib/logger/index";
 import { checkSreChatRateLimit } from "@/lib/sre/sre-rate-limiter";
 import { buildSreTriageSystemPrompt } from "@/sre/agents/triage";
 import { runSreAgent } from "@/sre/lib/agent-runner";
@@ -53,6 +54,10 @@ const chatRequestSchema = z.object({
 
 const SRE_ATTACHMENTS_BUCKET =
   process.env.S3_SRE_ATTACHMENTS_BUCKET_NAME || "sre-chat-attachments";
+
+const chatLogger = createLogger({ module: "sre-chat-api" }) as {
+  error: (data: unknown, msg?: string) => void;
+};
 
 function authErrorResponse(error: unknown) {
   return NextResponse.json(
@@ -442,7 +447,7 @@ export async function POST(request: NextRequest) {
       assistantText = result.text;
       modelId = result.modelId;
     } catch (error) {
-      console.error("SRE agent error:", error);
+      chatLogger.error({ err: error }, "SRE agent error");
       assistantText =
         "Copilot is temporarily unavailable. The conversation was saved; gather native evidence or connector evidence and retry.";
       send("agent.fallback", {

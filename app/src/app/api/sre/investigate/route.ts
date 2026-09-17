@@ -51,15 +51,15 @@ export async function POST(request: NextRequest) {
     return sameOriginError;
   }
 
-  if (!isSreInvestigationAgentEnabled()) {
-    return featureDisabledResponse();
-  }
-
   let context: Awaited<ReturnType<typeof requireAuthContext>>;
   try {
     context = await requireAuthContext();
   } catch (error) {
     return authErrorResponse(error);
+  }
+
+  if (!isSreInvestigationAgentEnabled()) {
+    return featureDisabledResponse();
   }
 
   const permissionContext = {

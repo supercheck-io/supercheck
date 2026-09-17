@@ -24,6 +24,11 @@ import type * as k8s from '@kubernetes/client-node';
 import { Readable, Writable } from 'stream';
 import { finished } from 'stream/promises';
 import { CancellationService } from '../services/cancellation.service';
+import {
+  type ImagePullPolicy,
+  isMutableImageReference,
+  parseImagePullPolicyOverride,
+} from '../utils/image-reference';
 
 export interface ContainerExecutionOptions {
   /**
@@ -191,6 +196,8 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
   /** Allowed filename pattern: alphanumeric, dots, hyphens, underscores */
   private static readonly SAFE_FILENAME_RE = /^[\w.-]+$/;
   private readonly defaultImage: string;
+  /** Validated `EXECUTION_IMAGE_PULL_POLICY`, resolved once at startup. */
+  private readonly executionImagePullPolicyOverride?: ImagePullPolicy;
   private readonly executionNamespace: string;
   private readonly executionRuntimeClassName: string | undefined;
   private readonly executionNodeSelector?: Record<string, string>;
@@ -213,6 +220,22 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
   /** Track pods that have already logged an exec failure at warn level to avoid log spam. */
   private readonly execFailureLogged: Set<string> = new Set();
 
+  /**
+   * Choose the execution Job pull policy.
+   *
+   * Mutable references (`:latest` or untagged) are pulled on every run so a
+   * sandboxed run cannot use a stale cached image that drifted from the worker
+   * control plane. Immutable references (explicit tag or digest) use the
+   * cheaper `IfNotPresent`. `EXECUTION_IMAGE_PULL_POLICY` overrides this for
+   * environments that intentionally serve a preloaded image without a registry.
+   */
+  private resolveExecutionImagePullPolicy(image: string): ImagePullPolicy {
+    return (
+      this.executionImagePullPolicyOverride ??
+      (isMutableImageReference(image) ? 'Always' : 'IfNotPresent')
+    );
+  }
+
   constructor(
     private configService: ConfigService,
     private cancellationService: CancellationService,
@@ -230,6 +253,27 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     }
     this.defaultImage =
       configuredImage || 'ghcr.io/supercheck-io/supercheck/worker:latest';
+
+    const pullPolicyOverride = parseImagePullPolicyOverride(
+      this.configService.get<string>('EXECUTION_IMAGE_PULL_POLICY'),
+    );
+    if (pullPolicyOverride.invalidOverride) {
+      this.logger.warn(
+        `Ignoring invalid EXECUTION_IMAGE_PULL_POLICY="${pullPolicyOverride.invalidOverride}"; expected "Always", "IfNotPresent", or "Never".`,
+      );
+    }
+    this.executionImagePullPolicyOverride = pullPolicyOverride.policy;
+
+    if (
+      isMutableImageReference(this.defaultImage) &&
+      this.resolveExecutionImagePullPolicy(this.defaultImage) === 'Always'
+    ) {
+      this.logger.warn(
+        `Execution image "${this.defaultImage}" uses a mutable tag. ` +
+          'Jobs will pull on every run to avoid drifting from the worker ' +
+          'control plane. Pin WORKER_IMAGE to a release tag or digest.',
+      );
+    }
     this.executionNamespace = this.configService.get<string>(
       'EXECUTION_NAMESPACE',
       'supercheck-execution',
@@ -1047,7 +1091,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
               {
                 name: 'execution',
                 image,
-                imagePullPolicy: 'IfNotPresent',
+                imagePullPolicy: this.resolveExecutionImagePullPolicy(image),
                 command: ['/bin/sh', '-c', bootstrapScript],
                 workingDir,
                 env: envVars,

@@ -10,6 +10,7 @@ import {
 } from "@/db/schema";
 import { getActualModelName } from "@/lib/ai/ai-provider";
 import { logAuditEvent } from "@/lib/audit-logger";
+import { createLogger } from "@/lib/logger/index";
 import { normalizePrivateAgentEvidenceSummaries } from "@/lib/sre/connector-job-evidence";
 import { DIRECT_VALIDATION_CONNECTOR_TYPES } from "@/lib/sre/connectors";
 import type {
@@ -21,6 +22,12 @@ import {
   type NativeEvidenceWindow,
 } from "@/lib/sre/native-evidence-collector";
 import { db } from "@/utils/db";
+
+const orchestratorLogger = createLogger({
+  module: "sre-evidence-brief-orchestrator",
+}) as {
+  error: (data: unknown, msg?: string) => void;
+};
 
 const connectorEvidenceSourceTypes = [
   ...DIRECT_VALIDATION_CONNECTOR_TYPES,
@@ -435,7 +442,10 @@ export async function runSreEvidenceBriefGeneration(input: {
       error instanceof Error
         ? error.message
         : "Evidence brief generation failed";
-    console.error("Failed to generate SRE evidence brief:", error);
+    orchestratorLogger.error(
+      { err: error },
+      "Failed to generate SRE evidence brief",
+    );
 
     try {
       await db
@@ -484,9 +494,9 @@ export async function runSreEvidenceBriefGeneration(input: {
         success: false,
       });
     } catch (failureRecordError) {
-      console.error(
-        "Failed to record SRE evidence brief failure:",
-        failureRecordError,
+      orchestratorLogger.error(
+        { err: failureRecordError },
+        "Failed to record SRE evidence brief failure",
       );
     }
 

@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Stable release tags now fail CI unless `app/package.json`, `worker/package.json`, and the `deploy/docker` image-tag defaults all match the tag, preventing release-version drift.
+- Added deploy, workflow, and container validation to the release pipeline ([#313](https://github.com/supercheck-io/supercheck/pull/313)).
+
+### Changed
+
+- Release version identity is now derived from the release tag and injected into both images at build time. The worker receives `SUPERCHECK_VERSION` alongside the app, so worker health reports the deployed release.
+- Private Agent version identity now comes from the worker image (release tag) rather than a Compose-provided tag value.
+
+### Fixed
+
+- Worker `/health` reported a hardcoded `1.0.0` version because the container does not start through npm; it now reports the actual release version.
+- Private Agent registration and heartbeat no longer fall back to a hardcoded `1.3.6` version.
+- Support chat reported `unknown` for `app_version` because it read an environment variable that is never set; it now reports the release version.
+- Execution Jobs now force an image pull when `WORKER_IMAGE` uses a mutable tag, so sandboxed runs cannot drift from the worker control plane, and a warning is logged recommending a pinned tag or digest. `EXECUTION_IMAGE_PULL_POLICY` can override this for preloaded-image environments.
+- Pinned the MinIO image to the live quay.io tag and required `REDIS_PASSWORD` in the remote worker Compose profile ([#312](https://github.com/supercheck-io/supercheck/pull/312)).
+
+### Security
+
+- Hardened release API authentication and error responses ([#311](https://github.com/supercheck-io/supercheck/pull/311)).
+- Remediated Dependabot dependency alerts ([#306](https://github.com/supercheck-io/supercheck/pull/306)).
+
 ## [1.3.6]
 
 ### Added

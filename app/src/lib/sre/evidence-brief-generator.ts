@@ -6,6 +6,11 @@ import {
   getProviderModel,
   validateAIConfiguration,
 } from "@/lib/ai/ai-provider";
+import { createLogger } from "@/lib/logger/index";
+
+const briefLogger = createLogger({ module: "sre-evidence-brief" }) as {
+  warn: (data: unknown, msg?: string) => void;
+};
 
 export type BriefEvidenceInput = {
   id: string;
@@ -318,9 +323,9 @@ export async function generateEvidenceBrief(input: {
       modelId,
     };
   } catch (error) {
-    console.warn(
-      "[SRE Evidence Brief] Falling back to deterministic brief:",
-      error,
+    briefLogger.warn(
+      { err: error },
+      "SRE evidence brief falling back to deterministic brief",
     );
     return fallbackBrief(input.evidence, modelId);
   }
@@ -340,7 +345,10 @@ export async function streamEvidenceBrief(
 
   const streamFallback = async (reason?: unknown) => {
     if (reason) {
-      console.warn("[SRE Evidence Brief] Streaming fallback:", reason);
+      briefLogger.warn(
+        { err: reason },
+        "SRE evidence brief streaming fallback",
+      );
     }
     const fallback = fallbackBrief(input.evidence, modelId);
     await onChunk(fallback.summary);

@@ -2,10 +2,15 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { sreIncidents, sreIncidentTimelineEvents, webhookIdempotency } from "@/db/schema";
+import { createLogger } from "@/lib/logger/index";
 import { assertCanStartSreInvestigation, SreInvestigationBillingError } from "@/lib/sre/investigation-billing";
 import { postSreInvestigationSlackSummary } from "@/lib/sre/slack-outbound";
 import { completeSreIncidentInvestigation, startSreIncidentInvestigation } from "@/sre/lib/investigation-runner";
 import { db } from "@/utils/db";
+
+const collaborationLogger = createLogger({ module: "sre-collaboration" }) as {
+  error: (data: unknown, msg?: string) => void;
+};
 
 const WEBHOOK_IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000;
 const UUID_PATTERN = /[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i;
@@ -256,7 +261,10 @@ export async function processSreCollaborationMessage(input: z.input<typeof colla
         });
       }
     } catch (error) {
-      console.error("SRE collaboration investigation failed:", error);
+      collaborationLogger.error(
+        { err: error },
+        "SRE collaboration investigation failed",
+      );
     }
   })();
 

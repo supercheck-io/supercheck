@@ -21,9 +21,6 @@ describe("generateEvidenceBrief", () => {
   it("falls back to a deterministic brief when AI is not configured", async () => {
     process.env.AI_PROVIDER = "openai";
     process.env.OPENAI_API_KEY = "";
-    const warnSpy = jest
-      .spyOn(console, "warn")
-      .mockImplementation(() => undefined);
 
     const brief = await generateEvidenceBrief({
       incidentTitle: "checkout-api: Monitor Failure",
@@ -50,15 +47,11 @@ describe("generateEvidenceBrief", () => {
     expect(brief.citedEvidenceIds).toEqual(["evidence_1"]);
     expect(brief.confidenceScore).toBe(0.85);
     expect(brief.summary).toContain("AI brief generation was unavailable");
-    warnSpy.mockRestore();
   });
 
   it("does not tell an already mapped incident to add service mapping when evidence is absent", async () => {
     process.env.AI_PROVIDER = "openai";
     process.env.OPENAI_API_KEY = "";
-    const warnSpy = jest
-      .spyOn(console, "warn")
-      .mockImplementation(() => undefined);
 
     const brief = await generateEvidenceBrief({
       incidentTitle: "checkout-api: controlled acceptance test",
@@ -72,6 +65,5 @@ describe("generateEvidenceBrief", () => {
       "Link a relevant monitor, job, run, alert, or connector evidence source.",
     );
     expect(brief.summary).not.toContain("mapped to a service");
-    warnSpy.mockRestore();
   });
 });

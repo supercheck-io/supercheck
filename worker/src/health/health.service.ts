@@ -4,6 +4,7 @@ import { DbService } from '../execution/services/db.service';
 import { RedisService } from '../execution/services/redis.service';
 import { ErrorHandler } from '../common/utils/error-handler';
 import { HeartbeatService } from '../common/heartbeat/heartbeat.service';
+import { getServiceVersion } from '../common/version';
 import { user } from '../db/schema';
 import { PLAYWRIGHT_QUEUE } from '../execution/constants';
 import { K6_QUEUE, k6QueueName } from '../k6/k6.constants';
@@ -66,7 +67,7 @@ export class HealthService {
     return {
       status: overallStatus,
       timestamp: new Date().toISOString(),
-      version: process.env.npm_package_version || '1.0.0',
+      version: getServiceVersion(),
       uptime: process.uptime(),
       checks: {
         database,

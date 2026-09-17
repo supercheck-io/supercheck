@@ -467,6 +467,15 @@ docker compose exec -T postgres sh -c 'psql -U "$DB_USER" "$DB_NAME"' < backup.s
 
 ### Updates
 
+Images are pinned to a specific release through `SUPERCHECK_VERSION`, which defaults to the release bundled with this Compose file. Set it in `.env` to upgrade, and keep the App and Worker on the same value so the execution sandbox cannot drift from the control plane.
+
+```bash
+# In .env: set the target release (see GitHub Releases for available tags)
+SUPERCHECK_VERSION=1.3.6
+```
+
+Then pull and restart:
+
 ```bash
 # Quick Start (HTTP):
 docker compose pull && \

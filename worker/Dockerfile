@@ -34,6 +34,12 @@ RUN npm run build
 FROM base AS runner
 WORKDIR /worker
 
+# Release identity injected by the build workflow (from the release tag). The
+# worker reports it through /health so deployments can verify the exact
+# release; the neutral default avoids claiming a stale hardcoded version.
+ARG SUPERCHECK_VERSION=unknown
+ENV SUPERCHECK_VERSION=${SUPERCHECK_VERSION}
+
 # Add OCI labels to link package to repository
 LABEL org.opencontainers.image.source=https://github.com/supercheck-io/supercheck
 LABEL org.opencontainers.image.title="Supercheck Worker"
