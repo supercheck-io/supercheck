@@ -74,10 +74,12 @@ services:
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required - PostgreSQL connection to main server}
 
       # Redis connection (required)
-      # The worker uses REDIS_HOST/PORT/PASSWORD directly (not REDIS_URL)
+      # The worker uses REDIS_HOST/PORT/PASSWORD directly (not REDIS_URL).
+      # The main server's bundled Redis always runs with --requirepass, so an
+      # empty REDIS_PASSWORD would fail with NOAUTH at runtime; fail fast here.
       REDIS_HOST: ${REDIS_HOST:?REDIS_HOST is required - Redis hostname or IP of main server}
       REDIS_PORT: ${REDIS_PORT:-6379}
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required - Redis password from main server}
 
       # Worker location (required)
       # This determines which regional queue this worker processes.

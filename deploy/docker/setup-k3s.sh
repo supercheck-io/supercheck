@@ -128,18 +128,26 @@ if command -v runsc &>/dev/null; then
 else
   log "Installing gVisor (runsc) release ${GVISOR_RELEASE}..."
 
-  # Install from gVisor release repository
-  GVISOR_URL="https://storage.googleapis.com/gvisor/releases/release/${GVISOR_RELEASE}/${GVISOR_ARCH}"
+  # gVisor retired the standalone runsc / containerd-shim-runsc-v1 assets
+  # from storage.googleapis.com (curl 404s since the distribution format
+  # change — verified live 2026-09-16). The shim now ships inside
+  # gvisor-<arch>.tar.bz2 on the GitHub release, checksummed by SHA512SUMS.
+  # GVISOR_RELEASE normalization: strip an optional "release-" prefix so both
+  # the legacy "20240101.0" and the GitHub tag form "release-20240101.0" work.
+  GVISOR_TAG="${GVISOR_RELEASE#release-}"
+  if [ "${GVISOR_TAG}" = "latest" ]; then
+    GVISOR_BASE="https://github.com/google/gvisor/releases/latest/download"
+  else
+    GVISOR_BASE="https://github.com/google/gvisor/releases/download/release-${GVISOR_TAG}"
+  fi
 
-  curl -fsSL "${GVISOR_URL}/runsc" -o "${TMP_DIR}/runsc"
-  curl -fsSL "${GVISOR_URL}/runsc.sha512" -o "${TMP_DIR}/runsc.sha512"
-  curl -fsSL "${GVISOR_URL}/containerd-shim-runsc-v1" -o "${TMP_DIR}/containerd-shim-runsc-v1"
-  curl -fsSL "${GVISOR_URL}/containerd-shim-runsc-v1.sha512" -o "${TMP_DIR}/containerd-shim-runsc-v1.sha512"
+  curl -fsSL "${GVISOR_BASE}/gvisor-${GVISOR_ARCH}.tar.bz2" -o "${TMP_DIR}/gvisor-${GVISOR_ARCH}.tar.bz2"
+  curl -fsSL "${GVISOR_BASE}/SHA512SUMS" -o "${TMP_DIR}/SHA512SUMS"
 
   (
     cd "$TMP_DIR"
-    sha512sum -c runsc.sha512
-    sha512sum -c containerd-shim-runsc-v1.sha512
+    grep "gvisor-${GVISOR_ARCH}.tar.bz2" SHA512SUMS | sha512sum -c -
+    tar -xjf "gvisor-${GVISOR_ARCH}.tar.bz2"
   )
 
   install -m 0755 "${TMP_DIR}/runsc" /usr/local/bin/runsc
@@ -439,15 +447,13 @@ users:
       token: ${TOKEN}
 EOF
 
-chmod 0640 "$WORKER_KUBECONFIG"
-# The worker container runs as UID 1000 (pwuser). The kubeconfig is bind-mounted
-# read-only, so the file must be group- or world-readable. Mode 0640 lets the
-# host admin restrict access to a specific group while still allowing the
-# non-root container to read the file.
-# If the deployer adds UID 1000 to the owning group, 0640 is sufficient.
-# For simpler setups without a shared group, 0644 also works.
-chown root:1000 "$WORKER_KUBECONFIG" 2>/dev/null || chmod 0644 "$WORKER_KUBECONFIG"
-log "Restricted worker kubeconfig written to $WORKER_KUBECONFIG (readable by UID 1000)"
+# The worker container runs as pwuser (UID/GID 1001 per the Playwright image;
+# compose runs it as "pwuser:pwuser" with NO supplemental groups, and docker
+# --user does not apply the host's group database). The kubeconfig is
+# bind-mounted read-only, so the file must be group-readable by gid 1001.
+chgrp 1001 "$WORKER_KUBECONFIG"
+chmod 0440 "$WORKER_KUBECONFIG"
+log "Restricted worker kubeconfig written to $WORKER_KUBECONFIG (group-readable by GID 1001 / pwuser)"
 
 # ─── Step 8: Label the node for gVisor scheduling ────────────────────────────
 
