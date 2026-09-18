@@ -60,10 +60,14 @@ All services run on a single Linux server managed by Docker Compose. Workers con
         </Callout>
 
         ```bash
-        curl -fsSL https://get.docker.com | sh
+        # Review Docker's official installation script before running it.
+        curl -fsSL https://get.docker.com -o get-docker.sh
+        sudo sh get-docker.sh
         sudo usermod -aG docker $USER
         newgrp docker
         ```
+
+        For production hosts, you can instead follow Docker's [distribution-specific Engine installation instructions](https://docs.docker.com/engine/install/) to install from its package repository. Verify that `docker compose version` reports Compose v2 before continuing.
       </Step>
 
       <Step>
@@ -75,7 +79,11 @@ All services run on a single Linux server managed by Docker Compose. Workers con
         ./init-secrets.sh
         ```
 
-        Edit `.env` for optional integrations (SMTP, AI, OAuth).
+        Edit `.env` for optional integrations (SMTP, AI, OAuth). If you will open this HTTP deployment from another computer, also set the externally reachable origin (with no trailing slash):
+
+        ```bash
+        NEXT_PUBLIC_APP_URL=http://YOUR_SERVER_IP:3000
+        ```
       </Step>
 
       <Step>
@@ -99,7 +107,7 @@ All services run on a single Linux server managed by Docker Compose. Workers con
       <Step>
         ### Access
 
-        Open `http://localhost:3000` and create your account.
+        Open the URL configured in `NEXT_PUBLIC_APP_URL` and create your account. If you are working directly on the server and left the default unchanged, use `http://localhost:3000`.
 
         ```bash
         # Optional: grant super admin
@@ -119,10 +127,14 @@ All services run on a single Linux server managed by Docker Compose. Workers con
         </Callout>
 
         ```bash
-        curl -fsSL https://get.docker.com | sh
+        # Review Docker's official installation script before running it.
+        curl -fsSL https://get.docker.com -o get-docker.sh
+        sudo sh get-docker.sh
         sudo usermod -aG docker $USER
         newgrp docker
         ```
+
+        For production hosts, you can instead follow Docker's [distribution-specific Engine installation instructions](https://docs.docker.com/engine/install/) to install from its package repository. Verify that `docker compose version` reports Compose v2 before continuing.
       </Step>
 
       <Step>
@@ -420,7 +432,7 @@ All services run on a single Linux server managed by Docker Compose. Workers con
     Optional SRE workflows — automatic triage, alert correlation, and staged evidence — are controlled by `SRE_TRIAGE_AGENT_ENABLED`, `SRE_ALERT_CORRELATION_ENABLED`, and `SRE_STAGED_EVIDENCE_ENABLED`. All of these default to `false`, and the shipped Compose files do not forward them from `.env`. To use them, add the flags to the `x-common-env` block of your Compose file in addition to `.env`.
     </Callout>
 
-    <Callout type="warning">
+    <Callout type="warn">
     If `SRE_INVESTIGATION_AGENT_ENABLED` is not set to `true`, AI SRE investigations return `503 Service Unavailable` with `feature_disabled`. See [AI SRE Setup](/docs/app/admin/ai-sre-setup) for end-to-end configuration.
     </Callout>
   </Accordion>

@@ -28,12 +28,10 @@ export default async function Page(props: PageProps<'/docs/[[...slug]]'>) {
   const page = source.getPage(params.slug);
   if (!page) notFound();
 
-  // Get the file path from slugs - the path corresponds to the slug structure with .mdx extension
-  // For index pages (like deployment/index.mdx), slugs is ['deployment'], so we append index.mdx
-  // For standalone pages (like monitors.mdx), slugs is ['monitors'], so we append .mdx
-  const filePath = page.slugs.length === 0
-    ? 'index.mdx'
-    : `${page.slugs.join('/')}.mdx`;
+  // Fumadocs keeps the canonical source path, including folder index files.
+  // URL slugs are not sufficient here because `app/deployment/index.mdx` and
+  // `app/deployment.mdx` would both resolve to `/docs/app/deployment`.
+  const filePath = page.path;
 
   const MDX = page.data.body;
   const isFullWidth = page.data.full === true;

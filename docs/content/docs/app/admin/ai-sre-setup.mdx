@@ -4,12 +4,12 @@ description: Configure services, read-only integrations, diagnostic recipes, and
 icon: Bot
 ---
 
-Project administrators configure AI SRE from **Organization Admin**. Responders use **Alerts**, **Incidents**, **Investigation Map**, and **Copilot** during an incident.
+Project Admins and organization-level administrators configure AI SRE from **Organization Admin**. Responders use **Alerts**, **Incidents**, **Investigation Map**, and **Copilot** during an incident.
 
 Select **Setup guide** beside **Add service**, **Add connector**, or **Add recipe** to review setup status. The guide opens only when selected and does not open another form automatically.
 
 <Callout type="info">
-**Self-Hosted Requirement**: AI SRE requires an AI provider configured in your `.env` and `SRE_INVESTIGATION_AGENT_ENABLED=true`. See [Self-Hosted AI SRE Features](/docs/app/deployment/self-hosted#optional-configuration) for details.
+**Self-Hosted Requirement**: AI SRE investigations require an AI provider configured in your `.env` and `SRE_INVESTIGATION_AGENT_ENABLED=true`. The shipped Compose files forward this flag to the app. See [Self-Hosted AI SRE Features](/docs/app/deployment/self-hosted#optional-configuration) for details.
 </Callout>
 
 ## Services
@@ -55,12 +55,6 @@ credential fields.
 
 ## Setup Order
 
-1. Add the services responders use during incidents.
-2. Link native monitors, jobs, tests, or status components.
-3. Add and validate read-only connectors.
-4. Add diagnostic recipes for common checks.
-5. Verify alert channels and run a test investigation.
-
 ```mermaid
 flowchart LR
     Services["<b>1. Add Services</b><br/>Systems & telemetry"] --> Links["<b>2. Link Checks</b><br/>Monitors, jobs, tests"] --> Connectors["<b>3. Add Connectors</b><br/>Read-only evidence"] --> Recipes["<b>4. Add Recipes</b><br/>Approved queries"] --> Verify["<b>5. Test Investigation</b><br/>Run a test investigation"]
@@ -74,7 +68,9 @@ flowchart LR
 
 ## Permissions
 
-- Connector configuration permission is required for integrations, recipes, and Private Agents.
-- Service update permission is required for service metadata, dependencies, and resource links.
-- Service configure permission is required to approve topology suggestions.
-- Incident permissions control incident creation and investigation.
+| Task | Required permission |
+|---|---|
+| Manage integrations, recipes, or Private Agents | Connector configure |
+| Edit service metadata, dependencies, or links | Service update |
+| Approve topology suggestions | Service configure |
+| Create or investigate incidents | Matching incident permission |
