@@ -4,12 +4,12 @@ description: Configure services, read-only integrations, diagnostic recipes, and
 icon: Bot
 ---
 
-Project administrators configure AI SRE from **Organization Admin**. Responders use **Alerts**, **Incidents**, **Investigation Map**, and **Copilot** during an incident.
+Project Admins and organization-level administrators configure AI SRE from **Organization Admin**. Responders use **Alerts**, **Incidents**, **Investigation Map**, and **Copilot** during an incident.
 
 Select **Setup guide** beside **Add service**, **Add connector**, or **Add recipe** to review setup status. The guide opens only when selected and does not open another form automatically.
 
 <Callout type="info">
-**Self-Hosted Requirement**: AI SRE requires an AI provider configured in your `.env` and `SRE_INVESTIGATION_AGENT_ENABLED=true`. See [Self-Hosted AI SRE Features](/docs/app/deployment/self-hosted#optional-configuration) for details.
+**Self-Hosted Requirement**: AI SRE investigations require an AI provider configured in your `.env` and `SRE_INVESTIGATION_AGENT_ENABLED=true`. The shipped Compose files forward this flag to the app. See [Self-Hosted AI SRE Features](/docs/app/deployment/self-hosted#optional-configuration) for details.
 </Callout>
 
 ## Services

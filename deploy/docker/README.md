@@ -31,9 +31,15 @@ docker compose version
 # Should show: Docker Compose version v2.x.x or higher
 ```
 
-**Install Docker (Linux only):**
+**Install Docker (Linux only):** For production hosts, prefer Docker's
+[distribution-specific Engine installation instructions](https://docs.docker.com/engine/install/).
+If you use Docker's convenience script, download and review it before running it:
+
 ```bash
-curl -fsSL https://get.docker.com | sh
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
+sudo usermod -aG docker "$USER"
+newgrp docker
 ```
 
 > **Linux Required:** Supercheck uses K3s and gVisor for sandboxed test execution, which require the Linux kernel. Only Linux servers (Ubuntu 22.04+, Debian 12+) are supported. macOS, Windows, and WSL2 are not supported.
@@ -114,8 +120,14 @@ Use `./init-secrets.sh` to generate secure defaults, then configure:
 | `SIGNUP_ENABLED` | Toggle open email/password signup (default: `true`) |
 | `ALLOWED_EMAIL_DOMAINS` | Optional comma-separated signup allowlist (default: empty = allow all) |
 | `STATUS_PAGE_HIDE_BRANDING` | Hide the `Powered by Supercheck` footer on all public status and incident pages when set to `true` (default: `false`) |
+| `NEXT_PUBLIC_APP_URL` | Browser-reachable app origin, including scheme and port, with no trailing slash (default: `http://localhost:3000`) |
 
 OAuth (`GITHUB_*` / `GOOGLE_*`) is optional in self-hosted mode.
+
+When accessing the HTTP quick start from another computer, set
+`NEXT_PUBLIC_APP_URL=http://YOUR_SERVER_IP:3000` before starting the stack and
+open that URL instead of `localhost`. Production HTTPS deployments derive the
+public origin from `APP_DOMAIN`.
 
 ### Production (docker-compose-secure.yml)
 
