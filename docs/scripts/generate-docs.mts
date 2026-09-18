@@ -26,10 +26,17 @@ function slugify(tag: string): string {
     .replace(/-{2,}/g, '-');
 }
 
-void generateFiles({
+await generateFiles({
   input: openapi,
   output: './content/docs/api',
   includeDescription: true,
+  // Billing is a hosted-service concern, not part of the open-source API docs.
+  // Filter it at generation time so a refresh cannot republish the pages.
+  beforeWrite(files) {
+    for (let index = files.length - 1; index >= 0; index -= 1) {
+      if (/^billing[\\/]/.test(files[index]?.path ?? '')) files.splice(index, 1);
+    }
+  },
   groupBy: (entry) => {
     const item = (entry as { item?: { tags?: string[] } }).item
     const tags = Array.isArray(item?.tags) ? item?.tags : []

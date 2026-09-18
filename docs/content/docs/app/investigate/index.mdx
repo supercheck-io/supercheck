@@ -6,14 +6,6 @@ icon: Search
 
 Supercheck's AI SRE transforms existing tests, monitors, jobs, alert history, and status pages into a **read-only incident investigation loop**. It connects to your existing operational tools, gathers scoped evidence, explains what likely happened with citations, and recommends fix and recovery-check steps for a human responder.
 
-The unified reliability loop works as follows:
-
-1. **Detect**: Monitors, jobs, and tests detect an issue.
-2. **Triage**: Responders review alert signals and create an incident when the signal needs investigation. Creating from a signal opens the new incident immediately; responders can also create an incident manually when the issue starts outside Supercheck alerts.
-3. **Investigate**: The AI agent gathers native evidence and read-only connector evidence across your stack.
-4. **Explain**: The incident detail page keeps investigation actions, cited evidence, and the latest brief in separate focused tabs.
-5. **Confirm recovery**: A responder applies the fix in their own systems, then re-runs or observes the existing detecting checks. AI SRE does not trigger remediation or the re-run automatically.
-
 ```mermaid
 flowchart LR
     Detect["<b>Detect</b><br/>Monitors, jobs, tests"] --> Triage["<b>Triage</b><br/>Alerts & incidents"]
@@ -28,24 +20,6 @@ flowchart LR
     style Confirm fill:#10b981,stroke:#047857,color:#fff
 ```
 
-```mermaid
-%%{init: {"theme":"base","themeVariables":{"fontFamily":"ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif","actorBkg":"#eef2ff","actorBorder":"#6366f1","actorTextColor":"#312e81","actorLineColor":"#94a3b8","signalColor":"#6366f1","signalTextColor":"#64748b","labelBoxBkgColor":"#fef3c7","labelBoxBorderColor":"#d97706","labelTextColor":"#78350f","loopTextColor":"#64748b","activationBkgColor":"#ddd6fe","activationBorderColor":"#7c3aed","noteBkgColor":"#fef3c7","noteBorderColor":"#d97706","noteTextColor":"#78350f","textColor":"#64748b","lineColor":"#94a3b8","mainBkg":"transparent"}}}%%
-sequenceDiagram
-    participant Check as Monitor, job, or test
-    participant Alert as Alerts
-    participant Incident as Incident
-    participant Agent as AI SRE agent
-    participant Human as Responder
-
-    Check->>Alert: Failure or recovery signal
-    Alert->>Incident: Promote a signal or create manually
-    Human->>Agent: Start a read-only investigation
-    Agent->>Agent: Gather native and connector evidence
-    Agent->>Incident: Cited brief and recommended checks
-    Human->>Human: Apply the fix outside Supercheck
-    Human->>Check: Confirm recovery with existing checks
-```
-
 ## Read-Only By Design
 
 **Supercheck's AI SRE layer is explicitly read-only.** It never writes to your production systems or executes remediation actions on your behalf.
@@ -53,8 +27,6 @@ sequenceDiagram
 - The agent gathers evidence, correlates data, reasons, and recommends.
 - You apply fixes in your own systems using your own tools and safeguards.
 - You use the existing Playwright tests, k6 tests, or monitors to confirm recovery after applying the fix.
-
-This read-only approach ensures the safety of your environment while leveraging AI to significantly reduce Mean Time to Resolution (MTTR).
 
 ## Native Evidence
 
@@ -68,15 +40,15 @@ Supercheck automatically utilizes the rich operational evidence it already owns 
 
 ## Connector Layer
 
-To get a complete picture of an incident, the AI SRE agent integrates securely with your external observability and operational tools through [Connectors](/docs/app/investigate/connectors).
-
-These TypeScript-native connectors are strictly read-only and governed by Role-Based Access Control (RBAC), budgets, and redaction policies to guarantee that the agent only accesses authorized evidence.
+For additional context, AI SRE can query [read-only connectors](/docs/app/investigate/connectors) governed by RBAC, budgets, service scope, and redaction.
 
 Administrators manage the service catalog from the top-level **Services** page. Read-only connectors, diagnostic recipes, and private agents are configured in **Organization Admin** under **Integrations**, **Diagnostic Recipes**, and **Private Agents**.
 
 ## Responder Screens
 
-- **Communicate → Alerts** shows failure signals, alert history, and notification channels. Delivery failures and recovery/success notifications stay in History; they are not promoted as investigation signals.
-- **Communicate → Incidents** is the responder queue for alert-promoted and manually created incidents. It also shows latest investigation status and evidence counts, using the same compact filter, sorting, row sizing, and pagination pattern as other Supercheck tables. Incident detail pages keep investigation actions, cited evidence, and downloadable markdown briefs in separate focused tabs.
-- **Investigate → Copilot** provides read-only conversational help without cluttering incident detail pages. New chats offer focused, editable starters for triage, evidence review, and next checks. Standalone chat uses only the context entered by the responder; incident-scoped chat can review stored evidence and query configured read-only connectors only after **Live sources** is enabled by a role with connector investigation permission. Viewers see a read-only Copilot page without a composer. Inline charts remain bounded, cited, and accessible.
-- **Investigate → Investigation Map** shows a directed, read-only view of the causal path around services and incidents. The default **Essentials** view keeps services, alerts, incidents, investigations, deployments, and playbooks visible; task-oriented views reveal checks, changes, or detailed evidence only when needed. Search can still find any node type, incident focus limits the map to a two-hop neighborhood, and only the three newest evidence items per investigation or incident are included. The map uses the full page width by default. Selecting a node or relationship opens a wide, content-sized details dialog with provenance and a **View details** link when the source has a dedicated screen. Service detail pages can open the map focused on the matching service node. Only active manual/native/observed links and explicitly approved AI suggestions render as trusted service edges. Related records are grouped by type and relationship, repeated equivalent records show a compact count, and long relationship or provenance lists scroll within the dialog instead of increasing the page height. Stored investigation reports are normalized to concise graph titles so Markdown report bodies do not appear as node labels.
+| Screen | Purpose |
+|---|---|
+| **Communicate → Alerts** | Review signals and promote an actionable signal to an incident. |
+| **Communicate → Incidents** | Run investigations and review evidence, briefs, and saved reports. |
+| **Investigate → Copilot** | Ask read-only questions. Live sources require incident scope, permission, and explicit opt-in. |
+| **Investigate → Investigation Map** | Explore trusted service, incident, change, and evidence relationships. |
