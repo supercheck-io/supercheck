@@ -30,6 +30,7 @@ describe("webhook-preview", () => {
         summary: "{{title}}",
         severity: "{{normalizedSeverity}}",
         dedup_key: "{{dedupKey}}",
+        splunk_message_type: "{{splunkOnCallMessageType}}",
       }),
     });
 
@@ -37,6 +38,7 @@ describe("webhook-preview", () => {
       summary?: string;
       severity?: string;
       dedup_key?: string;
+      splunk_message_type?: string;
     };
 
     expect(preview.error).toBeUndefined();
@@ -44,6 +46,7 @@ describe("webhook-preview", () => {
     expect(parsedBody.summary).toBe('Test "Alert"');
     expect(parsedBody.severity).toBe("error");
     expect(parsedBody.dedup_key).toBe("monitor:test-target-id");
+    expect(parsedBody.splunk_message_type).toBe("CRITICAL");
   });
 
   it("returns a preview error for invalid JSON templates", () => {

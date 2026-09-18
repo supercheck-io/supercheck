@@ -459,8 +459,8 @@ export function AlertSettings({
                       Add Channel
                     </Button>
                   </DialogTrigger>
-                  <DialogContent className="max-w-4xl max-h-[90vh] min-w-2xl overflow-y-auto">
-                    <DialogHeader>
+                  <DialogContent className="flex max-h-[90vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl">
+                    <DialogHeader className="shrink-0 border-b px-6 py-4 pr-14">
                       <DialogTitle>Add Notification Channel</DialogTitle>
                       <DialogDescription>
                         Configure a new notification channel for alerts

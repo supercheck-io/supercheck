@@ -121,7 +121,7 @@ function AlertsPage() {
     config: Record<string, unknown>;
   }) => {
     await createProvider.mutateAsync(newProvider);
-    setIsCreateDialogOpen(false);
+    handleCreateDialogChange(false);
     toast.success("Notification channel created successfully");
   };
 
@@ -237,6 +237,27 @@ function AlertsPage() {
     router.replace(nextQuery ? `/alerts?${nextQuery}` : "/alerts", { scroll: false });
   };
 
+  const openCreateDialog = (type?: NotificationProviderType) => {
+    setPreselectedType(type);
+    setIsCreateDialogOpen(true);
+  };
+
+  const handleCreateDialogChange = (open: boolean) => {
+    setIsCreateDialogOpen(open);
+    if (!open) {
+      setPreselectedType(undefined);
+      const params = new URLSearchParams(searchParams.toString());
+      if (params.has("create") || params.has("type")) {
+        params.delete("create");
+        params.delete("type");
+        const nextQuery = params.toString();
+        router.replace(nextQuery ? `/alerts?${nextQuery}` : "/alerts", {
+          scroll: false,
+        });
+      }
+    }
+  };
+
 
   return (
     <div className="">
@@ -275,7 +296,7 @@ function AlertsPage() {
                     </CardDescription>
                   </div>
                   <Button
-                    onClick={() => setIsCreateDialogOpen(true)}
+                    onClick={() => openCreateDialog()}
                     disabled={!canCreate}
                   >
                     <Plus className="h-4 w-4 mr-2" />
@@ -291,7 +312,7 @@ function AlertsPage() {
                     icon={<BellRing className="h-12 w-12" />}
                     action={
                       <Button
-                        onClick={() => setIsCreateDialogOpen(true)}
+                        onClick={() => openCreateDialog()}
                         disabled={!canCreate}
                       >
                         <Plus className="h-4 w-4 mr-2" />
@@ -341,10 +362,10 @@ function AlertsPage() {
 
             <Dialog
               open={isCreateDialogOpen}
-              onOpenChange={setIsCreateDialogOpen}
+              onOpenChange={handleCreateDialogChange}
             >
-              <DialogContent className="max-w-4xl max-h-[90vh] min-w-2xl overflow-y-auto">
-                <DialogHeader>
+              <DialogContent className="flex max-h-[90vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl">
+                <DialogHeader className="shrink-0 border-b px-6 py-4 pr-14">
                   <DialogTitle>Create Notification Channel</DialogTitle>
                   <DialogDescription>
                     Add a new way to receive alert notifications
@@ -352,15 +373,15 @@ function AlertsPage() {
                 </DialogHeader>
                 <NotificationProviderForm
                   onSuccess={handleCreateProvider}
-                  onCancel={() => setIsCreateDialogOpen(false)}
+                  onCancel={() => handleCreateDialogChange(false)}
                   defaultType={preselectedType}
                 />
               </DialogContent>
             </Dialog>
 
             <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-              <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-                <DialogHeader>
+              <DialogContent className="flex max-h-[90vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl">
+                <DialogHeader className="shrink-0 border-b px-6 py-4 pr-14">
                   <DialogTitle>Edit Notification Channel</DialogTitle>
                   <DialogDescription>
                     Update your notification channel settings
