@@ -32,6 +32,7 @@ export const WEBHOOK_SAMPLE_TEMPLATE_VARIABLES: Record<string, string> = {
   eventAction: "trigger",
   pagerDutyEventAction: "trigger",
   victorOpsMessageType: "CRITICAL",
+  splunkOnCallMessageType: "CRITICAL",
   dedupKey: "monitor:test-target-id",
 };
 

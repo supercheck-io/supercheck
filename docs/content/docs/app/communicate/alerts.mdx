@@ -207,6 +207,8 @@ Teams uses Power Automate Workflows to receive webhook notifications.
 
 Supercheck validates webhook URLs before sending outbound requests, blocks private/internal targets, encrypts provider config at rest, and masks sensitive webhook URL/header fields when returning providers to the UI.
 
+Because webhook URLs and custom headers are treated as secrets, they are cleared when you reopen an existing channel for editing. Leave a cleared secret blank to keep its existing value, or enter a replacement to change it. The same behavior applies to masked Slack, Teams, Discord, and Telegram credentials. Use **Test Connection** after replacing a credential to confirm it works.
+
 ### Webhook Presets
 
 The webhook channel includes presets that fill the method, headers, and JSON body template for common SRE and incident-management tools. Selecting a preset does not merge credentials with AI SRE read-only connectors; outbound notification secrets remain scoped to the notification provider.
