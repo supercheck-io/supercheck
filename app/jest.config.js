@@ -39,6 +39,33 @@ const customJestConfig = {
       lines: 4,
       statements: 4,
     },
+    // Critical paid-service paths are ratcheted independently from the broad
+    // application baseline. Keep these floors at or below measured coverage
+    // and raise them as tests are added; a regression now fails CI.
+    "./src/components/subscription-guard.tsx": {
+      branches: 70,
+      functions: 85,
+      lines: 85,
+      statements: 80,
+    },
+    "./src/lib/middleware/plan-enforcement.ts": {
+      branches: 65,
+      functions: 85,
+      lines: 83,
+      statements: 83,
+    },
+    "./src/lib/services/subscription-service.ts": {
+      branches: 83,
+      functions: 88,
+      lines: 88,
+      statements: 88,
+    },
+    "./src/lib/webhooks/polar-event-transaction.ts": {
+      branches: 90,
+      functions: 100,
+      lines: 100,
+      statements: 95,
+    },
   },
   testTimeout: 10000,
 };

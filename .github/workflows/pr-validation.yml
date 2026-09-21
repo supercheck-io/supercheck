@@ -20,6 +20,68 @@ permissions:
   actions: read
 
 jobs:
+  migration-safety:
+    name: Migration Safety
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout code with comparison history
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Enforce append-only, non-destructive migrations
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -Eeuo pipefail
+
+          if [ -z "$BASE_SHA" ] || [[ "$BASE_SHA" =~ ^0+$ ]]; then
+            echo "No comparison SHA is available; migration safety is covered on pull requests and pushes."
+            exit 0
+          fi
+
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            comparison_range="${BASE_SHA}...${HEAD_SHA}"
+          else
+            comparison_range="${BASE_SHA}..${HEAD_SHA}"
+          fi
+
+          migration_changes=()
+          while IFS= read -r change; do
+            migration_changes+=("$change")
+          done < <(git diff --name-status --find-renames "$comparison_range" -- 'app/src/db/migrations/*.sql')
+          migrations=()
+          immutable_changes=()
+          for change in "${migration_changes[@]}"; do
+            IFS=$'\t' read -r status first_path second_path <<< "$change"
+            if [ "$status" = "A" ]; then
+              migrations+=("$first_path")
+            else
+              immutable_changes+=("$status $first_path${second_path:+ -> $second_path}")
+            fi
+          done
+
+          if [ "${#immutable_changes[@]}" -gt 0 ]; then
+            echo "::error::Existing SQL migrations are immutable; add a new migration instead."
+            printf ' - %s\n' "${immutable_changes[@]}"
+            exit 1
+          fi
+
+          if [ "${#migrations[@]}" -eq 0 ]; then
+            echo "No new migrations."
+            exit 0
+          fi
+
+          node app/scripts/check-migration-safety.js "${migrations[@]}"
+
   app-quality-checks:
     name: App Quality Checks
     runs-on: ubuntu-latest
@@ -258,14 +320,15 @@ jobs:
   summary:
     name: Quality Checks Summary
     runs-on: ubuntu-latest
-    needs: [app-quality-checks, worker-quality-checks, cli-quality-checks, e2e-quality-checks, deploy-validation]
+    needs: [migration-safety, app-quality-checks, worker-quality-checks, cli-quality-checks, e2e-quality-checks, deploy-validation]
     if: always()
 
     steps:
       - name: Check results
         run: |
-          if [ "${{ needs.app-quality-checks.result }}" != "success" ] || [ "${{ needs.worker-quality-checks.result }}" != "success" ] || [ "${{ needs.cli-quality-checks.result }}" != "success" ] || [ "${{ needs.e2e-quality-checks.result }}" != "success" ] || [ "${{ needs.deploy-validation.result }}" != "success" ]; then
+          if [ "${{ needs.migration-safety.result }}" != "success" ] || [ "${{ needs.app-quality-checks.result }}" != "success" ] || [ "${{ needs.worker-quality-checks.result }}" != "success" ] || [ "${{ needs.cli-quality-checks.result }}" != "success" ] || [ "${{ needs.e2e-quality-checks.result }}" != "success" ] || [ "${{ needs.deploy-validation.result }}" != "success" ]; then
             echo "❌ Quality checks failed"
+            echo "Migration safety: ${{ needs.migration-safety.result }}"
             echo "App checks: ${{ needs.app-quality-checks.result }}"
             echo "Worker checks: ${{ needs.worker-quality-checks.result }}"
             echo "CLI checks: ${{ needs.cli-quality-checks.result }}"
