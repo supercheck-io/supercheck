@@ -48,9 +48,9 @@ jobs:
             npx eslint "src/**/*.ts" --max-warnings 0
           fi
 
-      - name: Test
+      - name: Test with coverage gates
         working-directory: ${{ matrix.package }}
-        run: npm test -- --runInBand
+        run: npm run test:cov -- --runInBand
         env:
           NODE_ENV: test
 
