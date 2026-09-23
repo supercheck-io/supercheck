@@ -15,7 +15,7 @@
 - **Save to Supercheck**: One-click upload of recorded scripts directly into your Supercheck projects.
 - **Project Selection**: Easily choose destination projects from your Supercheck organizations.
 - **Seamless Authentication**: Automatically connects to Supercheck dashboard sessions without manual API key copying.
-- **Multi-Language Display**: View recorded scripts in TypeScript, JavaScript, Python, Java, or C#; tests saved to Supercheck use JavaScript.
+- **Playwright Test Output**: Recorded flows are generated and displayed as Playwright Test (JavaScript), the same format saved to Supercheck.
 - **Resilient Locators**: Automatically generates `data-testid` and accessible role-based selectors.
 - **Self-Hosted Support**: Full compatibility with Supercheck Cloud and self-hosted instances.
 
@@ -81,16 +81,17 @@
 
 ### Recorder options
 
-- **Default Language**: Choose default display language (TypeScript, JavaScript, Python, Java, C#).
 - **Test ID Attribute**: Attribute name for locator generation (defaults to `data-testid`).
 - **Side Panel Mode**: Open recorder in side panel (default: true; falls back to popup window if false).
+
+Recorded flows are always generated as Playwright Test (JavaScript); the recorder does not expose a source/language chooser.
 
 ### Keyboard shortcuts
 
 | Shortcut | Action |
 |---|---|
-| `Shift+Alt+R` | Start / pause recording |
-| `Shift+Alt+C` | Start / pause element inspector |
+| `Shift+Alt+R` | Start recording |
+| `Shift+Alt+C` | Start element inspection |
 
 ---
 
@@ -114,16 +115,22 @@ examples/recorder-crx/
 ├── src/
 │   ├── background.ts           # Extension service worker
 │   ├── content-script.ts       # Web app bridge & messaging
+│   ├── crxRecorder.tsx         # Recorder UI wrapper (Playwright Test output)
+│   ├── dialog.tsx              # Shared dialog primitives
 │   ├── index.tsx               # Side panel entry & player
 │   ├── options.tsx             # Options page component
+│   ├── preferences.tsx         # Recorder preferences UI
+│   ├── preferencesForm.tsx     # Recorder preferences form
+│   ├── saveCodeForm.tsx        # Save-to-Supercheck form
 │   ├── settings.ts             # Settings & storage management
 │   └── supercheck/             # Supercheck API integration
 │       ├── api-client.ts       # HTTP client with retry logic
 │       ├── config.ts           # Configuration management
 │       ├── message-security.ts # Origin validation & security
 │       └── components/         # Project selector & save dialogs
-├── options.html
 ├── index.html
+├── options.html
+├── preferences.html
 └── package.json
 ```
 
@@ -135,6 +142,8 @@ npm run dev      # Build with watch mode
 npm run build    # Production build
 npm run lint     # ESLint checks
 ```
+
+The extension imports the `playwright-crx` workspace library, so run the workspace build from `recorder/` (`npm run build` or `npm run build:crx`) before building the extension in isolation.
 
 ---
 
@@ -150,8 +159,15 @@ Communication between the web app and extension uses origin-validated `window.po
 | `SUPERCHECK_RECORDER_READY` | Extension → App | Extension announces presence and version |
 | `SUPERCHECK_AUTO_CONNECT` | App → Extension | Pair extension with user session |
 | `SUPERCHECK_EXTENSION_CONNECTED` | Extension → App | Confirm recorder-scoped credentials were stored |
+| `SUPERCHECK_DISCONNECT_EXTENSION` | App → Extension | Revoke the recorder-scoped credential and clear configuration |
+| `SUPERCHECK_EXTENSION_DISCONNECTED` | Extension → App | Confirm disconnection |
 | `SUPERCHECK_STORE_RECORDING_CONTEXT` | App → Extension | Store bounded recorder context |
+| `SUPERCHECK_RECORDING_CONTEXT_STORED` | Extension → App | Confirm recording context was stored |
+| `SUPERCHECK_RECORDING_CONTEXT_ERROR` | Extension → App | Report a recording context storage failure |
 | `SUPERCHECK_RECORDED_CODE` | Extension → App | Send recorded code to the authenticated app flow |
+| `SUPERCHECK_REFRESH_REQUIRED` | Extension → App | Page must be refreshed after an extension update |
+| `SUPERCHECK_API_CALL` | App → Extension | Bounded page API call (connection probe, context storage) |
+| `SUPERCHECK_API_RESPONSE` | Extension → App | Result of a page API call |
 
 ### Backend API endpoints
 
@@ -159,6 +175,7 @@ Communication between the web app and extension uses origin-validated `window.po
 - `POST /api/recordings` - Save recorded test script
 - `POST /api/auth/verify-key` - Validate API key
 - `POST /api/extension/auth` - Create or reuse a recorder-scoped key for an authenticated dashboard session
+- `DELETE /api/extension/auth` - Revoke recorder-scoped keys for the authenticated session
 
 ---
 

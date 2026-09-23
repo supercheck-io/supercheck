@@ -213,7 +213,7 @@ async function attach(tab: chrome.tabs.Tab, mode?: Mode) {
 
     await crxApp.recorder.show({
       mode: validMode,
-      language: settings.targetLanguage,
+      language: 'playwright-test',
       window: { type: sidepanel ? 'sidepanel' : 'popup', url: 'index.html' },
       playInIncognito: settings.playInIncognito,
     });
