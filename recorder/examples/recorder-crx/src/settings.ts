@@ -42,8 +42,8 @@ export async function storeSettings(settings: CrxSettings) {
 const listeners = new Map<(settings: CrxSettings) => void, any>();
 
 export function addSettingsChangedListener(listener: (settings: CrxSettings) => void) {
-  const wrappedListener = ({ testIdAttributeName, sidepanel, playInIncognito, experimental }: Record<string, chrome.storage.StorageChange>) => {
-    if (!testIdAttributeName && !sidepanel && !playInIncognito && !experimental)
+  const wrappedListener = (changes: Record<string, chrome.storage.StorageChange>) => {
+    if (!('testIdAttributeName' in changes) && !('sidepanel' in changes) && !('playInIncognito' in changes) && !('experimental' in changes))
       return;
 
     loadSettings().then(listener).catch(() => {});
