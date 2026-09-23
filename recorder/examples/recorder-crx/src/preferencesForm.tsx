@@ -33,7 +33,6 @@ export const PreferencesForm: React.FC = ({ }) => {
 
   const canSave = React.useMemo(() => {
     return initialSettings.sidepanel !== settings.sidepanel ||
-      initialSettings.targetLanguage !== settings.targetLanguage ||
       initialSettings.testIdAttributeName !== settings.testIdAttributeName ||
       initialSettings.playInIncognito !== settings.playInIncognito;
   }, [settings, initialSettings]);
@@ -43,18 +42,15 @@ export const PreferencesForm: React.FC = ({ }) => {
       return;
 
     e.preventDefault();
-    // Enforce playwright-test as the target language when saving
-    const newSettings = { ...settings, targetLanguage: 'playwright-test' };
-    storeSettings(newSettings)
+    storeSettings(settings)
         .then(() => {
-          setInitialSettings(newSettings);
-          setSettings(newSettings);
+          setInitialSettings(settings);
+          setSettings(settings);
         })
         .catch(() => { });
   }, [settings]);
 
   return <form id='preferences-form' onSubmit={saveSettings}>
-    {/* Language selection removed to enforce Test Runner default */}
     <label htmlFor='test-id'>TestID Attribute Name:</label>
     <input
       type='text'

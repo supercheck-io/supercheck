@@ -253,29 +253,6 @@ function OptionsPage() {
           <h2>Recorder Settings</h2>
 
           <div className='form-group'>
-            <label htmlFor='targetLanguage'>Default Language</label>
-            <select
-              id='targetLanguage'
-              value={settings.targetLanguage}
-              onChange={e => handleSettingChange('targetLanguage', e.target.value)}
-            >
-              <option value='javascript'>JavaScript</option>
-              <option value='playwright-test'>Playwright Test</option>
-              <option value='python'>Python</option>
-              <option value='python-pytest'>Python (pytest)</option>
-              <option value='python-async'>Python (async)</option>
-              <option value='java'>Java</option>
-              <option value='java-junit'>Java (JUnit)</option>
-              <option value='csharp'>C#</option>
-              <option value='csharp-mstest'>C# (MSTest)</option>
-              <option value='csharp-nunit'>C# (NUnit)</option>
-            </select>
-            <span className='field-hint'>
-              Display language in recorder. Tests are saved as JavaScript.
-            </span>
-          </div>
-
-          <div className='form-group'>
             <label htmlFor='testIdAttributeName'>Test ID Attribute</label>
             <input
               id='testIdAttributeName'
