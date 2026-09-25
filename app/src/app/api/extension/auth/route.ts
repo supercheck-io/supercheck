@@ -8,6 +8,8 @@ import { createLogger } from "@/lib/logger/pino-config";
 import { db } from "@/utils/db";
 import { apikey } from "@/db/schema";
 import { and, eq, like, or } from "drizzle-orm";
+import { requireAuthContext } from "@/lib/auth-context";
+import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 
 const logger = createLogger({ module: "extension-auth" });
 
@@ -140,6 +142,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { success: false, error: "Authentication required" },
         { status: 401 }
+      );
+    }
+
+    const authContext = await requireAuthContext();
+    if (!checkPermissionWithContext("apiKey", "create", authContext)) {
+      return NextResponse.json(
+        { success: false, error: "Insufficient permissions" },
+        { status: 403 }
       );
     }
 

@@ -7,6 +7,10 @@ import { usageTracker } from "@/lib/services/usage-tracker";
 import { headers } from "next/headers";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { getS3FileContent } from "@/lib/s3-proxy";
+import { requireAuthContext } from "@/lib/auth-context";
+import { db } from "@/utils/db";
+import { runs, projects } from "@/db/schema";
+import { and, eq, inArray } from "drizzle-orm";
 
 // Interface for K6 run metrics
 interface K6RunMetrics {
@@ -58,6 +62,10 @@ function validateRequest(body: Record<string, unknown>): AnalyzeK6Request {
   if (!compareRun.metrics || typeof compareRun.metrics !== "object") {
     throw new Error("Invalid compareRun.metrics parameter");
   }
+  const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuidPattern.test(baselineRun.runId) || !uuidPattern.test(compareRun.runId)) {
+    throw new Error("Invalid runId format");
+  }
 
   // Optional string validation
   if (baselineRun.jobName && typeof baselineRun.jobName !== "string") {
@@ -92,6 +100,26 @@ export async function POST(request: NextRequest) {
       AuthService.validateUserAccess(request, baselineRun.runId),
       AuthService.validateUserAccess(request, compareRun.runId),
     ]);
+    const authContext = await requireAuthContext();
+    const requestedRunIds = [...new Set([baselineRun.runId, compareRun.runId])];
+    const ownedRuns = await db
+      .select({ id: runs.id, projectId: runs.projectId, organizationId: projects.organizationId })
+      .from(runs)
+      .innerJoin(projects, eq(runs.projectId, projects.id))
+      .where(and(
+        inArray(runs.id, requestedRunIds),
+        eq(runs.projectId, authContext.project.id),
+        eq(projects.organizationId, authContext.organizationId),
+      ));
+    if (ownedRuns.length !== requestedRunIds.length || ownedRuns.some(
+      (run) => run.projectId !== authContext.project.id ||
+        run.organizationId !== authContext.organizationId
+    )) {
+      return NextResponse.json(
+        { success: false, message: "Run not found" },
+        { status: 404 },
+      );
+    }
 
     // Step 3: Rate limiting check
     const headersList = await headers();

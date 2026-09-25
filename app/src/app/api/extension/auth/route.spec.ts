@@ -17,6 +17,14 @@ jest.mock("next/headers", () => ({
   headers: jest.fn(async () => new Headers()),
 }));
 
+jest.mock("@/lib/auth-context", () => ({
+  requireAuthContext: jest.fn(),
+}));
+
+jest.mock("@/lib/rbac/middleware", () => ({
+  checkPermissionWithContext: jest.fn(),
+}));
+
 jest.mock("@/utils/db", () => {
   const limit = jest.fn();
   const orderBy = jest.fn(() => ({ limit }));
@@ -43,6 +51,13 @@ jest.mock("@/lib/logger/pino-config", () => {
 
 import { POST } from "./route";
 
+const { requireAuthContext: mockRequireAuthContext } = jest.requireMock("@/lib/auth-context") as {
+  requireAuthContext: jest.Mock;
+};
+const { checkPermissionWithContext: mockCanCreateKey } = jest.requireMock("@/lib/rbac/middleware") as {
+  checkPermissionWithContext: jest.Mock;
+};
+
 const { __mockLimit: mockPersistedKeyLookup } = jest.requireMock("@/utils/db") as {
   __mockLimit: jest.Mock;
 };
@@ -62,6 +77,22 @@ describe("Extension auth route", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockPersistedKeyLookup.mockResolvedValue([]);
+    mockRequireAuthContext.mockResolvedValue({
+      userId: "user-1", organizationId: "org-1", project: { id: "project-1", userRole: "project_editor" },
+    });
+    mockCanCreateKey.mockReturnValue(true);
+  });
+
+  it("forbids a viewer from creating a recorder API key", async () => {
+    mockAuth.api.getSession.mockResolvedValue({ user: { id: "viewer-1" } });
+    mockCanCreateKey.mockReturnValue(false);
+    const response = await POST(new NextRequest("http://localhost/api/extension/auth", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    }));
+    expect(response.status).toBe(403);
+    expect(mockAuth.api.createApiKey).not.toHaveBeenCalled();
   });
 
   it("returns success when the extension is already connected", async () => {

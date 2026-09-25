@@ -10,6 +10,7 @@ import { db } from "@/utils/db";
 import { runs, jobs, reports } from "@/db/schema";
 import { eq, and, sql, inArray } from "drizzle-orm";
 import { getS3FileContentFromUrl, getS3FileContent } from "@/lib/s3-proxy";
+import { requireAuthContext } from "@/lib/auth-context";
 
 
 interface AnalyzeJobRequest {
@@ -58,6 +59,7 @@ export async function POST(request: NextRequest) {
 
     // Step 2: Authentication and authorization
     const session = await AuthService.validateUserAccess(request, runId);
+    const authContext = await requireAuthContext();
 
     // Step 3: Rate limiting check
     const headersList = await headers();
@@ -119,6 +121,7 @@ export async function POST(request: NextRequest) {
     const runResult = await db
       .select({
         id: runs.id,
+        projectId: runs.projectId,
         jobId: runs.jobId,
         status: runs.status,
         durationMs: runs.durationMs,
@@ -137,12 +140,12 @@ export async function POST(request: NextRequest) {
           inArray(reports.entityType, ["job", "k6_job"])
         )
       )
-      .where(eq(runs.id, runId))
+      .where(and(eq(runs.id, runId), eq(runs.projectId, authContext.project.id)))
       .limit(1);
 
     const run = runResult[0];
 
-    if (!run) {
+    if (!run || run.projectId !== authContext.project.id) {
       return NextResponse.json(
         { success: false, message: "Run not found" },
         { status: 404 }
@@ -160,7 +163,7 @@ export async function POST(request: NextRequest) {
         .then((rows) => rows[0]);
 
       // Verify job belongs to user's organization
-      if (activeOrg && jobData && jobData.organizationId !== activeOrg.id) {
+      if (!jobData || jobData.organizationId !== authContext.organizationId) {
         return NextResponse.json(
           { success: false, message: "Run not found" },
           { status: 404 }
