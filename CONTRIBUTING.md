@@ -76,11 +76,9 @@ npm test
 npm run build
 ```
 
-Worker receipt tests use embedded PostgreSQL by default. Set
-`EXECUTION_USAGE_TEST_DATABASE_URL` to a disposable PostgreSQL 18 database to
-also run concurrent settlement tests with the production driver. The tests
-create and remove a random schema and never use the application's schema.
-PR validation and Release Certification supply this database automatically.
+Worker receipt tests run with embedded PostgreSQL locally. PR validation and
+Release Certification also run them against disposable PostgreSQL 18, including
+concurrent settlement tests. No local database setup is required.
 
 ### Documentation
 
