@@ -1,5 +1,5 @@
 "use client";
-import { signUp, signIn } from "@/utils/auth-client";
+import { signUp, sendVerificationEmail } from "@/utils/auth-client";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from "react";
 import { SignupForm } from "@/components/auth/signup-form";
@@ -112,75 +112,6 @@ function SignUpPageContent() {
     return headers;
   }, [inviteToken]);
 
-  /**
-   * Helper: verify email, sign in, then auto-accept invitation.
-   * Consolidated logic used by both the success path and error recovery paths.
-   * Returns true if the full flow succeeded and navigation happened.
-   */
-  const verifySignInAndAccept = useCallback(async (
-    email: string,
-    password: string,
-    token: string,
-  ): Promise<boolean> => {
-    // Step 1: Verify the user's email (invitation proves ownership)
-    try {
-      const verifyResponse = await fetch("/api/auth/verify-invited-user", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, email }),
-      });
-      if (!verifyResponse.ok) {
-        console.warn("Could not auto-verify email for invited user");
-      }
-    } catch (verifyError) {
-      console.error("Error verifying invited user:", verifyError);
-    }
-
-    // Step 2: Sign in to establish session
-    // Small delay to allow Turnstile widget to reset after previous execution
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    const signInHeaders = await getFreshCaptchaHeaders();
-    const { error: signInError } = await signIn.email({
-      email,
-      password,
-      fetchOptions: { headers: signInHeaders },
-    });
-
-    if (signInError) {
-      console.error("Auto sign-in after signup failed:", signInError.message);
-      return false;
-    }
-
-    // Step 3: Wait for session to be fully established
-    await new Promise((resolve) => setTimeout(resolve, 500));
-
-    // Step 4: Call setup-defaults (will detect pending invitation and skip org creation)
-    try {
-      await fetch("/api/auth/setup-defaults", { method: "POST" });
-    } catch {
-      // Non-critical — the invitation acceptance below handles org membership
-    }
-
-    // Step 5: Auto-accept the invitation
-    try {
-      const acceptResponse = await fetch(`/api/invite/${token}`, {
-        method: "POST",
-      });
-      const acceptResult = await acceptResponse.json();
-      if (acceptResponse.ok && acceptResult.success) {
-        console.log(`✅ Auto-accepted invitation to ${acceptResult.data?.organizationName}`);
-        router.push("/");
-        return true;
-      }
-    } catch (acceptError) {
-      console.error("Error auto-accepting invitation:", acceptError);
-    }
-
-    // Fallback: redirect to invite page for manual acceptance
-    router.push(`/invite/${token}`);
-    return true; // Navigation happened, caller should stop
-  }, [getFreshCaptchaHeaders, router]);
-
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError(null);
@@ -191,7 +122,7 @@ function SignUpPageContent() {
     const password = formData.get("password") as string;
 
     // Validate email matches invitation if present
-    if (inviteData && email !== inviteData.email) {
+    if (inviteData?.email && email !== inviteData.email) {
       setError("Email must match the invitation email address");
       setIsLoading(false);
       return;
@@ -204,6 +135,9 @@ function SignUpPageContent() {
       name,
       email,
       password,
+      callbackURL: inviteToken
+        ? `/sign-in?verified=true&invite=${encodeURIComponent(inviteToken)}`
+        : "/sign-in?verified=true",
       fetchOptions: {
         headers: signUpHeaders,
       },
@@ -241,17 +175,9 @@ function SignUpPageContent() {
         return;
       }
 
-      // ── 3. Email verification required (cloud mode invite flow) ─────
-      // In cloud mode, Better Auth returns 403 EMAIL_NOT_VERIFIED after
-      // creating the user. The user IS in the database but can't sign in
-      // until verified. For invited users, we auto-verify and sign in.
-      // This does NOT apply to self-hosted mode (no email verification).
+      // Better Auth can create the account before returning the verification gate.
       if (isCloudHosted && inviteToken && signUpError.status === 403) {
-        const success = await verifySignInAndAccept(email, password, inviteToken);
-        if (success) return;
-        // If auto flow failed, send user to sign-in page
-        router.push(`/sign-in?invite=${inviteToken}`);
-        setIsLoading(false);
+        router.push(`/verify-email?email=${encodeURIComponent(email)}&invite=${encodeURIComponent(inviteToken)}`);
         return;
       }
 
@@ -275,21 +201,22 @@ function SignUpPageContent() {
 
     // ════════════════════════════════════════════════════════════════════
     // Sign-up succeeded (200 OK).
-    // Cloud mode:  requireEmailVerification=true → no session, redirect to verify.
-    // Self-hosted: requireEmailVerification=false → session created, proceed.
+    // Invited accounts must verify their email before joining in either hosting mode.
+    // Other self-hosted sign-ups keep the existing open-registration flow.
     // ════════════════════════════════════════════════════════════════════
 
-    if (isCloudHosted) {
-      // Cloud mode without invitation: redirect to email verification page
-      if (!inviteToken) {
-        router.push(`/verify-email?email=${encodeURIComponent(email)}`);
-        return;
+    if (inviteToken || isCloudHosted) {
+      if (inviteToken && isSelfHosted) {
+        const verification = await sendVerificationEmail({
+          email,
+          callbackURL: `/sign-in?verified=true&invite=${encodeURIComponent(inviteToken)}`,
+        });
+        if (verification.error) {
+          setError("Account created, but the verification email could not be sent. Use the resend option on the verification page.");
+        }
       }
-      // Cloud mode with invitation: auto-verify, sign in, and accept
-      const success = await verifySignInAndAccept(email, password, inviteToken);
-      if (success) return;
-      router.push(`/sign-in?invite=${inviteToken}`);
-      setIsLoading(false);
+      const inviteQuery = inviteToken ? `&invite=${encodeURIComponent(inviteToken)}` : "";
+      router.push(`/verify-email?email=${encodeURIComponent(email)}${inviteQuery}`);
       return;
     }
 

@@ -60,6 +60,7 @@ export default function VerifyEmailPage() {
 
 function VerifyEmailPageContent() {
   const searchParams = useSearchParams();
+  const inviteToken = searchParams.get("invite");
   const [email, setEmail] = useState("");
   const [isResending, setIsResending] = useState(false);
   const [resendSuccess, setResendSuccess] = useState(false);
@@ -111,7 +112,9 @@ function VerifyEmailPageContent() {
     try {
       const result = await sendVerificationEmail({
         email,
-        callbackURL: "/sign-in?verified=true",
+        callbackURL: inviteToken
+          ? `/sign-in?verified=true&invite=${encodeURIComponent(inviteToken)}`
+          : "/sign-in?verified=true",
       });
 
       if (result.error) {
@@ -127,7 +130,7 @@ function VerifyEmailPageContent() {
     } finally {
       setIsResending(false);
     }
-  }, [email]);
+  }, [email, inviteToken]);
 
   return (
     <div className="flex flex-col gap-6 w-full max-w-sm px-4">

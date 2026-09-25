@@ -204,7 +204,7 @@ export function SignupForm({
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium">Invitation for</p>
                   <p className="text-sm text-muted-foreground truncate">
-                    {inviteData.email}
+                    {inviteData.email || "Enter the email address that received your invitation"}
                   </p>
                 </div>
               </div>
@@ -378,5 +378,4 @@ export function SignupForm({
     </div>
   );
 }
-
 
