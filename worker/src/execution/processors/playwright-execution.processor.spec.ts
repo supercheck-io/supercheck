@@ -44,6 +44,7 @@ const mockJobNotificationService = {
 const mockUsageTrackerService = {
   shouldBlockExecution: jest.fn(),
   trackPlaywrightExecution: jest.fn(),
+  completeRunWithUsage: jest.fn(),
 };
 
 const mockHardStopNotificationService = {
@@ -197,6 +198,10 @@ describe('PlaywrightExecutionProcessor', () => {
     mockUsageTrackerService.trackPlaywrightExecution.mockResolvedValue(
       undefined,
     );
+    mockUsageTrackerService.completeRunWithUsage.mockImplementation(
+      async (_input: unknown, persist: (tx: unknown) => Promise<void>) =>
+        persist(mockDbService.db),
+    );
     mockHardStopNotificationService.notify.mockResolvedValue(undefined);
   });
 
@@ -236,6 +241,7 @@ describe('PlaywrightExecutionProcessor', () => {
           'passed',
           expect.any(String),
           undefined,
+          mockDbService.db,
         );
       });
 
@@ -272,6 +278,7 @@ describe('PlaywrightExecutionProcessor', () => {
           'failed',
           expect.any(String),
           expect.anything(), // Can be undefined or error message
+          mockDbService.db,
         );
       });
 
@@ -381,6 +388,7 @@ describe('PlaywrightExecutionProcessor', () => {
           'error',
           expect.any(String),
           'Cancellation requested by user',
+          mockDbService.db,
         );
       });
 
@@ -500,6 +508,8 @@ describe('PlaywrightExecutionProcessor', () => {
           runId,
           'failed',
           expect.any(String),
+          'Tests failed',
+          mockDbService.db,
         );
       });
 
@@ -796,6 +806,7 @@ describe('PlaywrightExecutionProcessor', () => {
           'passed',
           '12', // 12345ms = 12 seconds
           undefined,
+          mockDbService.db,
         );
       });
 
@@ -882,14 +893,14 @@ describe('PlaywrightExecutionProcessor', () => {
     });
 
     describe('Error Recovery', () => {
-      it('should handle updateRunStatus failure gracefully', async () => {
+      it('retries when the durable completion cannot be committed', async () => {
         mockDbService.updateRunStatus.mockRejectedValue(new Error('DB error'));
         const job = createMockJob(mockTestTask);
 
-        // Should not throw
-        const result = await processor.process(job);
-
-        expect(result.success).toBe(true);
+        await expect(processor.process(job)).rejects.toThrow('DB error');
+        expect(
+          mockUsageTrackerService.trackPlaywrightExecution,
+        ).not.toHaveBeenCalled();
       });
 
       it('should handle trackPlaywrightExecution failure gracefully', async () => {
@@ -1034,6 +1045,7 @@ describe('PlaywrightExecutionProcessor', () => {
           'passed',
           '0',
           undefined,
+          mockDbService.db,
         );
       });
 
@@ -1051,6 +1063,7 @@ describe('PlaywrightExecutionProcessor', () => {
           'passed',
           '3600',
           undefined,
+          mockDbService.db,
         );
       });
     });

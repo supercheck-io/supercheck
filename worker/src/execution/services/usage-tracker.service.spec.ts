@@ -54,7 +54,12 @@ describe('UsageTrackerService ledger settlement', () => {
         async (callback: (value: typeof tx) => Promise<unknown>) =>
           callback(tx),
       ),
-      query: { organization: { findFirst: jest.fn().mockResolvedValue(null) } },
+      query: {
+        organization: { findFirst: jest.fn().mockResolvedValue(null) },
+        executionUsageReceipts: {
+          findFirst: jest.fn().mockResolvedValue(null),
+        },
+      },
     };
     return {
       database,
@@ -122,6 +127,34 @@ describe('UsageTrackerService ledger settlement', () => {
     expect(f.tx.insert).not.toHaveBeenCalled();
     expect(f.database.query.organization.findFirst).not.toHaveBeenCalled();
   });
+
+  it.each([
+    [-1, -60000],
+    [-1, 60000],
+    [1, -60000],
+    [Number.NaN, 60000],
+    [1, Number.POSITIVE_INFINITY],
+  ])('rejects invalid K6 inputs (%s VUs, %s ms)', async (vus, duration) => {
+    const f = fixture();
+    await f.service.trackK6Execution('org-1', vus, duration, {
+      runId: 'run-1',
+    });
+    expect(f.database.transaction).not.toHaveBeenCalled();
+  });
+
+  it.each(['true', '1'])(
+    'does not create billable events in SELF_HOSTED=%s',
+    async (mode) => {
+      const f = fixture();
+      process.env.SELF_HOSTED = mode;
+      await f.service.trackPlaywrightExecution('org-1', 60000, {
+        runId: 'run-1',
+      });
+      expect(f.tx.update).toHaveBeenCalledTimes(1);
+      expect(f.tx.insert).not.toHaveBeenCalled();
+      expect(f.database.query.organization.findFirst).not.toHaveBeenCalled();
+    },
+  );
 
   it('rejects the transaction on ledger failure without attempting Polar sync', async () => {
     const f = fixture(false, true);
@@ -200,16 +233,19 @@ describe('UsageTrackerService execution blocking', () => {
     expect(db.execute).not.toHaveBeenCalled();
   });
 
-  it('keeps explicitly self-hosted deployments independent of Polar', async () => {
-    process.env.NODE_ENV = 'production';
-    process.env.SELF_HOSTED = 'true';
-    delete process.env.POLAR_ACCESS_TOKEN;
-    const service = new UsageTrackerService({ execute: jest.fn() } as never);
+  it.each(['true', '1'])(
+    'keeps SELF_HOSTED=%s independent of Polar',
+    async (mode) => {
+      process.env.NODE_ENV = 'production';
+      process.env.SELF_HOSTED = mode;
+      delete process.env.POLAR_ACCESS_TOKEN;
+      const service = new UsageTrackerService({ execute: jest.fn() } as never);
 
-    await expect(service.shouldBlockExecution('org-1')).resolves.toEqual({
-      blocked: false,
-    });
-  });
+      await expect(service.shouldBlockExecution('org-1')).resolves.toEqual({
+        blocked: false,
+      });
+    },
+  );
 
   it('fails closed when a configured cloud billing check errors', async () => {
     process.env.NODE_ENV = 'production';

@@ -18,6 +18,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- Persist execution usage receipts with completed Playwright/K6 results so workers can recover unsettled usage after a restart without charging twice. Apply migration `0024_execution_usage_receipts.sql` before rolling out the new workers; older worker images remain compatible with the additive table.
+- Validate `DB_POOL_MAX` as a whole number (app minimum 2, worker minimum 1), recognize `SELF_HOSTED=1` consistently in worker billing, and reject invalid K6 duration/VU inputs independently.
+
 - Worker `/health` reported a hardcoded `1.0.0` version because the container does not start through npm; it now reports the actual release version.
 - Private Agent registration and heartbeat no longer fall back to a hardcoded `1.3.6` version.
 - Support chat reported `unknown` for `app_version` because it read an environment variable that is never set; it now reports the release version.
