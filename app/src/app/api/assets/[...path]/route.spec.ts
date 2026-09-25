@@ -73,6 +73,20 @@ describe("Assets Proxy Route", () => {
     );
   });
 
+  it("prevents a published SVG asset from running as a document", async () => {
+    mockFindStatusPage.mockResolvedValue({ id: "status-1" });
+    mockFetchFromS3.mockResolvedValue(new Response("<svg><script>1</script></svg>", {
+      headers: { "content-type": "image/svg+xml" },
+    }));
+    const response = await GET(new NextRequest("http://localhost/api/assets/status-pages/status-1/logo/x.svg"), {
+      params: Promise.resolve({ path: ["status-pages", "status-1", "logo", "x.svg"] }),
+    });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-disposition")).toContain("attachment");
+    expect(response.headers.get("content-security-policy")).toContain("sandbox");
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+  });
+
   it("returns 404 for HEAD when status page asset is not published", async () => {
     mockFindStatusPage.mockResolvedValue(null);
 

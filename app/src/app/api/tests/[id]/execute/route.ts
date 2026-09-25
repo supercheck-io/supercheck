@@ -14,7 +14,7 @@ import {
 import { validateK6Script } from "@/lib/k6-validator";
 import { resolveProjectVariables } from "@/lib/variable-resolver";
 import { randomUUID } from "crypto";
-import { SubscriptionService } from "@/lib/services/subscription-service";
+import { SubscriptionService, SubscriptionAccessDeniedError } from "@/lib/services/subscription-service";
 import { polarUsageService } from "@/lib/services/polar-usage.service";
 import { buildBillingBlockedResponse } from "@/lib/billing-errors";
 import { checkExecutionRateLimit } from "@/lib/execution-rate-limiter";
@@ -76,12 +76,16 @@ export async function POST(request: NextRequest, context: ExecuteContext) {
       // Finally get the plan to check limits
       await subscriptionService.getOrganizationPlan(organizationId);
     } catch (error) {
+      if (!(error instanceof SubscriptionAccessDeniedError)) {
+        console.error("[Test Execute API] Subscription validation failed:", error);
+      }
       return NextResponse.json(
         {
-          error:
-            error instanceof Error ? error.message : "Subscription required",
+          error: error instanceof SubscriptionAccessDeniedError
+            ? error.message
+            : "Subscription validation failed. Please try again later.",
         },
-        { status: 402 }
+        { status: error instanceof SubscriptionAccessDeniedError ? 402 : 500 }
       );
     }
 

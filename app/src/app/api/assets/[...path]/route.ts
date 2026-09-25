@@ -68,6 +68,11 @@ export async function GET(
     response.headers.forEach((value, key) => {
       headers[key] = value;
     });
+    headers["x-content-type-options"] = "nosniff";
+    if (headers["content-type"]?.split(";")[0].trim().toLowerCase() === "image/svg+xml") {
+      headers["content-disposition"] = 'attachment; filename="status-page.svg"';
+      headers["content-security-policy"] = "sandbox; default-src 'none'";
+    }
 
     const buffer = await response.arrayBuffer();
 
@@ -111,6 +116,11 @@ export async function HEAD(
     response.headers.forEach((value, key) => {
       headers[key] = value;
     });
+    headers["x-content-type-options"] = "nosniff";
+    if (headers["content-type"]?.split(";")[0].trim().toLowerCase() === "image/svg+xml") {
+      headers["content-disposition"] = 'attachment; filename="status-page.svg"';
+      headers["content-security-policy"] = "sandbox; default-src 'none'";
+    }
 
     // Don't include the body for HEAD requests
     return new NextResponse(null, {

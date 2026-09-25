@@ -47,18 +47,19 @@ const BLOCKED_HOSTNAMES = [
  * Check if a hostname resolves to a private/internal IP address
  */
 export function isPrivateHost(hostname: string): boolean {
-  if (isPrivateOrReservedAddress(hostname)) {
+  const normalized = hostname.trim().toLowerCase().replace(/\.$/, "").replace(/^\[|\]$/g, "");
+  if (isPrivateOrReservedAddress(normalized)) {
     return true;
   }
 
   // Check against blocked hostnames
-  if (BLOCKED_HOSTNAMES.includes(hostname.toLowerCase())) {
+  if (BLOCKED_HOSTNAMES.includes(normalized)) {
     return true;
   }
 
   // Check against private IP patterns
   for (const pattern of PRIVATE_IP_PATTERNS) {
-    if (pattern.test(hostname)) {
+    if (pattern.test(normalized)) {
       return true;
     }
   }
@@ -73,15 +74,9 @@ export function isPrivateHost(hostname: string): boolean {
  * @returns true if the URL is safe, false otherwise
  */
 export function isValidWebhookUrl(url: URL): { valid: boolean; error?: string } {
-  // Require HTTPS for webhooks (except in development)
-  const isDevelopment = process.env.NODE_ENV === 'development';
-  if (!isDevelopment && url.protocol !== 'https:') {
+  // Public webhooks use the pinned TLS transport in every environment.
+  if (url.protocol !== 'https:') {
     return { valid: false, error: 'Webhook URL must use HTTPS' };
-  }
-
-  // Allow http only in development
-  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-    return { valid: false, error: 'Invalid protocol - only HTTP(S) allowed' };
   }
 
   // Check for private/internal hosts

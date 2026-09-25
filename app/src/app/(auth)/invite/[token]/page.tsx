@@ -23,7 +23,7 @@ import { useAppConfig } from "@/hooks/use-app-config";
 
 interface InvitationData {
   organizationName: string;
-  email: string;
+  email?: string;
   role: string;
   expiresAt: string;
   inviterName?: string;
@@ -99,6 +99,11 @@ export default function InvitePage({
           router.push("/");
         }, 3000);
       } else {
+        if (data.code === "EMAIL_NOT_VERIFIED") {
+          const inviteQuery = encodeURIComponent(token);
+          router.push(`/verify-email?email=${encodeURIComponent(invitation?.email || "")}&invite=${inviteQuery}`);
+          return;
+        }
         const errorMessage = String(data.error ?? "").toLowerCase();
         if (
           response.status === 401 ||
@@ -292,7 +297,7 @@ export default function InvitePage({
             </div>
 
             {/* Email */}
-            <div className="flex items-center gap-3">
+            {invitation.email && <div className="flex items-center gap-3">
               <div className="flex size-10 items-center justify-center rounded-full bg-primary/10">
                 <Mail className="size-5 text-primary" />
               </div>
@@ -300,7 +305,7 @@ export default function InvitePage({
                 <p className="text-sm text-muted-foreground">Invited Email</p>
                 <p className="font-medium">{invitation.email}</p>
               </div>
-            </div>
+            </div>}
 
             {/* Inviter */}
             {invitation.inviterName && (

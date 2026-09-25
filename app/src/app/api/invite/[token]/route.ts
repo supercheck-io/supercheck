@@ -60,21 +60,27 @@ export async function GET(
       );
     }
 
+    const viewer = await auth.api.getSession({ headers: await headers() });
+    const canViewEmail = Boolean(viewer?.user?.email &&
+      viewer.user.email.toLowerCase().trim() === invite.email.toLowerCase().trim());
+    const canViewPersonalDetails = viewer?.user?.emailVerified === true &&
+      viewer.user.email.toLowerCase().trim() === invite.email.toLowerCase().trim();
+
     return NextResponse.json({
       success: true,
       data: {
-        // NOTE: This endpoint serves both the invite acceptance page and the sign-in/sign-up
-        // page (for pre-filling forms). The invite page requires role, expiresAt, and inviter
-        // info to render the invitation details. The role is already disclosed in the
-        // invitation email, so including it here does not increase exposure.
+        // Public invite pages need only the organization, role and expiry.
+        // Personal details are returned only to the matching account.
         organizationName: invite.orgName,
-        email: invite.email,
+        ...(canViewEmail ? { email: invite.email } : {}),
         role: invite.role,
         expiresAt: invite.expiresAt.toISOString(),
-        inviterName: invite.inviterName,
-        inviterEmail: invite.inviterEmail,
+        ...(canViewPersonalDetails ? {
+          inviterName: invite.inviterName,
+          inviterEmail: invite.inviterEmail,
+        } : {}),
       }
-    });
+    }, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (error) {
     console.error('Error fetching invitation:', error);
     return NextResponse.json(
@@ -159,6 +165,17 @@ export async function POST(
       return NextResponse.json(
         { error: 'This invitation is for a different email address' },
         { status: 400 }
+      );
+    }
+    const [acceptingUser] = await db
+      .select({ emailVerified: userTable.emailVerified })
+      .from(userTable)
+      .where(eq(userTable.id, currentUser.id))
+      .limit(1);
+    if (!acceptingUser?.emailVerified) {
+      return NextResponse.json(
+        { error: 'Verify your email address before accepting this invitation', code: 'EMAIL_NOT_VERIFIED' },
+        { status: 403 }
       );
     }
 

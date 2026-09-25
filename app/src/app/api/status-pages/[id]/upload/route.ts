@@ -114,7 +114,14 @@ export async function POST(request: Request, context: RouteContext) {
     }
 
     // Generate unique filename
-    const fileExtension = file.name.split(".").pop() || "png";
+    const fileExtension = ({
+      "image/png": "png",
+      "image/jpeg": "jpg",
+      "image/jpg": "jpg",
+      "image/gif": "gif",
+      "image/svg+xml": "svg",
+      "image/webp": "webp",
+    } as Record<string, string>)[file.type];
     const uniqueId = uuidv4();
     const fileName = `${uniqueId}.${fileExtension}`;
 

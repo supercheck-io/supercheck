@@ -727,6 +727,23 @@ export async function PUT(request: Request) {
       );
     }
 
+    const requestedProviderIds = jobData.alertConfig?.notificationProviders ?? [];
+    let validatedUpdateProviderIds: string[] = [];
+    if (requestedProviderIds.length > 0) {
+      try {
+        validatedUpdateProviderIds = await validateNotificationProviderOwnership({
+          providerIds: requestedProviderIds,
+          organizationId,
+          projectId: project.id,
+        });
+      } catch {
+        return NextResponse.json(
+          { success: false, error: "Invalid or unauthorized notification provider IDs" },
+          { status: 400 }
+        );
+      }
+    }
+
     const persistedJobType: "k6" | "playwright" =
       existingJob[0].jobType === "k6" ? "k6" : "playwright";
     if (jobData.jobType && jobData.jobType !== persistedJobType) {
@@ -787,7 +804,9 @@ export async function PUT(request: Request) {
           description: jobData.description || "",
           cronSchedule: jobData.cronSchedule,
           status: jobData.status as JobStatus,
-          alertConfig: jobData.alertConfig || null,
+          alertConfig: jobData.alertConfig
+            ? { ...jobData.alertConfig, notificationProviders: validatedUpdateProviderIds }
+            : null,
           updatedAt: new Date(),
         })
         .where(eq(jobs.id, targetJobId));
@@ -838,4 +857,3 @@ export async function PUT(request: Request) {
     );
   }
 }
-

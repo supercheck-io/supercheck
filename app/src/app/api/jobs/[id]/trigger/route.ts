@@ -12,7 +12,7 @@ import {
 } from "@/lib/queue";
 import { prepareJobTestScripts } from "@/lib/job-execution-utils";
 import { validateK6Script } from "@/lib/k6-validator";
-import { subscriptionService } from "@/lib/services/subscription-service";
+import { subscriptionService, SubscriptionAccessDeniedError } from "@/lib/services/subscription-service";
 import { polarUsageService } from "@/lib/services/polar-usage.service";
 import {
   apiKeyRateLimiter,
@@ -244,8 +244,9 @@ export async function POST(
     try {
       await subscriptionService.blockUntilSubscribed(job.organizationId);
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Active subscription required";
+      const errorMessage = error instanceof SubscriptionAccessDeniedError
+        ? error.message
+        : "Subscription validation failed";
       console.warn(
         `[Job Trigger] Subscription validation failed for org ${job.organizationId.substring(0, 8)}...`
       );
@@ -256,10 +257,9 @@ export async function POST(
     try {
       await subscriptionService.requireValidPolarCustomer(job.organizationId);
     } catch (error) {
-      const errorMessage =
-        error instanceof Error
-          ? error.message
-          : "Polar customer validation failed";
+      const errorMessage = error instanceof SubscriptionAccessDeniedError
+        ? error.message
+        : "Polar customer validation failed";
       console.warn(
         `[Job Trigger] Polar customer validation failed for org ${job.organizationId.substring(0, 8)}...`
       );
@@ -279,12 +279,16 @@ export async function POST(
     try {
       await subscriptionService.getOrganizationPlan(job.organizationId);
     } catch (error) {
+      if (!(error instanceof SubscriptionAccessDeniedError)) {
+        console.error("[Job Trigger] Subscription validation failed:", error);
+      }
       return NextResponse.json(
         {
-          error:
-            error instanceof Error ? error.message : "Subscription required",
+          error: error instanceof SubscriptionAccessDeniedError
+            ? error.message
+            : "Subscription validation failed. Please try again later.",
         },
-        { status: 402 }
+        { status: error instanceof SubscriptionAccessDeniedError ? 402 : 500 }
       );
     }
 

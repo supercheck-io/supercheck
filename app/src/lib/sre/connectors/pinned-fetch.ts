@@ -23,6 +23,15 @@ async function fetchPinnedEndpoint(
   allowSelfHostedPrivateNetworks = false,
 ): Promise<Response> {
   const url = new URL(input);
+
+  if (url.protocol !== "https:" && url.protocol !== "http:") {
+    throw new Error("Connector endpoints must use HTTP or HTTPS");
+  }
+
+  if (url.username || url.password) {
+    throw new Error("Connector endpoints must not include URL credentials");
+  }
+
   if (allowSelfHostedPrivateNetworks && isSelfHosted()) {
     // Self-hosted connector administrators intentionally may target private services.
     return fetch(url, init); // lgtm [js/request-forgery]
@@ -130,15 +139,10 @@ export function fetchConnectorEndpoint(
   return fetchPinnedEndpoint(input, init, true);
 }
 
-/** Public webhook variant: never allows private destinations in production. */
+/** Public webhook variant: always validates and pins the destination. */
 export async function fetchPublicEndpoint(
   input: string | URL,
   init: RequestInit = {},
 ): Promise<Response> {
-  if (process.env.NODE_ENV === "development" && isSelfHosted()) {
-    // Local development intentionally supports private self-hosted endpoints.
-    return fetch(input, init); // lgtm [js/request-forgery]
-  }
-
   return fetchPinnedEndpoint(input, init, false);
 }

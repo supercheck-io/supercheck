@@ -304,23 +304,9 @@ export const auth = betterAuth({
       prompt: "select_account consent",
     },
   },
-  // Email verification - only required in cloud mode
-  emailVerification: isCloudHosted()
-    ? {
+  // Invitation acceptance requires a verified mailbox in every hosting mode.
+  emailVerification: {
         sendVerificationEmail: async ({ user, url }, request) => {
-          // CRITICAL: Skip verification email for invited users.
-          // Better Auth wraps sign-up in a transaction. If this callback throws
-          // (rate limit, email failure), the ENTIRE user creation is rolled back.
-          // Invited users don't need email verification — the invitation itself
-          // proves email ownership. The sign-up page sends x-invite-token header.
-          const inviteToken = request?.headers?.get?.("x-invite-token");
-          if (inviteToken) {
-            console.log(
-              `Skipping verification email for invited user: ${user.email} (invite: ${inviteToken})`,
-            );
-            return;
-          }
-
           // Rate limit by email address to prevent abuse
           const emailRateLimit = await checkEmailVerificationRateLimit(
             user.email,
@@ -354,12 +340,17 @@ export const auth = betterAuth({
 
           const emailService = EmailService.getInstance();
 
-          // Modify the verification URL to redirect to sign-in with verified flag
+          // Keep the invite context only for an internal sign-in callback.
           const verificationUrl = new URL(url);
-          // The callback URL after verification should be sign-in with verified flag
+          const callbackUrl = new URL(
+            verificationUrl.searchParams.get("callbackURL") || "/sign-in?verified=true",
+            verificationUrl.origin,
+          );
           verificationUrl.searchParams.set(
             "callbackURL",
-            "/sign-in?verified=true",
+            callbackUrl.origin === verificationUrl.origin && callbackUrl.pathname === "/sign-in"
+              ? `${callbackUrl.pathname}${callbackUrl.search}`
+              : "/sign-in?verified=true",
           );
           const modifiedUrl = verificationUrl.toString();
 
@@ -391,8 +382,7 @@ export const auth = betterAuth({
         },
         // Don't auto sign in - redirect to sign-in page with verified flag
         autoSignInAfterVerification: false,
-      }
-    : undefined,
+      },
   emailAndPassword: {
     enabled: true,
     // Only require email verification in cloud mode

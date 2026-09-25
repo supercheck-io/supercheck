@@ -17,6 +17,7 @@ const mockRequest = https.request as jest.MockedFunction<typeof https.request>;
 
 describe("pinned public fetch", () => {
   const originalNodeEnv = process.env.NODE_ENV;
+  const originalSelfHosted = process.env.SELF_HOSTED;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -62,12 +63,14 @@ describe("pinned public fetch", () => {
     },
   );
 
-  afterAll(() => {
+  afterEach(() => {
     Object.defineProperty(process.env, "NODE_ENV", {
       value: originalNodeEnv,
       configurable: true,
       writable: true,
     });
+    if (originalSelfHosted === undefined) delete process.env.SELF_HOSTED;
+    else process.env.SELF_HOSTED = originalSelfHosted;
   });
 
   it("rejects a hostname resolving to a private address before connecting", async () => {
@@ -77,6 +80,22 @@ describe("pinned public fetch", () => {
 
     await expect(
       fetchPublicEndpoint("https://hooks.example.com/events"),
+    ).rejects.toThrow("private or reserved IP ranges");
+    expect(mockRequest).not.toHaveBeenCalled();
+  });
+
+  it("rejects a trailing-dot loopback hostname in self-hosted development", async () => {
+    Object.defineProperty(process.env, "NODE_ENV", {
+      value: "development",
+      configurable: true,
+      writable: true,
+    });
+    process.env.SELF_HOSTED = "true";
+    (mockLookup as jest.Mock).mockResolvedValueOnce([
+      { address: "127.0.0.1", family: 4 },
+    ]);
+    await expect(
+      fetchPublicEndpoint("https://localhost.:4000/api/health/live"),
     ).rejects.toThrow("private or reserved IP ranges");
     expect(mockRequest).not.toHaveBeenCalled();
   });
@@ -124,7 +143,7 @@ describe("pinned public fetch", () => {
     );
 
     const response = await fetchPublicEndpoint(
-      "https://hooks.example.com/events",
+      "https://hooks.example.com:8443/events",
     );
 
     expect(response.status).toBe(200);
