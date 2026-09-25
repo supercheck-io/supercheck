@@ -203,13 +203,14 @@ async function testSlackConnection(config: NotificationProviderConfig) {
     // Validate that the URL is a Slack webhook URL
     try {
       const parsedUrl = new URL(webhookUrl);
-      // Only hooks.slack.com is the valid Slack webhook endpoint
-      // Using exact match to prevent bypass via evil-hooks.slack.com
-      if (parsedUrl.hostname !== 'hooks.slack.com') {
+      const allowedSlackHosts = new Set(["hooks.slack.com"]);
+      const normalizedHost = parsedUrl.hostname.toLowerCase();
+      // Strict hostname allowlist to prevent SSRF via attacker-controlled destinations.
+      if (!allowedSlackHosts.has(normalizedHost)) {
         throw new Error("URL must be a valid Slack webhook URL (hooks.slack.com)");
       }
     } catch (parseError) {
-      if (parseError instanceof Error && parseError.message.includes('Slack')) {
+      if (parseError instanceof Error && parseError.message.includes("Slack")) {
         throw parseError;
       }
       throw new Error("Invalid URL format");
