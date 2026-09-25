@@ -32,15 +32,6 @@ async function fetchPinnedEndpoint(
     throw new Error("Connector endpoints must not include URL credentials");
   }
 
-  if (!allowSelfHostedPrivateNetworks && url.port) {
-    const numericPort = Number(url.port);
-    const isHttpsDefault = url.protocol === "https:" && numericPort === 443;
-    const isHttpDefault = url.protocol === "http:" && numericPort === 80;
-    if (!isHttpsDefault && !isHttpDefault) {
-      throw new Error("Public endpoints must use default HTTP(S) ports");
-    }
-  }
-
   if (allowSelfHostedPrivateNetworks && isSelfHosted()) {
     // Self-hosted connector administrators intentionally may target private services.
     return fetch(url, init); // lgtm [js/request-forgery]
