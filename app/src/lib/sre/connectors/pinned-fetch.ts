@@ -29,10 +29,14 @@ async function fetchPinnedEndpoint(
     return fetch(url, init); // lgtm [js/request-forgery]
   }
 
-  const allowDevelopmentHttp = !allowSelfHostedPrivateNetworks &&
-    process.env.NODE_ENV === "development" && url.protocol === "http:";
+  const allowDevelopmentHttp =
+    !allowSelfHostedPrivateNetworks &&
+    process.env.NODE_ENV === "development" &&
+    url.protocol === "http:";
   if (url.protocol !== "https:" && !allowDevelopmentHttp) {
-    throw new Error("Public endpoints must use HTTPS outside local development");
+    throw new Error(
+      "Public endpoints must use HTTPS outside local development",
+    );
   }
 
   const hostname = url.hostname.replace(/^\[|\]$/g, "");
@@ -54,50 +58,50 @@ async function fetchPinnedEndpoint(
 
   return new Promise<Response>((resolve, reject) => {
     // Every DNS answer is public and the socket lookup is pinned to that result.
-    const transport = url.protocol === "http:" ? http : https;
-    const request = transport.request( // lgtm [js/request-forgery]
-      url,
-      {
-        method: init.method ?? "GET",
-        headers: Object.fromEntries(headers.entries()),
-        lookup: createPinnedLookup(selected),
-      },
-      (response) => {
-        const chunks: Buffer[] = [];
-        let totalBytes = 0;
+    const requestOptions = {
+      method: init.method ?? "GET",
+      headers: Object.fromEntries(headers.entries()),
+      lookup: createPinnedLookup(selected),
+    };
+    const onResponse = (response: http.IncomingMessage) => {
+      const chunks: Buffer[] = [];
+      let totalBytes = 0;
 
-        response.on("data", (chunk: Buffer) => {
-          totalBytes += chunk.length;
-          if (totalBytes > MAX_RESPONSE_BYTES) {
-            request.destroy(new Error("Connector response exceeded 10 MiB"));
-            return;
-          }
-          chunks.push(chunk);
-        });
-        response.on("error", reject);
-        response.on("end", () => {
-          try {
-            const status = response.statusCode ?? 500;
-            // Fetch forbids bodies for these statuses, including an empty Buffer.
-            const body =
-              [204, 205, 304].includes(status) ||
-              init.method?.toUpperCase() === "HEAD"
-                ? null
-                : Buffer.concat(chunks);
-            resolve(
-              new Response(body, {
-                status,
-                statusText: response.statusMessage,
-                headers: response.headers as HeadersInit,
-              }),
-            );
-          } catch (error) {
-            // Event callbacks run outside the Promise executor's catch boundary.
-            reject(error);
-          }
-        });
-      },
-    );
+      response.on("data", (chunk: Buffer) => {
+        totalBytes += chunk.length;
+        if (totalBytes > MAX_RESPONSE_BYTES) {
+          request.destroy(new Error("Connector response exceeded 10 MiB"));
+          return;
+        }
+        chunks.push(chunk);
+      });
+      response.on("error", reject);
+      response.on("end", () => {
+        try {
+          const status = response.statusCode ?? 500;
+          // Fetch forbids bodies for these statuses, including an empty Buffer.
+          const body =
+            [204, 205, 304].includes(status) ||
+            init.method?.toUpperCase() === "HEAD"
+              ? null
+              : Buffer.concat(chunks);
+          resolve(
+            new Response(body, {
+              status,
+              statusText: response.statusMessage,
+              headers: response.headers as HeadersInit,
+            }),
+          );
+        } catch (error) {
+          // Event callbacks run outside the Promise executor's catch boundary.
+          reject(error);
+        }
+      });
+    };
+    const request =
+      url.protocol === "http:"
+        ? http.request(url, requestOptions, onResponse) // lgtm [js/request-forgery]
+        : https.request(url, requestOptions, onResponse); // lgtm [js/request-forgery]
 
     request.on("error", reject);
     if (init.signal) {
