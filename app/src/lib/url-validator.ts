@@ -74,15 +74,9 @@ export function isPrivateHost(hostname: string): boolean {
  * @returns true if the URL is safe, false otherwise
  */
 export function isValidWebhookUrl(url: URL): { valid: boolean; error?: string } {
-  // Require HTTPS for webhooks (except in development)
-  const isDevelopment = process.env.NODE_ENV === 'development';
-  if (!isDevelopment && url.protocol !== 'https:') {
+  // Public webhooks use the pinned TLS transport in every environment.
+  if (url.protocol !== 'https:') {
     return { valid: false, error: 'Webhook URL must use HTTPS' };
-  }
-
-  // Allow http only in development
-  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-    return { valid: false, error: 'Invalid protocol - only HTTP(S) allowed' };
   }
 
   // Check for private/internal hosts

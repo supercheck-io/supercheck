@@ -14,4 +14,11 @@ describe("webhook destination validation", () => {
       error: "Cannot connect to private or internal networks",
     });
   });
+
+  it("rejects unpinned HTTP webhook requests in development", () => {
+    expect(validateWebhookUrlString("http://public.example.com/hook")).toEqual({
+      valid: false,
+      error: "Webhook URL must use HTTPS",
+    });
+  });
 });
