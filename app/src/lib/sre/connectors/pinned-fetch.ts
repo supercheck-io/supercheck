@@ -1,5 +1,6 @@
 import { lookup } from "node:dns/promises";
 import https from "node:https";
+import http from "node:http";
 import { isIP } from "node:net";
 
 import { isPrivateConnectorAddress } from "./endpoint-policy";
@@ -28,8 +29,10 @@ async function fetchPinnedEndpoint(
     return fetch(url, init); // lgtm [js/request-forgery]
   }
 
-  if (url.protocol !== "https:") {
-    throw new Error("Direct cloud connectors must use HTTPS");
+  const allowDevelopmentHttp = !allowSelfHostedPrivateNetworks &&
+    process.env.NODE_ENV === "development" && url.protocol === "http:";
+  if (url.protocol !== "https:" && !allowDevelopmentHttp) {
+    throw new Error("Public endpoints must use HTTPS outside local development");
   }
 
   const hostname = url.hostname.replace(/^\[|\]$/g, "");
@@ -51,7 +54,8 @@ async function fetchPinnedEndpoint(
 
   return new Promise<Response>((resolve, reject) => {
     // Every DNS answer is public and the socket lookup is pinned to that result.
-    const request = https.request( // lgtm [js/request-forgery]
+    const transport = url.protocol === "http:" ? http : https;
+    const request = transport.request( // lgtm [js/request-forgery]
       url,
       {
         method: init.method ?? "GET",
@@ -130,15 +134,10 @@ export function fetchConnectorEndpoint(
   return fetchPinnedEndpoint(input, init, true);
 }
 
-/** Public webhook variant: never allows private destinations in production. */
+/** Public webhook variant: always resolve and pin a public destination. */
 export async function fetchPublicEndpoint(
   input: string | URL,
   init: RequestInit = {},
 ): Promise<Response> {
-  if (process.env.NODE_ENV === "development" && isSelfHosted()) {
-    // Local development intentionally supports private self-hosted endpoints.
-    return fetch(input, init); // lgtm [js/request-forgery]
-  }
-
   return fetchPinnedEndpoint(input, init, false);
 }

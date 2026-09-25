@@ -47,18 +47,19 @@ const BLOCKED_HOSTNAMES = [
  * Check if a hostname resolves to a private/internal IP address
  */
 export function isPrivateHost(hostname: string): boolean {
-  if (isPrivateOrReservedAddress(hostname)) {
+  const normalized = hostname.trim().toLowerCase().replace(/\.$/, "").replace(/^\[|\]$/g, "");
+  if (isPrivateOrReservedAddress(normalized)) {
     return true;
   }
 
   // Check against blocked hostnames
-  if (BLOCKED_HOSTNAMES.includes(hostname.toLowerCase())) {
+  if (BLOCKED_HOSTNAMES.includes(normalized)) {
     return true;
   }
 
   // Check against private IP patterns
   for (const pattern of PRIVATE_IP_PATTERNS) {
-    if (pattern.test(hostname)) {
+    if (pattern.test(normalized)) {
       return true;
     }
   }

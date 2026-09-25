@@ -7,6 +7,10 @@ jest.mock("node:https", () => ({
   __esModule: true,
   default: { request: jest.fn() },
 }));
+jest.mock("node:http", () => ({
+  __esModule: true,
+  default: { request: jest.fn() },
+}));
 
 import { lookup } from "node:dns/promises";
 import https from "node:https";
@@ -79,6 +83,16 @@ describe("pinned public fetch", () => {
       fetchPublicEndpoint("https://hooks.example.com/events"),
     ).rejects.toThrow("private or reserved IP ranges");
     expect(mockRequest).not.toHaveBeenCalled();
+  });
+
+  it("rejects a trailing-dot loopback hostname in self-hosted development", async () => {
+    Object.defineProperty(process.env, "NODE_ENV", { value: "development", configurable: true, writable: true });
+    process.env.SELF_HOSTED = "true";
+    (mockLookup as jest.Mock).mockResolvedValueOnce([{ address: "127.0.0.1", family: 4 }]);
+    await expect(fetchPublicEndpoint("http://localhost.:4000/api/health/live"))
+      .rejects.toThrow("private or reserved IP ranges");
+    expect(mockRequest).not.toHaveBeenCalled();
+    delete process.env.SELF_HOSTED;
   });
 
   it("pins the TLS lookup callback to the validated public address", async () => {
