@@ -3,6 +3,7 @@ import postgres from "postgres";
 import * as schema from "@/db/schema";
 import { drizzleLogger } from "@/lib/logger/drizzle-logger";
 import { getSSLConfig } from "@/utils/db-ssl";
+import { getDatabasePoolMax } from "@/utils/db-pool";
 
 const connectionString =
   process.env.DATABASE_URL ||
@@ -16,13 +17,12 @@ const connectionString =
 // Docker production: Higher pool size to handle concurrent RSC requests
 // See: https://github.com/porsager/postgres#connection-pool
 //
-// IMPORTANT: Ensure PostgreSQL `max_connections` is configured to handle:
-//   DB_POOL_MAX × number_of_app_instances + ~20 for worker/admin/maintenance
-//   Example: 30 × 4 instances + 20 = 140. Default PostgreSQL max is 100.
-//   Set in postgresql.conf: max_connections = 150
+// Budget app + worker pools, rollout overlap, and maintenance connections.
+// Through a pooler, this sum consumes client slots; the provider's PostgreSQL
+// max_connections is a separate backend limit. App schedulers share this pool.
 const client = postgres(connectionString, {
   ssl: getSSLConfig(),
-  max: parseInt(process.env.DB_POOL_MAX || "30", 10), // Default: 30 connections (increased from 10 for Docker)
+  max: getDatabasePoolMax(),
   idle_timeout: parseInt(process.env.DB_IDLE_TIMEOUT || "30", 10), // Default: 30 seconds
   connect_timeout: parseInt(process.env.DB_CONNECT_TIMEOUT || "10", 10), // Default: 10 seconds
   max_lifetime: parseInt(process.env.DB_MAX_LIFETIME || "1800", 10), // Default: 30 minutes (in seconds)
@@ -36,5 +36,5 @@ export const postgresClient = client;
 const isDevelopment = process.env.NODE_ENV === "development";
 export const db = drizzle(client, {
   schema,
-  logger: isDevelopment ? drizzleLogger : false
+  logger: isDevelopment ? drizzleLogger : false,
 });

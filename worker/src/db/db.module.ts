@@ -7,6 +7,7 @@ import * as schema from './schema';
 import { getSSLConfig } from './db-ssl';
 import { DB_PROVIDER_TOKEN } from './db.constants';
 import { DbService } from './db.service';
+import { getDatabasePoolMax } from './db-pool';
 
 /**
  * Shared Drizzle ORM provider — creates a SINGLE connection pool for the
@@ -29,7 +30,7 @@ const drizzleProvider: Provider = {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
     const client = postgres(connectionString, {
       ssl: getSSLConfig(),
-      max: parseInt(process.env.DB_POOL_MAX || '10', 10),
+      max: getDatabasePoolMax(),
       idle_timeout: parseInt(process.env.DB_IDLE_TIMEOUT || '30', 10),
       connect_timeout: parseInt(process.env.DB_CONNECT_TIMEOUT || '10', 10),
       max_lifetime: parseInt(process.env.DB_MAX_LIFETIME || '1800', 10),

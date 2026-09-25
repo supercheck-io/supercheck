@@ -17,6 +17,7 @@ import {
 import { eq } from 'drizzle-orm';
 import { jobs } from '../../db/schema';
 import { ErrorHandler } from '../../common/utils/error-handler';
+import type { ExecutionUsageTransaction } from '../services/execution-usage-receipts';
 
 @Processor(PLAYWRIGHT_QUEUE, {
   concurrency: 1,
@@ -126,18 +127,28 @@ export class PlaywrightExecutionProcessor extends WorkerHost {
         const errorDetails = isCancellation
           ? 'Cancellation requested by user'
           : result.error || undefined;
-        await this.dbService
-          .updateRunStatus(
+        const persistResult = async (transaction?: ExecutionUsageTransaction) =>
+          this.dbService.updateRunStatus(
             runId,
             status,
             durationSeconds.toString(),
             errorDetails,
-          )
-          .catch((err: Error) =>
-            this.logger.error(
-              `[${testId}] Failed to update run status to ${status}: ${err.message}`,
-            ),
+            transaction,
           );
+        if (job.data.organizationId) {
+          await this.usageTrackerService.completeRunWithUsage(
+            {
+              organizationId: job.data.organizationId,
+              runId,
+              durationMs,
+              eventType: 'playwright_execution',
+              metadata: { testId, type: 'single_test' },
+            },
+            persistResult,
+          );
+        } else {
+          await persistResult();
+        }
       }
 
       // Track Playwright usage for billing (if organizationId is available)
@@ -321,13 +332,26 @@ export class PlaywrightExecutionProcessor extends WorkerHost {
       }
 
       // Update the run status with duration first
-      await this.dbService
-        .updateRunStatus(runId, finalStatus, durationSeconds.toString())
-        .catch((err: Error) =>
-          this.logger.error(
-            `[${runId}] Failed to update run status to ${finalStatus}: ${err.message}`,
+      await this.usageTrackerService.completeRunWithUsage(
+        {
+          organizationId: jobData.organizationId,
+          runId,
+          durationMs,
+          eventType: 'playwright_execution',
+          metadata: {
+            jobId: originalJobId,
+            testCount: result.results?.length || 0,
+          },
+        },
+        async (transaction) =>
+          this.dbService.updateRunStatus(
+            runId,
+            finalStatus,
+            durationSeconds.toString(),
+            result.error || undefined,
+            transaction,
           ),
-        );
+      );
 
       // Track Playwright usage for billing
       await this.usageTrackerService

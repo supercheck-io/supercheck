@@ -18,6 +18,7 @@ import { ReportMetadata } from '../interfaces'; // Import our interface
 import { NotificationProvider } from '../../notification/notification.service';
 import { decryptNotificationProviderConfig } from '../../common/notification-provider-crypto';
 import { DB_PROVIDER_TOKEN } from '../../db/db.constants';
+import type { ExecutionUsageTransaction } from './execution-usage-receipts';
 
 // Re-export from canonical location for backward compatibility.
 // All new code should import directly from '../../db/db.constants'.
@@ -192,6 +193,7 @@ export class DbService implements OnModuleInit {
     status: TestRunStatus,
     duration?: string,
     errorDetails?: string,
+    transaction?: ExecutionUsageTransaction,
   ): Promise<void> {
     this.logger.debug(
       `Updating run ${runId} with status ${status} and duration ${duration}`,
@@ -199,6 +201,7 @@ export class DbService implements OnModuleInit {
 
     try {
       const now = new Date();
+      const database = transaction ?? this.dbInstance;
       const updateData: {
         status: TestRunStatus;
         durationMs?: number;
@@ -238,7 +241,7 @@ export class DbService implements OnModuleInit {
         // If no duration provided, calculate from startedAt
         if (!duration) {
           try {
-            const existingRun = await this.dbInstance
+            const existingRun = await database
               .select({ startedAt: runs.startedAt })
               .from(runs)
               .where(eq(runs.id, runId))
@@ -263,10 +266,7 @@ export class DbService implements OnModuleInit {
       }
 
       // Update the database
-      await this.dbInstance
-        .update(runs)
-        .set(updateData)
-        .where(eq(runs.id, runId));
+      await database.update(runs).set(updateData).where(eq(runs.id, runId));
 
       this.logger.log(
         `Successfully updated run ${runId} with status ${status}`,

@@ -15,10 +15,47 @@ import {
   index,
   uniqueIndex,
   jsonb,
+  check,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { organization } from "./organization";
+/** Durable completion receipts survive worker loss before usage settlement. */
+export const executionUsageReceipts = pgTable(
+  "execution_usage_receipts",
+  {
+    id: uuid("id").primaryKey(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    runId: text("run_id").notNull(),
+    eventType: text("event_type")
+      .$type<"playwright_execution" | "k6_execution">()
+      .notNull(),
+    units: numeric("units", { precision: 10, scale: 4 }).notNull(),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>(),
+    billingPeriodStart: timestamp("billing_period_start").notNull(),
+    billingPeriodEnd: timestamp("billing_period_end").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    settledAt: timestamp("settled_at"),
+    nextAttemptAt: timestamp("next_attempt_at").defaultNow(),
+    lastError: text("last_error"),
+  },
+  (table) => ({
+    validUsage: check(
+      "execution_usage_receipts_valid_usage",
+      sql`${table.eventType} IN ('playwright_execution', 'k6_execution') AND ${table.units} >= 0 AND ${table.units} <> 'NaN'::numeric`,
+    ),
+    runKey: uniqueIndex("execution_usage_receipts_run_key").on(
+      table.organizationId,
+      table.eventType,
+      table.runId,
+    ),
+    pendingIdx: index("execution_usage_receipts_pending_idx")
+      .on(table.nextAttemptAt)
+      .where(sql`${table.settledAt} IS NULL`),
+  }),
+);
 
 /**
  * Webhook idempotency tracking
@@ -276,6 +313,8 @@ export const overagePricing = pgTable("overage_pricing", {
 });
 
 // Zod schemas for validation
+export const executionUsageReceiptsInsertSchema = createInsertSchema(executionUsageReceipts);
+export const executionUsageReceiptsSelectSchema = createSelectSchema(executionUsageReceipts);
 export const webhookIdempotencyInsertSchema =
   createInsertSchema(webhookIdempotency);
 export const webhookIdempotencySelectSchema =

@@ -169,6 +169,13 @@
       "when": 1789002000000,
       "tag": "0023_usage_event_lookup_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1790164800000,
+      "tag": "0024_execution_usage_receipts",
+      "breakpoints": true
     }
   ]
 }

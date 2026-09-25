@@ -2,7 +2,7 @@ import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Job } from 'bullmq';
-import { sql, eq, type SQL } from 'drizzle-orm';
+import { sql, eq, and, type SQL } from 'drizzle-orm';
 import {
   K6ExecutionService,
   K6ExecutionTask,
@@ -221,104 +221,134 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
             ? 'passed'
             : 'failed';
 
-      await this.dbService.db.insert(schema.k6PerformanceRuns).values({
-        testId,
-        runId,
-        jobId: taskData.jobId ?? null,
-        organizationId: taskData.organizationId,
-        projectId: taskData.projectId,
-        location:
-          effectiveJobLocation as (typeof schema.k6PerformanceRuns.$inferInsert)['location'], // Use the task's requested/resolved location
-        status: k6PerformanceStatus,
-        startedAt: new Date(Date.now() - result.durationMs),
-        completedAt: new Date(),
-        durationMs: result.durationMs,
-        summaryJson: result.summary,
-        thresholdsPassed: result.thresholdsPassed,
-        totalRequests,
-        failedRequests,
-        requestRate: requestRateScaled,
-        avgResponseTimeMs: avgDurationMs,
-        p95ResponseTimeMs: p95DurationMs,
-        p99ResponseTimeMs: p99DurationMs,
-        vusMax: metrics.maxVUs, // Denormalized for fast dashboard queries
-        reportS3Url: result.reportUrl,
-        summaryS3Url: result.summaryUrl ?? null,
-        consoleS3Url: result.consoleUrl ?? null,
-        errorDetails: wasCancelled
-          ? 'Cancellation requested by user'
-          : result.error,
-        consoleOutput: result.consoleOutput
-          ? result.consoleOutput.slice(0, 10000)
-          : null,
-      });
+      const actualDurationMs =
+        result.durationMs > 0
+          ? result.durationMs
+          : Math.max(1000, Date.now() - processStartTime);
+      await this.usageTrackerService.completeRunWithUsage(
+        {
+          organizationId: taskData.organizationId,
+          runId,
+          eventType: 'k6_execution',
+          durationMs: actualDurationMs,
+          virtualUsers: metrics.maxVUs > 0 ? metrics.maxVUs : 1,
+          metadata: {
+            jobId: taskData.jobId,
+            testId,
+            location: taskData.location,
+          },
+        },
+        async (transaction) => {
+          // A replay can arrive after completion committed but before BullMQ
+          // acknowledged it. Reuse the existing performance record for this run.
+          const existingPerformanceRun =
+            await transaction.query.k6PerformanceRuns.findFirst({
+              where: and(
+                eq(schema.k6PerformanceRuns.runId, runId),
+                eq(
+                  schema.k6PerformanceRuns.organizationId,
+                  taskData.organizationId,
+                ),
+              ),
+              columns: { id: true },
+            });
+          if (!existingPerformanceRun)
+            await transaction.insert(schema.k6PerformanceRuns).values({
+              testId,
+              runId,
+              jobId: taskData.jobId ?? null,
+              organizationId: taskData.organizationId,
+              projectId: taskData.projectId,
+              location:
+                effectiveJobLocation as (typeof schema.k6PerformanceRuns.$inferInsert)['location'], // Use the task's requested/resolved location
+              status: k6PerformanceStatus,
+              startedAt: new Date(Date.now() - result.durationMs),
+              completedAt: new Date(),
+              durationMs: result.durationMs,
+              summaryJson: result.summary,
+              thresholdsPassed: result.thresholdsPassed,
+              totalRequests,
+              failedRequests,
+              requestRate: requestRateScaled,
+              avgResponseTimeMs: avgDurationMs,
+              p95ResponseTimeMs: p95DurationMs,
+              p99ResponseTimeMs: p99DurationMs,
+              vusMax: metrics.maxVUs, // Denormalized for fast dashboard queries
+              reportS3Url: result.reportUrl,
+              summaryS3Url: result.summaryUrl ?? null,
+              consoleS3Url: result.consoleUrl ?? null,
+              errorDetails: wasCancelled
+                ? 'Cancellation requested by user'
+                : result.error,
+              consoleOutput: result.consoleOutput
+                ? result.consoleOutput.slice(0, 10000)
+                : null,
+            });
 
-      // Update run with final status and artifacts
-      const _durationSeconds = Math.max(
-        0,
-        Math.round(result.durationMs / 1000),
-      );
-      // Use the wasCancelled and isExecutionError checks from above
-      // - 'error': cancelled, timed out, or execution error (Docker not available, etc.)
-      // - 'failed': test ran but thresholds breached or checks failed
-      const runStatus: 'passed' | 'failed' | 'error' =
-        wasCancelled || isExecutionError
-          ? 'error'
-          : result.success
-            ? 'passed'
-            : 'failed';
-      const runUpdate: Record<string, unknown> = {
-        status: runStatus,
-        completedAt: new Date(),
-        durationMs: result.durationMs,
-        reportS3Url: result.reportUrl,
-        logsS3Url: result.logsUrl ?? null,
-      };
+          // Update run with final status and artifacts
+          const _durationSeconds = Math.max(
+            0,
+            Math.round(result.durationMs / 1000),
+          );
+          // Use the wasCancelled and isExecutionError checks from above
+          // - 'error': cancelled, timed out, or execution error (Docker not available, etc.)
+          // - 'failed': test ran but thresholds breached or checks failed
+          const runStatus: 'passed' | 'failed' | 'error' =
+            wasCancelled || isExecutionError
+              ? 'error'
+              : result.success
+                ? 'passed'
+                : 'failed';
+          const runUpdate: Record<string, unknown> = {
+            status: runStatus,
+            completedAt: new Date(),
+            durationMs: result.durationMs,
+            reportS3Url: result.reportUrl,
+            logsS3Url: result.logsUrl ?? null,
+          };
 
-      let metadataExpression: SQL | undefined;
-      if ((result.summary as Record<string, unknown>)?.runId) {
-        metadataExpression = sql`
+          let metadataExpression: SQL | undefined;
+          if ((result.summary as Record<string, unknown>)?.runId) {
+            metadataExpression = sql`
           jsonb_set(
             coalesce(metadata, '{}'::jsonb),
             '{k6RunId}',
             to_jsonb(${String((result.summary as Record<string, unknown>).runId)})
           )
         `;
-      }
+          }
 
-      if (wasCancelled) {
-        runUpdate.errorDetails = 'Cancellation requested by user';
-      } else if (result.timedOut) {
-        const baseExpression =
-          metadataExpression ?? sql`coalesce(metadata, '{}'::jsonb)`;
-        metadataExpression = sql`
+          if (wasCancelled) {
+            runUpdate.errorDetails = 'Cancellation requested by user';
+          } else if (result.timedOut) {
+            const baseExpression =
+              metadataExpression ?? sql`coalesce(metadata, '{}'::jsonb)`;
+            metadataExpression = sql`
           jsonb_set(
             ${baseExpression},
             '{timedOut}',
             to_jsonb(true)
           )
         `;
-        runUpdate.errorDetails =
-          result.error ?? 'k6 execution timed out before completion.';
-      } else if (result.error) {
-        runUpdate.errorDetails = result.error;
-      }
+            runUpdate.errorDetails =
+              result.error ?? 'k6 execution timed out before completion.';
+          } else if (result.error) {
+            runUpdate.errorDetails = result.error;
+          }
 
-      if (metadataExpression) {
-        runUpdate.metadata = metadataExpression;
-      }
+          if (metadataExpression) {
+            runUpdate.metadata = metadataExpression;
+          }
 
-      await this.dbService.db
-        .update(schema.runs)
-        .set(runUpdate)
-        .where(eq(schema.runs.id, runId));
+          await transaction
+            .update(schema.runs)
+            .set(runUpdate)
+            .where(eq(schema.runs.id, runId));
+        },
+      );
 
       // Track K6 usage for billing (even for cancelled runs - they still consumed resources)
       // Use actual duration for cancelled runs, not 0
-      const actualDurationMs =
-        result.durationMs > 0
-          ? result.durationMs
-          : Math.max(1000, Date.now() - processStartTime);
       await this.usageTrackerService
         .trackK6Execution(
           taskData.organizationId,
