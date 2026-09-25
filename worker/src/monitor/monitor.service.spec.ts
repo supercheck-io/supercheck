@@ -66,6 +66,7 @@ describe('MonitorService', () => {
   };
 
   const mockDbService = {
+    getTestById: jest.fn(),
     db: {
       query: {
         monitors: {
@@ -101,9 +102,12 @@ describe('MonitorService', () => {
 
   const mockExecutionService = {
     execute: jest.fn().mockResolvedValue({ success: true }),
+    runSingleTest: jest.fn(),
   };
 
   const mockUsageTrackerService = {
+    completeRunWithUsage: jest.fn(),
+    trackPlaywrightExecution: jest.fn(),
     trackUsage: jest.fn().mockResolvedValue(undefined),
     getUsage: jest.fn().mockResolvedValue({ count: 0 }),
   };
@@ -888,6 +892,60 @@ describe('MonitorService', () => {
   // ==========================================================================
 
   describe('Synthetic Test Monitoring', () => {
+    it.each([false, true])(
+      'preserves the check result when receipt failure is %s',
+      async (failReceipt) => {
+        mockDbService.getTestById.mockResolvedValue({
+          id: 'test-1',
+          title: 'Health',
+          script: 'test("health", async () => {});',
+        });
+        mockDbService.db.query.monitors.findFirst.mockResolvedValue({
+          organizationId: 'org-1',
+        });
+        mockExecutionService.runSingleTest.mockResolvedValue({
+          success: true,
+          executionTimeMs: 1234,
+          testId: 'test-1-execution-unique',
+          reportUrl: 'https://example.com/report',
+        });
+        mockUsageTrackerService.completeRunWithUsage.mockImplementation(
+          async () => {
+            if (failReceipt) throw new Error('receipt unavailable');
+          },
+        );
+        mockUsageTrackerService.trackPlaywrightExecution.mockResolvedValue({
+          blocked: false,
+        });
+        const result = await (
+          service as unknown as {
+            executeSyntheticTest: (
+              id: string,
+              config: { testId: string },
+            ) => Promise<{ isUp: boolean }>;
+          }
+        ).executeSyntheticTest('monitor-1', { testId: 'test-1' });
+        expect(result.isUp).toBe(true);
+        expect(
+          mockUsageTrackerService.completeRunWithUsage,
+        ).toHaveBeenCalledWith(
+          expect.objectContaining({
+            runId: 'test-1-execution-unique',
+            durationMs: 1234,
+            organizationId: 'org-1',
+          }),
+          expect.any(Function),
+        );
+        expect(
+          mockUsageTrackerService.trackPlaywrightExecution,
+        ).toHaveBeenCalledWith(
+          'org-1',
+          1234,
+          expect.objectContaining({ runId: 'test-1-execution-unique' }),
+        );
+      },
+    );
+
     it('should recognize synthetic_test monitor type', () => {
       const syntheticMonitor = { ...mockMonitor, type: 'synthetic_test' };
       expect(syntheticMonitor.type).toBe('synthetic_test');

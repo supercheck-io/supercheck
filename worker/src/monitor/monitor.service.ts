@@ -2805,8 +2805,33 @@ export class MonitorService {
       });
 
       if (monitor?.organizationId) {
+        // Persist exact usage before returning a completed synthetic result.
+        // The execution ID is unique per check, including each location.
+        await this.usageTrackerService
+          .completeRunWithUsage(
+            {
+              organizationId: monitor.organizationId,
+              runId: testResult.testId,
+              eventType: 'playwright_execution',
+              durationMs: responseTimeMs,
+              metadata: {
+                monitorId,
+                testId: test.id,
+                type: 'synthetic_monitor',
+              },
+            },
+            async () => {},
+          )
+          .catch((error: unknown) => {
+            // Billing persistence must not report a healthy monitored target as
+            // down. The immediate tracker below still attempts settlement.
+            this.logger.error(
+              `Failed to persist synthetic usage receipt: ${getErrorMessage(error)}`,
+            );
+          });
         await this.usageTrackerService
           .trackPlaywrightExecution(monitor.organizationId, responseTimeMs, {
+            runId: testResult.testId,
             monitorId,
             testId: test.id,
             type: 'synthetic_monitor',

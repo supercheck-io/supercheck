@@ -76,6 +76,10 @@ npm test
 npm run build
 ```
 
+Worker receipt tests run with embedded PostgreSQL locally. PR validation and
+Release Certification also run them against disposable PostgreSQL 18, including
+concurrent settlement tests. No local database setup is required.
+
 ### Documentation
 
 ```bash

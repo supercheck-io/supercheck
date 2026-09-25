@@ -142,6 +142,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: execution_usage_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
     steps:
       - name: Checkout code
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -177,6 +191,7 @@ jobs:
         run: npm run test:cov -- --maxWorkers=2 --cacheDirectory=.jest-cache
         env:
           NODE_ENV: test
+          EXECUTION_USAGE_TEST_DATABASE_URL: postgresql://postgres@localhost:5432/execution_usage_test
 
       - name: Upload coverage
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7

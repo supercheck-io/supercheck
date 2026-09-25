@@ -1017,15 +1017,8 @@ export class ExecutionService implements OnModuleDestroy {
         s3Url: s3Url ?? undefined,
       });
 
-      // Update the run record in the database with the final status and formatted duration
-      try {
-        await this.dbService.updateRunStatus(runId, finalStatus, durationStr);
-      } catch (updateError) {
-        this.logger.error(
-          `[${runId}] Error updating run status/duration: ${(updateError as Error).message}`,
-          (updateError as Error).stack,
-        );
-      }
+      // The processor commits the terminal run status and durable usage receipt
+      // together once this result returns. Reports can be uploaded beforehand.
       this.logger.log(
         `[Playwright Job] ${runId} ${finalStatus} (${durationMs}ms, ${testScripts.length} tests)`,
       );
@@ -1078,14 +1071,7 @@ export class ExecutionService implements OnModuleDestroy {
           ),
         );
 
-      // Store final run result with error - use error status for cancellation
-      await this.dbService
-        .updateRunStatus(runId, finalStatus, '0ms', errorDetails)
-        .catch((updateErr) =>
-          this.logger.error(
-            `[${runId}] Failed to update run status on error: ${(updateErr as Error).message}`,
-          ),
-        );
+      // The processor persists the returned error/cancellation result with usage.
 
       // Set finalResult for error case
       finalResult = {
