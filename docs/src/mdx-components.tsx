@@ -31,16 +31,6 @@ export function getMDXComponents(components?: MDXComponents): MDXComponents {
   };
 }
 
-declare module "mdx/types.js" {
-  // Augment the MDX types to make it understand React.
-  namespace JSX {
-    type Element = React.JSX.Element;
-    type ElementClass = React.JSX.ElementClass;
-    type ElementType = React.JSX.ElementType;
-    type IntrinsicElements = React.JSX.IntrinsicElements;
-  }
-}
-
 declare global {
   type MDXProvidedComponents = ReturnType<typeof getMDXComponents>;
 }
