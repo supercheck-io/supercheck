@@ -6,6 +6,7 @@
   "defaultOpen": true,
   "pages": [
     "welcome",
+    "architecture",
     "---Deployment---",
     "deployment",
     "---Communicate---",

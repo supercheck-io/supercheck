@@ -28,3 +28,9 @@
   X-Content-Type-Options: nosniff
   X-Frame-Options: DENY
   Referrer-Policy: strict-origin-when-cross-origin
+
+# Interactive diagrams are framed by docs pages on this origin.
+# Detach the global DENY so the iframe can render, but keep same-origin framing rules.
+/diagrams/*
+  ! X-Frame-Options
+  Content-Security-Policy: frame-ancestors 'self'

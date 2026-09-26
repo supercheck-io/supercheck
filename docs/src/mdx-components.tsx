@@ -6,6 +6,7 @@ import { Step, Steps } from "fumadocs-ui/components/steps";
 import { Card, Cards } from "fumadocs-ui/components/card";
 import { Accordion, Accordions } from "fumadocs-ui/components/accordion";
 import { Mermaid } from "./components/mdx/mermaid";
+import { DiagramEmbed } from "./components/mdx/diagram-embed";
 import { APIPage } from "./components/api-page";
 import * as icons from "lucide-react";
 
@@ -24,6 +25,7 @@ export function getMDXComponents(components?: MDXComponents): MDXComponents {
     Accordion,
     Accordions,
     Mermaid,
+    DiagramEmbed,
     APIPage,
     ...components,
   };

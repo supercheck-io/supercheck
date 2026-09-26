@@ -1,0 +1,111 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Supercheck",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "test-run-path",
+        "label": "Test run path",
+        "focus": ["users", "app", "queue", "worker", "k8s", "postgres", "storage"],
+        "note": "Manual or scheduled run: auth and admission, sandboxed execution, persisted artifacts."
+      },
+      {
+        "id": "schedules-monitors",
+        "label": "Schedules and monitors",
+        "focus": ["scheduler", "queue", "worker", "postgres", "notify"],
+        "note": "Cron schedulers enqueue checks; workers fan out regionally, evaluate alert thresholds, and open incidents."
+      },
+      {
+        "id": "realtime-status",
+        "label": "Realtime status",
+        "focus": ["queue", "app", "users", "storage"],
+        "note": "BullMQ QueueEvents and Redis pub/sub feed SSE streams for run status and k6 console output."
+      },
+      {
+        "id": "ai-and-sre",
+        "label": "AI and SRE",
+        "focus": ["app", "sre", "ai", "tools", "notify"],
+        "note": "AI repair and generation, background alert triage, and read-only investigations with opted-in connectors."
+      },
+      {
+        "id": "entry-and-access",
+        "label": "Entry and access",
+        "focus": ["users", "cli", "auth", "app"],
+        "note": "Sessions, CLI tokens, trigger keys, and RBAC gate every request into the platform."
+      }
+    ]
+  },
+  "components": [
+    { "id": "cli", "type": "external", "label": "CLI + CI", "sublabel": "Monitoring-as-code", "pos": [30, 120], "size": [140, 56] },
+    { "id": "auth", "type": "security", "label": "Auth + RBAC", "sublabel": "Better Auth - RBAC", "pos": [260, 120], "size": [160, 56] },
+    { "id": "scheduler", "type": "backend", "label": "Schedulers", "sublabel": "cron + monitors", "pos": [530, 120], "size": [150, 56] },
+    { "id": "users", "type": "external", "label": "Users", "sublabel": "UI + recorder", "pos": [40, 280], "size": [130, 64] },
+    { "id": "app", "type": "frontend", "label": "Supercheck App", "sublabel": "UI, API, actions", "brand": "next-js", "pos": [230, 280], "size": [160, 64] },
+    { "id": "queue", "type": "messagebus", "label": "Redis + BullMQ", "sublabel": "BullMQ - capacity", "brand": "redis", "pos": [530, 280], "size": [150, 64] },
+    { "id": "worker", "type": "backend", "label": "NestJS Worker", "sublabel": "runs - k6 - monitors", "pos": [760, 280], "size": [160, 64] },
+    { "id": "k8s", "type": "cloud", "label": "Kubernetes Jobs", "sublabel": "gVisor - Playwright - k6", "brand": "kubernetes", "pos": [990, 280], "size": [160, 64] },
+    { "id": "postgres", "type": "database", "label": "PostgreSQL", "sublabel": "Drizzle ORM", "brand": "postgresql", "pos": [235, 470], "size": [150, 56] },
+    { "id": "sre", "type": "backend", "label": "AI SRE", "sublabel": "Investigations - triage", "pos": [530, 470], "size": [150, 56] },
+    { "id": "ai", "type": "external", "label": "AI Providers", "sublabel": "Multi-provider AI", "pos": [30, 470], "size": [140, 56] },
+    { "id": "storage", "type": "cloud", "label": "Object Storage", "sublabel": "S3-compatible", "pos": [765, 470], "size": [150, 56] },
+    { "id": "notify", "type": "external", "label": "Alert Channels", "sublabel": "Alert delivery", "pos": [1120, 470], "size": [140, 56] },
+    { "id": "tools", "type": "external", "label": "Observability + DevOps", "sublabel": "K8s - Prometheus - Grafana", "pos": [530, 600], "size": [150, 56] },
+    { "id": "status", "type": "external", "label": "Status Pages", "sublabel": "Incidents - subscribers", "pos": [30, 600], "size": [150, 56] }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "Supercheck platform", "wraps": ["auth", "scheduler", "app", "sre", "queue", "worker", "postgres", "storage"] },
+    { "kind": "security-group", "label": "Sandboxed execution", "wraps": ["k8s"] }
+  ],
+  "connections": [
+    { "id": "users-to-app", "from": "users", "to": "app", "label": "HTTPS", "variant": "emphasis" },
+    { "id": "cli-to-app", "from": "cli", "to": "app", "label": "REST API", "variant": "dashed", "fromSide": "bottom", "toSide": "top" },
+    { "id": "auth-to-app", "from": "auth", "to": "app", "label": "sessions - RBAC", "variant": "security", "fromSide": "bottom", "toSide": "top" },
+    { "id": "scheduler-to-queue", "from": "scheduler", "to": "queue", "label": "cron enqueue", "labelAt": [605, 190] },
+    { "id": "app-to-queue", "from": "app", "to": "queue", "label": "enqueue runs", "variant": "emphasis", "labelAt": [414, 358] },
+    { "id": "queue-to-worker", "from": "queue", "to": "worker" },
+    { "id": "queue-to-app", "from": "queue", "to": "app", "label": "SSE events", "variant": "dashed", "labelAt": [506, 358] },
+    { "id": "worker-to-k8s", "from": "worker", "to": "k8s", "label": "run Job" },
+    { "id": "app-to-postgres", "from": "app", "to": "postgres", "label": "Drizzle ORM", "fromSide": "bottom", "toSide": "top", "labelAt": [310, 445] },
+    { "id": "worker-to-postgres", "from": "worker", "to": "postgres", "label": "status - results", "fromSide": "left", "toSide": "bottom", "via": [[720, 312], [720, 675], [310, 675]], "labelAt": [450, 675] },
+    { "id": "worker-to-storage", "from": "worker", "to": "storage", "label": "artifacts", "labelAt": [840, 358] },
+    { "id": "app-to-ai", "from": "app", "to": "ai", "label": "AI features", "variant": "dashed", "fromSide": "bottom", "toSide": "top" },
+    { "id": "worker-to-notify", "from": "worker", "to": "notify", "label": "alerts", "variant": "dashed" },
+    { "id": "queue-to-sre", "from": "queue", "to": "sre", "label": "alert triage", "variant": "dashed", "fromSide": "bottom", "toSide": "top", "labelAt": [605, 437] },
+    { "id": "sre-to-tools", "from": "sre", "to": "tools", "label": "connectors", "variant": "dashed", "fromSide": "bottom", "toSide": "top", "labelAt": [605, 566] },
+    { "id": "app-to-status", "from": "app", "to": "status", "label": "publish status", "fromSide": "bottom", "toSide": "top", "via": [[310, 420], [210, 420], [210, 580], [105, 580]], "labelAt": [210, 540] }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Entry and access",
+      "items": [
+        "Dashboard, playground, recorder",
+        "CLI and CI use sck_* tokens",
+        "Better Auth plus 6-tier RBAC",
+        "Scoped per organization and project"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Execution engine",
+      "items": [
+        "Schedulers enqueue tests and monitors",
+        "Capacity manager admits each run",
+        "Workers drain global and regional queues",
+        "Runs become gVisor K8s Jobs"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Data, AI, and alerts",
+      "items": [
+        "Postgres stores runs, usage, audits",
+        "Redis holds queues and heartbeats",
+        "MinIO or R2 keeps reports and traces",
+        "AI SRE reads opted-in connectors"
+      ]
+    }
+  ]
+}
