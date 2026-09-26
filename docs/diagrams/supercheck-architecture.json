@@ -7,13 +7,13 @@
     "views": [
       {
         "id": "test-run-path",
-        "label": "Test run path",
+        "label": "Run path",
         "focus": ["users", "app", "queue", "worker", "k8s", "postgres", "storage"],
         "note": "Manual or scheduled run: auth and admission, sandboxed execution, persisted artifacts."
       },
       {
         "id": "schedules-monitors",
-        "label": "Schedules and monitors",
+        "label": "Monitor scheduling",
         "focus": ["scheduler", "queue", "worker", "postgres", "notify"],
         "note": "Cron schedulers enqueue checks; workers fan out regionally, evaluate alert thresholds, and open incidents."
       },
@@ -25,13 +25,13 @@
       },
       {
         "id": "ai-and-sre",
-        "label": "AI and SRE",
+        "label": "AI SRE",
         "focus": ["app", "sre", "ai", "tools", "notify"],
         "note": "AI repair and generation, background alert triage, and read-only investigations with opted-in connectors."
       },
       {
         "id": "entry-and-access",
-        "label": "Entry and access",
+        "label": "Access control",
         "focus": ["users", "cli", "auth", "app"],
         "note": "Sessions, CLI tokens, trigger keys, and RBAC gate every request into the platform."
       }
@@ -79,7 +79,7 @@
   "cards": [
     {
       "dot": "cyan",
-      "title": "Entry and access",
+      "title": "Access control",
       "items": [
         "Dashboard, playground, recorder",
         "CLI and CI use sck_* tokens",
@@ -99,7 +99,7 @@
     },
     {
       "dot": "violet",
-      "title": "Data, AI, and alerts",
+      "title": "Data services",
       "items": [
         "Postgres stores runs, usage, audits",
         "Redis holds queues and heartbeats",

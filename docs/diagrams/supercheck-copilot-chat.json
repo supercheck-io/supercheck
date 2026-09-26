@@ -1,0 +1,291 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Copilot Chat",
+    "viewBox": [
+      1080,
+      600
+    ],
+    "column_fit": "spread",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "admission",
+        "label": "Admission",
+        "focus": [
+          "you",
+          "chat",
+          "api"
+        ],
+        "note": "Same-origin, session, RBAC, and the Redis rate limit run before any model call."
+      },
+      {
+        "id": "conversation-state",
+        "label": "Conversation state",
+        "focus": [
+          "api",
+          "pg"
+        ],
+        "note": "Conversations and messages are scoped to the organization, project, and user; incident scope is verified."
+      },
+      {
+        "id": "evidence-tools",
+        "label": "Evidence tools",
+        "focus": [
+          "api",
+          "ai",
+          "pg",
+          "live"
+        ],
+        "note": "Stored evidence is always available; live read-only connectors need incident scope, permission, and opt-in."
+      },
+      {
+        "id": "answer",
+        "label": "Streaming answer",
+        "focus": [
+          "you",
+          "chat",
+          "api",
+          "ai"
+        ],
+        "note": "The model streams UI message chunks; the assistant row is saved when the stream finishes."
+      }
+    ]
+  },
+  "participants": [
+    {
+      "id": "you",
+      "type": "external",
+      "label": "You",
+      "sublabel": "Copilot chat"
+    },
+    {
+      "id": "chat",
+      "type": "frontend",
+      "label": "Copilot UI",
+      "sublabel": "assistant-ui"
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "SRE Chat API",
+      "sublabel": "/api/sre/chat"
+    },
+    {
+      "id": "pg",
+      "type": "database",
+      "label": "PostgreSQL",
+      "sublabel": "chats - evidence"
+    },
+    {
+      "id": "ai",
+      "type": "external",
+      "label": "AI Provider",
+      "sublabel": "AI_PROVIDER"
+    },
+    {
+      "id": "live",
+      "type": "external",
+      "label": "Connectors",
+      "sublabel": "read-only"
+    }
+  ],
+  "segments": [
+    {
+      "from": 150,
+      "to": 228,
+      "label": "Admit"
+    },
+    {
+      "from": 236,
+      "to": 454,
+      "label": "Gather evidence"
+    },
+    {
+      "from": 460,
+      "to": 508,
+      "label": "Stream"
+    }
+  ],
+  "messages": [
+    {
+      "id": "message-1",
+      "from": "you",
+      "to": "chat",
+      "y": 160,
+      "label": "Ask a question",
+      "variant": "default"
+    },
+    {
+      "id": "message-2",
+      "from": "chat",
+      "to": "api",
+      "y": 188,
+      "label": "POST /api/sre/chat/assistant-ui",
+      "variant": "emphasis",
+      "note": "same-origin - session - RBAC - rate limit"
+    },
+    {
+      "id": "message-3",
+      "from": "api",
+      "to": "pg",
+      "y": 216,
+      "label": "load conversation - append user message",
+      "variant": "emphasis"
+    },
+    {
+      "id": "message-4",
+      "from": "api",
+      "to": "ai",
+      "y": 244,
+      "label": "streamText - 4 steps - 45 s",
+      "variant": "emphasis"
+    },
+    {
+      "id": "message-5",
+      "from": "ai",
+      "to": "api",
+      "y": 272,
+      "label": "tool calls",
+      "variant": "return"
+    },
+    {
+      "id": "message-6",
+      "from": "api",
+      "to": "pg",
+      "y": 300,
+      "label": "read stored evidence",
+      "variant": "default"
+    },
+    {
+      "id": "message-7",
+      "from": "pg",
+      "to": "api",
+      "y": 328,
+      "label": "citations",
+      "variant": "return"
+    },
+    {
+      "id": "message-8",
+      "from": "api",
+      "to": "live",
+      "y": 356,
+      "label": "search live evidence - opt-in",
+      "variant": "dashed"
+    },
+    {
+      "id": "message-9",
+      "from": "live",
+      "to": "api",
+      "y": 384,
+      "label": "sanitized rows",
+      "variant": "return"
+    },
+    {
+      "id": "message-10",
+      "from": "api",
+      "to": "ai",
+      "y": 412,
+      "label": "tool results",
+      "variant": "default"
+    },
+    {
+      "id": "message-11",
+      "from": "ai",
+      "to": "api",
+      "y": 440,
+      "label": "final answer",
+      "variant": "return"
+    },
+    {
+      "id": "message-12",
+      "from": "api",
+      "to": "chat",
+      "y": 468,
+      "label": "SSE chunks - metadata",
+      "variant": "return"
+    },
+    {
+      "id": "message-13",
+      "from": "chat",
+      "to": "you",
+      "y": 496,
+      "label": "streamed answer - citations",
+      "variant": "return"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Read-only design",
+      "items": [
+        "Stored evidence tools are always available in incident chat",
+        "Live connectors need incident scope, permission, and opt-in",
+        "Tool calls are audited; connector credentials stay encrypted"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Scoped access",
+      "items": [
+        "30 messages per minute per user in Redis; failure fails closed",
+        "Conversations are scoped to organization, project, and user",
+        "History caps at 50 messages and 20,000 characters"
+      ]
+    },
+    {
+      "dot": "orange",
+      "title": "Agent limits",
+      "items": [
+        "4 model steps, 1200 output tokens, 45 second timeout",
+        "Live search is capped at 10 rows and 15 seconds",
+        "Assistant message is persisted when the stream finishes"
+      ]
+    }
+  ],
+  "activations": [
+    {
+      "participant": "chat",
+      "from": 154,
+      "to": 202,
+      "type": "frontend"
+    },
+    {
+      "participant": "api",
+      "from": 182,
+      "to": 504,
+      "type": "backend"
+    },
+    {
+      "participant": "pg",
+      "from": 210,
+      "to": 224,
+      "type": "database"
+    },
+    {
+      "participant": "ai",
+      "from": 238,
+      "to": 446,
+      "type": "external"
+    },
+    {
+      "participant": "pg",
+      "from": 294,
+      "to": 334,
+      "type": "database"
+    },
+    {
+      "participant": "live",
+      "from": 350,
+      "to": 390,
+      "type": "external"
+    },
+    {
+      "participant": "chat",
+      "from": 462,
+      "to": 500,
+      "type": "frontend"
+    }
+  ]
+}

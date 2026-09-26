@@ -4,6 +4,7 @@
   "pages": [
     "index",
     "incidents",
+    "copilot",
     "connectors"
   ]
 }

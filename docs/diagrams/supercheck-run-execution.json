@@ -1,0 +1,322 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Run Execution",
+    "viewBox": [
+      1080,
+      600
+    ],
+    "column_fit": "spread",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "admit-and-queue",
+        "label": "Run admission",
+        "focus": [
+          "you",
+          "api",
+          "redis",
+          "queue"
+        ],
+        "note": "Redis Lua reserves capacity per organization; full queues reject or park the run until a slot frees."
+      },
+      {
+        "id": "sandboxed-execution",
+        "label": "Sandboxed execution",
+        "focus": [
+          "worker",
+          "sandbox",
+          "store"
+        ],
+        "note": "The worker turns the run into a gVisor Job, captures the outcome, and stores reports and usage."
+      },
+      {
+        "id": "live-status-and-cancel",
+        "label": "Cancel flow",
+        "focus": [
+          "queue",
+          "api",
+          "you",
+          "redis",
+          "worker",
+          "sandbox"
+        ],
+        "note": "Queue events feed SSE updates; cancellation writes a Redis signal the worker polls to delete the Job."
+      }
+    ]
+  },
+  "participants": [
+    {
+      "id": "you",
+      "type": "external",
+      "label": "Trigger",
+      "sublabel": "UI - CLI - schedule"
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "Supercheck API",
+      "sublabel": "auth - capacity"
+    },
+    {
+      "id": "redis",
+      "type": "database",
+      "label": "Redis",
+      "sublabel": "capacity state",
+      "brand": "redis"
+    },
+    {
+      "id": "queue",
+      "type": "messagebus",
+      "label": "BullMQ",
+      "sublabel": "global + regional"
+    },
+    {
+      "id": "worker",
+      "type": "backend",
+      "label": "Worker",
+      "sublabel": "concurrency 1"
+    },
+    {
+      "id": "sandbox",
+      "type": "cloud",
+      "label": "K8s + gVisor",
+      "sublabel": "supercheck-execution",
+      "brand": "kubernetes"
+    },
+    {
+      "id": "store",
+      "type": "database",
+      "label": "Postgres + S3",
+      "sublabel": "results - artifacts"
+    }
+  ],
+  "segments": [
+    {
+      "from": 150,
+      "to": 228,
+      "label": "Admit"
+    },
+    {
+      "from": 236,
+      "to": 370,
+      "label": "Execute"
+    },
+    {
+      "from": 380,
+      "to": 512,
+      "label": "Observe and cancel"
+    }
+  ],
+  "messages": [
+    {
+      "id": "message-1",
+      "from": "you",
+      "to": "api",
+      "y": 160,
+      "label": "Run a test or job",
+      "variant": "default"
+    },
+    {
+      "id": "message-2",
+      "from": "api",
+      "to": "redis",
+      "y": 188,
+      "label": "admit - capacity Lua",
+      "variant": "emphasis"
+    },
+    {
+      "id": "message-3",
+      "from": "redis",
+      "to": "api",
+      "y": 216,
+      "label": "immediate / queued / reject",
+      "variant": "return"
+    },
+    {
+      "id": "message-4",
+      "from": "api",
+      "to": "queue",
+      "y": 244,
+      "label": "enqueue - jobId = runId",
+      "variant": "emphasis"
+    },
+    {
+      "id": "message-5",
+      "from": "queue",
+      "to": "worker",
+      "y": 272,
+      "label": "deliver - 70 min lock",
+      "variant": "default"
+    },
+    {
+      "id": "message-6",
+      "from": "worker",
+      "to": "sandbox",
+      "y": 300,
+      "label": "create gVisor Job",
+      "variant": "emphasis"
+    },
+    {
+      "id": "message-7",
+      "from": "sandbox",
+      "to": "worker",
+      "y": 328,
+      "label": "logs - exit code",
+      "variant": "return"
+    },
+    {
+      "id": "message-8",
+      "from": "worker",
+      "to": "store",
+      "y": 356,
+      "label": "report - artifacts - usage",
+      "variant": "emphasis"
+    },
+    {
+      "id": "message-9",
+      "from": "queue",
+      "to": "api",
+      "y": 392,
+      "label": "queue events",
+      "variant": "dashed"
+    },
+    {
+      "id": "message-10",
+      "from": "api",
+      "to": "you",
+      "y": 420,
+      "label": "SSE status - report",
+      "variant": "return"
+    },
+    {
+      "id": "message-11",
+      "from": "you",
+      "to": "api",
+      "y": 448,
+      "label": "Cancel run",
+      "variant": "dashed"
+    },
+    {
+      "id": "message-12",
+      "from": "api",
+      "to": "redis",
+      "y": 476,
+      "label": "cancel signal",
+      "variant": "dashed"
+    },
+    {
+      "id": "message-13",
+      "from": "worker",
+      "to": "sandbox",
+      "y": 504,
+      "label": "delete Job - exit 137",
+      "variant": "dashed",
+      "note": "worker polls the signal every second"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Admission control",
+      "items": [
+        "Redis Lua reserves running and queued capacity per organization",
+        "Runs start, wait in FIFO order, or are rejected when full",
+        "A promoter retries queued runs every 5 seconds; errors fail closed"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Isolated execution",
+      "items": [
+        "Each run becomes a gVisor Job in supercheck-execution",
+        "Scripts arrive through Job-owned Secrets; no service account token",
+        "Reports, screenshots, and traces land in S3 or R2"
+      ]
+    },
+    {
+      "dot": "orange",
+      "title": "Status recovery",
+      "items": [
+        "Queue events stream to the UI over SSE",
+        "3 attempts with backoff; stalled runs recovered after about 80 minutes",
+        "Cancellation deletes the Job and records an error"
+      ]
+    }
+  ],
+  "activations": [
+    {
+      "participant": "api",
+      "from": 182,
+      "to": 508,
+      "type": "backend"
+    },
+    {
+      "participant": "redis",
+      "from": 182,
+      "to": 222,
+      "type": "database"
+    },
+    {
+      "participant": "queue",
+      "from": 238,
+      "to": 280,
+      "type": "messagebus"
+    },
+    {
+      "participant": "worker",
+      "from": 266,
+      "to": 362,
+      "type": "backend"
+    },
+    {
+      "participant": "sandbox",
+      "from": 294,
+      "to": 334,
+      "type": "cloud"
+    },
+    {
+      "participant": "store",
+      "from": 350,
+      "to": 362,
+      "type": "database"
+    },
+    {
+      "participant": "queue",
+      "from": 386,
+      "to": 398,
+      "type": "messagebus"
+    },
+    {
+      "participant": "you",
+      "from": 414,
+      "to": 426,
+      "type": "external"
+    },
+    {
+      "participant": "you",
+      "from": 442,
+      "to": 454,
+      "type": "external"
+    },
+    {
+      "participant": "redis",
+      "from": 470,
+      "to": 482,
+      "type": "database"
+    },
+    {
+      "participant": "worker",
+      "from": 466,
+      "to": 510,
+      "type": "backend"
+    },
+    {
+      "participant": "sandbox",
+      "from": 496,
+      "to": 510,
+      "type": "cloud"
+    }
+  ]
+}

@@ -1,0 +1,306 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Monitor Alerts",
+    "viewBox": [
+      1080,
+      600
+    ],
+    "column_fit": "spread",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "schedule-and-probe",
+        "label": "Scheduled probes",
+        "focus": [
+          "scheduler",
+          "redis",
+          "worker",
+          "target"
+        ],
+        "note": "A repeatable job enqueues one check per live region; the worker runs the probe for its type."
+      },
+      {
+        "id": "aggregate-locations",
+        "label": "Aggregate locations",
+        "focus": [
+          "worker",
+          "redis",
+          "pg"
+        ],
+        "note": "Each region writes its row; the last region aggregates with the configured strategy."
+      },
+      {
+        "id": "alert-and-triage",
+        "label": "Alert triage",
+        "focus": [
+          "worker",
+          "channels",
+          "pg",
+          "sre"
+        ],
+        "note": "Thresholds decide failure and recovery alerts; alert history can open an AI SRE incident."
+      }
+    ]
+  },
+  "participants": [
+    {
+      "id": "scheduler",
+      "type": "backend",
+      "label": "Monitor Scheduler",
+      "sublabel": "repeatable jobs"
+    },
+    {
+      "id": "redis",
+      "type": "database",
+      "label": "Redis",
+      "sublabel": "queues - aggregation",
+      "brand": "redis"
+    },
+    {
+      "id": "worker",
+      "type": "backend",
+      "label": "Regional Worker",
+      "sublabel": "probe - evaluate"
+    },
+    {
+      "id": "target",
+      "type": "external",
+      "label": "Your Service",
+      "sublabel": "HTTP - TCP - SSL"
+    },
+    {
+      "id": "pg",
+      "type": "database",
+      "label": "PostgreSQL",
+      "sublabel": "results - status"
+    },
+    {
+      "id": "channels",
+      "type": "external",
+      "label": "Alert Channels",
+      "sublabel": "email - Slack - webhook"
+    },
+    {
+      "id": "sre",
+      "type": "backend",
+      "label": "AI SRE",
+      "sublabel": "incident triage"
+    }
+  ],
+  "segments": [
+    {
+      "from": 150,
+      "to": 228,
+      "label": "Schedule"
+    },
+    {
+      "from": 236,
+      "to": 340,
+      "label": "Check and aggregate"
+    },
+    {
+      "from": 348,
+      "to": 480,
+      "label": "Alert"
+    }
+  ],
+  "messages": [
+    {
+      "id": "message-1",
+      "from": "scheduler",
+      "to": "redis",
+      "y": 160,
+      "label": "repeatable - every frequency",
+      "variant": "emphasis"
+    },
+    {
+      "id": "message-2",
+      "from": "redis",
+      "to": "worker",
+      "y": 188,
+      "label": "regional monitor job",
+      "variant": "default"
+    },
+    {
+      "id": "message-3",
+      "from": "worker",
+      "to": "target",
+      "y": 216,
+      "label": "probe - HTTP / TCP / Playwright",
+      "variant": "emphasis"
+    },
+    {
+      "id": "message-4",
+      "from": "target",
+      "to": "worker",
+      "y": 244,
+      "label": "response - timing",
+      "variant": "return"
+    },
+    {
+      "id": "message-5",
+      "from": "worker",
+      "to": "pg",
+      "y": 272,
+      "label": "result - status - counters",
+      "variant": "emphasis"
+    },
+    {
+      "id": "message-6",
+      "from": "worker",
+      "to": "redis",
+      "y": 300,
+      "label": "aggregate group",
+      "variant": "dashed"
+    },
+    {
+      "id": "message-7",
+      "from": "redis",
+      "to": "worker",
+      "y": 328,
+      "label": "all locations reported",
+      "variant": "return"
+    },
+    {
+      "id": "message-8",
+      "from": "worker",
+      "to": "channels",
+      "y": 356,
+      "label": "alert - failure / recovery",
+      "variant": "emphasis",
+      "note": "sends only after the configured thresholds"
+    },
+    {
+      "id": "message-9",
+      "from": "channels",
+      "to": "worker",
+      "y": 384,
+      "label": "delivery status",
+      "variant": "return"
+    },
+    {
+      "id": "message-10",
+      "from": "worker",
+      "to": "pg",
+      "y": 412,
+      "label": "alert history",
+      "variant": "default"
+    },
+    {
+      "id": "message-11",
+      "from": "redis",
+      "to": "sre",
+      "y": 440,
+      "label": "triage job",
+      "variant": "dashed",
+      "note": "only when triage is enabled and the alert was sent"
+    },
+    {
+      "id": "message-12",
+      "from": "sre",
+      "to": "pg",
+      "y": 468,
+      "label": "incident - timeline",
+      "variant": "emphasis"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Regional scheduling",
+      "items": [
+        "One repeatable job per monitor at its configured frequency",
+        "One check per enabled region, deduplicated by cycle ID",
+        "Regions without a live worker heartbeat are skipped"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Status aggregation",
+      "items": [
+        "Each region saves its own row; the Redis key expires in 120 seconds",
+        "all / majority / any strategies decide the overall status",
+        "Failure and recovery thresholds cap follow-up alerts at 3"
+      ]
+    },
+    {
+      "dot": "orange",
+      "title": "Alert triage",
+      "items": [
+        "Fan-out to email, Slack, webhook, Telegram, Discord, Teams",
+        "Every attempt lands in alert_history",
+        "Optional AI SRE incident and background triage"
+      ]
+    }
+  ],
+  "activations": [
+    {
+      "participant": "scheduler",
+      "from": 154,
+      "to": 166,
+      "type": "backend"
+    },
+    {
+      "participant": "redis",
+      "from": 154,
+      "to": 194,
+      "type": "database"
+    },
+    {
+      "participant": "worker",
+      "from": 182,
+      "to": 418,
+      "type": "backend"
+    },
+    {
+      "participant": "target",
+      "from": 210,
+      "to": 250,
+      "type": "external"
+    },
+    {
+      "participant": "pg",
+      "from": 266,
+      "to": 278,
+      "type": "database"
+    },
+    {
+      "participant": "redis",
+      "from": 294,
+      "to": 334,
+      "type": "database"
+    },
+    {
+      "participant": "channels",
+      "from": 350,
+      "to": 390,
+      "type": "external"
+    },
+    {
+      "participant": "pg",
+      "from": 406,
+      "to": 418,
+      "type": "database"
+    },
+    {
+      "participant": "redis",
+      "from": 434,
+      "to": 446,
+      "type": "database"
+    },
+    {
+      "participant": "sre",
+      "from": 434,
+      "to": 480,
+      "type": "backend"
+    },
+    {
+      "participant": "pg",
+      "from": 462,
+      "to": 474,
+      "type": "database"
+    }
+  ]
+}

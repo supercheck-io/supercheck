@@ -13,27 +13,13 @@ You can create an incident in two ways:
 
 Both paths create the same incident workspace.
 
-```mermaid
-%%{init: {"theme":"base","themeVariables":{"fontFamily":"ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif","actorBkg":"#eef2ff","actorBorder":"#6366f1","actorTextColor":"#312e81","actorLineColor":"#94a3b8","signalColor":"#6366f1","signalTextColor":"#64748b","labelBoxBkgColor":"#fef3c7","labelBoxBorderColor":"#d97706","labelTextColor":"#78350f","loopTextColor":"#64748b","activationBkgColor":"#ddd6fe","activationBorderColor":"#7c3aed","noteBkgColor":"#fef3c7","noteBorderColor":"#d97706","noteTextColor":"#78350f","textColor":"#64748b","lineColor":"#94a3b8","mainBkg":"transparent"}}}%%
-sequenceDiagram
-    participant Alerts as Communicate Alerts
-    participant Inc as Incident queue
-    participant Detail as Incident detail
-    participant Agent as AI SRE agent
-    participant Copilot as Copilot
+## SRE Investigation
 
-    Alerts->>Inc: Promote a signal or create manually
-    Inc->>Detail: Open incident workspace
-    Note over Detail: Investigation · Evidence · Brief tabs
-    Detail->>Agent: Run read-only investigation
-    opt Live sources enabled by an authorized role
-        Agent->>Agent: Query scoped read-only connectors
-    end
-    Agent-->>Detail: Cited brief and recommended checks
-    Detail->>Detail: Save sanitized report snapshot
-    Detail->>Copilot: Optional incident-scoped follow-up chat
-    Note over Copilot: Viewers get read-only access without a composer
-```
+<DiagramEmbed
+  src="/diagrams/supercheck-ai-sre-investigation.html"
+  title="SRE Investigation"
+  height={900}
+/>
 
 ## Incident Detail
 
