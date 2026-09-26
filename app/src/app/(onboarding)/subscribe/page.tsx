@@ -316,9 +316,9 @@ function SubscribePageContent() {
             tagline="For large organizations with custom requirements"
             badge="Tailored"
             keyFeatures={[
-              "Unlimited uptime monitors",
+              "Custom uptime monitor allowance",
               "Custom Playwright & K6 allowances",
-              "Unlimited AI credits",
+              "Custom AI credit allowance",
               "Custom AI SRE investigation volume",
               "Unlimited team members & projects",
               "Custom data retention policies",

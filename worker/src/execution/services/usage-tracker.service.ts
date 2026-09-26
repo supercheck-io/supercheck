@@ -403,7 +403,7 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
             new Date(now.getFullYear(), now.getMonth() + 1, 1),
           createdAt: now,
         })
-        .returning({ id: schema.usageEvents.id });
+        .returning({ id: schema.usageEvents.id, billingPeriodEnd: schema.usageEvents.billingPeriodEnd });
       if (!created) throw new Error('Usage ledger insert returned no event');
       await markSettled();
       return created;
@@ -417,6 +417,7 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
         eventName,
         units,
         now,
+        event.billingPeriodEnd,
       ).catch((error: unknown) =>
         this.logger.warn(
           `[Usage] Failed to sync to Polar: ${error instanceof Error ? error.message : String(error)}`,
@@ -434,6 +435,7 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
     meterName: string,
     units: number,
     timestamp: Date,
+    billingPeriodEnd: Date,
   ): Promise<void> {
     const accessToken = process.env.POLAR_ACCESS_TOKEN;
     if (!accessToken) {
@@ -444,6 +446,9 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
     }
 
     try {
+      if (!billingPeriodEnd || billingPeriodEnd.getTime() <= Date.now()) {
+        throw new Error('Billing period closed; manual reconciliation required');
+      }
       // Get organization's Polar customer ID
       const org = await this.db.query.organization.findFirst({
         where: eq(schema.organization.id, organizationId),
@@ -498,6 +503,14 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
         const errorText = await response.text();
         throw new Error(`Polar API error (${response.status}): ${errorText}`);
       }
+      const result = await response.json();
+      if (
+        !Number.isInteger(result?.inserted) || result.inserted < 0 ||
+        !Number.isInteger(result?.duplicates ?? 0) || (result.duplicates ?? 0) < 0 ||
+        result.inserted + (result.duplicates ?? 0) !== 1
+      ) {
+        throw new Error('Polar did not acknowledge the usage event');
+      }
 
       // Mark as synced
       await this.db.execute(sql`
@@ -534,130 +547,52 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
    */
   private async checkSpendingLimit(
     organizationId: string,
+    org: typeof schema.organization.$inferSelect,
   ): Promise<{ blocked: boolean; reason?: string }> {
-    try {
-      // Get billing settings
-      const settings = await this.db.execute<{
-        enable_spending_limit: boolean;
-        hard_stop_on_limit: boolean;
-        monthly_spending_limit_cents: number | null;
-      }>(sql`
-        SELECT 
-          enable_spending_limit,
-          hard_stop_on_limit,
-          monthly_spending_limit_cents
-        FROM billing_settings
-        WHERE organization_id = ${organizationId}
-      `);
-
-      const settingsArray = settings as unknown as Array<{
-        enable_spending_limit: boolean;
-        hard_stop_on_limit: boolean;
-        monthly_spending_limit_cents: number | null;
-      }>;
-
-      if (!settingsArray || settingsArray.length === 0) {
-        return { blocked: false };
-      }
-
-      const row = settingsArray[0];
-
-      if (
-        !row.enable_spending_limit ||
-        !row.hard_stop_on_limit ||
-        !row.monthly_spending_limit_cents
-      ) {
-        return { blocked: false };
-      }
-
-      // Get organization usage
-      const org = await this.db.query.organization.findFirst({
-        where: eq(schema.organization.id, organizationId),
-      });
-
-      if (!org) {
-        return { blocked: false };
-      }
-
-      // Get plan limits
-      const planLimitsResult = await this.db.execute<{
-        playwright_minutes_included: number;
-        k6_vu_minutes_included: number;
-      }>(sql`
-        SELECT
-          playwright_minutes_included,
-          k6_vu_minutes_included
-        FROM plan_limits
-        WHERE plan = ${org.subscriptionPlan || 'plus'}
-      `);
-
-      const planLimitsArray = planLimitsResult as unknown as Array<{
-        playwright_minutes_included: number;
-        k6_vu_minutes_included: number;
-      }>;
-
-      if (!planLimitsArray || planLimitsArray.length === 0) {
-        return { blocked: false };
-      }
-
-      const limits = planLimitsArray[0];
-
-      // Get overage pricing
-      const pricingResult = await this.db.execute<{
-        playwright_minute_price_cents: number;
-        k6_vu_minute_price_cents: number;
-      }>(sql`
-        SELECT
-          playwright_minute_price_cents,
-          k6_vu_minute_price_cents
-        FROM overage_pricing
-        WHERE plan = ${org.subscriptionPlan || 'plus'}
-      `);
-
-      const pricingArray = pricingResult as unknown as Array<{
-        playwright_minute_price_cents: number;
-        k6_vu_minute_price_cents: number;
-      }>;
-
-      if (!pricingArray || pricingArray.length === 0) {
-        return { blocked: false };
-      }
-
-      const prices = pricingArray[0];
-
-      // Calculate current overage cost
-      const playwrightOverage = Math.max(
-        0,
-        (org.playwrightMinutesUsed || 0) - limits.playwright_minutes_included,
-      );
-      const k6Overage = Math.max(
-        0,
-        (org.k6VuMinutesUsed || 0) - limits.k6_vu_minutes_included,
-      );
-
-      const totalOverageCents =
-        playwrightOverage * prices.playwright_minute_price_cents +
-        k6Overage * prices.k6_vu_minute_price_cents;
-
-      if (totalOverageCents >= row.monthly_spending_limit_cents) {
-        return {
-          blocked: true,
-          reason:
-            `Monthly spending limit of $${(row.monthly_spending_limit_cents / 100).toFixed(2)} reached. ` +
-            `Current spending: $${(totalOverageCents / 100).toFixed(2)}.`,
-        };
-      }
-
+    const settings = await this.db.query.billingSettings.findFirst({
+      where: eq(schema.billingSettings.organizationId, organizationId),
+    });
+    if (!settings?.enableSpendingLimit || !settings.hardStopOnLimit) {
       return { blocked: false };
-    } catch (error) {
-      this.logger.error(
-        `[Usage] Failed to check spending limit for org ${organizationId?.slice(0, 8)}...: ${error instanceof Error ? error.message : String(error)}`,
-      );
+    }
+    if (!settings.monthlySpendingLimitCents || settings.monthlySpendingLimitCents <= 0) {
+      throw new Error('Invalid spending limit configuration');
+    }
+
+    const plan = org.subscriptionPlan;
+    if (plan !== 'plus' && plan !== 'pro') {
+      throw new Error('Invalid cloud subscription plan');
+    }
+    const [limits, prices] = await Promise.all([
+      this.db.query.planLimits.findFirst({ where: eq(schema.planLimits.plan, plan) }),
+      this.db.query.overagePricing.findFirst({ where: eq(schema.overagePricing.plan, plan) }),
+    ]);
+    if (!limits || !prices) {
+      throw new Error('Billing plan or pricing is unavailable');
+    }
+
+    // Match the app's estimate: the cap covers all billable meters, including
+    // completed SRE investigations. AI credits have no overage charge.
+    const playwrightOverage = Math.max(0, (org.playwrightMinutesUsed ?? 0) - limits.playwrightMinutesIncluded);
+    const k6Overage = Math.max(0, (org.k6VuMinutesUsed ?? 0) - limits.k6VuMinutesIncluded);
+    const sreOverage = Math.max(0, Number(org.sreInvestigationUnitsUsed ?? 0) - Number(limits.sreInvestigationUnitsIncluded));
+    const totalOverageCents =
+      playwrightOverage * prices.playwrightMinutePriceCents +
+      Math.ceil(k6Overage * prices.k6VuMinutePriceCents) +
+      Math.ceil(sreOverage * prices.sreInvestigationUnitPriceCents);
+    if (!Number.isFinite(totalOverageCents)) {
+      throw new Error('Invalid usage or pricing configuration');
+    }
+
+    if (totalOverageCents >= settings.monthlySpendingLimitCents) {
       return {
         blocked: true,
-        reason: 'Unable to verify the organization spending limit',
+        reason:
+          `Monthly spending limit of $${(settings.monthlySpendingLimitCents / 100).toFixed(2)} reached. ` +
+          `Current spending: $${(totalOverageCents / 100).toFixed(2)}.`,
       };
     }
+    return { blocked: false };
   }
 
   /**
@@ -666,20 +601,34 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
    */
   async shouldBlockExecution(
     organizationId: string,
+    options: { checkSpendingLimit?: boolean } = {},
   ): Promise<{ blocked: boolean; reason?: string }> {
-    const isCloudProduction =
-      process.env.NODE_ENV === 'production' && !isSelfHosted();
-    if (isCloudProduction && !process.env.POLAR_ACCESS_TOKEN) {
-      return {
-        blocked: true,
-        reason: 'Cloud billing enforcement is not configured',
-      };
+    if (isSelfHosted()) return { blocked: false };
+    if (!process.env.POLAR_ACCESS_TOKEN) {
+      return { blocked: true, reason: 'Cloud billing enforcement is not configured' };
     }
 
-    if (!isPolarEnabled()) {
-      return { blocked: false };
+    try {
+      // Recheck at execution time: queued jobs and recurring monitors can
+      // outlive the subscription that originally authorized them.
+      const org = await this.db.query.organization.findFirst({
+        where: eq(schema.organization.id, organizationId),
+      });
+      const hasAccess = org && org.polarCustomerId &&
+        (org.subscriptionPlan === 'plus' || org.subscriptionPlan === 'pro') &&
+        (org.subscriptionStatus === 'active' || org.subscriptionStatus === 'past_due' ||
+          (org.subscriptionStatus === 'canceled' && org.subscriptionEndsAt &&
+            org.subscriptionEndsAt.getTime() > Date.now()));
+      if (!hasAccess || !org) {
+        return { blocked: true, reason: 'An active subscription is required' };
+      }
+      if (options.checkSpendingLimit === false) return { blocked: false };
+      return await this.checkSpendingLimit(organizationId, org);
+    } catch (error) {
+      this.logger.error(
+        `[Usage] Failed to check billing for org ${organizationId?.slice(0, 8)}...: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return { blocked: true, reason: 'Unable to verify the organization spending limit' };
     }
-
-    return this.checkSpendingLimit(organizationId);
   }
 }

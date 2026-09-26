@@ -151,11 +151,22 @@ export class MonitorService {
         // Return null instead of a failed result - paused monitors shouldn't create results
         return null;
       }
+      const billing = await this.usageTrackerService.shouldBlockExecution(
+        monitor.organizationId ?? '',
+        { checkSpendingLimit: jobData.type === 'synthetic_test' },
+      );
+      if (billing.blocked) {
+        // Billing holds are not probe failures and must not trigger downtime
+        // alerts or charge synthetic execution minutes.
+        this.logger.warn(`Monitor ${jobData.monitorId} skipped: ${billing.reason}`);
+        return null;
+      }
     } catch (dbError) {
       this.logger.error(
         `Failed to check monitor status for ${jobData.monitorId}: ${getErrorMessage(dbError)}`,
       );
-      // Continue with execution if we can't verify status
+      // Do not run a paid probe when its current authorization is unknown.
+      return null;
     }
 
     let status: MonitorResultStatus = 'error';

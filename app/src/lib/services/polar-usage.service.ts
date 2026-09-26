@@ -21,7 +21,7 @@ import {
   overagePricing,
   planLimits,
 } from "@/db/schema";
-import { eq, and, sql, gt, lte } from "drizzle-orm";
+import { eq, and, sql, gt, lte, or, isNull, ne } from "drizzle-orm";
 import { isPolarEnabled, getPolarConfig } from "@/lib/feature-flags";
 import { createLogger } from "@/lib/logger/index";
 import type { Polar } from "@polar-sh/sdk";
@@ -79,6 +79,7 @@ export interface SpendingStatus {
 const USAGE_SYNC_ADVISORY_LOCK_KEY = 792401305;
 const POLAR_INGEST_TIMEOUT_MS = 15_000;
 export const POLAR_API_VERSION = "2026-04";
+export const CLOSED_USAGE_PERIOD_ERROR = "Billing period closed; manual reconciliation required";
 type UsageSyncResult = {
   processed: number;
   succeeded: number;
@@ -184,6 +185,12 @@ class PolarUsageService {
         logger.warn({ eventId }, "Polar usage event not found");
         return false;
       }
+      if (usageEvent.syncedToPolar) return true;
+      // Polar bills by receipt time. Replaying a closed period into a new
+      // cycle can charge the wrong allowance, so retain it for reconciliation.
+      if (!usageEvent.billingPeriodEnd || usageEvent.billingPeriodEnd.getTime() <= Date.now()) {
+        throw new Error(CLOSED_USAGE_PERIOD_ERROR);
+      }
 
       // Get organization with Polar customer ID
       const org = await database.query.organization.findFirst({
@@ -191,11 +198,7 @@ class PolarUsageService {
       });
 
       if (!org?.polarCustomerId) {
-        logger.warn(
-          { organizationId: usageEvent.organizationId },
-          "Organization has no Polar customer ID",
-        );
-        return false;
+        throw new Error("Organization has no Polar customer ID");
       }
 
       // Get the Polar config
@@ -268,6 +271,13 @@ class PolarUsageService {
       }
 
       const result = await response.json();
+      if (
+        !Number.isInteger(result?.inserted) || result.inserted < 0 ||
+        !Number.isInteger(result?.duplicates ?? 0) || (result.duplicates ?? 0) < 0 ||
+        result.inserted + (result.duplicates ?? 0) !== 1
+      ) {
+        throw new Error("Polar did not acknowledge the usage event");
+      }
 
       // Mark as synced
       await database
@@ -543,12 +553,12 @@ class PolarUsageService {
       }
 
       // Find events that haven't been synced yet
-      // Uses exponential backoff: only retry after appropriate delay based on attempt count
-      // Delays: 1s, 5s, 30s, 120s, 300s (for attempts 1-5)
+      // Keep retrying through provider outages; cap backoff at five minutes.
+      // New events are selected first so persistent failures cannot starve them.
       const pendingEvents = await db.query.usageEvents.findMany({
         where: and(
           eq(usageEvents.syncedToPolar, false),
-          sql`${usageEvents.syncAttempts} < 5`, // Max 5 retry attempts
+          or(isNull(usageEvents.syncError), ne(usageEvents.syncError, CLOSED_USAGE_PERIOD_ERROR)),
           // Exponential backoff: only retry after appropriate delay
           sql`(
             ${usageEvents.lastSyncAttempt} IS NULL
@@ -565,7 +575,10 @@ class PolarUsageService {
           )`
         ),
         limit: batchSize,
-        orderBy: (events, { asc }) => [asc(events.createdAt)],
+        orderBy: (events, { asc }) => [
+          sql`${events.lastSyncAttempt} ASC NULLS FIRST`,
+          asc(events.createdAt),
+        ],
       });
 
       let succeeded = 0;

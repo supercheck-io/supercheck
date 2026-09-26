@@ -208,7 +208,9 @@ function getPolarPlugin() {
     });
   } catch (error) {
     console.error("[Better Auth] Failed to initialize Polar plugin:", error);
-    return null;
+    // A configured cloud deployment must not accept payments while its
+    // signature-verified webhook endpoint is unavailable.
+    throw error;
   }
 }
 

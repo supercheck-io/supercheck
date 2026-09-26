@@ -24,6 +24,7 @@ jest.mock("@/db/schema", () => ({
     syncAttempts: "usageEvents.syncAttempts",
     lastSyncAttempt: "usageEvents.lastSyncAttempt",
     createdAt: "usageEvents.createdAt",
+    syncError: "usageEvents.syncError",
   },
   billingSettings: { organizationId: "billingSettings.organizationId" },
   overagePricing: { plan: "overagePricing.plan" },
@@ -36,6 +37,9 @@ jest.mock("drizzle-orm", () => ({
   sql: jest.fn(() => ({ op: "sql" })),
   gt: jest.fn((left, right) => ({ op: "gt", left, right })),
   lte: jest.fn((left, right) => ({ op: "lte", left, right })),
+  ne: jest.fn((left, right) => ({ op: "ne", left, right })),
+  isNull: jest.fn((value) => ({ op: "isNull", value })),
+  or: jest.fn((...conditions) => ({ op: "or", conditions })),
 }));
 
 jest.mock("@/lib/feature-flags", () => ({
@@ -132,6 +136,7 @@ describe("PolarUsageService retry idempotency", () => {
       unitType: "investigation_units",
       metadata: { useLiveConnectors: true },
       createdAt: new Date("2026-09-04T05:46:19.347Z"),
+      billingPeriodEnd: new Date(Date.now() + 86_400_000),
     };
 
     mockDb.query.usageEvents.findMany.mockResolvedValue([event]);
@@ -235,4 +240,47 @@ describe("PolarUsageService retry idempotency", () => {
     expect(mockDb.query.usageEvents.findMany).not.toHaveBeenCalled();
     expect(mockPostgresClient.begin).toHaveBeenCalledTimes(1);
   });
+  it.each([
+    ["inserted", { inserted: 1 }, true],
+    ["duplicate", { inserted: 0, duplicates: 1 }, true],
+    ["unacknowledged", { inserted: 0 }, false],
+    ["invalid count", { inserted: 2 }, false],
+  ])("handles %s ingestion acknowledgements after repeated failures", async (_name, result, succeeded) => {
+    const event = { id: "retry-event", organizationId: "org-1", eventType: "sre_investigation",
+      units: "1", unitType: "investigation_units", createdAt: new Date(),
+      billingPeriodEnd: new Date(Date.now() + 86400000), syncAttempts: 12 };
+    mockDb.query.usageEvents.findMany.mockResolvedValue([event]);
+    mockDb.query.usageEvents.findFirst.mockResolvedValue(event);
+    mockDb.query.organization.findFirst.mockResolvedValue({ polarCustomerId: "customer-1" });
+    const updateSet = jest.fn(() => ({ where: jest.fn().mockResolvedValue([]) }));
+    mockDb.update.mockReturnValue({ set: updateSet });
+    mockDb.selectDistinct.mockReturnValue({ from: () => ({ where: jest.fn().mockResolvedValue([]) }) });
+    const transaction = jest.fn().mockResolvedValue([{ locked: true }]);
+    mockPostgresClient.begin.mockImplementation(async (callback) => callback(transaction));
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => result });
+    await expect(polarUsageService.syncPendingEvents()).resolves.toMatchObject({
+      processed: 1, succeeded: succeeded ? 1 : 0, failed: succeeded ? 0 : 1,
+    });
+    expect(updateSet).toHaveBeenCalledWith(expect.objectContaining(
+      succeeded ? { syncedToPolar: true } : { syncError: expect.any(String) },
+    ));
+  });
+
+  it("quarantines a closed period instead of charging the next invoice", async () => {
+    const event = { id: "late-event", organizationId: "org-1", billingPeriodEnd: new Date(0), syncAttempts: 7 };
+    mockDb.query.usageEvents.findMany.mockResolvedValue([event]);
+    mockDb.query.usageEvents.findFirst.mockResolvedValue(event);
+    const updateSet = jest.fn(() => ({ where: jest.fn().mockResolvedValue([]) }));
+    mockDb.update.mockReturnValue({ set: updateSet });
+    mockDb.selectDistinct.mockReturnValue({ from: () => ({ where: jest.fn().mockResolvedValue([]) }) });
+    const transaction = jest.fn().mockResolvedValue([{ locked: true }]);
+    mockPostgresClient.begin.mockImplementation(async (callback) => callback(transaction));
+    global.fetch = jest.fn();
+    await expect(polarUsageService.syncPendingEvents()).resolves.toMatchObject({ failed: 1 });
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(updateSet).toHaveBeenCalledWith(expect.objectContaining({
+      syncError: "Billing period closed; manual reconciliation required",
+    }));
+  });
+
 });
