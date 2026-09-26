@@ -1,3 +1,7 @@
+jest.mock('node:dns/promises', () => ({
+  lookup: jest.fn().mockResolvedValue([{ address: '10.0.0.5', family: 4 }]),
+}));
+
 import {
   exchangeRegistrationToken,
   executePrivateAgentConnectorJob,

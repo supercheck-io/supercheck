@@ -587,7 +587,7 @@ function buildStatusPageDefinitions(pages: RemoteStatusPage[]): Record<string, u
 /**
  * Generate a supercheck.config.ts file from pulled remote resources.
  */
-function generateConfigContent(opts: {
+export function generateConfigContent(opts: {
   orgId: string
   projectId: string
   baseUrl: string
@@ -609,15 +609,15 @@ function generateConfigContent(opts: {
   // Project
   parts.push('  // Project identifiers — found in Dashboard > Project Settings')
   parts.push('  project: {')
-  parts.push(`    organization: '${opts.orgId}',`)
-  parts.push(`    project: '${opts.projectId}',`)
+  parts.push(`    organization: ${JSON.stringify(opts.orgId)},`)
+  parts.push(`    project: ${JSON.stringify(opts.projectId)},`)
   parts.push('  },')
   parts.push('')
 
   // API
   parts.push('  // API connection — set SUPERCHECK_URL env var for self-hosted or staging')
   parts.push('  api: {')
-  parts.push(`    baseUrl: process.env.SUPERCHECK_URL ?? '${opts.baseUrl}',`)
+  parts.push(`    baseUrl: process.env.SUPERCHECK_URL ?? ${JSON.stringify(opts.baseUrl)},`)
   parts.push('  },')
   parts.push('')
 
@@ -740,12 +740,18 @@ function formatArray(arr: Record<string, unknown>[], baseIndent: number): string
 
   const items = arr.map((obj) => {
     const fields = Object.entries(obj)
-      .map(([key, value]) => `${innerIndent}  ${key}: ${formatValue(value, baseIndent + 2)},`)
+      .map(([key, value]) => `${innerIndent}  ${formatConfigKey(key)}: ${formatValue(value, baseIndent + 2)},`)
       .join('\n')
     return `${innerIndent}{\n${fields}\n${innerIndent}}`
   })
 
   return `[\n${items.join(',\n')}\n${indent}]`
+}
+
+function formatConfigKey(key: string): string {
+  return /^[A-Za-z_$][\w$]*$/.test(key) && key !== '__proto__'
+    ? key
+    : `[${JSON.stringify(key)}]`
 }
 
 /**
@@ -760,9 +766,11 @@ function formatValue(value: unknown, indent = 0): string {
       // Bracket-notation reference: ${[VAR-NAME]} → process.env['VAR-NAME']
       if (inner.startsWith('[') && inner.endsWith(']')) {
         const varName = inner.slice(1, -1)
-        return `process.env[${JSON.stringify(varName)}] ?? ''`
+        if (varName && !varName.includes(']'))
+          return `process.env[${JSON.stringify(varName)}] ?? ''`
       }
-      return `process.env.${inner} ?? ''`
+      if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(inner))
+        return `process.env.${inner} ?? ''`
     }
     return JSON.stringify(value)
   }
@@ -783,7 +791,7 @@ function formatValue(value: unknown, indent = 0): string {
     if (entries.length === 0) return '{}'
     const innerIndent = '  '.repeat(indent + 1)
     const fields = entries
-      .map(([key, v]) => `${innerIndent}${key}: ${formatValue(v, indent + 1)}`)
+      .map(([key, v]) => `${innerIndent}${formatConfigKey(key)}: ${formatValue(v, indent + 1)}`)
       .join(',\n')
     return `{\n${fields},\n${'  '.repeat(indent)}}`
   }

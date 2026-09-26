@@ -430,24 +430,25 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      if (jobData.alertConfig.notificationProviders.length > 0) {
-        try {
-          validatedProviderIds = await validateNotificationProviderOwnership({
-            providerIds: jobData.alertConfig.notificationProviders,
-            organizationId,
-            projectId: targetProjectId,
-          });
-        } catch (providerValidationError) {
-          return NextResponse.json(
-            {
-              error:
-                providerValidationError instanceof Error
-                  ? providerValidationError.message
-                  : "Invalid or unauthorized notification provider IDs",
-            },
-            { status: 400 }
-          );
-        }
+    }
+
+    if (jobData.alertConfig?.notificationProviders?.length) {
+      try {
+        validatedProviderIds = await validateNotificationProviderOwnership({
+          providerIds: jobData.alertConfig.notificationProviders,
+          organizationId,
+          projectId: targetProjectId,
+        });
+      } catch (providerValidationError) {
+        return NextResponse.json(
+          {
+            error:
+              providerValidationError instanceof Error
+                ? providerValidationError.message
+                : "Invalid or unauthorized notification provider IDs",
+          },
+          { status: 400 }
+        );
       }
     }
 
@@ -519,13 +520,7 @@ export async function POST(request: NextRequest) {
           alertConfig: jobData.alertConfig
             ? {
                 enabled: Boolean(jobData.alertConfig.enabled),
-                notificationProviders:
-                  jobData.alertConfig.enabled &&
-                  Array.isArray(jobData.alertConfig.notificationProviders)
-                    ? validatedProviderIds
-                    : Array.isArray(jobData.alertConfig.notificationProviders)
-                    ? jobData.alertConfig.notificationProviders
-                    : [],
+                notificationProviders: validatedProviderIds,
                 alertOnFailure:
                   jobData.alertConfig.alertOnFailure !== undefined
                     ? Boolean(jobData.alertConfig.alertOnFailure)

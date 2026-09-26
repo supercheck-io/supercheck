@@ -129,23 +129,24 @@ export async function updateJob(data: UpdateJobData, contextOverride?: UpdateJob
         };
       }
 
-      if (validatedData.alertConfig.notificationProviders.length > 0) {
-        try {
-          validatedNotificationProviderIds =
-            await validateNotificationProviderOwnership({
-              providerIds: validatedData.alertConfig.notificationProviders,
-              organizationId,
-              projectId: project.id,
-            });
-        } catch (providerValidationError) {
-          return {
-            success: false,
-            message:
-              providerValidationError instanceof Error
-                ? providerValidationError.message
-                : "Invalid or unauthorized notification provider IDs",
-          };
-        }
+    }
+
+    if (validatedData.alertConfig?.notificationProviders?.length) {
+      try {
+        validatedNotificationProviderIds =
+          await validateNotificationProviderOwnership({
+            providerIds: validatedData.alertConfig.notificationProviders,
+            organizationId,
+            projectId: project.id,
+          });
+      } catch (providerValidationError) {
+        return {
+          success: false,
+          message:
+            providerValidationError instanceof Error
+              ? providerValidationError.message
+              : "Invalid or unauthorized notification provider IDs",
+        };
       }
     }
 
@@ -283,11 +284,7 @@ export async function updateJob(data: UpdateJobData, contextOverride?: UpdateJob
           alertConfig: validatedData.alertConfig
             ? {
                 ...validatedData.alertConfig,
-                notificationProviders:
-                  validatedData.alertConfig.enabled &&
-                  validatedNotificationProviderIds.length > 0
-                    ? validatedNotificationProviderIds
-                    : validatedData.alertConfig.notificationProviders,
+                notificationProviders: validatedNotificationProviderIds,
               }
             : null,
           updatedAt: new Date(),

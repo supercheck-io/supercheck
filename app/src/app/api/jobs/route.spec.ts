@@ -123,7 +123,7 @@ describe("Jobs route regressions", () => {
     });
   });
 
-  it("POST /api/jobs rejects unauthorized notification provider IDs before DB transaction", async () => {
+  it.each([true, false])("POST /api/jobs rejects unauthorized providers when alerts enabled=%s", async (enabled) => {
     mockValidateNotificationProviderOwnership.mockRejectedValueOnce(
       new Error("Invalid or unauthorized notification provider IDs"),
     );
@@ -137,7 +137,7 @@ describe("Jobs route regressions", () => {
         cronSchedule: "0 * * * *",
         tests: [{ id: "test-1" }],
         alertConfig: {
-          enabled: true,
+          enabled,
           notificationProviders: ["provider-unauthorized"],
           alertOnFailure: true,
           alertOnSuccess: false,
