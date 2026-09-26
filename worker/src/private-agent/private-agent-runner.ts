@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { z } from 'zod';
 import { getServiceVersion } from '../common/version';
+import { requestPrivateAgentEndpoint } from './private-agent-endpoint';
 
 const PROTOCOL_VERSION = '2026-06-22';
 const DEFAULT_RETRY_INTERVAL_MS = 5_000;
@@ -598,26 +599,30 @@ async function fetchJson(
   headers: Record<string, string> = {},
 ): Promise<unknown> {
   assertAgentEndpointAllowed(url);
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      Accept: 'application/json',
-      ...(secret ? { Authorization: `Bearer ${secret}` } : {}),
-      ...headers,
+  return requestPrivateAgentEndpoint(
+    url,
+    {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+        ...(secret ? { Authorization: `Bearer ${secret}` } : {}),
+        ...headers,
+      },
+      signal: AbortSignal.timeout(timeoutMs),
+      redirect: 'error',
     },
-    signal: AbortSignal.timeout(timeoutMs),
-    redirect: 'error',
-  });
-
-  if (response.status === 401 || response.status === 403) {
-    throw new Error(`credentials rejected with HTTP ${response.status}`);
-  }
-
-  if (!response.ok) {
-    throw new Error(`connector request failed with HTTP ${response.status}`);
-  }
-
-  return response.json();
+    async (response) => {
+      if (response.status === 401 || response.status === 403) {
+        throw new Error(`credentials rejected with HTTP ${response.status}`);
+      }
+      if (!response.ok) {
+        throw new Error(
+          `connector request failed with HTTP ${response.status}`,
+        );
+      }
+      return (await response.json()) as unknown;
+    },
+  );
 }
 
 async function cloudWatchRequest(
@@ -684,29 +689,33 @@ async function cloudWatchRequest(
     .digest('hex');
   const authorization = `AWS4-HMAC-SHA256 Credential=${accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
 
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      Accept: 'application/xml',
-      Authorization: authorization,
-      'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8',
-      'X-Amz-Date': amzDate,
-      ...(sessionToken ? { 'X-Amz-Security-Token': sessionToken } : {}),
+  return requestPrivateAgentEndpoint(
+    endpoint,
+    {
+      method: 'POST',
+      headers: {
+        Accept: 'application/xml',
+        Authorization: authorization,
+        'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8',
+        'X-Amz-Date': amzDate,
+        ...(sessionToken ? { 'X-Amz-Security-Token': sessionToken } : {}),
+      },
+      body,
+      signal: AbortSignal.timeout(spec.budget.maxSeconds * 1000),
+      redirect: 'error',
     },
-    body,
-    signal: AbortSignal.timeout(spec.budget.maxSeconds * 1000),
-    redirect: 'error',
-  });
-
-  if (response.status === 401 || response.status === 403) {
-    throw new Error(`credentials rejected with HTTP ${response.status}`);
-  }
-
-  if (!response.ok) {
-    throw new Error(`connector request failed with HTTP ${response.status}`);
-  }
-
-  return response.text();
+    async (response) => {
+      if (response.status === 401 || response.status === 403) {
+        throw new Error(`credentials rejected with HTTP ${response.status}`);
+      }
+      if (!response.ok) {
+        throw new Error(
+          `connector request failed with HTTP ${response.status}`,
+        );
+      }
+      return response.text();
+    },
+  );
 }
 
 function bounded(

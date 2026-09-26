@@ -27,10 +27,6 @@ export function isAllowedAppOrigin(origin: string, configuredInstanceUrl?: strin
   if (isSupercheckCloud)
     return true;
 
-  // Local HTTP: allow localhost on standard dev port (3000) or without port
-  if (candidate.protocol === 'http:' && candidate.hostname === 'localhost' && (candidate.port === '3000' || !candidate.port))
-    return true;
-
   if (!configuredInstanceUrl)
     return false;
 
