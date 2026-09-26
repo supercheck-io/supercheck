@@ -40,9 +40,28 @@ export async function POST(request: NextRequest) {
     // Step 2: Authentication and authorization
     const session = await AuthService.validateUserAccess(request, testId);
 
+    const headersList = await headers();
+    const clientIp =
+      headersList.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+      headersList.get("x-real-ip") ||
+      "unknown";
+
+    await AuthService.checkRateLimit({
+      userId: session.user.id,
+      orgId: session.user.organizationId,
+      ip: clientIp,
+      tier: session.tier,
+    });
+
     // Step 2.5: CRITICAL - Check subscription in cloud mode (billing enforcement)
     // This must happen BEFORE any AI calls to prevent unpaid usage
     const activeOrg = await getActiveOrganization();
+    if (!activeOrg) {
+      return NextResponse.json(
+        { success: false, reason: "organization_required", message: "Select an organization before using AI features." },
+        { status: 400 },
+      );
+    }
     if (activeOrg) {
       try {
         await subscriptionService.blockUntilSubscribed(activeOrg.id);
@@ -69,32 +88,25 @@ export async function POST(request: NextRequest) {
         return NextResponse.json(
           {
             success: false,
-            reason: "ai_credits_exhausted",
+            reason: creditResult.status === 503 ? "billing_unavailable" : "ai_credits_exhausted",
             message: creditResult.reason,
-            guidance: "Upgrade your plan for more AI credits or wait until your next billing cycle.",
+            guidance: creditResult.status === 503
+              ? "Billing is temporarily unavailable. Please try again shortly."
+              : "Upgrade your plan for more AI credits or wait until your next billing cycle.",
             usage: {
               used: creditResult.used,
               limit: creditResult.limit,
             },
           },
-          { status: 429 }
+          { status: creditResult.status ?? 429 }
         );
       }
     }
 
     // Step 3: Rate limiting check (with user/org context)
-    const headersList = await headers();
-    const clientIp =
-      headersList.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-      headersList.get("x-real-ip") ||
-      "unknown";
 
-    await AuthService.checkRateLimit({
-      userId: session.user.id,
-      orgId: session.user.organizationId,
-      ip: clientIp,
-      tier: session.tier,
-    });
+
+
 
     // Step 4: Try to get markdown report URL first
     const markdownReportUrl = await getMarkdownReportUrl(testId);

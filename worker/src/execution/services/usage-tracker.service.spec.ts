@@ -19,7 +19,7 @@ describe('UsageTrackerService ledger settlement', () => {
     const insertValues = jest.fn().mockReturnValue({
       returning: jest.fn().mockImplementation(async () => {
         if (failInsert) throw new Error('ledger unavailable');
-        return [{ id: 'event-1' }];
+        return [{ id: 'event-1', billingPeriodEnd: periodEnd }];
       }),
     });
     const updateSet = jest
@@ -180,6 +180,7 @@ describe('UsageTrackerService ledger settlement', () => {
       ok: true,
       status: 200,
       text: jest.fn().mockResolvedValue(''),
+      json: jest.fn().mockResolvedValue({ inserted: 1, duplicates: 0 }),
     });
     global.fetch = fetchMock as never;
 
@@ -207,6 +208,68 @@ describe('UsageTrackerService execution blocking', () => {
   const originalNodeEnv = process.env.NODE_ENV;
   const originalSelfHosted = process.env.SELF_HOSTED;
   const originalPolarAccessToken = process.env.POLAR_ACCESS_TOKEN;
+
+  function admissionFixture() {
+    process.env.SELF_HOSTED = 'false';
+    process.env.POLAR_ACCESS_TOKEN = 'test-token';
+    const org = {
+      polarCustomerId: 'customer-1', subscriptionPlan: 'plus', subscriptionStatus: 'active',
+      subscriptionEndsAt: new Date(Date.now() + 60_000),
+      playwrightMinutesUsed: 3000, k6VuMinutesUsed: 20000, sreInvestigationUnitsUsed: '27',
+    };
+    const query = {
+      organization: { findFirst: jest.fn().mockResolvedValue(org) },
+      billingSettings: { findFirst: jest.fn().mockResolvedValue({
+        enableSpendingLimit: true, hardStopOnLimit: true, monthlySpendingLimitCents: 100,
+      }) },
+      planLimits: { findFirst: jest.fn().mockResolvedValue({
+        playwrightMinutesIncluded: 3000, k6VuMinutesIncluded: 20000, sreInvestigationUnitsIncluded: '25',
+      }) },
+      overagePricing: { findFirst: jest.fn().mockResolvedValue({
+        playwrightMinutePriceCents: 3, k6VuMinutePriceCents: 1, sreInvestigationUnitPriceCents: 50,
+      }) },
+    };
+    return { org, query, service: new UsageTrackerService({ query } as never) };
+  }
+
+  it('includes SRE investigation overage in the execution spending cap', async () => {
+    const f = admissionFixture();
+    await expect(f.service.shouldBlockExecution('org-1')).resolves.toMatchObject({
+      blocked: true, reason: expect.stringContaining('Current spending: $1.00'),
+    });
+    f.org.sreInvestigationUnitsUsed = '26';
+    await expect(f.service.shouldBlockExecution('org-1')).resolves.toEqual({ blocked: false });
+  });
+
+  it.each(['none', 'canceled'])(
+    'rejects queued work after a subscription becomes %s', async (status) => {
+      const f = admissionFixture();
+      f.org.subscriptionStatus = status;
+      f.org.subscriptionEndsAt = new Date(Date.now() - 1);
+      await expect(f.service.shouldBlockExecution('org-1')).resolves.toMatchObject({ blocked: true, reason: 'An active subscription is required' });
+      expect(f.query.billingSettings.findFirst).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['past_due', 'canceled'])('preserves authorized %s grace access', async (status) => {
+    const f = admissionFixture();
+    f.org.subscriptionStatus = status;
+    f.org.sreInvestigationUnitsUsed = '25';
+    await expect(f.service.shouldBlockExecution('org-1')).resolves.toEqual({ blocked: false });
+  });
+
+  it('keeps non-metered probes running at the cap but enforces their subscription', async () => {
+    const f = admissionFixture();
+    await expect(f.service.shouldBlockExecution('org-1', { checkSpendingLimit: false })).resolves.toEqual({ blocked: false });
+    f.org.subscriptionStatus = 'none';
+    await expect(f.service.shouldBlockExecution('org-1', { checkSpendingLimit: false })).resolves.toMatchObject({ blocked: true });
+  });
+
+  it('denies execution when an enabled cap cannot be calculated', async () => {
+    const f = admissionFixture();
+    f.query.overagePricing.findFirst.mockResolvedValue(null);
+    await expect(f.service.shouldBlockExecution('org-1')).resolves.toMatchObject({ blocked: true, reason: 'Unable to verify the organization spending limit' });
+  });
 
   afterEach(() => {
     process.env.NODE_ENV = originalNodeEnv;

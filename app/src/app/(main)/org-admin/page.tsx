@@ -1192,7 +1192,7 @@ function OrgAdminDashboardContent() {
 
             {isCloudHosted && (
               <TabsContent value="subscription" className="space-y-4">
-                <SubscriptionTab currentUserRole={currentUserRole} />
+                <SubscriptionTab key={orgDetails?.id} currentUserRole={currentUserRole} />
               </TabsContent>
             )}
           </Tabs>

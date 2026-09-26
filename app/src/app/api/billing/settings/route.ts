@@ -5,6 +5,8 @@ import { Role } from "@/lib/rbac/permissions";
 import { billingSettingsService } from "@/lib/services/billing-settings.service";
 import { auditBillingSettingsChange } from "@/lib/audit-log";
 import { z } from "zod";
+import { NextRequest } from "next/server";
+import { requireSameOriginRequest } from "@/lib/security/same-origin";
 
 /**
  * GET /api/billing/settings
@@ -75,7 +77,10 @@ const updateSettingsSchema = z.object({
  * PATCH /api/billing/settings
  * Update billing settings for the active organization
  */
-export async function PATCH(request: Request) {
+export async function PATCH(request: NextRequest) {
+  const originError = requireSameOriginRequest(request);
+  if (originError) return originError;
+
   try {
     const { userId, organizationId } = await requireUserAuthContext();
 

@@ -10,7 +10,7 @@ import {
   member,
 } from "@/db/schema";
 import { eq, sql } from "drizzle-orm";
-import { getPlanPricing } from "@/lib/feature-flags";
+import { getPlanPricing, isCloudHosted } from "@/lib/feature-flags";
 
 /**
  * GET /api/billing/current
@@ -73,38 +73,13 @@ export async function GET() {
     const projectsTotal = Number(projectCount[0]?.count || 0);
     const membersTotal = Number(memberCount[0]?.count || 0);
 
-    // Calculate billing period
-    const periodStart = org.usagePeriodStart || org.createdAt;
-    const periodEnd =
-      org.usagePeriodEnd || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // Default 30 days from now
-
-    // Get plan pricing - determine appropriate plan based on hosting mode
-    // In cloud mode: use actual subscription plan (only plus/pro are valid)
-    // In self-hosted mode: always 'unlimited'
-    const { isCloudHosted: cloudHosted } = await import("@/lib/feature-flags");
-    let effectivePlan: "plus" | "pro" | "unlimited";
-    if (cloudHosted()) {
-      // Cloud mode: only plus/pro are valid plans
-      // If org has unlimited or invalid plan, treat as unsubscribed (show plus for display)
-      if (org.subscriptionPlan === "plus" || org.subscriptionPlan === "pro") {
-        effectivePlan = org.subscriptionPlan;
-      } else {
-        // Unlimited or null in cloud mode = needs subscription
-        effectivePlan = "plus"; // Default to plus for display purposes
-      }
-    } else {
-      // Self-hosted: always unlimited
-      effectivePlan = "unlimited";
-    }
-    const planType = effectivePlan;
-    const pricing = getPlanPricing(planType);
-
-    // Determine effective subscription status
-    // In cloud mode with invalid plan (unlimited), status should be 'none' regardless of DB value
-    let effectiveStatus = org.subscriptionStatus || "none";
-    if (cloudHosted() && org.subscriptionPlan !== "plus" && org.subscriptionPlan !== "pro") {
-      effectiveStatus = "none"; // Invalid plan = no subscription
-    }
+    // Use the same access decision as API enforcement and the subscription
+    // guard; expired cancellations must not look like an active paid plan.
+    const access = await subscriptionService.getSubscriptionAccessStatus(organizationId);
+    const effectivePlan = access.isActive ? access.plan : null;
+    const pricing = effectivePlan ? getPlanPricing(effectivePlan) : null;
+    const periodStart = org.usagePeriodStart ?? org.subscriptionStartedAt;
+    const periodEnd = org.usagePeriodEnd ?? org.subscriptionEndsAt;
 
     const toPercent = (used: number, included: number) =>
       included > 0 ? Math.round((used / included) * 100) : 100;
@@ -112,12 +87,15 @@ export async function GET() {
     return NextResponse.json({
       subscription: {
         plan: effectivePlan,
-        status: effectiveStatus,
+        status: access.status ?? "none",
+        accessReason: access.reason,
+        hasBillingCustomer: isCloudHosted() && Boolean(org.polarCustomerId),
+        subscriptionEndsAt: access.subscriptionEndsAt ?? null,
         currentPeriodStart: periodStart,
         currentPeriodEnd: periodEnd,
         // Include pricing info for UI
-        basePriceCents: pricing.monthlyPriceCents,
-        planName: pricing.name,
+        basePriceCents: pricing?.monthlyPriceCents ?? null,
+        planName: pricing?.name ?? null,
       },
       usage: {
         playwrightMinutes: {
