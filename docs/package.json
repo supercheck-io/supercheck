@@ -4,7 +4,8 @@
   "license": "AGPL-3.0-only",
   "private": true,
   "scripts": {
-    "build": "next build",
+    "build": "npm run check:diagrams && next build",
+    "check:diagrams": "node scripts/check-diagram-titles.mjs",
     "dev": "next dev",
     "start": "next start",
     "postinstall": "fumadocs-mdx",

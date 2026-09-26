@@ -8,6 +8,14 @@ Monitors continuously check your services and alert you when issues occur. Run c
 
 ![Monitors List](/screenshots/monitors-list.png)
 
+## Monitor Alerts
+
+<DiagramEmbed
+  src="/diagrams/supercheck-monitor-alerts.html"
+  title="Monitor Alerts"
+  height={900}
+/>
+
 ## Monitor Types
 
 Supercheck offers five monitor types, each designed for specific use cases:
@@ -168,25 +176,6 @@ When multiple locations are configured, checks run independently from each locat
 <Callout type="info">
 **Single Location**: When only one location is available, the multi-location configuration UI is automatically hidden. Location settings appear dynamically when additional locations are added via the Super Admin panel. If some configured locations are temporarily offline, Supercheck runs the check from the live subset and aggregates only the locations that actually executed.
 </Callout>
-
-```mermaid
-%%{init: {"theme":"base","themeVariables":{"fontFamily":"ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif","actorBkg":"#eef2ff","actorBorder":"#6366f1","actorTextColor":"#312e81","actorLineColor":"#94a3b8","signalColor":"#6366f1","signalTextColor":"#64748b","labelBoxBkgColor":"#fef3c7","labelBoxBorderColor":"#d97706","labelTextColor":"#78350f","loopTextColor":"#64748b","activationBkgColor":"#ddd6fe","activationBorderColor":"#7c3aed","noteBkgColor":"#fef3c7","noteBorderColor":"#d97706","noteTextColor":"#78350f","textColor":"#64748b","lineColor":"#94a3b8","mainBkg":"transparent"}}}%%
-sequenceDiagram
-    participant App
-    participant L1 as Location 1
-    participant L2 as Location 2
-    participant L3 as Location 3
-    participant DB as Database
-
-    App->>L1: Queue check
-    App->>L2: Queue check
-    App->>L3: Queue check
-    L1->>DB: Save result
-    L2->>DB: Save result
-    L3->>DB: Save result
-    Note over L3,DB: Offline locations are skipped and excluded from aggregation
-    DB->>App: Aggregate executed locations only
-```
 
 **Status calculation:** Once all locations report, the system calculates overall status. A monitor is "Up" if the majority of locations report success.
 

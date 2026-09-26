@@ -1,0 +1,269 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "SRE Investigation",
+    "viewBox": [
+      1080,
+      600
+    ],
+    "column_fit": "spread",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "admission",
+        "label": "Admission",
+        "focus": [
+          "you",
+          "api"
+        ],
+        "note": "Permissions, feature flag, subscription, and spending checks gate every investigation start."
+      },
+      {
+        "id": "evidence",
+        "label": "Evidence",
+        "focus": [
+          "api",
+          "pg",
+          "connectors",
+          "ai"
+        ],
+        "note": "The agent reads stored evidence first and can opt in to live read-only connectors."
+      },
+      {
+        "id": "report-and-settle",
+        "label": "Report settlement",
+        "focus": [
+          "api",
+          "pg",
+          "you"
+        ],
+        "note": "The cited brief is saved as a sanitized report; completed investigation usage is recorded once per run."
+      }
+    ]
+  },
+  "participants": [
+    {
+      "id": "you",
+      "type": "external",
+      "label": "Responder",
+      "sublabel": "incident workspace"
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "SRE API",
+      "sublabel": "/api/sre"
+    },
+    {
+      "id": "ai",
+      "type": "external",
+      "label": "AI Provider",
+      "sublabel": "AI_PROVIDER"
+    },
+    {
+      "id": "pg",
+      "type": "database",
+      "label": "PostgreSQL",
+      "sublabel": "evidence - timeline"
+    },
+    {
+      "id": "connectors",
+      "type": "external",
+      "label": "Connectors",
+      "sublabel": "read-only sources"
+    }
+  ],
+  "segments": [
+    {
+      "from": 150,
+      "to": 228,
+      "label": "Admit"
+    },
+    {
+      "from": 236,
+      "to": 370,
+      "label": "Investigate"
+    },
+    {
+      "from": 380,
+      "to": 508,
+      "label": "Report"
+    }
+  ],
+  "messages": [
+    {
+      "id": "message-1",
+      "from": "you",
+      "to": "api",
+      "y": 160,
+      "label": "Start investigation",
+      "variant": "emphasis",
+      "note": "permission - feature flag - spending check"
+    },
+    {
+      "id": "message-2",
+      "from": "api",
+      "to": "pg",
+      "y": 188,
+      "label": "load incident - evidence summaries",
+      "variant": "default"
+    },
+    {
+      "id": "message-3",
+      "from": "pg",
+      "to": "api",
+      "y": 216,
+      "label": "context - citations",
+      "variant": "return"
+    },
+    {
+      "id": "message-4",
+      "from": "api",
+      "to": "ai",
+      "y": 244,
+      "label": "run investigation",
+      "variant": "emphasis"
+    },
+    {
+      "id": "message-5",
+      "from": "ai",
+      "to": "api",
+      "y": 272,
+      "label": "tool calls",
+      "variant": "return"
+    },
+    {
+      "id": "message-6",
+      "from": "api",
+      "to": "pg",
+      "y": 300,
+      "label": "read stored evidence",
+      "variant": "default"
+    },
+    {
+      "id": "message-7",
+      "from": "pg",
+      "to": "api",
+      "y": 328,
+      "label": "ranked evidence",
+      "variant": "return"
+    },
+    {
+      "id": "message-8",
+      "from": "api",
+      "to": "connectors",
+      "y": 356,
+      "label": "live query - opt-in",
+      "variant": "dashed",
+      "note": "service scope - policy - SSRF checks"
+    },
+    {
+      "id": "message-9",
+      "from": "connectors",
+      "to": "api",
+      "y": 384,
+      "label": "sanitized rows",
+      "variant": "return"
+    },
+    {
+      "id": "message-10",
+      "from": "api",
+      "to": "ai",
+      "y": 412,
+      "label": "tool results - subagents",
+      "variant": "default"
+    },
+    {
+      "id": "message-11",
+      "from": "ai",
+      "to": "api",
+      "y": 440,
+      "label": "findings",
+      "variant": "return"
+    },
+    {
+      "id": "message-12",
+      "from": "api",
+      "to": "you",
+      "y": 468,
+      "label": "cited brief - checks",
+      "variant": "return"
+    },
+    {
+      "id": "message-13",
+      "from": "api",
+      "to": "pg",
+      "y": 496,
+      "label": "timeline - usage recorded",
+      "variant": "emphasis"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Admission budget",
+      "items": [
+        "Requires incident investigation permissions and a feature flag",
+        "Subscription and spending checks return 402 when blocked",
+        "3 starts per 5 minutes; one run at a time"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Read-only evidence",
+      "items": [
+        "Stored native and connector evidence carries citations",
+        "Live connectors are service-scoped with policy and SSRF checks",
+        "Private agents reach internal networks over outbound HTTPS"
+      ]
+    },
+    {
+      "dot": "orange",
+      "title": "Billing settlement",
+      "items": [
+        "The cited brief is saved as a sanitized report",
+        "You apply fixes and verify with existing tests and monitors",
+        "Completed investigations are metered once per run"
+      ]
+    }
+  ],
+  "activations": [
+    {
+      "participant": "api",
+      "from": 154,
+      "to": 504,
+      "type": "backend"
+    },
+    {
+      "participant": "pg",
+      "from": 182,
+      "to": 228,
+      "type": "database"
+    },
+    {
+      "participant": "ai",
+      "from": 238,
+      "to": 446,
+      "type": "external"
+    },
+    {
+      "participant": "pg",
+      "from": 294,
+      "to": 334,
+      "type": "database"
+    },
+    {
+      "participant": "connectors",
+      "from": 350,
+      "to": 390,
+      "type": "external"
+    },
+    {
+      "participant": "pg",
+      "from": 490,
+      "to": 504,
+      "type": "database"
+    }
+  ]
+}
