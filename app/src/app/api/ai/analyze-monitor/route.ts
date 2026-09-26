@@ -75,6 +75,12 @@ export async function POST(request: NextRequest) {
 
     // Step 4: Check subscription and AI credits in cloud mode
     const activeOrg = await getActiveOrganization();
+    if (!activeOrg) {
+      return NextResponse.json(
+        { success: false, reason: "organization_required", message: "Select an organization before using AI features." },
+        { status: 400 },
+      );
+    }
     if (activeOrg) {
       const { subscriptionService } = await import("@/lib/services/subscription-service");
       
@@ -96,23 +102,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Atomically consume AI credit
-      const creditResult = await usageTracker.consumeAICredit(activeOrg.id, "ai_analyze");
-      if (!creditResult.allowed) {
-        return NextResponse.json(
-          {
-            success: false,
-            reason: "ai_credits_exhausted",
-            message: creditResult.reason,
-            guidance: "Upgrade your plan for more AI credits or wait until your next billing cycle.",
-            usage: {
-              used: creditResult.used,
-              limit: creditResult.limit,
-            },
-          },
-          { status: 429 }
-        );
-      }
+
     }
 
     // Step 5: Fetch monitor data
@@ -135,6 +125,26 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { success: false, message: "Monitor not found" },
         { status: 404 }
+      );
+    }
+
+    // Atomically consume AI credit
+    const creditResult = await usageTracker.consumeAICredit(activeOrg.id, "ai_analyze");
+    if (!creditResult.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          reason: creditResult.status === 503 ? "billing_unavailable" : "ai_credits_exhausted",
+          message: creditResult.reason,
+          guidance: creditResult.status === 503
+              ? "Billing is temporarily unavailable. Please try again shortly."
+              : "Upgrade your plan for more AI credits or wait until your next billing cycle.",
+          usage: {
+            used: creditResult.used,
+            limit: creditResult.limit,
+          },
+        },
+        { status: creditResult.status ?? 429 }
       );
     }
 

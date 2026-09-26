@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,13 +27,16 @@ import { K6Logo } from "@/components/logo/k6-logo";
 
 interface SubscriptionData {
   subscription: {
-    plan: "plus" | "pro" | "unlimited";
+    plan: "plus" | "pro" | "unlimited" | null;
     status: "active" | "canceled" | "past_due" | "none";
-    currentPeriodStart: string;
-    currentPeriodEnd: string;
+    currentPeriodStart: string | null;
+    currentPeriodEnd: string | null;
+    subscriptionEndsAt?: string | null;
+    hasBillingCustomer?: boolean;
+    accessReason?: string;
     // Pricing info from API
-    basePriceCents?: number;
-    planName?: string;
+    basePriceCents?: number | null;
+    planName?: string | null;
   };
   usage: {
     playwrightMinutes: {
@@ -119,8 +123,7 @@ interface SubscriptionTabProps {
   /**
    * Current user's role in the organization.
    * Only org_owner can manage subscription (access Polar customer portal).
-   * This is because the Polar customer is linked to the org owner's email,
-   * so only they can access the billing portal.
+   * Polar customers belong to organizations; server routes enforce ownership.
    */
   currentUserRole?: string;
 }
@@ -142,7 +145,7 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
       // Fetch both subscription data and usage data in parallel
       const [subscriptionRes, usageRes] = await Promise.all([
         fetch("/api/billing/current"),
-        fetch("/api/billing/usage"),
+        fetch("/api/billing/usage").catch(() => null),
       ]);
 
       if (subscriptionRes.ok) {
@@ -157,7 +160,7 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
         });
       }
 
-      if (usageRes.ok) {
+      if (usageRes?.ok) {
         const usageData = await usageRes.json();
         setSpending(usageData.spending);
       }
@@ -246,12 +249,16 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
     );
   }
 
-  const plan = planDetails[data.subscription.plan] || planDetails.plus;
-  const periodEnd = new Date(data.subscription.currentPeriodEnd);
-  const daysRemaining = Math.max(
-    0,
-    Math.ceil((periodEnd.getTime() - Date.now()) / (1000 * 60 * 60 * 24)),
-  );
+  const hasSubscription = data.subscription.plan !== null;
+  const plan = data.subscription.plan
+    ? planDetails[data.subscription.plan]
+    : null;
+  const periodEnd = data.subscription.currentPeriodEnd
+    ? new Date(data.subscription.currentPeriodEnd)
+    : null;
+  const daysRemaining = periodEnd && Number.isFinite(periodEnd.getTime())
+    ? Math.max(0, Math.ceil((periodEnd.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+    : null;
 
   // Check if hard stop is active
   const isHardStopActive = spending?.hardStopEnabled && spending?.isAtLimit;
@@ -270,9 +277,16 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
         <div className="flex items-center gap-4">
           <div>
             <div className="flex items-center gap-3">
-              <h3 className="text-2xl font-semibold">{plan.name} Plan</h3>
-              <Badge className={`${plan.color} text-white text-sm`}>
-                {data.subscription.status}
+              <h3 className="text-2xl font-semibold">
+                {plan ? `${plan.name} Plan` : "No active plan"}
+              </h3>
+              <Badge
+                className={`${plan ? `${plan.color} text-white` : "bg-muted text-muted-foreground"} text-sm`}
+              >
+                {data.subscription.status === "past_due" ? "Payment overdue"
+                  : data.subscription.status === "canceled" && hasSubscription ? "Cancellation scheduled"
+                  : data.subscription.status === "none" ? "Not subscribed"
+                  : data.subscription.status}
               </Badge>
               {/* Hard Stop Alert - Inline with status */}
               {isHardStopActive && spending && (
@@ -283,39 +297,41 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
                 />
               )}
             </div>
-            <div className="flex items-center gap-4 text-sm text-muted-foreground mt-2">
-              <span className="flex items-center gap-2">
-                <Calendar className="h-4 w-4" />
-                {daysRemaining} days remaining
-              </span>
-              <span>•</span>
-              <span
-                className="flex items-center gap-2"
-                title="Raw check results retention"
-              >
-                <Database className="h-4 w-4" />
-                {data.planFeatures.dataRetentionDays}d raw
-              </span>
-              <span>•</span>
-              <span
-                className="flex items-center gap-2"
-                title="Aggregated metrics retention (P95, avg, uptime)"
-              >
-                <TrendingUp className="h-4 w-4" />
-                {data.planFeatures.aggregatedDataRetentionDays >= 365
-                  ? `${Math.round(data.planFeatures.aggregatedDataRetentionDays / 365)}yr`
-                  : `${data.planFeatures.aggregatedDataRetentionDays}d`}{" "}
-                metrics
-              </span>
-            </div>
+            {hasSubscription && (
+              <div className="flex items-center gap-4 text-sm text-muted-foreground mt-2">
+                <span className="flex items-center gap-2">
+                  <Calendar className="h-4 w-4" />
+                  {daysRemaining === null ? "Billing period unavailable" : `${daysRemaining} days remaining`}
+                </span>
+                <span>•</span>
+                <span
+                  className="flex items-center gap-2"
+                  title="Raw check results retention"
+                >
+                  <Database className="h-4 w-4" />
+                  {data.planFeatures.dataRetentionDays}d raw
+                </span>
+                <span>•</span>
+                <span
+                  className="flex items-center gap-2"
+                  title="Aggregated metrics retention (P95, avg, uptime)"
+                >
+                  <TrendingUp className="h-4 w-4" />
+                  {data.planFeatures.aggregatedDataRetentionDays >= 365
+                    ? `${Math.round(data.planFeatures.aggregatedDataRetentionDays / 365)}yr`
+                    : `${data.planFeatures.aggregatedDataRetentionDays}d`}{" "}
+                  metrics
+                </span>
+              </div>
+            )}
           </div>
         </div>
         {data.subscription.plan !== "unlimited" && (
           <div className="flex items-center gap-4">
             {/* Current Period Estimate - Minimal display */}
-            <div className="text-right hidden sm:block">
+            {hasSubscription && <div className="text-right">
               <p className="text-xs text-muted-foreground">
-                Estimated this period · USD, before tax
+                Estimate at list prices · USD, before tax
               </p>
               <p className="text-lg font-semibold">
                 {estimatedTotal === null
@@ -327,9 +343,9 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
                   </span>
                 )}
               </p>
-            </div>
-            {/* Only org owners can manage subscription - Polar customer portal is linked to owner's email */}
-            {canManageSubscription && (
+            </div>}
+            {/* Only organization owners can open the organization's billing portal. */}
+            {canManageSubscription && data.subscription.hasBillingCustomer && (
               <Button
                 variant="outline"
                 onClick={handleManageSubscription}
@@ -342,101 +358,134 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
             )}
           </div>
         )}
+        {!hasSubscription && canManageSubscription && (
+          <Button asChild>
+            <Link href="/subscribe">Choose a plan</Link>
+          </Button>
+        )}
       </div>
+
+      {hasSubscription && data.subscription.plan !== "unlimited" && (
+        <p className="text-xs text-muted-foreground">
+          Discounts, credits, and plan-change proration can change your invoice.
+          View invoices and payment details in Manage Subscription.
+        </p>
+      )}
+      {data.subscription.status === "past_due" && (
+        <p role="alert" className="text-sm text-destructive">
+          Payment is overdue. The organization owner can update the payment method in Manage Subscription.
+        </p>
+      )}
+      {data.subscription.status === "canceled" && hasSubscription && (
+        <p className="text-sm text-muted-foreground">
+          Your subscription will not renew. Access continues until the current period ends.
+          The organization owner can reverse the cancellation in Manage Subscription.
+        </p>
+      )}
+
+      {!hasSubscription && (
+        <p className="text-sm text-muted-foreground">
+          Choose a plan to view paid usage and resource allowances.
+        </p>
+      )}
 
       {/* Usage & Resources - Combined Compact Grid */}
-      <div className="grid gap-6 md:grid-cols-2">
-        {/* Usage This Period */}
-        <Card>
-          <CardHeader className="pb-4">
-            <CardTitle className="text-base font-medium">
-              Usage This Period
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-5 text-sm text-muted-foreground">
-            <UsageProgressBar
-              icon={
-                <PlaywrightLogo
-                  width={20}
-                  height={20}
-                  className="text-[#E2574C]"
-                />
-              }
-              label="Playwright Execution Minutes"
-              used={data.usage.playwrightMinutes.used}
-              included={data.usage.playwrightMinutes.included}
-              overage={data.usage.playwrightMinutes.overage}
-              percentage={data.usage.playwrightMinutes.percentage}
-            />
-            <UsageProgressBar
-              icon={
-                <K6Logo width={18} height={18} className="text-[#7d64ff]" />
-              }
-              label="K6 Virtual User Minutes"
-              used={data.usage.k6VuMinutes.used}
-              included={data.usage.k6VuMinutes.included}
-              overage={data.usage.k6VuMinutes.overage}
-              percentage={data.usage.k6VuMinutes.percentage}
-            />
-            <UsageProgressBar
-              icon={<Sparkles className="h-5 w-5 text-amber-500" />}
-              label="AI Credits"
-              used={data.usage.aiCredits.used}
-              included={data.usage.aiCredits.included}
-              overage={data.usage.aiCredits.overage}
-              percentage={data.usage.aiCredits.percentage}
-            />
-            <UsageProgressBar
-              icon={<AlertCircle className="h-5 w-5 text-cyan-500" />}
-              label="SRE Investigations"
-              used={data.usage.sreInvestigations.used}
-              included={data.usage.sreInvestigations.included}
-              overage={data.usage.sreInvestigations.overage}
-              percentage={data.usage.sreInvestigations.percentage}
-            />
-          </CardContent>
-        </Card>
+      {hasSubscription && (
+        <div className="grid gap-6 md:grid-cols-2">
+          {/* Usage This Period */}
+          <Card>
+            <CardHeader className="pb-4">
+              <CardTitle className="text-base font-medium">
+                Usage This Period
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-5 text-sm text-muted-foreground">
+              <UsageProgressBar
+                icon={
+                  <PlaywrightLogo
+                    width={20}
+                    height={20}
+                    className="text-[#E2574C]"
+                  />
+                }
+                label="Playwright Execution Minutes"
+                used={data.usage.playwrightMinutes.used}
+                included={data.usage.playwrightMinutes.included}
+                overage={data.usage.playwrightMinutes.overage}
+                percentage={data.usage.playwrightMinutes.percentage}
+              />
+              <UsageProgressBar
+                icon={
+                  <K6Logo width={18} height={18} className="text-[#7d64ff]" />
+                }
+                label="K6 Virtual User Minutes"
+                used={data.usage.k6VuMinutes.used}
+                included={data.usage.k6VuMinutes.included}
+                overage={data.usage.k6VuMinutes.overage}
+                percentage={data.usage.k6VuMinutes.percentage}
+              />
+              <UsageProgressBar
+                icon={<Sparkles className="h-5 w-5 text-amber-500" />}
+                label="AI Credits"
+                used={data.usage.aiCredits.used}
+                included={data.usage.aiCredits.included}
+                overage={data.usage.aiCredits.overage}
+                percentage={data.usage.aiCredits.percentage}
+              />
+              <UsageProgressBar
+                icon={<AlertCircle className="h-5 w-5 text-cyan-500" />}
+                label="SRE Investigations"
+                used={data.usage.sreInvestigations.used}
+                included={data.usage.sreInvestigations.included}
+                overage={data.usage.sreInvestigations.overage}
+                percentage={data.usage.sreInvestigations.percentage}
+              />
+            </CardContent>
+          </Card>
 
-        {/* Resource Limits - Compact */}
-        <Card>
-          <CardHeader className="pb-4">
-            <CardTitle className="text-base font-medium">
-              Resource Limits
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm space-y-5">
-            <div className="grid grid-cols-2 gap-4">
-              <CompactResourceCard
-                icon={Globe}
-                label="Monitors"
-                current={data.limits.monitors.current}
-                limit={data.limits.monitors.limit}
-              />
-              <CompactResourceCard
-                icon={Tally4}
-                label="Status Pages"
-                current={data.limits.statusPages.current}
-                limit={data.limits.statusPages.limit}
-              />
-              <CompactResourceCard
-                icon={FolderOpen}
-                label="Projects"
-                current={data.limits.projects.current}
-                limit={data.limits.projects.limit}
-              />
-              <CompactResourceCard
-                icon={Users}
-                label="Team Members"
-                current={data.limits.teamMembers.current}
-                limit={data.limits.teamMembers.limit}
-              />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+          {/* Resource Limits - Compact */}
+          <Card>
+            <CardHeader className="pb-4">
+              <CardTitle className="text-base font-medium">
+                Resource Limits
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="text-sm space-y-5">
+              <div className="grid grid-cols-2 gap-4">
+                <CompactResourceCard
+                  icon={Globe}
+                  label="Monitors"
+                  current={data.limits.monitors.current}
+                  limit={data.limits.monitors.limit}
+                />
+                <CompactResourceCard
+                  icon={Tally4}
+                  label="Status Pages"
+                  current={data.limits.statusPages.current}
+                  limit={data.limits.statusPages.limit}
+                />
+                <CompactResourceCard
+                  icon={FolderOpen}
+                  label="Projects"
+                  current={data.limits.projects.current}
+                  limit={data.limits.projects.limit}
+                />
+                <CompactResourceCard
+                  icon={Users}
+                  label="Team Members"
+                  current={data.limits.teamMembers.current}
+                  limit={data.limits.teamMembers.limit}
+                />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Billing Controls - Only for cloud plans */}
-      {data.subscription.plan !== "unlimited" && <SpendingLimits />}
+      {hasSubscription && data.subscription.plan !== "unlimited" && (
+          <SpendingLimits onSaved={fetchSubscriptionData} />
+      )}
     </div>
   );
 }

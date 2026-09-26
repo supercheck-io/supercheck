@@ -59,6 +59,12 @@ export async function POST(request: NextRequest) {
 
     // Step 3.5: CRITICAL - Check subscription and AI credits in cloud mode
     const activeOrg = await getActiveOrganization();
+    if (!activeOrg) {
+      return NextResponse.json(
+        { success: false, reason: "organization_required", message: "Select an organization before using AI features." },
+        { status: 400 },
+      );
+    }
     if (activeOrg) {
       // Import subscription service
       const { subscriptionService } = await import("@/lib/services/subscription-service");
@@ -88,15 +94,17 @@ export async function POST(request: NextRequest) {
         return NextResponse.json(
           {
             success: false,
-            reason: "ai_credits_exhausted",
+            reason: creditResult.status === 503 ? "billing_unavailable" : "ai_credits_exhausted",
             message: creditResult.reason,
-            guidance: "Upgrade your plan for more AI credits or wait until your next billing cycle.",
+            guidance: creditResult.status === 503
+              ? "Billing is temporarily unavailable. Please try again shortly."
+              : "Upgrade your plan for more AI credits or wait until your next billing cycle.",
             usage: {
               used: creditResult.used,
               limit: creditResult.limit,
             },
           },
-          { status: 429 }
+          { status: creditResult.status ?? 429 }
         );
       }
     }

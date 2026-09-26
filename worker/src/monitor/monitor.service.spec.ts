@@ -106,6 +106,7 @@ describe('MonitorService', () => {
   };
 
   const mockUsageTrackerService = {
+    shouldBlockExecution: jest.fn().mockResolvedValue({ blocked: false }),
     completeRunWithUsage: jest.fn(),
     trackPlaywrightExecution: jest.fn(),
     trackUsage: jest.fn().mockResolvedValue(undefined),
@@ -445,15 +446,26 @@ describe('MonitorService', () => {
       expect(result?.error).toContain('not found');
     });
 
-    it('should continue execution if status check fails', async () => {
+    it('does not execute or report downtime if authorization cannot be checked', async () => {
       mockDbService.db.query.monitors.findFirst.mockRejectedValue(
         new Error('DB error'),
       );
 
       const result = await service.executeMonitor(mockJobData);
 
-      // Should return a result, not throw
-      expect(result).toBeDefined();
+      expect(result).toBeNull();
+      expect(mockHttpService.request).not.toHaveBeenCalled();
+    });
+
+    it('skips a synthetic monitor at the spending cap without a failure result', async () => {
+      mockUsageTrackerService.shouldBlockExecution.mockResolvedValueOnce({ blocked: true });
+      const result = await service.executeMonitor({ ...mockJobData, type: 'synthetic_test' });
+      expect(result).toBeNull();
+      expect(mockUsageTrackerService.shouldBlockExecution).toHaveBeenCalledWith(
+        mockMonitor.organizationId, { checkSpendingLimit: true },
+      );
+      expect(mockExecutionService.runSingleTest).not.toHaveBeenCalled();
+      expect(mockUsageTrackerService.completeRunWithUsage).not.toHaveBeenCalled();
     });
 
     it('should execute http_request type monitors', async () => {

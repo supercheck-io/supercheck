@@ -151,7 +151,7 @@ export async function GET() {
             name: "Uptime Monitors",
             plus: plans.find((p) => p.plan === "plus")?.maxMonitors ?? "25",
             pro: plans.find((p) => p.plan === "pro")?.maxMonitors ?? "100",
-            enterprise: "Unlimited",
+            enterprise: "Custom",
           },
           {
             name: "Check Interval",
@@ -174,19 +174,19 @@ export async function GET() {
             name: "Playwright Minutes",
             plus: `${plans.find((p) => p.plan === "plus")?.playwrightMinutesIncluded ?? PLAN_LIMIT_FALLBACKS.plus.playwrightMinutesIncluded}/month`,
             pro: `${plans.find((p) => p.plan === "pro")?.playwrightMinutesIncluded ?? PLAN_LIMIT_FALLBACKS.pro.playwrightMinutesIncluded}/month`,
-            enterprise: "Unlimited",
+            enterprise: "Custom",
           },
           {
             name: "K6 VU Minutes",
             plus: `${plans.find((p) => p.plan === "plus")?.k6VuMinutesIncluded ?? PLAN_LIMIT_FALLBACKS.plus.k6VuMinutesIncluded}/month`,
             pro: `${plans.find((p) => p.plan === "pro")?.k6VuMinutesIncluded ?? PLAN_LIMIT_FALLBACKS.pro.k6VuMinutesIncluded}/month`,
-            enterprise: "Unlimited",
+            enterprise: "Custom",
           },
           {
             name: "AI Credits",
             plus: `${plans.find((p) => p.plan === "plus")?.aiCreditsIncluded ?? PLAN_LIMIT_FALLBACKS.plus.aiCreditsIncluded}/month`,
             pro: `${plans.find((p) => p.plan === "pro")?.aiCreditsIncluded ?? PLAN_LIMIT_FALLBACKS.pro.aiCreditsIncluded}/month`,
-            enterprise: "Unlimited",
+            enterprise: "Custom",
           },
           {
             name: "AI SRE Investigation Units",

@@ -28,11 +28,13 @@ export interface OveragePricingData {
     playwrightMinutes: number;
     k6VuMinutes: number;
     aiCredits: number;
+    sreInvestigationUnits: number;
   };
   pro: {
     playwrightMinutes: number;
     k6VuMinutes: number;
     aiCredits: number;
+    sreInvestigationUnits: number;
   };
 }
 
@@ -47,8 +49,8 @@ export function PricingComparisonTable({
 }: PricingComparisonTableProps) {
   // Default overage pricing (fallback if not provided)
   const pricing = overagePricing ?? {
-    plus: { playwrightMinutes: 0.03, k6VuMinutes: 0.01, aiCredits: 0.05 },
-    pro: { playwrightMinutes: 0.02, k6VuMinutes: 0.01, aiCredits: 0.03 },
+    plus: { playwrightMinutes: 0.03, k6VuMinutes: 0.01, aiCredits: 0.05, sreInvestigationUnits: 0.5 },
+    pro: { playwrightMinutes: 0.02, k6VuMinutes: 0.01, aiCredits: 0.03, sreInvestigationUnits: 0.5 },
   };
 
   // Format price for display
@@ -159,6 +161,20 @@ export function PricingComparisonTable({
             </TableCell>
             <TableCell className="text-center py-3 text-sm text-muted-foreground">
               Hard limit (no overage)
+            </TableCell>
+            <TableCell className="text-center py-3 text-sm text-muted-foreground">
+              Custom
+            </TableCell>
+          </TableRow>
+          <TableRow className="hover:bg-muted/30 transition-colors border-b">
+            <TableCell className="py-3 pl-6 text-sm font-medium">
+              Completed AI SRE investigations
+            </TableCell>
+            <TableCell className="text-center py-3 text-sm font-medium">
+              {formatPrice(pricing.plus.sreInvestigationUnits, "investigation")}
+            </TableCell>
+            <TableCell className="text-center py-3 text-sm font-medium">
+              {formatPrice(pricing.pro.sreInvestigationUnits, "investigation")}
             </TableCell>
             <TableCell className="text-center py-3 text-sm text-muted-foreground">
               Custom

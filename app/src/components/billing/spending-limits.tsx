@@ -13,6 +13,7 @@ import { toast } from "sonner";
 interface SpendingLimitsProps {
   onSaveButton?: (button: React.ReactNode) => void;
   className?: string;
+  onSaved?: () => void | Promise<void>;
 }
 
 interface BillingSettings {
@@ -39,7 +40,7 @@ interface SpendingStatus {
   remainingDollars: number | null;
 }
 
-export function SpendingLimits({ className }: SpendingLimitsProps) {
+export function SpendingLimits({ className, onSaved }: SpendingLimitsProps) {
   const [, setSettings] = useState<BillingSettings | null>(null);
   const [spending, setSpending] = useState<SpendingStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -49,7 +50,9 @@ export function SpendingLimits({ className }: SpendingLimitsProps) {
   // Form state
   const [enableLimit, setEnableLimit] = useState(false);
   const [limitAmount, setLimitAmount] = useState("");
-  const [enableNotifications, setEnableNotifications] = useState(true);
+  const [hardStop, setHardStop] = useState(true);
+  const [thresholds, setThresholds] = useState([80, 90, 100]);
+  const enableNotifications = thresholds.length > 0;
   const [emails, setEmails] = useState<string[]>([]);
   const [newEmail, setNewEmail] = useState("");
 
@@ -58,7 +61,9 @@ export function SpendingLimits({ className }: SpendingLimitsProps) {
     enableLimit &&
     (parsedLimitAmount === null ||
       !Number.isFinite(parsedLimitAmount) ||
-      parsedLimitAmount <= 0);
+      parsedLimitAmount <= 0 ||
+      parsedLimitAmount > 21474836.47 ||
+      Math.abs(parsedLimitAmount * 100 - Math.round(parsedLimitAmount * 100)) > 0.000001);
 
   useEffect(() => {
     fetchSettings();
@@ -83,11 +88,10 @@ export function SpendingLimits({ className }: SpendingLimitsProps) {
         setLimitAmount(
           settingsData.monthlySpendingLimitDollars?.toString() || "",
         );
-        setEnableNotifications(
-          settingsData.notifyAt80Percent ||
-            settingsData.notifyAt90Percent ||
-            settingsData.notifyAt100Percent,
-        );
+        setHardStop(settingsData.hardStopOnLimit ?? true);
+        setThresholds([50, 80, 90, 100].filter(
+          (threshold) => settingsData[`notifyAt${threshold}Percent`],
+        ));
         setEmails(settingsData.notificationEmails || []);
       }
 
@@ -123,11 +127,11 @@ export function SpendingLimits({ className }: SpendingLimitsProps) {
         body: JSON.stringify({
           enableSpendingLimit: enableLimit,
           monthlySpendingLimitDollars: enableLimit ? parsedLimitAmount : null,
-          hardStopOnLimit: enableLimit, // Hard stop is always enabled when spending limit is set
-          notifyAt50Percent: false,
-          notifyAt80Percent: enableNotifications,
-          notifyAt90Percent: enableNotifications,
-          notifyAt100Percent: enableNotifications,
+          hardStopOnLimit: hardStop,
+          notifyAt50Percent: thresholds.includes(50),
+          notifyAt80Percent: thresholds.includes(80),
+          notifyAt90Percent: thresholds.includes(90),
+          notifyAt100Percent: thresholds.includes(100),
           notificationEmails: emails,
         }),
       });
@@ -139,6 +143,13 @@ export function SpendingLimits({ className }: SpendingLimitsProps) {
 
       const updatedSettings = await response.json();
       setSettings(updatedSettings);
+      // Saving succeeded even if the subsequent status refresh is unavailable.
+      await Promise.allSettled([
+        fetch("/api/billing/usage").then(async (result) => {
+          if (result.ok) setSpending((await result.json()).spending);
+        }),
+        Promise.resolve().then(() => onSaved?.()),
+      ]);
 
       toast.success("Billing settings saved successfully", {
         description:
@@ -264,8 +275,7 @@ export function SpendingLimits({ className }: SpendingLimitsProps) {
                   <div>
                     <p className="font-medium text-sm">Spending Limit</p>
                     <p className="text-xs text-muted-foreground">
-                      Stop new executions and investigations at the overage
-                      limit
+                      Set an overage budget for this billing period
                     </p>
                   </div>
                   <Switch
@@ -283,8 +293,9 @@ export function SpendingLimits({ className }: SpendingLimitsProps) {
                         <Input
                           aria-label="Monthly overage limit in USD"
                           type="number"
-                          min="1"
-                          step="1"
+                          min="0.01"
+                          max="21474836.47"
+                          step="0.01"
                           placeholder="100"
                           value={limitAmount}
                           onChange={(e) => setLimitAmount(e.target.value)}
@@ -301,7 +312,7 @@ export function SpendingLimits({ className }: SpendingLimitsProps) {
                     </div>
                     {limitAmountInvalid && (
                       <p className="text-xs text-destructive">
-                        Enter a positive monthly cap to enable hard stop.
+                        Enter a cap from $0.01 to $21,474,836.47 in whole cents.
                       </p>
                     )}
                     <p className="text-xs text-muted-foreground">
@@ -309,6 +320,11 @@ export function SpendingLimits({ className }: SpendingLimitsProps) {
                       can exceed this limit.
                     </p>
 
+                    <label className="flex items-center justify-between gap-3 text-xs">
+                      Stop new executions and investigations at the limit
+                      <Switch checked={hardStop} onCheckedChange={setHardStop}
+                        aria-label="Stop execution at spending limit" />
+                    </label>
                     {spending && spending.limitEnabled && (
                       <div className="flex items-center gap-2 text-xs">
                         <span
@@ -345,18 +361,28 @@ export function SpendingLimits({ className }: SpendingLimitsProps) {
                   <div>
                     <p className="font-medium text-sm">Usage Alerts</p>
                     <p className="text-xs text-muted-foreground">
-                      Email notifications at 80%, 90%, and 100% of quota
+                      Choose quota thresholds for email notifications
                     </p>
                   </div>
                   <Switch
                     aria-label="Enable usage notification emails"
                     checked={enableNotifications}
-                    onCheckedChange={setEnableNotifications}
+                    onCheckedChange={(enabled) => setThresholds(enabled ? [80, 90, 100] : [])}
                   />
                 </div>
 
                 {enableNotifications && (
                   <div className="space-y-2 pt-1">
+                    <div className="flex flex-wrap gap-3">
+                      {[50, 80, 90, 100].map((threshold) => (
+                        <label key={threshold} className="flex items-center gap-1 text-xs">
+                          <input type="checkbox" checked={thresholds.includes(threshold)}
+                            onChange={(event) => setThresholds((current) => event.target.checked
+                              ? [...current, threshold] : current.filter((value) => value !== threshold))} />
+                          {threshold}%
+                        </label>
+                      ))}
+                    </div>
                     <div className="flex gap-2">
                       <div className="relative flex-1">
                         <Mail className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
