@@ -184,7 +184,7 @@ jobs:
 
       - name: Lint code
         working-directory: ./worker
-        run: npx eslint "src/**/*.ts"
+        run: npm run lint:check
 
       - name: Run tests
         working-directory: ./worker
@@ -325,7 +325,7 @@ jobs:
           dockerfiles=()
           while IFS= read -r file; do
             dockerfiles+=("$file")
-          done < <(git ls-files '*Dockerfile*' | grep -v '^recorder/playwright/')
+          done < <(git ls-files '*Dockerfile*' | grep -v '^recorder/playwright/' | grep -v '\.dockerignore$')
           if [ "${#dockerfiles[@]}" -eq 0 ]; then
             echo "No Dockerfiles found"
             exit 0

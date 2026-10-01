@@ -6,7 +6,7 @@ icon: MessageSquare
 
 Copilot is Supercheck's read-only chat for AI SRE. Use it from **Investigate → Copilot** for open-ended questions, or from the floating panel on an incident page for incident-scoped follow-ups.
 
-Every answer is grounded in evidence Supercheck already owns. Incident chats can also query live read-only connectors when an authorized user opts in.
+Standalone chat uses the text you provide. Incident chats use stored evidence and can query live read-only connectors when an authorized user opts in.
 
 ## Copilot Chat
 
@@ -28,10 +28,12 @@ Copilot never writes to your systems and never runs remediation. It gathers evid
 
 ## Chat Scopes
 
-- **Standalone chat** lives on the Copilot page with its own history sidebar. Use it for open-ended questions that do not need incident evidence.
+- **Standalone chat** lives on the Copilot page with saved conversations available through **History**. Use it for open-ended questions that do not need incident evidence.
 - **Incident chat** opens from an incident workspace or the floating panel. It is scoped to that incident, verifies the incident before answering, and can use stored evidence and live sources.
 
-Chats can be archived from the history sidebar. Conversations are always scoped to your organization, project, and user.
+Use **New chat** to start fresh, **History** to search or reopen a saved conversation, and **Archive** in the header to archive the current chat. The **Open an incident** link stays below the chat for questions about saved incident evidence. The most recent conversation opens when you return. Conversations are always scoped to your organization, project, and user.
+
+Standalone chat offers chart follow-ups when an answer contains numeric metrics. Evidence and connector follow-ups belong to incident chats.
 
 ## Live Sources
 

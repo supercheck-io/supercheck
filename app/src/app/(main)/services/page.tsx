@@ -17,14 +17,17 @@ export default async function ServicesPage() {
 
   return (
     <div className="space-y-6 p-4 md:p-6">
-      <PageBreadcrumbs items={[
-        { label: "Monitor" },
-        { label: "Services", isCurrentPage: true },
-      ]} />
+      <PageBreadcrumbs
+        items={[
+          { label: "Investigate", href: "/incidents" },
+          { label: "Services", isCurrentPage: true },
+        ]}
+      />
       <div>
-        <h1 className="text-2xl font-semibold">Service catalog</h1>
+        <h1 className="text-2xl font-semibold">Services</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Find your services, link monitors, and understand dependencies during an incident.
+          Optional context for investigations. Link monitors and jobs to a
+          service to scope live sources and understand dependencies.
         </p>
       </div>
       <ServiceCatalog

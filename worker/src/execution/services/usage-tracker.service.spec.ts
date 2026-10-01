@@ -1,3 +1,5 @@
+import { type SQL } from 'drizzle-orm';
+import { PgDialect } from 'drizzle-orm/pg-core';
 import { organization } from '../../db/schema/organization';
 import { UsageTrackerService } from './usage-tracker.service';
 
@@ -14,8 +16,13 @@ describe('UsageTrackerService ledger settlement', () => {
   function fixture(existing = false, failInsert = false) {
     process.env.SELF_HOSTED = 'false';
     process.env.POLAR_ACCESS_TOKEN = 'test-token';
-    const periodStart = new Date('2026-09-01T00:00:00Z');
-    const periodEnd = new Date('2026-10-01T00:00:00Z');
+    const now = new Date();
+    const periodStart = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1),
+    );
+    const periodEnd = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1),
+    );
     const insertValues = jest.fn().mockReturnValue({
       returning: jest.fn().mockImplementation(async () => {
         if (failInsert) throw new Error('ledger unavailable');
@@ -50,6 +57,7 @@ describe('UsageTrackerService ledger settlement', () => {
       insert: jest.fn(() => ({ values: insertValues })),
     };
     const database = {
+      execute: jest.fn().mockResolvedValue([]),
       transaction: jest.fn(
         async (callback: (value: typeof tx) => Promise<unknown>) =>
           callback(tx),
@@ -167,41 +175,70 @@ describe('UsageTrackerService ledger settlement', () => {
     expect(f.database.query.organization.findFirst).not.toHaveBeenCalled();
   });
 
-  it('syncs usage events to Polar with the pinned Polar-Version header', async () => {
-    const f = fixture();
-    f.database.query.organization.findFirst.mockResolvedValue({
-      polarCustomerId: 'polar-cust-1',
-    });
-    const executeMock = jest.fn().mockResolvedValue([]);
-    (f.database as any).execute = executeMock;
-
-    const originalFetch = global.fetch;
-    const fetchMock = jest.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      text: jest.fn().mockResolvedValue(''),
-      json: jest.fn().mockResolvedValue({ inserted: 1, duplicates: 0 }),
-    });
-    global.fetch = fetchMock as never;
-
-    try {
-      await f.service.trackPlaywrightExecution('org-1', 60000, {
-        runId: 'run-polar-version',
+  it.each([
+    [{ inserted: 1, duplicates: 0 }, true],
+    [{ inserted: 0, duplicates: 1 }, true],
+    [{ inserted: 1 }, true],
+    [null, false],
+    ['ok', false],
+    [true, false],
+    [[], false],
+    [Object.assign([], { inserted: 1, duplicates: 0 }), false],
+    [{ inserted: 0.5, duplicates: 0.5 }, false],
+    [{ inserted: -1, duplicates: 2 }, false],
+    [{ inserted: '1' }, false],
+    [{ inserted: 0, duplicates: 0 }, false],
+    [{ inserted: 1, duplicates: -1 }, false],
+  ])(
+    'settles Polar acknowledgement %j (accepted: %s) with the pinned header',
+    async (acknowledgement, accepted) => {
+      const f = fixture();
+      f.database.query.organization.findFirst.mockResolvedValue({
+        polarCustomerId: 'polar-cust-1',
       });
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      const settled = new Promise<string>((resolve) => {
+        f.database.execute.mockImplementation(async (query: SQL) => {
+          resolve(new PgDialect().sqlToQuery(query).sql);
+          return [];
+        });
+      });
 
-      expect(fetchMock).toHaveBeenCalledWith(
-        expect.stringContaining('/v1/events/ingest'),
-        expect.objectContaining({
-          headers: expect.objectContaining({
-            'Polar-Version': '2026-04',
+      const originalFetch = global.fetch;
+      const fetchMock = jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        text: jest.fn().mockResolvedValue(''),
+        json: jest.fn().mockResolvedValue(acknowledgement),
+      });
+      global.fetch = fetchMock as never;
+
+      try {
+        await f.service.trackPlaywrightExecution('org-1', 60000, {
+          runId: 'run-polar-version',
+        });
+        const settlementSql = await settled;
+        if (accepted) {
+          expect(settlementSql).toContain('SET synced_to_polar = true');
+        } else {
+          expect(settlementSql).toContain(
+            'SET sync_attempts = sync_attempts + 1',
+          );
+          expect(settlementSql).not.toContain('synced_to_polar = true');
+        }
+
+        expect(fetchMock).toHaveBeenCalledWith(
+          expect.stringContaining('/v1/events/ingest'),
+          expect.objectContaining({
+            headers: expect.objectContaining({
+              'Polar-Version': '2026-04',
+            }),
           }),
-        }),
-      );
-    } finally {
-      global.fetch = originalFetch;
-    }
-  });
+        );
+      } finally {
+        global.fetch = originalFetch;
+      }
+    },
+  );
 });
 
 describe('UsageTrackerService execution blocking', () => {
@@ -213,62 +250,103 @@ describe('UsageTrackerService execution blocking', () => {
     process.env.SELF_HOSTED = 'false';
     process.env.POLAR_ACCESS_TOKEN = 'test-token';
     const org = {
-      polarCustomerId: 'customer-1', subscriptionPlan: 'plus', subscriptionStatus: 'active',
+      polarCustomerId: 'customer-1',
+      subscriptionPlan: 'plus',
+      subscriptionStatus: 'active',
       subscriptionEndsAt: new Date(Date.now() + 60_000),
-      playwrightMinutesUsed: 3000, k6VuMinutesUsed: 20000, sreInvestigationUnitsUsed: '27',
+      playwrightMinutesUsed: 3000,
+      k6VuMinutesUsed: 20000,
+      sreInvestigationUnitsUsed: '27',
     };
     const query = {
       organization: { findFirst: jest.fn().mockResolvedValue(org) },
-      billingSettings: { findFirst: jest.fn().mockResolvedValue({
-        enableSpendingLimit: true, hardStopOnLimit: true, monthlySpendingLimitCents: 100,
-      }) },
-      planLimits: { findFirst: jest.fn().mockResolvedValue({
-        playwrightMinutesIncluded: 3000, k6VuMinutesIncluded: 20000, sreInvestigationUnitsIncluded: '25',
-      }) },
-      overagePricing: { findFirst: jest.fn().mockResolvedValue({
-        playwrightMinutePriceCents: 3, k6VuMinutePriceCents: 1, sreInvestigationUnitPriceCents: 50,
-      }) },
+      billingSettings: {
+        findFirst: jest.fn().mockResolvedValue({
+          enableSpendingLimit: true,
+          hardStopOnLimit: true,
+          monthlySpendingLimitCents: 100,
+        }),
+      },
+      planLimits: {
+        findFirst: jest.fn().mockResolvedValue({
+          playwrightMinutesIncluded: 3000,
+          k6VuMinutesIncluded: 20000,
+          sreInvestigationUnitsIncluded: '25',
+        }),
+      },
+      overagePricing: {
+        findFirst: jest.fn().mockResolvedValue({
+          playwrightMinutePriceCents: 3,
+          k6VuMinutePriceCents: 1,
+          sreInvestigationUnitPriceCents: 50,
+        }),
+      },
     };
     return { org, query, service: new UsageTrackerService({ query } as never) };
   }
 
   it('includes SRE investigation overage in the execution spending cap', async () => {
     const f = admissionFixture();
-    await expect(f.service.shouldBlockExecution('org-1')).resolves.toMatchObject({
-      blocked: true, reason: expect.stringContaining('Current spending: $1.00'),
+    await expect(
+      f.service.shouldBlockExecution('org-1'),
+    ).resolves.toMatchObject({
+      blocked: true,
+      reason: expect.stringContaining('Current spending: $1.00'),
     });
     f.org.sreInvestigationUnitsUsed = '26';
-    await expect(f.service.shouldBlockExecution('org-1')).resolves.toEqual({ blocked: false });
+    await expect(f.service.shouldBlockExecution('org-1')).resolves.toEqual({
+      blocked: false,
+    });
   });
 
   it.each(['none', 'canceled'])(
-    'rejects queued work after a subscription becomes %s', async (status) => {
+    'rejects queued work after a subscription becomes %s',
+    async (status) => {
       const f = admissionFixture();
       f.org.subscriptionStatus = status;
       f.org.subscriptionEndsAt = new Date(Date.now() - 1);
-      await expect(f.service.shouldBlockExecution('org-1')).resolves.toMatchObject({ blocked: true, reason: 'An active subscription is required' });
+      await expect(
+        f.service.shouldBlockExecution('org-1'),
+      ).resolves.toMatchObject({
+        blocked: true,
+        reason: 'An active subscription is required',
+      });
       expect(f.query.billingSettings.findFirst).not.toHaveBeenCalled();
     },
   );
 
-  it.each(['past_due', 'canceled'])('preserves authorized %s grace access', async (status) => {
-    const f = admissionFixture();
-    f.org.subscriptionStatus = status;
-    f.org.sreInvestigationUnitsUsed = '25';
-    await expect(f.service.shouldBlockExecution('org-1')).resolves.toEqual({ blocked: false });
-  });
+  it.each(['past_due', 'canceled'])(
+    'preserves authorized %s grace access',
+    async (status) => {
+      const f = admissionFixture();
+      f.org.subscriptionStatus = status;
+      f.org.sreInvestigationUnitsUsed = '25';
+      await expect(f.service.shouldBlockExecution('org-1')).resolves.toEqual({
+        blocked: false,
+      });
+    },
+  );
 
   it('keeps non-metered probes running at the cap but enforces their subscription', async () => {
     const f = admissionFixture();
-    await expect(f.service.shouldBlockExecution('org-1', { checkSpendingLimit: false })).resolves.toEqual({ blocked: false });
+    await expect(
+      f.service.shouldBlockExecution('org-1', { checkSpendingLimit: false }),
+    ).resolves.toEqual({ blocked: false });
     f.org.subscriptionStatus = 'none';
-    await expect(f.service.shouldBlockExecution('org-1', { checkSpendingLimit: false })).resolves.toMatchObject({ blocked: true });
+    await expect(
+      f.service.shouldBlockExecution('org-1', { checkSpendingLimit: false }),
+    ).resolves.toMatchObject({ blocked: true });
   });
 
   it('denies execution when an enabled cap cannot be calculated', async () => {
     const f = admissionFixture();
     f.query.overagePricing.findFirst.mockResolvedValue(null);
-    await expect(f.service.shouldBlockExecution('org-1')).resolves.toMatchObject({ blocked: true, reason: 'Unable to verify the organization spending limit' });
+    await expect(
+      f.service.shouldBlockExecution('org-1'),
+    ).resolves.toMatchObject({
+      blocked: true,
+      reason: 'Unable to verify the organization spending limit',
+    });
   });
 
   afterEach(() => {

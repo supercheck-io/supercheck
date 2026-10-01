@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useIsRestoring, useQueryClient } from "@tanstack/react-query";
 import { usePathname } from "next/navigation";
 import { useProjectContext } from "@/hooks/use-project-context";
 import { APP_CONFIG_QUERY_KEY, fetchAppConfig } from "@/hooks/use-app-config";
@@ -28,12 +28,13 @@ const STALE_TIME = {
 
 export function DataPrefetcher() {
   const queryClient = useQueryClient();
+  const isRestoring = useIsRestoring();
   const pathname = usePathname();
   const { currentProject } = useProjectContext();
   const didPrefetch = useRef({ auth: false, dashboard: false, sidebar: false });
 
   useEffect(() => {
-    if (didPrefetch.current.auth) return;
+    if (isRestoring || didPrefetch.current.auth) return;
     didPrefetch.current.auth = true;
 
     const prefetch = (qk: readonly unknown[], fn: () => Promise<unknown>, st: number) =>
@@ -41,10 +42,10 @@ export function DataPrefetcher() {
 
     prefetch(APP_CONFIG_QUERY_KEY, fetchAppConfig, STALE_TIME.INFINITE);
     prefetch(ADMIN_STATUS_QUERY_KEY, fetchAdminStatus, STALE_TIME.LONG);
-  }, [queryClient]);
+  }, [queryClient, isRestoring]);
 
   useEffect(() => {
-    if (!currentProject || didPrefetch.current.dashboard) return;
+    if (isRestoring || !currentProject || didPrefetch.current.dashboard) return;
     if (pathname === "/" || pathname === `/project/${currentProject.slug}`) {
       didPrefetch.current.dashboard = true;
       queryClient.prefetchQuery({
@@ -53,10 +54,10 @@ export function DataPrefetcher() {
         staleTime: STALE_TIME.MEDIUM,
       });
     }
-  }, [queryClient, currentProject, pathname]);
+  }, [queryClient, currentProject, pathname, isRestoring]);
 
   useEffect(() => {
-    if (!currentProject || didPrefetch.current.sidebar) return;
+    if (isRestoring || !currentProject || didPrefetch.current.sidebar) return;
     didPrefetch.current.sidebar = true;
 
     const projectId = currentProject.id;
@@ -81,7 +82,7 @@ export function DataPrefetcher() {
     prefetch(ORG_DETAILS_QUERY_KEY, fetchOrgDetails, STALE_TIME.LONG);
     prefetch(ORG_MEMBERS_QUERY_KEY, fetchOrgMembers, STALE_TIME.LONG);
     prefetch(ORG_PROJECTS_QUERY_KEY, fetchOrgProjects, STALE_TIME.LONG);
-  }, [queryClient, currentProject]);
+  }, [queryClient, currentProject, isRestoring]);
 
   return null;
 }

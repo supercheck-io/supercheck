@@ -43,7 +43,6 @@ interface PricingPlan {
     monitorDataRetention: string;
     jobDataRetention: string;
     customDomains?: boolean;
-    ssoEnabled?: boolean;
     support?: string;
     checkInterval?: string;
     monitoringLocations?: string;
@@ -320,11 +319,10 @@ function SubscribePageContent() {
               "Custom Playwright & K6 allowances",
               "Custom AI credit allowance",
               "Custom AI SRE investigation volume",
-              "Unlimited team members & projects",
+              "Custom team member & project limits",
               "Custom data retention policies",
               "Dedicated account manager",
               "Custom SLA & priority support",
-              "SSO/SAML & advanced security",
               "Onboarding & training",
             ]}
             ctaText="Contact Sales"

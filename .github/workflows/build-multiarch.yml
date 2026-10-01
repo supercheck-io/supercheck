@@ -132,7 +132,7 @@ jobs:
           if [ "${{ matrix.package }}" = "app" ]; then
             npm run lint -- --max-warnings 0
           else
-            npx eslint "src/**/*.ts"
+            npm run lint:check
           fi
 
       - name: Run tests

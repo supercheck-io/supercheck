@@ -5,7 +5,6 @@ import { useMemo, useState, useTransition, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
-  AlertTriangle,
   ArrowDownLeft,
   ArrowUpRight,
   BrainCircuit,
@@ -15,10 +14,8 @@ import {
   GitCommitHorizontal,
   Link2,
   Loader2,
-  Network,
   Plus,
   RefreshCw,
-  ShieldCheck,
   Trash2,
   X,
 } from "lucide-react";
@@ -281,30 +278,29 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-5 overflow-hidden">
+    <div className="flex h-full min-h-0 flex-col gap-5 overflow-y-auto lg:overflow-hidden">
       <header className="flex shrink-0 flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
           <div className="mb-2 flex flex-wrap items-center gap-2">
-            <TableBadge tone="info">Tier {detail.service.tier}</TableBadge>
-            <TableBadge
-              tone={detail.service.status === "active" ? "success" : "warning"}
-              className="capitalize"
-            >
-              {detail.service.status}
-            </TableBadge>
-            {detail.service.environment && (
-              <TableBadge tone="purple">
-                {detail.service.environment}
+            {detail.service.status !== "active" && (
+              <TableBadge tone="warning" className="capitalize">
+                {detail.service.status}
               </TableBadge>
+            )}
+            {detail.service.environment && (
+              <span className="text-sm text-muted-foreground">
+                {detail.service.environment}
+              </span>
             )}
           </div>
           <h1 className="break-words text-2xl font-semibold">
             {detail.service.name}
           </h1>
-          <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-            {detail.service.description ||
-              "Service topology, ownership, health, and investigation context."}
-          </p>
+          {detail.service.description && (
+            <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
+              {detail.service.description}
+            </p>
+          )}
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
           <Button variant="outline" asChild>
@@ -331,66 +327,60 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
 
       <section
         aria-labelledby="service-health-heading"
-        className="grid shrink-0 overflow-hidden rounded-lg border bg-muted/10 sm:grid-cols-3 xl:grid-cols-[minmax(0,1.75fr)_repeat(3,minmax(8rem,0.55fr))]"
+        className="shrink-0 rounded-lg border p-4"
       >
-        <div className="border-b p-4 sm:col-span-3 xl:col-span-1 xl:border-b-0 xl:border-r">
-          <div className="flex items-center gap-2">
-            <Activity className="h-4 w-4 text-muted-foreground" />
-            <h2 id="service-health-heading" className="text-sm font-medium">
-              Service health
-            </h2>
-            <TableBadge
-              tone={healthTones[detail.health.health]}
-              className="capitalize"
-            >
-              {detail.health.stale ? "Stale" : detail.health.health}
-            </TableBadge>
+        <div className="flex flex-wrap items-center gap-3">
+          <h2 id="service-health-heading" className="text-sm font-medium">
+            Service health
+          </h2>
+          <TableBadge
+            tone={healthTones[detail.health.health]}
+            className="capitalize"
+          >
+            {detail.health.stale ? "Stale" : detail.health.health}
+          </TableBadge>
+          {detail.health.activeIncidentCount > 0 && (
+            <span className="text-sm">
+              {detail.health.activeIncidentCount} active {detail.health.activeIncidentCount === 1 ? "incident" : "incidents"}
+            </span>
+          )}
+          {detail.health.firingAlertCount > 0 && (
+            <span className="text-sm">
+              {detail.health.firingAlertCount} firing {detail.health.firingAlertCount === 1 ? "alert" : "alerts"}
+            </span>
+          )}
+        </div>
+        <p className="mt-2 text-sm text-muted-foreground">
+          {detail.health.explanation}
+        </p>
+        <details className="mt-2 text-xs text-muted-foreground">
+          <summary className="cursor-pointer rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            Service details
+          </summary>
+          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+            <span>Tier {detail.service.tier}</span>
+            {detail.service.ownerTeam && (
+              <span>Owner: {detail.service.ownerTeam}</span>
+            )}
+            {detail.health.score !== null && (
+              <span>
+                Health score: {Math.round(detail.health.score * 100)}%
+              </span>
+            )}
+            <span>Calculated {formatDate(detail.health.calculatedAt)}</span>
           </div>
-          <p className="mt-2 text-sm text-muted-foreground">
-            {detail.health.explanation}
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Calculated {formatDate(detail.health.calculatedAt)}
-          </p>
-        </div>
-        <div className="border-b p-4 sm:border-b-0 sm:border-r">
-          <p className="text-xs font-medium uppercase text-muted-foreground">
-            Score
-          </p>
-          <p className="mt-1 text-xl font-semibold">
-            {detail.health.score === null
-              ? "-"
-              : `${Math.round(detail.health.score * 100)}%`}
-          </p>
-        </div>
-        <div className="border-b p-4 sm:border-b-0 sm:border-r">
-          <p className="text-xs font-medium uppercase text-muted-foreground">
-            Active incidents
-          </p>
-          <p className="mt-1 text-xl font-semibold">
-            {detail.health.activeIncidentCount}
-          </p>
-        </div>
-        <div className="p-4">
-          <p className="text-xs font-medium uppercase text-muted-foreground">
-            Firing alerts
-          </p>
-          <p className="mt-1 text-xl font-semibold">
-            {detail.health.firingAlertCount}
-          </p>
-        </div>
+        </details>
       </section>
 
       <Tabs
-        defaultValue="dependencies"
-        className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden"
+        defaultValue="context"
+        className="flex min-h-0 flex-1 flex-col gap-4 lg:overflow-hidden"
       >
-        <TabsList className="h-auto shrink-0 justify-start self-start overflow-x-auto">
-          <TabsTrigger value="dependencies">Dependencies</TabsTrigger>
-          <TabsTrigger value="resources">Resources</TabsTrigger>
+        <TabsList className="h-auto w-full shrink-0 flex-wrap justify-start self-start sm:w-auto">
           <TabsTrigger value="context">Activity</TabsTrigger>
-          <TabsTrigger value="suggestions">
-            Suggestions
+          <TabsTrigger value="resources">Resources</TabsTrigger>
+          <TabsTrigger value="dependencies">
+            Dependencies
             {pendingSuggestions.length > 0 && (
               <TableBadge tone="warning" compact className="ml-2">
                 {pendingSuggestions.length}
@@ -401,14 +391,13 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
 
         <TabsContent
           value="dependencies"
-          className="min-h-0 flex-1 space-y-4 overflow-y-auto"
+          className="min-h-0 flex-1 space-y-4 lg:overflow-y-auto"
         >
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="font-medium">Trusted dependencies</h2>
+              <h2 className="font-medium">Dependencies</h2>
               <p className="text-sm text-muted-foreground">
-                Only active manual, native, observed, or explicitly approved
-                edges appear in the Investigation Map.
+                Services this service depends on, or that depend on it.
               </p>
             </div>
             {detail.permissions.canEdit && (
@@ -418,11 +407,9 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
             )}
           </div>
           {activeDependencies.length === 0 ? (
-            <EmptySection
-              icon={<Network className="h-8 w-8" />}
-              title="No trusted dependencies"
-              description="Add a manual dependency or approve a discovery suggestion to establish the service topology."
-            />
+            <p className="text-sm text-muted-foreground">
+              No dependencies yet.
+            </p>
           ) : (
             <div className="divide-y overflow-hidden rounded-md border">
               {activeDependencies.map((dependency) => {
@@ -502,18 +489,100 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
               })}
             </div>
           )}
+          {detail.suggestions.length > 0 && (
+            <details className="rounded-md border p-4">
+              <summary className="cursor-pointer rounded-sm text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                Suggested dependencies
+                {pendingSuggestions.length > 0
+                  ? ` (${pendingSuggestions.length} pending)`
+                  : ""}
+              </summary>
+              <p className="my-3 text-sm text-muted-foreground">
+                Review discovered relationships before adding them to the map.
+              </p>
+              <div className="divide-y overflow-hidden rounded-md border">
+                {detail.suggestions.map((suggestion) => (
+                  <div
+                    key={suggestion.id}
+                    className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate font-medium">
+                        {suggestion.sourceServiceName} →{" "}
+                        {suggestion.targetServiceName}
+                      </p>
+                      <div className="mt-1 flex flex-wrap items-center gap-2">
+                        <p className="text-sm text-muted-foreground">
+                          Source: {suggestion.source}
+                          {suggestion.confidence === null
+                            ? ""
+                            : ` · ${Math.round(suggestion.confidence * 100)}% confidence`}
+                        </p>
+                        <TableBadge
+                          tone={
+                            suggestion.status === "approved"
+                              ? "success"
+                              : suggestion.status === "rejected"
+                                ? "danger"
+                                : "warning"
+                          }
+                          compact
+                          className="capitalize"
+                        >
+                          {suggestion.status}
+                        </TableBadge>
+                      </div>
+                    </div>
+                    {suggestion.status === "pending" &&
+                    detail.permissions.canConfigure ? (
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          disabled={isPending}
+                          onClick={() =>
+                            runMutation(() =>
+                              rejectSreTopologySuggestion({
+                                id: suggestion.id,
+                              }),
+                            )
+                          }
+                        >
+                          <X className="h-4 w-4" /> Reject
+                        </Button>
+                        <Button
+                          disabled={isPending}
+                          onClick={() =>
+                            runMutation(() =>
+                              approveSreTopologySuggestion({
+                                id: suggestion.id,
+                              }),
+                            )
+                          }
+                        >
+                          <Check className="h-4 w-4" /> Approve
+                        </Button>
+                      </div>
+                    ) : suggestion.status === "pending" ? (
+                      <TableBadge tone="slate">
+                        Configure access required
+                      </TableBadge>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
         </TabsContent>
 
         <TabsContent
           value="resources"
-          className="min-h-0 flex-1 space-y-4 overflow-y-auto"
+          className="min-h-0 flex-1 space-y-4 lg:overflow-y-auto"
         >
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="font-medium">Linked resources</h2>
               <p className="text-sm text-muted-foreground">
-                Bind native monitors, jobs, tests, status components, and k6
-                runs to this service.
+                Link monitors, tests, jobs, and other resources to this service.
               </p>
             </div>
             {detail.permissions.canEdit && (
@@ -534,7 +603,7 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
             <EmptySection
               icon={<Boxes className="h-8 w-8" />}
               title="No linked resources"
-              description="Link native resources to improve health rollups, alert routing, and evidence collection."
+              description="Link resources to connect their health and alerts to this service."
             />
           ) : (
             <div className="divide-y overflow-hidden rounded-md border">
@@ -597,191 +666,118 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
 
         <TabsContent
           value="context"
-          className="min-h-0 flex-1 space-y-6 overflow-y-auto"
+          className="min-h-0 flex-1 space-y-6 lg:overflow-y-auto"
         >
-          <div>
-            <h2 className="mb-3 font-medium">Recent incidents</h2>
-            {detail.recentIncidents.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No incidents are linked to this service.
-              </p>
-            ) : (
-              <div className="divide-y overflow-hidden rounded-md border">
-                {detail.recentIncidents.map((incident) => (
-                  <Link
-                    key={incident.id}
-                    href={`/incidents/${incident.id}`}
-                    className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate font-medium">
-                        INC-{incident.incidentNumber} · {incident.title}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Updated {formatDate(incident.updatedAt)}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <TableBadge tone={severityTones[incident.severity]}>
-                        {incident.severity.toUpperCase()}
-                      </TableBadge>
-                      <ExternalLink className="h-4 w-4 text-muted-foreground" />
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            )}
-          </div>
-          <div className="grid gap-6 lg:grid-cols-2">
-            <div>
-              <h2 className="mb-3 font-medium">Recent alerts</h2>
-              {detail.recentAlerts.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  No alerts are linked to this service.
-                </p>
-              ) : (
-                <div className="divide-y overflow-hidden rounded-md border">
-                  {detail.recentAlerts.slice(0, 8).map((alert) => (
-                    <div
-                      key={alert.id}
-                      className="flex items-center justify-between gap-3 px-4 py-3"
-                    >
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium">
-                          {alert.title}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {formatDate(alert.firedAt)}
-                        </p>
-                      </div>
-                      <TableBadge tone={severityTones[alert.severity]} compact>
-                        {alert.severity.toUpperCase()}
-                      </TableBadge>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-            <div>
-              <h2 className="mb-3 font-medium">Recent deployments</h2>
-              {detail.recentDeployments.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  No deployments are linked to this service.
-                </p>
-              ) : (
-                <div className="divide-y overflow-hidden rounded-md border">
-                  {detail.recentDeployments.slice(0, 8).map((deployment) => (
-                    <div
-                      key={deployment.id}
-                      className="flex items-start gap-3 px-4 py-3"
-                    >
-                      <GitCommitHorizontal className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium">
-                          {deployment.commitMessage ||
-                            deployment.commitSha ||
-                            `${deployment.source} deployment`}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {deployment.source} ·{" "}
-                          {formatDate(deployment.deployedAt)}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </TabsContent>
-
-        <TabsContent
-          value="suggestions"
-          className="min-h-0 flex-1 space-y-4 overflow-y-auto"
-        >
-          <div className="flex items-start gap-3 border-b pb-4">
-            <ShieldCheck className="mt-0.5 h-5 w-5 text-emerald-600" />
-            <div>
-              <h2 className="font-medium">Topology trust review</h2>
-              <p className="text-sm text-muted-foreground">
-                AI and observed relationships stay untrusted until a responder
-                with configure access approves them.
-              </p>
-            </div>
-          </div>
-          {detail.suggestions.length === 0 ? (
+          {detail.recentIncidents.length === 0 &&
+          detail.recentAlerts.length === 0 &&
+          detail.recentDeployments.length === 0 ? (
             <EmptySection
-              icon={<Check className="h-8 w-8" />}
-              title="No pending suggestions"
-              description="Newly discovered relationships will appear here for explicit review."
+              icon={<Activity className="h-8 w-8" />}
+              title="No recent activity"
+              description="Incidents, alerts, and deployments linked to this service will appear here."
             />
           ) : (
-            <div className="divide-y overflow-hidden rounded-md border">
-              {detail.suggestions.map((suggestion) => (
-                <div
-                  key={suggestion.id}
-                  className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate font-medium">
-                      {suggestion.sourceServiceName} →{" "}
-                      {suggestion.targetServiceName}
-                    </p>
-                    <div className="mt-1 flex flex-wrap items-center gap-2">
-                      <p className="text-sm text-muted-foreground">
-                        Source: {suggestion.source}
-                        {suggestion.confidence === null
-                          ? ""
-                          : ` · ${Math.round(suggestion.confidence * 100)}% confidence`}
-                      </p>
-                      <TableBadge
-                        tone={
-                          suggestion.status === "approved"
-                            ? "success"
-                            : suggestion.status === "rejected"
-                              ? "danger"
-                              : "warning"
-                        }
-                        compact
-                        className="capitalize"
+            <>
+              <div>
+                <h2 className="mb-3 font-medium">Recent incidents</h2>
+                {detail.recentIncidents.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    No incidents are linked to this service.
+                  </p>
+                ) : (
+                  <div className="divide-y overflow-hidden rounded-md border">
+                    {detail.recentIncidents.map((incident) => (
+                      <Link
+                        key={incident.id}
+                        href={`/incidents/${incident.id}`}
+                        className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       >
-                        {suggestion.status}
-                      </TableBadge>
-                    </div>
+                        <div className="min-w-0">
+                          <p className="truncate font-medium">
+                            #{incident.incidentNumber} · {incident.title}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Updated {formatDate(incident.updatedAt)}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <TableBadge tone={severityTones[incident.severity]}>
+                            {incident.severity.toUpperCase()}
+                          </TableBadge>
+                          <ExternalLink className="h-4 w-4 text-muted-foreground" />
+                        </div>
+                      </Link>
+                    ))}
                   </div>
-                  {suggestion.status === "pending" &&
-                  detail.permissions.canConfigure ? (
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        disabled={isPending}
-                        onClick={() =>
-                          runMutation(() =>
-                            rejectSreTopologySuggestion({ id: suggestion.id }),
-                          )
-                        }
-                      >
-                        <X className="h-4 w-4" /> Reject
-                      </Button>
-                      <Button
-                        disabled={isPending}
-                        onClick={() =>
-                          runMutation(() =>
-                            approveSreTopologySuggestion({ id: suggestion.id }),
-                          )
-                        }
-                      >
-                        <Check className="h-4 w-4" /> Approve
-                      </Button>
+                )}
+              </div>
+              <div className="grid gap-6 lg:grid-cols-2">
+                <div>
+                  <h2 className="mb-3 font-medium">Recent alerts</h2>
+                  {detail.recentAlerts.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      No alerts are linked to this service.
+                    </p>
+                  ) : (
+                    <div className="divide-y overflow-hidden rounded-md border">
+                      {detail.recentAlerts.slice(0, 8).map((alert) => (
+                        <div
+                          key={alert.id}
+                          className="flex items-center justify-between gap-3 px-4 py-3"
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium">
+                              {alert.title}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {formatDate(alert.firedAt)}
+                            </p>
+                          </div>
+                          <TableBadge
+                            tone={severityTones[alert.severity]}
+                            compact
+                          >
+                            {alert.severity.toUpperCase()}
+                          </TableBadge>
+                        </div>
+                      ))}
                     </div>
-                  ) : suggestion.status === "pending" ? (
-                    <TableBadge tone="slate">
-                      Configure access required
-                    </TableBadge>
-                  ) : null}
+                  )}
                 </div>
-              ))}
-            </div>
+                <div>
+                  <h2 className="mb-3 font-medium">Recent deployments</h2>
+                  {detail.recentDeployments.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      No deployments are linked to this service.
+                    </p>
+                  ) : (
+                    <div className="divide-y overflow-hidden rounded-md border">
+                      {detail.recentDeployments
+                        .slice(0, 8)
+                        .map((deployment) => (
+                          <div
+                            key={deployment.id}
+                            className="flex items-start gap-3 px-4 py-3"
+                          >
+                            <GitCommitHorizontal className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-medium">
+                                {deployment.commitMessage ||
+                                  deployment.commitSha ||
+                                  `${deployment.source} deployment`}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {deployment.source} ·{" "}
+                                {formatDate(deployment.deployedAt)}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
           )}
         </TabsContent>
       </Tabs>
@@ -793,9 +789,7 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
               {editingDependency ? "Edit dependency" : "Add dependency"}
             </DialogTitle>
             <DialogDescription>
-              Define a trusted directional relationship. Self-links,
-              cross-project services, and duplicate active edges are rejected
-              server-side.
+              Choose which service depends on the other.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-2 sm:grid-cols-2">
@@ -858,13 +852,11 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
         <DialogContent className="w-[min(94vw,48rem)] max-w-none">
           <DialogHeader>
             <DialogTitle>
-              {editingResourceId
-                ? "Edit resource link"
-                : "Link native resource"}
+              {editingResourceId ? "Edit resource link" : "Link resource"}
             </DialogTitle>
             <DialogDescription>
-              Choose a resource from the current project. Links improve routing
-              and health context without copying raw payloads.
+              Choose a resource from this project to connect its health and
+              alerts.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-2 sm:grid-cols-3">
@@ -935,11 +927,6 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
                 </SelectContent>
               </Select>
             </div>
-          </div>
-          <div className="flex items-start gap-2 bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-            Resource identity and tenant ownership are verified again on the
-            server before the link is created.
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setResourceOpen(false)}>

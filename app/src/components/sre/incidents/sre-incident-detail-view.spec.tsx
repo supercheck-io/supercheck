@@ -14,8 +14,12 @@ jest.mock("@/components/sre/incidents/edit-sre-incident-dialog", () => ({
   EditSreIncidentDialog: () => <button type="button">Edit incident</button>,
 }));
 
+jest.mock("@/components/sre/incidents/resolve-sre-incident-dialog", () => ({
+  ResolveSreIncidentDialog: () => <button>Resolve incident</button>,
+}));
+
 jest.mock("@/components/sre/incidents/sre-investigation-panel", () => ({
-  SreInvestigationPanel: () => <div>Mock AI investigation panel</div>,
+  SreInvestigationPanel: ({ hasPrimaryService }: { hasPrimaryService: boolean }) => <div data-has-service={hasPrimaryService}>Mock AI investigation panel</div>,
 }));
 
 function detailFixture(): SreIncidentDetail {
@@ -96,6 +100,20 @@ function detailFixture(): SreIncidentDetail {
 }
 
 describe("SreIncidentDetailView", () => {
+  it("uses the linked service ID even when its display name is missing", () => {
+    const detail = detailFixture();
+    detail.incident.primaryServiceName = null;
+    render(<SreIncidentDetailView detail={detail} services={[]} />);
+    expect(screen.getByText("Mock AI investigation panel")).toHaveAttribute("data-has-service", "true");
+  });
+  it("hides resolution after the incident is resolved", () => {
+    const detail = detailFixture();
+    detail.incident.status = "resolved";
+    render(<SreIncidentDetailView detail={detail} services={[]} />);
+    expect(
+      screen.queryByRole("button", { name: "Resolve incident" }),
+    ).not.toBeInTheDocument();
+  });
   it("opens saved evidence without navigating to a private provider", () => {
     const detail = detailFixture();
     detail.evidence[0].sourceUri = "http://prometheus.aisre-lab:9090/graph";
@@ -110,6 +128,7 @@ describe("SreIncidentDetailView", () => {
       screen.getByRole("button", { name: "View evidence: Monitor timeout" }),
     );
     expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByText("80%")).toBeInTheDocument();
     expect(screen.getByText("monitor_results.id = 1")).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "Open original source" }),
@@ -142,6 +161,7 @@ describe("SreIncidentDetailView", () => {
   it("shows a readable brief and hides generation from viewers", () => {
     const detail = detailFixture();
     detail.permissions.canInvestigate = false;
+    detail.permissions.canUpdate = false;
     render(
       <SreIncidentDetailView
         detail={detail}
@@ -150,6 +170,14 @@ describe("SreIncidentDetailView", () => {
       />,
     );
     expect(screen.getByText("Brief summary")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Resolve incident" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen
+        .getByText("Evidence brief · Summarize or export evidence")
+        .closest("details"),
+    ).toHaveAttribute("open");
     expect(
       screen.queryByRole("button", { name: "Generate brief" }),
     ).not.toBeInTheDocument();
@@ -164,15 +192,18 @@ describe("SreIncidentDetailView", () => {
   it("renders simplified incident tabs and default investigation panel", () => {
     render(<SreIncidentDetailView detail={detailFixture()} services={[]} />);
 
+    expect(screen.getByRole("tab", { name: "Overview" })).toBeInTheDocument();
     expect(
-      screen.getByRole("tab", { name: "Investigation" }),
+      screen.getByRole("tab", { name: "Evidence & brief" }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Evidence" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Brief" })).toBeInTheDocument();
+    expect(screen.getAllByRole("tab")).toHaveLength(2);
+    expect(screen.getByRole("link", { name: "View map" })).toHaveAttribute(
+      "href",
+      `/copilot/evidence-graph?incident=${detailFixture().incident.id}`,
+    );
     expect(screen.getByText("Mock AI investigation panel")).toBeInTheDocument();
     expect(screen.getByText("Incident #42")).toBeInTheDocument();
-    expect(screen.getByText("Alerts")).toBeInTheDocument();
-    expect(screen.getByText("2")).toBeInTheDocument();
+    expect(screen.getByText("2 alerts")).toBeInTheDocument();
     expect(
       screen.queryByText("Investigation workspace"),
     ).not.toBeInTheDocument();

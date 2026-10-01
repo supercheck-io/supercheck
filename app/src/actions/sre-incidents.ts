@@ -996,10 +996,13 @@ export async function getSreIncidentDetails(
               modelId: latestInvestigation.modelId,
               status: latestInvestigation.status,
               summary:
-                typeof latestInvestigation.agentStateSnapshot?.summary ===
-                "string"
-                  ? latestInvestigation.agentStateSnapshot.summary
-                  : latestInvestigation.rootCauseHypothesis,
+                ["failed", "aborted", "timed_out"].includes(latestInvestigation.status)
+                  ? typeof latestInvestigation.agentStateSnapshot?.error === "string"
+                    ? latestInvestigation.agentStateSnapshot.error
+                    : "SRE investigation did not complete. Please try again."
+                  : typeof latestInvestigation.agentStateSnapshot?.summary === "string"
+                    ? latestInvestigation.agentStateSnapshot.summary
+                    : latestInvestigation.rootCauseHypothesis,
               completedAt: latestInvestigation.completedAt,
               createdAt: latestInvestigation.createdAt,
             }

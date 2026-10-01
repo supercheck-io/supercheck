@@ -78,16 +78,15 @@ const plans = [
         price: 'Custom',
         description: 'For large organizations',
         features: [
-            'Unlimited monitors',
+            'Custom monitor allowance',
             'Custom Playwright & K6 allowances',
             'Custom AI credit pool or bring-your-own-provider',
             'Custom AI SRE investigation volume',
             'Custom connector and Private Agent limits',
-            'Unlimited team members & projects',
+            'Custom team member & project limits',
             'Custom data retention policies',
             'Dedicated account manager',
             'Custom SLA & priority support',
-            'SSO/SAML & advanced security',
             'Onboarding & training',
         ],
         cta: 'Contact Sales',
@@ -143,7 +142,6 @@ const comparisonFeatures = [
     {
         category: 'Features', items: [
             { name: 'Custom domains', plus: '✓', pro: '✓', selfHosted: '✓' },
-            { name: 'SSO/SAML', plus: '✓', pro: '✓', selfHosted: '✓' },
             { name: 'CI/CD integration', plus: '✓', pro: '✓', selfHosted: '✓' },
             { name: 'Cron job scheduling', plus: '✓', pro: '✓', selfHosted: '✓' },
             { name: 'All monitoring locations', plus: '✓', pro: '✓', selfHosted: 'Self-managed' },

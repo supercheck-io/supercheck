@@ -446,15 +446,13 @@ describe("Plan Enforcement Middleware", () => {
         (isPolarEnabled as jest.Mock).mockReturnValue(false);
       });
 
-      it("should always allow all features", async () => {
+      it("should allow custom domains", async () => {
         const customDomains = await checkFeatureAvailability(
           "org-1",
           "customDomains"
         );
-        const sso = await checkFeatureAvailability("org-1", "ssoEnabled");
 
         expect(customDomains.available).toBe(true);
-        expect(sso.available).toBe(true);
       });
     });
 
@@ -488,31 +486,6 @@ describe("Plan Enforcement Middleware", () => {
         const result = await checkFeatureAvailability("org-1", "customDomains");
         expect(result.available).toBe(true);
       });
-
-      it("should check SSO availability on Plus plan", async () => {
-        (
-          subscriptionService.getOrganizationPlan as jest.Mock
-        ).mockResolvedValue({
-          plan: "plus",
-          ssoEnabled: false,
-        });
-
-        const result = await checkFeatureAvailability("org-1", "ssoEnabled");
-        expect(result.available).toBe(false);
-        expect(result.error).toContain("SSO");
-      });
-
-      it("should allow SSO on Pro plan", async () => {
-        (
-          subscriptionService.getOrganizationPlan as jest.Mock
-        ).mockResolvedValue({
-          plan: "pro",
-          ssoEnabled: true,
-        });
-
-        const result = await checkFeatureAvailability("org-1", "ssoEnabled");
-        expect(result.available).toBe(true);
-      });
     });
   });
 
@@ -533,7 +506,6 @@ describe("Plan Enforcement Middleware", () => {
         runningCapacity: 5,
         queuedCapacity: 50,
         customDomains: false,
-        ssoEnabled: false,
       };
 
       beforeEach(() => {
@@ -575,7 +547,6 @@ describe("Plan Enforcement Middleware", () => {
         runningCapacity: 10,
         queuedCapacity: 100,
         customDomains: true,
-        ssoEnabled: true,
       };
 
       beforeEach(() => {
@@ -594,11 +565,6 @@ describe("Plan Enforcement Middleware", () => {
 
       it("should allow custom domains", async () => {
         const result = await checkFeatureAvailability("org-1", "customDomains");
-        expect(result.available).toBe(true);
-      });
-
-      it("should allow SSO", async () => {
-        const result = await checkFeatureAvailability("org-1", "ssoEnabled");
         expect(result.available).toBe(true);
       });
     });

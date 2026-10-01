@@ -17,7 +17,7 @@
           "you",
           "api"
         ],
-        "note": "Permissions, feature flag, subscription, and spending checks gate every investigation start."
+        "note": "Permissions, feature flags, rate limits, and one active run per incident gate investigation starts."
       },
       {
         "id": "evidence",
@@ -28,17 +28,17 @@
           "connectors",
           "ai"
         ],
-        "note": "The agent reads stored evidence first and can opt in to live read-only connectors."
+        "note": "Stored evidence is read first; authorized responders explicitly opt in to live read-only connectors."
       },
       {
-        "id": "report-and-settle",
-        "label": "Report settlement",
+        "id": "saved-result",
+        "label": "Saved result",
         "focus": [
           "api",
           "pg",
           "you"
         ],
-        "note": "The cited brief is saved as a sanitized report; completed investigation usage is recorded once per run."
+        "note": "The completed investigation and timeline are persisted; responders can separately save a sanitized report snapshot."
       }
     ]
   },
@@ -77,18 +77,18 @@
   "segments": [
     {
       "from": 150,
-      "to": 228,
-      "label": "Admit"
+      "to": 224,
+      "label": "Accept"
     },
     {
-      "from": 236,
-      "to": 370,
+      "from": 234,
+      "to": 450,
       "label": "Investigate"
     },
     {
-      "from": 380,
+      "from": 460,
       "to": 508,
-      "label": "Report"
+      "label": "Review"
     }
   ],
   "messages": [
@@ -99,22 +99,22 @@
       "y": 160,
       "label": "Start investigation",
       "variant": "emphasis",
-      "note": "permission - feature flag - spending check"
+      "note": "permission - feature flag - rate limit"
     },
     {
       "id": "message-2",
       "from": "api",
       "to": "pg",
       "y": 188,
-      "label": "load incident - evidence summaries",
+      "label": "load incident - reserve run",
       "variant": "default"
     },
     {
       "id": "message-3",
-      "from": "pg",
-      "to": "api",
+      "from": "api",
+      "to": "you",
       "y": 216,
-      "label": "context - citations",
+      "label": "202 Accepted - run ID",
       "variant": "return"
     },
     {
@@ -122,8 +122,9 @@
       "from": "api",
       "to": "ai",
       "y": 244,
-      "label": "run investigation",
-      "variant": "emphasis"
+      "label": "investigate stored context",
+      "variant": "emphasis",
+      "note": "background execution - bounded budget"
     },
     {
       "id": "message-5",
@@ -146,7 +147,7 @@
       "from": "pg",
       "to": "api",
       "y": 328,
-      "label": "ranked evidence",
+      "label": "bounded evidence - citations",
       "variant": "return"
     },
     {
@@ -171,7 +172,7 @@
       "from": "api",
       "to": "ai",
       "y": 412,
-      "label": "tool results - subagents",
+      "label": "tool results - specialists",
       "variant": "default"
     },
     {
@@ -179,34 +180,35 @@
       "from": "ai",
       "to": "api",
       "y": 440,
-      "label": "findings",
+      "label": "cited findings",
       "variant": "return"
     },
     {
       "id": "message-12",
       "from": "api",
-      "to": "you",
+      "to": "pg",
       "y": 468,
-      "label": "cited brief - checks",
-      "variant": "return"
+      "label": "save result - timeline",
+      "variant": "emphasis"
     },
     {
       "id": "message-13",
       "from": "api",
-      "to": "pg",
+      "to": "you",
       "y": 496,
-      "label": "timeline - usage recorded",
-      "variant": "emphasis"
+      "label": "refreshed result - citations",
+      "variant": "return",
+      "note": "UI polls incident status"
     }
   ],
   "cards": [
     {
       "dot": "cyan",
-      "title": "Admission budget",
+      "title": "Run admission",
       "items": [
-        "Requires incident investigation permissions and a feature flag",
-        "Subscription and spending checks return 402 when blocked",
-        "3 starts per 5 minutes; one run at a time"
+        "Permission and feature flag required",
+        "Start returns a run ID before background execution",
+        "3 starts per 5 minutes; one active run per incident"
       ]
     },
     {
@@ -220,11 +222,11 @@
     },
     {
       "dot": "orange",
-      "title": "Billing settlement",
+      "title": "Report review",
       "items": [
-        "The cited brief is saved as a sanitized report",
-        "You apply fixes and verify with existing tests and monitors",
-        "Completed investigations are metered once per run"
+        "Result and timeline are saved together",
+        "Snapshots and briefs are separate artifacts",
+        "Humans apply fixes and confirm recovery"
       ]
     }
   ],
@@ -238,7 +240,7 @@
     {
       "participant": "pg",
       "from": 182,
-      "to": 228,
+      "to": 200,
       "type": "database"
     },
     {
@@ -261,8 +263,8 @@
     },
     {
       "participant": "pg",
-      "from": 490,
-      "to": 504,
+      "from": 462,
+      "to": 476,
       "type": "database"
     }
   ]

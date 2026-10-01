@@ -4,7 +4,7 @@ description: Configure services, read-only integrations, diagnostic recipes, and
 icon: Bot
 ---
 
-Project Admins and organization-level administrators configure AI SRE from **Organization Admin**. Responders use **Alerts**, **Incidents**, **Investigation Map**, and **Copilot** during an incident.
+Project Admins and organization-level administrators configure AI SRE from **Organization Admin**. Responders start from **Alerts** or **Investigate → Incidents**. **Copilot** and **Services** are grouped under **Investigate**; the map is an optional link from an incident or service.
 
 Select **Setup guide** beside **Add service**, **Add connector**, or **Add recipe** to review setup status. The guide opens only when selected and does not open another form automatically.
 
@@ -18,10 +18,11 @@ Use **Services** to define the systems responders recognize, such as `checkout-a
 
 For each service, add its owner, environment, repository, and telemetry name. The service detail page manages:
 
-- Trusted dependencies
-- Linked monitors, jobs, tests, k6 runs, and status components
-- Recent incident and alert activity
-- Topology suggestions awaiting approval
+- **Activity** opens first with recent incidents, alerts, and deployments.
+- **Resources** links monitors, jobs, tests, k6 runs, and status components.
+- **Dependencies** shows service relationships. Expand **Suggested dependencies** to approve or reject discoveries and review past decisions.
+
+Service health shows its status and explanation. Nonzero incident and alert counts remain visible; expand **Service details** for tier, owner, available health score, and calculation time.
 
 Suggested relationships do not enter the Investigation Map until an authorized user approves them.
 

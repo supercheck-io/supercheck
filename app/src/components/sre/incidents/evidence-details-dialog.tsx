@@ -21,6 +21,7 @@ export function EvidenceDetailsDialog({ item }: { item: SreIncidentDetail["evide
         <dl className="space-y-4 text-sm">
           <div><dt className="font-medium">Summary</dt><dd className="mt-1 whitespace-pre-wrap break-words text-muted-foreground">{item.summary || "No summary recorded."}</dd></div>
           <div><dt className="font-medium">Observed</dt><dd suppressHydrationWarning>{item.observedAt ? new Date(item.observedAt).toLocaleString() : "Not recorded"}</dd></div>
+          <div><dt className="font-medium">Confidence</dt><dd>{item.confidence ? `${Math.round(Number(item.confidence) * 100)}%` : "Not recorded"}</dd></div>
           <div><dt className="font-medium">Evidence ID</dt><dd className="break-all font-mono text-xs">{item.id}</dd></div>
           {item.citationQuery && <div><dt className="font-medium">Query reference</dt><dd className="mt-1 whitespace-pre-wrap break-all rounded-md bg-muted p-3 font-mono text-xs">{item.citationQuery}</dd></div>}
           {item.rawContentExcerpt && <div><dt className="font-medium">Saved excerpt</dt><dd className="mt-1 max-h-64 overflow-y-auto whitespace-pre-wrap break-words rounded-md bg-muted p-3 font-mono text-xs">{item.rawContentExcerpt}</dd></div>}

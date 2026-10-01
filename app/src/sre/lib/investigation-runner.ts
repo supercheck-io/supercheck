@@ -12,7 +12,7 @@ import {
   buildSreInvestigationPrompt,
   buildSreInvestigationSystemPrompt,
 } from "@/sre/agents/investigator";
-import { runSreAgent } from "@/sre/lib/agent-runner";
+import { runSreAgent, SreAgentEmptyResponseError, SreAgentIncompleteResponseError } from "@/sre/lib/agent-runner";
 import { createSreInvestigationSubagentTools } from "@/sre/subagents/domain-subagents";
 import { createSreConnectorTools } from "@/sre/tools/connector-tools";
 import {
@@ -248,7 +248,7 @@ export async function executeSreIncidentInvestigation(
         ...(liveConnectorsEnabled ? createSreInvestigationSubagentTools() : {}),
       },
       budget: {
-        maxSteps: liveConnectorsEnabled ? 11 : 5,
+        maxSteps: liveConnectorsEnabled ? 8 : 5,
         maxOutputTokens: 1800,
         timeoutMs: 90_000,
       },
@@ -319,23 +319,44 @@ export async function executeSreIncidentInvestigation(
       modelId: result.modelId,
       finishReason: result.finishReason,
     };
-  } catch {
+  } catch (error) {
     // Provider errors can embed credentials or raw evidence. Persist only a
-    // fixed explanation in records exposed to incident readers and exports.
-    const errorMessage = "SRE investigation failed";
+    // known explanation in records exposed to incident readers and exports.
+    const finishReason = error instanceof SreAgentIncompleteResponseError
+      ? error.finishReason : null;
+    const errorCode = finishReason === "tool-calls" ? "step_limit_exceeded"
+      : finishReason === "length" ? "token_limit_exceeded"
+      : finishReason === "content-filter" ? "content_filter"
+      : error instanceof SreAgentEmptyResponseError ? "empty_response"
+      : error !== null && typeof error === "object" && "name" in error && error.name === "TimeoutError" ? "timed_out"
+      : "provider_error";
+    const errorMessage = errorCode === "step_limit_exceeded"
+      ? "Investigation reached its step limit before completing. Narrow the incident scope or try using saved evidence only."
+      : errorCode === "token_limit_exceeded"
+        ? "Investigation reached its response limit before completing. Narrow the incident scope and try again."
+        : errorCode === "content_filter"
+          ? "The AI provider filtered the investigation response. Review the evidence before trying again."
+          : errorCode === "empty_response"
+            ? "The AI provider returned no investigation report. Try again."
+            : errorCode === "timed_out"
+              ? "Investigation timed out before completing. Try again with a narrower scope."
+              : "SRE investigation failed";
     await db.transaction(async (tx) => {
-      await tx
+      const failed = await tx
         .update(sreInvestigationRuns)
         .set({
           status: "failed",
           agentStateSnapshot: {
             mode: "sre_investigation_api",
             error: errorMessage,
+            errorCode,
           },
           completedAt: new Date(),
           durationMs: Date.now() - startedAt,
         })
-        .where(and(eq(sreInvestigationRuns.id, investigationRunId), eq(sreInvestigationRuns.status, "running")));
+        .where(and(eq(sreInvestigationRuns.id, investigationRunId), eq(sreInvestigationRuns.status, "running")))
+        .returning({ id: sreInvestigationRuns.id });
+      if (failed.length === 0) return;
 
       await tx.insert(sreIncidentTimelineEvents).values({
         incidentId: incident.id,
@@ -344,6 +365,7 @@ export async function executeSreIncidentInvestigation(
           type: "sre_investigation_failed",
           investigationRunId,
           error: errorMessage.slice(0, 1000),
+          errorCode,
           liveConnectorsEnabled,
           specializedSubagentsEnabled: liveConnectorsEnabled,
         },
@@ -356,7 +378,7 @@ export async function executeSreIncidentInvestigation(
     return {
       success: false,
       status: 502,
-      error: "SRE investigation failed",
+      error: errorMessage,
       investigationRunId,
     };
   }

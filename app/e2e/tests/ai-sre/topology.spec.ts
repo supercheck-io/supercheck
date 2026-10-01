@@ -46,12 +46,13 @@ test.describe("AI SRE service topology administration @aisre @topology @critical
       await createService(page, targetName);
 
       await page.goto(`/services/${sourceId}`, { waitUntil: "load" });
+      await page.getByRole("tab", {name:/Dependencies/}).click();
       await page
         .getByRole("button", { name: "Add dependency", exact: true })
         .click();
       const dialog = page.getByRole("dialog", { name: "Add dependency" });
       await expect(dialog).toContainText(
-        "Self-links, cross-project services, and duplicate active edges are rejected server-side.",
+        "Choose which service depends on the other.",
       );
       const relatedService = dialog
         .getByText("Related service", { exact: true })
@@ -76,6 +77,7 @@ test.describe("AI SRE service topology administration @aisre @topology @critical
       await expect(dependency).toContainText("This service depends on it");
       await expect(dependency).toContainText("manual");
       await page.reload();
+      await page.getByRole("tab", {name:/Dependencies/}).click();
       await expect(page.getByText(targetName, { exact: true })).toBeVisible();
 
       await page.goto("/copilot/evidence-graph", { waitUntil: "load" });
@@ -138,6 +140,7 @@ test.describe("AI SRE service topology administration @aisre @topology @critical
       await expect(
         viewerPage.getByRole("heading", { name: sourceName, exact: true }),
       ).toBeVisible();
+      await viewerPage.getByRole("tab", {name:/Dependencies/}).click();
       await expect(
         viewerPage.getByRole("button", {
           name: "Add dependency",
@@ -151,11 +154,13 @@ test.describe("AI SRE service topology administration @aisre @topology @critical
       ).toHaveCount(0);
 
       await page.goto(`/services/${sourceId}`, { waitUntil: "load" });
+      await page.getByRole("tab", {name:/Dependencies/}).click();
       await page
         .getByRole("button", { name: `Remove dependency with ${targetName}` })
         .click();
       await expect(page.getByText(targetName, { exact: true })).toHaveCount(0);
       await page.reload();
+      await page.getByRole("tab", {name:/Dependencies/}).click();
       await expect(page.getByText(targetName, { exact: true })).toHaveCount(0);
     } finally {
       const viewerRestored = await viewerPage.request.post(

@@ -29,7 +29,6 @@ import {
   type LucideIcon,
   ClipboardList,
   Target,
-  BrainCircuit,
   Siren,
   Bot,
   Boxes,
@@ -76,12 +75,6 @@ const data = {
     },
 
     {
-      title: "Incidents",
-      url: "/incidents",
-      icon: Siren,
-    },
-
-    {
       title: "Status Pages",
       url: "/status-pages",
       icon: Tally4,
@@ -90,14 +83,19 @@ const data = {
 
   Investigate: [
     {
+      title: "Incidents",
+      url: "/incidents",
+      icon: Siren,
+    },
+    {
       title: "Copilot",
       url: "/copilot",
       icon: Bot,
     },
     {
-      title: "Investigation Map",
-      url: "/copilot/evidence-graph",
-      icon: BrainCircuit,
+      title: "Services",
+      url: "/services",
+      icon: Boxes,
     },
   ],
 
@@ -224,11 +222,6 @@ const data = {
       url: "/monitors",
       icon: Globe,
     },
-    {
-      title: "Services",
-      url: "/services",
-      icon: Boxes,
-    },
   ],
 
   SuperAdmin: [
@@ -278,13 +271,17 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   // with synchronous localStorage restoration.
   // Server will return false, Client will return true after mounting.
   const isMounted = useSyncExternalStore(
-    () => () => { },
+    () => () => {},
     () => true,
-    () => false
+    () => false,
   );
 
   // Use cached admin status hook (React Query cached for 5 minutes)
-  const { isAdmin, isOrgAdmin, isLoading: isAdminStatusLoading } = useAdminStatus();
+  const {
+    isAdmin,
+    isOrgAdmin,
+    isLoading: isAdminStatusLoading,
+  } = useAdminStatus();
 
   // Status is loaded when mounted AND not loading
   // On server/initial render: isMounted=false, so isAdminStatusLoaded=false

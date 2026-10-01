@@ -68,6 +68,7 @@ type SreEvidenceGraphProps = {
   graph: SreEvidenceGraphData;
   loadError?: string | null;
   initialSelectedNodeId?: string | null;
+  initialIncidentFocusId?: string | null;
 };
 
 type TopologyNodeData = {
@@ -458,10 +459,7 @@ function TopologyViewport({
         </div>
       </div>
 
-      <div
-        className="min-h-0 flex-1"
-        aria-label="Investigation Map canvas"
-      >
+      <div className="min-h-0 flex-1" aria-label="Investigation Map canvas">
         {graphNodes.length === 0 ? (
           <DashboardEmptyState
             icon={<Network className="h-10 w-10 text-muted-foreground" />}
@@ -487,11 +485,7 @@ function TopologyViewport({
               proOptions={{ hideAttribution: true }}
               className="sre-investigation-map"
             >
-              <Background
-                variant={BackgroundVariant.Dots}
-                gap={18}
-                size={1}
-              />
+              <Background variant={BackgroundVariant.Dots} gap={18} size={1} />
               {isExpanded && (
                 <MiniMap
                   pannable
@@ -522,22 +516,36 @@ export function SreEvidenceGraph({
   graph,
   loadError = null,
   initialSelectedNodeId = null,
+  initialIncidentFocusId = null,
 }: SreEvidenceGraphProps) {
   const [query, setQuery] = useState("");
-  const [topologyView, setTopologyView] =
-    useState<TopologyView>("essentials");
-  const [incidentFocusId, setIncidentFocusId] = useState("all");
+  const [topologyView, setTopologyView] = useState<TopologyView>("essentials");
+  const [incidentFocusId, setIncidentFocusId] = useState(
+    graph.nodes.some(
+      (node) => node.id === initialIncidentFocusId && node.type === "incident",
+    )
+      ? (initialIncidentFocusId ?? "all")
+      : "all",
+  );
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(
-    initialSelectedNodeId,
+    graph.nodes.some((node) => node.id === initialSelectedNodeId)
+      ? initialSelectedNodeId
+      : null,
   );
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [isMaximized, setIsMaximized] = useState(false);
 
   const normalizedQuery = query.trim().toLowerCase();
-  const incidentOptions = useMemo(
-    () => graph.nodes.filter((node) => node.type === "incident").slice(0, 25),
-    [graph.nodes],
-  );
+  const incidentOptions = useMemo(() => {
+    const incidents = graph.nodes.filter((node) => node.type === "incident");
+    const focused = incidents.find((node) => node.id === incidentFocusId);
+    return focused
+      ? [focused, ...incidents.filter((node) => node.id !== focused.id)].slice(
+          0,
+          25,
+        )
+      : incidents.slice(0, 25);
+  }, [graph.nodes, incidentFocusId]);
   const focusedNodeIds = useMemo(
     () =>
       incidentFocusId === "all"
@@ -561,12 +569,7 @@ export function SreEvidenceGraph({
             activeViewNodeTypes.has(node.type)) &&
           nodeMatchesQuery(node, normalizedQuery),
       ),
-    [
-      activeViewNodeTypes,
-      focusedNodeIds,
-      graph.nodes,
-      normalizedQuery,
-    ],
+    [activeViewNodeTypes, focusedNodeIds, graph.nodes, normalizedQuery],
   );
   const visibleNodes = matchingNodes.slice(0, MAX_CANVAS_NODES);
   const visibleNodeIds = new Set(visibleNodes.map((node) => node.id));
@@ -582,10 +585,11 @@ export function SreEvidenceGraph({
     selectedEdgeId && visibleEdges.some((edge) => edge.id === selectedEdgeId)
       ? selectedEdgeId
       : null;
+  // Details may target nodes hidden by filters or the canvas limit.
   const effectiveSelectedNodeId =
     !effectiveSelectedEdgeId &&
     selectedNodeId &&
-    visibleNodeIds.has(selectedNodeId)
+    nodesById.has(selectedNodeId)
       ? selectedNodeId
       : null;
   const selectedNode = effectiveSelectedNodeId
@@ -646,11 +650,12 @@ export function SreEvidenceGraph({
             </div>
           </div>
         </CardHeader>
-        <CardContent className="flex min-h-0 flex-1 flex-col gap-4 p-4 sm:p-5">
+        <CardContent className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 sm:p-5">
           <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_190px_minmax(0,220px)_auto]">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
+                aria-label="Search topology"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Search topology..."
@@ -717,13 +722,18 @@ export function SreEvidenceGraph({
           {focusedIncident && (
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/10 px-3 py-2">
               <p className="text-sm text-muted-foreground">
-                Incident overlay: {" "}
+                Incident overlay:{" "}
                 <span className="font-medium text-foreground">
                   {focusedIncident.title}
                 </span>
               </p>
               <TableBadge tone="purple">Two-hop causal neighborhood</TableBadge>
             </div>
+          )}
+          {initialSelectedNodeId && !nodesById.has(initialSelectedNodeId) && (
+            <p role="status" className="text-sm text-muted-foreground">
+              The requested item is unavailable in this map. Showing recent project context.
+            </p>
           )}
 
           <TopologyViewport

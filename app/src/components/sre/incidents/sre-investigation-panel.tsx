@@ -3,12 +3,7 @@
 import Link from "next/link";
 import { useState, useTransition } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import {
-  CheckCircle2,
-  Loader2,
-  SearchCheck,
-  TriangleAlert,
-} from "lucide-react";
+import { Loader2, SearchCheck, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -77,56 +72,10 @@ type SreInvestigationPanelProps = {
     rejectedHypotheses: string[];
   } | null;
   canInvestigate?: boolean;
+  canMapService?: boolean;
   canUseLiveConnectors?: boolean;
   investigationEnabled?: boolean;
 };
-
-type ReadinessItem = {
-  label: string;
-  description: string;
-  ready: boolean;
-  optional?: boolean;
-  action?: {
-    label: string;
-    href: string;
-  };
-};
-
-function ReadinessRow({ item }: { item: ReadinessItem }) {
-  return (
-    <div className="flex items-start gap-3 border-b py-3 last:border-b-0">
-      {item.ready || item.optional ? (
-        <CheckCircle2
-          className={
-            item.optional
-              ? "mt-0.5 h-4 w-4 text-muted-foreground"
-              : "mt-0.5 h-4 w-4 text-emerald-500"
-          }
-        />
-      ) : (
-        <TriangleAlert className="mt-0.5 h-4 w-4 text-amber-500" />
-      )}
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <p className="text-sm font-medium">{item.label}</p>
-          <Badge variant="outline" className="capitalize">
-            {item.optional
-              ? "Optional"
-              : item.ready
-                ? "Ready"
-                : "Needs attention"}
-          </Badge>
-        </div>
-        <p className="mt-1 text-sm text-muted-foreground">{item.description}</p>
-        {!item.ready && item.action && (
-          <Button asChild variant="link" className="mt-1 h-auto p-0 text-sm">
-            <Link href={item.action.href}>{item.action.label}</Link>
-          </Button>
-        )}
-      </div>
-    </div>
-  );
-}
 
 export function SreInvestigationPanel({
   incidentId,
@@ -138,12 +87,14 @@ export function SreInvestigationPanel({
   latestReportSnapshot = null,
   myReportFeedback = null,
   canInvestigate = false,
+  canMapService = false,
   canUseLiveConnectors = false,
   investigationEnabled = true,
 }: SreInvestigationPanelProps) {
   const queryClient = useQueryClient();
   const { projectId } = useProjectContext();
   const [useLiveConnectors, setUseLiveConnectors] = useState(false);
+  const liveConnectorsEnabled = useLiveConnectors && hasPrimaryService && canUseLiveConnectors;
   const [isInvestigating, startInvestigationTransition] = useTransition();
   const investigationRunning =
     isInvestigating || latestInvestigation?.status === "running";
@@ -171,47 +122,6 @@ export function SreInvestigationPanel({
     rejectedHypothesisValues.length > 10 ||
     rejectedHypothesisValues.some((value) => value.length > 300);
 
-  const readinessItems: ReadinessItem[] = [
-    {
-      label: "Stored evidence",
-      ready: evidenceReferences.length > 0,
-      description:
-        evidenceReferences.length > 0
-          ? `${evidenceReferences.length} evidence item${evidenceReferences.length === 1 ? "" : "s"} available for citations.`
-          : "Generate a brief or collect evidence before relying on an investigation summary.",
-      action:
-        evidenceReferences.length > 0
-          ? undefined
-          : {
-              label: "Generate brief",
-              href: `/incidents/${incidentId}?tab=brief`,
-            },
-    },
-    {
-      label: "Service mapping",
-      ready: hasPrimaryService,
-      optional: !useLiveConnectors && !hasPrimaryService,
-      description: !useLiveConnectors
-        ? "Only required when live connector tools are enabled."
-        : hasPrimaryService
-          ? "Live connector tools will be scoped to the incident service."
-          : "Map a primary service before using live connector tools.",
-      action: hasPrimaryService || !canInvestigate
-        ? undefined
-        : { label: "Map service", href: serviceMappingHref },
-    },
-    {
-      label: "Connector tools",
-      optional: !useLiveConnectors,
-      ready: !useLiveConnectors || (hasPrimaryService && canUseLiveConnectors),
-      description: !canUseLiveConnectors
-        ? "Your role does not permit live connector queries; stored evidence remains available."
-        : useLiveConnectors
-          ? "Connectors will run read-only with service scope and output limits."
-          : "Live sources are off. This investigation will use stored evidence only.",
-    },
-  ];
-
   const runInvestigation = () => {
     if (!canInvestigate || !investigationEnabled || investigationRunning)
       return;
@@ -224,7 +134,7 @@ export function SreInvestigationPanel({
             "content-type": "application/json",
             ...(projectId ? { "x-project-id": projectId } : {}),
           },
-          body: JSON.stringify({ incidentId, useLiveConnectors }),
+          body: JSON.stringify({ incidentId, useLiveConnectors: liveConnectorsEnabled }),
         });
         const body = (await response.json().catch(() => null)) as {
           error?: string;
@@ -334,8 +244,8 @@ export function SreInvestigationPanel({
           <div className="min-w-0">
             <CardTitle className="text-lg">Investigation</CardTitle>
             <CardDescription>
-              Run a read-only check from stored evidence and optional live
-              connector data.
+              Review the findings, then decide what to check or fix. AI never
+              changes your systems.
             </CardDescription>
           </div>
           {canInvestigate ? (
@@ -349,7 +259,7 @@ export function SreInvestigationPanel({
               ) : (
                 <SearchCheck className="mr-2 h-4 w-4" />
               )}
-              Run investigation
+              {investigationRunning ? "Investigating..." : latestInvestigation ? "Run again" : "Run investigation"}
             </Button>
           ) : (
             <Badge variant="outline">Read-only access</Badge>
@@ -389,40 +299,11 @@ export function SreInvestigationPanel({
             </div>
           </div>
         )}
-        <div className="grid overflow-hidden rounded-lg border sm:grid-cols-3">
-          <div className="border-b px-4 py-3 sm:border-b-0 sm:border-r">
-            <p className="text-xs font-medium uppercase text-muted-foreground">
-              Tool calls
-            </p>
-            <p className="mt-1 text-sm font-semibold tabular-nums">
-              {toolMetrics.total}
-            </p>
-          </div>
-          <div className="border-b px-4 py-3 sm:border-b-0 sm:border-r">
-            <p className="text-xs font-medium uppercase text-muted-foreground">
-              Failures
-            </p>
-            <p className="mt-1 text-sm font-semibold tabular-nums">
-              {toolMetrics.errors}
-            </p>
-          </div>
-          <div className="px-4 py-3">
-            <p className="text-xs font-medium uppercase text-muted-foreground">
-              Avg latency
-            </p>
-            <p className="mt-1 text-sm font-semibold tabular-nums">
-              {toolMetrics.total > 0
-                ? `${toolMetrics.averageDurationMs} ms`
-                : "-"}
-            </p>
-          </div>
-        </div>
-
         {canInvestigate && canUseLiveConnectors && (
           <div className="flex items-start gap-3 rounded-lg border bg-muted/10 p-4">
             <Switch
               id="live-connectors"
-              checked={useLiveConnectors}
+              checked={liveConnectorsEnabled}
               disabled={
                 !hasPrimaryService ||
                 investigationRunning ||
@@ -431,23 +312,51 @@ export function SreInvestigationPanel({
               onCheckedChange={setUseLiveConnectors}
             />
             <div className="space-y-1">
-              <Label htmlFor="live-connectors">Use live connector tools</Label>
+              <Label htmlFor="live-connectors">Include live sources</Label>
               <p className="text-sm text-muted-foreground">
-                Optional read-only connector execution. Requires a mapped
-                primary service.
+                Query connected tools for this service. Off by default;
+                read-only and bounded.
               </p>
               {!hasPrimaryService && (
-                <Badge variant="outline">Primary service required</Badge>
+                <p className="text-sm text-muted-foreground">
+                  Link a service to use live sources.
+                  {canMapService && (
+                    <Link
+                      href={serviceMappingHref}
+                      className="ml-1 underline underline-offset-4"
+                    >
+                      Link service
+                    </Link>
+                  )}
+                </p>
               )}
             </div>
           </div>
         )}
+        {canInvestigate && !canUseLiveConnectors && (
+          <p className="text-sm text-muted-foreground">
+            Uses saved evidence. Your role does not permit live connector
+            queries.
+          </p>
+        )}
 
-        <div className="rounded-lg border px-4">
-          {readinessItems.map((item) => (
-            <ReadinessRow key={item.label} item={item} />
-          ))}
-        </div>
+        {!latestInvestigation && (
+          <div className="rounded-lg border border-dashed p-6">
+            <p className="font-medium">Start with the evidence</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {evidenceReferences.length > 0
+                ? `${evidenceReferences.length} saved evidence ${evidenceReferences.length === 1 ? "item is" : "items are"} available. Run an investigation to review likely causes and next checks.`
+                : "No evidence is saved yet. Generate an evidence brief to collect available Supercheck context before investigating."}
+            </p>
+            {evidenceReferences.length === 0 && canInvestigate && (
+              <Button asChild variant="link" className="mt-2 h-auto p-0">
+                <Link href={`/incidents/${incidentId}?tab=brief`}>
+                  Collect evidence
+                </Link>
+              </Button>
+            )}
+          </div>
+        )}
 
         {latestInvestigation && (
           <div className="overflow-hidden rounded-lg border">
@@ -456,38 +365,45 @@ export function SreInvestigationPanel({
                 <p className="text-sm font-medium">Latest result</p>
                 <p className="text-xs text-muted-foreground">
                   {latestInvestigation.completedAt
-                    ? `Completed ${new Intl.DateTimeFormat(undefined, {
+                    ? `${latestInvestigation.status === "completed" ? "Completed" : "Ended"} ${new Intl.DateTimeFormat(undefined, {
                         dateStyle: "medium",
                         timeStyle: "short",
                       }).format(new Date(latestInvestigation.completedAt))}`
                     : "Result is not complete"}
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Live agent summary; save a report snapshot below to lock a
-                  sanitized review copy.
+                  Check the cited evidence before applying a fix. You confirm
+                  recovery and resolve the incident.
                 </p>
               </div>
               <Badge variant="outline" className="capitalize">
                 {latestInvestigation.status.replace(/_/g, " ")}
               </Badge>
             </div>
-            <div className="max-h-96 overflow-y-auto break-words px-4 py-4 text-sm leading-6">
-              <SreMessageContent
+            <div className="break-words px-4 py-4 text-sm leading-6">
+              {["failed", "aborted", "timed_out"].includes(latestInvestigation.status) ? (
+                <div role="alert" className="space-y-2 text-destructive">
+                  <p className="font-medium">Investigation did not complete</p>
+                  <p>{latestInvestigation.summary || "No completed report is available. Review the saved evidence before trying again."}</p>
+                </div>
+              ) : latestInvestigation.status === "running" ? (
+                <p role="status" className="text-muted-foreground">The report will appear when this run finishes.</p>
+              ) : <SreMessageContent
                 content={
                   latestInvestigation.summary ??
                   "No investigation summary was returned."
                 }
-              />
+              />}
             </div>
           </div>
         )}
 
         {latestInvestigation?.status === "completed" && (
-          <div className="space-y-3 rounded-lg border px-4 py-3">
+          <details className="space-y-3 rounded-lg border px-4 py-3">
+            <summary className="cursor-pointer rounded-sm text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              Save report &amp; feedback
+            </summary>
             <div>
-              <p className="text-sm font-medium">
-                Report snapshot &amp; feedback
-              </p>
               <p className="text-sm text-muted-foreground">
                 Save the current sanitized investigation report for audit and
                 review.
@@ -603,7 +519,44 @@ export function SreInvestigationPanel({
                 )}
               </div>
             )}
-          </div>
+          </details>
+        )}
+        {toolMetrics.total > 0 && (
+          <details className="rounded-lg border p-4">
+            <summary className="cursor-pointer rounded-sm text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              Investigation diagnostics
+            </summary>
+            <div className="mt-3">
+              <div className="grid overflow-hidden rounded-lg border sm:grid-cols-3">
+                <div className="border-b px-4 py-3 sm:border-b-0 sm:border-r">
+                  <p className="text-xs font-medium uppercase text-muted-foreground">
+                    Tool calls
+                  </p>
+                  <p className="mt-1 text-sm font-semibold tabular-nums">
+                    {toolMetrics.total}
+                  </p>
+                </div>
+                <div className="border-b px-4 py-3 sm:border-b-0 sm:border-r">
+                  <p className="text-xs font-medium uppercase text-muted-foreground">
+                    Failures
+                  </p>
+                  <p className="mt-1 text-sm font-semibold tabular-nums">
+                    {toolMetrics.errors}
+                  </p>
+                </div>
+                <div className="px-4 py-3">
+                  <p className="text-xs font-medium uppercase text-muted-foreground">
+                    Avg latency
+                  </p>
+                  <p className="mt-1 text-sm font-semibold tabular-nums">
+                    {toolMetrics.total > 0
+                      ? `${toolMetrics.averageDurationMs} ms`
+                      : "-"}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </details>
         )}
       </CardContent>
     </Card>

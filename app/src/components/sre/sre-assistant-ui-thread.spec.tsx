@@ -47,8 +47,9 @@ describe("getQuickRepliesForAssistantText", () => {
     expect(
       replies.every((reply) => !/delete|restart|patch/i.test(reply.prompt)),
     ).toBe(true);
-    expect(replies.find((reply) => reply.label === "Try without connectors"))
-      .toEqual(expect.objectContaining({ disableLiveConnectors: true }));
+    expect(
+      replies.find((reply) => reply.label === "Try without connectors"),
+    ).toEqual(expect.objectContaining({ disableLiveConnectors: true }));
   });
 
   it("suggests chart rendering only when metric answers contain a numeric series", () => {
@@ -84,6 +85,27 @@ describe("getQuickRepliesForAssistantText", () => {
     );
   });
 
+  it("keeps standalone follow-ups limited to numeric charts without implying incident or connector access", () => {
+    expect(
+      getQuickRepliesForAssistantText(
+        "The leading hypothesis needs verification against evidence.",
+        false,
+      ),
+    ).toEqual([]);
+    expect(
+      getQuickRepliesForAssistantText(
+        "Connector check failed with a timeout.",
+        false,
+      ),
+    ).toEqual([]);
+    expect(
+      getQuickRepliesForAssistantText(
+        "Checkout p95 latency was 240 ms at 10:00 and 310 ms at 10:05.",
+        false,
+      ),
+    ).toEqual([expect.objectContaining({ label: "Render chart" })]);
+  });
+
   it("marks check replies so the UI can distinguish read-only checks", () => {
     const replies = getQuickRepliesForAssistantText(
       "The leading hypothesis needs verification against evidence.",
@@ -104,5 +126,4 @@ describe("SRE assistant-ui prompt helpers", () => {
       formatCopilotError(new Error('{"error":"Invalid Copilot chat request"}')),
     ).toBe("Invalid Copilot chat request");
   });
-
 });

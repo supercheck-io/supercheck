@@ -52,4 +52,17 @@ describe("current billing subscription display", () => {
       plan: "plus", status: "past_due", basePriceCents: 4900,
     });
   });
+
+  it("does not advertise SSO even when a legacy plan enables it", async () => {
+    (subscriptionService.getSubscriptionAccessStatus as jest.Mock).mockResolvedValue({
+      isActive: true, plan: "pro", status: "active",
+    });
+    (subscriptionService.getOrganizationPlanSafe as jest.Mock).mockResolvedValue({
+      ssoEnabled: true, customDomains: true, dataRetentionDays: 30,
+    });
+    const response = await GET();
+    const { planFeatures } = await response.json();
+    expect(planFeatures).not.toHaveProperty("ssoEnabled");
+    expect(planFeatures).toMatchObject({ customDomains: true, dataRetentionDays: 30 });
+  });
 });

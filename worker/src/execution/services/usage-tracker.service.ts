@@ -403,7 +403,10 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
             new Date(now.getFullYear(), now.getMonth() + 1, 1),
           createdAt: now,
         })
-        .returning({ id: schema.usageEvents.id, billingPeriodEnd: schema.usageEvents.billingPeriodEnd });
+        .returning({
+          id: schema.usageEvents.id,
+          billingPeriodEnd: schema.usageEvents.billingPeriodEnd,
+        });
       if (!created) throw new Error('Usage ledger insert returned no event');
       await markSettled();
       return created;
@@ -447,7 +450,9 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
 
     try {
       if (!billingPeriodEnd || billingPeriodEnd.getTime() <= Date.now()) {
-        throw new Error('Billing period closed; manual reconciliation required');
+        throw new Error(
+          'Billing period closed; manual reconciliation required',
+        );
       }
       // Get organization's Polar customer ID
       const org = await this.db.query.organization.findFirst({
@@ -503,11 +508,20 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
         const errorText = await response.text();
         throw new Error(`Polar API error (${response.status}): ${errorText}`);
       }
-      const result = await response.json();
+      const result: unknown = await response.json();
+      if (!result || typeof result !== 'object' || Array.isArray(result)) {
+        throw new Error('Polar did not acknowledge the usage event');
+      }
+      const inserted = 'inserted' in result ? result.inserted : undefined;
+      const duplicates = 'duplicates' in result ? (result.duplicates ?? 0) : 0;
       if (
-        !Number.isInteger(result?.inserted) || result.inserted < 0 ||
-        !Number.isInteger(result?.duplicates ?? 0) || (result.duplicates ?? 0) < 0 ||
-        result.inserted + (result.duplicates ?? 0) !== 1
+        typeof inserted !== 'number' ||
+        !Number.isInteger(inserted) ||
+        inserted < 0 ||
+        typeof duplicates !== 'number' ||
+        !Number.isInteger(duplicates) ||
+        duplicates < 0 ||
+        inserted + duplicates !== 1
       ) {
         throw new Error('Polar did not acknowledge the usage event');
       }
@@ -555,7 +569,10 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
     if (!settings?.enableSpendingLimit || !settings.hardStopOnLimit) {
       return { blocked: false };
     }
-    if (!settings.monthlySpendingLimitCents || settings.monthlySpendingLimitCents <= 0) {
+    if (
+      !settings.monthlySpendingLimitCents ||
+      settings.monthlySpendingLimitCents <= 0
+    ) {
       throw new Error('Invalid spending limit configuration');
     }
 
@@ -564,8 +581,12 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
       throw new Error('Invalid cloud subscription plan');
     }
     const [limits, prices] = await Promise.all([
-      this.db.query.planLimits.findFirst({ where: eq(schema.planLimits.plan, plan) }),
-      this.db.query.overagePricing.findFirst({ where: eq(schema.overagePricing.plan, plan) }),
+      this.db.query.planLimits.findFirst({
+        where: eq(schema.planLimits.plan, plan),
+      }),
+      this.db.query.overagePricing.findFirst({
+        where: eq(schema.overagePricing.plan, plan),
+      }),
     ]);
     if (!limits || !prices) {
       throw new Error('Billing plan or pricing is unavailable');
@@ -573,9 +594,19 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
 
     // Match the app's estimate: the cap covers all billable meters, including
     // completed SRE investigations. AI credits have no overage charge.
-    const playwrightOverage = Math.max(0, (org.playwrightMinutesUsed ?? 0) - limits.playwrightMinutesIncluded);
-    const k6Overage = Math.max(0, (org.k6VuMinutesUsed ?? 0) - limits.k6VuMinutesIncluded);
-    const sreOverage = Math.max(0, Number(org.sreInvestigationUnitsUsed ?? 0) - Number(limits.sreInvestigationUnitsIncluded));
+    const playwrightOverage = Math.max(
+      0,
+      (org.playwrightMinutesUsed ?? 0) - limits.playwrightMinutesIncluded,
+    );
+    const k6Overage = Math.max(
+      0,
+      (org.k6VuMinutesUsed ?? 0) - limits.k6VuMinutesIncluded,
+    );
+    const sreOverage = Math.max(
+      0,
+      Number(org.sreInvestigationUnitsUsed ?? 0) -
+        Number(limits.sreInvestigationUnitsIncluded),
+    );
     const totalOverageCents =
       playwrightOverage * prices.playwrightMinutePriceCents +
       Math.ceil(k6Overage * prices.k6VuMinutePriceCents) +
@@ -605,7 +636,10 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
   ): Promise<{ blocked: boolean; reason?: string }> {
     if (isSelfHosted()) return { blocked: false };
     if (!process.env.POLAR_ACCESS_TOKEN) {
-      return { blocked: true, reason: 'Cloud billing enforcement is not configured' };
+      return {
+        blocked: true,
+        reason: 'Cloud billing enforcement is not configured',
+      };
     }
 
     try {
@@ -614,10 +648,14 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
       const org = await this.db.query.organization.findFirst({
         where: eq(schema.organization.id, organizationId),
       });
-      const hasAccess = org && org.polarCustomerId &&
+      const hasAccess =
+        org &&
+        org.polarCustomerId &&
         (org.subscriptionPlan === 'plus' || org.subscriptionPlan === 'pro') &&
-        (org.subscriptionStatus === 'active' || org.subscriptionStatus === 'past_due' ||
-          (org.subscriptionStatus === 'canceled' && org.subscriptionEndsAt &&
+        (org.subscriptionStatus === 'active' ||
+          org.subscriptionStatus === 'past_due' ||
+          (org.subscriptionStatus === 'canceled' &&
+            org.subscriptionEndsAt &&
             org.subscriptionEndsAt.getTime() > Date.now()));
       if (!hasAccess || !org) {
         return { blocked: true, reason: 'An active subscription is required' };
@@ -628,7 +666,10 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
       this.logger.error(
         `[Usage] Failed to check billing for org ${organizationId?.slice(0, 8)}...: ${error instanceof Error ? error.message : String(error)}`,
       );
-      return { blocked: true, reason: 'Unable to verify the organization spending limit' };
+      return {
+        blocked: true,
+        reason: 'Unable to verify the organization spending limit',
+      };
     }
   }
 }

@@ -89,11 +89,7 @@ export function useNotificationProviders() {
       refetchType: 'all' 
     });
 
-  // Loading if:
-  // 1. Project context is still loading
-  // 2. Project ID is not yet available (unless context loaded and gave us null, but here we assume we wait for a valid project)
-  // 3. The query itself is loading (initial fetch)
-  const isInitialLoading = isProjectLoading || (!projectId && isProjectLoading) || (query.isPending && query.isFetching && !isRestoring);
+  const isInitialLoading = isProjectLoading || (!!projectId && isRestoring) || query.isLoading;
 
   return {
     providers: query.data ?? [],
@@ -129,8 +125,7 @@ export function useAlertHistory() {
       refetchType: 'all' 
     });
 
-  // Ensure we show loading state while waiting for project context
-  const isInitialLoading = isProjectLoading || (!projectId && isProjectLoading) || (query.isPending && query.isFetching && !isRestoring);
+  const isInitialLoading = isProjectLoading || (!!projectId && isRestoring) || query.isLoading;
 
   return {
     alertHistory: query.data ?? [],
