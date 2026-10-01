@@ -16,7 +16,7 @@
 
 import path from 'path';
 import { defineConfig } from 'vite';
-import sourcemaps from 'rollup-plugin-sourcemaps';
+import sourcemaps from '../../utils/sourcemaps.mjs';
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -25,7 +25,6 @@ export default defineConfig({
     minify: false,
     sourcemap: true,
     rollupOptions: {
-      // @ts-ignore
       plugins: [sourcemaps()],
       input: {
         'background': path.resolve(__dirname, 'src/background.ts'),

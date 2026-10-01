@@ -1,4 +1,4 @@
-import nodemailer from "nodemailer";
+import nodemailer, { type Transporter } from "nodemailer";
 
 export interface EmailOptions {
   to: string;
@@ -22,7 +22,7 @@ export interface MultiRecipientResult {
 
 type SmtpConfigError = { error: string };
 
-function buildSmtpTransporter(): nodemailer.Transporter | SmtpConfigError {
+function buildSmtpTransporter(): Transporter | SmtpConfigError {
   const smtpHost = process.env.SMTP_HOST;
   const smtpPort = parseInt(process.env.SMTP_PORT || "587");
   const smtpUser = process.env.SMTP_USER;
@@ -57,7 +57,7 @@ function buildSmtpTransporter(): nodemailer.Transporter | SmtpConfigError {
   });
 }
 
-function isSmtpConfigError(value: nodemailer.Transporter | SmtpConfigError): value is SmtpConfigError {
+function isSmtpConfigError(value: Transporter | SmtpConfigError): value is SmtpConfigError {
   return "error" in value;
 }
 

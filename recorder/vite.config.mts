@@ -15,7 +15,7 @@
  */
 
 import path from 'path';
-import sourcemaps from 'rollup-plugin-sourcemaps';
+import sourcemaps from './utils/sourcemaps.mjs';
 import type { Plugin } from 'vite';
 import { defineConfig } from 'vite';
 import replace from '@rollup/plugin-replace';
@@ -47,7 +47,7 @@ export default defineConfig({
       'child_process': path.resolve(__dirname, './src/shims/child_process'),
       'chokidar': path.resolve(__dirname, './src/shims/chokidar'),
       'constants': path.resolve(__dirname, './node_modules/constants-browserify'),
-      'crypto': path.resolve(__dirname, './node_modules/crypto-browserify'),
+      'crypto': path.resolve(__dirname, './src/shims/crypto'),
       'debug': path.resolve(__dirname, './node_modules/debug'),
       'dns': path.resolve(__dirname, './src/shims/dns'),
       'events': path.resolve(__dirname, './node_modules/events'),
@@ -105,7 +105,6 @@ export default defineConfig({
     },
     sourcemap: true,
     rollupOptions: {
-      // @ts-ignore
       plugins: [sourcemaps()],
       output: {
         exports: 'named',
