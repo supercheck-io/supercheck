@@ -29,6 +29,7 @@ export function formatCopilotError(error: unknown) {
 
 export function getQuickRepliesForAssistantText(
   content: string,
+  incidentScoped = true,
 ): SreQuickReply[] {
   const normalized = content.toLowerCase();
   const replies: SreQuickReply[] = [];
@@ -47,7 +48,7 @@ export function getQuickRepliesForAssistantText(
       content,
     );
 
-  if (reportsFailedCheck) {
+  if (incidentScoped && reportsFailedCheck) {
     replies.push(
       {
         label: "Retry read-only check",
@@ -66,6 +67,7 @@ export function getQuickRepliesForAssistantText(
   }
 
   if (
+    incidentScoped &&
     !reportsMissingEvidence &&
     /(evidence|incident|investigat|root cause|hypothesis|theory)/.test(
       normalized,

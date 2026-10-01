@@ -8,7 +8,7 @@ export default function SreAiPage() {
         <PageBreadcrumbs
           items={[
             { label: "Home", href: "/" },
-            { label: "Investigate", href: "/copilot" },
+            { label: "Investigate", href: "/incidents" },
             { label: "Copilot", isCurrentPage: true },
           ]}
         />

@@ -1,7 +1,8 @@
 "use client";
 
-import { useDeferredValue, useMemo, useState, useTransition } from "react";
+import { useDeferredValue, useMemo, useState, useSyncExternalStore, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   ArrowDown,
   ArrowUp,
@@ -12,7 +13,7 @@ import {
   ChevronsRight,
   Clock,
   Info,
-  Plus,
+  SearchCheck,
   Search,
   Siren,
 } from "lucide-react";
@@ -48,6 +49,8 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { useProjectContext } from "@/hooks/use-project-context";
+import { checkRolePermissionsClient } from "@/lib/rbac/permissions-client";
 
 type SreAlertSeverity = "sev1" | "sev2" | "sev3" | "sev4";
 
@@ -56,7 +59,6 @@ type DerivedSreAlert = {
   fingerprint: string;
   targetName: string;
   source: string;
-  serviceHint: string;
   type: string;
   message: string;
   severity: SreAlertSeverity;
@@ -71,7 +73,6 @@ type SreAlertsViewProps = {
 
 type AlertSortKey =
   | "targetName"
-  | "serviceHint"
   | "type"
   | "duplicateCount"
   | "severity"
@@ -138,23 +139,12 @@ function deriveSource(alert: AlertHistory) {
   return titleCase(alert.targetType);
 }
 
-function deriveServiceHint(alert: AlertHistory) {
-  const target = alert.targetName.trim();
-  if (!target) return "Unmapped";
-
-  return (
-    target
-      .replace(/\s+(monitor|job|check|test)$/i, "")
-      .replace(/\s+-\s+(monitor|job|check|test)$/i, "")
-      .trim() || target
-  );
-}
-
 function deriveFingerprint(alert: AlertHistory) {
-  return [alert.targetType, alert.targetId || alert.targetName, alert.type]
-    .join(":")
-    .toLowerCase()
-    .replace(/\s+/g, "-");
+  return JSON.stringify([
+    alert.targetType,
+    alert.targetId || alert.targetName,
+    alert.type,
+  ]);
 }
 
 function formatTimestamp(value: string) {
@@ -168,30 +158,31 @@ function formatTimestamp(value: string) {
 
 function deriveSreAlerts(alerts: AlertHistory[]) {
   const actionableAlerts = alerts.filter(isActionableSreSignal);
-  const fingerprintCounts = new Map<string, number>();
+  const grouped = new Map<string, DerivedSreAlert>();
   for (const alert of actionableAlerts) {
     const fingerprint = deriveFingerprint(alert);
-    fingerprintCounts.set(
-      fingerprint,
-      (fingerprintCounts.get(fingerprint) ?? 0) + 1,
-    );
-  }
-
-  return actionableAlerts.map((alert): DerivedSreAlert => {
-    const fingerprint = deriveFingerprint(alert);
-    return {
+    const previous = grouped.get(fingerprint);
+    if (
+      previous &&
+      new Date(previous.timestamp).getTime() >=
+        new Date(alert.timestamp).getTime()
+    ) {
+      previous.duplicateCount += 1;
+      continue;
+    }
+    grouped.set(fingerprint, {
       id: alert.id,
       fingerprint,
       targetName: alert.targetName,
       source: deriveSource(alert),
-      serviceHint: deriveServiceHint(alert),
       type: titleCase(alert.type),
       message: alert.message,
       severity: deriveSeverity(alert),
       timestamp: alert.timestamp,
-      duplicateCount: fingerprintCounts.get(fingerprint) ?? 1,
-    };
-  });
+      duplicateCount: (previous?.duplicateCount ?? 0) + 1,
+    });
+  }
+  return Array.from(grouped.values());
 }
 
 function alertMatches(alert: DerivedSreAlert, search: string) {
@@ -201,7 +192,6 @@ function alertMatches(alert: DerivedSreAlert, search: string) {
   return [
     alert.targetName,
     alert.source,
-    alert.serviceHint,
     alert.type,
     alert.message,
     alert.fingerprint,
@@ -257,7 +247,25 @@ function SortableHead({
 }
 
 export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
+  const isMounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
   const router = useRouter();
+  const {
+    currentProject,
+    loading: projectLoading,
+    error: projectError,
+  } = useProjectContext();
+  const canCreate = Boolean(
+    !projectLoading &&
+      !projectError &&
+      currentProject?.userRole &&
+      checkRolePermissionsClient(currentProject.userRole, {
+        sre_incident: ["create"],
+      }),
+  );
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search);
   const [severityFilter, setSeverityFilter] = useState("all");
@@ -266,10 +274,12 @@ export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [pageIndex, setPageIndex] = useState(0);
   const [pageSize, setPageSize] = useState(12);
-  const [incidentByAlertId, setIncidentByAlertId] = useState<
+  const [incidentByFingerprint, setIncidentByFingerprint] = useState<
     Record<string, number>
   >({});
-  const [pendingAlertId, setPendingAlertId] = useState<string | null>(null);
+  const [pendingFingerprint, setPendingFingerprint] = useState<string | null>(
+    null,
+  );
   const [isPending, startTransition] = useTransition();
 
   const derivedAlerts = useMemo(() => deriveSreAlerts(alerts), [alerts]);
@@ -317,24 +327,31 @@ export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
     safePageIndex * pageSize + pageSize,
   );
 
-  const handleCreateIncident = (alertHistoryId: string) => {
-    setPendingAlertId(alertHistoryId);
+  const handleCreateIncident = (alert: DerivedSreAlert) => {
+    if (!canCreate || isPending) return;
+    setPendingFingerprint(alert.fingerprint);
     startTransition(async () => {
-      const result = await createSreIncidentFromAlert({ alertHistoryId });
-      setPendingAlertId(null);
+      try {
+        const result = await createSreIncidentFromAlert({
+          alertHistoryId: alert.id,
+        });
+        if (!result.success) {
+          setPendingFingerprint(null);
+          toast.error(result.error);
+          return;
+        }
 
-      if (!result.success) {
-        toast.error(result.error);
-        return;
+        setIncidentByFingerprint((current) => ({
+          ...current,
+          [alert.fingerprint]: result.incident.incidentNumber,
+        }));
+        toast.success(result.message);
+        router.push(`/incidents/${result.incident.id}`);
+        router.refresh();
+      } catch {
+        setPendingFingerprint(null);
+        toast.error("Could not open the incident. Please try again.");
       }
-
-      setIncidentByAlertId((current) => ({
-        ...current,
-        [alertHistoryId]: result.incident.incidentNumber,
-      }));
-      toast.success(result.message);
-      router.push(`/incidents/${result.incident.id}`);
-      router.refresh();
     });
   };
 
@@ -347,7 +364,7 @@ export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
     }
   };
 
-  if (isLoading && alerts.length === 0) {
+  if (!isMounted || (isLoading && alerts.length === 0)) {
     return (
       <div className="flex min-h-[360px] items-center justify-center">
         <SupercheckLoading size="md" message="Loading alert signals..." />
@@ -388,17 +405,19 @@ export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent className="max-w-xs">
-                  Delivery failures and recovery/success events stay in History.
+                  Investigate opens an incident. Run a full investigation from
+                  the incident. Delivery failures and recovery events stay in
+                  History.
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
           </div>
           <CardDescription>
-            Failure alerts that can be promoted to incidents.
+            Repeated failures, grouped together.
           </CardDescription>
         </div>
-        <div className="flex w-full flex-wrap items-center justify-start gap-2 xl:w-auto xl:justify-end">
-          <div className="relative w-full sm:w-[300px] xl:w-[360px]">
+        <div className="flex w-full items-center gap-2 overflow-x-auto pb-1 xl:w-auto xl:shrink-0 xl:pb-0">
+          <div className="relative w-[250px] shrink-0">
             <Search className="absolute left-2 top-2 h-4 w-4 text-muted-foreground" />
             <Input
               value={search}
@@ -407,6 +426,7 @@ export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
                 setPageIndex(0);
               }}
               placeholder="Filter by all available fields..."
+              aria-label="Search alert signals"
               className="h-8 pl-8 pr-8"
             />
           </div>
@@ -417,7 +437,7 @@ export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
               setPageIndex(0);
             }}
           >
-            <SelectTrigger className="h-8 w-[150px]">
+            <SelectTrigger className="h-8 w-[140px] shrink-0" aria-label="Severity">
               <SelectValue placeholder="Severity" />
             </SelectTrigger>
             <SelectContent>
@@ -435,7 +455,7 @@ export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
               setPageIndex(0);
             }}
           >
-            <SelectTrigger className="h-8 w-[150px]">
+            <SelectTrigger className="h-8 w-[140px] shrink-0" aria-label="Source">
               <SelectValue placeholder="Source" />
             </SelectTrigger>
             <SelectContent>
@@ -447,6 +467,9 @@ export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
               ))}
             </SelectContent>
           </Select>
+          <Button asChild variant="outline" size="sm" className="h-8 shrink-0">
+            <Link href="/incidents">View incidents</Link>
+          </Button>
         </div>
       </div>
 
@@ -469,14 +492,6 @@ export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
                 direction={sortDirection}
                 onSort={handleSort}
                 className="w-44"
-              />
-              <SortableHead
-                label="Service"
-                sortKey="serviceHint"
-                activeKey={sortKey}
-                direction={sortDirection}
-                onSort={handleSort}
-                className="w-48"
               />
               <TableHead className="w-[360px]">Message</TableHead>
               <SortableHead
@@ -518,7 +533,7 @@ export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
             {pagedAlerts.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={9}
+                  colSpan={8}
                   className="h-24 text-center text-muted-foreground"
                 >
                   No signals match the current filters.
@@ -526,7 +541,7 @@ export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
               </TableRow>
             ) : (
               pagedAlerts.map((alert) => (
-                <TableRow key={alert.id}>
+                <TableRow key={alert.fingerprint}>
                   <TableCell className="max-w-[260px] py-2.5">
                     <span
                       className="block truncate font-medium"
@@ -540,12 +555,6 @@ export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
                     title={alert.type}
                   >
                     {alert.type}
-                  </TableCell>
-                  <TableCell
-                    className="max-w-[200px] truncate py-2.5"
-                    title={alert.serviceHint}
-                  >
-                    {alert.serviceHint}
                   </TableCell>
                   <TableCell className="max-w-[360px] py-2.5">
                     <span
@@ -581,23 +590,35 @@ export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
                     </div>
                   </TableCell>
                   <TableCell className="py-2.5">
-                    {incidentByAlertId[alert.id] ? (
+                    {isPending && pendingFingerprint === alert.fingerprint ? (
+                      <Button variant="outline" size="sm" disabled className="h-8" aria-busy="true">
+                        <SearchCheck className="h-4 w-4" />
+                        Opening...
+                      </Button>
+                    ) : incidentByFingerprint[alert.fingerprint] ? (
                       <TableBadge tone="info" compact>
-                        Incident #{incidentByAlertId[alert.id]}
+                        Incident #{incidentByFingerprint[alert.fingerprint]}
                       </TableBadge>
-                    ) : (
+                    ) : canCreate || projectLoading ? (
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => handleCreateIncident(alert.id)}
-                        disabled={isPending && pendingAlertId === alert.id}
+                        onClick={() => handleCreateIncident(alert)}
+                        disabled={isPending || !canCreate}
+                        aria-busy={projectLoading || undefined}
+                        title={projectLoading ? "Loading permissions..." : undefined}
                         className="h-8"
                       >
-                        <Plus className="h-4 w-4" />
-                        {isPending && pendingAlertId === alert.id
-                          ? "Creating..."
-                          : "Create incident"}
+                        <SearchCheck className="h-4 w-4" />
+                        Investigate
                       </Button>
+                    ) : (
+                      <span
+                        className="text-sm text-muted-foreground"
+                        title={projectError ? "Refresh to load project permissions." : undefined}
+                      >
+                        {projectError ? "Permissions unavailable" : "Read-only"}
+                      </span>
                     )}
                   </TableCell>
                 </TableRow>
@@ -609,7 +630,7 @@ export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
 
       <div className="flex flex-col gap-3 px-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex-1 text-sm text-muted-foreground">
-          Total {filteredAlerts.length} signals
+          Total {filteredAlerts.length} {filteredAlerts.length === 1 ? "signal" : "signals"}
         </div>
         <div className="flex flex-wrap items-center gap-3 sm:gap-6 lg:gap-8">
           <div className="flex items-center space-x-2">

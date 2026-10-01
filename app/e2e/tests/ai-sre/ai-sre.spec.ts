@@ -149,7 +149,7 @@ test.describe("AI SRE investigation surfaces @aisre @critical", () => {
   }) => {
     const prompt = `Give a read-only service health checklist ${Date.now()}`;
     await page.goto("/copilot", { waitUntil: "load" });
-    await page.getByRole("button", { name: "New", exact: true }).click();
+    await page.getByRole("button", { name: "New chat", exact: true }).click();
 
     const composer = page.getByPlaceholder(
       "Describe a symptom or paste evidence...",
@@ -166,20 +166,20 @@ test.describe("AI SRE investigation surfaces @aisre @critical", () => {
     await expect(assistantMessage).toBeVisible({ timeout: 60_000 });
     await expect(assistantMessage).not.toBeEmpty();
 
-    await page.getByRole("button", { name: "New", exact: true }).click();
+    await page.getByRole("button", { name: "New chat", exact: true }).click();
     await expect(page.getByLabel("User message")).toHaveCount(0);
-    const savedSession = page
-      .locator("aside button")
-      .filter({ hasText: prompt });
+    await page.getByRole("button", {name:"History",exact:true}).click();
+    const savedSession = page.getByRole("dialog", {name:"Chat history"}).getByRole("button").filter({hasText:prompt});
     await expect(savedSession).toBeVisible();
     await savedSession.click();
     await expect(
       page.getByLabel("User message").filter({ hasText: prompt }),
     ).toBeVisible();
-    await page.getByRole("button", { name: "Archive", exact: true }).click();
+    await page.getByRole("button", { name: "Archive chat", exact: true }).click();
     await expect(
       page.getByText("Copilot session archived", { exact: true }),
     ).toBeVisible();
+    await page.getByRole("button", {name:"History",exact:true}).click();
     await expect(savedSession).toHaveCount(0);
   });
 
@@ -198,7 +198,7 @@ test.describe("AI SRE investigation surfaces @aisre @critical", () => {
     });
     const prompt = `List the next read-only diagnostic checks ${Date.now()}`;
     await page.goto("/copilot", { waitUntil: "load" });
-    await page.getByRole("button", { name: "New", exact: true }).click();
+    await page.getByRole("button", { name: "New chat", exact: true }).click();
     const composer = page.getByPlaceholder(
       "Describe a symptom or paste evidence...",
     );
@@ -224,7 +224,7 @@ test.describe("AI SRE investigation surfaces @aisre @critical", () => {
     page,
   }) => {
     await page.goto("/copilot", { waitUntil: "load" });
-    await page.getByRole("button", { name: "New", exact: true }).click();
+    await page.getByRole("button", { name: "New chat", exact: true }).click();
     const composer = page.getByPlaceholder(
       "Describe a symptom or paste evidence...",
     );

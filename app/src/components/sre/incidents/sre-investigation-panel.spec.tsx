@@ -50,6 +50,21 @@ describe("SreInvestigationPanel", () => {
     mockSaveFeedback.mockResolvedValue({ success: true });
   });
 
+  it("falls back to saved evidence if a previously selected live-source scope disappears", async () => {
+    const props = { incidentId: "incident-1", hasPrimaryService: true, canInvestigate: true,
+      canUseLiveConnectors: true, serviceMappingHref: "/incidents/incident-1?edit=service" };
+    const { rerender } = render(<SreInvestigationPanel {...props} />);
+    fireEvent.click(screen.getByLabelText("Include live sources"));
+    expect(screen.getByLabelText("Include live sources")).toBeChecked();
+    rerender(<SreInvestigationPanel {...props} hasPrimaryService={false} />);
+    expect(screen.getByLabelText("Include live sources")).not.toBeChecked();
+    expect(screen.getByLabelText("Include live sources")).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Run investigation" }));
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/sre/investigate", expect.objectContaining({
+      body: JSON.stringify({ incidentId: "incident-1", useLiveConnectors: false }),
+    })));
+  });
+
   it("shows an actionable connection error and refreshes server state", async () => {
     (global.fetch as jest.Mock).mockRejectedValue(
       new TypeError("Failed to fetch"),
@@ -87,14 +102,24 @@ describe("SreInvestigationPanel", () => {
       />,
     );
 
-    expect(
-      screen.getByRole("button", { name: "Run investigation" }),
-    ).toBeDisabled();
-    expect(screen.getByRole("status")).toHaveTextContent(
+    expect(screen.getByRole("button", { name: "Investigating..." })).toBeDisabled();
+    expect(screen.getAllByRole("status")[0]).toHaveTextContent(
       "Investigation in progress",
     );
     expect(global.fetch).not.toHaveBeenCalled();
   });
+
+  it.each(["Investigation reached its step limit before completing.", null])(
+    "shows an informative failure instead of an empty report (%s)", (summary) => {
+      render(<SreInvestigationPanel incidentId="incident-1" hasPrimaryService={false}
+        serviceMappingHref="/incidents/incident-1?edit=service" canInvestigate={true}
+        latestInvestigation={{ id: "failed-run", status: "failed", summary, completedAt: "2026-10-01T00:00:00Z" }} />);
+      expect(screen.getByRole("alert")).toHaveTextContent(summary ?? "Review the saved evidence before trying again");
+      expect(screen.queryByText("No investigation summary was returned.")).not.toBeInTheDocument();
+      expect(screen.getByText(/^Ended /)).toBeInTheDocument();
+      expect(screen.queryByText("Save report & feedback")).not.toBeInTheDocument();
+    },
+  );
 
   it("renders a simplified investigation action panel without embedded chat", () => {
     render(
@@ -119,10 +144,9 @@ describe("SreInvestigationPanel", () => {
     expect(
       screen.getByRole("button", { name: /run investigation/i }),
     ).toBeInTheDocument();
-    expect(
-      screen.getByLabelText("Use live connector tools"),
-    ).toBeInTheDocument();
-    expect(screen.getByText("Stored evidence")).toBeInTheDocument();
+    expect(screen.getByLabelText("Include live sources")).toBeInTheDocument();
+    expect(screen.getByText(/1 saved evidence item is/)).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Investigation diagnostics"));
     expect(screen.getByText("Tool calls")).toBeInTheDocument();
     expect(screen.getByText("240 ms")).toBeInTheDocument();
     expect(screen.queryByText("Conversation")).not.toBeInTheDocument();
@@ -149,7 +173,7 @@ describe("SreInvestigationPanel", () => {
       />,
     );
 
-    fireEvent.click(screen.getByLabelText("Use live connector tools"));
+    fireEvent.click(screen.getByLabelText("Include live sources"));
     fireEvent.click(screen.getByRole("button", { name: /run investigation/i }));
 
     await waitFor(() => {
@@ -206,22 +230,24 @@ describe("SreInvestigationPanel", () => {
     );
   });
 
-  it("links missing readiness requirements to the corrective workflow", () => {
+  it("links missing evidence and optional live sources to their corrective workflows", () => {
     const incidentId = "018f0000-0000-7000-8000-000000000001";
     render(
       <SreInvestigationPanel
         incidentId={incidentId}
         hasPrimaryService={false}
         serviceMappingHref="/org-admin?tab=services"
+        canMapService={true}
+        canUseLiveConnectors={true}
         canInvestigate={true}
         evidenceReferences={[]}
       />,
     );
 
     expect(
-      screen.getByRole("link", { name: "Generate brief" }),
+      screen.getByRole("link", { name: "Collect evidence" }),
     ).toHaveAttribute("href", `/incidents/${incidentId}?tab=brief`);
-    expect(screen.getByRole("link", { name: "Map service" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Link service" })).toHaveAttribute(
       "href",
       "/org-admin?tab=services",
     );
@@ -266,6 +292,7 @@ describe("SreInvestigationPanel", () => {
       />,
     );
 
+    fireEvent.click(screen.getByText("Save report & feedback"));
     fireEvent.click(
       screen.getByRole("button", { name: "Save report snapshot" }),
     );
@@ -312,7 +339,7 @@ describe("SreInvestigationPanel", () => {
       screen.queryByRole("button", { name: "Run investigation" }),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByLabelText("Use live connector tools"),
+      screen.queryByLabelText("Include live sources"),
     ).not.toBeInTheDocument();
     expect(screen.getByText("Read-only access")).toBeInTheDocument();
   });
@@ -335,7 +362,7 @@ describe("SreInvestigationPanel", () => {
     expect(
       screen.getByRole("button", { name: "Run investigation" }),
     ).toBeDisabled();
-    expect(screen.getByLabelText("Use live connector tools")).toBeDisabled();
+    expect(screen.getByLabelText("Include live sources")).toBeDisabled();
   });
 
   it("keeps investigation available without exposing live sources when connector permission is missing", () => {
@@ -353,7 +380,7 @@ describe("SreInvestigationPanel", () => {
       screen.getByRole("button", { name: "Run investigation" }),
     ).toBeEnabled();
     expect(
-      screen.queryByLabelText("Use live connector tools"),
+      screen.queryByLabelText("Include live sources"),
     ).not.toBeInTheDocument();
     expect(
       screen.getByText(/role does not permit live connector queries/i),
@@ -373,7 +400,7 @@ describe("SreInvestigationPanel", () => {
       screen.queryByRole("button", { name: /run investigation/i }),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByLabelText("Use live connector tools"),
+      screen.queryByLabelText("Include live sources"),
     ).not.toBeInTheDocument();
     expect(screen.getByText("Read-only access")).toBeInTheDocument();
   });
@@ -399,6 +426,7 @@ describe("SreInvestigationPanel", () => {
       />,
     );
 
+    fireEvent.click(screen.getByText("Save report & feedback"));
     fireEvent.change(screen.getByLabelText(/Rejected hypotheses/), {
       target: {
         value: Array.from(

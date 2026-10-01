@@ -1,11 +1,10 @@
-import { readFileSync, readdirSync, writeFileSync, existsSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const docsRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const diagramRoot = join(docsRoot, 'public', 'diagrams');
 const sourceRoot = join(docsRoot, 'diagrams');
-const fix = process.argv.includes('--fix');
 const errors = [];
 const words = (value) => value.trim().split(/\s+/u).filter(Boolean).length;
 
@@ -19,16 +18,11 @@ for (const filename of readdirSync(diagramRoot).filter((name) =>
   }
 
   const source = JSON.parse(readFileSync(sourcePath, 'utf8'));
-  let content = readFileSync(htmlPath, 'utf8');
+  const content = readFileSync(htmlPath, 'utf8');
   const documentTitle = content.match(/<head>[\s\S]*?<title>([^<]+)<\/title>/u);
   if (!documentTitle) {
     errors.push(`${filename}: missing document title`);
     continue;
-  }
-  if (fix && words(documentTitle[1]) > 2 &&
-      documentTitle[1] === `${source.meta.title} Diagram` && words(source.meta.title) <= 2) {
-    content = content.replace(documentTitle[0], documentTitle[0].replace(documentTitle[1], source.meta.title));
-    writeFileSync(htmlPath, content);
   }
 
   const labels = [
@@ -41,7 +35,10 @@ for (const filename of readdirSync(diagramRoot).filter((name) =>
     ...source.meta.views?.map((view) => ['source view', view.label]) ?? [],
   ];
   for (const [kind, label] of labels) {
-    if (!label || words(label) > 2) errors.push(`${filename}: ${kind} must have one or two words: ${label ?? '(missing)'}`);
+    // Archify appends "Diagram" to the browser title, not the visible heading.
+    const title = kind === 'document title' && label === `${source.meta.title} Diagram`
+      ? source.meta.title : label;
+    if (!title || words(title) > 2) errors.push(`${filename}: ${kind} must have one or two words: ${label ?? '(missing)'}`);
   }
 }
 

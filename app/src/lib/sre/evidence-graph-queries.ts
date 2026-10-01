@@ -1,4 +1,5 @@
-import { and, desc, eq, isNotNull, isNull, ne, or } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
+import { z } from "zod";
 
 import {
   jobs,
@@ -159,7 +160,7 @@ function getPlaybookMatchExplanation(alert: { severity: string; sourceType: stri
   return `Alert fingerprint matched promoted playbook signature (${explanationFactors.join("; ")}; hash ${alert.fingerprintHash.slice(0, 12)})`;
 }
 
-export async function getSreEvidenceGraph(): Promise<
+export async function getSreEvidenceGraph(incidentId?: string): Promise<
   | { success: true; graph: SreEvidenceGraph }
   | { success: false; error: string; graph: SreEvidenceGraph }
 > {
@@ -182,6 +183,19 @@ export async function getSreEvidenceGraph(): Promise<
     if (!canViewGraph) {
       return { success: false, error: "Insufficient permissions to view the SRE evidence graph", graph: emptyGraph };
     }
+
+    if (incidentId !== undefined && !z.string().uuid().safeParse(incidentId).success) {
+      return { success: false, error: "Invalid incident ID", graph: emptyGraph };
+    }
+    const focusedIncident = incidentId ? await db.query.sreIncidents.findFirst({
+      columns: { id: true, primaryServiceId: true },
+      where: and(eq(sreIncidents.id, incidentId), eq(sreIncidents.organizationId, organizationId), eq(sreIncidents.projectId, project.id)),
+    }) : null;
+    if (incidentId && !focusedIncident) {
+      return { success: false, error: "Incident not found or access denied", graph: emptyGraph };
+    }
+    const focusedAlertIds = incidentId ? db.select({ id: sreIncidentAlerts.alertEventId })
+      .from(sreIncidentAlerts).where(eq(sreIncidentAlerts.incidentId, incidentId)) : null;
 
     const [
       services,
@@ -210,7 +224,7 @@ export async function getSreEvidenceGraph(): Promise<
         })
         .from(sreServices)
         .where(and(eq(sreServices.organizationId, organizationId), eq(sreServices.projectId, project.id)))
-        .orderBy(desc(sreServices.updatedAt))
+        .orderBy(...(focusedIncident?.primaryServiceId ? [desc(eq(sreServices.id, focusedIncident.primaryServiceId))] : []), desc(sreServices.updatedAt))
         .limit(50),
       db
         .select({
@@ -223,7 +237,7 @@ export async function getSreEvidenceGraph(): Promise<
         .from(sreServiceResources)
         .innerJoin(sreServices, eq(sreServiceResources.serviceId, sreServices.id))
         .where(and(eq(sreServices.organizationId, organizationId), eq(sreServices.projectId, project.id)))
-        .orderBy(desc(sreServiceResources.createdAt))
+        .orderBy(...(focusedIncident?.primaryServiceId ? [desc(eq(sreServiceResources.serviceId, focusedIncident.primaryServiceId))] : []), desc(sreServiceResources.createdAt))
         .limit(200),
       db
         .select({
@@ -305,7 +319,7 @@ export async function getSreEvidenceGraph(): Promise<
         })
         .from(sreAlertEvents)
         .where(and(eq(sreAlertEvents.organizationId, organizationId), eq(sreAlertEvents.projectId, project.id)))
-        .orderBy(desc(sreAlertEvents.firedAt))
+        .orderBy(...(focusedAlertIds ? [desc(inArray(sreAlertEvents.id, focusedAlertIds))] : []), desc(sreAlertEvents.firedAt))
         .limit(120),
       db
         .select({
@@ -316,6 +330,7 @@ export async function getSreEvidenceGraph(): Promise<
         .from(sreIncidentAlerts)
         .innerJoin(sreIncidents, eq(sreIncidentAlerts.incidentId, sreIncidents.id))
         .where(and(eq(sreIncidents.organizationId, organizationId), eq(sreIncidents.projectId, project.id)))
+        .orderBy(...(incidentId ? [desc(eq(sreIncidentAlerts.incidentId, incidentId))] : []))
         .limit(200),
       db
         .select({
@@ -329,7 +344,7 @@ export async function getSreEvidenceGraph(): Promise<
         })
         .from(sreIncidents)
         .where(and(eq(sreIncidents.organizationId, organizationId), eq(sreIncidents.projectId, project.id)))
-        .orderBy(desc(sreIncidents.createdAt))
+        .orderBy(...(incidentId ? [desc(eq(sreIncidents.id, incidentId))] : []), desc(sreIncidents.createdAt))
         .limit(60),
       db
         .select({
@@ -343,7 +358,7 @@ export async function getSreEvidenceGraph(): Promise<
         })
         .from(sreInvestigationRuns)
         .where(and(eq(sreInvestigationRuns.organizationId, organizationId), eq(sreInvestigationRuns.projectId, project.id)))
-        .orderBy(desc(sreInvestigationRuns.createdAt))
+        .orderBy(...(incidentId ? [sql`${eq(sreInvestigationRuns.incidentId, incidentId)} desc nulls last`] : []), desc(sreInvestigationRuns.createdAt))
         .limit(100),
       db
         .select({
@@ -358,7 +373,7 @@ export async function getSreEvidenceGraph(): Promise<
         })
         .from(sreEvidenceItems)
         .where(and(eq(sreEvidenceItems.organizationId, organizationId), eq(sreEvidenceItems.projectId, project.id)))
-        .orderBy(desc(sreEvidenceItems.createdAt))
+        .orderBy(...(incidentId ? [sql`${eq(sreEvidenceItems.incidentId, incidentId)} desc nulls last`] : []), desc(sreEvidenceItems.createdAt))
         .limit(150),
       db
         .select({
@@ -372,7 +387,7 @@ export async function getSreEvidenceGraph(): Promise<
         .from(sreInvestigationRecommendations)
         .innerJoin(sreInvestigationRuns, eq(sreInvestigationRecommendations.investigationRunId, sreInvestigationRuns.id))
         .where(and(eq(sreInvestigationRuns.organizationId, organizationId), eq(sreInvestigationRuns.projectId, project.id)))
-        .orderBy(desc(sreInvestigationRecommendations.createdAt))
+        .orderBy(...(incidentId ? [sql`${eq(sreInvestigationRecommendations.incidentId, incidentId)} desc nulls last`] : []), desc(sreInvestigationRecommendations.createdAt))
         .limit(100),
       db
         .select({
@@ -386,7 +401,7 @@ export async function getSreEvidenceGraph(): Promise<
         })
         .from(sreContextRecollections)
         .where(and(eq(sreContextRecollections.organizationId, organizationId), eq(sreContextRecollections.projectId, project.id)))
-        .orderBy(desc(sreContextRecollections.createdAt))
+        .orderBy(...(incidentId ? [sql`${eq(sreContextRecollections.incidentId, incidentId)} desc nulls last`] : []), desc(sreContextRecollections.createdAt))
         .limit(80),
       db
         .select({

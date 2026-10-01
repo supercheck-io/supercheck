@@ -59,7 +59,7 @@ jobs:
           if [ "${{ matrix.package }}" = "app" ]; then
             npm run lint
           else
-            npx eslint "src/**/*.ts" --max-warnings 0
+            npm run lint:check
           fi
 
       - name: Test with coverage gates

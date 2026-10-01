@@ -270,11 +270,16 @@ class PolarUsageService {
         throw new Error(`Polar API error (${response.status}): ${errorText}`);
       }
 
-      const result = await response.json();
+      const result: unknown = await response.json();
+      if (!result || typeof result !== "object" || Array.isArray(result)) {
+        throw new Error("Polar did not acknowledge the usage event");
+      }
+      const inserted = "inserted" in result ? result.inserted : undefined;
+      const duplicates = "duplicates" in result ? (result.duplicates ?? 0) : 0;
       if (
-        !Number.isInteger(result?.inserted) || result.inserted < 0 ||
-        !Number.isInteger(result?.duplicates ?? 0) || (result.duplicates ?? 0) < 0 ||
-        result.inserted + (result.duplicates ?? 0) !== 1
+        typeof inserted !== "number" || !Number.isInteger(inserted) || inserted < 0 ||
+        typeof duplicates !== "number" || !Number.isInteger(duplicates) || duplicates < 0 ||
+        inserted + duplicates !== 1
       ) {
         throw new Error("Polar did not acknowledge the usage event");
       }

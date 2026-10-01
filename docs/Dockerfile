@@ -1,35 +1,15 @@
-# Multi-stage Dockerfile for running the Next.js docs site (supports API routes)
-# Build stage
-FROM node:20-bullseye-slim AS builder
-
-WORKDIR /app
-
-# Copy only package files to leverage layer caching
-COPY package.json package-lock.json* ./
-
-# Install dependencies for the docs subfolder
+# Build from the repository root: docker build -f docs/Dockerfile .
+FROM node:22-bullseye-slim AS builder
 WORKDIR /app/docs
+COPY docs/package.json docs/package-lock.json ./
+COPY docs/next.config.mjs docs/source.config.ts ./
 RUN npm ci --silent
+COPY docs/ ./
+COPY app/public/openapi.json /app/app/public/openapi.json
+RUN npm run build -- --webpack
 
-# Copy the repo contents and build the docs app
-WORKDIR /app
-COPY . .
-WORKDIR /app/docs
-RUN npm run build
-
-# Production stage
-FROM node:20-bullseye-slim AS runner
-WORKDIR /app
-ENV NODE_ENV=production
-ENV PORT=3000
-
-# Copy only what we need from the builder
-COPY --from=builder /app/docs/.next ./.next
-COPY --from=builder /app/docs/public ./public
-COPY --from=builder /app/docs/node_modules ./node_modules
-COPY --from=builder /app/docs/package.json ./package.json
-
+# Next.js exports this site as static files; next start cannot serve it.
+FROM nginx:stable-alpine AS runner
+COPY docs/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=builder /app/docs/out /usr/share/nginx/html
 EXPOSE 3000
-
-# Start the Next.js production server
-CMD ["npm", "start"]

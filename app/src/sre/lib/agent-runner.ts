@@ -30,6 +30,13 @@ export class SreAgentEmptyResponseError extends Error {
   }
 }
 
+export class SreAgentIncompleteResponseError extends Error {
+  constructor(readonly finishReason: string) {
+    super(`SRE agent did not complete successfully (${finishReason})`);
+    this.name = "SreAgentIncompleteResponseError";
+  }
+}
+
 export async function runSreAgent<TTools extends ToolSet = ToolSet>(input: RunSreAgentInput<TTools>) {
   const budget = resolveSreAgentBudget(input.budget);
   const prompt = input.prompt.trim();
@@ -84,8 +91,10 @@ export async function runSreAgent<TTools extends ToolSet = ToolSet>(input: RunSr
   // Streams can resolve partial text after a provider error or cancellation.
   // Such output must not become a completed, billable investigation.
   abortSignal.throwIfAborted();
-  if (finishReason === "error") {
-    throw new Error("SRE agent did not complete successfully");
+  // A token limit, content filter, or exhausted tool budget leaves a partial
+  // report. Only a normal completion may become a completed investigation.
+  if (finishReason !== "stop") {
+    throw new SreAgentIncompleteResponseError(finishReason);
   }
   const normalizedText = text.trim();
   if (!normalizedText) {

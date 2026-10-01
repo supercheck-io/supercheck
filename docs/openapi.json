@@ -3,7 +3,7 @@
   "info": {
     "title": "Supercheck API",
     "version": "1.0.0",
-    "description": "API for test automation, monitoring, and CI/CD integration. Supercheck provides Playwright browser testing, k6 performance testing, uptime monitoring, and alerting — all managed via API or CLI.",
+    "description": "API for test automation, monitoring, and CI/CD integration. Supercheck provides Playwright browser testing, k6 performance testing, uptime monitoring, and alerting \u2014 all managed via API or CLI.",
     "contact": {
       "name": "Supercheck",
       "url": "https://supercheck.io"
@@ -88,126 +88,509 @@
     {
       "name": "Organizations",
       "description": "Organization membership, settings, invitations, and usage stats. Session cookies or CLI bearer tokens are accepted. Organizations are created automatically at signup; POST is disabled."
-    },
-    {
-      "name": "Billing",
-      "description": "Subscription, pricing, usage, spending controls, and interactive Polar billing sessions"
     }
   ],
   "paths": {
-    "/api/billing/current": {
-      "get": { "operationId": "getCurrentBilling", "summary": "Get current subscription and plan usage", "tags": ["Billing"], "responses": { "200": { "description": "Current subscription, limits, usage, and resource counts" }, "400": { "description": "No active organization" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "404": { "$ref": "#/components/responses/NotFound" } } }
-    },
-    "/api/billing/pricing": {
-      "get": { "operationId": "getBillingPricing", "summary": "Get public plan pricing", "tags": ["Billing"], "security": [], "responses": { "200": { "description": "Available plans, limits, overage pricing, and locations" }, "500": { "description": "Pricing is unavailable or not configured" } } }
-    },
-    "/api/billing/usage": {
-      "get": { "operationId": "getBillingUsage", "summary": "Get organization usage and spending", "tags": ["Billing"], "responses": { "200": { "description": "Usage metrics and spending-limit status" }, "400": { "description": "No active organization" }, "401": { "$ref": "#/components/responses/Unauthorized" } } }
-    },
-    "/api/billing/settings": {
-      "get": { "operationId": "getBillingSettings", "summary": "Get organization billing settings", "tags": ["Billing"], "responses": { "200": { "description": "Billing and notification settings" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" } } },
-      "patch": { "operationId": "updateBillingSettings", "summary": "Update organization billing settings", "description": "Updates spending limits and usage-notification preferences. Requires organization owner or admin permission.", "tags": ["Billing"], "responses": { "200": { "description": "Updated billing settings" }, "400": { "description": "Invalid settings" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" } } }
-    },
-    "/api/billing/notifications": {
-      "get": { "operationId": "listBillingNotifications", "summary": "List usage notification history", "tags": ["Billing"], "responses": { "200": { "description": "Paginated notification history" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" } } }
-    },
-    "/api/billing/checkout": {
-      "post": { "operationId": "createBillingCheckout", "summary": "Create an interactive Polar checkout", "description": "Browser-session-only operation for organization owners. CLI bearer tokens are intentionally rejected.", "tags": ["Billing"], "security": [{ "sessionCookie": [] }], "responses": { "200": { "description": "Checkout URL" }, "400": { "description": "Invalid plan or organization context" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "503": { "description": "Billing provider is not configured" } } }
-    },
-    "/api/billing/portal": {
-      "post": { "operationId": "createBillingPortalSession", "summary": "Create an interactive Polar customer portal session", "description": "Browser-session-only operation for organization owners. CLI bearer tokens are intentionally rejected.", "tags": ["Billing"], "security": [{ "sessionCookie": [] }], "responses": { "200": { "description": "Customer portal URL" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "409": { "description": "Billing customer setup is incomplete" }, "503": { "description": "Billing provider is not configured" } } }
-    },
     "/api/sre/incidents": {
       "get": {
         "operationId": "listSreIncidents",
         "summary": "List AI SRE incidents",
-        "tags": ["AI SRE"],
-        "parameters": [
-          { "name": "status", "in": "query", "schema": { "type": "string", "enum": ["triggered", "investigating", "identified", "recommendations_ready", "user_applying_fix", "verifying", "resolved"] } },
-          { "name": "severity", "in": "query", "schema": { "type": "string", "enum": ["sev1", "sev2", "sev3", "sev4"] } }
+        "tags": [
+          "AI SRE"
         ],
-        "responses": { "200": { "description": "Tenant-scoped incident list" }, "400": { "description": "Invalid filters" }, "401": { "description": "Authentication required" }, "403": { "description": "Insufficient permission" } }
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "triggered",
+                "investigating",
+                "identified",
+                "recommendations_ready",
+                "user_applying_fix",
+                "verifying",
+                "resolved"
+              ]
+            }
+          },
+          {
+            "name": "severity",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "sev1",
+                "sev2",
+                "sev3",
+                "sev4"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tenant-scoped incident list"
+          },
+          "400": {
+            "description": "Invalid filters"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Insufficient permission"
+          }
+        }
       }
     },
     "/api/sre/incidents/{id}": {
       "get": {
         "operationId": "getSreIncident",
         "summary": "Get an AI SRE incident",
-        "tags": ["AI SRE"],
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
-        "responses": { "200": { "description": "Incident details" }, "404": { "description": "Incident not found in the active project" } }
+        "tags": [
+          "AI SRE"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Incident details"
+          },
+          "404": {
+            "description": "Incident not found in the active project"
+          }
+        }
       }
     },
     "/api/sre/incidents/{id}/timeline": {
       "get": {
         "operationId": "getSreIncidentTimeline",
         "summary": "Get an incident timeline",
-        "tags": ["AI SRE"],
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
-        "responses": { "200": { "description": "Chronological incident timeline" }, "404": { "description": "Incident not found in the active project" } }
+        "tags": [
+          "AI SRE"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Chronological incident timeline"
+          },
+          "404": {
+            "description": "Incident not found in the active project"
+          }
+        }
       }
     },
     "/api/sre/incidents/{id}/resolve": {
       "post": {
         "operationId": "resolveSreIncident",
         "summary": "Resolve an incident with an audit comment",
-        "tags": ["AI SRE"],
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["comment"], "properties": { "comment": { "type": "string", "minLength": 1, "maxLength": 2000 } } } } } },
-        "responses": { "200": { "description": "Incident resolved; timeline and audit events recorded" }, "400": { "description": "Invalid ID or comment" }, "403": { "description": "Insufficient permission" }, "404": { "description": "Incident not found in the active project" } }
+        "tags": [
+          "AI SRE"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "comment"
+                ],
+                "properties": {
+                  "comment": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Incident resolved; timeline and audit events recorded"
+          },
+          "400": {
+            "description": "Invalid ID or comment"
+          },
+          "403": {
+            "description": "Insufficient permission"
+          },
+          "404": {
+            "description": "Incident not found in the active project"
+          }
+        }
       }
     },
     "/api/sre/triage": {
       "post": {
         "operationId": "triageSreIncident",
         "summary": "Run AI incident triage",
-        "tags": ["AI SRE"],
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["incidentId"], "properties": { "incidentId": { "type": "string", "format": "uuid" } } } } } },
-        "responses": { "200": { "description": "Triage result" }, "429": { "description": "Rate limited" }, "503": { "description": "Feature disabled or temporarily unavailable" } }
+        "tags": [
+          "AI SRE"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "incidentId"
+                ],
+                "properties": {
+                  "incidentId": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Triage result"
+          },
+          "429": {
+            "description": "Rate limited"
+          },
+          "503": {
+            "description": "Feature disabled or temporarily unavailable"
+          }
+        }
       }
     },
     "/api/sre/investigate": {
       "post": {
         "operationId": "startSreInvestigation",
         "summary": "Start an asynchronous deep investigation",
-        "tags": ["AI SRE"],
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["incidentId"], "properties": { "incidentId": { "type": "string", "format": "uuid" }, "useLiveConnectors": { "type": "boolean", "default": false } } } } } },
-        "responses": { "202": { "description": "Investigation accepted" }, "402": { "description": "Plan or usage limit reached" }, "429": { "description": "Rate limited" }, "503": { "description": "Feature disabled or temporarily unavailable" } }
+        "description": "Returns a durable investigationRunId before background execution finishes. Poll the incident details to review the run status and saved result. Live connectors require explicit opt-in and connector investigation permission.",
+        "tags": [
+          "AI SRE"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "incidentId"
+                ],
+                "properties": {
+                  "incidentId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "useLiveConnectors": {
+                    "type": "boolean",
+                    "default": false
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Investigation accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "accepted",
+                    "investigationRunId"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "accepted": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "investigationRunId": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid investigation request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Active subscription and available spending capacity required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Insufficient permissions or invalid request origin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Incident not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "An investigation is already running for this incident"
+          },
+          "429": {
+            "description": "Rate limited"
+          },
+          "503": {
+            "description": "Feature disabled or temporarily unavailable"
+          }
+        }
       }
     },
     "/api/sre/chat": {
       "post": {
         "operationId": "streamSreChat",
         "summary": "Stream a read-only Copilot conversation",
-        "tags": ["AI SRE"],
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["message"], "properties": { "message": { "type": "string", "minLength": 1, "maxLength": 4000 }, "incidentId": { "type": ["string", "null"], "format": "uuid" }, "conversationId": { "type": ["string", "null"], "format": "uuid" }, "useLiveConnectorTools": { "type": "boolean", "default": false } } } } } },
-        "responses": { "200": { "description": "Server-sent event stream" }, "429": { "description": "Rate limited" } }
+        "tags": [
+          "AI SRE"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "message"
+                ],
+                "properties": {
+                  "message": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4000
+                  },
+                  "incidentId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid"
+                  },
+                  "conversationId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid"
+                  },
+                  "useLiveConnectorTools": {
+                    "type": "boolean",
+                    "default": false
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Server-sent event stream"
+          },
+          "429": {
+            "description": "Rate limited"
+          }
+        }
       }
     },
     "/api/sre/evidence-brief/stream": {
       "post": {
         "operationId": "streamSreEvidenceBrief",
         "summary": "Generate and stream an incident evidence brief",
-        "tags": ["AI SRE"],
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["incidentId"], "properties": { "incidentId": { "type": "string", "format": "uuid" } } } } } },
-        "responses": { "200": { "description": "Server-sent event stream" }, "429": { "description": "Rate limited" } }
+        "tags": [
+          "AI SRE"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "incidentId"
+                ],
+                "properties": {
+                  "incidentId": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Server-sent event stream"
+          },
+          "429": {
+            "description": "Rate limited"
+          }
+        }
       }
     },
     "/api/sre/services": {
       "get": {
         "operationId": "listSreServices",
         "summary": "List AI SRE services",
-        "tags": ["AI SRE"],
-        "responses": { "200": { "description": "Tenant-scoped service catalog" }, "403": { "description": "Insufficient permission" } }
+        "tags": [
+          "AI SRE"
+        ],
+        "responses": {
+          "200": {
+            "description": "Tenant-scoped service catalog"
+          },
+          "403": {
+            "description": "Insufficient permission"
+          }
+        }
       }
     },
     "/api/sre/services/{id}": {
       "get": {
         "operationId": "getSreService",
         "summary": "Get service details, health, and dependencies",
-        "tags": ["AI SRE"],
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
-        "responses": { "200": { "description": "Service, latest health snapshot, and dependency edges" }, "404": { "description": "Service not found in the active project" } }
+        "tags": [
+          "AI SRE"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Service, latest health snapshot, and dependency edges"
+          },
+          "404": {
+            "description": "Service not found in the active project"
+          }
+        }
       }
     },
     "/api/health": {
@@ -491,7 +874,7 @@
       "post": {
         "operationId": "createCliToken",
         "summary": "Create a CLI token",
-        "description": "Create a new CLI token for API access. The plain token value is returned only once in the response — store it securely.",
+        "description": "Create a new CLI token for API access. The plain token value is returned only once in the response \u2014 store it securely.",
         "tags": [
           "Authentication"
         ],
@@ -524,7 +907,7 @@
         },
         "responses": {
           "201": {
-            "description": "Token created. The `key` field contains the plain token — store it securely, it cannot be retrieved again.",
+            "description": "Token created. The `key` field contains the plain token \u2014 store it securely, it cannot be retrieved again.",
             "content": {
               "application/json": {
                 "schema": {
@@ -773,11 +1156,11 @@
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
-          "402": {
-            "description": "Active subscription required"
-          },
           "403": {
             "$ref": "#/components/responses/Forbidden"
+          },
+          "402": {
+            "description": "Active subscription required"
           }
         }
       }
@@ -995,9 +1378,6 @@
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
-          "402": {
-            "description": "Active subscription required"
-          },
           "403": {
             "$ref": "#/components/responses/Forbidden"
           },
@@ -1005,7 +1385,7 @@
             "$ref": "#/components/responses/NotFound"
           },
           "429": {
-            "description": "Rate limited — too many trigger requests",
+            "description": "Rate limited \u2014 too many trigger requests",
             "content": {
               "application/json": {
                 "schema": {
@@ -1028,6 +1408,9 @@
                 }
               }
             }
+          },
+          "402": {
+            "description": "Active subscription required"
           }
         }
       },
@@ -1172,14 +1555,14 @@
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
-          "402": {
-            "description": "Active subscription required"
-          },
           "403": {
             "$ref": "#/components/responses/Forbidden"
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "402": {
+            "description": "Active subscription required"
           }
         }
       }
@@ -1237,7 +1620,7 @@
       "post": {
         "operationId": "createJobApiKey",
         "summary": "Create a trigger key",
-        "description": "Create a new API trigger key for a job. The plain key is returned only once — store it securely.",
+        "description": "Create a new API trigger key for a job. The plain key is returned only once \u2014 store it securely.",
         "tags": [
           "Trigger Keys"
         ],
@@ -1268,7 +1651,7 @@
         },
         "responses": {
           "201": {
-            "description": "Trigger key created. Store the `key` value securely — it cannot be retrieved again.",
+            "description": "Trigger key created. Store the `key` value securely \u2014 it cannot be retrieved again.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1799,7 +2182,7 @@
                 "custom"
               ]
             },
-            "description": "Filter by test type. Aliases: `playwright` → `browser`, `k6` → `performance`"
+            "description": "Filter by test type. Aliases: `playwright` \u2192 `browser`, `k6` \u2192 `performance`"
           }
         ],
         "responses": {
@@ -1865,7 +2248,7 @@
                       "custom"
                     ],
                     "default": "browser",
-                    "description": "Test type. Aliases accepted: `playwright` → `browser`, `k6` → `performance`"
+                    "description": "Test type. Aliases accepted: `playwright` \u2192 `browser`, `k6` \u2192 `performance`"
                   },
                   "description": {
                     "type": "string"
@@ -2341,9 +2724,6 @@
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
-          "402": {
-            "description": "Active subscription or available spending capacity required"
-          },
           "403": {
             "$ref": "#/components/responses/Forbidden"
           },
@@ -2352,6 +2732,9 @@
           },
           "429": {
             "description": "Execution rate limit exceeded"
+          },
+          "402": {
+            "description": "Active subscription or available spending capacity required"
           }
         }
       }
@@ -2436,9 +2819,6 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
-          },
-          "402": {
-            "description": "Active subscription required"
           },
           "403": {
             "$ref": "#/components/responses/Forbidden"
@@ -4520,7 +4900,7 @@
       "get": {
         "operationId": "listOrganizations",
         "summary": "List organizations",
-        "description": "List organizations the authenticated user belongs to, including the member role and high-level subscription status. Does not return billing provider IDs.",
+        "description": "List organizations the authenticated user belongs to, including organization details and the member role.",
         "tags": [
           "Organizations"
         ],
@@ -4707,7 +5087,7 @@
       "put": {
         "operationId": "updateOrganization",
         "summary": "Update organization",
-        "description": "Update the organization name (2–50 characters after trim). Optional slug, logo, and metadata. Requires org_admin or org_owner.",
+        "description": "Update the organization name (2\u201350 characters after trim). Optional slug, logo, and metadata. Requires org_admin or org_owner.",
         "tags": [
           "Organizations"
         ],

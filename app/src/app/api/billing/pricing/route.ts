@@ -118,7 +118,6 @@ export async function GET() {
             monitorDataRetention: `${plan.dataRetentionDays}d raw / ${plan.aggregatedDataRetentionDays}d metrics`,
             jobDataRetention: `${plan.jobDataRetentionDays}d`,
             customDomains: plan.customDomains,
-            ssoEnabled: plan.ssoEnabled,
             support:
               planType === "pro" ? "Priority email support" : "Email support",
             checkInterval: "1 min (Synthetic: 5 min)",
@@ -215,13 +214,13 @@ export async function GET() {
             name: "Team Members",
             plus: plans.find((p) => p.plan === "plus")?.maxTeamMembers ?? "5",
             pro: plans.find((p) => p.plan === "pro")?.maxTeamMembers ?? "25",
-            enterprise: "Unlimited",
+            enterprise: "Custom",
           },
           {
             name: "Projects",
             plus: plans.find((p) => p.plan === "plus")?.maxProjects ?? "10",
             pro: plans.find((p) => p.plan === "pro")?.maxProjects ?? "50",
-            enterprise: "Unlimited",
+            enterprise: "Custom",
           },
         ],
       },
@@ -232,7 +231,7 @@ export async function GET() {
             name: "Public Status Pages",
             plus: plans.find((p) => p.plan === "plus")?.maxStatusPages ?? "3",
             pro: plans.find((p) => p.plan === "pro")?.maxStatusPages ?? "15",
-            enterprise: "Unlimited",
+            enterprise: "Custom",
           },
           {
             name: "Custom Domains",
@@ -248,7 +247,7 @@ export async function GET() {
             pro:
               plans.find((p) => p.plan === "pro")?.maxStatusPageSubscribers ??
               "5,000",
-            enterprise: "Unlimited",
+            enterprise: "Custom",
           },
         ],
       },
@@ -272,12 +271,6 @@ export async function GET() {
             plus: "Email",
             pro: "Priority email",
             enterprise: "Dedicated account manager",
-          },
-          {
-            name: "SSO/SAML",
-            plus: plans.find((p) => p.plan === "plus")?.ssoEnabled ?? true,
-            pro: plans.find((p) => p.plan === "pro")?.ssoEnabled ?? true,
-            enterprise: true,
           },
           {
             name: "CI/CD Integration",
@@ -334,7 +327,7 @@ export async function GET() {
       {
         question: "Do you offer enterprise plans?",
         answer:
-          "Yes! Enterprise plans include unlimited usage, custom SLAs, a dedicated account manager, and personalized onboarding. Contact hello@supercheck.io to discuss your needs.",
+          "Yes! Enterprise plans include custom usage allowances, custom SLAs, a dedicated account manager, and personalized onboarding. Contact hello@supercheck.io to discuss your needs.",
       },
       {
         question: "Can I self-host Supercheck?",

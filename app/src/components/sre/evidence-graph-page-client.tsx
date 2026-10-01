@@ -28,10 +28,16 @@ const EMPTY_GRAPH: SreEvidenceGraphData = {
 
 export function SreEvidenceGraphPageClient() {
   const searchParams = useSearchParams();
-  const query = useSreEvidenceGraph();
   const service = searchParams.get("service");
-  const selectedServiceNodeId =
-    service && /^[0-9a-f-]{36}$/i.test(service) ? `service:${service}` : null;
+  const incident = searchParams.get("incident");
+  const incidentNodeId =
+    incident && /^[0-9a-f-]{36}$/i.test(incident)
+      ? `incident:${incident}`
+      : null;
+  const query = useSreEvidenceGraph(incident ?? undefined);
+  const selectedNodeId =
+    incidentNodeId ??
+    (service && /^[0-9a-f-]{36}$/i.test(service) ? `service:${service}` : null);
 
   if (!query.data) {
     if (query.isPending) {
@@ -45,24 +51,26 @@ export function SreEvidenceGraphPageClient() {
 
     return (
       <SreEvidenceGraph
-        key={selectedServiceNodeId ?? "unscoped"}
+        key={selectedNodeId ?? "unscoped"}
         graph={EMPTY_GRAPH}
         loadError={
           query.error instanceof Error
             ? query.error.message
             : "Failed to load Investigation Map"
         }
-        initialSelectedNodeId={selectedServiceNodeId}
+        initialSelectedNodeId={selectedNodeId}
+        initialIncidentFocusId={incidentNodeId}
       />
     );
   }
 
   return (
     <SreEvidenceGraph
-      key={selectedServiceNodeId ?? "unscoped"}
+      key={selectedNodeId ?? "unscoped"}
       graph={query.data.graph}
       loadError={query.data.success ? null : query.data.error}
-      initialSelectedNodeId={selectedServiceNodeId}
+      initialSelectedNodeId={selectedNodeId}
+      initialIncidentFocusId={incidentNodeId}
     />
   );
 }

@@ -173,17 +173,62 @@ describe("SreEvidenceGraph", () => {
     jest.clearAllMocks();
   });
 
+  it("opens a linked node even when the default view filters it out", () => {
+    render(<SreEvidenceGraph graph={graph} initialSelectedNodeId="monitor:m1" />);
+    expect(screen.getByRole("dialog", { name: /monitor: checkout monitor/i })).toBeInTheDocument();
+  });
+
+  it("opens a linked node beyond the canvas limit", () => {
+    const service = graph.nodes[0];
+    const nodes = Array.from({ length: 161 }, (_, index) => ({
+      ...service, id: `service:s${index}`, sourceId: `s${index}`, title: `Service ${index}`,
+    }));
+    render(<SreEvidenceGraph graph={{ ...graph, nodes, edges: [] }} initialSelectedNodeId="service:s160" />);
+    expect(screen.getByRole("dialog", { name: "Service: Service 160" })).toBeInTheDocument();
+    expect(screen.getByText("160 visible")).toBeInTheDocument();
+  });
+
+  it("focuses an incident deep link even beyond the first 25 incidents", () => {
+    const otherIncidents = Array.from({ length: 26 }, (_, index) => ({
+      ...graph.nodes.find((node) => node.type === "incident")!,
+      id: `incident:other-${index}`,
+      sourceId: `other-${index}`,
+      title: `Unrelated incident ${index}`,
+    }));
+    render(
+      <SreEvidenceGraph
+        graph={{ ...graph, nodes: [...otherIncidents, ...graph.nodes] }}
+        initialIncidentFocusId="incident:i1"
+        initialSelectedNodeId="incident:i1"
+      />,
+    );
+
+    expect(
+      screen.getByRole("dialog", { name: /incident: checkout latency/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Incident: Unrelated incident 0"),
+    ).not.toBeInTheDocument();
+    expect(screen.getAllByText("Checkout p95 breached").length).toBeGreaterThan(
+      0,
+    );
+  });
+
   it("renders nodes and filters by search", () => {
     render(<SreEvidenceGraph graph={graph} />);
 
     expect(screen.getAllByText("Checkout").length).toBeGreaterThan(0);
-    expect(screen.queryByText("Prometheus latency spike")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Prometheus latency spike"),
+    ).not.toBeInTheDocument();
 
     fireEvent.change(screen.getByPlaceholderText("Search topology..."), {
       target: { value: "prometheus" },
     });
 
-    expect(screen.queryByLabelText("Service: Checkout")).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Service: Checkout"),
+    ).not.toBeInTheDocument();
     expect(
       screen.getAllByText("Prometheus latency spike").length,
     ).toBeGreaterThan(0);
@@ -200,9 +245,7 @@ describe("SreEvidenceGraph", () => {
     });
     expect(detailsDialog).toBeInTheDocument();
     expect(detailsDialog).toHaveClass("max-h-[calc(100svh-1rem)]");
-    expect(detailsDialog).not.toHaveClass(
-      "h-[min(720px,calc(100svh-2rem))]",
-    );
+    expect(detailsDialog).not.toHaveClass("h-[min(720px,calc(100svh-2rem))]");
     expect(screen.getAllByText("#7").length).toBeGreaterThan(0);
     expect(screen.getAllByText("impacted service").length).toBeGreaterThan(0);
     expect(screen.getAllByText("triggered incident").length).toBeGreaterThan(0);
@@ -287,7 +330,9 @@ describe("SreEvidenceGraph", () => {
   it("keeps secondary operational nodes out of the default view", () => {
     render(<SreEvidenceGraph graph={graph} />);
 
-    expect(screen.queryByLabelText("Monitor: Checkout monitor")).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Monitor: Checkout monitor"),
+    ).not.toBeInTheDocument();
     expect(screen.getAllByText("Checkout p95 breached").length).toBeGreaterThan(
       0,
     );
@@ -329,7 +374,9 @@ describe("SreEvidenceGraph", () => {
     expect(
       screen.getByRole("button", { name: /zoom in/i }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /fit view/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /fit view/i }),
+    ).toBeInTheDocument();
   });
 
   it("opens and closes the expanded topology view", () => {
@@ -342,9 +389,9 @@ describe("SreEvidenceGraph", () => {
     expect(
       screen.getByRole("dialog", { name: /expanded investigation map/i }),
     ).toBeInTheDocument();
-    expect(
-      screen.getAllByLabelText("Investigation Map canvas"),
-    ).toHaveLength(2);
+    expect(screen.getAllByLabelText("Investigation Map canvas")).toHaveLength(
+      2,
+    );
 
     fireEvent.click(
       screen.getByRole("button", { name: /close expanded investigation map/i }),

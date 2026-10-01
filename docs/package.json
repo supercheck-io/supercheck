@@ -3,8 +3,14 @@
   "version": "0.0.0",
   "license": "AGPL-3.0-only",
   "private": true,
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
-    "build": "npm run check:diagrams && next build",
+    "build": "npm run check:openapi && npm run check:diagrams && next build",
+    "sync:openapi": "node scripts/sync-openapi.mjs",
+    "check:openapi": "node scripts/sync-openapi.mjs --check",
+    "test:openapi": "node --test scripts/sync-openapi.spec.mjs",
     "check:diagrams": "node scripts/check-diagram-titles.mjs",
     "dev": "next dev",
     "start": "next start",
@@ -15,7 +21,7 @@
   "dependencies": {
     "fumadocs-core": "16.8.0",
     "fumadocs-mdx": "13.0.8",
-    "fumadocs-openapi": "10.8.6",
+    "fumadocs-openapi": "10.6.8",
     "fumadocs-ui": "16.8.0",
     "lucide-react": "^0.544.0",
     "mermaid": "^11.15.0",
@@ -31,7 +37,7 @@
     "@babel/core": "^7.29.7",
     "dompurify": ">=3.4.9",
     "esbuild": "^0.28.1",
-    "fast-uri": "3.1.6",
+    "fast-uri": "3.1.8",
     "fast-xml-parser": ">=5.7.0",
     "fast-xml-builder": "1.1.7",
     "lodash-es": ">=4.18.0",
@@ -56,6 +62,7 @@
     "postcss": "8.5.28",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "yaml": "2.9.1"
   }
 }

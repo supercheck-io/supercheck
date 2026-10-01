@@ -39,6 +39,7 @@
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
     "lint": "eslint . --fix",
+    "lint:check": "eslint . --max-warnings 0",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
     "test:watch": "npm test -- --watch",
     "test:cov": "npm test -- --coverage",

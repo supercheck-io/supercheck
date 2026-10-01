@@ -1,5 +1,8 @@
 import { generateFiles } from 'fumadocs-openapi';
 import { createOpenAPI } from 'fumadocs-openapi/server';
+import { syncOpenApi } from './sync-openapi.mjs';
+
+syncOpenApi();
 
 const openapi = createOpenAPI({
   input: ['./openapi.json'],

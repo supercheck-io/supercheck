@@ -8,8 +8,8 @@ Incidents are the responder queue for issues that need investigation, evidence r
 
 You can create an incident in two ways:
 
-- From **Communicate → Alerts → Signals**, when an alert signal needs investigation. The new incident opens immediately after creation.
-- From **Communicate → Incidents → New incident**, when the issue did not start from a Supercheck alert.
+- From **Communicate → Alerts → Signals**, select **Investigate** next to a failure. Repeated deliveries are grouped, and the latest alert opens a new or existing incident without starting a full investigation.
+- From **Investigate → Incidents → New incident**, when the issue did not start from a Supercheck alert.
 
 Both paths create the same incident workspace.
 
@@ -23,22 +23,34 @@ Both paths create the same incident workspace.
 
 ## Incident Detail
 
-The incident detail page is intentionally focused. It shows the incident status, mapped service, stored evidence count, and the latest brief without mixing in every investigation control.
+The incident queue shows active incidents first. Use the status filter to see resolved or all incidents. Search, severity filters, pagination, and Trends remain available.
 
-The page has three tabs:
+The incident workspace has two tabs:
 
-- **Investigation** — Run a read-only investigation from stored evidence, optionally opt in to live connector tools, then save a sanitized report snapshot and review its accuracy.
-- **Evidence** — Review native Supercheck evidence and citation anchors.
-- **Brief** — Read or regenerate the latest evidence brief. Brief generation is kept in this tab instead of the incident header to avoid cluttering the default investigation view.
+- **Overview** — Run an investigation and read its latest findings. **Include live sources** is optional and off by default; it requires a linked service and connector investigation permission. Expand **Save report & feedback** to save an immutable review copy or rate a saved result. Aggregate tool metrics are available under **Investigation diagnostics**.
+- **Evidence & brief** — Inspect saved observations and their sources. Expand **Evidence brief · Summarize or export evidence** to collect native evidence, generate or regenerate a shareable summary, and copy or download it. A brief summarizes evidence; it is separate from a full investigation.
 
-The Investigation tab includes a readiness checklist. Live connector tools are off by default and require service mapping, explicit opt-in, and connector investigation permission. Tool telemetry shows aggregate calls, failures, and latency—not inputs, raw results, or credentials.
+If no evidence is saved, **Collect evidence** opens the brief section. Existing links with `?tab=brief` still open that section. A service is optional for stored-evidence investigations. **Link service** adds context when you need live sources; **View map** opens the optional map focused on this incident.
 
-While an investigation is running, another start is disabled and the open incident
+The start request returns an accepted run ID while the investigation continues
+in the background. While it is running, another start is disabled and the open incident
 refreshes its status automatically. If your connection is interrupted, check the
 incident's status before starting again: the server may still be completing the
 original run.
 
 Completed results can be saved as sanitized, immutable report snapshots. Authorized responders can add accuracy feedback; viewers have read-only access.
+
+The investigation result, saved report snapshot, and evidence brief are separate
+artifacts. An interrupted, truncated, or filtered model response is a failed run;
+review its status and evidence before trying again.
+The result explains known step, response-length, filtering, and timeout failures.
+Provider failures use a safe generic message so credentials and raw provider
+responses are never displayed. Failed runs cannot be saved as completed reports.
+
+The map loads recent project context with bounded limits. An incident deep link
+prioritizes that incident, its linked service, alerts, and saved investigation
+evidence, including incidents older than the default recent list. An inaccessible
+incident shows an error instead of silently opening an unrelated project map.
 
 ### Investigation Report
 
@@ -75,19 +87,21 @@ If investigations are disabled, existing evidence and results remain readable bu
 
 | Stage | Responsibility |
 |---|---|
-| Triage | Promote an alert signal or create an incident manually. Optional correlation can link a high-confidence related alert to an active incident. |
+| Triage | Select Investigate on an alert signal or create an incident manually. Optional correlation can link a high-confidence related alert to an active incident. |
 | Investigate | AI SRE reads native evidence and explicitly enabled, scoped connector data. |
 | Decide and fix | A human reviews cited recommendations and changes the external system. |
 | Confirm recovery | A human re-runs or observes the detecting checks; AI SRE does not trigger remediation or verification. |
+
+After confirming recovery, select **Resolve incident**, describe the fix and the checks that passed, and confirm. The note is saved in the incident timeline. This records your decision; it does not run checks or apply remediation. Viewers cannot resolve incidents.
 
 ## Alerts and Incidents
 
 Alerts and incidents intentionally remain separate:
 
-- **Alerts** show notification channels, alert history, and active signals.
+- **Alerts** show notification channels, alert history, and grouped failure signals.
 - **Incidents** show issues your team has decided to investigate.
 
-This keeps alert noise out of the responder queue while still making it easy to promote a signal into an incident.
+This keeps alert noise out of the responder queue while still making it easy to open an incident from a signal.
 
 ## Exporting Reports
 

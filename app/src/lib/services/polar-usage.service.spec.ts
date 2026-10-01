@@ -245,6 +245,15 @@ describe("PolarUsageService retry idempotency", () => {
     ["duplicate", { inserted: 0, duplicates: 1 }, true],
     ["unacknowledged", { inserted: 0 }, false],
     ["invalid count", { inserted: 2 }, false],
+    ["null", null, false],
+    ["string", "ok", false],
+    ["boolean", true, false],
+    ["array", [], false],
+    ["array with named fields", Object.assign([], { inserted: 1, duplicates: 0 }), false],
+    ["fractional inserted", { inserted: 0.5, duplicates: 0.5 }, false],
+    ["negative inserted", { inserted: -1, duplicates: 2 }, false],
+    ["negative duplicates", { inserted: 2, duplicates: -1 }, false],
+    ["string count", { inserted: "1" }, false],
   ])("handles %s ingestion acknowledgements after repeated failures", async (_name, result, succeeded) => {
     const event = { id: "retry-event", organizationId: "org-1", eventType: "sre_investigation",
       units: "1", unitType: "investigation_units", createdAt: new Date(),
@@ -262,8 +271,9 @@ describe("PolarUsageService retry idempotency", () => {
       processed: 1, succeeded: succeeded ? 1 : 0, failed: succeeded ? 0 : 1,
     });
     expect(updateSet).toHaveBeenCalledWith(expect.objectContaining(
-      succeeded ? { syncedToPolar: true } : { syncError: expect.any(String) },
+      succeeded ? { syncedToPolar: true } : { syncError: "Polar did not acknowledge the usage event" },
     ));
+    if (!succeeded) expect(updateSet).not.toHaveBeenCalledWith(expect.objectContaining({ syncedToPolar: true }));
   });
 
   it("quarantines a closed period instead of charging the next invoice", async () => {

@@ -1,11 +1,6 @@
 "use client";
 
-import {
-  useMemo,
-  useState,
-  type FormEvent,
-  type KeyboardEvent,
-} from "react";
+import { useMemo, useState, type FormEvent, type KeyboardEvent } from "react";
 import type { UIMessage } from "ai";
 import {
   AssistantRuntimeProvider,
@@ -345,9 +340,11 @@ function EmptyThread({
 }
 
 function SreFollowUpSuggestions({
+  incidentId,
   onClearError,
   onUseLiveConnectorToolsChange,
 }: {
+  incidentId: string | null;
   onClearError: () => void;
   onUseLiveConnectorToolsChange: (enabled: boolean) => void;
 }) {
@@ -365,7 +362,7 @@ function SreFollowUpSuggestions({
   });
   const isRunning = useAuiState((state) => state.thread.isRunning);
   const replies = latestAssistantText
-    ? getQuickRepliesForAssistantText(latestAssistantText)
+    ? getQuickRepliesForAssistantText(latestAssistantText, Boolean(incidentId))
     : [];
 
   if (isRunning || !latestAssistantText || replies.length === 0) {
@@ -547,6 +544,7 @@ export function SreThread({
           </ThreadPrimitive.Messages>
           <AssistantThinking />
           <SreFollowUpSuggestions
+            incidentId={incidentId}
             onClearError={onClearError}
             onUseLiveConnectorToolsChange={onUseLiveConnectorToolsChange}
           />

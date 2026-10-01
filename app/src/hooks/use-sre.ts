@@ -77,11 +77,11 @@ export function useSreServiceDetail(serviceId: string) {
   });
 }
 
-export function useSreEvidenceGraph() {
+export function useSreEvidenceGraph(incidentId?: string) {
   const { projectId } = useProjectContext();
   return useQuery({
-    queryKey: getSreEvidenceGraphQueryKey(projectId),
-    queryFn: getSreEvidenceGraphAction,
+    queryKey: [...getSreEvidenceGraphQueryKey(projectId), incidentId ?? null],
+    queryFn: () => getSreEvidenceGraphAction(incidentId),
     enabled: Boolean(projectId),
     staleTime: 30_000,
     meta: MEMORY_ONLY_QUERY,

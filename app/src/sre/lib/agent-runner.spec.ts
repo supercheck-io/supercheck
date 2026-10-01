@@ -16,7 +16,7 @@ const emptyUsage = {
 };
 
 describe("runSreAgent", () => {
-  it("rejects partial text when the provider finishes with an error", async () => {
+  it.each(["error", "length", "content-filter", "tool-calls", "other"] as const)("rejects partial text when the provider finishes with %s", async (reason) => {
     const model = new MockLanguageModelV3({
       doStream: async (): Promise<LanguageModelV3StreamResult> => ({
         stream: simulateReadableStream({
@@ -31,7 +31,7 @@ describe("runSreAgent", () => {
             { type: "text-end", id: "partial" },
             {
               type: "finish",
-              finishReason: { unified: "error", raw: "error" },
+              finishReason: { unified: reason, raw: reason },
               usage: emptyUsage,
             },
           ],
@@ -132,7 +132,7 @@ describe("runSreAgent", () => {
         budget: { maxSteps: 2, maxOutputTokens: 500, timeoutMs: 10_000 },
       }),
     ).rejects.toThrow(
-      "SRE agent returned no report (finish reason: tool-calls)",
+      "SRE agent did not complete successfully (tool-calls)",
     );
   });
 });

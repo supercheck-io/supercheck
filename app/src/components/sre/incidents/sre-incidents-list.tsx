@@ -55,7 +55,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { UUIDField } from "@/components/ui/uuid-field";
+import { checkRolePermissionsClient } from "@/lib/rbac/permissions-client";
 import { useProjectContext } from "@/hooks/use-project-context";
 import {
   getSreEvidenceGraphQueryKey,
@@ -70,14 +70,12 @@ type SreIncidentsListProps = {
 };
 
 type IncidentSortKey =
-  | "id"
   | "incidentNumber"
   | "title"
   | "severity"
   | "status"
   | "primaryServiceName"
   | "latestInvestigationStatus"
-  | "evidenceCount"
   | "updatedAt";
 type SortDirection = "asc" | "desc";
 
@@ -130,10 +128,9 @@ function getIncidentSortValue(
 ) {
   if (key === "updatedAt") return new Date(incident.updatedAt).getTime();
   if (key === "primaryServiceName")
-    return incident.primaryServiceName ?? "Unmapped";
+    return incident.primaryServiceName ?? "No service linked";
   if (key === "latestInvestigationStatus")
     return incident.latestInvestigationStatus ?? "not_started";
-  if (key === "id") return incident.id;
   return incident[key];
 }
 
@@ -186,7 +183,20 @@ export function SreIncidentsList({
 }: SreIncidentsListProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { projectId } = useProjectContext();
+  const {
+    projectId,
+    currentProject,
+    loading: projectLoading,
+    error: projectError,
+  } = useProjectContext();
+  const canCreate = Boolean(
+    !projectLoading &&
+      !projectError &&
+      currentProject?.userRole &&
+      checkRolePermissionsClient(currentProject.userRole, {
+        sre_incident: ["create"],
+      }),
+  );
   const [dialogOpen, setDialogOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [severity, setSeverity] =
@@ -195,7 +205,7 @@ export function SreIncidentsList({
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search);
   const [severityFilter, setSeverityFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("active");
   const [sortKey, setSortKey] = useState<IncidentSortKey>("updatedAt");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [pageIndex, setPageIndex] = useState(0);
@@ -209,6 +219,7 @@ export function SreIncidentsList({
   };
 
   const handleCreateIncident = () => {
+    if (!canCreate || isPending) return;
     const trimmedTitle = title.trim();
     if (!trimmedTitle) {
       toast.error("Incident title is required");
@@ -257,12 +268,15 @@ export function SreIncidentsList({
       const matchesSeverity =
         severityFilter === "all" || incident.severity === severityFilter;
       const matchesStatus =
-        statusFilter === "all" || incident.status === statusFilter;
+        statusFilter === "all" ||
+        (statusFilter === "active"
+          ? incident.status !== "resolved"
+          : incident.status === statusFilter);
       const searchable = [
         incident.id,
         String(incident.incidentNumber),
         incident.title,
-        incident.primaryServiceName ?? "Unmapped",
+        incident.primaryServiceName ?? "No service linked",
         incident.severity,
         incident.status,
         incident.latestInvestigationStatus ?? "not started",
@@ -350,7 +364,7 @@ export function SreIncidentsList({
                     setSearch(event.target.value);
                     setPageIndex(0);
                   }}
-                  placeholder="Filter by all available fields..."
+                  placeholder="Search incidents..."
                   className="h-8 pl-8 pr-8"
                 />
                 {search.length > 0 && (
@@ -396,30 +410,47 @@ export function SreIncidentsList({
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All statuses</SelectItem>
-                  {statusOptions.map((status) => (
-                    <SelectItem key={status} value={status}>
-                      {formatStatus(status)}
-                    </SelectItem>
-                  ))}
+                  <SelectItem value="active">Active incidents</SelectItem>
+                  <SelectItem value="all">All incidents</SelectItem>
+                  <SelectItem value="resolved">Resolved</SelectItem>
+                  {statusOptions
+                    .filter((status) => status !== "resolved")
+                    .map((status) => (
+                      <SelectItem key={status} value={status}>
+                        {formatStatus(status)}
+                      </SelectItem>
+                    ))}
                 </SelectContent>
               </Select>
             </>
           )}
+          <Button asChild type="button" variant="outline" className="h-8">
+            <Link href="/alerts">Review alerts</Link>
+          </Button>
           <Button asChild type="button" variant="outline" className="h-8">
             <Link href="/incidents/analytics">
               <BarChart3 className="h-4 w-4" />
               Trends
             </Link>
           </Button>
-          <Button
-            type="button"
-            className="h-8"
-            onClick={() => setDialogOpen(true)}
-          >
-            <Plus className="h-4 w-4" />
-            New incident
-          </Button>
+          {projectError && (
+            <p role="status" className="text-sm text-muted-foreground">
+              Permissions unavailable. Refresh to try again.
+            </p>
+          )}
+          {(canCreate || projectLoading) && (
+            <Button
+              type="button"
+              className="h-8"
+              disabled={!canCreate}
+              aria-busy={projectLoading || undefined}
+              title={projectLoading ? "Loading permissions..." : undefined}
+              onClick={() => setDialogOpen(true)}
+            >
+              <Plus className="h-4 w-4" />
+              New incident
+            </Button>
+          )}
         </div>
       </div>
 
@@ -427,7 +458,7 @@ export function SreIncidentsList({
         <DashboardEmptyState
           className="min-h-[260px]"
           title="No incidents yet"
-          description="Create one manually, or create one from an alert signal when it needs investigation."
+          description="Review an alert to open an incident, or create one for an issue you found elsewhere. Services and the map are optional context."
           icon={<Siren className="h-10 w-10" />}
         />
       ) : (
@@ -436,14 +467,6 @@ export function SreIncidentsList({
             <Table>
               <TableHeader>
                 <TableRow>
-                  <SortableHead
-                    label="ID"
-                    sortKey="id"
-                    activeKey={sortKey}
-                    direction={sortDirection}
-                    onSort={handleSort}
-                    className="w-32"
-                  />
                   <SortableHead
                     label="Incident"
                     sortKey="title"
@@ -485,14 +508,6 @@ export function SreIncidentsList({
                     className="w-36"
                   />
                   <SortableHead
-                    label="Evidence"
-                    sortKey="evidenceCount"
-                    activeKey={sortKey}
-                    direction={sortDirection}
-                    onSort={handleSort}
-                    className="w-32"
-                  />
-                  <SortableHead
                     label="Updated"
                     sortKey="updatedAt"
                     activeKey={sortKey}
@@ -506,7 +521,7 @@ export function SreIncidentsList({
                 {pagedIncidents.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={8}
+                      colSpan={6}
                       className="h-24 text-center text-muted-foreground"
                     >
                       No incidents match the current filters.
@@ -527,18 +542,18 @@ export function SreIncidentsList({
                       }}
                       aria-label={`View incident ${incident.id}: ${incident.title}`}
                     >
-                      <TableCell
-                        className="py-2.5"
-                        onClick={(event) => event.stopPropagation()}
-                      >
-                        <UUIDField value={incident.id} maxLength={8} />
-                      </TableCell>
                       <TableCell className="max-w-[420px] py-2.5">
                         <span
                           className="block truncate font-medium"
                           title={incident.title}
                         >
-                          {incident.title}
+                          #{incident.incidentNumber} · {incident.title}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {incident.alertCount} alert
+                          {incident.alertCount === 1 ? "" : "s"} ·{" "}
+                          {incident.evidenceCount} evidence item
+                          {incident.evidenceCount === 1 ? "" : "s"}
                         </span>
                       </TableCell>
                       <TableCell className="py-2.5">
@@ -561,9 +576,11 @@ export function SreIncidentsList({
                       </TableCell>
                       <TableCell
                         className="max-w-[180px] truncate py-2.5"
-                        title={incident.primaryServiceName ?? "Unmapped"}
+                        title={
+                          incident.primaryServiceName ?? "No service linked"
+                        }
                       >
-                        {incident.primaryServiceName ?? "Unmapped"}
+                        {incident.primaryServiceName ?? "No service linked"}
                       </TableCell>
                       <TableCell className="py-2.5">
                         {incident.latestInvestigationStatus ? (
@@ -583,9 +600,6 @@ export function SreIncidentsList({
                         )}
                       </TableCell>
                       <TableCell className="py-2.5">
-                        {incident.evidenceCount}
-                      </TableCell>
-                      <TableCell className="py-2.5">
                         <div className="inline-flex items-center gap-1 whitespace-nowrap text-sm">
                           <Clock className="h-3.5 w-3.5 text-muted-foreground" />
                           <span suppressHydrationWarning>
@@ -602,7 +616,7 @@ export function SreIncidentsList({
 
           <div className="flex flex-col gap-3 px-2 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex-1 text-sm text-muted-foreground">
-              Total {filteredIncidents.length} incidents
+              Total {filteredIncidents.length} {filteredIncidents.length === 1 ? "incident" : "incidents"}
             </div>
             <div className="flex flex-wrap items-center gap-3 sm:gap-6 lg:gap-8">
               <div className="flex items-center space-x-2">

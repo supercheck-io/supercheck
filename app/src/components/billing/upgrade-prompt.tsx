@@ -87,7 +87,7 @@ export function UpgradePrompt({
                       </li>
                       <li className="flex items-center gap-2">
                         <Check className="h-4 w-4 text-green-600" />
-                        <span>SSO & custom domains</span>
+                        <span>Higher usage allowances</span>
                       </li>
                     </>
                   )}

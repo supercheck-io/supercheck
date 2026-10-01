@@ -161,7 +161,6 @@ export async function GET() {
       },
       planFeatures: {
         customDomains: plan.customDomains,
-        ssoEnabled: plan.ssoEnabled,
         dataRetentionDays: plan.dataRetentionDays,
         aggregatedDataRetentionDays: plan.aggregatedDataRetentionDays,
       },

@@ -1,3 +1,5 @@
+/** @jest-environment node */
+
 jest.mock("@/utils/db", () => ({
   db: {
     select: jest.fn(),
@@ -6,7 +8,7 @@ jest.mock("@/utils/db", () => ({
   },
 }));
 
-jest.mock("@/sre/lib/agent-runner", () => ({ runSreAgent: jest.fn() }));
+jest.mock("@/sre/lib/agent-runner", () => ({ ...jest.requireActual("@/sre/lib/agent-runner"), runSreAgent: jest.fn() }));
 jest.mock("@/lib/sre/investigation-billing", () => ({
   withSreInvestigationAdmission: jest.fn((_organizationId, createRun) => createRun(jest.requireMock("@/utils/db").db)),
   consumeSreInvestigationCredit: jest.fn(),
@@ -27,7 +29,7 @@ import {
   executeSreIncidentInvestigation,
   completeSreIncidentInvestigation,
 } from "./investigation-runner";
-import { runSreAgent } from "./agent-runner";
+import { runSreAgent, SreAgentIncompleteResponseError } from "./agent-runner";
 import { consumeSreInvestigationCredit } from "@/lib/sre/investigation-billing";
 
 const incident = {
@@ -113,13 +115,14 @@ describe("executeSreIncidentInvestigation failure persistence", () => {
     const result = await executeSreIncidentInvestigation("run-1", incident, input);
     expect(result.success).toBe(false);
     expect(returning).toHaveBeenCalled();
+    expect(values).not.toHaveBeenCalled();
     expect(set).not.toHaveBeenCalledWith(expect.objectContaining({ rootCauseSummary: "late result" }));
   });
 
   it("does not persist provider secrets in failed runs or timeline events", async () => {
     const set = jest
       .fn()
-      .mockReturnValue({ where: jest.fn().mockResolvedValue([]) });
+      .mockReturnValue({ where: jest.fn().mockReturnValue({ returning: jest.fn().mockResolvedValue([{ id: "run-1" }]) }) });
     const values = jest.fn().mockResolvedValue([]);
     (db.transaction as jest.Mock).mockImplementation(async (callback) =>
       callback({
@@ -146,6 +149,7 @@ describe("executeSreIncidentInvestigation failure persistence", () => {
         agentStateSnapshot: {
           mode: "sre_investigation_api",
           error: "SRE investigation failed",
+          errorCode: "provider_error",
         },
       }),
     );
@@ -172,7 +176,7 @@ describe("completeSreIncidentInvestigation", () => {
   it("does not bill a failed execution", async () => {
     const set = jest
       .fn()
-      .mockReturnValue({ where: jest.fn().mockResolvedValue([]) });
+      .mockReturnValue({ where: jest.fn().mockReturnValue({ returning: jest.fn().mockResolvedValue([{ id: "run-1" }]) }) });
     const values = jest.fn().mockResolvedValue([]);
     (db.transaction as jest.Mock).mockImplementation(async (callback) =>
       callback({
@@ -186,5 +190,43 @@ describe("completeSreIncidentInvestigation", () => {
 
     expect(result.success).toBe(false);
     expect(mockConsume).not.toHaveBeenCalled();
+  });
+
+  it("persists a sanitized timeout in the run and timeline without charging", async () => {
+    const set = jest.fn().mockReturnValue({ where: jest.fn().mockReturnValue({ returning: jest.fn().mockResolvedValue([{ id: "run-1" }]) }) });
+    const values = jest.fn().mockResolvedValue([]);
+    (db.transaction as jest.Mock).mockImplementation(async (callback) => callback({
+      update: jest.fn().mockReturnValue({ set }), insert: jest.fn().mockReturnValue({ values }),
+    }));
+    (runSreAgent as jest.Mock).mockRejectedValue(new DOMException("private-payload", "TimeoutError"));
+    const result = await completeSreIncidentInvestigation("run-1", incident, input);
+    const error = "Investigation timed out before completing. Try again with a narrower scope.";
+    expect(result).toMatchObject({ success: false, status: 502, error });
+    expect(mockConsume).not.toHaveBeenCalled();
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({ status: "failed",
+      agentStateSnapshot: expect.objectContaining({ errorCode: "timed_out", error }),
+    }));
+    expect(values).toHaveBeenCalledWith(expect.objectContaining({ eventData: expect.objectContaining({ errorCode: "timed_out", error }) }));
+    expect(JSON.stringify([set.mock.calls, values.mock.calls, result])).not.toContain("private-payload");
+  });
+
+  it.each([
+    ["tool-calls", "step_limit_exceeded"],
+    ["length", "token_limit_exceeded"],
+    ["content-filter", "content_filter"],
+  ])("retains the safe %s failure reason without charging", async (finishReason, errorCode) => {
+    const set = jest.fn().mockReturnValue({ where: jest.fn().mockReturnValue({ returning: jest.fn().mockResolvedValue([{ id: "run-1" }]) }) });
+    const values = jest.fn().mockResolvedValue([]);
+    (db.transaction as jest.Mock).mockImplementation(async (callback) => callback({
+      update: jest.fn().mockReturnValue({ set }), insert: jest.fn().mockReturnValue({ values }),
+    }));
+    (runSreAgent as jest.Mock).mockRejectedValue(new SreAgentIncompleteResponseError(finishReason));
+    const result = await completeSreIncidentInvestigation("run-1", incident, input);
+    expect(result).toMatchObject({ success: false, status: 502 });
+    expect(mockConsume).not.toHaveBeenCalled();
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({ status: "failed",
+      agentStateSnapshot: expect.objectContaining({ errorCode, error: expect.any(String) }),
+    }));
+    expect(values).toHaveBeenCalledWith(expect.objectContaining({ eventData: expect.objectContaining({ errorCode }) }));
   });
 });

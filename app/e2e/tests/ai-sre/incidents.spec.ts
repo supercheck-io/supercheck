@@ -66,22 +66,24 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
       await expect(signalRow).toContainText(monitor.name);
       await expect(signalRow).toContainText("sev2");
       await signalRow
-        .getByRole("button", { name: "Create incident", exact: true })
+        .getByRole("button", { name: "Investigate", exact: true })
         .click();
       await expect(page).toHaveURL(/\/incidents\/[0-9a-f-]{36}$/i);
       await expect(
         page.getByRole("heading", { name: new RegExp(monitor.name) }),
       ).toBeVisible({ timeout: 30_000 });
-      await expect(
-        page
-          .getByText("Alerts", { exact: true })
-          .locator("..")
-          .filter({ hasText: /^Alerts1$/ }),
-      ).toContainText("1");
+      await expect(page.getByText("1 alert", { exact: true })).toBeVisible();
 
       const promotedIncidentId = page.url().split("/").pop();
       expect(promotedIncidentId).toMatch(/^[0-9a-f-]{36}$/i);
-      await page.getByRole("tab", { name: "Brief", exact: true }).click();
+      await page
+        .getByRole("tab", { name: "Evidence & brief", exact: true })
+        .click();
+      await page
+        .getByText("Evidence brief · Summarize or export evidence", {
+          exact: true,
+        })
+        .click();
       await page
         .getByRole("button", { name: "Generate brief", exact: true })
         .click();
@@ -97,7 +99,9 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
         /^incident-\d+-.+-brief\.md$/,
       );
 
-      await page.getByRole("tab", { name: "Evidence", exact: true }).click();
+      await page
+        .getByRole("tab", { name: "Evidence & brief", exact: true })
+        .click();
       const evidenceRows = page.locator('tr[id^="sre-evidence-"]');
       await expect(evidenceRows.first()).toBeVisible();
       const evidenceId = (
@@ -129,7 +133,9 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
           `/incidents/${promotedIncidentId}#sre-evidence-${evidenceId}$`,
         ),
       );
-      await page.getByRole("tab", { name: "Evidence", exact: true }).click();
+      await page
+        .getByRole("tab", { name: "Evidence & brief", exact: true })
+        .click();
       await expect(page.locator(`#sre-evidence-${evidenceId}`)).toBeVisible();
 
       await page.getByRole("button", { name: "Open Copilot" }).click();
@@ -185,13 +191,11 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
         page.getByRole("heading", { name: "Incidents", exact: true }),
       ).toBeVisible();
       await expect(page.getByRole("columnheader")).toHaveText([
-        "ID",
         "Incident",
         "Severity",
         "Status",
         "Service",
         "Investigation",
-        "Evidence",
         "Updated",
       ]);
       await page
@@ -211,22 +215,26 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
       ).toBeVisible();
 
       const tabs = page.getByRole("tab");
-      await expect(tabs).toHaveCount(3);
+      await expect(tabs).toHaveCount(2);
       await expect(
-        page.getByRole("tab", { name: "Investigation", exact: true }),
+        page.getByRole("tab", { name: "Overview", exact: true }),
       ).toBeVisible();
       await expect(
-        page.getByRole("tab", { name: "Evidence", exact: true }),
+        page.getByRole("tab", { name: "Evidence & brief", exact: true }),
       ).toBeVisible();
+      await expect(page.getByLabel("Include live sources")).toBeDisabled();
       await expect(
-        page.getByRole("tab", { name: "Brief", exact: true }),
-      ).toBeVisible();
-      await expect(page.getByLabel("Use live connector tools")).toBeDisabled();
-      await expect(
-        page.getByText("Primary service required", { exact: true }),
+        page.getByText("Link a service to use live sources.", { exact: false }),
       ).toBeVisible();
 
-      await page.getByRole("tab", { name: "Brief", exact: true }).click();
+      await page
+        .getByRole("tab", { name: "Evidence & brief", exact: true })
+        .click();
+      await page
+        .getByText("Evidence brief · Summarize or export evidence", {
+          exact: true,
+        })
+        .click();
       await page
         .getByRole("button", { name: "Generate brief", exact: true })
         .click();
@@ -239,14 +247,19 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
       ).toBeVisible();
 
       await page.reload();
-      await page.getByRole("tab", { name: "Brief", exact: true }).click();
+      await page
+        .getByRole("tab", { name: "Evidence & brief", exact: true })
+        .click();
+      await page
+        .getByText("Evidence brief · Summarize or export evidence", {
+          exact: true,
+        })
+        .click();
       await expect(
         page.getByRole("button", { name: "Regenerate brief", exact: true }),
       ).toBeVisible();
 
-      await page
-        .getByRole("tab", { name: "Investigation", exact: true })
-        .click();
+      await page.getByRole("tab", { name: "Overview", exact: true }).click();
       const investigationResponsePromise = page.waitForResponse(
         (response) =>
           response.request().method() === "POST" &&
@@ -256,10 +269,9 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
         .getByRole("button", { name: "Run investigation", exact: true })
         .click();
       const investigationResponse = await investigationResponsePromise;
-      expect(
-        [200, 202],
-        await investigationResponse.text(),
-      ).toContain(investigationResponse.status());
+      expect([200, 202], await investigationResponse.text()).toContain(
+        investigationResponse.status(),
+      );
       await expect(
         page.getByText("Latest result", { exact: true }),
       ).toBeVisible({ timeout: 120_000 });
@@ -267,10 +279,13 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
         page.getByText(/completed|failed|error/i).last(),
       ).toBeVisible();
 
+      await page.getByText("Save report & feedback", { exact: true }).click();
       await page
         .getByRole("button", { name: "Save report snapshot", exact: true })
         .click();
-      await expect(page.getByText("Snapshot saved", { exact: true })).toBeVisible();
+      await expect(
+        page.getByText("Snapshot saved", { exact: true }),
+      ).toBeVisible();
       await page.getByLabel("Accuracy").click();
       await page
         .getByRole("option", { name: "Partially accurate", exact: true })
@@ -281,14 +296,19 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
         .getByLabel("Rejected hypotheses (optional, one per line)")
         .fill("Database saturation was not supported by the stored evidence.");
       await page.getByRole("button", { name: "Save feedback" }).click();
-      await expect(page.getByText("Feedback saved", { exact: true })).toBeVisible();
+      await expect(
+        page.getByText("Feedback saved", { exact: true }),
+      ).toBeVisible();
 
       await page.reload();
       await expect(
         page.getByText("Latest result", { exact: true }),
       ).toBeVisible();
+      await page.getByText("Save report & feedback", { exact: true }).click();
       await expect(page.getByText(/^Snapshot saved/)).toBeVisible();
-      await expect(page.getByLabel("Notes (optional)")).toHaveValue(feedbackNote);
+      await expect(page.getByLabel("Notes (optional)")).toHaveValue(
+        feedbackNote,
+      );
 
       const viewerSwitch = await viewerPage.request.post(
         "/api/projects/switch",
@@ -307,7 +327,13 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
           exact: true,
         }),
       ).toHaveCount(0);
+      await viewerPage
+        .getByText("Save report & feedback", { exact: true })
+        .click();
       await expect(viewerPage.getByText(/^Snapshot saved/)).toBeVisible();
+      await expect(
+        viewerPage.getByRole("button", { name: "Resolve incident" }),
+      ).toHaveCount(0);
       await expect(
         viewerPage.getByRole("button", { name: "Save feedback" }),
       ).toHaveCount(0);

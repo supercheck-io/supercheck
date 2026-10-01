@@ -158,7 +158,9 @@ export class MonitorService {
       if (billing.blocked) {
         // Billing holds are not probe failures and must not trigger downtime
         // alerts or charge synthetic execution minutes.
-        this.logger.warn(`Monitor ${jobData.monitorId} skipped: ${billing.reason}`);
+        this.logger.warn(
+          `Monitor ${jobData.monitorId} skipped: ${billing.reason}`,
+        );
         return null;
       }
     } catch (dbError) {

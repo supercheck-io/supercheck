@@ -341,7 +341,7 @@ export async function checkSubscriberLimit(
  */
 export async function checkFeatureAvailability(
   organizationId: string,
-  feature: "customDomains" | "ssoEnabled"
+  feature: "customDomains"
 ): Promise<{ available: boolean; error?: string }> {
   if (!isPolarEnabled()) {
     return { available: true };
@@ -354,7 +354,7 @@ export async function checkFeatureAvailability(
   if (!available) {
     return {
       available: false,
-      error: `This feature is not available on your ${plan.plan} plan. Please upgrade to access ${feature === "customDomains" ? "custom domains" : "SSO"}.`,
+      error: `This feature is not available on your ${plan.plan} plan. Please upgrade to access custom domains.`,
     };
   }
 

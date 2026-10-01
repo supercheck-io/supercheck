@@ -38,6 +38,11 @@ describe("Billing pricing configuration", () => {
     expect(body.plans[0].features.monitors).toBe(0);
     expect(body.featureComparison[0].features[0].plus).toBe(0);
     expect(body.featureComparison[1].features[0].plus).toBe("0/month");
+    expect(body.featureComparison.flatMap((category: { features: { name: string; enterprise: unknown }[] }) => category.features))
+      .not.toContainEqual(expect.objectContaining({ name: "SSO/SAML" }));
+    expect(body.plans[0].features).not.toHaveProperty("ssoEnabled");
+    expect(body.featureComparison.flatMap((category: { features: { enterprise: unknown }[] }) => category.features))
+      .not.toContainEqual(expect.objectContaining({ enterprise: "Unlimited" }));
   });
   it("exposes the revised allowances while retaining affordable overage", async () => {
     const plans = [

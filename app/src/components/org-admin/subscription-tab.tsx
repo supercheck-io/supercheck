@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -97,7 +97,6 @@ interface SubscriptionData {
   };
   planFeatures: {
     customDomains: boolean;
-    ssoEnabled: boolean;
     dataRetentionDays: number;
     aggregatedDataRetentionDays: number;
   };
@@ -135,12 +134,15 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
   const [spending, setSpending] = useState<SpendingData | null>(null);
   const [loading, setLoading] = useState(true);
   const [openingPortal, setOpeningPortal] = useState(false);
+  const refreshGeneration = useRef(0);
 
   useEffect(() => {
     fetchSubscriptionData();
+    return () => { refreshGeneration.current += 1; };
   }, []);
 
   const fetchSubscriptionData = async () => {
+    const generation = ++refreshGeneration.current;
     try {
       // Fetch both subscription data and usage data in parallel
       const [subscriptionRes, usageRes] = await Promise.all([
@@ -148,23 +150,21 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
         fetch("/api/billing/usage").catch(() => null),
       ]);
 
-      if (subscriptionRes.ok) {
-        const result = await subscriptionRes.json();
-        setData(result);
-      } else {
+      if (!subscriptionRes.ok) {
         const errorData = await subscriptionRes.json().catch(() => ({}));
-        toast.error("Failed to load subscription data", {
-          description:
-            errorData.error || "Unable to fetch subscription information",
-          duration: 5000,
-        });
+        throw new Error(errorData.error || "Unable to fetch subscription information");
       }
-
-      if (usageRes?.ok) {
-        const usageData = await usageRes.json();
-        setSpending(usageData.spending);
-      }
+      const [result, usageData] = await Promise.all([
+        subscriptionRes.json(),
+        usageRes?.ok ? usageRes.json().catch(() => null) : null,
+      ]);
+      if (generation !== refreshGeneration.current) return;
+      setData(result);
+      setSpending(usageData?.spending ?? null);
     } catch (error) {
+      if (generation !== refreshGeneration.current) return;
+      setData(null);
+      setSpending(null);
       console.error("Error fetching subscription data:", error);
       toast.error("Failed to load subscription data", {
         description:
@@ -172,7 +172,7 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
         duration: 5000,
       });
     } finally {
-      setLoading(false);
+      if (generation === refreshGeneration.current) setLoading(false);
     }
   };
 
@@ -276,7 +276,7 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b">
         <div className="flex items-center gap-4">
           <div>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <h3 className="text-2xl font-semibold">
                 {plan ? `${plan.name} Plan` : "No active plan"}
               </h3>
@@ -298,7 +298,7 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
               )}
             </div>
             {hasSubscription && (
-              <div className="flex items-center gap-4 text-sm text-muted-foreground mt-2">
+              <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground mt-2">
                 <span className="flex items-center gap-2">
                   <Calendar className="h-4 w-4" />
                   {daysRemaining === null ? "Billing period unavailable" : `${daysRemaining} days remaining`}
@@ -327,7 +327,7 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
           </div>
         </div>
         {data.subscription.plan !== "unlimited" && (
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-4">
             {/* Current Period Estimate - Minimal display */}
             {hasSubscription && <div className="text-right">
               <p className="text-xs text-muted-foreground">
@@ -525,7 +525,7 @@ function UsageProgressBar({
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="flex items-center gap-2 font-medium">
           {icon}
           {label}
@@ -533,20 +533,28 @@ function UsageProgressBar({
         <div className="flex items-center gap-2">
           {hasOverage && (
             <Badge variant="destructive" className="text-xs px-1.5 py-0 h-5">
-              <TrendingUp className="h-3 w-3 mr-1" />+{overage.toLocaleString()}{" "}
+              <TrendingUp className="h-3 w-3 mr-1" />+{overage.toLocaleString(undefined, { maximumFractionDigits: 4 })}{" "}
               overage
             </Badge>
           )}
           <span
             className={`text-sm ${hasOverage ? "text-red-500 font-medium" : "text-muted-foreground"}`}
           >
-            {used.toLocaleString()} / {included.toLocaleString()}
+            {used.toLocaleString(undefined, { maximumFractionDigits: 4 })} / {included.toLocaleString()}
           </span>
         </div>
       </div>
 
       {/* Custom progress bar with overage visualization */}
-      <div className="relative h-2 w-full overflow-hidden rounded-full bg-primary/20">
+      <div
+        role="progressbar"
+        aria-label={label}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={normalizedPercentage}
+        aria-valuetext={`${used} used of ${included} included`}
+        className="relative h-2 w-full overflow-hidden rounded-full bg-primary/20"
+      >
         {hasOverage ? (
           <>
             {/* Included portion (blue) */}

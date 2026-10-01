@@ -1,6 +1,11 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-import type { SreServiceDetail } from "@/actions/sre-services";
+import {
+  approveSreTopologySuggestion,
+  rejectSreTopologySuggestion,
+  getSreServiceDetail,
+  type SreServiceDetail,
+} from "@/actions/sre-services";
 import { ServiceDetailView } from "./service-detail-view";
 
 jest.mock("@/actions/sre-services", () => ({
@@ -18,7 +23,10 @@ jest.mock("next/navigation", () => ({
 }));
 
 jest.mock("@tanstack/react-query", () => ({
-  useQueryClient: () => ({ setQueryData: jest.fn() }),
+  useQueryClient: () => ({
+    setQueryData: jest.fn(),
+    invalidateQueries: jest.fn(),
+  }),
 }));
 
 jest.mock("@/hooks/use-project-context", () => ({
@@ -91,6 +99,64 @@ function detailFixture(
 }
 
 describe("ServiceDetailView", () => {
+  it.each(["approve", "reject"])(
+    "retains %s and review history inside Dependencies",
+    async (action) => {
+      const initial = detailFixture({
+        permissions: { canEdit: true, canConfigure: true },
+      });
+      const operation =
+        action === "approve"
+          ? approveSreTopologySuggestion
+          : rejectSreTopologySuggestion;
+      jest
+        .mocked(operation)
+        .mockResolvedValue({ success: true, message: "Updated" });
+      jest
+        .mocked(getSreServiceDetail)
+        .mockResolvedValue({
+          success: true,
+          detail: {
+            ...initial,
+            suggestions: [
+              {
+                ...initial.suggestions[0],
+                status: action === "approve" ? "approved" : "rejected",
+              },
+            ],
+          },
+        });
+      render(<ServiceDetailView initialDetail={initial} />);
+      expect(screen.getByRole("tab", { name: "Activity" })).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
+      expect(screen.getByText("No recent activity")).toBeInTheDocument();
+      fireEvent.mouseDown(screen.getByRole("tab", { name: /Dependencies/ }), {
+        button: 0,
+        ctrlKey: false,
+      });
+      fireEvent.click(screen.getByText("Suggested dependencies (1 pending)"));
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: action === "approve" ? "Approve" : "Reject",
+        }),
+      );
+      await waitFor(() =>
+        expect(
+          screen.getByText(action === "approve" ? "approved" : "rejected"),
+        ).toBeInTheDocument(),
+      );
+      expect(operation).toHaveBeenCalledWith({ id: initial.suggestions[0].id });
+      expect(
+        screen.queryByRole("button", { name: "Approve" }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "Reject" }),
+      ).not.toBeInTheDocument();
+    },
+  );
+
   it("keeps topology mutations hidden from read-only viewers", () => {
     render(<ServiceDetailView initialDetail={detailFixture()} />);
 
@@ -99,12 +165,27 @@ describe("ServiceDetailView", () => {
     ).not.toBeInTheDocument();
     expect(screen.getByText(/unknown/i)).toBeInTheDocument();
     expect(
-      screen.getByRole("tab", { name: "Dependencies" }),
+      screen.getByRole("tab", { name: /Dependencies/ }),
     ).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Activity" })).toBeInTheDocument();
     expect(
       screen.queryByRole("tab", { name: "Topology" }),
     ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Health score:", { exact: false }),
+    ).not.toBeInTheDocument();
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /Dependencies/ }), {
+      button: 0,
+      ctrlKey: false,
+    });
+    fireEvent.click(screen.getByText("Suggested dependencies (1 pending)"));
+    expect(
+      screen.queryByRole("button", { name: "Approve" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Reject" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText("Configure access required")).toBeInTheDocument();
     expect(
       screen
         .getByRole("link", { name: "Investigation Map" })
@@ -121,11 +202,18 @@ describe("ServiceDetailView", () => {
       />,
     );
 
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /Dependencies/ }), {
+      button: 0,
+      ctrlKey: false,
+    });
     expect(
       screen.getByRole("button", { name: /add dependency/i }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("tab", { name: /suggestions/i }),
+      screen.queryByRole("tab", { name: /suggestions/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText("Suggested dependencies (1 pending)"),
     ).toBeInTheDocument();
   });
 });

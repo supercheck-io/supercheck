@@ -458,14 +458,22 @@ describe('MonitorService', () => {
     });
 
     it('skips a synthetic monitor at the spending cap without a failure result', async () => {
-      mockUsageTrackerService.shouldBlockExecution.mockResolvedValueOnce({ blocked: true });
-      const result = await service.executeMonitor({ ...mockJobData, type: 'synthetic_test' });
+      mockUsageTrackerService.shouldBlockExecution.mockResolvedValueOnce({
+        blocked: true,
+      });
+      const result = await service.executeMonitor({
+        ...mockJobData,
+        type: 'synthetic_test',
+      });
       expect(result).toBeNull();
       expect(mockUsageTrackerService.shouldBlockExecution).toHaveBeenCalledWith(
-        mockMonitor.organizationId, { checkSpendingLimit: true },
+        mockMonitor.organizationId,
+        { checkSpendingLimit: true },
       );
       expect(mockExecutionService.runSingleTest).not.toHaveBeenCalled();
-      expect(mockUsageTrackerService.completeRunWithUsage).not.toHaveBeenCalled();
+      expect(
+        mockUsageTrackerService.completeRunWithUsage,
+      ).not.toHaveBeenCalled();
     });
 
     it('should execute http_request type monitors', async () => {

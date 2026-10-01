@@ -10,7 +10,7 @@ export default function SreEvidenceGraphPage() {
       <PageBreadcrumbs
         items={[
           { label: "Home", href: "/" },
-          { label: "Investigate", href: "/copilot" },
+          { label: "Investigate", href: "/incidents" },
           { label: "Investigation Map", isCurrentPage: true },
         ]}
       />

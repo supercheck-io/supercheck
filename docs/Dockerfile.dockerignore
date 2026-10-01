@@ -1,0 +1,14 @@
+**
+!docs/
+!docs/**
+!app/
+!app/public/
+!app/public/openapi.json
+docs/node_modules/
+docs/.next/
+docs/.source/
+docs/out/
+docs/.env*
+docs/coverage/
+docs/*.tsbuildinfo
+docs/*debug.log
