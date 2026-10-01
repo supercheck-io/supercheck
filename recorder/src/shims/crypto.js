@@ -14,26 +14,8 @@
  * limitations under the License.
  */
 
-import path from 'path';
-import { defineConfig } from 'vite';
-import sourcemaps from '../../utils/sourcemaps.mjs';
+import createHash from 'create-hash/browser.js';
+import randomBytes from 'randombytes/browser.js';
 
-// https://vitejs.dev/config/
-export default defineConfig({
-  build: {
-    // code cannot be obfuscated
-    minify: false,
-    sourcemap: true,
-    rollupOptions: {
-      plugins: [sourcemaps()],
-      input: {
-        'background': path.resolve(__dirname, 'src/background.ts'),
-      },
-      output: {
-        entryFileNames: '[name].js',
-        chunkFileNames: '[name].js',
-        assetFileNames: '[name].[ext]',
-      },
-    },
-  },
-});
+export { createHash, randomBytes };
+export default { createHash, randomBytes };

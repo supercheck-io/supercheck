@@ -16,7 +16,7 @@
 
 import path from 'path';
 import { defineConfig } from 'vite';
-import sourcemaps from 'rollup-plugin-sourcemaps';
+import sourcemaps from '../../utils/sourcemaps.mjs';
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -35,7 +35,6 @@ export default defineConfig({
     chunkSizeWarningLimit: 10240,
     sourcemap: true,
     rollupOptions: {
-      // @ts-ignore
       plugins: [sourcemaps()],
       input: {
         'index': path.resolve(__dirname, 'index.html'),
