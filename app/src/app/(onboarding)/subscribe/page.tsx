@@ -1,6 +1,8 @@
 "use client";
 
 import { PRICING_FAQS } from "@/lib/billing/pricing-copy";
+import { useOrganizations } from "@/hooks/use-organizations";
+import Link from "next/link";
 
 import { formatOveragePrice } from "@/lib/billing/pricing-defaults";
 import { Suspense, useEffect, useState, useCallback } from "react";
@@ -106,6 +108,11 @@ export default function SubscribePage() {
 function SubscribePageContent() {
   const searchParams = useSearchParams();
   const isRequired = searchParams.get("required") === "true";
+  const { activeOrganization, isPending: organizationLoading, isError: organizationError } = useOrganizations();
+  const hasCurrentSubscription = activeOrganization?.subscriptionStatus === "active" ||
+    activeOrganization?.subscriptionStatus === "past_due" ||
+    (activeOrganization?.subscriptionStatus === "canceled" && Boolean(activeOrganization.subscriptionEndsAt && new Date(activeOrganization.subscriptionEndsAt).getTime() > Date.now()));
+  const canSubscribe = activeOrganization?.role === "org_owner" && !hasCurrentSubscription && !organizationLoading && !organizationError;
   const [pricingData, setPricingData] = useState<PricingData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -136,7 +143,7 @@ function SubscribePageContent() {
 
   const handleSubscribe = async (planSlug: string) => {
     // Prevent double-click: if already subscribing, ignore
-    if (subscribing) return;
+    if (subscribing || !canSubscribe) return;
 
     setSubscribing(planSlug);
     try {
@@ -158,7 +165,7 @@ function SubscribePageContent() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ plan: planSlug }),
+        body: JSON.stringify({ plan: planSlug, organizationId: activeOrganization?.id }),
       });
       if (!checkoutRes.ok) {
         const errData = await checkoutRes.json().catch(() => ({}));
@@ -226,6 +233,11 @@ function SubscribePageContent() {
         <p className="text-base md:text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed">
           Open-Source Testing, Monitoring, and AI SRE — as Code
         </p>
+        {activeOrganization && <p className="text-sm font-medium">Subscription for {activeOrganization.name}</p>}
+        {!organizationLoading && !organizationError && !activeOrganization && <p className="text-sm text-muted-foreground">Create an organization using the menu above to choose a plan.</p>}
+        {organizationError && <p role="alert" className="text-sm text-destructive">Unable to load your organization. Retry using the organization selector above.</p>}
+        {activeOrganization && activeOrganization.role !== "org_owner" && <p className="text-sm text-muted-foreground">Only this organization&apos;s owner can subscribe. You can switch to another organization above.</p>}
+        {hasCurrentSubscription && activeOrganization?.role === "org_owner" && <p className="text-sm text-muted-foreground">This organization already has a subscription. <Link href="/org-admin?tab=subscription" className="underline">Manage subscription</Link> to change plans.</p>}
         <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs text-muted-foreground pt-1">
           <span>Monthly subscription per organization</span>
           <span className="hidden sm:inline">·</span>
@@ -267,7 +279,7 @@ function SubscribePageContent() {
               ctaVariant={plan.id === "pro" ? "default" : "outline"}
               onCtaClick={() => handleSubscribe(plan.id)}
               loading={subscribing === plan.id}
-              disabled={subscribing !== null && subscribing !== plan.id}
+              disabled={!canSubscribe || (subscribing !== null && subscribing !== plan.id)}
               highlighted={plan.id === "pro"}
             />
           ))}

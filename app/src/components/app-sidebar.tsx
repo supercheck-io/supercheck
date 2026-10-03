@@ -38,6 +38,7 @@ import { K6Logo } from "@/components/logo/k6-logo";
 
 import { NavMain } from "@/components/nav-main";
 import { ProjectSwitcher } from "@/components/project-switcher";
+import { OrganizationSwitcher } from "@/components/organization-switcher";
 import { ImpersonationCard } from "@/components/impersonation-card";
 import Link from "next/link";
 import {
@@ -328,6 +329,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader className="group-data-[collapsible=icon]:px-0 border-t">
+        <OrganizationSwitcher />
         <ProjectSwitcher />
       </SidebarHeader>
       <SidebarContent>

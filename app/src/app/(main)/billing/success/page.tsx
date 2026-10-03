@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { CheckCircle2, ArrowRight, Loader2, RefreshCw } from "lucide-react";
+import { reloadOrganization } from "@/lib/organization-navigation";
 
 function BillingSuccessContent() {
   const router = useRouter();
@@ -24,17 +25,36 @@ function BillingSuccessContent() {
   const pollingGeneration = useRef(0);
 
   const checkoutId = searchParams.get("checkout_id");
+  const organizationId = searchParams.get("organization_id");
+  const [navigationError, setNavigationError] = useState<string | null>(null);
+
+  const goToOrganization = useCallback(async () => {
+    try {
+      if (organizationId) {
+        const response = await fetch("/api/organizations/switch", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ organizationId }),
+        });
+        if (!response.ok) throw new Error("Unable to open the organization. Please select it from the organization menu.");
+        reloadOrganization();
+      } else {
+        router.push("/");
+      }
+    } catch (error) {
+      setNavigationError(error instanceof Error ? error.message : "Unable to open the organization");
+    }
+  }, [organizationId, router]);
 
   // Verify subscription is active before redirecting
   const verifySubscription = useCallback(async () => {
     try {
-      const response = await fetch("/api/subscription/status", {
+      const response = await fetch(organizationId ? `/api/subscription/status?organizationId=${encodeURIComponent(organizationId)}` : "/api/subscription/status", {
         cache: "no-store",
       });
       if (response.ok) {
         const data = await response.json();
         // Check if subscription is active
-        if (data.isActive && (data.plan === "plus" || data.plan === "pro")) {
+        if ((!organizationId || data.organizationId === organizationId) && data.isActive && (data.plan === "plus" || data.plan === "pro")) {
           return true;
         }
       }
@@ -42,7 +62,7 @@ function BillingSuccessContent() {
     } catch {
       return false;
     }
-  }, []);
+  }, [organizationId]);
 
   const stopPolling = useCallback(() => {
     pollingGeneration.current++;
@@ -103,7 +123,7 @@ function BillingSuccessContent() {
         if (prev <= 1) {
           clearInterval(timer);
           // Use setTimeout to avoid calling router.push during render
-          setTimeout(() => router.push("/"), 0);
+          setTimeout(() => void goToOrganization(), 0);
           return 0;
         }
         return prev - 1;
@@ -111,7 +131,7 @@ function BillingSuccessContent() {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [router, subscriptionVerified]);
+  }, [goToOrganization, subscriptionVerified]);
 
   return (
     <div className="flex items-center justify-center min-h-[60vh] p-8">
@@ -165,7 +185,7 @@ function BillingSuccessContent() {
                 <Button
                   className="w-full"
                   size="lg"
-                  onClick={() => router.push("/")}
+                  onClick={() => void goToOrganization()}
                   disabled={isVerifying}
                 >
                   {isVerifying ? (
@@ -184,11 +204,13 @@ function BillingSuccessContent() {
                 <p className="text-sm text-muted-foreground">
                   {isVerifying
                     ? "Confirming account setup..."
-                    : `Redirecting automatically in ${countdown} seconds...`}
+                    : navigationError ? "Use Go to Dashboard to try again." : `Redirecting automatically in ${countdown} seconds...`}
                 </p>
               </>
             )}
           </div>
+
+          {navigationError && <p role="alert" className="text-sm text-destructive">{navigationError}</p>}
 
           {checkoutId && (
             <p className="text-xs text-muted-foreground">

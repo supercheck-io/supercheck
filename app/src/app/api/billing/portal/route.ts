@@ -8,6 +8,7 @@ import { Role } from "@/lib/rbac/permissions";
 import { requireSameOriginRequest } from "@/lib/security/same-origin";
 import { db } from "@/utils/db";
 import { eq } from "drizzle-orm";
+import { z } from "zod";
 
 export async function POST(request: NextRequest) {
   const originError = requireSameOriginRequest(request);
@@ -26,6 +27,13 @@ export async function POST(request: NextRequest) {
         { error: "No active organization found" },
         { status: 400 }
       );
+    }
+    const body = request.headers.get("content-type")?.includes("application/json")
+      ? await request.json().catch(() => null) : {};
+    const parsed = z.object({ organizationId: z.string().uuid().optional() }).strict().safeParse(body);
+    if (!parsed.success) return NextResponse.json({ error: "Invalid organization ID" }, { status: 400 });
+    if (parsed.data.organizationId && parsed.data.organizationId !== organizationId) {
+      return NextResponse.json({ error: "Selected organization changed. Refresh before managing the subscription." }, { status: 409 });
     }
 
     const role = await getUserOrgRole(userId, organizationId);

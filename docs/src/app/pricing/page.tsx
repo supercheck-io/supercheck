@@ -111,7 +111,7 @@ const comparisonFeatures = [
             { name: 'Completed AI SRE investigations/month', plus: '25', pro: '100', selfHosted: 'Unlimited' },
             { name: 'Read-only evidence connectors', plus: 'Included', pro: 'Included', selfHosted: 'Self-managed' },
             { name: 'Private Agent support', plus: 'Included', pro: 'Included', selfHosted: 'Self-managed' },
-            { name: 'Concurrent jobs', plus: '5', pro: '10', selfHosted: 'Unlimited' },
+            { name: 'Concurrent jobs', plus: '5', pro: '10', selfHosted: 'Configurable' },
         ]
     },
     {
@@ -151,7 +151,7 @@ const comparisonFeatures = [
 const faqs = [
     {
         question: 'Does one subscription cover multiple organizations?',
-        answer: 'No. Each cloud organization needs its own subscription. Usage allowances, team members, projects, and spending controls belong to that organization and are not pooled across organizations.',
+        answer: 'No. Each cloud organization needs its own subscription. A new organization starts without a subscription and does not inherit your existing plan. Use the organization menu to switch back or subscribe separately. Joining an organization with an active subscription does not require a personal subscription. Usage allowances, member and project limits, and spending controls are separate for each organization.',
     },
     {
         question: 'When should I consider Pro?',

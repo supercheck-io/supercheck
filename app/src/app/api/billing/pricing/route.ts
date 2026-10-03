@@ -113,7 +113,7 @@ export async function GET() {
             concurrentExecutions: plan.runningCapacity,
             queuedJobs: plan.queuedCapacity,
             teamMembers: plan.maxTeamMembers,
-            organizations: plan.maxOrganizations,
+            organizations: 1, // One subscription covers one organization.
             projects: plan.maxProjects,
             statusPages: plan.maxStatusPages,
             statusPageSubscribers: plan.maxStatusPageSubscribers,

@@ -10,108 +10,16 @@ import {
   user as userTable,
 } from "@/db/schema";
 import { getCurrentUser } from "@/lib/session";
-import { eq, and, gte, desc, sql, isNull } from "drizzle-orm";
+import { eq, and, gte, desc, sql } from "drizzle-orm";
 import { auth } from "@/utils/auth";
 import { headers } from "next/headers";
 import { randomUUID } from "crypto";
 import {
   isCloudHosted,
-  isPolarEnabled,
-  getPolarConfig,
 } from "@/lib/feature-flags";
+import { ensurePolarCustomerAndLink } from "@/lib/services/organization-customer";
 import { requireSameOriginRequest } from "@/lib/security/same-origin";
 
-/**
- * Provision one Polar customer per organization. Preserve existing customer IDs:
- * legacy bindings may have paid subscriptions and require explicit migration.
- */
-async function ensurePolarCustomerAndLink(
-  userId: string,
-  userEmail: string,
-  userName: string | null,
-  organizationId: string,
-): Promise<string | null> {
-  if (!isPolarEnabled()) return null;
-  const config = getPolarConfig();
-  if (!config) return null;
-
-  try {
-    const org = await db.query.organization.findFirst({
-      where: eq(orgTable.id, organizationId),
-      columns: { polarCustomerId: true },
-    });
-    if (!org) return null;
-    if (org.polarCustomerId) return org.polarCustomerId;
-
-    const { Polar } = await import("@polar-sh/sdk");
-    const polarClient = new Polar({
-      accessToken: config.accessToken,
-      server: config.server,
-    });
-    // A person may own several organizations. User ID/email are not billing
-    // tenant identifiers and must never select another organization's customer.
-    const externalId = `organization:${organizationId}`;
-    let customerId: string;
-    try {
-      customerId = (await polarClient.customers.getExternal({ externalId })).id;
-    } catch (error) {
-      if (
-        !(
-          error &&
-          typeof error === "object" &&
-          "statusCode" in error &&
-          error.statusCode === 404
-        )
-      ) {
-        throw error;
-      }
-      try {
-        customerId = (
-          await polarClient.customers.create({
-            externalId,
-            email: userEmail,
-            name: userName || userEmail,
-            metadata: {
-              userId,
-              referenceId: organizationId,
-              source: "supercheck-setup-defaults",
-            },
-          })
-        ).id;
-      } catch (createError) {
-        // A concurrent setup may have created the same external ID first.
-        // Resolve only this organization's identity; never fall back to email.
-        try {
-          customerId = (await polarClient.customers.getExternal({ externalId }))
-            .id;
-        } catch {
-          throw createError;
-        }
-      }
-    }
-
-    const [linked] = await db
-      .update(orgTable)
-      .set({ polarCustomerId: customerId })
-      .where(
-        and(eq(orgTable.id, organizationId), isNull(orgTable.polarCustomerId)),
-      )
-      .returning({ polarCustomerId: orgTable.polarCustomerId });
-    if (linked) return linked.polarCustomerId;
-
-    const current = await db.query.organization.findFirst({
-      where: eq(orgTable.id, organizationId),
-      columns: { polarCustomerId: true },
-    });
-    return current?.polarCustomerId ?? null;
-  } catch (error) {
-    console.error(
-      "[Polar] Customer setup failed:",
-      error instanceof Error ? error.message : "Unknown error",
-    );
-    return null;
-  }
-}
 
 export async function POST(request: NextRequest) {
   const originError = requireSameOriginRequest(request);
@@ -213,17 +121,18 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    const sessionData = await auth.api.getSession({ headers: await headers() });
+    if (!sessionData?.session?.token) {
+      return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 });
+    }
+
     // Use a transaction to atomically check and create org/member/project
     // This prevents race conditions where multiple concurrent calls could create duplicate orgs
     const result = await db.transaction(async (tx) => {
-      // CRITICAL: Acquire an advisory lock for this user to serialize concurrent requests
-      // Using hashCode of the user ID to get a consistent lock key
-      // pg_advisory_xact_lock is automatically released when transaction ends
-      const userIdHash = currentUser.id.split("").reduce((a, b) => {
-        a = (a << 5) - a + b.charCodeAt(0);
-        return a & a;
-      }, 0);
-      await tx.execute(`SELECT pg_advisory_xact_lock(${userIdHash})`);
+      // Use the same owner lock as explicit organization creation, preventing
+      // signup setup and a new organization request from racing one another.
+      await tx.select({ id: userTable.id }).from(userTable)
+        .where(eq(userTable.id, currentUser.id)).limit(1).for("update");
 
       // Now safely check if user already has an organization (within the lock)
       const existingMembershipsInTx = await tx
@@ -291,6 +200,14 @@ export async function POST(request: NextRequest) {
         createdAt: new Date(),
       });
 
+      // Select the defaults before releasing the owner lock. A delayed signup
+      // response must not overwrite a separately created organization's selection.
+      const [updated] = await tx.update(session)
+        .set({ activeOrganizationId: newOrg.id, activeProjectId: newProject.id })
+        .where(and(eq(session.token, sessionData.session.token), eq(session.userId, currentUser.id)))
+        .returning({ id: session.id });
+      if (!updated) throw new Error("SESSION_CHANGED");
+
       return {
         existed: false as const,
         organization: newOrg,
@@ -321,18 +238,6 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Set the new project as active in the user's session
-    const sessionData = await auth.api.getSession({
-      headers: await headers(),
-    });
-
-    if (sessionData?.session?.token) {
-      await db
-        .update(session)
-        .set({ activeProjectId: result.project!.id })
-        .where(eq(session.token, sessionData.session.token));
-    }
-
     console.log(
       `✅ Created default org "${result.organization!.name}" and project "${result.project!.name}" for user ${currentUser.email}`,
     );
@@ -358,6 +263,9 @@ export async function POST(request: NextRequest) {
       message: "Default organization and project created successfully",
     });
   } catch (error) {
+    if (error instanceof Error && error.message === "SESSION_CHANGED") {
+      return NextResponse.json({ success: false, error: "Session changed. Please sign in again." }, { status: 401 });
+    }
     console.error("❌ Failed to create default org/project:", error);
     return NextResponse.json(
       { success: false, error: "Failed to setup defaults" },

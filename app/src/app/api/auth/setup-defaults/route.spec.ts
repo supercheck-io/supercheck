@@ -49,6 +49,7 @@ jest.mock("@/lib/feature-flags", () => ({
 }));
 
 import { getCurrentUser } from "@/lib/session";
+import { auth } from "@/utils/auth";
 import { db } from "@/utils/db";
 import { POST } from "./route";
 
@@ -191,4 +192,24 @@ describe("POST /api/auth/setup-defaults", () => {
     expect(mockGetCurrentUser).not.toHaveBeenCalled();
     expect(mockDb.select).not.toHaveBeenCalled();
   });
+  it.each([true, false])("selects signup defaults in the creation transaction (session exists: %s)", async (sessionExists) => {
+    mockDb.select.mockReturnValueOnce(selectResult([{ emailVerified: true }], true))
+      .mockReturnValueOnce(selectResult([]))
+      .mockReturnValueOnce({ from: jest.fn().mockReturnThis(), where: jest.fn().mockReturnThis(), orderBy: jest.fn().mockReturnThis(), limit: jest.fn().mockResolvedValue([]) });
+    (auth.api.getSession as unknown as jest.Mock).mockResolvedValue({ session: { token: "browser-token" } });
+    const txSet = jest.fn().mockReturnValue({ where: jest.fn().mockReturnValue({ returning: jest.fn().mockResolvedValue(sessionExists ? [{ id: "session" }] : []) }) });
+    const values = jest.fn().mockReturnValue({ returning: jest.fn().mockResolvedValue([{ id: "new-id", name: "Default" }]) });
+    const tx = {
+      select: jest.fn().mockReturnValueOnce({ from: jest.fn().mockReturnThis(), where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), for: jest.fn().mockResolvedValue([{ id: "user-1" }]) })
+        .mockReturnValueOnce(selectResult([])),
+      insert: jest.fn().mockReturnValue({ values }),
+      update: jest.fn().mockReturnValue({ set: txSet }),
+    };
+    mockDb.transaction.mockImplementation(async callback => callback(tx));
+    const response = await POST(request());
+    expect(response.status).toBe(sessionExists ? 200 : 401);
+    expect(txSet).toHaveBeenCalledWith({ activeOrganizationId: "new-id", activeProjectId: "new-id" });
+    if (!sessionExists) expect(mockPolarGetExternal).not.toHaveBeenCalled();
+  });
+
 });

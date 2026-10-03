@@ -1,6 +1,9 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { updateOrganizationNameSchema } from '@/lib/validations/organization';
 import { requireUserAuthContext, isAuthError } from '@/lib/auth-context';
 import { getUserOrganizations } from '@/lib/session';
+import { requireSameOriginRequest } from '@/lib/security/same-origin';
+import { createOrganization, OrganizationManagementError } from '@/lib/services/organization-management';
 
 /**
  * GET /api/organizations
@@ -8,13 +11,14 @@ import { getUserOrganizations } from '@/lib/session';
  */
 export async function GET() {
   try {
-    const { userId } = await requireUserAuthContext();
+    const { userId, organizationId } = await requireUserAuthContext();
     
     const userOrganizations = await getUserOrganizations(userId);
     
     return NextResponse.json({
       success: true,
-      data: userOrganizations
+      data: userOrganizations.map(org => ({ ...org, isActive: org.id === organizationId })),
+      activeOrganizationId: organizationId,
     });
   } catch (error) {
     if (isAuthError(error)) {
@@ -33,11 +37,22 @@ export async function GET() {
 
 /**
  * POST /api/organizations
- * Organization creation is disabled - organizations are created automatically on user signup
+ * Create an independently scoped organization and its default project.
  */
-export async function POST() {
-  return NextResponse.json(
-    { error: 'Manual organization creation is not allowed. Organizations are created automatically on user signup.' },
-    { status: 403 }
-  );
+export async function POST(request: NextRequest) {
+  const originError = requireSameOriginRequest(request);
+  if (originError) return originError;
+  const parsed = updateOrganizationNameSchema.strict()
+    .safeParse(await request.json().catch(() => null));
+  if (!parsed.success) return NextResponse.json({ error: 'Enter an organization name between 2 and 50 characters' }, { status: 400 });
+  try {
+    const data = await createOrganization(parsed.data.name);
+    return NextResponse.json({ success: true, data }, { status: 201 });
+  } catch (error) {
+    if (error instanceof OrganizationManagementError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    console.error('Failed to create organization:', error);
+    return NextResponse.json({ error: 'Failed to create organization' }, { status: 500 });
+  }
 }

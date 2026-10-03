@@ -4,7 +4,7 @@ export const PRICING_FAQS = [
   {
     question: "Does one subscription cover multiple organizations?",
     answer:
-      "No. Each cloud organization needs its own subscription. Usage allowances, team members, projects, and spending controls belong to that organization and are not pooled across organizations.",
+      "No. Each cloud organization needs its own subscription. A new organization starts without a subscription and does not inherit your existing plan. Use the organization menu to switch back or subscribe separately. Joining an organization with an active subscription does not require a personal subscription. Usage allowances, member and project limits, and spending controls are separate for each organization.",
   },
   {
     question: "How is usage tracked?",

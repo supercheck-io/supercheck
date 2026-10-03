@@ -11,11 +11,14 @@ import {
 import { getUserOrgRole } from "@/lib/rbac/middleware";
 import { Role } from "@/lib/rbac/permissions";
 import { requireSameOriginRequest } from "@/lib/security/same-origin";
+import { ensurePolarCustomerAndLink } from "@/lib/services/organization-customer";
+import { getCurrentUser } from "@/lib/session";
 import { db } from "@/utils/db";
 import { eq } from "drizzle-orm";
 
 const checkoutSchema = z.object({
   plan: z.enum(["plus", "pro"]),
+  organizationId: z.string().uuid().optional(),
 });
 
 function getAppUrl(request: NextRequest) {
@@ -60,6 +63,9 @@ export async function POST(request: NextRequest) {
     if (!parsed.success) {
       return NextResponse.json({ error: "Invalid billing plan" }, { status: 400 });
     }
+    if (parsed.data.organizationId && parsed.data.organizationId !== organizationId) {
+      return NextResponse.json({ error: "Selected organization changed. Refresh before subscribing." }, { status: 409 });
+    }
 
     if (!isPolarEnabled()) {
       return NextResponse.json(
@@ -82,6 +88,12 @@ export async function POST(request: NextRequest) {
       Promise.resolve(getPolarProducts()),
     ]);
 
+    if (org && !org.polarCustomerId) {
+      const user = await getCurrentUser();
+      if (user?.id === userId) {
+        org.polarCustomerId = await ensurePolarCustomerAndLink(user.id, user.email, user.name, organizationId);
+      }
+    }
     if (!org?.polarCustomerId) {
       return NextResponse.json(
         { error: "Billing customer setup is incomplete. Please refresh and try again." },
@@ -128,7 +140,7 @@ export async function POST(request: NextRequest) {
     const checkout = await polar.checkouts.create({
       customerId: org.polarCustomerId,
       products: [productId],
-      successUrl: `${appUrl}/billing/success?checkout_id={CHECKOUT_ID}`,
+      successUrl: `${appUrl}/billing/success?checkout_id={CHECKOUT_ID}&organization_id=${encodeURIComponent(organizationId)}`,
       returnUrl: `${appUrl}/subscribe`,
       metadata: { referenceId: organizationId },
       allowDiscountCodes: true,

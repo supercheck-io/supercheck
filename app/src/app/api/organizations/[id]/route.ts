@@ -2,10 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getUserOrgRole } from '@/lib/rbac/middleware';
 import { requireUserAuthContext, isAuthError } from '@/lib/auth-context';
 import { db } from '@/utils/db';
-import { organization, member, projects } from '@/db/schema';
+import { organization, member, projects, session } from '@/db/schema';
 import { eq, and, count } from 'drizzle-orm';
 import { Role } from '@/lib/rbac/permissions';
 import { z } from 'zod';
+import { requireSameOriginRequest } from '@/lib/security/same-origin';
+class OrganizationDeletionError extends Error {
+  constructor(message: string, readonly status: 403 | 409) { super(message); }
+}
 
 /**
  * Validation schema for organization name updates.
@@ -105,7 +109,9 @@ export async function PUT(
 ) {
   const resolvedParams = await params;
   try {
-    const { userId } = await requireUserAuthContext();
+    const { userId, isCliAuth } = await requireUserAuthContext();
+    const originError = requireSameOriginRequest(request, { allowMissing: isCliAuth });
+    if (originError) return originError;
     const organizationId = resolvedParams.id;
     
     // Check permission using getUserOrgRole (works for both CLI tokens and session cookies)
@@ -207,12 +213,14 @@ export async function PUT(
  * Delete organization (owner only)
  */
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const resolvedParams = await params;
   try {
-    const { userId } = await requireUserAuthContext();
+    const { userId, isCliAuth } = await requireUserAuthContext();
+    const originError = requireSameOriginRequest(request, { allowMissing: isCliAuth });
+    if (originError) return originError;
     const organizationId = resolvedParams.id;
     
     // Check permission - only owners can delete organizations
@@ -231,10 +239,28 @@ export async function DELETE(
       );
     }
     
-    // Delete organization (CASCADE will handle related records)
-    await db
-      .delete(organization)
-      .where(eq(organization.id, organizationId));
+    await db.transaction(async tx => {
+      const [org] = await tx.select({ subscriptionId: organization.subscriptionId, polarCustomerId: organization.polarCustomerId })
+        .from(organization).where(eq(organization.id, organizationId)).limit(1).for('update');
+      if (!org) throw new OrganizationDeletionError('Organization not found', 409);
+      // Recheck ownership inside the transaction and hold it during deletion.
+      const [ownership] = await tx.select({ id: member.id }).from(member)
+        .where(and(eq(member.organizationId, organizationId), eq(member.userId, userId), eq(member.role, 'org_owner')))
+        .limit(1).for('share');
+      if (!ownership) throw new OrganizationDeletionError('Only organization owners can delete organizations', 403);
+      if (org.subscriptionId || org.polarCustomerId) {
+        throw new OrganizationDeletionError('Contact support to close a billing-linked organization. Deleting it here would not cancel billing.', 409);
+      }
+      const [project] = await tx.select({ id: projects.id }).from(projects)
+        .where(eq(projects.organizationId, organizationId)).limit(1);
+      if (project) {
+        throw new OrganizationDeletionError('This organization contains projects. Contact your administrator or support for data removal before deleting it.', 409);
+      }
+      // Empty organizations may still be selected in browser sessions.
+      await tx.update(session).set({ activeOrganizationId: null, activeProjectId: null })
+        .where(eq(session.activeOrganizationId, organizationId));
+      await tx.delete(organization).where(eq(organization.id, organizationId));
+    });
     
     return NextResponse.json({
       success: true,
@@ -242,6 +268,13 @@ export async function DELETE(
     });
     
   } catch (error) {
+    if (error instanceof OrganizationDeletionError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    const databaseError = error as { code?: string; cause?: { code?: string } } | null;
+    if (databaseError?.code === '23503' || databaseError?.cause?.code === '23503') {
+      return NextResponse.json({ error: 'Related data prevents organization deletion. Contact your administrator or support for data removal.' }, { status: 409 });
+    }
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : 'Authentication required' },
