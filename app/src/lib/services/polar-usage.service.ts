@@ -1,3 +1,4 @@
+import { DEFAULT_OVERAGE_PRICING_CENTS } from "@/lib/billing/pricing-defaults";
 /**
  * Polar Usage Service
  * 
@@ -86,18 +87,7 @@ type UsageSyncResult = {
   failed: number;
   errors: string[];
 };
-const FALLBACK_OVERAGE_PRICING_CENTS = {
-  plus: {
-    playwright: 3,
-    k6: 1,
-    sreInvestigation: 50,
-  },
-  pro: {
-    playwright: 2,
-    k6: 1,
-    sreInvestigation: 50,
-  },
-} as const;
+const FALLBACK_OVERAGE_PRICING_CENTS = DEFAULT_OVERAGE_PRICING_CENTS;
 
 class PolarUsageService {
   private polarClient: InstanceType<typeof Polar> | null = null;
@@ -352,15 +342,15 @@ class PolarUsageService {
     const fallbackPricing = FALLBACK_OVERAGE_PRICING_CENTS[planForPricing];
     const playwrightOverageCost =
       playwrightOverage *
-      (pricing?.playwrightMinutePriceCents ?? fallbackPricing.playwright);
+      (pricing?.playwrightMinutePriceCents ?? fallbackPricing.playwrightMinutes);
     const k6OverageCost = Math.ceil(
-      k6Overage * (pricing?.k6VuMinutePriceCents ?? fallbackPricing.k6)
+      k6Overage * (pricing?.k6VuMinutePriceCentsOverride ?? pricing?.k6VuMinutePriceCents ?? fallbackPricing.k6VuMinutes)
     );
     // AI credits use hard-limit model (no overage billing)
     const aiCreditsOverageCost = 0;
     const sreInvestigationsOverageCost = Math.ceil(
       sreInvestigationsOverage *
-        (pricing?.sreInvestigationUnitPriceCents ?? fallbackPricing.sreInvestigation)
+        (pricing?.sreInvestigationUnitPriceCents ?? fallbackPricing.sreInvestigationUnits)
     );
 
     const playwrightPercentage =

@@ -80,7 +80,6 @@ test.describe('Invitation lifecycle @auth @invitations', () => {
       expect(await publicResponse.json()).toMatchObject({
         success: true,
         data: {
-          email,
           role: 'project_viewer',
           organizationName: expect.any(String),
           expiresAt: invitation.expiresAt,
@@ -92,7 +91,7 @@ test.describe('Invitation lifecycle @auth @invitations', () => {
       try {
         await page.goto(`/invite/${invitation.id}`);
         await expect(page.getByRole('heading', { name: "You're Invited!" })).toBeVisible();
-        await expect(page.getByText(email, { exact: true })).toBeVisible();
+        await expect(page.getByText(email, { exact: true })).toHaveCount(0);
         await expect(page.getByText('Project Viewer', { exact: true })).toBeVisible();
         await page.getByRole('button', { name: 'Accept Invitation' }).click();
         await expect(page).toHaveURL(new RegExp(`/sign-up\\?invite=${invitation.id}$`));

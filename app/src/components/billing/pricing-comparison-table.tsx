@@ -1,6 +1,10 @@
 "use client";
 
 import {
+  DEFAULT_OVERAGE_PRICING,
+  formatOveragePrice,
+} from "@/lib/billing/pricing-defaults";
+import {
   Table,
   TableBody,
   TableCell,
@@ -48,18 +52,7 @@ export function PricingComparisonTable({
   overagePricing,
 }: PricingComparisonTableProps) {
   // Default overage pricing (fallback if not provided)
-  const pricing = overagePricing ?? {
-    plus: { playwrightMinutes: 0.03, k6VuMinutes: 0.01, aiCredits: 0.05, sreInvestigationUnits: 0.5 },
-    pro: { playwrightMinutes: 0.02, k6VuMinutes: 0.01, aiCredits: 0.03, sreInvestigationUnits: 0.5 },
-  };
-
-  // Format price for display
-  const formatPrice = (price: number, unit: string) => {
-    if (price < 0.01) {
-      return `$${(price * 1000).toFixed(1)}/${unit} (per 1000)`;
-    }
-    return `$${price.toFixed(price < 0.1 ? 3 : 2)}/${unit}`;
-  };
+  const pricing = overagePricing ?? DEFAULT_OVERAGE_PRICING;
 
   return (
     <div className="rounded-lg border overflow-x-auto bg-card shadow-sm">
@@ -129,10 +122,10 @@ export function PricingComparisonTable({
               Playwright Minutes
             </TableCell>
             <TableCell className="text-center py-3 text-sm font-medium">
-              {formatPrice(pricing.plus.playwrightMinutes, "min")}
+              {formatOveragePrice(pricing.plus.playwrightMinutes, "min")}
             </TableCell>
             <TableCell className="text-center py-3 text-sm font-medium">
-              {formatPrice(pricing.pro.playwrightMinutes, "min")}
+              {formatOveragePrice(pricing.pro.playwrightMinutes, "min")}
             </TableCell>
             <TableCell className="text-center py-3 text-sm text-muted-foreground">
               Custom
@@ -143,10 +136,10 @@ export function PricingComparisonTable({
               K6 VU Minutes
             </TableCell>
             <TableCell className="text-center py-3 text-sm font-medium">
-              {formatPrice(pricing.plus.k6VuMinutes, "VU-min")}
+              {formatOveragePrice(pricing.plus.k6VuMinutes, "VU-min")}
             </TableCell>
             <TableCell className="text-center py-3 text-sm font-medium">
-              {formatPrice(pricing.pro.k6VuMinutes, "VU-min")}
+              {formatOveragePrice(pricing.pro.k6VuMinutes, "VU-min")}
             </TableCell>
             <TableCell className="text-center py-3 text-sm text-muted-foreground">
               Custom
@@ -171,10 +164,16 @@ export function PricingComparisonTable({
               Completed AI SRE investigations
             </TableCell>
             <TableCell className="text-center py-3 text-sm font-medium">
-              {formatPrice(pricing.plus.sreInvestigationUnits, "investigation")}
+              {formatOveragePrice(
+                pricing.plus.sreInvestigationUnits,
+                "investigation",
+              )}
             </TableCell>
             <TableCell className="text-center py-3 text-sm font-medium">
-              {formatPrice(pricing.pro.sreInvestigationUnits, "investigation")}
+              {formatOveragePrice(
+                pricing.pro.sreInvestigationUnits,
+                "investigation",
+              )}
             </TableCell>
             <TableCell className="text-center py-3 text-sm text-muted-foreground">
               Custom

@@ -172,6 +172,7 @@ export const PLAN_PRICING = {
   },
 } as const;
 
+
 /**
  * Get plan pricing for a specific plan
  */

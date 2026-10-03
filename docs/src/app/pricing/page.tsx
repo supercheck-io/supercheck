@@ -41,7 +41,7 @@ const plans = [
             'Read-only evidence connectors',
             'Private Agent support',
             '5 team members',
-            '2 organizations, 10 projects',
+            '10 projects per organization',
             'CI/CD integration',
             'Cron job scheduling',
             'Email support',
@@ -64,7 +64,7 @@ const plans = [
             'Read-only evidence connectors',
             'Private Agent support',
             '25 team members',
-            '10 organizations, 50 projects',
+            '50 projects per organization',
             'CI/CD integration',
             'Cron job scheduling',
             'Priority support',
@@ -75,8 +75,7 @@ const plans = [
     },
     {
         name: 'Enterprise',
-        price: 'Custom',
-        description: 'For large organizations',
+        description: 'Get in touch to discuss your requirements',
         features: [
             'Custom monitor allowance',
             'Custom Playwright & K6 allowances',
@@ -89,7 +88,7 @@ const plans = [
             'Custom SLA & priority support',
             'Onboarding & training',
         ],
-        cta: 'Contact Sales',
+        cta: 'Get in touch',
         ctaLink: 'mailto:hello@supercheck.io',
         highlighted: false,
     },
@@ -97,7 +96,7 @@ const plans = [
 
 const overagePricing = [
     { metric: 'Playwright minute', plus: '$0.03', pro: '$0.02' },
-    { metric: 'K6 VU minute', plus: '$0.01', pro: '$0.01' },
+    { metric: 'K6 VU minute', plus: '$0.005', pro: '$0.0025' },
     { metric: 'AI credit', plus: 'Hard limit', pro: 'Hard limit' },
     { metric: 'Completed AI SRE investigation', plus: '$0.50', pro: '$0.50' },
 ];
@@ -127,7 +126,7 @@ const comparisonFeatures = [
     {
         category: 'Team & Organization', items: [
             { name: 'Team members', plus: '5', pro: '25', selfHosted: 'Unlimited' },
-            { name: 'Organizations', plus: '2', pro: '10', selfHosted: 'Unlimited' },
+            { name: 'Cloud subscription scope', plus: 'One organization', pro: 'One organization', selfHosted: 'Self-managed' },
             { name: 'Projects', plus: '10', pro: '50', selfHosted: 'Unlimited' },
             { name: 'Status pages', plus: '3', pro: '15', selfHosted: 'Unlimited' },
         ]
@@ -151,6 +150,14 @@ const comparisonFeatures = [
 
 const faqs = [
     {
+        question: 'Does one subscription cover multiple organizations?',
+        answer: 'No. Each cloud organization needs its own subscription. Usage allowances, team members, projects, and spending controls belong to that organization and are not pooled across organizations.',
+    },
+    {
+        question: 'When should I consider Pro?',
+        answer: 'Pro includes more capacity and lower Playwright and K6 overage rates. At standard list prices, with only browser usage, Plus and Pro cost the same at about 6,333 Playwright minutes/month. With only K6 usage, they cost the same at 40,000 VU-minutes/month. Other usage, discounts, taxes, and proration affect the comparison; review your organization’s estimate before changing plans.',
+    },
+    {
         question: 'How are browser execution minutes measured?',
         answer: 'Playwright tests and synthetic monitors share your minute allowance. We measure execution milliseconds and round to four decimal places in minutes per run, without a whole-minute minimum. A five-second run uses 0.0833 minutes. Each location and executed retry contributes usage. HTTP, ping, and port checks do not consume these minutes. Failed or canceled executions can still consume compute usage.',
     },
@@ -160,7 +167,7 @@ const faqs = [
     },
     {
         question: 'How are load tests measured?',
-        answer: 'K6 usage is peak virtual users multiplied by execution duration in minutes, rounded up to a whole VU-minute per run. This can exceed average active VU-time for ramping tests. Review your load profile and spending settings before running a large test.',
+        answer: 'K6 usage measures peak capacity, not accumulated active VU-time: peak virtual users multiplied by execution duration in minutes, rounded up to a whole VU-minute per run. This can exceed average active VU-time for ramping tests. Review your load profile and spending settings before running a large test.',
     },
     {
         question: 'Can I try Supercheck before subscribing?',
@@ -172,7 +179,7 @@ const faqs = [
     },
     {
         question: 'How do AI credits work?',
-        answer: 'AI credits are a hard monthly pool for test generation and failure analysis. Each completed full AI SRE investigation report uses one separate investigation unit; a report is not a guaranteed diagnosis or resolution. Failed or timed-out runs and billing retries are not charged; a new completed investigation is a new unit. AI SRE chat, triage, and evidence briefs do not consume investigation units. Spending alerts and optional usage blocking help control overages; in-flight usage can exceed the configured limit.',
+        answer: 'AI credits are a hard monthly pool for test generation and failure analysis. Each completed full AI SRE investigation report uses one separate investigation unit; a report is not a guaranteed diagnosis or resolution. Failed or timed-out AI investigations and billing retries are not charged; a new completed investigation is a new unit. AI SRE chat, triage, and evidence briefs do not consume investigation units. Spending alerts and optional usage blocking help control overages; in-flight usage can exceed the configured limit.',
     },
     {
         question: 'Can I change plans anytime?',
@@ -188,7 +195,7 @@ const faqs = [
     },
     {
         question: 'Do you offer enterprise plans?',
-        answer: 'Yes! Enterprise plans include agreed usage allowances, custom SLAs, dedicated account managers, and personalized onboarding. Contact hello@supercheck.io to discuss your needs.',
+        answer: 'Get in touch at hello@supercheck.io to discuss your requirements, usage allowances, support, SLA, and onboarding.',
     },
 ];
 
@@ -225,7 +232,7 @@ export default function PricingPage() {
                         Simple, Transparent Pricing
                     </h1>
                     <p className="text-lg text-fd-muted-foreground max-w-2xl mx-auto">
-                        Start with self-hosted for free. Need managed infrastructure? Choose a cloud plan.
+                        Start with self-hosted for free. Cloud plans are monthly subscriptions per organization; each organization needs its own plan.
                     </p>
                 </div>
 
@@ -250,12 +257,12 @@ export default function PricingPage() {
                                 <h3 className="text-xl font-semibold mb-2">{plan.name}</h3>
                                 <p className="text-sm text-fd-muted-foreground">{plan.description}</p>
                             </div>
-                            <div className="mb-6">
+                            {plan.price !== undefined && <div className="mb-6">
                                 <span className="text-4xl font-bold">{plan.price}</span>
                                 {plan.period && (
                                     <span className="text-fd-muted-foreground">{plan.period}</span>
                                 )}
-                            </div>
+                            </div>}
                             <ul className="space-y-3 mb-8">
                                 {plan.features.map((feature) => (
                                     <li key={feature} className="flex items-start gap-2 text-sm">

@@ -176,6 +176,13 @@
       "when": 1790164800000,
       "tag": "0024_execution_usage_receipts",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1790985600000,
+      "tag": "0025_k6_volume_pricing",
+      "breakpoints": true
     }
   ]
 }

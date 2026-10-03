@@ -310,6 +310,12 @@ export const overagePricing = pgTable('overage_pricing', {
     'playwright_minute_price_cents',
   ).notNull(), // e.g., 10 = $0.10
   k6VuMinutePriceCents: integer('k6_vu_minute_price_cents').notNull(), // e.g., 1 = $0.01 per VU minute
+  // Nullable fractional-cent rate; legacy integer rate remains the fallback.
+  k6VuMinutePriceCentsOverride: numeric('k6_vu_minute_price_cents_override', {
+    precision: 14,
+    scale: 4,
+    mode: 'number',
+  }),
   aiCreditPriceCents: integer('ai_credit_price_cents').notNull().default(5), // e.g., 5 = $0.05 per AI credit
   sreInvestigationUnitPriceCents: integer('sre_investigation_unit_price_cents')
     .notNull()

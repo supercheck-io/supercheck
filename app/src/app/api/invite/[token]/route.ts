@@ -6,6 +6,7 @@ import { requireUserAuthContext, isAuthError } from '@/lib/auth-context';
 import { getCurrentUser } from '@/lib/session';
 import { auth } from '@/utils/auth';
 import { headers } from 'next/headers';
+import { isCloudHosted } from '@/lib/feature-flags';
 
 export async function GET(
   request: NextRequest,
@@ -61,10 +62,10 @@ export async function GET(
     }
 
     const viewer = await auth.api.getSession({ headers: await headers() });
-    const canViewEmail = Boolean(viewer?.user?.email &&
+    const isMatchingUser = Boolean(viewer?.user?.email &&
       viewer.user.email.toLowerCase().trim() === invite.email.toLowerCase().trim());
-    const canViewPersonalDetails = viewer?.user?.emailVerified === true &&
-      viewer.user.email.toLowerCase().trim() === invite.email.toLowerCase().trim();
+    const canViewEmail = isMatchingUser;
+    const canViewPersonalDetails = isMatchingUser && (isCloudHosted() ? viewer?.user?.emailVerified === true : true);
 
     return NextResponse.json({
       success: true,
@@ -167,16 +168,18 @@ export async function POST(
         { status: 400 }
       );
     }
-    const [acceptingUser] = await db
-      .select({ emailVerified: userTable.emailVerified })
-      .from(userTable)
-      .where(eq(userTable.id, currentUser.id))
-      .limit(1);
-    if (!acceptingUser?.emailVerified) {
-      return NextResponse.json(
-        { error: 'Verify your email address before accepting this invitation', code: 'EMAIL_NOT_VERIFIED' },
-        { status: 403 }
-      );
+    if (isCloudHosted()) {
+      const [acceptingUser] = await db
+        .select({ emailVerified: userTable.emailVerified })
+        .from(userTable)
+        .where(eq(userTable.id, currentUser.id))
+        .limit(1);
+      if (!acceptingUser?.emailVerified) {
+        return NextResponse.json(
+          { error: 'Verify your email address before accepting this invitation', code: 'EMAIL_NOT_VERIFIED' },
+          { status: 403 }
+        );
+      }
     }
 
     // Check if user is already a member

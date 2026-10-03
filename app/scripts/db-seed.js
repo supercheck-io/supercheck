@@ -16,8 +16,6 @@ const { getDatabaseSSLConfig } = require("./db-ssl.js");
  *   npm run db:seed
  */
 
-const postgres = require("postgres");
-
 // Environment variables with defaults
 const DB_HOST = process.env.DB_HOST || "localhost";
 const DB_PORT = process.env.DB_PORT || "5432";
@@ -128,14 +126,16 @@ const OVERAGE_PRICING_SEED = [
   {
     plan: "plus",
     playwrightMinutePriceCents: 3,
-    k6VuMinutePriceCents: 1,
+    k6VuMinutePriceCents: 1, // Legacy fallback for older workers
+    k6VuMinutePriceCentsOverride: 0.5,
     aiCreditPriceCents: 5,
     sreInvestigationUnitPriceCents: 50,
   },
   {
     plan: "pro",
     playwrightMinutePriceCents: 2,
-    k6VuMinutePriceCents: 1,
+    k6VuMinutePriceCents: 1, // Legacy fallback for older workers
+    k6VuMinutePriceCentsOverride: 0.25,
     aiCreditPriceCents: 3,
     sreInvestigationUnitPriceCents: 50,
   },
@@ -255,6 +255,18 @@ async function seedOveragePricing(client, { preserveExisting = true } = {}) {
     return false;
   }
 
+  const overrideExists = await client`
+    SELECT EXISTS (
+      SELECT FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'overage_pricing'
+      AND column_name = 'k6_vu_minute_price_cents_override'
+    );
+  `.then((result) => result[0]?.exists);
+  if (!overrideExists) {
+    logError("Migration 0025 is required for pricing seeds. Run npm run db:migrate before npm run db:seed.");
+    return false;
+  }
+
   // Ensure unique constraint exists for UPSERT
   try {
     await client`
@@ -281,17 +293,18 @@ async function seedOveragePricing(client, { preserveExisting = true } = {}) {
     try {
       await client`
         INSERT INTO overage_pricing (
-          id, plan, playwright_minute_price_cents, k6_vu_minute_price_cents, ai_credit_price_cents, sre_investigation_unit_price_cents,
+          id, plan, playwright_minute_price_cents, k6_vu_minute_price_cents, k6_vu_minute_price_cents_override, ai_credit_price_cents, sre_investigation_unit_price_cents,
           created_at, updated_at
         )
         VALUES (
           gen_random_uuid(), ${pricing.plan}, ${pricing.playwrightMinutePriceCents}, 
-          ${pricing.k6VuMinutePriceCents}, ${pricing.aiCreditPriceCents}, ${pricing.sreInvestigationUnitPriceCents},
+          ${pricing.k6VuMinutePriceCents}, ${pricing.k6VuMinutePriceCentsOverride}, ${pricing.aiCreditPriceCents}, ${pricing.sreInvestigationUnitPriceCents},
           NOW(), NOW()
         )
         ON CONFLICT (plan) DO UPDATE SET
           playwright_minute_price_cents = EXCLUDED.playwright_minute_price_cents,
           k6_vu_minute_price_cents = EXCLUDED.k6_vu_minute_price_cents,
+          k6_vu_minute_price_cents_override = EXCLUDED.k6_vu_minute_price_cents_override,
           ai_credit_price_cents = EXCLUDED.ai_credit_price_cents,
           sre_investigation_unit_price_cents = EXCLUDED.sre_investigation_unit_price_cents,
           updated_at = NOW()
@@ -347,6 +360,8 @@ async function verifySeeding(client) {
  * Main function
  */
 async function main() {
+  // Imported seed helpers use the caller's client and need no app dependencies.
+  const postgres = require("postgres");
   log("Starting database seeding...");
   log(`Database: ${DATABASE_URL.replace(/:[^:@]*@/, ":***@")}`);
 

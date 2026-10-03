@@ -56,6 +56,33 @@ describe("Billing pricing configuration", () => {
     expect(body.plans.map((plan: { price: number; features: { sreInvestigationUnits: number }; overagePricing: { sreInvestigationUnits: number } }) => [
       plan.price, plan.features.sreInvestigationUnits, plan.overagePricing.sreInvestigationUnits,
     ])).toEqual([[49, 25, 0.5], [149, 100, 0.5]]);
+    expect(body.plans.map((plan: { overagePricing: { k6VuMinutes: number } }) => plan.overagePricing.k6VuMinutes))
+      .toEqual([0.005, 0.0025]);
+    expect(body).not.toHaveProperty("enterpriseStartingPrice");
+    expect(body.faqs).toContainEqual(expect.objectContaining({
+      answer: expect.stringContaining("Get in touch at hello@supercheck.io"),
+    }));
+    expect(body.faqs).toContainEqual(expect.objectContaining({
+      question: "Does one subscription cover multiple organizations?",
+      answer: expect.stringContaining("Each cloud organization needs its own subscription"),
+    }));
+  });
+
+  it.each([null, 0, 0.25])("uses a configured K6 override %s without replacing custom legacy rates", async (override) => {
+    const plans = ["plus", "pro"].map((plan) => ({ plan }));
+    const prices = plans.map(({ plan }) => ({
+      plan, playwrightMinutePriceCents: 3, k6VuMinutePriceCents: 7,
+      k6VuMinutePriceCentsOverride: override, aiCreditPriceCents: 5,
+      sreInvestigationUnitPriceCents: 50,
+    }));
+    (db.select as jest.Mock)
+      .mockReturnValueOnce({ from: () => ({ where: async () => plans }) })
+      .mockReturnValueOnce({ from: () => ({ where: async () => prices }) });
+    const body = await (await GET()).json();
+    const expected = (override ?? 7) / 100;
+    expect(body.plans[0].overagePricing.k6VuMinutes).toBe(expected);
+    expect(body.overagePricing.plus.k6VuMinutes).toBe(expected);
+    expect(body.overagePricing.pro.k6VuMinutes).toBe(expected);
   });
 
 });

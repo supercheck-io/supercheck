@@ -102,6 +102,13 @@ interface SubscriptionData {
   };
 }
 
+interface UpgradePlan {
+  id: string;
+  price: number;
+  features: { playwrightMinutes: number; k6VuMinutes: number; sreInvestigationUnits: number };
+  overagePricing: { playwrightMinutes: number; k6VuMinutes: number; sreInvestigationUnits: number };
+}
+
 interface SpendingData {
   currentDollars: number;
   limitDollars: number | null;
@@ -131,6 +138,7 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
   // Only org owners can manage subscription (access Polar customer portal)
   const canManageSubscription = currentUserRole === "org_owner";
   const [data, setData] = useState<SubscriptionData | null>(null);
+  const [proPlan, setProPlan] = useState<UpgradePlan | null>(null);
   const [spending, setSpending] = useState<SpendingData | null>(null);
   const [loading, setLoading] = useState(true);
   const [openingPortal, setOpeningPortal] = useState(false);
@@ -144,7 +152,16 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
   const fetchSubscriptionData = async () => {
     const generation = ++refreshGeneration.current;
     try {
-      // Fetch both subscription data and usage data in parallel
+      // Optional plan comparison must not delay or fail billing details.
+      void fetch("/api/billing/pricing")
+        .then((response) => response.ok ? response.json() : null)
+        .then((pricing) => {
+          if (generation === refreshGeneration.current)
+            setProPlan(pricing?.plans?.find((plan: UpgradePlan) => plan.id === "pro") ?? null);
+        })
+        .catch(() => {
+          if (generation === refreshGeneration.current) setProPlan(null);
+        });
       const [subscriptionRes, usageRes] = await Promise.all([
         fetch("/api/billing/current"),
         fetch("/api/billing/usage").catch(() => null),
@@ -270,6 +287,15 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
   const estimatedTotal =
     currentOverage === undefined ? null : basePrice + currentOverage;
 
+  const proEstimate = proPlan && data.subscription.plan === "plus"
+    ? proPlan.price
+      + Math.max(0, data.usage.playwrightMinutes.used - proPlan.features.playwrightMinutes) * proPlan.overagePricing.playwrightMinutes
+      + Math.ceil(Math.max(0, data.usage.k6VuMinutes.used - proPlan.features.k6VuMinutes) * proPlan.overagePricing.k6VuMinutes * 100) / 100
+      + Math.ceil(Math.max(0, data.usage.sreInvestigations.used - proPlan.features.sreInvestigationUnits) * proPlan.overagePricing.sreInvestigationUnits * 100) / 100
+    : null;
+  const proSavings = estimatedTotal !== null && proEstimate !== null && Number.isFinite(proEstimate)
+    ? estimatedTotal - proEstimate : 0;
+
   return (
     <div className="space-y-4">
       {/* Plan Header - Compact */}
@@ -367,8 +393,17 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
 
       {hasSubscription && data.subscription.plan !== "unlimited" && (
         <p className="text-xs text-muted-foreground">
+          This monthly subscription and its usage allowances cover this organization only.
+          K6 usage is peak VUs × execution minutes, rounded up per run. AI credits are a hard limit.
           Discounts, credits, and plan-change proration can change your invoice.
           View invoices and payment details in Manage Subscription.
+        </p>
+      )}
+      {proSavings >= 0.01 && (
+        <p className="text-sm text-muted-foreground">
+          At current list prices, Pro would cost about ${proEstimate?.toFixed(2)} for this usage,
+          approximately ${proSavings.toFixed(2)} less. <Link href="/subscribe" className="underline">Compare plans</Link>.
+          Review allowances, discounts, and proration before changing your subscription.
         </p>
       )}
       {data.subscription.status === "past_due" && (

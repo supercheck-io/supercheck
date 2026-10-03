@@ -127,6 +127,19 @@ describe("PolarUsageService retry idempotency", () => {
     expect(metrics.playwrightMinutes.overageCostCents).toBeCloseTo(0.2499, 4);
   });
 
+  it.each([
+    [null, 3, 3], [0, 3, 0], [0.5, 3, 2], [0.25, 1000, 250],
+  ])("prices the period's K6 overage at override %s for %i units", async (override, overage, expected) => {
+    const database = { query: {
+      organization: { findFirst: jest.fn().mockResolvedValue({ subscriptionPlan: "pro", k6VuMinutesUsed: 75000 + overage }) },
+      planLimits: { findFirst: jest.fn().mockResolvedValue({ playwrightMinutesIncluded: 10000, k6VuMinutesIncluded: 75000, aiCreditsIncluded: 300, sreInvestigationUnitsIncluded: "100" }) },
+      overagePricing: { findFirst: jest.fn().mockResolvedValue({ k6VuMinutePriceCents: 1, k6VuMinutePriceCentsOverride: override }) },
+    } } as unknown as Pick<typeof db, "query">;
+    const metrics = await polarUsageService.getUsageMetrics("org-1", { database, additionalSreUnits: 0 });
+    expect(metrics.k6VuMinutes.overageCostCents).toBe(expected);
+    expect(metrics.totalOverageCostCents).toBe(expected);
+  });
+
   it("reuses the usage ledger ID as external_id after a failed ingestion", async () => {
     const event = {
       id: "usage-event-1",
