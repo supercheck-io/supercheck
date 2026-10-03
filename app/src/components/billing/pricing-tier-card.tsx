@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 
 interface PricingTierCardProps {
   name: string;
-  price: number | string;
+  price?: number | string;
   priceInterval?: string;
   tagline: string;
   badge?: string;
@@ -80,7 +80,7 @@ export function PricingTierCard({
         </div>
 
         {/* Price */}
-        <div className="flex items-baseline gap-1">
+        {price !== undefined && <div className="flex items-baseline gap-1">
           {typeof price === "number" ? (
             <>
               <span className="text-5xl font-bold tracking-tight">
@@ -95,7 +95,7 @@ export function PricingTierCard({
           ) : (
             <span className="text-4xl font-bold tracking-tight">{price}</span>
           )}
-        </div>
+        </div>}
       </CardHeader>
 
       <CardContent className="space-y-6 flex-1 flex flex-col pt-0">

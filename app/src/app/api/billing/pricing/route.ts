@@ -1,3 +1,5 @@
+import { PRICING_FAQS } from "@/lib/billing/pricing-copy";
+import { DEFAULT_OVERAGE_PRICING } from "@/lib/billing/pricing-defaults";
 import { NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { planLimits, overagePricing } from "@/db/schema";
@@ -126,18 +128,12 @@ export async function GET() {
           overagePricing: overage
             ? {
                 playwrightMinutes: overage.playwrightMinutePriceCents / 100,
-                k6VuMinutes: overage.k6VuMinutePriceCents / 100,
+                k6VuMinutes: (overage.k6VuMinutePriceCentsOverride ?? overage.k6VuMinutePriceCents) / 100,
                 aiCredits: overage.aiCreditPriceCents / 100,
                 sreInvestigationUnits:
                   overage.sreInvestigationUnitPriceCents / 100,
               }
-            : {
-                // Fallback values if not in database
-                playwrightMinutes: planType === "pro" ? 0.02 : 0.03,
-                k6VuMinutes: 0.01,
-                aiCredits: planType === "pro" ? 0.03 : 0.05,
-                sreInvestigationUnits: 0.5,
-              },
+            : DEFAULT_OVERAGE_PRICING[planType],
         };
       });
 
@@ -300,41 +296,7 @@ export async function GET() {
       },
     ];
 
-    const faqs = [
-      {
-        question: "How is usage tracked?",
-        answer:
-          "Playwright minutes count browser execution time, including synthetic monitors. HTTP, ping, and port checks do not consume Playwright minutes. K6 VU minutes are virtual users × execution time in minutes. Each successful full AI SRE investigation consumes one investigation unit; chat, triage, and evidence briefs do not.",
-      },
-      {
-        question: "What happens if I exceed my limits?",
-        answer:
-          "Playwright, K6, and successful full AI SRE investigations use the overage rates shown above. AI credits have a hard monthly limit. Configured billing contacts receive threshold alerts.",
-      },
-      {
-        question: "Can I change plans?",
-        answer:
-          "The organization owner can change plans in Manage subscription. Review the effective date and any prorated charges in the Polar portal before confirming.",
-      },
-      {
-        question: "Do unused minutes roll over?",
-        answer: "No, plan quotas reset monthly on your billing date.",
-      },
-      {
-        question: "Can I try Supercheck before subscribing?",
-        answer: `Yes! Try our free demo at demo.supercheck.dev — no signup required. When you're ready, start with the Plus plan ($${PLAN_PRICING.plus.monthlyPriceCents / 100}/month) with no long-term commitment. Cancel anytime.`,
-      },
-      {
-        question: "Do you offer enterprise plans?",
-        answer:
-          "Yes! Enterprise plans include custom usage allowances, custom SLAs, a dedicated account manager, and personalized onboarding. Contact hello@supercheck.io to discuss your needs.",
-      },
-      {
-        question: "Can I self-host Supercheck?",
-        answer:
-          "Yes! Supercheck core is open source under AGPLv3 and can be self-hosted with unlimited features. Visit our GitHub repository for deployment instructions.",
-      },
-    ];
+    const faqs = PRICING_FAQS;
 
     // Build overage pricing data from database
     const plusOverage = overagePricingMap.get("plus");
@@ -344,24 +306,24 @@ export async function GET() {
       plus: {
         playwrightMinutes: plusOverage
           ? plusOverage.playwrightMinutePriceCents / 100
-          : 0.03,
+          : DEFAULT_OVERAGE_PRICING.plus.playwrightMinutes,
         k6VuMinutes: plusOverage
-          ? plusOverage.k6VuMinutePriceCents / 100
-          : 0.01,
-        aiCredits: plusOverage ? plusOverage.aiCreditPriceCents / 100 : 0.05,
+          ? (plusOverage.k6VuMinutePriceCentsOverride ?? plusOverage.k6VuMinutePriceCents) / 100
+          : DEFAULT_OVERAGE_PRICING.plus.k6VuMinutes,
+        aiCredits: plusOverage ? plusOverage.aiCreditPriceCents / 100 : DEFAULT_OVERAGE_PRICING.plus.aiCredits,
         sreInvestigationUnits: plusOverage
           ? plusOverage.sreInvestigationUnitPriceCents / 100
-          : 0.5,
+          : DEFAULT_OVERAGE_PRICING.plus.sreInvestigationUnits,
       },
       pro: {
         playwrightMinutes: proOverage
           ? proOverage.playwrightMinutePriceCents / 100
-          : 0.02,
-        k6VuMinutes: proOverage ? proOverage.k6VuMinutePriceCents / 100 : 0.01,
-        aiCredits: proOverage ? proOverage.aiCreditPriceCents / 100 : 0.03,
+          : DEFAULT_OVERAGE_PRICING.pro.playwrightMinutes,
+        k6VuMinutes: proOverage ? (proOverage.k6VuMinutePriceCentsOverride ?? proOverage.k6VuMinutePriceCents) / 100 : DEFAULT_OVERAGE_PRICING.pro.k6VuMinutes,
+        aiCredits: proOverage ? proOverage.aiCreditPriceCents / 100 : DEFAULT_OVERAGE_PRICING.pro.aiCredits,
         sreInvestigationUnits: proOverage
           ? proOverage.sreInvestigationUnitPriceCents / 100
-          : 0.5,
+          : DEFAULT_OVERAGE_PRICING.pro.sreInvestigationUnits,
       },
     };
 

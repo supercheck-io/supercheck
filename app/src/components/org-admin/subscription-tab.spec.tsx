@@ -1,5 +1,8 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { SubscriptionTab } from "./subscription-tab";
+import SubscribePage from "../../app/(onboarding)/subscribe/page";
+
+jest.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams() }));
 
 jest.mock("sonner", () => ({ toast: { error: jest.fn(), success: jest.fn() } }));
 jest.mock("@/components/billing/spending-limits", () => ({
@@ -20,6 +23,11 @@ const billing = {
   limits: { monitors: resource, statusPages: resource, projects: resource, teamMembers: resource },
   planFeatures: { dataRetentionDays: 7, aggregatedDataRetentionDays: 30 },
 };
+const pricing = { plans: [{
+  id: "pro", price: 149,
+  features: { playwrightMinutes: 10000, k6VuMinutes: 75000, sreInvestigationUnits: 100 },
+  overagePricing: { playwrightMinutes: 0.02, k6VuMinutes: 0.0025, sreInvestigationUnits: 0.5 },
+}] };
 
 describe("SubscriptionTab", () => {
   const originalFetch = global.fetch;
@@ -27,7 +35,8 @@ describe("SubscriptionTab", () => {
   beforeEach(() => {
     fetchMock.mockReset().mockImplementation(async (url: string) => ({
       ok: true,
-      json: async () => url.endsWith("/current") ? billing : { spending: { currentDollars: 1.25 } },
+      json: async () => url.endsWith("/current") ? billing
+        : url.endsWith("/pricing") ? pricing : { spending: { currentDollars: 1.25 } },
     }));
     global.fetch = fetchMock;
   });
@@ -57,7 +66,7 @@ describe("SubscriptionTab", () => {
     }));
     fireEvent.click(screen.getByRole("button", { name: "Refresh after save" }));
     expect(await screen.findByText("Usage estimate unavailable")).toBeInTheDocument();
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(6));
     expect(screen.queryByText("$50.25")).not.toBeInTheDocument();
   });
 
@@ -108,5 +117,52 @@ describe("SubscriptionTab", () => {
     expect(screen.getByRole("link", { name: "Choose a plan" })).toHaveAttribute("href", "/subscribe");
     expect(screen.getByRole("button", { name: "Manage Subscription" })).toBeEnabled();
     expect(screen.queryByText("$49.00")).not.toBeInTheDocument();
+  });
+
+  it("compares all billable meters before suggesting Pro", async () => {
+    fetchMock.mockImplementation(async (url: string) => ({ ok: true, json: async () =>
+      url.endsWith("/current") ? { ...billing, usage: { ...billing.usage,
+        playwrightMinutes: { ...meter, used: 11000 },
+        k6VuMinutes: { ...meter, used: 76000 },
+        sreInvestigations: { ...meter, used: 102 },
+      } } : url.endsWith("/pricing") ? pricing : { spending: { currentDollars: 300 } },
+    }));
+    render(<SubscriptionTab currentUserRole="org_owner" />);
+    await screen.findByText("$349.00");
+    expect(await screen.findByText(/Pro would cost about \$172.50/)).toHaveTextContent("$176.50 less");
+    expect(screen.getByRole("link", { name: "Compare plans" })).toHaveAttribute("href", "/subscribe");
+    expect(screen.getByText(/this organization only/)).toBeInTheDocument();
+  });
+
+  it("keeps billing available when the optional plan comparison fails", async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.endsWith("/pricing")) throw new Error("Pricing unavailable");
+      return { ok: true, json: async () => url.endsWith("/current") ? billing : { spending: { currentDollars: 300 } } };
+    });
+    render(<SubscriptionTab currentUserRole="org_owner" />);
+    await screen.findByText("$349.00");
+    expect(screen.queryByRole("link", { name: "Compare plans" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Manage Subscription" })).toBeEnabled();
+  });
+
+  it("renders monthly organization pricing and precise fractional rates on the plan selection page", async () => {
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({
+      plans: [{ ...pricing.plans[0], name: "Pro", interval: "month", description: "Growing teams",
+        features: { ...pricing.plans[0].features, monitors: 100, aiCredits: 300, teamMembers: 25,
+          projects: 50, monitorDataRetention: "7d raw / 90d metrics", jobDataRetention: "90d" },
+      }],
+      featureComparison: [],
+      overagePricing: {
+        plus: { playwrightMinutes: 0.03, k6VuMinutes: 0.005, sreInvestigationUnits: 0.5 },
+        pro: { playwrightMinutes: 0.02, k6VuMinutes: 0.0025, sreInvestigationUnits: 0.5 },
+      },
+    }) });
+    render(<SubscribePage />);
+    expect(await screen.findByText("Monthly subscription per organization")).toBeInTheDocument();
+    expect(screen.getByText("$5.00 per 1,000 VU-min")).toBeInTheDocument();
+    expect(screen.getByText("$2.50 per 1,000 VU-min")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Enterprise" }).parentElement?.parentElement).not.toHaveTextContent(/\$/);
+    expect(screen.getByRole("link", { name: "Get in touch" })).toHaveAttribute("href", "mailto:hello@supercheck.io");
+    expect(screen.queryByText(/annual/i)).not.toBeInTheDocument();
   });
 });

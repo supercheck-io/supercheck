@@ -299,6 +299,29 @@ describe('UsageTrackerService execution blocking', () => {
     });
   });
 
+  it.each([
+    [null, true],
+    [0.25, false],
+    [0.5, true],
+    [0, false],
+  ])(
+    'uses K6 override %s consistently for spending admission',
+    async (override, blocked) => {
+      const f = admissionFixture();
+      f.org.k6VuMinutesUsed = 20199;
+      f.org.sreInvestigationUnitsUsed = '25';
+      f.query.overagePricing.findFirst.mockResolvedValue({
+        playwrightMinutePriceCents: 3,
+        k6VuMinutePriceCents: 1,
+        k6VuMinutePriceCentsOverride: override,
+        sreInvestigationUnitPriceCents: 50,
+      });
+      await expect(
+        f.service.shouldBlockExecution('org-1'),
+      ).resolves.toMatchObject({ blocked });
+    },
+  );
+
   it.each(['none', 'canceled'])(
     'rejects queued work after a subscription becomes %s',
     async (status) => {
@@ -314,6 +337,63 @@ describe('UsageTrackerService execution blocking', () => {
       expect(f.query.billingSettings.findFirst).not.toHaveBeenCalled();
     },
   );
+
+  it.each([false, true])(
+    'uses legacy pricing before migration 0025 (wrapped=%s)',
+    async (wrapped) => {
+      const f = admissionFixture();
+      f.org.sreInvestigationUnitsUsed = '25';
+      const missing = Object.assign(
+        new Error('column "k6_vu_minute_price_cents_override" does not exist'),
+        { code: '42703' },
+      );
+      const error = wrapped
+        ? Object.assign(new Error('Failed query'), { cause: missing })
+        : missing;
+      f.query.overagePricing.findFirst.mockRejectedValueOnce(error);
+      await expect(f.service.shouldBlockExecution('org-1')).resolves.toEqual({
+        blocked: false,
+      });
+      expect(f.query.overagePricing.findFirst).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          columns: { k6VuMinutePriceCentsOverride: false },
+        }),
+      );
+      // The bridge does not cache the legacy rate after migration finishes.
+      f.org.k6VuMinutesUsed = 20199;
+      f.query.overagePricing.findFirst.mockResolvedValue({
+        playwrightMinutePriceCents: 3,
+        k6VuMinutePriceCents: 1,
+        k6VuMinutePriceCentsOverride: 0.25,
+        sreInvestigationUnitPriceCents: 50,
+      });
+      await expect(f.service.shouldBlockExecution('org-1')).resolves.toEqual({
+        blocked: false,
+      });
+      expect(f.query.overagePricing.findFirst).toHaveBeenLastCalledWith(
+        expect.not.objectContaining({ columns: expect.anything() }),
+      );
+    },
+  );
+
+  it.each([
+    Object.assign(new Error('column "other_column" does not exist'), {
+      code: '42703',
+    }),
+    Object.assign(new Error('k6_vu_minute_price_cents_override timeout'), {
+      code: '57014',
+    }),
+  ])('does not bypass admission on unrelated DB errors', async (error) => {
+    const f = admissionFixture();
+    f.query.overagePricing.findFirst.mockRejectedValue(error);
+    await expect(
+      f.service.shouldBlockExecution('org-1'),
+    ).resolves.toMatchObject({
+      blocked: true,
+      reason: 'Unable to verify the organization spending limit',
+    });
+    expect(f.query.overagePricing.findFirst).toHaveBeenCalledTimes(1);
+  });
 
   it.each(['past_due', 'canceled'])(
     'preserves authorized %s grace access',

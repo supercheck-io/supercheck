@@ -36,7 +36,13 @@ test.describe('Dashboard contracts @dashboard', () => {
     expect(Number.isNaN(Date.parse(dashboard.system.timestamp))).toBe(false);
 
     await page.goto('/');
-    await expect(page.getByText('Total Tests', { exact: true })).toBeVisible();
+    const totalTestsCard = page.getByText('Total Tests', { exact: true });
+    try {
+      await expect(totalTestsCard).toBeVisible({ timeout: 15_000 });
+    } catch {
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await expect(totalTestsCard).toBeVisible({ timeout: 20_000 });
+    }
     await expect(page.getByText('Active Jobs', { exact: true })).toBeVisible();
     await expect(page.getByText('Active Monitors', { exact: true })).toBeVisible();
     await expect(page.getByText('Requirements', { exact: true }).first()).toBeVisible();

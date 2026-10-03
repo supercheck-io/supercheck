@@ -104,6 +104,43 @@ describe("startSreIncidentInvestigation", () => {
 });
 
 describe("executeSreIncidentInvestigation failure persistence", () => {
+  it.each([
+    [false, 5],
+    [true, 8],
+  ])("bounds steps with live connectors=%s", async (enabled, steps) => {
+    (runSreAgent as jest.Mock).mockRejectedValue(
+      new Error("test interruption"),
+    );
+    (db.transaction as jest.Mock).mockImplementation(async (callback) =>
+      callback({
+        update: jest
+          .fn()
+          .mockReturnValue({
+            set: jest
+              .fn()
+              .mockReturnValue({
+                where: jest
+                  .fn()
+                  .mockReturnValue({
+                    returning: jest.fn().mockResolvedValue([]),
+                  }),
+              }),
+          }),
+        insert: jest
+          .fn()
+          .mockReturnValue({ values: jest.fn().mockResolvedValue([]) }),
+      }),
+    );
+    await executeSreIncidentInvestigation("run-1", incident, {
+      ...input,
+      enableLiveConnectors: enabled,
+    });
+    expect(runSreAgent).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        budget: { maxSteps: steps, maxOutputTokens: 1800, timeoutMs: 90_000 },
+      }),
+    );
+  });
   it("does not publish success after recovery has released the reservation", async () => {
     const returning = jest.fn().mockResolvedValue([]);
     const set = jest.fn().mockReturnValue({ where: jest.fn().mockReturnValue({ returning }) });

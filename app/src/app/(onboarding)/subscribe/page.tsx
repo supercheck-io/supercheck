@@ -1,5 +1,8 @@
 "use client";
 
+import { PRICING_FAQS } from "@/lib/billing/pricing-copy";
+
+import { formatOveragePrice } from "@/lib/billing/pricing-defaults";
 import { Suspense, useEffect, useState, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { Card } from "@/components/ui/card";
@@ -90,48 +93,7 @@ interface PricingData {
   overagePricing?: OveragePricingData;
 }
 
-const defaultFaqs = [
-  {
-    question: "How is usage tracked?",
-    answer:
-      "Playwright minutes count browser execution time, including synthetic monitors, rounded to four decimal places per run with no whole-minute minimum. A five-second check uses 0.0833 minutes; each location and executed retry contributes usage. HTTP, ping, and port checks do not consume Playwright minutes. K6 VU minutes are peak virtual users × execution time in minutes, rounded up per run. Each completed full AI SRE investigation report consumes one investigation unit; completion does not guarantee a correct diagnosis or resolution. Failed runs and billing retries are not charged; chat, triage, and evidence briefs do not.",
-  },
-  {
-    question: "What happens if I exceed my limits?",
-    answer:
-      "Playwright, K6, and successful full AI SRE investigations use the overage rates shown above. AI credits have a hard monthly limit. Configured billing contacts receive threshold alerts.",
-  },
-  {
-    question: "Can I change plans?",
-    answer:
-      "The organization owner can change plans in Manage subscription. Review the effective date and any prorated charges in the Polar portal before confirming.",
-  },
-  {
-    question: "Do unused minutes roll over?",
-    answer:
-      "No, included minutes reset each billing cycle. However, you can always upgrade your plan if you consistently need more resources.",
-  },
-  {
-    question: "What payment methods do you accept?",
-    answer:
-      "We accept all major credit cards (Visa, Mastercard, American Express) through our secure payment processor Polar.",
-  },
-  {
-    question: "Is there a free trial?",
-    answer:
-      "Try our free demo at demo.supercheck.dev — no signup required. When you're ready, choose a plan to get started.",
-  },
-  {
-    question: "Can I cancel my subscription?",
-    answer:
-      "Yes, you can cancel anytime. Your subscription will remain active until the end of the current billing period.",
-  },
-  {
-    question: "Do you offer enterprise plans?",
-    answer:
-      "Yes! Contact us for custom enterprise plans with dedicated support, custom SLAs, and volume discounts.",
-  },
-];
+const defaultFaqs = PRICING_FAQS;
 
 export default function SubscribePage() {
   return (
@@ -265,6 +227,8 @@ function SubscribePageContent() {
           Open-Source Testing, Monitoring, and AI SRE — as Code
         </p>
         <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs text-muted-foreground pt-1">
+          <span>Monthly subscription per organization</span>
+          <span className="hidden sm:inline">·</span>
           <span>Cancel anytime</span>
           <span className="hidden sm:inline">·</span>
           <span>Prices in USD, before applicable tax</span>
@@ -298,7 +262,7 @@ function SubscribePageContent() {
                   ? "Custom domains"
                   : "Standard domains",
               ]}
-              overageText={`Overage: $${plan.overagePricing.playwrightMinutes}/min Playwright · $${plan.overagePricing.k6VuMinutes}/VU-min K6 · $${plan.overagePricing.sreInvestigationUnits}/AI SRE investigation · AI credits: hard limit`}
+              overageText={`Overage: ${formatOveragePrice(plan.overagePricing.playwrightMinutes, "min")} Playwright · ${formatOveragePrice(plan.overagePricing.k6VuMinutes, "VU-min")} K6 · ${formatOveragePrice(plan.overagePricing.sreInvestigationUnits, "AI SRE investigation")} · AI credits: hard limit`}
               ctaText={`Get Started with ${plan.name}`}
               ctaVariant={plan.id === "pro" ? "default" : "outline"}
               onCtaClick={() => handleSubscribe(plan.id)}
@@ -311,7 +275,6 @@ function SubscribePageContent() {
           {/* Enterprise Card */}
           <PricingTierCard
             name="Enterprise"
-            price="Custom"
             tagline="For large organizations with custom requirements"
             badge="Tailored"
             keyFeatures={[
@@ -325,7 +288,8 @@ function SubscribePageContent() {
               "Custom SLA & priority support",
               "Onboarding & training",
             ]}
-            ctaText="Contact Sales"
+            overageText="Get in touch to discuss your requirements, usage allowances, support, SLA, and onboarding."
+            ctaText="Get in touch"
             ctaVariant="outline"
             ctaHref="mailto:hello@supercheck.io"
           />

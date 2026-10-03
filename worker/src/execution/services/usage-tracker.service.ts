@@ -557,8 +557,43 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Check if usage should be blocked due to spending limit
+   * Read pricing during the worker-first additive migration window.
    */
+  private async getAdmissionPricing(plan: 'plus' | 'pro') {
+    const where = eq(schema.overagePricing.plan, plan);
+    try {
+      return await this.db.query.overagePricing.findFirst({ where });
+    } catch (error) {
+      // Workers roll out before the app runs additive migrations. Only the
+      // known new column may fall back; DB outages/other schema errors still
+      // fail closed. Do not cache this, so migration completion takes effect
+      // on the next admission check.
+      const cause: unknown =
+        error instanceof Error && error.cause ? error.cause : error;
+      if (
+        !cause ||
+        typeof cause !== 'object' ||
+        !('code' in cause) ||
+        cause.code !== '42703' ||
+        !('message' in cause) ||
+        typeof cause.message !== 'string' ||
+        !/\bk6_vu_minute_price_cents_override\b/.test(cause.message)
+      ) {
+        throw error;
+      }
+      this.logger.warn(
+        '[Usage] Migration 0025 is pending; admission uses legacy K6 pricing',
+      );
+      const legacy = await this.db.query.overagePricing.findFirst({
+        where,
+        columns: { k6VuMinutePriceCentsOverride: false },
+      });
+      return legacy
+        ? { ...legacy, k6VuMinutePriceCentsOverride: null }
+        : legacy;
+    }
+  }
+
   private async checkSpendingLimit(
     organizationId: string,
     org: typeof schema.organization.$inferSelect,
@@ -584,9 +619,7 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
       this.db.query.planLimits.findFirst({
         where: eq(schema.planLimits.plan, plan),
       }),
-      this.db.query.overagePricing.findFirst({
-        where: eq(schema.overagePricing.plan, plan),
-      }),
+      this.getAdmissionPricing(plan),
     ]);
     if (!limits || !prices) {
       throw new Error('Billing plan or pricing is unavailable');
@@ -609,7 +642,10 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
     );
     const totalOverageCents =
       playwrightOverage * prices.playwrightMinutePriceCents +
-      Math.ceil(k6Overage * prices.k6VuMinutePriceCents) +
+      Math.ceil(
+        k6Overage *
+          (prices.k6VuMinutePriceCentsOverride ?? prices.k6VuMinutePriceCents),
+      ) +
       Math.ceil(sreOverage * prices.sreInvestigationUnitPriceCents);
     if (!Number.isFinite(totalOverageCents)) {
       throw new Error('Invalid usage or pricing configuration');

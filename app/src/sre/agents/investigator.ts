@@ -55,7 +55,9 @@ export function buildSreInvestigationPrompt(
           ...input.storedEvidenceContext.map((item) => `- ${item}`),
         ].join("\n")
       : "Sanitized stored evidence: none available",
-    "Investigate the incident using available tools before drawing incident-specific conclusions.",
+    input.evidenceCount === 0
+      ? "There are no stored evidence items recorded for this incident. Do not repeat evidence queries that returned no results. Continue with scoped live connector tools when available before drawing conclusions; otherwise evaluate the incident metadata, note the evidence gaps, and produce the investigation report."
+      : "Investigate the incident using available tools before drawing incident-specific conclusions.",
     input.specializedSubagentsEnabled
       ? "Use telemetry, infrastructure, or code/delivery subagents only after gathering relevant evidence and pass cited context into the subagent task."
       : null,

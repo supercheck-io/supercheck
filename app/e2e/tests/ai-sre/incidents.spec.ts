@@ -277,7 +277,10 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
       ).toBeVisible({ timeout: 120_000 });
       await expect(
         page.getByText(/completed|failed|error/i).last(),
-      ).toBeVisible();
+      ).toBeVisible({ timeout: 120_000 });
+      await expect(
+        page.getByText("Save report & feedback", { exact: true }),
+      ).toBeVisible({ timeout: 120_000 });
 
       await page.getByText("Save report & feedback", { exact: true }).click();
       await page

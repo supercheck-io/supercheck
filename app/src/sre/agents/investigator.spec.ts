@@ -45,4 +45,39 @@ describe("SRE investigation prompt", () => {
     expect(prompt).toContain("confirm recovery");
     expect(prompt).toContain("Blast radius");
   });
+
+  it("guides the agent not to loop on empty evidence tools when evidence count is zero", () => {
+    const prompt = buildSreInvestigationPrompt({
+      incidentTitle: "api downtime",
+      severity: "sev1",
+      status: "open",
+      serviceName: "web",
+      evidenceCount: 0,
+      connectorEvidenceCount: 0,
+    });
+
+    expect(prompt).toContain(
+      "There are no stored evidence items recorded for this incident",
+    );
+    expect(prompt).toContain(
+      "Do not repeat evidence queries that returned no results",
+    );
+    expect(prompt).toContain(
+      "Continue with scoped live connector tools when available",
+    );
+  });
+
+  it("continues live investigation with no stored evidence", () => {
+    const prompt = buildSreInvestigationPrompt({
+      incidentTitle: "new incident",
+      severity: "sev1",
+      status: "open",
+      evidenceCount: 0,
+      liveConnectorToolsEnabled: true,
+    });
+    expect(prompt).toContain("Live connector tools: available");
+    expect(prompt).toContain(
+      "Continue with scoped live connector tools when available before drawing conclusions",
+    );
+  });
 });
