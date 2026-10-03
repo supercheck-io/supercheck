@@ -19,7 +19,7 @@ jest.mock("@/utils/db", () => ({
     query: {
       webhookIdempotency: { findFirst: jest.fn() },
       organization: { findFirst: jest.fn() },
-      member: { findFirst: jest.fn() },
+      member: { findFirst: jest.fn(), findMany: jest.fn() },
     },
   },
 }));
@@ -117,6 +117,17 @@ describe("Polar webhook helpers", () => {
       ] },
     }));
     expect(set).toHaveBeenCalledWith({ polarCustomerId: "customer-a" });
+  });
+
+  it("does not guess an organization for a legacy customer owned by a multi-organization user", async () => {
+    (db.query.member.findMany as jest.Mock).mockResolvedValue([
+      { organizationId: "org-a" }, { organizationId: "org-b" },
+    ]);
+    await handleCustomerCreated({ type: "customer.created", data: {
+      id: "legacy-customer", externalId: "owner-a",
+    } });
+    expect(db.update).not.toHaveBeenCalled();
+    expect(db.query.organization.findFirst).not.toHaveBeenCalled();
   });
 
   describe("getSubscriptionDatesFromPayload", () => {

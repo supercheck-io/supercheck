@@ -147,7 +147,12 @@ export async function getUnifiedAuthContext(
                 eq(member.userId, s.userId)
             )
          )
-         .where(eq(projects.id, targetProjectId))
+         .where(and(
+           eq(projects.id, targetProjectId),
+           eq(projects.status, "active"),
+           // Explicit project overrides retain their membership-checked scope.
+           !requestedProjectId && s.activeOrgId ? eq(projects.organizationId, s.activeOrgId) : undefined,
+         ))
          .limit(1);
 
        const ctx = contextResult[0];

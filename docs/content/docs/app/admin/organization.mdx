@@ -6,6 +6,22 @@ icon: UserCog
 
 Manage your organization's projects, members, CLI tokens, AI SRE setup, and audit trails from the Admin panel.
 
+## Create and select organizations
+
+Use the organization menu above the project selector to switch organizations or choose **Create organization**. Enter a name of 2–50 characters. Creation adds a default project and makes you the owner. Switching organizations selects an active project in that organization and reloads the app.
+
+In Supercheck Cloud, verify your email before creating an organization. The default ownership limit is five organizations per user; contact support if you need more. Organizations you join by invitation do not count toward your ownership limit.
+
+### Cloud subscriptions
+
+Each organization has its own monthly subscription. If you already own a paid organization and create another, the new organization starts without a subscription. Creating it does not charge you, copy your paid plan, or change the original organization's subscription. The new organization's owner can choose a plan on the subscription page, or use the organization menu there to return to a paid organization.
+
+Members share their organization's included usage and limits. Joining an organization with an active subscription does not require buying a personal subscription. Accepting an invitation selects the invited organization and project. Project permissions still depend on the role and project assignments.
+
+Usage, project and member limits, invoices, and spending controls are separate for each organization. Creating more projects inside one organization uses that organization's existing plan. Only the organization owner can subscribe or open **Manage subscription** to change or cancel the plan.
+
+Self-hosted organizations do not require a cloud subscription. Their execution capacity depends on the infrastructure and concurrency settings you configure.
+
 ## Projects
 
 Manage all projects within your organization. Create, edit, or archive projects as needed.
@@ -86,6 +102,10 @@ The system uses a 6-role RBAC system with specialized roles for organization and
 
 </Tab>
 </Tabs>
+
+## Delete an organization
+
+Only the organization owner can request deletion. An organization with projects cannot be deleted through the organization API; contact your administrator or support for data removal. For an organization linked to cloud billing, contact support to close it safely. Deleting app data does not cancel a subscription. Use **Manage subscription** to cancel the plan.
 
 ## CLI Tokens
 

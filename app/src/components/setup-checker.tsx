@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useProjectContext } from "@/hooks/use-project-context";
+import { useQueryClient } from "@tanstack/react-query";
 
 /**
  * SetupChecker - Ensures new users have default organization/project
@@ -17,6 +18,7 @@ export function SetupChecker() {
   const { projects, loading, refreshProjects } = useProjectContext();
   const setupAttemptedRef = useRef(false);
   const router = useRouter();
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     // Skip if setup already attempted or context is still loading
@@ -64,6 +66,7 @@ export function SetupChecker() {
             }
 
             console.log("✅ Default organization and project created");
+            await queryClient.invalidateQueries({ queryKey: ["organizations"] });
 
             await new Promise((resolve) => setTimeout(resolve, 500));
 
@@ -98,7 +101,7 @@ export function SetupChecker() {
       const timer = setTimeout(checkAndSetupDefaults, 100);
       return () => clearTimeout(timer);
     }
-  }, [loading, projects, isSetupComplete, refreshProjects, router]);
+  }, [loading, projects, isSetupComplete, refreshProjects, router, queryClient]);
 
   return null; // This component doesn't render anything
 }

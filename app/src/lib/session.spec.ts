@@ -64,7 +64,7 @@ jest.mock('./rbac/middleware', () => ({
   getUserOrgRole: (...args: unknown[]) => mockRbacModule.getUserOrgRole(...args),
 }));
 
-jest.mock('./rbac/permissions', () => ({
+jest.mock('./rbac/permissions-client', () => ({
   Role: {
     SUPER_ADMIN: 'SUPER_ADMIN',
     ORG_OWNER: 'ORG_OWNER',
@@ -76,9 +76,10 @@ jest.mock('./rbac/permissions', () => ({
 }));
 
 // Import after mocks
-import { Role } from './rbac/permissions';
+import { Role } from './rbac/permissions-client';
 import {
   getCurrentUser,
+  getActiveOrganization,
   getUserOrganizations,
   getUserProjects,
   getUserProjectRole,
@@ -859,4 +860,51 @@ describe('Session Management', () => {
       expect(result).toHaveLength(1);
     });
   });
+
+  describe('getActiveOrganization with multiple memberships', () => {
+    function queryRows(rows: unknown[], limited = false) {
+      const query = {
+        from: jest.fn().mockReturnThis(), innerJoin: jest.fn().mockReturnThis(),
+        where: jest.fn(), limit: jest.fn().mockResolvedValue(rows),
+      };
+      query.where.mockReturnValue(limited ? query : Promise.resolve(rows));
+      return query;
+    }
+    const orgA = { ...mockOrganization, id: 'org-a', createdAt: new Date('2020-01-01') };
+    const orgB = { ...mockOrganization, id: 'org-b', createdAt: new Date('2021-01-01') };
+
+    it('honors the selected organization even when another membership is returned first', async () => {
+      mockDbModule.select
+        .mockReturnValueOnce(queryRows([mockDbSession], true))
+        .mockReturnValueOnce(queryRows([orgA, orgB]))
+        .mockReturnValueOnce(queryRows([{ activeOrganizationId: 'org-b' }], true));
+      expect(await getActiveOrganization()).toMatchObject({ id: 'org-b', isActive: true });
+    });
+
+    it('does not grant access to a selected organization outside the user memberships', async () => {
+      mockDbModule.select
+        .mockReturnValueOnce(queryRows([mockDbSession], true))
+        .mockReturnValueOnce(queryRows([orgB, orgA]))
+        .mockReturnValueOnce(queryRows([{ activeOrganizationId: 'foreign-org' }], true));
+      expect(await getActiveOrganization()).toMatchObject({ id: 'org-a' });
+    });
+
+    it('recovers a legacy project-only session without changing its billing organization', async () => {
+      mockDbModule.select
+        .mockReturnValueOnce(queryRows([mockDbSession], true))
+        .mockReturnValueOnce(queryRows([orgA, orgB]))
+        .mockReturnValueOnce(queryRows([{ activeOrganizationId: null, activeProjectId: 'project-b' }], true))
+        .mockReturnValueOnce(queryRows([{ organizationId: 'org-b' }], true));
+      expect(await getActiveOrganization()).toMatchObject({ id: 'org-b' });
+    });
+
+    it('fails closed if the effective user no longer owns the session', async () => {
+      mockDbModule.select
+        .mockReturnValueOnce(queryRows([mockDbSession], true))
+        .mockReturnValueOnce(queryRows([orgA, orgB]))
+        .mockReturnValueOnce(queryRows([], true));
+      expect(await getActiveOrganization()).toBeNull();
+    });
+  });
+
 });

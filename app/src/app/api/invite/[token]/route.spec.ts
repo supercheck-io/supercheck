@@ -2,7 +2,7 @@
 
 import { NextRequest } from "next/server";
 
-jest.mock("@/utils/db", () => ({ db: { select: jest.fn(), transaction: jest.fn() } }));
+jest.mock("@/utils/db", () => ({ db: { select: jest.fn(), update: jest.fn(), transaction: jest.fn() } }));
 jest.mock("@/utils/auth", () => ({ auth: { api: { getSession: jest.fn() } } }));
 jest.mock("@/lib/auth-context", () => ({
   requireUserAuthContext: jest.fn(), isAuthError: jest.fn(),
@@ -14,14 +14,14 @@ jest.mock("@/lib/feature-flags", () => ({ isCloudHosted: jest.fn(() => true) }))
 import { GET, POST } from "./route";
 import { isCloudHosted } from "@/lib/feature-flags";
 
-const { db } = jest.requireMock("@/utils/db") as { db: { select: jest.Mock; transaction: jest.Mock } };
+const { db } = jest.requireMock("@/utils/db") as { db: { select: jest.Mock; update: jest.Mock; transaction: jest.Mock } };
 const { auth } = jest.requireMock("@/utils/auth") as { auth: { api: { getSession: jest.Mock } } };
 const { requireUserAuthContext } = jest.requireMock("@/lib/auth-context") as { requireUserAuthContext: jest.Mock };
 const { getCurrentUser } = jest.requireMock("@/lib/session") as { getCurrentUser: jest.Mock };
 
 function selectRows(rows: unknown[]) {
   const query = {
-    from: jest.fn(), innerJoin: jest.fn(), where: jest.fn(), limit: jest.fn().mockResolvedValue(rows),
+    from: jest.fn(), innerJoin: jest.fn(), where: jest.fn(), orderBy: jest.fn().mockReturnThis(), limit: jest.fn().mockResolvedValue(rows),
   };
   query.from.mockReturnValue(query);
   query.innerJoin.mockReturnValue(query);
@@ -95,4 +95,22 @@ describe("invitation privacy and acceptance", () => {
     expect(response.status).toBe(200);
     expect(db.transaction).toHaveBeenCalled();
   });
+  it.each([{ rows: [{ id: "invited-project" }] }, { rows: [] }])("selects the invited organization and clears any unrelated project", async ({ rows: projectRows }) => {
+    (isCloudHosted as unknown as jest.Mock).mockReturnValue(false);
+    const invited = { ...invite, role: "project_viewer" };
+    auth.api.getSession.mockResolvedValue({ session: { token: "browser-token" } });
+    db.select.mockReturnValueOnce(selectRows([invited]))
+      .mockReturnValueOnce(selectRows([]))
+      .mockReturnValueOnce(selectRows(projectRows));
+    db.transaction.mockImplementation(async cb => cb({
+      insert: jest.fn().mockReturnValue({ values: jest.fn().mockResolvedValue([]) }),
+      update: jest.fn().mockReturnValue({ set: jest.fn().mockReturnValue({ where: jest.fn().mockResolvedValue([]) }) }),
+    }));
+    const set = jest.fn().mockReturnValue({ where: jest.fn().mockResolvedValue([]) });
+    db.update.mockReturnValue({ set });
+    const response = await POST(new NextRequest("http://localhost/api/invite/invite-1", { method: "POST" }), context);
+    expect(response.status).toBe(200);
+    expect(set).toHaveBeenCalledWith({ activeOrganizationId: "org-1", activeProjectId: projectRows[0]?.id ?? null });
+  });
+
 });

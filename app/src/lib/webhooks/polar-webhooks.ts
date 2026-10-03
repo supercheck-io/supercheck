@@ -582,14 +582,15 @@ async function findOrganizationByUserId(userId: string) {
   const { member } = await import("@/db/schema");
 
   // Find the user's membership and get their organization
-  const membership = await getPolarWebhookDb().query.member.findFirst({
+  const memberships = await getPolarWebhookDb().query.member.findMany({
     where: and(eq(member.userId, userId), eq(member.role, "org_owner")),
+    limit: 2,
   });
-
-  if (!membership) {
-    console.log(`[Polar] No membership found for user: ${truncateId(userId)}`);
+  if (memberships.length !== 1) {
+    console.error(`[Polar] Cannot resolve a unique billing organization from user ${truncateId(userId)}`);
     return null;
   }
+  const membership = memberships[0];
 
   // Get the organization
   const org = await getPolarWebhookDb().query.organization.findFirst({

@@ -11,7 +11,7 @@ import {
   projectMembers,
   session as sessionTable,
 } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull, or } from "drizzle-orm";
 import {
   getActiveOrganization,
   getUserProjects,
@@ -62,6 +62,7 @@ export async function getCurrentProjectContext(): Promise<ProjectContext | null>
     const sessionRecord = await db
       .select({
         activeProjectId: sessionTable.activeProjectId,
+        activeOrganizationId: sessionTable.activeOrganizationId,
         userId: sessionTable.userId,
         impersonatedBy: sessionTable.impersonatedBy,
       })
@@ -84,7 +85,7 @@ export async function getCurrentProjectContext(): Promise<ProjectContext | null>
 
     if (!activeProjectId) {
       // No active project in session, try to set a default
-      return await setDefaultProjectInSession();
+      return await setDefaultProjectInSession(session);
     }
 
     const projectData = await db
@@ -102,17 +103,21 @@ export async function getCurrentProjectContext(): Promise<ProjectContext | null>
       .limit(1);
 
     if (projectData.length === 0) {
-      return await setDefaultProjectInSession();
+      return await setDefaultProjectInSession(session);
     }
 
     const project = projectData[0];
+    const activeOrganization = await getActiveOrganization();
+    if (!activeOrganization || project.organizationId !== activeOrganization.id) {
+      return await setDefaultProjectInSession(session);
+    }
 
     // Get user's role using consistent role resolution
     // 1. First check organization role (primary source of truth)
     const orgRole = await getUserOrgRole(currentUserId, project.organizationId);
 
     if (!orgRole) {
-      return await setDefaultProjectInSession();
+      return await setDefaultProjectInSession(session);
     }
 
     // 2. For PROJECT_ADMIN and PROJECT_EDITOR, check project-specific access
@@ -158,7 +163,10 @@ export async function getCurrentProjectContext(): Promise<ProjectContext | null>
 /**
  * Set a default project in session when no active project exists
  */
-async function setDefaultProjectInSession(): Promise<ProjectContext | null> {
+async function setDefaultProjectInSession(expectedSession: {
+  activeOrganizationId: string | null;
+  activeProjectId: string | null;
+}): Promise<ProjectContext | null> {
   try {
     // Use cached session to avoid duplicate DB round-trips in Docker
     const sessionData = await getCachedAuthSession();
@@ -177,6 +185,23 @@ async function setDefaultProjectInSession(): Promise<ProjectContext | null> {
     if (!activeOrg) {
       return null;
     }
+
+    // An older request must not undo a newer organization/project selection.
+    const selectDefaultProject = async (projectId: string) => {
+      const updated = await db.update(sessionTable)
+        .set({ activeOrganizationId: activeOrg.id, activeProjectId: projectId })
+        .where(and(
+          eq(sessionTable.token, sessionData.session.token),
+          eq(sessionTable.userId, currentUser.id),
+          expectedSession.activeOrganizationId === null
+            ? isNull(sessionTable.activeOrganizationId)
+            : eq(sessionTable.activeOrganizationId, expectedSession.activeOrganizationId),
+          expectedSession.activeProjectId === null
+            ? isNull(sessionTable.activeProjectId)
+            : eq(sessionTable.activeProjectId, expectedSession.activeProjectId),
+        )).returning({ id: sessionTable.id });
+      return updated.length > 0;
+    };
 
     const userProjects = await getUserProjects(currentUser.id, activeOrg.id);
     if (userProjects.length === 0) {
@@ -245,10 +270,7 @@ async function setDefaultProjectInSession(): Promise<ProjectContext | null> {
           );
 
           // Update session with this project
-          await db
-            .update(sessionTable)
-            .set({ activeProjectId: projectToAssign.id })
-            .where(eq(sessionTable.token, sessionData.session.token));
+          if (!await selectDefaultProject(projectToAssign.id)) return null;
 
           return {
             id: projectToAssign.id,
@@ -276,10 +298,7 @@ async function setDefaultProjectInSession(): Promise<ProjectContext | null> {
             );
 
             // Update session anyway since they do have access
-            await db
-              .update(sessionTable)
-              .set({ activeProjectId: projectToAssign.id })
-              .where(eq(sessionTable.token, sessionData.session.token));
+            if (!await selectDefaultProject(projectToAssign.id)) return null;
 
             return {
               id: projectToAssign.id,
@@ -307,10 +326,7 @@ async function setDefaultProjectInSession(): Promise<ProjectContext | null> {
       userProjects.find((p) => p.isDefault) || userProjects[0];
 
     // Update session with this project
-    await db
-      .update(sessionTable)
-      .set({ activeProjectId: defaultProject.id })
-      .where(eq(sessionTable.token, sessionData.session.token));
+    if (!await selectDefaultProject(defaultProject.id)) return null;
 
     return {
       id: defaultProject.id,
@@ -362,8 +378,12 @@ export async function switchProject(
     // Update session
     const updateResult = await db
       .update(sessionTable)
-      .set({ activeProjectId: projectId })
-      .where(eq(sessionTable.token, sessionData.session.token))
+      .set({ activeOrganizationId: activeOrg.id, activeProjectId: projectId })
+      .where(and(
+        eq(sessionTable.token, sessionData.session.token),
+        eq(sessionTable.userId, currentUser.id),
+        or(eq(sessionTable.activeOrganizationId, activeOrg.id), isNull(sessionTable.activeOrganizationId)),
+      ))
       .returning({ activeProjectId: sessionTable.activeProjectId });
 
     if (updateResult.length === 0) {

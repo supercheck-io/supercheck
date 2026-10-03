@@ -26,6 +26,7 @@ import { PlaywrightLogo } from "@/components/logo/playwright-logo";
 import { K6Logo } from "@/components/logo/k6-logo";
 
 interface SubscriptionData {
+  organizationId?: string;
   subscription: {
     plan: "plus" | "pro" | "unlimited" | null;
     status: "active" | "canceled" | "past_due" | "none";
@@ -199,6 +200,8 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
       const portalRes = await fetch("/api/billing/portal", {
         method: "POST",
         credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ organizationId: data?.organizationId }),
       });
       if (!portalRes.ok) {
         const errorData = await portalRes.json().catch(() => ({}));

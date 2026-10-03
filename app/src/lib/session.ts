@@ -15,9 +15,9 @@ import {
   session,
   user,
 } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull, or } from "drizzle-orm";
 import { getUserRole, getUserOrgRole } from "./rbac/middleware";
-import { Role } from "./rbac/permissions";
+import { Role } from "./rbac/permissions-client";
 import { getCachedAuthSession } from "./session-cache";
 
 // getCachedAuthSession imported from session-cache.ts (DRY principle)
@@ -138,26 +138,39 @@ export async function getCurrentUser(): Promise<UserSession | null> {
   }
 }
 
-/**
- * Get user's organization (single organization per user)
- */
+/** Resolve the selected organization only among the effective user's memberships. */
 export async function getActiveOrganization(): Promise<OrganizationWithRole | null> {
   try {
-    const user = await getCurrentUser();
-    if (!user) return null;
+    const [currentUser, authSession] = await Promise.all([
+      getCurrentUser(),
+      getCachedAuthSession(),
+    ]);
+    if (!currentUser || !authSession?.session?.token) return null;
 
-    // Get the user's single organization
-    const userOrgs = await getUserOrganizations(user.id);
-    if (userOrgs.length === 0) {
-      // User has no organizations - this suggests they need defaults created
-      // We return null here and let the frontend handle calling setup-defaults
-      return null;
+    const [userOrganizations, sessionRows] = await Promise.all([
+      getUserOrganizations(currentUser.id),
+      db.select({ activeOrganizationId: session.activeOrganizationId, activeProjectId: session.activeProjectId })
+        .from(session)
+        .where(and(eq(session.token, authSession.session.token), eq(session.userId, currentUser.id)))
+        .limit(1),
+    ]);
+    if (!sessionRows.length || !userOrganizations.length) return null;
+
+    const selected = userOrganizations.find(org => org.id === sessionRows[0].activeOrganizationId);
+    // Older sessions only stored a project. Recover its organization, still
+    // requiring membership, so project and billing context agree during upgrade.
+    let legacySelection: OrganizationWithRole | undefined;
+    if (!selected && sessionRows[0].activeProjectId) {
+      const [project] = await db.select({ organizationId: projects.organizationId }).from(projects)
+        .where(and(eq(projects.id, sessionRows[0].activeProjectId), eq(projects.status, "active"))).limit(1);
+      legacySelection = userOrganizations.find(org => org.id === project?.organizationId);
     }
-
-    // Return the first (and only) organization
-    return { ...userOrgs[0], isActive: true };
+    // Stable fallback for older sessions and removed memberships; never use row order.
+    const fallback = [...userOrganizations].sort((a, b) =>
+      a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id)
+    )[0];
+    return { ...(selected ?? legacySelection ?? fallback), isActive: true };
   } catch (error) {
-    // DYNAMIC_SERVER_USAGE errors are expected during Next.js static generation
     if (!isDynamicServerUsageError(error)) {
       console.error("Error getting active organization:", error);
     }
@@ -454,7 +467,8 @@ export async function switchProject(
       .where(
         and(
           eq(projects.id, projectId),
-          eq(projects.organizationId, activeOrg.id)
+          eq(projects.organizationId, activeOrg.id),
+          eq(projects.status, "active")
         )
       )
       .limit(1);
@@ -473,8 +487,11 @@ export async function switchProject(
     if (authSession) {
       await db
         .update(session)
-        .set({ activeProjectId: projectId })
-        .where(eq(session.token, authSession.session.token));
+        .set({ activeOrganizationId: activeOrg.id, activeProjectId: projectId })
+        .where(and(
+          eq(session.token, authSession.session.token), eq(session.userId, user.id),
+          or(eq(session.activeOrganizationId, activeOrg.id), isNull(session.activeOrganizationId)),
+        ));
     }
 
     // Get the user's project-specific role

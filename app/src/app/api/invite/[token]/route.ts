@@ -367,12 +367,10 @@ export async function POST(
               .orderBy(desc(projects.isDefault))
               .limit(1);
 
-        if (firstProject.length > 0) {
-          await db
-            .update(session)
-            .set({ activeProjectId: firstProject[0].id })
-            .where(eq(session.token, sessionData.session.token));
-        }
+        await db
+          .update(session)
+          .set({ activeOrganizationId: invite.organizationId, activeProjectId: firstProject[0]?.id ?? null })
+          .where(and(eq(session.token, sessionData.session.token), eq(session.userId, currentUser.id)));
       }
     } catch (sessionError) {
       // Non-fatal: the session will be fixed on next page load via setDefaultProjectInSession
