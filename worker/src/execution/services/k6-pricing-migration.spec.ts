@@ -9,6 +9,7 @@ jest.setTimeout(60_000);
 
 // This is a monorepo contract test: worker pricing must match the app-owned
 // migration and seed. A standalone worker checkout must supply those fixtures.
+// App dependencies are not installed in the worker CI job.
 const migration = readFileSync(
   resolve(
     __dirname,

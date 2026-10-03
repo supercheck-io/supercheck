@@ -16,8 +16,6 @@ const { getDatabaseSSLConfig } = require("./db-ssl.js");
  *   npm run db:seed
  */
 
-const postgres = require("postgres");
-
 // Environment variables with defaults
 const DB_HOST = process.env.DB_HOST || "localhost";
 const DB_PORT = process.env.DB_PORT || "5432";
@@ -362,6 +360,8 @@ async function verifySeeding(client) {
  * Main function
  */
 async function main() {
+  // Imported seed helpers use the caller's client and need no app dependencies.
+  const postgres = require("postgres");
   log("Starting database seeding...");
   log(`Database: ${DATABASE_URL.replace(/:[^:@]*@/, ":***@")}`);
 
