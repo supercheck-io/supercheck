@@ -7,7 +7,7 @@ import { createOrganization, OrganizationManagementError } from '@/lib/services/
 
 /**
  * GET /api/organizations
- * List all organizations for the current user
+ * Return the assigned organization for the current user
  */
 export async function GET() {
   try {
@@ -17,7 +17,7 @@ export async function GET() {
     
     return NextResponse.json({
       success: true,
-      data: userOrganizations.map(org => ({ ...org, isActive: org.id === organizationId })),
+      data: userOrganizations.filter(org => org.id === organizationId).map(org => ({ ...org, isActive: true })),
       activeOrganizationId: organizationId,
     });
   } catch (error) {
@@ -37,7 +37,7 @@ export async function GET() {
 
 /**
  * POST /api/organizations
- * Create an independently scoped organization and its default project.
+ * Compatibility endpoint: additional organization creation is disabled.
  */
 export async function POST(request: NextRequest) {
   const originError = requireSameOriginRequest(request);

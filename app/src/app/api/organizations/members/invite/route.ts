@@ -194,31 +194,10 @@ export async function POST(request: NextRequest) {
     if (existingUser.length > 0) {
       const user = existingUser[0];
 
-      // Block cross-organization admin invitations
-      // Check if user has admin privileges (system-wide or organization-level)
-      const isSystemAdmin = user.role === "super_admin";
-
-      // Check if they're an admin in any other organization
-      const adminMemberships = await db
-        .select({
-          orgId: member.organizationId,
-          role: member.role,
-        })
-        .from(member)
-        .where(eq(member.userId, user.id));
-
-      const hasAdminRole = adminMemberships.some(
-        (m) => m.role === "org_owner" || m.role === "org_admin",
-      );
-
-      if (isSystemAdmin || hasAdminRole) {
-        return NextResponse.json(
-          {
-            error:
-              "Cannot invite users with administrative privileges from other organizations. Admins should manage their own organizations independently.",
-          },
-          { status: 400 },
-        );
+      // Owning an account organization does not prevent joining another team's
+      // projects. The invitation grants only its explicit role in the target team.
+      if (user.role === "super_admin") {
+        return NextResponse.json({ error: "System administrators cannot be invited as team members" }, { status: 400 });
       }
 
       // Check if already a member of current organization
@@ -315,12 +294,16 @@ export async function POST(request: NextRequest) {
     if (selectedProjectDetails.length > 0) {
       const projectNames = selectedProjectDetails.map((p) => p.name);
       if (projectNames.length === 1) {
-        projectInfo = `You'll have access to the <strong>${projectNames[0]}</strong> project.`;
+        projectInfo = `You'll have ${role === 'project_admin' ? 'project admin' : 'editor'} permissions in the <strong>${projectNames[0]}</strong> project.`;
       } else {
-        projectInfo = `You'll have access to the following projects: <strong>${projectNames.join(
+        projectInfo = `You'll have ${role === 'project_admin' ? 'project admin' : 'editor'} permissions in the following projects: <strong>${projectNames.join(
           ", ",
         )}</strong>.`;
       }
+    }
+
+    if (roleRequiresProjectAssignments) {
+      projectInfo += " Other active projects in this team remain visible with read-only access.";
     }
 
     // Fetch org name for email

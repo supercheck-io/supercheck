@@ -43,13 +43,14 @@ jest.mock('@/utils/db', () => ({
 jest.mock('drizzle-orm', () => ({
   eq: jest.fn(),
   and: jest.fn(),
+  inArray: jest.fn(),
   asc: jest.fn(column => ({ direction: "asc", column })),
   desc: jest.fn(column => ({ direction: "desc", column })),
 }));
 
 jest.mock('@/db/schema', () => ({
   organization: { id: 'org_id', name: 'org_name' },
-  projects: { id: 'proj_id', name: 'proj_name', isDefault: 'proj_default', createdAt: 'proj_created' },
+  projects: { organizationId: 'proj_org', id: 'proj_id', name: 'proj_name', isDefault: 'proj_default', createdAt: 'proj_created' },
   member: { userId: 'member_user_id', organizationId: 'member_org_id' },
   session: { token: 'session_token', userId: 'session_user_id' },
   user: { id: 'user_id' },
@@ -83,6 +84,8 @@ import {
   getCurrentUser,
   getActiveOrganization,
   getUserOrganizations,
+  getDefaultOrganization,
+  getSelectableProjects,
   getUserProjects,
   getUserProjectRole,
 } from './session';
@@ -878,15 +881,15 @@ describe('Session Management', () => {
       query.where.mockReturnValue(limited ? query : Promise.resolve(rows));
       return query;
     }
-    const orgA = { ...mockOrganization, id: 'org-a', createdAt: new Date('2020-01-01') };
-    const orgB = { ...mockOrganization, id: 'org-b', createdAt: new Date('2021-01-01') };
+    const orgA = { ...mockOrganization, id: 'org-a', memberRole: 'org_owner', createdAt: new Date('2020-01-01') };
+    const orgB = { ...mockOrganization, id: 'org-b', memberRole: 'org_owner', createdAt: new Date('2021-01-01') };
 
-    it('honors the selected organization even when another membership is returned first', async () => {
+    it('keeps the oldest organization despite a session selecting a newer one', async () => {
       mockDbModule.select
         .mockReturnValueOnce(queryRows([mockDbSession], true))
         .mockReturnValueOnce(queryRows([orgA, orgB]))
         .mockReturnValueOnce(queryRows([{ activeOrganizationId: 'org-b' }], true));
-      expect(await getActiveOrganization()).toMatchObject({ id: 'org-b', isActive: true });
+      expect(await getActiveOrganization()).toMatchObject({ id: 'org-a', isActive: true });
     });
 
     it('does not grant access to a selected organization outside the user memberships', async () => {
@@ -897,13 +900,46 @@ describe('Session Management', () => {
       expect(await getActiveOrganization()).toMatchObject({ id: 'org-a' });
     });
 
-    it('recovers a legacy project-only session without changing its billing organization', async () => {
+    it('keeps the oldest organization despite a newer project-only session', async () => {
       mockDbModule.select
         .mockReturnValueOnce(queryRows([mockDbSession], true))
         .mockReturnValueOnce(queryRows([orgA, orgB]))
         .mockReturnValueOnce(queryRows([{ activeOrganizationId: null, activeProjectId: 'project-b' }], true))
         .mockReturnValueOnce(queryRows([{ organizationId: 'org-b' }], true));
-      expect(await getActiveOrganization()).toMatchObject({ id: 'org-b' });
+      expect(await getActiveOrganization()).toMatchObject({ id: 'org-a' });
+    });
+
+    it('uses an invited project host while preserving the owned default organization', async () => {
+      mockDbModule.select
+        .mockReturnValueOnce(queryRows([mockDbSession], true))
+        .mockReturnValueOnce(queryRows([orgA, { ...orgB, memberRole: 'project_editor' }]))
+        .mockReturnValueOnce(queryRows([{ activeOrganizationId: 'org-b', activeProjectId: 'project-b' }], true))
+        .mockReturnValueOnce(queryRows([{ organizationId: 'org-b' }], true));
+      expect(await getActiveOrganization()).toMatchObject({ id: 'org-b', role: Role.PROJECT_EDITOR });
+    });
+
+    it('does not use an invited host when its project and organization session scopes disagree', async () => {
+      mockDbModule.select
+        .mockReturnValueOnce(queryRows([mockDbSession], true))
+        .mockReturnValueOnce(queryRows([orgA, { ...orgB, memberRole: 'project_editor' }]))
+        .mockReturnValueOnce(queryRows([{ activeOrganizationId: 'org-a', activeProjectId: 'project-b' }], true))
+        .mockReturnValueOnce(queryRows([{ organizationId: 'org-b' }], true));
+      expect(await getActiveOrganization()).toMatchObject({ id: 'org-a', role: Role.ORG_OWNER });
+    });
+
+    it('prefers the owned default over an older invited team', async () => {
+      mockDbModule.select.mockReturnValueOnce(queryRows([
+        { ...orgA, memberRole: 'project_editor' }, orgB,
+      ]));
+      expect(await getDefaultOrganization(testUserId)).toMatchObject({ id: 'org-b', role: Role.ORG_OWNER });
+    });
+
+    it('breaks equal creation timestamps by organization ID consistently', async () => {
+      mockDbModule.select
+        .mockReturnValueOnce(queryRows([mockDbSession], true))
+        .mockReturnValueOnce(queryRows([{ ...orgB, createdAt: orgA.createdAt }, orgA]))
+        .mockReturnValueOnce(queryRows([{ activeOrganizationId: 'org-b' }], true));
+      expect(await getActiveOrganization()).toMatchObject({ id: 'org-a' });
     });
 
     it('fails closed if the effective user no longer owns the session', async () => {
@@ -913,6 +949,47 @@ describe('Session Management', () => {
         .mockReturnValueOnce(queryRows([], true));
       expect(await getActiveOrganization()).toBeNull();
     });
+  });
+
+  describe('selectable projects from owned and invited organizations', () => {
+    it('includes invited projects with scoped roles and excludes newer duplicate owned organizations', async () => {
+      const orgQuery = {
+        from: jest.fn().mockReturnThis(), innerJoin: jest.fn().mockReturnThis(),
+        where: jest.fn().mockResolvedValue([
+          { ...mockOrganization, id: 'oldest-owned', memberRole: 'org_owner', createdAt: new Date('2020-01-01') },
+          { ...mockOrganization, id: 'newer-owned', memberRole: 'org_owner', createdAt: new Date('2022-01-01') },
+          { ...mockOrganization, id: 'invited-host', memberRole: 'project_editor', createdAt: new Date('2010-01-01') },
+        ]),
+      };
+      const projectsQuery = {
+        from: jest.fn().mockReturnThis(), innerJoin: jest.fn().mockReturnThis(),
+        leftJoin: jest.fn().mockReturnThis(), where: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockResolvedValue([
+          { id: 'home-project', name: 'Home', organizationId: 'oldest-owned', status: 'active' },
+          { id: 'invited-project', name: 'Shared', organizationId: 'invited-host', status: 'active', projectRole: 'project_editor' },
+          { id: 'other-host-project', name: 'Other', organizationId: 'invited-host', status: 'active', projectRole: null },
+        ]),
+      };
+      mockDbModule.select.mockReset().mockReturnValueOnce(orgQuery).mockReturnValueOnce(projectsQuery);
+      const result = await getSelectableProjects(testUserId);
+      expect(result).toEqual([
+        expect.objectContaining({ id: 'home-project', organizationId: 'oldest-owned', role: Role.ORG_OWNER }),
+        expect.objectContaining({ id: 'invited-project', organizationId: 'invited-host', role: Role.PROJECT_EDITOR }),
+        expect.objectContaining({ id: 'other-host-project', organizationId: 'invited-host', role: Role.PROJECT_VIEWER }),
+      ]);
+      expect(mockDbModule.select).toHaveBeenCalledTimes(2);
+      expect(jest.requireMock('drizzle-orm').inArray).toHaveBeenCalledWith(expect.anything(), ['oldest-owned', 'invited-host']);
+      expect(mockRbacModule.getUserOrgRole).not.toHaveBeenCalledWith(testUserId, 'newer-owned');
+    });
+  });
+
+  it('does not expose unsupported comma-joined membership roles as an invited team', async () => {
+    mockDbModule.select.mockReset().mockReturnValue({
+      from: jest.fn().mockReturnThis(), innerJoin: jest.fn().mockReturnThis(),
+      where: jest.fn().mockResolvedValue([{ ...mockOrganization, memberRole: 'org_owner,project_editor' }]),
+    });
+    expect(await getSelectableProjects(testUserId)).toEqual([]);
+    expect(mockDbModule.select).toHaveBeenCalledTimes(1);
   });
 
 });

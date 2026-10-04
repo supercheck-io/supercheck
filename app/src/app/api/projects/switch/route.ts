@@ -1,19 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { switchProject } from '@/lib/project-context';
+import { requireSameOriginRequest } from '@/lib/security/same-origin';
+import { z } from 'zod';
+
+const schema = z.object({ projectId: z.string().uuid() }).strict();
 
 export async function POST(request: NextRequest) {
+  const originError = requireSameOriginRequest(request);
+  if (originError) return originError;
   try {
-    const body = await request.json();
-    const { projectId } = body;
+    const parsed = schema.safeParse(await request.json().catch(() => null));
 
-    if (!projectId) {
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: 'Project ID is required' },
+        { error: 'A valid project ID is required' },
         { status: 400 }
       );
     }
 
-    const result = await switchProject(projectId);
+    const result = await switchProject(parsed.data.projectId);
 
     if (result.success) {
       return NextResponse.json({

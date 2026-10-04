@@ -22,7 +22,7 @@ const { getCurrentUser } = jest.requireMock("@/lib/session") as { getCurrentUser
 
 function selectRows(rows: unknown[]) {
   const query = {
-    from: jest.fn(), innerJoin: jest.fn(), where: jest.fn(), orderBy: jest.fn().mockReturnThis(), limit: jest.fn().mockResolvedValue(rows),
+    from: jest.fn(), innerJoin: jest.fn(), where: jest.fn(), orderBy: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), for: jest.fn().mockResolvedValue(rows), then: (resolve: (rows: unknown[]) => unknown) => Promise.resolve(rows).then(resolve),
   };
   query.from.mockReturnValue(query);
   query.innerJoin.mockReturnValue(query);
@@ -92,7 +92,7 @@ describe("invitation privacy and acceptance", () => {
     const sessionSet = jest.fn().mockReturnValue({ where: jest.fn().mockReturnValue({ returning: jest.fn().mockResolvedValue(sessionRows) }) });
     const insert = jest.fn().mockReturnValue({ values: jest.fn().mockReturnValue({ onConflictDoNothing: jest.fn().mockResolvedValue([]) }) });
     const tx = {
-      select: jest.fn().mockReturnValue(selectRows(projectRows)), insert,
+      select: jest.fn().mockReturnValueOnce(selectRows([{ id: "user-1" }])).mockReturnValue(selectRows(projectRows)), insert,
       update: jest.fn().mockReturnValueOnce({ set: jest.fn().mockReturnValue({ where: claimWhere }) })
         .mockReturnValue({ set: sessionSet }),
     };
@@ -134,6 +134,44 @@ describe("invitation privacy and acceptance", () => {
     expect(tx.insert).not.toHaveBeenCalled();
     expect(sessionSet).not.toHaveBeenCalled();
     await expect(db.transaction.mock.results[0].value).rejects.toThrow("INVITE_ALREADY_USED");
+  });
+
+  it("allows an account owner to join an invited project without replacing ownership or touching their original organization", async () => {
+    const { tx, sessionSet } = acceptance();
+    const response = await POST(new NextRequest("http://localhost/api/invite/invite-1", { method: "POST" }), context);
+    expect(response.status).toBe(200);
+    expect(tx.insert).toHaveBeenCalled();
+    expect(sessionSet).toHaveBeenCalledWith({ activeOrganizationId: "org-1", activeProjectId: "invited-project" });
+    expect(db.update).not.toHaveBeenCalled();
+  });
+
+  it("accepts a verified cloud account's assigned project and scopes membership to the invited team", async () => {
+    const { tx, sessionSet } = acceptance();
+    (isCloudHosted as jest.Mock).mockReturnValue(true);
+    db.select.mockReset().mockReturnValueOnce(selectRows([{ ...invite, selectedProjects: ["invited-project"] }]))
+      .mockReturnValueOnce(selectRows([{ emailVerified: true }])).mockReturnValueOnce(selectRows([]));
+    expect((await POST(new NextRequest("http://localhost/api/invite/invite-1", { method: "POST" }), context)).status).toBe(200);
+    const values = tx.insert.mock.results[0].value.values;
+    expect(values).toHaveBeenCalledWith(expect.objectContaining({ userId: "user-1", organizationId: "org-1", role: "project_editor" }));
+    expect(values).toHaveBeenCalledWith(expect.objectContaining({ userId: "user-1", projectId: "invited-project", role: "project_editor" }));
+    expect(sessionSet).toHaveBeenCalledWith({ activeOrganizationId: "org-1", activeProjectId: "invited-project" });
+  });
+
+  it("rolls back a project invitation if its assigned project is no longer in the target scope", async () => {
+    const { tx, sessionSet } = acceptance({ projectRows: [] });
+    db.select.mockReset().mockReturnValueOnce(selectRows([{ ...invite, selectedProjects: ["foreign-project"] }]))
+      .mockReturnValueOnce(selectRows([]));
+    expect((await POST(new NextRequest("http://localhost/api/invite/invite-1", { method: "POST" }), context)).status).toBe(400);
+    await expect(db.transaction.mock.results[0].value).rejects.toThrow("INVITE_PROJECT_SCOPE_MISMATCH");
+    expect(sessionSet).not.toHaveBeenCalled();
+    expect(tx.insert).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["org_owner", "super_admin"])("rejects a stored invitation granting %s", async role => {
+    acceptance();
+    db.select.mockReset().mockReturnValueOnce(selectRows([{ ...invite, role }])).mockReturnValueOnce(selectRows([]));
+    expect((await POST(new NextRequest("http://localhost/api/invite/invite-1", { method: "POST" }), context)).status).toBe(400);
+    expect(db.transaction).not.toHaveBeenCalled();
   });
 
   it("requires an interactive session before consuming an invitation", async () => {

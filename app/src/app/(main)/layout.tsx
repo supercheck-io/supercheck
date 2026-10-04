@@ -21,7 +21,7 @@ import { DataPrefetcher } from "@/components/data-prefetcher";
 import { MonacoPrefetcher } from "@/components/monaco-prefetcher";
 import { RecorderAutoConnect } from "@/components/recorder/RecorderAutoConnect";
 import { SreAssistantUiModal } from "@/components/sre/sre-assistant-ui-modal";
-import { getCurrentUser, getActiveOrganization, getUserProjects } from "@/lib/session";
+import { getCurrentUser, getActiveOrganization, getSelectableProjects } from "@/lib/session";
 import { getCurrentProjectContext } from "@/lib/project-context";
 import { isSelfHosted } from "@/lib/feature-flags";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
@@ -91,7 +91,7 @@ export default async function MainLayout({
     );
     try {
       const [projectsResult, currentProjectResult] = await Promise.all([
-        getUserProjects(user.id, org.id),
+        getSelectableProjects(user.id),
         getCurrentProjectContext(),
       ]);
 
@@ -101,6 +101,7 @@ export default async function MainLayout({
         slug: p.slug,
         description: p.description,
         organizationId: p.organizationId,
+        organizationName: p.organizationName,
         isDefault: p.isDefault,
         userRole: p.role || 'project_viewer',
       }));

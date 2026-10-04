@@ -45,7 +45,7 @@ export function ProjectSwitcher() {
   // Filter and sort projects based on search query
   const filteredProjects = (projects || [])
     .filter((project) =>
-      project.name.toLowerCase().includes(searchQuery.toLowerCase())
+      `${project.name} ${project.organizationName ?? ""}`.toLowerCase().includes(searchQuery.toLowerCase())
     )
     .sort((a, b) => a.name.localeCompare(b.name));
 
@@ -174,7 +174,10 @@ export function ProjectSwitcher() {
                   onClick={() => handleProjectSelect(project)}
                 >
                   <div className="flex items-center justify-between flex-1">
-                    <span className="font-medium truncate">{project.name}</span>
+                    <div className="min-w-0">
+                      <span className="block font-medium truncate">{project.name}</span>
+                      {project.organizationName && <span className="block truncate text-xs text-muted-foreground">{project.organizationName}</span>}
+                    </div>
                     {currentProject?.id === project.id && (
                       <div className="h-2.5 w-2.5 rounded-full bg-primary flex-shrink-0 ml-2" />
                     )}

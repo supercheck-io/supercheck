@@ -51,6 +51,7 @@ jest.mock("@/lib/feature-flags", () => ({
 import { getCurrentUser } from "@/lib/session";
 import { auth } from "@/utils/auth";
 import { db } from "@/utils/db";
+import { isCloudHosted } from "@/lib/feature-flags";
 import { POST } from "./route";
 
 const mockDb = db as unknown as {
@@ -60,14 +61,12 @@ const mockDb = db as unknown as {
 };
 const mockGetCurrentUser = getCurrentUser as jest.Mock;
 
-function selectResult(rows: unknown[], withLimit = false) {
-  const whereResult = withLimit
-    ? { limit: jest.fn().mockResolvedValue(rows) }
-    : Promise.resolve(rows);
+function selectResult(rows: unknown[], _withLimit = false) {
   return {
-    from: jest.fn(() => ({
-      where: jest.fn(() => whereResult),
-    })),
+    from: jest.fn().mockReturnThis(), innerJoin: jest.fn().mockReturnThis(),
+    where: jest.fn().mockReturnThis(), orderBy: jest.fn().mockResolvedValue(rows),
+    limit: jest.fn().mockResolvedValue(rows),
+    then: (resolve: (rows: unknown[]) => unknown) => Promise.resolve(rows).then(resolve),
   };
 }
 
@@ -84,6 +83,7 @@ describe("POST /api/auth/setup-defaults", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    (isCloudHosted as jest.Mock).mockReturnValue(true);
     mockGetCurrentUser.mockResolvedValue({
       id: "user-1",
       email: "owner@example.com",
@@ -138,7 +138,7 @@ describe("POST /api/auth/setup-defaults", () => {
     expect(mockDb.update).not.toHaveBeenCalled();
   });
 
-  it("creates separate external customer identities for two owned organizations", async () => {
+  it("only provisions the oldest owned organization for legacy multiple owners", async () => {
     mockDb.select
       .mockReturnValueOnce(selectResult([{ emailVerified: true }], true))
       .mockReturnValueOnce(
@@ -162,12 +162,8 @@ describe("POST /api/auth/setup-defaults", () => {
         }),
       }),
     );
-    expect(mockPolarCreate).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({ externalId: "organization:org-b" }),
-    );
+    expect(mockPolarCreate).toHaveBeenCalledTimes(1);
     expect(updateSet).toHaveBeenCalledWith({ polarCustomerId: "customer-a" });
-    expect(updateSet).toHaveBeenCalledWith({ polarCustomerId: "customer-b" });
   });
 
   it("does not establish billing bindings for organizations the user does not own", async () => {
@@ -185,6 +181,28 @@ describe("POST /api/auth/setup-defaults", () => {
     expect(mockDb.transaction).not.toHaveBeenCalled();
   });
 
+  it("uses the oldest owner ID chosen under the user lock after a concurrent setup wins", async () => {
+    mockDb.select.mockReset().mockReturnValueOnce(selectResult([{ emailVerified: true }], true))
+      .mockReturnValueOnce(selectResult([]))
+      .mockReturnValueOnce({ from: jest.fn().mockReturnThis(), where: jest.fn().mockReturnThis(), orderBy: jest.fn().mockReturnThis(), limit: jest.fn().mockResolvedValue([]) });
+    (auth.api.getSession as unknown as jest.Mock).mockResolvedValue({ session: { token: "browser-token" } });
+    const tx = {
+      select: jest.fn().mockReturnValueOnce({ from: jest.fn().mockReturnThis(), where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), for: jest.fn().mockResolvedValue([{ id: "user-1" }]) })
+        .mockReturnValueOnce(selectResult([
+          { organizationId: "invited", role: "project_editor" },
+          { organizationId: "oldest-owned", role: "org_owner" },
+          { organizationId: "newer-owned", role: "org_owner" },
+        ])),
+      insert: jest.fn(),
+    };
+    mockDb.transaction.mockImplementation(async callback => callback(tx));
+    expect((await POST(request())).status).toBe(200);
+    expect(mockPolarGetExternal).toHaveBeenCalledWith({ externalId: "organization:oldest-owned" });
+    expect(mockPolarGetExternal).toHaveBeenCalledTimes(1);
+    expect(mockDb.select).toHaveBeenCalledTimes(3);
+    expect(tx.insert).not.toHaveBeenCalled();
+  });
+
   it("rejects cross-origin repair requests before reading the session", async () => {
     const response = await POST(request("https://attacker.example"));
 
@@ -192,6 +210,22 @@ describe("POST /api/auth/setup-defaults", () => {
     expect(mockGetCurrentUser).not.toHaveBeenCalled();
     expect(mockDb.select).not.toHaveBeenCalled();
   });
+  it("rejects an unverified cloud signup before creating data or contacting Polar", async () => {
+    mockDb.select.mockReturnValueOnce(selectResult([{ emailVerified: false }], true));
+    expect((await POST(request())).status).toBe(403);
+    expect(mockDb.transaction).not.toHaveBeenCalled();
+    expect(mockPolarCreate).not.toHaveBeenCalled();
+  });
+
+  it("preserves self-hosted setup without any Polar calls", async () => {
+    (isCloudHosted as jest.Mock).mockReturnValue(false);
+    mockDb.select.mockReturnValueOnce(selectResult([{ organizationId: "org-owned", role: "org_owner" }]));
+    expect((await POST(request())).status).toBe(200);
+    expect(mockDb.transaction).not.toHaveBeenCalled();
+    expect(mockPolarGetExternal).not.toHaveBeenCalled();
+    expect(mockPolarCreate).not.toHaveBeenCalled();
+  });
+
   it.each([true, false])("selects signup defaults in the creation transaction (session exists: %s)", async (sessionExists) => {
     mockDb.select.mockReturnValueOnce(selectResult([{ emailVerified: true }], true))
       .mockReturnValueOnce(selectResult([]))
@@ -209,6 +243,8 @@ describe("POST /api/auth/setup-defaults", () => {
     const response = await POST(request());
     expect(response.status).toBe(sessionExists ? 200 : 401);
     expect(txSet).toHaveBeenCalledWith({ activeOrganizationId: "new-id", activeProjectId: "new-id" });
+    expect(values).toHaveBeenCalledWith(expect.objectContaining({ subscriptionPlan: null, subscriptionStatus: "none" }));
+    expect(tx.select.mock.results[0].value.for).toHaveBeenCalledWith("update");
     if (!sessionExists) expect(mockPolarGetExternal).not.toHaveBeenCalled();
   });
 

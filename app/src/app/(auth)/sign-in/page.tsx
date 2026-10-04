@@ -1,4 +1,7 @@
 "use client";
+
+import { clearProjectsCache } from "@/hooks/use-project-context";
+import { announceProjectChange, reloadProjectContext } from "@/lib/project-navigation";
 import { signIn } from "@/utils/auth-client";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useEffect, useCallback, useMemo, Suspense } from "react";
@@ -174,7 +177,8 @@ function SignInPageContent() {
             const acceptResult = await acceptResponse.json();
             if (acceptResponse.ok && acceptResult.success) {
               console.log(`✅ Auto-accepted invitation to ${acceptResult.data?.organizationName}`);
-              router.push("/");
+              announceProjectChange();
+              reloadProjectContext(clearProjectsCache);
               return;
             }
           } catch (acceptError) {

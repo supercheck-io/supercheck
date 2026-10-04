@@ -22,23 +22,23 @@ Supercheck brings Playwright test automation, k6 performance testing, uptime and
 
 Supercheck combines capabilities that are commonly split across test automation, synthetic monitoring, load testing, status communication, and incident-investigation products. The comparison below describes each product's primary, natively documented scope; integrations or adjacent products may extend it.
 
-| Platform | Primary focus | Pricing | Test automation | Synthetic / uptime | Load testing | Status pages | AI SRE |
-| --- | --- | --- | :---: | :---: | :---: | :---: | :---: |
-| **Supercheck** | Unified reliability | Open source | ✅ | ✅ | ✅ | ✅ | ✅ |
-| [Checkly](https://www.checklyhq.com/pricing/) | Synthetic monitoring & testing | Free + paid | ✅ | ✅ | — | ✅ | Partial |
-| [Datadog](https://www.datadoghq.com/pricing/?product=synthetic-monitoring) | Observability & synthetics | Usage-based SaaS | Partial | ✅ | — | — | Partial |
-| [Better Stack](https://betterstack.com/pricing) | Observability & incident management | Free + paid | — | ✅ | — | ✅ | Partial |
-| [UptimeRobot](https://uptimerobot.com/pricing/) | Uptime monitoring | Free + paid | — | ✅ | — | ✅ | — |
-| [BrowserStack](https://www.browserstack.com/pricing) | Browser & device cloud | Capacity-based SaaS | ✅ | Partial | — | — | Partial |
-| [Sauce Labs](https://saucelabs.com/pricing) | Browser & device cloud | Capacity-based SaaS | ✅ | Partial | — | — | Partial |
-| [Cypress Cloud](https://www.cypress.io/pricing) | Cypress orchestration | Free + paid | ✅ | — | — | — | Partial |
-| [Grafana k6](https://grafana.com/pricing/) | Performance & load testing | Free + usage-based | — | Partial | ✅ | — | Partial |
-| [Azure](https://azure.microsoft.com/en-us/pricing/details/app-testing/) | Cloud test execution | Usage-based | ✅ | — | ✅ | — | — |
-| [Statuspage](https://www.atlassian.com/software/statuspage/pricing) | Status communication | Free + paid | — | — | — | ✅ | — |
-| [Instatus](https://instatus.com/pricing) | Status pages & uptime | Free + paid | — | ✅ | — | ✅ | Partial |
-| [HolmesGPT](https://github.com/HolmesGPT/holmesgpt) | AI SRE investigation | Open source | — | Partial | — | — | ✅ |
-| [PagerDuty](https://www.pagerduty.com/platform/aiops/) | Event intelligence & response | Commercial SaaS | — | — | — | — | ✅ |
-| [Resolve AI](https://resolve.ai/) | AI production ops | Commercial | — | — | — | — | ✅ |
+| Platform | Primary focus | Test automation | Synthetic / uptime | Load testing | Status pages | AI SRE |
+| --- | --- | :---: | :---: | :---: | :---: | :---: |
+| **Supercheck** | Unified reliability | ✅ | ✅ | ✅ | ✅ | ✅ |
+| [Checkly](https://www.checklyhq.com/) | Synthetic monitoring & testing | ✅ | ✅ | — | ✅ | Partial |
+| [Datadog](https://www.datadoghq.com/) | Observability & synthetics | Partial | ✅ | — | — | Partial |
+| [Better Stack](https://betterstack.com/) | Observability & incident management | — | ✅ | — | ✅ | Partial |
+| [UptimeRobot](https://uptimerobot.com/) | Uptime monitoring | — | ✅ | — | ✅ | — |
+| [BrowserStack](https://www.browserstack.com/) | Browser & device cloud | ✅ | Partial | — | — | Partial |
+| [Sauce Labs](https://saucelabs.com/) | Browser & device cloud | ✅ | Partial | — | — | Partial |
+| [Cypress Cloud](https://www.cypress.io/) | Cypress orchestration | ✅ | — | — | — | Partial |
+| [Grafana k6](https://grafana.com/oss/k6/) | Performance & load testing | — | Partial | ✅ | — | Partial |
+| [Azure](https://azure.microsoft.com/en-us/products/playwright-testing) | Cloud test execution | ✅ | — | ✅ | — | — |
+| [Statuspage](https://www.atlassian.com/software/statuspage) | Status communication | — | — | — | ✅ | — |
+| [Instatus](https://instatus.com/) | Status pages & uptime | — | ✅ | — | ✅ | Partial |
+| [HolmesGPT](https://github.com/HolmesGPT/holmesgpt) | AI SRE investigation | — | Partial | — | — | ✅ |
+| [PagerDuty](https://www.pagerduty.com/platform/aiops/) | Event intelligence & response | — | — | — | — | ✅ |
+| [Resolve AI](https://resolve.ai/) | AI production ops | — | — | — | — | ✅ |
 
 ## Get started
 

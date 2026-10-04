@@ -11,10 +11,11 @@ import {
   projectMembers,
   session as sessionTable,
 } from "@/db/schema";
-import { eq, and, isNull, or } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import {
   getActiveOrganization,
   getUserProjects,
+  getSelectableProjects,
   getCurrentUser,
 } from "./session";
 import { getUserOrgRole } from "./rbac/middleware";
@@ -362,52 +363,41 @@ export async function switchProject(
       return { success: false, message: "Not authenticated" };
     }
 
-    const activeOrg = await getActiveOrganization();
-    if (!activeOrg) {
-      return { success: false, message: "No active organization" };
-    }
+    const [expectedSession] = await db.select({
+      activeOrganizationId: sessionTable.activeOrganizationId,
+      activeProjectId: sessionTable.activeProjectId,
+    }).from(sessionTable).where(and(
+      eq(sessionTable.token, sessionData.session.token), eq(sessionTable.userId, currentUser.id),
+    )).limit(1);
+    if (!expectedSession) return { success: false, message: "Not authenticated" };
 
-    // Verify user has access to this project
-    const userProjects = await getUserProjects(currentUser.id, activeOrg.id);
+    // Project membership, rather than the current tenant, determines whether a
+    // project can be selected. This includes teams joined by invitation.
+    const userProjects = await getSelectableProjects(currentUser.id);
     const targetProject = userProjects.find((p) => p.id === projectId);
 
     if (!targetProject) {
       return { success: false, message: "Project not found or access denied" };
     }
 
-    // Update session
+    // Select both scopes together so authorization and billing follow the host.
     const updateResult = await db
       .update(sessionTable)
-      .set({ activeOrganizationId: activeOrg.id, activeProjectId: projectId })
+      .set({ activeOrganizationId: targetProject.organizationId, activeProjectId: projectId })
       .where(and(
         eq(sessionTable.token, sessionData.session.token),
         eq(sessionTable.userId, currentUser.id),
-        or(eq(sessionTable.activeOrganizationId, activeOrg.id), isNull(sessionTable.activeOrganizationId)),
+        expectedSession.activeOrganizationId === null ? isNull(sessionTable.activeOrganizationId)
+          : eq(sessionTable.activeOrganizationId, expectedSession.activeOrganizationId),
+        expectedSession.activeProjectId === null ? isNull(sessionTable.activeProjectId)
+          : eq(sessionTable.activeProjectId, expectedSession.activeProjectId),
       ))
       .returning({ activeProjectId: sessionTable.activeProjectId });
 
+    // RETURNING confirms this write. A later read could observe another tab's
+    // successful selection and incorrectly report that our update failed.
     if (updateResult.length === 0) {
-      return {
-        success: false,
-        message: "Failed to update session - please try logging in again",
-      };
-    }
-
-    // Verify the update worked by reading it back
-    const verifySession = await db
-      .select({ activeProjectId: sessionTable.activeProjectId })
-      .from(sessionTable)
-      .where(eq(sessionTable.token, sessionData.session.token))
-      .limit(1);
-
-    if (
-      verifySession.length === 0 ||
-      verifySession[0].activeProjectId !== projectId
-    ) {
-      return {
-        success: false,
-        message: "Session update failed - please try again",
-      };
+      return { success: false, message: "Project selection changed. Refresh and try again." };
     }
 
     const projectContext: ProjectContext = {

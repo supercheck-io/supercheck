@@ -27,9 +27,9 @@ describe("pricing defaults and copy", () => {
     expect(
       PRICING_FAQS.find(
         (f) =>
-          f.question === "Does one subscription cover multiple organizations?",
+          f.question === "Does one subscription cover the projects in my organization?",
       )?.answer,
-    ).toContain("separate for each organization");
+    ).toContain("all projects within it share your monthly subscription");
     expect(
       PRICING_FAQS.find((f) => f.question === "How is usage tracked?")?.answer,
     ).toContain("rather than accumulated active VU-time");
