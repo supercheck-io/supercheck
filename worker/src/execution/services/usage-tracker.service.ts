@@ -1,3 +1,4 @@
+import { ceilUsageCostCents } from '../../common/utils/usage-cost';
 import { v7 as uuidv7 } from 'uuid';
 import {
   Injectable,
@@ -44,6 +45,8 @@ function isPolarEnabled(): boolean {
  */
 @Injectable()
 export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
+  private lastMigrationWarningAt = Number.NEGATIVE_INFINITY;
+
   private readonly logger = new Logger(UsageTrackerService.name);
   private recoveryTimer?: ReturnType<typeof setInterval>;
   private recovering = false;
@@ -581,9 +584,13 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
       ) {
         throw error;
       }
-      this.logger.warn(
-        '[Usage] Migration 0025 is pending; admission uses legacy K6 pricing',
-      );
+      const now = Date.now();
+      if (now - this.lastMigrationWarningAt >= 60_000) {
+        this.lastMigrationWarningAt = now;
+        this.logger.warn(
+          '[Usage] Migration 0025 is pending; admission uses legacy K6 pricing',
+        );
+      }
       const legacy = await this.db.query.overagePricing.findFirst({
         where,
         columns: { k6VuMinutePriceCentsOverride: false },
@@ -642,9 +649,9 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
     );
     const totalOverageCents =
       playwrightOverage * prices.playwrightMinutePriceCents +
-      Math.ceil(
-        k6Overage *
-          (prices.k6VuMinutePriceCentsOverride ?? prices.k6VuMinutePriceCents),
+      ceilUsageCostCents(
+        k6Overage,
+        prices.k6VuMinutePriceCentsOverride ?? prices.k6VuMinutePriceCents,
       ) +
       Math.ceil(sreOverage * prices.sreInvestigationUnitPriceCents);
     if (!Number.isFinite(totalOverageCents)) {

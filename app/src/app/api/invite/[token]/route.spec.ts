@@ -1,8 +1,9 @@
 /** @jest-environment node */
 
 import { NextRequest } from "next/server";
+import { PgDialect } from "drizzle-orm/pg-core";
 
-jest.mock("@/utils/db", () => ({ db: { select: jest.fn(), transaction: jest.fn() } }));
+jest.mock("@/utils/db", () => ({ db: { select: jest.fn(), update: jest.fn(), transaction: jest.fn() } }));
 jest.mock("@/utils/auth", () => ({ auth: { api: { getSession: jest.fn() } } }));
 jest.mock("@/lib/auth-context", () => ({
   requireUserAuthContext: jest.fn(), isAuthError: jest.fn(),
@@ -14,14 +15,14 @@ jest.mock("@/lib/feature-flags", () => ({ isCloudHosted: jest.fn(() => true) }))
 import { GET, POST } from "./route";
 import { isCloudHosted } from "@/lib/feature-flags";
 
-const { db } = jest.requireMock("@/utils/db") as { db: { select: jest.Mock; transaction: jest.Mock } };
+const { db } = jest.requireMock("@/utils/db") as { db: { select: jest.Mock; update: jest.Mock; transaction: jest.Mock } };
 const { auth } = jest.requireMock("@/utils/auth") as { auth: { api: { getSession: jest.Mock } } };
 const { requireUserAuthContext } = jest.requireMock("@/lib/auth-context") as { requireUserAuthContext: jest.Mock };
 const { getCurrentUser } = jest.requireMock("@/lib/session") as { getCurrentUser: jest.Mock };
 
 function selectRows(rows: unknown[]) {
   const query = {
-    from: jest.fn(), innerJoin: jest.fn(), where: jest.fn(), limit: jest.fn().mockResolvedValue(rows),
+    from: jest.fn(), innerJoin: jest.fn(), where: jest.fn(), orderBy: jest.fn().mockReturnThis(), limit: jest.fn().mockResolvedValue(rows),
   };
   query.from.mockReturnValue(query);
   query.innerJoin.mockReturnValue(query);
@@ -39,6 +40,7 @@ const context = { params: Promise.resolve({ token: "invite-1" }) };
 describe("invitation privacy and acceptance", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    db.select.mockReset();
     (isCloudHosted as unknown as jest.Mock).mockReturnValue(true);
     db.select.mockReturnValue(selectRows([invite]));
     auth.api.getSession.mockResolvedValue(null);
@@ -81,18 +83,64 @@ describe("invitation privacy and acceptance", () => {
     expect(db.transaction).not.toHaveBeenCalled();
   });
 
-  it("allows acceptance by an unverified account with the invited email in self-hosted mode", async () => {
-    (isCloudHosted as unknown as jest.Mock).mockReturnValue(false);
-    const selfHostedInvite = { ...invite, role: "project_viewer" };
-    db.select
-      .mockReturnValueOnce(selectRows([selfHostedInvite]))
+  function acceptance({ projectRows = [{ id: "invited-project" }], sessionRows = [{ id: "session" }], claimRows = [{ id: invite.id }] } = {}) {
+    (isCloudHosted as jest.Mock).mockReturnValue(false);
+    auth.api.getSession.mockResolvedValue({ session: { token: "browser-token" } });
+    db.select.mockReset().mockReturnValueOnce(selectRows([{ ...invite, role: "project_viewer" }]))
       .mockReturnValueOnce(selectRows([]));
-    db.transaction.mockImplementation(async (cb) => cb({
-      insert: jest.fn().mockReturnValue({ values: jest.fn().mockResolvedValue([]) }),
-      update: jest.fn().mockReturnValue({ set: jest.fn().mockReturnValue({ where: jest.fn().mockResolvedValue([]) }) }),
-    }));
+    const claimWhere = jest.fn().mockReturnValue({ returning: jest.fn().mockResolvedValue(claimRows) });
+    const sessionSet = jest.fn().mockReturnValue({ where: jest.fn().mockReturnValue({ returning: jest.fn().mockResolvedValue(sessionRows) }) });
+    const insert = jest.fn().mockReturnValue({ values: jest.fn().mockReturnValue({ onConflictDoNothing: jest.fn().mockResolvedValue([]) }) });
+    const tx = {
+      select: jest.fn().mockReturnValue(selectRows(projectRows)), insert,
+      update: jest.fn().mockReturnValueOnce({ set: jest.fn().mockReturnValue({ where: claimWhere }) })
+        .mockReturnValue({ set: sessionSet }),
+    };
+    db.transaction.mockImplementation(async cb => cb(tx));
+    return { tx, sessionSet, claimWhere };
+  }
+
+  it("allows an unverified self-hosted account to accept and select the organization atomically", async () => {
+    const { sessionSet, claimWhere } = acceptance();
     const response = await POST(new NextRequest("http://localhost/api/invite/invite-1", { method: "POST" }), context);
     expect(response.status).toBe(200);
-    expect(db.transaction).toHaveBeenCalled();
+    expect(sessionSet).toHaveBeenCalledWith({ activeOrganizationId: "org-1", activeProjectId: "invited-project" });
+    const claim = new PgDialect().sqlToQuery(claimWhere.mock.calls[0][0]);
+    expect(claim.sql).toContain('"invitation"."status" =');
+    expect(claim.sql).toContain('"invitation"."expires_at" >');
+    expect(claim.params).toContain("pending");
+    expect(db.update).not.toHaveBeenCalled();
+  });
+
+  it("clears an unrelated project when the invited organization has no project", async () => {
+    const { sessionSet } = acceptance({ projectRows: [] });
+    const response = await POST(new NextRequest("http://localhost/api/invite/invite-1", { method: "POST" }), context);
+    expect(response.status).toBe(200);
+    expect(sessionSet).toHaveBeenCalledWith({ activeOrganizationId: "org-1", activeProjectId: null });
+  });
+
+  it("rolls back acceptance when the authenticated session no longer exists", async () => {
+    acceptance({ sessionRows: [] });
+    const response = await POST(new NextRequest("http://localhost/api/invite/invite-1", { method: "POST" }), context);
+    expect(response.status).toBe(401);
+    await expect(db.transaction.mock.results[0].value).rejects.toThrow("INVITE_SESSION_CHANGED");
+    expect(db.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects a concurrent acceptance or cancellation before changing memberships or session", async () => {
+    const { tx, sessionSet } = acceptance({ claimRows: [] });
+    const response = await POST(new NextRequest("http://localhost/api/invite/invite-1", { method: "POST" }), context);
+    expect(response.status).toBe(400);
+    expect(tx.insert).not.toHaveBeenCalled();
+    expect(sessionSet).not.toHaveBeenCalled();
+    await expect(db.transaction.mock.results[0].value).rejects.toThrow("INVITE_ALREADY_USED");
+  });
+
+  it("requires an interactive session before consuming an invitation", async () => {
+    acceptance();
+    auth.api.getSession.mockResolvedValue(null);
+    const response = await POST(new NextRequest("http://localhost/api/invite/invite-1", { method: "POST" }), context);
+    expect(response.status).toBe(401);
+    expect(db.transaction).not.toHaveBeenCalled();
   });
 });

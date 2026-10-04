@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="generator" content="archify 2.17.0-dev.1">
-  <title>Copilot Chat</title>
+  <title>Copilot Chat Diagram</title>
   <script>
     // Resolve the theme before first paint so light-preference users don't
     // see a dark flash. The toolbar script below re-applies with UI state.
@@ -5212,11 +5212,11 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         </g>
         </g>
 
-        <g data-edge-from="api" data-edge-to="ai" data-edge-label="streamText - 4 steps - 45 s" data-edge-key="3" data-edge-id="message-4">
+        <g data-edge-from="api" data-edge-to="ai" data-edge-label="bounded AI response" data-edge-key="3" data-edge-id="message-4">
           <path data-composition-edge-from="api" data-composition-edge-to="ai" data-composition-edge-id="message-4" data-composition-points="473.7,244;796.9,244" d="M 473.7 244 L 796.9 244" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
         <g data-detail="context">
-          <rect x="559.0999999999999" y="224" width="152.4" height="16" rx="3" class="c-mask"/>
-          <text x="635.3" y="234" class="t-backend" font-size="9" text-anchor="middle">streamText - 4 steps - 45 s</text>
+          <rect x="579.9" y="224" width="110.8" height="16" rx="3" class="c-mask"/>
+          <text x="635.3" y="234" class="t-backend" font-size="9" text-anchor="middle">bounded AI response</text>
         </g>
         </g>
 
@@ -5604,9 +5604,9 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <h3>Scoped access</h3>
         </div>
         <ul>
-          <li>&bull; 30 messages per minute per user in Redis; failure fails closed</li>
+          <li>&bull; Authentication, permissions, and rate limits protect chat</li>
           <li>&bull; Conversations are scoped to organization, project, and user</li>
-          <li>&bull; History caps at 50 messages and 20,000 characters</li>
+          <li>&bull; Conversation context is bounded</li>
         </ul>
       </div>
 
@@ -5616,9 +5616,9 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <h3>Agent limits</h3>
         </div>
         <ul>
-          <li>&bull; 4 model steps, 1200 output tokens, 45 second timeout</li>
-          <li>&bull; Live search is capped at 10 rows and 15 seconds</li>
-          <li>&bull; Assistant message is persisted when the stream finishes</li>
+          <li>&bull; Model steps, output size, and execution time are bounded</li>
+          <li>&bull; Live searches are limited by time and result size</li>
+          <li>&bull; Assistant messages are saved when the stream finishes</li>
         </ul>
       </div>
     </div>

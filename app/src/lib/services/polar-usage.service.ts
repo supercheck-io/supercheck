@@ -1,3 +1,4 @@
+import { ceilUsageCostCents } from "@/lib/billing/usage-cost";
 import { DEFAULT_OVERAGE_PRICING_CENTS } from "@/lib/billing/pricing-defaults";
 /**
  * Polar Usage Service
@@ -343,8 +344,8 @@ class PolarUsageService {
     const playwrightOverageCost =
       playwrightOverage *
       (pricing?.playwrightMinutePriceCents ?? fallbackPricing.playwrightMinutes);
-    const k6OverageCost = Math.ceil(
-      k6Overage * (pricing?.k6VuMinutePriceCentsOverride ?? pricing?.k6VuMinutePriceCents ?? fallbackPricing.k6VuMinutes)
+    const k6OverageCost = ceilUsageCostCents(
+      k6Overage, (pricing?.k6VuMinutePriceCentsOverride ?? pricing?.k6VuMinutePriceCents ?? fallbackPricing.k6VuMinutes)
     );
     // AI credits use hard-limit model (no overage billing)
     const aiCreditsOverageCost = 0;

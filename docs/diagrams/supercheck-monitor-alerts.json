@@ -128,7 +128,7 @@
       "from": "worker",
       "to": "target",
       "y": 216,
-      "label": "probe - HTTP / TCP / Playwright",
+      "label": "probe configured monitor type",
       "variant": "emphasis"
     },
     {
@@ -220,18 +220,18 @@
       "dot": "emerald",
       "title": "Status aggregation",
       "items": [
-        "Each region saves its own row; the Redis key expires in 120 seconds",
-        "all / majority / any strategies decide the overall status",
-        "Failure and recovery thresholds cap follow-up alerts at 3"
+        "Each location saves its own result",
+        "all / majority / any strategies decide overall status",
+        "Configured thresholds control failure and recovery alerts"
       ]
     },
     {
       "dot": "orange",
       "title": "Alert triage",
       "items": [
-        "Fan-out to email, Slack, webhook, Telegram, Discord, Teams",
-        "Every attempt lands in alert_history",
-        "Optional AI SRE incident and background triage"
+        "Notifications use your configured alert channels",
+        "Delivery attempts are recorded in alert history",
+        "Optional AI SRE triage opens an incident after a sent alert"
       ]
     }
   ],

@@ -476,6 +476,8 @@ export const auth = betterAuth({
     }),
     organizationPlugin({
       // Disable automatic organization creation - we handle this manually
+      // Custom /api/organizations performs atomic owner/project/session bootstrap.
+      // Keep the generic plugin creation route disabled.
       allowUserToCreateOrganization: false,
       organizationLimit: parseInt(
         process.env.MAX_ORGANIZATIONS_PER_USER || "5",

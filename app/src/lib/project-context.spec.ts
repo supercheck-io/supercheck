@@ -15,7 +15,7 @@ jest.mock("@/utils/auth", () => ({
 }));
 
 jest.mock("@/utils/db", () => ({
-  db: {},
+  db: { select: jest.fn(), update: jest.fn() },
 }));
 
 jest.mock("./session", () => ({
@@ -46,7 +46,9 @@ jest.mock("./rbac/role-normalizer", () => ({
 import { headers } from "next/headers";
 import { getCachedAuthSession } from "@/lib/session-cache";
 import { getUnifiedAuthContext } from "./rbac/unified-auth";
-import { requireProjectContext } from "./project-context";
+import { db } from "@/utils/db";
+import { getActiveOrganization, getCurrentUser, getUserProjects } from "./session";
+import { getCurrentProjectContext, requireProjectContext } from "./project-context";
 
 const mockHeaders = headers as jest.Mock;
 const mockGetCachedAuthSession = getCachedAuthSession as jest.Mock;
@@ -114,4 +116,33 @@ describe("requireProjectContext", () => {
       expect(context.organizationId).toBe("org-1");
     },
   );
+});
+
+
+describe("default project recovery", () => {
+  const set = jest.fn();
+  const returning = jest.fn();
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockGetCachedAuthSession.mockResolvedValue({ session: { token: "session-token" }, user: { id: "user-1" } });
+    (getCurrentUser as jest.Mock).mockResolvedValue({ id: "user-1" });
+    (getActiveOrganization as jest.Mock).mockResolvedValue({ id: "org-b" });
+    (getUserProjects as jest.Mock).mockResolvedValue([{ id: "project-b", name: "Project B", organizationId: "org-b", isDefault: true, role: "org_owner" }]);
+    const rows = (values: unknown[]) => ({ from: jest.fn().mockReturnThis(), where: jest.fn().mockReturnThis(), limit: jest.fn().mockResolvedValue(values) });
+    (db.select as jest.Mock).mockReset().mockReturnValueOnce(rows([{ activeOrganizationId: "org-b", activeProjectId: "project-a", userId: "user-1" }]))
+      .mockReturnValueOnce(rows([{ id: "project-a", organizationId: "org-a" }]));
+    returning.mockResolvedValue([{ id: "session-id" }]);
+    set.mockReturnValue({ where: jest.fn().mockReturnValue({ returning }) });
+    (db.update as jest.Mock).mockReturnValue({ set });
+  });
+
+  it("recovers a stale project using the selected organization's default", async () => {
+    expect(await getCurrentProjectContext()).toMatchObject({ id: "project-b", organizationId: "org-b" });
+    expect(set).toHaveBeenCalledWith({ activeOrganizationId: "org-b", activeProjectId: "project-b" });
+  });
+
+  it("returns no stale project when a newer selection wins the conditional update", async () => {
+    returning.mockResolvedValue([]);
+    expect(await getCurrentProjectContext()).toBeNull();
+  });
 });

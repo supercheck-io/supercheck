@@ -11,6 +11,12 @@ jest.mock("@/components/billing/spending-limits", () => ({
   ),
 }));
 
+const mockUseOrganizations = jest.fn(() => ({
+  activeOrganization: { id: "org_1", name: "Test organization", role: "org_owner", subscriptionStatus: "none" },
+  isPending: false, isError: false,
+}));
+jest.mock("@/hooks/use-organizations", () => ({ useOrganizations: () => mockUseOrganizations() }));
+
 const meter = { used: 0, included: 100, overage: 0, percentage: 0 };
 const resource = { current: 1, limit: 5, remaining: 4, percentage: 20 };
 const subscription = {
@@ -24,7 +30,7 @@ const billing = {
   planFeatures: { dataRetentionDays: 7, aggregatedDataRetentionDays: 30 },
 };
 const pricing = { plans: [{
-  id: "pro", price: 149,
+  id: "pro", name: "Pro", price: 149,
   features: { playwrightMinutes: 10000, k6VuMinutes: 75000, sreInvestigationUnits: 100 },
   overagePricing: { playwrightMinutes: 0.02, k6VuMinutes: 0.0025, sreInvestigationUnits: 0.5 },
 }] };
@@ -33,6 +39,7 @@ describe("SubscriptionTab", () => {
   const originalFetch = global.fetch;
   const fetchMock = jest.fn();
   beforeEach(() => {
+    mockUseOrganizations.mockReturnValue({ activeOrganization: { id: "org_1", name: "Test organization", role: "org_owner", subscriptionStatus: "none" }, isPending: false, isError: false });
     fetchMock.mockReset().mockImplementation(async (url: string) => ({
       ok: true,
       json: async () => url.endsWith("/current") ? billing
@@ -134,6 +141,16 @@ describe("SubscriptionTab", () => {
     expect(screen.getByText(/this organization only/)).toBeInTheDocument();
   });
 
+  it("does not overstate Pro K6 cost at a floating-point boundary", async () => {
+    fetchMock.mockImplementation(async (url: string) => ({ ok: true, json: async () =>
+      url.endsWith("/current") ? { ...billing, usage: { ...billing.usage,
+        k6VuMinutes: { ...meter, used: 75028 },
+      } } : url.endsWith("/pricing") ? pricing : { spending: { currentDollars: 300 } },
+    }));
+    render(<SubscriptionTab currentUserRole="org_owner" />);
+    expect(await screen.findByText(/Pro would cost about \$149.07/)).toHaveTextContent("$199.93 less");
+  });
+
   it("keeps billing available when the optional plan comparison fails", async () => {
     fetchMock.mockImplementation(async (url: string) => {
       if (url.endsWith("/pricing")) throw new Error("Pricing unavailable");
@@ -165,4 +182,22 @@ describe("SubscriptionTab", () => {
     expect(screen.getByRole("link", { name: "Get in touch" })).toHaveAttribute("href", "mailto:hello@supercheck.io");
     expect(screen.queryByText(/annual/i)).not.toBeInTheDocument();
   });
+  it("does not let an invited member start a personal subscription for the organization", async () => {
+    mockUseOrganizations.mockReturnValue({ activeOrganization: { id: "org_1", name: "Invited organization", role: "project_editor", subscriptionStatus: "none" }, isPending: false, isError: false });
+    render(<SubscribePage />);
+    expect(await screen.findByText("Subscription for Invited organization")).toBeInTheDocument();
+    expect(screen.getByText(/Only this organization's owner can subscribe/)).toBeInTheDocument();
+    const button = screen.getByRole("button", { name: "Get Started with Pro" });
+    expect(button).toBeDisabled();
+    fireEvent.click(button);
+    expect(fetchMock).not.toHaveBeenCalledWith("/api/billing/checkout", expect.anything());
+  });
+
+  it("directs an existing paid owner to manage the plan instead of buying it again", async () => {
+    mockUseOrganizations.mockReturnValue({ activeOrganization: { id: "org_1", name: "Paid organization", role: "org_owner", subscriptionStatus: "active" }, isPending: false, isError: false });
+    render(<SubscribePage />);
+    expect(await screen.findByRole("link", { name: "Manage subscription" })).toHaveAttribute("href", "/org-admin?tab=subscription");
+    expect(screen.getByRole("button", { name: "Get Started with Pro" })).toBeDisabled();
+  });
+
 });

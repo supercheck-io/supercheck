@@ -43,11 +43,13 @@ jest.mock('@/utils/db', () => ({
 jest.mock('drizzle-orm', () => ({
   eq: jest.fn(),
   and: jest.fn(),
+  asc: jest.fn(column => ({ direction: "asc", column })),
+  desc: jest.fn(column => ({ direction: "desc", column })),
 }));
 
 jest.mock('@/db/schema', () => ({
   organization: { id: 'org_id', name: 'org_name' },
-  projects: { id: 'proj_id', name: 'proj_name' },
+  projects: { id: 'proj_id', name: 'proj_name', isDefault: 'proj_default', createdAt: 'proj_created' },
   member: { userId: 'member_user_id', organizationId: 'member_org_id' },
   session: { token: 'session_token', userId: 'session_user_id' },
   user: { id: 'user_id' },
@@ -64,7 +66,7 @@ jest.mock('./rbac/middleware', () => ({
   getUserOrgRole: (...args: unknown[]) => mockRbacModule.getUserOrgRole(...args),
 }));
 
-jest.mock('./rbac/permissions', () => ({
+jest.mock('./rbac/permissions-client', () => ({
   Role: {
     SUPER_ADMIN: 'SUPER_ADMIN',
     ORG_OWNER: 'ORG_OWNER',
@@ -76,9 +78,10 @@ jest.mock('./rbac/permissions', () => ({
 }));
 
 // Import after mocks
-import { Role } from './rbac/permissions';
+import { Role } from './rbac/permissions-client';
 import {
   getCurrentUser,
+  getActiveOrganization,
   getUserOrganizations,
   getUserProjects,
   getUserProjectRole,
@@ -366,13 +369,14 @@ describe('Session Management', () => {
         };
         
         // First call: get projects, second call: get project members
+        const orderBy = jest.fn().mockResolvedValue([mockProject]);
         let callCount = 0;
         const selectChain = {
           from: jest.fn().mockReturnThis(),
           where: jest.fn().mockImplementation(() => {
             callCount++;
             if (callCount === 1) {
-              return Promise.resolve([mockProject]);
+              return { orderBy };
             }
             return Promise.resolve([]);
           }),
@@ -384,6 +388,11 @@ describe('Session Management', () => {
         expect(result).toHaveLength(1);
         expect(result[0].id).toBe(testProjectId);
         expect(result[0].role).toBe(Role.ORG_ADMIN);
+        expect(orderBy).toHaveBeenCalledWith(
+          { direction: "desc", column: "proj_default" },
+          { direction: "asc", column: "proj_created" },
+          { direction: "asc", column: "proj_id" },
+        );
       });
 
       it('should not inherit project-limited org role for unassigned projects', async () => {
@@ -416,7 +425,7 @@ describe('Session Management', () => {
           where: jest.fn().mockImplementation(() => {
             callCount++;
             if (callCount === 1) {
-              return Promise.resolve([mockAssignedProject, mockUnassignedProject]);
+              return { orderBy: jest.fn().mockResolvedValue([mockAssignedProject, mockUnassignedProject]) };
             }
             return Promise.resolve([
               { projectId: testProjectId, role: 'project_admin' },
@@ -859,4 +868,51 @@ describe('Session Management', () => {
       expect(result).toHaveLength(1);
     });
   });
+
+  describe('getActiveOrganization with multiple memberships', () => {
+    function queryRows(rows: unknown[], limited = false) {
+      const query = {
+        from: jest.fn().mockReturnThis(), innerJoin: jest.fn().mockReturnThis(),
+        where: jest.fn(), limit: jest.fn().mockResolvedValue(rows),
+      };
+      query.where.mockReturnValue(limited ? query : Promise.resolve(rows));
+      return query;
+    }
+    const orgA = { ...mockOrganization, id: 'org-a', createdAt: new Date('2020-01-01') };
+    const orgB = { ...mockOrganization, id: 'org-b', createdAt: new Date('2021-01-01') };
+
+    it('honors the selected organization even when another membership is returned first', async () => {
+      mockDbModule.select
+        .mockReturnValueOnce(queryRows([mockDbSession], true))
+        .mockReturnValueOnce(queryRows([orgA, orgB]))
+        .mockReturnValueOnce(queryRows([{ activeOrganizationId: 'org-b' }], true));
+      expect(await getActiveOrganization()).toMatchObject({ id: 'org-b', isActive: true });
+    });
+
+    it('does not grant access to a selected organization outside the user memberships', async () => {
+      mockDbModule.select
+        .mockReturnValueOnce(queryRows([mockDbSession], true))
+        .mockReturnValueOnce(queryRows([orgB, orgA]))
+        .mockReturnValueOnce(queryRows([{ activeOrganizationId: 'foreign-org' }], true));
+      expect(await getActiveOrganization()).toMatchObject({ id: 'org-a' });
+    });
+
+    it('recovers a legacy project-only session without changing its billing organization', async () => {
+      mockDbModule.select
+        .mockReturnValueOnce(queryRows([mockDbSession], true))
+        .mockReturnValueOnce(queryRows([orgA, orgB]))
+        .mockReturnValueOnce(queryRows([{ activeOrganizationId: null, activeProjectId: 'project-b' }], true))
+        .mockReturnValueOnce(queryRows([{ organizationId: 'org-b' }], true));
+      expect(await getActiveOrganization()).toMatchObject({ id: 'org-b' });
+    });
+
+    it('fails closed if the effective user no longer owns the session', async () => {
+      mockDbModule.select
+        .mockReturnValueOnce(queryRows([mockDbSession], true))
+        .mockReturnValueOnce(queryRows([orgA, orgB]))
+        .mockReturnValueOnce(queryRows([], true));
+      expect(await getActiveOrganization()).toBeNull();
+    });
+  });
+
 });

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { QueryProvider } from "@/lib/query-provider";
 import { CheckIcon } from "@/components/logo/supercheck-logo";
 import { SignOutButton } from "@/components/sign-out-button";
+import { OrganizationSwitcher } from "@/components/organization-switcher";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
@@ -38,12 +39,13 @@ export default async function OnboardingLayout({
         </div>
         {/* Header */}
         <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
-          <div className="container mx-auto px-4 py-4 flex items-center justify-between">
+          <div className="container mx-auto px-4 py-4 flex flex-wrap gap-3 items-center justify-between">
             <div className="flex items-center gap-2">
               <CheckIcon className="h-7 w-7" />
               <span className="font-semibold text-lg">Supercheck</span>
             </div>
-            <div className="flex items-center gap-4">
+            <div className="flex min-w-0 max-w-full flex-wrap items-center gap-4">
+              <OrganizationSwitcher />
               <span className="text-sm text-muted-foreground">
                 {session.user.email}
               </span>

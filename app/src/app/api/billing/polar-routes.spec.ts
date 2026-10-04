@@ -2,6 +2,10 @@
 
 import { NextRequest } from "next/server";
 
+const mockEnsureCustomer = jest.fn();
+jest.mock("@/lib/services/organization-customer", () => ({ ensurePolarCustomerAndLink: (...args: unknown[]) => mockEnsureCustomer(...args) }));
+jest.mock("@/lib/session", () => ({ getCurrentUser: jest.fn(async () => ({ id: "user_owner", email: "owner@example.com", name: "Owner" })) }));
+
 const mockCheckoutCreate = jest.fn();
 const mockCustomerSessionCreate = jest.fn();
 
@@ -114,10 +118,35 @@ describe("Polar billing routes", () => {
         products: ["product_pro"],
         metadata: { referenceId: "org_1" },
         successUrl:
-          "https://app.supercheck.io/billing/success?checkout_id={CHECKOUT_ID}",
+          "https://app.supercheck.io/billing/success?checkout_id={CHECKOUT_ID}&organization_id=org_1",
         returnUrl: "https://app.supercheck.io/subscribe",
       })
     );
+  });
+
+  it("reports a transient customer provisioning outage as a gateway failure", async () => {
+    mockEnsureCustomer.mockRejectedValueOnce(new Error("Polar unavailable"));
+    mockFindOrganization.mockResolvedValueOnce({ id: "org_1", polarCustomerId: null, subscriptionStatus: "none" });
+    const response = await checkoutPost(request("/api/billing/checkout", { plan: "plus" }));
+    expect(response.status).toBe(502);
+    expect(mockCheckoutCreate).not.toHaveBeenCalled();
+  });
+
+  it("repairs failed customer provisioning for only the selected organization", async () => {
+    mockFindOrganization.mockResolvedValue({ polarCustomerId: null, subscriptionStatus: "none" });
+    mockEnsureCustomer.mockResolvedValue("customer_org_1");
+    const response = await checkoutPost(request("/api/billing/checkout", { plan: "plus" }));
+    expect(response.status).toBe(200);
+    expect(mockEnsureCustomer).toHaveBeenCalledWith("user_owner", "owner@example.com", "Owner", "org_1", { throwOnError: true });
+    expect(mockCheckoutCreate).toHaveBeenCalledWith(expect.objectContaining({ customerId: "customer_org_1" }));
+  });
+
+  it("rejects stale organization checkout and portal actions before contacting Polar", async () => {
+    const expected = "11111111-1111-4111-8111-111111111111";
+    expect((await checkoutPost(request("/api/billing/checkout", { plan: "plus", organizationId: expected }))).status).toBe(409);
+    expect((await portalPost(request("/api/billing/portal", { organizationId: expected }))).status).toBe(409);
+    expect(mockCheckoutCreate).not.toHaveBeenCalled();
+    expect(mockCustomerSessionCreate).not.toHaveBeenCalled();
   });
 
   it("rejects checkout from a non-owner", async () => {

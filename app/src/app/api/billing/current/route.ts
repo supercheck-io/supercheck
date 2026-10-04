@@ -85,6 +85,7 @@ export async function GET() {
       included > 0 ? Math.round((used / included) * 100) : 100;
 
     return NextResponse.json({
+      organizationId,
       subscription: {
         plan: effectivePlan,
         status: access.status ?? "none",

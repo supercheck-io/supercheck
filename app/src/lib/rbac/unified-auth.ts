@@ -147,7 +147,12 @@ export async function getUnifiedAuthContext(
                 eq(member.userId, s.userId)
             )
          )
-         .where(eq(projects.id, targetProjectId))
+         .where(and(
+           eq(projects.id, targetProjectId),
+           eq(projects.status, "active"),
+           // Explicit project overrides retain their membership-checked scope.
+           !requestedProjectId && s.activeOrgId ? eq(projects.organizationId, s.activeOrgId) : undefined,
+         ))
          .limit(1);
 
        const ctx = contextResult[0];
@@ -219,7 +224,7 @@ export async function getUnifiedAuthContext(
         projectName: null,
         projectRole: null,
         isDefaultProject: null,
-        organizationId: s.activeOrgId,
+        organizationId: null, // No project resolved, so tenant membership is unverified.
         organizationSlug: null, // Would need another query, but rare case for API routes requiring project
         organizationRole: null,
         subscriptionStatus: null,

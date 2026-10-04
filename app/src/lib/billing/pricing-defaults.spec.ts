@@ -29,9 +29,13 @@ describe("pricing defaults and copy", () => {
         (f) =>
           f.question === "Does one subscription cover multiple organizations?",
       )?.answer,
-    ).toContain("team members, projects");
+    ).toContain("separate for each organization");
     expect(
       PRICING_FAQS.find((f) => f.question === "How is usage tracked?")?.answer,
     ).toContain("rather than accumulated active VU-time");
   });
+});
+
+it.each([[0.0125, "$0.0125/VU-min"], [0.010001, "$0.010001/VU-min"]])("preserves custom rate %s", (price, expected) => {
+  expect(formatOveragePrice(Number(price), "VU-min")).toBe(expected);
 });

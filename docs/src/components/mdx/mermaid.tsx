@@ -5,39 +5,46 @@ import { useEffect, useId, useRef, useState, type ReactElement } from 'react';
 
 export function Mermaid({ chart }: { chart: string }): ReactElement {
   const id = useId();
+  const renderGeneration = useRef(0);
   const { resolvedTheme } = useTheme();
   const [svg, setSvg] = useState<string>('');
-  const hasRun = useRef(false);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
-    if (hasRun.current || typeof window === 'undefined') return;
-    hasRun.current = true;
+    let cancelled = false;
+    const renderId = `${id.replace(/[^a-zA-Z0-9_-]/g, '-')}-${++renderGeneration.current}`;
 
     // Dynamically import mermaid only on client-side
-    import('mermaid').then((mermaidModule) => {
+    import('mermaid').then(async (mermaidModule) => {
+      if (cancelled) return;
       const mermaid = mermaidModule.default;
 
       mermaid.initialize({
         startOnLoad: false,
-        securityLevel: 'loose',
+        securityLevel: 'strict',
         theme: resolvedTheme === 'dark' ? 'dark' : 'default',
         fontFamily: 'inherit',
       });
 
-      mermaid
-        .render(id, chart)
-        .then((result) => setSvg(result.svg))
-        .catch((e) => {
-          console.error('Mermaid rendering error:', e);
-          hasRun.current = false;
-        });
+      const result = await mermaid.render(renderId, chart);
+      if (!cancelled) {
+        setSvg(result.svg);
+        setFailed(false);
+      }
+    }).catch((error: unknown) => {
+      if (cancelled) return;
+      console.error('Mermaid rendering error:', error);
+      setFailed(true);
     });
+    return () => { cancelled = true; };
   }, [id, chart, resolvedTheme]);
 
-  if (!svg) {
+  if (failed || !svg) {
     return (
       <div className="my-4 flex flex-col items-center rounded-lg border bg-card p-4">
-        <div className="text-sm text-muted-foreground">Loading diagram...</div>
+        <div className="text-sm text-muted-foreground" role="status">
+          {failed ? 'Diagram unavailable. Reload the page to try again.' : 'Loading diagram...'}
+        </div>
       </div>
     );
   }
