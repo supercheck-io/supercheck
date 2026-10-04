@@ -24,6 +24,8 @@ function selectRows(rows: unknown[]) {
 }
 
 describe("organization management", () => {
+  const initialDemoMode = process.env.DEMO_MODE;
+  afterAll(() => { if (initialDemoMode === undefined) delete process.env.DEMO_MODE; else process.env.DEMO_MODE = initialDemoMode; });
   const tx = {
     select: jest.fn(), insert: jest.fn(), update: jest.fn(),
   };
@@ -33,6 +35,7 @@ describe("organization management", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     delete process.env.MAX_ORGANIZATIONS_PER_USER;
+    process.env.DEMO_MODE = "false";
     (getCurrentUser as jest.Mock).mockResolvedValue({ id: "owner", email: "owner@example.com", name: "Owner" });
     (getCachedAuthSession as jest.Mock).mockResolvedValue({ session: { token: "token" } });
     (isCloudHosted as jest.Mock).mockReturnValue(true);
@@ -44,10 +47,20 @@ describe("organization management", () => {
     tx.update.mockReturnValue({ set });
   });
 
+  it.each([true, false])("rejects demo creation in cloud mode=%s", async cloud => {
+    process.env.DEMO_MODE = "true";
+    (isCloudHosted as jest.Mock).mockReturnValue(cloud);
+    await expect(createOrganization("Demo team")).rejects.toMatchObject({ status: 403 });
+    expect(db.transaction).not.toHaveBeenCalled();
+    expect(ensurePolarCustomerAndLink).not.toHaveBeenCalled();
+  });
+
   it("starts a new cloud organization without inheriting the owner's existing subscription", async () => {
-    tx.select.mockReturnValueOnce(selectRows([{ emailVerified: true }]))
+    const ownerRows = selectRows([{ emailVerified: true }]);
+    tx.select.mockReturnValueOnce(ownerRows)
       .mockReturnValueOnce(selectRows([{ id: "paid-org-membership" }]));
     await expect(createOrganization("New team")).resolves.toMatchObject({ id: "new-id" });
+    expect(ownerRows.for).toHaveBeenCalledWith("update");
     expect(tx.insert).toHaveBeenCalledWith(organization);
     expect(values).toHaveBeenCalledWith(expect.objectContaining({ subscriptionPlan: null, subscriptionStatus: "none" }));
     expect(values).toHaveBeenCalledWith(expect.objectContaining({ organizationId: "new-id", userId: "owner", role: "org_owner" }));
@@ -80,9 +93,11 @@ describe("organization management", () => {
   });
 
   it("allows an invited member to switch and updates both session scopes together", async () => {
-    tx.select.mockReturnValueOnce(selectRows([{ id: "membership" }]))
+    const membershipRows = selectRows([{ id: "membership" }]);
+    tx.select.mockReturnValueOnce(membershipRows)
       .mockReturnValueOnce(selectRows([{ id: "project-b" }]));
     await expect(switchOrganization("org-b")).resolves.toEqual({ organizationId: "org-b", projectId: "project-b" });
+    expect(membershipRows.for).toHaveBeenCalledWith("share");
     expect(tx.update).toHaveBeenCalledWith(session);
     expect(set).toHaveBeenCalledWith({ activeOrganizationId: "org-b", activeProjectId: "project-b" });
     expect(ensurePolarCustomerAndLink).not.toHaveBeenCalled();

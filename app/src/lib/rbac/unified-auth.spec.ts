@@ -30,7 +30,7 @@ describe("organization and project consistency in unified auth", () => {
       { column: projects.status, value: "active" },
       { column: projects.organizationId, value: "org-b" },
     ] });
-    expect(context).toMatchObject({ organizationId: "org-b", projectId: null });
+    expect(context).toMatchObject({ isValid: true, organizationId: null, projectId: null });
   });
 
   it("preserves explicit project overrides for membership-checked access", async () => {

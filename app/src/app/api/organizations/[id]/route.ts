@@ -8,7 +8,7 @@ import { Role } from '@/lib/rbac/permissions';
 import { z } from 'zod';
 import { requireSameOriginRequest } from '@/lib/security/same-origin';
 class OrganizationDeletionError extends Error {
-  constructor(message: string, readonly status: 403 | 409) { super(message); }
+  constructor(message: string, readonly status: 403 | 404 | 409) { super(message); }
 }
 
 /**
@@ -242,7 +242,7 @@ export async function DELETE(
     await db.transaction(async tx => {
       const [org] = await tx.select({ subscriptionId: organization.subscriptionId, polarCustomerId: organization.polarCustomerId })
         .from(organization).where(eq(organization.id, organizationId)).limit(1).for('update');
-      if (!org) throw new OrganizationDeletionError('Organization not found', 409);
+      if (!org) throw new OrganizationDeletionError('Organization not found', 404);
       // Recheck ownership inside the transaction and hold it during deletion.
       const [ownership] = await tx.select({ id: member.id }).from(member)
         .where(and(eq(member.organizationId, organizationId), eq(member.userId, userId), eq(member.role, 'org_owner')))

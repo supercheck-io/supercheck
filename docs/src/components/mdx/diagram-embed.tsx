@@ -11,7 +11,7 @@ interface DiagramEmbedProps {
 
 /**
  * Embeds a self-contained, interactive Archify diagram from /public in a lazy
- * iframe with a full-screen escape hatch. The diagram HTML includes its own
+ * iframe with a link to open the viewer in a new tab. The diagram HTML includes its own
  * styles, scripts, and exports, so no external assets are required.
  */
 export function DiagramEmbed({ src, title, height = 820 }: DiagramEmbedProps): ReactElement {
@@ -29,9 +29,10 @@ export function DiagramEmbed({ src, title, height = 820 }: DiagramEmbedProps): R
           href={src}
           target="_blank"
           rel="noreferrer"
+          aria-label={`${title}: open diagram in a new tab`}
           className="font-medium underline underline-offset-4 hover:no-underline"
         >
-          Open full screen
+          Open diagram in new tab
         </a>
       </div>
     </div>

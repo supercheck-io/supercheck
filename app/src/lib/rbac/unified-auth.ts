@@ -224,7 +224,7 @@ export async function getUnifiedAuthContext(
         projectName: null,
         projectRole: null,
         isDefaultProject: null,
-        organizationId: s.activeOrgId,
+        organizationId: null, // No project resolved, so tenant membership is unverified.
         organizationSlug: null, // Would need another query, but rare case for API routes requiring project
         organizationRole: null,
         subscriptionStatus: null,

@@ -43,11 +43,13 @@ jest.mock('@/utils/db', () => ({
 jest.mock('drizzle-orm', () => ({
   eq: jest.fn(),
   and: jest.fn(),
+  asc: jest.fn(column => ({ direction: "asc", column })),
+  desc: jest.fn(column => ({ direction: "desc", column })),
 }));
 
 jest.mock('@/db/schema', () => ({
   organization: { id: 'org_id', name: 'org_name' },
-  projects: { id: 'proj_id', name: 'proj_name' },
+  projects: { id: 'proj_id', name: 'proj_name', isDefault: 'proj_default', createdAt: 'proj_created' },
   member: { userId: 'member_user_id', organizationId: 'member_org_id' },
   session: { token: 'session_token', userId: 'session_user_id' },
   user: { id: 'user_id' },
@@ -367,13 +369,14 @@ describe('Session Management', () => {
         };
         
         // First call: get projects, second call: get project members
+        const orderBy = jest.fn().mockResolvedValue([mockProject]);
         let callCount = 0;
         const selectChain = {
           from: jest.fn().mockReturnThis(),
           where: jest.fn().mockImplementation(() => {
             callCount++;
             if (callCount === 1) {
-              return Promise.resolve([mockProject]);
+              return { orderBy };
             }
             return Promise.resolve([]);
           }),
@@ -385,6 +388,11 @@ describe('Session Management', () => {
         expect(result).toHaveLength(1);
         expect(result[0].id).toBe(testProjectId);
         expect(result[0].role).toBe(Role.ORG_ADMIN);
+        expect(orderBy).toHaveBeenCalledWith(
+          { direction: "desc", column: "proj_default" },
+          { direction: "asc", column: "proj_created" },
+          { direction: "asc", column: "proj_id" },
+        );
       });
 
       it('should not inherit project-limited org role for unassigned projects', async () => {
@@ -417,7 +425,7 @@ describe('Session Management', () => {
           where: jest.fn().mockImplementation(() => {
             callCount++;
             if (callCount === 1) {
-              return Promise.resolve([mockAssignedProject, mockUnassignedProject]);
+              return { orderBy: jest.fn().mockResolvedValue([mockAssignedProject, mockUnassignedProject]) };
             }
             return Promise.resolve([
               { projectId: testProjectId, role: 'project_admin' },

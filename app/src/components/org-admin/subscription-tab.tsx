@@ -1,5 +1,7 @@
 "use client";
 
+import { ceilUsageCostCents } from "@/lib/billing/usage-cost";
+
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -293,8 +295,8 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
   const proEstimate = proPlan && data.subscription.plan === "plus"
     ? proPlan.price
       + Math.max(0, data.usage.playwrightMinutes.used - proPlan.features.playwrightMinutes) * proPlan.overagePricing.playwrightMinutes
-      + Math.ceil(Math.max(0, data.usage.k6VuMinutes.used - proPlan.features.k6VuMinutes) * proPlan.overagePricing.k6VuMinutes * 100) / 100
-      + Math.ceil(Math.max(0, data.usage.sreInvestigations.used - proPlan.features.sreInvestigationUnits) * proPlan.overagePricing.sreInvestigationUnits * 100) / 100
+      + ceilUsageCostCents(Math.max(0, data.usage.k6VuMinutes.used - proPlan.features.k6VuMinutes), Number((proPlan.overagePricing.k6VuMinutes * 100).toFixed(4))) / 100
+      + ceilUsageCostCents(Math.max(0, data.usage.sreInvestigations.used - proPlan.features.sreInvestigationUnits), Number((proPlan.overagePricing.sreInvestigationUnits * 100).toFixed(4))) / 100
     : null;
   const proSavings = estimatedTotal !== null && proEstimate !== null && Number.isFinite(proEstimate)
     ? estimatedTotal - proEstimate : 0;

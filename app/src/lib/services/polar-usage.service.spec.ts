@@ -128,7 +128,7 @@ describe("PolarUsageService retry idempotency", () => {
   });
 
   it.each([
-    [null, 3, 3], [0, 3, 0], [0.5, 3, 2], [0.25, 1000, 250],
+    [null, 3, 3], [0, 3, 0], [0.5, 3, 2], [0.25, 1000, 250], [0.25, 28, 7], [0.0175, 400, 7],
   ])("prices the period's K6 overage at override %s for %i units", async (override, overage, expected) => {
     const database = { query: {
       organization: { findFirst: jest.fn().mockResolvedValue({ subscriptionPlan: "pro", k6VuMinutesUsed: 75000 + overage }) },

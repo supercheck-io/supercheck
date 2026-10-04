@@ -38,7 +38,7 @@
           "pg",
           "you"
         ],
-        "note": "The completed investigation and timeline are persisted; responders can separately save a sanitized report snapshot."
+        "note": "Completed findings and citations are saved; interrupted or empty investigations are marked failed."
       }
     ]
   },
@@ -207,8 +207,8 @@
       "title": "Run admission",
       "items": [
         "Permission and feature flag required",
-        "Start returns a run ID before background execution",
-        "3 starts per 5 minutes; one active run per incident"
+        "Start returns before background execution",
+        "Only one active investigation per incident"
       ]
     },
     {
@@ -224,8 +224,8 @@
       "dot": "orange",
       "title": "Report review",
       "items": [
-        "Result and timeline are saved together",
-        "Snapshots and briefs are separate artifacts",
+        "Completed results include evidence citations",
+        "Interrupted or empty investigations fail without a completed report",
         "Humans apply fixes and confirm recovery"
       ]
     }

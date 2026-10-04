@@ -12,6 +12,7 @@ export async function ensurePolarCustomerAndLink(
   userEmail: string,
   userName: string | null,
   organizationId: string,
+  options: { throwOnError?: boolean } = {},
 ): Promise<string | null> {
   if (!isPolarEnabled()) return null;
   const config = getPolarConfig();
@@ -91,6 +92,7 @@ export async function ensurePolarCustomerAndLink(
       "[Polar] Customer setup failed:",
       error instanceof Error ? error.message : "Unknown error",
     );
+    if (options.throwOnError) throw error;
     return null;
   }
 }

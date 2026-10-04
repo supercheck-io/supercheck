@@ -45,6 +45,9 @@ export async function switchOrganization(organizationId: string) {
 }
 
 export async function createOrganization(name: string) {
+  if (process.env.DEMO_MODE === "true") {
+    throw new OrganizationManagementError("Organization creation is disabled in demo mode", 403);
+  }
   const { currentUser, token } = await requireOrganizationSession();
   const cloud = isCloudHosted();
   const result = await db.transaction(async tx => {

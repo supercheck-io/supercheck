@@ -255,7 +255,7 @@ paths:
                   code:
                     type: string
         "402":
-          description: Active subscription and available spending capacity required
+          description: Execution access denied
           content:
             application/json:
               schema:
@@ -1821,7 +1821,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
         "402":
-          description: Active subscription or available spending capacity required
+          description: Execution access denied
         "403":
           $ref: "#/components/responses/Forbidden"
         "404":
@@ -3333,8 +3333,8 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
-          description: Browser session required, same-origin check failed, email not
-            verified (creation), or not an organization member (switch)
+          description: Email verification is required before creating a cloud
+            organization, or organization creation is disabled in demo mode.
         "409":
           description: Cloud organization ownership limit reached
         "500":
@@ -3839,8 +3839,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
-          description: Browser session required, same-origin check failed, email not
-            verified (creation), or not an organization member (switch)
+          description: The user is not a member of the requested organization.
         "500":
           description: Internal server error
 components:

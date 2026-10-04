@@ -124,12 +124,20 @@ describe("Polar billing routes", () => {
     );
   });
 
+  it("reports a transient customer provisioning outage as a gateway failure", async () => {
+    mockEnsureCustomer.mockRejectedValueOnce(new Error("Polar unavailable"));
+    mockFindOrganization.mockResolvedValueOnce({ id: "org_1", polarCustomerId: null, subscriptionStatus: "none" });
+    const response = await checkoutPost(request("/api/billing/checkout", { plan: "plus" }));
+    expect(response.status).toBe(502);
+    expect(mockCheckoutCreate).not.toHaveBeenCalled();
+  });
+
   it("repairs failed customer provisioning for only the selected organization", async () => {
     mockFindOrganization.mockResolvedValue({ polarCustomerId: null, subscriptionStatus: "none" });
     mockEnsureCustomer.mockResolvedValue("customer_org_1");
     const response = await checkoutPost(request("/api/billing/checkout", { plan: "plus" }));
     expect(response.status).toBe(200);
-    expect(mockEnsureCustomer).toHaveBeenCalledWith("user_owner", "owner@example.com", "Owner", "org_1");
+    expect(mockEnsureCustomer).toHaveBeenCalledWith("user_owner", "owner@example.com", "Owner", "org_1", { throwOnError: true });
     expect(mockCheckoutCreate).toHaveBeenCalledWith(expect.objectContaining({ customerId: "customer_org_1" }));
   });
 

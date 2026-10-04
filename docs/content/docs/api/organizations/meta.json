@@ -4,6 +4,7 @@
   "pages": [
     "listOrganizations",
     "createOrganization",
+    "switchOrganization",
     "getCurrentOrganization",
     "getOrganization",
     "updateOrganization",

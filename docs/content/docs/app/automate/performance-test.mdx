@@ -6,8 +6,6 @@ icon: ChartSpline
 
 Run k6 performance tests to validate your application under load. Execute from multiple regions worldwide.
 
-In Supercheck Cloud, billable K6 usage is peak virtual users × elapsed execution minutes, rounded up per run. This measures peak capacity rather than accumulated active VU-time, so ramping tests can consume more units than their average active load. Each execution location and retry contributes usage. Review the [pricing page](/pricing) and your organization’s spending controls before a large test. Self-hosted installations pay their own infrastructure costs.
-
 ![Performance Test Editor](/screenshots/performance-test-editor.png)
 
 ## Create Test
@@ -37,6 +35,10 @@ Run tests from different geographic locations to measure global performance.
 
 ## Example Script
 
+Start with a smoke test against a system you own or have permission to test. Increase load gradually and monitor server capacity. Each selected region runs its own load profile; selecting more regions increases total load.
+
+Set an `API_URL` project variable to your test environment and replace `/health` with the endpoint you want to exercise.
+
 ```javascript
 /**
  * Ramping load profile to mirror real traffic patterns.
@@ -57,7 +59,7 @@ Run tests from different geographic locations to measure global performance.
  * @see https://grafana.com/docs/k6/latest/using-k6/scenarios/
  */
 import http from 'k6/http';
-import { check } from 'k6';
+import { check, sleep } from 'k6';
 
 export const options = {
   stages: [
@@ -74,13 +76,14 @@ export const options = {
 };
 
 export default function () {
-  const baseUrl = 'https://test-api.k6.io';
-  const response = http.get(baseUrl + '/public/crocodiles/');
+  const baseUrl = getVariable('API_URL');
+  const response = http.get(`${baseUrl}/health`);
 
   check(response, {
     'status is 200': (res) => res.status === 200,
-    'p95 under budget': (res) => res.timings.duration < 600,
+    'request under 600 ms': (res) => res.timings.duration < 600,
   });
+  sleep(1);
 }
 ```
 
@@ -128,10 +131,12 @@ Set pass/fail criteria:
  * Thresholds define pass/fail criteria for your test.
  * @see https://grafana.com/docs/k6/latest/using-k6/thresholds/
  */
-thresholds: {
-  http_req_duration: ['p(95)<500'],  // 95% under 500ms
-  http_req_failed: ['rate<0.01'],    // Less than 1% errors
-}
+export const options = {
+  thresholds: {
+    http_req_duration: ['p(95)<500'], // 95% under 500ms
+    http_req_failed: ['rate<0.01'],  // Less than 1% errors
+  },
+};
 ```
 
 📚 [k6 Thresholds Documentation](https://grafana.com/docs/k6/latest/using-k6/thresholds/)
@@ -144,20 +149,27 @@ thresholds: {
  * Secrets are resolved at runtime and redacted from logs.
  * For uploaded datasets, load them in init context with open(getFile()).
  */
+import http from 'k6/http';
+import { check } from 'k6';
 import { SharedArray } from 'k6/data';
 
+// Attach a USERS_CSV file variable with one username per row and a header.
 const users = new SharedArray('users', () =>
   open(getFile('USERS_CSV'))
     .split('\n')
     .slice(1)
+    .map((line) => line.trim())
     .filter(Boolean)
 );
+
+if (users.length === 0) throw new Error('USERS_CSV must contain at least one user');
 
 export default function () {
   const baseUrl = getVariable('API_URL');
   const apiKey = getSecret('API_KEY');
   
-  const response = http.get(`${baseUrl}/protected`, {
+  const username = users[__VU % users.length];
+  const response = http.get(`${baseUrl}/protected?user=${encodeURIComponent(username)}`, {
     headers: { Authorization: `Bearer ${apiKey}` }
   });
   

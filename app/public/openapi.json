@@ -392,7 +392,7 @@
             }
           },
           "402": {
-            "description": "Active subscription and available spending capacity required",
+            "description": "Execution access denied",
             "content": {
               "application/json": {
                 "schema": {
@@ -2734,7 +2734,7 @@
             "description": "Execution rate limit exceeded"
           },
           "402": {
-            "description": "Active subscription or available spending capacity required"
+            "description": "Execution access denied"
           }
         }
       }
@@ -5009,7 +5009,7 @@
             "$ref": "#/components/responses/Unauthorized"
           },
           "403": {
-            "description": "Browser session required, same-origin check failed, email not verified (creation), or not an organization member (switch)"
+            "description": "Email verification is required before creating a cloud organization, or organization creation is disabled in demo mode."
           },
           "500": {
             "description": "Internal server error"
@@ -5751,7 +5751,7 @@
             "$ref": "#/components/responses/Unauthorized"
           },
           "403": {
-            "description": "Browser session required, same-origin check failed, email not verified (creation), or not an organization member (switch)"
+            "description": "The user is not a member of the requested organization."
           },
           "500": {
             "description": "Internal server error"

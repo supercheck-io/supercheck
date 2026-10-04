@@ -35,3 +35,7 @@ describe("pricing defaults and copy", () => {
     ).toContain("rather than accumulated active VU-time");
   });
 });
+
+it.each([[0.0125, "$0.0125/VU-min"], [0.010001, "$0.010001/VU-min"]])("preserves custom rate %s", (price, expected) => {
+  expect(formatOveragePrice(Number(price), "VU-min")).toBe(expected);
+});

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="generator" content="archify 2.17.0-dev.1">
-  <title>Monitor Alerts</title>
+  <title>Monitor Alerts Diagram</title>
   <script>
     // Resolve the theme before first paint so light-preference users don't
     // see a dark flash. The toolbar script below re-applies with UI state.
@@ -5212,11 +5212,11 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         </g>
         </g>
 
-        <g data-edge-from="worker" data-edge-to="target" data-edge-label="probe - HTTP / TCP / Playwright" data-edge-key="2" data-edge-id="message-3">
+        <g data-edge-from="worker" data-edge-to="target" data-edge-label="probe configured monitor type" data-edge-key="2" data-edge-id="message-3">
           <path data-composition-edge-from="worker" data-composition-edge-to="target" data-composition-edge-id="message-3" data-composition-points="413.8333333333333,216;544,216" d="M 413.8333333333333 216 L 544 216" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
         <g data-detail="context">
-          <rect x="392.3166666666666" y="196" width="173.20000000000002" height="16" rx="3" class="c-mask"/>
-          <text x="478.91666666666663" y="206" class="t-backend" font-size="9" text-anchor="middle">probe - HTTP / TCP / Playwright</text>
+          <rect x="397.51666666666665" y="196" width="162.8" height="16" rx="3" class="c-mask"/>
+          <text x="478.91666666666663" y="206" class="t-backend" font-size="9" text-anchor="middle">probe configured monitor type</text>
         </g>
         </g>
 
@@ -5619,9 +5619,9 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <h3>Status aggregation</h3>
         </div>
         <ul>
-          <li>&bull; Each region saves its own row; the Redis key expires in 120 seconds</li>
-          <li>&bull; all / majority / any strategies decide the overall status</li>
-          <li>&bull; Failure and recovery thresholds cap follow-up alerts at 3</li>
+          <li>&bull; Each location saves its own result</li>
+          <li>&bull; all / majority / any strategies decide overall status</li>
+          <li>&bull; Configured thresholds control failure and recovery alerts</li>
         </ul>
       </div>
 
@@ -5631,9 +5631,9 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <h3>Alert triage</h3>
         </div>
         <ul>
-          <li>&bull; Fan-out to email, Slack, webhook, Telegram, Discord, Teams</li>
-          <li>&bull; Every attempt lands in alert_history</li>
-          <li>&bull; Optional AI SRE incident and background triage</li>
+          <li>&bull; Notifications use your configured alert channels</li>
+          <li>&bull; Delivery attempts are recorded in alert history</li>
+          <li>&bull; Optional AI SRE triage opens an incident after a sent alert</li>
         </ul>
       </div>
     </div>

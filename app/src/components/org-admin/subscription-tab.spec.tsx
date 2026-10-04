@@ -141,6 +141,16 @@ describe("SubscriptionTab", () => {
     expect(screen.getByText(/this organization only/)).toBeInTheDocument();
   });
 
+  it("does not overstate Pro K6 cost at a floating-point boundary", async () => {
+    fetchMock.mockImplementation(async (url: string) => ({ ok: true, json: async () =>
+      url.endsWith("/current") ? { ...billing, usage: { ...billing.usage,
+        k6VuMinutes: { ...meter, used: 75028 },
+      } } : url.endsWith("/pricing") ? pricing : { spending: { currentDollars: 300 } },
+    }));
+    render(<SubscriptionTab currentUserRole="org_owner" />);
+    expect(await screen.findByText(/Pro would cost about \$149.07/)).toHaveTextContent("$199.93 less");
+  });
+
   it("keeps billing available when the optional plan comparison fails", async () => {
     fetchMock.mockImplementation(async (url: string) => {
       if (url.endsWith("/pricing")) throw new Error("Pricing unavailable");

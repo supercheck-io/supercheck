@@ -139,7 +139,7 @@
       "from": "api",
       "to": "ai",
       "y": 244,
-      "label": "streamText - 4 steps - 45 s",
+      "label": "bounded AI response",
       "variant": "emphasis"
     },
     {
@@ -229,18 +229,18 @@
       "dot": "emerald",
       "title": "Scoped access",
       "items": [
-        "30 messages per minute per user in Redis; failure fails closed",
+        "Authentication, permissions, and rate limits protect chat",
         "Conversations are scoped to organization, project, and user",
-        "History caps at 50 messages and 20,000 characters"
+        "Conversation context is bounded"
       ]
     },
     {
       "dot": "orange",
       "title": "Agent limits",
       "items": [
-        "4 model steps, 1200 output tokens, 45 second timeout",
-        "Live search is capped at 10 rows and 15 seconds",
-        "Assistant message is persisted when the stream finishes"
+        "Model steps, output size, and execution time are bounded",
+        "Live searches are limited by time and result size",
+        "Assistant messages are saved when the stream finishes"
       ]
     }
   ],

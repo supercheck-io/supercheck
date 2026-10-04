@@ -19,7 +19,7 @@
           "redis",
           "queue"
         ],
-        "note": "Redis Lua reserves capacity per organization; full queues reject or park the run until a slot frees."
+        "note": "Capacity checks decide whether a run starts, waits for an available slot, or is rejected."
       },
       {
         "id": "sandboxed-execution",
@@ -29,7 +29,7 @@
           "sandbox",
           "store"
         ],
-        "note": "The worker turns the run into a gVisor Job, captures the outcome, and stores reports and usage."
+        "note": "The worker executes the run in an isolated Kubernetes Job and stores its report and artifacts."
       },
       {
         "id": "live-status-and-cancel",
@@ -42,7 +42,7 @@
           "worker",
           "sandbox"
         ],
-        "note": "Queue events feed SSE updates; cancellation writes a Redis signal the worker polls to delete the Job."
+        "note": "Live events update run status; cancellation signals the worker to stop the execution."
       }
     ]
   },
@@ -76,13 +76,13 @@
       "id": "worker",
       "type": "backend",
       "label": "Worker",
-      "sublabel": "concurrency 1"
+      "sublabel": "isolated execution"
     },
     {
       "id": "sandbox",
       "type": "cloud",
       "label": "K8s + gVisor",
-      "sublabel": "supercheck-execution",
+      "sublabel": "isolated Job",
       "brand": "kubernetes"
     },
     {
@@ -123,7 +123,7 @@
       "from": "api",
       "to": "redis",
       "y": 188,
-      "label": "admit - capacity Lua",
+      "label": "check execution capacity",
       "variant": "emphasis"
     },
     {
@@ -139,7 +139,7 @@
       "from": "api",
       "to": "queue",
       "y": 244,
-      "label": "enqueue - jobId = runId",
+      "label": "enqueue run",
       "variant": "emphasis"
     },
     {
@@ -147,7 +147,7 @@
       "from": "queue",
       "to": "worker",
       "y": 272,
-      "label": "deliver - 70 min lock",
+      "label": "deliver run",
       "variant": "default"
     },
     {
@@ -171,7 +171,7 @@
       "from": "worker",
       "to": "store",
       "y": 356,
-      "label": "report - artifacts - usage",
+      "label": "report and artifacts",
       "variant": "emphasis"
     },
     {
@@ -211,9 +211,9 @@
       "from": "worker",
       "to": "sandbox",
       "y": 504,
-      "label": "delete Job - exit 137",
+      "label": "stop execution",
       "variant": "dashed",
-      "note": "worker polls the signal every second"
+      "note": "cancellation is handled by the worker"
     }
   ],
   "cards": [
@@ -221,27 +221,27 @@
       "dot": "cyan",
       "title": "Admission control",
       "items": [
-        "Redis Lua reserves running and queued capacity per organization",
-        "Runs start, wait in FIFO order, or are rejected when full",
-        "A promoter retries queued runs every 5 seconds; errors fail closed"
+        "Capacity is checked before execution",
+        "Runs start, queue, or are rejected when capacity is full",
+        "Queued runs wait for an available execution slot"
       ]
     },
     {
       "dot": "emerald",
       "title": "Isolated execution",
       "items": [
-        "Each run becomes a gVisor Job in supercheck-execution",
-        "Scripts arrive through Job-owned Secrets; no service account token",
-        "Reports, screenshots, and traces land in S3 or R2"
+        "Runs execute in isolated Kubernetes Jobs",
+        "gVisor provides sandboxing when configured",
+        "Reports, screenshots, and traces use object storage"
       ]
     },
     {
       "dot": "orange",
       "title": "Status recovery",
       "items": [
-        "Queue events stream to the UI over SSE",
-        "3 attempts with backoff; stalled runs recovered after about 80 minutes",
-        "Cancellation deletes the Job and records an error"
+        "Live events update the run page",
+        "Retries and stalled-run recovery handle interrupted workers",
+        "Cancellation stops execution and records the outcome"
       ]
     }
   ],

@@ -15,7 +15,7 @@ import {
   session,
   user,
 } from "@/db/schema";
-import { eq, and, isNull, or } from "drizzle-orm";
+import { eq, and, asc, desc } from "drizzle-orm";
 import { getUserRole, getUserOrgRole } from "./rbac/middleware";
 import { Role } from "./rbac/permissions-client";
 import { getCachedAuthSession } from "./session-cache";
@@ -315,7 +315,7 @@ export async function getUserProjects(
           eq(projects.organizationId, organizationId),
           eq(projects.status, "active")
         )
-      );
+      ).orderBy(desc(projects.isDefault), asc(projects.createdAt), asc(projects.id));
 
     // Get user's project-specific roles
     const { projectMembers } = await import("@/db/schema");
@@ -440,86 +440,5 @@ export async function getUserProjectRole(
       console.error("Error getting user project role:", error);
     }
     return Role.PROJECT_VIEWER;
-  }
-}
-
-/**
- * Switch user to a different project
- */
-export async function switchProject(
-  projectId: string
-): Promise<{ success: boolean; message?: string; project?: ProjectWithRole }> {
-  try {
-    const user = await getCurrentUser();
-    if (!user) {
-      return { success: false, message: "Not authenticated" };
-    }
-
-    const activeOrg = await getActiveOrganization();
-    if (!activeOrg) {
-      return { success: false, message: "No active organization" };
-    }
-
-    // Get the specific project
-    const [projectData] = await db
-      .select()
-      .from(projects)
-      .where(
-        and(
-          eq(projects.id, projectId),
-          eq(projects.organizationId, activeOrg.id),
-          eq(projects.status, "active")
-        )
-      )
-      .limit(1);
-
-    if (!projectData) {
-      return { success: false, message: "Project not found" };
-    }
-
-    // For PROJECT_ADMIN and PROJECT_EDITOR, permissions will be determined dynamically
-    // based on project assignments, so no need to block access here
-
-    // Update session with new active project
-    // Use cached session to avoid duplicate DB round-trips
-    const authSession = await getCachedAuthSession();
-
-    if (authSession) {
-      await db
-        .update(session)
-        .set({ activeOrganizationId: activeOrg.id, activeProjectId: projectId })
-        .where(and(
-          eq(session.token, authSession.session.token), eq(session.userId, user.id),
-          or(eq(session.activeOrganizationId, activeOrg.id), isNull(session.activeOrganizationId)),
-        ));
-    }
-
-    // Get the user's project-specific role
-    const projectRole = await getUserProjectRole(
-      user.id,
-      activeOrg.id,
-      projectId
-    );
-
-    const project: ProjectWithRole = {
-      id: projectData.id,
-      name: projectData.name,
-      slug: projectData.slug || undefined,
-      description: projectData.description || undefined,
-      organizationId: projectData.organizationId,
-      isDefault: projectData.isDefault,
-      status: projectData.status as "active" | "archived" | "deleted",
-      createdAt: projectData.createdAt || new Date(),
-      role: projectRole,
-      isActive: true,
-    };
-
-    return { success: true, project };
-  } catch (error) {
-    // DYNAMIC_SERVER_USAGE errors are expected during Next.js static generation
-    if (!isDynamicServerUsageError(error)) {
-      console.error("Error switching project:", error);
-    }
-    return { success: false, message: "Internal error" };
   }
 }

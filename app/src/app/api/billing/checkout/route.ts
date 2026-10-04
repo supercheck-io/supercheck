@@ -19,7 +19,7 @@ import { eq } from "drizzle-orm";
 const checkoutSchema = z.object({
   plan: z.enum(["plus", "pro"]),
   organizationId: z.string().uuid().optional(),
-});
+}).strict();
 
 function getAppUrl(request: NextRequest) {
   const configured = process.env.NEXT_PUBLIC_APP_URL ?? process.env.BETTER_AUTH_URL;
@@ -91,7 +91,7 @@ export async function POST(request: NextRequest) {
     if (org && !org.polarCustomerId) {
       const user = await getCurrentUser();
       if (user?.id === userId) {
-        org.polarCustomerId = await ensurePolarCustomerAndLink(user.id, user.email, user.name, organizationId);
+        org.polarCustomerId = await ensurePolarCustomerAndLink(user.id, user.email, user.name, organizationId, { throwOnError: true });
       }
     }
     if (!org?.polarCustomerId) {

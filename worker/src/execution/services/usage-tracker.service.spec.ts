@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { type SQL } from 'drizzle-orm';
 import { PgDialect } from 'drizzle-orm/pg-core';
 import { organization } from '../../db/schema/organization';
@@ -321,6 +322,55 @@ describe('UsageTrackerService execution blocking', () => {
       ).resolves.toMatchObject({ blocked });
     },
   );
+
+  it('does not falsely block a custom rate at an exact-cent boundary', async () => {
+    const f = admissionFixture();
+    f.org.k6VuMinutesUsed = 20400;
+    f.org.sreInvestigationUnitsUsed = '25';
+    f.query.billingSettings.findFirst.mockResolvedValue({
+      enableSpendingLimit: true,
+      hardStopOnLimit: true,
+      monthlySpendingLimitCents: 8,
+    });
+    f.query.overagePricing.findFirst.mockResolvedValue({
+      playwrightMinutePriceCents: 3,
+      k6VuMinutePriceCents: 1,
+      k6VuMinutePriceCentsOverride: 0.0175,
+      sreInvestigationUnitPriceCents: 50,
+    });
+    await expect(f.service.shouldBlockExecution('org-1')).resolves.toEqual({
+      blocked: false,
+    });
+  });
+
+  it('rate-limits migration warnings without caching admission pricing', async () => {
+    const f = admissionFixture();
+    f.org.sreInvestigationUnitsUsed = '25';
+    const missing = Object.assign(
+      new Error('column k6_vu_minute_price_cents_override does not exist'),
+      { code: '42703' },
+    );
+    f.query.overagePricing.findFirst.mockImplementation(({ columns }) =>
+      columns
+        ? Promise.resolve({
+            playwrightMinutePriceCents: 3,
+            k6VuMinutePriceCents: 1,
+            sreInvestigationUnitPriceCents: 50,
+          })
+        : Promise.reject(missing),
+    );
+    const warning = jest
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => {});
+    try {
+      await f.service.shouldBlockExecution('org-1');
+      await f.service.shouldBlockExecution('org-1');
+      expect(warning).toHaveBeenCalledTimes(1);
+      expect(f.query.overagePricing.findFirst).toHaveBeenCalledTimes(4);
+    } finally {
+      warning.mockRestore();
+    }
+  });
 
   it.each(['none', 'canceled'])(
     'rejects queued work after a subscription becomes %s',
