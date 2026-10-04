@@ -20,6 +20,8 @@ import { FieldGroup, Field, FieldDescription } from "@/components/ui/field";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { useAppConfig } from "@/hooks/use-app-config";
+import { clearProjectsCache } from "@/hooks/use-project-context";
+import { announceProjectChange, reloadProjectContext } from "@/lib/project-navigation";
 
 interface InvitationData {
   organizationName: string;
@@ -93,10 +95,11 @@ export default function InvitePage({
       const data = await response.json();
 
       if (data.success) {
+        announceProjectChange();
         setAccepted(data.data);
         // Redirect to dashboard after 3 seconds
         setTimeout(() => {
-          router.push("/");
+          reloadProjectContext(clearProjectsCache);
         }, 3000);
       } else {
         if (data.code === "EMAIL_NOT_VERIFIED") {
@@ -230,7 +233,7 @@ export default function InvitePage({
           </div>
 
           <Field>
-            <Button onClick={() => router.push("/")} className="w-full">
+            <Button onClick={() => reloadProjectContext(clearProjectsCache)} className="w-full">
               Go to Dashboard
               <ArrowRight className="ml-2 h-4 w-4" />
             </Button>

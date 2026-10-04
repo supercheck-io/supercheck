@@ -20,11 +20,11 @@ submitting changes. The docs build runs the same read-only check.
 ## OpenAPI and local checks
 
 Use Node.js 22 or newer. `openapi.json` is the manually maintained public API
-source; hosted Billing endpoints are intentionally excluded from it and all
+source; deployment-specific service endpoints are intentionally excluded from it and all
 published copies. Update it alongside route changes; it is not generated from
 route handlers. `npm run sync:openapi`
 updates the published JSON/YAML copies and the app's copy. `npm run generate-docs`
-explicitly syncs those copies and regenerates API pages, excluding hosted Billing
+explicitly syncs those copies and regenerates API pages, excluding deployment-specific
 pages. `npm run check:openapi` checks semantic parity without writing files.
 Run `npm run test:openapi`, `npm run lint`, `npx tsc --noEmit`, and `npm run build`
 before submitting docs changes.

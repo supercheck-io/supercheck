@@ -218,6 +218,11 @@ export async function POST(
     }
 
     await db.transaction(async (tx) => {
+      // Serialize acceptance with signup and other invitations for this user.
+      // The user lock makes the membership check authoritative across requests.
+      const [acceptingUser] = await tx.select({ id: userTable.id }).from(userTable)
+        .where(eq(userTable.id, currentUser.id)).limit(1).for("update");
+      if (!acceptingUser) throw new Error('INVITE_SESSION_CHANGED');
       // Claim the pending invitation before any membership/session changes.
       // A concurrent acceptance/cancellation must not succeed twice.
       const [claimed] = await tx.update(invitation).set({ status: 'accepted' })

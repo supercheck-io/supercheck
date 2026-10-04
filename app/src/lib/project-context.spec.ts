@@ -21,6 +21,7 @@ jest.mock("@/utils/db", () => ({
 jest.mock("./session", () => ({
   getActiveOrganization: jest.fn(),
   getUserProjects: jest.fn(),
+  getSelectableProjects: jest.fn(),
   getCurrentUser: jest.fn(),
 }));
 
@@ -47,8 +48,9 @@ import { headers } from "next/headers";
 import { getCachedAuthSession } from "@/lib/session-cache";
 import { getUnifiedAuthContext } from "./rbac/unified-auth";
 import { db } from "@/utils/db";
-import { getActiveOrganization, getCurrentUser, getUserProjects } from "./session";
-import { getCurrentProjectContext, requireProjectContext } from "./project-context";
+import { getActiveOrganization, getCurrentUser, getUserProjects, getSelectableProjects } from "./session";
+import { getCurrentProjectContext, requireProjectContext, switchProject } from "./project-context";
+import { PgDialect } from "drizzle-orm/pg-core";
 
 const mockHeaders = headers as jest.Mock;
 const mockGetCachedAuthSession = getCachedAuthSession as jest.Mock;
@@ -144,5 +146,51 @@ describe("default project recovery", () => {
   it("returns no stale project when a newer selection wins the conditional update", async () => {
     returning.mockResolvedValue([]);
     expect(await getCurrentProjectContext()).toBeNull();
+  });
+});
+
+
+describe("project switching across account and invited projects", () => {
+  const set = jest.fn();
+  const returning = jest.fn();
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockGetCachedAuthSession.mockResolvedValue({ session: { token: "session-token" }, user: { id: "user-1" } });
+    (getCurrentUser as jest.Mock).mockResolvedValue({ id: "user-1" });
+    (getActiveOrganization as jest.Mock).mockResolvedValue({ id: "oldest-org" });
+    (getSelectableProjects as jest.Mock).mockResolvedValue([
+      { id: "project-2", name: "Project Two", organizationId: "oldest-org", isDefault: false, role: "org_owner" },
+    ]);
+    returning.mockResolvedValue([{ activeProjectId: "project-2" }]);
+    set.mockReturnValue({ where: jest.fn().mockReturnValue({ returning }) });
+    (db.update as jest.Mock).mockReturnValue({ set });
+    (db.select as jest.Mock).mockReset().mockReturnValue({ from: jest.fn().mockReturnThis(), where: jest.fn().mockReturnThis(), limit: jest.fn().mockResolvedValue([{ activeProjectId: "previous-project", activeOrganizationId: "oldest-org" }]) });
+  });
+  it("selects another project and repairs a legacy organization's session scope", async () => {
+    expect(await switchProject("project-2")).toMatchObject({ success: true, project: { id: "project-2", organizationId: "oldest-org" } });
+    expect(getSelectableProjects).toHaveBeenCalledWith("user-1");
+    expect(set).toHaveBeenCalledWith({ activeOrganizationId: "oldest-org", activeProjectId: "project-2" });
+  });
+  it("rejects a project without membership", async () => {
+    expect(await switchProject("foreign-project")).toMatchObject({ success: false });
+    expect(db.update).not.toHaveBeenCalled();
+  });
+  it("selects an invited project and uses its host organization for authorization and billing", async () => {
+    (getSelectableProjects as jest.Mock).mockResolvedValue([{ id: "project-2", name: "Invited Project", organizationId: "host-org", isDefault: false, role: "project_editor" }]);
+    expect(await switchProject("project-2")).toMatchObject({ success: true, project: { organizationId: "host-org", userRole: "project_editor" } });
+    expect(set).toHaveBeenCalledWith({ activeOrganizationId: "host-org", activeProjectId: "project-2" });
+  });
+  it("fails closed when the session update no longer matches", async () => {
+    returning.mockResolvedValue([]);
+    expect(await switchProject("project-2")).toMatchObject({ success: false });
+    const where = set.mock.results[0].value.where.mock.calls[0][0];
+    const query = new PgDialect().sqlToQuery(where);
+    expect(query.params).toContain("previous-project");
+    expect(query.params).toContain("oldest-org");
+  });
+  it("requires an authenticated session", async () => {
+    mockGetCachedAuthSession.mockResolvedValue(null);
+    expect(await switchProject("project-2")).toMatchObject({ success: false, message: "Not authenticated" });
+    expect(db.update).not.toHaveBeenCalled();
   });
 });

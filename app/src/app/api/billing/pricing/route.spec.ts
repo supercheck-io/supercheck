@@ -63,8 +63,8 @@ describe("Billing pricing configuration", () => {
       answer: expect.stringContaining("Get in touch at hello@supercheck.io"),
     }));
     expect(body.faqs).toContainEqual(expect.objectContaining({
-      question: "Does one subscription cover multiple organizations?",
-      answer: expect.stringContaining("Each cloud organization needs its own subscription"),
+      question: "Does one subscription cover the projects in my organization?",
+      answer: expect.stringContaining("all projects within it share your monthly subscription"),
     }));
   });
 

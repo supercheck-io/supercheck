@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { hasPermissionForUser, getUserRole } from "@/lib/rbac/middleware";
 import { requireUserAuthContext, isAuthError } from "@/lib/auth-context";
-import { getUserProjects } from "@/lib/session";
+import { getSelectableProjects, getUserProjects } from "@/lib/session";
 import { getCurrentProjectContext } from "@/lib/project-context";
 import { db } from "@/utils/db";
 import { projects, projectMembers } from "@/db/schema";
@@ -16,11 +16,20 @@ import { subscriptionService } from "@/lib/services/subscription-service";
  */
 export async function GET(request: NextRequest) {
   try {
-    const { userId, organizationId: authOrgId } = await requireUserAuthContext();
+    const { userId, organizationId: authOrgId, isCliAuth } = await requireUserAuthContext();
 
     // Get organization ID from query params or use auth context organization
     const { searchParams } = new URL(request.url);
     const organizationId = searchParams.get("organizationId");
+
+    // Browser project selection includes invited teams. CLI enumeration retains
+    // its organization scope unless the caller explicitly requests another team.
+    if (!organizationId && !isCliAuth) {
+      const [userProjects, currentProject] = await Promise.all([
+        getSelectableProjects(userId), getCurrentProjectContext(),
+      ]);
+      return NextResponse.json({ success: true, data: userProjects, currentProject });
+    }
 
     let targetOrgId = organizationId;
     if (!targetOrgId) {

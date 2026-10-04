@@ -150,8 +150,8 @@ const comparisonFeatures = [
 
 const faqs = [
     {
-        question: 'Does one subscription cover multiple organizations?',
-        answer: 'No. Each cloud organization needs its own subscription. A new organization starts without a subscription and does not inherit your existing plan. Use the organization menu to switch back or subscribe separately. Joining an organization with an active subscription does not require a personal subscription. Usage allowances, member and project limits, and spending controls are separate for each organization.',
+        question: 'Does one subscription cover the projects in my organization?',
+        answer: 'Yes. Your account has one default organization, and its projects share the subscription, usage allowances, limits, and spending controls. Create and switch projects using the project selector. Projects you join by invitation use their host team’s plan and allowances separately; joining a paid team does not require a personal subscription. Only the host organization’s owner can manage billing.',
     },
     {
         question: 'When should I consider Pro?',

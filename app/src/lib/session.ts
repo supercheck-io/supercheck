@@ -12,10 +12,11 @@ import {
   organization,
   projects,
   member,
+  projectMembers,
   session,
   user,
 } from "@/db/schema";
-import { eq, and, asc, desc } from "drizzle-orm";
+import { eq, and, asc, desc, inArray } from "drizzle-orm";
 import { getUserRole, getUserOrgRole } from "./rbac/middleware";
 import { Role } from "./rbac/permissions-client";
 import { getCachedAuthSession } from "./session-cache";
@@ -59,6 +60,7 @@ export interface ProjectWithRole {
   slug?: string;
   description?: string;
   organizationId: string;
+  organizationName?: string;
   isDefault: boolean;
   status: "active" | "archived" | "deleted";
   createdAt: Date;
@@ -138,7 +140,19 @@ export async function getCurrentUser(): Promise<UserSession | null> {
   }
 }
 
-/** Resolve the selected organization only among the effective user's memberships. */
+/** Choose the oldest owned organization; invitation-only accounts use their oldest team. */
+function selectDefaultOrganization(organizations: OrganizationWithRole[]) {
+  const sorted = [...organizations].sort((a, b) =>
+    a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id)
+  );
+  return sorted.find(org => org.role === Role.ORG_OWNER) ?? sorted[0] ?? null;
+}
+
+export async function getDefaultOrganization(userId: string): Promise<OrganizationWithRole | null> {
+  return selectDefaultOrganization(await getUserOrganizations(userId));
+}
+
+/** Resolve the selected project's host without exposing organization switching. */
 export async function getActiveOrganization(): Promise<OrganizationWithRole | null> {
   try {
     const [currentUser, authSession] = await Promise.all([
@@ -156,20 +170,26 @@ export async function getActiveOrganization(): Promise<OrganizationWithRole | nu
     ]);
     if (!sessionRows.length || !userOrganizations.length) return null;
 
-    const selected = userOrganizations.find(org => org.id === sessionRows[0].activeOrganizationId);
-    // Older sessions only stored a project. Recover its organization, still
-    // requiring membership, so project and billing context agree during upgrade.
-    let legacySelection: OrganizationWithRole | undefined;
-    if (!selected && sessionRows[0].activeProjectId) {
+    const fallback = selectDefaultOrganization(userOrganizations);
+    if (!fallback) return null;
+    const selectedSession = sessionRows[0];
+    if (selectedSession.activeProjectId) {
       const [project] = await db.select({ organizationId: projects.organizationId }).from(projects)
-        .where(and(eq(projects.id, sessionRows[0].activeProjectId), eq(projects.status, "active"))).limit(1);
-      legacySelection = userOrganizations.find(org => org.id === project?.organizationId);
+        .where(and(eq(projects.id, selectedSession.activeProjectId), eq(projects.status, "active"))).limit(1);
+      const host = userOrganizations.find(org => org.id === project?.organizationId);
+      // Legacy extra owned organizations are excluded. Invitations retain access
+      // to their team's projects without changing the user's default organization.
+      if (host && (host.role !== Role.ORG_OWNER || host.id === fallback.id) &&
+          (!selectedSession.activeOrganizationId || selectedSession.activeOrganizationId === host.id)) {
+        return { ...host, isActive: true };
+      }
+    } else {
+      const selected = userOrganizations.find(org => org.id === selectedSession.activeOrganizationId);
+      if (selected && (selected.role !== Role.ORG_OWNER || selected.id === fallback.id)) {
+        return { ...selected, isActive: true };
+      }
     }
-    // Stable fallback for older sessions and removed memberships; never use row order.
-    const fallback = [...userOrganizations].sort((a, b) =>
-      a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id)
-    )[0];
-    return { ...(selected ?? legacySelection ?? fallback), isActive: true };
+    return { ...fallback, isActive: true };
   } catch (error) {
     if (!isDynamicServerUsageError(error)) {
       console.error("Error getting active organization:", error);
@@ -262,7 +282,9 @@ export async function getUserOrganizations(
       .innerJoin(member, eq(member.organizationId, organization.id))
       .where(eq(member.userId, userId));
 
-    return orgsData.map((org) => ({
+    // App membership roles are single-valued. Unsupported Better Auth role
+    // arrays must be reconciled before granting tenant access or owner status.
+    return orgsData.filter(org => !org.memberRole?.includes(",")).map((org) => ({
       id: org.id,
       name: org.name,
       slug: org.slug || undefined,
@@ -371,6 +393,40 @@ export async function getUserProjects(
     }
     return [];
   }
+}
+
+/** Projects from the account organization and teams joined by invitation. */
+export async function getSelectableProjects(userId: string): Promise<ProjectWithRole[]> {
+  const organizations = await getUserOrganizations(userId);
+  const defaultOrganization = selectDefaultOrganization(organizations);
+  const selectable = organizations.filter(org => org.role !== Role.ORG_OWNER || org.id === defaultOrganization?.id);
+  if (!selectable.length) return [];
+  const orgsById = new Map(selectable.map(org => [org.id, org]));
+  // One joined read for every selectable team, rather than three reads per team.
+  const rows = await db.select({
+    id: projects.id, name: projects.name, slug: projects.slug,
+    description: projects.description, organizationId: projects.organizationId,
+    isDefault: projects.isDefault, status: projects.status, createdAt: projects.createdAt,
+    projectRole: projectMembers.role,
+  }).from(projects)
+    .innerJoin(member, and(eq(member.organizationId, projects.organizationId), eq(member.userId, userId)))
+    .leftJoin(projectMembers, and(eq(projectMembers.projectId, projects.id), eq(projectMembers.userId, userId)))
+    .where(and(inArray(projects.organizationId, selectable.map(org => org.id)), eq(projects.status, "active")))
+    .orderBy(desc(projects.isDefault), asc(projects.createdAt), asc(projects.id));
+  return rows.map(project => {
+    const org = orgsById.get(project.organizationId)!;
+    // Existing RBAC: assignments grant writes; all other active team projects
+    // remain selectable with read-only viewer access.
+    const role = org.role === Role.ORG_OWNER || org.role === Role.ORG_ADMIN
+      ? org.role : project.projectRole ? convertRoleToUnified(project.projectRole) : Role.PROJECT_VIEWER;
+    return {
+      id: project.id, name: project.name, slug: project.slug || undefined,
+      description: project.description || undefined, organizationId: project.organizationId,
+      organizationName: org.name, isDefault: project.isDefault,
+      status: project.status as ProjectWithRole["status"], createdAt: project.createdAt || new Date(),
+      role, isActive: false,
+    };
+  });
 }
 
 /**

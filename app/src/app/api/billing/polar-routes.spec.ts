@@ -160,6 +160,31 @@ describe("Polar billing routes", () => {
     expect(mockCheckoutCreate).not.toHaveBeenCalled();
   });
 
+  it.each(["org_admin", "project_admin", "project_editor", "project_viewer"])("ownership of home does not grant %s billing rights in an invited team", async role => {
+    mockRequireUserAuthContext.mockResolvedValue({ userId: "user_owner", organizationId: "invited-team", isCliAuth: false });
+    mockGetUserOrgRole.mockImplementation(async (_userId, orgId) => orgId === "home" ? "org_owner" : role);
+    expect((await checkoutPost(request("/api/billing/checkout", { plan: "plus" }))).status).toBe(403);
+    expect((await portalPost(request("/api/billing/portal"))).status).toBe(403);
+    expect(mockGetUserOrgRole).toHaveBeenCalledWith("user_owner", "invited-team");
+    expect(mockFindOrganization).not.toHaveBeenCalled();
+    expect(mockEnsureCustomer).not.toHaveBeenCalled();
+    expect(mockCheckoutCreate).not.toHaveBeenCalled();
+    expect(mockCustomerSessionCreate).not.toHaveBeenCalled();
+  });
+
+  it.each(["active", "past_due", "canceled"])("prevents duplicate checkout for a %s subscription with remaining access", async status => {
+    mockFindOrganization.mockResolvedValue({ polarCustomerId: "customer_1", subscriptionStatus: status, subscriptionEndsAt: new Date(Date.now() + 86400000) });
+    expect((await checkoutPost(request("/api/billing/checkout", { plan: "plus" }))).status).toBe(409);
+    expect(mockCheckoutCreate).not.toHaveBeenCalled();
+  });
+
+  it("allows resubscription after cancellation has expired using the original customer", async () => {
+    mockFindOrganization.mockResolvedValue({ polarCustomerId: "original-customer", subscriptionStatus: "canceled", subscriptionEndsAt: new Date(0) });
+    expect((await checkoutPost(request("/api/billing/checkout", { plan: "plus" }))).status).toBe(200);
+    expect(mockCheckoutCreate).toHaveBeenCalledWith(expect.objectContaining({ customerId: "original-customer" }));
+    expect(mockEnsureCustomer).not.toHaveBeenCalled();
+  });
+
   it("rejects a second checkout while subscription access is active", async () => {
     mockFindOrganization.mockResolvedValue({
       polarCustomerId: "customer_1",

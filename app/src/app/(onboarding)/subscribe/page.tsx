@@ -234,9 +234,9 @@ function SubscribePageContent() {
           Open-Source Testing, Monitoring, and AI SRE — as Code
         </p>
         {activeOrganization && <p className="text-sm font-medium">Subscription for {activeOrganization.name}</p>}
-        {!organizationLoading && !organizationError && !activeOrganization && <p className="text-sm text-muted-foreground">Create an organization using the menu above to choose a plan.</p>}
-        {organizationError && <p role="alert" className="text-sm text-destructive">Unable to load your organization. Retry using the organization selector above.</p>}
-        {activeOrganization && activeOrganization.role !== "org_owner" && <p className="text-sm text-muted-foreground">Only this organization&apos;s owner can subscribe. You can switch to another organization above.</p>}
+        {!organizationLoading && !organizationError && !activeOrganization && <p className="text-sm text-muted-foreground">Your default organization is still being set up. Refresh this page to retry setup.</p>}
+        {organizationError && <p role="alert" className="text-sm text-destructive">Unable to load your project&apos;s organization. Refresh this page to retry, or select another project above if available.</p>}
+        {activeOrganization && activeOrganization.role !== "org_owner" && <p className="text-sm text-muted-foreground">Only this organization&apos;s owner can subscribe. Contact the owner, or select a project in your own organization above if available.</p>}
         {hasCurrentSubscription && activeOrganization?.role === "org_owner" && <p className="text-sm text-muted-foreground">This organization already has a subscription. <Link href="/org-admin?tab=subscription" className="underline">Manage subscription</Link> to change plans.</p>}
         <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs text-muted-foreground pt-1">
           <span>Monthly subscription per organization</span>

@@ -1,6 +1,6 @@
 import { db } from "@/utils/db";
 import { session, user, member, projects, projectMembers, organization } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, asc } from "drizzle-orm";
 import { normalizeRole } from "./role-normalizer";
 import { Role } from "./permissions-client";
 
@@ -155,7 +155,20 @@ export async function getUnifiedAuthContext(
          ))
          .limit(1);
 
-       const ctx = contextResult[0];
+       const candidate = contextResult[0];
+       // Membership roles are single-valued in app RBAC. Do not turn a legacy
+       // comma-joined role into viewer access and bypass owner exclusion.
+       if (candidate?.orgRole?.includes(",")) {
+         throw new Error("Unsupported organization membership role");
+       }
+       let ctx: typeof candidate | undefined = candidate;
+       if (!requestedProjectId && candidate?.orgRole === "org_owner") {
+         const [assignedOrganization] = await db.select({ id: organization.id }).from(organization)
+           .innerJoin(member, eq(member.organizationId, organization.id))
+           .where(and(eq(member.userId, s.userId), eq(member.role, "org_owner")))
+           .orderBy(asc(organization.createdAt), asc(organization.id)).limit(1);
+         if (candidate.projectOrgId !== assignedOrganization?.id) ctx = undefined;
+       }
        
        if (ctx) {
            // SECURITY: Verify user has organization membership for the project's org.

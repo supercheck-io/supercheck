@@ -10,7 +10,7 @@ import {
   user as userTable,
 } from "@/db/schema";
 import { getCurrentUser } from "@/lib/session";
-import { eq, and, gte, desc, sql } from "drizzle-orm";
+import { eq, and, gte, desc, asc, sql } from "drizzle-orm";
 import { auth } from "@/utils/auth";
 import { headers } from "next/headers";
 import { randomUUID } from "crypto";
@@ -65,25 +65,20 @@ export async function POST(request: NextRequest) {
         role: member.role,
       })
       .from(member)
-      .where(eq(member.userId, currentUser.id));
+      .innerJoin(orgTable, eq(member.organizationId, orgTable.id))
+      .where(eq(member.userId, currentUser.id))
+      .orderBy(asc(orgTable.createdAt), asc(orgTable.id));
 
     if (existingMemberships.length > 0) {
       // Only the organization owner may establish its Polar customer binding.
       // Invited members also pass through this endpoint; allowing them to relink
       // billing would let an ordinary member replace the organization's customer.
       if (isCloudHosted()) {
-        // A user can belong to several organizations. Repair every organization
-        // they own so an unordered non-owner membership cannot mask an owned org.
-        // Keep this sequential to avoid concurrent Polar customer creation.
-        for (const ownedMembership of existingMemberships.filter(
-          (membership) => membership.role === "org_owner",
-        )) {
-          await ensurePolarCustomerAndLink(
-            currentUser.id,
-            currentUser.email,
-            currentUser.name,
-            ownedMembership.organizationId,
-          );
+        // Preserve legacy memberships and paid bindings, but only provision the
+        // default owned organization. Extra accounts require explicit reconciliation.
+        const ownedMembership = existingMemberships.find(membership => membership.role === "org_owner");
+        if (ownedMembership) {
+          await ensurePolarCustomerAndLink(currentUser.id, currentUser.email, currentUser.name, ownedMembership.organizationId);
         }
       }
       return NextResponse.json({
@@ -129,10 +124,10 @@ export async function POST(request: NextRequest) {
     // Use a transaction to atomically check and create org/member/project
     // This prevents race conditions where multiple concurrent calls could create duplicate orgs
     const result = await db.transaction(async (tx) => {
-      // Use the same owner lock as explicit organization creation, preventing
-      // signup setup and a new organization request from racing one another.
-      await tx.select({ id: userTable.id }).from(userTable)
+      // Serialize signup and invitation acceptance for this user.
+      const [lockedUser] = await tx.select({ id: userTable.id }).from(userTable)
         .where(eq(userTable.id, currentUser.id)).limit(1).for("update");
+      if (!lockedUser) throw new Error("SESSION_CHANGED");
 
       // Now safely check if user already has an organization (within the lock)
       const existingMembershipsInTx = await tx
@@ -141,16 +136,16 @@ export async function POST(request: NextRequest) {
           role: member.role,
         })
         .from(member)
-        .where(eq(member.userId, currentUser.id));
+        .innerJoin(orgTable, eq(member.organizationId, orgTable.id))
+        .where(eq(member.userId, currentUser.id))
+        .orderBy(asc(orgTable.createdAt), asc(orgTable.id));
 
       if (existingMembershipsInTx.length > 0) {
-        // Another call already created or joined an org. Return every owned org
-        // so the post-transaction Polar repair cannot depend on row ordering.
+        // Another call already created or joined an organization.
+        // Repair billing only if the assigned organization is owned.
         return {
           existed: true as const,
-          ownedOrganizationIds: existingMembershipsInTx
-            .filter((membership) => membership.role === "org_owner")
-            .map((membership) => membership.organizationId),
+          ownedOrganizationId: existingMembershipsInTx.find(membership => membership.role === "org_owner")?.organizationId ?? null,
         };
       }
 
@@ -200,8 +195,7 @@ export async function POST(request: NextRequest) {
         createdAt: new Date(),
       });
 
-      // Select the defaults before releasing the owner lock. A delayed signup
-      // response must not overwrite a separately created organization's selection.
+      // Select both defaults before releasing the user lock.
       const [updated] = await tx.update(session)
         .set({ activeOrganizationId: newOrg.id, activeProjectId: newProject.id })
         .where(and(eq(session.token, sessionData.session.token), eq(session.userId, currentUser.id)))
@@ -223,13 +217,8 @@ export async function POST(request: NextRequest) {
       );
       // Still ensure Polar customer exists in cloud mode
       if (isCloudHosted()) {
-        for (const organizationId of result.ownedOrganizationIds) {
-          await ensurePolarCustomerAndLink(
-            currentUser.id,
-            currentUser.email,
-            currentUser.name,
-            organizationId,
-          );
+        if (result.ownedOrganizationId) {
+          await ensurePolarCustomerAndLink(currentUser.id, currentUser.email, currentUser.name, result.ownedOrganizationId);
         }
       }
       return NextResponse.json({

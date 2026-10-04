@@ -41,6 +41,20 @@ describe("organization subscription confirmation", () => {
     expect(subscriptionService.getSubscriptionAccessStatus).toHaveBeenCalledWith(selectedOrg);
   });
 
+  it.each([true, false])("uses the invited host's access instead of the owner's home plan (host active: %s)", async isActive => {
+    (requireUserAuthContext as jest.Mock).mockResolvedValue({ userId: "home-owner", organizationId: selectedOrg, isCliAuth: false });
+    (subscriptionService.getSubscriptionAccessStatus as jest.Mock).mockImplementation(async id => ({
+      isActive: id === paidOrg || isActive,
+      plan: id === paidOrg ? "pro" : isActive ? "plus" : null,
+      status: id === paidOrg || isActive ? "active" : "none",
+    }));
+    const response = await GET(request());
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ organizationId: selectedOrg, isActive, plan: isActive ? "plus" : null });
+    expect(subscriptionService.getSubscriptionAccessStatus).toHaveBeenCalledTimes(1);
+    expect(subscriptionService.getSubscriptionAccessStatus).toHaveBeenCalledWith(selectedOrg);
+  });
+
   it("rejects a CLI override and malformed organization identifiers", async () => {
     expect((await GET(request("invalid"))).status).toBe(400);
     (requireUserAuthContext as jest.Mock).mockResolvedValue({ userId: "owner", organizationId: selectedOrg, isCliAuth: true });

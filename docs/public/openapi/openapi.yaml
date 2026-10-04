@@ -759,7 +759,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
         "402":
-          description: Active subscription required
+          description: Access denied by deployment policy
         "403":
           $ref: "#/components/responses/Forbidden"
   /api/jobs/{id}:
@@ -915,7 +915,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
         "402":
-          description: Active subscription required
+          description: Access denied by deployment policy
         "403":
           $ref: "#/components/responses/Forbidden"
         "404":
@@ -1042,7 +1042,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
         "402":
-          description: Active subscription required
+          description: Access denied by deployment policy
         "403":
           $ref: "#/components/responses/Forbidden"
         "404":
@@ -3252,10 +3252,14 @@ paths:
   /api/organizations:
     get:
       operationId: listOrganizations
-      summary: List organizations
-      description: List organizations the authenticated user belongs to, including
-        organization details and the member role. The selected organization is
-        marked isActive and returned as activeOrganizationId.
+      summary: Get assigned organization
+      description: "Returns the selected project's host organization, or the default
+        account organization when no project is selected. Users cannot create or
+        switch organizations directly; they can select projects from their
+        account and invited teams. The existing list response is preserved for
+        compatibility: data contains zero or one organization and
+        activeOrganizationId identifies that organization; it is not a directory
+        of all team memberships."
       tags:
         - Organizations
       responses:
@@ -3278,65 +3282,6 @@ paths:
                     nullable: true
         "401":
           $ref: "#/components/responses/Unauthorized"
-        "500":
-          description: Internal server error
-    post:
-      operationId: createOrganization
-      summary: Create an organization
-      description: Requires a same-origin browser session; CLI tokens are not
-        supported. Creates an organization, owner membership, and default
-        project, then selects them in the session. Cloud creation requires a
-        verified email and starts without a subscription; plans and billing
-        customers are not inherited. The default cloud ownership cap is five
-        organizations per user (configurable by the operator). Self-hosted
-        organizations require no cloud subscription.
-      tags:
-        - Organizations
-      security:
-        - sessionCookie: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/OrganizationCreateRequest"
-      responses:
-        "201":
-          description: Success
-          content:
-            application/json:
-              schema:
-                type: object
-                required:
-                  - success
-                  - data
-                properties:
-                  success:
-                    type: boolean
-                  data:
-                    type: object
-                    required:
-                      - id
-                      - name
-                      - projectId
-                    properties:
-                      id:
-                        type: string
-                        format: uuid
-                      name:
-                        type: string
-                      projectId:
-                        type: string
-                        format: uuid
-        "400":
-          description: Invalid request body
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          description: Email verification is required before creating a cloud
-            organization, or organization creation is disabled in demo mode.
-        "409":
-          description: Cloud organization ownership limit reached
         "500":
           description: Internal server error
   /api/organizations/current:
@@ -3470,13 +3415,12 @@ paths:
     delete:
       operationId: deleteOrganization
       summary: Delete organization
-      description: Owner only. Only empty organizations without a billing customer or
-        subscription binding can be deleted. Selected browser session references
-        are cleared atomically. Organizations with projects or billing bindings
-        return 409; contact an administrator or support for data removal and
-        billing closure. Deletion does not cancel billing. Browser mutations
-        require a same-origin request; CLI tokens retain their existing
-        authorization.
+      description: Owner only. Only empty organizations without protected dependencies
+        can be deleted. Selected browser session references are cleared
+        atomically. Organizations containing projects or protected dependencies
+        return 409; contact an administrator or support for safe removal.
+        Browser mutations require a same-origin request; CLI tokens retain their
+        existing authorization.
       tags:
         - Organizations
       responses:
@@ -3498,7 +3442,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
-          description: Organization contains projects or is linked to billing; closure
+          description: Organization contains projects or protected dependencies; removal
             requires administrator or support assistance.
         "500":
           description: Internal server error
@@ -3787,59 +3731,6 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
-        "500":
-          description: Internal server error
-  /api/organizations/switch:
-    post:
-      operationId: switchOrganization
-      summary: Select an organization
-      description: Requires a same-origin browser session and membership of the target
-        organization. Atomically selects the organization and an active default
-        or oldest project. projectId is null when there are no active projects.
-        Reload the app after switching to refresh organization data. CLI tokens
-        are not supported.
-      tags:
-        - Organizations
-      security:
-        - sessionCookie: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/OrganizationSwitchRequest"
-      responses:
-        "200":
-          description: Success
-          content:
-            application/json:
-              schema:
-                type: object
-                required:
-                  - success
-                  - data
-                properties:
-                  success:
-                    type: boolean
-                  data:
-                    type: object
-                    required:
-                      - organizationId
-                      - projectId
-                    properties:
-                      organizationId:
-                        type: string
-                        format: uuid
-                      projectId:
-                        type: string
-                        format: uuid
-                        nullable: true
-        "400":
-          description: Invalid request body
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          description: The user is not a member of the requested organization.
         "500":
           description: Internal server error
 components:
@@ -5604,23 +5495,3 @@ components:
                 properties:
                   projectId:
                     type: string
-    OrganizationCreateRequest:
-      type: object
-      additionalProperties: false
-      required:
-        - name
-      properties:
-        name:
-          type: string
-          minLength: 2
-          maxLength: 50
-          description: Organization name; whitespace is trimmed before validation.
-    OrganizationSwitchRequest:
-      type: object
-      additionalProperties: false
-      required:
-        - organizationId
-      properties:
-        organizationId:
-          type: string
-          format: uuid

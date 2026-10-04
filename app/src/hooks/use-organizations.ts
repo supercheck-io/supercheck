@@ -1,8 +1,6 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { useEffect } from "react";
-import { ORGANIZATION_CHANGED_KEY } from "@/lib/organization-navigation";
 
 export interface OrganizationSummary {
   id: string;
@@ -15,13 +13,6 @@ export interface OrganizationSummary {
 }
 
 export function useOrganizations() {
-  useEffect(() => {
-    const onChange = (event: StorageEvent) => {
-      if (event.key === ORGANIZATION_CHANGED_KEY && event.newValue) window.location.reload();
-    };
-    window.addEventListener("storage", onChange);
-    return () => window.removeEventListener("storage", onChange);
-  }, []);
   const query = useQuery({
     queryKey: ["organizations"],
     queryFn: async (): Promise<OrganizationSummary[]> => {

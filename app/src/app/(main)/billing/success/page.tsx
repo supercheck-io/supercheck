@@ -11,7 +11,8 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { CheckCircle2, ArrowRight, Loader2, RefreshCw } from "lucide-react";
-import { reloadOrganization } from "@/lib/organization-navigation";
+
+const CHECKOUT_CONTEXT_MISMATCH_MESSAGE = "This checkout belongs to a different organization. Use the project selector to select a project in the checkout organization, then retry confirmation if needed.";
 
 function BillingSuccessContent() {
   const router = useRouter();
@@ -30,37 +31,48 @@ function BillingSuccessContent() {
 
   const goToOrganization = useCallback(async () => {
     try {
-      if (organizationId) {
-        const response = await fetch("/api/organizations/switch", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ organizationId }),
-        });
-        if (!response.ok) throw new Error("Unable to open the organization. Please select it from the organization menu.");
-        reloadOrganization();
-      } else {
-        router.push("/");
+      // Recheck the current tenant without changing it. An old checkout link
+      // must not select another organization or use its paid subscription.
+      const response = await fetch("/api/subscription/status", { cache: "no-store" });
+      if (!response.ok) throw new Error("Unable to confirm your subscription. Please try again.");
+      const current = await response.json();
+      if (organizationId && current.organizationId !== organizationId) {
+        setSubscriptionVerified(false);
+        setShowRetry(true);
+        throw new Error(CHECKOUT_CONTEXT_MISMATCH_MESSAGE);
       }
+      if (!current.isActive || (current.plan !== "plus" && current.plan !== "pro")) {
+        throw new Error("Your subscription is still being confirmed. Please retry verification.");
+      }
+      router.push("/");
+      router.refresh();
     } catch (error) {
+      setSubscriptionVerified(false);
+      setIsVerifying(false);
+      setShowRetry(true);
       setNavigationError(error instanceof Error ? error.message : "Unable to open the organization");
     }
   }, [organizationId, router]);
 
   // Verify subscription is active before redirecting
-  const verifySubscription = useCallback(async () => {
+  const verifySubscription = useCallback(async (): Promise<"active" | "pending" | "mismatch"> => {
     try {
-      const response = await fetch(organizationId ? `/api/subscription/status?organizationId=${encodeURIComponent(organizationId)}` : "/api/subscription/status", {
+      const response = await fetch("/api/subscription/status", {
         cache: "no-store",
       });
       if (response.ok) {
         const data = await response.json();
+        if (organizationId && data.organizationId !== organizationId) {
+          return "mismatch";
+        }
         // Check if subscription is active
         if ((!organizationId || data.organizationId === organizationId) && data.isActive && (data.plan === "plus" || data.plan === "pro")) {
-          return true;
+          return "active";
         }
       }
-      return false;
+      return "pending";
     } catch {
-      return false;
+      return "pending";
     }
   }, [organizationId]);
 
@@ -74,12 +86,23 @@ function BillingSuccessContent() {
     const generation = pollingGeneration.current;
     setIsVerifying(true);
     setShowRetry(false);
+    setSubscriptionVerified(false);
+    setCountdown(3);
+    setNavigationError(null);
     attemptsRef.current = 0;
 
     const pollSubscription = async () => {
       const verified = await verifySubscription();
       if (generation !== pollingGeneration.current) return;
-      if (verified) {
+      if (verified === "mismatch") {
+        stopPolling();
+        setNavigationError(CHECKOUT_CONTEXT_MISMATCH_MESSAGE);
+        setSubscriptionVerified(false);
+        setIsVerifying(false);
+        setShowRetry(true);
+        return;
+      }
+      if (verified === "active") {
         setSubscriptionVerified(true);
         setIsVerifying(false);
         setShowRetry(false);
@@ -92,9 +115,9 @@ function BillingSuccessContent() {
         // Poll every second
         pollingRef.current = setTimeout(pollSubscription, 1000);
       } else {
-        // After 30 attempts, show retry button but keep polling slowly
+        // Bound automatic polling; users can retry delayed webhook confirmation.
         setShowRetry(true);
-        pollingRef.current = setTimeout(pollSubscription, 3000);
+        setIsVerifying(false);
       }
     };
 
@@ -140,19 +163,19 @@ function BillingSuccessContent() {
           <div className="mx-auto w-16 h-16 bg-green-500/10 rounded-full flex items-center justify-center">
             {isVerifying ? (
               <Loader2 className="w-10 h-10 text-green-500 animate-spin" />
-            ) : (
+            ) : subscriptionVerified ? (
               <CheckCircle2 className="w-10 h-10 text-green-500" />
-            )}
+            ) : <RefreshCw className="w-10 h-10 text-muted-foreground" />}
           </div>
           <CardTitle className="text-2xl">
             {isVerifying
               ? "Activating Subscription..."
-              : "Subscription Activated!"}
+              : subscriptionVerified ? "Subscription Activated!" : "Confirmation Needed"}
           </CardTitle>
           <CardDescription className="text-base">
             {isVerifying
               ? "Please wait while we confirm your account. This usually takes just a few seconds."
-              : "Thank you! Your subscription is active and your plan is ready to use."}
+              : subscriptionVerified ? "Thank you! Your subscription is active and your plan is ready to use." : "Choose a project in the checkout organization or retry verification."}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -160,7 +183,7 @@ function BillingSuccessContent() {
             <p>
               {isVerifying
                 ? "We're confirming your account setup. This may take a moment..."
-                : "You can review your subscription and invoices in Manage subscription."}
+                : subscriptionVerified ? "You can review your subscription and invoices in Manage subscription." : "Your current project and the checkout must belong to the same organization."}
             </p>
           </div>
 
@@ -177,8 +200,9 @@ function BillingSuccessContent() {
                   Retry Verification
                 </Button>
                 <p className="text-sm text-muted-foreground">
-                  Taking longer than expected. Still checking in background...
+                  Automatic verification has paused. Select the correct project or retry when the subscription is ready.
                 </p>
+                <Button className="w-full" variant="ghost" onClick={() => router.push("/")}>Return to projects</Button>
               </>
             ) : (
               <>

@@ -88,7 +88,7 @@ const accessLevels = [
     fullLabel: "Project Editor",
     description: "Create & edit in selected projects",
     fullDescription:
-      "Create and edit tests, jobs, monitors in selected projects only. Project selection required.",
+      "Create and edit tests, jobs, monitors in selected projects only. Other active team projects remain read-only. Project selection required.",
     icon: User,
     color: "text-blue-500",
     bgColor: "bg-blue-500/10",
@@ -100,7 +100,7 @@ const accessLevels = [
     fullLabel: "Project Admin",
     description: "Full access to selected projects",
     fullDescription:
-      "Full admin access to selected projects only. Can manage project settings. Project selection required.",
+      "Full admin permissions in selected projects only. Other active team projects remain read-only. Project selection required.",
     icon: Shield,
     color: "text-amber-500",
     bgColor: "bg-amber-500/10",
@@ -454,10 +454,11 @@ export function MemberAccessDialog({
           {/* Project Selection - only for editor/admin roles */}
           {requiresProjectSelection && (
             <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">Selected projects receive editor or admin permissions. All other active projects in this team remain visible with read-only access.</p>
               <div className="flex items-center justify-between">
                 <Label className="text-sm font-medium flex items-center gap-2">
                   <FolderOpen className="h-4 w-4 text-muted-foreground" />
-                  Project Access
+                  Project Permissions
                   <span className="text-xs font-normal text-muted-foreground">
                     ({formData.selectedProjects.length} selected)
                   </span>

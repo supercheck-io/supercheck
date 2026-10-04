@@ -1,4 +1,7 @@
 "use client";
+
+import { clearProjectsCache } from "@/hooks/use-project-context";
+import { announceProjectChange, reloadProjectContext } from "@/lib/project-navigation";
 import { signUp, sendVerificationEmail } from "@/utils/auth-client";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from "react";
@@ -253,7 +256,8 @@ function SignUpPageContent() {
         if (acceptResponse.ok && acceptResult.success) {
           // Success - redirect directly to dashboard
           console.log(`✅ Auto-accepted invitation to ${acceptResult.data?.organizationName}`);
-          router.push("/");
+          announceProjectChange();
+          reloadProjectContext(clearProjectsCache);
           return;
         } else {
           console.warn("Could not auto-accept invitation:", acceptResult.error);

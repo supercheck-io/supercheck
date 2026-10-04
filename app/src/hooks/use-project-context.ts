@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback, createContext, useContext } from 'react';
 import { toast } from 'sonner';
+import { announceProjectChange, listenForProjectChanges, reloadProjectContext } from '@/lib/project-navigation';
 
 export interface ProjectContext {
   id: string;
@@ -9,6 +10,7 @@ export interface ProjectContext {
   slug?: string;
   description?: string;
   organizationId: string;
+  organizationName?: string;
   isDefault: boolean;
   userRole: string;
 }
@@ -71,6 +73,8 @@ export function useProjectContextState(
   const [projects, setProjects] = useState<ProjectContext[]>(initialProjectsValue!);
   const [loading, setLoading] = useState(!hasServerData && !projectsCache);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => listenForProjectChanges(clearProjectsCache), []);
 
   useEffect(() => {
     if (hasServerData && !projectsCache && initialProjectsValue && initialProjectsValue.length >= 0) {
@@ -155,11 +159,11 @@ export function useProjectContextState(
 
       if (data.success && data.project) {
         setCurrentProject(data.project);
-        sessionStorage.setItem('projectSwitchSuccess', data.project.name);
-        await new Promise(resolve => setTimeout(resolve, 200));
-        // The active project is consumed by server components and API context.
-        // Use a full, same-origin reload so every tenant-scoped cache is reset.
-        window.location.replace(new URL('/', window.location.origin));
+        try {
+          sessionStorage.setItem('projectSwitchSuccess', data.project.name);
+        } catch { /* A successful server switch must survive disabled storage. */ }
+        announceProjectChange();
+        reloadProjectContext(clearProjectsCache);
         return true;
       } else {
         throw new Error(data.error || 'Failed to switch project');
