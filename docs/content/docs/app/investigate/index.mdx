@@ -4,7 +4,7 @@ description: Gather evidence and investigate incidents with read-only AI agents
 icon: Search
 ---
 
-Supercheck's AI SRE transforms existing tests, monitors, jobs, alert history, and status pages into a **read-only incident investigation loop**. It connects to your existing operational tools, gathers scoped evidence, explains what likely happened with citations, and recommends fix and recovery-check steps for a human responder.
+Supercheck's AI SRE transforms existing tests, monitors, jobs, alert history, and status pages into an automated, **read-only incident investigation loop**. It connects to your existing operational tools, gathers scoped evidence, explains what likely happened with citations, and recommends fix and recovery-check steps for a human responder.
 
 ```mermaid
 flowchart LR
@@ -26,41 +26,41 @@ flowchart LR
 
 - The agent gathers evidence, correlates data, reasons, and recommends.
 - You apply fixes in your own systems using your own tools and safeguards.
-- You use the existing Playwright tests, k6 tests, or monitors to confirm recovery after applying the fix.
+- You use existing Playwright tests, k6 performance tests, or synthetic monitors to confirm recovery after applying the fix.
 
 ## Native Evidence
 
-Supercheck uses stored summaries and references from its operational data to investigate incidents:
+Supercheck uses stored summaries and artifact references from its tests, monitors, runs, and status pages:
 
 - Failed monitor screenshots and Playwright videos
 - Console logs and network traces from synthetic tests
 - Historical monitor results with P50/P95/P99 latency trends
-- Run logs and artifacts
-- Status page context
+- Run logs and step artifacts
+- Public and private status page states
 
-Responders can inspect available screenshots, videos, and other artifacts. The
-agent reads bounded text evidence and artifact references; it does not watch
-videos or automatically analyze screenshot contents.
+Responders can inspect available screenshots, videos, and other artifacts through their source runs and monitors. The agent reads bounded text evidence and artifact references; it does not watch videos or automatically analyze screenshot contents.
 
-## Connector Layer
+## Service Catalog
 
-For additional context, AI SRE can query [read-only connectors](/docs/app/investigate/connectors) governed by RBAC, budgets, service scope, and redaction.
+Organize your system architecture by registering the systems and services you operate in the **Services** catalog. Services provide context for causal discovery, dependency tracking, and connector scoping.
 
-Administrators manage the service catalog from the top-level **Services** page. Read-only connectors, diagnostic recipes, and private agents are configured in **Organization Admin** under **Integrations**, **Diagnostic Recipes**, and **Private Agents**.
+![Service Catalog](/screenshots/sre-services-catalog.png)
 
-## Start with an incident
+## Core Navigation
 
-1. Open **Alerts → Signals** and select **Investigate** next to a failure, or choose **Investigate → Incidents → New incident**.
+| Screen | Purpose |
+|---|---|
+| **Communicate → Alerts** | Grouped failure signals, notification history, and channels. Select **Investigate** to open an incident directly. |
+| **Investigate → [Incidents](/docs/app/investigate/incidents)** | Incident queue and detail workspaces. Run AI investigations and generate shareable evidence briefs. |
+| **Investigate → [Copilot](/docs/app/investigate/copilot)** | Interactive AI assistant for asking questions about symptoms, logs, or active incident evidence. |
+| **Investigate → Services** | Manage service metadata, ownership teams, repositories, and tier classifications. |
+| **Organization Admin → [Integrations](/docs/app/investigate/connectors)** | Configure read-only integrations for GitHub, Kubernetes, Prometheus, Grafana, Datadog, and Loki. |
+
+## Start with an Incident
+
+1. Open **Communicate → Alerts → Signals** and select **Investigate** next to a failure, or create an incident from **Investigate → Incidents → New incident**.
 2. Review the incident's **Overview**. Collect evidence if needed, then explicitly select **Run investigation**.
 3. Review the cited findings. Apply a fix with your own tools and confirm recovery with your tests or monitors.
 4. Select **Resolve incident** and record what confirmed recovery.
 
 Opening an incident does not start a full AI investigation. Services, live sources, and the map are optional; you can investigate stored evidence without setting them up.
-
-| Screen | Purpose |
-|---|---|
-| **Communicate → Alerts** | Grouped failure signals, notification history, and channels. **Investigate** opens a new or existing incident. |
-| **Investigate → Incidents** | Active incidents first. Review findings in Overview and source details in Evidence & brief. |
-| **Investigate → [Copilot](/docs/app/investigate/copilot)** | Ask about context you provide. Open Copilot on an incident to use its saved evidence. |
-| **Investigate → Services** | Activity first, with Resources and Dependencies for optional service context. Suggested dependencies are reviewed within Dependencies. |
-| **View map** on an incident, or **Investigation Map** on a service | Explore relationships when needed. The incident link focuses the map on that incident. |

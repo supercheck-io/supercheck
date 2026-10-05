@@ -17,19 +17,11 @@ Every test or job execution creates a run with results, logs, and artifacts.
 | **Error** | Execution error (timeout, crash, infrastructure) |
 | **Running** | Currently executing |
 | **Queued** | Waiting to execute |
-| **Blocked** | Blocked by plan limits |
-
-## Run Execution
-
-<DiagramEmbed
-  src="/diagrams/supercheck-run-execution.html"
-  title="Run Execution"
-  height={900}
-/>
+| **Blocked** | Execution denied by access or spending controls |
 
 ## View Runs
 
-1. Go to **Runs**
+1. Go to **Automate → Runs**
 2. Select a run to view its details
 
 When a running execution is cancelled, Supercheck stops it and records the run as **Error** with cancellation details.
@@ -41,8 +33,10 @@ Each run includes:
 - **Results** — Pass/fail count and duration
 - **Screenshots** — Visual state at each step
 - **Videos** — Browser test recordings
-- **Logs** — Console output
+- **Logs** — Console output and live streaming logs
 - **Trace** — Step-by-step execution replay
+
+![Run Results and Execution Logs](/screenshots/performance-test-result-logs.png)
 
 ## Debug Failures
 

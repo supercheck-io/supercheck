@@ -1,56 +1,62 @@
 ---
 title: Copilot Chat
-description: Ask read-only questions about incidents and your platform
+description: Interactive, read-only AI SRE assistant for operational triage
 icon: MessageSquare
 ---
 
-Copilot is Supercheck's read-only chat for AI SRE. Use it from **Investigate → Copilot** for open-ended questions, or from the floating panel on an incident page for incident-scoped follow-ups.
+Copilot is Supercheck's read-only operational assistant. Access it from **Investigate → Copilot** for open-ended queries or via the floating action panel on any incident page for incident-scoped follow-ups.
 
-Standalone chat uses the text you provide. Incident chats use stored evidence and can query live read-only connectors when an authorized user opts in.
+![Copilot Chat](/screenshots/sre-copilot-chat.png)
 
-## Copilot Chat
+## Chat Modes
 
-<DiagramEmbed
-  src="/diagrams/supercheck-copilot-chat.html"
-  title="Copilot Chat"
-  height={900}
-/>
+| Source | Mode | Capabilities |
+|---|---|---|
+| **Standalone** | Platform chat (`/copilot`) | Uses user-provided context to explain architectures, craft queries, or analyze pasted error messages. |
+| **Incident-scoped** | Incident panel | Directly queries saved incident evidence (metrics, logs, traces, synthetic test artifacts) with native citations. |
+| **Live connectors** | Incident chat (opt-in) | Read-only queries to Kubernetes, Prometheus, Grafana, Datadog, GitHub, Loki, and other configured connectors. |
 
-## What Copilot Reads
+<Callout type="info">
+Copilot is strictly read-only. It never modifies infrastructure or provider data, applies remediation, or deploys code. It synthesizes findings and suggests safe verification commands.
+</Callout>
 
-| Source | Availability | Notes |
-|--------|--------------|-------|
-| **Stored evidence** | Any incident chat | Native evidence and connector evidence already gathered for the incident, with citations. |
-| **Live connectors** | Incident chat with opt-in | Read-only queries to Prometheus, Kubernetes, GitHub, Loki, and other configured connectors. |
-| **No tools** | Standalone chat | A chat without an incident cannot inspect evidence and will say so. |
+## Conversation Management
 
-Copilot never writes to your systems and never runs remediation. It gathers evidence, explains what likely happened, and recommends checks you can run yourself.
+- **New chat** — Starts a clean conversation thread.
+- **History** — Search and restore previous triage sessions.
+- **Archive** — Archives concluded sessions while preserving audit logs.
+- **Chat help** — Provides suggested questions and guidance on what Copilot can use.
 
-## Chat Scopes
+Conversations are automatically scoped to your current organization, project, and user identity.
 
-- **Standalone chat** lives on the Copilot page with saved conversations available through **History**. Use it for open-ended questions that do not need incident evidence.
-- **Incident chat** opens from an incident workspace or the floating panel. It is scoped to that incident, verifies the incident before answering, and can use stored evidence and live sources.
+## Investigation Map
 
-Use **New chat** to start fresh, **History** to search or reopen a saved conversation, and **Archive** in the header to archive the current chat. The **Open an incident** link stays below the chat for questions about saved incident evidence. The most recent conversation opens when you return. Conversations are always scoped to your organization, project, and user.
+For complex outages involving distributed microservices, open the **Investigation Map** (`/copilot/evidence-graph`) to navigate relationships between alerts, incidents, and upstream/downstream services.
 
-Standalone chat offers chart follow-ups when an answer contains numeric metrics. Evidence and connector follow-ups belong to incident chats.
+![Investigation Map](/screenshots/sre-investigation-map.png)
+
+The map displays:
+- Relationships between alert signals, incidents, and the services they affect
+- Service topology dependencies and tier classifications
+- Interactive node inspection for immediate evidence drill-down
 
 ## Live Sources
 
-Live sources are **off by default**. To use them in an incident chat:
+Live connector queries are **disabled by default**. To activate them during an incident chat:
 
-1. The incident must be mapped to a service and have configured connectors.
-2. Your role must include connector investigation permission. `project_editor` and above can chat; live sources require the connector permission that viewers and editors do not have by default.
-3. Toggle **Live sources** on in the composer before sending.
+1. Ensure the incident is linked to a registered service with configured connectors.
+2. Verify that your user role has connector investigation permissions (`project_admin` or higher).
+3. Toggle **Live sources** in the chat composer before submitting your prompt.
 
-Each live query is bounded: up to 10 rows, 15 seconds, and a 60 minute time window, with read-only policy checks before anything leaves the platform. Kubernetes queries require an explicit namespace. When a connector is unreachable through a private agent, Copilot tells you the query is pending instead of inventing evidence.
+### Safety Guardrails
 
-## Limits
-
-- **30 messages per minute** per user. If Redis is unavailable the request fails closed rather than running unthrottled.
-- **50 messages** and **20,000 characters** of history per request. Start a new chat when a thread gets long.
-- **4 model steps** and a **45 second** timeout per answer. The assistant message is saved when the stream finishes; stopped answers are not saved.
+- **Bounded queries** — Maximum 10 rows, 15-second execution timeout, and a historical time window of up to six hours (60 minutes by default).
+- **Namespace isolation** — Kubernetes queries strictly require explicit namespace scoping.
+- **Prompt context** — Each message is limited to 4,000 characters. Saved history lets you reopen conversations; previous messages are not automatically included in the model prompt. Restate relevant context in follow-up questions.
+- **Model budget** — 4 model steps and a 45-second timeout per answer. The answer is saved when the stream finishes; stopped answers are not saved.
+- **Rate limiting** — 30 messages per minute per user. If Redis is unavailable, requests fail closed rather than running unthrottled.
+- **Redaction** — All credentials, tokens, and sensitive headers are redacted before reasoning steps.
 
 <Callout type="info">
-For a full investigation with a saved, shareable report, use [Incident Investigation](/docs/app/investigate/incidents) instead. Copilot is for interactive questions; an investigation runs the complete evidence pass and records its findings on the incident timeline.
+For a full investigation with a saved, shareable report, use [Incident Investigation](/docs/app/investigate/incidents). Copilot is for interactive questions; an investigation runs the complete evidence pass and records its findings on the incident timeline.
 </Callout>
