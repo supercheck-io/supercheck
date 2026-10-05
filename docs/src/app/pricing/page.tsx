@@ -1,6 +1,4 @@
-'use client';
-
-import React, { useState } from 'react';
+import React from 'react';
 import Link from 'next/link';
 import { ChevronDown } from 'lucide-react';
 import { SiteHeader } from '../../lib/layout.shared';
@@ -9,7 +7,7 @@ const plans = [
     {
         name: 'Self-Hosted',
         price: 'Free',
-        description: 'Run on your own infrastructure',
+        description: 'No license cost; infrastructure and AI provider costs apply',
         features: [
             'Unlimited monitors',
             'Unlimited Playwright minutes',
@@ -18,7 +16,7 @@ const plans = [
             'Unlimited AI SRE investigations on your infrastructure',
             'Unlimited read-only evidence connectors',
             'Unlimited team members',
-            'Unlimited organizations & projects',
+            'Unlimited projects in your default organization',
             'CI/CD integration',
             'Cron job scheduling',
             'Community support',
@@ -67,7 +65,7 @@ const plans = [
             '50 projects per organization',
             'CI/CD integration',
             'Cron job scheduling',
-            'Priority support',
+            'Priority email support',
         ],
         cta: 'Get Started',
         ctaLink: 'https://app.supercheck.io/sign-up',
@@ -112,6 +110,9 @@ const comparisonFeatures = [
             { name: 'Read-only evidence connectors', plus: 'Included', pro: 'Included', selfHosted: 'Self-managed' },
             { name: 'Private Agent support', plus: 'Included', pro: 'Included', selfHosted: 'Self-managed' },
             { name: 'Concurrent jobs', plus: '5', pro: '10', selfHosted: 'Configurable' },
+            { name: 'Queued jobs', plus: '50', pro: '100', selfHosted: 'Configurable' },
+            { name: 'Minimum check interval', plus: '1 minute', pro: '1 minute', selfHosted: '1 minute' },
+            { name: 'Minimum synthetic check interval', plus: '5 minutes', pro: '5 minutes', selfHosted: '5 minutes' },
         ]
     },
     {
@@ -129,13 +130,14 @@ const comparisonFeatures = [
             { name: 'Cloud subscription scope', plus: 'One organization', pro: 'One organization', selfHosted: 'Self-managed' },
             { name: 'Projects', plus: '10', pro: '50', selfHosted: 'Unlimited' },
             { name: 'Status pages', plus: '3', pro: '15', selfHosted: 'Unlimited' },
+            { name: 'Subscribers per status page', plus: '500', pro: '5,000', selfHosted: 'Unlimited' },
         ]
     },
     {
         category: 'Data Retention', items: [
-            { name: 'Raw monitor data', plus: '7 days', pro: '7 days', selfHosted: '7 days' },
-            { name: 'Aggregated metrics', plus: '30 days', pro: '90 days', selfHosted: '90 days' },
-            { name: 'Job run history', plus: '30 days', pro: '90 days', selfHosted: '90 days' },
+            { name: 'Raw monitor data', plus: '7 days', pro: '7 days', selfHosted: '7 days by default' },
+            { name: 'Aggregated metrics', plus: '30 days', pro: '90 days', selfHosted: '90 days by default' },
+            { name: 'Job run history', plus: '30 days', pro: '90 days', selfHosted: '90 days by default' },
         ]
     },
     {
@@ -143,7 +145,8 @@ const comparisonFeatures = [
             { name: 'Custom domains', plus: '✓', pro: '✓', selfHosted: '✓' },
             { name: 'CI/CD integration', plus: '✓', pro: '✓', selfHosted: '✓' },
             { name: 'Cron job scheduling', plus: '✓', pro: '✓', selfHosted: '✓' },
-            { name: 'All monitoring locations', plus: '✓', pro: '✓', selfHosted: 'Self-managed' },
+            { name: 'Available monitoring locations', plus: 'All enabled locations', pro: 'All enabled locations', selfHosted: 'Self-managed' },
+            { name: 'Support', plus: 'Email', pro: 'Priority email', selfHosted: 'Community' },
         ]
     },
 ];
@@ -179,7 +182,11 @@ const faqs = [
     },
     {
         question: 'How do AI credits work?',
-        answer: 'AI credits are a hard monthly pool for test generation and failure analysis. Each completed full AI SRE investigation report uses one separate investigation unit; a report is not a guaranteed diagnosis or resolution. Failed or timed-out AI investigations and billing retries are not charged; a new completed investigation is a new unit. AI SRE chat, triage, and evidence briefs do not consume investigation units. Spending alerts and optional usage blocking help control overages; in-flight usage can exceed the configured limit.',
+        answer: 'AI credits are a hard monthly pool for test generation, test fixes, and failure analysis. Each accepted action uses one credit before generation or analysis starts, even if it later fails. There are no AI credit overages; upgrade or wait for your next billing cycle when the pool is exhausted. Full AI SRE investigations use a separate allowance: each completed report uses one investigation unit, without guaranteeing a diagnosis or resolution. Failed or timed-out full investigations and billing retries do not consume investigation units. AI SRE chat, triage, and evidence briefs do not consume investigation units.',
+    },
+    {
+        question: 'How can I control overage spending?',
+        answer: 'The organization owner can configure a monthly spending limit, billing contacts, threshold alerts, and optional usage blocking in billing settings. Limits apply to usage overages in addition to the base subscription. In-flight execution usage can exceed a configured limit, so it is not a guaranteed invoice cap. Monitor, member, project, and status-page limits require an upgrade rather than an overage payment.',
     },
     {
         question: 'Can I change plans anytime?',
@@ -200,23 +207,16 @@ const faqs = [
 ];
 
 function FAQItem({ question, answer }: { question: string; answer: string }) {
-    const [isOpen, setIsOpen] = useState(false);
-
     return (
-        <div className="border-b border-fd-border last:border-0">
-            <button
-                onClick={() => setIsOpen(!isOpen)}
-                className="w-full flex items-center justify-between px-6 py-4 text-left"
-            >
+        <details className="group border-b border-fd-border last:border-0">
+            <summary className="w-full flex cursor-pointer list-none items-center justify-between px-6 py-4 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fd-primary [&::-webkit-details-marker]:hidden">
                 <span className="text-sm">{question}</span>
-                <ChevronDown className={`w-4 h-4 text-fd-muted-foreground transition-transform flex-shrink-0 ml-4 ${isOpen ? 'rotate-180' : ''}`} />
-            </button>
-            {isOpen && (
-                <div className="px-6 pb-4 text-fd-muted-foreground text-sm">
-                    {answer}
-                </div>
-            )}
-        </div>
+                <ChevronDown aria-hidden="true" className="w-4 h-4 text-fd-muted-foreground transition-transform flex-shrink-0 ml-4 group-open:rotate-180" />
+            </summary>
+            <div className="px-6 pb-4 text-fd-muted-foreground text-sm">
+                {answer}
+            </div>
+        </details>
     );
 }
 
@@ -225,23 +225,26 @@ export default function PricingPage() {
         <div className="min-h-screen bg-fd-background">
             <SiteHeader showPricing={false} />
 
-            <main className="container py-12 md:py-20">
+            <main className="container mx-auto px-4 sm:px-6 py-12 md:py-20">
                 {/* Header */}
                 <div className="text-center mb-16">
                     <h1 className="text-4xl font-bold tracking-tight mb-4">
                         Simple, Transparent Pricing
                     </h1>
                     <p className="text-lg text-fd-muted-foreground max-w-2xl mx-auto">
-                        Start with self-hosted for free. Cloud plans are monthly subscriptions per organization; each organization needs its own plan.
+                        Self-host at no license cost, or choose a monthly cloud plan for your team. One subscription covers all projects in your default organization.
+                    </p>
+                    <p className="mt-4 text-sm text-fd-muted-foreground">
+                        Cloud prices are in USD, billed monthly, before applicable taxes. Usage overages are additional.
                     </p>
                 </div>
 
                 {/* Pricing Cards */}
-                <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8 mb-20">
+                <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8 mb-6">
                     {plans.map((plan) => (
                         <div
                             key={plan.name}
-                            className={`relative rounded-xl border p-8 ${plan.highlighted
+                            className={`relative flex flex-col rounded-xl border p-8 ${plan.highlighted
                                 ? 'border-fd-primary bg-fd-primary/5 shadow-lg'
                                 : 'border-fd-border bg-fd-card'
                                 }`}
@@ -249,12 +252,12 @@ export default function PricingPage() {
                             {plan.highlighted && (
                                 <div className="absolute -top-3 left-1/2 -translate-x-1/2">
                                     <span className="bg-fd-primary text-fd-primary-foreground text-xs font-semibold px-3 py-1 rounded-full">
-                                        Most Popular
+                                        Higher capacity
                                     </span>
                                 </div>
                             )}
                             <div className="mb-6">
-                                <h3 className="text-xl font-semibold mb-2">{plan.name}</h3>
+                                <h2 className="text-xl font-semibold mb-2">{plan.name}</h2>
                                 <p className="text-sm text-fd-muted-foreground">{plan.description}</p>
                             </div>
                             {plan.price !== undefined && <div className="mb-6">
@@ -263,10 +266,10 @@ export default function PricingPage() {
                                     <span className="text-fd-muted-foreground">{plan.period}</span>
                                 )}
                             </div>}
-                            <ul className="space-y-3 mb-8">
+                            <ul className="space-y-3 mb-8 flex-1">
                                 {plan.features.map((feature) => (
                                     <li key={feature} className="flex items-start gap-2 text-sm">
-                                        <svg className="w-5 h-5 text-fd-primary flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <svg aria-hidden="true" className="w-5 h-5 text-fd-primary flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                                         </svg>
                                         {feature}
@@ -275,6 +278,7 @@ export default function PricingPage() {
                             </ul>
                             <Link
                                 href={plan.ctaLink}
+                                aria-label={`${plan.cta} — ${plan.name}`}
                                 className={`block w-full text-center py-3 px-4 rounded-lg font-medium transition-colors ${plan.highlighted
                                     ? 'bg-fd-primary text-fd-primary-foreground hover:bg-fd-primary/90'
                                     : 'bg-fd-secondary text-fd-secondary-foreground hover:bg-fd-secondary/80'
@@ -285,6 +289,9 @@ export default function PricingPage() {
                         </div>
                     ))}
                 </div>
+                <p className="text-center text-sm text-fd-muted-foreground max-w-3xl mx-auto mb-20">
+                    Self-hosting requires your own infrastructure and AI provider; you pay those costs and manage capacity, security, and retention. Cloud allowances reset each billing month and do not roll over. Joining an invited team uses that team’s subscription.
+                </p>
 
                 {/* Overage Pricing */}
                 <div className="mb-20">
@@ -294,7 +301,7 @@ export default function PricingPage() {
                     </p>
                     <div className="max-w-2xl mx-auto">
                         <div className="rounded-lg border overflow-hidden">
-                            <table className="w-full">
+                            <table className="w-full" aria-label="Usage overage rates">
                                 <thead className="bg-fd-muted">
                                     <tr>
                                         <th className="text-left px-6 py-3 text-sm font-medium">Metric</th>
@@ -319,9 +326,9 @@ export default function PricingPage() {
                 {/* Comparison Table */}
                 <div className="mb-20">
                     <h2 className="text-2xl font-bold text-center mb-8">Full Feature Comparison</h2>
-                    <div className="overflow-x-auto">
-                        <div className="rounded-lg border overflow-hidden min-w-[600px]">
-                            <table className="w-full">
+                    <p className="text-center text-sm text-fd-muted-foreground mb-4 md:hidden">Scroll horizontally to compare all plans.</p>
+                    <div className="rounded-lg border overflow-x-auto" role="region" aria-label="Plan feature comparison" tabIndex={0}>
+                            <table className="w-full min-w-[760px]" aria-label="Full plan feature comparison">
                                 <thead className="bg-fd-muted">
                                     <tr>
                                         <th className="text-left px-6 py-3 text-sm font-medium">Feature</th>
@@ -341,7 +348,7 @@ export default function PricingPage() {
                                             </tr>
                                             {category.items.map((item, idx) => (
                                                 <tr key={item.name} className={idx % 2 === 0 ? 'bg-fd-card' : 'bg-fd-muted/30'}>
-                                                    <td className="px-6 py-3 text-sm pl-10">{item.name}</td>
+                                                    <th scope="row" className="px-6 py-3 text-sm pl-10 text-left font-normal">{item.name}</th>
                                                     <td className="px-6 py-3 text-sm text-center">{item.selfHosted}</td>
                                                     <td className="px-6 py-3 text-sm text-center">{item.plus}</td>
                                                     <td className="px-6 py-3 text-sm text-center">{item.pro}</td>
@@ -352,7 +359,6 @@ export default function PricingPage() {
                                     ))}
                                 </tbody>
                             </table>
-                        </div>
                     </div>
                 </div>
 
@@ -365,6 +371,12 @@ export default function PricingPage() {
                         ))}
                     </div>
                 </div>
+                <nav aria-label="Pricing resources" className="mt-10 flex flex-wrap justify-center gap-x-6 gap-y-3 text-sm text-fd-muted-foreground">
+                    <Link href="https://demo.supercheck.dev" className="hover:underline">Try the demo</Link>
+                    <Link href="/terms" className="hover:underline">Terms of Service</Link>
+                    <Link href="/privacy" className="hover:underline">Privacy Policy</Link>
+                    <Link href="mailto:hello@supercheck.io" className="hover:underline">Contact us</Link>
+                </nav>
             </main>
         </div>
     );
