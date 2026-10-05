@@ -6,6 +6,8 @@ icon: Bell
 
 Alerts notify you when monitors fail, tests break, or services recover. Configure multiple notification channels and use smart thresholds to avoid alert fatigue.
 
+![Notification Channels](/screenshots/notification-channels.png)
+
 ```mermaid
 %%{init: {"theme":"base","themeVariables":{"fontFamily":"ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif","actorBkg":"#eef2ff","actorBorder":"#6366f1","actorTextColor":"#312e81","actorLineColor":"#94a3b8","signalColor":"#6366f1","signalTextColor":"#64748b","labelBoxBkgColor":"#fef3c7","labelBoxBorderColor":"#d97706","labelTextColor":"#78350f","loopTextColor":"#64748b","activationBkgColor":"#ddd6fe","activationBorderColor":"#7c3aed","noteBkgColor":"#fef3c7","noteBorderColor":"#d97706","noteTextColor":"#78350f","textColor":"#64748b","lineColor":"#94a3b8","mainBkg":"transparent"}}}%%
 sequenceDiagram
@@ -398,6 +400,8 @@ The webhook UI supports custom JSON headers for provider API keys. Supercheck st
 
 Use **Alerts → Signals** for investigation-ready failure signals. Signals are derived from sent failure alerts only. Notification delivery failures, recoveries, and success notifications remain in **History** so they do not create false incident noise.
 
+![Alert Signals](/screenshots/sre-alert-signals.png)
+
 Repeated sent failures for the same target and alert type appear as one signal, with the latest message and timestamp and a repeat count. All individual deliveries remain in History. A failure signal is historical evidence, not proof that the target is still failing.
 
 From Signals, responders can:
@@ -411,6 +415,8 @@ From Signals, responders can:
 ## Alert History
 
 Track all alerts from **Alerts → History**:
+
+![Alert History](/screenshots/alert-history.png)
 
 - Alert type and severity
 - Target (monitor or job name)

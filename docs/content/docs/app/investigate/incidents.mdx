@@ -8,101 +8,116 @@ Incidents are the responder queue for issues that need investigation, evidence r
 
 You can create an incident in two ways:
 
-- From **Communicate → Alerts → Signals**, select **Investigate** next to a failure. Repeated deliveries are grouped, and the latest alert opens a new or existing incident without starting a full investigation.
-- From **Investigate → Incidents → New incident**, when the issue did not start from a Supercheck alert.
+- From **Communicate → Alerts → Signals**, select **Investigate** next to an alert failure. Repeated deliveries are grouped, and the latest alert opens a new or existing incident without starting a full investigation.
+- From **Investigate → Incidents → New incident**, when an issue did not originate from a Supercheck alert.
 
-Both paths create the same incident workspace.
+Both paths open the dedicated incident workspace.
 
-## SRE Investigation
+![Create Incident Dialog](/screenshots/create-incident-dialog.png)
 
-<DiagramEmbed
-  src="/diagrams/supercheck-ai-sre-investigation.html"
-  title="SRE Investigation"
-  height={900}
-/>
+## Incident Queue
 
-## Incident Detail
+The incident queue displays active incidents first, ordered by recency. Responders can filter by severity (`SEV1` through `SEV4`), resolution status, or search by title. Quick action buttons provide direct access to **Review alerts** and **Trends**.
 
-The incident queue shows active incidents first. Use the status filter to see resolved or all incidents. Search, severity filters, pagination, and Trends remain available.
+![Incident Queue](/screenshots/sre-incidents-queue.png)
 
-The incident workspace has two tabs:
+## Incident Workspace
 
-- **Overview** — Run an investigation and read its latest findings. **Include live sources** is optional and off by default; it requires a linked service and connector investigation permission. Expand **Save report & feedback** to save an immutable review copy or rate a saved result. Aggregate tool metrics are available under **Investigation diagnostics**.
-- **Evidence & brief** — Inspect saved observations and their sources. Expand **Evidence brief · Summarize or export evidence** to collect native evidence, generate or regenerate a shareable summary, and copy or download it. A brief summarizes evidence; it is separate from a full investigation.
+Each incident provides a dedicated workspace divided into two functional tabs:
 
-If no evidence is saved, **Collect evidence** opens the brief section. Existing links with `?tab=brief` still open that section. A service is optional for stored-evidence investigations. **Link service** adds context when you need live sources; **View map** opens the optional map focused on this incident.
+### Overview Tab
 
-The start request returns an accepted run ID while the investigation continues
-in the background. While it is running, another start is disabled and the open incident
-refreshes its status automatically. If your connection is interrupted, check the
-incident's status before starting again: the server may still be completing the
-original run.
+The **Overview** tab contains the incident header, metadata, investigation controls, and findings:
 
-Completed results can be saved as sanitized, immutable report snapshots. Authorized responders can add accuracy feedback; viewers have read-only access.
+- **Run investigation** — Launches a bounded, read-only AI investigation pass against stored evidence and optional live connectors.
+- **Include live sources** — Off by default; requires a linked service and connector investigation permissions.
+- **Link service & View map** — Connects the incident to a catalog service and visualizes its dependency topology.
+- **Save report & feedback** — Responders can snapshot immutable reports and rate findings accuracy.
 
-The investigation result, saved report snapshot, and evidence brief are separate
-artifacts. An interrupted, truncated, or filtered model response is a failed run;
-review its status and evidence before trying again.
-The result explains known step, response-length, filtering, and timeout failures.
-Provider failures use a safe generic message so credentials and raw provider
-responses are never displayed. Failed runs cannot be saved as completed reports.
+![Incident Workspace Overview](/screenshots/incident-workspace-overview.png)
 
-The map loads recent project context with bounded limits. An incident deep link
-prioritizes that incident, its linked service, alerts, and saved investigation
-evidence, including incidents older than the default recent list. An inaccessible
-incident shows an error instead of silently opening an unrelated project map.
+Click **View map** on an incident to inspect the interactive dependency graph and blast radius. The map loads bounded recent project context, and an incident deep link prioritizes that incident, its linked service, alerts, and saved investigation evidence. An inaccessible incident shows an error instead of silently opening an unrelated project map.
+
+![Investigation Map](/screenshots/sre-investigation-map.png)
+
+The investigation request returns an accepted run ID while executing in the background. While running, controls are disabled and the page automatically polls status.
+
+The investigation result, saved report snapshot, and evidence brief are separate artifacts. An interrupted, truncated, or filtered model response is a failed run; review its status and evidence before trying again. Failures explain known step, response-length, filtering, and timeout cases; provider failures show a safe generic message so credentials and raw provider responses are never displayed. Failed runs cannot be saved as completed reports.
+
+### Evidence & Brief Tab
+
+The **Evidence & brief** tab organizes all observations gathered across native checks and connected external systems. Existing links with `?tab=brief` open this section directly.
+
+- **Evidence items** — Detailed observations including HTTP response codes, latency spikes, test assertions, and traces.
+- **Evidence brief** — An AI-synthesized, shareable executive summary with findings, hypotheses, and gaps. Responders can regenerate or download the brief as a Markdown file.
+
+![Evidence and Brief](/screenshots/incident-evidence-brief.png)
+
+Select **View map** to explore the incident and its evidence relationships in the Investigation Map:
+
+![Evidence Graph](/screenshots/sre-evidence-graph.png)
 
 ### Investigation Report
 
-Reports separate evidence from judgment using **Fact**, **Inference**, and **Hypothesis** labels. The standard responder summary includes:
+Reports separate evidence from judgment using explicit **Fact**, **Inference**, and **Hypothesis** labels. The standard responder summary covers:
 
-- What changed
-- Blast radius
-- Strongest signals
-- Likely cause and confidence
-- Evidence gaps
-- Next safe read-only checks and how to confirm recovery after a human applies a fix
+- **What changed** — Recent code commits, deployments, or configuration updates
+- **Blast radius** — Affected endpoints, services, and downstream dependencies
+- **Strongest signals** — High-confidence failure patterns and error messages
+- **Likely cause & confidence** — Root cause hypothesis with supporting rationale
+- **Evidence gaps** — Missing data or unchecked systems
+- **Next safe checks** — Recommended read-only commands to verify the state
 
-If the available evidence cannot establish a cause or affected scope, the report states that explicitly instead of filling the gap with assumptions.
+If available evidence cannot determine root cause, the report explicitly states the gap rather than making assumptions.
 
-### Incident Trends
+### Availability & Permissions
 
-Select **Trends** from the incident queue to review the last 30 days of created and resolved incidents, resolution rate, average resolution time, severity mix, and most affected services. Analytics use the current organization and project context and require the same incident view permission as the queue.
+If investigations are disabled, existing evidence and results remain readable, but run and live-source controls are unavailable. Viewers cannot run investigations, use Copilot, or mutate snapshots and feedback. Project Editors can investigate stored evidence and use Copilot; enabling **Live sources** requires connector investigation permission (`project_admin` or higher).
 
-### Copilot
+## Incident Trends
 
-Copilot is available from **Investigate → Copilot** and the floating launcher.
+Select **Trends** from the incident queue to inspect historical operational metrics over the last 30 days:
 
-| Mode | Available context |
+- **Volume metrics** — Total created vs. resolved incidents
+- **Resolution rate & average resolution time** — Percentage resolved and mean time to resolution
+- **Severity mix** — Breakdown across SEV1, SEV2, SEV3, and SEV4
+- **Most affected services** — Hotspots requiring architectural remediation
+
+![Incident Trends and Analytics](/screenshots/sre-incident-trends.png)
+
+## Copilot Assistance
+
+Copilot is accessible directly from **Investigate → Copilot** as well as the floating launcher on incident pages.
+
+| Mode | Context Available |
 |---|---|
-| Standalone | Text entered by the responder |
-| Incident-scoped | Stored incident evidence |
-| Incident-scoped with **Live sources** | Bounded connector data when explicitly enabled by an authorized role |
+| **Standalone** | Responder-provided prompts and questions |
+| **Incident-scoped** | Stored native and connector evidence for that specific incident |
+| **Incident-scoped with Live Sources** | Bounded connector data queried in real-time when enabled by an authorized role |
 
-Standalone `/copilot` does not automatically inspect an incident, a Kubernetes cluster, or external observability systems. It uses the question and text entered in the composer. Live connector data is available only in an incident-scoped conversation when an enabled connector is scoped to the affected service, the user's role permits investigation, and **Live sources** is explicitly enabled. If supporting evidence is unavailable, Copilot reports the gap and suggests the next safe checks; it must not invent evidence IDs, source systems, queries, values, or timestamps.
-
-If investigations are disabled, existing evidence and results remain readable but run and live-source controls are unavailable. Viewers cannot run investigations, use Copilot, or mutate snapshots and feedback. Project Editors can investigate stored evidence and use Copilot, but cannot enable **Live sources**.
+Standalone chat does not query infrastructure without context. Incident chat grounds responses in verified observations and will report gaps rather than inventing queries or timestamps.
 
 ## Incident Lifecycle & Verification
 
-| Stage | Responsibility |
-|---|---|
-| Triage | Select Investigate on an alert signal or create an incident manually. Optional correlation can link a high-confidence related alert to an active incident. |
-| Investigate | AI SRE reads native evidence and explicitly enabled, scoped connector data. |
-| Decide and fix | A human reviews cited recommendations and changes the external system. |
-| Confirm recovery | A human re-runs or observes the detecting checks; AI SRE does not trigger remediation or verification. |
+| Stage | Responsibility | Action |
+|---|---|---|
+| **Triage** | Responder / Supercheck | Select **Investigate** on an alert signal or create an incident manually. High-confidence alerts can auto-correlate to existing incidents. |
+| **Investigate** | AI SRE Agent | Reads native evidence and authorized connector sources; generates cited hypotheses. |
+| **Decide & Fix** | Human Responder | Evaluates findings and applies necessary remediation in external systems. |
+| **Confirm Recovery** | Human Responder | Re-runs synthetic tests, checks monitor status, or observes metrics. |
+| **Resolve** | Human Responder | Clicks **Resolve incident**, records fix details and passing checks in the incident timeline. |
 
-After confirming recovery, select **Resolve incident**, describe the fix and the checks that passed, and confirm. The note is saved in the incident timeline. This records your decision; it does not run checks or apply remediation. Viewers cannot resolve incidents.
+Resolving records your decision and the recovery checks you list; it does not run checks or apply remediation. Viewers cannot resolve incidents.
 
-## Alerts and Incidents
+## Alerts vs. Incidents
 
-Alerts and incidents intentionally remain separate:
+Alerts and incidents are intentionally separated in Supercheck:
 
-- **Alerts** show notification channels, alert history, and grouped failure signals.
-- **Incidents** show issues your team has decided to investigate.
+- **Alerts** manage delivery channels, dispatch history, and raw failure signals.
+- **Incidents** manage active investigation workflows, evidence collection, and resolution records.
 
-This keeps alert noise out of the responder queue while still making it easy to open an incident from a signal.
+This separation prevents alert noise from cluttering responder queues while ensuring any signal can be escalated with one click.
 
 ## Exporting Reports
 
-Downloaded reports include bounded evidence, recommendations, hashes, item counts, and truncation metadata. They exclude credentials, raw connector data, and source URIs.
+Downloaded investigation reports include bounded evidence, recommendations, hashes, item counts, and truncation metadata. They exclude credentials, raw connector data, and source URIs.
