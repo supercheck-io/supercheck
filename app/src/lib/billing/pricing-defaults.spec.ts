@@ -31,8 +31,8 @@ describe("pricing defaults and copy", () => {
       )?.answer,
     ).toContain("all projects within it share your monthly subscription");
     expect(
-      PRICING_FAQS.find((f) => f.question === "How is usage tracked?")?.answer,
-    ).toContain("rather than accumulated active VU-time");
+      PRICING_FAQS.find((f) => f.question === "How are load tests measured?")?.answer,
+    ).toContain("This can exceed accumulated active VU-time");
   });
 });
 

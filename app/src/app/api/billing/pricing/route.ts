@@ -50,7 +50,7 @@ export async function GET() {
     const locationsSummary =
       enabledLocations.length > 0
         ? `${enabledLocations.length} (${enabledLocations.map((l) => l.name).join(", ")})`
-        : "1 (Local)";
+        : "Temporarily unavailable";
 
     // Validate that we have the required plans
     if (
@@ -91,14 +91,14 @@ export async function GET() {
             name: PLAN_PRICING.plus.name,
             price: PLAN_PRICING.plus.monthlyPriceCents / 100,
             interval: "month",
-            description: "Best for small teams and growing projects",
+            description: "For small teams and growing projects",
           },
           pro: {
             id: "pro",
             name: PLAN_PRICING.pro.name,
             price: PLAN_PRICING.pro.monthlyPriceCents / 100,
             interval: "month",
-            description: "Best for production applications and larger teams",
+            description: "For growing production teams",
           },
         }[planType];
 
@@ -117,8 +117,8 @@ export async function GET() {
             projects: plan.maxProjects,
             statusPages: plan.maxStatusPages,
             statusPageSubscribers: plan.maxStatusPageSubscribers,
-            monitorDataRetention: `${plan.dataRetentionDays}d raw / ${plan.aggregatedDataRetentionDays}d metrics`,
-            jobDataRetention: `${plan.jobDataRetentionDays}d`,
+            monitorDataRetention: `${plan.dataRetentionDays} days raw / ${plan.aggregatedDataRetentionDays} days metrics`,
+            jobDataRetention: `${plan.jobDataRetentionDays} days`,
             customDomains: plan.customDomains,
             support:
               planType === "pro" ? "Priority email support" : "Email support",
@@ -143,7 +143,7 @@ export async function GET() {
         category: "Monitoring",
         features: [
           {
-            name: "Uptime Monitors",
+            name: "Monitors",
             plus: plans.find((p) => p.plan === "plus")?.maxMonitors ?? "25",
             pro: plans.find((p) => p.plan === "pro")?.maxMonitors ?? "100",
             enterprise: "Custom",
@@ -184,7 +184,7 @@ export async function GET() {
             enterprise: "Custom",
           },
           {
-            name: "AI SRE Investigation Units",
+            name: "Completed full AI SRE reports",
             plus: `${Number(plans.find((p) => p.plan === "plus")?.sreInvestigationUnitsIncluded ?? PLAN_LIMIT_FALLBACKS.plus.sreInvestigationUnitsIncluded)}/month`,
             pro: `${Number(plans.find((p) => p.plan === "pro")?.sreInvestigationUnitsIncluded ?? PLAN_LIMIT_FALLBACKS.pro.sreInvestigationUnitsIncluded)}/month`,
             enterprise: "Custom",
@@ -201,6 +201,17 @@ export async function GET() {
             pro: plans.find((p) => p.plan === "pro")?.queuedCapacity ?? "100",
             enterprise: "Custom",
           },
+        ],
+      },
+      {
+        category: "AI SRE",
+        features: [
+          { name: "Standalone AI SRE Copilot", plus: true, pro: true, enterprise: true },
+          { name: "Incident-scoped Copilot", plus: true, pro: true, enterprise: true },
+          { name: "Evidence graph and reports", plus: true, pro: true, enterprise: true },
+          { name: "Report snapshots and feedback", plus: true, pro: true, enterprise: true },
+          { name: "Read-only evidence connectors", plus: "Included", pro: "Included", enterprise: "Custom limits" },
+          { name: "Private Agent support", plus: "Included", pro: "Included", enterprise: "Custom limits" },
         ],
       },
       {

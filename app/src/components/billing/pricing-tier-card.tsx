@@ -55,11 +55,11 @@ export function PricingTierCard({
             className={cn(
               "rounded-full px-2.5 py-1 text-xs font-semibold",
               highlighted
-                ? "bg-emerald-500 text-white border-0 shadow-sm"
+                ? "bg-emerald-700 text-white border-0 shadow-sm"
                 : "bg-muted text-muted-foreground border-0"
             )}
           >
-            {highlighted && <Sparkles className="h-3 w-3 mr-1" />}
+            {highlighted && <Sparkles aria-hidden="true" className="h-3 w-3 mr-1" />}
             {badge}
           </Badge>
         </div>
@@ -68,14 +68,14 @@ export function PricingTierCard({
       <CardHeader className={cn("space-y-4 pb-6", badge && "pt-10")}>
         {/* Plan Name and Tagline */}
         <div>
-          <h3
+          <h2
             className={cn(
               "text-2xl font-bold tracking-tight",
               highlighted && "text-emerald-600 dark:text-emerald-400"
             )}
           >
             {name}
-          </h3>
+          </h2>
           <p className="text-sm text-muted-foreground mt-1">{tagline}</p>
         </div>
 
@@ -111,7 +111,7 @@ export function PricingTierCard({
                     : "bg-muted text-muted-foreground"
                 )}
               >
-                <Check className="h-3 w-3" strokeWidth={3} />
+                <Check aria-hidden="true" className="h-3 w-3" strokeWidth={3} />
               </div>
               <span className="text-sm leading-5 text-foreground/90">
                 {feature}
@@ -126,20 +126,20 @@ export function PricingTierCard({
             className={cn(
               "w-full h-11 text-sm font-semibold",
               highlighted &&
-                "bg-emerald-600 hover:bg-emerald-700 text-white shadow-md"
+                "bg-emerald-700 hover:bg-emerald-800 text-white shadow-md"
             )}
             size="lg"
             variant={highlighted ? "default" : ctaVariant}
             asChild
           >
-            <a href={ctaHref}>{ctaText}</a>
+            <a href={ctaHref} aria-label={`${ctaText} about ${name}`}>{ctaText}</a>
           </Button>
         ) : (
           <Button
             className={cn(
               "w-full h-11 text-sm font-semibold",
               highlighted &&
-                "bg-emerald-600 hover:bg-emerald-700 text-white shadow-md"
+                "bg-emerald-700 hover:bg-emerald-800 text-white shadow-md"
             )}
             size="lg"
             variant={highlighted ? "default" : ctaVariant}
@@ -148,8 +148,8 @@ export function PricingTierCard({
           >
             {loading ? (
               <>
-                <Loader2 className="animate-spin mr-2 h-4 w-4" />
-                Processing...
+                <Loader2 aria-hidden="true" className="animate-spin mr-2 h-4 w-4" />
+                Opening checkout...
               </>
             ) : (
               ctaText
