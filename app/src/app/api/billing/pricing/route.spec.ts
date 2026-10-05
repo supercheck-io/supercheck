@@ -4,10 +4,34 @@ jest.mock("@/lib/location-registry", () => ({
 }));
 import { db } from "@/utils/db";
 import { GET } from "./route";
+import { getEnabledLocations } from "@/lib/location-registry";
 
 describe("Billing pricing configuration", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    (getEnabledLocations as jest.Mock).mockResolvedValue([]);
+  });
+
+  it.each([false, true])("does not advertise an invented location when the registry is unavailable: %s", async (reject) => {
+    if (reject) (getEnabledLocations as jest.Mock).mockRejectedValueOnce(new Error("Registry unavailable"));
+    (db.select as jest.Mock)
+      .mockReturnValueOnce({ from: () => ({ where: async () => [{ plan: "plus" }, { plan: "pro" }] }) })
+      .mockReturnValueOnce({ from: () => ({ where: async () => [] }) });
+    const response = await GET();
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.plans[0].features.monitoringLocations).toBe("Temporarily unavailable");
+    expect(body.featureComparison[0].features.find((feature: { name: string }) => feature.name === "Monitoring Locations").plus).toBe("Temporarily unavailable");
+  });
+
+  it("uses enabled locations consistently in plan cards and comparisons", async () => {
+    (getEnabledLocations as jest.Mock).mockResolvedValueOnce([{ name: "EU Central" }, { name: "US East" }]);
+    (db.select as jest.Mock)
+      .mockReturnValueOnce({ from: () => ({ where: async () => [{ plan: "plus" }, { plan: "pro" }] }) })
+      .mockReturnValueOnce({ from: () => ({ where: async () => [] }) });
+    const body = await (await GET()).json();
+    expect(body.plans[0].features.monitoringLocations).toBe("2 (EU Central, US East)");
+    expect(body.featureComparison[0].features.find((feature: { name: string }) => feature.name === "Monitoring Locations").pro).toBe("2 (EU Central, US East)");
   });
 
   it("does not invent a missing paid plan", async () => {

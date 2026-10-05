@@ -21,12 +21,13 @@ export function PricingFeatureCell({
   // Boolean values - show check or X
   if (typeof value === "boolean") {
     return (
-      <div className={`flex ${alignClass}`}>
+      <div className={`relative flex ${alignClass}`}>
         {value ? (
-          <Check className="h-4 w-4 text-green-500" />
+          <Check aria-hidden="true" className="h-4 w-4 text-green-500" />
         ) : (
-          <X className="h-4 w-4 text-muted-foreground/50" />
+          <X aria-hidden="true" className="h-4 w-4 text-muted-foreground/50" />
         )}
+        <span className="sr-only">{value ? "Included" : "Not included"}</span>
       </div>
     );
   }
@@ -43,7 +44,7 @@ export function PricingFeatureCell({
     // Check for infinity-like values
     if (value === "Unlimited") {
       return (
-        <span className="text-sm font-medium">∞</span>
+        <span className="text-sm font-medium">Unlimited</span>
       );
     }
 

@@ -179,7 +179,7 @@ describe("SubscriptionTab", () => {
     expect(screen.getByText("$5.00 per 1,000 VU-min")).toBeInTheDocument();
     expect(screen.getByText("$2.50 per 1,000 VU-min")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Enterprise" }).parentElement?.parentElement).not.toHaveTextContent(/\$/);
-    expect(screen.getByRole("link", { name: "Get in touch" })).toHaveAttribute("href", "mailto:hello@supercheck.io");
+    expect(screen.getByRole("link", { name: "Get in touch about Enterprise" })).toHaveAttribute("href", "mailto:hello@supercheck.io");
     expect(screen.queryByText(/annual/i)).not.toBeInTheDocument();
   });
   it("does not let an invited member start a personal subscription for the organization", async () => {
@@ -187,7 +187,7 @@ describe("SubscriptionTab", () => {
     render(<SubscribePage />);
     expect(await screen.findByText("Subscription for Invited organization")).toBeInTheDocument();
     expect(screen.getByText(/Only this organization's owner can subscribe/)).toBeInTheDocument();
-    const button = screen.getByRole("button", { name: "Get Started with Pro" });
+    const button = screen.getByRole("button", { name: "Continue with Pro" });
     expect(button).toBeDisabled();
     fireEvent.click(button);
     expect(fetchMock).not.toHaveBeenCalledWith("/api/billing/checkout", expect.anything());
@@ -197,7 +197,7 @@ describe("SubscriptionTab", () => {
     mockUseOrganizations.mockReturnValue({ activeOrganization: { id: "org_1", name: "Paid organization", role: "org_owner", subscriptionStatus: "active" }, isPending: false, isError: false });
     render(<SubscribePage />);
     expect(await screen.findByRole("link", { name: "Manage subscription" })).toHaveAttribute("href", "/org-admin?tab=subscription");
-    expect(screen.getByRole("button", { name: "Get Started with Pro" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Continue with Pro" })).toBeDisabled();
   });
 
 });

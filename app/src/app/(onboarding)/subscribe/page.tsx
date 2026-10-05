@@ -199,7 +199,7 @@ function SubscribePageContent() {
     return (
       <div className="max-w-md mx-auto py-16 px-4 text-center space-y-4">
         <AlertCircle className="h-12 w-12 text-muted-foreground mx-auto" />
-        <h2 className="text-xl font-semibold">Unable to load pricing</h2>
+        <h1 className="text-xl font-semibold">Unable to load plans</h1>
         <p className="text-sm text-muted-foreground">
           We couldn&apos;t load the pricing information. Please check your
           connection and try again.
@@ -218,22 +218,22 @@ function SubscribePageContent() {
   return (
     <div className="max-w-7xl mx-auto py-6 md:py-8 px-4 space-y-10 md:space-y-12">
       {/* Subscription Required Banner */}
-      {isRequired && (
+      {isRequired && canSubscribe && (
         <div className="max-w-2xl mx-auto bg-muted/50 border rounded-lg px-4 py-3 text-center text-sm text-muted-foreground">
-          A subscription is required to access the dashboard. Choose a plan
-          below to get started.
+          Choose a plan to activate your organization and access the dashboard.
         </div>
       )}
 
       {/* Hero Section */}
       <section className="text-center space-y-4 pt-4">
         <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold tracking-tight">
-          Simple, transparent pricing
+          Choose your plan
         </h1>
         <p className="text-base md:text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed">
-          Open-Source Testing, Monitoring, and AI SRE — as Code
+          Managed testing, monitoring, and AI SRE. Your organization&apos;s projects share one monthly subscription.
         </p>
         {activeOrganization && <p className="text-sm font-medium">Subscription for {activeOrganization.name}</p>}
+        {organizationLoading && <p role="status" className="text-sm text-muted-foreground">Checking your organization before checkout...</p>}
         {!organizationLoading && !organizationError && !activeOrganization && <p className="text-sm text-muted-foreground">Your default organization is still being set up. Refresh this page to retry setup.</p>}
         {organizationError && <p role="alert" className="text-sm text-destructive">Unable to load your project&apos;s organization. Refresh this page to retry, or select another project above if available.</p>}
         {activeOrganization && activeOrganization.role !== "org_owner" && <p className="text-sm text-muted-foreground">Only this organization&apos;s owner can subscribe. Contact the owner, or select a project in your own organization above if available.</p>}
@@ -245,8 +245,9 @@ function SubscribePageContent() {
           <span className="hidden sm:inline">·</span>
           <span>Prices in USD, before applicable tax</span>
           <span className="hidden sm:inline">·</span>
-          <span>Usage-based overage</span>
+          <span>Additional usage billed at the rates below</span>
         </div>
+        {canSubscribe && <p className="text-xs text-muted-foreground">Continue to secure checkout to review your subscription before payment.</p>}
       </section>
 
       {/* Pricing Tier Cards */}
@@ -259,23 +260,26 @@ function SubscribePageContent() {
               price={plan.price}
               priceInterval={plan.interval}
               tagline={plan.description}
-              badge={plan.id === "pro" ? "Most Popular" : undefined}
+              badge={plan.id === "pro" ? "Higher capacity" : undefined}
               keyFeatures={[
-                `${Number(plan.features.monitors).toLocaleString()} uptime monitors`,
-                `${Number(plan.features.playwrightMinutes).toLocaleString()} Playwright mins/mo`,
-                `${Number(plan.features.k6VuMinutes).toLocaleString()} K6 VU-mins/mo`,
-                `${Number(plan.features.aiCredits).toLocaleString()} AI credits/mo`,
-                `${Number(plan.features.sreInvestigationUnits).toLocaleString()} AI SRE investigations/mo`,
+                `${Number(plan.features.monitors).toLocaleString()} monitors`,
+                `${Number(plan.features.playwrightMinutes).toLocaleString()} Playwright minutes/month`,
+                `${Number(plan.features.k6VuMinutes).toLocaleString()} K6 VU-minutes/month`,
+                `${Number(plan.features.aiCredits).toLocaleString()} AI credits/month (hard limit)`,
+                `${Number(plan.features.sreInvestigationUnits).toLocaleString()} completed AI SRE reports/month`,
+                "Read-only evidence connectors",
+                "Private Agent support",
                 `${plan.features.teamMembers} team members`,
                 `${plan.features.projects} projects`,
                 `${plan.features.monitorDataRetention} monitor retention`,
                 `${plan.features.jobDataRetention} job retention`,
                 plan.features.customDomains
-                  ? "Custom domains"
-                  : "Standard domains",
+                  ? "Custom status-page domains"
+                  : "Standard status-page domains",
+                ...(plan.features.support ? [plan.features.support] : []),
               ]}
-              overageText={`Overage: ${formatOveragePrice(plan.overagePricing.playwrightMinutes, "min")} Playwright · ${formatOveragePrice(plan.overagePricing.k6VuMinutes, "VU-min")} K6 · ${formatOveragePrice(plan.overagePricing.sreInvestigationUnits, "AI SRE investigation")} · AI credits: hard limit`}
-              ctaText={`Get Started with ${plan.name}`}
+              overageText={`Overage: ${formatOveragePrice(plan.overagePricing.playwrightMinutes, "min")} Playwright · ${formatOveragePrice(plan.overagePricing.k6VuMinutes, "VU-min")} K6 · ${formatOveragePrice(plan.overagePricing.sreInvestigationUnits, "completed full AI SRE report")} · No AI credit overages`}
+              ctaText={`Continue with ${plan.name}`}
               ctaVariant={plan.id === "pro" ? "default" : "outline"}
               onCtaClick={() => handleSubscribe(plan.id)}
               loading={subscribing === plan.id}
@@ -290,10 +294,11 @@ function SubscribePageContent() {
             tagline="For large organizations with custom requirements"
             badge="Tailored"
             keyFeatures={[
-              "Custom uptime monitor allowance",
+              "Custom monitor allowance",
               "Custom Playwright & K6 allowances",
-              "Custom AI credit allowance",
-              "Custom AI SRE investigation volume",
+              "Custom AI credit pool or bring-your-own-provider",
+              "Custom completed AI SRE report allowance",
+              "Custom connector and Private Agent limits",
               "Custom team member & project limits",
               "Custom data retention policies",
               "Dedicated account manager",
@@ -320,20 +325,21 @@ function SubscribePageContent() {
           </a>
           <span className="hidden sm:inline text-muted-foreground/40">|</span>
           <a
-            href="https://github.com/supercheck-io/supercheck"
+            href="https://supercheck.io/docs/app/deployment/self-hosted"
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
           >
-            Self-host for free
+            Explore self-hosting
             <ArrowRight className="h-3.5 w-3.5" />
           </a>
         </div>
+        <p className="mt-3 text-center text-xs text-muted-foreground">Self-hosting has no license cost. You pay your own infrastructure and AI provider costs.</p>
       </section>
 
       {/* Feature Comparison Table */}
       <section className="max-w-7xl mx-auto">
-        <div className="rounded-2xl border bg-card p-6 md:p-8">
+        <div className="min-w-0 rounded-2xl border bg-card p-3 sm:p-6 md:p-8">
           <div className="text-center space-y-1.5 mb-6">
             <h2 className="text-2xl font-bold">Compare plans in detail</h2>
             <p className="text-sm text-muted-foreground">
@@ -381,9 +387,13 @@ function SubscribePageContent() {
         <Button variant="outline" size="sm" asChild>
           <a href="mailto:hello@supercheck.io">
             <Mail className="h-4 w-4 mr-2" />
-            Contact Us
+            Contact us
           </a>
         </Button>
+        <p className="flex justify-center gap-4 text-xs text-muted-foreground">
+          <a href="https://supercheck.io/terms" className="underline">Terms of service</a>
+          <a href="https://supercheck.io/privacy" className="underline">Privacy policy</a>
+        </p>
       </section>
     </div>
   );
@@ -391,12 +401,12 @@ function SubscribePageContent() {
 
 function SubscribeSkeleton() {
   return (
-    <div className="max-w-7xl mx-auto py-6 md:py-8 px-4 space-y-10 md:space-y-12">
+    <div role="status" aria-label="Loading plans" className="max-w-7xl mx-auto py-6 md:py-8 px-4 space-y-10 md:space-y-12">
       {/* Hero Skeleton */}
       <div className="text-center space-y-3 pt-4">
-        <Skeleton className="h-10 w-80 mx-auto" />
+        <Skeleton className="h-10 w-80 max-w-full mx-auto" />
         <Skeleton className="h-5 w-96 mx-auto max-w-full" />
-        <Skeleton className="h-4 w-64 mx-auto" />
+        <Skeleton className="h-4 w-64 mx-auto max-w-full" />
       </div>
 
       {/* Pricing Cards Skeleton */}
@@ -404,15 +414,15 @@ function SubscribeSkeleton() {
         {[1, 2, 3].map((i) => (
           <Card key={i} className="p-6 border">
             {/* Plan name and tagline */}
-            <Skeleton className="h-8 w-24 mb-1" />
-            <Skeleton className="h-4 w-56 mb-4" />
+            <Skeleton className="h-8 w-24 mb-1 max-w-full" />
+            <Skeleton className="h-4 w-56 mb-4 max-w-full" />
             {/* Price */}
-            <Skeleton className="h-14 w-36 mb-6" />
+            <Skeleton className="h-14 w-36 mb-6 max-w-full" />
             {/* Features - 8 items to match actual card */}
             <div className="space-y-3 mb-6">
               {[1, 2, 3, 4, 5, 6, 7, 8].map((j) => (
                 <div key={j} className="flex items-center gap-3">
-                  <Skeleton className="h-5 w-5 rounded-full flex-shrink-0" />
+                  <Skeleton className="h-5 w-5 rounded-full flex-shrink-0 max-w-full" />
                   <Skeleton className="h-4 w-full" />
                 </div>
               ))}
@@ -429,15 +439,15 @@ function SubscribeSkeleton() {
 
       {/* Self-hosted link skeleton */}
       <div className="flex justify-center gap-4">
-        <Skeleton className="h-4 w-28" />
-        <Skeleton className="h-4 w-32" />
+        <Skeleton className="h-4 w-28 max-w-full" />
+        <Skeleton className="h-4 w-32 max-w-full" />
       </div>
 
       {/* Table Skeleton */}
       <div className="space-y-4 max-w-7xl mx-auto">
         <div className="text-center space-y-1.5 mb-6">
-          <Skeleton className="h-7 w-56 mx-auto" />
-          <Skeleton className="h-4 w-72 mx-auto" />
+          <Skeleton className="h-7 w-56 mx-auto max-w-full" />
+          <Skeleton className="h-4 w-72 mx-auto max-w-full" />
         </div>
         <div className="rounded-lg border overflow-hidden">
           <Skeleton className="h-12 w-full" />
@@ -455,8 +465,8 @@ function SubscribeSkeleton() {
       {/* FAQ Skeleton */}
       <div className="space-y-4 max-w-3xl mx-auto">
         <div className="text-center space-y-1.5 mb-6">
-          <Skeleton className="h-7 w-64 mx-auto" />
-          <Skeleton className="h-4 w-80 mx-auto" />
+          <Skeleton className="h-7 w-64 mx-auto max-w-full" />
+          <Skeleton className="h-4 w-80 mx-auto max-w-full" />
         </div>
         <div className="space-y-2">
           {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
