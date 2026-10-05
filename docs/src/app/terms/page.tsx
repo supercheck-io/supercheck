@@ -91,7 +91,8 @@ export default function TermsPage() {
                         </p>
                         <ul className="list-disc pl-6 text-fd-muted-foreground space-y-2 mb-4">
                             <li>Plans are billed monthly</li>
-                            <li>Usage beyond included quotas is billed at overage rates</li>
+                            <li>Playwright, K6, and completed full AI SRE investigation usage beyond included allowances is billed at overage rates</li>
+                            <li>AI credits have a hard monthly limit and do not incur overage charges</li>
                             <li>You may upgrade or downgrade plans at any time</li>
                             <li>Refunds are handled on a case-by-case basis</li>
                         </ul>
