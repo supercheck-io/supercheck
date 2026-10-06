@@ -281,19 +281,31 @@ Incidents communicate service disruptions to your users.
 
 Use these statuses to communicate progress. Update the incident as your team investigates, applies a fix, verifies recovery, and resolves it. Scheduled maintenance can advance automatically when you enable its status transitions.
 
+<p className="text-sm">Scroll horizontally on smaller screens to view all steps.</p>
+
+<div className="overflow-x-auto" role="region" aria-label="Status page incident lifecycle" tabIndex={0}>
+<div className="min-w-[56rem]">
+
 ```mermaid
-flowchart TB
+%%{init: {"flowchart":{"nodeSpacing":20,"rankSpacing":24,"padding":12,"wrappingWidth":140}}}%%
+flowchart LR
     A[Investigating] --> B[Identified]
     B --> C[Monitoring]
     C --> D[Resolved]
     S[Scheduled] --> C
 
-    style A fill:#f59e0b,stroke:#b45309,color:#fff
-    style B fill:#f97316,stroke:#c2410c,color:#fff
-    style C fill:#3b82f6,stroke:#1e40af,color:#fff
-    style D fill:#10b981,stroke:#047857,color:#fff
-    style S fill:#6366f1,stroke:#4338ca,color:#fff
+    classDef action fill:#1d4ed8,stroke:#60a5fa,color:#fff
+    classDef decision fill:#92400e,stroke:#fbbf24,color:#fff
+    classDef pending fill:#475569,stroke:#94a3b8,color:#fff
+    classDef complete fill:#047857,stroke:#34d399,color:#fff
+    class C action
+    class A,B decision
+    class S pending
+    class D complete
 ```
+
+</div>
+</div>
 
 | Status | Description |
 |--------|-------------|
@@ -400,20 +412,27 @@ Use a custom hostname such as `status.example.net`. Configure DNS, verify the pa
 
 #### Set Up a Custom Domain
 
+<p className="text-sm">Scroll horizontally on smaller screens to view all steps.</p>
+
+<div className="overflow-x-auto" role="region" aria-label="Custom domain setup workflow" tabIndex={0}>
+<div className="min-w-[60rem]">
+
 ```mermaid
-flowchart TB
+%%{init: {"flowchart":{"nodeSpacing":20,"rankSpacing":24,"padding":12,"wrappingWidth":140}}}%%
+flowchart LR
     Domain[Save hostname in Settings] --> DNS[Add the displayed CNAME]
     DNS --> Verify[Verify DNS and publish]
     Verify --> HTTPS[Confirm HTTPS]
     HTTPS --> Share[Share the URL]
 
     classDef action fill:#1d4ed8,stroke:#60a5fa,color:#fff
-    classDef choice fill:#6d28d9,stroke:#a78bfa,color:#fff
-    classDef success fill:#047857,stroke:#34d399,color:#fff
-    class Domain,DNS action
-    class Verify choice
-    class HTTPS,Share success
+    classDef complete fill:#047857,stroke:#34d399,color:#fff
+    class Domain,DNS,Verify,HTTPS action
+    class Share complete
 ```
+
+</div>
+</div>
 
 | Step | Action |
 |---|---|

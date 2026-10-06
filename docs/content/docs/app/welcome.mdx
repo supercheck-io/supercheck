@@ -25,8 +25,14 @@ Create your first test — browser, API, database, or performance
 
 ## Your Reliability Workflow
 
+<p className="text-sm">Scroll horizontally on smaller screens to view all steps.</p>
+
+<div className="overflow-x-auto" role="region" aria-label="Reliability workflow" tabIndex={0}>
+<div className="min-w-[72rem]">
+
 ```mermaid
-flowchart TB
+%%{init: {"flowchart":{"nodeSpacing":20,"rankSpacing":24,"padding":12,"wrappingWidth":140}}}%%
+flowchart LR
     Detect[Run tests and monitors] --> Triage[Review an alert and open an incident]
     Triage --> Investigate[Run a read-only investigation]
     Investigate --> Review[Review cited findings]
@@ -34,12 +40,15 @@ flowchart TB
     Fix --> Confirm[Re-run checks and confirm recovery]
 
     classDef action fill:#1d4ed8,stroke:#60a5fa,color:#fff
-    classDef choice fill:#6d28d9,stroke:#a78bfa,color:#fff
-    classDef success fill:#047857,stroke:#34d399,color:#fff
-    class Detect,Triage,Investigate action
-    class Review choice
-    class Fix,Confirm success
+    classDef manual fill:#6d28d9,stroke:#a78bfa,color:#fff
+    classDef complete fill:#047857,stroke:#34d399,color:#fff
+    class Detect,Triage,Investigate,Review action
+    class Fix manual
+    class Confirm complete
 ```
+
+</div>
+</div>
 
 AI SRE suggests checks and fixes. You apply changes and confirm recovery.
 

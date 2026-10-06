@@ -35,13 +35,14 @@ Private Agent mode supports GitHub, Kubernetes, Prometheus, Grafana, Sentry, Dat
 
 Use an endpoint reachable from the selected execution location. Supercheck Cloud Direct mode cannot reach private IPs or private DNS names. Self-hosted Direct mode and Private Agents allow internal HTTP or HTTPS endpoints. All modes reject loopback and cloud metadata endpoints and credentials embedded in URLs; enter credentials in the dedicated fields.
 
-<p className="text-sm md:hidden">Scroll horizontally to view the full diagram.</p>
+<p className="text-sm">Scroll horizontally on smaller screens to view all steps.</p>
 
-<div className="overflow-x-auto" role="region" aria-label="Connectors workflow diagram" tabIndex={0}>
-<div className="min-w-[52rem]">
+<div className="overflow-x-auto" role="region" aria-label="Connector setup workflow" tabIndex={0}>
+<div className="min-w-[84rem]">
 
 ```mermaid
-flowchart TB
+%%{init: {"flowchart":{"nodeSpacing":20,"rankSpacing":24,"padding":12,"wrappingWidth":140}}}%%
+flowchart LR
     Provider[Choose a supported provider] --> Reachable{Can Supercheck reach it directly?}
     Reachable -->|Yes|Direct[Choose Direct]
     Reachable -->|No|Agent[Register and start a Private Agent]
@@ -52,11 +53,9 @@ flowchart TB
     Validate --> Use[Enable live sources in an investigation]
 
     classDef action fill:#1d4ed8,stroke:#60a5fa,color:#fff
-    classDef choice fill:#6d28d9,stroke:#a78bfa,color:#fff
-    classDef success fill:#047857,stroke:#34d399,color:#fff
-    class Provider,Direct,Agent,Private,Configure action
-    class Reachable choice
-    class Validate,Use success
+    classDef decision fill:#92400e,stroke:#fbbf24,color:#fff
+    class Provider,Direct,Agent,Private,Configure,Validate,Use action
+    class Reachable decision
 ```
 
 </div>

@@ -108,17 +108,24 @@ The parallel execution indicator appears in the top navigation bar showing **RUN
 
 ## Workflow Overview
 
+<p className="text-sm">Scroll horizontally on smaller screens to view all steps.</p>
+
+<div className="overflow-x-auto" role="region" aria-label="Test automation workflow" tabIndex={0}>
+<div className="min-w-[72rem]">
+
 ```mermaid
-flowchart TB
+%%{init: {"flowchart":{"nodeSpacing":20,"rankSpacing":24,"padding":12,"wrappingWidth":140}}}%%
+flowchart LR
     A[Write a test] --> B[Run and review] --> C[Save the test] --> D[Add to a job] --> E[Configure alerts] --> F[Review scheduled results]
 
-    style A fill:#6366f1,stroke:#4338ca,color:#fff
-    style B fill:#f59e0b,stroke:#b45309,color:#fff
-    style C fill:#10b981,stroke:#047857,color:#fff
-    style D fill:#3b82f6,stroke:#1e40af,color:#fff
-    style E fill:#ec4899,stroke:#be185d,color:#fff
-    style F fill:#8b5cf6,stroke:#6d28d9,color:#fff
+    classDef action fill:#1d4ed8,stroke:#60a5fa,color:#fff
+    classDef complete fill:#047857,stroke:#34d399,color:#fff
+    class A,B,D,E,F action
+    class C complete
 ```
+
+</div>
+</div>
 
 ## Next Steps
 

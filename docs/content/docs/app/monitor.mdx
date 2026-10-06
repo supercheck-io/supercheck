@@ -10,8 +10,14 @@ Monitors continuously check your services and alert you when issues occur. Run c
 
 ## Setup Workflow
 
+<p className="text-sm">Scroll horizontally on smaller screens to view all steps.</p>
+
+<div className="overflow-x-auto" role="region" aria-label="Monitor setup workflow" tabIndex={0}>
+<div className="min-w-[72rem]">
+
 ```mermaid
-flowchart TB
+%%{init: {"flowchart":{"nodeSpacing":20,"rankSpacing":24,"padding":12,"wrappingWidth":140}}}%%
+flowchart LR
     Create[Create a monitor] --> Target[Set endpoint or select a saved test]
     Target --> Schedule[Choose interval and available regions]
     Schedule --> Alerts[Select channel and alert thresholds]
@@ -19,10 +25,11 @@ flowchart TB
     Save --> Review[Compare results and investigate failures]
 
     classDef action fill:#1d4ed8,stroke:#60a5fa,color:#fff
-    classDef success fill:#047857,stroke:#34d399,color:#fff
-    class Create,Target,Schedule,Alerts action
-    class Save,Review success
+    class Create,Target,Schedule,Alerts,Save,Review action
 ```
+
+</div>
+</div>
 
 ## Monitor Types
 
