@@ -4,7 +4,7 @@ description: Self-host Supercheck with Docker Compose
 icon: Server
 ---
 
-Deploy Supercheck on your own infrastructure. Self-hosted mode includes **unlimited features** with all your data staying on your servers.
+Deploy Supercheck on your own infrastructure with Docker Compose. Configure external providers only if you need AI, email, or other integrations; those features send requests to the providers you choose.
 
 ## Docker Compose
 
@@ -24,7 +24,7 @@ Deploy Supercheck on your own infrastructure. Self-hosted mode includes **unlimi
   <Card
     icon={<ShieldCheck className="text-indigo-500" />}
     title="Private Agent"
-    description="Secure outbound-only agent for internal network testing"
+    description="Query private evidence sources for AI SRE investigations"
     href="/docs/app/deployment/private-agent"
   />
 </Cards>
@@ -43,7 +43,7 @@ Deploy Supercheck on your own infrastructure. Self-hosted mode includes **unlimi
 | Domain | Optional (required for HTTPS) |
 
 <Callout type="warn">
-**Linux only** — Supercheck uses [K3s](https://k3s.io) and [gVisor](https://gvisor.dev) for sandboxed test execution, which require the Linux kernel. macOS and Windows are not supported, including Docker Desktop and WSL2.
+**Linux only** — Supercheck's test-execution sandbox requires the Linux kernel. macOS and Windows are not supported, including Docker Desktop and WSL2.
 </Callout>
 
 ## Services

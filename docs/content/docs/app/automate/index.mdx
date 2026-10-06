@@ -94,19 +94,13 @@ Run multiple tests and jobs simultaneously to reduce total execution time. The p
 
 ![Parallel Execution Panel](/screenshots/parallel-execution-dialog.png)
 
-**How it works:**
-- Tests and jobs are queued and processed by available workers
-- Multiple executions run in parallel up to your configured capacity limit
-- View all running executions across your organization in real-time
-- Cancel any running execution if needed
+**Manage executions:**
 
-**Capacity limits by plan:**
+- Click the **RUNNING / QUEUED** indicator to inspect active and waiting runs.
+- Open a run to review its progress, or cancel it if you no longer need it.
+- Runs wait when execution capacity is full. Multiple runs can execute at once up to your capacity limit.
 
-| Plan | Concurrent Executions | Queued Executions |
-|------|----------------------|-------------------|
-| **Plus** | 5 | 50 |
-| **Pro** | 10 | 100 |
-| **Self-hosted** | Configurable | Configurable |
+For self-hosted deployments, administrators configure execution and queue capacity in the [deployment settings](/docs/app/deployment/self-hosted#scaling).
 
 <Callout type="info">
 The parallel execution indicator appears in the top navigation bar showing **RUNNING** and **QUEUED** counts. Click it to view details and manage executions.
@@ -115,8 +109,8 @@ The parallel execution indicator appears in the top navigation bar showing **RUN
 ## Workflow Overview
 
 ```mermaid
-flowchart LR
-    A[Write] --> B[Debug] --> C[Save] --> D[Schedule] --> E[Alert] --> F[Monitor]
+flowchart TB
+    A[Write a test] --> B[Run and review] --> C[Save the test] --> D[Add to a job] --> E[Configure alerts] --> F[Review scheduled results]
 
     style A fill:#6366f1,stroke:#4338ca,color:#fff
     style B fill:#f59e0b,stroke:#b45309,color:#fff

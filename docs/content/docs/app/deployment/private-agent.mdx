@@ -1,119 +1,122 @@
 ---
 title: Private Agent
-description: Query internal evidence sources without opening inbound ports
+description: Connect private evidence sources to Supercheck Cloud or your self-hosted instance
 icon: ShieldCheck
 ---
 
-Run a Private Agent inside your network to let AI SRE query internal services such as Kubernetes, Prometheus, Grafana, and GitHub Enterprise. The agent initiates connections to Supercheck and your configured providers; it needs no inbound firewall ports or Supercheck PostgreSQL, Redis, or object-storage credentials.
+Use a Private Agent to include private services such as Prometheus, Grafana, or GitHub Enterprise in AI SRE investigations. Register it in your Supercheck dashboard, run it with Docker Compose inside your network, then select it when adding a connector.
 
 <Callout type="info">
-Private Agents execute read-only connector queries for investigations. They do not run Playwright or k6 tests. For test execution, see [worker deployment](/docs/app/deployment/multi-location).
+Private Agents execute read-only connector queries for investigations. They do not run monitors, Playwright tests, or k6 tests. For test execution, see [worker deployment](/docs/app/deployment/multi-location).
 </Callout>
 
-## Connection Flow
+## Before You Start
 
-The agent exchanges a one-time registration token, saves its runtime credential, and polls for work. Connector credentials are supplied for the leased query; bounded, sanitized results return to Supercheck and may be used as investigation evidence.
+For **Supercheck Cloud**, sign in at [app.supercheck.io](https://app.supercheck.io) and select the project that will use the agent. Run only the Private Agent on a machine inside your network; you do not need to self-host Supercheck.
 
-```mermaid
-sequenceDiagram
-    participant Agent as Private Agent (your network)
-    participant API as Supercheck API
-    participant Provider as Internal provider
+For **self-hosted Supercheck**, use your own dashboard and instance URL. The setup steps below are the same.
 
-    Agent->>API: Exchange registration token (first start)
-    API-->>Agent: Runtime credential
-    Note over Agent: Save credential for restarts
-    loop While connected
-        Agent->>API: Send heartbeat and request work
-        API-->>Agent: Query job or no work
-        opt Query job available
-            Agent->>Provider: Scoped read-only query
-            Provider-->>Agent: Evidence
-            Agent->>API: Sanitized result or failure
-        end
-    end
-    Note over Agent,API: Agent initiates all connections, no inbound ports
+You need:
+
+- Permission to configure connectors, such as **Project Admin**, **Org Admin**, or **Org Owner**.
+- Docker Engine with Compose v2 (`docker compose`) on a machine that can reach your internal provider endpoints.
+- Outbound access from the container to your Supercheck instance over HTTPS. No inbound firewall ports are needed.
+
+## Set Up the Agent
+
+Download the [Private Agent Compose file](https://github.com/supercheck-io/supercheck/blob/v1.3.6/deploy/docker/docker-compose-private-agent.yml) into a dedicated directory:
+
+```bash
+mkdir -p supercheck-private-agent
+cd supercheck-private-agent
+curl --fail --show-error --location --output docker-compose-private-agent.yml \
+  https://raw.githubusercontent.com/supercheck-io/supercheck/v1.3.6/deploy/docker/docker-compose-private-agent.yml
 ```
-
-## Deployment
-
-Use Docker Compose on a host that can reach your Supercheck API over HTTPS and the required internal provider endpoints.
 
 ### 1. Register the Agent
 
 1. Open **Organization Admin → Private Agents** with permission to configure connectors.
-2. Click **Register agent** and choose its project scope.
-3. Copy the **Agent ID** and **Registration token**. The token is shown once and expires; start the agent promptly.
+2. Click **Register agent**, enter a name, and keep **Scope this agent to the current project** selected unless it needs to serve other projects in your organization. Region and network label are optional.
+3. Copy the **Agent ID** and **Registration token**. The token is shown once and expires after **15 minutes**.
 
 ### 2. Configure the Environment
 
 Create a `.env` file beside the Compose file:
 
 ```bash
-SUPERCHECK_API_URL=https://app.yourdomain.com
+SUPERCHECK_API_URL=https://app.supercheck.io
 PRIVATE_AGENT_ID=your-agent-id
 PRIVATE_AGENT_TOKEN=your-registration-token
 SUPERCHECK_VERSION=1.3.6
 ```
 
-Use the HTTPS URL of your Supercheck instance and a tested release tag. Keep `.env` out of version control and restrict its permissions:
+For self-hosted Supercheck, replace the API URL with your instance's HTTPS origin, without a path such as `/api`. Use the Compose file and worker image from the same release. Keep `.env` out of version control and restrict its permissions:
 
 ```bash
 chmod 600 .env
 ```
 
-Default heartbeat and polling settings work for most deployments; no tuning is required.
-
 ### 3. Start the Agent
 
-Download the [Private Agent Compose configuration](https://github.com/supercheck-io/supercheck/blob/v1.3.6/deploy/docker/docker-compose-private-agent.yml) from the same release as your image, inspect it, then start the agent:
+Review the downloaded Compose file, then start the agent from the directory containing it and `.env`:
 
 ```bash
-curl --fail --show-error --location --output docker-compose-private-agent.yml \
-  https://raw.githubusercontent.com/supercheck-io/supercheck/v1.3.6/deploy/docker/docker-compose-private-agent.yml
-
 docker compose -f docker-compose-private-agent.yml up -d
 docker compose -f docker-compose-private-agent.yml logs -f private-agent
 ```
 
-Keep the `private-agent-state` volume: it stores the runtime credential used after the registration token is consumed. Do not use `docker compose down -v` during routine restarts or upgrades.
+Keep the `private-agent-state` volume so the agent can reconnect after a restart without registering again. Do not use `docker compose down -v` during routine restarts or upgrades.
 
 ### 4. Connect a Provider
 
 1. Confirm the agent shows **connected** and has a recent heartbeat in **Organization Admin → Private Agents**.
-2. Open **Organization Admin → Integrations**, add a supported provider, choose **Private Agent**, and select this agent.
+2. In the same project, open **Organization Admin → Integrations**, click **Add connector**, choose a supported provider, set the execution mode to **Private Agent**, and select the agent you registered.
 3. Enter the internal endpoint and a least-privilege read-only provider credential. Limit access to the services that need it.
 4. Validate the connector and run a known-result search before using it in an investigation.
 
-See [Connectors](/docs/app/investigate/connectors) for supported providers, permissions, and credential requirements. Provider credentials are stored encrypted by Supercheck and supplied to the agent for query execution; they are not included in AI prompts.
+Use an endpoint the container can resolve and reach. `localhost` and loopback addresses are rejected; they do not refer to another service on the Docker host. For a service on that host, use a reachable private address or DNS name. Internal provider endpoints may use HTTP or HTTPS; prefer HTTPS.
+
+See [Connectors](/docs/app/investigate/connectors) for supported providers and credential requirements. Provider credentials are stored encrypted by Supercheck and supplied to the agent for queries; they are not included in AI prompts.
+
+### 5. Use the Connector in an Investigation
+
+1. Open an incident under **Investigate → Incidents** and link it to a service in the connector's **Service scope**.
+2. Turn on **Include live sources** and select **Run investigation**. This requires connector investigation permission.
+3. Review the cited findings and evidence on the incident. Use [Copilot](/docs/app/investigate/copilot) with **Live sources** enabled for follow-up questions.
+
+If the agent is unavailable or the query fails, check the agent status and connector validation before retrying. See [Incident Investigation](/docs/app/investigate/incidents) for the full responder workflow.
 
 ## Security
 
-The supplied Compose configuration runs as a non-root user, makes the root filesystem read-only, drops all Linux capabilities, and prevents privilege escalation. Temporary files use memory-backed storage; runtime credentials use the persistent state volume.
+Use the supplied Compose file to keep its non-root user, read-only filesystem, and restricted container permissions.
 
 Allow outbound DNS, HTTPS to Supercheck, and only the provider hosts and ports needed by your connectors. Keep inbound access denied. Query results can contain operational data even after redaction, so connect only approved evidence sources.
 
-### Kubernetes
-
-For a Kubernetes deployment, use the same worker image in `SUPERCHECK_RUNTIME_MODE=private-agent`, without exposing a Service. Apply the same non-root, read-only, and capability restrictions as the Compose configuration.
-
-Match `runAsUser`, `runAsGroup`, and volume permissions to the `pwuser` identity in the exact image you deploy. The supplied release uses `1001:1001`; verify custom images:
+## Restarts and Token Rotation
 
 ```bash
-docker run --rm --entrypoint sh \
-  ghcr.io/supercheck-io/supercheck/worker:1.3.6 \
-  -c 'id -u pwuser; id -g pwuser'
+docker compose -f docker-compose-private-agent.yml restart private-agent
 ```
 
-Mount writable persistent state at `/home/pwuser/.supercheck` and set `PRIVATE_AGENT_CREDENTIAL_FILE=/home/pwuser/.supercheck/private-agent-token`. Supply registration tokens through a Kubernetes Secret, and provide writable temporary and cache directories as in Compose.
+Routine restarts do not require a new registration token when the state volume is preserved. Keep `PRIVATE_AGENT_TOKEN` set in `.env`; the supplied Compose file requires it.
 
-Use network policies to deny ingress and limit egress to DNS, Supercheck, and the configured providers. Allow the provider's pod target port when it differs from its Service port; the provider's ingress policy must also permit the agent.
+If a token expires before registration, or you need to replace an agent credential:
+
+1. Open the agent's actions menu in **Organization Admin → Private Agents** and choose **Rotate token**. The existing credential stops working; update the container promptly.
+2. Replace `PRIVATE_AGENT_TOKEN` in `.env` with the new token.
+3. Recreate the container within 15 minutes:
+
+```bash
+docker compose -f docker-compose-private-agent.yml up -d --force-recreate private-agent
+```
+
+Use the same command after changing `.env`; `restart` does not apply environment changes. Preserve the state volume.
 
 ## Troubleshooting
 
 | Symptom | Check |
 |---|---|
-| Agent stays pending | API URL, outbound connectivity, and registration-token expiry. Rotate the token in the dashboard if needed. |
+| Agent stays pending | Check the API URL, outbound connectivity, and logs. If the registration token expired, follow the rotation steps above. |
 | Agent cannot reconnect after restart | Preserve the state volume and ensure the image user can write the credential file. |
 | Agent connects but queries fail | Provider DNS, endpoint ports, read-only permissions, and the connector's selected agent and project scope. |
 | Agent receives a browser challenge | Apply the proxy guidance below to the agent API routes. |

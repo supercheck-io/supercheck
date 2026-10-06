@@ -100,7 +100,7 @@ Supported formats: `.ts`, `.js`, `.mjs`
 
 ## Self-Hosted Configuration
 
-Standard Supercheck self-hosted deployments use **Traefik + Let's Encrypt** for automatic TLS — no certificate configuration needed.
+Use the HTTPS URL of your self-hosted instance. If it is not configured yet, follow the [production deployment guide](/docs/app/deployment/self-hosted).
 
 ```bash
 # Self-hosted setup (that's all you need!)
@@ -263,11 +263,13 @@ my-project/
 
 For webhook notification providers, `config.bodyTemplate` is part of the managed configuration and should be kept in source control with the rest of the provider config. `supercheck pull` exports it, `supercheck diff` reports edits to it, and `supercheck deploy` applies those edits as provider configuration changes.
 
-Secret provider fields returned by the API as masked values, such as webhook URLs or headers, are ignored during diff comparison only when they are omitted from the local config. To keep configs safe to commit, `supercheck pull` strips those masked secret fields from the written config rather than writing placeholder values. When you later `supercheck deploy`, the server preserves the existing secret values for any omitted sensitive fields, so non-secret edits (for example, `bodyTemplate` changes) round-trip safely without overwriting real webhook URLs.
+When editing a pulled notification provider:
 
-<Callout type="warn">
-  Pulled notification provider configs do not contain secret values. If you want to rotate a secret, add the new value to the config file before deploying; `supercheck diff` shows a redacted secret change and `supercheck deploy` sends the new value. You can also use `supercheck notification update --config` with the full replacement config.
-</Callout>
+1. Change non-secret settings such as `bodyTemplate` in the configuration file.
+2. Leave omitted secret fields out of the file to preserve their existing values.
+3. Run `supercheck diff`, review the changes, then deploy.
+
+To rotate a credential, enter its replacement in the dashboard or use `supercheck notification update --config` with the full replacement config. If you supply a replacement through monitoring-as-code, keep that value out of source control; `diff` redacts the secret change.
 
 ## Validate & Print
 
@@ -297,6 +299,6 @@ supercheck destroy --dry-run
 supercheck destroy --force
 ```
 
-`diff` includes notification provider settings such as webhook `bodyTemplate`. Deploy removes generated sourcemap references and unexpected binary suffixes, then stores the UTF-8 test source using the API's Base64 transport format. `--force` only skips confirmation; it does not change script processing.
+`diff` includes notification provider settings such as webhook `bodyTemplate`. Review the diff before deploying, and keep test scripts as editable source files. `--force` skips the confirmation prompt.
 
 Resources are reconciled using the database `id` — the CLI compares your local config with the server state and creates, updates, or deletes resources as needed. Resources pulled from the cloud include their `id` (UUID); new resources omit it and are created on deploy.

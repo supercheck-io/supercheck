@@ -36,17 +36,17 @@ The **Overview** tab contains the incident header, metadata, investigation contr
 
 ![Incident Workspace Overview](/screenshots/incident-workspace-overview.png)
 
-Click **View map** on an incident to inspect the interactive dependency graph and blast radius. The map loads bounded recent project context, and an incident deep link prioritizes that incident, its linked service, alerts, and saved investigation evidence. An inaccessible incident shows an error instead of silently opening an unrelated project map.
+Click **View map** to explore the linked service, related alerts, and available evidence. Select a node to inspect its details.
 
 ![Investigation Map](/screenshots/sre-investigation-map.png)
 
-The investigation request returns an accepted run ID while executing in the background. While running, controls are disabled and the page automatically polls status.
+After selecting **Run investigation**, follow the status on the page. Wait for completion before saving a report. If it fails or times out, review the error and available evidence before retrying; failed runs cannot be saved as completed reports.
 
-The investigation result, saved report snapshot, and evidence brief are separate artifacts. An interrupted, truncated, or filtered model response is a failed run; review its status and evidence before trying again. Failures explain known step, response-length, filtering, and timeout cases; provider failures show a safe generic message so credentials and raw provider responses are never displayed. Failed runs cannot be saved as completed reports.
+Use **Save report** to keep the findings from a completed investigation. Generate an **Evidence brief** separately when you need a shorter summary to share.
 
 ### Evidence & Brief Tab
 
-The **Evidence & brief** tab organizes all observations gathered across native checks and connected external systems. Existing links with `?tab=brief` open this section directly.
+The **Evidence & brief** tab organizes observations gathered from Supercheck checks and connected external systems.
 
 - **Evidence items** — Detailed observations including HTTP response codes, latency spikes, test assertions, and traces.
 - **Evidence brief** — An AI-synthesized, shareable executive summary with findings, hypotheses, and gaps. Responders can regenerate or download the brief as a Markdown file.
@@ -120,4 +120,4 @@ This separation prevents alert noise from cluttering responder queues while ensu
 
 ## Exporting Reports
 
-Downloaded investigation reports include bounded evidence, recommendations, hashes, item counts, and truncation metadata. They exclude credentials, raw connector data, and source URIs.
+Download a report or evidence brief to share findings and recommended checks with your team. Review the evidence gaps and any incomplete results before acting on the conclusions. Credentials and raw connector responses are excluded.

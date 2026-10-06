@@ -4,13 +4,13 @@ description: Add read-only evidence sources for AI SRE investigations
 icon: Plug
 ---
 
-Connectors allow Supercheck's AI SRE engine to collect cited operational evidence during incident investigations. Organization administrators configure and manage connectors under **Organization Admin → Integrations**.
+Add a connector when you want an investigation to use evidence from a tool your team already operates. Configure connectors under **Organization Admin → Integrations** with a role that can configure connectors.
 
 ![Connectors Overview](/screenshots/sre-connectors.png)
 
 ## Supported Providers
 
-The Add connector dialog lists providers with implemented read-only validation and search:
+Choose one of these providers in **Add connector**:
 
 - **Metrics & Dashboards** — Prometheus, Grafana, AWS CloudWatch
 - **Operational Events** — Datadog
@@ -23,29 +23,17 @@ The Add connector dialog lists providers with implemented read-only validation a
 
 Existing records for unsupported providers are labeled **Setup only** and cannot run searches.
 
-## Execution Modes
+## Choose How to Connect
 
-### Direct Execution
-Direct connectors run from the Supercheck app to a reachable provider API. In Supercheck Cloud, direct endpoints must use HTTPS and resolve to a public address. Private and reserved IPs, localhost, cluster-only DNS, cleartext HTTP, non-HTTP(S) schemes, and credentials embedded in endpoint URLs are rejected to protect the service from server-side request forgery (SSRF). Store credentials in the connector credential fields instead. In self-hosted deployments, direct connectors may also reach internal endpoints over HTTP. Self-hosted and Private Agent execution still reject loopback addresses, metadata endpoints, embedded URL credentials, and invalid schemes. Use a Private Agent when the app cannot reach the internal API directly.
+| Your provider | Choose | What you need to do |
+|---|---|---|
+| A public API that Supercheck can reach | **Direct** | Enter the provider endpoint and read-only credentials. Cloud endpoints must use HTTPS. |
+| An API reachable only inside your network | **Private Agent** | [Set up an agent with Docker Compose](/docs/app/deployment/private-agent), then select it when adding the connector. |
+| An internal API reachable from your self-hosted instance | **Direct** or **Private Agent** | Use Direct if your instance can reach it; otherwise deploy an agent in that network. |
 
-### Private Agent Execution
-Private Agents run as lightweight, outbound-only containers inside your private network or Kubernetes cluster. The agent polls Supercheck for read-only evidence tasks and queries internal APIs (such as in-cluster Prometheus or Loki) without exposing inbound firewall ports. Private Agents are available for GitHub, Kubernetes, Prometheus, Grafana, Sentry, Datadog, Loki, Elasticsearch/OpenSearch, Tempo, and AWS CloudWatch. GitLab, PagerDuty, and Opsgenie support direct execution only.
+Private Agent mode supports GitHub, Kubernetes, Prometheus, Grafana, Sentry, Datadog, Loki, Elasticsearch/OpenSearch, Tempo, and AWS CloudWatch. GitLab, PagerDuty, and Opsgenie support **Direct** only.
 
-```mermaid
-flowchart TB
-    Incident["<b>Incident Workspace</b><br/>Scoped Investigation"] --> Native["<b>Native Evidence</b><br/>Tests, monitors, alerts"]
-    Incident --> Direct["<b>Direct Mode</b><br/>App → Provider API"]
-    Incident --> Agent["<b>Private Agent</b><br/>Outbound task polling"]
-    Direct --> ProviderPub["<b>Public Provider</b><br/>GitHub, Sentry, Datadog"]
-    Agent --> ProviderPriv["<b>Internal Infrastructure</b><br/>Kube API, In-cluster Prometheus, Loki"]
-
-    style Incident fill:#6366f1,stroke:#4338ca,color:#fff
-    style Native fill:#10b981,stroke:#047857,color:#fff
-    style Direct fill:#3b82f6,stroke:#1e40af,color:#fff
-    style Agent fill:#8b5cf6,stroke:#6d28d9,color:#fff
-    style ProviderPub fill:#f59e0b,stroke:#b45309,color:#fff
-    style ProviderPriv fill:#0ea5e9,stroke:#0369a1,color:#fff
-```
+Use an endpoint reachable from the selected execution location. Supercheck Cloud Direct mode cannot reach private IPs or private DNS names. Self-hosted Direct mode and Private Agents allow internal HTTP or HTTPS endpoints. All modes reject loopback and cloud metadata endpoints and credentials embedded in URLs; enter credentials in the dedicated fields.
 
 ## Adding a Connector
 
@@ -62,7 +50,7 @@ To register a connector:
 
 Kubernetes searches require an explicit namespace. Grant the connector service account read-only access only to the namespaces under test; do not grant cluster-admin or write permissions.
 
-Each search is tenant- and service-scoped, rate-limited, audited, redacted, and bounded by time, rows, and bytes.
+Choose the smallest service scope and query time window that answer your question. If a search returns no evidence, check the service scope, provider permissions, and time range.
 
 ## Query Examples
 
@@ -91,5 +79,5 @@ Always provision dedicated, read-only credentials limited to the specific servic
 | **AWS CloudWatch** | Access key ID and secret access key with `cloudwatch:DescribeAlarms` and `cloudwatch:GetMetricData`; prefer short-lived STS credentials and include the session token |
 
 <Callout type="info">
-All connector credentials are encrypted at rest with AES-128-GCM using per-context derived keys. Credentials are never sent to AI models or included in prompts, outputs, or audit logs.
+Store provider credentials in the connector credential fields, not in prompts or endpoint URLs. Supercheck encrypts stored credentials and does not include them in AI prompts.
 </Callout>

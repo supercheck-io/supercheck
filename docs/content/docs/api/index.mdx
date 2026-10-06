@@ -15,7 +15,7 @@ The supported public Supercheck API provides programmatic access to jobs, tests,
 
 ## Authentication
 
-Resource-management requests require authentication via an `Authorization: Bearer <token>` header. Explicitly public endpoints, such as health checks and published status-page feeds, do not. See [Authentication](./authentication) for details on token types.
+Resource-management requests require authentication via an `Authorization: Bearer <token>` header. Explicitly public endpoints, such as health checks and published status-page feeds, do not. See [Authentication](/docs/api/authentication) for details on token types.
 
 ```bash
 curl https://app.supercheck.io/api/jobs \
@@ -155,5 +155,5 @@ Retry-After: 60  # Only on 429 responses
 
 ## Reference Guides
 
-- [Authentication](./authentication) — Token types, security, and rate limiting
-- [Errors](./errors) — Error codes, formats, and retry behavior
+- [Authentication](/docs/api/authentication) — Token types, security, and rate limiting
+- [Errors](/docs/api/errors) — Error codes, formats, and retry behavior
