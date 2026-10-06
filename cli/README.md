@@ -64,11 +64,11 @@ Upgrade the CLI to the latest release:
 supercheck upgrade
 ```
 
-### CLI 0.2.2
+### CLI 0.2.1
 
 This patch fixes incident-number handling for every AI SRE command, authentication target selection and read-only login, streaming error exit codes and cleanup, and port/synthetic monitor creation. Monitoring-only projects no longer require Playwright dependencies for `doctor`.
 
-After upgrading, use the number displayed by `supercheck incident list` directly, for example `supercheck sre investigate 1`. Manual triage and investigations default on in the updated app with a configured AI provider; an existing server may retain an explicit opt-out. A `503 feature_disabled` response requires the server operator to enable that workflow. See [release notes](https://github.com/supercheck-io/supercheck/releases/tag/cli-v0.2.2).
+After upgrading, use the number displayed by `supercheck incident list` directly, for example `supercheck sre investigate 1`. Manual triage and investigations default on in the updated app with a configured AI provider; an existing server may retain an explicit opt-out. A `503 feature_disabled` response requires the server operator to enable that workflow. See [release notes](https://github.com/supercheck-io/supercheck/releases/tag/cli-v0.2.1).
 
 ---
 
