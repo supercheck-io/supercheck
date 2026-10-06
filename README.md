@@ -40,6 +40,8 @@ Supercheck combines capabilities that are commonly split across test automation,
 | PagerDuty | Event intelligence & response | — | — | — | — | ✅ |
 | Resolve AI | AI production ops | — | — | — | — | ✅ |
 
+\* Comparison snapshot: October 2026. Product capabilities may change.
+
 ## Get started
 
 ### Self-host Supercheck
