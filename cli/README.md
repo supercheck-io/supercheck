@@ -18,7 +18,7 @@ The Supercheck CLI provides a first-class command-line interface for managing te
 - **CI/CD Automation**: Trigger scheduled or on-demand jobs with trigger keys and poll execution results directly from GitHub Actions, GitLab CI, or Jenkins (`supercheck job trigger --wait`).
 - **Unified Resource Management**: Complete command suite for tests, monitors, jobs, execution runs, variables, secrets, tags, and notification providers.
 - **Local Validation & Execution**: Run Playwright and k6 tests locally against local or staging endpoints before deploying (`supercheck test run`).
-- **Security-First Architecture**: Server-side token hashing, zero secret storage in plain text, client-side secret obfuscation, and strict pre-deploy token scanning.
+- **Authentication and Secrets**: Project-scoped tokens, server-side token hashing, masked secret responses, and pre-deploy token checks. Local CLI credentials are obfuscated; use `SUPERCHECK_TOKEN` from your CI secret store for automation.
 - **Enterprise Network Support**: Full HTTP/HTTPS proxy support with `NO_PROXY` awareness via `undici`.
 - **Diagnostics & Self-Healing**: Environment check with `supercheck doctor` and API diagnostics with `supercheck health`.
 - **AI SRE for On-Call**: Triage and investigate incidents, stream grounded Copilot answers, and inspect service topology from the terminal.
@@ -64,11 +64,11 @@ Upgrade the CLI to the latest release:
 supercheck upgrade
 ```
 
-### CLI 0.2.1
+### CLI 0.2.2
 
 This patch fixes incident-number handling for every AI SRE command, authentication target selection and read-only login, streaming error exit codes and cleanup, and port/synthetic monitor creation. Monitoring-only projects no longer require Playwright dependencies for `doctor`.
 
-After upgrading, use the number displayed by `supercheck incident list` directly, for example `supercheck sre investigate 1`. Manual triage and investigations default on in the updated app with a configured AI provider; an existing server may retain an explicit opt-out. A `503 feature_disabled` response requires the server operator to enable that workflow. See [release notes](https://github.com/supercheck-io/supercheck/releases/tag/cli-v0.2.1).
+After upgrading, use the number displayed by `supercheck incident list` directly, for example `supercheck sre investigate 1`. Manual triage and investigations default on in the updated app with a configured AI provider; an existing server may retain an explicit opt-out. A `503 feature_disabled` response requires the server operator to enable that workflow. See [release notes](https://github.com/supercheck-io/supercheck/releases/tag/cli-v0.2.2).
 
 ---
 
@@ -158,7 +158,7 @@ After upgrading, use the number displayed by `supercheck incident list` directly
 | `supercheck job keys create <jobId> --name <name>` | Create a trigger key |
 | `supercheck job keys delete <jobId> <keyId>` | Revoke a trigger key |
 | `supercheck job run --id <job-id>` | Run a job immediately in the cloud |
-| `supercheck job run --local` | Run a job locally using local test files |
+| `supercheck job run --id <job-id-or-name> --local` | Run a job from local config using local test files |
 | `supercheck job trigger <id> --wait` | Trigger a job with a trigger key and wait for completion (CI/CD) |
 | `supercheck run list` | List recent execution runs (`--job`, `--status`, `--page`, `--limit`) |
 | `supercheck run get <id>` | Get run details |

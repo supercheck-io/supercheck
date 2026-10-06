@@ -32,7 +32,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Hardened release API authentication and error responses ([#311](https://github.com/supercheck-io/supercheck/pull/311)).
 - Remediated Dependabot dependency alerts ([#306](https://github.com/supercheck-io/supercheck/pull/306)).
 
-## [CLI 0.2.1] - 2026-10-07
+## [CLI 0.2.2] - 2026-10-07
 
 ### Fixed
 
@@ -41,11 +41,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Return nonzero exit codes for streamed AI errors and failed executions, clean up stream readers and timers, and emit NDJSON for run/test streams in JSON mode.
 - Supply the required test UUID or port/protocol when creating synthetic or port-check monitors; enforce monitor timeout and interval limits.
 - Avoid requiring Playwright for monitoring-only doctor checks and reject integers outside JavaScript's precise range.
+- Correct the local-job README example to include the required `--id` argument and clarify the limits of stored credential obfuscation.
 
 ### Compatibility
 
 - Existing UUID arguments remain supported. Older servers resolve incident numbers among their newest 500 incidents; the updated incident-list API adds an exact number filter for older incidents.
 - Manual AI SRE triage and investigations default on in the accompanying app update with a configured AI provider. Existing explicit deployment opt-outs remain effective. Automatic AI work, live connector access, and collaboration permissions remain opt-in.
+- Supersedes the unpublished npm 0.2.1 candidate; its existing GitHub tag is retained unchanged.
 
 ## [1.3.6]
 
