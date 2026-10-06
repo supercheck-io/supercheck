@@ -50,7 +50,6 @@ describe('SreAlertTriageQueueService', () => {
   });
 
   it('enqueues deterministic jobs for sent alert deliveries', async () => {
-    config.set('SRE_TRIAGE_AGENT_ENABLED', 'true');
     config.set('SRE_TRIAGE_AGENT_BACKGROUND_ENABLED', 'true');
     const service = new SreAlertTriageQueueService(configService);
 
@@ -65,4 +64,16 @@ describe('SreAlertTriageQueueService', () => {
       { jobId: 'sre-alert-triage:alert-history-1' },
     );
   });
+
+  it.each(['false', '0', ' FALSE '])(
+    'honors the triage opt-out %s',
+    async (flag) => {
+      config.set('SRE_TRIAGE_AGENT_ENABLED', flag);
+      config.set('SRE_TRIAGE_AGENT_BACKGROUND_ENABLED', 'true');
+      await new SreAlertTriageQueueService(
+        configService,
+      ).enqueueAlertHistoryRows([{ id: 'alert-history-1', status: 'sent' }]);
+      expect(mockQueueConstructor).not.toHaveBeenCalled();
+    },
+  );
 });

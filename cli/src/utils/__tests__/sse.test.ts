@@ -12,7 +12,7 @@ jest.unstable_mockModule('../proxy.js', () => ({
   getProxyEnv: () => null,
 }))
 
-const { postSse } = await import('../sse.js')
+const { postSse, getSse } = await import('../sse.js')
 
 describe('postSse', () => {
   beforeEach(() => {
@@ -26,7 +26,7 @@ describe('postSse', () => {
     ))
     const events: Array<{ event: string; data: unknown }> = []
 
-    await postSse('/api/sre/chat', { message: 'health?' }, (event) => events.push(event))
+    await postSse('/api/sre/chat', { message: 'health?' }, (event) => { events.push(event) })
 
     expect(events).toEqual([
       { event: 'message', data: { role: 'assistant', content: 'ok' } },
@@ -48,5 +48,53 @@ describe('postSse', () => {
   it('rejects events over the safety limit', async () => {
     jest.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(`data: ${'x'.repeat(1024 * 1024 + 1)}`, { status: 200 }))
     await expect(postSse('/api/sre/chat', {}, () => undefined)).rejects.toThrow('1 MiB safety limit')
+  })
+
+  it.each([
+    ['event: error\ndata: {"message":"Agent failed"}\n\n', 'Agent failed'],
+    ['data: {"type":"error","error":"Brief failed"}\n\n', 'Brief failed'],
+    ['event: agent.fallback\ndata: {"reason":"ai_unavailable"}\n\n', 'Copilot is temporarily unavailable'],
+  ])('fails on streamed API errors after forwarding the event to JSON consumers', async (body, message) => {
+    jest.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(body, { status: 200 }))
+    const onEvent = jest.fn<() => void>()
+    await expect(postSse('/api/sre/chat', {}, onEvent)).rejects.toMatchObject({ message: expect.stringContaining(message), exitCode: 4 })
+    expect(onEvent).toHaveBeenCalledTimes(1)
+  })
+
+  it('parses split multiline frames and resets event names at the frame boundary', async () => {
+    const encoder = new TextEncoder()
+    jest.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(new ReadableStream({
+      start(controller) {
+        for (const part of [': heartbeat\r\nevent: console\r\nda', 'ta: first\r\ndata: second\r\n\r\ndata: {"status":"passed"}\n\n']) controller.enqueue(encoder.encode(part))
+        controller.close()
+      },
+    })))
+    const events: unknown[] = []
+    await getSse('/api/runs/run-1/stream', (event) => { events.push(event) })
+    expect(events).toEqual([
+      { event: 'console', data: 'first\nsecond' },
+      { event: 'message', data: { status: 'passed' } },
+    ])
+  })
+
+  it('cancels the GET reader and clears timers when a terminal event stops the stream', async () => {
+    const cancel = jest.fn<() => void>()
+    const fetchMock = jest.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(new ReadableStream({
+      start(controller) { controller.enqueue(new TextEncoder().encode('event: complete\ndata: {"status":"passed"}\n\n')) },
+      cancel,
+    })))
+    const interrupts = process.listenerCount('SIGINT')
+    await getSse('/api/runs/run-1/stream', () => false)
+    expect(fetchMock).toHaveBeenCalledWith(expect.any(URL), expect.objectContaining({ method: 'GET' }))
+    expect(fetchMock.mock.calls[0][1]?.body).toBeUndefined()
+    expect(cancel).toHaveBeenCalled()
+    expect(process.listenerCount('SIGINT')).toBe(interrupts)
+  })
+
+  it('applies the safety limit per event rather than per network chunk', async () => {
+    jest.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(`data: ${'x'.repeat(600_000)}\n\ndata: ${'y'.repeat(600_000)}\n\n`))
+    const onEvent = jest.fn<() => void>()
+    await getSse('/api/runs/run-1/stream', onEvent)
+    expect(onEvent).toHaveBeenCalledTimes(2)
   })
 })

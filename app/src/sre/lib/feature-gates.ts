@@ -1,5 +1,10 @@
+function enabledByDefault(value?: string) {
+  const normalized = value?.trim().toLowerCase();
+  return normalized !== "false" && normalized !== "0";
+}
+
 export function isSreTriageAgentEnabled() {
-  return process.env.SRE_TRIAGE_AGENT_ENABLED === "true";
+  return enabledByDefault(process.env.SRE_TRIAGE_AGENT_ENABLED);
 }
 
 export function isSreAutomaticTriageEnabled() {
@@ -11,7 +16,7 @@ export function isSreBackgroundAlertTriageEnabled() {
 }
 
 export function isSreInvestigationAgentEnabled() {
-  return process.env.SRE_INVESTIGATION_AGENT_ENABLED === "true";
+  return enabledByDefault(process.env.SRE_INVESTIGATION_AGENT_ENABLED);
 }
 
 export function isSreAgentSandboxEnabled() {

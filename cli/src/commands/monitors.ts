@@ -6,6 +6,7 @@ import type { PaginatedResponse } from '../api/client.js'
 import { parseBooleanStrict, parseIntStrict } from '../utils/number.js'
 import { withSpinner } from '../utils/spinner.js'
 import { CLIError, ExitCode } from '../utils/errors.js'
+import { z } from 'zod'
 
 const VALID_MONITOR_TYPES = ['http_request', 'website', 'ping_host', 'port_check', 'synthetic_test'] as const
 const VALID_HTTP_METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'] as const
@@ -177,22 +178,37 @@ monitorCommand
   .command('create')
   .description('Create a new monitor')
   .requiredOption('--name <name>', 'Monitor name')
-  .requiredOption('--url <url>', 'URL to monitor')
+  .option('--url <url>', 'URL or hostname to monitor (required except for synthetic tests)')
   .option('--type <type>', 'Monitor type (http_request, website, ping_host, port_check, synthetic_test)', 'http_request')
   .option('--interval-minutes <minutes>', 'Check interval in minutes (1-1440)', '5')
   .option('--interval <seconds>', '[deprecated: use --interval-minutes] Check interval in seconds')
   .option('--timeout <seconds>', 'Request timeout in seconds', '30')
   .option('--method <method>', 'HTTP method (GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS)', 'GET')
+  .option('--test-id <id>', 'Test UUID (required for synthetic_test)')
+  .option('--port <port>', 'Port number (required for port_check)')
+  .option('--protocol <protocol>', 'Port check protocol (tcp or udp)', 'tcp')
   .option('--dry-run', 'Show what would be sent without creating')
-  .action(async (options: { name: string; url: string; type: string; intervalMinutes: string; interval?: string; timeout: string; method: string; dryRun?: boolean }) => {
+  .action(async (options: { name: string; url?: string; type: string; intervalMinutes: string; interval?: string; timeout: string; method: string; testId?: string; port?: string; protocol: string; dryRun?: boolean }) => {
     const client = createAuthenticatedClient()
     const monitorType = normalizeMonitorType(options.type)
     const method = normalizeHttpMethod(options.method)
+    if (monitorType !== 'synthetic_test' && !options.url) {
+      throw new CLIError('--url is required for this monitor type.', ExitCode.ConfigError)
+    }
+    if (monitorType === 'synthetic_test' && !z.string().uuid().safeParse(options.testId).success) {
+      throw new CLIError('--test-id must be a valid test UUID for synthetic_test.', ExitCode.ConfigError)
+    }
+    if (monitorType === 'port_check' && !options.port) {
+      throw new CLIError('--port is required for port_check.', ExitCode.ConfigError)
+    }
+    if (monitorType === 'port_check' && !['tcp', 'udp'].includes(options.protocol)) {
+      throw new CLIError('--protocol must be tcp or udp.', ExitCode.ConfigError)
+    }
 
     let frequencyMinutes: number
     if (options.interval !== undefined) {
       logger.warn('--interval (seconds) is deprecated. Use --interval-minutes instead.')
-      const intervalSeconds = parseIntStrict(options.interval, '--interval', { min: 60 })
+      const intervalSeconds = parseIntStrict(options.interval, '--interval', { min: 60, max: 86400 })
       if (intervalSeconds % 60 !== 0) {
         throw new CLIError(
           `--interval must be a multiple of 60 seconds. Got ${intervalSeconds}s. Use --interval-minutes for direct minute values.`,
@@ -206,12 +222,14 @@ monitorCommand
 
     const body: Record<string, unknown> = {
       name: options.name,
-      target: options.url,
+      target: options.url ?? '',
       type: monitorType,
       frequencyMinutes,
       config: {
-        timeoutSeconds: parseIntStrict(options.timeout, '--timeout', { min: 1 }),
+        timeoutSeconds: parseIntStrict(options.timeout, '--timeout', { min: 1, max: 3600 }),
         method,
+        ...(monitorType === 'synthetic_test' ? { testId: options.testId } : {}),
+        ...(monitorType === 'port_check' ? { port: parseIntStrict(options.port!, '--port', { min: 1, max: 65535 }), protocol: options.protocol } : {}),
       },
     }
 
@@ -248,7 +266,7 @@ monitorCommand
     if (options.url !== undefined) body.target = options.url
     if (options.interval !== undefined) {
       logger.warn('--interval (seconds) is deprecated. Use --interval-minutes instead.')
-      const intervalSeconds = parseIntStrict(options.interval, '--interval', { min: 60 })
+      const intervalSeconds = parseIntStrict(options.interval, '--interval', { min: 60, max: 86400 })
       if (intervalSeconds % 60 !== 0) {
         throw new CLIError(
           `--interval must be a multiple of 60 seconds. Got ${intervalSeconds}s. Use --interval-minutes for direct minute values.`,
@@ -263,7 +281,7 @@ monitorCommand
 
     // timeout and method go in config object
     const config: Record<string, unknown> = {}
-    if (options.timeout !== undefined) config.timeoutSeconds = parseIntStrict(options.timeout, '--timeout', { min: 1 })
+    if (options.timeout !== undefined) config.timeoutSeconds = parseIntStrict(options.timeout, '--timeout', { min: 1, max: 3600 })
     if (options.method !== undefined) config.method = normalizeHttpMethod(options.method)
     if (Object.keys(config).length > 0) body.config = config
 

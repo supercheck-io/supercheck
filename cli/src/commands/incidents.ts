@@ -4,6 +4,7 @@ import { output, outputDetail } from '../output/formatter.js'
 import { logger } from '../utils/logger.js'
 import { confirmPrompt } from '../utils/prompt.js'
 import { withSpinner } from '../utils/spinner.js'
+import { resolveIncidentId } from '../utils/incidents.js'
 
 type IncidentEnvelope = { incidents: Record<string, unknown>[] }
 
@@ -22,12 +23,14 @@ incidentCommand.command('list')
     ] })
   })
 
-incidentCommand.command('get <id>').description('Get incident details').action(async (id: string) => {
+incidentCommand.command('get <id>').description('Get incident details by number or UUID').action(async (id: string) => {
+  id = await resolveIncidentId(id)
   const { data } = await withSpinner('Fetching incident', () => createAuthenticatedClient().get<{ incident: Record<string, unknown> }>(`/api/sre/incidents/${id}`))
   outputDetail(data.incident)
 })
 
-incidentCommand.command('timeline <id>').description('Show the incident timeline').action(async (id: string) => {
+incidentCommand.command('timeline <id>').description('Show the incident timeline by number or UUID').action(async (id: string) => {
+  id = await resolveIncidentId(id)
   const { data } = await withSpinner('Fetching incident timeline', () => createAuthenticatedClient().get<{ events: Record<string, unknown>[] }>(`/api/sre/incidents/${id}/timeline`))
   output(data.events, { columns: [
     { key: 'createdAt', header: 'Time' }, { key: 'eventType', header: 'Event' },
@@ -36,10 +39,11 @@ incidentCommand.command('timeline <id>').description('Show the incident timeline
 })
 
 incidentCommand.command('resolve <id>')
-  .description('Resolve an incident with an audit comment')
+  .description('Resolve an incident by number or UUID with an audit comment')
   .requiredOption('--comment <comment>', 'Resolution summary')
   .option('--force', 'Skip confirmation')
   .action(async (id: string, options: { comment: string; force?: boolean }) => {
+    id = await resolveIncidentId(id)
     if (!options.force && !await confirmPrompt(`Resolve incident ${id}?`, { default: false })) {
       logger.info('Aborted')
       return

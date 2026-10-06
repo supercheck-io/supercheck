@@ -128,11 +128,13 @@ S3_ENDPOINT=http://minio:9000
 # ────────────────────────────────────────────────────────────
 # OPTIONAL: AI Features & AI SRE
 # ────────────────────────────────────────────────────────────
-# Enable the AI SRE investigation agent (required for AI SRE investigations and /api/sre/investigate)
-# SRE_INVESTIGATION_AGENT_ENABLED=true
+# Manual triage and investigations are enabled by default once an AI provider
+# is configured. Optional deployment-wide opt-outs:
+# SRE_TRIAGE_AGENT_ENABLED=false
+# SRE_INVESTIGATION_AGENT_ENABLED=false
 
-# Note: optional SRE workflows (automatic triage, alert correlation, staged
-# evidence) also require forwarding their flags through your Compose file.
+# Automatic triage, background alert processing, correlation, and staged Loki
+# evidence remain opt-in. The Compose files forward their SRE flags from .env.
 
 # OpenAI (default provider)
 # AI_PROVIDER=openai

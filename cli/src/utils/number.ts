@@ -16,7 +16,7 @@ export function parseIntStrict(
     )
   }
   const parsed = parseInt(trimmed, 10)
-  if (!Number.isFinite(parsed)) {
+  if (!Number.isSafeInteger(parsed)) {
     throw new CLIError(
       `Invalid value for ${name}: "${value}" is not a valid integer.`,
       ExitCode.ConfigError,

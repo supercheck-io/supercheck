@@ -9,7 +9,7 @@ import {
 } from '../auth/store.js'
 import { getApiClient } from '../api/client.js'
 import { logger } from '../utils/logger.js'
-import { CLIError, ExitCode } from '../utils/errors.js'
+import { ApiRequestError, CLIError, ExitCode } from '../utils/errors.js'
 import { safeTokenPreview } from '../utils/resources.js'
 import { withSpinner } from '../utils/spinner.js'
 import { getOutputFormat } from '../output/formatter.js'
@@ -29,9 +29,10 @@ export const loginCommand = new Command('login')
         )
       }
 
-      // Build client with provided options (don't persist until verified)
+      const baseUrl = options.url ?? getStoredBaseUrl() ?? getResolvedConfigBaseUrl() ?? 'https://app.supercheck.io'
+      // Verify and persist the same target; read-only users need no token-management permission.
       const client = getApiClient({
-        baseUrl: options.url,
+        baseUrl,
         token,
       })
 
@@ -39,7 +40,7 @@ export const loginCommand = new Command('login')
         // Verify token using a Bearer-auth-compatible endpoint
         await withSpinner(
           'Verifying token...',
-          () => client.get('/api/cli-tokens'),
+          () => client.get('/api/context'),
           { successText: 'Token verified' },
         )
       } catch {
@@ -51,16 +52,12 @@ export const loginCommand = new Command('login')
 
       // Token verified — now persist credentials
       setToken(token)
-      if (options.url) {
-        setBaseUrl(options.url)
-      }
+      setBaseUrl(baseUrl)
 
       const tokenPreview = safeTokenPreview(token)
       logger.success('Authentication successful')
       logger.info(`  Token: ${tokenPreview}`)
-      if (options.url) {
-        logger.info(`  API URL: ${options.url}`)
-      }
+      logger.info(`  API URL: ${baseUrl}`)
       return
     }
 
@@ -100,22 +97,15 @@ export const whoamiCommand = new Command('whoami')
     const client = getApiClient({ token, baseUrl: baseUrl ?? undefined })
 
     try {
-      // Use cli-tokens endpoint which supports Bearer auth via requireAuthContext()
-      const data = await withSpinner(
+      const context = await withSpinner(
         'Fetching context...',
         async () => {
           const { data } = await client.get<{
             success: boolean
-            tokens: Array<{
-              id: string
-              name: string
-              start: string
-              enabled: boolean
-              createdByName: string
-              expiresAt: string | null
-              lastRequest: string | null
-            }>
-          }>('/api/cli-tokens')
+            user: { id: string; role: string }
+            organization: { id: string; name: string | null; slug: string | null }
+            project: { id: string; name: string; slug: string | null }
+          }>('/api/context')
           return data
         },
         { successText: 'Context loaded' },
@@ -123,8 +113,17 @@ export const whoamiCommand = new Command('whoami')
 
       const tokenPreview = safeTokenPreview(token)
 
+      // Token metadata is optional: project viewers cannot list API keys.
+      let tokens: Array<{ start: string; name: string; createdByName: string | null; expiresAt: string | null; lastRequest: string | null }> = []
+      try {
+        const { data } = await client.get<{ tokens: typeof tokens }>('/api/cli-tokens')
+        tokens = data.tokens ?? []
+      } catch (error) {
+        if (!(error instanceof ApiRequestError && error.statusCode === 403)) throw error
+      }
+
       // Match the current token against the server's token list by prefix
-      const activeToken = data.tokens?.find((t) => t.start && token.startsWith(t.start.replace(/\.+$/, '')))
+      const activeToken = tokens.find((t) => t.start && token.startsWith(t.start.replace(/\.+$/, '')))
 
       // JSON output mode
       if (getOutputFormat() === 'json') {
@@ -135,6 +134,10 @@ export const whoamiCommand = new Command('whoami')
           apiUrl: baseUrl ?? 'https://app.supercheck.io',
           expiresAt: activeToken?.expiresAt ?? null,
           lastUsed: activeToken?.lastRequest ?? null,
+          userId: context.user.id,
+          role: context.user.role,
+          organization: context.organization,
+          project: context.project,
         }
         logger.output(JSON.stringify(jsonData, null, 2))
         return
@@ -152,6 +155,8 @@ export const whoamiCommand = new Command('whoami')
         logger.info(`  Token:   ${tokenPreview}`)
       }
       logger.info(`  API URL: ${baseUrl ?? 'https://app.supercheck.io'}`)
+      logger.info(`  Project: ${context.project.name} (${context.project.id})`)
+      logger.info(`  Role:    ${context.user.role}`)
       if (activeToken?.expiresAt) {
         logger.info(`  Expires: ${activeToken.expiresAt}`)
       }

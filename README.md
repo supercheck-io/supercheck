@@ -76,13 +76,13 @@ supercheck diff
 supercheck deploy
 ```
 
-On-call engineers can also work with AI SRE from the terminal:
+Manual AI SRE triage and investigations are enabled by default with a configured AI provider. Automatic AI work and live connector access remain opt-in. On-call engineers can use the incident number shown by `incident list` or its UUID:
 
 ```bash
 supercheck incident list
-supercheck sre triage <incident-id>
-supercheck sre investigate <incident-id> --live-connectors
-supercheck sre ask "Summarize the strongest evidence" --incident <incident-id>
+supercheck sre triage <incident-number-or-uuid>
+supercheck sre investigate <incident-number-or-uuid> --live-connectors
+supercheck sre ask "Summarize the strongest evidence" --incident <incident-number-or-uuid>
 ```
 
 See the [CLI guide](cli/) and [command reference](https://supercheck.io/docs/cli/commands) for resource management, local execution, and CI/CD usage.

@@ -9,7 +9,7 @@ Project Admins and organization-level administrators configure AI SRE from **Org
 Select **Setup guide** beside **Add service**, **Add connector**, or **Add recipe** to review setup status.
 
 <Callout type="info">
-**Self-Hosted Requirement**: AI SRE investigations require an AI provider configured in your `.env` and `SRE_INVESTIGATION_AGENT_ENABLED=true`. Recreate the app container after changing `.env`. See [Self-Hosted AI SRE Features](/docs/app/deployment/self-hosted#optional-configuration) for details.
+**Self-Hosted Requirement**: Manual AI SRE triage and investigations are enabled by default and require an AI provider configured in your `.env`. No enable flag is required. Operators can disable them with `SRE_TRIAGE_AGENT_ENABLED=false` or `SRE_INVESTIGATION_AGENT_ENABLED=false`. Recreate the app container after changing `.env`. See [Self-Hosted AI SRE Features](/docs/app/deployment/self-hosted#optional-configuration) for details.
 </Callout>
 
 ## Services

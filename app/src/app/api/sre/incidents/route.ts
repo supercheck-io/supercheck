@@ -7,6 +7,7 @@ import { requireSreApiPermissions } from "../_auth";
 import { db } from "@/utils/db";
 
 const querySchema = z.object({
+  incidentNumber: z.coerce.number().int().positive().max(2147483647).optional(),
   status: z.enum(["triggered", "investigating", "identified", "recommendations_ready", "user_applying_fix", "verifying", "resolved"]).optional(),
   severity: z.enum(["sev1", "sev2", "sev3", "sev4"]).optional(),
 });
@@ -26,6 +27,7 @@ export async function GET(request: NextRequest) {
   ];
   if (parsed.data.status) filters.push(eq(sreIncidents.status, parsed.data.status));
   if (parsed.data.severity) filters.push(eq(sreIncidents.severity, parsed.data.severity));
+  if (parsed.data.incidentNumber) filters.push(eq(sreIncidents.incidentNumber, parsed.data.incidentNumber));
 
   const incidents = await db
     .select({
