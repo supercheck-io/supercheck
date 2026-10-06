@@ -72,4 +72,18 @@ describe("SRE evidence brief stream API", () => {
       expect.objectContaining({ userId: context.userId }),
     );
   });
+  it("honors the deployment-wide SRE disable control before AI work", async () => {
+    const previous = process.env.SRE_ENABLED;
+    process.env.SRE_ENABLED = "false";
+    try {
+      const response = await POST(request());
+      expect(response.status).toBe(503);
+      expect(await response.json()).toMatchObject({ code: "feature_disabled", enabledBy: "SRE_ENABLED" });
+      expect(mockRateLimit).not.toHaveBeenCalled();
+    } finally {
+      if (previous === undefined) delete process.env.SRE_ENABLED;
+      else process.env.SRE_ENABLED = previous;
+    }
+  });
+
 });

@@ -57,16 +57,10 @@ export class SreAlertTriageQueueService implements OnModuleDestroy {
   }
 
   private isEnabled() {
-    const triageEnabled = this.configService
-      .get<string>('SRE_TRIAGE_AGENT_ENABLED')
-      ?.trim()
-      .toLowerCase();
-    return (
-      triageEnabled !== 'false' &&
-      triageEnabled !== '0' &&
-      this.configService.get<string>('SRE_TRIAGE_AGENT_BACKGROUND_ENABLED') ===
-        'true'
-    );
+    return ['SRE_ENABLED', 'SRE_AUTOMATION_ENABLED'].every((key) => {
+      const value = this.configService.get<string>(key)?.trim().toLowerCase();
+      return value !== 'false' && value !== '0';
+    });
   }
 
   private getQueue() {

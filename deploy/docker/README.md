@@ -218,3 +218,9 @@ docker compose exec -T postgres sh -c 'psql -U "$DB_USER" "$DB_NAME"' < backup.s
 ## Documentation
 
 Full documentation: **[supercheck.io/docs/app/deployment](https://supercheck.io/docs/app/deployment)**
+
+## AI SRE defaults
+
+AI SRE and alert-triggered automation are enabled once an AI provider is configured. Only two optional controls are exposed: `SRE_ENABLED=false` disables AI SRE requests and automation; `SRE_AUTOMATION_ENABLED=false` keeps manual AI workflows and stops alert-triggered work. Both default to `true` and apply to the app and worker. Automation may incur provider costs. Old per-workflow flags are no longer read; migrate existing opt-outs before upgrading and recreate affected containers.
+
+Slack/Teams incident commands are optional. Add `-f docker-compose-collaboration.yml` to your usual main Compose invocation only when using that integration. Configure `SLACK_SIGNING_SECRET` and `SLACK_BOT_TOKEN`, or `TEAMS_OUTGOING_WEBHOOK_SECRET`, plus `SRE_COLLABORATION_ALLOWED_RESPONDER_IDS` in `.env`. An empty responder list denies commands. Collaboration uses stored evidence; live connector access requires an authenticated CLI/dashboard request and explicit consent.

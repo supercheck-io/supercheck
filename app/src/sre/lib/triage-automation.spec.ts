@@ -1,3 +1,8 @@
+jest.mock("@/lib/ai/ai-provider", () => ({
+  validateAIConfiguration: jest.fn(),
+}));
+import { validateAIConfiguration } from "@/lib/ai/ai-provider";
+
 jest.mock("@/sre/lib/feature-gates", () => ({
   isSreAutomaticTriageEnabled: jest.fn(),
 }));
@@ -31,6 +36,7 @@ const input = {
 describe("maybeRunAutomaticSreTriage", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    (validateAIConfiguration as jest.Mock).mockReset();
     mockIsSreAutomaticTriageEnabled.mockReturnValue(true);
     mockCheckPermissionWithContext.mockReturnValue(true);
     mockRunSreIncidentTriage.mockResolvedValue({
@@ -103,4 +109,10 @@ describe("maybeRunAutomaticSreTriage", () => {
 
     expect(result).toEqual({ attempted: true, success: false, status: 502, error: "SRE triage failed" });
   });
+  it("skips AI calls when no provider is configured", async () => {
+    (validateAIConfiguration as jest.Mock).mockImplementation(() => { throw new Error("missing key"); });
+    expect(await maybeRunAutomaticSreTriage(input)).toEqual({ attempted: false, reason: "ai_not_configured" });
+    expect(mockRunSreIncidentTriage).not.toHaveBeenCalled();
+  });
+
 });

@@ -128,13 +128,11 @@ S3_ENDPOINT=http://minio:9000
 # ────────────────────────────────────────────────────────────
 # OPTIONAL: AI Features & AI SRE
 # ────────────────────────────────────────────────────────────
-# Manual triage and investigations are enabled by default once an AI provider
-# is configured. Optional deployment-wide opt-outs:
-# SRE_TRIAGE_AGENT_ENABLED=false
-# SRE_INVESTIGATION_AGENT_ENABLED=false
-
-# Automatic triage, background alert processing, correlation, and staged Loki
-# evidence remain opt-in. The Compose files forward their SRE flags from .env.
+# AI SRE and automation are enabled by default with a configured AI provider.
+# Optional deployment-wide controls (shared by app and worker):
+# SRE_ENABLED=false           # Disable AI SRE requests and automation
+# SRE_AUTOMATION_ENABLED=false # Keep manual SRE, disable alert-triggered AI work
+# Slack/Teams command credentials belong in the optional collaboration overlay.
 
 # OpenAI (default provider)
 # AI_PROVIDER=openai

@@ -34,6 +34,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [CLI 0.2.1] - 2026-10-07
 
+### Changed
+
+- Consolidate installation controls into `SRE_ENABLED` and `SRE_AUTOMATION_ENABLED`, both on by default. Automatic AI work skips unconfigured providers; migrate previous workflow opt-outs to the new settings before upgrading.
+- Make correlation and staged evidence available without individual deployment flags. Live connectors retain explicit per-request consent and permissions.
+- Move Slack/Teams credentials to an optional Compose overlay, require allowed responders, and remove the unmapped-responder and collaboration live-source bypass flags.
+- Document manual npm publication and 2FA troubleshooting in `cli/RELEASING.md`.
+
 ### Fixed
 
 - Resolve displayed incident numbers to project-scoped UUIDs for incident details, timelines, resolution, triage, investigations, Copilot, and evidence briefs.

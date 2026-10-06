@@ -1,3 +1,4 @@
+import { isSreEnabled } from "@/sre/lib/feature-gates";
 import {
   convertToModelMessages,
   streamText,
@@ -202,6 +203,13 @@ export async function POST(request: NextRequest) {
     context = await requireProjectContext();
   } catch (error) {
     return authErrorResponse(error);
+  }
+
+  if (!isSreEnabled()) {
+    return NextResponse.json(
+      { error: "AI SRE is disabled", code: "feature_disabled", enabledBy: "SRE_ENABLED" },
+      { status: 503 },
+    );
   }
 
   const canInvestigate = checkPermissionWithContext(

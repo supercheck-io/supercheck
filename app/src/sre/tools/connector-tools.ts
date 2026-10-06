@@ -44,7 +44,6 @@ import {
 import { isValidKubernetesLabelSelector } from "@/lib/sre/connectors/kubernetes-label-selector";
 import { normalizePrivateAgentEvidenceSummaries } from "@/lib/sre/connector-job-evidence";
 import { waitForPrivateAgentConnectorJob } from "@/lib/sre/private-agent-job-waiter";
-import { isSreStagedEvidenceEnabled } from "@/sre/lib/feature-gates";
 import { db } from "@/utils/db";
 
 const MAX_TOOL_ROWS = 10;
@@ -527,23 +526,14 @@ export async function searchIncidentLiveConnectorEvidence(
   }
   const outputLimits = normalizeOutputLimits(connector.outputLimits);
   const stagedStage =
-    isSreStagedEvidenceEnabled() &&
+    input.stage &&
     !connector.privateAgentId &&
     isStagedLogConnectorType(connector.type)
       ? input.stage
       : null;
 
-  if (
-    isSreStagedEvidenceEnabled() &&
-    !connector.privateAgentId &&
-    isStagedLogConnectorType(connector.type)
-  ) {
+  if (stagedStage) {
     try {
-      if (!stagedStage) {
-        throw new Error(
-          "A staged evidence operation is required for direct log connector searches",
-        );
-      }
       if (!scope.investigationRunId) {
         throw new Error(
           "Staged evidence searches require an active investigation run",
@@ -1082,7 +1072,7 @@ export function createSreConnectorTools(scope: SreConnectorToolScope) {
     }),
     searchLiveConnectorEvidence: tool({
       description:
-        "Search one live read-only connector for the scoped incident's primary service. When staged log evidence is enabled, direct Loki searches must progress through statistics, sample, signatures, temporal_context, then correlation. Loki statistics require a LogQL metric function. Direct connectors persist sanitized evidence immediately. Private Agent searches wait for a bounded server-authorized result and persist sanitized evidence when it completes; if queued is true, do not treat the pending search as evidence. For Kubernetes, never infer a label selector from a service name: use * with an explicit namespace until a returned pod or stored evidence verifies the label mapping. If a response has error=true, do not call the same connector again during this run; report the failure or use a different source.",
+        "Search one live read-only connector for the scoped incident's primary service. For staged log evidence, supply stage and progress through statistics, sample, signatures, temporal_context, then correlation. Loki statistics require a LogQL metric function. Direct connectors persist sanitized evidence immediately. Private Agent searches wait for a bounded server-authorized result and persist sanitized evidence when it completes; if queued is true, do not treat the pending search as evidence. For Kubernetes, never infer a label selector from a service name: use * with an explicit namespace until a returned pod or stored evidence verifies the label mapping. If a response has error=true, do not call the same connector again during this run; report the failure or use a different source.",
       inputSchema: connectorSearchInputSchema,
       execute: async (input) => {
         if (connectorFailureGuard.hasFailed(input.connectorId)) {

@@ -58,13 +58,17 @@ fi
 
 echo "==> Compose interpolation (docker compose config)"
 for file in "${files[@]}"; do
-  if docker compose -f "$file" config -q >/dev/null 2>&1; then
+  compose_args=(-f "$file")
+  if [[ "$file" == *docker-compose-collaboration.yml ]]; then
+    compose_args=(-f docker-compose.yml -f "$file")
+  fi
+  if docker compose "${compose_args[@]}" config -q >/dev/null 2>&1; then
     echo "  ok   $file"
   else
     echo "  FAIL $file"
     # Re-run without -q so the interpolation error is printed. `|| true` keeps
     # the failure local so every file is still reported.
-    docker compose -f "$file" config >/dev/null || true
+    docker compose "${compose_args[@]}" config >/dev/null || true
     fail=1
   fi
 done

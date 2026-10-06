@@ -67,7 +67,7 @@ const { createSreEvidenceTools: mockCreateSreEvidenceTools } = jest.requireMock(
   createSreEvidenceTools: jest.Mock;
 };
 
-const originalTriageFlag = process.env.SRE_TRIAGE_AGENT_ENABLED;
+const originalTriageFlag = process.env.SRE_ENABLED;
 
 const context = {
   userId: "018f0000-0000-7000-8000-000000000001",
@@ -132,7 +132,7 @@ function mockSuccessTransaction() {
 describe("SRE triage API", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    process.env.SRE_TRIAGE_AGENT_ENABLED = "true";
+    process.env.SRE_ENABLED = "true";
     mockRequireProjectContext.mockResolvedValue(context);
     mockCheckPermissionWithContext.mockReturnValue(true);
     mockCheckSreTriageRateLimit.mockResolvedValue({ allowed: true });
@@ -141,14 +141,14 @@ describe("SRE triage API", () => {
 
   afterAll(() => {
     if (originalTriageFlag === undefined) {
-      delete process.env.SRE_TRIAGE_AGENT_ENABLED;
+      delete process.env.SRE_ENABLED;
     } else {
-      process.env.SRE_TRIAGE_AGENT_ENABLED = originalTriageFlag;
+      process.env.SRE_ENABLED = originalTriageFlag;
     }
   });
 
   it("returns 503 without database work when disabled for an authenticated caller", async () => {
-    process.env.SRE_TRIAGE_AGENT_ENABLED = "false";
+    process.env.SRE_ENABLED = "false";
 
     const response = await POST(request({ incidentId: "018f0000-0000-7000-8000-000000000004" }));
     const body = await response.json();
@@ -157,7 +157,7 @@ describe("SRE triage API", () => {
     expect(body).toEqual({
       error: "SRE triage is not enabled",
       code: "feature_disabled",
-      enabledBy: "SRE_TRIAGE_AGENT_ENABLED",
+      enabledBy: "SRE_ENABLED",
     });
     expect(mockRequireProjectContext).toHaveBeenCalled();
     expect(mockDb.select).not.toHaveBeenCalled();
@@ -165,7 +165,7 @@ describe("SRE triage API", () => {
   });
 
   it("rejects unauthenticated callers before disclosing the feature flag", async () => {
-    process.env.SRE_TRIAGE_AGENT_ENABLED = "false";
+    process.env.SRE_ENABLED = "false";
     mockRequireProjectContext.mockRejectedValueOnce(new Error("Authentication required"));
 
     const response = await POST(request({ incidentId: "018f0000-0000-7000-8000-000000000004" }));

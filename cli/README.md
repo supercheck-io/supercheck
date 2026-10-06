@@ -68,7 +68,7 @@ supercheck upgrade
 
 This patch fixes incident-number handling for every AI SRE command, authentication target selection and read-only login, streaming error exit codes and cleanup, and port/synthetic monitor creation. Monitoring-only projects no longer require Playwright dependencies for `doctor`.
 
-After upgrading, use the number displayed by `supercheck incident list` directly, for example `supercheck sre investigate 1`. Manual triage and investigations default on in the updated app with a configured AI provider; an existing server may retain an explicit opt-out. A `503 feature_disabled` response requires the server operator to enable that workflow. See [release notes](https://github.com/supercheck-io/supercheck/releases/tag/cli-v0.2.1).
+After upgrading, use the number displayed by `supercheck incident list` directly, for example `supercheck sre investigate 1`. AI SRE and alert-triggered automation default on in the updated app with a configured AI provider. Operators need only `SRE_ENABLED` and `SRE_AUTOMATION_ENABLED`, both defaulting to `true`; set automation to `false` for manual-only AI work. A `503 feature_disabled` response requires the server operator to check the setting named by `enabledBy`. Older servers may still report their old per-workflow flags. Live connector access requires explicit `--live-connectors` consent and server permissions. See [release notes](https://github.com/supercheck-io/supercheck/releases/tag/cli-v0.2.1).
 
 ---
 
@@ -365,3 +365,7 @@ The Supercheck CLI is open source under the [GNU Affero General Public License v
 [![Discord](https://img.shields.io/badge/Discord-Join%20Community-5865F2?logo=discord&logoColor=white)](https://discord.gg/UVe327CSbm)
 [![GitHub Issues](https://img.shields.io/badge/GitHub-Issues-181717?logo=github&logoColor=white)](https://github.com/supercheck-io/supercheck/issues)
 [![GitHub Discussions](https://img.shields.io/badge/GitHub-Discussions-181717?logo=github&logoColor=white)](https://github.com/supercheck-io/supercheck/discussions)
+
+## Maintainer release instructions
+
+For validation, interactive npm publication, and 2FA troubleshooting, see [CLI release instructions](https://github.com/supercheck-io/supercheck/blob/main/cli/RELEASING.md).

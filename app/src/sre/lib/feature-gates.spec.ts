@@ -1,11 +1,11 @@
 import {
+  isSreEnabled,
   isSreTriageAgentEnabled,
   isSreInvestigationAgentEnabled,
   isSreAutomaticTriageEnabled,
   isSreBackgroundAlertTriageEnabled,
   isSreAgentSandboxEnabled,
   isSreAlertCorrelationEnabled,
-  isSreStagedEvidenceEnabled,
 } from "./feature-gates";
 
 describe("AI SRE feature defaults", () => {
@@ -18,31 +18,32 @@ describe("AI SRE feature defaults", () => {
   });
   afterEach(() => { process.env = originalEnv; });
 
-  it("enables manual workflows while keeping automatic and infrastructure workflows opt-in", () => {
+  it("enables normal and automated SRE workflows by default", () => {
+    expect(isSreEnabled()).toBe(true);
     expect(isSreTriageAgentEnabled()).toBe(true);
     expect(isSreInvestigationAgentEnabled()).toBe(true);
-    expect(isSreAutomaticTriageEnabled()).toBe(false);
-    expect(isSreBackgroundAlertTriageEnabled()).toBe(false);
+    expect(isSreAutomaticTriageEnabled()).toBe(true);
+    expect(isSreBackgroundAlertTriageEnabled()).toBe(true);
+    expect(isSreAlertCorrelationEnabled()).toBe(true);
     expect(isSreAgentSandboxEnabled()).toBe(false);
-    expect(isSreAlertCorrelationEnabled()).toBe(false);
-    expect(isSreStagedEvidenceEnabled()).toBe(false);
   });
 
-  it.each(["false", "0", " FALSE "])("honors manual workflow opt-outs: %s", (value) => {
-    process.env.SRE_TRIAGE_AGENT_ENABLED = value;
-    process.env.SRE_INVESTIGATION_AGENT_ENABLED = value;
-    process.env.SRE_TRIAGE_AGENT_AUTO_ENABLED = "true";
-    process.env.SRE_TRIAGE_AGENT_BACKGROUND_ENABLED = "true";
+  it.each(["false", "0", " FALSE "])("disables all AI workflows: %s", (value) => {
+    process.env.SRE_ENABLED = value;
+    process.env.SRE_AUTOMATION_ENABLED = "true";
+    expect(isSreEnabled()).toBe(false);
     expect(isSreTriageAgentEnabled()).toBe(false);
     expect(isSreInvestigationAgentEnabled()).toBe(false);
     expect(isSreAutomaticTriageEnabled()).toBe(false);
     expect(isSreBackgroundAlertTriageEnabled()).toBe(false);
+    expect(isSreAlertCorrelationEnabled()).toBe(false);
   });
 
-  it("allows automatic workflows only when explicitly enabled", () => {
-    process.env.SRE_TRIAGE_AGENT_AUTO_ENABLED = "true";
-    process.env.SRE_TRIAGE_AGENT_BACKGROUND_ENABLED = "true";
-    expect(isSreAutomaticTriageEnabled()).toBe(true);
-    expect(isSreBackgroundAlertTriageEnabled()).toBe(true);
+  it.each(["false", "0", " FALSE "])("can stop automation while allowing manual requests: %s", (value) => {
+    process.env.SRE_AUTOMATION_ENABLED = value;
+    expect(isSreTriageAgentEnabled()).toBe(true);
+    expect(isSreInvestigationAgentEnabled()).toBe(true);
+    expect(isSreAutomaticTriageEnabled()).toBe(false);
+    expect(isSreBackgroundAlertTriageEnabled()).toBe(false);
   });
 });

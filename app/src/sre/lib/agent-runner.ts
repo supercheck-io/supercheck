@@ -1,6 +1,7 @@
 import { streamText, stepCountIs, type LanguageModel, type ToolSet } from "ai";
 
 import { getActualModelName, getProviderModel, validateAIConfiguration } from "@/lib/ai/ai-provider";
+import { isSreEnabled } from "./feature-gates";
 import { logger } from "@/lib/logger/index";
 import { assertSreAgentPromptWithinBudget, resolveSreAgentBudget, type SreAgentBudgetInput } from "./budget-manager";
 
@@ -38,6 +39,7 @@ export class SreAgentIncompleteResponseError extends Error {
 }
 
 export async function runSreAgent<TTools extends ToolSet = ToolSet>(input: RunSreAgentInput<TTools>) {
+  if (!isSreEnabled()) throw new Error("AI SRE is disabled");
   const budget = resolveSreAgentBudget(input.budget);
   const prompt = input.prompt.trim();
   const system = input.system.trim();
