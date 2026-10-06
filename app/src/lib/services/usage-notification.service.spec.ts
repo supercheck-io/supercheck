@@ -152,7 +152,8 @@ describe("UsageNotificationService", () => {
     expect(billingSettingsService.markNotificationSent).toHaveBeenCalledWith(
       "org_123",
       "spending_90",
-      undefined
+      undefined,
+      expect.any(Date),
     );
   });
 
@@ -176,6 +177,7 @@ describe("UsageNotificationService", () => {
       "org_123",
       "spending_90",
       undefined,
+      expect.any(Date),
     );
   });
 
@@ -206,7 +208,8 @@ describe("UsageNotificationService", () => {
     expect(billingSettingsService.markNotificationSent).toHaveBeenCalledWith(
       "org_123",
       "80",
-      "sre"
+      "sre",
+      expect.any(Date),
     );
   });
 });

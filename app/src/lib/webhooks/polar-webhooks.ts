@@ -441,9 +441,17 @@ function getSubscriptionStatusFromPayload(
   payload: PolarWebhookPayload,
 ): "active" | "canceled" | "past_due" | "none" | undefined {
   const status = payload.data.status;
+  // Polar keeps scheduled cancellations active; local canceled means access
+  // until period end. Polar's terminal canceled/non-paying states grant none.
+  if (status === "active" &&
+      (payload.data.cancelAtPeriodEnd ?? payload.data.cancel_at_period_end) === true) {
+    return "canceled";
+  }
+  if (["canceled", "unpaid", "incomplete", "incomplete_expired", "trialing"].includes(status ?? "")) {
+    return "none";
+  }
   if (
     status === "active" ||
-    status === "canceled" ||
     status === "past_due" ||
     status === "none"
   ) {
@@ -835,8 +843,18 @@ async function processSubscriptionActive(payload: PolarWebhookPayload) {
   }
 
   // Additional idempotency: Skip if already active with same subscription
+  const plan = getPlanFromProductId(productId);
+  if (!plan) {
+    await updateWebhookResult(
+      webhookEventKey, "subscription.active", "error",
+      `Unknown product ID: ${productId || "missing"}`,
+    );
+    return;
+  }
+  const status = getSubscriptionStatusFromPayload(payload) ?? "active";
   if (
-    org.subscriptionStatus === "active" &&
+    org.subscriptionStatus === status &&
+    org.subscriptionPlan === plan &&
     org.subscriptionId === subscriptionId &&
     org.polarCustomerId === customerId &&
     isSameBillingPeriod(org, subscriptionDates)
@@ -853,22 +871,11 @@ async function processSubscriptionActive(payload: PolarWebhookPayload) {
     return;
   }
 
-  const plan = getPlanFromProductId(productId);
-  if (!plan) {
-    await updateWebhookResult(
-      webhookEventKey,
-      "subscription.active",
-      "error",
-      `Unknown product ID: ${productId || "missing"}`,
-    );
-    return;
-  }
-
   await subscriptionService.updateSubscription(
     org.id,
     {
       subscriptionPlan: plan,
-      subscriptionStatus: "active",
+      subscriptionStatus: status,
       subscriptionId,
       polarCustomerId: customerId,
       // Pass Polar subscription dates for accurate billing period

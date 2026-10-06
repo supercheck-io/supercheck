@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 interface SpendingLimitsProps {
+  organizationId?: string;
   onSaveButton?: (button: React.ReactNode) => void;
   className?: string;
   onSaved?: () => void | Promise<void>;
@@ -40,8 +41,8 @@ interface SpendingStatus {
   remainingDollars: number | null;
 }
 
-export function SpendingLimits({ className, onSaved }: SpendingLimitsProps) {
-  const [, setSettings] = useState<BillingSettings | null>(null);
+export function SpendingLimits({ organizationId, className, onSaved }: SpendingLimitsProps) {
+  const [settings, setSettings] = useState<BillingSettings | null>(null);
   const [spending, setSpending] = useState<SpendingStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -65,11 +66,7 @@ export function SpendingLimits({ className, onSaved }: SpendingLimitsProps) {
       parsedLimitAmount > 21474836.47 ||
       Math.abs(parsedLimitAmount * 100 - Math.round(parsedLimitAmount * 100)) > 0.000001);
 
-  useEffect(() => {
-    fetchSettings();
-  }, []);
-
-  const fetchSettings = async () => {
+  const fetchSettings = useCallback(async () => {
     try {
       setLoading(true);
       setLoadError(false);
@@ -81,23 +78,22 @@ export function SpendingLimits({ className, onSaved }: SpendingLimitsProps) {
       if (!settingsRes.ok) {
         throw new Error("Failed to load billing settings");
       }
-      if (settingsRes.ok) {
-        const settingsData = await settingsRes.json();
-        setSettings(settingsData);
-        setEnableLimit(settingsData.enableSpendingLimit);
-        setLimitAmount(
-          settingsData.monthlySpendingLimitDollars?.toString() || "",
-        );
-        setHardStop(settingsData.hardStopOnLimit ?? true);
-        setThresholds([50, 80, 90, 100].filter(
-          (threshold) => settingsData[`notifyAt${threshold}Percent`],
-        ));
-        setEmails(settingsData.notificationEmails || []);
+      const settingsData: BillingSettings = await settingsRes.json();
+      if (organizationId && settingsData.organizationId !== organizationId) {
+        throw new Error("Selected organization changed");
       }
+      setSettings(settingsData);
+      setEnableLimit(settingsData.enableSpendingLimit);
+      setLimitAmount(settingsData.monthlySpendingLimitDollars?.toString() || "");
+      setHardStop(settingsData.hardStopOnLimit ?? true);
+      setThresholds(([50, 80, 90, 100] as const).filter(
+        (threshold) => settingsData[`notifyAt${threshold}Percent`],
+      ));
+      setEmails(settingsData.notificationEmails || []);
 
       if (usageRes.ok) {
         const usageData = await usageRes.json();
-        setSpending(usageData.spending);
+        setSpending(usageData.organizationId === settingsData.organizationId ? usageData.spending : null);
       }
     } catch {
       // Never allow default form values to overwrite existing spending controls
@@ -106,10 +102,14 @@ export function SpendingLimits({ className, onSaved }: SpendingLimitsProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [organizationId]);
+
+  useEffect(() => {
+    fetchSettings();
+  }, [fetchSettings]);
 
   const handleSave = async () => {
-    if (loading || loadError || saving) return;
+    if (loading || loadError || saving || !settings) return;
     if (limitAmountInvalid) {
       toast.error("Spending limit is required", {
         description: "Enter a positive monthly overage cap before saving.",
@@ -125,6 +125,7 @@ export function SpendingLimits({ className, onSaved }: SpendingLimitsProps) {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          organizationId: settings.organizationId,
           enableSpendingLimit: enableLimit,
           monthlySpendingLimitDollars: enableLimit ? parsedLimitAmount : null,
           hardStopOnLimit: hardStop,
@@ -143,10 +144,14 @@ export function SpendingLimits({ className, onSaved }: SpendingLimitsProps) {
 
       const updatedSettings = await response.json();
       setSettings(updatedSettings);
+      setSpending(null);
       // Saving succeeded even if the subsequent status refresh is unavailable.
       await Promise.allSettled([
         fetch("/api/billing/usage").then(async (result) => {
-          if (result.ok) setSpending((await result.json()).spending);
+          if (result.ok) {
+            const usageData = await result.json();
+            setSpending(usageData.organizationId === settings.organizationId ? usageData.spending : null);
+          }
         }),
         Promise.resolve().then(() => onSaved?.()),
       ]);
@@ -321,7 +326,7 @@ export function SpendingLimits({ className, onSaved }: SpendingLimitsProps) {
                     </p>
 
                     <label className="flex items-center justify-between gap-3 text-xs">
-                      Stop new executions and investigations at the limit
+                      Stop new billable executions and full investigations at the limit
                       <Switch checked={hardStop} onCheckedChange={setHardStop}
                         aria-label="Stop execution at spending limit" />
                     </label>

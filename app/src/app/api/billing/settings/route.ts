@@ -7,6 +7,7 @@ import { auditBillingSettingsChange } from "@/lib/audit-log";
 import { z } from "zod";
 import { NextRequest } from "next/server";
 import { requireSameOriginRequest } from "@/lib/security/same-origin";
+import { BillingSettingsValidationError } from "@/lib/billing-errors";
 
 /**
  * GET /api/billing/settings
@@ -56,6 +57,7 @@ export async function GET() {
 
 // Validation schema for billing settings update
 const updateSettingsSchema = z.object({
+  organizationId: z.string().uuid().optional(),
   monthlySpendingLimitDollars: z
     .number()
     .finite()
@@ -112,6 +114,12 @@ export async function PATCH(request: NextRequest) {
     }
 
     const data = validation.data;
+    if (data.organizationId && data.organizationId !== organizationId) {
+      return NextResponse.json(
+        { error: "Selected organization changed. Refresh before saving billing controls." },
+        { status: 409 },
+      );
+    }
 
     // Get current settings for audit logging
     const previousSettings =
@@ -203,6 +211,9 @@ export async function PATCH(request: NextRequest) {
         },
         { status: 401 },
       );
+    }
+    if (error instanceof BillingSettingsValidationError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
     }
     console.error("Error updating billing settings:", error);
     return NextResponse.json(

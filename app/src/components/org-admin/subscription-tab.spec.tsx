@@ -24,6 +24,7 @@ const subscription = {
   currentPeriodStart: null, currentPeriodEnd: null, hasBillingCustomer: true,
 };
 const billing = {
+  organizationId: "org_1",
   subscription,
   usage: { playwrightMinutes: { ...meter, used: 0.0833 }, k6VuMinutes: meter, aiCredits: meter, sreInvestigations: meter },
   limits: { monitors: resource, statusPages: resource, projects: resource, teamMembers: resource },
@@ -43,7 +44,7 @@ describe("SubscriptionTab", () => {
     fetchMock.mockReset().mockImplementation(async (url: string) => ({
       ok: true,
       json: async () => url.endsWith("/current") ? billing
-        : url.endsWith("/pricing") ? pricing : { spending: { currentDollars: 1.25 } },
+        : url.endsWith("/pricing") ? pricing : { organizationId: "org_1", spending: { currentDollars: 1.25 } },
     }));
     global.fetch = fetchMock;
   });
@@ -65,6 +66,19 @@ describe("SubscriptionTab", () => {
     expect(screen.queryByRole("button", { name: "Manage Subscription" })).not.toBeInTheDocument();
   });
 
+  it("does not combine a subscription with another organization's spending", async () => {
+    fetchMock.mockImplementation(async (url: string) => ({
+      ok: true, json: async () => url.endsWith("/current") ? billing
+        : url.endsWith("/pricing") ? pricing : {
+          organizationId: "org_2", spending: { currentDollars: 300, hardStopEnabled: true, isAtLimit: true },
+        },
+    }));
+    render(<SubscriptionTab currentUserRole="org_owner" />);
+    expect(await screen.findByText("Usage estimate unavailable")).toBeInTheDocument();
+    expect(screen.queryByText("$349.00")).not.toBeInTheDocument();
+    expect(screen.queryByText("Hard Stop Active")).not.toBeInTheDocument();
+  });
+
   it("clears a stale estimate when usage cannot be refreshed", async () => {
     render(<SubscriptionTab currentUserRole="org_owner" />);
     await screen.findByText("$50.25");
@@ -84,7 +98,7 @@ describe("SubscriptionTab", () => {
     const pendingCurrent = new Promise((resolve) => { resolveCurrent = resolve; });
     fetchMock.mockImplementation(async (url: string) => url.endsWith("/current")
       ? pendingCurrent
-      : { ok: true, json: async () => ({ spending: { currentDollars: 5 } }) });
+      : { ok: true, json: async () => ({ organizationId: "org_1", spending: { currentDollars: 5 } }) });
     fireEvent.click(screen.getByRole("button", { name: "Refresh after save" }));
     expect(screen.getByText("$50.25")).toBeInTheDocument();
     expect(screen.queryByText("Usage estimate unavailable")).not.toBeInTheDocument();
@@ -100,10 +114,10 @@ describe("SubscriptionTab", () => {
     let failEarlier!: (error: Error) => void;
     const earlier = new Promise((_, reject) => { failEarlier = reject; });
     fetchMock.mockImplementation(async (url: string) => url.endsWith("/current")
-      ? earlier : { ok: true, json: async () => ({ spending: { currentDollars: 5 } }) });
+      ? earlier : { ok: true, json: async () => ({ organizationId: "org_1", spending: { currentDollars: 5 } }) });
     fireEvent.click(screen.getByRole("button", { name: "Refresh after save" }));
     fetchMock.mockImplementation(async (url: string) => ({ ok: true,
-      json: async () => url.endsWith("/current") ? billing : { spending: { currentDollars: 2 } },
+      json: async () => url.endsWith("/current") ? billing : { organizationId: "org_1", spending: { currentDollars: 2 } },
     }));
     fireEvent.click(screen.getByRole("button", { name: "Refresh after save" }));
     await screen.findByText("$51.00");
@@ -117,7 +131,7 @@ describe("SubscriptionTab", () => {
       ok: true,
       json: async () => url.endsWith("/current")
         ? { ...billing, subscription: { ...subscription, plan: null, status: "canceled", basePriceCents: null } }
-        : { spending: { currentDollars: 0 } },
+        : { organizationId: "org_1", spending: { currentDollars: 0 } },
     }));
     render(<SubscriptionTab currentUserRole="org_owner" />);
     await screen.findByText("No active plan");
@@ -132,7 +146,7 @@ describe("SubscriptionTab", () => {
         playwrightMinutes: { ...meter, used: 11000 },
         k6VuMinutes: { ...meter, used: 76000 },
         sreInvestigations: { ...meter, used: 102 },
-      } } : url.endsWith("/pricing") ? pricing : { spending: { currentDollars: 300 } },
+      } } : url.endsWith("/pricing") ? pricing : { organizationId: "org_1", spending: { currentDollars: 300 } },
     }));
     render(<SubscriptionTab currentUserRole="org_owner" />);
     await screen.findByText("$349.00");
@@ -145,7 +159,7 @@ describe("SubscriptionTab", () => {
     fetchMock.mockImplementation(async (url: string) => ({ ok: true, json: async () =>
       url.endsWith("/current") ? { ...billing, usage: { ...billing.usage,
         k6VuMinutes: { ...meter, used: 75028 },
-      } } : url.endsWith("/pricing") ? pricing : { spending: { currentDollars: 300 } },
+      } } : url.endsWith("/pricing") ? pricing : { organizationId: "org_1", spending: { currentDollars: 300 } },
     }));
     render(<SubscriptionTab currentUserRole="org_owner" />);
     expect(await screen.findByText(/Pro would cost about \$149.07/)).toHaveTextContent("$199.93 less");
@@ -154,7 +168,7 @@ describe("SubscriptionTab", () => {
   it("keeps billing available when the optional plan comparison fails", async () => {
     fetchMock.mockImplementation(async (url: string) => {
       if (url.endsWith("/pricing")) throw new Error("Pricing unavailable");
-      return { ok: true, json: async () => url.endsWith("/current") ? billing : { spending: { currentDollars: 300 } } };
+      return { ok: true, json: async () => url.endsWith("/current") ? billing : { organizationId: "org_1", spending: { currentDollars: 300 } } };
     });
     render(<SubscriptionTab currentUserRole="org_owner" />);
     await screen.findByText("$349.00");

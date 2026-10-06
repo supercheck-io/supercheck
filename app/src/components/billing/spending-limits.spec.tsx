@@ -27,12 +27,12 @@ describe("SpendingLimits loading recovery", () => {
       json: async () =>
         url.endsWith("/settings")
           ? {
-              enableSpendingLimit: true,
+              organizationId: "org_1", enableSpendingLimit: true,
               monthlySpendingLimitDollars: 25,
               notifyAt80Percent: true,
               notificationEmails: [],
             }
-          : { spending: null },
+          : { organizationId: "org_1", spending: null },
     }));
     fireEvent.click(
       screen.getByRole("button", { name: "Retry billing controls" }),
@@ -50,16 +50,16 @@ describe("SpendingLimits loading recovery", () => {
   it("preserves a soft cap and a 50-percent-only alert when saving", async () => {
     const onSaved = jest.fn();
     const settings = {
-      enableSpendingLimit: true, monthlySpendingLimitDollars: 12.34,
+      organizationId: "org_1", enableSpendingLimit: true, monthlySpendingLimitDollars: 12.34,
       hardStopOnLimit: false, notifyAt50Percent: true,
       notifyAt80Percent: false, notifyAt90Percent: false, notifyAt100Percent: false,
       notificationEmails: [],
     };
     const fetchMock = jest.fn().mockImplementation(async (url: string) => ({
-      ok: true, json: async () => url.endsWith("/settings") ? settings : { spending: null },
+      ok: true, json: async () => url.endsWith("/settings") ? settings : { organizationId: "org_1", spending: null },
     }));
     global.fetch = fetchMock;
-    render(<SpendingLimits onSaved={onSaved} />);
+    render(<SpendingLimits organizationId="org_1" onSaved={onSaved} />);
     expect(await screen.findByRole("checkbox", { name: "50%" })).toBeChecked();
     expect(screen.getByRole("switch", { name: "Stop execution at spending limit" })).not.toBeChecked();
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
@@ -71,9 +71,9 @@ describe("SpendingLimits loading recovery", () => {
   it("rejects fractional cents and saves independently selected alert thresholds", async () => {
     const fetchMock = jest.fn().mockImplementation(async (url: string) => ({
       ok: true, json: async () => url.endsWith("/settings") ? {
-        enableSpendingLimit: true, monthlySpendingLimitDollars: 10,
+        organizationId: "org_1", enableSpendingLimit: true, monthlySpendingLimitDollars: 10,
         hardStopOnLimit: true, notifyAt80Percent: true, notificationEmails: [],
-      } : { spending: null },
+      } : { organizationId: "org_1", spending: null },
     }));
     global.fetch = fetchMock;
     render(<SpendingLimits />);
@@ -89,6 +89,58 @@ describe("SpendingLimits loading recovery", () => {
     expect(JSON.parse(request?.[1].body)).toMatchObject({
       monthlySpendingLimitDollars: 10.01, notifyAt50Percent: true, notifyAt80Percent: false,
     });
+  });
+
+  it("prevents saving controls loaded for a different organization", async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true, json: async () => ({ organizationId: "org_2", enableSpendingLimit: false }),
+    });
+    render(<SpendingLimits organizationId="org_1" />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Billing controls could not be loaded");
+    expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
+  });
+
+  it("discards spending from another organization on load and after save", async () => {
+    const fetchMock = jest.fn().mockImplementation(async (url: string) => ({
+      ok: true, json: async () => url.endsWith("/settings") ? {
+        organizationId: "org_1", enableSpendingLimit: true,
+        monthlySpendingLimitDollars: 10, hardStopOnLimit: true,
+      } : { organizationId: "org_2", spending: {
+        limitEnabled: true, currentDollars: 5, remainingDollars: 5,
+      } },
+    }));
+    global.fetch = fetchMock;
+    render(<SpendingLimits organizationId="org_1" />);
+    await screen.findByRole("button", { name: "Save" });
+    expect(screen.queryByText("Current: $5.00")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+    expect(screen.queryByText("Current: $5.00")).not.toBeInTheDocument();
+    const request = fetchMock.mock.calls.find((call) => call[1]?.method === "PATCH");
+    expect(JSON.parse(request?.[1].body)).toMatchObject({ organizationId: "org_1" });
+  });
+
+  it("clears the old remaining budget when the post-save usage refresh fails", async () => {
+    const settings = {
+      organizationId: "org_1", enableSpendingLimit: true,
+      monthlySpendingLimitDollars: 10, hardStopOnLimit: true,
+    };
+    const fetchMock = jest.fn().mockImplementation(async (url: string) => ({
+      ok: true, json: async () => url.endsWith("/settings") ? settings : {
+        organizationId: "org_1", spending: {
+          limitEnabled: true, currentDollars: 5, remainingDollars: 5,
+        },
+      },
+    }));
+    global.fetch = fetchMock;
+    render(<SpendingLimits organizationId="org_1" />);
+    await screen.findByText("$5.00 remaining");
+    fetchMock.mockImplementation(async (url: string) => ({
+      ok: url.endsWith("/settings"), json: async () => settings,
+    }));
+    fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "20" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(screen.queryByText("$5.00 remaining")).not.toBeInTheDocument());
   });
 
 });

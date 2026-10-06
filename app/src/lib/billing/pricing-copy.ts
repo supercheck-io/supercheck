@@ -32,7 +32,7 @@ export const PRICING_FAQS = [
   {
     question: "How can I control overage spending?",
     answer:
-      "The organization owner can configure a monthly spending limit, billing contacts, threshold alerts, and optional usage blocking in billing settings. Limits apply to usage overages in addition to the base subscription. In-flight execution usage can exceed a configured limit, so it is not a guaranteed invoice cap.",
+      "Organization owners and admins can configure a monthly spending limit, billing contacts, threshold alerts, and optional blocking of new billable executions and full investigations. Basic uptime checks continue at the spending limit. Only the owner can manage the paid subscription. Limits apply to usage overages in addition to the base subscription. In-flight execution usage can exceed a configured limit, so it is not a guaranteed invoice cap.",
   },
   {
     question: "Can I change plans?",

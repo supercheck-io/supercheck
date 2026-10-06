@@ -1080,6 +1080,14 @@ describe("SubscriptionService", () => {
   });
 
   describe("getSubscriptionAccessStatus", () => {
+    it("denies paid access without the organization's Polar customer binding", async () => {
+      mockDbQueryOrgFindFirst.mockResolvedValue({ ...mockOrganization, polarCustomerId: null });
+      await expect(service.getSubscriptionAccessStatus(testOrgId)).resolves.toMatchObject({
+        isActive: false, plan: null, reason: "polar_customer_missing",
+      });
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
     it("should allow active paid subscriptions", async () => {
       const result = await service.getSubscriptionAccessStatus(testOrgId);
 

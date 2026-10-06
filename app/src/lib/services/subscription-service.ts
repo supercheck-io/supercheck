@@ -7,9 +7,10 @@ import { db } from "@/utils/db";
 import { organization, planLimits, type SubscriptionPlan } from "@/db/schema";
 import { and, eq, isNull, lt, or, sql } from "drizzle-orm";
 import { isPolarEnabled, getPolarConfig } from "@/lib/feature-flags";
+import { POLAR_API_VERSION } from "@/lib/billing/polar-client";
 
 // Constants for configuration
-export const POLAR_API_VERSION = "2026-04";
+export { POLAR_API_VERSION };
 const POLAR_API_TIMEOUT_MS = 5000; // 5 second timeout for Polar API calls
 const CUSTOMER_VALIDATION_CACHE_TTL_MS = 60000; // 60 second cache TTL
 const POLAR_SANDBOX_URL = "https://sandbox-api.polar.sh";
@@ -23,6 +24,7 @@ export interface SubscriptionAccessStatus {
     | "self_hosted"
     | "organization_not_found"
     | "polar_customer_invalid"
+    | "polar_customer_missing"
     | "missing_plan"
     | "invalid_plan"
     | "canceled_in_grace"
@@ -329,6 +331,13 @@ export class SubscriptionService {
         plan: null,
         status: null,
         reason: "organization_not_found",
+      };
+    }
+
+    if (!org.polarCustomerId) {
+      return {
+        isActive: false, plan: null, status: org.subscriptionStatus || "none",
+        reason: "polar_customer_missing", subscriptionEndsAt: org.subscriptionEndsAt,
       };
     }
 

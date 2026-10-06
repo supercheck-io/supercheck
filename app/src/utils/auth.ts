@@ -27,6 +27,7 @@ import {
   renderEmailVerificationEmail,
 } from "@/lib/email-renderer";
 import { nextCookies } from "better-auth/next-js";
+import { createPolarClient } from "@/lib/billing/polar-client";
 import {
   isPolarEnabled,
   getPolarConfig,
@@ -45,11 +46,10 @@ function getPolarPlugin() {
 
   try {
     const { polar, webhooks } = require("@polar-sh/better-auth");
-    const { Polar } = require("@polar-sh/sdk");
 
     const config = getPolarConfig()!;
 
-    const polarClient = new Polar({
+    const polarClient = createPolarClient({
       accessToken: config.accessToken,
       server: config.server,
     });

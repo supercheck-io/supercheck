@@ -180,7 +180,7 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
       ]);
       if (generation !== refreshGeneration.current) return;
       setData(result);
-      setSpending(usageData?.spending ?? null);
+      setSpending(usageData?.organizationId === result.organizationId ? usageData?.spending ?? null : null);
     } catch (error) {
       if (generation !== refreshGeneration.current) return;
       setData(null);
@@ -524,7 +524,7 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
 
       {/* Billing Controls - Only for cloud plans */}
       {hasSubscription && data.subscription.plan !== "unlimited" && (
-          <SpendingLimits onSaved={fetchSubscriptionData} />
+          <SpendingLimits key={data.organizationId} organizationId={data.organizationId} onSaved={fetchSubscriptionData} />
       )}
     </div>
   );

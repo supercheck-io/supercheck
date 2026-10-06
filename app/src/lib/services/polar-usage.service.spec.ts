@@ -16,7 +16,9 @@ jest.mock("@/utils/db", () => ({
 }));
 
 jest.mock("@/db/schema", () => ({
-  organization: { id: "organization.id" },
+  organization: { id: "organization.id", aiCreditsUsed: "organization.aiCreditsUsed",
+    subscriptionPlan: "organization.subscriptionPlan", subscriptionStatus: "organization.subscriptionStatus",
+    subscriptionEndsAt: "organization.subscriptionEndsAt", polarCustomerId: "organization.polarCustomerId" },
   usageEvents: {
     id: "usageEvents.id",
     organizationId: "usageEvents.organizationId",
@@ -39,6 +41,7 @@ jest.mock("drizzle-orm", () => ({
   lte: jest.fn((left, right) => ({ op: "lte", left, right })),
   ne: jest.fn((left, right) => ({ op: "ne", left, right })),
   isNull: jest.fn((value) => ({ op: "isNull", value })),
+  isNotNull: jest.fn((value) => ({ op: "isNotNull", value })),
   or: jest.fn((...conditions) => ({ op: "or", conditions })),
 }));
 
@@ -71,9 +74,15 @@ jest.mock("@/lib/sre/investigation-billing", () => ({
     .mockResolvedValue({ processed: 0, failed: 0 }),
 }));
 
+jest.mock("./usage-notification.service", () => ({
+  usageNotificationService: { checkAndNotify: jest.fn().mockResolvedValue([]) },
+}));
+
 import { db, postgresClient } from "@/utils/db";
 
 import { polarUsageService } from "./polar-usage.service";
+import { usageNotificationService } from "./usage-notification.service";
+import { organization } from "@/db/schema";
 
 const mockDb = db as unknown as {
   query: {
@@ -113,6 +122,20 @@ describe("PolarUsageService retry idempotency", () => {
     expect(mockDb.query.organization.findFirst).not.toHaveBeenCalled();
   });
 
+  it("checks AI-credit-only organizations without ingesting a billable event", async () => {
+    mockDb.query.usageEvents.findMany.mockResolvedValue([]);
+    const where = jest.fn().mockResolvedValue([{ organizationId: "ai-only-org" }]);
+    const from = jest.fn(() => ({ leftJoin: () => ({ where }) }));
+    mockDb.selectDistinct.mockReturnValue({ from });
+    mockPostgresClient.begin.mockImplementation(async (callback) => callback(jest.fn().mockResolvedValue([{ locked: true }])));
+    global.fetch = jest.fn();
+    await expect(polarUsageService.syncPendingEvents()).resolves.toMatchObject({ processed: 0, failed: 0 });
+    expect(from).toHaveBeenCalledWith(organization);
+    expect(JSON.stringify(where.mock.calls)).toContain("organization.aiCreditsUsed");
+    expect(usageNotificationService.checkAndNotify).toHaveBeenCalledWith("ai-only-org");
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
   it.each([
     ["plus", 25, 25, 0], ["plus", 25, 26, 50],
     ["pro", 100, 100, 0], ["pro", 100, 101, 50],
@@ -140,6 +163,17 @@ describe("PolarUsageService retry idempotency", () => {
     expect(metrics.totalOverageCostCents).toBe(expected);
   });
 
+  it("does not add a cent to an exact fractional SRE overage or trigger a premature stop", async () => {
+    const database = { query: {
+      organization: { findFirst: jest.fn().mockResolvedValue({ subscriptionPlan: "plus", sreInvestigationUnitsUsed: "26" }) },
+      planLimits: { findFirst: jest.fn().mockResolvedValue({ playwrightMinutesIncluded: 3000, k6VuMinutesIncluded: 20000, aiCreditsIncluded: 100, sreInvestigationUnitsIncluded: "25.86" }) },
+      overagePricing: { findFirst: jest.fn().mockResolvedValue({ sreInvestigationUnitPriceCents: 50 }) },
+      billingSettings: { findFirst: jest.fn().mockResolvedValue({ enableSpendingLimit: true, hardStopOnLimit: true, monthlySpendingLimitCents: 8 }) },
+    } } as unknown as Pick<typeof db, "query">;
+    const spending = await polarUsageService.getSpendingStatus("org-1", { database, additionalSreUnits: 0 });
+    expect(spending).toMatchObject({ currentSpendingCents: 7, isAtLimit: false });
+  });
+
   it("reuses the usage ledger ID as external_id after a failed ingestion", async () => {
     const event = {
       id: "usage-event-1",
@@ -163,7 +197,7 @@ describe("PolarUsageService retry idempotency", () => {
     mockDb.update.mockReturnValue({ set: updateSet });
 
     const changedWhere = jest.fn().mockResolvedValue([]);
-    const changedFrom = jest.fn(() => ({ where: changedWhere }));
+    const changedFrom = jest.fn(() => ({ leftJoin: () => ({ where: changedWhere }) }));
     mockDb.selectDistinct.mockReturnValue({ from: changedFrom });
 
     const transaction = jest.fn().mockResolvedValue([{ locked: true }]);
@@ -276,7 +310,7 @@ describe("PolarUsageService retry idempotency", () => {
     mockDb.query.organization.findFirst.mockResolvedValue({ polarCustomerId: "customer-1" });
     const updateSet = jest.fn(() => ({ where: jest.fn().mockResolvedValue([]) }));
     mockDb.update.mockReturnValue({ set: updateSet });
-    mockDb.selectDistinct.mockReturnValue({ from: () => ({ where: jest.fn().mockResolvedValue([]) }) });
+    mockDb.selectDistinct.mockReturnValue({ from: () => ({ leftJoin: () => ({ where: jest.fn().mockResolvedValue([]) }) }) });
     const transaction = jest.fn().mockResolvedValue([{ locked: true }]);
     mockPostgresClient.begin.mockImplementation(async (callback) => callback(transaction));
     global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => result });
@@ -295,7 +329,7 @@ describe("PolarUsageService retry idempotency", () => {
     mockDb.query.usageEvents.findFirst.mockResolvedValue(event);
     const updateSet = jest.fn(() => ({ where: jest.fn().mockResolvedValue([]) }));
     mockDb.update.mockReturnValue({ set: updateSet });
-    mockDb.selectDistinct.mockReturnValue({ from: () => ({ where: jest.fn().mockResolvedValue([]) }) });
+    mockDb.selectDistinct.mockReturnValue({ from: () => ({ leftJoin: () => ({ where: jest.fn().mockResolvedValue([]) }) }) });
     const transaction = jest.fn().mockResolvedValue([{ locked: true }]);
     mockPostgresClient.begin.mockImplementation(async (callback) => callback(transaction));
     global.fetch = jest.fn();

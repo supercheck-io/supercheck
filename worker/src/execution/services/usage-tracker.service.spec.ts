@@ -300,6 +300,24 @@ describe('UsageTrackerService execution blocking', () => {
     });
   });
 
+  it('does not block early at an exact fractional SRE overage boundary', async () => {
+    const f = admissionFixture();
+    f.org.sreInvestigationUnitsUsed = '26';
+    f.query.planLimits.findFirst.mockResolvedValue({
+      playwrightMinutesIncluded: 3000,
+      k6VuMinutesIncluded: 20000,
+      sreInvestigationUnitsIncluded: '25.86',
+    });
+    f.query.billingSettings.findFirst.mockResolvedValue({
+      enableSpendingLimit: true,
+      hardStopOnLimit: true,
+      monthlySpendingLimitCents: 8,
+    });
+    await expect(f.service.shouldBlockExecution('org-1')).resolves.toEqual({
+      blocked: false,
+    });
+  });
+
   it.each([
     [null, true],
     [0.25, false],

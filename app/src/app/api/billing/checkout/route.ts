@@ -12,6 +12,7 @@ import { getUserOrgRole } from "@/lib/rbac/middleware";
 import { Role } from "@/lib/rbac/permissions";
 import { requireSameOriginRequest } from "@/lib/security/same-origin";
 import { ensurePolarCustomerAndLink } from "@/lib/services/organization-customer";
+import { createPolarClient } from "@/lib/billing/polar-client";
 import { getCurrentUser } from "@/lib/session";
 import { db } from "@/utils/db";
 import { eq } from "drizzle-orm";
@@ -126,8 +127,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { Polar } = await import("@polar-sh/sdk");
-    const polar = new Polar({
+    const polar = createPolarClient({
       accessToken: config.accessToken,
       server: config.server,
     });

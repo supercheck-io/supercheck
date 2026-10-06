@@ -15,7 +15,7 @@ import { subscriptionService } from "./subscription-service";
 import { isCloudHosted, isPolarEnabled } from "@/lib/feature-flags";
 import { db } from "@/utils/db";
 import { organization } from "@/db/schema";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, gt, isNotNull, or, sql } from "drizzle-orm";
 
 export class UsageTracker {
   /**
@@ -61,6 +61,16 @@ export class UsageTracker {
         .where(
           and(
             eq(organization.id, organizationId),
+            // Recheck the validated subscription in the same statement as the
+            // credit write; a downgrade or revocation may have won the race.
+            eq(organization.subscriptionPlan, plan.plan),
+            isNotNull(organization.polarCustomerId),
+            or(
+              eq(organization.subscriptionStatus, "active"),
+              eq(organization.subscriptionStatus, "past_due"),
+              and(eq(organization.subscriptionStatus, "canceled"),
+                gt(organization.subscriptionEndsAt, new Date())),
+            ),
             sql`COALESCE(${organization.aiCreditsUsed}, 0) < ${limit}`
           )
         )
@@ -74,7 +84,7 @@ export class UsageTracker {
       // No rows updated — either org not found or limit reached.
       // Query current usage to distinguish and provide accurate feedback.
       const current = await db
-        .select({ aiCreditsUsed: organization.aiCreditsUsed })
+        .select({ aiCreditsUsed: organization.aiCreditsUsed, subscriptionPlan: organization.subscriptionPlan })
         .from(organization)
         .where(eq(organization.id, organizationId))
         .limit(1);
@@ -85,6 +95,9 @@ export class UsageTracker {
       }
 
       const used = current[0].aiCreditsUsed ?? 0;
+      if (current[0].subscriptionPlan !== plan.plan || used < limit) {
+        return { allowed: false, reason: "Subscription changed while checking AI credits. Please retry.", status: 503 };
+      }
       return {
         allowed: false,
         reason: `You've used all ${limit} AI credits included in your ${plan.plan} plan this month. Credits reset at the start of your next billing cycle.`,

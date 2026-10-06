@@ -384,7 +384,8 @@ class UsageNotificationService {
             resourceType === "ai" ||
             resourceType === "sre"
             ? resourceType
-            : undefined
+            : undefined,
+          periodStart,
         );
       }
 

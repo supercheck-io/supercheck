@@ -186,7 +186,7 @@ const faqs = [
     },
     {
         question: 'How can I control overage spending?',
-        answer: 'The organization owner can configure a monthly spending limit, billing contacts, threshold alerts, and optional usage blocking in billing settings. Limits apply to usage overages in addition to the base subscription. In-flight execution usage can exceed a configured limit, so it is not a guaranteed invoice cap. Monitor, member, project, and status-page limits require an upgrade rather than an overage payment.',
+        answer: 'Organization owners and admins can configure a monthly spending limit, billing contacts, threshold alerts, and optional blocking of new billable executions and full investigations. Basic uptime checks continue at the spending limit. Only the owner can manage the paid subscription. Limits apply to usage overages in addition to the base subscription. In-flight execution usage can exceed a configured limit, so it is not a guaranteed invoice cap. Monitor, member, project, and status-page limits require an upgrade rather than an overage payment.',
     },
     {
         question: 'Can I change plans anytime?',
@@ -300,7 +300,7 @@ export default function PricingPage() {
                         Prices are in USD before applicable taxes. Usage beyond your allowance is billed at the rates below.
                     </p>
                     <div className="max-w-2xl mx-auto">
-                        <div className="rounded-lg border overflow-hidden">
+                        <div className="rounded-lg border overflow-x-auto" role="region" aria-label="Usage overage pricing" tabIndex={0}>
                             <table className="w-full" aria-label="Usage overage rates">
                                 <thead className="bg-fd-muted">
                                     <tr>

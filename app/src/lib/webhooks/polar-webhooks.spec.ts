@@ -301,6 +301,65 @@ describe("Polar webhook helpers", () => {
   });
 
   describe("subscription lifecycle handlers", () => {
+    it.each(["cancelAtPeriodEnd", "cancel_at_period_end"])(
+      "preserves scheduled cancellation from an active snapshot with %s",
+      async (flag) => {
+        mockWebhookClaim();
+        (db.query.organization.findFirst as jest.Mock).mockResolvedValue({
+          id: "org_123", subscriptionPlan: "plus", subscriptionStatus: "canceled",
+          subscriptionId: "sub_123", polarCustomerId: "cus_123",
+          usagePeriodStart: new Date("2026-06-01T00:00:00Z"),
+          usagePeriodEnd: new Date("2026-07-01T00:00:00Z"),
+        });
+        await handleSubscriptionUpdated({
+          id: "evt_cancellation_snapshot", type: "subscription.updated",
+          data: { id: "sub_123", status: "active", [flag]: true,
+            product_id: "prod_plus", customer_id: "cus_123",
+            current_period_start: "2026-06-01T00:00:00Z",
+            current_period_end: "2026-07-01T00:00:00Z" },
+        });
+        expect(subscriptionService.updateSubscription).toHaveBeenCalledWith(
+          "org_123", expect.objectContaining({ subscriptionStatus: "canceled" }), db,
+        );
+      },
+    );
+
+    it.each(["canceled", "unpaid", "incomplete", "incomplete_expired", "trialing"])(
+      "removes paid access for a %s subscription snapshot",
+      async (status) => {
+        mockWebhookClaim();
+        (db.query.organization.findFirst as jest.Mock).mockResolvedValue({
+          id: "org_123", subscriptionPlan: "plus", subscriptionStatus: "active",
+          subscriptionId: "sub_123", polarCustomerId: "cus_123",
+        });
+        await handleSubscriptionUpdated({ id: "evt_nonpaying", type: "subscription.updated",
+          data: { id: "sub_123", status, product_id: "prod_plus", customer_id: "cus_123" },
+        });
+        expect(subscriptionService.updateSubscription).toHaveBeenCalledWith(
+          "org_123", expect.objectContaining({ subscriptionStatus: "none" }), db,
+        );
+      },
+    );
+
+    it("applies an active snapshot's changed product without resetting same-period usage", async () => {
+      mockWebhookClaim();
+      (db.query.organization.findFirst as jest.Mock).mockResolvedValue({
+        id: "org_123", subscriptionPlan: "plus", subscriptionStatus: "active",
+        subscriptionId: "sub_123", polarCustomerId: "cus_123",
+        usagePeriodStart: new Date("2026-06-01T00:00:00Z"),
+        usagePeriodEnd: new Date("2026-07-01T00:00:00Z"),
+      });
+      (subscriptionService.resetUsageCountersWithDates as jest.Mock).mockResolvedValue(false);
+      await handleSubscriptionActive({ id: "evt_active_upgrade", type: "subscription.active",
+        data: { id: "sub_123", status: "active", product_id: "prod_pro", customer_id: "cus_123",
+          current_period_start: "2026-06-01T00:00:00Z", current_period_end: "2026-07-01T00:00:00Z" },
+      });
+      expect(subscriptionService.updateSubscription).toHaveBeenCalledWith(
+        "org_123", expect.objectContaining({ subscriptionPlan: "pro" }), db,
+      );
+      expect(billingSettingsService.resetNotificationsForPeriod).not.toHaveBeenCalled();
+    });
+
     it("does not activate access for unknown subscription products", async () => {
       const { set } = mockWebhookClaim();
       (db.query.organization.findFirst as jest.Mock).mockResolvedValue({
