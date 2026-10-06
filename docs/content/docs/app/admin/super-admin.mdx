@@ -77,7 +77,7 @@ Monitor BullMQ queues for test execution, monitoring, and background jobs. View 
 
 ## Locations
 
-Manage geographic locations for multi-region monitoring and performance testing. Locations determine where workers run and which queues are created.
+Manage geographic locations for multi-region monitoring and performance testing. Deploy a worker in each region you want to offer, then make that location available to projects.
 
 ### Adding a Location
 
@@ -87,13 +87,13 @@ Manage geographic locations for multi-region monitoring and performance testing.
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| **Code** | Yes | Unique identifier used in queue names (e.g. `us-east`). Lowercase, 2–50 characters, letters/digits/hyphens only, no consecutive hyphens. Reserved codes (`global`, `all`, `default`, `none`, `any`, `local`) are blocked. |
+| **Code** | Yes | Identifier that must match the worker's `WORKER_LOCATION` (e.g. `us-east`). Lowercase, 2–50 characters, letters/digits/hyphens only, no consecutive hyphens. Reserved codes (`global`, `all`, `default`, `none`, `any`, `local`) are blocked. |
 | **Name** | Yes | Human-readable display name (e.g. "US East"). |
 | **Region** | No | Geographic description (e.g. "Ashburn, Virginia"). |
 | **Flag** | No | Emoji flag for the UI (e.g. 🇺🇸). |
 | **Coordinates** | No | Latitude/longitude for map visualization. |
 | **Default** | No | Set as the default K6 job execution location. |
-| **Enabled** | No | Activate the location and create its queues. |
+| **Enabled** | No | Make the location available for new checks and runs. |
 
 ### Location Status
 
@@ -101,10 +101,10 @@ Manage geographic locations for multi-region monitoring and performance testing.
 |--------|---------|
 | **Active** | Location is enabled and has workers connected (heartbeat detected) |
 | **Offline** | Location is enabled but no workers are currently connected |
-| **Disabled** | Location is toggled off — no queues are created |
+| **Disabled** | Location is unavailable for new checks and runs |
 
 <Callout type="info">
-Worker presence is detected automatically via heartbeat. Deploy a worker with the matching `WORKER_LOCATION` to bring a location online. See [Multi-Location Deployment](/docs/app/deployment/multi-location) for setup instructions.
+A location becomes **Active** when a matching worker connects. Deploy a worker with the matching `WORKER_LOCATION` to bring a location online. See [Multi-Location Deployment](/docs/app/deployment/multi-location) for setup instructions.
 </Callout>
 
 ### Default Location

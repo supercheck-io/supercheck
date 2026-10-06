@@ -36,18 +36,18 @@ Some errors include additional context:
 | `404` | Not Found | Verify the resource ID exists |
 | `409` | Conflict | Duplicate resource (e.g. token name) |
 | `429` | Rate Limited | Wait and retry (see `Retry-After` header) |
-| `500` | Server Error | Retry with backoff; report if persistent |
+| `500` | Server Error | Check whether a mutation succeeded before retrying; report persistent errors |
 
 ## Retry Behavior
 
-The Supercheck CLI implements automatic retries for transient errors:
+The CLI retries rate-limited requests and selected transient errors. It does not automatically replay `POST` or `PATCH` requests after server or network failures.
 
-| Error Type | Retry | Strategy |
-|------------|-------|----------|
-| `5xx` Server Error | 3 attempts | Exponential backoff (1s, 2s, 4s) |
-| `429` Rate Limited | Up to 3 | Respects `Retry-After` header |
-| `4xx` Client Error | No retry | Immediate failure |
-| Network Timeout | 3 attempts | Exponential backoff |
+| Error | What to do |
+|---|---|
+| `429` rate limit | Let the CLI wait and retry. In your own client, respect `Retry-After` when present. |
+| `5xx` or network failure | Safe-to-repeat requests use backoff. Before repeating a create, update, or trigger, check whether it already succeeded. |
+| Other `4xx` responses | Fix the request, credentials, or permissions before retrying. |
+| Request timeout | Check connectivity and the operation's result before issuing it again. |
 
 ### Retry-After Header
 

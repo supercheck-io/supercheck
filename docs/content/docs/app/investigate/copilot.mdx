@@ -12,8 +12,8 @@ Copilot is Supercheck's read-only operational assistant. Access it from **Invest
 
 | Source | Mode | Capabilities |
 |---|---|---|
-| **Standalone** | Platform chat (`/copilot`) | Uses user-provided context to explain architectures, craft queries, or analyze pasted error messages. |
-| **Incident-scoped** | Incident panel | Directly queries saved incident evidence (metrics, logs, traces, synthetic test artifacts) with native citations. |
+| **Standalone** | Platform chat (`/copilot`) | Ask about an error, describe symptoms, or paste relevant logs. |
+| **Incident-scoped** | Incident panel | Ask follow-up questions about the incident and review citations to its saved evidence. |
 | **Live connectors** | Incident chat (opt-in) | Read-only queries to Kubernetes, Prometheus, Grafana, Datadog, GitHub, Loki, and other configured connectors. |
 
 <Callout type="info">
@@ -52,10 +52,10 @@ Live connector queries are **disabled by default**. To activate them during an i
 
 - **Bounded queries** — Maximum 10 rows, 15-second execution timeout, and a historical time window of up to six hours (60 minutes by default).
 - **Namespace isolation** — Kubernetes queries strictly require explicit namespace scoping.
-- **Prompt context** — Each message is limited to 4,000 characters. Saved history lets you reopen conversations; previous messages are not automatically included in the model prompt. Restate relevant context in follow-up questions.
-- **Model budget** — 4 model steps and a 45-second timeout per answer. The answer is saved when the stream finishes; stopped answers are not saved.
-- **Rate limiting** — 30 messages per minute per user. If Redis is unavailable, requests fail closed rather than running unthrottled.
-- **Redaction** — All credentials, tokens, and sensitive headers are redacted before reasoning steps.
+- **Message length** — Keep each message under 4,000 characters. Restate relevant context in follow-up questions; earlier chat messages are not automatically reused.
+- **Saved answers** — Let an answer finish if you want to reopen it from History. Stopped answers are not saved.
+- **Request limits** — Up to 30 messages per minute. If a request is unavailable or times out, review the message before retrying.
+- **Sensitive data** — Keep credentials in connector settings rather than pasting them into chat.
 
 <Callout type="info">
 For a full investigation with a saved, shareable report, use [Incident Investigation](/docs/app/investigate/incidents). Copilot is for interactive questions; an investigation runs the complete evidence pass and records its findings on the incident timeline.

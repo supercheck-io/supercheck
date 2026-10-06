@@ -281,7 +281,7 @@ supercheck run status <run-id>
 
 ### `supercheck run stream`
 
-Stream live console output from a running execution via SSE.
+Watch live console output from a running execution.
 
 ```bash
 supercheck run stream <run-id>
@@ -773,7 +773,7 @@ supercheck sre ask "Summarize the strongest evidence" --incident <incident-id>
 supercheck sre ask "Check current telemetry" --incident <incident-id> --live-connectors
 ```
 
-Copilot is read-only. The server validates project scope, incident ownership, permissions, feature flags, plan limits, and rate limits. `--idle-timeout` controls stream inactivity (minimum 10 seconds). Ctrl-C cancels the client stream. Global `--json` emits NDJSON events for automation.
+Copilot is read-only. Use an incident your token can access, and add `--live-connectors` only when you have connector investigation permission. `--idle-timeout` controls stream inactivity (minimum 10 seconds). Ctrl-C cancels the client stream. Global `--json` emits NDJSON events for automation.
 
 ### Service catalog
 
@@ -821,7 +821,7 @@ supercheck deploy --no-delete    # Skip deletions
 supercheck deploy --force        # Skip confirmation
 ```
 
-`--force` skips the confirmation prompt. Test scripts are sanitized and stored as UTF-8 source through the API's Base64 transport format, not as precompiled output or generated sourcemap data.
+`--force` skips the confirmation prompt. Keep test scripts as editable source files and review `supercheck diff` before deploying.
 
 ### `supercheck destroy`
 

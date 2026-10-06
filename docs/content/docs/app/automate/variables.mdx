@@ -25,7 +25,7 @@ Use file variables for non-sensitive test data and fixtures. Keep passwords, API
 </Tab>
 <Tab value="Secrets">
 
-- **Storage:** AES-128-GCM encrypted
+- **Storage:** Encrypted
 - **Visibility:** Masked with `***`
 - **Logging:** Avoid intentional logging; execution output is redacted
 - **Use For:** API keys, passwords, tokens
@@ -33,7 +33,7 @@ Use file variables for non-sensitive test data and fixtures. Keep passwords, API
 </Tab>
 <Tab value="Files">
 
-- **Storage:** S3/MinIO object storage
+- **Storage:** Uploaded file
 - **Max Size:** 5 MB
 - **Supported Types:** CSV, JSON, YAML, XML, TSV, plain text
 - **Access:** Playwright can use `readFile(key)`; k6 should use `open(getFile(key))` in init context
@@ -86,7 +86,7 @@ Secret values are masked by default in the UI. Users with secret-view permission
 7. Click **Add Variable**
 
 <Callout type="info">
-File variables are stored in S3/MinIO and made available inside the test execution container at runtime. In Playwright, use `readFile(key)` to read the contents directly. In k6, use `open(getFile(key))` during init context, and prefer `SharedArray` for datasets reused across VUs. To rotate a dataset without changing scripts, keep the same variable key and upload a replacement file.
+In Playwright, use `readFile(key)` to read the contents directly. In k6, use `open(getFile(key))` during init context, and prefer `SharedArray` for datasets reused across VUs. To rotate a dataset without changing scripts, keep the same variable key and upload a replacement file.
 </Callout>
 
 </Tab>
@@ -192,7 +192,7 @@ const configPath = getFile('CONFIG_FILE');
 
 ### Secret Protection
 
-Secrets are resolved at runtime and execution output is redacted before being persisted or returned:
+Use `getSecret()` when a test needs a credential. Execution output masks secret values, but you should still avoid logging them:
 
 ```javascript
 /**
@@ -376,9 +376,7 @@ Use clear, consistent naming for your variables:
 <Tabs items={['Encryption', 'Access Control', 'Audit Trail']}>
 <Tab value="Encryption">
 
-- Secrets are encrypted using **AES-128-GCM** authenticated encryption (Node.js `crypto`)
-- Encryption keys are derived per-project using HKDF-SHA256
-- Values are encrypted at rest in the database
+Store credentials as **Secrets** to encrypt saved values. Use the reveal action only when needed, and keep secrets out of uploaded data files.
 
 </Tab>
 <Tab value="Access Control">

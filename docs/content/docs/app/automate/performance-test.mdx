@@ -13,12 +13,12 @@ Run k6 performance tests to validate your application under load. Execute from m
 1. Go to **Create → Performance Test**
 2. Write k6 script in the editor
 3. Configure load profile (VUs, duration)
-4. Select regions for distributed testing
+4. Select an execution location if prompted
 5. Run and analyze results
 
 ## Multi-Location Testing
 
-Run tests from different geographic locations to measure global performance.
+Choose one location for each run. Repeat the test from other available locations to compare regional performance.
 
 <Callout type="info">
 **Dynamic Locations**: Available execution locations are managed through the Super Admin panel. When only one location is available, the location selector is automatically hidden and tests run from the default location.
@@ -28,14 +28,14 @@ Run tests from different geographic locations to measure global performance.
 **Execution Context**: 
 - **Playground**: When multiple project-available locations are available, select a specific location. The "Global" option is shown only when the project is not restricted to specific locations. When only one location exists, tests run automatically without a location prompt.
 - **Jobs**: K6 jobs execute from the project's requested location when provided, otherwise they fall back to the project's default available location.
-- **Worker availability**: The location picker shows live worker status via heartbeat. If a selected K6 location is enabled but currently offline, the run stays queued until a matching worker starts processing that queue.
+- **Worker availability**: Choose an online location when possible. If a location is offline, a submitted run may wait until execution is available there.
 
 **Self-Hosted Deployments**: By default, self-hosted instances have a single `local` location. Tests execute from your worker. To enable multi-location testing, deploy additional workers and add locations via the Super Admin panel.
 </Callout>
 
 ## Example Script
 
-Start with a smoke test against a system you own or have permission to test. Increase load gradually and monitor server capacity. Each selected region runs its own load profile; selecting more regions increases total load.
+Start with a smoke test against a system you own or have permission to test. Increase load gradually and monitor server capacity. Each run uses the load profile in your script at one location. Running several tests at once increases the total load.
 
 Set an `API_URL` project variable to your test environment and replace `/health` with the endpoint you want to exercise.
 
@@ -91,7 +91,7 @@ export default function () {
 
 ## Execution Location
 
-When running a performance test from a project with multiple locations, select the target execution location, or choose **Global** to let the run execute on any available worker.
+When running a performance test from a project with multiple locations, select the target execution location, or choose **Global**, when offered, to let Supercheck choose an available location.
 
 ![Select Execution Location](/screenshots/performance-test-multilocation-selector.png)
 

@@ -37,14 +37,12 @@ curl -X POST https://app.supercheck.io/api/cli-tokens \
   -d '{"name": "CI/CD Pipeline"}'
 ```
 
-### Token Security
+### Keep Tokens Secure
 
-- **Hashed storage** — Only the SHA-256 hash is stored in the database
-- **One-time display** — The plain token is returned only at creation time
-- **Prefix validation** — Tokens must have a recognized prefix before any API call
-- **Verify-then-persist** — `login --token` verifies against the API before saving locally
-- **Config scanning** — The CLI rejects config files containing token patterns
-- **Audit trail** — All token creation/revocation events are logged
+- Copy a new token immediately; it is shown only once.
+- Store CI/CD tokens in your pipeline's secret manager, not in configuration files.
+- Set an expiry for temporary access and revoke tokens you no longer need.
+- Use `supercheck login --token` followed by `supercheck whoami` to verify access.
 
 ### Managing Tokens
 
@@ -64,7 +62,7 @@ Trigger keys (`sck_trigger_*`) provide **limited access** for CI/CD pipelines:
 
 - Can only trigger a single specific job
 - Cannot access other API resources
-- Rejected by `requireAuthContext` for general API calls
+- Cannot authenticate other API commands
 
 ```bash
 # Trigger a job using a trigger key
@@ -94,14 +92,11 @@ curl -X POST https://app.supercheck.io/api/jobs/<id>/trigger \
   For CI/CD, use `SUPERCHECK_TRIGGER_KEY` with `supercheck job trigger`. Add `SUPERCHECK_TOKEN` only when you also use `--wait` or run other API-backed commands such as `deploy`, `diff`, or `whoami`.
 </Callout>
 
-## Authentication Flow
+## Verify Your Access
 
-The CLI resolves authentication in this order:
+Run `supercheck whoami` to check your API URL, token identity, and expiry before using API-backed commands. For a self-hosted instance, set `SUPERCHECK_URL` or pass `--url` when logging in. A browser sign-in does not authenticate the CLI.
 
-1. `Authorization: Bearer <token>` header
-2. If token starts with `sck_live_` or `sck_test_` → CLI token auth
-3. If token starts with `sck_trigger_` → **rejected** for general API (trigger-only)
-4. If no Bearer token → falls back to session cookie auth (browser only)
+For `job trigger`, use a job-specific trigger key. To wait for the result with `--wait`, also supply a CLI token that can read runs in that project.
 
 ## Rate Limits
 

@@ -21,25 +21,6 @@ Supercheck uses a **6-role RBAC system** with granular permissions across organi
 | **Project Editor** | Project | Create and edit resources in assigned projects |
 | **Project Viewer** | Organization | Read-only access to all projects |
 
-## Role Hierarchy
-
-```mermaid
-flowchart LR
-    SA["<b>Super Admin</b><br/>System-wide"] --> OO["<b>Org Owner</b><br/>Organization"]
-    SA --> OA["<b>Org Admin</b><br/>Organization"]
-    OO --> PA["<b>Project Admin</b><br/>Project"]
-    OA --> PA
-    PA --> PE["<b>Project Editor</b><br/>Project"]
-    PE --> PV["<b>Project Viewer</b><br/>Read-only"]
-
-    style SA fill:#ef4444,stroke:#b91c1c,color:#fff
-    style OO fill:#f59e0b,stroke:#b45309,color:#fff
-    style OA fill:#d97706,stroke:#92400e,color:#fff
-    style PA fill:#8b5cf6,stroke:#6d28d9,color:#fff
-    style PE fill:#3b82f6,stroke:#1e40af,color:#fff
-    style PV fill:#64748b,stroke:#475569,color:#fff
-```
-
 ## Permission Matrix
 
 <Tabs items={['Organization', 'Project', 'Tests & Jobs', 'Monitors & Status Pages', 'Test Runs', 'CLI Tokens', 'Notifications', 'Tags', 'AI SRE']}>

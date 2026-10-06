@@ -16,7 +16,7 @@ Supercheck brings Playwright test automation, k6 performance testing, uptime and
 - **Investigation:** run logs, screenshots, traces, linked artifacts, and read-only AI SRE investigation over Supercheck evidence and configured connectors.
 - **Communication:** alerts through email, Slack, Discord, Telegram, Microsoft Teams, and webhooks, plus public status pages and subscriber notifications.
 - **Governance:** organizations, projects, six RBAC roles, API keys, audit trails, requirements traceability, and coverage snapshots.
-- **Secure execution:** ephemeral Kubernetes Jobs, gVisor isolation, network policies, and resource limits for Playwright and k6 workloads.
+- **Secure execution:** isolated execution environments, network restrictions, and resource limits for Playwright and k6 workloads.
 
 ## Competitive landscape
 
@@ -44,7 +44,7 @@ Supercheck combines capabilities that are commonly split across test automation,
 
 ### Self-host Supercheck
 
-Production self-hosting requires a Linux server with Docker Compose v2. Supercheck uses local K3s and gVisor for isolated test execution; macOS, Windows, and WSL2 are not supported deployment targets.
+Production self-hosting requires a Linux server with Docker Compose v2. Run the supplied setup script once to prepare the test-execution sandbox; macOS, Windows, and WSL2 are not supported deployment targets.
 
 ```bash
 git clone https://github.com/supercheck-io/supercheck.git
@@ -109,15 +109,15 @@ flowchart TB
     Redis -.->|Internet| W_APAC
 
     subgraph PRIMARY["Primary Server"]
-        W_EU[Worker EU<br/>NestJS + BullMQ<br/>WORKER_LOCATION=eu-central] --> K3S_EU[K3s + gVisor<br/>Sandboxed Execution]
+        W_EU[Worker EU<br/>NestJS + BullMQ<br/>WORKER_LOCATION=eu-central] --> K3S_EU[Isolated Test<br/>Execution Sandbox]
     end
 
     subgraph US["US Server"]
-        W_US[Worker US<br/>NestJS + BullMQ<br/>WORKER_LOCATION=us-east] --> K3S_US[K3s + gVisor<br/>Sandboxed Execution]
+        W_US[Worker US<br/>NestJS + BullMQ<br/>WORKER_LOCATION=us-east] --> K3S_US[Isolated Test<br/>Execution Sandbox]
     end
 
     subgraph APAC["Asia Pacific Server"]
-        W_APAC[Worker APAC<br/>NestJS + BullMQ<br/>WORKER_LOCATION=asia-pacific] --> K3S_APAC[K3s + gVisor<br/>Sandboxed Execution]
+        W_APAC[Worker APAC<br/>NestJS + BullMQ<br/>WORKER_LOCATION=asia-pacific] --> K3S_APAC[Isolated Test<br/>Execution Sandbox]
     end
 
     style Users fill:#6366f1,stroke:#4338ca,color:#fff
@@ -139,7 +139,7 @@ flowchart TB
     style APAC fill:none,stroke:#64748b,stroke-width:2px,stroke-dasharray: 5 5
 ```
 
-The application stores platform data in PostgreSQL, schedules work through Redis and BullMQ, and keeps execution artifacts in S3-compatible storage such as MinIO. Workers consume location-aware queues and run Playwright or k6 workloads as ephemeral Kubernetes Jobs in a restricted execution namespace. Deploy one local worker or add workers for other configured locations.
+The application stores platform data in PostgreSQL, schedules work through Redis and BullMQ, and keeps execution artifacts in S3-compatible storage such as MinIO. Workers consume location-aware queues and run Playwright or k6 workloads in isolated execution environments. Deploy one local worker or add workers for other configured locations.
 
 ## Repository layout
 

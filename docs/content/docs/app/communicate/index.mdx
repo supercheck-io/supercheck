@@ -54,14 +54,15 @@ Adaptive Card notifications via Power Automate workflows
 
 ## Smart Alert Thresholds
 
-Avoid alert fatigue with consecutive failure thresholds. Only get notified when issues persist, not for transient blips.
+Choose failure and recovery thresholds to avoid notifications for brief interruptions. This example uses a failure threshold of **3** and a recovery threshold of **2**.
 
 | Check | Status | Failure Count | Alert? |
 |-------|--------|---------------|--------|
 | 1 | ❌ Fail | 1/3 | No |
 | 2 | ❌ Fail | 2/3 | No |
 | 3 | ❌ Fail | 3/3 | **Yes - Failure Alert** |
-| 4 | ✅ Pass | Reset | **Yes - Recovery Alert** |
+| 4 | ✅ Pass | 1/2 successes | No |
+| 5 | ✅ Pass | 2/2 successes | **Yes - Recovery Alert** |
 
 **Recommended settings:**
 - **Failure threshold: 2-3** — Balances speed vs. false positives
@@ -82,7 +83,7 @@ Communicate service health to your users with branded status pages:
 
 ### For Internal Teams
 - **On-call alerts** — Route critical failures to Slack and PagerDuty
-- **Daily summaries** — Email digests of test results
+- **Job results** — Send email notifications for the job outcomes you enable
 - **CI/CD notifications** — Webhook integration with build pipelines
 
 ### For External Users
