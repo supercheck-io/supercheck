@@ -10,6 +10,36 @@ Create public status pages to communicate system health, incidents, and schedule
 Status pages are hosted on unique subdomains and are publicly accessible without authentication.
 </Callout>
 
+## Managing Status Pages
+
+Navigate to **Communicate → Status Pages** to view all your status pages.
+
+![Status Pages List](/screenshots/status-pages-list.png)
+
+Click **Manage** to access the management interface:
+
+![Status Page Overview](/screenshots/status-page-overview.png)
+
+### Creating a Status Page
+
+1. Click **Create Status Page**
+2. Enter:
+   - **Name** — Internal identifier
+   - **Headline** — Public title shown on the page
+   - **Description** — Brief description for users
+3. Click **Create**
+
+![Create Status Page](/screenshots/status-page-create.png)
+
+Your page is created in **draft mode**. Configure components and settings before publishing.
+
+### Publishing
+
+1. Add at least one component
+2. Configure branding in Settings
+3. Click **Publish** to make the page public
+4. Share the URL with your users
+
 ## Public Status Page
 
 Once published, your status page displays real-time system health to users:
@@ -64,7 +94,7 @@ The badge is a public endpoint — no authentication required. It includes CORS 
 </Callout>
 
 <Callout type="tip">
-Badges refresh every 5 minutes (server-side cache). For real-time updates, link directly to your status page.
+Badges may take up to 5 minutes to reflect an update. For real-time updates, link directly to your status page.
 </Callout>
 
 **Testing Your Badge:**
@@ -168,36 +198,6 @@ Supports Google Calendar, Apple Calendar, Outlook, and any app that accepts `.ic
 </Tab>
 </Tabs>
 
-## Managing Status Pages
-
-Navigate to **Communicate → Status Pages** to view all your status pages.
-
-![Status Pages List](/screenshots/status-pages-list.png)
-
-Click **Manage** to access the management interface:
-
-![Status Page Overview](/screenshots/status-page-overview.png)
-
-### Creating a Status Page
-
-1. Click **Create Status Page**
-2. Enter:
-   - **Name** — Internal identifier
-   - **Headline** — Public title shown on the page
-   - **Description** — Brief description for users
-3. Click **Create**
-
-![Create Status Page](/screenshots/status-page-create.png)
-
-Your page is created in **draft mode**. Configure components and settings before publishing.
-
-### Publishing
-
-1. Add at least one component
-2. Configure branding in Settings
-3. Click **Publish** to make the page public
-4. Share the URL with your users
-
 ## Components
 
 Components represent individual services or features on your status page.
@@ -279,8 +279,10 @@ Incidents communicate service disruptions to your users.
 </Tab>
 <Tab value="Workflow">
 
+Use these statuses to communicate progress. Update the incident as your team investigates, applies a fix, verifies recovery, and resolves it. Scheduled maintenance can advance automatically when you enable its status transitions.
+
 ```mermaid
-flowchart LR
+flowchart TB
     A[Investigating] --> B[Identified]
     B --> C[Monitoring]
     C --> D[Resolved]
@@ -336,25 +338,7 @@ Subscribers receive notifications for:
 - Incident resolution
 - Scheduled maintenance reminders
 
-```mermaid
-%%{init: {"theme":"base","themeVariables":{"fontFamily":"ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif","actorBkg":"#eef2ff","actorBorder":"#6366f1","actorTextColor":"#312e81","actorLineColor":"#94a3b8","signalColor":"#6366f1","signalTextColor":"#64748b","labelBoxBkgColor":"#fef3c7","labelBoxBorderColor":"#d97706","labelTextColor":"#78350f","loopTextColor":"#64748b","activationBkgColor":"#ddd6fe","activationBorderColor":"#7c3aed","noteBkgColor":"#fef3c7","noteBorderColor":"#d97706","noteTextColor":"#78350f","textColor":"#64748b","lineColor":"#94a3b8","mainBkg":"transparent"}}}%%
-sequenceDiagram
-    participant Team as Responder
-    participant Page as Status Page
-    participant Email as Email (SMTP)
-    participant Slack as Slack
-    participant Hook as Webhook
-    participant Feed as RSS · iCal · Badge
-
-    Team->>Page: Create, update, or resolve an incident
-    Page->>Page: Update component status and timeline
-    opt Notify subscribers enabled
-        Page->>Email: Incident notification email
-        Page->>Slack: Channel message (color-coded by impact)
-        Page->>Hook: JSON incident event
-    end
-    Page->>Feed: Refresh RSS, iCal, and status badge
-```
+When creating or updating an incident, select **Notify subscribers** if you want to send an update. Keep the message clear about impact, current status, and the next update. Visitors can review the incident timeline on the published page even when you do not send a notification.
 
 ## Settings
 
@@ -387,18 +371,7 @@ Use your own domain (e.g., `status.example.net`) instead of the default subdomai
 **Local development stays on localhost:** When you access Supercheck on `http://localhost:3000`, the **View** and **Copy URL** actions keep using `http://localhost:3000/status/[subdomain]`. Supercheck does not send local development traffic to the public `STATUS_PAGE_DOMAIN`.
 </Callout>
 
-#### How Custom Domains Work
-
-```mermaid
-flowchart LR
-    A["1. Configure Domain"] --> B["2. Add CNAME Record"] --> C["3. Verify DNS"] --> D["4. Active"]
-    style A fill:#6366f1,stroke:#4338ca,color:#fff
-    style B fill:#3b82f6,stroke:#1e40af,color:#fff
-    style C fill:#f59e0b,stroke:#b45309,color:#fff
-    style D fill:#10b981,stroke:#047857,color:#fff
-```
-
-#### Step-by-Step Setup
+#### Set Up a Custom Domain
 
 <Steps>
   <Step>
@@ -465,7 +438,7 @@ flowchart LR
     1. Wait for DNS propagation (typically 5–30 minutes, can take up to 48 hours)
     2. Return to the **Settings** tab and click **Verify DNS**
     3. Ensure the status page is **published**
-    4. Once verified and published, your custom domain is active and serving HTTPS traffic
+    4. Open the custom URL and verify HTTPS works before sharing it. Self-hosted deployments also need a certificate configured as described below.
   </Step>
 </Steps>
 

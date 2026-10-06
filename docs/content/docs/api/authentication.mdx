@@ -5,7 +5,7 @@ description: Token types, security, and authentication methods for the Superchec
 
 ## Authentication Method
 
-All API requests are authenticated via the `Authorization` header with a Bearer token:
+Use a Bearer token in the `Authorization` header for authenticated API requests. Explicitly public endpoints, such as health checks and published status-page feeds, do not require a token:
 
 ```bash
 curl https://app.supercheck.io/api/jobs \
@@ -97,21 +97,17 @@ Authorization: Bearer sck_trigger_f1e2d3c4b5a6789012345678901234cd
 
 Trigger keys **cannot** access any other API endpoint. Attempts to use them on general endpoints return `401 Unauthorized`.
 
-## Token Security
+## Keep Tokens Secure
 
-| Practice | Implementation |
-|----------|---------------|
-| **Storage** | Only hashed token material is stored in the database |
-| **Lookup** | Exact stored hash lookup; display prefixes are not used for authentication |
-| **Comparison** | Stored hash match supports current Better Auth API-key hashes and legacy Supercheck SHA-256 hashes |
-| **Expiry** | Tokens can have optional expiration dates |
-| **Membership** | Token rejected if owner is removed from organization |
-| **Audit** | All token operations are logged in audit trail |
-| **Limits** | Max 20 CLI tokens per project |
+- Store tokens in your CI/CD secret manager rather than committing them to source control.
+- Use a trigger key when a pipeline only needs to start one job.
+- Set an expiry for temporary access and revoke unused tokens.
+- Keep no more than 20 CLI tokens per project.
+- Tokens stop working when their owner loses organization membership.
 
 ## Rate Limiting
 
-All endpoints enforce rate limiting. The CLI automatically handles `429` responses with exponential backoff.
+Request limits depend on the endpoint. The CLI automatically handles `429` responses with exponential backoff.
 
 | Token Type | Limit | Window |
 |------------|-------|--------|
@@ -120,7 +116,7 @@ All endpoints enforce rate limiting. The CLI automatically handles `429` respons
 
 ### Rate Limit Headers
 
-Every response includes rate limit information:
+Rate-limited endpoints may include these headers; check for them rather than assuming they are present:
 
 ```
 X-RateLimit-Limit: 1000

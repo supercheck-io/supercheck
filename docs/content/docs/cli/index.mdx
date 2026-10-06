@@ -4,7 +4,7 @@ description: Open-source testing, monitoring, and AI SRE — as code with the Su
 icon: Terminal
 ---
 
-The Supercheck CLI (`@supercheck/cli`) provides a first-class command-line interface for CI/CD pipelines, automation workflows, monitoring-as-code, and AI-assisted incident response. Built with TypeScript, it supports jobs, tests, monitors, incidents, service topology, variables, and more.
+The Supercheck CLI (`@supercheck/cli`) provides a first-class command-line interface for CI/CD pipelines, automation workflows, monitoring-as-code, and AI-assisted incident response. Use it to manage jobs, tests, monitors, incidents, service topology, variables, and more.
 
 [View the package on npm](https://www.npmjs.com/package/@supercheck/cli).
 
@@ -45,7 +45,7 @@ supercheck sre ask "Summarize active reliability risks"
   In CI/CD, set `SUPERCHECK_TOKEN` for general CLI/API commands. For `supercheck job trigger`, set `SUPERCHECK_TRIGGER_KEY`, and add `SUPERCHECK_TOKEN` only when you also use `--wait`.
 </Callout>
 
-## How It Works
+## Choose Your Credential
 
 Most CLI commands use **CLI tokens** (`sck_live_*`). `supercheck job trigger` is the exception: it uses a job-specific **trigger key** (`sck_trigger_*`) and optionally a CLI token when waiting for completion.
 
@@ -59,8 +59,8 @@ supercheck job trigger <id>   → Triggers jobs from CI/CD
 
 ## Next Steps
 
-- [Installation](./installation) — Install and set up the CLI
-- [Authentication](./authentication) — Token types and security
-- [Configuration](./configuration) — `supercheck.config.ts` reference
-- [Commands](./commands) — Full command reference
-- [CI/CD Integration](./ci-cd) — GitHub Actions, GitLab CI, Docker
+- [Installation](/docs/cli/installation) — Install and set up the CLI
+- [Authentication](/docs/cli/authentication) — Token types and security
+- [Configuration](/docs/cli/configuration) — `supercheck.config.ts` reference
+- [Commands](/docs/cli/commands) — Full command reference
+- [CI/CD Integration](/docs/cli/ci-cd) — GitHub Actions, GitLab CI, Docker

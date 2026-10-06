@@ -20,7 +20,7 @@ The extension requires Chrome or Edge with Manifest V3 side-panel support.
 
 1. Install the extension in the browser profile you use for Supercheck.
 2. Open `https://app.supercheck.io`, sign in, and visit any authenticated dashboard page.
-3. The dashboard detects the extension and creates a recorder-scoped credential automatically. No approval dialog or copied API key is required.
+3. The extension connects automatically. You do not need to copy an API key.
 
 ### Self-hosted Supercheck
 
@@ -40,11 +40,11 @@ For local development only, the extension also accepts `http://localhost`. Other
 4. Review or edit the code.
 5. Select **Save** to send it to the originating Supercheck Playground.
 
-Use `Shift+Alt+C` to inspect elements without recording actions. Closing the recorder detaches controlled tabs and removes injected recorder scripts.
+Use `Shift+Alt+C` to inspect elements without recording actions. Close the recorder when you have finished.
 
 ## Permissions and data
 
-The extension requests debugger, tabs, storage, side-panel, scripting, and HTTP/HTTPS host access. These permissions are required to attach Playwright to a tab, observe browser actions, show the recorder, and communicate with Supercheck.
+The extension requests debugger, tabs, storage, side-panel, scripting, and HTTP/HTTPS host access. These permissions let the extension record actions in the selected tab and save the test to Supercheck.
 
 The configured instance URL and extension API key are stored in Chrome sync storage. Treat the browser profile as sensitive: disconnect the extension before sharing the profile, and revoke the key from Supercheck if the profile or device is lost. Recorded page interactions can include text entered into forms; review generated code before saving and avoid recording real secrets.
 
@@ -52,27 +52,11 @@ The extension requires HTTPS for cloud and self-hosted instances. Only localhost
 
 ## Self-hosted deployments
 
-Configure the externally reachable HTTPS URL of your Supercheck app in the extension options. The recorder must be able to call the app's extension authentication, project, and recording endpoints. If connection fails, verify the URL, certificate trust, API key, and browser access to the deployment.
+Configure the externally reachable HTTPS URL of your Supercheck app in the extension options. The browser must be able to reach the instance over HTTPS. If connection fails, verify the URL, certificate trust, API key, and browser access to the deployment.
 
-## Build from source
+## Build from Source
 
-```bash
-git clone https://github.com/supercheck-io/supercheck.git
-cd supercheck/recorder
-npm ci
-npm run build
-```
-
-Then open `chrome://extensions`, enable **Developer mode**, choose **Load unpacked**, and select `recorder/examples/recorder-crx/dist`.
-
-Run validation before contributing:
-
-```bash
-npm run lint
-npm run build
-npm run test:install
-npm test
-```
+For a custom or development build, follow the [recorder build instructions](https://github.com/supercheck-io/supercheck/tree/main/recorder). For normal use, install the published browser extension.
 
 ## Troubleshooting
 

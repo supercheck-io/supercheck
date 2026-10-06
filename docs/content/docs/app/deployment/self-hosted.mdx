@@ -6,44 +6,14 @@ icon: Container
 
 Deploy Supercheck on a single server with Docker Compose.
 
-## Architecture
+## Setup Overview
 
-```mermaid
-flowchart TB
-    Users[Users / CI/CD] --> T[Traefik Proxy<br/>SSL / Load Balancer]
-    T --> App[Next.js App<br/>UI + API]
-    App --> DB[(PostgreSQL<br/>Primary DB)] & Redis[(Redis + BullMQ<br/>Queue + Cache)] & S3[(MinIO<br/>Artifacts)]
-    App --> SRE[AI SRE Engine<br/>Read-only investigations]
-    SRE -.-> Private[Private Agents<br/>Outbound HTTPS only]
+1. Prepare a Linux server and install Docker Compose.
+2. Configure your instance URL and generate secrets.
+3. Run the supplied execution-sandbox setup script, then start Supercheck.
+4. Sign in, create a test, and run it to verify your installation.
 
-    Redis --> W1
-    Redis --> W2
-    Redis --> WN
-
-    subgraph SERVER["Single Server"]
-        W1[Worker 1<br/>NestJS + BullMQ<br/>WORKER_LOCATION=local] --> K3S_1[K3s + gVisor<br/>Sandboxed Execution]
-        W2[Worker 2<br/>NestJS + BullMQ<br/>WORKER_LOCATION=local] --> K3S_2[K3s + gVisor<br/>Sandboxed Execution]
-        WN[Worker N<br/>NestJS + BullMQ<br/>WORKER_LOCATION=local] --> K3S_N[K3s + gVisor<br/>Sandboxed Execution]
-    end
-
-    style Users fill:#6366f1,stroke:#4338ca,color:#fff
-    style T fill:#0ea5e9,stroke:#0369a1,color:#fff
-    style App fill:#3b82f6,stroke:#1e40af,color:#fff
-    style DB fill:#f59e0b,stroke:#b45309,color:#fff
-    style Redis fill:#ef4444,stroke:#b91c1c,color:#fff
-    style S3 fill:#8b5cf6,stroke:#6d28d9,color:#fff
-    style SRE fill:#0ea5e9,stroke:#0369a1,color:#fff
-    style Private fill:#8b5cf6,stroke:#6d28d9,color:#fff
-    style W1 fill:#10b981,stroke:#047857,color:#fff
-    style W2 fill:#10b981,stroke:#047857,color:#fff
-    style WN fill:#10b981,stroke:#047857,color:#fff
-    style K3S_1 fill:#059669,stroke:#047857,color:#fff
-    style K3S_2 fill:#059669,stroke:#047857,color:#fff
-    style K3S_N fill:#059669,stroke:#047857,color:#fff
-    style SERVER fill:none,stroke:#3b82f6,stroke-width:2px
-```
-
-All services run on a single Linux server managed by Docker Compose. Workers consume jobs from Redis via BullMQ and execute each test as an ephemeral Kubernetes Job in a local [K3s](https://k3s.io) cluster, sandboxed with [gVisor](https://gvisor.dev/) for kernel-level isolation. Scale by increasing `WORKER_REPLICAS` or expanding to [multiple regions](/docs/app/deployment/multi-location).
+Choose the tab below for HTTP setup, production HTTPS, or managed external services. For a system overview, see [Platform Architecture](/docs/app/architecture).
 
 ---
 
@@ -56,7 +26,7 @@ All services run on a single Linux server managed by Docker Compose. Workers con
         ### Install Docker
 
         <Callout type="warn">
-        A **Linux server** is required (Ubuntu 22.04+, Debian 12+). Supercheck uses K3s and gVisor for sandboxed test execution, which require the Linux kernel. macOS, Windows, and WSL2 are not supported.
+        A **Linux server** is required (Ubuntu 22.04+, Debian 12+). The test-execution sandbox requires the Linux kernel. macOS, Windows, and WSL2 are not supported.
         </Callout>
 
         ```bash
@@ -93,7 +63,7 @@ All services run on a single Linux server managed by Docker Compose. Workers con
         sudo bash setup-k3s.sh
         ```
 
-        This installs [K3s](https://k3s.io) with [gVisor](https://gvisor.dev) for sandboxed Playwright and K6 execution.
+        Run this once on the server before starting the workers. It prepares the isolated environment required for Playwright and k6 test execution.
       </Step>
 
       <Step>
@@ -123,7 +93,7 @@ All services run on a single Linux server managed by Docker Compose. Workers con
         ### Install Docker
 
         <Callout type="warn">
-        A **Linux server** is required (Ubuntu 22.04+, Debian 12+). Supercheck uses K3s and gVisor for sandboxed test execution, which require the Linux kernel. macOS, Windows, and WSL2 are not supported.
+        A **Linux server** is required (Ubuntu 22.04+, Debian 12+). The test-execution sandbox requires the Linux kernel. macOS, Windows, and WSL2 are not supported.
         </Callout>
 
         ```bash
@@ -203,7 +173,7 @@ All services run on a single Linux server managed by Docker Compose. Workers con
         sudo bash setup-k3s.sh
         ```
 
-        This installs [K3s](https://k3s.io) with [gVisor](https://gvisor.dev) for sandboxed Playwright and K6 execution.
+        Run this once on the server before starting the workers. It prepares the isolated environment required for Playwright and k6 test execution.
       </Step>
 
       <Step>
@@ -277,7 +247,7 @@ All services run on a single Linux server managed by Docker Compose. Workers con
         sudo bash setup-k3s.sh
         ```
 
-        This installs K3s with gVisor for sandboxed test execution.
+        Run this once on the server before starting the workers. It prepares the isolated environment required for test execution.
       </Step>
       <Step>
         ### Start Services
@@ -291,7 +261,7 @@ All services run on a single Linux server managed by Docker Compose. Workers con
     </Steps>
 
     <Callout type="info">
-    This compose file skips the bundled PostgreSQL, Redis, and MinIO containers. It starts the App, Worker, and Traefik containers; the Worker submits sandboxed jobs to the host K3s cluster.
+    This compose file skips the bundled PostgreSQL, Redis, and MinIO containers. It starts the App, Worker, and Traefik containers; the Worker runs tests in the host's execution sandbox.
     </Callout>
   </Tab>
 </Tabs>
@@ -445,7 +415,7 @@ All services run on a single Linux server managed by Docker Compose. Workers con
 ### Scaling
 
 <Callout type="info">
-`WORKER_LOCATION=local` (default) processes all queues on a single server. The UI auto-hides location selectors when only one location exists. Expand later via [Multi-Location Workers](/docs/app/deployment/multi-location).
+Keep `WORKER_LOCATION=local` (the default) for a single-server deployment. Location selectors appear only when more than one location is available. Expand later via [Multi-Location Workers](/docs/app/deployment/multi-location).
 </Callout>
 
 ```bash
@@ -467,7 +437,7 @@ docker compose -f docker-compose-secure.yml up -d
 | **Large** | 4 | 4 | 8 vCPU / 16GB |
 
 <Callout type="info">
-`RUNNING_CAPACITY` and `QUEUED_CAPACITY` are enforced by the App. Set them in `.env`; workers may receive the shared values but do not use them. `WORKER_REPLICAS` controls the number of worker containers. Keep `RUNNING_CAPACITY` equal to the total number of worker replicas.
+Set `WORKER_REPLICAS`, `RUNNING_CAPACITY`, and `QUEUED_CAPACITY` in `.env`. Keep `RUNNING_CAPACITY` equal to the total worker replicas, and choose `QUEUED_CAPACITY` based on how many waiting runs you want to allow.
 </Callout>
 
 ### Backups
@@ -479,7 +449,7 @@ docker compose exec -T postgres sh -c 'psql -U "$DB_USER" "$DB_NAME"' < backup.s
 
 ### Updates
 
-Images are pinned to a specific release through `SUPERCHECK_VERSION`, which defaults to the release bundled with this Compose file. Set it in `.env` to upgrade, and keep the App and Worker on the same value so the execution sandbox cannot drift from the control plane.
+Images are pinned to a specific release through `SUPERCHECK_VERSION`, which defaults to the release bundled with this Compose file. Set it in `.env` to upgrade, and keep the App and Worker on the same value to keep the services compatible.
 
 ```bash
 # In .env: set the target release (see GitHub Releases for available tags)
@@ -501,16 +471,16 @@ docker compose -f docker-compose-secure.yml up -d
 ```
 
 <Callout type="error">
-**Upgrading from pre-1.3.3 releases** — Supercheck moved from Docker socket-based test execution to a sandboxed K3s + gVisor model in `1.3.3`. Before upgrading an older deployment, you must run the setup script:
+**Upgrading from pre-1.3.3 releases** — Supercheck introduced the current isolated test-execution sandbox in `1.3.3`. Before upgrading an older deployment, you must run the setup script:
 
 ```bash
 # 1. Back up your database first
 docker compose exec postgres sh -c 'pg_dump -U "$DB_USER" "$DB_NAME"' > backup-pre-k3s-migration.sql
 
-# 2. Install K3s + gVisor execution sandbox
+# 2. Set up the execution sandbox
 sudo bash setup-k3s.sh
 
-# 3. Pull new images and restart with kubeconfig
+# 3. Pull new images and restart
 # Quick Start (HTTP):
 docker compose pull && \
 KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig \

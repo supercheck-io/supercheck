@@ -42,7 +42,7 @@ sudo usermod -aG docker "$USER"
 newgrp docker
 ```
 
-> **Linux Required:** Supercheck uses K3s and gVisor for sandboxed test execution, which require the Linux kernel. Only Linux servers (Ubuntu 22.04+, Debian 12+) are supported. macOS, Windows, and WSL2 are not supported.
+> **Linux Required:** The test-execution sandbox requires the Linux kernel. Only Linux servers (Ubuntu 22.04+, Debian 12+) are supported. macOS, Windows, and WSL2 are not supported.
 
 ---
 
@@ -54,7 +54,7 @@ newgrp docker
 | `docker-compose-secure.yml` | Production with HTTPS |
 | `docker-compose-external.yml` | Connect to managed external PostgreSQL, Redis, and S3 services |
 | `docker-compose-worker.yml` | Remote regional worker |
-| `docker-compose-private-agent.yml` | Outbound-only private agent for internal network testing |
+| `docker-compose-private-agent.yml` | Read-only private evidence queries for AI SRE investigations |
 | `docker-compose-local.yml` | Source-based local development |
 | `docker-compose-aisre-lab.yml` | Optional AI SRE integration lab with OSS telemetry and webhook capture |
 
@@ -185,9 +185,9 @@ Run the bootstrap script on your host:
 sudo bash setup-k3s.sh
 ```
 
-This installs the execution sandbox, creates the `supercheck-execution` namespace with appropriate resource limits and network policies, and writes a restricted worker kubeconfig to `/etc/rancher/k3s/supercheck-worker.kubeconfig`.
+Run this once before starting the workers. It prepares the isolated environment required for Playwright and k6 test execution, including resource limits and network restrictions.
 
-> **Linux host required:** Docker Engine on a Linux server (Ubuntu 22.04+, Debian 12+) is the only supported target. macOS, Windows, and WSL2 are not supported because K3s and gVisor require the Linux kernel.
+> **Linux host required:** Docker Engine on a Linux server (Ubuntu 22.04+, Debian 12+) is the only supported target. macOS, Windows, and WSL2 are not supported because the execution sandbox requires the Linux kernel.
 
 ---
 
@@ -199,7 +199,7 @@ KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig \
 docker compose up -d
 ```
 
-> **Upgrading from pre-1.3.3 releases:** Supercheck moved from Docker socket-based execution to K3s + gVisor in `1.3.3`. Before upgrading an older deployment, back up your database and run `sudo bash setup-k3s.sh` to install the execution sandbox. See the [deployment guide](https://supercheck.io/docs/app/deployment/self-hosted) for details.
+> **Upgrading from pre-1.3.3 releases:** Supercheck introduced the current isolated execution sandbox in `1.3.3`. Before upgrading an older deployment, back up your database and run `sudo bash setup-k3s.sh` to install the execution sandbox. See the [deployment guide](https://supercheck.io/docs/app/deployment/self-hosted) for details.
 
 ---
 

@@ -20,34 +20,16 @@ The Playground uses Monaco Editor (the same editor that powers VS Code) with fea
 
 ## Running Tests
 
-Click **Run** to execute your test in an isolated container environment.
+Use the Playground to check a script before adding it to an automated job or monitor.
 
-```mermaid
-%%{init: {"theme":"base","themeVariables":{"fontFamily":"ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif","actorBkg":"#eef2ff","actorBorder":"#6366f1","actorTextColor":"#312e81","actorLineColor":"#94a3b8","signalColor":"#6366f1","signalTextColor":"#64748b","labelBoxBkgColor":"#fef3c7","labelBoxBorderColor":"#d97706","labelTextColor":"#78350f","loopTextColor":"#64748b","activationBkgColor":"#ddd6fe","activationBorderColor":"#7c3aed","noteBkgColor":"#fef3c7","noteBorderColor":"#d97706","noteTextColor":"#78350f","textColor":"#64748b","lineColor":"#94a3b8","mainBkg":"transparent"}}}%%
-sequenceDiagram
-    participant User
-    participant Editor as Playground editor
-    participant API as Supercheck API
-    participant Worker
-    participant Sandbox as K3s + gVisor job
-
-    User->>Editor: Click Run
-    activate Editor
-    Editor->>API: Submit script
-    API->>API: Validate script and capacity
-    API->>Worker: Queue run
-    API-->>Editor: Run ID (SSE stream)
-    deactivate Editor
-    activate Worker
-    Worker->>Sandbox: Execute in isolated container
-    Sandbox-->>Worker: Results, screenshots, traces
-    Worker->>API: Publish completion
-    deactivate Worker
-    API-->>Editor: Live logs, then report URL
-```
+1. Click **Run** and select an execution location if prompted.
+2. Watch the run status and live logs in the results panel.
+3. Open the report when the run finishes. Review errors and available screenshots or traces.
+4. Update the script and run it again until it checks the expected behavior.
+5. **Save** the test to reuse it in a job or synthetic monitor.
 
 <Callout type="info">
-Cancel a running test at any time. The container is immediately stopped and resources are released.
+Use **Cancel** to stop a running test. Review the cancellation details in its result.
 </Callout>
 
 <Callout type="warn">
@@ -105,7 +87,7 @@ When a test fails, AI Fix analyzes the error and suggests corrections. It examin
 
 ![AI Fix Button](/screenshots/ai-fix-button.png)
 
-### How AI Fix Works
+### Use AI Fix
 
 1. Run a test that fails
 2. Click the **AI Fix** button (appears after failure)
@@ -136,7 +118,7 @@ Some failures require manual investigation rather than code changes. In these ca
 - **Permission Errors** — Access denied, insufficient privileges
 
 <Callout type="info">
-AI Fix preserves all your original comments and code structure. It only modifies the specific lines needed to fix the issue.
+Review the suggested diff before applying it, then run the test again to verify the change.
 </Callout>
 
 ## Templates
@@ -255,7 +237,7 @@ await page.goto(baseUrl);
 await page.fill('#password', password);
 ```
 
-Variables are resolved server-side before execution. Secrets are encrypted and execution output is redacted before persistence/return. File variables are intended for reusable, non-sensitive fixtures and datasets.
+Keep credentials in **Secrets** and use **File** variables for non-sensitive fixtures and datasets. Avoid logging secret values.
 
 See [Variables](/docs/app/automate/variables) for setup instructions.
 

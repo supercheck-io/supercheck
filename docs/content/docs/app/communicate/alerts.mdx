@@ -8,22 +8,7 @@ Alerts notify you when monitors fail, tests break, or services recover. Configur
 
 ![Notification Channels](/screenshots/notification-channels.png)
 
-```mermaid
-%%{init: {"theme":"base","themeVariables":{"fontFamily":"ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif","actorBkg":"#eef2ff","actorBorder":"#6366f1","actorTextColor":"#312e81","actorLineColor":"#94a3b8","signalColor":"#6366f1","signalTextColor":"#64748b","labelBoxBkgColor":"#fef3c7","labelBoxBorderColor":"#d97706","labelTextColor":"#78350f","loopTextColor":"#64748b","activationBkgColor":"#ddd6fe","activationBorderColor":"#7c3aed","noteBkgColor":"#fef3c7","noteBorderColor":"#d97706","noteTextColor":"#78350f","textColor":"#64748b","lineColor":"#94a3b8","mainBkg":"transparent"}}}%%
-sequenceDiagram
-    participant Check as Monitor, test, or job
-    participant Worker as Worker
-    participant Channel as Email / Slack / Telegram / Webhook
-    participant OnCall as PagerDuty / Splunk On-Call
-
-    Check->>Worker: Failure or recovery detected
-    Worker->>Worker: Resolve channels and smart thresholds
-    Worker->>Channel: Render template variables
-    Channel-->>Worker: Delivery status
-    Worker->>OnCall: Trigger (CRITICAL) or resolve (RECOVERY)
-    OnCall-->>Worker: Acknowledgement
-    Worker->>Worker: Record alert history
-```
+Configure a notification channel, send a test notification, then select that channel in a monitor or job's **Alerts** settings. Choose which failures and recoveries should notify your team, and review delivery history when a notification does not arrive.
 
 ## Notification Providers
 
@@ -90,8 +75,8 @@ After creating providers, attach them to monitors or jobs in their **Alerts** se
 
 Thresholds prevent alert noise from transient issues like network blips or brief service hiccups.
 
-<Tabs items={['How It Works', 'Example']}>
-<Tab value="How It Works">
+<Tabs items={['Threshold Settings', 'Example']}>
+<Tab value="Threshold Settings">
 
 **Failure Threshold**
 
@@ -207,13 +192,13 @@ Teams uses Power Automate Workflows to receive webhook notifications.
 - **Rendered sample payload:** Preview of the JSON body generated from sample alert values before you test or save
 - **Test diagnostics:** Redacted test results showing method, target host, sent header names, HTTP status, elapsed time, request hash, and response hash
 
-Supercheck validates webhook URLs before sending outbound requests, blocks private/internal targets, encrypts provider config at rest, and masks sensitive webhook URL/header fields when returning providers to the UI.
+Use a publicly reachable HTTP or HTTPS webhook endpoint; private and internal targets are blocked. Enter credentials in the channel settings and use **Test Connection** before relying on delivery.
 
 Because webhook URLs and custom headers are treated as secrets, they are cleared when you reopen an existing channel for editing. Leave a cleared secret blank to keep its existing value, or enter a replacement to change it. The same behavior applies to masked Slack, Teams, Discord, and Telegram credentials. Use **Test Connection** after replacing a credential to confirm it works.
 
 ### Webhook Presets
 
-The webhook channel includes presets that fill the method, headers, and JSON body template for common SRE and incident-management tools. Selecting a preset does not merge credentials with AI SRE read-only connectors; outbound notification secrets remain scoped to the notification provider.
+The webhook channel includes presets that fill the method, headers, and JSON body template for common SRE and incident-management tools. Enter the notification credentials separately from any [read-only investigation connector](/docs/app/investigate/connectors).
 
 | Preset | Use case | Setup docs |
 |--------|----------|------------|
@@ -268,7 +253,7 @@ When no body template is provided, Supercheck sends a JSON payload similar to th
 
 ### Body Template
 
-Use a custom body template to match the format required by third-party services. Templates must be valid JSON, and template variables use `{{variableName}}` syntax. Supercheck safely escapes interpolated values before sending the final JSON payload, so keep placeholders inside JSON string values such as `"summary": "{{title}}"`.
+Use a custom body template to match the format required by third-party services. Templates must be valid JSON, and template variables use `{{variableName}}` syntax. Keep placeholders inside JSON string values such as `"summary": "{{title}}"`.
 
 **Available variables:**
 

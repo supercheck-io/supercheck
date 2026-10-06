@@ -2,7 +2,7 @@
 
 Self-host Supercheck on your own infrastructure.
 
-> **Linux Required:** Supercheck uses K3s and gVisor for sandboxed test execution, which require the Linux kernel. Only Linux servers (Ubuntu 22.04+, Debian 12+) are supported. macOS, Windows, and WSL2 are not supported.
+> **Linux Required:** The test-execution sandbox requires the Linux kernel. Only Linux servers (Ubuntu 22.04+, Debian 12+) are supported. macOS, Windows, and WSL2 are not supported.
 
 ## Docker Compose
 

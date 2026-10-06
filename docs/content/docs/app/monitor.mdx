@@ -130,7 +130,7 @@ Run full Playwright browser tests on a schedule to validate complete user flows.
 - Complex workflows requiring browser interaction
 - End-to-end validation of user experience
 
-**How it works:**
+**Set up a synthetic monitor:**
 1. Create a Playwright test in the [Playground](/docs/app/automate/playground)
 2. Save the test to your project
 3. Create a Synthetic Monitor and select your test
@@ -159,11 +159,11 @@ Run checks from multiple geographic locations to detect regional outages and mea
 |--------|----------|-------|
 | **Local** | Your server location | Default for self-hosted deployments |
 
-Cloud deployments may include additional regions such as US East (Ashburn), EU Central (Nuremberg), and Asia Pacific (Singapore). Check your Super Admin panel for available locations.
+Cloud deployments may include additional regions such as US East (Ashburn), EU Central (Nuremberg), and Asia Pacific (Singapore). Use the monitor's location picker to see which regions your project can use.
 
-### How Multi-Location Works
+### Choose Monitoring Locations
 
-When multiple locations are configured, checks run independently from each location and results are aggregated to determine overall status.
+Select the regions you want to monitor, then use the location filter on the monitor detail page to compare results.
 
 ![Multi-Location Selector](/screenshots/create-monitor-multilocation-selector.png)
 
@@ -171,7 +171,7 @@ When multiple locations are configured, checks run independently from each locat
 **Single Location**: When only one location is available, the multi-location configuration UI is automatically hidden. Location settings appear dynamically when additional locations are added via the Super Admin panel. If some configured locations are temporarily offline, Supercheck runs the check from the live subset and aggregates only the locations that actually executed.
 </Callout>
 
-**Status calculation:** Once all locations report, the system calculates overall status. A monitor is "Up" if the majority of locations report success.
+The overall status reflects the majority of locations that completed the check. Review per-location results to find a regional outage even when the overall status is **Up**.
 
 <Callout type="info">
 **Self-Hosted Deployments**: By default, self-hosted instances have a single `local` location. All checks execute from your worker. For true geographic distribution, deploy additional workers in different regions and add the corresponding locations via the Super Admin panel.
@@ -198,8 +198,8 @@ Configure when and how you receive notifications about monitor status changes.
 
 Thresholds prevent alert fatigue from transient issues:
 
-<Tabs items={['How It Works', 'Example']}>
-<Tab value="How It Works">
+<Tabs items={['Threshold Settings', 'Example']}>
+<Tab value="Threshold Settings">
 
 **Failure Threshold**
 
@@ -260,7 +260,7 @@ Click **AI Analyze** in the header to generate an AI-powered analysis report for
 - **Recommendations** — Actionable next steps based on observed issues (only when problems exist)
 
 <Callout type="info">
-AI Analyze requires a configured AI provider. See [Deployment](/docs/app/deployment/self-hosted#optional-configuration) for setup.
+For self-hosted deployments, an administrator must [configure an AI provider](/docs/app/deployment/self-hosted#optional-configuration) to enable AI Analyze.
 </Callout>
 
 ### Key Metrics Bar

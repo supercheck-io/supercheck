@@ -9,7 +9,7 @@ Project Admins and organization-level administrators configure AI SRE from **Org
 Select **Setup guide** beside **Add service**, **Add connector**, or **Add recipe** to review setup status. The guide opens only when selected and does not open another form automatically.
 
 <Callout type="info">
-**Self-Hosted Requirement**: AI SRE investigations require an AI provider configured in your `.env` and `SRE_INVESTIGATION_AGENT_ENABLED=true`. The shipped Compose files forward this flag to the app. See [Self-Hosted AI SRE Features](/docs/app/deployment/self-hosted#optional-configuration) for details.
+**Self-Hosted Requirement**: AI SRE investigations require an AI provider configured in your `.env` and `SRE_INVESTIGATION_AGENT_ENABLED=true`. Recreate the app container after changing `.env`. See [Self-Hosted AI SRE Features](/docs/app/deployment/self-hosted#optional-configuration) for details.
 </Callout>
 
 ## Services
@@ -34,7 +34,7 @@ Suggested relationships do not enter the Investigation Map until an authorized u
 
 ## Integrations
 
-Use **Integrations** (in **Admin → Integrations**) to add read-only evidence sources. Each connector has a service scope, validation status, execution mode, and output limits.
+Use **Organization Admin → Integrations** to add read-only evidence sources. Each connector has a service scope, validation status, execution mode, and output limits.
 
 ![Integrations & Connectors](/screenshots/sre-connectors.png)
 
@@ -51,33 +51,28 @@ or intentionally provisions for testing.
 
 ## Diagnostic Recipes
 
-Use **Diagnostic Recipes** to save approved, repeatable investigation queries. Recipes are connector-scoped and enforce row, byte, time, and allowlist limits.
+Use **Diagnostic Recipes** to save approved, repeatable investigation queries. Choose a connector, define the approved query, and set output and time limits.
 
 Start with high-value checks such as service error rate, latency, recent error logs, or slow traces.
 
 ## Private Agents
 
-Use **Private Agents** only when Supercheck cannot reach a supported source directly. Private Agents connect outbound over HTTPS and return bounded, sanitized evidence summaries. They do not apply fixes or require inbound firewall access.
+Use a Private Agent when a supported provider is reachable only inside your network. For Supercheck Cloud, you keep using the cloud dashboard and run only the agent locally.
 
-Supercheck Cloud intentionally blocks direct connectors to private IP addresses,
-reserved ranges, cluster-only DNS names, localhost, cleartext HTTP, non-HTTP(S)
-schemes, and endpoint URLs containing credentials. Use a Private Agent for
-Prometheus, Grafana, Loki, Tempo, Kubernetes, or other APIs that are reachable
-only inside your network, and keep credentials in the dedicated encrypted
-credential fields.
+1. Register the agent in **Organization Admin → Private Agents**.
+2. [Run it with Docker Compose](/docs/app/deployment/private-agent) inside your network and confirm it shows **connected**.
+3. Add a connector in **Organization Admin → Integrations**, choose **Private Agent**, and select the registered agent.
+4. Validate the connector, then enable live sources in an incident investigation when you need its evidence.
+
+Keep provider credentials in the connector's dedicated credential fields. No inbound firewall access is required.
 
 ## Setup Order
 
-```mermaid
-flowchart LR
-    Services["<b>1. Add Services</b><br/>Systems & telemetry"] --> Links["<b>2. Link Checks</b><br/>Monitors, jobs, tests"] --> Connectors["<b>3. Add Connectors</b><br/>Read-only evidence"] --> Recipes["<b>4. Add Recipes</b><br/>Approved queries"] --> Verify["<b>5. Test Investigation</b><br/>Run a test investigation"]
-
-    style Services fill:#6366f1,stroke:#4338ca,color:#fff
-    style Links fill:#3b82f6,stroke:#1e40af,color:#fff
-    style Connectors fill:#8b5cf6,stroke:#6d28d9,color:#fff
-    style Recipes fill:#f59e0b,stroke:#b45309,color:#fff
-    style Verify fill:#10b981,stroke:#047857,color:#fff
-```
+1. Add the services your team operates and link their existing tests, jobs, or monitors.
+2. Investigate an incident using stored Supercheck evidence to confirm the basic workflow.
+3. Optionally add connectors for external evidence. If a provider is private, deploy a Private Agent before selecting it in the connector.
+4. Add diagnostic recipes for questions you need to repeat.
+5. Validate each connector and run an investigation with live sources enabled before relying on it during an incident.
 
 ## Permissions
 

@@ -7,7 +7,7 @@ description: Open-source testing, monitoring, and AI SRE — as code.
 
 <Cards>
 <Card icon={<Server className="text-emerald-500" />} title="Deploy" href="/docs/app/deployment">
-Self-host with Docker Compose and isolated K3s execution
+Self-host with Docker Compose and isolated test execution
 </Card>
 
 <Card icon={<Terminal className="text-amber-500" />} title="CLI" href="/docs/cli">
@@ -23,21 +23,7 @@ Create your first test — browser, API, database, or performance
 </Card>
 </Cards>
 
-## How Supercheck Fits Together
-
-```mermaid
-flowchart LR
-    Detect["<b>Detect</b><br/>Monitors, jobs, tests"] --> Triage["<b>Triage</b><br/>Alerts & incidents"]
-    Triage --> Investigate["<b>Investigate</b><br/>Read-only AI SRE"]
-    Investigate --> Explain["<b>Explain</b><br/>Cited brief & report"]
-    Explain --> Confirm["<b>Confirm Recovery</b><br/>Re-run existing checks"]
-
-    style Detect fill:#6366f1,stroke:#4338ca,color:#fff
-    style Triage fill:#f59e0b,stroke:#b45309,color:#fff
-    style Investigate fill:#8b5cf6,stroke:#6d28d9,color:#fff
-    style Explain fill:#0ea5e9,stroke:#0369a1,color:#fff
-    style Confirm fill:#10b981,stroke:#047857,color:#fff
-```
+## Your Reliability Workflow
 
 1. **Detect** with monitors, jobs, and tests.
 2. **Triage** from alerts, then open an incident when the signal needs investigation.
