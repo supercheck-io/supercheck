@@ -15,30 +15,16 @@ Write custom test scripts for advanced scenarios that don't fit into browser, AP
 
 ## Example
 
+Set `API_URL` to a test API you control that persists posts and supports `POST /posts`, `GET /posts/:id`, and `DELETE /posts/:id`. Public mock APIs that simulate writes cannot verify this workflow.
+
 ```typescript
-/**
- * API CRUD flow executed serially.
- * 
- * Purpose:
- * - Test the full lifecycle of a resource (Create, Read, Delete)
- * - Ensure data consistency across operations
- * - Clean up test data after execution
- * 
- * Key Actions:
- * - POST to create a resource
- * - GET to verify creation
- * - DELETE to clean up
- * - test.describe.serial ensures tests run in order
- * 
- * @see https://playwright.dev/docs/api-testing
- */
 import { expect, test } from '@playwright/test';
 
-const API_URL = 'https://jsonplaceholder.typicode.com';
+const API_URL = getVariable('API_URL');
 
 // Use serial mode to share state (createdId) between tests
 test.describe.serial('posts CRUD', () => {
-  let createdId;
+  let createdId: number | undefined;
 
   test('creates a post', async ({ request }) => {
     const response = await request.post(API_URL + '/posts', {

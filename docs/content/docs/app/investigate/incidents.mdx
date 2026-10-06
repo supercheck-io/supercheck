@@ -23,7 +23,7 @@ The incident queue displays active incidents first, ordered by recency. Responde
 
 ## Incident Workspace
 
-Each incident provides a dedicated workspace divided into two functional tabs:
+Use the two workspace tabs to investigate and review evidence:
 
 ### Overview Tab
 
@@ -101,7 +101,7 @@ Standalone chat does not query infrastructure without context. Incident chat gro
 
 | Stage | Responsibility | Action |
 |---|---|---|
-| **Triage** | Responder / Supercheck | Select **Investigate** on an alert signal or create an incident manually. High-confidence alerts can auto-correlate to existing incidents. |
+| **Triage** | Responder / Supercheck | Select **Investigate** on an alert signal or create an incident manually. Automatic correlation depends on administrator configuration. |
 | **Investigate** | AI SRE Agent | Reads native evidence and authorized connector sources; generates cited hypotheses. |
 | **Decide & Fix** | Human Responder | Evaluates findings and applies necessary remediation in external systems. |
 | **Confirm Recovery** | Human Responder | Re-runs synthetic tests, checks monitor status, or observes metrics. |
@@ -111,12 +111,10 @@ Resolving records your decision and the recovery checks you list; it does not ru
 
 ## Alerts vs. Incidents
 
-Alerts and incidents are intentionally separated in Supercheck:
-
-- **Alerts** manage delivery channels, dispatch history, and raw failure signals.
-- **Incidents** manage active investigation workflows, evidence collection, and resolution records.
-
-This separation prevents alert noise from cluttering responder queues while ensuring any signal can be escalated with one click.
+| Open | To |
+|---|---|
+| **Alerts** | Review failure signals, delivery history, and notification channels. |
+| **Incidents** | Investigate evidence, save findings, and record recovery. |
 
 ## Exporting Reports
 

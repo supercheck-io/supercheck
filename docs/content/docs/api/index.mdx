@@ -101,21 +101,21 @@ The OpenAPI 3.1 specification for the supported public API is available for SDK 
 
 ```bash
 # TypeScript types
-npx openapi-typescript https://app.supercheck.io/openapi.json -o ./types/supercheck-api.d.ts
+npx openapi-typescript https://supercheck.io/openapi/openapi.json -o ./types/supercheck-api.d.ts
 
 # TypeScript client
 npx openapi-typescript-codegen \
-  --input https://app.supercheck.io/openapi.json \
+  --input https://supercheck.io/openapi/openapi.json \
   --output ./sdk
 
 # Python
 openapi-generator generate \
-  -i https://app.supercheck.io/openapi.json \
+  -i https://supercheck.io/openapi/openapi.json \
   -g python -o ./supercheck-sdk-python
 
 # Go
 openapi-generator generate \
-  -i https://app.supercheck.io/openapi.json \
+  -i https://supercheck.io/openapi/openapi.json \
   -g go -o ./supercheck-sdk-go
 ```
 
@@ -125,12 +125,12 @@ Responses are JSON. Pagination shapes are endpoint-specific; for example, resour
 
 ```json
 {
-  "data": [...],
+  "data": [],
   "pagination": {
-    "total": 42,
+    "total": 0,
     "page": 1,
     "limit": 50,
-    "totalPages": 1,
+    "totalPages": 0,
     "hasNextPage": false,
     "hasPrevPage": false
   }

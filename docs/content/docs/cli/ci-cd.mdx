@@ -70,17 +70,12 @@ jobs:
 
 ### Deployment Gating
 
-Block deployments when tests fail:
+Use the CLI exit code to stop the workflow when the run fails, is blocked, or times out:
 
 ```yaml
 - name: Gate Deployment
   run: |
-    result=$(supercheck --json job trigger ${{ vars.JOB_ID }} --wait)
-    status=$(echo "$result" | jq -r '.status')
-    if [ "$status" != "passed" ]; then
-      echo "Tests failed — blocking deployment"
-      exit 1
-    fi
+    supercheck job trigger "${{ vars.JOB_ID }}" --wait
   env:
     SUPERCHECK_TRIGGER_KEY: ${{ secrets.SUPERCHECK_TRIGGER_KEY }}
     SUPERCHECK_TOKEN: ${{ secrets.SUPERCHECK_TOKEN }}
@@ -148,14 +143,13 @@ supercheck-deploy:
 
 ## Docker
 
-Run the CLI in Docker using the official Node.js image:
+Set `SUPERCHECK_JOB_ID` and the required tokens in your environment. Run the CLI using the official Node.js image:
 
 ```bash
 # Trigger a job
 docker run --rm \
-  -e SUPERCHECK_TRIGGER_KEY=$SUPERCHECK_TRIGGER_KEY \
-  -e SUPERCHECK_TOKEN=$SUPERCHECK_TOKEN \
-  node:20-slim sh -c "npm install -g @supercheck/cli && supercheck job trigger <job-id> --wait"
+  -e SUPERCHECK_TRIGGER_KEY -e SUPERCHECK_TOKEN -e SUPERCHECK_JOB_ID \
+  node:20-slim sh -c 'npm install -g @supercheck/cli && supercheck job trigger "$SUPERCHECK_JOB_ID" --wait'
 
 # Deploy config (mount project directory)
 docker run --rm \

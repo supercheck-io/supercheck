@@ -4,32 +4,37 @@ description: Gather evidence and investigate incidents with read-only AI agents
 icon: Search
 ---
 
-Supercheck's AI SRE transforms existing tests, monitors, jobs, alert history, and status pages into an automated, **read-only incident investigation loop**. It connects to your existing operational tools, gathers scoped evidence, explains what likely happened with citations, and recommends fix and recovery-check steps for a human responder.
+Open an incident, run a read-only investigation, and review findings with citations. Apply fixes with your own tools, then use tests or monitors to confirm recovery.
 
 ## Investigation Workflow
 
 <p className="text-sm md:hidden">Scroll horizontally to view the full diagram.</p>
 
 <div className="overflow-x-auto" role="region" aria-label="Investigate Overview workflow diagram" tabIndex={0}>
-<div className="min-w-[28rem]">
+<div className="min-w-[48rem]">
 
 ```mermaid
-%%{init: {"sequence": {"mirrorActors": false, "actorMargin": 24, "width": 110, "height": 65, "wrap": true}}}%%
 sequenceDiagram
-    actor Responder as Responder
-    participant Supercheck as Supercheck
-    participant System as Your systems
+    accTitle: Incident investigation
+    accDescr: Open an incident, investigate, apply your own fix, verify recovery, and resolve.
+    autonumber
+    participant You as Responder
+    participant App as Supercheck
+    participant Environment as Your systems
 
-    Responder->>Supercheck: Open an alert or create an incident
-    Note over Responder,Supercheck: Opening an incident does not start an investigation
-    Responder->>Supercheck: Select Run investigation
-    Supercheck-->>Responder: Review findings and evidence gaps
-    opt A fix is needed
-        Responder->>System: Apply a fix with your own tools
+    rect rgba(59, 130, 246, 0.08)
+        You->>App: Open or create an incident
+        You->>App: Select Run investigation
+        App-->>You: Cited findings and evidence gaps
     end
-    Responder->>Supercheck: Re-run checks to confirm recovery
-    Supercheck-->>Responder: Review the new results
-    Responder->>Supercheck: Resolve incident and record recovery checks
+    opt A fix is needed
+        You->>Environment: Apply fix with your own tools
+    end
+    rect rgba(16, 185, 129, 0.08)
+        You->>App: Re-run tests and review monitors
+        App-->>You: New check results
+        You->>App: Resolve and record recovery checks
+    end
 ```
 
 </div>
@@ -37,11 +42,7 @@ sequenceDiagram
 
 ## Read-Only By Design
 
-**Supercheck's AI SRE layer is explicitly read-only.** It never writes to your production systems or executes remediation actions on your behalf.
-
-- The agent gathers evidence, correlates data, reasons, and recommends.
-- You apply fixes in your own systems using your own tools and safeguards.
-- You use existing Playwright tests, k6 performance tests, or synthetic monitors to confirm recovery after applying the fix.
+Supercheck recommends checks and fixes; it does not modify your infrastructure. Opening an incident does not start an investigation. Select **Run investigation** when you are ready.
 
 ## Native Evidence
 
@@ -71,11 +72,6 @@ Organize your system architecture by registering the systems and services you op
 | **Investigate → Services** | Manage service metadata, ownership teams, repositories, and tier classifications. |
 | **Organization Admin → [Integrations](/docs/app/investigate/connectors)** | Configure read-only integrations for GitHub, Kubernetes, Prometheus, Grafana, Datadog, and Loki. |
 
-## Start with an Incident
+## Get Started
 
-1. Open **Communicate → Alerts → Signals** and select **Investigate** next to a failure, or create an incident from **Investigate → Incidents → New incident**.
-2. Review the incident's **Overview**. Collect evidence if needed, then explicitly select **Run investigation**.
-3. Review the cited findings. Apply a fix with your own tools and confirm recovery with your tests or monitors.
-4. Select **Resolve incident** and record what confirmed recovery.
-
-Opening an incident does not start a full AI investigation. Services, live sources, and the map are optional; you can investigate stored evidence without setting them up.
+Select **Investigate** on an alert signal, or choose **Investigate → Incidents → New incident**. Follow the [incident guide](/docs/app/investigate/incidents) to investigate, save findings, and resolve. Services and live connectors are optional for stored-evidence investigations.

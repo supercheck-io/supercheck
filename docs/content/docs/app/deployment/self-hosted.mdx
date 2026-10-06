@@ -6,7 +6,7 @@ icon: Container
 
 Deploy Supercheck on a single server with Docker Compose.
 
-## Deployment Layout
+## Architecture
 
 <p className="text-sm md:hidden">Scroll horizontally to view the full diagram.</p>
 
@@ -15,24 +15,21 @@ Deploy Supercheck on a single server with Docker Compose.
 
 ```mermaid
 flowchart TB
-    Users[Users / CI/CD]
-    Private[Private Agent<br/>Optional private-network connector]
+    Users[Users / CI/CD] --> T[Traefik Proxy<br/>SSL / Load Balancer]
+    T --> App[Next.js App<br/>UI + API]
+    App --> DB[(PostgreSQL<br/>Primary DB)] & Redis[(Redis + BullMQ<br/>Queue + Cache)] & S3[(MinIO<br/>Artifacts)]
+    App --> SRE[AI SRE Engine<br/>Read-only investigations]
+    SRE -.-> Private[Private Agents<br/>Outbound HTTPS only]
 
-    subgraph SERVER["Single Linux Server"]
-        T[HTTPS Proxy<br/>Production setup] --> App[Supercheck App<br/>Dashboard + API]
-        App --> DB[(PostgreSQL<br/>Database)] & Redis[(Redis<br/>Job scheduling)] & S3[(MinIO<br/>Artifacts)]
-        App --- SRE[AI SRE<br/>Available in the app]
-        Redis --> W1[Worker 1<br/>WORKER_LOCATION=local]
-        Redis --> W2[Worker 2<br/>WORKER_LOCATION=local]
-        Redis --> WN[Worker N<br/>WORKER_LOCATION=local]
-        W1 --> K3S_1[Isolated Test<br/>Execution]
-        W2 --> K3S_2[Isolated Test<br/>Execution]
-        WN --> K3S_N[Isolated Test<br/>Execution]
+    Redis --> W1
+    Redis --> W2
+    Redis --> WN
+
+    subgraph SERVER["Single Server"]
+        W1[Worker 1<br/>NestJS + BullMQ<br/>WORKER_LOCATION=local] --> K3S_1[K3s + gVisor<br/>Sandboxed Execution]
+        W2[Worker 2<br/>NestJS + BullMQ<br/>WORKER_LOCATION=local] --> K3S_2[K3s + gVisor<br/>Sandboxed Execution]
+        WN[Worker N<br/>NestJS + BullMQ<br/>WORKER_LOCATION=local] --> K3S_N[K3s + gVisor<br/>Sandboxed Execution]
     end
-
-    Users --> T
-    Users -.->|HTTP quick start|App
-    Private -.->|Outbound HTTPS|App
 
     style Users fill:#6366f1,stroke:#4338ca,color:#fff
     style T fill:#0ea5e9,stroke:#0369a1,color:#fff
@@ -54,7 +51,7 @@ flowchart TB
 </div>
 </div>
 
-This layout shows the bundled services; managed external services use the same connections. Start with one worker and add capacity or regions as needed. Follow the Compose setup steps below for installation.
+Use the Docker Compose steps below. All bundled services run on one Linux host. Private Agents initiate outbound HTTPS connections to Supercheck.
 
 ## Setup Overview
 

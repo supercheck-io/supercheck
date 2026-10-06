@@ -50,6 +50,13 @@ flowchart TB
     Private --> Configure
     Configure --> Validate[Validate and run a known-result query]
     Validate --> Use[Enable live sources in an investigation]
+
+    classDef action fill:#1d4ed8,stroke:#60a5fa,color:#fff
+    classDef choice fill:#6d28d9,stroke:#a78bfa,color:#fff
+    classDef success fill:#047857,stroke:#34d399,color:#fff
+    class Provider,Direct,Agent,Private,Configure action
+    class Reachable choice
+    class Validate,Use success
 ```
 
 </div>

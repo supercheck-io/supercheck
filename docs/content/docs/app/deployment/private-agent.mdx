@@ -12,9 +12,10 @@ Private Agents execute read-only connector queries for investigations. They do n
 
 ## Before You Start
 
-For **Supercheck Cloud**, sign in and select the project that will use the agent. Run only the Private Agent on a machine inside your network; you do not need to self-host Supercheck.
-
-For **self-hosted Supercheck**, use your own dashboard and instance URL. The setup steps below are the same.
+| You use | Where to register | What to run in your network |
+|---|---|---|
+| **Supercheck Cloud** | Sign in to Cloud and select your project. | Only the Private Agent; keep using the cloud dashboard. |
+| **Self-hosted Supercheck** | Open your own dashboard and select your project. | The Private Agent, pointed at your instance's HTTPS origin. |
 
 You need:
 
@@ -27,24 +28,32 @@ You need:
 <p className="text-sm md:hidden">Scroll horizontally to view the full diagram.</p>
 
 <div className="overflow-x-auto" role="region" aria-label="Private Agent workflow diagram" tabIndex={0}>
-<div className="min-w-[28rem]">
+<div className="min-w-[48rem]">
 
 ```mermaid
-%%{init: {"sequence": {"mirrorActors": false, "actorMargin": 24, "width": 110, "height": 65, "wrap": true}}}%%
 sequenceDiagram
-    actor You
-    participant Cloud as Supercheck dashboard
-    participant Host as Your Docker host
+    accTitle: Private Agent setup
+    accDescr: Register, start, validate, and use an agent for private evidence.
+    autonumber
+    participant You as You
+    participant App as Supercheck
+    participant Environment as Your Docker host
 
-    You->>Cloud: Register agent
-    Cloud-->>You: Copy ID and token
-    You->>Host: Configure .env and start Compose
-    You->>Cloud: Confirm agent is connected
-    You->>Cloud: Add connector and select agent
-    You->>Cloud: Validate connector and test a query
-    Cloud-->>You: Review validation result
-    You->>Cloud: Run investigation with live sources
-    Cloud-->>You: Review cited findings
+    rect rgba(139, 92, 246, 0.08)
+        You->>App: Register agent
+        App-->>You: Agent ID and token
+        You->>Environment: Configure .env and start Compose
+    end
+    rect rgba(59, 130, 246, 0.08)
+        You->>App: Confirm connected status
+        You->>App: Add connector and select agent
+        You->>App: Validate and test a query
+        App-->>You: Validation result
+    end
+    rect rgba(16, 185, 129, 0.08)
+        You->>App: Enable live sources and investigate
+        App-->>You: Cited findings and evidence gaps
+    end
 ```
 
 </div>
@@ -101,6 +110,8 @@ Keep the `private-agent-state` volume so the agent can reconnect after a restart
 2. In the same project, open **Organization Admin → Integrations**, click **Add connector**, choose a supported provider, set the execution mode to **Private Agent**, and select the agent you registered.
 3. Enter the internal endpoint and a least-privilege read-only provider credential. Limit access to the services that need it.
 4. Validate the connector and run a known-result search before using it in an investigation.
+
+![Add a read-only connector](/screenshots/sre-add-connector-dialog.png)
 
 Use an endpoint the container can resolve and reach. `localhost` and loopback addresses are rejected; they do not refer to another service on the Docker host. For a service on that host, use a reachable private address or DNS name. Internal provider endpoints may use HTTP or HTTPS; prefer HTTPS.
 

@@ -32,11 +32,11 @@ Professional HTML emails via SMTP with detailed status information and dashboard
 </Card>
 
 <Card icon={<MessageSquare className="text-purple-500" />} title="Slack">
-Rich formatted messages to channels or DMs with status badges and quick links
+Send alerts to the channel configured by your Slack webhook.
 </Card>
 
 <Card icon={<Webhook className="text-orange-500" />} title="Webhook">
-JSON payloads to any HTTP endpoint — use safe JSON body templates for custom integrations with PagerDuty, OpsGenie, or internal systems
+Send JSON to a publicly reachable endpoint; use templates for PagerDuty, Opsgenie, or custom integrations.
 </Card>
 
 <Card icon={<Send className="text-sky-500" />} title="Telegram">
@@ -74,7 +74,7 @@ Communicate service health to your users with branded status pages:
 
 - **Component Management** — Organize services with individual status tracking and linked monitors
 - **Incident Workflow** — Investigating → Identified → Monitoring → Resolved
-- **Scheduled Maintenance** — Announce planned downtime with automatic status transitions
+- **Scheduled Maintenance** — Publish planned-downtime updates and change their status as work progresses
 - **Subscriber Notifications** — Email, Slack, and webhook updates for incidents and status changes
 - **Custom Branding** — Match your brand with logos, colors, and custom domains
 - **90-Day Uptime History** — Visual uptime charts for transparency
@@ -90,4 +90,4 @@ Communicate service health to your users with branded status pages:
 - **Service status** — Public page showing current system health
 - **Incident updates** — Real-time communication during outages
 - **Maintenance windows** — Advance notice of planned downtime
-- **Subscriber notifications** — Automatic email updates for status changes
+- **Subscriber notifications** — Send incident updates when **Notify subscribers** is selected.

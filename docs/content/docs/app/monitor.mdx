@@ -8,6 +8,22 @@ Monitors continuously check your services and alert you when issues occur. Run c
 
 ![Monitors List](/screenshots/monitors-list.png)
 
+## Setup Workflow
+
+```mermaid
+flowchart TB
+    Create[Create a monitor] --> Target[Set endpoint or select a saved test]
+    Target --> Schedule[Choose interval and available regions]
+    Schedule --> Alerts[Select channel and alert thresholds]
+    Alerts --> Save[Save and review the first result]
+    Save --> Review[Compare results and investigate failures]
+
+    classDef action fill:#1d4ed8,stroke:#60a5fa,color:#fff
+    classDef success fill:#047857,stroke:#34d399,color:#fff
+    class Create,Target,Schedule,Alerts action
+    class Save,Review success
+```
+
 ## Monitor Types
 
 Supercheck offers five monitor types, each designed for specific use cases:
@@ -43,7 +59,7 @@ The most versatile monitor type for APIs and web services.
 - Response status codes (2xx, 3xx, 4xx, 5xx)
 - Response time and latency
 - Response body content (keyword validation)
-- SSL certificate validity and expiration
+- HTTPS connectivity
 
 **Configuration options:**
 - **HTTP Method** — GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS
@@ -64,7 +80,7 @@ Use HTTP monitors for APIs, health check endpoints, and any service that respond
 Simplified monitoring for web pages with built-in SSL tracking.
 
 **What it checks:**
-- Page loads successfully (HTTP 200)
+- Page returns an expected status code (2xx by default)
 - SSL certificate is valid
 - SSL certificate expiration date
 - Optional keyword presence on page
@@ -114,6 +130,8 @@ Verify that specific services are listening on expected ports.
 
 ![Create Port Monitor](/screenshots/create-port-monitor.png)
 
+UDP checks send a packet; a passing result does not confirm that the application replied. Use TCP or an application-level check when you need response verification.
+
 ## Synthetic Monitor
 
 Run full Playwright browser tests on a schedule to validate complete user flows.
@@ -134,7 +152,7 @@ Run full Playwright browser tests on a schedule to validate complete user flows.
 1. Create a Playwright test in the [Playground](/docs/app/automate/playground)
 2. Save the test to your project
 3. Create a Synthetic Monitor and select your test
-4. Set the check interval (minimum 5 minutes recommended)
+4. Set the check interval (minimum 5 minutes)
 5. Monitor runs your test and reports pass/fail status
 
 ![Create Synthetic Monitor](/screenshots/create-synthetic-monitor.png)
@@ -256,7 +274,7 @@ Click **AI Analyze** in the header to generate an AI-powered analysis report for
 **What AI Analyze Provides:**
 - **Health Assessment** — Clear status summary based on actual metrics
 - **Performance Analysis** — Response time trends using your monitor's exact data
-- **Issue Diagnosis** — Root cause analysis with specific error messages and timestamps
+- **Issue Diagnosis** — Suggested causes with available error messages and timestamps
 - **Recommendations** — Actionable next steps based on observed issues (only when problems exist)
 
 <Callout type="info">
@@ -274,7 +292,7 @@ Nine key metrics are displayed prominently below the header:
 | **Resp Time** | Latest response time from the most recent check |
 | **Uptime (24h)** | Percentage of successful checks in the last 24 hours |
 | **Avg Resp (24h)** | Average response time over the last 24 hours |
-| **P95 Resp (24h)** | 95th percentile response time (24h) — shows worst-case latency |
+| **P95 Resp (24h)** | 95th percentile response time over the last 24 hours |
 | **Uptime (30d)** | Percentage of successful checks in the last 30 days |
 | **Avg Resp (30d)** | Average response time over the last 30 days |
 | **P95 Resp (30d)** | 95th percentile response time (30d) — long-term performance indicator |
@@ -345,7 +363,7 @@ Use **Copy Prompt** to copy error details for AI-assisted debugging.
 | Status | Meaning | Action |
 |--------|---------|--------|
 | **Up** | All checks passing | No action needed |
-| **Down** | Failure threshold exceeded | Alerts sent, investigate immediately |
+| **Down** | Latest aggregated check failed | Review results; notifications follow your alert thresholds |
 | **Paused** | Monitoring disabled | Re-enable when ready |
 | **Pending** | Initial check in progress | Wait for first result |
 | **Maintenance** | Under maintenance | Monitor temporarily disabled |

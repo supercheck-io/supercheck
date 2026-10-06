@@ -28,13 +28,12 @@ supercheck health
 
 ## Docker
 
-Run the CLI in a container using the official Node.js image:
+Set `SUPERCHECK_JOB_ID` and both tokens in your environment, then run the CLI using the official Node.js image:
 
 ```bash
 docker run --rm \
-  -e SUPERCHECK_TRIGGER_KEY=$SUPERCHECK_TRIGGER_KEY \
-  -e SUPERCHECK_TOKEN=$SUPERCHECK_TOKEN \
-  node:20-slim sh -c "npm install -g @supercheck/cli && supercheck job trigger <job-id> --wait"
+  -e SUPERCHECK_TRIGGER_KEY -e SUPERCHECK_TOKEN -e SUPERCHECK_JOB_ID \
+  node:20-slim sh -c 'npm install -g @supercheck/cli && supercheck job trigger "$SUPERCHECK_JOB_ID" --wait'
 ```
 
 See [CI/CD Integration](./ci-cd) for Docker-based pipeline examples.

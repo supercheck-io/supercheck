@@ -40,24 +40,6 @@ Start with a smoke test against a system you own or have permission to test. Inc
 Set an `API_URL` project variable to your test environment and replace `/health` with the endpoint you want to exercise.
 
 ```javascript
-/**
- * Ramping load profile to mirror real traffic patterns.
- * 
- * Purpose:
- * - Simulate a gradual increase in traffic (ramp-up)
- * - Hold traffic at peak load (steady state)
- * - Gradually decrease traffic (ramp-down)
- * 
- * Configuration:
- * - Stages:
- *   1. Ramp up to 10 VUs over 2 minutes
- *   2. Ramp up to 50 VUs over next 5 minutes
- *   3. Ramp up to 80 VUs over next 3 minutes
- *   4. Ramp down to 0 VUs over 2 minutes
- * - Thresholds: Strict latency and error limits
- * 
- * @see https://grafana.com/docs/k6/latest/using-k6/scenarios/
- */
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 
@@ -133,10 +115,6 @@ Analyze performance metrics after the test completes.
 Set pass/fail criteria:
 
 ```javascript
-/**
- * Thresholds define pass/fail criteria for your test.
- * @see https://grafana.com/docs/k6/latest/using-k6/thresholds/
- */
 export const options = {
   thresholds: {
     http_req_duration: ['p(95)<500'], // 95% under 500ms
@@ -150,11 +128,6 @@ export const options = {
 ## Using Variables
 
 ```javascript
-/**
- * Using project variables and secrets in k6 tests.
- * Secrets are resolved at runtime and redacted from logs.
- * For uploaded datasets, load them in init context with open(getFile()).
- */
 import http from 'k6/http';
 import { check } from 'k6';
 import { SharedArray } from 'k6/data';

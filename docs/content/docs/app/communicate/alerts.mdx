@@ -15,22 +15,26 @@ Configure a notification channel, send a test notification, then select that cha
 <p className="text-sm md:hidden">Scroll horizontally to view the full diagram.</p>
 
 <div className="overflow-x-auto" role="region" aria-label="Alerts workflow diagram" tabIndex={0}>
-<div className="min-w-[28rem]">
+<div className="min-w-[48rem]">
 
 ```mermaid
-%%{init: {"sequence": {"mirrorActors": false, "actorMargin": 24, "width": 110, "height": 65, "wrap": true}}}%%
 sequenceDiagram
-    actor You
-    participant Supercheck as Supercheck
-    participant Channel as Your alert channel
+    accTitle: Configure and respond to alerts
+    accDescr: Configure and test a channel, attach it, and follow an enabled notification.
+    autonumber
+    participant You as You
+    participant App as Supercheck
+    participant Environment as Your alert channel
 
-    You->>Supercheck: Configure a notification channel
-    You->>Supercheck: Select Test Connection
-    Channel-->>You: Confirm the test notification arrived
-    You->>Supercheck: Attach channel and choose alert thresholds
+    rect rgba(139, 92, 246, 0.08)
+        You->>App: Configure notification channel
+        You->>App: Select Test Connection
+        Environment-->>You: Test notification
+        You->>App: Attach channel and set thresholds
+    end
     opt An enabled alert condition occurs
-        Channel-->>You: Receive failure or recovery notification
-        You->>Supercheck: Open the linked monitor or run
+        Environment-->>You: Failure or recovery notification
+        You->>App: Open linked monitor or run
     end
 ```
 
@@ -41,11 +45,11 @@ sequenceDiagram
 
 <Cards>
 <Card icon={<Mail className="text-rose-500" />} title="Email">
-Professional HTML emails via SMTP with detailed status information
+Email alerts through your configured SMTP provider.
 </Card>
 
 <Card icon={<MessageSquare className="text-purple-500" />} title="Slack">
-Rich formatted messages to channels or DMs with status badges
+Send alerts to the channel configured by your Slack webhook.
 </Card>
 
 <Card icon={<Webhook className="text-orange-500" />} title="Webhook">
@@ -148,7 +152,9 @@ To prevent notification spam during extended outages:
 <Tabs items={['Email', 'Slack', 'Discord', 'Telegram', 'Microsoft Teams', 'Webhook']}>
 <Tab value="Email">
 
-**SMTP environment variables:**
+For self-hosted deployments, an administrator configures SMTP. Cloud users select **Email** and enter recipients in the notification channel.
+
+**Self-hosted SMTP variables:**
 
 ```bash
 SMTP_HOST=smtp.resend.com
@@ -421,7 +427,7 @@ From Signals, responders can:
 - Search by target, message, type, source, or fingerprint.
 - Filter by severity or source.
 - Sort by signal, severity, source, or last seen time.
-- Select **Investigate** to open a new or existing SRE incident. This does not start a full AI investigation. Administrators may separately enable automatic triage, which remains outside the full-investigation meter.
+- Select **Investigate** to open a new or existing SRE incident. This does not start a full AI investigation. Administrators may separately enable automatic triage.
 - Page through larger signal sets with the same pagination pattern used by other Supercheck tables.
 
 ## Alert History
@@ -438,7 +444,7 @@ Track all alerts from **Alerts → History**:
 - Delivery correlation metadata for AI SRE, including provider type/preset, dedup key, event action, response status, attempt count, and response hash when available
 
 <Callout type="info">
-Supercheck stores delivery metadata for correlation, not provider response bodies. Webhook test diagnostics and production deliveries represent request/response payloads with SHA-256 hashes and HTTP metadata so AI SRE can link alerts without exposing secrets or raw third-party payloads.
+Use delivery status and HTTP diagnostics to troubleshoot failed notifications. Raw provider response bodies and credential values are not displayed.
 </Callout>
 
 ## Alert Samples

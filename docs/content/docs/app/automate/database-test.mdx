@@ -18,20 +18,6 @@ Database connections are defined inline in your script. Use `getVariable()` for 
 ## Example
 
 ```typescript
-/**
- * PostgreSQL read health check.
- * 
- * Purpose:
- * - Verify database connectivity
- * - Check that a specific table exists and has expected columns
- * - Ensure read operations are functioning
- * 
- * Configuration:
- * - Requires 'pg' library (included in Supercheck runtime)
- * - Connection string must be configured via project variables
- * 
- * @requires pg - PostgreSQL client for Node.js
- */
 import { expect, test } from '@playwright/test';
 import { Pool } from 'pg';
 

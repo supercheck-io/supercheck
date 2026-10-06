@@ -31,11 +31,11 @@ Bootstrap is **manual** — run the script explicitly. For convenience, the scri
 Set `SUPER_ADMIN_EMAIL` and run the bootstrap script:
 
 ```bash
-SUPER_ADMIN_EMAIL=admin@yourdomain.com
-docker compose exec app node scripts/bootstrap-admin.js
+docker compose exec -e SUPER_ADMIN_EMAIL=admin@yourdomain.com \
+  app node scripts/bootstrap-admin.js
 ```
 
-If `SUPER_ADMIN_EMAIL` is set and no email argument is provided, the script uses the environment variable value.
+Pass the variable into the container as shown. Setting it only in your host shell or `.env` does not forward it through the shipped Compose files.
 
 </Tab>
 <Tab value="Revoking Access">

@@ -554,7 +554,7 @@ Create or update a variable.
 ```bash
 supercheck var set <key> <value>
 supercheck var set API_KEY sk-secret-value --secret
-printf '%s' \"$API_KEY\" | supercheck var set API_KEY --secret --value-stdin
+printf '%s' "$API_KEY" | supercheck var set API_KEY --secret --value-stdin
 supercheck var set DB_URL postgres://... --description "Database connection string"
 ```
 

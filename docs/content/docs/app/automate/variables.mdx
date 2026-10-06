@@ -14,33 +14,12 @@ Use file variables for non-sensitive test data and fixtures. Keep passwords, API
 
 ## Variables vs Secrets vs Files
 
-<Tabs items={['Variables', 'Secrets', 'Files']}>
-<Tab value="Variables">
+| Choose | Use for | Read in a test | Visibility |
+|---|---|---|---|
+| **Variable** | URLs, timeouts, configuration | `getVariable('KEY')` | Plain text in the dashboard and output. |
+| **Secret** | Passwords, API keys, tokens | `getSecret('KEY')` | Encrypted at rest; revealing requires permission. Avoid logging it. |
+| **File** | CSV, JSON, YAML, XML, TSV, or text fixtures up to 5 MB | Playwright: `readFile('KEY')`; k6: `open(getFile('KEY'))` during init | Uploaded test data; do not include credentials. |
 
-- **Storage:** Plain text
-- **Visibility:** Shown in UI
-- **Logging:** Logged normally
-- **Use For:** URLs, timeouts, feature flags
-
-</Tab>
-<Tab value="Secrets">
-
-- **Storage:** Encrypted
-- **Visibility:** Masked with `***`
-- **Logging:** Avoid intentional logging; execution output is redacted
-- **Use For:** API keys, passwords, tokens
-
-</Tab>
-<Tab value="Files">
-
-- **Storage:** Uploaded file
-- **Max Size:** 5 MB
-- **Supported Types:** CSV, JSON, YAML, XML, TSV, plain text
-- **Access:** Playwright can use `readFile(key)`; k6 should use `open(getFile(key))` in init context
-- **Use For:** Test data sets, configuration files, fixtures, parameterized test inputs
-
-</Tab>
-</Tabs>
 
 ## Creating Variables
 
@@ -102,10 +81,6 @@ Access variables and secrets in your test code using the built-in functions:
 Use for non-sensitive configuration:
 
 ```javascript
-/**
- * Variables store plain-text configuration values.
- * Use getVariable() to retrieve them in your tests.
- */
 
 // Basic usage
 const baseUrl = getVariable('BASE_URL');
@@ -121,10 +96,6 @@ await page.goto(baseUrl + '/login');
 Use for sensitive credentials:
 
 ```javascript
-/**
- * Secrets are encrypted and resolved at runtime.
- * Secret values are automatically redacted from logs.
- */
 
 // API authentication
 const apiKey = getSecret('API_KEY');
@@ -146,10 +117,6 @@ const dbPassword = getSecret('DB_PASSWORD');
 Use in Playwright and other Node.js-based test execution when you want the uploaded file contents as a string:
 
 ```javascript
-/**
- * readFile() returns the contents of a file variable directly.
- * This is the simplest option for Playwright fixtures and datasets.
- */
 const playwrightCsvContent = readFile('TEST_DATA');
 
 const rows = playwrightCsvContent
@@ -170,11 +137,6 @@ for (const [name, email] of rows) {
 Use in k6 when you need the resolved file path and want k6 to load the file during init context:
 
 ```javascript
-/**
- * File variables are uploaded via the Variables page.
- * k6 should use open(getFile(key)) in init context.
- * Playwright can also call getFile(key) when another helper needs the file path.
- */
 
 // k6
 const k6CsvContent = open(getFile('TEST_DATA'));
@@ -195,10 +157,6 @@ const configPath = getFile('CONFIG_FILE');
 Use `getSecret()` when a test needs a credential. Execution output masks secret values, but you should still avoid logging them:
 
 ```javascript
-/**
- * Secret values are injected at runtime.
- * The actual values are resolved at runtime.
- */
 
 // Avoid intentional secret logging in scripts
 // Worker redaction is an additional protection layer for accidental output
@@ -219,10 +177,6 @@ const actualKey = getSecret('API_KEY');
 <Tab value="Environment-Based">
 
 ```javascript
-/**
- * Load environment-specific configuration.
- * Store different URLs for staging vs production.
- */
 const env = getVariable('ENVIRONMENT'); // 'staging' or 'production'
 const baseUrl = getVariable(`${env.toUpperCase()}_URL`);
 
@@ -233,10 +187,6 @@ await page.goto(baseUrl);
 <Tab value="API Testing">
 
 ```javascript
-/**
- * Authenticated API request using Playwright's request context.
- * @see https://playwright.dev/docs/api-testing
- */
 const apiUrl = getVariable('API_URL');
 const apiToken = getSecret('API_TOKEN');
 const apiKey = getSecret('API_KEY');
@@ -253,10 +203,6 @@ const response = await request.get(apiUrl + '/users', {
 <Tab value="Database Testing">
 
 ```javascript
-/**
- * PostgreSQL database connection with secure credentials.
- * @requires pg - PostgreSQL client for Node.js
- */
 import { Pool } from 'pg';
 
 const pool = new Pool({
@@ -272,10 +218,6 @@ const pool = new Pool({
 <Tab value="Feature Flags">
 
 ```javascript
-/**
- * Conditional test logic based on feature flags.
- * Useful for testing different UI versions.
- */
 const featureEnabled = getVariable('ENABLE_NEW_CHECKOUT') === 'true';
 
 if (featureEnabled) {
@@ -289,12 +231,6 @@ if (featureEnabled) {
 <Tab value="k6 Performance">
 
 ```javascript
-/**
- * Using variables in k6 load tests.
- * Variables are injected at runtime.
- * For uploaded file datasets, use open(getFile('KEY')) during init context.
- * @see https://grafana.com/docs/k6/latest/using-k6/http-requests/
- */
 import http from 'k6/http';
 
 export default function () {
@@ -311,11 +247,6 @@ export default function () {
 <Tab value="Data-Driven (File)">
 
 ```javascript
-/**
- * Playwright data-driven testing using a CSV file variable.
- * Upload your test data CSV via Variables page as a file variable.
- * For k6, use open(getFile('USER_DATA')) inside SharedArray.
- */
 const csv = readFile('USER_DATA');
 const users = csv
   .split('\n')

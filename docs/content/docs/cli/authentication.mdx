@@ -11,7 +11,7 @@ Supercheck uses prefixed tokens to identify the type and scope of access:
 |------------|--------|---------|-------|
 | **CLI Token (PAT)** | `sck_live_` | CLI & API access | Project-scoped |
 | **Trigger Key** | `sck_trigger_` | CI/CD job triggers | Single job |
-| **Test Token** | `sck_test_` | Development/testing | Project-scoped |
+| **Test Token** | `sck_test_` | Reserved test-token format; not created by the dashboard | Project-scoped |
 
 <Callout type="info">
   Legacy trigger keys with `job_` prefix are fully supported. Existing integrations will continue to work.

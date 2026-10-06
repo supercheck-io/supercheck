@@ -6,7 +6,7 @@ icon: Bot
 
 Project Admins and organization-level administrators configure AI SRE from **Organization Admin**. Responders start from **Alerts** or **Investigate → Incidents**. **Copilot** and **Services** are grouped under **Investigate**; the map is an optional link from an incident or service.
 
-Select **Setup guide** beside **Add service**, **Add connector**, or **Add recipe** to review setup status. The guide opens only when selected and does not open another form automatically.
+Select **Setup guide** beside **Add service**, **Add connector**, or **Add recipe** to review setup status.
 
 <Callout type="info">
 **Self-Hosted Requirement**: AI SRE investigations require an AI provider configured in your `.env` and `SRE_INVESTIGATION_AGENT_ENABLED=true`. Recreate the app container after changing `.env`. See [Self-Hosted AI SRE Features](/docs/app/deployment/self-hosted#optional-configuration) for details.
@@ -44,10 +44,7 @@ Click **Add connector** to connect external telemetry providers like Prometheus,
 
 Use the narrowest credential and service scope that supports your investigation queries. Validate the connector after setup. See [Connectors](/docs/app/investigate/connectors) for supported providers and query examples.
 
-Connectors are optional. AI SRE can investigate native Supercheck monitor, test,
-job, alert, and incident evidence without Grafana, Tempo, or another external
-observability system. Add only the evidence sources your team already operates
-or intentionally provisions for testing.
+Connectors are optional. Start with stored Supercheck evidence, then add external sources your team needs.
 
 ## Diagnostic Recipes
 
@@ -75,20 +72,27 @@ Keep provider credentials in the connector's dedicated credential fields. No inb
 
 ```mermaid
 flowchart TB
-    Services[Add services] --> Checks[Link tests and monitors]
-    Checks --> Native[Try an investigation with stored evidence]
+    Incident[Open an incident] --> Native[Investigate stored evidence]
     Native --> Need{Need external evidence?}
     Need -->|No|Review[Review cited findings]
-    Need -->|Yes|Connectors[Add connectors and validate queries]
+    Need -->|Yes|Services[Add service and link incident]
+    Services --> Connectors[Add connector and validate query]
     Connectors --> Live[Enable live sources and investigate]
     Live --> Review
+
+    classDef action fill:#1d4ed8,stroke:#60a5fa,color:#fff
+    classDef choice fill:#6d28d9,stroke:#a78bfa,color:#fff
+    classDef success fill:#047857,stroke:#34d399,color:#fff
+    class Incident,Native,Services,Connectors,Live action
+    class Need choice
+    class Review success
 ```
 
 </div>
 </div>
 
-1. Add the services your team operates and link their existing tests, jobs, or monitors.
-2. Investigate an incident using stored Supercheck evidence to confirm the basic workflow.
+1. Investigate an incident using stored Supercheck evidence.
+2. Add service context when you need service links, dependencies, or live connectors.
 3. Optionally add connectors for external evidence. If a provider is private, deploy a Private Agent before selecting it in the connector.
 4. Add diagnostic recipes for questions you need to repeat.
 5. Validate each connector and run an investigation with live sources enabled before relying on it during an incident.
