@@ -65,13 +65,14 @@ Keep provider credentials in the connector's dedicated credential fields. No inb
 
 ## Setup Order
 
-<p className="text-sm md:hidden">Scroll horizontally to view the full diagram.</p>
+<p className="text-sm">Scroll horizontally on smaller screens to view all steps.</p>
 
-<div className="overflow-x-auto" role="region" aria-label="AI SRE Setup workflow diagram" tabIndex={0}>
-<div className="min-w-[52rem]">
+<div className="overflow-x-auto" role="region" aria-label="AI SRE setup workflow" tabIndex={0}>
+<div className="min-w-[84rem]">
 
 ```mermaid
-flowchart TB
+%%{init: {"flowchart":{"nodeSpacing":20,"rankSpacing":24,"padding":12,"wrappingWidth":140}}}%%
+flowchart LR
     Incident[Open an incident] --> Native[Investigate stored evidence]
     Native --> Need{Need external evidence?}
     Need -->|No|Review[Review cited findings]
@@ -81,11 +82,9 @@ flowchart TB
     Live --> Review
 
     classDef action fill:#1d4ed8,stroke:#60a5fa,color:#fff
-    classDef choice fill:#6d28d9,stroke:#a78bfa,color:#fff
-    classDef success fill:#047857,stroke:#34d399,color:#fff
-    class Incident,Native,Services,Connectors,Live action
-    class Need choice
-    class Review success
+    classDef decision fill:#92400e,stroke:#fbbf24,color:#fff
+    class Incident,Native,Services,Connectors,Live,Review action
+    class Need decision
 ```
 
 </div>
