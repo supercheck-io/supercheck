@@ -438,6 +438,10 @@ Choose the tab below for HTTP setup, production HTTPS, or managed external servi
   </Accordion>
 
   <Accordion title="AI SRE Features">
+
+    <Callout type="info">
+    These defaults require app and worker images containing the updated SRE code. Updating the CLI or downloading a new Compose file does not update a running server. Before rollout, migrate old opt-outs and ensure your Compose file forwards both settings. Use matching app/worker images from the validated release, then recreate both services; Kubernetes installations must update matching images and runtime configuration in both deployments.
+    </Callout>
     AI SRE is available by default: manual triage, investigations, Copilot, alert correlation, and staged evidence collection. Configure an AI provider above and apply the included database migrations. Automatic triage and background alert processing are also on by default; delivered firing alerts can create incidents and invoke your AI provider. Automatic processing skips AI work when provider credentials are missing.
 
     Only two optional deployment controls are needed:

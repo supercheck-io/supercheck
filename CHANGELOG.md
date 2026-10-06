@@ -13,6 +13,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- Simplify AI SRE installation to `SRE_ENABLED` and `SRE_AUTOMATION_ENABLED`, both enabled by default with a configured AI provider. Automatic work skips unconfigured providers. Migrate old workflow opt-outs before upgrading.
+- Enable correlation and staged evidence without separate deployment flags; retain explicit live-connector consent and authorization.
+- Move Slack/Teams incident commands to optional integration setup, require authorized responders, and remove collaboration authorization bypasses.
+
 - Release version identity is now derived from the release tag and injected into both images at build time. The worker receives `SUPERCHECK_VERSION` alongside the app, so worker health reports the deployed release.
 - Private Agent version identity now comes from the worker image (release tag) rather than a Compose-provided tag value.
 
@@ -20,7 +24,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Persist execution usage receipts with completed Playwright/K6 results so workers can recover unsettled usage after a restart without charging twice. Apply migration `0024_execution_usage_receipts.sql` before rolling out the new workers; older worker images remain compatible with the additive table.
 - Validate `DB_POOL_MAX` as a whole number (app minimum 2, worker minimum 1), recognize `SELF_HOSTED=1` consistently in worker billing, and reject invalid K6 duration/VU inputs independently.
-
 - Worker `/health` reported a hardcoded `1.0.0` version because the container does not start through npm; it now reports the actual release version.
 - Private Agent registration and heartbeat no longer fall back to a hardcoded `1.3.6` version.
 - Support chat reported `unknown` for `app_version` because it read an environment variable that is never set; it now reports the release version.
@@ -34,26 +37,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [CLI 0.2.1] - 2026-10-07
 
-### Changed
-
-- Consolidate installation controls into `SRE_ENABLED` and `SRE_AUTOMATION_ENABLED`, both on by default. Automatic AI work skips unconfigured providers; migrate previous workflow opt-outs to the new settings before upgrading.
-- Make correlation and staged evidence available without individual deployment flags. Live connectors retain explicit per-request consent and permissions.
-- Move Slack/Teams credentials to an optional Compose overlay, require allowed responders, and remove the unmapped-responder and collaboration live-source bypass flags.
-- Document manual npm publication and 2FA troubleshooting in `cli/RELEASING.md`.
-
 ### Fixed
 
-- Resolve displayed incident numbers to project-scoped UUIDs for incident details, timelines, resolution, triage, investigations, Copilot, and evidence briefs.
-- Verify login against the same API URL that is saved for subsequent commands; allow read-only users to authenticate and inspect project context without API-key listing permission.
-- Return nonzero exit codes for streamed AI errors and failed executions, clean up stream readers and timers, and emit NDJSON for run/test streams in JSON mode.
-- Supply the required test UUID or port/protocol when creating synthetic or port-check monitors; enforce monitor timeout and interval limits.
-- Avoid requiring Playwright for monitoring-only doctor checks and reject integers outside JavaScript's precise range.
-- Correct the local-job README example to include the required `--id` argument and clarify the limits of stored credential obfuscation.
+- Resolve incident numbers to project-scoped UUIDs across incident and AI SRE commands.
+- Persist the correct API URL during login and support read-only authentication.
+- Return nonzero exits for failed streams and executions, release stream resources, and emit NDJSON in JSON mode.
+- Support synthetic and port-check monitor creation with validated fields and limits.
+- Support monitoring-only doctor checks and reject imprecise integer inputs.
+- Correct local-job examples and clarify credential storage and publishing instructions.
 
 ### Compatibility
 
-- Existing UUID arguments remain supported. Older servers resolve incident numbers among their newest 500 incidents; the updated incident-list API adds an exact number filter for older incidents.
-- Manual AI SRE triage and investigations default on in the accompanying app update with a configured AI provider. Existing explicit deployment opt-outs remain effective. Automatic AI work, live connector access, and collaboration permissions remain opt-in.
+- UUID arguments remain supported. Older servers resolve numbers among their newest 500 incidents; the updated server supports exact incident-number lookup.
+- Server-side AI SRE defaults require the accompanying app/worker update. CLI installation does not change deployed server configuration.
 
 ## [1.3.6]
 
