@@ -1,10 +1,10 @@
 # Releasing the Supercheck CLI
 
-The reviewed patch version is **0.2.1**. Confirm registry state before publishing because npm versions cannot be overwritten. Failed authentication does not consume a version.
+CLI **0.2.1** is published. For the next release, update `cli/package.json`, the root package version in `cli/package-lock.json`, the README, and the changelog. Confirm registry state before publishing because npm versions cannot be overwritten. Failed authentication does not consume a version.
 
 ## Validate the reviewed source
 
-After merging PR #340, use an up-to-date checkout of `main`. To validate the unmerged candidate, check out `fix/cli-aisre-defaults-and-release` instead. Work in the `cli` directory:
+Use an up-to-date checkout of the reviewed release commit, normally `main` after the release PR merges. Work in the `cli` directory:
 
 ```bash
 npm ci
@@ -18,19 +18,19 @@ npm view @supercheck/cli dist-tags --json
 npm view @supercheck/cli versions --json
 ```
 
-The local package version must be 0.2.1, and 0.2.1 must be absent from the registry. Inspect the packed README, executable, type exports, and license before publishing. Never put npm tokens into the repository or a committed `.npmrc`.
+The local package version must match the planned release and be absent from the registry. The commands below use 0.2.1 as an installation example; do not attempt to republish it. Inspect the packed README, executable, type exports, and license before publishing. Never put npm tokens into the repository or a committed `.npmrc`.
 
 ## Preferred: publish with GitHub provenance
 
 Use `.github/workflows/cli-publish.yml`. It validates before publishing, selects `latest` for stable versions, and signs provenance. Configure npm trusted publishing for repository `supercheck-io/supercheck`, workflow `cli-publish.yml`, or supply the encrypted repository secret `NPM_TOKEN` with package-write access and allowed 2FA bypass. npm package settings must also permit bypass-2FA tokens.
 
-For this corrected 0.2.1 candidate, the existing `cli-v0.2.1` tag identifies the earlier candidate. Do not rerun that old tag build to publish the corrected README. Dispatch the workflow from the reviewed release branch, or `main` after merging:
+For a reviewed, unpublished version on `main`:
 
 ```bash
-gh workflow run cli-publish.yml --repo supercheck-io/supercheck --ref fix/cli-aisre-defaults-and-release -f dry-run=false
+gh workflow run cli-publish.yml --repo supercheck-io/supercheck --ref main -f dry-run=false
 ```
 
-For future releases, create `cli-v<package-version>` at the exact validated commit. Do not move tags for versions already published to npm.
+For tag-triggered releases, create `cli-v<package-version>` at the exact validated commit. Do not move tags for versions already published to npm.
 
 ## Manual publication when CI authentication is blocked
 
