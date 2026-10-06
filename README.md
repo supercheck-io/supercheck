@@ -25,20 +25,20 @@ Supercheck combines capabilities that are commonly split across test automation,
 | Platform | Primary focus | Test automation | Synthetic / uptime | Load testing | Status pages | AI SRE |
 | --- | --- | :---: | :---: | :---: | :---: | :---: |
 | **Supercheck** | Unified reliability | ✅ | ✅ | ✅ | ✅ | ✅ |
-| [Checkly](https://www.checklyhq.com/) | Synthetic monitoring & testing | ✅ | ✅ | — | ✅ | Partial |
-| [Datadog](https://www.datadoghq.com/) | Observability & synthetics | Partial | ✅ | — | — | Partial |
-| [Better Stack](https://betterstack.com/) | Observability & incident management | — | ✅ | — | ✅ | Partial |
-| [UptimeRobot](https://uptimerobot.com/) | Uptime monitoring | — | ✅ | — | ✅ | — |
-| [BrowserStack](https://www.browserstack.com/) | Browser & device cloud | ✅ | Partial | — | — | Partial |
-| [Sauce Labs](https://saucelabs.com/) | Browser & device cloud | ✅ | Partial | — | — | Partial |
-| [Cypress Cloud](https://www.cypress.io/) | Cypress orchestration | ✅ | — | — | — | Partial |
-| [Grafana k6](https://grafana.com/oss/k6/) | Performance & load testing | — | Partial | ✅ | — | Partial |
-| [Azure](https://azure.microsoft.com/en-us/products/playwright-testing) | Cloud test execution | ✅ | — | ✅ | — | — |
-| [Statuspage](https://www.atlassian.com/software/statuspage) | Status communication | — | — | — | ✅ | — |
-| [Instatus](https://instatus.com/) | Status pages & uptime | — | ✅ | — | ✅ | Partial |
-| [HolmesGPT](https://github.com/HolmesGPT/holmesgpt) | AI SRE investigation | — | Partial | — | — | ✅ |
-| [PagerDuty](https://www.pagerduty.com/platform/aiops/) | Event intelligence & response | — | — | — | — | ✅ |
-| [Resolve AI](https://resolve.ai/) | AI production ops | — | — | — | — | ✅ |
+| Checkly | Synthetic monitoring & testing | ✅ | ✅ | — | ✅ | Partial |
+| Datadog | Observability & synthetics | Partial | ✅ | — | — | Partial |
+| Better Stack | Observability & incident management | — | ✅ | — | ✅ | Partial |
+| UptimeRobot | Uptime monitoring | — | ✅ | — | ✅ | — |
+| BrowserStack | Browser & device cloud | ✅ | Partial | — | — | Partial |
+| Sauce Labs | Browser & device cloud | ✅ | Partial | — | — | Partial |
+| Cypress Cloud | Cypress orchestration | ✅ | — | — | — | Partial |
+| Grafana k6 | Performance & load testing | — | Partial | ✅ | — | Partial |
+| Azure | Cloud test execution | ✅ | — | ✅ | — | — |
+| Statuspage | Status communication | — | — | — | ✅ | — |
+| Instatus | Status pages & uptime | — | ✅ | — | ✅ | Partial |
+| HolmesGPT | AI SRE investigation | — | Partial | — | — | ✅ |
+| PagerDuty | Event intelligence & response | — | — | — | — | ✅ |
+| Resolve AI | AI production ops | — | — | — | — | ✅ |
 
 ## Get started
 
