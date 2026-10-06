@@ -653,7 +653,7 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
         k6Overage,
         prices.k6VuMinutePriceCentsOverride ?? prices.k6VuMinutePriceCents,
       ) +
-      Math.ceil(sreOverage * prices.sreInvestigationUnitPriceCents);
+      ceilUsageCostCents(sreOverage, prices.sreInvestigationUnitPriceCents);
     if (!Number.isFinite(totalOverageCents)) {
       throw new Error('Invalid usage or pricing configuration');
     }

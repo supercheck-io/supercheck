@@ -23,10 +23,11 @@ import {
   overagePricing,
   planLimits,
 } from "@/db/schema";
-import { eq, and, sql, gt, lte, or, isNull, ne } from "drizzle-orm";
+import { eq, and, sql, gt, lte, or, isNull, isNotNull, ne } from "drizzle-orm";
 import { isPolarEnabled, getPolarConfig } from "@/lib/feature-flags";
 import { createLogger } from "@/lib/logger/index";
 import type { Polar } from "@polar-sh/sdk";
+import { createPolarClient, POLAR_API_VERSION } from "@/lib/billing/polar-client";
 
 const logger = createLogger({ module: "polar-usage" }) as {
   info: (data: unknown, message?: string) => void;
@@ -80,7 +81,7 @@ export interface SpendingStatus {
 
 const USAGE_SYNC_ADVISORY_LOCK_KEY = 792401305;
 const POLAR_INGEST_TIMEOUT_MS = 15_000;
-export const POLAR_API_VERSION = "2026-04";
+export { POLAR_API_VERSION };
 export const CLOSED_USAGE_PERIOD_ERROR = "Billing period closed; manual reconciliation required";
 type UsageSyncResult = {
   processed: number;
@@ -96,12 +97,21 @@ class PolarUsageService {
   private async checkRecentUsageNotifications(scanUntil: Date) {
     const scanSince = new Date(scanUntil.getTime() - 24 * 60 * 60 * 1000);
     const changedOrganizations = await db
-      .selectDistinct({ organizationId: usageEvents.organizationId })
-      .from(usageEvents)
+      .selectDistinct({ organizationId: organization.id })
+      .from(organization)
+      .leftJoin(usageEvents, and(
+        eq(usageEvents.organizationId, organization.id),
+        gt(usageEvents.createdAt, scanSince),
+        lte(usageEvents.createdAt, scanUntil),
+      ))
       .where(
         and(
-          gt(usageEvents.createdAt, scanSince),
-          lte(usageEvents.createdAt, scanUntil)
+          // AI credits are local quota writes, not billable ledger events.
+          or(gt(organization.aiCreditsUsed, 0), isNotNull(usageEvents.id)),
+          isNotNull(organization.polarCustomerId),
+          or(eq(organization.subscriptionPlan, "plus"), eq(organization.subscriptionPlan, "pro")),
+          or(eq(organization.subscriptionStatus, "active"), eq(organization.subscriptionStatus, "past_due"),
+            and(eq(organization.subscriptionStatus, "canceled"), gt(organization.subscriptionEndsAt, scanUntil))),
         )
       );
 
@@ -132,7 +142,6 @@ class PolarUsageService {
     }
 
     try {
-      const { Polar } = await import("@polar-sh/sdk");
       const config = getPolarConfig();
       
       if (!config?.accessToken) {
@@ -140,7 +149,7 @@ class PolarUsageService {
         return null;
       }
 
-      this.polarClient = new Polar({
+      this.polarClient = createPolarClient({
         accessToken: config.accessToken,
         server: config.server,
       });
@@ -349,8 +358,8 @@ class PolarUsageService {
     );
     // AI credits use hard-limit model (no overage billing)
     const aiCreditsOverageCost = 0;
-    const sreInvestigationsOverageCost = Math.ceil(
-      sreInvestigationsOverage *
+    const sreInvestigationsOverageCost = ceilUsageCostCents(
+      sreInvestigationsOverage,
         (pricing?.sreInvestigationUnitPriceCents ?? fallbackPricing.sreInvestigationUnits)
     );
 

@@ -1,5 +1,7 @@
 export const BILLING_BLOCKED_CODE = "BILLING_BLOCKED";
 
+export class BillingSettingsValidationError extends Error {}
+
 export const DEFAULT_BILLING_BLOCKED_MESSAGE =
   "Your organization has reached its spending limit. Increase the monthly spending limit or disable hard stop before rerunning.";
 

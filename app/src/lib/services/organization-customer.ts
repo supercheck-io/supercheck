@@ -2,6 +2,7 @@ import { db } from "@/utils/db";
 import { organization as orgTable } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
 import { isPolarEnabled, getPolarConfig } from "@/lib/feature-flags";
+import { createPolarClient } from "@/lib/billing/polar-client";
 
 /**
  * Provision one Polar customer per organization. Preserve existing customer IDs:
@@ -26,8 +27,7 @@ export async function ensurePolarCustomerAndLink(
     if (!org) return null;
     if (org.polarCustomerId) return org.polarCustomerId;
 
-    const { Polar } = await import("@polar-sh/sdk");
-    const polarClient = new Polar({
+    const polarClient = createPolarClient({
       accessToken: config.accessToken,
       server: config.server,
     });

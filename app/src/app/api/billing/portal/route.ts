@@ -7,6 +7,7 @@ import { getUserOrgRole } from "@/lib/rbac/middleware";
 import { Role } from "@/lib/rbac/permissions";
 import { requireSameOriginRequest } from "@/lib/security/same-origin";
 import { db } from "@/utils/db";
+import { createPolarClient } from "@/lib/billing/polar-client";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 
@@ -69,8 +70,7 @@ export async function POST(request: NextRequest) {
       throw new Error("Production billing requires an HTTPS application URL");
     }
 
-    const { Polar } = await import("@polar-sh/sdk");
-    const polar = new Polar({
+    const polar = createPolarClient({
       accessToken: config.accessToken,
       server: config.server,
     });

@@ -21,6 +21,7 @@ export async function GET() {
     const spendingStatus = await polarUsageService.getSpendingStatus(organizationId);
 
     return NextResponse.json({
+      organizationId,
       usage: metrics,
       spending: {
         currentDollars: spendingStatus.currentSpendingCents / 100,
