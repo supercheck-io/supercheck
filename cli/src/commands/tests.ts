@@ -5,18 +5,15 @@ import { createAuthenticatedClient } from '../api/authenticated-client.js'
 import { loadConfig } from '../config/loader.js'
 import { discoverFiles } from '../utils/discovery.js'
 import { logger } from '../utils/logger.js'
-import { output, outputDetail, outputPagination } from '../output/formatter.js'
+import { getOutputFormat, output, outputDetail, outputPagination } from '../output/formatter.js'
 import { CLIError, ExitCode } from '../utils/errors.js'
 import type { PaginatedResponse } from '../api/client.js'
-import { requireAuth, getStoredBaseUrl } from '../auth/store.js'
-import { CLI_VERSION } from '../version.js'
 import { withSpinner } from '../utils/spinner.js'
 import { normalizeTestTypeForApi, validateScripts, validateScriptTypeMatch } from '../utils/validation.js'
 import { runCommand } from '../utils/exec.js'
 import { createTempPlaywrightConfig } from '../utils/playwright.js'
 import { ensureDependenciesForTestType, DependencyError } from '../utils/deps.js'
-import { getProxyAgent, getProxyEnv } from '../utils/proxy.js'
-import { getResolvedConfigBaseUrl } from '../api/authenticated-client.js'
+import { getSse } from '../utils/sse.js'
 import { encodeStoredTestScript } from '../utils/script.js'
 import type { ApiTestType } from '../utils/validation.js'
 
@@ -512,88 +509,13 @@ testCommand
   .description('Stream live status events for a test')
   .option('--idle-timeout <seconds>', 'Abort if no data received within this period', '60')
   .action(async (id: string, options: { idleTimeout: string }) => {
-    const token = requireAuth()
-    const baseUrl = getStoredBaseUrl() ?? getResolvedConfigBaseUrl() ?? 'https://app.supercheck.io'
-    const idleTimeoutMs = Math.max(Number(options.idleTimeout) || 60, 10) * 1000
-
-    const url = `${baseUrl}/api/test-status/events/${id}`
-    const parsedUrl = new URL(url)
-
-    logger.info(`Streaming status for test ${id}...`)
-    logger.newline()
-
-    const controller = new AbortController()
-    const connectTimeout = setTimeout(() => controller.abort(), 30_000)
-
-    try {
-      const proxy = getProxyEnv(parsedUrl)
-      const response = await fetch(url, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Accept': 'text/event-stream',
-          'User-Agent': `supercheck-cli/${CLI_VERSION}`,
-        },
-        ...(proxy ? { dispatcher: getProxyAgent(proxy) } : {}),
-        signal: controller.signal,
-      })
-
-      clearTimeout(connectTimeout)
-
-      if (!response.ok) {
-        throw new CLIError(`Failed to connect to status stream: ${response.status}`, ExitCode.ApiError)
+    await getSse(`/api/test-status/events/${id}`, ({ data }) => {
+      const record = typeof data === 'object' && data !== null ? data as Record<string, unknown> : {}
+      if (getOutputFormat() === 'json') logger.output(JSON.stringify(record))
+      else outputDetail(record)
+      const status = String(record.derivedStatus ?? record.status)
+      if (['failed', 'error', 'blocked'].includes(status)) {
+        throw new CLIError(String(record.errorDetails ?? `Test ended with status: ${status}`), ExitCode.GeneralError)
       }
-
-      const reader = response.body?.getReader()
-      if (!reader) {
-        throw new CLIError('No response body for SSE stream', ExitCode.ApiError)
-      }
-
-      const decoder = new TextDecoder()
-      let buffer = ''
-
-      let idleTimer: ReturnType<typeof setTimeout> | undefined
-      const resetIdleTimer = () => {
-        if (idleTimer) clearTimeout(idleTimer)
-        idleTimer = setTimeout(() => controller.abort(), idleTimeoutMs)
-      }
-      resetIdleTimer()
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-
-        resetIdleTimer()
-
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() ?? ''
-
-        for (const line of lines) {
-          if (line.startsWith(':')) continue
-          if (line.startsWith('data: ')) {
-            const payload = line.slice(6)
-            try {
-              const parsed = JSON.parse(payload) as Record<string, unknown>
-              outputDetail(parsed)
-            } catch {
-              process.stdout.write(payload + '\n')
-            }
-          }
-        }
-      }
-
-      if (idleTimer) clearTimeout(idleTimer)
-    } catch (err) {
-      if (err instanceof CLIError) throw err
-      if (err instanceof Error && err.name === 'AbortError') {
-        throw new CLIError(
-          `Stream timed out (no data received for ${Math.round(idleTimeoutMs / 1000)}s)`,
-          ExitCode.Timeout,
-        )
-      }
-      throw new CLIError(
-        `Stream error: ${err instanceof Error ? err.message : String(err)}`,
-        ExitCode.ApiError,
-      )
-    }
+    }, Math.max(Number(options.idleTimeout) || 60, 10) * 1000)
   })

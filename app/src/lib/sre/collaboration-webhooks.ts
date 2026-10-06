@@ -7,6 +7,7 @@ import { assertCanStartSreInvestigation, SreInvestigationBillingError } from "@/
 import { postSreInvestigationSlackSummary } from "@/lib/sre/slack-outbound";
 import { completeSreIncidentInvestigation, startSreIncidentInvestigation } from "@/sre/lib/investigation-runner";
 import { db } from "@/utils/db";
+import { isSreEnabled } from "@/sre/lib/feature-gates";
 
 const collaborationLogger = createLogger({ module: "sre-collaboration" }) as {
   error: (data: unknown, msg?: string) => void;
@@ -56,12 +57,7 @@ export function detectSreCollaborationCommand(text: string): SreCollaborationCom
   return "investigate";
 }
 
-function isResponderAllowed(responderId: string | null | undefined) {
-  const allowUnmappedResponders = process.env.SRE_COLLABORATION_ALLOW_UNMAPPED_RESPONDERS === "true";
-  if (allowUnmappedResponders) {
-    return true;
-  }
-
+export function isResponderAllowed(responderId: string | null | undefined) {
   const allowedIds = (process.env.SRE_COLLABORATION_ALLOWED_RESPONDER_IDS ?? "")
     .split(",")
     .map((value) => value.trim())
@@ -142,6 +138,9 @@ async function recordCollaborationTimelineEvent(input: {
 
 export async function processSreCollaborationMessage(input: z.input<typeof collaborationMessageSchema>) {
   const parsed = collaborationMessageSchema.parse(input);
+  if (!isSreEnabled()) {
+    return { status: "skipped" as const, reason: "disabled" };
+  }
   const text = sanitizeCollaborationText(parsed.text);
   const incidentId = parsed.incidentId ?? extractSreIncidentIdFromText(text);
 
@@ -224,7 +223,8 @@ export async function processSreCollaborationMessage(input: z.input<typeof colla
     throw error;
   }
 
-  const useLiveConnectors = process.env.SRE_COLLABORATION_LIVE_CONNECTORS_ENABLED === "true";
+  // Chat-provider identities are not mapped to Supercheck connector permissions.
+  const useLiveConnectors = false;
   const startResult = await startSreIncidentInvestigation({
     organizationId: incident.organizationId,
     projectId: incident.projectId,

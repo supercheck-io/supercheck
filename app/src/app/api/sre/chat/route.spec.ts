@@ -338,4 +338,18 @@ describe("SRE chat API", () => {
     expect(text).not.toContain("rawContentExcerpt");
     expect(text).not.toContain("citationQuery");
   });
+  it("honors the deployment-wide SRE disable control before AI work", async () => {
+    const previous = process.env.SRE_ENABLED;
+    process.env.SRE_ENABLED = "false";
+    try {
+      const response = await POST(new NextRequest("http://localhost/api/sre/chat", { method: "POST", body: JSON.stringify({ message: "check" }) }));
+      expect(response.status).toBe(503);
+      expect(await response.json()).toMatchObject({ code: "feature_disabled", enabledBy: "SRE_ENABLED" });
+      expect(mockRunSreAgent).not.toHaveBeenCalled();
+    } finally {
+      if (previous === undefined) delete process.env.SRE_ENABLED;
+      else process.env.SRE_ENABLED = previous;
+    }
+  });
+
 });

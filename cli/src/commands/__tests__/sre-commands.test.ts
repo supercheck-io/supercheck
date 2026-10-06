@@ -8,6 +8,7 @@ const mockSuccess = jest.fn<(...args: unknown[]) => void>()
 const mockInfo = jest.fn<(...args: unknown[]) => void>()
 const mockError = jest.fn<(...args: unknown[]) => void>()
 const mockPostSse = jest.fn<(...args: unknown[]) => Promise<void>>()
+const mockGetSse = jest.fn<(...args: unknown[]) => Promise<void>>()
 
 jest.unstable_mockModule('../../api/authenticated-client.js', () => ({
   createAuthenticatedClient: () => ({
@@ -19,6 +20,7 @@ jest.unstable_mockModule('../../api/authenticated-client.js', () => ({
 jest.unstable_mockModule('../../output/formatter.js', () => ({
   output: mockOutput,
   outputDetail: mockOutputDetail,
+  outputPagination: jest.fn(),
   getOutputFormat: () => 'table',
 }))
 
@@ -28,6 +30,7 @@ jest.unstable_mockModule('../../utils/logger.js', () => ({
     info: mockInfo,
     success: mockSuccess,
     error: mockError,
+    warn: jest.fn(),
     newline: jest.fn(),
   },
 }))
@@ -38,15 +41,21 @@ jest.unstable_mockModule('../../utils/spinner.js', () => ({
 
 jest.unstable_mockModule('../../utils/sse.js', () => ({
   postSse: mockPostSse,
+  getSse: mockGetSse,
 }))
 
 const { incidentCommand } = await import('../incidents.js')
 const { serviceCommand } = await import('../services.js')
 const { sreCommand } = await import('../sre.js')
+const { monitorCommand } = await import('../monitors.js')
+const { runCommand } = await import('../runs.js')
+const { testCommand } = await import('../tests.js')
 
 describe('AI SRE CLI Commands', () => {
   beforeEach(() => {
-    jest.clearAllMocks()
+    jest.resetAllMocks()
+    const create = monitorCommand.commands.find((command) => command.name() === 'create')!
+    for (const option of create.options) create.setOptionValue(option.attributeName(), option.defaultValue)
   })
 
   describe('incident commands', () => {
@@ -70,12 +79,12 @@ describe('AI SRE CLI Commands', () => {
     })
 
     it('incident get fetches details by id', async () => {
-      const mockIncident = { id: 'inc-123', title: 'Test Incident' }
+      const mockIncident = { id: '018f0000-0000-7000-8000-000000000001', title: 'Test Incident' }
       mockGet.mockResolvedValueOnce({ data: { incident: mockIncident } })
 
-      await incidentCommand.parseAsync(['node', 'incident', 'get', 'inc-123'])
+      await incidentCommand.parseAsync(['node', 'incident', 'get', '018f0000-0000-7000-8000-000000000001'])
 
-      expect(mockGet).toHaveBeenCalledWith('/api/sre/incidents/inc-123')
+      expect(mockGet).toHaveBeenCalledWith('/api/sre/incidents/018f0000-0000-7000-8000-000000000001')
       expect(mockOutputDetail).toHaveBeenCalledWith(mockIncident)
     })
 
@@ -83,18 +92,18 @@ describe('AI SRE CLI Commands', () => {
       const mockEvents = [{ eventType: 'triage', createdAt: '2026-09-13' }]
       mockGet.mockResolvedValueOnce({ data: { events: mockEvents } })
 
-      await incidentCommand.parseAsync(['node', 'incident', 'timeline', 'inc-123'])
+      await incidentCommand.parseAsync(['node', 'incident', 'timeline', '018f0000-0000-7000-8000-000000000001'])
 
-      expect(mockGet).toHaveBeenCalledWith('/api/sre/incidents/inc-123/timeline')
+      expect(mockGet).toHaveBeenCalledWith('/api/sre/incidents/018f0000-0000-7000-8000-000000000001/timeline')
       expect(mockOutput).toHaveBeenCalledWith(mockEvents, expect.any(Object))
     })
 
     it('incident resolve sends resolution comment with --force', async () => {
       mockPost.mockResolvedValueOnce({ data: { success: true, message: 'Resolved' } })
 
-      await incidentCommand.parseAsync(['node', 'incident', 'resolve', 'inc-123', '--comment', 'Fix applied', '--force'])
+      await incidentCommand.parseAsync(['node', 'incident', 'resolve', '018f0000-0000-7000-8000-000000000001', '--comment', 'Fix applied', '--force'])
 
-      expect(mockPost).toHaveBeenCalledWith('/api/sre/incidents/inc-123/resolve', { comment: 'Fix applied' })
+      expect(mockPost).toHaveBeenCalledWith('/api/sre/incidents/018f0000-0000-7000-8000-000000000001/resolve', { comment: 'Fix applied' })
       expect(mockSuccess).toHaveBeenCalledWith('Incident resolved')
       expect(mockOutputDetail).toHaveBeenCalledWith(expect.objectContaining({ success: true }))
     })
@@ -165,22 +174,67 @@ describe('AI SRE CLI Commands', () => {
   })
 
   describe('sre commands', () => {
+    const incidentId = '018f0000-0000-7000-8000-000000000001'
+
+    it.each(['triage', 'investigate', 'brief'])('resolves the displayed incident number for sre %s', async (command) => {
+      mockGet.mockResolvedValueOnce({ data: { incidents: [{ id: incidentId, incidentNumber: 1 }] } })
+      mockPost.mockResolvedValueOnce({ data: { success: true } })
+      mockPostSse.mockResolvedValueOnce(undefined)
+      await sreCommand.parseAsync(['node', 'sre', command, '1'])
+      expect(mockGet).toHaveBeenCalledWith('/api/sre/incidents', { incidentNumber: '1' })
+      if (command === 'brief') {
+        expect(mockPostSse).toHaveBeenCalledWith('/api/sre/evidence-brief/stream', { incidentId }, expect.any(Function), expect.any(Number))
+      } else {
+        expect(mockPost).toHaveBeenCalledWith(`/api/sre/${command}`, expect.objectContaining({ incidentId }))
+      }
+    })
+
+    it('resolves the incident number for Copilot', async () => {
+      mockGet.mockResolvedValueOnce({ data: { incidents: [{ id: incidentId, incidentNumber: 1 }] } })
+      await sreCommand.parseAsync(['node', 'sre', 'ask', 'What failed?', '--incident', '1'])
+      expect(mockPostSse).toHaveBeenCalledWith('/api/sre/chat', expect.objectContaining({ incidentId }), expect.any(Function), expect.any(Number))
+    })
+
+    it.each(['get', 'timeline', 'resolve'])('resolves the displayed incident number for incident %s', async (command) => {
+      mockGet.mockResolvedValueOnce({ data: { incidents: [{ id: incidentId, incidentNumber: 1 }] } })
+      mockGet.mockResolvedValueOnce({ data: { incident: { id: incidentId }, events: [] } })
+      mockPost.mockResolvedValueOnce({ data: { success: true } })
+      await incidentCommand.parseAsync(['node', 'incident', command, '1', ...(command === 'resolve' ? ['--comment', 'Fixed', '--force'] : [])])
+      if (command === 'resolve') {
+        expect(mockPost).toHaveBeenCalledWith(`/api/sre/incidents/${incidentId}/resolve`, { comment: 'Fixed' })
+      } else {
+        expect(mockGet).toHaveBeenCalledWith(`/api/sre/incidents/${incidentId}${command === 'timeline' ? '/timeline' : ''}`)
+      }
+    })
+
+    it('fails before mutation when an incident number is not found', async () => {
+      mockGet.mockResolvedValueOnce({ data: { incidents: [{ id: incidentId, incidentNumber: 2 }] } })
+      await expect(sreCommand.parseAsync(['node', 'sre', 'triage', '1'])).rejects.toThrow('not found in this project')
+      expect(mockPost).not.toHaveBeenCalled()
+    })
+
+    it.each(['bad-id', '0', '-1', '9007199254740992', '../other'])('rejects invalid incident reference %s', async (reference) => {
+      await expect(sreCommand.parseAsync(['node', 'sre', 'triage', '--', reference])).rejects.toThrow('incident number or UUID')
+      expect(mockGet).not.toHaveBeenCalled()
+      expect(mockPost).not.toHaveBeenCalled()
+    })
+
     it('sre triage runs triage on an incident', async () => {
       mockPost.mockResolvedValueOnce({ data: { success: true, summary: 'Triage complete' } })
 
-      await sreCommand.parseAsync(['node', 'sre', 'triage', 'inc-123'])
+      await sreCommand.parseAsync(['node', 'sre', 'triage', '018f0000-0000-7000-8000-000000000001'])
 
-      expect(mockPost).toHaveBeenCalledWith('/api/sre/triage', { incidentId: 'inc-123' })
+      expect(mockPost).toHaveBeenCalledWith('/api/sre/triage', { incidentId: '018f0000-0000-7000-8000-000000000001' })
       expect(mockOutputDetail).toHaveBeenCalledWith(expect.objectContaining({ success: true }))
     })
 
     it('sre investigate triggers investigation with live-connectors flag', async () => {
       mockPost.mockResolvedValueOnce({ data: { accepted: true, investigationRunId: 'run-1' } })
 
-      await sreCommand.parseAsync(['node', 'sre', 'investigate', 'inc-123', '--live-connectors'])
+      await sreCommand.parseAsync(['node', 'sre', 'investigate', '018f0000-0000-7000-8000-000000000001', '--live-connectors'])
 
       expect(mockPost).toHaveBeenCalledWith('/api/sre/investigate', {
-        incidentId: 'inc-123',
+        incidentId: '018f0000-0000-7000-8000-000000000001',
         useLiveConnectors: true,
       })
       expect(mockOutputDetail).toHaveBeenCalledWith(expect.objectContaining({ accepted: true }))
@@ -189,13 +243,13 @@ describe('AI SRE CLI Commands', () => {
     it('sre ask delegates to postSse with chat endpoint', async () => {
       mockPostSse.mockResolvedValueOnce(undefined)
 
-      await sreCommand.parseAsync(['node', 'sre', 'ask', 'What failed?', '--incident', 'inc-123', '--live-connectors'])
+      await sreCommand.parseAsync(['node', 'sre', 'ask', 'What failed?', '--incident', '018f0000-0000-7000-8000-000000000001', '--live-connectors'])
 
       expect(mockPostSse).toHaveBeenCalledWith(
         '/api/sre/chat',
         {
           message: 'What failed?',
-          incidentId: 'inc-123',
+          incidentId: '018f0000-0000-7000-8000-000000000001',
           useLiveConnectorTools: true,
         },
         expect.any(Function),
@@ -206,14 +260,63 @@ describe('AI SRE CLI Commands', () => {
     it('sre brief delegates to postSse with stream endpoint', async () => {
       mockPostSse.mockResolvedValueOnce(undefined)
 
-      await sreCommand.parseAsync(['node', 'sre', 'brief', 'inc-123'])
+      await sreCommand.parseAsync(['node', 'sre', 'brief', '018f0000-0000-7000-8000-000000000001'])
 
       expect(mockPostSse).toHaveBeenCalledWith(
         '/api/sre/evidence-brief/stream',
-        { incidentId: 'inc-123' },
+        { incidentId: '018f0000-0000-7000-8000-000000000001' },
         expect.any(Function),
         expect.any(Number),
       )
+    })
+  })
+
+  describe('monitor creation contracts', () => {
+    it.each(['http_request', 'website', 'ping_host'])('creates %s monitors with a target and minute interval', async (type) => {
+      mockPost.mockResolvedValueOnce({ data: { id: 'monitor-1' } })
+      const target = type === 'ping_host' ? 'example.com' : 'https://example.com'
+      await monitorCommand.parseAsync(['node', 'monitor', 'create', '--name', 'Demo', '--type', type, '--url', target])
+      expect(mockPost).toHaveBeenCalledWith('/api/monitors', expect.objectContaining({ target, type, frequencyMinutes: 5 }))
+    })
+
+    it('creates port checks with the required numeric port and protocol', async () => {
+      mockPost.mockResolvedValueOnce({ data: { id: 'monitor-1' } })
+      await monitorCommand.parseAsync(['node', 'monitor', 'create', '--name', 'Port', '--type', 'port_check', '--url', 'example.com', '--port', '443'])
+      expect(mockPost).toHaveBeenCalledWith('/api/monitors', expect.objectContaining({ config: expect.objectContaining({ port: 443, protocol: 'tcp' }) }))
+    })
+
+    it('creates synthetic checks with a test UUID and no URL', async () => {
+      mockPost.mockResolvedValueOnce({ data: { id: 'monitor-1' } })
+      const testId = '018f0000-0000-7000-8000-000000000001'
+      await monitorCommand.parseAsync(['node', 'monitor', 'create', '--name', 'Synthetic', '--type', 'synthetic_test', '--test-id', testId])
+      expect(mockPost).toHaveBeenCalledWith('/api/monitors', expect.objectContaining({ target: '', config: expect.objectContaining({ testId }) }))
+    })
+
+    it.each([
+      ['--type', 'synthetic_test'],
+      ['--type', 'port_check', '--url', 'example.com'],
+      ['--url', 'https://example.com', '--timeout', '3601'],
+      ['--url', 'https://example.com', '--interval', '86460'],
+    ])('rejects missing type-specific fields or values beyond API limits: %s', async (...args) => {
+      await expect(monitorCommand.parseAsync(['node', 'monitor', 'create', '--name', 'Invalid', ...args])).rejects.toMatchObject({ exitCode: 3 })
+      expect(mockPost).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('execution stream exit codes', () => {
+    const stream = async (_path: unknown, callback: unknown) => {
+      (callback as (event: { event: string; data: unknown }) => void)({ event: 'complete', data: { status: 'failed' } })
+    }
+    it('run stream rejects failed runs instead of printing a success', async () => {
+      mockGetSse.mockImplementationOnce(stream)
+      await expect(runCommand.parseAsync(['node', 'run', 'stream', 'run-1'])).rejects.toMatchObject({ exitCode: 1 })
+      expect(mockSuccess).not.toHaveBeenCalled()
+    })
+    it('test status uses derived report status when queue status says completed', async () => {
+      mockGetSse.mockImplementationOnce(async (_path, callback) => {
+        (callback as (event: { data: unknown }) => void)({ data: { status: 'completed', derivedStatus: 'failed' } })
+      })
+      await expect(testCommand.parseAsync(['node', 'test', 'status', 'test-1'])).rejects.toMatchObject({ exitCode: 1 })
     })
   })
 })

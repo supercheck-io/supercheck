@@ -1,3 +1,4 @@
+import { validateAIConfiguration } from "@/lib/ai/ai-provider";
 import { createHash } from "crypto";
 import { and, desc, eq, gte, isNotNull, ne, or, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -61,7 +62,8 @@ export type SreBackgroundAlertTriageResult =
         | "non_sent_alert"
         | "resolved_alert"
         | "already_triaged"
-        | "unsupported_source";
+        | "unsupported_source"
+        | "ai_not_configured";
     }
   | {
       success: false;
@@ -497,6 +499,12 @@ export async function processSreBackgroundAlertTriageJob(
   const parsed = backgroundTriageJobSchema.safeParse(jobData);
   if (!parsed.success) {
     return { success: true, skipped: true, reason: "invalid_job" };
+  }
+
+  try {
+    validateAIConfiguration();
+  } catch {
+    return { success: true, skipped: true, reason: "ai_not_configured" };
   }
 
   const incident = await createOrGetIncidentForAlertHistory(

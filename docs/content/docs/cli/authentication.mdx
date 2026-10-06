@@ -94,7 +94,7 @@ curl -X POST https://app.supercheck.io/api/jobs/<id>/trigger \
 
 ## Verify Your Access
 
-Run `supercheck whoami` to check your API URL, token identity, and expiry before using API-backed commands. For a self-hosted instance, set `SUPERCHECK_URL` or pass `--url` when logging in. A browser sign-in does not authenticate the CLI.
+Run `supercheck whoami` to check your API URL, authenticated project, organization, and role before using API-backed commands. Token identity and expiry are shown when your role can view API keys. Login verification and `whoami` also work for read-only users. For a self-hosted instance, set `SUPERCHECK_URL` or pass `--url` when logging in. A browser sign-in does not authenticate the CLI.
 
 For `job trigger`, use a job-specific trigger key. To wait for the result with `--wait`, also supply a CLI token that can read runs in that project.
 

@@ -669,4 +669,18 @@ describe("Copilot assistant-ui chat API", () => {
     expect(mockCreateSreConversation).not.toHaveBeenCalled();
     expect(mockAppendSreMessage).not.toHaveBeenCalled();
   });
+  it("honors the deployment-wide SRE disable control before AI work", async () => {
+    const previous = process.env.SRE_ENABLED;
+    process.env.SRE_ENABLED = "false";
+    try {
+      const response = await POST(new NextRequest("http://localhost/api/sre/chat/assistant-ui", { method: "POST", body: "{}" }));
+      expect(response.status).toBe(503);
+      expect(await response.json()).toMatchObject({ code: "feature_disabled", enabledBy: "SRE_ENABLED" });
+      expect(mockValidateAIConfiguration).not.toHaveBeenCalled();
+    } finally {
+      if (previous === undefined) delete process.env.SRE_ENABLED;
+      else process.env.SRE_ENABLED = previous;
+    }
+  });
+
 });

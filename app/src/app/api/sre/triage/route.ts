@@ -24,7 +24,7 @@ function featureDisabledResponse() {
     {
       error: "SRE triage is not enabled",
       code: "feature_disabled",
-      enabledBy: "SRE_TRIAGE_AGENT_ENABLED",
+      enabledBy: "SRE_ENABLED",
     },
     { status: 503 },
   );

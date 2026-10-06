@@ -438,19 +438,21 @@ Choose the tab below for HTTP setup, production HTTPS, or managed external servi
   </Accordion>
 
   <Accordion title="AI SRE Features">
-    AI SRE requires an AI provider configured above. The SRE investigation agent is disabled by default in the shipped Compose files, so enable it in `.env`:
+    AI SRE is available by default: manual triage, investigations, Copilot, alert correlation, and staged evidence collection. Configure an AI provider above and apply the included database migrations. Automatic triage and background alert processing are also on by default; delivered firing alerts can create incidents and invoke your AI provider. Automatic processing skips AI work when provider credentials are missing.
+
+    Only two optional deployment controls are needed:
 
     ```bash
-    # Required for AI SRE investigations and /api/sre/investigate
-    SRE_INVESTIGATION_AGENT_ENABLED=true
+    SRE_ENABLED=false            # Disable AI SRE requests and automation
+    SRE_AUTOMATION_ENABLED=false # Keep manual SRE, stop alert-triggered AI work
     ```
 
-    <Callout type="info">
-    Optional SRE workflows — automatic triage, alert correlation, and staged evidence — are controlled by `SRE_TRIAGE_AGENT_ENABLED`, `SRE_ALERT_CORRELATION_ENABLED`, and `SRE_STAGED_EVIDENCE_ENABLED`. All of these default to `false`, and the shipped Compose files do not forward them from `.env`. To use them, add the flags to the `x-common-env` block of your Compose file in addition to `.env`.
-    </Callout>
+    Both default to `true`. The shipped Compose files apply them to the app and worker. Automation can incur AI-provider costs without a manual request; turn it off if you want manual investigations only. Staged Loki searches are available without an enable flag: supply a stage and follow statistics, sample, signatures, temporal context, then correlation. Ordinary connector searches remain supported.
 
-    <Callout type="warn">
-    If `SRE_INVESTIGATION_AGENT_ENABLED` is not set to `true`, AI SRE investigations return `503 Service Unavailable` with `feature_disabled`. See [AI SRE Setup](/docs/app/admin/ai-sre-setup) for end-to-end configuration.
+    Live connectors still require explicit consent for each investigation or chat, appropriate permissions, and service scope. Optional Slack/Teams incident commands use the `docker-compose-collaboration.yml` overlay described in [AI SRE Setup](/docs/app/admin/ai-sre-setup); credentials and a responder allowlist are required only for that integration. Collaboration uses stored evidence, while live-source access stays in authenticated CLI/dashboard sessions.
+
+    <Callout type="info">
+    Upgrade existing installations by replacing the old per-workflow enable flags with these two controls. Old workflow flags are no longer read; migrate any previous opt-out to `SRE_ENABLED=false` or `SRE_AUTOMATION_ENABLED=false` before upgrading. Recreate affected containers after changing `.env`; restarting does not reload environment variables. Disabled AI endpoints return `503` with `feature_disabled` and `enabledBy: SRE_ENABLED`. Existing incident data remains accessible.
     </Callout>
   </Accordion>
 </Accordions>

@@ -14,6 +14,9 @@ import { CLIError, ExitCode } from '../errors.js'
 import { isK6Script, validateScriptTypeMatch, normalizeTestTypeForApi } from '../validation.js'
 
 describe('parseIntStrict', () => {
+  it('rejects integers that cannot be represented precisely', () => {
+    expect(() => parseIntStrict('9007199254740993', '--limit')).toThrow('not a valid integer')
+  })
   describe('valid inputs', () => {
     it('should parse a valid positive integer', () => {
       expect(parseIntStrict('42', '--timeout')).toBe(42)

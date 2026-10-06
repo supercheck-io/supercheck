@@ -1,3 +1,4 @@
+import { isSreEnabled } from "@/sre/lib/feature-gates";
 import { generateText, streamText } from "ai";
 import { z } from "zod";
 
@@ -292,8 +293,8 @@ export async function generateEvidenceBrief(input: {
 }): Promise<EvidenceBrief> {
   const modelId = getActualModelName();
 
-  if (input.evidence.length === 0) {
-    return fallbackBrief([], modelId);
+  if (!isSreEnabled() || input.evidence.length === 0) {
+    return fallbackBrief(input.evidence, modelId);
   }
 
   try {
@@ -355,7 +356,7 @@ export async function streamEvidenceBrief(
     return fallback;
   };
 
-  if (input.evidence.length === 0) {
+  if (!isSreEnabled() || input.evidence.length === 0) {
     return streamFallback();
   }
 

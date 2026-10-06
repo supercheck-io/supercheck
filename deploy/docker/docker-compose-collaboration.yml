@@ -1,0 +1,8 @@
+# Optional Slack/Teams incident commands. Combine with a main Compose file.
+services:
+  app:
+    environment:
+      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
+      SLACK_SIGNING_SECRET: ${SLACK_SIGNING_SECRET:-}
+      TEAMS_OUTGOING_WEBHOOK_SECRET: ${TEAMS_OUTGOING_WEBHOOK_SECRET:-}
+      SRE_COLLABORATION_ALLOWED_RESPONDER_IDS: ${SRE_COLLABORATION_ALLOWED_RESPONDER_IDS:-}

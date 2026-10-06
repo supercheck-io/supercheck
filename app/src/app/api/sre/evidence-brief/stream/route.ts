@@ -1,3 +1,4 @@
+import { isSreEnabled } from "@/sre/lib/feature-gates";
 import { revalidatePath } from "next/cache";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
@@ -73,6 +74,13 @@ export async function POST(request: NextRequest) {
     );
   }
   const { userId, organizationId, project } = context;
+  if (!isSreEnabled()) {
+    return NextResponse.json(
+      { error: "AI SRE is disabled", code: "feature_disabled", enabledBy: "SRE_ENABLED" },
+      { status: 503 },
+    );
+  }
+
   const canInvestigate = checkPermissionWithContext(
     "sre_incident",
     "investigate",

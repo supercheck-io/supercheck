@@ -21,7 +21,7 @@ supercheck --quiet whoami
 
 Config-aware commands (for example `config`, `diff`, `deploy`, `pull`, `validate`, `destroy`) accept `--config <path>` to point at a specific config file.
 
-For `sre ask` and `sre brief`, global `--json` produces newline-delimited JSON (NDJSON), one event per line.
+For `sre ask`, `sre brief`, `run stream`, and `test status`, global `--json` produces newline-delimited JSON (NDJSON), one event per line.
 
 ## Exit Codes
 
@@ -50,13 +50,13 @@ supercheck login --token <token> --url https://supercheck.yourdomain.com
 | Flag | Required | Description |
 |------|----------|-------------|
 | `--token <token>` | No | CLI token (`sck_live_*` or `sck_test_*`). Without it, the CLI prints token-creation instructions. |
-| `--url <url>` | No | API base URL for self-hosted |
+| `--url <url>` | No | API base URL; otherwise uses `SUPERCHECK_URL`, stored URL, config URL, then the cloud default |
 
 The token is verified against the API before being stored locally.
 
 ### `supercheck whoami`
 
-Display the current authentication context.
+Display the authenticated project, organization, and role. Token identity and expiry are included when your role permits viewing API keys; read-only users can still verify their context.
 
 ```bash
 supercheck whoami
@@ -281,7 +281,7 @@ supercheck run status <run-id>
 
 ### `supercheck run stream`
 
-Watch live console output from a running execution.
+Watch live console output from a running execution. Failed, cancelled, blocked, or missing runs return a nonzero exit code. Ctrl-C cancels the client stream; `--json` emits NDJSON events.
 
 ```bash
 supercheck run stream <run-id>
@@ -479,15 +479,20 @@ Create a new monitor.
 ```bash
 supercheck monitor create --name "API Health" --url https://api.example.com/health --type http_request --interval-minutes 5
 supercheck monitor create --name "Website" --url https://example.com --dry-run
+supercheck monitor create --name "TLS port" --type port_check --url example.com --port 443
+supercheck monitor create --name "Browser journey" --type synthetic_test --test-id <test-uuid>
 ```
 
 | Flag | Required | Default | Description |
 |------|----------|---------|-------------|
 | `--name` | Yes | — | Monitor name |
-| `--url` | Yes | — | URL to monitor |
+| `--url` | Except synthetic tests | — | HTTP(S) URL, or hostname/IP for ping and port checks |
 | `--type` | No | `http_request` | `http_request`, `website`, `ping_host`, `port_check`, `synthetic_test` |
+| `--test-id` | Synthetic tests | — | UUID of an existing test |
+| `--port` | Port checks | — | Port number (1-65535) |
+| `--protocol` | No | `tcp` | Port check protocol: `tcp` or `udp` |
 | `--interval-minutes` | No | `5` | Check interval in minutes (1–1440) |
-| `--timeout` | No | `30` | Request timeout in seconds |
+| `--timeout` | No | `30` | Request timeout in seconds (1-3600) |
 | `--method` | No | `GET` | HTTP method (`GET`, `POST`, `PUT`, `DELETE`, `PATCH`, `HEAD`, `OPTIONS`) |
 | `--dry-run` | No | — | Preview what would be sent without creating |
 
@@ -509,7 +514,7 @@ supercheck monitor update <monitor-id> --name "Updated" --method POST --dry-run
 | `--name` | Monitor name |
 | `--url` | URL to monitor |
 | `--interval-minutes` | Check interval in minutes (1–1440) |
-| `--timeout` | Request timeout in seconds |
+| `--timeout` | Request timeout in seconds (1-3600) |
 | `--method` | HTTP method |
 | `--active` | Enable or disable (`true`/`false`) |
 | `--dry-run` | Preview what would be sent without updating |
@@ -740,15 +745,19 @@ supercheck audit --search "deploy"
 
 AI SRE commands use the active project from the CLI token and preserve the same tenant and RBAC boundaries as the dashboard.
 
+Incident commands accept the number displayed by `incident list` or a UUID. Numbers resolve within the CLI token’s project; they are not row positions. For example, `supercheck sre investigate 1` and `supercheck sre ask "Summarize the strongest evidence" --incident 1`. Use `incident list --json` to see UUIDs.
+
+Manual triage and investigations are enabled by default with a configured AI provider. Existing operator opt-outs remain effective: `503 feature_disabled` identifies the setting to change. Recreate containers after changing `.env`. Automatic AI work remains opt-in.
+
 The plural aliases `incidents` and `services` are also supported.
 
 ### Incidents
 
 ```bash
 supercheck incident list --status investigating --severity sev1
-supercheck incident get <incident-id>
-supercheck incident timeline <incident-id>
-supercheck incident resolve <incident-id> --comment "Traffic restored after rollback"
+supercheck incident get <incident-number-or-uuid>
+supercheck incident timeline <incident-number-or-uuid>
+supercheck incident resolve <incident-number-or-uuid> --comment "Traffic restored after rollback"
 ```
 
 Resolution prompts for confirmation and stores the required comment in the incident timeline and audit log. Use `--force` only in reviewed automation.
@@ -756,11 +765,11 @@ Resolution prompts for confirmation and stores the required comment in the incid
 ### Triage and investigation
 
 ```bash
-supercheck sre triage <incident-id>
-supercheck sre investigate <incident-id>
-supercheck sre investigate <incident-id> --live-connectors
-supercheck sre brief <incident-id>
-supercheck sre brief <incident-id> --idle-timeout 120
+supercheck sre triage <incident-number-or-uuid>
+supercheck sre investigate <incident-number-or-uuid>
+supercheck sre investigate <incident-number-or-uuid> --live-connectors
+supercheck sre brief <incident-number-or-uuid>
+supercheck sre brief <incident-number-or-uuid> --idle-timeout 120
 ```
 
 Deep investigation is asynchronous: a successful command returns an accepted investigation-run ID. Follow progress with `incident get` and `incident timeline`. `--live-connectors` enables configured read-only telemetry tools only when the caller also has `sre_connector:investigate` permission.
@@ -769,11 +778,11 @@ Deep investigation is asynchronous: a successful command returns an accepted inv
 
 ```bash
 supercheck sre ask "Why did checkout latency increase?"
-supercheck sre ask "Summarize the strongest evidence" --incident <incident-id>
-supercheck sre ask "Check current telemetry" --incident <incident-id> --live-connectors
+supercheck sre ask "Summarize the strongest evidence" --incident <incident-number-or-uuid>
+supercheck sre ask "Check current telemetry" --incident <incident-number-or-uuid> --live-connectors
 ```
 
-Copilot is read-only. Use an incident your token can access, and add `--live-connectors` only when you have connector investigation permission. `--idle-timeout` controls stream inactivity (minimum 10 seconds). Ctrl-C cancels the client stream. Global `--json` emits NDJSON events for automation.
+Copilot is read-only. Use an incident your token can access, and add `--live-connectors` only when you have connector investigation permission. `--idle-timeout` controls stream inactivity (minimum 10 seconds). Ctrl-C cancels the client stream. Global `--json` emits NDJSON events for automation. Streamed errors and AI-provider unavailability return a nonzero exit code for both Copilot and evidence briefs.
 
 ### Service catalog
 

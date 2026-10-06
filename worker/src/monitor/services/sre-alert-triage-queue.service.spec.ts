@@ -28,6 +28,7 @@ describe('SreAlertTriageQueueService', () => {
   });
 
   it('does not create a queue when background triage is disabled', async () => {
+    config.set('SRE_AUTOMATION_ENABLED', 'false');
     const service = new SreAlertTriageQueueService(configService);
 
     await service.enqueueAlertHistoryRows([
@@ -38,8 +39,6 @@ describe('SreAlertTriageQueueService', () => {
   });
 
   it('does not enqueue failed alert deliveries', async () => {
-    config.set('SRE_TRIAGE_AGENT_ENABLED', 'true');
-    config.set('SRE_TRIAGE_AGENT_BACKGROUND_ENABLED', 'true');
     const service = new SreAlertTriageQueueService(configService);
 
     await service.enqueueAlertHistoryRows([
@@ -49,9 +48,7 @@ describe('SreAlertTriageQueueService', () => {
     expect(mockQueueConstructor).not.toHaveBeenCalled();
   });
 
-  it('enqueues deterministic jobs for sent alert deliveries', async () => {
-    config.set('SRE_TRIAGE_AGENT_ENABLED', 'true');
-    config.set('SRE_TRIAGE_AGENT_BACKGROUND_ENABLED', 'true');
+  it('enqueues deterministic jobs for sent alert deliveries by default', async () => {
     const service = new SreAlertTriageQueueService(configService);
 
     await service.enqueueAlertHistoryRows([
@@ -65,4 +62,25 @@ describe('SreAlertTriageQueueService', () => {
       { jobId: 'sre-alert-triage:alert-history-1' },
     );
   });
+
+  it.each(['false', '0', ' FALSE '])(
+    'honors the triage opt-out %s',
+    async (flag) => {
+      config.set('SRE_ENABLED', flag);
+      await new SreAlertTriageQueueService(
+        configService,
+      ).enqueueAlertHistoryRows([{ id: 'alert-history-1', status: 'sent' }]);
+      expect(mockQueueConstructor).not.toHaveBeenCalled();
+    },
+  );
+  it.each(['false', '0', ' FALSE '])(
+    'honors the automation opt-out %s',
+    async (flag) => {
+      config.set('SRE_AUTOMATION_ENABLED', flag);
+      await new SreAlertTriageQueueService(
+        configService,
+      ).enqueueAlertHistoryRows([{ id: 'alert-history-1', status: 'sent' }]);
+      expect(mockQueueConstructor).not.toHaveBeenCalled();
+    },
+  );
 });

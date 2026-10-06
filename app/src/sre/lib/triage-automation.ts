@@ -1,3 +1,4 @@
+import { validateAIConfiguration } from "@/lib/ai/ai-provider";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { isSreAutomaticTriageEnabled } from "@/sre/lib/feature-gates";
 import { runSreIncidentTriage, type RunSreIncidentTriageResult } from "@/sre/lib/triage-runner";
@@ -15,7 +16,7 @@ export type AutomaticSreTriageInput = {
 };
 
 export type AutomaticSreTriageResult =
-  | { attempted: false; reason: "disabled" | "existing_incident" | "resolved_alert" | "insufficient_permissions" }
+  | { attempted: false; reason: "disabled" | "existing_incident" | "resolved_alert" | "insufficient_permissions" | "ai_not_configured" }
   | ({ attempted: true } & RunSreIncidentTriageResult);
 
 export async function maybeRunAutomaticSreTriage(input: AutomaticSreTriageInput): Promise<AutomaticSreTriageResult> {
@@ -41,6 +42,12 @@ export async function maybeRunAutomaticSreTriage(input: AutomaticSreTriageInput)
 
   if (!canInvestigateIncident || !canRunInvestigation) {
     return { attempted: false, reason: "insufficient_permissions" };
+  }
+
+  try {
+    validateAIConfiguration();
+  } catch {
+    return { attempted: false, reason: "ai_not_configured" };
   }
 
   try {

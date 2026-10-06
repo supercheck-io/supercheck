@@ -24,7 +24,7 @@ export const doctorCommand = new Command('doctor')
     const hasConfig = Boolean(configResult)
     const hasPlaywrightConfig = configResult?.config.tests?.playwright !== undefined
     const hasK6Config = configResult?.config.tests?.k6 !== undefined
-    const requirePlaywright = !hasConfig || hasPlaywrightConfig || !hasK6Config
+    const requirePlaywright = !hasConfig || hasPlaywrightConfig
     const requireK6 = hasK6Config
 
     // 1. Check dependencies

@@ -9,7 +9,7 @@ Project Admins and organization-level administrators configure AI SRE from **Org
 Select **Setup guide** beside **Add service**, **Add connector**, or **Add recipe** to review setup status.
 
 <Callout type="info">
-**Self-Hosted Requirement**: AI SRE investigations require an AI provider configured in your `.env` and `SRE_INVESTIGATION_AGENT_ENABLED=true`. Recreate the app container after changing `.env`. See [Self-Hosted AI SRE Features](/docs/app/deployment/self-hosted#optional-configuration) for details.
+**Self-Hosted Requirement**: AI SRE and alert-triggered automation are enabled by default with a configured AI provider. No enable flag is required. Set `SRE_AUTOMATION_ENABLED=false` for manual-only AI work, or `SRE_ENABLED=false` to disable AI SRE. Recreate the affected app and worker containers after changing `.env`. See [Self-Hosted AI SRE Features](/docs/app/deployment/self-hosted#optional-configuration).
 </Callout>
 
 ## Services
@@ -104,3 +104,30 @@ flowchart LR
 | Edit service metadata, dependencies, or links | Service update |
 | Approve topology suggestions | Service configure |
 | Create or investigate incidents | Matching incident permission |
+
+## Optional Slack and Teams incident commands
+
+Slack/Teams command handling is separate from normal dashboard and CLI SRE use. Skip this setup unless you want responders to acknowledge, resolve, or investigate incidents from chat.
+
+From your deployment directory, configure only the integration you use in `.env`:
+
+```bash
+# Slack commands and replies
+SLACK_SIGNING_SECRET=your-slack-signing-secret
+SLACK_BOT_TOKEN=your-slack-bot-token
+# Or Teams outgoing webhook commands
+TEAMS_OUTGOING_WEBHOOK_SECRET=your-teams-webhook-secret
+# Required for either provider: comma-separated external user IDs
+SRE_COLLABORATION_ALLOWED_RESPONDER_IDS=U123,U456
+```
+
+Add the optional overlay to your usual Compose command:
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/supercheck-io/supercheck/main/deploy/docker/docker-compose-collaboration.yml
+docker compose -f docker-compose.yml -f docker-compose-collaboration.yml up -d --force-recreate app
+```
+
+Use your installation's main Compose filename if it differs. Slack sends signed requests to `/api/webhooks/slack`; Teams uses `/api/webhooks/teams`. Requests require valid provider signatures and responders on the allowlist. Empty allowlists deny commands. Collaboration investigations use stored evidence; use an authenticated dashboard or CLI session with explicit live-source consent to query telemetry connectors. These commands never grant live connector access or enable provider writes.
+
+Existing custom deployments can continue supplying the legacy `SRE_SLACK_*` or `SRE_TEAMS_*` credential aliases directly; the new optional overlay uses the provider names above. Move these credentials out of normal installation settings when upgrading.

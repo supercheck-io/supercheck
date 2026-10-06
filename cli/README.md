@@ -7,7 +7,7 @@ The Supercheck CLI provides a first-class command-line interface for managing te
 [![Website](https://img.shields.io/badge/Website-supercheck.io-orange?logo=firefox)](https://supercheck.io)
 [![Documentation](https://img.shields.io/badge/Docs-supercheck.io-blue)](https://supercheck.io/docs/cli/commands)
 [![npm](https://img.shields.io/npm/v/@supercheck/cli?logo=npm&label=CLI)](https://www.npmjs.com/package/@supercheck/cli)
-[![License](https://img.shields.io/badge/license-AGPL--3.0--only-blue.svg)](../LICENSE)
+[![License](https://img.shields.io/badge/license-AGPL--3.0--only-blue.svg)](https://github.com/supercheck-io/supercheck/blob/main/LICENSE)
 
 ---
 
@@ -18,7 +18,7 @@ The Supercheck CLI provides a first-class command-line interface for managing te
 - **CI/CD Automation**: Trigger scheduled or on-demand jobs with trigger keys and poll execution results directly from GitHub Actions, GitLab CI, or Jenkins (`supercheck job trigger --wait`).
 - **Unified Resource Management**: Complete command suite for tests, monitors, jobs, execution runs, variables, secrets, tags, and notification providers.
 - **Local Validation & Execution**: Run Playwright and k6 tests locally against local or staging endpoints before deploying (`supercheck test run`).
-- **Security-First Architecture**: Server-side token hashing, zero secret storage in plain text, client-side secret obfuscation, and strict pre-deploy token scanning.
+- **Authentication and Secrets**: Project-scoped tokens, server-side token hashing, masked secret responses, and pre-deploy token checks. Local CLI credentials are obfuscated; use `SUPERCHECK_TOKEN` from your CI secret store for automation.
 - **Enterprise Network Support**: Full HTTP/HTTPS proxy support with `NO_PROXY` awareness via `undici`.
 - **Diagnostics & Self-Healing**: Environment check with `supercheck doctor` and API diagnostics with `supercheck health`.
 - **AI SRE for On-Call**: Triage and investigate incidents, stream grounded Copilot answers, and inspect service topology from the terminal.
@@ -63,6 +63,12 @@ Upgrade the CLI to the latest release:
 ```bash
 supercheck upgrade
 ```
+
+### CLI 0.2.1
+
+This patch fixes incident-number handling for every AI SRE command, authentication target selection and read-only login, streaming error exit codes and cleanup, and port/synthetic monitor creation. Monitoring-only projects no longer require Playwright dependencies for `doctor`.
+
+After upgrading, use the number displayed by `supercheck incident list` directly, for example `supercheck sre investigate 1`. AI SRE and alert-triggered automation default on in the updated app with a configured AI provider. Operators need only `SRE_ENABLED` and `SRE_AUTOMATION_ENABLED`, both defaulting to `true`; set automation to `false` for manual-only AI work. A `503 feature_disabled` response requires the server operator to check the setting named by `enabledBy`. Older servers may still report their old per-workflow flags. Live connector access requires explicit `--live-connectors` consent and server permissions. See [release notes](https://github.com/supercheck-io/supercheck/releases/tag/cli-v0.2.1).
 
 ---
 
@@ -152,7 +158,7 @@ supercheck upgrade
 | `supercheck job keys create <jobId> --name <name>` | Create a trigger key |
 | `supercheck job keys delete <jobId> <keyId>` | Revoke a trigger key |
 | `supercheck job run --id <job-id>` | Run a job immediately in the cloud |
-| `supercheck job run --local` | Run a job locally using local test files |
+| `supercheck job run --id <job-id-or-name> --local` | Run a job from local config using local test files |
 | `supercheck job trigger <id> --wait` | Trigger a job with a trigger key and wait for completion (CI/CD) |
 | `supercheck run list` | List recent execution runs (`--job`, `--status`, `--page`, `--limit`) |
 | `supercheck run get <id>` | Get run details |
@@ -183,6 +189,8 @@ supercheck upgrade
 | `supercheck monitor update <id> ...` | Update a monitor (`--interval-minutes`, `--dry-run`) |
 | `supercheck monitor delete <id>` | Delete a monitor |
 
+Port-check creation requires `--port` and supports `--protocol tcp|udp`. Synthetic-test creation requires `--test-id <uuid>` and does not require `--url`. Monitor timeouts accept 1-3600 seconds. Stream failures return nonzero exit codes.
+
 > **Dry run support:** `test create`, `test update`, `job create`, `job update`, `monitor create`, `monitor update`, `pull`, `deploy`, and `destroy` support `--dry-run`. `upgrade --dry-run` prints the package-manager command without running it.
 
 ### Variables, tags & notifications
@@ -202,16 +210,20 @@ supercheck notification test --type slack --payload '{"webhookUrl":"https://hook
 
 ### AI SRE
 
+Incident commands accept the number shown in `incident list` or a UUID. Numbers resolve within the CLI token’s project. For example, `supercheck sre investigate 1` and `supercheck sre ask "Summarize the strongest evidence" --incident 1`.
+
+Manual triage and investigations are enabled by default on new installations with an AI provider configured. Existing deployments may explicitly disable them; a `503 feature_disabled` response identifies the operator setting. Live connector access requires `--live-connectors` and permission. Streamed AI failures return a nonzero exit code, including with `--json`.
+
 | Command | Description |
 |---|---|
 | `supercheck incident list` | List incidents; optionally filter by `--status` or `--severity` |
 | `supercheck incident get <id>` | Inspect an incident and its current RCA summary |
 | `supercheck incident timeline <id>` | View the incident timeline |
 | `supercheck incident resolve <id> --comment <text>` | Resolve with confirmation and an audited comment |
-| `supercheck sre triage <incident-id>` | Correlate alerts and classify an incident |
-| `supercheck sre investigate <incident-id>` | Start an asynchronous deep investigation |
+| `supercheck sre triage <incident-number-or-uuid>` | Correlate alerts and classify an incident |
+| `supercheck sre investigate <incident-number-or-uuid>` | Start an asynchronous deep investigation |
 | `supercheck sre ask <question>` | Stream a read-only Copilot answer, optionally scoped with `--incident` |
-| `supercheck sre brief <incident-id>` | Generate and stream an evidence brief |
+| `supercheck sre brief <incident-number-or-uuid>` | Generate and stream an evidence brief |
 | `supercheck service list / get / health / dependencies` | Inspect the service catalog and topology |
 
 ### Utilities
@@ -318,7 +330,7 @@ docker run --rm -e SUPERCHECK_TOKEN supercheck-cli whoami
 
 | Flag | Description |
 |---|---|
-| `--json` | Output in JSON format (`sre ask` and `sre brief` use NDJSON) |
+| `--json` | Output in JSON format (`sre ask`, `sre brief`, `run stream`, and `test status` use NDJSON) |
 | `--quiet` | Suppress non-essential output (IDs and errors only) |
 | `--debug` | Enable debug logging |
 | `-v, --version` | Show CLI version |
@@ -336,15 +348,15 @@ docker run --rm -e SUPERCHECK_TOKEN supercheck-cli whoami
 
 ## Contributing and security
 
-Contributions are welcome. Please read [CONTRIBUTING.md](../CONTRIBUTING.md) before opening a pull request and follow the [Code of Conduct](../CODE_OF_CONDUCT.md).
+Contributions are welcome. Please read [CONTRIBUTING.md](https://github.com/supercheck-io/supercheck/blob/main/CONTRIBUTING.md) before opening a pull request and follow the [Code of Conduct](https://github.com/supercheck-io/supercheck/blob/main/CODE_OF_CONDUCT.md).
 
-Report security vulnerabilities privately as described in [SECURITY.md](../SECURITY.md).
+Report security vulnerabilities privately as described in [SECURITY.md](https://github.com/supercheck-io/supercheck/blob/main/SECURITY.md).
 
 ---
 
 ## License
 
-The Supercheck CLI is open source under the [GNU Affero General Public License v3.0 only](LICENSE), matching the app and worker.
+The Supercheck CLI is open source under the [GNU Affero General Public License v3.0 only](https://github.com/supercheck-io/supercheck/blob/main/LICENSE), matching the app and worker. A copy is included in the npm package.
 
 ---
 
@@ -353,3 +365,7 @@ The Supercheck CLI is open source under the [GNU Affero General Public License v
 [![Discord](https://img.shields.io/badge/Discord-Join%20Community-5865F2?logo=discord&logoColor=white)](https://discord.gg/UVe327CSbm)
 [![GitHub Issues](https://img.shields.io/badge/GitHub-Issues-181717?logo=github&logoColor=white)](https://github.com/supercheck-io/supercheck/issues)
 [![GitHub Discussions](https://img.shields.io/badge/GitHub-Discussions-181717?logo=github&logoColor=white)](https://github.com/supercheck-io/supercheck/discussions)
+
+## Maintainer release instructions
+
+For validation, interactive npm publication, and 2FA troubleshooting, see [CLI release instructions](https://github.com/supercheck-io/supercheck/blob/main/cli/RELEASING.md).

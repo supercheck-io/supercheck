@@ -60,6 +60,14 @@ paths:
       tags:
         - AI SRE
       parameters:
+        - name: incidentNumber
+          in: query
+          description: Resolve an incident number within the authenticated organization
+            and project.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 2147483647
         - name: status
           in: query
           schema:

@@ -125,7 +125,7 @@ describe("SRE investigate API", () => {
     expect(body).toEqual({
       error: "SRE investigation is not enabled",
       code: "feature_disabled",
-      enabledBy: "SRE_INVESTIGATION_AGENT_ENABLED",
+      enabledBy: "SRE_ENABLED",
     });
     expect(mockRequireProjectContext).toHaveBeenCalled();
     expect(mockStartSreIncidentInvestigation).not.toHaveBeenCalled();
