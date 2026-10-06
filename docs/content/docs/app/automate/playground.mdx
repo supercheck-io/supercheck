@@ -36,6 +36,31 @@ Use **Cancel** to stop a running test. Review the cancellation details in its re
 You can save a draft at any time, including before the test has run or while it is failing. Run and validate the test before relying on it in a job or monitor.
 </Callout>
 
+<p className="text-sm md:hidden">Scroll horizontally to view the full diagram.</p>
+
+<div className="overflow-x-auto" role="region" aria-label="Playground workflow diagram" tabIndex={0}>
+<div className="min-w-[28rem]">
+
+```mermaid
+%%{init: {"sequence": {"mirrorActors": false, "actorMargin": 24, "width": 110, "height": 65, "wrap": true}}}%%
+sequenceDiagram
+    actor You
+    participant Editor as Playground
+
+    You->>Editor: Write a script or choose a template
+    You->>Editor: Click Run
+    Editor-->>You: Follow status and live logs
+    Editor-->>You: Open the completed report
+    opt Run failed
+        You->>Editor: Edit or review an AI Fix suggestion
+        You->>Editor: Run again to verify
+    end
+    You->>Editor: Save the test
+```
+
+</div>
+</div>
+
 ## AI Create
 
 Generate complete, working test scripts from plain English descriptions. AI Create uses your configured AI provider to understand your requirements and produce well-structured Playwright code.

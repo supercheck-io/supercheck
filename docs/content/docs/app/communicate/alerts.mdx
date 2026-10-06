@@ -10,6 +10,33 @@ Alerts notify you when monitors fail, tests break, or services recover. Configur
 
 Configure a notification channel, send a test notification, then select that channel in a monitor or job's **Alerts** settings. Choose which failures and recoveries should notify your team, and review delivery history when a notification does not arrive.
 
+## Alert Workflow
+
+<p className="text-sm md:hidden">Scroll horizontally to view the full diagram.</p>
+
+<div className="overflow-x-auto" role="region" aria-label="Alerts workflow diagram" tabIndex={0}>
+<div className="min-w-[28rem]">
+
+```mermaid
+%%{init: {"sequence": {"mirrorActors": false, "actorMargin": 24, "width": 110, "height": 65, "wrap": true}}}%%
+sequenceDiagram
+    actor You
+    participant Supercheck as Supercheck
+    participant Channel as Your alert channel
+
+    You->>Supercheck: Configure a notification channel
+    You->>Supercheck: Select Test Connection
+    Channel-->>You: Confirm the test notification arrived
+    You->>Supercheck: Attach channel and choose alert thresholds
+    opt An enabled alert condition occurs
+        Channel-->>You: Receive failure or recovery notification
+        You->>Supercheck: Open the linked monitor or run
+    end
+```
+
+</div>
+</div>
+
 ## Notification Providers
 
 <Cards>

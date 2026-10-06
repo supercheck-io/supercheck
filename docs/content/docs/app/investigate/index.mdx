@@ -6,6 +6,35 @@ icon: Search
 
 Supercheck's AI SRE transforms existing tests, monitors, jobs, alert history, and status pages into an automated, **read-only incident investigation loop**. It connects to your existing operational tools, gathers scoped evidence, explains what likely happened with citations, and recommends fix and recovery-check steps for a human responder.
 
+## Investigation Workflow
+
+<p className="text-sm md:hidden">Scroll horizontally to view the full diagram.</p>
+
+<div className="overflow-x-auto" role="region" aria-label="Investigate Overview workflow diagram" tabIndex={0}>
+<div className="min-w-[28rem]">
+
+```mermaid
+%%{init: {"sequence": {"mirrorActors": false, "actorMargin": 24, "width": 110, "height": 65, "wrap": true}}}%%
+sequenceDiagram
+    actor Responder as Responder
+    participant Supercheck as Supercheck
+    participant System as Your systems
+
+    Responder->>Supercheck: Open an alert or create an incident
+    Note over Responder,Supercheck: Opening an incident does not start an investigation
+    Responder->>Supercheck: Select Run investigation
+    Supercheck-->>Responder: Review findings and evidence gaps
+    opt A fix is needed
+        Responder->>System: Apply a fix with your own tools
+    end
+    Responder->>Supercheck: Re-run checks to confirm recovery
+    Supercheck-->>Responder: Review the new results
+    Responder->>Supercheck: Resolve incident and record recovery checks
+```
+
+</div>
+</div>
+
 ## Read-Only By Design
 
 **Supercheck's AI SRE layer is explicitly read-only.** It never writes to your production systems or executes remediation actions on your behalf.

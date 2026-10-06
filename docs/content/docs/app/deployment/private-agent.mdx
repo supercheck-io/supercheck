@@ -12,7 +12,7 @@ Private Agents execute read-only connector queries for investigations. They do n
 
 ## Before You Start
 
-For **Supercheck Cloud**, sign in at [app.supercheck.io](https://app.supercheck.io) and select the project that will use the agent. Run only the Private Agent on a machine inside your network; you do not need to self-host Supercheck.
+For **Supercheck Cloud**, sign in and select the project that will use the agent. Run only the Private Agent on a machine inside your network; you do not need to self-host Supercheck.
 
 For **self-hosted Supercheck**, use your own dashboard and instance URL. The setup steps below are the same.
 
@@ -21,6 +21,34 @@ You need:
 - Permission to configure connectors, such as **Project Admin**, **Org Admin**, or **Org Owner**.
 - Docker Engine with Compose v2 (`docker compose`) on a machine that can reach your internal provider endpoints.
 - Outbound access from the container to your Supercheck instance over HTTPS. No inbound firewall ports are needed.
+
+## Setup Workflow
+
+<p className="text-sm md:hidden">Scroll horizontally to view the full diagram.</p>
+
+<div className="overflow-x-auto" role="region" aria-label="Private Agent workflow diagram" tabIndex={0}>
+<div className="min-w-[28rem]">
+
+```mermaid
+%%{init: {"sequence": {"mirrorActors": false, "actorMargin": 24, "width": 110, "height": 65, "wrap": true}}}%%
+sequenceDiagram
+    actor You
+    participant Cloud as Supercheck dashboard
+    participant Host as Your Docker host
+
+    You->>Cloud: Register agent
+    Cloud-->>You: Copy ID and token
+    You->>Host: Configure .env and start Compose
+    You->>Cloud: Confirm agent is connected
+    You->>Cloud: Add connector and select agent
+    You->>Cloud: Validate connector and test a query
+    Cloud-->>You: Review validation result
+    You->>Cloud: Run investigation with live sources
+    Cloud-->>You: Review cited findings
+```
+
+</div>
+</div>
 
 ## Set Up the Agent
 
@@ -44,13 +72,13 @@ curl --fail --show-error --location --output docker-compose-private-agent.yml \
 Create a `.env` file beside the Compose file:
 
 ```bash
-SUPERCHECK_API_URL=https://app.supercheck.io
+SUPERCHECK_API_URL=https://your-supercheck-instance.example
 PRIVATE_AGENT_ID=your-agent-id
 PRIVATE_AGENT_TOKEN=your-registration-token
 SUPERCHECK_VERSION=1.3.6
 ```
 
-For self-hosted Supercheck, replace the API URL with your instance's HTTPS origin, without a path such as `/api`. Use the Compose file and worker image from the same release. Keep `.env` out of version control and restrict its permissions:
+Replace the example API URL with the HTTPS origin of your Cloud dashboard or self-hosted instance, without a path such as `/api`. Use the Compose file and worker image from the same release. Keep `.env` out of version control and restrict its permissions:
 
 ```bash
 chmod 600 .env

@@ -35,6 +35,26 @@ Private Agent mode supports GitHub, Kubernetes, Prometheus, Grafana, Sentry, Dat
 
 Use an endpoint reachable from the selected execution location. Supercheck Cloud Direct mode cannot reach private IPs or private DNS names. Self-hosted Direct mode and Private Agents allow internal HTTP or HTTPS endpoints. All modes reject loopback and cloud metadata endpoints and credentials embedded in URLs; enter credentials in the dedicated fields.
 
+<p className="text-sm md:hidden">Scroll horizontally to view the full diagram.</p>
+
+<div className="overflow-x-auto" role="region" aria-label="Connectors workflow diagram" tabIndex={0}>
+<div className="min-w-[52rem]">
+
+```mermaid
+flowchart TB
+    Provider[Choose a supported provider] --> Reachable{Can Supercheck reach it directly?}
+    Reachable -->|Yes|Direct[Choose Direct]
+    Reachable -->|No|Agent[Register and start a Private Agent]
+    Agent --> Private[Choose Private Agent and select it]
+    Direct --> Configure[Set endpoint, credentials, and service scope]
+    Private --> Configure
+    Configure --> Validate[Validate and run a known-result query]
+    Validate --> Use[Enable live sources in an investigation]
+```
+
+</div>
+</div>
+
 ## Adding a Connector
 
 To register a connector:
