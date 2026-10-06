@@ -7,7 +7,7 @@ The Supercheck CLI provides a first-class command-line interface for managing te
 [![Website](https://img.shields.io/badge/Website-supercheck.io-orange?logo=firefox)](https://supercheck.io)
 [![Documentation](https://img.shields.io/badge/Docs-supercheck.io-blue)](https://supercheck.io/docs/cli/commands)
 [![npm](https://img.shields.io/npm/v/@supercheck/cli?logo=npm&label=CLI)](https://www.npmjs.com/package/@supercheck/cli)
-[![License](https://img.shields.io/badge/license-AGPL--3.0--only-blue.svg)](../LICENSE)
+[![License](https://img.shields.io/badge/license-AGPL--3.0--only-blue.svg)](https://github.com/supercheck-io/supercheck/blob/main/LICENSE)
 
 ---
 
@@ -348,15 +348,15 @@ docker run --rm -e SUPERCHECK_TOKEN supercheck-cli whoami
 
 ## Contributing and security
 
-Contributions are welcome. Please read [CONTRIBUTING.md](../CONTRIBUTING.md) before opening a pull request and follow the [Code of Conduct](../CODE_OF_CONDUCT.md).
+Contributions are welcome. Please read [CONTRIBUTING.md](https://github.com/supercheck-io/supercheck/blob/main/CONTRIBUTING.md) before opening a pull request and follow the [Code of Conduct](https://github.com/supercheck-io/supercheck/blob/main/CODE_OF_CONDUCT.md).
 
-Report security vulnerabilities privately as described in [SECURITY.md](../SECURITY.md).
+Report security vulnerabilities privately as described in [SECURITY.md](https://github.com/supercheck-io/supercheck/blob/main/SECURITY.md).
 
 ---
 
 ## License
 
-The Supercheck CLI is open source under the [GNU Affero General Public License v3.0 only](LICENSE), matching the app and worker.
+The Supercheck CLI is open source under the [GNU Affero General Public License v3.0 only](https://github.com/supercheck-io/supercheck/blob/main/LICENSE), matching the app and worker. A copy is included in the npm package.
 
 ---
 
