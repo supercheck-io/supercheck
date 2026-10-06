@@ -25,6 +25,15 @@ Create your first test — browser, API, database, or performance
 
 ## Your Reliability Workflow
 
+```mermaid
+flowchart TB
+    Detect[Run tests and monitors] --> Triage[Review an alert and open an incident]
+    Triage --> Investigate[Run a read-only investigation]
+    Investigate --> Review[Review cited findings]
+    Review --> Fix[Apply a fix with your own tools]
+    Fix --> Confirm[Re-run checks and confirm recovery]
+```
+
 1. **Detect** with monitors, jobs, and tests.
 2. **Triage** from alerts, then open an incident when the signal needs investigation.
 3. **Investigate** with native evidence and optional read-only connectors.

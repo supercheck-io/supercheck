@@ -6,6 +6,56 @@ icon: Container
 
 Deploy Supercheck on a single server with Docker Compose.
 
+## Deployment Layout
+
+<p className="text-sm md:hidden">Scroll horizontally to view the full diagram.</p>
+
+<div className="overflow-x-auto" role="region" aria-label="Single-Location deployment layout diagram" tabIndex={0}>
+<div className="min-w-[52rem]">
+
+```mermaid
+flowchart TB
+    Users[Users / CI/CD]
+    Private[Private Agent<br/>Optional private-network connector]
+
+    subgraph SERVER["Single Linux Server"]
+        T[HTTPS Proxy<br/>Production setup] --> App[Supercheck App<br/>Dashboard + API]
+        App --> DB[(PostgreSQL<br/>Database)] & Redis[(Redis<br/>Job scheduling)] & S3[(MinIO<br/>Artifacts)]
+        App --- SRE[AI SRE<br/>Available in the app]
+        Redis --> W1[Worker 1<br/>WORKER_LOCATION=local]
+        Redis --> W2[Worker 2<br/>WORKER_LOCATION=local]
+        Redis --> WN[Worker N<br/>WORKER_LOCATION=local]
+        W1 --> K3S_1[Isolated Test<br/>Execution]
+        W2 --> K3S_2[Isolated Test<br/>Execution]
+        WN --> K3S_N[Isolated Test<br/>Execution]
+    end
+
+    Users --> T
+    Users -.->|HTTP quick start|App
+    Private -.->|Outbound HTTPS|App
+
+    style Users fill:#6366f1,stroke:#4338ca,color:#fff
+    style T fill:#0ea5e9,stroke:#0369a1,color:#fff
+    style App fill:#3b82f6,stroke:#1e40af,color:#fff
+    style DB fill:#f59e0b,stroke:#b45309,color:#fff
+    style Redis fill:#ef4444,stroke:#b91c1c,color:#fff
+    style S3 fill:#8b5cf6,stroke:#6d28d9,color:#fff
+    style SRE fill:#0ea5e9,stroke:#0369a1,color:#fff
+    style Private fill:#8b5cf6,stroke:#6d28d9,color:#fff
+    style W1 fill:#10b981,stroke:#047857,color:#fff
+    style W2 fill:#10b981,stroke:#047857,color:#fff
+    style WN fill:#10b981,stroke:#047857,color:#fff
+    style K3S_1 fill:#059669,stroke:#047857,color:#fff
+    style K3S_2 fill:#059669,stroke:#047857,color:#fff
+    style K3S_N fill:#059669,stroke:#047857,color:#fff
+    style SERVER fill:none,stroke:#3b82f6,stroke-width:2px
+```
+
+</div>
+</div>
+
+This layout shows the bundled services; managed external services use the same connections. Start with one worker and add capacity or regions as needed. Follow the Compose setup steps below for installation.
+
 ## Setup Overview
 
 1. Prepare a Linux server and install Docker Compose.

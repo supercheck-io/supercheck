@@ -340,6 +340,29 @@ Subscribers receive notifications for:
 
 When creating or updating an incident, select **Notify subscribers** if you want to send an update. Keep the message clear about impact, current status, and the next update. Visitors can review the incident timeline on the published page even when you do not send a notification.
 
+<p className="text-sm md:hidden">Scroll horizontally to view the full diagram.</p>
+
+<div className="overflow-x-auto" role="region" aria-label="Status Pages workflow diagram" tabIndex={0}>
+<div className="min-w-[28rem]">
+
+```mermaid
+%%{init: {"sequence": {"mirrorActors": false, "actorMargin": 24, "width": 110, "height": 65, "wrap": true}}}%%
+sequenceDiagram
+    actor Team as Your team
+    participant Page as Status page
+    actor Visitor as Subscriber
+
+    Visitor->>Page: Subscribe and verify if required
+    Team->>Page: Create incident with affected components
+    Team->>Page: Choose Notify subscribers
+    Page-->>Visitor: Receive incident notification
+    Team->>Page: Add progress and recovery updates
+    Visitor->>Page: Review the incident timeline
+```
+
+</div>
+</div>
+
 ## Settings
 
 Configure branding and notification settings.
@@ -372,6 +395,14 @@ Use your own domain (e.g., `status.example.net`) instead of the default subdomai
 </Callout>
 
 #### Set Up a Custom Domain
+
+```mermaid
+flowchart TB
+    Domain[Save the custom hostname in Settings] --> DNS[Add the CNAME shown in Settings]
+    DNS --> Verify[Verify DNS and publish the page]
+    Verify --> HTTPS[Confirm HTTPS works]
+    HTTPS --> Share[Share the custom URL]
+```
 
 <Steps>
   <Step>

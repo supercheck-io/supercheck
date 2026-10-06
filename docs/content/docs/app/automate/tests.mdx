@@ -41,6 +41,30 @@ k6 load testing from multiple regions
 
 After a run completes, review its result and available logs, screenshots, and traces. If it fails, update the script and run it again. You can save a draft before it passes; validate it before adding it to a job or synthetic monitor.
 
+<p className="text-sm md:hidden">Scroll horizontally to view the full diagram.</p>
+
+<div className="overflow-x-auto" role="region" aria-label="Tests workflow diagram" tabIndex={0}>
+<div className="min-w-[28rem]">
+
+```mermaid
+%%{init: {"sequence": {"mirrorActors": false, "actorMargin": 24, "width": 110, "height": 65, "wrap": true}}}%%
+sequenceDiagram
+    actor You
+    participant Supercheck as Supercheck
+
+    You->>Supercheck: Create a test and write the script
+    You->>Supercheck: Run the test
+    Supercheck-->>You: Review result and available artifacts
+    opt Test needs changes
+        You->>Supercheck: Edit the script and run again
+        Supercheck-->>You: Review the new result
+    end
+    You->>Supercheck: Save the test for reuse
+```
+
+</div>
+</div>
+
 ## AI Features
 
 - **AI Create** — Generate tests from plain English descriptions (beta for browser tests)

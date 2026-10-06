@@ -112,6 +112,32 @@ Trigger jobs from your CI/CD pipeline to run tests after every deployment.
 
 Create a job trigger key, store it as a secret in your CI/CD platform, and call the copied trigger URL after deployment. To make the pipeline wait for the result and fail when tests fail, use the [CLI CI/CD workflow](/docs/cli/ci-cd) with `supercheck job trigger --wait`.
 
+<p className="text-sm md:hidden">Scroll horizontally to view the full diagram.</p>
+
+<div className="overflow-x-auto" role="region" aria-label="Jobs workflow diagram" tabIndex={0}>
+<div className="min-w-[28rem]">
+
+```mermaid
+%%{init: {"sequence": {"mirrorActors": false, "actorMargin": 24, "width": 110, "height": 65, "wrap": true}}}%%
+sequenceDiagram
+    actor You
+    participant Dashboard as Supercheck
+    participant CI as Your pipeline
+
+    You->>Dashboard: Create a job trigger key
+    Dashboard-->>You: Copy key and job ID
+    You->>CI: Store trigger key and CLI token as secrets
+    You->>CI: Configure job trigger with --wait
+    CI->>Dashboard: Trigger the configured job
+    Dashboard-->>CI: Return the completed run result
+    CI-->>You: Continue or fail the pipeline
+```
+
+</div>
+</div>
+
+This shows the CLI workflow with `--wait`. A plain HTTP trigger starts the job but does not wait for the test result.
+
 ### Setting Up API Triggers
 
 1. Open the job you want to trigger

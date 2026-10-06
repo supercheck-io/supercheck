@@ -68,6 +68,25 @@ Keep provider credentials in the connector's dedicated credential fields. No inb
 
 ## Setup Order
 
+<p className="text-sm md:hidden">Scroll horizontally to view the full diagram.</p>
+
+<div className="overflow-x-auto" role="region" aria-label="AI SRE Setup workflow diagram" tabIndex={0}>
+<div className="min-w-[52rem]">
+
+```mermaid
+flowchart TB
+    Services[Add services] --> Checks[Link tests and monitors]
+    Checks --> Native[Try an investigation with stored evidence]
+    Native --> Need{Need external evidence?}
+    Need -->|No|Review[Review cited findings]
+    Need -->|Yes|Connectors[Add connectors and validate queries]
+    Connectors --> Live[Enable live sources and investigate]
+    Live --> Review
+```
+
+</div>
+</div>
+
 1. Add the services your team operates and link their existing tests, jobs, or monitors.
 2. Investigate an incident using stored Supercheck evidence to confirm the basic workflow.
 3. Optionally add connectors for external evidence. If a provider is private, deploy a Private Agent before selecting it in the connector.
