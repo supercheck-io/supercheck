@@ -18,7 +18,7 @@ New users signing up through an invitation join the inviting team without creati
 
 ## Projects
 
-Manage all projects within your organization. Create, edit, or archive projects as needed.
+Organization administrators can create and manage projects. Project admins can update their assigned projects.
 
 ![Projects List](/screenshots/org-admin-projects.png)
 
@@ -103,12 +103,11 @@ Only the organization owner can request deletion. Organizations with projects or
 
 ## CLI Tokens
 
-Manage organization-wide and project-scoped CLI tokens for API access and automation.
-Tokens created here can be used in your CI/CD pipelines and external integrations.
+Create project-scoped CLI tokens for API access and automation. Tokens inherit their owner's permissions; use a separate token for each pipeline or integration.
 
 1. Go to **Admin → CLI Tokens**
 2. Click **Create Token**
-3. Select the target project and assign an expiry date
+3. Enter a name and optional expiry date for a token in the current project
 4. Copy the generated token securely
 
 ## AI SRE Setup

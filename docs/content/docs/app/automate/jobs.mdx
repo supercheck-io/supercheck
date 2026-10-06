@@ -115,22 +115,30 @@ Create a job trigger key, store it as a secret in your CI/CD platform, and call 
 <p className="text-sm md:hidden">Scroll horizontally to view the full diagram.</p>
 
 <div className="overflow-x-auto" role="region" aria-label="Jobs workflow diagram" tabIndex={0}>
-<div className="min-w-[28rem]">
+<div className="min-w-[48rem]">
 
 ```mermaid
-%%{init: {"sequence": {"mirrorActors": false, "actorMargin": 24, "width": 110, "height": 65, "wrap": true}}}%%
 sequenceDiagram
-    actor You
-    participant Dashboard as Supercheck
-    participant CI as Your pipeline
+    accTitle: CI pipeline trigger
+    accDescr: Authorize a pipeline, trigger a job, and wait for its result.
+    autonumber
+    participant You as You
+    participant App as Supercheck
+    participant Environment as Your pipeline
 
-    You->>Dashboard: Create a job trigger key
-    Dashboard-->>You: Copy key and job ID
-    You->>CI: Store trigger key and CLI token as secrets
-    You->>CI: Configure job trigger with --wait
-    CI->>Dashboard: Trigger the configured job
-    Dashboard-->>CI: Return the completed run result
-    CI-->>You: Continue or fail the pipeline
+    rect rgba(139, 92, 246, 0.08)
+        You->>App: Create job trigger key
+        App-->>You: Trigger key and job ID
+        You->>Environment: Store keys and CLI token as secrets
+    end
+    rect rgba(59, 130, 246, 0.08)
+        You->>Environment: Configure CLI trigger --wait
+        Environment->>App: Trigger job and wait
+        App-->>Environment: Completed run result
+    end
+    rect rgba(16, 185, 129, 0.08)
+        Environment-->>You: Pipeline success or failure
+    end
 ```
 
 </div>
@@ -160,7 +168,8 @@ This shows the CLI workflow with `--wait`. A plain HTTP trigger starts the job b
 **Basic trigger:**
 
 ```bash
-curl -X POST https://your-instance.com/api/jobs/{jobId}/trigger \
+curl --fail-with-body --show-error --silent -X POST \
+  "https://your-instance.example/api/jobs/YOUR_JOB_ID/trigger" \
   -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
@@ -172,7 +181,7 @@ curl -X POST https://your-instance.com/api/jobs/{jobId}/trigger \
 ```yaml
 - name: Run Supercheck Tests
   run: |
-    curl -X POST ${{ secrets.SUPERCHECK_TRIGGER_URL }} \
+    curl --fail-with-body --show-error --silent -X POST "${{ secrets.SUPERCHECK_TRIGGER_URL }}" \
       -H "Authorization: Bearer ${{ secrets.SUPERCHECK_API_KEY }}"
 ```
 
@@ -184,7 +193,9 @@ curl -X POST https://your-instance.com/api/jobs/{jobId}/trigger \
 ```yaml
 test:
   script:
-    - curl -X POST $SUPERCHECK_TRIGGER_URL -H "Authorization: Bearer $SUPERCHECK_API_KEY"
+    - |
+      curl --fail-with-body --show-error --silent -X POST "$SUPERCHECK_TRIGGER_URL" \
+        -H "Authorization: Bearer $SUPERCHECK_API_KEY"
 ```
 
 </Tab>

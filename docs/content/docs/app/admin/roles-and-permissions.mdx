@@ -4,12 +4,12 @@ description: Role-based access control for organizations and projects
 icon: ShieldCheck
 ---
 
-Supercheck uses a **6-role RBAC system** with granular permissions across organizations and projects. This page provides a complete reference of what each role can do.
+Choose a role based on the tasks a teammate needs. Use the tables below to check permissions.
 
 ## Role Overview
 
 <Callout type="info">
-**Access Scope**: Organization-level roles (Super Admin, Org Owner, Org Admin) have access to **all projects** in the organization. Project-level roles (Project Admin, Project Editor) are limited to **assigned projects only**. Project Viewer has read-only access to all projects.
+Members can view all active projects in their organization. **Project Admin** and **Project Editor** gain additional permissions only in assigned projects; their access to other projects remains read-only. Organization administrators manage all projects in their organization.
 </Callout>
 
 | Role | Level | Description |
@@ -76,7 +76,7 @@ Use the matrix below for each role's exact permissions and project scope.
 | **Manage project members** | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
 
 <Callout type="info">
-*\* Project Admin and Project Editor permissions apply only to their assigned projects.*
+*\* Additional permissions apply only to assigned projects. Other active projects remain readable.*
 </Callout>
 
 </Tab>
@@ -174,7 +174,7 @@ Variables and secrets have special permission rules to balance usability with se
 | **View secret values** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
 
 <Callout type="warn">
-**Project Editors** can create/edit variables and view decrypted secret values (needed to use secrets in tests), but **cannot delete** variables. This prevents accidental data loss while allowing productive work with encrypted secrets.
+**Project Editors** can create and edit variables and reveal secret values in assigned projects. They cannot delete variables. Keep revealed values out of chat, logs, and shared documents.
 </Callout>
 
 ## System Administration
@@ -200,9 +200,9 @@ The following roles can access **all projects** in their organization without ex
 - **Org Admin** — All projects in administered organizations
 - **Project Viewer** — Read-only access to all projects (intentional for monitoring roles)
 
-### Project-Limited Access
+### Assigned Project Permissions
 
-These roles only have access to **explicitly assigned projects**:
+These roles have additional permissions in **assigned projects** and read-only access to other active projects:
 
 - **Project Admin** — Full control, but only for assigned projects
 - **Project Editor** — Create/edit permissions, but only for assigned projects

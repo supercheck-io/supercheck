@@ -32,34 +32,37 @@ flowchart TB
     Investigate --> Review[Review cited findings]
     Review --> Fix[Apply a fix with your own tools]
     Fix --> Confirm[Re-run checks and confirm recovery]
+
+    classDef action fill:#1d4ed8,stroke:#60a5fa,color:#fff
+    classDef choice fill:#6d28d9,stroke:#a78bfa,color:#fff
+    classDef success fill:#047857,stroke:#34d399,color:#fff
+    class Detect,Triage,Investigate action
+    class Review choice
+    class Fix,Confirm success
 ```
 
-1. **Detect** with monitors, jobs, and tests.
-2. **Triage** from alerts, then open an incident when the signal needs investigation.
-3. **Investigate** with native evidence and optional read-only connectors.
-4. **Explain** in the incident brief and investigation report.
-5. **Confirm recovery** by re-running the same checks. AI SRE does not apply fixes.
+AI SRE suggests checks and fixes. You apply changes and confirm recovery.
 
 ## Core Capabilities
 
 <Cards>
 <Card icon={<CalendarClock className="text-purple-500" />} title="Automate" href="/docs/app/automate">
-Write browser, API, database, and performance tests with an AI-powered editor that generates code from plain English and automatically fixes failures
+Write tests, review AI suggestions, and schedule validated scripts.
 </Card>
 
 <Card icon={<Globe className="text-sky-500" />} title="Monitor" href="/docs/app/monitor">
-Track uptime with HTTP, website, ping, port, and synthetic monitors running from multiple geographic regions with configurable check intervals
+Check uptime from available regions and receive failure or recovery alerts.
 </Card>
 
 <Card icon={<Radio className="text-rose-500" />} title="Communicate" href="/docs/app/communicate">
-Send alerts through Slack, email, Discord, Telegram, Microsoft Teams, and webhooks. Create public status pages to keep users informed during incidents
+Configure alert channels and publish status updates for your users.
 </Card>
 
 <Card icon={<Search className="text-indigo-500" />} title="Investigate" href="/docs/app/investigate">
-Resolve incidents faster with an AI SRE layer that gathers read-only evidence from external tools and recommends fixes
+Run read-only investigations, review cited evidence, and verify recovery.
 </Card>
 
 <Card icon={<UserCog className="text-amber-500" />} title="Admin" href="/docs/app/admin">
-Manage teams with role-based access control, organize work into projects, and maintain audit trails for compliance
+Manage projects, members, permissions, and integrations.
 </Card>
 </Cards>

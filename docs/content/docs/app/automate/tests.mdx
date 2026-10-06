@@ -44,22 +44,28 @@ After a run completes, review its result and available logs, screenshots, and tr
 <p className="text-sm md:hidden">Scroll horizontally to view the full diagram.</p>
 
 <div className="overflow-x-auto" role="region" aria-label="Tests workflow diagram" tabIndex={0}>
-<div className="min-w-[28rem]">
+<div className="min-w-[36rem]">
 
 ```mermaid
-%%{init: {"sequence": {"mirrorActors": false, "actorMargin": 24, "width": 110, "height": 65, "wrap": true}}}%%
 sequenceDiagram
-    actor You
-    participant Supercheck as Supercheck
+    accTitle: Create and reuse a test
+    accDescr: Write, run, review, and save a reusable test.
+    autonumber
+    participant You as You
+    participant App as Supercheck
 
-    You->>Supercheck: Create a test and write the script
-    You->>Supercheck: Run the test
-    Supercheck-->>You: Review result and available artifacts
-    opt Test needs changes
-        You->>Supercheck: Edit the script and run again
-        Supercheck-->>You: Review the new result
+    rect rgba(139, 92, 246, 0.08)
+        You->>App: Create test and write script
+        You->>App: Run the test
+        App-->>You: Result and available artifacts
     end
-    You->>Supercheck: Save the test for reuse
+    opt Test needs changes
+        You->>App: Edit and run again
+        App-->>You: Updated result
+    end
+    rect rgba(16, 185, 129, 0.08)
+        You->>App: Save for reuse
+    end
 ```
 
 </div>
@@ -83,16 +89,6 @@ See [Playground](/docs/app/automate/playground) for details.
 <Tab value="Browser Test">
 
 ```typescript
-/**
- * Playwright UI smoke test.
- * 
- * Purpose:
- * - Verify that the application loads correctly
- * - Check that critical UI elements are visible
- * - Perform a basic user interaction
- * 
- * @see https://playwright.dev/docs/writing-tests
- */
 import { expect, test } from '@playwright/test';
 
 const APP_URL = 'https://demo.playwright.dev/todomvc';
@@ -122,16 +118,6 @@ test.describe('UI smoke test', () => {
 <Tab value="API Test">
 
 ```typescript
-/**
- * API health probe with contract checks.
- * 
- * Purpose:
- * - Verify that the API is up and running (status 200)
- * - Check that the response headers are correct (Content-Type)
- * - Validate the structure and data types of the response body
- * 
- * @see https://playwright.dev/docs/api-testing
- */
 import { expect, test } from '@playwright/test';
 
 const API_URL = 'https://jsonplaceholder.typicode.com';
@@ -160,23 +146,6 @@ test.describe('API health check', () => {
 <Tab value="Performance Test">
 
 ```javascript
-/**
- * k6 smoke test for uptime and latency.
- * 
- * Purpose:
- * - Verify system availability (uptime)
- * - Check basic latency performance
- * - Ensure the system is ready for heavier load tests
- * 
- * Configuration:
- * - VUs: 3 virtual users running concurrently
- * - Duration: 30 seconds test run
- * - Thresholds: 
- *   - Error rate must be < 1%
- *   - 95th percentile response time must be < 800ms
- * 
- * @see https://grafana.com/docs/k6/latest/using-k6/thresholds/
- */
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 

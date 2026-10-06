@@ -336,28 +336,36 @@ Subscribers receive notifications for:
 - New incidents created
 - Incident status updates
 - Incident resolution
-- Scheduled maintenance reminders
+- Maintenance updates you publish with **Notify subscribers** selected
 
 When creating or updating an incident, select **Notify subscribers** if you want to send an update. Keep the message clear about impact, current status, and the next update. Visitors can review the incident timeline on the published page even when you do not send a notification.
 
 <p className="text-sm md:hidden">Scroll horizontally to view the full diagram.</p>
 
 <div className="overflow-x-auto" role="region" aria-label="Status Pages workflow diagram" tabIndex={0}>
-<div className="min-w-[28rem]">
+<div className="min-w-[48rem]">
 
 ```mermaid
-%%{init: {"sequence": {"mirrorActors": false, "actorMargin": 24, "width": 110, "height": 65, "wrap": true}}}%%
 sequenceDiagram
-    actor Team as Your team
-    participant Page as Status page
-    actor Visitor as Subscriber
+    accTitle: Status page updates
+    accDescr: Subscribe, publish an incident, notify subscribers, and share recovery updates.
+    autonumber
+    participant You as Your team
+    participant App as Status page
+    participant Environment as Subscriber
 
-    Visitor->>Page: Subscribe and verify if required
-    Team->>Page: Create incident with affected components
-    Team->>Page: Choose Notify subscribers
-    Page-->>Visitor: Receive incident notification
-    Team->>Page: Add progress and recovery updates
-    Visitor->>Page: Review the incident timeline
+    rect rgba(139, 92, 246, 0.08)
+        Environment->>App: Subscribe and verify if required
+        You->>App: Create incident and choose components
+    end
+    rect rgba(59, 130, 246, 0.08)
+        You->>App: Select Notify subscribers
+        App-->>Environment: Incident notification
+    end
+    rect rgba(16, 185, 129, 0.08)
+        You->>App: Publish progress and recovery
+        Environment->>App: Read incident timeline
+    end
 ```
 
 </div>
@@ -388,140 +396,74 @@ Configure branding and notification settings.
 </Tab>
 <Tab value="Custom Domains">
 
-Use your own domain (e.g., `status.example.net`) instead of the default subdomain.
-
-<Callout type="info">
-**Local development stays on localhost:** When you access Supercheck on `http://localhost:3000`, the **View** and **Copy URL** actions keep using `http://localhost:3000/status/[subdomain]`. Supercheck does not send local development traffic to the public `STATUS_PAGE_DOMAIN`.
-</Callout>
+Use a custom hostname such as `status.example.net`. Configure DNS, verify the page, then confirm HTTPS before sharing the URL.
 
 #### Set Up a Custom Domain
 
 ```mermaid
 flowchart TB
-    Domain[Save the custom hostname in Settings] --> DNS[Add the CNAME shown in Settings]
-    DNS --> Verify[Verify DNS and publish the page]
-    Verify --> HTTPS[Confirm HTTPS works]
-    HTTPS --> Share[Share the custom URL]
+    Domain[Save hostname in Settings] --> DNS[Add the displayed CNAME]
+    DNS --> Verify[Verify DNS and publish]
+    Verify --> HTTPS[Confirm HTTPS]
+    HTTPS --> Share[Share the URL]
+
+    classDef action fill:#1d4ed8,stroke:#60a5fa,color:#fff
+    classDef choice fill:#6d28d9,stroke:#a78bfa,color:#fff
+    classDef success fill:#047857,stroke:#34d399,color:#fff
+    class Domain,DNS action
+    class Verify choice
+    class HTTPS,Share success
 ```
 
-<Steps>
-  <Step>
-    **Configure in Supercheck**
-    
-    1. Go to your status page → **Settings** tab
-    2. Enter your custom domain (e.g., `status.example.net`)
-    3. Click **Save**
-  </Step>
-  <Step>
-    **Add DNS Record**
-    
-    Log in to your DNS provider (e.g., Cloudflare, GoDaddy, Namecheap) and add the required DNS records.
+| Step | Action |
+|---|---|
+| **1. Save** | Enter the custom hostname in the status page's **Settings**, then save. |
+| **2. Configure DNS** | Add a **CNAME** from your custom hostname to the exact target shown in Settings. Some providers require only the hostname label, such as `status`. |
+| **3. Verify** | Wait for propagation, then select **Verify DNS**. Ensure the page is published. |
+| **4. Check HTTPS** | Open the custom URL and confirm the certificate is valid before sharing it. |
 
-    For example, if your custom domain is `status.example.net`:
+**Self-hosted example:**
 
-    | Type | Hostname | Target |
-    |------|----------|--------|
-    | CNAME | `status.example.net` | `target shown in Settings` |
+| Purpose | Hostname | DNS record |
+|---|---|---|
+| Reserved default-page namespace | `[uuid].example.com` | Wildcard A/AAAA pointing to your app |
+| Target shown in Settings | `cname.example.com` | A/AAAA pointing to your app; omit if the wildcard covers it |
+| Custom status page | `status.example.net` | CNAME to `cname.example.com` |
 
-    **Example self-hosted DNS layout:**
+Set `STATUS_PAGE_DOMAIN` to the public namespace for default URLs. Keep custom hostnames outside that namespace. The target may use A/AAAA or wildcard DNS; the custom hostname must use a CNAME only.
 
-    - Reserved status-page namespace: `example.com`
-    - Target shown in Settings: `cname.example.com`
-    - Customer-facing custom domain: `status.example.net`
-
-    **Cloudflare example with separate DNS zones (self-hosted):**
-
-    | Purpose | Zone | Type | Name | Value | Proxy status |
-    |---------|------|------|------|-------|--------------|
-    | Target hostname | `example.com` | `A` / `AAAA` | `cname` | your app / ingress IP | `DNS only` |
-    | Custom hostname | `example.net` | `CNAME` | `status` | `cname.example.com` | `DNS only` during verification |
-
-    Skip the target `A` / `AAAA` record if an existing wildcard already covers `cname.example.com`.
-
-    Use the exact target shown in Settings. Some DNS providers expect the full hostname, while others expect only the label relative to your zone.
-
-    <Callout type="info">
-    **DNS rules:**
-    - Self-hosted: the target shown in Settings must already point to your app, usually via A/AAAA or wildcard DNS.
-    - Create a CNAME for the custom hostname to that target.
-    - Do not add A/AAAA records on the custom hostname itself.
-    </Callout>
-
-    <Callout type="info">
-    **Separate zones are normal:** The target hostname shown in Settings and the customer-facing custom hostname can live in different DNS zones. That is common in self-hosted deployments and customer-managed domains.
-    </Callout>
-
-    <Callout type="warn">
-    **Reserved domain namespace:** Do not set your custom domain to `STATUS_PAGE_DOMAIN` itself or any of its subdomains. That namespace is reserved for default UUID URLs (`[uuid].STATUS_PAGE_DOMAIN`). Use a separate hostname and point its CNAME to the target shown in Settings.
-    </Callout>
-
-    <Callout type="info">
-    **Target hostname:** The target shown in Settings may resolve through A/AAAA or wildcard DNS records. That is normal and does not change the customer-facing record, which should stay a CNAME.
-    </Callout>
-
-    <Callout type="warn">
-    **Cloudflare users:** Set the proxy status to **DNS only** (grey cloud icon) during initial verification and initial HTTPS checks. Only re-enable the proxy after the origin serves the custom hostname correctly.
-    </Callout>
-  </Step>
-  <Step>
-    **Verify DNS**
-    
-    1. Wait for DNS propagation (typically 5–30 minutes, can take up to 48 hours)
-    2. Return to the **Settings** tab and click **Verify DNS**
-    3. Ensure the status page is **published**
-    4. Open the custom URL and verify HTTPS works before sharing it. Self-hosted deployments also need a certificate configured as described below.
-  </Step>
-</Steps>
+<Callout type="warn">
+For Cloudflare, use **DNS only** during verification and initial HTTPS checks. Enable the proxy only after the origin serves HTTPS for the custom hostname; use **Full** or **Full (Strict)** TLS mode.
+</Callout>
 
 #### HTTPS / SSL
 
-How HTTPS is handled depends on your deployment:
+| Deployment | What to do |
+|---|---|
+| **Supercheck Cloud** | HTTPS is configured automatically after domain verification. |
+| **Self-hosted Docker Compose** | The secure Compose file routes verified custom hostnames to the app. Configure a matching TLS certificate separately in Traefik or your reverse proxy. |
+| **Traefik certificates** | Keep the `status-custom` router and supply matching certificates through dynamic TLS configuration. |
+| **Other reverse proxy** | Accept the custom hostname, terminate TLS, and forward requests to the app on port 3000. |
 
-| Deployment | HTTPS Handling |
-|------------|---------------|
-| **Supercheck Cloud** | HTTPS is enabled automatically — no action required |
-| **Self-hosted (Docker Compose)** | The default `docker-compose-secure.yml` includes a catch-all Traefik route for verified custom domains and forwards those hostnames to the app. Provide TLS certificates for those hostnames separately via Traefik dynamic TLS config, a wildcard/custom certificate, Cloudflare, or another reverse proxy. |
-| **Behind Cloudflare proxy** | Keep the record on **DNS only** until the origin serves HTTPS correctly for the custom hostname. If you later enable the proxy, use SSL/TLS mode **Full** or **Full (Strict)** in your Cloudflare dashboard. |
-| **Custom / self-managed certificates** | Keep the `status-custom` Traefik router and attach your own TLS configuration for the hostname (for example mounted certificates via a Traefik dynamic config file, or a wildcard/custom certificate). |
-| **Other reverse proxies (nginx, Caddy)** | Configure your reverse proxy to accept traffic for the custom domain and terminate TLS. Forward to the app on port 3000. |
-
-<Callout type="warn">
-**Cloudflare SSL/TLS mode:** If using Cloudflare proxy with your custom domain, set the SSL/TLS encryption mode to **Full** or **Full (Strict)** in Cloudflare dashboard → SSL/TLS. The **Flexible** mode can cause redirect loops.
-</Callout>
+DNS verification does not provision a self-hosted certificate. See the [HTTPS deployment guide](/docs/app/deployment/self-hosted) for the base deployment.
 
 #### Removing a Custom Domain
 
-To remove a custom domain, clear the domain field in **Settings** and save. The default subdomain URL will continue to work.
+Clear the domain field in **Settings** and save. The default page URL continues to work.
 
 #### Troubleshooting
 
-| Issue | Solution |
-|-------|----------|
-| "CNAME not found" | Wait 15–30 minutes for DNS propagation, then try again |
-| "Points to wrong target" | Verify your CNAME target matches the value shown in Settings |
-| "Target hostname is not publicly resolvable yet" | Keep your custom hostname as a CNAME only. Make sure the target shown in Settings already points to your app, usually via A/AAAA or wildcard DNS. |
-| "Domain already in use" | The domain is configured on another status page — remove it there first |
-| 404 on custom domain | Ensure the status page is published, the domain is verified, and the configured custom domain is not `STATUS_PAGE_DOMAIN` (or one of its subdomains). Also verify the CNAME record points to the exact target shown in Settings. |
-| Verification fails with Cloudflare | Cloudflare proxy flattens CNAME records into A/AAAA records, making the CNAME invisible to verification. Temporarily set the record to **DNS only** (grey cloud), click **Verify DNS**, then re-enable the proxy. |
-| DNS dashboard shows an A/AAAA record too | That is normal for the target hostname shown in Settings. Keep the customer-facing hostname as a CNAME only; do not add both a CNAME and A/AAAA on the same hostname. |
-| Redirect loops with Cloudflare | Set Cloudflare SSL/TLS mode to **Full** or **Full (Strict)** |
-| HTTPS not working (self-hosted) | The default Docker Compose config routes verified custom domains to the app, but you must terminate TLS for those hostnames separately. If behind Cloudflare, ensure SSL mode is **Full** or **Full (Strict)**. If using Traefik directly, provide matching certificates via dynamic TLS config or a wildcard/custom certificate. |
+| Problem | Check |
+|---|---|
+| CNAME missing or wrong target | Confirm the target matches Settings, then wait for DNS propagation. Check with [DNS Checker](https://dnschecker.org). |
+| Target is not publicly resolvable | Point the target hostname to your app using A/AAAA or wildcard DNS. Keep the custom hostname as a CNAME only. |
+| Domain already in use | Remove it from the other status page first. |
+| 404 | Publish the page, verify DNS, and check that the hostname is outside the reserved `STATUS_PAGE_DOMAIN` namespace. |
+| Cloudflare verification fails | Switch the custom record to **DNS only** so its CNAME remains visible. |
+| Redirect loop | Use Cloudflare **Full** or **Full (Strict)**, then check origin HTTPS. |
+| Self-hosted HTTPS fails | Configure a certificate matching the custom hostname and confirm your proxy accepts it. |
 
-<Callout type="info">
-**Self-hosted configuration:** Set `STATUS_PAGE_DOMAIN` to the hostname reserved for default status page URLs (`[uuid].STATUS_PAGE_DOMAIN`). Supercheck derives the custom-domain target automatically, usually `cname.STATUS_PAGE_DOMAIN`. That target must already point to your app, usually through A/AAAA or wildcard DNS.
-</Callout>
-
-<Callout type="info">
-**DNS provider input formats vary:** Some DNS providers want the full hostname (`status.example.net`), while others want only the label relative to your zone (`status`). The required CNAME target stays the same in either format.
-</Callout>
-
-<Callout type="warn">
-**Local/self-hosted placeholders are not enough for custom domains:** If `STATUS_PAGE_DOMAIN` still resolves to `localhost`, `127.0.0.1`, or another non-public placeholder, custom domains remain unavailable until you switch `STATUS_PAGE_DOMAIN` to a publicly reachable hostname. In the Docker Compose templates, setting `APP_DOMAIN` usually does this automatically.
-</Callout>
-
-<Callout type="tip">
-**Test DNS Propagation:** Use [dnschecker.org](https://dnschecker.org) to verify your CNAME record has propagated globally before clicking Verify DNS.
-</Callout>
+Local development uses `http://localhost:3000/status/[subdomain]`. Public custom domains require a publicly reachable `STATUS_PAGE_DOMAIN`; localhost and private placeholders cannot serve as the target.
 
 </Tab>
 </Tabs>

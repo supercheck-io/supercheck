@@ -4,13 +4,13 @@ description: Interactive test editor with AI assistance
 icon: FlaskConical
 ---
 
-The Playground is an interactive development environment for writing, running, and debugging tests. It combines a professional code editor with AI-powered assistance to help you create reliable tests faster.
+Write, run, and debug test scripts in the Playground. Review AI suggestions before applying them.
 
 ![Playground Editor](/screenshots/playground-editor.png)
 
 ## Editor Features
 
-The Playground uses Monaco Editor (the same editor that powers VS Code) with features tailored for test development:
+Use the editor to write and check your script:
 
 - **Syntax Highlighting** — Full TypeScript/JavaScript support with Playwright API recognition
 - **Auto-completion** — IntelliSense for Playwright methods, selectors, and assertions
@@ -39,23 +39,28 @@ You can save a draft at any time, including before the test has run or while it 
 <p className="text-sm md:hidden">Scroll horizontally to view the full diagram.</p>
 
 <div className="overflow-x-auto" role="region" aria-label="Playground workflow diagram" tabIndex={0}>
-<div className="min-w-[28rem]">
+<div className="min-w-[36rem]">
 
 ```mermaid
-%%{init: {"sequence": {"mirrorActors": false, "actorMargin": 24, "width": 110, "height": 65, "wrap": true}}}%%
 sequenceDiagram
-    actor You
-    participant Editor as Playground
+    accTitle: Playground workflow
+    accDescr: Run a script, review its report, verify changes, and save the test.
+    autonumber
+    participant You as You
+    participant App as Playground
 
-    You->>Editor: Write a script or choose a template
-    You->>Editor: Click Run
-    Editor-->>You: Follow status and live logs
-    Editor-->>You: Open the completed report
-    opt Run failed
-        You->>Editor: Edit or review an AI Fix suggestion
-        You->>Editor: Run again to verify
+    rect rgba(139, 92, 246, 0.08)
+        You->>App: Write script or choose template
+        You->>App: Select Run
+        App-->>You: Status, logs, and report
     end
-    You->>Editor: Save the test
+    opt Run failed
+        You->>App: Review edits or AI Fix
+        You->>App: Run again to verify
+    end
+    rect rgba(16, 185, 129, 0.08)
+        You->>App: Save the test
+    end
 ```
 
 </div>
@@ -63,7 +68,7 @@ sequenceDiagram
 
 ## AI Create
 
-Generate complete, working test scripts from plain English descriptions. AI Create uses your configured AI provider to understand your requirements and produce well-structured Playwright code.
+Describe the behavior you want to test. AI Create suggests a script for you to review, edit, and run.
 
 <Callout type="warn">
 **Beta Feature**: AI-generated browser tests may require refinement. For best results, **record your test first** using the [Supercheck Recorder Extension](/docs/recorder) or Playwright's codegen, then use AI Create to enhance or modify it. Review all generated code before running.
@@ -90,25 +95,20 @@ Generate complete, working test scripts from plain English descriptions. AI Crea
 
 **Example prompts:**
 
-| Prompt | What AI Generates |
+| Prompt | Intended Check |
 |--------|-------------------|
 | "Test login with email user@example.com and password test123, verify dashboard loads" | Complete login flow with form filling, submission, and URL assertion |
 | "Check that the /api/health endpoint returns 200 and includes status: ok" | API test with fetch, status check, and JSON body validation |
 | "Verify user can add a product to cart, view cart, and see correct total" | Multi-step e-commerce flow with navigation and assertions |
 | "Test that the contact form validates required fields and shows error messages" | Form validation test with empty submission and error checking |
 
-### What AI Create Produces
+### Review Generated Code
 
-Generated tests include:
-- Proper imports (`@playwright/test`)
-- Descriptive test names and comments
-- Robust selectors (prefers data-testid, aria-labels)
-- Appropriate waits and assertions
-- Error handling where needed
+Check the target URL, selectors, credentials, waits, and assertions. Run the script to confirm it tests the expected behavior.
 
 ## AI Fix
 
-When a test fails, AI Fix analyzes the error and suggests corrections. It examines the failure report, identifies the root cause, and generates a fixed version of your code.
+After a failed run, use AI Fix to review suggested changes. Apply only changes you understand, then run the test again.
 
 ![AI Fix Button](/screenshots/ai-fix-button.png)
 
@@ -239,12 +239,6 @@ The Playwright Trace Viewer lets you:
 Access project-level configuration, secrets, and file-backed test data in your tests:
 
 ```javascript
-/**
- * Variables and secrets for test configuration.
- * Variables are plain text, secrets are encrypted.
- * File variables can be read with readFile() in Playwright.
- * @see /docs/app/automate/variables for setup instructions
- */
 
 // Regular variables (logged normally)
 const baseUrl = getVariable('BASE_URL');

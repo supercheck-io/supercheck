@@ -9,16 +9,6 @@ Automate user interactions with Playwright. Navigate pages, fill forms, click bu
 ## Example
 
 ```typescript
-/**
- * Authentication flow test (Login & Logout).
- * 
- * Purpose:
- * - Verify user can successfully log in with valid credentials
- * - Verify user is redirected to the secure area
- * - Verify user can log out successfully
- * 
- * @see https://playwright.dev/docs/writing-tests
- */
 import { expect, test } from '@playwright/test';
 
 const APP_URL = 'https://the-internet.herokuapp.com';
@@ -59,8 +49,8 @@ test.describe('authentication flow', () => {
 | Action | Code |
 |--------|------|
 | Navigate | `await page.goto('url')` |
-| Click | `await page.click('selector')` |
-| Fill input | `await page.fill('selector', 'value')` |
+| Click | `await page.getByRole('button', { name: 'Submit' }).click()` |
+| Fill input | `await page.getByLabel('Email').fill('user@example.com')` |
 | Check text | `await expect(page.locator('selector')).toHaveText('text')` |
 | Wait | `await page.waitForSelector('selector')` |
 | Screenshot | `await page.screenshot({ path: 'file.png' })` |
@@ -70,11 +60,9 @@ test.describe('authentication flow', () => {
 Use stable selectors:
 
 ```typescript
-// Good - data attributes
-await page.click('[data-testid="submit-btn"]');
-
-// Good - role-based
-await page.click('button:has-text("Submit")');
+// Prefer accessible roles or stable test IDs.
+await page.getByRole('button', { name: 'Submit' }).click();
+await page.getByTestId('submit-btn').click();
 
 // Avoid - class names change
 await page.click('.btn-primary');
@@ -84,7 +72,7 @@ await page.click('.btn-primary');
 
 ```typescript
 // URL
-await expect(page).toHaveURL('/dashboard');
+await expect(page).toHaveURL(/\/dashboard$/);
 
 // Text visible
 await expect(page.locator('.message')).toBeVisible();
