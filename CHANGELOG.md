@@ -46,12 +46,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- Pull overwrite confirmation defaults to no; `--force` supports unattended pulls.
 - Deploy/diff preserve remote resources absent from config; explicit `--delete` opts into pruning.
 - Consistent JSON/quiet behavior, including JSON errors and authentication results.
 - Concise npm README with a static architecture image and manual release instructions.
 
 ### Fixed
 
+- Pull shows resource counts by type and selected file effects, explains preserved local-only tests, and no longer promises test-script writes when no tests are being pulled. Dry-run identifies skipped file variables; dependency installation is disclosed before confirmation.
 - Zero-width PTY hangs, duplicate non-TTY progress, truncated IDs, ANSI leakage, EOF confirmation, and script blob output.
 - Incident filters, variable/tag bounds, empty job IDs, login URL diagnostics, and opaque validation/network errors.
 - Stream cleanup and interruption; one bounded retry for failed initial GET connections.

@@ -803,7 +803,7 @@ function formatValue(value: unknown, indent = 0): string {
 // ────────────────────────────────────────────────────────────────
 
 export const pullCommand = new Command('pull')
-  .description('Pull tests, monitors, jobs, status pages, and config from the Supercheck cloud into the local project')
+  .description('Copy remote tests and config into the local project; preserve local-only test scripts')
   .option('--config <path>', 'Path to config file')
   .option('--force', 'Bypass confirmation prompt before overwriting local files')
   .option('--tests-only', 'Only pull test scripts')
@@ -856,11 +856,38 @@ export const pullCommand = new Command('pull')
 
     logger.debug(`Found: ${tests.length} tests, ${monitors.length} monitors, ${jobs.length} jobs, ${variables.length} variables, ${tags.length} tags, ${notificationProviders.length} notification providers, ${statusPages.length} status pages`)
 
+    logger.info('Pull only copies remote resources to local files.')
+    logger.info('Local-only test scripts are preserved; `supercheck deploy` can create them remotely. Run `supercheck diff` to preview.')
+
     const totalResources = tests.length + monitors.length + jobs.length + variables.length + tags.length + notificationProviders.length + statusPages.length
     if (totalResources === 0) {
-      logger.warn('No resources found on the remote project.')
-      logger.info('Hint: Create tests and monitors in the Supercheck dashboard, then run `supercheck pull` again.')
+      logger.warn(options.testsOnly ? 'No test scripts found on the remote project.'
+        : options.configOnly ? 'No config resources found on the remote project.'
+          : 'No resources found on the remote project.')
       return
+    }
+
+    const resourceCounts = [
+      tests.length > 0 ? `${tests.length} test script(s)` : '',
+      monitors.length > 0 ? `${monitors.length} monitor(s)` : '',
+      jobs.length > 0 ? `${jobs.length} job(s)` : '',
+      variables.length > 0 ? `${variables.length} variable(s)` : '',
+      tags.length > 0 ? `${tags.length} tag(s)` : '',
+      notificationProviders.length > 0 ? `${notificationProviders.length} notification provider(s)` : '',
+      statusPages.length > 0 ? `${statusPages.length} status page(s)` : '',
+    ].filter(Boolean)
+    logger.info(`Found ${pc.bold(String(totalResources))} remote resource(s): ${resourceCounts.join(', ')}.`)
+    if (options.configOnly) logger.info('Test scripts are excluded (--config-only).')
+    else if (tests.length === 0) logger.info('No remote test scripts to pull.')
+
+    const pkgPath = resolve(cwd, 'package.json')
+    const fileEffects: string[] = []
+    if (tests.length > 0) fileEffects.push('write test scripts in _supercheck_ (overwriting matching local files)')
+    if (!options.testsOnly) fileEffects.push('create or replace supercheck.config.ts (overwriting local config edits)')
+    const effectPrefix = options.dryRun ? 'A pull would' : 'This will'
+    logger.info(`${effectPrefix} ${fileEffects.join(' and ')}.`)
+    if (!existsSync(pkgPath)) {
+      logger.info(`${effectPrefix} also create package.json, install dependencies, and create tsconfig.supercheck.json if missing.`)
     }
 
     // ── Dry run summary ──
@@ -887,7 +914,7 @@ export const pullCommand = new Command('pull')
       if (variables.length > 0) {
         logger.info(pc.cyan(`  Variables (${variables.length}):`))
         for (const v of variables) {
-          const typeLabel = v.type === 'file' ? ' (file)' : v.type === 'secret' ? ' (secret)' : ''
+          const typeLabel = v.type === 'file' ? ' (file; skipped — managed via dashboard)' : v.type === 'secret' ? ' (secret)' : ''
           logger.info(`    ${v.key}${typeLabel}`)
         }
       }
@@ -912,12 +939,10 @@ export const pullCommand = new Command('pull')
 
     // ── Confirm if not --force ──
     if (!options.force) {
-      logger.info(`Found ${pc.bold(String(totalResources))} resources to pull.`)
-      logger.info('This will write test scripts and update supercheck.config.ts.')
       logger.newline()
 
       const { confirmPrompt } = await import('../utils/prompt.js')
-      const confirmed = await confirmPrompt('Continue?', { default: true })
+      const confirmed = await confirmPrompt('Continue?', { default: false })
       if (!confirmed) {
         logger.info('Pull aborted.')
         return
@@ -971,7 +996,6 @@ export const pullCommand = new Command('pull')
     }
 
     // ── Install dependencies if package.json is missing ──
-    const pkgPath = resolve(cwd, 'package.json')
     if (!options.dryRun && !existsSync(pkgPath)) {
       logger.newline()
       logger.info('Initializing project dependencies...')
@@ -1114,7 +1138,7 @@ export const pullCommand = new Command('pull')
     }
 
     if (totalWritten === 0 && summary.skipped === 0 && totalErrors === 0) {
-      logger.success('Everything is already in sync.')
+      logger.success('Selected remote resources are already up to date locally.')
     } else {
       const resultParts: string[] = []
       if (summary.tests > 0) resultParts.push(`${summary.tests} test(s)`)
@@ -1133,9 +1157,8 @@ export const pullCommand = new Command('pull')
 
     logger.newline()
     logger.info('Next steps:')
-    logger.info('  1. Install dependencies:  npm install -D @supercheck/cli typescript')
-    logger.info('  2. Preview changes:       npx supercheck diff')
-    logger.info('  3. Deploy changes:        npx supercheck deploy')
+    logger.info('  1. Preview changes:       npx supercheck diff')
+    logger.info('  2. Deploy changes:        npx supercheck deploy')
     logger.newline()
     logger.info('Tip: Review the changes, then commit to version control.')
     logger.newline()

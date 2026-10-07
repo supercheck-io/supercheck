@@ -77,6 +77,8 @@ export default defineConfig({
 
 `pull` populates existing resource IDs for subsequent updates. Deploy validates test scripts before applying changes. See the [configuration guide](https://supercheck.io/docs/cli/configuration) for test discovery, secrets, and notification providers.
 
+`pull` copies remote resources into local files and can overwrite matching test scripts and `supercheck.config.ts`. Local-only test scripts are preserved, including files whose remote tests were deleted; `deploy` can recreate those tests with new IDs. Check `pull --dry-run` before pulling and `diff` before deploying. Use `pull --config-only` to skip test scripts or `pull --tests-only` to leave config untouched. Confirmation defaults to no; use `--force` for unattended pulls. If `package.json` is missing, pull also initializes project dependencies.
+
 ## CI/CD
 
 Store a job trigger key in `SUPERCHECK_TRIGGER_KEY`. Add a CLI token in `SUPERCHECK_TOKEN` when using `--wait` to read the result.
