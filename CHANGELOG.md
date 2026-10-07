@@ -33,6 +33,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Security
 
+- Patch dependency vulnerabilities in the app, worker, docs, and recorder; remove unused worker SWC tooling and its vulnerable dependencies.
 - Hardened release API authentication and error responses ([#311](https://github.com/supercheck-io/supercheck/pull/311)).
 - Remediated Dependabot dependency alerts ([#306](https://github.com/supercheck-io/supercheck/pull/306)).
 

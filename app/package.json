@@ -232,6 +232,10 @@
     "postcss": "8.5.23",
     "ws": "8.21.0",
     "axios": "^1.20.0",
-    "engine.io": "^6.6.10"
+    "engine.io": "^6.6.10",
+    "sharp": "0.35.5",
+    "source-map-js": "1.2.2",
+    "proxy-addr": "2.0.8",
+    "fast-copy@^3.0.0": "3.1.0"
   }
 }

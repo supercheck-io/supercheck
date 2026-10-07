@@ -113,5 +113,8 @@
     "vite": "6.4.3",
     "web-package": "file:./playwright/packages/web",
     "zip-bundle": "file:./playwright/packages/playwright-core/bundles/zip"
+  },
+  "overrides": {
+    "source-map-js": "1.2.2"
   }
 }
