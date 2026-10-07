@@ -30,6 +30,9 @@ export const loginCommand = new Command('login')
       }
 
       const baseUrl = options.url ?? getStoredBaseUrl() ?? getResolvedConfigBaseUrl() ?? 'https://app.supercheck.io'
+      let target: URL
+      try { target = new URL(baseUrl) } catch { throw new CLIError('Invalid API URL. Expected an http:// or https:// URL.', ExitCode.ConfigError) }
+      if (!['http:', 'https:'].includes(target.protocol) || target.username || target.password) throw new CLIError('Invalid API URL. Use HTTP(S) without embedded credentials.', ExitCode.ConfigError)
       // Verify and persist the same target; read-only users need no token-management permission.
       const client = getApiClient({
         baseUrl,
@@ -43,7 +46,8 @@ export const loginCommand = new Command('login')
           () => client.get('/api/context'),
           { successText: 'Token verified' },
         )
-      } catch {
+      } catch (error) {
+        if (!(error instanceof ApiRequestError && [401, 403].includes(error.statusCode ?? 0))) throw error
         throw new CLIError(
           'Token verification failed. Please check your token and try again.',
           ExitCode.AuthError,
@@ -55,6 +59,7 @@ export const loginCommand = new Command('login')
       setBaseUrl(baseUrl)
 
       const tokenPreview = safeTokenPreview(token)
+      if (getOutputFormat() === 'json') logger.output(JSON.stringify({ authenticated: true, apiUrl: baseUrl }))
       logger.success('Authentication successful')
       logger.info(`  Token: ${tokenPreview}`)
       logger.info(`  API URL: ${baseUrl}`)
@@ -79,6 +84,7 @@ export const logoutCommand = new Command('logout')
   .description('Remove stored authentication credentials')
   .action(() => {
     clearAuth()
+    if (getOutputFormat() === 'json') logger.output(JSON.stringify({ authenticated: false }))
     logger.success('Logged out successfully. Stored credentials removed.')
   })
 
@@ -164,7 +170,8 @@ export const whoamiCommand = new Command('whoami')
         logger.info(`  Last used: ${activeToken.lastRequest}`)
       }
       logger.newline()
-    } catch {
+    } catch (error) {
+      if (!(error instanceof ApiRequestError && [401, 403].includes(error.statusCode ?? 0))) throw error
       throw new CLIError(
         'Failed to verify authentication. Your token may be expired or invalid.',
         ExitCode.AuthError,

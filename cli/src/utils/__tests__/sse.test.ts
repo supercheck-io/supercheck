@@ -42,7 +42,7 @@ describe('postSse', () => {
 
   it('rejects unsuccessful responses without exposing unbounded bodies', async () => {
     jest.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('denied', { status: 403 }))
-    await expect(postSse('/api/sre/chat', {}, () => undefined)).rejects.toThrow('SRE stream request failed (403): denied')
+    await expect(postSse('/api/sre/chat', {}, () => undefined)).rejects.toThrow('Stream request failed (403): denied')
   })
 
   it('rejects events over the safety limit', async () => {
@@ -97,4 +97,29 @@ describe('postSse', () => {
     await getSse('/api/runs/run-1/stream', onEvent)
     expect(onEvent).toHaveBeenCalledTimes(2)
   })
+  it('retries one failed GET connection, but never replays a POST', async () => {
+    const failure = new TypeError('fetch failed', { cause: { code: 'ETIMEDOUT' } })
+    const fetchMock = jest.spyOn(globalThis, 'fetch').mockRejectedValueOnce(failure).mockResolvedValueOnce(new Response('data: {}\n\n'))
+    await getSse('/api/runs/run-1/stream', () => undefined)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    fetchMock.mockReset().mockRejectedValue(failure)
+    await expect(postSse('/api/sre/chat', {}, () => undefined)).rejects.toThrow('ETIMEDOUT')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('distinguishes interruption from an idle timeout and removes handlers', async () => {
+    const interrupts = process.listenerCount('SIGINT')
+    jest.spyOn(globalThis, 'fetch').mockImplementation(async (_url, options) => {
+      process.emit('SIGINT')
+      options?.signal?.throwIfAborted()
+      return new Response('')
+    })
+    await expect(getSse('/api/runs/run-1/stream', () => undefined)).rejects.toMatchObject({ message: 'Cancelled', exitCode: 130 })
+    expect(process.listenerCount('SIGINT')).toBe(interrupts)
+    jest.spyOn(globalThis, 'fetch').mockImplementation(async (_url, options) => new Promise((_resolve, reject) => {
+      options?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')))
+    }))
+    await expect(getSse('/api/runs/run-1/stream', () => undefined, 5)).rejects.toMatchObject({ exitCode: 5 })
+  })
+
 })

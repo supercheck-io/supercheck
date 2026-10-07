@@ -74,6 +74,9 @@ jobs:
           cache: "npm"
           cache-dependency-path: cli/package-lock.json
 
+      - name: Enable npm trusted publishing
+        run: npm install --global npm@11
+
       - name: Install dependencies
         run: npm ci --prefer-offline --no-audit
 

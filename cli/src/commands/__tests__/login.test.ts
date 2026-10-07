@@ -16,7 +16,7 @@ jest.unstable_mockModule('../../utils/logger.js', () => ({ logger: { output, inf
 jest.unstable_mockModule('../../utils/spinner.js', () => ({ withSpinner: async (_text: string, fn: () => Promise<unknown>) => fn() }))
 jest.unstable_mockModule('../../utils/resources.js', () => ({ safeTokenPreview: () => 'sck_live_...' }))
 jest.unstable_mockModule('../../output/formatter.js', () => ({ getOutputFormat: () => 'json' }))
-const { loginCommand, whoamiCommand } = await import('../login.js')
+const { loginCommand, logoutCommand, whoamiCommand } = await import('../login.js')
 const { ApiRequestError } = await import('../../utils/errors.js')
 
 describe('CLI authentication', () => {
@@ -63,4 +63,25 @@ describe('CLI authentication', () => {
     await whoamiCommand.parseAsync(['node', 'whoami'])
     expect(JSON.parse(String(output.mock.calls[0][0]))).toMatchObject({ project: context.project, organization: context.organization, role: 'project_viewer', userId: 'u1', tokenName: null })
   })
+  it('rejects invalid URLs before fetching or persisting credentials', async () => {
+    await expect(loginCommand.parseAsync(['node', 'login', '--token', 'sck_live_fixture', '--url', 'not-a-url'])).rejects.toMatchObject({ exitCode: 3 })
+    expect(get).not.toHaveBeenCalled()
+    expect(setToken).not.toHaveBeenCalled()
+  })
+
+  it('preserves connection diagnostics instead of blaming the token', async () => {
+    get.mockRejectedValue(new ApiRequestError('fetch failed (ETIMEDOUT)'))
+    await expect(loginCommand.parseAsync(['node', 'login', '--token', 'sck_live_fixture'])).rejects.toMatchObject({ exitCode: 4, message: 'fetch failed (ETIMEDOUT)' })
+    expect(setToken).not.toHaveBeenCalled()
+  })
+
+  it('emits structured login/logout results without copying the token', async () => {
+    get.mockResolvedValue({ data: { success: true } })
+    await loginCommand.parseAsync(['node', 'login', '--token', 'sck_live_fixture'])
+    expect(JSON.parse(String(output.mock.calls[0][0]))).toEqual({ authenticated: true, apiUrl: storedUrl })
+    await logoutCommand.parseAsync(['node', 'logout'])
+    expect(JSON.parse(String(output.mock.calls[1][0]))).toEqual({ authenticated: false })
+    expect(output.mock.calls.join(' ')).not.toContain('sck_live_fixture')
+  })
+
 })

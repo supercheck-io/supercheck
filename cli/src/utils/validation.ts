@@ -113,7 +113,8 @@ export async function validateScripts(
 
       results.push({
         name: input.name,
-        valid: data?.valid ?? true,
+        valid: data?.valid === true,
+        ...(!data?.valid ? { error: `Unexpected validation response: ${JSON.stringify(data)}` } : {}),
         warnings: data?.warnings,
       })
     } catch (err) {
@@ -121,7 +122,7 @@ export async function validateScripts(
         results.push({
           name: input.name,
           valid: false,
-          error: formatValidationError(err.responseBody),
+          error: `${err.message}: ${formatValidationError(err.responseBody)}${err.responseBody === undefined ? '' : ` — ${typeof err.responseBody === 'string' ? err.responseBody : JSON.stringify(err.responseBody)}`}`,
         })
         continue
       }

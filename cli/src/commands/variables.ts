@@ -90,6 +90,7 @@ varCommand
   .option('--value-stdin', 'Read the variable value from stdin')
   .option('--description <description>', 'Variable description')
   .action(async (key: string, value: string | undefined, options: { secret?: boolean; valueStdin?: boolean; description?: string }) => {
+    if (key.length < 4 || key.length > 20) throw new CLIError('Variable key must be 4–20 characters.', ExitCode.ConfigError)
     const client = createAuthenticatedClient()
 
     if (options.valueStdin && value !== undefined) {

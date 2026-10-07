@@ -30,6 +30,7 @@ jest.mock('fs', () => {
 });
 
 import {
+  ExecutionService,
   getContentType,
   ensureProperTraceConfiguration,
   isWindows,
@@ -203,5 +204,58 @@ const page = await browser.newPage();`;
       );
       consoleSpy.mockRestore();
     });
+  });
+});
+
+describe('Playwright console publication', () => {
+  it('forwards redacted transport chunks on the run console channel without changing execution results', async () => {
+    const service = Object.create(
+      ExecutionService.prototype,
+    ) as ExecutionService;
+    const publish = jest.fn().mockResolvedValue(1);
+    Object.assign(service, {
+      logger: { debug: jest.fn(), warn: jest.fn(), error: jest.fn() },
+      redisService: { getClient: () => ({ publish }) },
+      containerExecutorService: {
+        resolveWorkerDir: async () => '/worker',
+        executeInContainer: async (
+          _path: unknown,
+          _args: unknown,
+          options: { onStdoutChunk: (chunk: string) => Promise<void> },
+        ) => {
+          await options.onStdoutChunk('hello private-');
+          await options.onStdoutChunk('token world');
+          return {
+            success: true,
+            stdout: 'hello private-token world',
+            stderr: '',
+            duration: 100,
+          };
+        },
+      },
+    });
+    const result = await service['executeCommandSafely'](
+      'npx',
+      ['playwright', 'test'],
+      {
+        runId: 'run-1',
+        inlineScriptContent: 'test()',
+        env: {
+          SUPERCHECK_SECRETS_B64: Buffer.from(
+            JSON.stringify({ TOKEN: 'private-token' }),
+          ).toString('base64'),
+        },
+      },
+    );
+    expect(publish.mock.calls.map((call: string[]) => call[1]).join('')).toBe(
+      'hello [SECRET] world',
+    );
+    expect(
+      publish.mock.calls.every(
+        (call: string[]) => call[0] === 'k6:run:run-1:console',
+      ),
+    ).toBe(true);
+    expect(result.success).toBe(true);
+    expect(result.stdout).toBe('hello [SECRET] world');
   });
 });

@@ -1,6 +1,6 @@
 {
   "name": "@supercheck/cli",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Open-source testing, monitoring, and AI SRE \u2014 as code",
   "keywords": [
     "monitoring",
@@ -43,7 +43,8 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "assets/architecture.png"
   ],
   "scripts": {
     "build": "tsup",
@@ -66,6 +67,7 @@
     "ora": "^9.3.0",
     "picocolors": "^1.1.1",
     "undici": "^6.28.1",
+    "wrap-ansi": "^8.1.0",
     "zod": "^3.24.2"
   },
   "devDependencies": {

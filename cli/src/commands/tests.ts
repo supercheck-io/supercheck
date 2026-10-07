@@ -14,7 +14,7 @@ import { runCommand } from '../utils/exec.js'
 import { createTempPlaywrightConfig } from '../utils/playwright.js'
 import { ensureDependenciesForTestType, DependencyError } from '../utils/deps.js'
 import { getSse } from '../utils/sse.js'
-import { encodeStoredTestScript } from '../utils/script.js'
+import { decodeStoredTestScript, encodeStoredTestScript } from '../utils/script.js'
 import type { ApiTestType } from '../utils/validation.js'
 
 function normalizeTestType(input: string): string {
@@ -211,6 +211,7 @@ testCommand
       () => client.get<Record<string, unknown>>(`/api/tests/${id}`, params),
     )
     outputDetail(data)
+    if (options.includeScript && getOutputFormat() === 'table' && typeof data.script === 'string') logger.output(decodeStoredTestScript(data.script) ?? '')
   })
 
 testCommand

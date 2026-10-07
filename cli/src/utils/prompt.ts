@@ -21,11 +21,13 @@ export async function confirmPrompt(
   const { createInterface } = await import('node:readline')
   const rl = createInterface({ input: process.stdin, output: process.stderr })
 
-  const answer = await new Promise<string>((resolve) => {
+  const answer = await new Promise<string | null>((resolve) => {
+    rl.once('close', () => resolve(null))
     rl.question(`${message} ${hint} `, resolve)
   })
   rl.close()
 
+  if (answer === null) return false
   const normalized = answer.trim().toLowerCase()
 
   // Empty input → use default

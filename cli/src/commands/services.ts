@@ -1,6 +1,6 @@
 import { Command } from 'commander'
 import { createAuthenticatedClient } from '../api/authenticated-client.js'
-import { output, outputDetail } from '../output/formatter.js'
+import { getOutputFormat, output, outputDetail } from '../output/formatter.js'
 import { withSpinner } from '../utils/spinner.js'
 
 export const serviceCommand = new Command('service').alias('services').description('Inspect the AI SRE service catalog')
@@ -19,7 +19,12 @@ async function getService(id: string) {
 
 serviceCommand.command('get <id>').description('Get service details, health, and dependencies').action(async (id: string) => {
   const { data } = await getService(id)
-  outputDetail(data)
+  if (getOutputFormat() === 'json') outputDetail(data)
+  else {
+    const detail = { ...data }
+    delete detail.success
+    outputDetail(detail)
+  }
 })
 
 serviceCommand.command('health <id>').description('Get the latest service health snapshot').action(async (id: string) => {

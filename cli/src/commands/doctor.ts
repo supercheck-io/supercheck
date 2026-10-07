@@ -1,12 +1,11 @@
 import { Command } from 'commander'
 import { logger } from '../utils/logger.js'
 import { checkAllDependencies, formatDependencyReport, installPlaywrightBrowsers } from '../utils/deps.js'
-import { output } from '../output/formatter.js'
 import { getOutputFormat } from '../output/formatter.js'
 import { tryLoadConfig } from '../config/loader.js'
 import { getStoredBaseUrl, isAuthenticated } from '../auth/store.js'
 import { CLIError, ExitCode } from '../utils/errors.js'
-import pc from 'picocolors'
+import pc from '../utils/colors.js'
 
 export const doctorCommand = new Command('doctor')
   .description('Check that all dependencies and configuration are set up correctly')
@@ -21,29 +20,16 @@ export const doctorCommand = new Command('doctor')
 
     // Load config first to determine project requirements (Playwright vs k6 vs monitors only)
     const configResult = await tryLoadConfig()
-    const hasConfig = Boolean(configResult)
     const hasPlaywrightConfig = configResult?.config.tests?.playwright !== undefined
     const hasK6Config = configResult?.config.tests?.k6 !== undefined
-    const requirePlaywright = !hasConfig || hasPlaywrightConfig
+    const requirePlaywright = hasPlaywrightConfig
     const requireK6 = hasK6Config
 
     // 1. Check dependencies
     logger.info(pc.bold('Dependencies:'))
     let deps = checkAllDependencies(cwd, { requirePlaywright, requireK6 })
 
-    if (format === 'json') {
-      output(deps as unknown as Record<string, unknown>[], {
-        columns: [
-          { key: 'name', header: 'Dependency' },
-          { key: 'installed', header: 'Installed' },
-          { key: 'version', header: 'Version' },
-          { key: 'required', header: 'Required' },
-          { key: 'installHint', header: 'Install' },
-        ],
-      })
-    } else {
-      logger.output(formatDependencyReport(deps))
-    }
+    if (format === 'table') logger.info(formatDependencyReport(deps))
 
     logger.newline()
 
@@ -52,9 +38,9 @@ export const doctorCommand = new Command('doctor')
     const hasAuth = isAuthenticated()
     if (hasAuth) {
       const baseUrl = getStoredBaseUrl() ?? 'https://app.supercheck.io'
-      logger.output(`  ${pc.green('✓')} Authenticated (${pc.dim(baseUrl)})`)
+      logger.info(`  ${pc.green('✓')} Authenticated (${pc.dim(baseUrl)})`)
     } else {
-      logger.output(`  ${pc.yellow('○')} Not authenticated — run: supercheck login --token <token>`)
+      logger.info(`  ${pc.yellow('○')} Not authenticated — run: supercheck login --token <token>`)
     }
 
     logger.newline()
@@ -62,16 +48,16 @@ export const doctorCommand = new Command('doctor')
     // 3. Configuration summary
     logger.info(pc.bold('Configuration:'))
     if (configResult) {
-      logger.output(`  ${pc.green('✓')} supercheck.config.ts found`)
+      logger.info(`  ${pc.green('✓')} supercheck.config.ts found`)
       const org = configResult.config.project?.organization
       const proj = configResult.config.project?.project
       if (org && proj) {
-        logger.output(`  ${pc.green('✓')} Project: ${pc.dim(`${org}/${proj}`)}`)
+        logger.info(`  ${pc.green('✓')} Project: ${pc.dim(`${org}/${proj}`)}`)
       } else {
-        logger.output(`  ${pc.yellow('○')} Project org/project not configured in supercheck.config.ts`)
+        logger.info(`  ${pc.yellow('○')} Project org/project not configured in supercheck.config.ts`)
       }
     } else {
-      logger.output(`  ${pc.yellow('○')} No supercheck.config.ts — run: supercheck init`)
+      logger.info(`  ${pc.yellow('○')} No supercheck.config.ts — run: supercheck init`)
     }
 
     logger.newline()
@@ -124,6 +110,14 @@ export const doctorCommand = new Command('doctor')
     }
 
     logger.newline()
+
+    if (format === 'json') logger.output(JSON.stringify({
+      dependencies: deps,
+      authenticated: hasAuth,
+      apiUrl: getStoredBaseUrl() ?? 'https://app.supercheck.io',
+      configFound: Boolean(configResult),
+      ready: missingRequired.length === 0 && hasAuth && Boolean(configResult),
+    }, null, 2))
 
     // Exit with error code if required deps are missing
     if (missingRequired.length > 0) {

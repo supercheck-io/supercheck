@@ -17,7 +17,7 @@ import { withSpinner } from '../utils/spinner.js'
 import { testRelativePath } from '../utils/paths.js'
 import { normalizeTestTypeForApi, validateScripts, validateScriptTypeMatch } from '../utils/validation.js'
 import { encodeStoredTestScript } from '../utils/script.js'
-import pc from 'picocolors'
+import pc from '../utils/colors.js'
 
 
 /**
@@ -143,6 +143,7 @@ async function applyChange(
 export const deployCommand = new Command('deploy')
   .description('Push local config resources to the Supercheck project')
   .option('--config <path>', 'Path to config file')
+  .option('--delete', 'Delete ALL remote resources absent from config (including resources created elsewhere)', false)
   .option('--dry-run', 'Show what would change without applying')
   .option('--force', 'Skip confirmation prompt')
   .option('--no-delete', 'Do not delete remote resources missing from config')
@@ -168,7 +169,7 @@ export const deployCommand = new Command('deploy')
     let changes = reconcile(localResources, remoteResources)
 
     // Filter out deletes if --no-delete
-    if (options.delete === false) {
+    if (options.delete !== true) {
       changes = changes.filter((c) => c.action !== 'delete')
     }
 
@@ -186,11 +187,13 @@ export const deployCommand = new Command('deploy')
     }
 
     if (actionable.length === 0) {
-      logger.success('No changes to deploy. Everything is in sync.')
+      logger.success('No config changes to deploy. Remote resources absent from config are preserved.')
       return
     }
 
     formatChangePlan(changes)
+    const deletions = actionable.filter((change) => change.action === 'delete')
+    if (deletions.length > 0) logger.warn(`${deletions.length} remote resource(s) will be deleted, including any created outside this config.`)
 
     if (options.dryRun) {
       logger.info(pc.yellow('Dry run — no changes applied.'))

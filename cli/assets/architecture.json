@@ -1,0 +1,132 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Supercheck CLI",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1320,
+      700
+    ]
+  },
+  "components": [
+    {
+      "id": "project-config",
+      "type": "external",
+      "label": "Project config",
+      "sublabel": "supercheck.config.ts",
+      "pos": [
+        40,
+        260
+      ],
+      "size": [
+        210,
+        86
+      ]
+    },
+    {
+      "id": "terminal-cli",
+      "type": "frontend",
+      "label": "Supercheck CLI",
+      "sublabel": "Terminal and CI",
+      "pos": [
+        360,
+        260
+      ],
+      "size": [
+        210,
+        86
+      ]
+    },
+    {
+      "id": "project-api",
+      "type": "backend",
+      "label": "Supercheck API",
+      "sublabel": "Cloud or self-hosted",
+      "pos": [
+        700,
+        260
+      ],
+      "size": [
+        220,
+        86
+      ]
+    },
+    {
+      "id": "execution-workers",
+      "type": "backend",
+      "label": "Execution workers",
+      "sublabel": "Playwright and k6",
+      "pos": [
+        1050,
+        260
+      ],
+      "size": [
+        220,
+        86
+      ]
+    },
+    {
+      "id": "local-runner",
+      "type": "backend",
+      "label": "Local execution",
+      "sublabel": "Playwright and k6",
+      "pos": [
+        360,
+        470
+      ],
+      "size": [
+        210,
+        86
+      ]
+    },
+    {
+      "id": "sre-agent",
+      "type": "backend",
+      "label": "AI SRE",
+      "sublabel": "Incidents and Copilot",
+      "pos": [
+        700,
+        470
+      ],
+      "size": [
+        220,
+        86
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "config-cli",
+      "from": "project-config",
+      "to": "terminal-cli",
+      "label": "Read config"
+    },
+    {
+      "id": "cli-api",
+      "from": "terminal-cli",
+      "to": "project-api",
+      "label": "HTTPS API"
+    },
+    {
+      "id": "api-workers",
+      "from": "project-api",
+      "to": "execution-workers",
+      "label": "Dispatch jobs"
+    },
+    {
+      "id": "cli-local",
+      "from": "terminal-cli",
+      "to": "local-runner",
+      "label": "test run",
+      "labelDy": 24
+    },
+    {
+      "id": "api-sre",
+      "from": "project-api",
+      "to": "sre-agent",
+      "label": "Investigate",
+      "labelDy": 24
+    }
+  ]
+}

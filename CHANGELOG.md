@@ -37,6 +37,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Hardened release API authentication and error responses ([#311](https://github.com/supercheck-io/supercheck/pull/311)).
 - Remediated Dependabot dependency alerts ([#306](https://github.com/supercheck-io/supercheck/pull/306)).
 
+## [CLI 0.3.0] - Unreleased
+
+### Added
+
+- `sre status <runId>` for project-scoped investigation lifecycle status.
+- `--wide`, `--no-color`, Field/Value detail tables, labeled SRE narratives, and elapsed progress.
+
+### Changed
+
+- Deploy/diff preserve remote resources absent from config; explicit `--delete` opts into pruning.
+- Consistent JSON/quiet behavior, including JSON errors and authentication results.
+- Concise npm README with a static architecture image and manual release instructions.
+
+### Fixed
+
+- Zero-width PTY hangs, duplicate non-TTY progress, truncated IDs, ANSI leakage, EOF confirmation, and script blob output.
+- Incident filters, variable/tag bounds, empty job IDs, login URL diagnostics, and opaque validation/network errors.
+- Stream cleanup and interruption; one bounded retry for failed initial GET connections.
+
+### Server compatibility
+
+- Matching app/worker updates add secret-safe Playwright console streaming, synchronize notification names, and preserve k6 threshold results when HTML export is missing.
+
 ## [CLI 0.2.1] - 2026-10-07
 
 ### Fixed

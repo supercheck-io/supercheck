@@ -1,8 +1,10 @@
 import { requireAuth, getStoredBaseUrl } from '../auth/store.js'
 import { getResolvedConfigBaseUrl } from '../api/authenticated-client.js'
 import { CLI_VERSION } from '../version.js'
-import { CLIError, ExitCode } from './errors.js'
+import { CLIError, ExitCode, networkErrorMessage } from './errors.js'
 import { getProxyAgent, getProxyEnv } from './proxy.js'
+
+import { createSpinner } from './spinner.js'
 
 const MAX_EVENT_BYTES = 1024 * 1024
 
@@ -19,7 +21,8 @@ async function streamSse(
   const baseUrl = getStoredBaseUrl() ?? getResolvedConfigBaseUrl() ?? 'https://app.supercheck.io'
   const url = new URL(path, `${baseUrl}/`)
   const controller = new AbortController()
-  const onInterrupt = () => controller.abort()
+  let interrupted = false
+  const onInterrupt = () => { interrupted = true; controller.abort() }
   process.once('SIGINT', onInterrupt)
   let idleTimer: ReturnType<typeof setTimeout> | undefined
   let reader: ReadableStreamDefaultReader<Uint8Array> | undefined
@@ -28,27 +31,42 @@ async function streamSse(
     idleTimer = setTimeout(() => controller.abort(), idleTimeoutMs)
   }
 
+  const started = Date.now()
+  const spinner = createSpinner('Connecting to stream…').start()
+  let phase = 'Connecting to stream'
+  const progressTimer = setInterval(() => { spinner.text = `${phase}… ${Math.floor((Date.now() - started) / 1000)}s` }, 1000)
   try {
     const proxy = getProxyEnv(url)
     resetIdleTimer()
-    const response = await fetch(url, {
-      method,
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: 'text/event-stream',
-        'Content-Type': 'application/json',
-        'User-Agent': `supercheck-cli/${CLI_VERSION}`,
-      },
-      ...(method === 'POST' ? { body: JSON.stringify(body) } : {}),
-      ...(proxy ? { dispatcher: getProxyAgent(proxy) } : {}),
-      signal: controller.signal,
-    })
+    let response: Response | undefined
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        response = await fetch(url, {
+          method,
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: 'text/event-stream',
+            'Content-Type': 'application/json',
+            'User-Agent': `supercheck-cli/${CLI_VERSION}`,
+          },
+          ...(method === 'POST' ? { body: JSON.stringify(body) } : {}),
+          ...(proxy ? { dispatcher: getProxyAgent(proxy) } : {}),
+          signal: controller.signal,
+        })
+        break
+      } catch (error) {
+        if (method !== 'GET' || attempt > 0 || controller.signal.aborted) throw error
+        phase = 'Reconnecting to stream'
+      }
+    }
+    if (!response) throw new CLIError('Stream connection failed', ExitCode.ApiError)
+    phase = 'Subscribed — waiting for output'
     if (!response.ok) {
       const details = (await response.text()).slice(0, 4096)
-      throw new CLIError(`SRE stream request failed (${response.status})${details ? `: ${details}` : ''}`, ExitCode.ApiError)
+      throw new CLIError(`Stream request failed (${response.status})${details ? `: ${details}` : ''}`, ExitCode.ApiError)
     }
     reader = response.body?.getReader()
-    if (!reader) throw new CLIError('SRE stream returned no response body', ExitCode.ApiError)
+    if (!reader) throw new CLIError('Stream returned no response body', ExitCode.ApiError)
 
     const decoder = new TextDecoder()
     let buffer = ''
@@ -60,10 +78,11 @@ async function streamSse(
       const raw = dataLines.join('\n')
       let data: unknown = raw
       try { data = JSON.parse(raw) } catch { /* Preserve plain-text SSE data. */ }
+      if (!['ready', 'heartbeat'].includes(eventName)) spinner.stop()
       const keepReading = onEvent({ event: eventName, data })
       const record = typeof data === 'object' && data !== null ? data as Record<string, unknown> : {}
       if (eventName === 'error' || record.type === 'error') {
-        throw new CLIError(String(record.message ?? record.error ?? 'SRE stream failed'), ExitCode.ApiError)
+        throw new CLIError(String(record.message ?? record.error ?? 'Stream failed'), ExitCode.ApiError)
       }
       if (eventName === 'agent.fallback') {
         throw new CLIError('Copilot is temporarily unavailable. Check the AI provider configuration and retry.', ExitCode.ApiError)
@@ -87,22 +106,24 @@ async function streamSse(
         }
         eventBytes += Buffer.byteLength(line, 'utf8')
         if (eventBytes > MAX_EVENT_BYTES) {
-          throw new CLIError('SRE stream event exceeded the 1 MiB safety limit', ExitCode.ApiError)
+          throw new CLIError('Stream event exceeded the 1 MiB safety limit', ExitCode.ApiError)
         }
         if (line.startsWith('event:')) eventName = line.slice(6).trim() || 'message'
         else if (line.startsWith('data:')) dataLines.push(line.slice(5).replace(/^ /, ''))
       }
       if (eventBytes + Buffer.byteLength(buffer, 'utf8') > MAX_EVENT_BYTES) {
-        throw new CLIError('SRE stream event exceeded the 1 MiB safety limit', ExitCode.ApiError)
+        throw new CLIError('Stream event exceeded the 1 MiB safety limit', ExitCode.ApiError)
       }
     }
   } catch (error) {
     if (error instanceof CLIError) throw error
-    if (error instanceof Error && error.name === 'AbortError') {
-      throw new CLIError('SRE stream was cancelled or timed out', ExitCode.Timeout)
+    if (controller.signal.aborted) {
+      throw new CLIError(interrupted ? 'Cancelled' : `Stream timed out after ${idleTimeoutMs / 1000}s without data`, interrupted ? ExitCode.Interrupted : ExitCode.Timeout)
     }
-    throw new CLIError(`SRE stream failed: ${error instanceof Error ? error.message : String(error)}`, ExitCode.ApiError)
+    throw new CLIError(`Stream failed: ${networkErrorMessage(error)}`, ExitCode.ApiError)
   } finally {
+    spinner.stop()
+    clearInterval(progressTimer)
     await reader?.cancel().catch(() => undefined)
     controller.abort()
     if (idleTimer) clearTimeout(idleTimer)

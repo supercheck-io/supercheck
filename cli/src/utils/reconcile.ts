@@ -1,4 +1,4 @@
-import pc from 'picocolors'
+import pc from './colors.js'
 import { logger } from './logger.js'
 
 /**

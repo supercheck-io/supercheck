@@ -85,7 +85,11 @@ monitorCommand
       'Fetching monitor details',
       () => client.get<Record<string, unknown>>(`/api/monitors/${id}`),
     )
-    outputDetail(data)
+    if (getOutputFormat() === 'table') {
+      const detail = { ...data }
+      delete detail.scheduledJobId
+      outputDetail(detail)
+    } else outputDetail(data)
   })
 
 monitorCommand

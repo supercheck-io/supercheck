@@ -260,12 +260,17 @@ export async function PUT(
         maskedFields,
       });
     } else {
-      // No config update — preserve existing encrypted config
+      // Rename the decrypted config server-side so masked credentials remain intact.
+      const renamedConfig = {
+        ...decryptNotificationProviderConfig(existingProvider.config, project.id),
+        name: updateData.name!,
+      };
       const [updatedProvider] = await db
         .update(notificationProviders)
         .set({
           name: updateData.name!,
           type: updateData.type as NotificationProviderType,
+          config: encryptNotificationProviderConfig(renamedConfig as PlainNotificationProviderConfig, project.id),
           updatedAt: new Date(),
         })
         .where(
