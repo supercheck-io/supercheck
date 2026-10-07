@@ -6,7 +6,14 @@ jest.mock("@/utils/db", () => ({
   },
 }));
 
-import { listStoredSreEvidence } from "./evidence-tools";
+import { z } from "zod";
+import type { SQL } from "drizzle-orm";
+import { PgDialect } from "drizzle-orm/pg-core";
+import {
+  createNativeEvidenceTool,
+  createConnectorEvidenceTool,
+  listStoredSreEvidence,
+} from "./evidence-tools";
 
 const { db: mockDb } = jest.requireMock("@/utils/db") as {
   db: { select: jest.Mock };
@@ -59,4 +66,30 @@ describe("SRE evidence tools", () => {
     expect(JSON.stringify(evidence)).not.toContain("abc123");
     expect(JSON.stringify(evidence)).not.toContain("supersecret");
   });
+
+  it.each([createNativeEvidenceTool, createConnectorEvidenceTool])(
+    "keeps the evidence inventory unfiltered when a model supplies an arbitrary type",
+    async (createEvidenceTool) => {
+      const limit = jest.fn().mockResolvedValue([]);
+      const where = jest.fn((_query: SQL) => ({ orderBy: () => ({ limit }) }));
+      mockDb.select.mockReturnValue({ from: () => ({ where }) });
+      const evidenceTool = createEvidenceTool(scope);
+      const input = (evidenceTool.inputSchema as z.ZodType<{ limit: number }>).parse({
+        limit: 10,
+        evidenceType: "metric",
+      });
+      expect(input).toEqual({ limit: 10 });
+      await evidenceTool.execute!(input, { toolCallId: "inventory-test", messages: [] });
+      const query = new PgDialect().sqlToQuery(where.mock.calls[0][0]);
+      expect(query.params).toEqual(
+        expect.arrayContaining([
+          scope.organizationId,
+          scope.projectId,
+          scope.incidentId,
+        ]),
+      );
+      expect(query.params).not.toContain("metric");
+      expect(limit).toHaveBeenCalledWith(10);
+    },
+  );
 });
