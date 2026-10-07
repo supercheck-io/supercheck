@@ -22,18 +22,6 @@ const connectorSourceTypes = [
 
 const evidenceToolInputSchema = z.object({
   limit: z.number().int().min(1).max(MAX_EVIDENCE_ITEMS).optional().default(10),
-  evidenceType: z
-    .enum([
-      "metric",
-      "log",
-      "trace",
-      "artifact",
-      "deployment",
-      "event",
-      "document",
-      "topology",
-    ])
-    .optional(),
 });
 
 export type SreEvidenceToolScope = {
@@ -120,14 +108,13 @@ export async function listStoredSreEvidence(input: StoredSreEvidenceQuery) {
 export function createNativeEvidenceTool(scope: SreEvidenceToolScope) {
   return tool({
     description:
-      "List stored native Supercheck evidence for the scoped incident. Read-only; does not query external systems.",
+      "List a bounded inventory of all stored native Supercheck evidence types for the scoped incident. Read-only; does not query external systems.",
     inputSchema: evidenceToolInputSchema,
-    execute: async ({ limit, evidenceType }) => ({
+    execute: async ({ limit }) => ({
       evidence: await listStoredSreEvidence({
         ...scope,
         sourceMode: "native",
         limit,
-        evidenceType,
       }),
     }),
   });
@@ -136,14 +123,13 @@ export function createNativeEvidenceTool(scope: SreEvidenceToolScope) {
 export function createConnectorEvidenceTool(scope: SreEvidenceToolScope) {
   return tool({
     description:
-      "List stored connector evidence for the scoped incident. Read-only; uses sanitized persisted summaries only.",
+      "List a bounded inventory of all stored connector evidence types for the scoped incident. Read-only; includes sanitized persisted summaries even when live connectors are disabled.",
     inputSchema: evidenceToolInputSchema,
-    execute: async ({ limit, evidenceType }) => ({
+    execute: async ({ limit }) => ({
       evidence: await listStoredSreEvidence({
         ...scope,
         sourceMode: "connector",
         limit,
-        evidenceType,
       }),
     }),
   });
