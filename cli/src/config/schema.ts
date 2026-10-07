@@ -5,14 +5,14 @@ import { z } from 'zod'
 export const tagDefinitionSchema = z.object({
   /** Database UUID. Present for existing resources, omitted for new ones. */
   id: z.string().uuid().optional(),
-  name: z.string().min(1),
+  name: z.string().min(3).max(20),
   color: z.string().optional(),
 })
 
 export const variableDefinitionSchema = z.object({
   /** Database UUID. Present for existing resources, omitted for new ones. */
   id: z.string().uuid().optional(),
-  key: z.string().min(1),
+  key: z.string().min(4).max(20),
   value: z.string(),
   isSecret: z.boolean().default(false),
   description: z.string().optional(),

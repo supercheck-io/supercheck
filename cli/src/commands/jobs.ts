@@ -375,6 +375,7 @@ jobCommand
   .option('--local', 'Run locally')
   .option('--cloud', 'Run on cloud')
   .action(async (options: { id: string; local?: boolean; cloud?: boolean }) => {
+    if (!options.id.trim()) throw new CLIError('Job ID must not be empty.', ExitCode.ConfigError)
     if (options.local && options.cloud) {
       throw new CLIError('--local and --cloud are mutually exclusive.', ExitCode.ConfigError)
     }
@@ -486,35 +487,37 @@ jobCommand
       const timeoutMs = parseIntStrict(options.timeout, '--timeout', { min: 1 }) * 1000
       const startTime = Date.now()
 
-      while (Date.now() - startTime < timeoutMs) {
-        await new Promise((resolve) => setTimeout(resolve, 3000))
+      await withSpinner('Waiting for run to complete...', async () => {
+        while (Date.now() - startTime < timeoutMs) {
+          await new Promise((resolve) => setTimeout(resolve, 3000))
 
-        const { data: runData } = await statusClient.get<{ status: string }>(
-          `/api/runs/${runId}`,
-        )
+          const { data: runData } = await statusClient.get<{ status: string }>(
+            `/api/runs/${runId}`,
+          )
 
-        const status = typeof runData.status === 'string' ? runData.status.toLowerCase() : ''
+          const status = typeof runData.status === 'string' ? runData.status.toLowerCase() : ''
 
-        if (['passed', 'failed', 'error', 'blocked'].includes(status)) {
-          if (status === 'passed') {
-            logger.success(`Run ${runId} passed`)
-          } else if (status === 'blocked') {
-            logger.error(`Run ${runId} blocked`)
-            throw new CLIError(`Run ${runId} blocked`, ExitCode.GeneralError)
-          } else {
-            logger.error(`Run ${runId} ${status}`)
-            throw new CLIError(`Run ${runId} ${status}`, ExitCode.GeneralError)
+          if (['passed', 'failed', 'error', 'blocked'].includes(status)) {
+            if (status === 'passed') {
+              logger.success(`Run ${runId} passed`)
+            } else if (status === 'blocked') {
+              logger.error(`Run ${runId} blocked`)
+              throw new CLIError(`Run ${runId} blocked`, ExitCode.GeneralError)
+            } else {
+              logger.error(`Run ${runId} ${status}`)
+              throw new CLIError(`Run ${runId} ${status}`, ExitCode.GeneralError)
+            }
+            outputDetail(runData as Record<string, unknown>)
+            return
           }
-          outputDetail(runData as Record<string, unknown>)
-          return
+
+          logger.debug(`Run status: ${status || '(unknown)'}`)
         }
 
-        logger.debug(`Run status: ${status || '(unknown)'}`)
-      }
-
-      throw new CLIError(
-        `Timed out waiting for run to complete after ${options.timeout}s`,
-        ExitCode.Timeout,
-      )
+        throw new CLIError(
+          `Timed out waiting for run to complete after ${options.timeout}s`,
+          ExitCode.Timeout,
+        )
+      }, { successText: 'Run complete' })
     }
   })

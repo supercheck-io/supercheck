@@ -13,7 +13,7 @@ import { extractUuidFromFilename } from '../utils/slug.js'
 import { testRelativePath, testTypeToFolder } from '../utils/paths.js'
 import { decodeStoredTestScript } from '../utils/script.js'
 
-import pc from 'picocolors'
+import pc from '../utils/colors.js'
 import type { ApiClient } from '../api/client.js'
 
 // ────────────────────────────────────────────────────────────────

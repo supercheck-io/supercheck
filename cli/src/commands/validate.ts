@@ -1,5 +1,5 @@
 import { Command } from 'commander'
-import pc from 'picocolors'
+import pc from '../utils/colors.js'
 import { createAuthenticatedClient } from '../api/authenticated-client.js'
 import { loadConfig } from '../config/loader.js'
 import { buildLocalResources } from '../utils/resources.js'

@@ -1,5 +1,5 @@
 import { Command } from 'commander'
-import pc from 'picocolors'
+import pc from '../utils/colors.js'
 import { loginCommand, logoutCommand, whoamiCommand } from '../commands/login.js'
 import { healthCommand, locationsCommand } from '../commands/health.js'
 import { configCommand } from '../commands/config.js'
@@ -23,7 +23,7 @@ import { upgradeCommand } from '../commands/upgrade.js'
 import { incidentCommand } from '../commands/incidents.js'
 import { serviceCommand } from '../commands/services.js'
 import { sreCommand } from '../commands/sre.js'
-import { setOutputFormat, type OutputFormat } from '../output/formatter.js'
+import { setOutputFormat, setWideOutput, type OutputFormat } from '../output/formatter.js'
 import { setQuietMode, setLogLevel } from '../utils/logger.js'
 import { ApiRequestError, CLIError, ExitCode } from '../utils/errors.js'
 import { DependencyError } from '../utils/deps.js'
@@ -37,14 +37,19 @@ const program = new Command()
   .option('--json', 'Output in JSON format')
   .option('--quiet', 'Suppress non-essential output')
   .option('--debug', 'Enable debug logging')
+  .option('--no-color', 'Disable ANSI colors')
+  .option('--wide', 'Show tables without width limits')
   .hook('preAction', async (_thisCommand, actionCommand) => {
     const opts = program.opts()
+    setWideOutput(Boolean(opts.wide))
 
     if (opts.json) {
       setOutputFormat('json' as OutputFormat)
+      setQuietMode(true)
+      setLogLevel('silent')
     }
 
-    if (opts.quiet) {
+    if (opts.quiet && !opts.json) {
       setQuietMode(true)
       setOutputFormat('quiet' as OutputFormat)
     }
@@ -112,12 +117,30 @@ program.addCommand(doctorCommand)
 program.addCommand(upgradeCommand)
 
 // Global error handler
-program.exitOverride()
+function configureErrors(command: Command): void {
+  command.exitOverride()
+  command.configureOutput({ outputError: (message, write) => { if (!process.argv.includes('--json')) write(message) } })
+  for (const child of command.commands) configureErrors(child)
+}
+configureErrors(program)
 
 async function main(): Promise<void> {
   try {
     await program.parseAsync(process.argv)
   } catch (err) {
+    const code = err instanceof DependencyError ? ExitCode.ConfigError
+      : err instanceof CLIError ? err.exitCode
+      : err && typeof err === 'object' && 'exitCode' in err && typeof err.exitCode === 'number'
+        ? err.exitCode : ExitCode.GeneralError
+    if ((program.opts().json || process.argv.includes('--json')) && code !== 0) {
+      console.error(JSON.stringify({
+        error: err instanceof Error ? err.message : String(err),
+        exitCode: code,
+        ...(err instanceof ApiRequestError ? { status: err.statusCode, details: err.responseBody } : {}),
+      }))
+      process.exit(code)
+    }
+
     if (err instanceof ApiRequestError && err.responseBody !== undefined) {
       const details = (() => {
         if (typeof err.responseBody === 'string') {

@@ -21,7 +21,7 @@ const sseLogger = createLogger({ module: 'sse-stream' }) as {
 /**
  * GET /api/runs/[runId]/stream
  * Server-Sent Events endpoint for real-time console streaming
- * Streams console output from k6 (and potentially Playwright) test executions
+ * Streams console output from k6 and Playwright test executions
  */
 type RunStreamContext = {
   params: Promise<{ runId: string }>;

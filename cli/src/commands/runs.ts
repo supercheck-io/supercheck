@@ -94,7 +94,7 @@ runCommand
     await getSse(`/api/runs/${id}/stream`, ({ event, data }) => {
       const record = typeof data === 'object' && data !== null ? data as Record<string, unknown> : {}
       if (json) logger.output(JSON.stringify({ event, data }))
-      else if (event === 'console' && typeof record.line === 'string') logger.output(record.line)
+      else if (getOutputFormat() === 'table' && event === 'console' && typeof record.line === 'string') process.stdout.write(record.line)
       else if (event === 'status') logger.info(`Status: ${String(record.status ?? 'unknown')}`)
       if (event === 'complete') {
         if (['failed', 'error', 'cancelled', 'canceled', 'blocked', 'not_found'].includes(String(record.status))) {

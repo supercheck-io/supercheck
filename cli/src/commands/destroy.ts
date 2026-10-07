@@ -8,7 +8,7 @@ import { getApiEndpoint, fetchAllPages } from '../utils/resources.js'
 import { withSpinner } from '../utils/spinner.js'
 import { extractUuidFromFilename } from '../utils/slug.js'
 import type { SupercheckConfig } from '../config/schema.js'
-import pc from 'picocolors'
+import pc from '../utils/colors.js'
 
 
 interface ManagedResource {

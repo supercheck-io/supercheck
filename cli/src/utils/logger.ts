@@ -1,4 +1,4 @@
-import pc from 'picocolors'
+import pc from './colors.js'
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error' | 'silent'
 

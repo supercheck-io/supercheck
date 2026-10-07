@@ -1,7 +1,8 @@
+import { CLIError, ExitCode } from '../utils/errors.js'
 import { Command } from 'commander'
 import { createAuthenticatedClient } from '../api/authenticated-client.js'
 import { logger } from '../utils/logger.js'
-import { output } from '../output/formatter.js'
+import { output, outputDetail } from '../output/formatter.js'
 import { withSpinner } from '../utils/spinner.js'
 
 export const tagCommand = new Command('tag')
@@ -31,6 +32,7 @@ tagCommand
   .description('Create a new tag')
   .option('--color <color>', 'Tag color (hex)')
   .action(async (name: string, options: { color?: string }) => {
+    if (name.length < 3 || name.length > 20) throw new CLIError('Tag name must be 3–20 characters.', ExitCode.ConfigError)
     const client = createAuthenticatedClient()
     const { data } = await withSpinner(
       'Creating tag',
@@ -41,6 +43,7 @@ tagCommand
     )
 
     logger.success(`Tag "${name}" created (${data.id})`)
+    outputDetail(data)
   })
 
 tagCommand

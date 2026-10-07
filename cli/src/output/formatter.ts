@@ -1,5 +1,6 @@
 import Table from 'cli-table3'
-import pc from 'picocolors'
+import wrapAnsi from 'wrap-ansi'
+import pc, { colorEnabled } from '../utils/colors.js'
 import { logger } from '../utils/logger.js'
 
 export type OutputFormat = 'table' | 'json' | 'quiet'
@@ -12,6 +13,11 @@ export type OutputColumn = {
 }
 
 let currentFormat: OutputFormat = 'table'
+let wideOutput = false
+
+export function setWideOutput(wide: boolean): void {
+  wideOutput = wide
+}
 
 export function setOutputFormat(format: OutputFormat): void {
   currentFormat = format
@@ -56,6 +62,7 @@ export function output<T extends Record<string, unknown>>(
 function outputTable<T extends Record<string, unknown>>(
   data: T | T[] | undefined | null,
   columns?: OutputColumn[],
+  truncateValues = true,
 ): void {
   // Handle undefined/null data
   if (data === undefined || data === null) {
@@ -78,17 +85,29 @@ function outputTable<T extends Record<string, unknown>>(
     header: key.charAt(0).toUpperCase() + key.slice(1),
   }))
 
+  const terminalWidth = process.stdout.columns > 0 ? process.stdout.columns : 120
+  const availableWidth = terminalWidth - cols.length - 1
+  const fixedWidth = cols.reduce((sum, column) => sum + (column.width ?? 0), 0)
+  const flexibleCount = cols.filter((column) => column.width === undefined).length
+  const equalWidth = Math.max(4, Math.floor(availableWidth / cols.length))
+  const flexibleWidth = Math.floor((availableWidth - fixedWidth) / Math.max(flexibleCount, 1))
+  const widths = cols.map((column) => flexibleWidth < 4 ? equalWidth : column.width ?? flexibleWidth)
   const table = new Table({
+    ...(wideOutput ? {} : { colWidths: widths, wordWrap: true }),
     head: cols.map((c) => c.header),
     style: {
-      head: ['cyan'],
-      border: ['gray'],
+      head: colorEnabled() ? ['cyan'] : [],
+      border: colorEnabled() ? ['gray'] : [],
     },
   })
 
   for (const item of items) {
     // Safely access each column value
-    table.push(cols.map((c) => formatValue(item?.[c.key], c, item)))
+    table.push(cols.map((c, index) => {
+      const value = formatValue(item?.[c.key], c, item)
+      const displayed = truncateValues && !wideOutput && value.length > 200 ? `${value.slice(0, 197)}…` : value
+      return wideOutput ? displayed : wrapAnsi(displayed, Math.max(1, widths[index] - 2), { hard: true, trim: false })
+    }))
   }
 
   logger.output(table.toString())
@@ -109,6 +128,7 @@ const STATUS_COLORS: Record<string, 'success' | 'error' | 'warning'> = {
   healthy: 'success',
   running: 'success',
   completed: 'success',
+  resolved: 'success',
 
   // Error states (red)
   down: 'error',
@@ -117,6 +137,7 @@ const STATUS_COLORS: Record<string, 'success' | 'error' | 'warning'> = {
   blocked: 'error',
   unhealthy: 'error',
   cancelled: 'error',
+  aborted: 'error',
   canceled: 'error',
 
   // Warning states (yellow)
@@ -126,9 +147,16 @@ const STATUS_COLORS: Record<string, 'success' | 'error' | 'warning'> = {
   degraded: 'warning',
   unknown: 'warning',
   queued: 'warning',
+  accepted: 'warning',
   warning: 'warning',
   skipped: 'warning',
   inactive: 'warning',
+  triggered: 'warning',
+  investigating: 'warning',
+  identified: 'warning',
+  recommendations_ready: 'warning',
+  user_applying_fix: 'warning',
+  verifying: 'warning',
 }
 
 /**
@@ -155,6 +183,7 @@ function formatStatus(status: string): string {
 }
 
 function formatValue(value: unknown, column?: OutputColumn, row?: Record<string, unknown>): string {
+  if (column?.key === 'script' && typeof value === 'string') return `[script: ${value.length} chars; use test get <id> --include-script]`
   if (column?.format && row) {
     return column.format(value, row)
   }
@@ -284,7 +313,12 @@ export function outputDetail(data: Record<string, unknown>): void {
   }
 
   if (currentFormat === 'quiet') {
-    if ('id' in data) logger.output(String(data.id))
+    let id = data.id ?? data.runId ?? data.investigationRunId
+    for (const key of ['test', 'job', 'monitor', 'provider', 'incident', 'service', 'run', 'data']) {
+      const entity = data[key]
+      if (id === undefined && entity && typeof entity === 'object' && 'id' in entity) id = entity.id
+    }
+    if (typeof id === 'string' || typeof id === 'number') logger.output(String(id))
     return
   }
 
@@ -311,40 +345,31 @@ export function outputDetail(data: Record<string, unknown>): void {
     }
   }
 
-  // Render scalar fields first
-  if (scalarEntries.length > 0) {
-    const maxKeyLen = Math.max(...scalarEntries.map(([k]) => k.length))
-    for (const [key, value] of scalarEntries) {
-      const label = key.padEnd(maxKeyLen + 2)
-      let formatted: string
-      if (Array.isArray(value)) {
-        formatted = summarizeArray(key, value)
-      } else {
-        formatted = formatValue(value, { key, header: key }, data)
-      }
-      logger.output(`  ${label}${formatted}`)
-    }
+  const renderFields = (entries: [string, unknown][], row: Record<string, unknown>) => {
+    if (entries.length === 0) return
+    const fields = entries.map(([key, value]) => ({
+      field: key.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/_/g, ' ').replace(/\b(id|url|api)\b/gi, (word) => word.toUpperCase()).replace(/^./, (char) => char.toUpperCase()),
+      value: Array.isArray(value) ? summarizeArray(key, value) : formatValue(value, { key, header: key }, row),
+    }))
+    outputTable(fields, [
+      { key: 'field', header: 'Field', width: Math.min(28, Math.max(10, ...fields.map((field) => field.field.length + 4))) },
+      { key: 'value', header: 'Value', format: (value) => String(value) },
+    ], false)
   }
+  renderFields(scalarEntries, data)
 
-  // Render nested objects as indented sub-sections
   for (const [key, obj] of nestedEntries) {
-    logger.output('')
-    logger.output(`  ${pc.bold(key)}:`)
-    const subKeys = Object.keys(obj)
-    if (subKeys.length === 0) {
-      logger.output(`    ${pc.dim('(empty)')}`)
-      continue
-    }
-    const maxSubKeyLen = Math.max(...subKeys.map((k) => k.length))
-    for (const [subKey, subVal] of Object.entries(obj)) {
-      const subLabel = subKey.padEnd(maxSubKeyLen + 2)
-      let formatted: string
-      if (Array.isArray(subVal)) {
-        formatted = summarizeArray(subKey, subVal)
-      } else {
-        formatted = formatValue(subVal, { key: subKey, header: subKey }, obj)
-      }
-      logger.output(`    ${subLabel}${formatted}`)
-    }
+    logger.output(`\n${pc.bold(key.replace(/^./, (char) => char.toUpperCase()))}`)
+    if (Object.keys(obj).length === 0) logger.output(pc.dim('(empty)'))
+    else renderFields(Object.entries(obj), obj)
   }
+}
+
+/** Human report text stays readable and lossless; JSON is handled by its caller. */
+export function outputNarrative(title: string, text: string): void {
+  if (currentFormat !== 'table' || !text) return
+  logger.output(`\n${pc.bold(title)}\n`)
+  logger.output(process.stdout.isTTY && !wideOutput
+    ? wrapAnsi(text.trimEnd(), process.stdout.columns > 0 ? process.stdout.columns : 120, { hard: true, trim: false })
+    : text.trimEnd())
 }

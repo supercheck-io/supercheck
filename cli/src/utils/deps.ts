@@ -2,7 +2,7 @@ import { execFileSync, execSync } from 'node:child_process'
 import { existsSync, readdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { resolve, join } from 'node:path'
-import pc from 'picocolors'
+import pc from './colors.js'
 import { logger } from './logger.js'
 
 export interface DependencyStatus {

@@ -127,7 +127,7 @@ notificationCommand
     const updatedType = options.type ?? String(existing.type ?? '')
 
     // Build config for the update
-    let updatedConfig: Record<string, unknown>
+    let updatedConfig: Record<string, unknown> | undefined
     if (suppliedConfig) {
       // User provided explicit config — use it directly (don't merge with masked values)
       updatedConfig = suppliedConfig
@@ -136,7 +136,7 @@ notificationCommand
       // Cannot safely send the masked config back — it would overwrite real credentials.
       // Only update name/type fields via a targeted request.
       logger.debug('Skipping config field (contains masked secrets that cannot be round-tripped safely)')
-      updatedConfig = undefined as unknown as Record<string, unknown>
+      updatedConfig = undefined
     } else {
       // Existing config has no masked fields — safe to send it back
       updatedConfig = (existing.config as Record<string, unknown>) ?? {}

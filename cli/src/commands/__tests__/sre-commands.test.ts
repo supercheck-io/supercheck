@@ -3,6 +3,8 @@ import { jest, describe, it, expect, beforeEach } from '@jest/globals'
 const mockGet = jest.fn<(...args: unknown[]) => Promise<{ data: unknown }>>()
 const mockPost = jest.fn<(...args: unknown[]) => Promise<{ data: unknown }>>()
 const mockOutput = jest.fn<(...args: unknown[]) => void>()
+const mockNarrative = jest.fn<(...args: unknown[]) => void>()
+let outputFormat = 'table'
 const mockOutputDetail = jest.fn<(...args: unknown[]) => void>()
 const mockSuccess = jest.fn<(...args: unknown[]) => void>()
 const mockInfo = jest.fn<(...args: unknown[]) => void>()
@@ -20,8 +22,9 @@ jest.unstable_mockModule('../../api/authenticated-client.js', () => ({
 jest.unstable_mockModule('../../output/formatter.js', () => ({
   output: mockOutput,
   outputDetail: mockOutputDetail,
+  outputNarrative: mockNarrative,
   outputPagination: jest.fn(),
-  getOutputFormat: () => 'table',
+  getOutputFormat: () => outputFormat,
 }))
 
 jest.unstable_mockModule('../../utils/logger.js', () => ({
@@ -54,6 +57,7 @@ const { testCommand } = await import('../tests.js')
 describe('AI SRE CLI Commands', () => {
   beforeEach(() => {
     jest.resetAllMocks()
+    outputFormat = 'table'
     const create = monitorCommand.commands.find((command) => command.name() === 'create')!
     for (const option of create.options) create.setOptionValue(option.attributeName(), option.defaultValue)
   })
@@ -225,7 +229,8 @@ describe('AI SRE CLI Commands', () => {
       await sreCommand.parseAsync(['node', 'sre', 'triage', '018f0000-0000-7000-8000-000000000001'])
 
       expect(mockPost).toHaveBeenCalledWith('/api/sre/triage', { incidentId: '018f0000-0000-7000-8000-000000000001' })
-      expect(mockOutputDetail).toHaveBeenCalledWith(expect.objectContaining({ success: true }))
+      expect(mockOutputDetail).toHaveBeenCalledWith(expect.objectContaining({ status: 'completed' }))
+      expect(mockNarrative).toHaveBeenCalledWith('Triage summary', 'Triage complete')
     })
 
     it('sre investigate triggers investigation with live-connectors flag', async () => {
@@ -237,7 +242,34 @@ describe('AI SRE CLI Commands', () => {
         incidentId: '018f0000-0000-7000-8000-000000000001',
         useLiveConnectors: true,
       })
-      expect(mockOutputDetail).toHaveBeenCalledWith(expect.objectContaining({ accepted: true }))
+      expect(mockOutputDetail).toHaveBeenCalledWith(expect.objectContaining({ id: 'run-1', status: 'accepted' }))
+    })
+
+    it('preserves the investigation JSON envelope', async () => {
+      outputFormat = 'json'
+      const data = { success: true, accepted: true, investigationRunId: 'run-1' }
+      mockPost.mockResolvedValueOnce({ data })
+      await sreCommand.parseAsync(['node', 'sre', 'investigate', '018f0000-0000-7000-8000-000000000001'])
+      expect(mockOutputDetail).toHaveBeenCalledWith(data)
+      expect(mockInfo).not.toHaveBeenCalled()
+    })
+
+    it('does not print stream content in quiet mode', async () => {
+      outputFormat = 'quiet'
+      const write = jest.spyOn(process.stdout, 'write').mockImplementation(() => true)
+      try {
+        mockNarrative.mockImplementation(() => undefined)
+        mockPostSse.mockImplementationOnce(async (_path, _body, callback) => {
+          (callback as (event: { event: string; data: unknown }) => void)({ event: 'message', data: { role: 'assistant', content: 'answer' } })
+        })
+        await sreCommand.parseAsync(['node', 'sre', 'ask', 'health?'])
+        mockPostSse.mockImplementationOnce(async (_path, _body, callback) => {
+          (callback as (event: { event: string; data: unknown }) => void)({ event: 'message', data: { type: 'content', content: 'report' } })
+        })
+        await sreCommand.parseAsync(['node', 'sre', 'brief', '018f0000-0000-7000-8000-000000000001'])
+        expect(write).not.toHaveBeenCalled()
+        expect(mockOutput).not.toHaveBeenCalled()
+      } finally { write.mockRestore() }
     })
 
     it('sre ask delegates to postSse with chat endpoint', async () => {
@@ -307,6 +339,17 @@ describe('AI SRE CLI Commands', () => {
     const stream = async (_path: unknown, callback: unknown) => {
       (callback as (event: { event: string; data: unknown }) => void)({ event: 'complete', data: { status: 'failed' } })
     }
+    it('preserves console transport chunks without adding newlines', async () => {
+      const write = jest.spyOn(process.stdout, 'write').mockImplementation(() => true)
+      mockGetSse.mockImplementationOnce(async (_path: unknown, callback: unknown) => {
+        const onEvent = callback as (event: { event: string; data: unknown }) => void
+        onEvent({ event: 'console', data: { line: 'hel' } })
+        onEvent({ event: 'console', data: { line: 'lo\n' } })
+      })
+      await runCommand.parseAsync(['node', 'run', 'stream', 'run-1'])
+      expect(write.mock.calls.map((call) => call[0]).join('')).toBe('hello\n')
+      write.mockRestore()
+    })
     it('run stream rejects failed runs instead of printing a success', async () => {
       mockGetSse.mockImplementationOnce(stream)
       await expect(runCommand.parseAsync(['node', 'run', 'stream', 'run-1'])).rejects.toMatchObject({ exitCode: 1 })

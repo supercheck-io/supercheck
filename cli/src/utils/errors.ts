@@ -15,6 +15,7 @@ export enum ExitCode {
   ConfigError = 3,
   ApiError = 4,
   Timeout = 5,
+  Interrupted = 130,
 }
 
 export class CLIError extends Error {
@@ -65,4 +66,19 @@ export class ConfigNotFoundError extends CLIError {
     super(message, ExitCode.ConfigError)
     this.name = 'ConfigNotFoundError'
   }
+}
+
+/** Keep network diagnostics useful without copying addresses or request credentials. */
+export function networkErrorMessage(error: unknown): string {
+  const codes = new Set<string>()
+  const visit = (value: unknown, depth = 0): void => {
+    if (!value || typeof value !== 'object' || depth > 5) return
+    const record = value as { code?: unknown; cause?: unknown; errors?: unknown[] }
+    if (typeof record.code === 'string' && /^[A-Z][A-Z0-9_]+$/.test(record.code)) codes.add(record.code)
+    visit(record.cause, depth + 1)
+    if (Array.isArray(record.errors)) for (const child of record.errors) visit(child, depth + 1)
+  }
+  visit(error)
+  const message = error instanceof Error ? error.message : String(error)
+  return codes.size ? `${message} (${[...codes].join(', ')})` : message
 }

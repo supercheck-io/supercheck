@@ -13,7 +13,8 @@ import { withSpinner } from '../utils/spinner.js'
 export const diffCommand = new Command('diff')
   .description('Preview changes between local config and the remote Supercheck project')
   .option('--config <path>', 'Path to config file')
-  .action(async (options: { config?: string }) => {
+  .option('--delete', 'Delete ALL remote resources absent from config (including resources created elsewhere)', false)
+  .action(async (options: { config?: string; delete?: boolean }) => {
     const cwd = process.cwd()
     const { config } = await loadConfig({ cwd, configPath: options.config })
     const client = createAuthenticatedClient(config.api?.baseUrl)
@@ -32,6 +33,6 @@ export const diffCommand = new Command('diff')
 
     logger.debug(`Local: ${localResources.length} resources, Remote: ${remoteResources.length} resources`)
 
-    const changes = reconcile(localResources, remoteResources)
+    const changes = reconcile(localResources, remoteResources).filter((change) => options.delete === true || change.action !== 'delete')
     formatChangePlan(changes)
   })

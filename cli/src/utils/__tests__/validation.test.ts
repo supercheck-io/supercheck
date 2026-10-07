@@ -8,10 +8,10 @@
  * - Clear error messages
  */
 
-import { describe, it, expect } from '@jest/globals'
+import { describe, it, expect, jest } from '@jest/globals'
 import { parseBooleanStrict, parseIntStrict } from '../number.js'
-import { CLIError, ExitCode } from '../errors.js'
-import { isK6Script, validateScriptTypeMatch, normalizeTestTypeForApi } from '../validation.js'
+import { ApiRequestError, CLIError, ExitCode } from '../errors.js'
+import { isK6Script, validateScriptTypeMatch, normalizeTestTypeForApi, validateScripts } from '../validation.js'
 
 describe('parseIntStrict', () => {
   it('rejects integers that cannot be represented precisely', () => {
@@ -165,5 +165,18 @@ describe('script type validation helpers', () => {
     expect(normalizeTestTypeForApi('load')).toBe('performance')
     expect(normalizeTestTypeForApi('api')).toBe('api')
     expect(normalizeTestTypeForApi('unknown')).toBeUndefined()
+  })
+})
+
+
+describe('validation diagnostics', () => {
+  it('retains HTTP status and non-JSON error details', async () => {
+    const { ApiClient } = await import('../../api/client.js')
+    const client = new ApiClient()
+    jest.spyOn(client, 'post').mockRejectedValue(new ApiRequestError('API request failed → 503', 503, 'upstream unavailable'))
+    const [result] = await validateScripts(client, [{ name: 'test', script: 'test()' }])
+    expect(result.valid).toBe(false)
+    expect(result.error).toContain('503')
+    expect(result.error).toContain('upstream unavailable')
   })
 })

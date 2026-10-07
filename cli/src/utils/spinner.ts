@@ -1,6 +1,6 @@
 import ora, { type Ora } from 'ora'
+import pc, { colorEnabled } from './colors.js'
 import { getOutputFormat } from '../output/formatter.js'
-import { logger } from './logger.js'
 
 /**
  * Create a spinner for long-running operations.
@@ -8,10 +8,11 @@ import { logger } from './logger.js'
  */
 export function createSpinner(text: string): Ora {
   const format = getOutputFormat()
-  const isInteractive = format === 'table'
+  const isInteractive = format === 'table' && Boolean(process.stdin.isTTY && process.stderr.isTTY) && process.stderr.columns > 0
 
   const spinner = ora({
     text,
+    color: colorEnabled() ? 'cyan' : false,
     // Disable spinner in non-interactive modes
     isSilent: !isInteractive,
     // Use dots style for a clean look
@@ -35,6 +36,8 @@ export async function withSpinner<T>(
 ): Promise<T> {
   const spinner = createSpinner(text)
   spinner.start()
+  const started = Date.now()
+  const progress = setInterval(() => { spinner.text = `${text} ${Math.floor((Date.now() - started) / 1000)}s` }, 1000)
 
   try {
     const result = await fn()
@@ -43,12 +46,14 @@ export async function withSpinner<T>(
         ? options.successText(result)
         : options?.successText ?? text.replace(/\.\.\.?$/, '')
 
-    spinner.succeed(successMessage)
+    spinner.stopAndPersist({ symbol: pc.green('✓'), text: successMessage })
     return result
   } catch (error) {
     const failMessage = options?.failText ?? text.replace(/\.\.\.?$/, ' failed')
-    spinner.fail(failMessage)
+    spinner.stopAndPersist({ symbol: pc.red('✗'), text: failMessage })
     throw error
+  } finally {
+    clearInterval(progress)
   }
 }
 
@@ -61,25 +66,11 @@ export function startSpinner(text: string): {
   update: (text: string) => void
   stop: () => void
 } {
-  const format = getOutputFormat()
-  const isInteractive = format === 'table'
-
-  if (!isInteractive) {
-    // In non-interactive mode, just log and return no-ops
-    logger.info(text)
-    return {
-      succeed: (msg) => msg && logger.success(msg),
-      fail: (msg) => msg && logger.error(msg),
-      update: () => {},
-      stop: () => {},
-    }
-  }
-
-  const spinner = ora({ text, spinner: 'dots' }).start()
+  const spinner = createSpinner(text).start()
 
   return {
-    succeed: (msg) => spinner.succeed(msg),
-    fail: (msg) => spinner.fail(msg),
+    succeed: (msg) => spinner.stopAndPersist({ symbol: pc.green('✓'), text: msg }),
+    fail: (msg) => spinner.stopAndPersist({ symbol: pc.red('✗'), text: msg }),
     update: (msg) => {
       spinner.text = msg
     },

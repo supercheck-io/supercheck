@@ -64,6 +64,12 @@ Upgrade the CLI to the latest release:
 supercheck upgrade
 ```
 
+### CLI 0.3.0 (pending publication)
+
+Lists use bounded tables; resource and SRE details use Field/Value tables. Triage shows structured run metadata followed by its complete summary. Investigation acceptance shows a run ID and follow-up command; `sre status <runId>` shows lifecycle fields. Copilot answers and evidence briefs remain labeled narratives; terminal text wraps to the screen, while piped reports retain their original content. JSON preserves API payloads; stream JSON is NDJSON. Quiet mode prints resource/run IDs and suppresses narrative streams.
+
+Deployment preserves remote resources absent from config. Explicit `--delete` opts into pruning, including resources created outside this config. Preview with `diff --delete` first. The new status endpoint and worker console/report fixes require matching app/worker releases.
+
 ### CLI 0.2.1
 
 This patch fixes incident-number handling for every AI SRE command, authentication target selection and read-only login, streaming error exit codes and cleanup, and port/synthetic monitor creation. Monitoring-only projects no longer require Playwright dependencies for `doctor`.
@@ -137,7 +143,7 @@ After upgrading, use the number displayed by `supercheck incident list` directly
 | `supercheck init` | Initialize a new project with config and example tests |
 | `supercheck pull` | Sync cloud resources to local config (`--dry-run`, `--force`, `--tests-only`, `--config-only`) |
 | `supercheck diff` | Preview changes between local config and cloud |
-| `supercheck deploy` | Apply local config changes to the cloud (`--dry-run`, `--force`, `--no-delete`) |
+| `supercheck deploy` | Apply local config changes to the cloud (`--dry-run`, `--force`, `--delete`, `--no-delete`) |
 | `supercheck validate` | Validate local test scripts (same rules as Playground) |
 | `supercheck destroy` | Remove all managed resources from the cloud (`--dry-run`, `--force`) |
 | `supercheck config validate` | Validate your `supercheck.config.ts` |
@@ -221,6 +227,7 @@ Manual triage and investigations are enabled by default on new installations wit
 | `supercheck incident timeline <id>` | View the incident timeline |
 | `supercheck incident resolve <id> --comment <text>` | Resolve with confirmation and an audited comment |
 | `supercheck sre triage <incident-number-or-uuid>` | Correlate alerts and classify an incident |
+| `supercheck sre status <runId>` | Inspect triage/investigation lifecycle status |
 | `supercheck sre investigate <incident-number-or-uuid>` | Start an asynchronous deep investigation |
 | `supercheck sre ask <question>` | Stream a read-only Copilot answer, optionally scoped with `--incident` |
 | `supercheck sre brief <incident-number-or-uuid>` | Generate and stream an evidence brief |
@@ -333,9 +340,18 @@ docker run --rm -e SUPERCHECK_TOKEN supercheck-cli whoami
 | `--json` | Output in JSON format (`sre ask`, `sre brief`, `run stream`, and `test status` use NDJSON) |
 | `--quiet` | Suppress non-essential output (IDs and errors only) |
 | `--debug` | Enable debug logging |
+| `--no-color` | Disable ANSI colors (`NO_COLOR` is also supported) |
+| `--wide` | Show unrestricted tables and narrative widths |
 | `-v, --version` | Show CLI version |
 
 ---
+
+Deploy and diff preserve remote resources absent from local config by default. To prune them, preview with `supercheck diff --delete`, then use `supercheck deploy --delete`. This includes resources created by the dashboard or another config; review every deletion. `--no-delete` remains supported. `destroy` only targets IDs present in local config or test filenames.
+
+Tables fit the terminal by default; use `--wide` or `--json` for full values. `--no-color` and `NO_COLOR` disable colors, and redirected output has no ANSI colors or spinners. Streams show waiting feedback in interactive terminals. GET streams retry one failed connection before subscribing; POST streams and writes are not replayed. Ctrl+C exits 130; idle timeouts exit 5. With `--json`, fatal errors are JSON on stderr with `error`, `exitCode`, and API `status`/`details` when available.
+
+Use `supercheck sre status <runId>` to follow an accepted investigation. This requires a matching app version with the investigation-status endpoint. Incident filter values are shown in `incident list --help`. Variable keys must be 4–20 characters.
+
 
 ## Documentation & links
 

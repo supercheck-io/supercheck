@@ -905,6 +905,52 @@ describe('K6ExecutionService', () => {
   // ==========================================================================
 
   describe('Report Generation', () => {
+    it.each([0, 99])(
+      'retains the execution result when the dashboard export is missing (exit %s)',
+      async (exitCode) => {
+        const fs = jest.requireMock('fs/promises');
+        fs.access.mockRejectedValue(new Error('missing HTML'));
+        fs.rename = jest.fn().mockResolvedValue(undefined);
+        fs.copyFile = jest.fn().mockResolvedValue(undefined);
+        Object.assign(mockS3Service, {
+          prepareFileVariables: jest
+            .fn()
+            .mockResolvedValue({ additionalFiles: {}, filePaths: {} }),
+          getBucketForEntityType: jest.fn().mockReturnValue('bucket'),
+          uploadDirectory: jest.fn().mockResolvedValue(undefined),
+          getBaseUrlForEntity: jest
+            .fn()
+            .mockReturnValue('https://example.com/run'),
+        });
+        Object.assign(mockDbService, {
+          storeReportMetadata: jest.fn().mockResolvedValue(undefined),
+        });
+        jest
+          .spyOn(service, 'allocateDashboardPort' as never)
+          .mockResolvedValue(0 as never);
+        jest.spyOn(service, 'executeK6Binary' as never).mockResolvedValue({
+          exitCode,
+          stdout: '',
+          stderr: '',
+          error: null,
+          timedOut: false,
+        } as never);
+        const result = await service.runK6Test({
+          runId: 'run-1',
+          testId: 'test-1',
+          organizationId: 'org-1',
+          projectId: 'project-1',
+          tests: [],
+          script: 'export default function() {}',
+          location: 'local',
+        });
+        expect(result.success).toBe(exitCode === 0);
+        expect(result.reportUrl).toBeNull();
+        expect(result.summaryUrl).toBe('https://example.com/run/summary.json');
+        fs.access.mockResolvedValue(undefined);
+      },
+    );
+
     it('should generate HTML report', () => {
       const result: K6ExecutionResult = {
         success: true,

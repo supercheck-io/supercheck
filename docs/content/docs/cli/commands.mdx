@@ -826,7 +826,7 @@ Push configuration to the Supercheck API, including notification provider config
 ```bash
 supercheck deploy
 supercheck deploy --dry-run      # Preview without applying
-supercheck deploy --no-delete    # Skip deletions
+supercheck deploy --delete       # Delete remote resources absent from config
 supercheck deploy --force        # Skip confirmation
 ```
 
@@ -901,3 +901,15 @@ The doctor command checks:
 - **Configuration** — whether `supercheck.config.ts` exists and is valid
 
 With `--fix`, doctor installs missing Playwright browsers automatically. For `@playwright/test` and `k6`, it prints the install command to run manually.
+
+`diff` and `deploy` preserve remote resources absent from config by default. Use `diff --delete` to preview pruning, then `deploy --delete` to apply it. Pruning includes resources created outside this config. `--no-delete` remains supported.
+
+### Investigation status and terminal output
+
+Use `supercheck sre status <runId>` to follow a triage or accepted investigation. This requires a matching app release with the investigation-status endpoint.
+
+Use `--wide` for unrestricted table values or `--json` for complete structured payloads. `--no-color` and `NO_COLOR` disable colors. Pipes have no colors or spinners. Interactive stream connections show elapsed waiting time; GET streams retry one failed initial connection. Writes and POST streams are not replayed. Ctrl+C exits 130; stream idle timeouts exit 5.
+
+With `--json`, fatal errors are JSON on stderr with `error`, `exitCode`, and API `status` and `details` when available. `config print` uses indented JSON in human mode, with secret variable values masked. Test create/update summaries omit the script blob; use `test get <id> --include-script` to read decoded source.
+
+Structured SRE output follows the same Field/Value detail-table format as monitors, tests, and jobs. Triage separates run metadata from the complete narrative summary. Copilot answers and evidence briefs have report headings; quiet mode suppresses their content. Quiet detail output resolves IDs from API envelopes, and `--json` takes precedence when combined with `--quiet`.

@@ -1,4 +1,4 @@
-import { Command } from 'commander'
+import { Command, Option } from 'commander'
 import { createAuthenticatedClient } from '../api/authenticated-client.js'
 import { output, outputDetail } from '../output/formatter.js'
 import { logger } from '../utils/logger.js'
@@ -12,8 +12,8 @@ export const incidentCommand = new Command('incident').alias('incidents').descri
 
 incidentCommand.command('list')
   .description('List incidents')
-  .option('--status <status>', 'Filter by incident status')
-  .option('--severity <severity>', 'Filter by severity (sev1, sev2, sev3, sev4)')
+  .addOption(new Option('--status <status>', 'Filter by incident status').choices(['triggered', 'investigating', 'identified', 'recommendations_ready', 'user_applying_fix', 'verifying', 'resolved']))
+  .addOption(new Option('--severity <severity>', 'Filter by severity').choices(['sev1', 'sev2', 'sev3', 'sev4']))
   .action(async (options: { status?: string; severity?: string }) => {
     const { data } = await withSpinner('Fetching incidents', () => createAuthenticatedClient().get<IncidentEnvelope>('/api/sre/incidents', options))
     output(data.incidents, { columns: [
@@ -43,8 +43,9 @@ incidentCommand.command('resolve <id>')
   .requiredOption('--comment <comment>', 'Resolution summary')
   .option('--force', 'Skip confirmation')
   .action(async (id: string, options: { comment: string; force?: boolean }) => {
+    const label = /^\d+$/.test(id) ? `#${id}` : id
     id = await resolveIncidentId(id)
-    if (!options.force && !await confirmPrompt(`Resolve incident ${id}?`, { default: false })) {
+    if (!options.force && !await confirmPrompt(`Resolve incident ${label}?`, { default: false })) {
       logger.info('Aborted')
       return
     }

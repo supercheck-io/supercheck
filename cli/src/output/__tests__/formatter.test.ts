@@ -26,7 +26,7 @@ jest.unstable_mockModule('../../utils/logger.js', () => ({
   },
 }))
 
-const { output, outputDetail, setOutputFormat, getOutputFormat } = await import('../formatter.js')
+const { output, outputDetail, setOutputFormat, getOutputFormat, setWideOutput, outputNarrative } = await import('../formatter.js')
 
 describe('Formatter', () => {
   beforeEach(() => {
@@ -56,12 +56,12 @@ describe('Formatter', () => {
   describe('outputDetail — table mode', () => {
     it('should display scalar key-value pairs', () => {
       outputDetail({ id: '123', name: 'Test', status: 'active' })
-      // Should produce 3 output calls (one per field)
-      expect(mockOutput).toHaveBeenCalledTimes(3)
+      // One Field/Value table contains all scalar fields.
+      expect(mockOutput).toHaveBeenCalledTimes(1)
       // Check that all keys are present in output
       const calls = mockOutput.mock.calls.map((c) => String(c[0]))
-      expect(calls.some((c) => c.includes('id') && c.includes('123'))).toBe(true)
-      expect(calls.some((c) => c.includes('name') && c.includes('Test'))).toBe(true)
+      expect(calls.some((c) => c.toLowerCase().includes('id') && c.includes('123'))).toBe(true)
+      expect(calls.some((c) => c.toLowerCase().includes('name') && c.includes('Test'))).toBe(true)
     })
 
     it('should handle empty data', () => {
@@ -76,10 +76,10 @@ describe('Formatter', () => {
       })
       const calls = mockOutput.mock.calls.map((c) => String(c[0]))
       // Should have: id line, empty line, config: header, method line, timeout line
-      expect(calls.some((c) => c.includes('id'))).toBe(true)
-      expect(calls.some((c) => c.includes('config'))).toBe(true)
-      expect(calls.some((c) => c.includes('method') && c.includes('GET'))).toBe(true)
-      expect(calls.some((c) => c.includes('timeout') && c.includes('30'))).toBe(true)
+      expect(calls.some((c) => c.toLowerCase().includes('id'))).toBe(true)
+      expect(calls.some((c) => c.toLowerCase().includes('config'))).toBe(true)
+      expect(calls.some((c) => c.toLowerCase().includes('method') && c.includes('GET'))).toBe(true)
+      expect(calls.some((c) => c.toLowerCase().includes('timeout') && c.includes('30'))).toBe(true)
     })
 
     it('should summarize arrays of objects with count and identifiers', () => {
@@ -92,7 +92,7 @@ describe('Formatter', () => {
       })
       const calls = mockOutput.mock.calls.map((c) => String(c[0]))
       // tests line should show count and names
-      const testsLine = calls.find((c) => c.includes('tests'))
+      const testsLine = calls.find((c) => c.toLowerCase().includes('tests'))
       expect(testsLine).toBeDefined()
       expect(testsLine).toContain('2 items')
       expect(testsLine).toContain('Homepage Check')
@@ -109,7 +109,7 @@ describe('Formatter', () => {
         ],
       })
       const calls = mockOutput.mock.calls.map((c) => String(c[0]))
-      const itemsLine = calls.find((c) => c.includes('items'))
+      const itemsLine = calls.find((c) => c.toLowerCase().includes('items'))
       expect(itemsLine).toBeDefined()
       expect(itemsLine).toContain('4 items')
       expect(itemsLine).toContain('...')
@@ -120,7 +120,7 @@ describe('Formatter', () => {
         tags: ['alpha', 'beta', 'gamma'],
       })
       const calls = mockOutput.mock.calls.map((c) => String(c[0]))
-      const tagsLine = calls.find((c) => c.includes('tags'))
+      const tagsLine = calls.find((c) => c.toLowerCase().includes('tags'))
       expect(tagsLine).toBeDefined()
       expect(tagsLine).toContain('alpha, beta, gamma')
     })
@@ -130,21 +130,21 @@ describe('Formatter', () => {
         tags: [],
       })
       const calls = mockOutput.mock.calls.map((c) => String(c[0]))
-      const tagsLine = calls.find((c) => c.includes('tags'))
+      const tagsLine = calls.find((c) => c.toLowerCase().includes('tags'))
       expect(tagsLine).toBeDefined()
     })
 
     it('should handle boolean values with checkmarks', () => {
       outputDetail({ enabled: true, archived: false })
       const calls = mockOutput.mock.calls.map((c) => String(c[0]))
-      expect(calls.some((c) => c.includes('enabled') && c.includes('✓'))).toBe(true)
-      expect(calls.some((c) => c.includes('archived') && c.includes('✗'))).toBe(true)
+      expect(calls.some((c) => c.toLowerCase().includes('enabled') && c.includes('✓'))).toBe(true)
+      expect(calls.some((c) => c.toLowerCase().includes('archived') && c.includes('✗'))).toBe(true)
     })
 
     it('should handle null and undefined values with dash', () => {
       outputDetail({ description: null, notes: undefined })
       const calls = mockOutput.mock.calls.map((c) => String(c[0]))
-      expect(calls.some((c) => c.includes('description'))).toBe(true)
+      expect(calls.some((c) => c.toLowerCase().includes('description'))).toBe(true)
     })
   })
 
@@ -224,4 +224,61 @@ describe('Formatter', () => {
       setOutputFormat('table')
     })
   })
+  it('bounds timeline table width, omits ANSI in pipes, and preserves full JSON', () => {
+    const data = [{ eventData: 'x'.repeat(4111), status: 'identified' }]
+    output(data)
+    const rendered = String(mockOutput.mock.calls[0][0])
+    expect(Math.max(...rendered.split('\n').map((line) => line.length))).toBeLessThanOrEqual(120)
+    expect(rendered).not.toContain('\x1b[')
+    setOutputFormat('json')
+    output(data)
+    expect(JSON.parse(String(mockOutput.mock.calls[1][0]))).toEqual(data)
+    setOutputFormat('table'); setWideOutput(true)
+    output(data)
+    expect(String(mockOutput.mock.calls[2][0])).toContain('x'.repeat(4111))
+    setWideOutput(false)
+  })
+
+  it('summarizes nested scripts in human output, retaining JSON payloads', () => {
+    const data = { test: { id: 'test', script: 'Ly8g'.repeat(100) } }
+    outputDetail(data)
+    expect(mockOutput.mock.calls.flat().join(' ')).not.toContain(data.test.script)
+    setOutputFormat('json'); outputDetail(data)
+    expect(JSON.parse(String(mockOutput.mock.calls.at(-1)?.[0]))).toEqual(data)
+  })
+
+  it('wraps detail tables to narrow terminal widths without truncating long values', () => {
+    const descriptor = Object.getOwnPropertyDescriptor(process.stdout, 'columns')
+    Object.defineProperty(process.stdout, 'columns', { configurable: true, value: 50 })
+    try {
+      const value = 'meaningful evidence '.repeat(30)
+      outputDetail({ investigationRunId: '019a0000-0000-7000-8000-000000000001', summary: value })
+      const text = mockOutput.mock.calls.map((call) => String(call[0])).join('\n')
+      expect(Math.max(...text.split('\n').map((line) => line.length))).toBeLessThanOrEqual(50)
+      expect(text).not.toContain('…')
+      expect(text.match(/meaningful/g)?.length).toBe(30)
+    } finally {
+      if (descriptor) Object.defineProperty(process.stdout, 'columns', descriptor)
+      else Reflect.deleteProperty(process.stdout, 'columns')
+    }
+  })
+
+  it('keeps narrative text lossless and suppresses it in quiet/JSON mode', () => {
+    outputNarrative('Copilot', '# Findings\n\nFirst paragraph\n\n- Next check\n')
+    expect(mockOutput.mock.calls.map((call) => call[0]).join('\n')).toContain('# Findings\n\nFirst paragraph\n\n- Next check')
+    mockOutput.mockClear(); setOutputFormat('quiet')
+    outputNarrative('Copilot', 'private evidence')
+    expect(mockOutput).not.toHaveBeenCalled()
+    setOutputFormat('json'); outputNarrative('Copilot', 'private evidence')
+    expect(mockOutput).not.toHaveBeenCalled()
+  })
+
+  it('resolves IDs from resource and investigation envelopes in quiet mode', () => {
+    setOutputFormat('quiet')
+    outputDetail({ success: true, test: { id: 'test-1', script: 'large script' } })
+    outputDetail({ accepted: true, investigationRunId: 'run-1' })
+    outputDetail({ id: undefined, summary: 'report' })
+    expect(mockOutput.mock.calls.map((call) => call[0])).toEqual(['test-1', 'run-1'])
+  })
+
 })

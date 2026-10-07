@@ -13,6 +13,7 @@ import { ContainerExecutorService } from '../../common/security/container-execut
 import { CancellationService } from '../../common/services/cancellation.service';
 import { RequirementCoverageService } from './requirement-coverage.service';
 import { filterFileVariablesToUsedKeys } from '../../common/utils/script-analysis';
+import { createSecretStream } from '../../common/utils/secret-stream';
 import { decodeStoredTestScript } from '../../common/utils/test-script';
 import { VariableResolverService } from '../../common/services/variable-resolver.service';
 import {
@@ -1698,6 +1699,19 @@ export class ExecutionService implements OnModuleDestroy {
       `[Container] Executing in container: ${command} ${args.join(' ')}`,
     );
 
+    const consoleStream = createSecretStream(runtimeSecrets, async (text) => {
+      if (!options.runId) return;
+      try {
+        await this.redisService
+          .getClient()
+          .publish(`k6:run:${options.runId}:console`, text);
+      } catch (error) {
+        this.logger.warn(
+          `Failed to publish run console: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    });
+
     // Execute in container - this is the only execution path
     const containerResult =
       await this.containerExecutorService.executeInContainer(
@@ -1719,8 +1733,13 @@ export class ExecutionService implements OnModuleDestroy {
           inlineScriptFileName: options.inlineScriptFileName,
           additionalFiles: options.additionalFiles, // Additional test files for job execution
           ensureDirectories: options.ensureDirectories,
+          onStdoutChunk: options.runId
+            ? (chunk) => consoleStream.write(chunk)
+            : undefined,
         },
       );
+
+    await consoleStream.flush();
 
     // Return the container execution result with proper error context
     const redactedStdout = this.redactSecretsFromText(

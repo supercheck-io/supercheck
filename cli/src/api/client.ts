@@ -1,4 +1,4 @@
-import { ApiRequestError, TimeoutError } from '../utils/errors.js'
+import { ApiRequestError, TimeoutError, networkErrorMessage } from '../utils/errors.js'
 import { logger } from '../utils/logger.js'
 import { CLI_VERSION } from '../version.js'
 import { getProxyAgent as getSharedProxyAgent, clearProxyAgents, getProxyEnv } from '../utils/proxy.js'
@@ -216,13 +216,13 @@ export class ApiClient {
         // Non-idempotent methods (POST, PATCH) must NOT be retried on network errors to prevent duplicate mutations
         if (!isIdempotent) {
           throw new ApiRequestError(
-            `Request to ${targetOrigin} failed: ${(err as Error).message ?? 'Network error'}`,
+            `Request to ${targetOrigin} failed: ${networkErrorMessage(err)}`,
           )
         }
 
         if (attempt < maxRetries) {
           const waitMs = RETRY_BACKOFF_MS * Math.pow(2, attempt)
-          logger.debug(`Network error reaching ${targetOrigin}: ${(err as Error).message}. Retrying in ${waitMs}ms...`)
+          logger.debug(`Network error reaching ${targetOrigin}: ${networkErrorMessage(err)}. Retrying in ${waitMs}ms...`)
           await this.sleep(waitMs)
         }
       } finally {
@@ -231,7 +231,7 @@ export class ApiClient {
     }
 
     throw new ApiRequestError(
-      `Request to ${targetOrigin} failed after ${attemptLabel}: ${lastError?.message ?? 'Unknown error'}`,
+      `Request to ${targetOrigin} failed after ${attemptLabel}: ${networkErrorMessage(lastError)}`,
     )
   }
 
