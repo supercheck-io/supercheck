@@ -1,10 +1,10 @@
 # Releasing the Supercheck CLI
 
-CLI **0.2.1** is published; **0.3.0** is prepared for the next release. For future releases, update `cli/package.json`, the root package version in `cli/package-lock.json`, the README, and the changelog. Confirm registry state before publishing because npm versions cannot be overwritten. CLI 0.3.0 changes the default deploy/diff behavior to preserve absent remote resources; document the explicit `--delete` opt-in in release notes. Failed authentication does not consume a version.
+Version **0.3.0** is prepared; **0.2.1** is currently published. Publish manually from a clean checkout after the release PR merges and CI passes. The README diagram points to an image on `main`, so merge it before publishing.
 
-## Validate the reviewed source
+## Validate and build
 
-Use an up-to-date checkout of the reviewed release commit, normally `main` after the release PR merges. Work in the `cli` directory:
+From the `cli` directory:
 
 ```bash
 npm ci
@@ -14,41 +14,25 @@ npm test
 npm run build
 npm pack --dry-run
 node -p "require('./package.json').version"
-npm view @supercheck/cli dist-tags --json
 npm view @supercheck/cli versions --json
 ```
 
-The local package version must match the planned release and be absent from the registry. The commands below use 0.3.0 as the pending release example. Do not republish an existing version. Inspect the packed README, executable, type exports, and license before publishing. Never put npm tokens into the repository or a committed `.npmrc`.
+Confirm the package version is 0.3.0 and that version is absent from npm. Inspect the package contents: executable, type exports, README, architecture image, and license. Future releases must update both package versions in `package-lock.json`, `package.json`, and the changelog.
 
-## Preferred: publish with GitHub provenance
+## Authenticate and publish manually
 
-Use `.github/workflows/cli-publish.yml`. It validates before publishing, selects `latest` for stable versions, and signs provenance. Configure npm trusted publishing for repository `supercheck-io/supercheck`, workflow `cli-publish.yml` (the publish job installs npm 11 for OIDC support), or supply the encrypted repository secret `NPM_TOKEN` with package-write access and allowed 2FA bypass. npm package settings must also permit bypass-2FA tokens.
-
-For a reviewed, unpublished version on `main`:
-
-```bash
-gh workflow run cli-publish.yml --repo supercheck-io/supercheck --ref main -f dry-run=false
-```
-
-For tag-triggered releases, create `cli-v<package-version>` at the exact validated commit. Do not move tags for versions already published to npm.
-
-## Manual publication when CI authentication is blocked
-
-Use an npm account with write access to `@supercheck/cli`. Interactive login supports account 2FA without storing a token in source:
+Use an npm account with package-write access:
 
 ```bash
 npm login --registry=https://registry.npmjs.org
-npm whoami
-npm publish --access public --tag latest
+npm whoami --registry=https://registry.npmjs.org
+npm publish --dry-run --access public --tag latest --registry=https://registry.npmjs.org
+npm publish --access public --tag latest --registry=https://registry.npmjs.org
 ```
 
-If npm returns `EOTP`, retry with a current authenticator code:
+Complete the browser/2FA prompts. If npm returns `EOTP`, retry publication with `--otp=YOUR_CURRENT_OTP`. If an environment token overrides interactive login, remove that token from the publishing session. Never commit credentials or an authenticated `.npmrc`.
 
-```bash
-npm publish --access public --tag latest --otp=YOUR_CURRENT_OTP
-```
-
-Replace the placeholder with the code when running the command. If an existing environment token overrides your interactive login, remove that token from the publishing session first. Local publication does not provide GitHub Actions provenance; use the workflow when provenance is required. Do not bump the version solely because an authentication attempt failed.
+npm versions cannot be overwritten. An authentication failure does not consume a version, so check registry state before retrying. Manual publication does not provide GitHub Actions provenance.
 
 ## Verify publication
 
@@ -60,4 +44,8 @@ supercheck --version
 supercheck sre --help
 ```
 
-After successful publication, verify `latest` is 0.3.0 and the installed CLI reports 0.3.0. Deploy matching app/worker images before accepting `sre status`, Playwright console streaming, and short k6 report behavior in production. Update GitHub release notes with the actual published source commit, remove the pending-publication notice only after registry verification, and record whether provenance is present.
+Confirm `latest` and the installed CLI report 0.3.0. Check the npm README image after publication. Date the CLI changelog entry and publish release notes identifying the source commit and the new `--delete` opt-in. Matching app/worker deployment is required for investigation status and the console/k6 fixes.
+
+## Optional GitHub publishing
+
+`.github/workflows/cli-publish.yml` supports trusted publishing or `NPM_TOKEN` with provenance. Pushing a `cli-v*` tag triggers npm publication automatically. For a manual release, do not push such a tag unless that workflow has been disabled or changed to avoid duplicate publication.

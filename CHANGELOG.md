@@ -39,11 +39,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [CLI 0.3.0] - Unreleased
 
-- Preserve remote resources absent from config by default; explicit `--delete` opts into pruning for deploy/diff.
-- Use bounded list and Field/Value detail tables, including SRE triage/investigation lifecycle output; add `--wide` and `--no-color`.
-- Add `sre status <runId>`, labeled Copilot/evidence narratives, elapsed progress, structured JSON errors, clearer validation/network diagnostics, and graceful stream interruption.
-- Fix zero-width PTY hangs, non-TTY spinner duplication, quiet stream output, EOF confirmation, script blob summaries, and nested command JSON failures.
-- Matching app/worker updates enable secret-safe Playwright console streaming, synchronize notification config names, and retain k6 threshold results when HTML export is missing.
+### Added
+
+- `sre status <runId>` for project-scoped investigation lifecycle status.
+- `--wide`, `--no-color`, Field/Value detail tables, labeled SRE narratives, and elapsed progress.
+
+### Changed
+
+- Deploy/diff preserve remote resources absent from config; explicit `--delete` opts into pruning.
+- Consistent JSON/quiet behavior, including JSON errors and authentication results.
+- Concise npm README with a static architecture image and manual release instructions.
+
+### Fixed
+
+- Zero-width PTY hangs, duplicate non-TTY progress, truncated IDs, ANSI leakage, EOF confirmation, and script blob output.
+- Incident filters, variable/tag bounds, empty job IDs, login URL diagnostics, and opaque validation/network errors.
+- Stream cleanup and interruption; one bounded retry for failed initial GET connections.
+
+### Server compatibility
+
+- Matching app/worker updates add secret-safe Playwright console streaming, synchronize notification names, and preserve k6 threshold results when HTML export is missing.
 
 ## [CLI 0.2.1] - 2026-10-07
 

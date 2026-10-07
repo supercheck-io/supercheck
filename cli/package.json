@@ -43,7 +43,8 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "assets/architecture.png"
   ],
   "scripts": {
     "build": "tsup",
