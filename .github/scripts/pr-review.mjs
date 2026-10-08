@@ -157,18 +157,45 @@ export function buildPrompt(pr, files) {
   return { prompt, index, truncated }
 }
 
-export function extractModelText(stdout) {
-  const texts = []
+function modelEvents(stdout) {
+  const textById = new Map()
+  const textOrder = []
+  const reasoningById = new Map()
   for (const line of String(stdout ?? "").split("\n")) {
     const trimmed = line.trim()
     if (!trimmed.startsWith("{")) continue
+    let event
     try {
-      const event = JSON.parse(trimmed)
-      if (event.type === "text" && typeof event.part?.text === "string") {
-        texts.push(event.part.text)
-      }
+      event = JSON.parse(trimmed)
     } catch {
-      // Ignore log lines that are not JSON events.
+      continue
+    }
+    const text = event?.part?.text
+    if (typeof text !== "string" || !text.trim()) continue
+    if (event.type === "text") {
+      const id = event.part.id ?? `text-${textOrder.length}`
+      if (!textById.has(id)) textOrder.push(id)
+      textById.set(id, text)
+    } else if (event.type === "reasoning") {
+      const id = event.part.id ?? `reasoning-${reasoningById.size}`
+      reasoningById.set(id, text)
+    }
+  }
+  return {
+    texts: textOrder.map((id) => textById.get(id)),
+    reasoning: [...reasoningById.values()],
+  }
+}
+
+export function extractModelText(stdout) {
+  const { texts, reasoning } = modelEvents(stdout)
+  const candidates = [...texts, ...reasoning]
+  for (let index = candidates.length - 1; index >= 0; index -= 1) {
+    try {
+      parseJsonObject(candidates[index])
+      return candidates[index]
+    } catch {
+      // A later prose part must not hide an earlier JSON review.
     }
   }
   if (texts.length > 0) return texts.at(-1)
@@ -188,11 +215,19 @@ function parseJsonObject(text) {
 }
 
 export function parseReview(text) {
-  const parsed = parseJsonObject(text)
-  const summary = String(parsed.summary ?? "").trim().slice(0, LIMITS.maxSummaryChars)
-  if (!summary) throw new Error("model output is missing a summary")
-  const comments = Array.isArray(parsed.comments) ? parsed.comments : []
-  return { summary, comments }
+  try {
+    const parsed = parseJsonObject(text)
+    const summary = String(parsed.summary ?? "").trim().slice(0, LIMITS.maxSummaryChars)
+    if (!summary) throw new Error("model output is missing a summary")
+    const comments = Array.isArray(parsed.comments) ? parsed.comments : []
+    return { summary, comments }
+  } catch (error) {
+    const prose = String(text ?? "")
+      .replace(/```(?:json)?/g, "")
+      .trim()
+    if (prose.length < 40 || prose.startsWith("{")) throw error
+    return { summary: prose.slice(0, LIMITS.maxSummaryChars), comments: [] }
+  }
 }
 
 export function redact(text, secrets = []) {
