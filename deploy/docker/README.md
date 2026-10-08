@@ -157,9 +157,7 @@ When you are running the app locally on `http://localhost:3000`, Supercheck keep
 | `QUEUED_CAPACITY` | App-side gate: max queued test runs before new submissions are rejected | `10` |
 | `WORKER_LOCATION` | Worker queue mode (`local` for single-server self-hosted, or any enabled Super Admin location code) | `local` |
 
-OpenAI GPT-6 Luna is the default. To opt into DeepSeek V4.1 Flash, set `AI_PROVIDER=deepseek`, `AI_MODEL=deepseek-flash`, and `DEEPSEEK_API_KEY`. This sends AI prompts, code, requirement text, and supplied evidence to DeepSeek's hosted API; review data handling and China-related residency requirements first. Provider selection applies to the entire installation. Both models run without thinking/reasoning to preserve existing latency and tool-call behavior.
-
-Existing `AI_MODEL=gpt-4o-mini` overrides must be changed to `gpt-6-luna` explicitly. After updating the app image and `.env`, recreate the app with `docker compose up -d --force-recreate app`; restarting does not reload environment variables.
+OpenAI GPT-6 Luna is the default. To opt into DeepSeek V4.1 Flash, set `AI_PROVIDER=deepseek`, `AI_MODEL=deepseek-flash`, and `DEEPSEEK_API_KEY`. This sends AI prompts, code, requirement text, and supplied evidence to DeepSeek's hosted API; review data handling and China-related residency requirements first. Provider selection applies to the entire installation.
 
 ---
 
