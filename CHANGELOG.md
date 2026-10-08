@@ -36,7 +36,7 @@ Notable features, fixes, and upgrade requirements for Supercheck users. App and 
 
 **Compatibility:** Older servers resolve incident numbers among their newest 500 incidents; updated servers support exact lookup. Updating the CLI does not update app or worker deployments.
 
-## [1.3.6]
+## [1.3.6] - 2026-09-15
 
 - **AI SRE:** Add incident management, service topology, investigations, Copilot, diagnostic recipes, and Private Agents.
 - **API and CLI:** Add incident operations, service topology, Copilot chat, and evidence-brief streaming. Consolidate the CLI and Recorder with the main open-source project.
