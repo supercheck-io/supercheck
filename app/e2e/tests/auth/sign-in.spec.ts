@@ -93,9 +93,10 @@ test.describe('Sign In @auth @smoke', () => {
    * @priority high
    * @type negative
    *
-   * Note: Due to rate limiting, the error might be:
+   * Note: Due to rate limiting or lockout, the error might be:
    * - "Invalid credentials" / "Incorrect password" on first attempts
    * - "Too many requests" if rate limited
+   * - "Account temporarily locked" after repeated failures from the shared IP
    */
   test('AUTH-005: Sign in with invalid password @high @negative', async ({ page }) => {
     const signInPage = new SignInPage(page);
@@ -103,7 +104,7 @@ test.describe('Sign In @auth @smoke', () => {
     await signInPage.signIn('test@example.com', 'wrong-password-123');
 
     // Assert - should show error (auth error OR rate limit)
-    await signInPage.expectError(/invalid|incorrect|too many|rate limit/i);
+    await signInPage.expectError(/invalid|incorrect|too many|rate limit|locked/i);
     await expect(page).toHaveURL(/sign-in/);
   });
 
@@ -118,7 +119,7 @@ test.describe('Sign In @auth @smoke', () => {
     await signInPage.signIn('nonexistent-user@example.com', 'any-password-123');
 
     // Assert - generic error (doesn't reveal if email exists) or rate limit
-    await signInPage.expectError(/invalid|incorrect|too many|rate limit/i);
+    await signInPage.expectError(/invalid|incorrect|too many|rate limit|locked/i);
     await expect(page).toHaveURL(/sign-in/);
   });
 
