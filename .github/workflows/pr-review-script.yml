@@ -1,0 +1,25 @@
+name: PR review script
+
+on:
+  pull_request:
+    paths:
+      - .github/scripts/pr-review.mjs
+      - .github/scripts/pr-review.test.mjs
+      - .github/workflows/pr-review.yml
+      - .github/workflows/pr-review-script.yml
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Review script
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Test the review gate
+        run: node --test .github/scripts/pr-review.test.mjs
