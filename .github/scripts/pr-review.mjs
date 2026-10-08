@@ -204,16 +204,51 @@ export function extractModelText(stdout) {
   return String(stdout ?? "")
 }
 
+function jsonObjects(text) {
+  const source = String(text ?? "")
+  const objects = []
+  let start = -1
+  let depth = 0
+  let inString = false
+  let escape = false
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index]
+    if (inString) {
+      if (escape) escape = false
+      else if (char === "\\") escape = true
+      else if (char === '"') inString = false
+      continue
+    }
+    if (char === '"') {
+      inString = true
+      continue
+    }
+    if (char === "{") {
+      if (depth === 0) start = index
+      depth += 1
+      continue
+    }
+    if (char !== "}" || depth === 0) continue
+    depth -= 1
+    if (depth !== 0) continue
+    try {
+      objects.push(JSON.parse(source.slice(start, index + 1)))
+    } catch {
+      // Keep scanning. A later object may be the review.
+    }
+  }
+  return objects
+}
+
 function parseJsonObject(text) {
   const source = String(text ?? "").trim()
   const fenced = /```(?:json)?\s*([\s\S]*?)```/.exec(source)
-  const candidate = fenced ? fenced[1] : source
-  const start = candidate.indexOf("{")
-  const end = candidate.lastIndexOf("}")
-  if (start === -1 || end <= start) {
-    throw new Error("model output did not contain a JSON object")
-  }
-  return JSON.parse(candidate.slice(start, end + 1))
+  const objects = jsonObjects(fenced ? fenced[1] : source)
+  const review = objects.findLast(
+    (object) => object && typeof object === "object" && typeof object.summary === "string" && object.summary.trim(),
+  )
+  if (!review) throw new Error("model output did not contain a JSON object")
+  return review
 }
 
 function isToolCall(text) {
