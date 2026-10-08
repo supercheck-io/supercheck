@@ -1,0 +1,214 @@
+# Automatic pull request review using the OpenCode Go subscription.
+#
+# This workflow is intentionally not the stock OpenCode GitHub Action.
+# That action installs an unpinned CLI, posts the raw model reply, and can
+# push commits. It has also written environment variables into pull request
+# comments. Here the model only sees the diff, tools are denied, and a
+# separate step turns the reply into a GitHub review with one-line suggestions.
+#
+# pull_request_target is required so the workflow and this script come from
+# the base branch. A pull request cannot edit the job that holds the API key.
+# The head branch is never checked out. Forks, bots, drafts, and accounts
+# that are not OWNER, MEMBER, or COLLABORATOR exit before the model runs.
+#
+# Do not add this workflow as a required status check. A model outage should
+# not block merges. Do not switch the trigger to pull_request, and do not
+# checkout the pull request head in a job that has OPENCODE_API_KEY.
+
+name: PR review
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      pull_number:
+        description: Pull request number to review
+        required: true
+        type: string
+
+concurrency:
+  group: pr-review-${{ github.event.pull_request.number || inputs.pull_number }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  prepare:
+    name: Decide whether to review
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event.pull_request.draft == false &&
+        github.event.pull_request.head.repo.full_name == github.repository &&
+        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association) &&
+        github.event.pull_request.user.type != 'Bot'
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      decision: ${{ steps.prepare.outputs.decision }}
+    steps:
+      - name: Checkout review script from the base branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Classify the pull request
+        id: prepare
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pull_number }}
+          MANUAL: ${{ github.event_name == 'workflow_dispatch' }}
+          REVIEW_DIR: ${{ runner.temp }}/pr-review
+        run: node .github/scripts/pr-review.mjs prepare
+
+      - name: Upload review input
+        if: steps.prepare.outputs.decision != 'skip'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: pr-review-${{ github.run_id }}
+          path: ${{ runner.temp }}/pr-review
+          retention-days: 1
+          include-hidden-files: true
+
+  model:
+    name: Review with DeepSeek V4.1 Flash
+    needs: prepare
+    if: needs.prepare.outputs.decision == 'review'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Require the OpenCode key
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+        run: |
+          if [ -z "$OPENCODE_API_KEY" ]; then
+            echo "::error::OPENCODE_API_KEY is not set. Add it under Settings, Secrets and variables, Actions."
+            exit 1
+          fi
+
+      - name: Download review input
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: pr-review-${{ github.run_id }}
+          path: ${{ runner.temp }}/pr-review
+
+      - name: Install pinned OpenCode CLI
+        working-directory: ${{ runner.temp }}
+        run: |
+          set -euo pipefail
+          version="1.18.35"
+          checksum="c8f888b451f5494a18f858fffb0e0b68f4e4baa9c241761c5f206884f0fa640d"
+          curl -fsSL -o opencode.tar.gz "https://github.com/anomalyco/opencode/releases/download/v${version}/opencode-linux-x64.tar.gz"
+          echo "${checksum}  opencode.tar.gz" | sha256sum -c -
+          tar -xzf opencode.tar.gz
+          mkdir -p "$RUNNER_TEMP/bin"
+          install -m 755 opencode "$RUNNER_TEMP/bin/opencode"
+          "$RUNNER_TEMP/bin/opencode" --version
+
+      - name: Run a read-only review
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          OPENCODE_PERMISSION: '{"*":"deny"}'
+          GITHUB_TOKEN: ""
+          GH_TOKEN: ""
+          ACTIONS_ID_TOKEN_REQUEST_TOKEN: ""
+          ACTIONS_ID_TOKEN_REQUEST_URL: ""
+        run: |
+          set -euo pipefail
+          sandbox="$RUNNER_TEMP/ai-review-sandbox"
+          mkdir -p "$sandbox"
+          cat > "$sandbox/opencode.json" <<'EOF'
+          {
+            "model": "opencode-go/deepseek-v4.1-flash",
+            "permission": {
+              "*": "deny"
+            }
+          }
+          EOF
+          set +e
+          # DeepSeek V4.1 Flash accepts low, high, and max. max is the highest.
+          timeout 12m "$RUNNER_TEMP/bin/opencode" run \
+            --pure \
+            --format json \
+            --model opencode-go/deepseek-v4.1-flash \
+            --variant max \
+            --dir "$sandbox" \
+            < "$RUNNER_TEMP/pr-review/prompt.txt" \
+            > "$RUNNER_TEMP/pr-review/model.ndjson"
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ]; then
+            echo "OpenCode exited ${status}. A short failure note will be posted without the command output."
+          fi
+
+      - name: Keep the reply as data
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          REVIEW_DIR: ${{ runner.temp }}/pr-review
+          MODEL_OUTPUT: ${{ runner.temp }}/pr-review/model.ndjson
+        run: |
+          set -euo pipefail
+          if [ ! -s "$MODEL_OUTPUT" ]; then
+            printf '%s\n' '{"type":"text","part":{"text":""}}' > "$MODEL_OUTPUT"
+          fi
+          node "$REVIEW_DIR/pr-review.mjs" extract
+          rm -f "$MODEL_OUTPUT" "$REVIEW_DIR/prompt.txt" "$REVIEW_DIR/pr-review.mjs"
+
+      - name: Upload the review
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: pr-review-result-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/pr-review/review.json
+            ${{ runner.temp }}/pr-review/meta.json
+          retention-days: 1
+
+  publish:
+    name: Post the review
+    needs: [prepare, model]
+    if: |
+      always() &&
+      needs.prepare.result == 'success' &&
+      needs.prepare.outputs.decision != 'skip' &&
+      (needs.model.result == 'success' || needs.model.result == 'skipped')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+      actions: read
+    steps:
+      - name: Checkout review script from the base branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Download review input
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: pr-review-${{ github.run_id }}
+          path: ${{ runner.temp }}/pr-review
+
+      - name: Download model result
+        if: needs.prepare.outputs.decision == 'review'
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: pr-review-result-${{ github.run_id }}
+          path: ${{ runner.temp }}/pr-review-result
+
+      - name: Publish the GitHub review
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pull_number }}
+          REVIEW_DIR: ${{ needs.prepare.outputs.decision == 'review' && format('{0}/pr-review-result', runner.temp) || format('{0}/pr-review', runner.temp) }}
+        run: node .github/scripts/pr-review.mjs publish
