@@ -6,6 +6,8 @@
 
 Add `OPENCODE_API_KEY` to **Settings → Secrets and variables → Actions** in each repository. The key must have an active OpenCode Go subscription with access to `deepseek-v4.1-flash`. The reviewer uses the [documented Go chat completions API](https://opencode.ai/docs/go/#endpoints), identifies itself with a user agent and stable session header, requests JSON without tools, and disables thinking so the answer is returned as final content.
 
+Workflow-scoped Actions event policies must allow `pull_request` and `workflow_dispatch`. When migrating an existing policy, keep its legacy `pull_request_target` allowance until the default branch uses the new workflow, then remove that unused allowance. Preserve active enforcement and the workflow path scope.
+
 Allow Actions to create PR reviews under repository/organization policy. Do not make this advisory workflow a required merge check. Provider outages, exhausted quota, or missing credentials produce a warning, an explicit failure result in the job summary, and one failure notice per commit; they never claim a successful review. Runner, artifact, or GitHub permission errors still fail the workflow.
 
 ## Retry and coverage
