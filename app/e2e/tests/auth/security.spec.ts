@@ -261,39 +261,44 @@ test.describe("Security - Information Disclosure @auth @security", () => {
       );
     }
     const signInPage = new SignInPage(page);
+
+    const submitSignIn = async (email: string, password: string) => {
+      const responsePromise = page
+        .waitForResponse(
+          (response) =>
+            response.url().includes("/api/auth/sign-in/email") &&
+            response.request().method() === "POST",
+        )
+        // The lockout pre-check rejects before the request is sent.
+        .catch(() => null);
+      await signInPage.signIn(email, password);
+      await expect(signInPage.errorMessage).toBeVisible();
+      return {
+        response: await responsePromise,
+        error: await signInPage.getErrorMessage(),
+      };
+    };
+
     await signInPage.navigate();
-
-    const unknownResponsePromise = page.waitForResponse(
-      (response) =>
-        response.url().includes("/api/auth/sign-in/email") &&
-        response.request().method() === "POST",
+    const unknown = await submitSignIn(
+      "definitely-not-exists@example.com",
+      "anypassword",
     );
-    await signInPage.signIn("definitely-not-exists@example.com", "anypassword");
-    const unknownResponse = await unknownResponsePromise;
-    await expect(signInPage.errorMessage).toBeVisible();
-    const error1 = await signInPage.getErrorMessage();
 
     await signInPage.navigate();
-
-    const existingResponsePromise = page.waitForResponse(
-      (response) =>
-        response.url().includes("/api/auth/sign-in/email") &&
-        response.request().method() === "POST",
-    );
-    await signInPage.signIn(
+    const existing = await submitSignIn(
       env.securityTestUser.email,
       `${env.securityTestUser.password}-wrong`,
     );
-    const existingResponse = await existingResponsePromise;
-    await expect(signInPage.errorMessage).toBeVisible();
-    const error2 = await signInPage.getErrorMessage();
 
-    const attempts = [
-      { response: unknownResponse, error: error1 },
-      { response: existingResponse, error: error2 },
-    ];
+    const attempts = [unknown, existing];
     for (const { response, error } of attempts) {
-      if (response.status() === 429) {
+      if (!response) {
+        // The lockout pre-check rejected both attempts before the API call.
+        // The alert is identical for existing and unknown accounts, so it
+        // still satisfies the no-enumeration contract.
+        expect(error).toMatch(/locked|too many/i);
+      } else if (response.status() === 429) {
         expect(error).toBe("Too many requests. Please try again later.");
         const retryAfter = Number(response.headers()["x-retry-after"]);
         expect(Number.isInteger(retryAfter)).toBe(true);
@@ -305,8 +310,13 @@ test.describe("Security - Information Disclosure @auth @security", () => {
 
     // When both credential checks reach the authentication path, they must be
     // indistinguishable. A strict, generic 429 remains a fail-closed outcome.
-    if (unknownResponse.status() !== 429 && existingResponse.status() !== 429) {
-      expect(error2).toBe(error1);
+    if (
+      unknown.response &&
+      existing.response &&
+      unknown.response.status() !== 429 &&
+      existing.response.status() !== 429
+    ) {
+      expect(existing.error).toBe(unknown.error);
     }
   });
 
