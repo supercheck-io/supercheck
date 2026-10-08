@@ -23,8 +23,6 @@ export const LIMITS = {
   maxSuggestionChars: 400,
 }
 
-const TRUSTED_ASSOCIATIONS = new Set(["OWNER", "MEMBER", "COLLABORATOR"])
-
 const SECRET_PATTERNS = [
   /gh[pousr]_[A-Za-z0-9_]{20,}/g,
   /github_pat_[A-Za-z0-9_]{20,}/g,
@@ -49,12 +47,9 @@ export function evaluateEligibility(pr, { repository, manual = false } = {}) {
     return { decision: "skip", reason: "bot" }
   }
 
-  if (!manual) {
-    if (pr.draft) return { decision: "skip", reason: "draft" }
-    if (!TRUSTED_ASSOCIATIONS.has(pr.author_association)) {
-      return { decision: "skip", reason: "untrusted-author" }
-    }
-  }
+  // Same-repository authors already have write access. The pull request API
+  // called with GITHUB_TOKEN does not reliably report MEMBER for them.
+  if (!manual && pr.draft) return { decision: "skip", reason: "draft" }
 
   const labels = (pr.labels ?? []).map((label) => label.name)
   const text = `${pr.title ?? ""}\n${pr.body ?? ""}`
