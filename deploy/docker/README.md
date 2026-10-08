@@ -1,6 +1,8 @@
 # Docker Compose Configurations
 
-Production-ready Docker Compose files for self-hosting Supercheck.
+Docker Compose files for self-hosting Supercheck.
+
+For agent-assisted installation, use [INSTALL.md](./INSTALL.md).
 
 ## Quick Start
 
@@ -58,51 +60,7 @@ newgrp docker
 | `docker-compose-local.yml` | Source-based local development |
 | `docker-compose-aisre-lab.yml` | Optional AI SRE integration lab with OSS telemetry and webhook capture |
 
-## Optional AI SRE Integration Lab
-
-The AI SRE lab is an opt-in Docker Compose overlay for testing read-only connectors, webhook delivery, alert fire/recovery behavior, and seeded live evals without connecting to customer production systems.
-
-```bash
-cd supercheck/deploy/docker
-
-# Start Supercheck plus the full OSS lab profile.
-KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig \
-docker compose -f docker-compose.yml -f docker-compose-aisre-lab.yml \
-  --profile aisre-lab up -d
-
-# Trigger deterministic demo signals.
-curl http://127.0.0.1:18080/checkout
-curl http://127.0.0.1:18080/checkout/slow
-curl http://127.0.0.1:18080/checkout/error
-
-# Inspect captured Alertmanager or Supercheck webhook payloads.
-curl http://127.0.0.1:18081/payloads
-```
-
-Lab endpoints bind to `127.0.0.1` by default:
-
-| Endpoint | Default URL |
-| --- | --- |
-| Demo service | `http://127.0.0.1:18080` |
-| Webhook capture | `http://127.0.0.1:18081` |
-| Grafana | `http://127.0.0.1:13000` |
-| Prometheus | `http://127.0.0.1:19090` |
-| Alertmanager | `http://127.0.0.1:19093` |
-| Loki | `http://127.0.0.1:13100` |
-| Tempo | `http://127.0.0.1:13200` |
-
-Use the `core`, `logs`, and `traces` profiles when you want only part of the lab:
-
-```bash
-# Metrics, alerts, Grafana, demo service, and webhook capture only.
-docker compose -f docker-compose.yml -f docker-compose-aisre-lab.yml --profile core up -d
-
-# Add logs or traces independently.
-docker compose -f docker-compose.yml -f docker-compose-aisre-lab.yml --profile logs up -d
-docker compose -f docker-compose.yml -f docker-compose-aisre-lab.yml --profile traces up -d
-```
-
-Keep this lab behind a firewall on shared hosts. It is not a production observability stack.
+The optional [AI SRE integration lab](./aisre-lab/README.md) is for connector development and testing; it is not needed for installation.
 
 All worker Docker definitions use the worker readiness endpoint (`/health/ready`) for healthchecks. A worker is marked unhealthy when it cannot reach required dependencies such as PostgreSQL, Redis, or its queues.
 
@@ -222,10 +180,8 @@ docker compose exec -T postgres sh -c 'psql -U "$DB_USER" "$DB_NAME"' < backup.s
 
 Full documentation: **[supercheck.io/docs/app/deployment](https://supercheck.io/docs/app/deployment)**
 
-## AI SRE defaults
+## AI SRE
 
-AI SRE and alert-triggered automation are enabled once an AI provider is configured. Only two optional controls are exposed: `SRE_ENABLED=false` disables AI SRE requests and automation; `SRE_AUTOMATION_ENABLED=false` keeps manual AI workflows and stops alert-triggered work. Both default to `true` and apply to the app and worker. Automation may incur provider costs. Old per-workflow flags are no longer read; migrate existing opt-outs before upgrading and recreate affected containers.
+Configure an AI provider to use AI SRE. Investigations, Copilot, and automatic alert triage are enabled by default. Migrations run when the app starts.
 
-Slack/Teams incident commands are optional. Add `-f docker-compose-collaboration.yml` to your usual main Compose invocation only when using that integration. Configure `SLACK_SIGNING_SECRET` and `SLACK_BOT_TOKEN`, or `TEAMS_OUTGOING_WEBHOOK_SECRET`, plus `SRE_COLLABORATION_ALLOWED_RESPONDER_IDS` in `.env`. An empty responder list denies commands. Collaboration uses stored evidence; live connector access requires an authenticated CLI/dashboard request and explicit consent.
-
-A CLI update does not update server images. These defaults require an app/worker release containing the new SRE code. Before rollout, update the host's main Compose file to forward the two settings, migrate previous opt-outs, select the validated release with `SUPERCHECK_VERSION`, and recreate `app` and `worker`. Preserve `.env` secrets and any intentional host-specific Compose changes. The demo deployment script updates images but does not replace the host Compose file.
+Set `SRE_AUTOMATION_ENABLED=false` for manual investigations only, or `SRE_ENABLED=false` to disable AI SRE. Automatic triage can incur AI-provider charges. After changing `.env`, run `docker compose up -d --force-recreate app worker` (add `-f docker-compose-secure.yml` for HTTPS).

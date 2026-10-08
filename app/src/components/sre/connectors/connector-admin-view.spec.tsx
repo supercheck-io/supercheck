@@ -512,7 +512,7 @@ describe("ConnectorAdminView", () => {
     );
   });
 
-  it("disables evidence search for collaboration connectors without live adapters", async () => {
+  it("disables evidence search for setup-only connectors without live adapters", async () => {
     const jiraConnector = {
       ...connector,
       id: "018f0000-0000-7000-8000-000000000020",

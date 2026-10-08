@@ -1493,7 +1493,7 @@ export async function searchSreConnectorEvidence(
     if (!searchSupported) {
       return {
         success: false,
-        error: `${connector.type.replace(/_/g, " ")} evidence search is not implemented yet. Configure the connector for future collaboration context, but do not use it for live investigation search.`,
+        error: `${connector.type.replace(/_/g, " ")} evidence search is not implemented yet. Choose a supported live evidence connector.`,
       };
     }
 
