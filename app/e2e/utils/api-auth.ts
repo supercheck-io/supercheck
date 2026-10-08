@@ -29,6 +29,42 @@ function getAuthRetryDelayMs(response: APIResponse, attempt: number) {
   return boundedSeconds * 1_000 + 250;
 }
 
+/**
+ * Sign in through Better Auth with bounded retries for its per-IP window.
+ * Returns the final response so callers can keep their own assertions.
+ */
+export async function signInWithRetry(
+  request: APIRequestContext,
+  credentials: Credentials,
+): Promise<APIResponse> {
+  let response: APIResponse | undefined;
+
+  for (let attempt = 1; attempt <= AUTH_MAX_ATTEMPTS; attempt += 1) {
+    const currentResponse = await request.post('/api/auth/sign-in/email', {
+      data: {
+        email: credentials.email.trim(),
+        password: credentials.password,
+        rememberMe: true,
+      },
+    });
+    response = currentResponse;
+
+    if (currentResponse.status() !== 429 || attempt === AUTH_MAX_ATTEMPTS) {
+      break;
+    }
+
+    await new Promise((resolve) =>
+      setTimeout(resolve, getAuthRetryDelayMs(currentResponse, attempt)),
+    );
+  }
+
+  if (!response) {
+    throw new Error('E2E API authentication did not return a response');
+  }
+
+  return response;
+}
+
 export async function authenticateWithApi(
   apiRequest: APIRequest,
   baseURL: string,
@@ -45,29 +81,7 @@ export async function authenticateWithApi(
   });
 
   try {
-    let response: APIResponse | undefined;
-    for (let attempt = 1; attempt <= AUTH_MAX_ATTEMPTS; attempt += 1) {
-      const currentResponse = await api.post('/api/auth/sign-in/email', {
-        data: {
-          email: credentials.email.trim(),
-          password: credentials.password,
-          rememberMe: true,
-        },
-      });
-      response = currentResponse;
-
-      if (currentResponse.status() !== 429 || attempt === AUTH_MAX_ATTEMPTS) {
-        break;
-      }
-
-      await new Promise((resolve) =>
-        setTimeout(resolve, getAuthRetryDelayMs(currentResponse, attempt)),
-      );
-    }
-
-    if (!response) {
-      throw new Error('E2E API authentication did not return a response');
-    }
+    const response = await signInWithRetry(api, credentials);
 
     if (!response.ok()) {
       throw new Error(
@@ -136,6 +150,16 @@ export async function newAuthenticatedPage(
     throw error;
   }
 
-  const context = await browser.newContext({ baseURL, storageState });
+  const origin = new URL(baseURL).origin;
+  const context = await browser.newContext({
+    baseURL,
+    storageState,
+    // Same-origin guarded APIs (for example project switching) reject
+    // APIRequestContext calls that do not send an explicit Origin.
+    extraHTTPHeaders: {
+      Origin: origin,
+      Referer: `${origin}/sign-in`,
+    },
+  });
   return context.newPage();
 }
