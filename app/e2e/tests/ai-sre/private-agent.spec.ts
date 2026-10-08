@@ -34,12 +34,14 @@ test.describe("AI SRE Private Agent lifecycle @aisre @private-agent @critical", 
     const projectId = (
       (await createdProject.json()) as { data: { id: string } }
     ).data.id;
-    const switched = await page.request.post("/api/projects/switch", {
-      data: { projectId },
-    });
-    expect(switched.status(), await switched.text()).toBe(200);
 
     try {
+      // Switch inside the try so a failed selection still cleans up the project.
+      const switched = await page.request.post("/api/projects/switch", {
+        data: { projectId },
+      });
+      expect(switched.status(), await switched.text()).toBe(200);
+
       const agentName = `E2E agent ${Date.now()}`;
       await page.goto("/org-admin?tab=private-agents", { waitUntil: "load" });
       await page

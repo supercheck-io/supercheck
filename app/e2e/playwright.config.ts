@@ -39,7 +39,11 @@ export default defineConfig({
   /* Shared settings for all the projects below */
   use: {
     baseURL: process.env.E2E_BASE_URL || 'https://demo.supercheck.dev',
-    trace: 'retain-on-failure',
+    // Traces capture raw request and response bodies, including sign-in
+    // credentials. Browser tests authenticate with real accounts and CI
+    // artifacts on this public repository are world-readable, so traces must
+    // stay off. Failure screenshots and error context still document failures.
+    trace: 'off',
     screenshot: 'only-on-failure',
     video: 'off',
     actionTimeout: 15000,

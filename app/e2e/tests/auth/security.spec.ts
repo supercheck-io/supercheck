@@ -19,6 +19,7 @@ test.use({ storageState: { cookies: [], origins: [] } });
 
 import { SignInPage, ForgotPasswordPage } from "../../pages/auth";
 import { env, routes } from "../../utils/env";
+import { signInWithRetry } from "../../utils/api-auth";
 import { loginIfNeeded } from "../../utils/auth-helper";
 
 const SESSION_COOKIE_SUFFIX = "better-auth.session_token";
@@ -32,9 +33,9 @@ function requireCredentials(): { email: string; password: string } {
 
 async function authenticateContext(page: Page): Promise<void> {
   const credentials = requireCredentials();
-  const response = await page.request.post("/api/auth/sign-in/email", {
-    data: { ...credentials, rememberMe: true },
-  });
+  // Better Auth limits sign-ins to 3 per 10 seconds per IP, and the shared
+  // demo IP budget can already be consumed by other suite traffic.
+  const response = await signInWithRetry(page.request, credentials);
   expect(response.status(), await response.text()).toBe(200);
 }
 

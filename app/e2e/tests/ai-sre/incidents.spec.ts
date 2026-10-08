@@ -32,13 +32,15 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
     expect(createProject.status(), await createProject.text()).toBe(201);
     const projectId = ((await createProject.json()) as { data: { id: string } })
       .data.id;
-    const switchProject = await page.request.post("/api/projects/switch", {
-      data: { projectId },
-    });
-    expect(switchProject.status(), await switchProject.text()).toBe(200);
     let monitorId = "";
 
     try {
+      // Switch inside the try so a failed selection still cleans up the project.
+      const switchProject = await page.request.post("/api/projects/switch", {
+        data: { projectId },
+      });
+      expect(switchProject.status(), await switchProject.text()).toBe(200);
+
       const monitor = await createMonitor(page.request, {
         name: `E2E SRE alert source ${Date.now()}`,
         enabled: false,

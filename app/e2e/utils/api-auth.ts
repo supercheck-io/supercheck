@@ -29,6 +29,42 @@ function getAuthRetryDelayMs(response: APIResponse, attempt: number) {
   return boundedSeconds * 1_000 + 250;
 }
 
+/**
+ * Sign in through Better Auth with bounded retries for its per-IP window.
+ * Returns the final response so callers can keep their own assertions.
+ */
+export async function signInWithRetry(
+  request: APIRequestContext,
+  credentials: Credentials,
+): Promise<APIResponse> {
+  let response: APIResponse | undefined;
+
+  for (let attempt = 1; attempt <= AUTH_MAX_ATTEMPTS; attempt += 1) {
+    const currentResponse = await request.post('/api/auth/sign-in/email', {
+      data: {
+        email: credentials.email.trim(),
+        password: credentials.password,
+        rememberMe: true,
+      },
+    });
+    response = currentResponse;
+
+    if (currentResponse.status() !== 429 || attempt === AUTH_MAX_ATTEMPTS) {
+      break;
+    }
+
+    await new Promise((resolve) =>
+      setTimeout(resolve, getAuthRetryDelayMs(currentResponse, attempt)),
+    );
+  }
+
+  if (!response) {
+    throw new Error('E2E API authentication did not return a response');
+  }
+
+  return response;
+}
+
 export async function authenticateWithApi(
   apiRequest: APIRequest,
   baseURL: string,
@@ -45,29 +81,7 @@ export async function authenticateWithApi(
   });
 
   try {
-    let response: APIResponse | undefined;
-    for (let attempt = 1; attempt <= AUTH_MAX_ATTEMPTS; attempt += 1) {
-      const currentResponse = await api.post('/api/auth/sign-in/email', {
-        data: {
-          email: credentials.email.trim(),
-          password: credentials.password,
-          rememberMe: true,
-        },
-      });
-      response = currentResponse;
-
-      if (currentResponse.status() !== 429 || attempt === AUTH_MAX_ATTEMPTS) {
-        break;
-      }
-
-      await new Promise((resolve) =>
-        setTimeout(resolve, getAuthRetryDelayMs(currentResponse, attempt)),
-      );
-    }
-
-    if (!response) {
-      throw new Error('E2E API authentication did not return a response');
-    }
+    const response = await signInWithRetry(api, credentials);
 
     if (!response.ok()) {
       throw new Error(
@@ -88,22 +102,24 @@ export async function authenticateWithApi(
       );
     }
     const projects = (await projectsResponse.json()) as {
-      currentProject?: { organizationId?: string };
+      currentProject?: { id?: string; organizationId?: string };
     };
-    const organizationId = projects.currentProject?.organizationId;
-    if (!organizationId) {
+    const currentProject = projects.currentProject;
+    if (!currentProject?.id || !currentProject.organizationId) {
       throw new Error(
         `E2E identity ${credentials.email} has no active organization/project`,
       );
     }
-    const activeOrganization = await api.post(
-      '/api/auth/organization/set-active',
-      { data: { organizationId } },
-    );
-    if (!activeOrganization.ok()) {
+    // Direct Better Auth organization operations are disabled; selecting the
+    // active tenant must go through the application API, which sets the
+    // organization and project scopes together under app RBAC.
+    const activeProject = await api.post('/api/projects/switch', {
+      data: { projectId: currentProject.id },
+    });
+    if (!activeProject.ok()) {
       throw new Error(
-        `E2E organization activation failed for ${credentials.email} ` +
-          `(${activeOrganization.status()}): ${await activeOrganization.text()}`,
+        `E2E project activation failed for ${credentials.email} ` +
+          `(${activeProject.status()}): ${await activeProject.text()}`,
       );
     }
 
@@ -134,6 +150,16 @@ export async function newAuthenticatedPage(
     throw error;
   }
 
-  const context = await browser.newContext({ baseURL, storageState });
+  const origin = new URL(baseURL).origin;
+  const context = await browser.newContext({
+    baseURL,
+    storageState,
+    // Same-origin guarded APIs (for example project switching) reject
+    // APIRequestContext calls that do not send an explicit Origin.
+    extraHTTPHeaders: {
+      Origin: origin,
+      Referer: `${origin}/sign-in`,
+    },
+  });
   return context.newPage();
 }
