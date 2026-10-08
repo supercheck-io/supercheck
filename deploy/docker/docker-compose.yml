@@ -187,7 +187,6 @@ x-common-env: &common-env # Database Configuration
   # Supercheck supports multiple AI providers. Choose ONE provider and configure
   # its credentials below. The AI_PROVIDER setting determines which provider is used.
   #
-  # Supported providers: openai, azure, anthropic, google, bedrock
   # Default: openai with gpt-6-luna model
   # ==========================================================================
 
