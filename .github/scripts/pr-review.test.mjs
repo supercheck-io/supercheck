@@ -127,6 +127,14 @@ test("uses an earlier JSON review when the last text part is prose", () => {
   assert.equal(parseReview(extractModelText(stdout)).summary, "The generation check is sound.")
 })
 
+test("reads the review object when more text follows it", () => {
+  const text = [
+    '{"summary":"Refresh uses a generation counter.","comments":[]}',
+    "The rest of this reply is not part of the JSON object.",
+  ].join("\n")
+  assert.equal(parseReview(text).summary, "Refresh uses a generation counter.")
+})
+
 test("rejects a tool call instead of posting it as the review", () => {
   const stdout = JSON.stringify({
     type: "text",
