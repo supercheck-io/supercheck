@@ -81,7 +81,7 @@ jobs:
     needs: prepare
     if: needs.prepare.outputs.decision == 'review'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     permissions:
       contents: read
       actions: read
@@ -135,11 +135,12 @@ jobs:
           }
           EOF
           set +e
-          timeout 10m "$RUNNER_TEMP/bin/opencode" run \
+          # DeepSeek V4.1 Flash accepts low, high, and max. max is the highest.
+          timeout 12m "$RUNNER_TEMP/bin/opencode" run \
             --pure \
             --format json \
             --model opencode-go/deepseek-v4.1-flash \
-            --variant low \
+            --variant max \
             --dir "$sandbox" \
             < "$RUNNER_TEMP/pr-review/prompt.txt" \
             > "$RUNNER_TEMP/pr-review/model.ndjson"
