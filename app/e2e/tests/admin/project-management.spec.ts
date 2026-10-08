@@ -48,6 +48,9 @@ test.describe("Organization project administration @admin @projects @critical", 
     await expect(
       orgOwnerPage.getByRole("heading", { name: "Organization Admin" }),
     ).toBeVisible();
+    // Older runs can leave projects behind, so the new project may not be on
+    // the first page of the paginated table. Filter to it explicitly.
+    await orgOwnerPage.getByPlaceholder("Search projects...").fill(name);
     const row = orgOwnerPage.getByRole("row").filter({ hasText: name });
     await expect(row).toContainText("E2E isolated project");
     await expect(row).toContainText("active");

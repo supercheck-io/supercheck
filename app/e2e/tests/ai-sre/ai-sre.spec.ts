@@ -28,12 +28,14 @@ test.describe("AI SRE service catalog @aisre @critical", () => {
     const isolatedProject = (await createProject.json()) as {
       data: { id: string };
     };
-    const switchResponse = await page.request.post("/api/projects/switch", {
-      data: { projectId: isolatedProject.data.id },
-    });
-    expect(switchResponse.status(), await switchResponse.text()).toBe(200);
 
     try {
+      // Switch inside the try so a failed selection still cleans up the project.
+      const switchResponse = await page.request.post("/api/projects/switch", {
+        data: { projectId: isolatedProject.data.id },
+      });
+      expect(switchResponse.status(), await switchResponse.text()).toBe(200);
+
       const suffix = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       const name = `E2E Service ${suffix}`;
       const updatedDescription = `Updated service ${suffix}`;
@@ -143,12 +145,14 @@ test.describe("AI SRE investigation surfaces @aisre @critical", () => {
     const isolatedProject = (await createProject.json()) as {
       data: { id: string };
     };
-    const switchResponse = await page.request.post("/api/projects/switch", {
-      data: { projectId: isolatedProject.data.id },
-    });
-    expect(switchResponse.status(), await switchResponse.text()).toBe(200);
 
     try {
+      // Switch inside the try so a failed selection still cleans up the project.
+      const switchResponse = await page.request.post("/api/projects/switch", {
+        data: { projectId: isolatedProject.data.id },
+      });
+      expect(switchResponse.status(), await switchResponse.text()).toBe(200);
+
       await page.goto("/copilot/evidence-graph", { waitUntil: "load" });
       await expect(page).toHaveURL(/\/copilot\/evidence-graph$/);
       await expect(

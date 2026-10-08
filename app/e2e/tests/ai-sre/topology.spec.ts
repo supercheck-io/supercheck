@@ -33,12 +33,14 @@ test.describe("AI SRE service topology administration @aisre @topology @critical
     const projectId = (
       (await projectResponse.json()) as { data: { id: string } }
     ).data.id;
-    const switched = await page.request.post("/api/projects/switch", {
-      data: { projectId },
-    });
-    expect(switched.status(), await switched.text()).toBe(200);
 
     try {
+      // Switch inside the try so a failed selection still cleans up the project.
+      const switched = await page.request.post("/api/projects/switch", {
+        data: { projectId },
+      });
+      expect(switched.status(), await switched.text()).toBe(200);
+
       const suffix = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       const sourceName = `E2E checkout ${suffix}`;
       const targetName = `E2E database ${suffix}`;
