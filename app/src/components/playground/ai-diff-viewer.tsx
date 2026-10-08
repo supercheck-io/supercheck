@@ -308,9 +308,7 @@ export function AIDiffViewer({
   const badgeOriginal = isDarkTheme ? "bg-red-500/70" : "bg-red-500/40";
   const badgeFixed = isDarkTheme ? "bg-green-500/70" : "bg-green-500/40";
   const rejectButtonClasses = "h-9 px-4 text-sm";
-  const acceptButtonClasses = isDarkTheme
-    ? "h-9 px-4 text-sm bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
-    : "h-9 px-4 text-sm bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 disabled:cursor-not-allowed";
+  const acceptButtonClasses = "h-9 px-4 text-sm bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 disabled:cursor-not-allowed";
 
   return (
     <Dialog open={isVisible} onOpenChange={(open) => { if (!open && !isStreaming) onClose(); }}>
