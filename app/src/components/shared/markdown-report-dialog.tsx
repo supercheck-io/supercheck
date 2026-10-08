@@ -98,14 +98,14 @@ export function MarkdownReportDialog({
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
-      <DialogContent className="h-[80vh] min-w-6xl max-w-7xl flex flex-col">
-        <DialogHeader className="flex flex-row items-center justify-between gap-4 border-b pb-4">
-          <div className="flex items-center gap-2">
+      <DialogContent className="h-[85dvh] max-h-[900px] sm:max-w-6xl flex flex-col">
+        <DialogHeader className="flex flex-col items-start justify-between gap-3 border-b pb-4 text-left sm:flex-row sm:items-center">
+          <div className="flex min-w-0 items-center gap-3 pr-6">
             <div className="rounded-md bg-gradient-to-r from-purple-500/20 to-pink-500/20 p-1.5">
               <Sparkles className="h-4 w-4 text-purple-500" />
             </div>
-            <div>
-              <DialogTitle className="flex items-center gap-2">
+            <div className="min-w-0">
+              <DialogTitle className="flex items-center gap-2 leading-snug">
                 {title}
                 {isStreaming && (
                   <Loader2 className="h-4 w-4 animate-spin text-purple-500" />
@@ -116,7 +116,7 @@ export function MarkdownReportDialog({
               </DialogDescription>
             </div>
           </div>
-          <div className="mr-8 flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2 sm:mr-6">
             <Button
               variant="outline"
               size="sm"

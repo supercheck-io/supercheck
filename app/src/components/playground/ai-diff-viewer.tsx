@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Check, Sparkles, X, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -300,31 +301,21 @@ export function AIDiffViewer({
   };
 
   const bulletPoints = getBulletPoints(explanation);
-  const containerClasses = isDarkTheme
-    ? "bg-gray-900 border border-gray-700"
-    : "bg-white border border-gray-200";
-  const headerClasses = isDarkTheme
-    ? "bg-gray-900 border-b border-gray-700 text-white"
-    : "bg-white border-b border-gray-200 text-gray-900";
-  const summaryClasses = isDarkTheme
-    ? "bg-gray-800 text-gray-300"
-    : "bg-slate-100 text-gray-700";
-  const footerClasses = isDarkTheme
-    ? "bg-gray-800 border-t border-gray-700 text-gray-400"
-    : "bg-slate-100 border-t border-gray-200 text-gray-600";
+  const containerClasses = "bg-background text-foreground";
+  const headerClasses = "border-b border-border text-foreground";
+  const summaryClasses = "bg-muted/50 text-muted-foreground";
+  const footerClasses = "border-t border-border text-muted-foreground";
   const badgeOriginal = isDarkTheme ? "bg-red-500/70" : "bg-red-500/40";
   const badgeFixed = isDarkTheme ? "bg-green-500/70" : "bg-green-500/40";
-  const rejectButtonClasses = isDarkTheme
-    ? "h-9 px-4 text-sm bg-transparent border-red-600 text-red-400 hover:bg-red-600 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
-    : "h-9 px-4 text-sm bg-transparent border-red-500 text-red-600 hover:bg-red-500 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed";
-  const acceptButtonClasses = isDarkTheme
-    ? "h-9 px-4 text-sm bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
-    : "h-9 px-4 text-sm bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 disabled:cursor-not-allowed";
+  const rejectButtonClasses = "h-9 px-4 text-sm";
+  const acceptButtonClasses = "h-9 px-4 text-sm bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 disabled:cursor-not-allowed";
 
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-      <div
-        className={`w-full max-w-5xl max-h-[95vh] flex flex-col shadow-2xl rounded-lg overflow-hidden ${containerClasses}`}
+    <Dialog open={isVisible} onOpenChange={(open) => { if (!open && !isStreaming) onClose(); }}>
+      <DialogContent
+        hideClose
+        onInteractOutside={(event) => event.preventDefault()}
+        className={`sm:max-w-5xl h-[85dvh] max-h-[850px] flex flex-col p-0 gap-0 overflow-hidden ${containerClasses}`}
       >
         <div className={`flex-shrink-0 px-4 py-3 ${headerClasses}`}>
           <div className="flex items-center justify-between mb-2">
@@ -332,21 +323,18 @@ export function AIDiffViewer({
               <div className="rounded-md bg-gradient-to-r from-purple-500/20 to-pink-500/20 p-1.5">
                 <Sparkles className="h-4 w-4 text-purple-500" />
               </div>
-              <h2 className="text-base font-semibold flex items-center gap-2">
+              <DialogTitle className="text-base font-semibold flex items-center gap-2 leading-snug">
                 Supercheck AI - Fix Review
                 {isStreaming && (
                   <Loader2 className="h-4 w-4 animate-spin text-purple-500" />
                 )}
-              </h2>
+              </DialogTitle>
             </div>
             <Button
               variant="ghost"
               size="sm"
               onClick={onClose}
-              className={`h-7 w-7 p-0 ${isDarkTheme
-                ? "text-gray-400 hover:text-white hover:bg-gray-800"
-                : "text-gray-500 hover:text-gray-900 hover:bg-gray-100"
-                }`}
+              className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
               disabled={isStreaming}
               aria-label="Close"
             >
@@ -354,14 +342,15 @@ export function AIDiffViewer({
             </Button>
           </div>
 
-          <div className={`rounded px-3 py-3 ${summaryClasses}`}>
+          <DialogDescription className="sr-only">Review the suggested code before applying it to your test.</DialogDescription>
+          <div className={`max-h-[22dvh] overflow-y-auto rounded-lg px-3 py-3 ${summaryClasses}`}>
             <div className="text-sm space-y-2">
               {bulletPoints.map((point, index) => (
                 <div key={index} className="flex items-start gap-3">
                   <div
                     className={`w-2 h-2 rounded-full mt-2 flex-shrink-0 ${badgeFixed}`}
                   />
-                  <span className="leading-relaxed">{point}</span>
+                  <span className="leading-relaxed break-words">{point}</span>
                 </div>
               ))}
             </div>
@@ -369,8 +358,7 @@ export function AIDiffViewer({
         </div>
 
         <div
-          className={`${isDarkTheme ? "bg-gray-900" : "bg-white"} relative`}
-          style={{ height: "500px" }}
+          className="relative min-h-0 flex-1 bg-background"
         >
           <style jsx>{`
             .monaco-diff-editor .editor.modified {
@@ -378,7 +366,7 @@ export function AIDiffViewer({
             }
           `}</style>
           <DiffEditor
-            height="500px"
+            height="100%"
             language="typescript"
             original={originalScript}
             modified={isStreaming ? streamingContent : currentFixedScript}
@@ -420,7 +408,7 @@ export function AIDiffViewer({
         </div>
 
         <div className={`flex-shrink-0 px-4 py-2 ${footerClasses}`}>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-4 text-sm">
               <div className="flex items-center gap-2">
                 <div className={`w-3 h-3 rounded-full ${badgeOriginal}`} />
@@ -431,7 +419,7 @@ export function AIDiffViewer({
                 <span>AI Fixed</span>
               </div>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:gap-3">
               <Button
                 variant="outline"
                 type="button"
@@ -454,7 +442,7 @@ export function AIDiffViewer({
             </div>
           </div>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

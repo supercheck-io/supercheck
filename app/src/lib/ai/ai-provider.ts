@@ -10,14 +10,39 @@
  * - ai-streaming-service.ts (AI Create)
  */
 
-import { openai } from "@ai-sdk/openai";
+import { openai, createOpenAI } from "@ai-sdk/openai";
 import { azure } from "@ai-sdk/azure";
 import { anthropic } from "@ai-sdk/anthropic";
 import { google } from "@ai-sdk/google";
 import { vertex } from "@ai-sdk/google-vertex";
 import { createAmazonBedrock } from "@ai-sdk/amazon-bedrock";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
-import { type LanguageModel } from "ai";
+import { defaultSettingsMiddleware, wrapLanguageModel, type LanguageModel } from "ai";
+
+export const DEFAULT_OPENAI_MODEL = "gpt-6-luna";
+
+function getOpenAIModel(model: string): LanguageModel {
+  if (model !== DEFAULT_OPENAI_MODEL) return openai(model);
+
+  // This SDK treats every GPT-6 model as Astra and strips Luna's supported
+  // "none" effort. Set it on the wire to preserve latency/output budgets.
+  return wrapLanguageModel({
+    model: createOpenAI({
+      fetch: (url, init) => fetch(url, {
+        ...init,
+        body: JSON.stringify({
+          ...JSON.parse(String(init?.body)),
+          reasoning: { effort: "none" },
+        }),
+      }),
+    }).responses(model),
+    // Input conversion must also know storage is disabled so later tool
+    // steps replay content instead of referencing unstored response IDs.
+    middleware: defaultSettingsMiddleware({
+      settings: { providerOptions: { openai: { store: false } } },
+    }),
+  });
+}
 
 // Supported AI providers
 export type AIProvider =
@@ -27,7 +52,8 @@ export type AIProvider =
   | "gemini"
   | "google-vertex"
   | "bedrock"
-  | "openrouter";
+  | "openrouter"
+  | "deepseek";
 
 /**
  * Configuration for AI service requests
@@ -53,6 +79,14 @@ export function validateAIConfiguration(): void {
   const provider = getAIProvider();
 
   switch (provider) {
+    case "deepseek": {
+      if (!process.env.DEEPSEEK_API_KEY?.trim()) {
+        throw new Error(
+          "DeepSeek API key is not configured. Please set DEEPSEEK_API_KEY environment variable."
+        );
+      }
+      break;
+    }
     case "azure": {
       const resourceName = process.env.AZURE_RESOURCE_NAME;
       const apiKey = process.env.AZURE_API_KEY;
@@ -188,16 +222,18 @@ export function getActualModelName(): string {
       return modelName || "anthropic.claude-3-5-haiku-20241022-v1:0";
     case "openrouter":
       return modelName || "anthropic/claude-3.5-haiku";
+    case "deepseek":
+      return modelName || "deepseek-flash";
     case "openai":
     default:
-      return modelName || "gpt-4o-mini";
+      return modelName || DEFAULT_OPENAI_MODEL;
   }
 }
 
 /**
  * Factory method that returns the appropriate AI model based on AI_PROVIDER env var.
- * Supports: OpenAI, Azure OpenAI, Anthropic, Gemini (Google AI Studio), Google Vertex AI, AWS Bedrock, OpenRouter.
- * Falls back to OpenAI gpt-4o-mini on any initialization error.
+ * Supports: OpenAI, Azure OpenAI, Anthropic, Gemini, Google Vertex AI, AWS Bedrock, OpenRouter, DeepSeek.
+ * DeepSeek initialization errors fail closed to avoid switching data processors.
  */
 export function getProviderModel(): LanguageModel {
   const provider = getAIProvider();
@@ -270,24 +306,44 @@ export function getProviderModel(): LanguageModel {
         return openrouter(model) as unknown as LanguageModel;
       }
 
+      case "deepseek": {
+        validateAIConfiguration();
+        const deepseek = createOpenAI({
+          apiKey: process.env.DEEPSEEK_API_KEY,
+          baseURL: "https://api.deepseek.com",
+          name: "deepseek",
+          // DeepSeek enables thinking by default. Disable it so tool loops
+          // do not require reasoning_content unsupported by this adapter.
+          fetch: (url, init) => fetch(url, {
+            ...init,
+            body: JSON.stringify({
+              ...JSON.parse(String(init?.body)),
+              thinking: { type: "disabled" },
+            }),
+          }),
+        });
+        return deepseek.chat(modelName || "deepseek-flash");
+      }
+
       case "openai":
       default: {
         // OPENAI_API_KEY is read automatically from env
-        const model = modelName || "gpt-4o-mini";
+        const model = modelName || DEFAULT_OPENAI_MODEL;
         if (provider !== "openai") {
           console.warn(
             `[AI Provider] Unknown provider '${provider}', falling back to OpenAI`
           );
         }
         console.log(`[AI Provider] Initializing OpenAI with model: ${model}`);
-        return openai(model) as unknown as LanguageModel;
+        return getOpenAIModel(model);
       }
     }
   } catch (error) {
+    if (provider === "deepseek") throw error;
     console.error(`[AI Provider] Error initializing ${provider}:`, error);
     // Fallback to OpenAI on initialization error
-    console.log("[AI Provider] Falling back to OpenAI gpt-4o-mini");
-    return openai("gpt-4o-mini") as unknown as LanguageModel;
+    console.log(`[AI Provider] Falling back to OpenAI ${DEFAULT_OPENAI_MODEL}`);
+    return getOpenAIModel(DEFAULT_OPENAI_MODEL);
   }
 }
 
@@ -332,6 +388,10 @@ export function getProviderGenerationOptions(
   const provider = getAIProvider();
 
   if (provider === "azure" && process.env.AZURE_INCLUDE_TEMPERATURE !== "true") {
+    return {};
+  }
+
+  if (provider === "openai" && getActualModelName() === DEFAULT_OPENAI_MODEL) {
     return {};
   }
 

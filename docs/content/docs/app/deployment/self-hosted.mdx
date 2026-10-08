@@ -374,11 +374,13 @@ Choose the tab below for HTTP setup, production HTTPS, or managed external servi
   </Accordion>
 
   <Accordion title="AI Provider">
-    <Tabs items={['OpenAI', 'Azure', 'Anthropic', 'Gemini', 'Vertex AI', 'Bedrock', 'OpenRouter']}>
+    OpenAI GPT-6 Luna is the default for test creation, repair, requirement extraction, and AI SRE. Provider selection applies to the whole installation. When switching providers, set both `AI_PROVIDER` and the matching `AI_MODEL`.
+
+    <Tabs items={['OpenAI', 'Azure', 'Anthropic', 'Gemini', 'Vertex AI', 'Bedrock', 'OpenRouter', 'DeepSeek']}>
       <Tab value="OpenAI">
         ```bash
         AI_PROVIDER=openai
-        AI_MODEL=gpt-4o-mini
+        AI_MODEL=gpt-6-luna
         OPENAI_API_KEY=sk-your-api-key
         ```
       </Tab>
@@ -433,6 +435,19 @@ Choose the tab below for HTTP setup, production HTTPS, or managed external servi
         AI_MODEL=anthropic/claude-3.5-haiku
         OPENROUTER_API_KEY=your-api-key
         ```
+      </Tab>
+      <Tab value="DeepSeek">
+        ```bash
+        AI_PROVIDER=deepseek
+        AI_MODEL=deepseek-flash
+        DEEPSEEK_API_KEY=your-deepseek-api-key
+        ```
+
+        `deepseek-flash` is the official API model ID for [DeepSeek V4.1 Flash](https://api-docs.deepseek.com/news/news260910/).
+
+        <Callout type="warn">
+        DeepSeek is optional. Selecting it sends prompts, code, uploaded requirement text, and evidence supplied to AI features to DeepSeek's hosted API. Review its data handling and China-related residency implications against your organization's requirements before enabling it. DeepSeek errors do not automatically switch to OpenAI.
+        </Callout>
       </Tab>
     </Tabs>
   </Accordion>

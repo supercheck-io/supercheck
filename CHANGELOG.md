@@ -1,486 +1,161 @@
 # Changelog
 
-All notable changes to Supercheck are documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+Notable features, fixes, and upgrade requirements for Supercheck users. App and CLI releases are versioned separately.
 
 ## [Unreleased]
 
-### Added
+- **AI providers:** GPT-6 Luna is the default, with DeepSeek V4.1 Flash available as an optional provider.
+- **AI test dialogs:** Clearer creation guidance, visible API and k6 examples, and improved code-review and analysis layouts. Generated scripts remain available for review and editing before applying.
+- **AI SRE setup:** AI SRE and alert-triggered automation are enabled when an AI provider is configured. Use `SRE_ENABLED` and `SRE_AUTOMATION_ENABLED` to control manual AI features and automatic processing.
+- **Incident investigations:** Include stored evidence across types, including evidence collected from connectors that are now disabled. Correlation and staged evidence no longer need separate deployment flags; live connector access still requires authorization and consent.
+- **Slack and Teams:** Incident commands are configured through optional integrations and require authorized responders.
+- **Execution and usage:** Recover unsettled Playwright and k6 usage after worker restarts without charging twice. Improve validation of database connection limits and k6 duration and virtual-user inputs.
+- **Release reliability:** App, worker, Private Agent, and support-chat version reporting now reflect the deployed release. Execution jobs refresh mutable image tags so runs use the intended worker image.
+- **Deployment and security:** Remote workers now require `REDIS_PASSWORD`. Improve release validation, release API authentication, and dependency security across the app, worker, docs, and recorder.
 
-- Stable release tags now fail CI unless `app/package.json`, `worker/package.json`, and the `deploy/docker` image-tag defaults all match the tag, preventing release-version drift.
-- Added deploy, workflow, and container validation to the release pipeline ([#313](https://github.com/supercheck-io/supercheck/pull/313)).
+**Upgrade note:** Apply the included database migrations before updating app and worker images, including `0024_execution_usage_receipts.sql`. Review existing AI SRE automation opt-outs: older per-workflow flags must be replaced with the two controls above.
 
-### Changed
+## [CLI 0.3.0] - 2026-10-07
 
-- Simplify AI SRE installation to `SRE_ENABLED` and `SRE_AUTOMATION_ENABLED`, both enabled by default with a configured AI provider. Automatic work skips unconfigured providers. Migrate old workflow opt-outs before upgrading.
-- Enable correlation and staged evidence without separate deployment flags; retain explicit live-connector consent and authorization.
-- Move Slack/Teams incident commands to optional integration setup, require authorized responders, and remove collaboration authorization bypasses.
+- **Investigation status:** Use `sre status <runId>` to check the lifecycle of an investigation in the current project.
+- **Clearer output:** Add `--wide` and `--no-color`, readable detail tables, labeled investigation narratives, and elapsed progress.
+- **Safer configuration sync:** `deploy` and `diff` preserve remote resources absent from the local configuration. Use `--delete` to explicitly request removal.
+- **Pull previews:** Show resource counts and affected files, explain preserved local-only tests and skipped file variables, and disclose dependency installation before confirmation. Overwrite confirmation defaults to no; `--force` supports unattended pulls.
+- **Automation output:** Make JSON and quiet output consistent, including authentication results and errors. Improve cleanup and exit handling for interrupted streams.
+- **Reliability:** Fix terminal hangs, duplicated progress, truncated IDs, color escapes, and unclear validation, login, and network errors.
 
-- Release version identity is now derived from the release tag and injected into both images at build time. The worker receives `SUPERCHECK_VERSION` alongside the app, so worker health reports the deployed release.
-- Private Agent version identity now comes from the worker image (release tag) rather than a Compose-provided tag value.
+**Server compatibility:** Matching app and worker updates improve secret-safe Playwright console streaming and notification-name consistency, and preserve k6 threshold results when HTML export is unavailable.
 
-### Fixed
+## [CLI 0.2.1] - 2026-10-06
 
-- Prevent AI SRE from overlooking stored incident evidence by listing evidence across types before analysis, including evidence from disabled connectors.
-- Persist execution usage receipts with completed Playwright/K6 results so workers can recover unsettled usage after a restart without charging twice. Apply migration `0024_execution_usage_receipts.sql` before rolling out the new workers; older worker images remain compatible with the additive table.
-- Validate `DB_POOL_MAX` as a whole number (app minimum 2, worker minimum 1), recognize `SELF_HOSTED=1` consistently in worker billing, and reject invalid K6 duration/VU inputs independently.
-- Worker `/health` reported a hardcoded `1.0.0` version because the container does not start through npm; it now reports the actual release version.
-- Private Agent registration and heartbeat no longer fall back to a hardcoded `1.3.6` version.
-- Support chat reported `unknown` for `app_version` because it read an environment variable that is never set; it now reports the release version.
-- Execution Jobs now force an image pull when `WORKER_IMAGE` uses a mutable tag, so sandboxed runs cannot drift from the worker control plane, and a warning is logged recommending a pinned tag or digest. `EXECUTION_IMAGE_PULL_POLICY` can override this for preloaded-image environments.
-- Pinned the MinIO image to the live quay.io tag and required `REDIS_PASSWORD` in the remote worker Compose profile ([#312](https://github.com/supercheck-io/supercheck/pull/312)).
+- Accept incident numbers in incident and AI SRE commands while retaining UUID support.
+- Preserve the correct API URL during login and support read-only authentication.
+- Return failing exit codes for failed executions and interrupted streams, and emit newline-delimited JSON for streaming output in JSON mode.
+- Support synthetic and port-check monitor creation with input validation.
+- Add monitoring-only health checks and clearer local-job and credential-storage guidance.
 
-### Security
+**Compatibility:** Older servers resolve incident numbers among their newest 500 incidents; updated servers support exact lookup. Updating the CLI does not update app or worker deployments.
 
-- Patch dependency vulnerabilities in the app, worker, docs, and recorder; remove unused worker SWC tooling and its vulnerable dependencies.
-- Hardened release API authentication and error responses ([#311](https://github.com/supercheck-io/supercheck/pull/311)).
-- Remediated Dependabot dependency alerts ([#306](https://github.com/supercheck-io/supercheck/pull/306)).
+## [1.3.6] - 2026-09-15
 
-## [CLI 0.3.0] - Unreleased
+- **AI SRE:** Add incident management, service topology, investigations, Copilot, diagnostic recipes, and Private Agents.
+- **API and CLI:** Add incident operations, service topology, Copilot chat, and evidence-brief streaming. Consolidate the CLI and Recorder with the main open-source project.
+- **Integrations:** Expand support for Datadog, Sentry, Elasticsearch/OpenSearch, GitLab, PagerDuty, and Opsgenie.
+- **Reliability:** Improve Kubernetes test execution and failure reporting, and fix usage synchronization for investigations, connectors, and reports.
+- **Security:** Strengthen tenant isolation, permissions, outbound request safety, execution safeguards, and self-hosted secret generation.
+- Remove the unsupported Coolify template. Self-hosting remains available through Docker Compose with K3s and gVisor.
 
-### Added
+## [CLI 0.2.0] - 2026-09-11
 
-- `sre status <runId>` for project-scoped investigation lifecycle status.
-- `--wide`, `--no-color`, Field/Value detail tables, labeled SRE narratives, and elapsed progress.
-
-### Changed
-
-- Pull overwrite confirmation defaults to no; `--force` supports unattended pulls.
-- Deploy/diff preserve remote resources absent from config; explicit `--delete` opts into pruning.
-- Consistent JSON/quiet behavior, including JSON errors and authentication results.
-- Concise npm README with a static architecture image and manual release instructions.
-
-### Fixed
-
-- Pull shows resource counts by type and selected file effects, explains preserved local-only tests, and no longer promises test-script writes when no tests are being pulled. Dry-run identifies skipped file variables; dependency installation is disclosed before confirmation.
-- Zero-width PTY hangs, duplicate non-TTY progress, truncated IDs, ANSI leakage, EOF confirmation, and script blob output.
-- Incident filters, variable/tag bounds, empty job IDs, login URL diagnostics, and opaque validation/network errors.
-- Stream cleanup and interruption; one bounded retry for failed initial GET connections.
-
-### Server compatibility
-
-- Matching app/worker updates add secret-safe Playwright console streaming, synchronize notification names, and preserve k6 threshold results when HTML export is missing.
-
-## [CLI 0.2.1] - 2026-10-07
-
-### Fixed
-
-- Resolve incident numbers to project-scoped UUIDs across incident and AI SRE commands.
-- Persist the correct API URL during login and support read-only authentication.
-- Return nonzero exits for failed streams and executions, release stream resources, and emit NDJSON in JSON mode.
-- Support synthetic and port-check monitor creation with validated fields and limits.
-- Support monitoring-only doctor checks and reject imprecise integer inputs.
-- Correct local-job examples and clarify credential storage and publishing instructions.
-
-### Compatibility
-
-- UUID arguments remain supported. Older servers resolve numbers among their newest 500 incidents; the updated server supports exact incident-number lookup.
-- Server-side AI SRE defaults require the accompanying app/worker update. CLI installation does not change deployed server configuration.
-
-## [1.3.6]
-
-### Added
-
-- Added AI SRE incident management, service topology, investigation workflows, Copilot, diagnostic recipes, and Private Agents.
-- Added AI SRE support to the public API and CLI 0.2.0, including incident operations, service topology, Copilot chat, and evidence-brief streaming.
-- Expanded observability and incident integrations, including Datadog, Sentry, Elasticsearch/OpenSearch, GitLab, PagerDuty, and Opsgenie.
-
-### Changed
-
-- Improved AI SRE workflows and consolidated the CLI and Recorder with the main open-source project.
-
-### Fixed
-
-- Improved Kubernetes execution reliability and failure reporting.
-- Fixed Polar usage synchronization and reliability issues across AI SRE investigations, connectors, and reports.
-
-### Security
-
-- Strengthened tenant isolation, RBAC, outbound request safety, execution safeguards, and self-hosted secret generation.
-
-### Removed
-
-- Removed the unsupported Coolify deployment template; self-hosting remains supported through Docker Compose, K3s, and gVisor.
-
-## [CLI 0.1.4] - 2026-09-10
-
-### Fixed
-
-- Improved test-source uploads and notification configuration drift detection.
+- Add AI SRE incident, service, and investigation commands.
+- Improve test-source uploads and notification configuration drift detection.
 
 ## [CLI 0.1.3] - 2026-06-26
 
-### Fixed
+- Preserve notification secrets during configuration pull, diff, and deploy workflows.
 
-- Preserved notification secrets safely across pull, diff, and deploy workflows.
-
-## [CLI 0.1.2]
+## [CLI 0.1.2] - 2026-03-21
 
 - Initial tracked release of `@supercheck/cli`.
 
 ## [1.3.5] - 2026-06-17
 
-### Added
-
-- PagerDuty and OpsGenie integration via webhook provider now supports custom JSON body templates and configurable HTTP methods for full compatibility with third-party alerting systems. See [#294](https://github.com/supercheck-io/supercheck/issues/294) for details and usage examples.
-- PagerDuty alert lifecycle actions and deduplication keys to reduce noise and support auto-resolution flows.
-- Billing spending limits with notifications and usage synchronization to prevent runaway costs.
-- Blocked job status and billing error handling for clearer visibility into quota- or payment-related execution failures.
-
-### Fixed
-
-- Webhook body template rendering now parses and re-serializes JSON before delivery so interpolated alert values stay escaped safely.
-- Webhook methods are now normalized consistently across provider validation, connection testing, and worker delivery to avoid GET requests with request bodies.
-
-### Security
-
-- Updated dependencies to patch known security vulnerabilities.
+- **Alert integrations:** Configure custom JSON payloads and HTTP methods for PagerDuty and Opsgenie webhooks.
+- **Alert lifecycle:** Add PagerDuty lifecycle actions and deduplication keys to reduce repeated alerts and support automatic resolution.
+- **Spending controls:** Add spending limits, notifications, and usage synchronization.
+- **Execution visibility:** Show blocked job status and clearer quota and payment errors.
+- Fix webhook payload escaping and method handling, and update security dependencies.
 
 ## [1.3.4] - 2026-04-13
 
-### Added
+- **Browser integrations:** Configure self-hosted API access with `CORS_ALLOWED_ORIGINS`, including wildcard subdomains for integrations such as Azure DevOps widgets.
+- **Reusable test data:** Store CSV, JSON, YAML, XML, TSV, and plain-text fixtures as file variables for Playwright and k6 tests.
+- **Authentication:** Update authentication and API-key support, with the accompanying database migration.
+- **Status page domains:** Fix View/Copy links and custom-domain routing, and clarify DNS and TLS setup for self-hosted deployments.
+- Fix overflowing organization invitation dialogs and update security dependencies.
 
-- Configurable API CORS allowlist for self-hosted deployments via `CORS_ALLOWED_ORIGINS`, including support for browser-based integrations such as Azure DevOps dashboard widgets and wildcard subdomains like `https://*.visualstudio.com` ([#280](https://github.com/supercheck-io/supercheck/issues/280))
-- **File variables for reusable test data** — Project variables can now store text-based files such as CSV, JSON, YAML, XML, TSV, and plain-text fixtures for runtime use in Playwright and k6 tests ([#271](https://github.com/supercheck-io/supercheck/issues/271))
-- Database migration `0011_deep_hellcat.sql` adding `config_id` column to `apikey` table (required by `@better-auth/api-key` v1.6.0)
-
-### Changed
-
-- Self-hosted Docker Compose variants now expose `CORS_ALLOWED_ORIGINS` consistently on App deployments while keeping the default value empty for secure-by-default behavior
-- Self-hosted custom-domain deployment guidance now clarifies that the Traefik catch-all router preserves routing for verified hostnames, while TLS certificates for arbitrary custom domains must be provided explicitly
-- Upgraded `better-auth` from v1.4.5 to v1.6.0 and migrated the api-key plugin to standalone `@better-auth/api-key` package
-- Renamed `apikey.userId` → `apikey.referenceId` in Drizzle schema to match the `@better-auth/api-key` v1.6.0 field rename (database column stays as `user_id` for backward compatibility)
-
-### Fixed
-
-- Fixed the organization member invite dialog layout so the modal renders correctly without the previous blowout/overflow issue ([#277](https://github.com/supercheck-io/supercheck/issues/277))
-- Fixed self-hosted status page domain handling so dashboard View/Copy actions preserve the full configured `STATUS_PAGE_DOMAIN` value, including subdomains when used ([#282](https://github.com/supercheck-io/supercheck/issues/282))
-- Fixed self-hosted status page custom-domain routing and guidance so verified custom domains load correctly and consistently use the full configured `STATUS_PAGE_DOMAIN` value for CNAME targets and troubleshooting ([#253](https://github.com/supercheck-io/supercheck/issues/253))
-
-### Security
-
-- Security upgrades and dependency patching for improved runtime, template, parser, email, and session handling safety.
+**Upgrade note:** Apply the included database migration before starting the upgraded app.
 
 ## [1.3.3] - 2026-03-22
 
-> **⚠️ Breaking Change — New Execution Model**
->
-> This release replaces the Docker socket-based test execution with a new sandboxed execution model powered by **K3s** and **gVisor**. Self-hosted deployments that previously used Docker Compose will need to run the new setup script (`setup-k3s.sh`) before upgrading. The worker container no longer requires access to the Docker socket.
->
-> **What this means for self-hosted users:**
->
-> - A one-time infrastructure setup is required — run `sudo bash setup-k3s.sh` on your Linux host before starting services
-> - Linux (amd64/arm64) is required — Ubuntu 22.04+, Debian 12+, or equivalent
-> - The Docker Compose configuration has changed — the worker now mounts a Kubernetes kubeconfig instead of the Docker socket
-> - Existing tests and monitors continue to work without modification
->
-> Please refer to the updated [self-hosted deployment guide](https://supercheck.io/docs/app/deployment/self-hosted) for step-by-step upgrade instructions.
+**Self-hosted upgrade required:** Test execution now uses K3s and gVisor instead of the Docker socket. Run `setup-k3s.sh` on a supported Linux host before upgrading. Workers use a Kubernetes kubeconfig; existing tests and monitors do not need changes. See the [deployment guide](https://supercheck.io/docs/app/deployment/self-hosted).
 
-### Added
-
-- **Sandboxed execution with gVisor** — Test and monitor execution now runs inside gVisor-sandboxed Kubernetes pods, providing kernel-level isolation for all user-submitted scripts ([#276](https://github.com/supercheck-io/supercheck/issues/276))
-- **Dynamic locations system** — Locations are now database-managed instead of hardcoded constants. Super Admins can add, edit, and enable/disable locations from the admin dashboard. Workers dynamically discover regional queues. Per-project location restrictions are available ([#248](https://github.com/supercheck-io/supercheck/issues/248), [#249](https://github.com/supercheck-io/supercheck/issues/249), [#250](https://github.com/supercheck-io/supercheck/issues/250))
-
-### Changed
-
-- **Execution model migration** — Replaced Docker socket-based container execution with Kubernetes Jobs running under gVisor. Workers now use a scoped kubeconfig instead of mounting the Docker socket
-- Updated Docker Compose configuration — worker runs as non-root (UID 1000), read-only filesystem with tmpfs mounts, all capabilities dropped
-- Worker services now use Kubernetes API for container lifecycle management, log streaming, and artifact extraction
-- Improved deployment documentation with detailed infrastructure requirements and setup guides
-
-### Fixed
-
-- Improved dynamic worker stability — fixed queue discovery retry loops, heartbeat timing windows, stale queue cleanup, and graceful degradation when Redis is unavailable
-- Fixed multi-recipient alert email delivery for comma-separated email channels by sending messages sequentially over SMTP and reporting partial delivery failures accurately ([#269](https://github.com/supercheck-io/supercheck/issues/269))
-
-### Security
-
-- **gVisor sandboxing** — All user-submitted test scripts now execute under gVisor's userspace kernel, replacing the previous shared-kernel Docker isolation
-- Worker containers run with restricted Pod Security Standards — non-root user, read-only filesystem, all capabilities dropped, no privilege escalation
-- Network policies restrict execution pods from accessing internal services and cloud metadata endpoints
-- Updated Next.js to 16.1.7 — fixes request smuggling, CSRF bypass, and DoS vulnerabilities
-- Patched fast-xml-parser, file-type, yauzl, flatted, and ajv for various CVEs and DoS vulnerabilities
+- **Sandboxed execution:** Run user-submitted scripts in isolated gVisor execution pods with restricted permissions and network access.
+- **Execution locations:** Super Admins can add, edit, and enable or disable locations. Workers discover regional queues dynamically, and projects can restrict available locations.
+- **Worker reliability:** Improve queue discovery, heartbeat handling, stale-queue cleanup, and behavior when Redis is unavailable.
+- **Email alerts:** Fix delivery to multiple comma-separated recipients and accurately report partial delivery failures.
+- Strengthen worker container isolation and patch framework and parser vulnerabilities.
 
 ## [1.3.2] - 2026-03-12
 
-### Added
-
-- **Registration controls for self-hosted deployments** — New `SIGNUP_ENABLED` environment variable to enable/disable new user registration, and `ALLOWED_EMAIL_DOMAINS` to restrict signup to specific email domains ([#246](https://github.com/supercheck-io/supercheck/issues/246))
-- **Organization rename** — Organization owners and admins can now rename their organization from the Organization Admin page ([#247](https://github.com/supercheck-io/supercheck/issues/247))
-- Added a UI callout on the self-hosted sign-up page to inform users about organization invitations
-- **Status page support contact CTA** — Public status pages and incident notifications can now expose a `Get in touch` action backed by either an email address or a support URL ([#263](https://github.com/supercheck-io/supercheck/issues/263))
-
-### Changed
-
-- Streamlined admin interface by removing unused user creation functionality ([#245](https://github.com/supercheck-io/supercheck/issues/245))
-- Clarified self-hosted scaling semantics across deployment docs and compose templates: `RUNNING_CAPACITY` and `QUEUED_CAPACITY` are App-side gating controls, while `WORKER_REPLICAS` remains the worker-side scaling knob
-- Improved admin impersonation handling and session management flows
-- Moved public status page branding suppression to a deployment-wide `STATUS_PAGE_HIDE_BRANDING` environment variable, removed the per-status-page settings toggle, and defaulted branding to visible unless the env var is set to `true`
-- Updated public status page branding to use the Supercheck logo
-- Reduced the monitor form name minimum from 10 to 3 characters to better support short operational labels ([#259](https://github.com/supercheck-io/supercheck/discussions/259))
-
-### Fixed
-
-- Fixed Playwright report loading performance. Implemented report caching across Playground, Runs, and Monitor views to prevent unnecessary re-fetching on tab switches
-- Prevented caching of error responses from report proxy to avoid stale missing-report states after uploads complete
-- Fixed false "Queue capacity limit reached" errors during Redis Sentinel failover
-- Improved self-hosted migration script performance and hardened database creation commands against SQL injection
-- Fixed worker Redis documentation to use correct `REDIS_HOST`, `REDIS_PORT`, and `REDIS_PASSWORD` variables instead of `REDIS_URL` for multi-location deployments ([#252](https://github.com/supercheck-io/supercheck/issues/252))
-- Improved invitation onboarding flow and RBAC/session initialization: unauthenticated invitees now redirect to `/sign-up?invite=...` (with sign-in fallback for existing users), project selections are normalized and project-scope validated, `org_admin` invitations are restricted to org owners, expired pending invites are ignored in duplicate checks, and acceptance now initializes an active project context ([#254](https://github.com/supercheck-io/supercheck/issues/254))
-- Hardened admin user deletion to handle dependent user-owned foreign key references inside a transaction ([#254](https://github.com/supercheck-io/supercheck/issues/254))
-- Fixed status page support contact UX so `Get in touch` matches the `Subscribe` button styling, stays in the top action area on incident pages, and handles `mailto:` links consistently across public views and emails ([#263](https://github.com/supercheck-io/supercheck/issues/263))
-- Fixed status page settings persistence so support contact, headline, and description can be cleared reliably and reflect immediately after save
-- Added a failed linked monitors overview card on status pages so operators can see linked monitor failures without paging through the full monitor table ([#259](https://github.com/supercheck-io/supercheck/discussions/259))
-
-### Security
-
-- Fixed DoS vulnerability in underscore via unlimited recursion in `_.flatten` and `_.isEqual` (patched to 1.13.8)
-- Fixed DoS vulnerabilities in multer via resource exhaustion and incomplete cleanup (patched to 2.1.0)
-- Fixed RCE vulnerability in serialize-javascript via `RegExp.flags` and `Date.prototype.toISOString()` (patched to 7.0.3)
-- Fixed stack overflow vulnerability in fast-xml-parser `XMLBuilder` with `preserveOrder` (patched to 5.3.8)
-- Fixed ReDoS vulnerability in minimatch via combinatorial backtracking in `matchOne()` with non-adjacent GLOBSTAR segments (patched via dependency overrides)
+- **Registration controls:** Use `SIGNUP_ENABLED` to control self-hosted signup and `ALLOWED_EMAIL_DOMAINS` to restrict accepted email domains.
+- **Organization administration:** Owners and admins can rename organizations. Improve invitations, expired-invite handling, project selection after acceptance, and admin session management.
+- **Status page support:** Add email or URL-based `Get in touch` actions to public pages and incident notifications, and fix clearing of support details, headlines, and descriptions.
+- **Status page controls:** Remove the per-page branding toggle. Branding is visible by default; use `STATUS_PAGE_HIDE_BRANDING=true` to hide it across the deployment. Add an overview of failed linked monitors.
+- **Monitoring:** Allow shorter monitor names and clarify app-side execution capacity versus worker scaling settings.
+- **Reports and queues:** Improve Playwright report caching, avoid stale missing-report errors after upload, and fix false capacity errors during Redis failover.
+- Harden migration and user-deletion handling, correct regional Redis configuration guidance, and patch dependency vulnerabilities.
 
 ## [1.3.1] - 2026-02-25
 
-### Added
-
-- **Multi-language support for status pages** — Localized UI strings in 20+ languages (Arabic, Chinese, Czech, Danish, Dutch, English, Finnish, French, German, Hindi, Croatian, Hungarian, Italian, Japanese, Korean, Norwegian, Polish, Portuguese, Romanian, Russian, Spanish, Swedish, Turkish, Ukrainian) ([#237](https://github.com/supercheck-io/supercheck/issues/237))
-- **Status badges** — SVG badges for embedding current system status on external websites and READMEs
-- **iCal calendar feed** — Subscribe to status page incidents in calendar applications (Google Calendar, Apple Calendar, Outlook)
-- Email sign-up functionality for improved user onboarding ([#241](https://github.com/supercheck-io/supercheck/issues/241))
-
-### Changed
-
-- Enhanced public status page UI with improved incident details and subscription management
-- Improved custom domain setup instructions with dynamic DNS record table, numbered steps, and Cloudflare proxy warning
-- Improved mobile responsiveness across status page components and public views
-- Basic auth support for sign-in page ([#241](https://github.com/supercheck-io/supercheck/issues/241))
-- Streamlined sign-up process with improved invitation handling
-- Improved SMTP configuration handling ([#238](https://github.com/supercheck-io/supercheck/issues/238))
-- Enhanced VariableDialog to support secret value decryption and better state management
-- Updated Docker images to use SUPERCHECK_VERSION for consistent version management
-- Updated Playwright to version 1.58.2
-- SMTP_USER and SMTP_PASSWORD environment variables are now optional to support email services that do not require authentication
-
-### Security
-
-- Fixed vulnerability in fast-xml-parser
-- Added hex color validation for status badge SVG generation to prevent injection
-- Fixed ReDoS vulnerability in minimatch (patched via dependency overrides)
-
-### Fixed
-
-- Fixed bug where custom domains could not be removed from status pages
-
----
+- **Public status pages:** Add localization in more than 20 languages, embeddable SVG status badges, and incident calendar feeds for Google Calendar, Apple Calendar, and Outlook.
+- Improve incident details, subscription management, and mobile status page layouts.
+- Improve email signup and invitations, add basic-auth support for the sign-in page, and support SMTP services that do not require credentials.
+- Clarify custom-domain DNS setup and Cloudflare proxy requirements, and fix custom-domain removal.
+- Update Playwright and patch XML parsing, badge generation, and pattern-matching vulnerabilities.
 
 ## [1.3.0] - 2026-02-16
 
-### Added
-
-- **New CLI** — Command-line interface for Testing, Monitoring, and Reliability — as Code (`npm install -g @supercheck/cli`)
-- **AI Analyze for Monitors** — Generate AI-powered health assessments and performance analysis for any monitor
-- **AI Analyze for Job Runs** — Get AI-powered failure diagnosis and execution insights for Playwright and K6 runs
-- TypeScript support for Playwright and K6 scripts
-- API proxy helper used by the CLI and documentation
-
-### Changed
-
-- Improved invitation flows and member project assignment handling
-- Org members API now returns both pending and expired invitations for explicit client-side state handling
-- Updated CLI command flags and documentation
-- Docs: static search index, refactored search dialog
-- Refactored secret handling and execution logging for safer runtime behavior
-
-### Security
-
-- Fixed DoS vulnerability in fast-xml-parser (CVE)
-- Added organization authorization checks for AI analysis endpoints
-- Strengthened secret redaction flow in execution outputs before persistence/return
-
----
+- **Supercheck CLI:** Introduce testing, monitoring, and reliability as code through `@supercheck/cli`.
+- **AI analysis:** Add monitor health assessments and Playwright/k6 job-run failure diagnosis and execution insights.
+- Add TypeScript support for Playwright and k6 scripts.
+- Improve invitations and project assignments, including visibility of pending and expired invitations.
+- Improve documentation search and command guidance, strengthen AI endpoint permissions, and redact secrets from execution output.
 
 ## [1.2.3] - 2026-01-22
 
-### Added
-
-- **Microsoft Edge browser extension** — Supercheck Recorder Extension for [Microsoft Edge](https://microsoftedge.microsoft.com/addons/detail/supercheck-recorder/0rdckc265vb9)
-- **Upside down monitor** — Monitor for services that should be DOWN ([#197](https://github.com/supercheck-io/supercheck/issues/197))
-- **Custom headers for HTTP monitors** — Pass custom headers in HTTP monitor requests ([#196](https://github.com/supercheck-io/supercheck/issues/196))
-- **Coolify deployment template** — Deployment configuration for Coolify ([#182](https://github.com/supercheck-io/supercheck/issues/182))
-- Variable and secret resolution support for synthetic monitor scripts ([#201](https://github.com/supercheck-io/supercheck/issues/201))
-
-### Changed
-
-- Improved data freshness with optimized React Query refetch strategies
-- Enhanced self-hosting documentation
-- Standardized loading spinners and loading states across main routes
-- Updated logo and community links in navigation
-
-### Fixed
-
-- Monitor creation wizard button labels and icon inconsistency ([#198](https://github.com/supercheck-io/supercheck/issues/198))
-- New MS Teams webhook URLs not allowed for notifications ([#195](https://github.com/supercheck-io/supercheck/issues/195))
-- Cache invalidation for requirements and cross-entity data consistency
-- Audit Log Details page layout issues ([#164](https://github.com/supercheck-io/supercheck/issues/164))
-
----
+- **Edge Recorder:** Add the Supercheck Recorder extension for Microsoft Edge.
+- **Monitoring:** Add checks for services that should be down and custom headers for HTTP monitors.
+- Support variables and secrets in synthetic monitor scripts.
+- Add the Coolify deployment template, later removed in 1.3.6.
+- Improve cached-data freshness and fix requirement updates, audit-log layouts, monitor creation controls, and Microsoft Teams webhook validation.
 
 ## [1.2.2] - 2026-01-17
 
-### Added
-
-- **Supercheck Recorder extension** — Browser extension for Chromium based browsers to record user interactions and generate Playwright tests
-- Extension auto-connect feature from Playground to Recorder with seamless handshake
-- Requirements management system with AI-powered extraction from documents
-- Microsoft Teams notification integration via Power Automate webhooks
-- Super admin CSV export for user management
-- Multi-provider AI support: Azure OpenAI, Anthropic, Google Gemini, Vertex AI, AWS Bedrock, OpenRouter ([#157](https://github.com/supercheck-io/supercheck/issues/157))
-- AI error helper for improved debugging experience
-- Centralized AI provider configuration system
-
-### Changed
-
-- Enhanced React Query caching strategy for faster page loads
-- Updated new logo and added community links to the navigation header
-- Enhanced webhook URL validation with allowlist for Teams
-- Improved text sanitization for security
-
-### Fixed
-
-- Race condition in cache restoration during page navigation
-- Unnecessary loading spinners when cached data is available
-- CVE-2026-0621: ReDoS vulnerability in @modelcontextprotocol/sdk (GHSA-8r9q-7v3j-jr4g) by downgrading shadcn CLI to v2.5.0
-- Configurable CNAME target for self-hosted custom domains ([#153](https://github.com/supercheck-io/supercheck/issues/153))
-- Traefik updated to v3.6.6 for Docker 29+ API compatibility ([#152](https://github.com/supercheck-io/supercheck/issues/152))
-- PostgreSQL data persistence documentation updated ([#162](https://github.com/supercheck-io/supercheck/issues/162))
-- Fixed PDF/DOCX extraction, increased Server Actions limit to 12MB, updated CSP for self-hosting
-
----
+- **Supercheck Recorder:** Record browser interactions as Playwright tests and connect the extension directly from Playground.
+- **Requirements:** Add AI-powered extraction from uploaded documents and fix PDF/DOCX extraction and upload-size handling.
+- **Notifications:** Add Microsoft Teams integration through Power Automate webhooks.
+- **AI providers:** Add Azure OpenAI, Anthropic, Google Gemini, Vertex AI, AWS Bedrock, and OpenRouter support, plus an AI error helper.
+- Add Super Admin CSV user export and configurable CNAME targets for self-hosted status page domains.
+- Fix cached-navigation loading behavior, improve webhook validation and self-hosting compatibility, and update security dependencies.
 
 ## [1.2.1] - 2025-12-17
 
-### Added
-
-- Multi-region worker architecture with location-aware queue processing
-- Live health check endpoint for workers
-- Data table row hover prefetching for improved UX
-- Service worker for static asset caching
-- Monaco editor prefetching and loading spinners
-- Client-side authentication guard with loading states
-- Distributed locking and retry for job scheduler initialization
-- Request-scoped session caching for performance
-- Partial job updates via PATCH API
-- Server-side data fetching for status pages
-
-### Changed
-
-- Consolidated data fetching with React Query hooks for improved caching
-- Optimized dashboard API by aggregating execution times in SQL
-- Reduced logging verbosity in production
-- Improved loading messages and spinner sizing across the application
-- Centralized Monaco editor theme definitions
-
-### Fixed
-
-- System health calculation accuracy
-- Dashboard monitor count reliability
-- Job status event cache eviction
-- Hydration issues in social authentication
-- Service worker update interval memory leaks
-- Exclude 'error' status from failed run counts in analytics
-
-### Performance
-
-- Optimized data fetching with project context caching
-- Increased stale times for better cache utilization
-- Chunked script fetches to prevent timeouts
-- Adjusted database connection timeouts
-
----
+- **Regional execution:** Add location-aware workers and live worker health checks.
+- **Faster navigation:** Improve dashboard, editor, and status page loading through caching, prefetching, and more efficient data fetching.
+- Improve scheduler initialization and retry handling, and support partial job updates.
+- Improve execution-time reporting and monitor and system-health counts; exclude execution errors from failed-run analytics.
+- Fix authentication hydration, background-update memory leaks, and job-status cache handling.
 
 ## [1.2.0] - 2025-11-16
 
-### Added
-
-- AI-powered test generation for Browser, API, and Performance tests
-- AI-powered K6 performance test analysis with comparison UI
-- K6 performance testing integration with xk6-dashboard extension
-- K6 and Playwright analytics dashboards with run comparison
-- Status pages for public-facing service health displays
-- Custom domain support for status pages
-- RSS and Slack subscription for status pages
-- Real-time test execution with SSE progress tracking
-- Multi-organization support with role-based access control (RBAC)
-- Self-hosted deployment mode for enterprise
-- Session invalidation and login lockout security features
-- API key hashing for improved security
-- Turnstile Captcha for cloud organization creation
-- Email verification for cloud mode
-- AI Fix feature for K6 tests with streaming support
-- AI credit usage tracking and billing UI
-- Queue health monitoring and alerting service
-- Monitor statistics API with 24h and 30d aggregated metrics
-- VU-minutes as K6 performance metric
-- Ban user functionality for super admins
-- Atomic job capacity enforcement using Redis Lua scripts
-
-### Changed
-
-- Redesigned dashboard with K6 performance statistics
-- Migrated run duration to milliseconds for precision
-- Standardized execution time display and K6 usage tracking to minutes
-- Updated authentication system to Better Auth 1.4.5
-- Enhanced RBAC permissions for run cancellation
-- Improved capacity management with Redis-based optimizations
-- Moved scheduler logic from worker to app
-- Updated status page list UI
-
-### Fixed
-
-- App build issue with Next.js standalone build path in Dockerfile
-- Multiple ESLint issues across the application
-- SSE reconnection logic
-- Self-hosted deployment documentation link path
-
-### Security
-
-- Hardened input sanitization and validation
-- SSRF and ReDoS protection across components
-- Tightened Slack and Discord webhook URL validation
-- Container resource limit validation
-- API rate limiting implementation
-- Structured logging for audit trails
-
----
+- **AI testing:** Generate Browser, API, and Performance tests; stream k6 fixes; and analyze k6 runs with comparisons.
+- **Performance testing:** Add k6 execution, dashboards, run comparisons, and virtual-user minute usage metrics.
+- **Public status pages:** Add custom domains, incident subscriptions through RSS and Slack, and public service-health displays.
+- **Teams and self-hosting:** Add self-hosted deployment mode, organization permissions, and role-based run cancellation.
+- **Account security:** Add session invalidation, login lockouts, email verification, API-key hashing, and CAPTCHA protection for cloud organization creation.
+- **Live execution:** Add streamed progress, queue health monitoring, atomic capacity enforcement, and clearer execution-time and usage reporting.
+- **Usage and monitoring:** Add AI credit tracking, billing UI, and 24-hour and 30-day monitor statistics.
+- Improve stream reconnection and container builds, and strengthen request validation, outbound request protection, rate limits, and audit logging.
 
 ## [1.1.0] - 2025-09-22
 
-### Added
-
-- Initial monitoring system (HTTP, Ping, Port checks)
-- Alert configuration with multiple notification providers
-- Job scheduling with cron expressions
-- Environment variable management for tests
-- Docker Compose files for production deployment
-- AI model configuration (GPT-4o-mini default)
-
-### Changed
-
-- Refactored environment variables for improved configurability
-- Enhanced Docker Compose for production readiness
-
----
+- Add HTTP, host reachability, and port monitoring with configurable notification providers.
+- Add scheduled jobs, test variables, and Docker Compose production deployment.
+- Add configurable AI models and improve deployment configuration.
 
 ## [1.0.0] - 2025-08-29
 
-### Added
-
-- Initial release of Supercheck
-- Playwright-based browser testing
-- API testing capabilities
-- Basic test execution engine
-- Test reporting and results visualization
-- Project and organization management
-- User authentication and authorization
+- Initial release with Playwright browser testing and API testing.
+- Add test execution, reports, and results visualization.
+- Add project and team management, authentication, and authorization.
