@@ -991,7 +991,7 @@ export async function reconcileCapacityCounters(
 
     if (!queues) {
       const queueModule = await import('./queue');
-      const q = await queueModule.getQueues();
+      const q = await queueModule.getCapacityQueues();
       queues = {
         playwrightQueues: q.playwrightQueues,
         k6Queues: q.k6Queues,
@@ -1005,12 +1005,12 @@ export async function reconcileCapacityCounters(
     ].filter(Boolean);
 
     // 1. Count actual jobs that have consumed running slots per organization from BullMQ
-    // IMPORTANT: Include both 'active' (currently executing) AND 'waiting' (reserved slot, waiting for worker)
-    // Jobs in 'waiting' state have already consumed a capacity slot via reserveSlot()
+    // Every admitted unfinished execution retains its slot, including retries
+    // in backoff and work waiting on a disabled or paused region.
     const actualRunningByOrg: Record<string, number> = {};
     
     const allActiveJobs = await Promise.all(
-      executionQueues.map(q => q.getJobs(['active', 'waiting']))
+      executionQueues.map(q => q.getJobs(['active', 'waiting', 'delayed', 'paused', 'prioritized', 'waiting-children']))
     );
 
     for (const jobs of allActiveJobs) {

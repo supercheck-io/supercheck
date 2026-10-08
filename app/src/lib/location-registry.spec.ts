@@ -1,6 +1,9 @@
 /** @jest-environment node */
 
 describe("location-registry helpers", () => {
+  beforeEach(() => {
+    Reflect.deleteProperty(globalThis, "__SUPERCHECK_LOCATION_CACHE__");
+  });
   afterEach(() => {
     jest.resetModules();
     jest.clearAllMocks();
@@ -68,5 +71,33 @@ describe("location-registry helpers", () => {
     await expect(
       getFirstVisibleProjectRestrictionCode("project-1")
     ).resolves.toBeUndefined();
+  });
+
+  it("shares cached enabled locations across server module copies", async () => {
+    const first = await loadModule(false, [{ code: "eu-central" }]);
+    await expect(first.getAllEnabledLocationCodes()).resolves.toEqual(["eu-central"]);
+    jest.resetModules();
+    const second = await loadModule(false, [{ code: "us-east" }]);
+    await expect(second.getAllEnabledLocationCodes()).resolves.toEqual(["eu-central"]);
+    first.invalidateLocationCache();
+    await expect(second.getAllEnabledLocationCodes()).resolves.toEqual(["us-east"]);
+  });
+
+  it("does not restore a stale database read after a location save invalidates it", async () => {
+    const registry = await loadModule(false);
+    const db = jest.requireMock("@/utils/db").db;
+    let finishOldRead!: (rows: Array<{ code: string }>) => void;
+    const orderBy = jest.fn()
+      .mockImplementationOnce(() => new Promise((resolve) => { finishOldRead = resolve; }))
+      .mockResolvedValue([{ code: "eu-central" }, { code: "us-east" }]);
+    db.select.mockImplementation(() => ({
+      from: jest.fn().mockReturnThis(), where: jest.fn().mockReturnThis(), orderBy,
+    }));
+    const pendingRead = registry.getAllEnabledLocationCodes();
+    registry.invalidateLocationCache();
+    finishOldRead([{ code: "eu-central" }]);
+    await expect(pendingRead).resolves.toEqual(["eu-central", "us-east"]);
+    await expect(registry.getAllEnabledLocationCodes()).resolves.toEqual(["eu-central", "us-east"]);
+    expect(orderBy).toHaveBeenCalledTimes(2);
   });
 });

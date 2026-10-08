@@ -39,6 +39,8 @@ export class MonitorDynamicWorkerService
   private connection: Redis | null = null;
   private subscriber: Redis | null = null;
   private workerLocation = 'local';
+  private shuttingDown = false;
+  private refreshPromise: Promise<void> = Promise.resolve();
   private discoveryRetryTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
@@ -55,48 +57,45 @@ export class MonitorDynamicWorkerService
 
     this.connection = this.createRedisConnection();
 
-    const queueNames = await this.getQueueNames(this.workerLocation);
-
-    this.heartbeatService.addQueues(queueNames);
-
-    if (queueNames.length === 0) {
-      this.logger.log('No monitor queues to register');
-    } else {
-      for (const queueName of queueNames) {
-        this.createWorkerForQueue(queueName);
-      }
+    const enabledQueues = await this.getQueueNames(this.workerLocation);
+    const queueNames =
+      enabledQueues ??
+      (this.workerLocation === 'local'
+        ? await this.discoverQueues()
+        : [monitorQueueName(this.workerLocation)]);
+    if (enabledQueues === null && queueNames.length === 0) {
+      queueNames.push(monitorQueueName('local'));
     }
 
-    // Subscribe to queue-refresh notifications so we pick up newly added locations
-    if (this.workerLocation === 'local') {
-      this.subscribeToQueueRefresh();
-
-      // Always schedule a discovery retry in local mode. Even if Redis SCAN
-      // found some queues, the DB may have been temporarily unreachable,
-      // leaving the worker with an incomplete subset. The retry is a no-op
-      // when handleQueueRefresh() finds nothing new to add.
-      this.scheduleDiscoveryRetry();
+    for (const queueName of queueNames) {
+      this.createWorkerForQueue(queueName);
     }
+
+    this.subscribeToQueueRefresh();
+    this.scheduleDiscoveryRetry();
   }
 
   async onModuleDestroy(): Promise<void> {
+    this.shuttingDown = true;
+    this.heartbeatService.removeQueues(Array.from(this.activeQueueNames));
     if (this.discoveryRetryTimer) {
       clearTimeout(this.discoveryRetryTimer);
       this.discoveryRetryTimer = null;
     }
 
     if (this.subscriber) {
-      await this.subscriber
-        .unsubscribe('supercheck:queue-refresh')
-        .catch(() => {});
-      await this.subscriber.quit().catch(() => {});
+      // Pub/sub has no jobs to drain; Redis commands can wait forever offline.
+      this.subscriber.disconnect();
       this.subscriber = null;
     }
+
+    await this.refreshPromise;
 
     await Promise.allSettled(
       Array.from(this.workers.values()).map((w) => w.close()),
     );
     this.workers.clear();
+    this.activeQueueNames.clear();
 
     if (this.connection) {
       await this.connection.quit().catch(() => {});
@@ -108,7 +107,12 @@ export class MonitorDynamicWorkerService
    * Create a BullMQ Worker for a single queue and register event handlers.
    */
   private createWorkerForQueue(queueName: string): void {
-    if (!this.connection || this.activeQueueNames.has(queueName)) return;
+    if (
+      this.shuttingDown ||
+      !this.connection ||
+      this.activeQueueNames.has(queueName)
+    )
+      return;
 
     const worker = new Worker(
       queueName,
@@ -167,6 +171,7 @@ export class MonitorDynamicWorkerService
 
     this.workers.set(queueName, worker);
     this.activeQueueNames.add(queueName);
+    this.heartbeatService.addQueues([queueName]);
     this.logger.log(
       `Registered dynamic monitor worker for queue: ${queueName}`,
     );
@@ -176,6 +181,7 @@ export class MonitorDynamicWorkerService
     const worker = this.workers.get(queueName);
     if (!worker) return;
 
+    this.heartbeatService.removeQueues([queueName]);
     try {
       await worker.close();
     } catch (error) {
@@ -188,7 +194,6 @@ export class MonitorDynamicWorkerService
 
     this.workers.delete(queueName);
     this.activeQueueNames.delete(queueName);
-    this.heartbeatService.removeQueues([queueName]);
     this.logger.log(`Removed dynamic monitor worker for queue: ${queueName}`);
   }
 
@@ -200,11 +205,24 @@ export class MonitorDynamicWorkerService
   private subscribeToQueueRefresh(): void {
     if (!this.connection) return;
 
-    this.subscriber = this.connection.duplicate();
-    this.subscriber.subscribe('supercheck:queue-refresh').catch((err) => {
-      this.logger.error(
-        `Failed to subscribe to queue-refresh channel: ${err instanceof Error ? err.message : String(err)}`,
-      );
+    const subscriber = this.connection.duplicate();
+    this.subscriber = subscriber;
+    const subscribe = () => {
+      if (this.shuttingDown) return;
+      subscriber
+        .subscribe('supercheck:queue-refresh')
+        .then(() => this.handleQueueRefresh())
+        .catch((err) => {
+          this.logger.error(
+            `Failed to refresh queue subscription: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        });
+    };
+    // Reconcile after subscription acknowledgement to recover missed messages.
+    subscriber.on('ready', subscribe);
+    if (subscriber.status === 'ready') subscribe();
+    subscriber.on('error', (err: Error) => {
+      this.logger.warn(`Queue-refresh Redis error: ${err.message}`);
     });
 
     this.subscriber.on('message', (_channel: string, message: string) => {
@@ -216,34 +234,43 @@ export class MonitorDynamicWorkerService
     });
   }
 
-  /**
-   * Re-discover queues and create workers for any new ones.
-   * Prefers location codes from the pub/sub message to construct queue names
-   * deterministically — SCAN-based discovery may miss new queues whose
-   * Redis :meta key hasn't been created yet.
-   */
-  private async handleQueueRefresh(message?: string): Promise<void> {
-    let newQueues: string[];
-    try {
-      const parsed = message
-        ? (JSON.parse(message) as { locationCodes?: string[] })
-        : null;
-      if (Array.isArray(parsed?.locationCodes)) {
-        newQueues = parsed.locationCodes.map((code: string) =>
-          monitorQueueName(code),
-        );
-      } else {
-        newQueues = await this.getQueueNames(this.workerLocation);
+  /** Reconcile enabled queues in notification order. */
+  private handleQueueRefresh(message?: string): Promise<void> {
+    const refresh = this.refreshPromise.then(() => this.refreshQueues(message));
+    // A failed refresh must not block subsequent notifications.
+    this.refreshPromise = refresh.catch(() => {});
+    return refresh;
+  }
+
+  private async refreshQueues(message?: string): Promise<void> {
+    if (this.shuttingDown) return;
+    // The DB wins over delayed snapshots; messages remain useful during an outage.
+    let newQueues = await this.getQueueNames(this.workerLocation);
+    if (newQueues === null && message) {
+      try {
+        const parsed = JSON.parse(message) as { locationCodes?: string[] };
+        if (
+          Array.isArray(parsed?.locationCodes) &&
+          parsed.locationCodes.every((code) => typeof code === 'string')
+        ) {
+          newQueues = parsed.locationCodes
+            .filter(
+              (code) =>
+                this.workerLocation === 'local' ||
+                code.toLowerCase() === this.workerLocation,
+            )
+            .map((code) => monitorQueueName(code));
+        }
+      } catch {
+        // An unreadable message cannot replace the last known queue set.
       }
-    } catch {
-      newQueues = await this.getQueueNames(this.workerLocation);
     }
+    if (this.shuttingDown || newQueues === null) return;
     const targetQueues = new Set(newQueues);
     let added = 0;
     for (const queueName of newQueues) {
       if (!this.activeQueueNames.has(queueName)) {
         this.createWorkerForQueue(queueName);
-        this.heartbeatService.addQueues([queueName]);
         added++;
       }
     }
@@ -265,63 +292,25 @@ export class MonitorDynamicWorkerService
     }
   }
 
-  /**
-   * Schedule a delayed re-discovery attempt with exponential backoff.
-   * Covers transient DB/Redis failures during startup: the worker starts with
-   * only the local fallback queue but should pick up the real location queues
-   * once infrastructure recovers.
-   *
-   * Uses exponential backoff (30s, 60s, 120s, …) capped at 5 minutes.
-   * Stops retrying once a refresh discovers new queues (the pub/sub
-   * listener handles further changes). The timer is stored so it can
-   * be cancelled in onModuleDestroy().
-   */
+  /** Reconcile periodically so DB outages and lost notifications recover. */
   private scheduleDiscoveryRetry(): void {
-    const BASE_DELAY_MS = 30_000;
-    const MAX_DELAY_MS = 5 * 60_000; // 5 minutes cap
-    const MAX_STABLE_RETRIES = 3; // stop after N consecutive no-growth attempts
-    let retries = 0;
-    let stableRetries = 0;
-
-    const nextDelay = () =>
-      Math.min(BASE_DELAY_MS * Math.pow(2, retries), MAX_DELAY_MS);
-
+    let delay = 30_000;
     const attempt = () => {
-      retries++;
-      const prevSize = this.activeQueueNames.size;
-      this.logger.log(
-        `Discovery retry ${retries}: re-scanning for regional monitor queues (active: ${this.activeQueueNames.size})…`,
-      );
+      this.discoveryRetryTimer = null;
+      if (this.shuttingDown) return;
       this.handleQueueRefresh()
-        .then(() => {
-          const grew = this.activeQueueNames.size > prevSize;
-          if (grew) {
-            this.logger.log(
-              `Discovery retry succeeded: now have ${this.activeQueueNames.size} monitor queue(s)`,
-            );
-            // Reset stable counter on growth — more queues may still appear
-            stableRetries = 0;
-            this.discoveryRetryTimer = setTimeout(attempt, nextDelay());
-          } else {
-            stableRetries++;
-            if (stableRetries >= MAX_STABLE_RETRIES) {
-              this.logger.log(
-                `Discovery retry: queue set stable for ${stableRetries} consecutive checks. ` +
-                  `Stopping retry loop (${this.activeQueueNames.size} monitor queue(s)). ` +
-                  `Pub/sub listener will handle further changes.`,
-              );
-              this.discoveryRetryTimer = null;
-              return;
-            }
-            this.discoveryRetryTimer = setTimeout(attempt, nextDelay());
-          }
+        .catch((err) => {
+          this.logger.warn(
+            `Queue discovery failed: ${err instanceof Error ? err.message : String(err)}`,
+          );
         })
-        .catch(() => {
-          this.discoveryRetryTimer = setTimeout(attempt, nextDelay());
+        .finally(() => {
+          if (this.shuttingDown) return;
+          delay = Math.min(delay * 2, 5 * 60_000);
+          this.discoveryRetryTimer = setTimeout(attempt, delay);
         });
     };
-
-    this.discoveryRetryTimer = setTimeout(attempt, BASE_DELAY_MS);
+    this.discoveryRetryTimer = setTimeout(attempt, delay);
   }
 
   private async processJob(
@@ -422,34 +411,25 @@ export class MonitorDynamicWorkerService
    * Get queue names based on worker location.
    * No global queue for monitors — all are location-specific.
    */
-  private async getQueueNames(location: string): Promise<string[]> {
+  private async getQueueNames(location: string): Promise<string[] | null> {
+    const dbCodes = await this.fetchEnabledLocationCodes();
+    if (dbCodes === null) return null;
     if (location === 'local') {
-      const queueNames = new Set<string>();
-
-      // 1. Discover from Redis metadata keys (existing queues that have had jobs)
-      const discovered = await this.discoverQueues();
-      for (const q of discovered) queueNames.add(q);
-
-      // 2. Discover from DB — covers locations enabled in DB but not yet in Redis
-      const dbCodes = await this.fetchEnabledLocationCodes();
-      for (const code of dbCodes) queueNames.add(monitorQueueName(code));
-
-      // 3. Fallback if nothing discovered from Redis or DB
-      if (queueNames.size === 0) {
-        queueNames.add(monitorQueueName('local'));
-      }
-
-      return Array.from(queueNames);
+      return dbCodes.map((code) => monitorQueueName(code));
     }
-    return [monitorQueueName(location)];
+    return dbCodes.some((code) => code.toLowerCase() === location)
+      ? [monitorQueueName(location)]
+      : [];
   }
 
   /**
    * Fetch enabled location codes directly from the DB.
    * Covers locations that exist in the database but have no Redis :meta key yet
    * (e.g. newly created locations that haven't had a job enqueued since last Redis flush).
+   * Returns null when the database cannot be read so callers do not treat an
+   * outage as "every location is disabled".
    */
-  private async fetchEnabledLocationCodes(): Promise<string[]> {
+  private async fetchEnabledLocationCodes(): Promise<string[] | null> {
     try {
       const rows = await this.dbService.db.execute(
         sql`SELECT code FROM locations WHERE is_enabled = true`,
@@ -459,7 +439,7 @@ export class MonitorDynamicWorkerService
       this.logger.warn(
         `Failed to fetch location codes from DB: ${error instanceof Error ? error.message : String(error)}`,
       );
-      return [];
+      return null;
     }
   }
 

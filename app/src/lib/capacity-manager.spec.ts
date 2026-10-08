@@ -800,4 +800,20 @@ describe('Reconciliation', () => {
     expect(mockRedisSet).not.toHaveBeenCalled();
     expect(mockRedisDel).not.toHaveBeenCalled();
   });
+
+  it('retains capacity for admitted retries and paused or disabled waiting work', async () => {
+    mockQueue.getJobs.mockImplementation((states: string[]) => Promise.resolve(
+      states.includes('delayed') && states.includes('paused')
+        ? [{ id: 'retry-1', data: { organizationId: 'org-1' } }]
+        : [],
+    ));
+    mockRedisScan.mockResolvedValue(['0', ['capacity:running:org-1']]);
+    mockRedisGet.mockResolvedValue('2');
+    await reconcileCapacityCounters(mockQueues, true);
+    expect(mockQueue.getJobs).toHaveBeenCalledWith([
+      'active', 'waiting', 'delayed', 'paused', 'prioritized', 'waiting-children',
+    ]);
+    expect(mockRedisDel).not.toHaveBeenCalledWith('capacity:running:org-1');
+    expect(mockRedisSet).not.toHaveBeenCalled();
+  });
 });

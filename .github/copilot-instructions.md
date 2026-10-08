@@ -79,7 +79,8 @@ npm run generate-docs
   - `/worker/src/k6/k6.constants.ts`
   - `/worker/src/monitor/monitor.constants.ts`
 - Do not rename queue constants in one place only.
-- After any location CRUD, call `invalidateLocationCache()`, `invalidateQueueMaps()`, `invalidateQueueEventHub()`, and `invalidateBullBoard()` (from `@/lib/bull-board/state`).
+- After any location CRUD, call `invalidateLocationCache()`, `invalidateQueueMaps()`, `invalidateQueueEventHub()`, and `invalidateBullBoard()` (from `@/lib/bull-board/state`). `invalidateQueueMaps()` publishes `supercheck:queue-refresh` so other app replicas and workers apply the same change. App state is shared on `globalThis`; refresh only changed regional clients and preserve global/scheduler/unchanged regional clients. Keep disabled k6 clients and capacity events while admitted work remains; exclude them from new routing and dashboard lists. Reconcile missed events (including an empty enabled set), preserve clients during DB outages, and serialize queue/event-hub refreshes. Do not keep a second in-memory location or Bull Board cache that ignores that event.
+- Pass Redis options to app `QueueEvents` so BullMQ owns its dedicated blocking connection. An untracked external Redis duplicate leaks because BullMQ duplicates it again.
 
 ### Execution and scaling behavior
 - Per-process concurrency is intentionally low/hardcoded (`@Processor(..., { concurrency: 1 })`, plus `MAX_CONCURRENT_EXECUTIONS: 1` in worker memory constants); scale by running more worker replicas.
