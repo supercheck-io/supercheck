@@ -382,7 +382,7 @@ export function ConnectorAdminView({
   const openSearchDialog = (connector: SreConnectorListItem) => {
     if (!supportsEvidenceSearch(connector)) {
       toast.info(
-        "Evidence search is not implemented for this connector type yet. Use the setup guide to configure it for future collaboration context.",
+        "Evidence search is not implemented for this connector type yet. Choose a supported live evidence connector.",
       );
       return;
     }

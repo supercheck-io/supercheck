@@ -1,0 +1,19 @@
+# Supercheck
+
+> Open source test automation, monitoring, and AI SRE. Start with the installation runbook for agent-assisted self-hosting.
+
+## Installation
+
+- [Agent installation runbook](https://raw.githubusercontent.com/supercheck-io/supercheck/main/deploy/docker/INSTALL.md): Required inputs, ordered commands, and verification for a single Linux server.
+- [Deployment reference](https://raw.githubusercontent.com/supercheck-io/supercheck/main/deploy/docker/README.md): Compose variants, configuration, scaling, and updates.
+- [Self-hosted guide](https://supercheck.io/docs/app/deployment/self-hosted): HTTP, HTTPS, and managed external services.
+
+## Optional AI SRE
+
+- [AI SRE setup source](https://raw.githubusercontent.com/supercheck-io/supercheck/main/docs/content/docs/app/admin/ai-sre-setup.mdx): Services and optional evidence connectors.
+- [Private Agent source](https://raw.githubusercontent.com/supercheck-io/supercheck/main/docs/content/docs/app/deployment/private-agent.mdx): Evidence access inside private networks.
+- [Connectors source](https://raw.githubusercontent.com/supercheck-io/supercheck/main/docs/content/docs/app/investigate/connectors.mdx): Supported read-only evidence sources.
+
+## Full Reference
+
+- [Complete documentation text](https://supercheck.io/llms-full.txt): All documentation for tasks beyond installation.

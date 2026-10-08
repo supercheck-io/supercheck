@@ -132,7 +132,6 @@ S3_ENDPOINT=http://minio:9000
 # Optional deployment-wide controls (shared by app and worker):
 # SRE_ENABLED=false           # Disable AI SRE requests and automation
 # SRE_AUTOMATION_ENABLED=false # Keep manual SRE, disable alert-triggered AI work
-# Slack/Teams command credentials belong in the optional collaboration overlay.
 
 # OpenAI (default provider)
 # AI_PROVIDER=openai
