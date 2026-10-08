@@ -116,6 +116,29 @@ test("prompt treats pull request text as data and caps the diff", () => {
   assert.deepEqual(built.index["app/src/auth.ts"], [1])
 })
 
+test("uses an earlier JSON review when the last text part is prose", () => {
+  const stdout = [
+    JSON.stringify({
+      type: "text",
+      part: { id: "answer", text: '{"summary":"The generation check is sound.","comments":[]}' },
+    }),
+    JSON.stringify({ type: "text", part: { id: "tail", text: "Review complete." } }),
+  ].join("\n")
+  assert.equal(parseReview(extractModelText(stdout)).summary, "The generation check is sound.")
+})
+
+test("posts a prose review when the model does not return JSON", () => {
+  const stdout = JSON.stringify({
+    type: "text",
+    part: {
+      text: "The refresh slot is cleared with a generation counter, so a newer refresh is not dropped.",
+    },
+  })
+  const parsed = parseReview(extractModelText(stdout))
+  assert.match(parsed.summary, /generation counter/)
+  assert.deepEqual(parsed.comments, [])
+})
+
 test("parses the last model text event and keeps only diff lines", () => {
   const stdout = [
     JSON.stringify({ type: "text", part: { text: "working" } }),
