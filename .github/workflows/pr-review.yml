@@ -7,7 +7,10 @@
 # separate step turns the reply into a GitHub review with one-line suggestions.
 #
 # pull_request_target is required so the workflow and this script come from
-# the base branch. A pull request cannot edit the job that holds the API key.
+# the base branch. Checkout github.sha, which is that branch tip. The pull
+# request base SHA stays on the previous main commit, so it will not see a
+# script that was just merged. A pull request cannot edit the job that holds
+# the API key.
 # The head branch is never checked out. The prepare job always starts, then
 # the script refuses forks, bots, drafts, and opt-outs before the model runs.
 # A same-repository author already has write access. Do not also require
@@ -50,7 +53,7 @@ jobs:
       - name: Checkout review script from the base branch
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          ref: ${{ github.sha }}
           persist-credentials: false
           fetch-depth: 1
 
@@ -186,7 +189,7 @@ jobs:
       - name: Checkout review script from the base branch
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          ref: ${{ github.sha }}
           persist-credentials: false
           fetch-depth: 1
 
