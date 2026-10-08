@@ -130,16 +130,54 @@ jobs:
             "model": "opencode-go/deepseek-v4.1-flash",
             "permission": {
               "*": "deny"
+            },
+            "tools": {
+              "bash": false,
+              "edit": false,
+              "write": false,
+              "read": false,
+              "glob": false,
+              "grep": false,
+              "list": false,
+              "task": false,
+              "webfetch": false,
+              "websearch": false,
+              "skill": false,
+              "todowrite": false
+            },
+            "agent": {
+              "review": {
+                "mode": "primary",
+                "description": "Review the diff in the user message and return JSON only.",
+                "prompt": "You have no tools and no filesystem. The user message contains the diff. Do not call tools. Return JSON only.",
+                "model": "opencode-go/deepseek-v4.1-flash",
+                "permission": { "*": "deny" },
+                "tools": {
+                  "bash": false,
+                  "edit": false,
+                  "write": false,
+                  "read": false,
+                  "glob": false,
+                  "grep": false,
+                  "list": false,
+                  "task": false,
+                  "webfetch": false,
+                  "websearch": false,
+                  "skill": false,
+                  "todowrite": false
+                }
+              }
             }
           }
           EOF
           set +e
-          # DeepSeek V4.1 Flash accepts low, high, and max. max is the highest.
+          # DeepSeek V4.1 Flash accepts low, high, and max. high avoids spending the reply on tool planning.
           timeout 12m "$RUNNER_TEMP/bin/opencode" run \
             --pure \
             --format json \
+            --agent review \
             --model opencode-go/deepseek-v4.1-flash \
-            --variant max \
+            --variant high \
             --dir "$sandbox" \
             < "$RUNNER_TEMP/pr-review/prompt.txt" \
             > "$RUNNER_TEMP/pr-review/model.ndjson"
