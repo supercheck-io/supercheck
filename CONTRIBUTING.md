@@ -138,6 +138,7 @@ Use disposable fixtures for browser and provider tests and remove them afterward
 ## Review and merge
 
 - A maintainer review is required before merge.
+- Internal PRs also receive an advisory [automatic AI review](.github/PR_REVIEW.md) with inline findings and suggestions.
 - Required status checks must pass and the branch must be up to date before merge.
 - Maintainers may ask you to split a large PR or add tests before it can land.
 - If your change alters behavior, configuration, or user-facing docs, call it out in the PR description.
