@@ -88,22 +88,24 @@ export async function authenticateWithApi(
       );
     }
     const projects = (await projectsResponse.json()) as {
-      currentProject?: { organizationId?: string };
+      currentProject?: { id?: string; organizationId?: string };
     };
-    const organizationId = projects.currentProject?.organizationId;
-    if (!organizationId) {
+    const currentProject = projects.currentProject;
+    if (!currentProject?.id || !currentProject.organizationId) {
       throw new Error(
         `E2E identity ${credentials.email} has no active organization/project`,
       );
     }
-    const activeOrganization = await api.post(
-      '/api/auth/organization/set-active',
-      { data: { organizationId } },
-    );
-    if (!activeOrganization.ok()) {
+    // Direct Better Auth organization operations are disabled; selecting the
+    // active tenant must go through the application API, which sets the
+    // organization and project scopes together under app RBAC.
+    const activeProject = await api.post('/api/projects/switch', {
+      data: { projectId: currentProject.id },
+    });
+    if (!activeProject.ok()) {
       throw new Error(
-        `E2E organization activation failed for ${credentials.email} ` +
-          `(${activeOrganization.status()}): ${await activeOrganization.text()}`,
+        `E2E project activation failed for ${credentials.email} ` +
+          `(${activeProject.status()}): ${await activeProject.text()}`,
       );
     }
 

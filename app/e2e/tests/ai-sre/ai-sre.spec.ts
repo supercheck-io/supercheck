@@ -126,22 +126,53 @@ test.describe("AI SRE service catalog @aisre @critical", () => {
 
 test.describe("AI SRE investigation surfaces @aisre @critical", () => {
   test("loads the evidence graph as an authenticated project user", async ({
-    page,
+    orgOwnerPage: page,
   }) => {
-    await page.goto("/copilot/evidence-graph", { waitUntil: "load" });
-    await expect(page).toHaveURL(/\/copilot\/evidence-graph$/);
-    await expect(
-      page.getByRole("navigation", { name: "breadcrumb" }),
-    ).toContainText("Investigation Map");
-    await expect(page.getByLabel("Investigation Map canvas")).toBeVisible({
-      timeout: 30_000,
+    // The shared demo project accumulates showcase services and incidents, so
+    // the empty-state contract is verified against a fresh project instead.
+    const projectsResponse = await page.request.get("/api/projects");
+    expect(projectsResponse.status()).toBe(200);
+    const projectsBody = (await projectsResponse.json()) as {
+      currentProject: { id: string };
+    };
+    const originalProjectId = projectsBody.currentProject.id;
+    const createProject = await page.request.post("/api/projects", {
+      data: { name: `E2E SRE evidence map ${Date.now()}` },
     });
-    await expect(page.getByText("0 visible", { exact: true })).toBeVisible();
-    await expect(
-      page.getByRole("heading", {
-        name: "No nodes match the current filters",
-      }),
-    ).toBeVisible();
+    expect(createProject.status(), await createProject.text()).toBe(201);
+    const isolatedProject = (await createProject.json()) as {
+      data: { id: string };
+    };
+    const switchResponse = await page.request.post("/api/projects/switch", {
+      data: { projectId: isolatedProject.data.id },
+    });
+    expect(switchResponse.status(), await switchResponse.text()).toBe(200);
+
+    try {
+      await page.goto("/copilot/evidence-graph", { waitUntil: "load" });
+      await expect(page).toHaveURL(/\/copilot\/evidence-graph$/);
+      await expect(
+        page.getByRole("navigation", { name: "breadcrumb" }),
+      ).toContainText("Investigation Map");
+      await expect(page.getByLabel("Investigation Map canvas")).toBeVisible({
+        timeout: 30_000,
+      });
+      await expect(page.getByText("0 visible", { exact: true })).toBeVisible();
+      await expect(
+        page.getByRole("heading", {
+          name: "No nodes match the current filters",
+        }),
+      ).toBeVisible();
+    } finally {
+      const restore = await page.request.post("/api/projects/switch", {
+        data: { projectId: originalProjectId },
+      });
+      expect(restore.status(), await restore.text()).toBe(200);
+      const remove = await page.request.delete(
+        `/api/projects/${isolatedProject.data.id}`,
+      );
+      expect([200, 404]).toContain(remove.status());
+    }
   });
 
   test("sends a Copilot prompt and renders the saved response", async ({
