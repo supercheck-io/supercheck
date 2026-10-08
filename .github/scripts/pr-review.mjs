@@ -452,7 +452,19 @@ function extract() {
       headSha: meta.headSha,
     }
   } catch (error) {
-    console.error(error instanceof Error ? error.message : "model output could not be parsed")
+    const detail = error instanceof Error ? error.message : "model output could not be parsed"
+    const preview = redact(stdout.slice(0, 240), secrets).replace(/\s+/g, " ")
+    const types = []
+    for (const line of stdout.split("\n")) {
+      if (!line.trim().startsWith("{")) continue
+      try {
+        types.push(JSON.parse(line).type || "object")
+      } catch {
+        types.push("invalid")
+      }
+      if (types.length === 8) break
+    }
+    console.error(`${detail} types=${types.join(",") || "none"} preview=${preview}`)
     review = {
       kind: "failure",
       summary: "The review model did not return a usable result.",
