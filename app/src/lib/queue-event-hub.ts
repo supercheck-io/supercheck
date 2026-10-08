@@ -52,6 +52,7 @@ class QueueEventHub extends EventEmitter {
   private queueEvents: QueueEvents[] = [];
   private closing = false;
   private refreshPromise: Promise<void> | null = null;
+  private refreshGeneration = 0;
   private runMetaCache = new Map<string, { entityId?: string; trigger?: string }>();
   private static processListenersAttached = false;
 
@@ -209,6 +210,7 @@ class QueueEventHub extends EventEmitter {
    */
   async refresh(): Promise<void> {
     const previous = this.refreshPromise;
+    const generation = ++this.refreshGeneration;
     const refresh = (async () => {
       await previous?.catch(() => undefined);
       await this.readyPromise?.catch(() => undefined);
@@ -218,7 +220,7 @@ class QueueEventHub extends EventEmitter {
     try {
       await refresh;
     } finally {
-      if (this.refreshPromise === refresh) this.refreshPromise = null;
+      if (this.refreshGeneration === generation) this.refreshPromise = null;
     }
   }
 

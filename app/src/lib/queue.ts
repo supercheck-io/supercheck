@@ -239,6 +239,7 @@ type QueueSingleton = {
   executionQueueEvents: QueueEvents[];
   initPromise: Promise<void> | null;
   refreshPromise: Promise<void> | null;
+  refreshGeneration: number;
   queueShutdownHandlersAttached: boolean;
   cleanupSetupComplete: boolean;
   cleanupIntervalRef: ReturnType<typeof setInterval> | null;
@@ -269,6 +270,7 @@ function createQueueSingleton(): QueueSingleton {
     executionQueueEvents: [],
     initPromise: null,
     refreshPromise: null,
+    refreshGeneration: 0,
     queueShutdownHandlersAttached: false,
     cleanupSetupComplete: false,
     cleanupIntervalRef: null,
@@ -1339,6 +1341,8 @@ export async function invalidateQueueMaps(options?: {
   publish?: boolean;
 }): Promise<void> {
   const previous = queueState.refreshPromise;
+  const generation = queueState.refreshGeneration + 1;
+  queueState.refreshGeneration = generation;
   const refresh = (async () => {
     await previous?.catch(() => undefined);
     await queueState.initPromise?.catch(() => undefined);
@@ -1367,7 +1371,7 @@ export async function invalidateQueueMaps(options?: {
   try {
     await refresh;
   } finally {
-    if (queueState.refreshPromise === refresh) queueState.refreshPromise = null;
+    if (queueState.refreshGeneration === generation) queueState.refreshPromise = null;
   }
 }
 
@@ -1695,6 +1699,7 @@ export async function closeQueue(): Promise<void> {
     queueState.dataLifecycleCleanupQueue = null;
     queueState.redisClient = null;
     queueState.initPromise = null;
+    queueState.refreshGeneration += 1;
     queueState.refreshPromise = null;
     queueState.monitorExecutionEvents = null;
     queueState.executionQueueEvents = [];

@@ -95,7 +95,9 @@ async function ensureCache(): Promise<LocationCache> {
   try {
     return await pending;
   } finally {
-    if (cacheState.pending === pending) cacheState.pending = null;
+    // Compare the revision, not the promise. CodeQL treats a promise
+    // identity check as a missing await.
+    if (cacheState.revision === revision) cacheState.pending = null;
   }
 }
 
