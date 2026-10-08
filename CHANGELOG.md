@@ -8,12 +8,12 @@ Notable features, fixes, and upgrade requirements for Supercheck users. App and 
 - **AI test dialogs:** Clearer creation guidance, visible API and k6 examples, and improved code-review and analysis layouts. Generated scripts remain available for review and editing before applying.
 - **AI SRE setup:** AI SRE and alert-triggered automation are enabled when an AI provider is configured. Use `SRE_ENABLED` and `SRE_AUTOMATION_ENABLED` to control manual AI features and automatic processing.
 - **Incident investigations:** Include stored evidence across types, including evidence collected from connectors that are now disabled. Correlation and staged evidence no longer need separate deployment flags; live connector access still requires authorization and consent.
-- **Slack and Teams:** Incident commands are configured through optional integrations and require authorized responders.
+- **Slack and Teams:** Inbound incident commands, bot replies, and the optional collaboration Compose overlay were removed; responders use authenticated dashboard or CLI sessions. Ordinary notifications and existing incident data are unchanged.
 - **Execution and usage:** Recover unsettled Playwright and k6 usage after worker restarts without charging twice. Improve validation of database connection limits and k6 duration and virtual-user inputs.
 - **Release reliability:** App, worker, Private Agent, and support-chat version reporting now reflect the deployed release. Execution jobs refresh mutable image tags so runs use the intended worker image.
 - **Deployment and security:** Remote workers now require `REDIS_PASSWORD`. Improve release validation, release API authentication, and dependency security across the app, worker, docs, and recorder.
 
-**Upgrade note:** Apply the included database migrations before updating app and worker images, including `0024_execution_usage_receipts.sql`. Review existing AI SRE automation opt-outs: older per-workflow flags must be replaced with the two controls above.
+**Upgrade note:** Apply the included database migrations before updating app and worker images, including `0024_execution_usage_receipts.sql`. Review existing AI SRE automation opt-outs: older per-workflow flags must be replaced with the two controls above. Remove `-f docker-compose-collaboration.yml` from existing Compose commands; Slack/Teams command credentials are no longer read.
 
 ## [CLI 0.3.0] - 2026-10-07
 

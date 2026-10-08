@@ -1,5 +1,11 @@
 # Proxy requests are handled by Cloudflare Pages Functions
 /api/proxy    /api/proxy    200
 
+# Accept extensionless agent documentation URLs
+/llms         /llms.txt         301
+/llms-full    /llms-full.txt    301
+/llms/        /llms.txt         301
+/llms-full/   /llms-full.txt    301
+
 # SPA fallback for Next.js dynamic routes
 /*    /index.html   200
