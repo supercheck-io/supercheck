@@ -12,9 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, Sparkles, Info } from "lucide-react";
+import { Loader2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
 interface AICreateButtonProps {
@@ -31,6 +29,9 @@ interface AICreateButtonProps {
   initialIsOpen?: boolean;
   isLoadingPrompt?: boolean;
 }
+
+const apiExample = "GET https://jsonplaceholder.typicode.com/todos/1. Expect status 200 and validate the response schema (userId, id, title, and completed).";
+const performanceExample = "GET https://test-api.k6.io/public/crocodiles/ with 10 virtual users for 30 seconds. Expect status 200, response time below 500 ms, p95 below 500 ms, and error rate below 10%.";
 
 export function AICreateButton({
   currentScript,
@@ -345,119 +346,73 @@ export function AICreateButton({
       </Button>
 
       <Dialog open={isDialogOpen} onOpenChange={handleCloseDialog}>
-        <DialogContent className="sm:max-w-[920px]">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-purple-500/20 to-pink-500/20">
-                <Sparkles className="h-4 w-4 text-purple-500" />
-              </div>
-              <span>Supercheck AI - Create Test</span>
+        <DialogContent className="flex max-h-[90dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-[920px]">
+          <DialogHeader className="shrink-0 border-b px-6 py-5 text-left">
+            <DialogTitle className="flex items-center gap-2 pr-6">
+              <Sparkles className="h-5 w-5 text-purple-500" aria-hidden="true" />
+              Supercheck AI — Create test
             </DialogTitle>
-            <DialogDescription className="pt-1">
-              Create new test scripts or enhance existing ones with AI
-              assistance. Describe your test requirements and AI will generate
-              or refine the complete test script.
+            <DialogDescription className="pt-1 leading-relaxed">
+              Describe your requirements to create a new test or improve your current script.
             </DialogDescription>
           </DialogHeader>
 
-          <Separator className="my-1" />
-
-          <div className="space-y-4">
-            {testType === "browser" ? (
-              <Alert className="bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-800/50">
-                <Info className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-                <AlertDescription className="text-amber-700 dark:text-amber-300 text-xs mt-0.5">
-                  <strong>Recommendation:</strong> For browser tests, consider using the{" "}
-                  <a
-                    href="https://chromewebstore.google.com/detail/playwright-crx/jambeljnbnfbkcpnoiaedcabbgmnnlcd"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="underline hover:text-amber-800 dark:hover:text-amber-200"
-                  >
-                    Playwright Recorder
-                  </a>{" "}
-                  to capture real interactions. Recorded tests typically produce more reliable selectors and better reflect actual user behavior.
-                </AlertDescription>
-              </Alert>
-            ) : (
-              <Alert className="bg-blue-50 border-blue-200 dark:bg-blue-950/30 dark:border-blue-900/50">
-                <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                <AlertDescription className="text-blue-700 dark:text-blue-300 text-xs mt-0.5">
-                  <strong>Tip:</strong> For best results, be specific about the actions, verifications, and expected outcomes you want to test.
-                </AlertDescription>
-              </Alert>
-            )}
+          <div className="min-h-0 space-y-5 overflow-y-auto px-6 py-5">
+            <div className="space-y-2 text-sm leading-relaxed text-muted-foreground">
+              <p>Choose the right template in Playground first: Browser, API, Database, Custom, or Performance. Then describe the actions, checks, and expected results.</p>
+              {testType === "browser" && (
+                <p>
+                  <span className="font-medium text-foreground">Recommendation:</span> For browser tests, use the{" "}
+                  <a href="https://chromewebstore.google.com/detail/playwright-crx/jambeljnbnfbkcpnoiaedcabbgmnnlcd" target="_blank" rel="noopener noreferrer" className="text-foreground underline underline-offset-4">Playwright Recorder</a>{" "}
+                  to capture real interactions. Recorded flows typically give more reliable selectors and reflect actual user behavior.
+                </p>
+              )}
+            </div>
 
             <div className="space-y-2">
               <Label htmlFor="user-request" className="text-sm font-medium">
-                What do you want to test?{" "}
-                <span className="text-destructive">*</span>
+                What do you want to test? <span className="text-destructive">*</span>
               </Label>
               {isLoadingPrompt ? (
-                <div className="min-h-[160px] rounded-md border border-input bg-muted/30 flex flex-col items-center justify-center">
-                  <Loader2 className="h-6 w-6 animate-spin text-primary mb-2" />
+                <div className="flex min-h-48 flex-col items-center justify-center rounded-md border bg-muted/30">
+                  <Loader2 className="mb-2 h-6 w-6 animate-spin text-primary" />
                   <span className="text-sm text-muted-foreground">Loading requirement details...</span>
                 </div>
               ) : (
                 <Textarea
                   id="user-request"
-                  placeholder={`Step 1: Select the right template (Browser, API, DB, Performance, etc.)\nStep 2: Describe your test requirements\n\n🌐 Playwright API Test Example:\nGET request to https://jsonplaceholder.typicode.com/todos/1, assert status 200, validate response schema (userId, id, title, completed)\n\n⚡ k6 Performance Test Example:\nGET requests to https://test-api.k6.io/public/crocodiles/, 10 VUs for 30s, verify status 200, response time < 500ms, p95 < 500ms, error rate < 10%`}
+                  placeholder="Describe your test requirements…"
                   value={userRequest}
                   onChange={(e) => setUserRequest(e.target.value)}
                   disabled={isProcessing}
-                  className="min-h-[160px] resize-none placeholder:text-xs"
+                  className="min-h-48 resize-y text-sm leading-relaxed"
                   aria-describedby="request-hint"
                 />
               )}
-              <div className="flex items-center justify-between">
-                <p id="request-hint" className="text-xs text-muted-foreground">
-                  Minimum 10 characters required
-                </p>
-                <p
-                  className={`text-xs ${userRequest.length < 10 ? "text-muted-foreground" : "text-green-600 dark:text-green-400"}`}
-                >
-                  {userRequest.length} characters
-                </p>
+              <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+                <p id="request-hint">Minimum 10 characters required</p>
+                <p className="shrink-0 tabular-nums">{userRequest.length} characters</p>
               </div>
             </div>
 
+            <div className="space-y-3 text-xs leading-relaxed text-muted-foreground">
+              <p><span className="font-medium text-foreground">Playwright API test example:</span> {apiExample}</p>
+              <p><span className="font-medium text-foreground">k6 performance test example:</span> {performanceExample}</p>
+            </div>
+
             {isProcessing && (
-              <Alert className="bg-purple-50 border-purple-200 dark:bg-purple-950/30 dark:border-purple-900/50">
-                <Sparkles className="h-4 w-4 text-purple-600 dark:text-purple-400 animate-pulse" />
-                <AlertDescription className="text-purple-700 dark:text-purple-300 text-sm">
-                  AI is analyzing your request and generating test code. This
-                  may take a few moments...
-                </AlertDescription>
-              </Alert>
+              <p role="status" className="flex items-start gap-2 text-sm text-muted-foreground">
+                <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin" />
+                AI is analyzing your request and generating test code. This may take a few moments.
+              </p>
             )}
           </div>
 
-          <Separator className="my-1" />
-
-          <DialogFooter className="gap-2">
-            <Button
-              variant="outline"
-              onClick={handleCloseDialog}
-              disabled={isProcessing}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleGenerate}
-              disabled={isProcessing || isLoadingPrompt || userRequest.trim().length < 10}
-              className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
-            >
-              {isProcessing ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  Generating...
-                </>
-              ) : (
-                <>
-                  <Sparkles className="h-4 w-4 mr-2" />
-                  Generate
-                </>
-              )}
+          <DialogFooter className="shrink-0 gap-2 border-t px-6 py-4 sm:items-center">
+            <p className="text-xs text-muted-foreground sm:mr-auto">Review the generated script before applying it.</p>
+            <Button variant="outline" onClick={handleCloseDialog} disabled={isProcessing}>Cancel</Button>
+            <Button onClick={handleGenerate} disabled={isProcessing || isLoadingPrompt || userRequest.trim().length < 10} className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600">
+              {isProcessing ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Generating...</> : <><Sparkles className="mr-2 h-4 w-4" />Generate</>}
             </Button>
           </DialogFooter>
         </DialogContent>

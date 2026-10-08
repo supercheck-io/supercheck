@@ -136,7 +136,7 @@ S3_ENDPOINT=http://minio:9000
 
 # OpenAI (default provider)
 # AI_PROVIDER=openai
-# AI_MODEL=gpt-4o-mini
+# AI_MODEL=gpt-6-luna
 # OPENAI_API_KEY=sk-your-api-key
 
 # Anthropic
@@ -155,6 +155,11 @@ S3_ENDPOINT=http://minio:9000
 # AZURE_RESOURCE_NAME=your-resource
 # AZURE_API_KEY=your-key
 # AZURE_OPENAI_DEPLOYMENT=your-deployment
+
+# DeepSeek V4.1 Flash (optional; review data handling before enabling)
+# AI_PROVIDER=deepseek
+# AI_MODEL=deepseek-flash
+# DEEPSEEK_API_KEY=your-deepseek-api-key
 
 # OpenRouter (400+ models)
 # AI_PROVIDER=openrouter

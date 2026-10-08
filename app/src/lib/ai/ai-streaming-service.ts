@@ -4,6 +4,7 @@ import { aiCodeValidator } from "./ai-code-validator";
 import { getRedisConnection } from "@/lib/queue";
 import { isSelfHosted } from "@/lib/feature-flags";
 import {
+  getActualModelName,
   getProviderGenerationOptions,
   getProviderModel,
   validateAIConfiguration,
@@ -167,7 +168,7 @@ export class AIStreamingService {
             });
             return {
               stream: cachedStream,
-              model: process.env.AI_MODEL || "gpt-4o-mini",
+              model: getActualModelName(),
               cached: true,
             };
           }
@@ -187,7 +188,7 @@ export class AIStreamingService {
       const config = this.getServiceConfiguration();
 
       console.log(
-        `[AI Streaming Service] Starting stream generation with model: ${process.env.AI_MODEL || "gpt-4o-mini"}`
+        `[AI Streaming Service] Starting stream generation with model: ${getActualModelName()}`
       );
       console.log(
         `[AI Streaming Service] Prompt length: ${prompt.length} characters`
@@ -292,7 +293,7 @@ export class AIStreamingService {
                 completionTokens,
                 totalTokens,
               },
-              model: process.env.AI_MODEL || "gpt-4o-mini",
+              model: getActualModelName(),
               duration,
             });
             controller.enqueue(
@@ -308,7 +309,7 @@ export class AIStreamingService {
               success: true,
               duration,
               tokensUsed: totalTokens,
-              model: process.env.AI_MODEL || "gpt-4o-mini",
+              model: getActualModelName(),
               testType,
             });
 
@@ -342,7 +343,7 @@ export class AIStreamingService {
               success: false,
               duration,
               error: errorMessage,
-              model: process.env.AI_MODEL || "gpt-4o-mini",
+              model: getActualModelName(),
               testType,
             });
 
@@ -361,7 +362,7 @@ export class AIStreamingService {
 
       return {
         stream,
-        model: process.env.AI_MODEL || "gpt-4o-mini",
+        model: getActualModelName(),
       };
     } catch (error) {
       const duration = Date.now() - startTime;
@@ -379,7 +380,7 @@ export class AIStreamingService {
         success: false,
         duration,
         error: errorMessage,
-        model: process.env.AI_MODEL || "gpt-4o-mini",
+        model: getActualModelName(),
         testType,
       });
 

@@ -298,7 +298,7 @@ EXPLANATION:
         success: true,
         duration,
         tokensUsed: totalTokens,
-        model: process.env.AI_MODEL || "gpt-4o-mini",
+        model: getActualModelName(),
         testType,
       });
 
@@ -309,7 +309,7 @@ EXPLANATION:
           completionTokens,
           totalTokens,
         },
-        model: process.env.AI_MODEL || "gpt-4o-mini",
+        model: getActualModelName(),
         duration,
       };
     } catch (error) {
@@ -321,7 +321,7 @@ EXPLANATION:
         success: false,
         duration,
         error: errorMessage,
-        model: process.env.AI_MODEL || "gpt-4o-mini",
+        model: getActualModelName(),
         testType,
       });
 
