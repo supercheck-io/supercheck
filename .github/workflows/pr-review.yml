@@ -8,14 +8,17 @@
 #
 # pull_request_target is required so the workflow and this script come from
 # the base branch. A pull request cannot edit the job that holds the API key.
-# The head branch is never checked out. Forks, bots, drafts, and accounts
-# that are not OWNER, MEMBER, or COLLABORATOR exit before the model runs.
+# The head branch is never checked out. The prepare job always starts, then
+# the script refuses forks, bots, drafts, opt-outs, and accounts that are
+# not OWNER, MEMBER, or COLLABORATOR before the model runs. Do not repeat
+# that gate in a job if. On pull_request_target the webhook expression
+# evaluated false for same-repo member pull requests and skipped every run.
 #
 # Do not add this workflow as a required status check. A model outage should
 # not block merges. Do not switch the trigger to pull_request, and do not
 # checkout the pull request head in a job that has OPENCODE_API_KEY.
 
-name: PR review
+name: Code review agent
 
 on:
   pull_request_target:
@@ -36,14 +39,6 @@ permissions: {}
 jobs:
   prepare:
     name: Decide whether to review
-    if: |
-      github.event_name == 'workflow_dispatch' ||
-      (
-        github.event.pull_request.draft == false &&
-        github.event.pull_request.head.repo.full_name == github.repository &&
-        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association) &&
-        github.event.pull_request.user.type != 'Bot'
-      )
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -65,6 +60,7 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number || inputs.pull_number }}
           MANUAL: ${{ github.event_name == 'workflow_dispatch' }}
           REVIEW_DIR: ${{ runner.temp }}/pr-review
+          GH_TOKEN: ${{ github.token }}
         run: node .github/scripts/pr-review.mjs prepare
 
       - name: Upload review input
@@ -77,7 +73,7 @@ jobs:
           include-hidden-files: true
 
   model:
-    name: Review with DeepSeek V4.1 Flash
+    name: Review
     needs: prepare
     if: needs.prepare.outputs.decision == 'review'
     runs-on: ubuntu-latest
@@ -211,4 +207,6 @@ jobs:
         env:
           PR_NUMBER: ${{ github.event.pull_request.number || inputs.pull_number }}
           REVIEW_DIR: ${{ needs.prepare.outputs.decision == 'review' && format('{0}/pr-review-result', runner.temp) || format('{0}/pr-review', runner.temp) }}
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: node .github/scripts/pr-review.mjs publish
