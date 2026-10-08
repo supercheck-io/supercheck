@@ -21,7 +21,7 @@ import * as crypto from 'crypto';
 import * as path from 'path';
 import * as tar from 'tar';
 import type * as k8s from '@kubernetes/client-node';
-import { Readable, Writable } from 'stream';
+import { PassThrough, Readable, Writable } from 'stream';
 import { finished } from 'stream/promises';
 import { CancellationService } from '../services/cancellation.service';
 import {
@@ -900,12 +900,9 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       }
 
       combinedLogs = logCollector.getOutput();
-      const finalLogs = await this.fetchPodLogsSnapshot(podName).catch(
+      combinedLogs = await this.fetchPodLogsSnapshot(podName).catch(
         () => combinedLogs,
       );
-      if (finalLogs.length >= combinedLogs.length) {
-        combinedLogs = finalLogs;
-      }
 
       const duration = Date.now() - startTime;
       const exitCode = killed
@@ -1514,6 +1511,15 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     // counter only matters for mid-stream network blips, which are rare.
     const maxReconnects = 60;
     const sinceSecondsOnReconnect = 5;
+    let connected = false;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    controller.signal.addEventListener(
+      'abort',
+      () => {
+        if (reconnectTimer) clearTimeout(reconnectTimer);
+      },
+      { once: true },
+    );
 
     const connect = async (attempt: number) => {
       if (controller.signal.aborted) return;
@@ -1521,7 +1527,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       // On reconnect, suppress live forwarding for the replay window
       // to prevent duplicating lines in the user-visible streaming output.
       let replayTimer: ReturnType<typeof setTimeout> | null = null;
-      if (attempt > 0 && sink.suppressLiveForwarding) {
+      if (connected && sink.suppressLiveForwarding) {
         sink.suppressLiveForwarding();
         // Resume after the replay window (sinceSeconds + reconnect delay buffer)
         replayTimer = setTimeout(
@@ -1533,51 +1539,69 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
         );
       }
 
+      // The SDK ends its destination and does not abort on response close.
+      const responseStream = new PassThrough();
+      responseStream.pipe(sink, { end: false });
+      let request: AbortController | null = null;
+      const onAbort = () => {
+        request?.abort();
+        responseStream.destroy();
+      };
+      const cleanup = () => {
+        controller.signal.removeEventListener('abort', onAbort);
+        responseStream.unpipe(sink);
+        if (replayTimer) {
+          clearTimeout(replayTimer);
+          replayTimer = null;
+          sink.resumeLiveForwarding?.();
+        }
+      };
+      const onClose = () => {
+        cleanup();
+        request?.abort();
+        if (!controller.signal.aborted && attempt < maxReconnects) {
+          this.logger.warn(
+            `Log stream for ${jobName} disconnected (attempt ${attempt + 1}/${maxReconnects}), reconnecting in ${reconnectDelayMs}ms`,
+          );
+          reconnectTimer = setTimeout(
+            () => void connect(attempt + 1),
+            reconnectDelayMs,
+          );
+        }
+      };
+      responseStream.once('close', onClose);
+      responseStream.on('error', (error: Error) => {
+        this.logger.debug(`Log stream response error: ${error.message}`);
+      });
+      responseStream.on('pipe', (source: Readable) => {
+        source.once('error', (error: Error) => responseStream.destroy(error));
+        source.once('close', () => responseStream.destroy());
+      });
+      controller.signal.addEventListener('abort', onAbort, { once: true });
+
       try {
-        const abort = await this.logClient!.log(
+        request = await this.logClient!.log(
           this.executionNamespace,
           podName,
           'execution',
-          sink,
+          responseStream,
           {
             follow: true,
             timestamps: false,
-            ...(attempt > 0 ? { sinceSeconds: sinceSecondsOnReconnect } : {}),
+            ...(connected ? { sinceSeconds: sinceSecondsOnReconnect } : {}),
           },
         );
-
-        // When the outer controller is aborted, also abort the active stream.
-        const onAbort = () => abort.abort();
-        controller.signal.addEventListener('abort', onAbort, { once: true });
-
-        // Listen for the underlying response closing unexpectedly.
-        // The K8s client resolves the log call immediately once the
-        // stream is established; the actual data flows via piping.
-        // We detect disconnects through the response's 'close' / 'error'
-        // events surfacing on the underlying socket, which k8s client-node
-        // propagates by aborting its own internal controller.
-        abort.signal.addEventListener(
+        connected = true;
+        request.signal.addEventListener(
           'abort',
-          () => {
-            controller.signal.removeEventListener('abort', onAbort);
-            if (replayTimer) {
-              clearTimeout(replayTimer);
-              sink.resumeLiveForwarding?.();
-            }
-            if (!controller.signal.aborted && attempt < maxReconnects) {
-              this.logger.warn(
-                `Log stream for ${jobName} disconnected (attempt ${attempt + 1}/${maxReconnects}), reconnecting in ${reconnectDelayMs}ms`,
-              );
-              setTimeout(() => void connect(attempt + 1), reconnectDelayMs);
-            }
-          },
+          () => responseStream.destroy(),
           { once: true },
         );
+        if (controller.signal.aborted || responseStream.destroyed) onAbort();
       } catch (error) {
-        if (replayTimer) {
-          clearTimeout(replayTimer);
-          sink.resumeLiveForwarding?.();
-        }
+        responseStream.removeListener('close', onClose);
+        cleanup();
+        responseStream.destroy();
         if (controller.signal.aborted) return;
         if (attempt < maxReconnects) {
           this.logger.warn(
@@ -1585,7 +1609,10 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
               error instanceof Error ? error.message : String(error)
             }`,
           );
-          setTimeout(() => void connect(attempt + 1), reconnectDelayMs);
+          reconnectTimer = setTimeout(
+            () => void connect(attempt + 1),
+            reconnectDelayMs,
+          );
         } else {
           this.logger.warn(
             `Exhausted log stream reconnect attempts for ${jobName}; final logs will be fetched via snapshot`,

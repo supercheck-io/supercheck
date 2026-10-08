@@ -73,12 +73,35 @@ interface LocationCache {
   expiresAt: number;
 }
 
-let cache: LocationCache | null = null;
+const LOCATION_CACHE_KEY = "__SUPERCHECK_LOCATION_CACHE__";
 const CACHE_TTL_MS = 30_000; // 30 seconds
 
-async function ensureCache(): Promise<LocationCache> {
-  if (cache && Date.now() < cache.expiresAt) return cache;
+type LocationCacheState = {
+  cache: LocationCache | null;
+  pending: Promise<LocationCache> | null;
+  revision: number;
+};
+const scope = globalThis as typeof globalThis & {
+  [LOCATION_CACHE_KEY]?: LocationCacheState;
+};
+const cacheState = scope[LOCATION_CACHE_KEY] ??= { cache: null, pending: null, revision: 0 };
 
+async function ensureCache(): Promise<LocationCache> {
+  if (cacheState.cache && Date.now() < cacheState.cache.expiresAt) return cacheState.cache;
+  if (cacheState.pending) return cacheState.pending;
+  const revision = cacheState.revision;
+  const pending = readLocations(revision);
+  cacheState.pending = pending;
+  try {
+    return await pending;
+  } finally {
+    // Compare the revision, not the promise. CodeQL treats a promise
+    // identity check as a missing await.
+    if (cacheState.revision === revision) cacheState.pending = null;
+  }
+}
+
+async function readLocations(revision: number): Promise<LocationCache> {
   const enabled = await db
     .select()
     .from(locations)
@@ -93,20 +116,25 @@ async function ensureCache(): Promise<LocationCache> {
   const firstDefaultCode =
     defaultCodes[0] || enabledCodes[0] || (isSelfHosted() ? LOCAL_LOCATION_CODE : "");
 
-  cache = {
+  const next = {
     enabledCodes,
     defaultCodes,
     firstDefaultCode,
     allEnabled: filtered,
     expiresAt: Date.now() + CACHE_TTL_MS,
   };
+  // A location save can complete while this query is in flight.
+  if (revision !== cacheState.revision) return ensureCache();
+  cacheState.cache = next;
 
-  return cache;
+  return next;
 }
 
 /** Invalidate the location cache. Call after any location CRUD operation. */
 export function invalidateLocationCache(): void {
-  cache = null;
+  cacheState.revision++;
+  cacheState.cache = null;
+  cacheState.pending = null;
 }
 
 // ── Public Query Functions ──────────────────────────────────────

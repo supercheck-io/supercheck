@@ -35,6 +35,8 @@ export class K6DynamicWorkerService implements OnModuleInit, OnModuleDestroy {
   private connection: Redis | null = null;
   private subscriber: Redis | null = null;
   private workerLocation = 'local';
+  private shuttingDown = false;
+  private refreshPromise: Promise<void> = Promise.resolve();
   private discoveryRetryTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
@@ -54,49 +56,47 @@ export class K6DynamicWorkerService implements OnModuleInit, OnModuleDestroy {
     this.connection = this.createRedisConnection();
 
     // Build list of regional queue names (excluding global — handled by @Processor)
-    const queueNames = await this.getRegionalQueueNames(this.workerLocation);
-
-    this.heartbeatService.addQueues([K6_QUEUE, ...queueNames]);
-
-    if (queueNames.length === 0) {
-      this.logger.log('No regional K6 queues to register');
-    } else {
-      for (const queueName of queueNames) {
-        this.createWorkerForQueue(queueName);
-      }
+    const enabledQueues = await this.getRegionalQueueNames(this.workerLocation);
+    const queueNames =
+      enabledQueues ??
+      (this.workerLocation === 'local'
+        ? await this.discoverRegionalQueues('k6-')
+        : [k6QueueName(this.workerLocation)]);
+    if (enabledQueues === null && queueNames.length === 0) {
+      queueNames.push(k6QueueName('local'));
     }
 
-    // Subscribe to queue-refresh notifications so we pick up newly added locations
+    this.heartbeatService.addQueues([K6_QUEUE]);
+    for (const queueName of queueNames) {
+      this.createWorkerForQueue(queueName);
+    }
+
     this.subscribeToQueueRefresh();
-
-    if (this.workerLocation === 'local') {
-      // Always schedule a discovery retry in local mode. Even if Redis SCAN
-      // found some queues, the DB may have been temporarily unreachable,
-      // leaving the worker with an incomplete subset. The retry is a no-op
-      // when handleQueueRefresh() finds nothing new to add.
-      this.scheduleDiscoveryRetry();
-    }
+    this.scheduleDiscoveryRetry();
   }
 
   async onModuleDestroy(): Promise<void> {
+    this.shuttingDown = true;
+    this.heartbeatService.removeQueues(Array.from(this.activeQueueNames));
     if (this.discoveryRetryTimer) {
       clearTimeout(this.discoveryRetryTimer);
       this.discoveryRetryTimer = null;
     }
 
     if (this.subscriber) {
-      await this.subscriber
-        .unsubscribe('supercheck:queue-refresh')
-        .catch(() => {});
-      await this.subscriber.quit().catch(() => {});
+      // Pub/sub has no jobs to drain; Redis commands can wait forever offline.
+      this.subscriber.disconnect();
       this.subscriber = null;
     }
+
+    await this.refreshPromise;
 
     const closePromises = Array.from(this.workers.values()).map((w) =>
       w.close(),
     );
     await Promise.allSettled(closePromises);
     this.workers.clear();
+    this.activeQueueNames.clear();
 
     if (this.connection) {
       await this.connection.quit().catch(() => {});
@@ -108,7 +108,12 @@ export class K6DynamicWorkerService implements OnModuleInit, OnModuleDestroy {
    * Create a BullMQ Worker for a single regional queue and register event handlers.
    */
   private createWorkerForQueue(queueName: string): void {
-    if (!this.connection || this.activeQueueNames.has(queueName)) return;
+    if (
+      this.shuttingDown ||
+      !this.connection ||
+      this.activeQueueNames.has(queueName)
+    )
+      return;
 
     const worker = new Worker(
       queueName,
@@ -153,6 +158,7 @@ export class K6DynamicWorkerService implements OnModuleInit, OnModuleDestroy {
 
     this.workers.set(queueName, worker);
     this.activeQueueNames.add(queueName);
+    this.heartbeatService.addQueues([queueName]);
     this.logger.log(`Registered dynamic K6 worker for queue: ${queueName}`);
   }
 
@@ -160,6 +166,7 @@ export class K6DynamicWorkerService implements OnModuleInit, OnModuleDestroy {
     const worker = this.workers.get(queueName);
     if (!worker) return;
 
+    this.heartbeatService.removeQueues([queueName]);
     try {
       await worker.close();
     } catch (error) {
@@ -172,7 +179,6 @@ export class K6DynamicWorkerService implements OnModuleInit, OnModuleDestroy {
 
     this.workers.delete(queueName);
     this.activeQueueNames.delete(queueName);
-    this.heartbeatService.removeQueues([queueName]);
     this.logger.log(`Removed dynamic K6 worker for queue: ${queueName}`);
   }
 
@@ -184,11 +190,24 @@ export class K6DynamicWorkerService implements OnModuleInit, OnModuleDestroy {
   private subscribeToQueueRefresh(): void {
     if (!this.connection) return;
 
-    this.subscriber = this.connection.duplicate();
-    this.subscriber.subscribe('supercheck:queue-refresh').catch((err) => {
-      this.logger.error(
-        `Failed to subscribe to queue-refresh channel: ${err instanceof Error ? err.message : String(err)}`,
-      );
+    const subscriber = this.connection.duplicate();
+    this.subscriber = subscriber;
+    const subscribe = () => {
+      if (this.shuttingDown) return;
+      subscriber
+        .subscribe('supercheck:queue-refresh')
+        .then(() => this.handleQueueRefresh())
+        .catch((err) => {
+          this.logger.error(
+            `Failed to refresh queue subscription: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        });
+    };
+    // Reconcile after subscription acknowledgement to recover missed messages.
+    subscriber.on('ready', subscribe);
+    if (subscriber.status === 'ready') subscribe();
+    subscriber.on('error', (err: Error) => {
+      this.logger.warn(`Queue-refresh Redis error: ${err.message}`);
     });
 
     this.subscriber.on('message', (_channel: string, message: string) => {
@@ -200,39 +219,44 @@ export class K6DynamicWorkerService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  /**
-   * Re-discover queues and create workers for any new ones.
-   * Prefers location codes from the pub/sub message to construct queue names
-   * deterministically — SCAN-based discovery may miss new queues whose
-   * Redis :meta key hasn't been created yet.
-   */
-  private async handleQueueRefresh(message?: string): Promise<void> {
-    let newQueues: string[];
-    try {
-      const parsed = message
-        ? (JSON.parse(message) as { locationCodes?: string[] })
-        : null;
-      if (Array.isArray(parsed?.locationCodes)) {
-        newQueues = parsed.locationCodes
-          .filter(
-            (code: string) =>
-              this.workerLocation === 'local' ||
-              code.toLowerCase() === this.workerLocation,
-          )
-          .map((code: string) => k6QueueName(code))
-          .filter((q: string) => q !== K6_QUEUE);
-      } else {
-        newQueues = await this.getRegionalQueueNames(this.workerLocation);
+  /** Reconcile enabled queues in notification order. */
+  private handleQueueRefresh(message?: string): Promise<void> {
+    const refresh = this.refreshPromise.then(() => this.refreshQueues(message));
+    // A failed refresh must not block subsequent notifications.
+    this.refreshPromise = refresh.catch(() => {});
+    return refresh;
+  }
+
+  private async refreshQueues(message?: string): Promise<void> {
+    if (this.shuttingDown) return;
+    // The DB wins over delayed snapshots; messages remain useful during an outage.
+    let newQueues = await this.getRegionalQueueNames(this.workerLocation);
+    if (newQueues === null && message) {
+      try {
+        const parsed = JSON.parse(message) as { locationCodes?: string[] };
+        if (
+          Array.isArray(parsed?.locationCodes) &&
+          parsed.locationCodes.every((code) => typeof code === 'string')
+        ) {
+          newQueues = parsed.locationCodes
+            .filter(
+              (code) =>
+                this.workerLocation === 'local' ||
+                code.toLowerCase() === this.workerLocation,
+            )
+            .map((code) => k6QueueName(code))
+            .filter((name) => name !== K6_QUEUE);
+        }
+      } catch {
+        // An unreadable message cannot replace the last known queue set.
       }
-    } catch {
-      newQueues = await this.getRegionalQueueNames(this.workerLocation);
     }
+    if (this.shuttingDown || newQueues === null) return;
     const targetQueues = new Set(newQueues);
     let added = 0;
     for (const queueName of newQueues) {
       if (!this.activeQueueNames.has(queueName)) {
         this.createWorkerForQueue(queueName);
-        this.heartbeatService.addQueues([queueName]);
         added++;
       }
     }
@@ -254,63 +278,25 @@ export class K6DynamicWorkerService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  /**
-   * Schedule a delayed re-discovery attempt with exponential backoff.
-   * Covers transient DB/Redis failures during startup: the worker starts with
-   * only the local fallback queue but should pick up the real location queues
-   * once infrastructure recovers.
-   *
-   * Uses exponential backoff (30s, 60s, 120s, …) capped at 5 minutes.
-   * Stops retrying once a refresh discovers new queues (the pub/sub
-   * listener handles further changes). The timer is stored so it can
-   * be cancelled in onModuleDestroy().
-   */
+  /** Reconcile periodically so DB outages and lost notifications recover. */
   private scheduleDiscoveryRetry(): void {
-    const BASE_DELAY_MS = 30_000;
-    const MAX_DELAY_MS = 5 * 60_000; // 5 minutes cap
-    const MAX_STABLE_RETRIES = 3; // stop after N consecutive no-growth attempts
-    let retries = 0;
-    let stableRetries = 0;
-
-    const nextDelay = () =>
-      Math.min(BASE_DELAY_MS * Math.pow(2, retries), MAX_DELAY_MS);
-
+    let delay = 30_000;
     const attempt = () => {
-      retries++;
-      const prevSize = this.activeQueueNames.size;
-      this.logger.log(
-        `Discovery retry ${retries}: re-scanning for regional K6 queues (active: ${this.activeQueueNames.size})…`,
-      );
+      this.discoveryRetryTimer = null;
+      if (this.shuttingDown) return;
       this.handleQueueRefresh()
-        .then(() => {
-          const grew = this.activeQueueNames.size > prevSize;
-          if (grew) {
-            this.logger.log(
-              `Discovery retry succeeded: now have ${this.activeQueueNames.size} K6 queue(s)`,
-            );
-            // Reset stable counter on growth — more queues may still appear
-            stableRetries = 0;
-            this.discoveryRetryTimer = setTimeout(attempt, nextDelay());
-          } else {
-            stableRetries++;
-            if (stableRetries >= MAX_STABLE_RETRIES) {
-              this.logger.log(
-                `Discovery retry: queue set stable for ${stableRetries} consecutive checks. ` +
-                  `Stopping retry loop (${this.activeQueueNames.size} K6 queue(s)). ` +
-                  `Pub/sub listener will handle further changes.`,
-              );
-              this.discoveryRetryTimer = null;
-              return;
-            }
-            this.discoveryRetryTimer = setTimeout(attempt, nextDelay());
-          }
+        .catch((err) => {
+          this.logger.warn(
+            `Queue discovery failed: ${err instanceof Error ? err.message : String(err)}`,
+          );
         })
-        .catch(() => {
-          this.discoveryRetryTimer = setTimeout(attempt, nextDelay());
+        .finally(() => {
+          if (this.shuttingDown) return;
+          delay = Math.min(delay * 2, 5 * 60_000);
+          this.discoveryRetryTimer = setTimeout(attempt, delay);
         });
     };
-
-    this.discoveryRetryTimer = setTimeout(attempt, BASE_DELAY_MS);
+    this.discoveryRetryTimer = setTimeout(attempt, delay);
   }
 
   /**
@@ -328,37 +314,22 @@ export class K6DynamicWorkerService implements OnModuleInit, OnModuleDestroy {
    * Get regional queue names based on worker location.
    * Excludes the global queue (handled by K6ExecutionProcessor via @Processor).
    */
-  private async getRegionalQueueNames(location: string): Promise<string[]> {
+  private async getRegionalQueueNames(
+    location: string,
+  ): Promise<string[] | null> {
+    const dbCodes = await this.fetchEnabledLocationCodes();
+    if (dbCodes === null) return null;
     if (location === 'local') {
-      const queueNames = new Set<string>();
-
-      // 1. Discover from Redis metadata keys (existing queues that have had jobs)
-      const discovered = await this.discoverRegionalQueues('k6-');
-      for (const q of discovered) queueNames.add(q);
-
-      // 2. Discover from DB — covers locations enabled in DB but not yet in Redis
-      const dbCodes = await this.fetchEnabledLocationCodes();
-      for (const code of dbCodes) {
-        const name = k6QueueName(code);
-        // Exclude global queue (handled by @Processor)
-        if (name !== K6_QUEUE) {
-          queueNames.add(name);
-        }
-      }
-
-      // 3. Fallback if nothing discovered from Redis or DB
-      if (queueNames.size === 0) {
-        queueNames.add(k6QueueName('local'));
-      }
-
-      return Array.from(queueNames);
+      return dbCodes
+        .map((code) => k6QueueName(code))
+        .filter((name) => name !== K6_QUEUE);
     }
-
-    // Production: just this worker's regional queue
-    return [k6QueueName(location)];
+    return dbCodes.some((code) => code.toLowerCase() === location)
+      ? [k6QueueName(location)]
+      : [];
   }
 
-  private async fetchEnabledLocationCodes(): Promise<string[]> {
+  private async fetchEnabledLocationCodes(): Promise<string[] | null> {
     try {
       const rows = await this.dbService.db.execute(
         sql`SELECT code FROM locations WHERE is_enabled = true`,
@@ -368,7 +339,7 @@ export class K6DynamicWorkerService implements OnModuleInit, OnModuleDestroy {
       this.logger.warn(
         `Failed to fetch location codes from DB: ${error instanceof Error ? error.message : String(error)}`,
       );
-      return [];
+      return null;
     }
   }
 

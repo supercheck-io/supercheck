@@ -8,6 +8,7 @@ import {
 } from './container-executor.service';
 import { CancellationService } from '../services/cancellation.service';
 import { EventEmitter } from 'events';
+import { PassThrough, Writable } from 'stream';
 
 const defaultOptions: ContainerExecutionOptions = {
   inlineScriptContent: 'console.log("hello")',
@@ -322,6 +323,45 @@ describe('ContainerExecutorService', () => {
   });
 
   describe('kubernetes execution', () => {
+    it.each([false, true])(
+      'uses the complete snapshot over replayed logs, retaining the buffer on fetch failure=%s',
+      async (snapshotFails) => {
+        service['batchApi'] = {
+          createNamespacedJob: jest
+            .fn()
+            .mockResolvedValue({ metadata: { uid: 'job-uid' } }),
+        } as unknown as NonNullable<(typeof service)['batchApi']>;
+        service['createExecutionSecret'] = jest
+          .fn()
+          .mockResolvedValue(undefined);
+        service['waitForExecutionPod'] = jest.fn().mockResolvedValue('pod');
+        service['waitForExecutionOutcome'] = jest.fn().mockResolvedValue({
+          exitCode: 0,
+          timedOut: false,
+          cancelled: false,
+        });
+        service['startLogStreamWithReconnect'] = jest.fn(
+          (_pod: string, sink: Writable) => {
+            sink.write('line\nline\n');
+            return new AbortController();
+          },
+        );
+        service['signalExecutionExit'] = jest.fn().mockResolvedValue(undefined);
+        service['deleteExecutionJob'] = jest.fn().mockResolvedValue(undefined);
+        const snapshot = jest.fn().mockResolvedValue('line\n');
+        service['fetchPodLogsSnapshot'] = snapshot;
+        if (snapshotFails)
+          snapshot.mockRejectedValue(new Error('snapshot unavailable'));
+        const result = await service.executeInContainer(
+          null,
+          ['node'],
+          defaultOptions,
+        );
+        expect(result.success).toBe(true);
+        expect(result.stdout).toBe(snapshotFails ? 'line\nline\n' : 'line\n');
+      },
+    );
+
     it('delegates valid executions to the kubernetes backend', async () => {
       const executeInKubernetes = jest
         .spyOn(service as any, 'executeInKubernetes')
@@ -744,6 +784,125 @@ describe('ContainerExecutorService', () => {
   });
 
   describe('log collection', () => {
+    beforeEach(() => jest.useFakeTimers());
+    afterEach(() => jest.useRealTimers());
+
+    it('keeps the first successful stream complete after startup retries', async () => {
+      const forward = jest.fn();
+      const collector = service['createLogCollector']({
+        onStdoutChunk: forward,
+      });
+      const log = jest
+        .fn()
+        .mockRejectedValueOnce(new Error('HTTP-Code: 400'))
+        .mockImplementationOnce(
+          (_namespace, _pod, _container, sink: Writable) => {
+            sink.write('first execution line\n');
+            return Promise.resolve(new AbortController());
+          },
+        );
+      service['logClient'] = { log } as unknown as NonNullable<
+        (typeof service)['logClient']
+      >;
+      const controller = service['startLogStreamWithReconnect'](
+        'pod',
+        collector.stream,
+        'job',
+      );
+      await jest.advanceTimersByTimeAsync(2_000);
+      expect(log).toHaveBeenCalledTimes(2);
+      expect(log.mock.calls[1][4]).not.toHaveProperty('sinceSeconds');
+      expect(forward).toHaveBeenCalledWith('first execution line\n');
+      controller.abort();
+    });
+
+    it.each(['close', 'error'])(
+      'reconnects on response %s without ending the collector',
+      async (event) => {
+        const collector = service['createLogCollector']({});
+        const sources: PassThrough[] = [];
+        const requests: AbortController[] = [];
+        const log = jest
+          .fn()
+          .mockImplementation(
+            (_namespace, _pod, _container, sink: Writable) => {
+              const source = new PassThrough();
+              const request = new AbortController();
+              sources.push(source);
+              requests.push(request);
+              source.pipe(sink);
+              return Promise.resolve(request);
+            },
+          );
+        service['logClient'] = { log } as unknown as NonNullable<
+          (typeof service)['logClient']
+        >;
+        const controller = service['startLogStreamWithReconnect'](
+          'pod',
+          collector.stream,
+          'job',
+        );
+        await jest.advanceTimersByTimeAsync(0);
+        sources[0].write('before disconnect\n');
+        if (event === 'error')
+          sources[0].emit('error', new Error('ECONNRESET'));
+        else sources[0].end();
+        await jest.advanceTimersByTimeAsync(2_000);
+        expect(log).toHaveBeenCalledTimes(2);
+        expect(collector.stream.writableEnded).toBe(false);
+        expect(requests[0].signal.aborted).toBe(true);
+        expect(log.mock.calls[1][4]).toMatchObject({ sinceSeconds: 5 });
+        sources[1].write('after reconnect\n');
+        expect(collector.getOutput()).toBe(
+          'before disconnect\nafter reconnect\n',
+        );
+        controller.abort();
+      },
+    );
+
+    it('aborts a request that becomes ready after execution cleanup', async () => {
+      const collector = service['createLogCollector']({});
+      let ready!: (request: AbortController) => void;
+      const log = jest.fn().mockReturnValue(
+        new Promise<AbortController>((resolve) => {
+          ready = resolve;
+        }),
+      );
+      service['logClient'] = { log } as unknown as NonNullable<
+        (typeof service)['logClient']
+      >;
+      const controller = service['startLogStreamWithReconnect'](
+        'pod',
+        collector.stream,
+        'job',
+      );
+      controller.abort();
+      const request = new AbortController();
+      ready(request);
+      await jest.advanceTimersByTimeAsync(10_000);
+      expect(request.signal.aborted).toBe(true);
+      expect(log).toHaveBeenCalledTimes(1);
+      expect(jest.getTimerCount()).toBe(0);
+    });
+
+    it('cancels a pending reconnect when execution cleanup aborts', async () => {
+      const collector = service['createLogCollector']({});
+      const log = jest.fn().mockRejectedValue(new Error('HTTP-Code: 400'));
+      service['logClient'] = { log } as unknown as NonNullable<
+        (typeof service)['logClient']
+      >;
+      const controller = service['startLogStreamWithReconnect'](
+        'pod',
+        collector.stream,
+        'job',
+      );
+      await jest.advanceTimersByTimeAsync(0);
+      controller.abort();
+      expect(jest.getTimerCount()).toBe(0);
+      await jest.advanceTimersByTimeAsync(10_000);
+      expect(log).toHaveBeenCalledTimes(1);
+    });
+
     it('suppresses live forwarding during replay windows', async () => {
       const onStdoutChunk = jest.fn();
       const collector = (service as any).createLogCollector({

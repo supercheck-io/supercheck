@@ -145,6 +145,10 @@ Offline locations remain visible in your configurations. Monitors use the online
 
 Keep at least one worker running in each region where you offer monitoring. Monitoring does not automatically start stopped workers.
 
+Enabling or disabling a location updates queue routing on every app server and regional worker. The Super Admin queue dashboard follows that same location set. A disabled location stops receiving new regional k6 and monitor work. Active work drains, and existing queued jobs remain until the location is re-enabled. Those jobs keep their admitted execution capacity while running, waiting, or retrying. Worker processes and replica counts are managed separately; Playwright continues to use its global queue.
+
+Changes are distributed over Redis. If a notification is missed, servers and workers reconcile with the enabled locations. Allow a short convergence period before checking the dashboard. During a database outage, existing subscriptions are retained unless a valid location-change notification provides an updated set. If the database is unavailable at worker startup, a regional worker temporarily consumes its own region until discovery recovers.
+
 ### Project Location Restrictions
 
 Org admins can restrict a project's available locations in **Organization Admin → Projects** using the **Location restrictions** action.

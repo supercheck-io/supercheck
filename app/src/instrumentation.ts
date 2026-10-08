@@ -110,6 +110,16 @@ export async function register() {
       console.error('[Instrumentation] ❌ Failed to initialize SRE alert triage processor:', error);
     }
 
+    // Every app replica must hear location changes. Queue maps and Bull Board
+    // are process-local, and the admin request reaches only one replica.
+    try {
+      const { ensureQueueRefreshSubscription } = await import('@/lib/queue');
+      ensureQueueRefreshSubscription();
+      console.log('[Instrumentation] Queue location refresh subscription scheduled');
+    } catch (error) {
+      console.error('[Instrumentation] ❌ Failed to subscribe to queue location refresh:', error);
+    }
+
     console.log('[Instrumentation] ✨ Background services startup complete');
   }
 }

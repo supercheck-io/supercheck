@@ -51,6 +51,8 @@ class QueueEventHub extends EventEmitter {
   private readyPromise: Promise<void> | null = null;
   private queueEvents: QueueEvents[] = [];
   private closing = false;
+  private refreshPromise: Promise<void> | null = null;
+  private refreshGeneration = 0;
   private runMetaCache = new Map<string, { entityId?: string; trigger?: string }>();
   private static processListenersAttached = false;
 
@@ -135,20 +137,10 @@ class QueueEventHub extends EventEmitter {
   }
 
   private async attachQueueEvents(source: QueueEventSource): Promise<void> {
-    // Create a new dedicated Redis connection for QueueEvents
-    // BullMQ recommends using separate connections for Queue and QueueEvents
-    const Redis = (await import('ioredis')).default;
-
-    const connection = new Redis(buildRedisOptions({ lazyConnect: false }));
-
-
-    // Log connection errors for debugging
-    connection.on('error', (error) => {
-      eventHubLogger.error({ err: error },
-        `Redis connection error for ${source.queueName}`);
+    // Options let BullMQ own and close the dedicated blocking connection.
+    const events = new QueueEvents(source.queueName, {
+      connection: buildRedisOptions({ lazyConnect: false }),
     });
-
-    const events = new QueueEvents(source.queueName, { connection });
     this.queueEvents.push(events);
 
     events.on("error", (error) => {
@@ -217,9 +209,23 @@ class QueueEventHub extends EventEmitter {
    * Called after admin location CRUD operations.
    */
   async refresh(): Promise<void> {
-    if (this.closing) {
-      return;
+    const previous = this.refreshPromise;
+    const generation = ++this.refreshGeneration;
+    const refresh = (async () => {
+      await previous?.catch(() => undefined);
+      await this.readyPromise?.catch(() => undefined);
+      await this.refreshSources();
+    })();
+    this.refreshPromise = refresh;
+    try {
+      await refresh;
+    } finally {
+      if (this.refreshGeneration === generation) this.refreshPromise = null;
     }
+  }
+
+  private async refreshSources(): Promise<void> {
+    if (this.closing) return;
 
     eventHubLogger.info({}, "Refreshing queue event sources for updated locations");
 

@@ -10,7 +10,13 @@ import {
   getBullBoardState,
   setBullBoardState,
 } from "@/lib/bull-board/state";
-import { getQueues } from "@/lib/queue";
+import {
+  getQueueLocationSignature,
+  getQueues,
+  invalidateQueueMaps,
+  locationCodesSignature,
+} from "@/lib/queue";
+import { getAllEnabledLocationCodes } from "@/lib/location-registry";
 import { getCurrentUser } from "@/lib/session";
 import { Role } from "@/lib/rbac/permissions";
 
@@ -20,10 +26,6 @@ import type { NextBullBoardAdapterState } from "@/lib/bull-board/next-adapter";
 const BULL_BOARD_BASE_PATH = "/api/admin/queues";
 const STATIC_CACHE_MAX_AGE = 31536000; // 1 year for immutable assets
 const INIT_TIMEOUT_MS = 30000; // 30 second timeout for initialization
-
-const serverAdapter = new NextBullBoardAdapter().setBasePath(
-  BULL_BOARD_BASE_PATH
-);
 
 class HttpError extends Error {
   statusCode: number;
@@ -40,10 +42,29 @@ class HttpError extends Error {
  * Uses a promise-based mutex to prevent race conditions during initialization.
  */
 const ensureBullBoard = async (): Promise<NextBullBoardAdapterState> => {
+  let signature: string;
+  try {
+    const enabledCodes = await getAllEnabledLocationCodes();
+    signature = locationCodesSignature(enabledCodes);
+  } catch (error) {
+    console.error("[Bull-Board] Failed to read enabled locations:", error);
+    const state = getBullBoardState();
+    if (state.bullBoardInitialized && state.cachedState) {
+      return state.cachedState;
+    }
+    throw error;
+  }
   const state = getBullBoardState();
+  const queuesMatchLocations = getQueueLocationSignature() === signature;
 
-  // Return cached state if already initialized
-  if (state.bullBoardInitialized && state.cachedState) {
+  // Each app replica caches its own board. Rebuild when the enabled location
+  // set changed so the dashboard does not alternate between replicas.
+  if (
+    state.bullBoardInitialized &&
+    state.cachedState &&
+    state.locationSignature === signature &&
+    queuesMatchLocations
+  ) {
     return state.cachedState;
   }
 
@@ -53,18 +74,20 @@ const ensureBullBoard = async (): Promise<NextBullBoardAdapterState> => {
   }
 
   // Start initialization with timeout
+  let timeout: ReturnType<typeof setTimeout>;
   const promise = Promise.race([
     initializeBullBoard(),
-    new Promise<never>((_, reject) =>
-      setTimeout(
+    new Promise<never>((_, reject) => {
+      timeout = setTimeout(
         () => reject(new HttpError(503, "Bull Board initialization timed out")),
         INIT_TIMEOUT_MS
-      )
-    ),
-  ]).catch((error) => {
-    // Reset initialization promise on failure
-    setBullBoardState({ initializationPromise: null });
-    throw error;
+      );
+    }),
+  ]).finally(() => {
+    clearTimeout(timeout);
+    if (getBullBoardState().initializationPromise === promise) {
+      setBullBoardState({ initializationPromise: null });
+    }
   });
 
   setBullBoardState({ initializationPromise: promise });
@@ -77,6 +100,12 @@ const ensureBullBoard = async (): Promise<NextBullBoardAdapterState> => {
  * Separated from ensureBullBoard for cleaner error handling.
  */
 const initializeBullBoard = async (): Promise<NextBullBoardAdapterState> => {
+  const enabledCodes = await getAllEnabledLocationCodes();
+  const signature = locationCodesSignature(enabledCodes);
+  if (getQueueLocationSignature() !== signature) {
+    await invalidateQueueMaps({ publish: false });
+  }
+
   const {
     playwrightQueues,
     k6Queues,
@@ -88,6 +117,7 @@ const initializeBullBoard = async (): Promise<NextBullBoardAdapterState> => {
     dataLifecycleCleanupQueue,
   } = await getQueues();
 
+  const serverAdapter = new NextBullBoardAdapter().setBasePath(BULL_BOARD_BASE_PATH);
   createBullBoard({
     queues: [
       ...Object.entries(playwrightQueues).map(
@@ -134,7 +164,7 @@ const initializeBullBoard = async (): Promise<NextBullBoardAdapterState> => {
   setBullBoardState({
     cachedState: result,
     bullBoardInitialized: true,
-    initializationPromise: null,
+    locationSignature: getQueueLocationSignature(),
   });
 
   return result;
