@@ -5,7 +5,7 @@
  */
 
 import { execFileSync } from "node:child_process"
-import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 
@@ -435,7 +435,6 @@ async function prepare() {
     } else {
       writeFileSync(path.join(dir, "prompt.txt"), built.prompt)
       writeFileSync(path.join(dir, "index.json"), JSON.stringify(built.index))
-      copyFileSync(fileURLToPath(import.meta.url), path.join(dir, "pr-review.mjs"))
     }
   }
 

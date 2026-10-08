@@ -24,9 +24,13 @@ GitHub does not trigger another workflow when a PR is created or updated using `
 
 ## Security and maintenance
 
-`pull_request_target` runs the workflow and script from the trusted base commit (`github.sha`), never the PR head or its code. Input collection, provider access, and publishing use separate jobs. Only the provider job receives `OPENCODE_API_KEY`; only the publisher has PR write permission. PR text and model responses are data, never shell commands. Only completed JSON reviews are accepted; inline paths and lines must exist in the included diff. Recognized credential formats and the provider key are redacted before output limits are applied. Raw provider replies and errors are not logged or uploaded.
+`pull_request` runs for internal PRs; fork PRs are skipped and GitHub withholds their secrets. GitHub runs the PR workflow definition, so internal collaborators must be trusted to modify workflows (as they already have write access). The reviewer scripts are checked out from the default branch, and its resolved commit is reused by all jobs; PR source code is never built or executed by the reviewer. Downloaded artifacts contain data only. Input collection, provider access, and publishing use separate jobs. Only the provider job receives `OPENCODE_API_KEY`; only the publisher has PR write permission. PR text and model responses are data, never shell commands. Only completed JSON reviews are accepted; inline paths and lines must exist in the included diff. Recognized credential formats and the provider key are redacted before output limits are applied. Raw provider replies and errors are not logged or uploaded.
 
 The title, body, and bounded diff are sent to OpenCode Go; input artifacts expire after one day. This applies to private ops changes too. Do not put credentials in PR content.
+
+This uses GitHub’s ordinary PR event without overriding event policies or checkout protections. Runs perform only repository development work: no hosted service, unrelated compute, persistent process, or quota evasion. Timeouts, concurrency cancellation, size limits, bounded retries, and one-day artifact retention limit resource use. GitHub can still enforce account policies; no workflow can guarantee account status.
+
+References: [secure use](https://docs.github.com/en/actions/reference/security/secure-use), [PR event security](https://docs.github.com/en/actions/reference/security/securely-using-pull_request_target), and [Actions usage terms](https://docs.github.com/en/site-policy/github-terms/github-terms-for-additional-products-and-features#actions).
 
 The workflow, script, tests, and this guide are kept identical in `supercheck` and `supercheck-ops`. Change both copies together. Actions are pinned by commit SHA and Node 24 is explicit. Run:
 

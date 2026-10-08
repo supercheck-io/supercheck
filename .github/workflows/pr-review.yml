@@ -1,10 +1,11 @@
-# Uses the trusted base script; never checks out or executes PR code.
+# Runs only for internal PRs; reviewer scripts come from the trusted default branch.
+# Fork PRs have no secrets and are skipped. Artifacts are read only as data.
 # Model and publisher run separately so no process holds both credentials.
 # Advisory only: do not make this workflow a required merge check.
 name: Code review agent
 
 on:
-  pull_request_target:
+  pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
     inputs:
@@ -22,6 +23,7 @@ permissions: {}
 jobs:
   prepare:
     name: Decide whether to review
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -29,11 +31,13 @@ jobs:
       pull-requests: read
     outputs:
       decision: ${{ steps.prepare.outputs.decision }}
+      script_sha: ${{ steps.checkout.outputs.commit }}
     steps:
-      - name: Checkout review script from the base branch
+      - name: Checkout review script from the default branch
+        id: checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
           fetch-depth: 1
 
@@ -56,10 +60,12 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: pr-review-${{ github.run_id }}
-          path: ${{ runner.temp }}/pr-review
+          path: |
+            ${{ runner.temp }}/pr-review/prompt.txt
+            ${{ runner.temp }}/pr-review/index.json
+            ${{ runner.temp }}/pr-review/meta.json
           overwrite: true
           retention-days: 1
-          include-hidden-files: true
 
   model:
     name: Review
@@ -68,8 +74,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
+      contents: read
       actions: read
     steps:
+      - name: Checkout trusted review script
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ needs.prepare.outputs.script_sha }}
+          persist-credentials: false
+          fetch-depth: 1
+
       - name: Download review input
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
@@ -87,7 +101,7 @@ jobs:
           REVIEW_DIR: ${{ runner.temp }}/pr-review
           GH_TOKEN: ""
           GITHUB_TOKEN: ""
-        run: node "$REVIEW_DIR/pr-review.mjs" model
+        run: node .github/scripts/pr-review.mjs model
 
       - name: Upload the review
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -117,7 +131,7 @@ jobs:
       - name: Checkout review script from the base branch
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ needs.prepare.outputs.script_sha }}
           persist-credentials: false
           fetch-depth: 1
 
