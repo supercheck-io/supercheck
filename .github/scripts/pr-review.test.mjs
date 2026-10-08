@@ -38,7 +38,7 @@ test("reviews same-repo pull requests from members", () => {
   assert.equal(evaluateEligibility(pr(), { repository: repo }).decision, "review")
 })
 
-test("skips forks, bots, drafts, outsiders, and opt-outs before any model call", () => {
+test("skips forks, bots, drafts, and opt-outs before any model call", () => {
   assert.equal(
     evaluateEligibility(
       pr({ head: { repo: { full_name: "attacker/supercheck" } } }),
@@ -53,8 +53,8 @@ test("skips forks, bots, drafts, outsiders, and opt-outs before any model call",
   )
   assert.equal(evaluateEligibility(pr({ draft: true }), { repository: repo }).reason, "draft")
   assert.equal(
-    evaluateEligibility(pr({ author_association: "NONE" }), { repository: repo }).reason,
-    "untrusted-author",
+    evaluateEligibility(pr({ author_association: "NONE" }), { repository: repo }).decision,
+    "review",
   )
   assert.equal(
     evaluateEligibility(pr({ body: "please [skip-ai-review]" }), { repository: repo }).reason,

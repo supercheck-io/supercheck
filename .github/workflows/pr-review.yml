@@ -7,12 +7,15 @@
 # separate step turns the reply into a GitHub review with one-line suggestions.
 #
 # pull_request_target is required so the workflow and this script come from
-# the base branch. A pull request cannot edit the job that holds the API key.
+# the base branch. Checkout github.sha, which is that branch tip. The pull
+# request base SHA stays on the previous main commit, so it will not see a
+# script that was just merged. A pull request cannot edit the job that holds
+# the API key.
 # The head branch is never checked out. The prepare job always starts, then
-# the script refuses forks, bots, drafts, opt-outs, and accounts that are
-# not OWNER, MEMBER, or COLLABORATOR before the model runs. Do not repeat
-# that gate in a job if. On pull_request_target the webhook expression
-# evaluated false for same-repo member pull requests and skipped every run.
+# the script refuses forks, bots, drafts, and opt-outs before the model runs.
+# A same-repository author already has write access. Do not also require
+# author_association: the pull request API omitted MEMBER for a maintainer
+# when called with GITHUB_TOKEN, so that check skipped every review.
 #
 # Do not add this workflow as a required status check. A model outage should
 # not block merges. Do not switch the trigger to pull_request, and do not
@@ -50,7 +53,7 @@ jobs:
       - name: Checkout review script from the base branch
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          ref: ${{ github.sha }}
           persist-credentials: false
           fetch-depth: 1
 
@@ -186,7 +189,7 @@ jobs:
       - name: Checkout review script from the base branch
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          ref: ${{ github.sha }}
           persist-credentials: false
           fetch-depth: 1
 
