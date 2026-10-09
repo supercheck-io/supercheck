@@ -10,9 +10,9 @@ interface DiagramEmbedProps {
 }
 
 /**
- * Embeds a self-contained, interactive Archify diagram from /public in a lazy
- * iframe with a link to open the viewer in a new tab. The diagram HTML includes its own
- * styles, scripts, and exports, so no external assets are required.
+ * Embeds a self-contained diagram from /public in a lazy iframe with a link to
+ * open it in a new tab. The diagram HTML includes its own styles, scripts,
+ * and light/dark theming, so no external assets are required.
  */
 export function DiagramEmbed({ src, title, height = 820 }: DiagramEmbedProps): ReactElement {
   return (
