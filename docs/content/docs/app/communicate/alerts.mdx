@@ -418,6 +418,8 @@ The webhook UI supports custom JSON headers for provider API keys. Supercheck st
 
 Use **Alerts → Signals** for investigation-ready failure signals. Signals are derived from sent failure alerts only. Notification delivery failures, recoveries, and success notifications remain in **History** so they do not create false incident noise.
 
+![Alert Signals](/screenshots/sre-alert-signals.png)
+
 Repeated sent failures for the same target and alert type appear as one signal, with the latest message and timestamp and a repeat count. All individual deliveries remain in History. A failure signal is historical evidence, not proof that the target is still failing.
 
 From Signals, responders can:
