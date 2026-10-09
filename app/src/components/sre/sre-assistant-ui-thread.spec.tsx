@@ -5,6 +5,57 @@ import {
   getQuickRepliesForAssistantText,
 } from "./sre-generative-ui";
 import { CopilotChatHelp } from "./sre-copilot-chat-help";
+import { SreAssistantUiThread } from "./sre-assistant-ui-thread";
+import { AssistantChatTransport } from "@assistant-ui/react-ai-sdk";
+import { useProjectContext } from "@/hooks/use-project-context";
+
+jest.mock("@assistant-ui/react", () => ({
+  AssistantRuntimeProvider: () => null,
+}));
+
+jest.mock("@assistant-ui/react-ai-sdk", () => ({
+  AssistantChatTransport: jest.fn(),
+  useChatRuntime: jest.fn(() => ({})),
+}));
+
+jest.mock("@/hooks/use-project-context", () => ({
+  useProjectContext: jest.fn(),
+}));
+
+describe("Incident Copilot live sources", () => {
+  it.each([
+    { role: "project_admin", incidentId: "incident", enabled: true },
+    { role: "project_editor", incidentId: "incident", enabled: false },
+    { role: "project_admin", incidentId: null, enabled: true },
+  ])(
+    "defaults live access according to role in all chats (%j)",
+    ({ role, incidentId, enabled }) => {
+      jest.mocked(useProjectContext).mockReturnValue({
+        currentProject: { userRole: role },
+      } as ReturnType<typeof useProjectContext>);
+
+      render(
+        <SreAssistantUiThread
+          conversationId={null}
+          incidentId={incidentId}
+          initialMessages={[]}
+          onConversationResolved={jest.fn()}
+          onClearError={jest.fn()}
+          onError={jest.fn()}
+        />,
+      );
+
+      expect(AssistantChatTransport).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          body: expect.objectContaining({
+            incidentId,
+            useLiveConnectorTools: enabled,
+          }),
+        }),
+      );
+    },
+  );
+});
 
 describe("CopilotChatHelp", () => {
   it("explains useful questions, evidence boundaries, live sources, and read-only safety", () => {
@@ -21,7 +72,7 @@ describe("CopilotChatHelp", () => {
     expect(screen.getByText("What Copilot can use")).toBeInTheDocument();
     expect(screen.getByText("Where answers come from")).toBeInTheDocument();
     expect(
-      screen.getByText(/does not automatically inspect an incident/i),
+      screen.getByText(/saved evidence from that incident/i),
     ).toBeInTheDocument();
     expect(screen.getByText("Read-only by design")).toBeInTheDocument();
     expect(screen.getByText("Live sources")).toBeInTheDocument();
@@ -85,23 +136,23 @@ describe("getQuickRepliesForAssistantText", () => {
     );
   });
 
-  it("keeps standalone follow-ups limited to numeric charts without implying incident or connector access", () => {
+  it("offers connector recovery and evidence follow-ups in general chats too", () => {
+    expect(
+      getQuickRepliesForAssistantText("Connector check failed with a timeout."),
+    ).toContainEqual(
+      expect.objectContaining({
+        label: "Try without connectors",
+        disableLiveConnectors: true,
+      }),
+    );
     expect(
       getQuickRepliesForAssistantText(
         "The leading hypothesis needs verification against evidence.",
-        false,
       ),
-    ).toEqual([]);
-    expect(
-      getQuickRepliesForAssistantText(
-        "Connector check failed with a timeout.",
-        false,
-      ),
-    ).toEqual([]);
+    ).toContainEqual(expect.objectContaining({ label: "Check hypothesis" }));
     expect(
       getQuickRepliesForAssistantText(
         "Checkout p95 latency was 240 ms at 10:00 and 310 ms at 10:05.",
-        false,
       ),
     ).toEqual([expect.objectContaining({ label: "Render chart" })]);
   });

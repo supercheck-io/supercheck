@@ -505,7 +505,8 @@
                   },
                   "useLiveConnectorTools": {
                     "type": "boolean",
-                    "default": false
+                    "default": true,
+                    "description": "Read-only live connectors are enabled by default when authorized. Set false to use conversation text and stored incident evidence only. General chat uses selected project services; incident chat stays scoped to its linked service."
                   }
                 }
               }

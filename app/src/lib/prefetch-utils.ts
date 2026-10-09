@@ -24,7 +24,7 @@
 
 import type { QueryClient } from "@tanstack/react-query";
 import { getSreEvidenceGraphAction } from "@/actions/sre-evidence-graph";
-import { getSreStandaloneChatHistories } from "@/actions/sre-ai";
+import { getSreCopilotChatHistories } from "@/actions/sre-ai";
 import { getSreIncidents } from "@/actions/sre-incidents";
 import { triggerMonacoPreload } from "@/components/monaco-prefetcher";
 import {
@@ -304,7 +304,7 @@ function getRouteConfigs(projectId: string): Record<string, RouteConfig> {
     },
     "/copilot": {
       queryKey: getSreCopilotHistoriesQueryKey(projectId),
-      queryFn: getSreStandaloneChatHistories,
+      queryFn: getSreCopilotChatHistories,
       staleTime: 30_000,
       persist: false,
     },

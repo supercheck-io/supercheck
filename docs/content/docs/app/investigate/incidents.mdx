@@ -19,8 +19,6 @@ Both paths open the dedicated incident workspace.
 
 The incident queue displays active incidents first, ordered by recency. Responders can filter by severity (`SEV1` through `SEV4`), resolution status, or search by title. Quick action buttons provide direct access to **Review alerts** and **Trends**.
 
-![Incident Queue](/screenshots/sre-incidents-queue.png)
-
 ## Incident Workspace
 
 Use the two workspace tabs to investigate and review evidence:
@@ -74,7 +72,7 @@ If available evidence cannot determine root cause, the report explicitly states 
 
 ### Availability & Permissions
 
-If investigations are disabled, existing evidence and results remain readable, but run and live-source controls are unavailable. Viewers cannot run investigations, use Copilot, or mutate snapshots and feedback. Project Editors can investigate stored evidence and use Copilot; enabling **Live sources** requires connector investigation permission (`project_admin` or higher).
+If investigations are disabled, existing evidence and results remain readable, but run and live-source controls are unavailable. Viewers cannot run investigations, use Copilot, or mutate snapshots and feedback. Project Editors can investigate stored evidence and use Copilot; Copilot live sources are on by default for Project Admins and organization admins or owners.
 
 ## Incident Trends
 
@@ -85,19 +83,17 @@ Select **Trends** from the incident queue to inspect historical operational metr
 - **Severity mix** — Breakdown across SEV1, SEV2, SEV3, and SEV4
 - **Most affected services** — Hotspots requiring architectural remediation
 
-![Incident Trends and Analytics](/screenshots/sre-incident-trends.png)
-
 ## Copilot Assistance
 
-Copilot is accessible directly from **Investigate → Copilot** as well as the floating launcher on incident pages.
+Copilot is accessible directly from **Investigate → Copilot** from **Open Copilot** on an incident page.
 
 | Mode | Context Available |
 |---|---|
-| **Standalone** | Responder-provided prompts and questions |
+| **General** | Responder-provided prompts and questions |
 | **Incident-scoped** | Stored native and connector evidence for that specific incident |
-| **Incident-scoped with Live Sources** | Bounded connector data queried in real-time when enabled by an authorized role |
+| **Incident-scoped with Live Sources** | Read-only connector queries available by default to authorized users |
 
-Standalone chat does not query infrastructure without context. Incident chat grounds responses in verified observations and will report gaps rather than inventing queries or timestamps.
+General chat can query permitted project connectors for the service you name. Incident chat grounds responses in verified observations and will report gaps rather than inventing queries or timestamps.
 
 ## Incident Lifecycle & Verification
 

@@ -60,18 +60,17 @@ export function CopilotChatHelp() {
             </h3>
             <ul className="list-disc space-y-1.5 pl-5 text-muted-foreground">
               <li>
-                Standalone chat uses only your question and text you paste into
-                the composer. It does not automatically inspect an incident or
-                connected system.
+                Ask about a service, an error, or the text you paste. Copilot
+                can query available connectors in your current project.
               </li>
               <li>
-                Incident-scoped chat can inspect stored evidence for the open
-                incident.
+                Opening Copilot from an incident adds saved evidence from that
+                incident and keeps live queries scoped to its linked service.
               </li>
               <li>
-                <strong className="text-foreground">Live sources</strong> is off
-                by default. Turn it on only when the incident needs fresh data
-                from configured read-only connectors.
+                <strong className="text-foreground">Live sources</strong> is on
+                by default when you have connector access. Turn it off to answer
+                from conversation text and available saved evidence only.
               </li>
             </ul>
           </section>

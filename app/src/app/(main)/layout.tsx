@@ -20,7 +20,6 @@ import { AuthGuard } from "@/components/auth-guard";
 import { DataPrefetcher } from "@/components/data-prefetcher";
 import { MonacoPrefetcher } from "@/components/monaco-prefetcher";
 import { RecorderAutoConnect } from "@/components/recorder/RecorderAutoConnect";
-import { SreAssistantUiModal } from "@/components/sre/sre-assistant-ui-modal";
 import { getCurrentUser, getActiveOrganization, getSelectableProjects } from "@/lib/session";
 import { getCurrentProjectContext } from "@/lib/project-context";
 import { isSelfHosted } from "@/lib/feature-flags";
@@ -199,7 +198,6 @@ export default async function MainLayout({
                     initialIsSelfHosted={initialIsSelfHosted}
                   >
                     {children}
-                    <SreAssistantUiModal />
                   </SubscriptionGuard>
                 </main>
               </SidebarInset>

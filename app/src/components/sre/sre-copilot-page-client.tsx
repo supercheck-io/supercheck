@@ -4,7 +4,7 @@ import { useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ShieldCheck } from "lucide-react";
 
-import type { SreStandaloneChatHistory } from "@/actions/sre-ai";
+import type { SreCopilotChatHistory } from "@/actions/sre-ai";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 import { SupercheckLoading } from "@/components/shared/supercheck-loading";
 import { SreAiConsole } from "@/components/sre/sre-ai-console";
@@ -13,13 +13,17 @@ import { useSreCopilotHistories } from "@/hooks/use-sre";
 import { canInvestigateWithSreCopilot } from "@/lib/rbac/permissions-client";
 import { getSreCopilotHistoriesQueryKey } from "@/lib/sre/query-keys";
 
-export function SreCopilotPageClient() {
+export function SreCopilotPageClient({
+  initialIncidentId = null,
+}: {
+  initialIncidentId?: string | null;
+}) {
   const queryClient = useQueryClient();
   const { projectId, currentProject } = useProjectContext();
   const canInvestigate = canInvestigateWithSreCopilot(currentProject?.userRole);
   const query = useSreCopilotHistories({ enabled: canInvestigate });
   const updateCachedHistories = useCallback(
-    (histories: SreStandaloneChatHistory[]) => {
+    (histories: SreCopilotChatHistory[]) => {
       queryClient.setQueryData(getSreCopilotHistoriesQueryKey(projectId), {
         success: true,
         histories,
@@ -49,6 +53,8 @@ export function SreCopilotPageClient() {
 
     return (
       <SreAiConsole
+        key={`${projectId}:${initialIncidentId ?? "project"}`}
+        initialIncidentId={initialIncidentId}
         loadError={
           query.error instanceof Error
             ? query.error.message
@@ -60,6 +66,8 @@ export function SreCopilotPageClient() {
 
   return (
     <SreAiConsole
+      key={`${projectId}:${initialIncidentId ?? "project"}`}
+      initialIncidentId={initialIncidentId}
       initialHistories={query.data.histories}
       loadError={query.data.success ? null : query.data.error}
       onHistoriesChange={query.data.success ? updateCachedHistories : undefined}

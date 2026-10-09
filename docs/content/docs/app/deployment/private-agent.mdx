@@ -15,13 +15,13 @@ Private Agents execute read-only connector queries for investigations. They do n
 | You use | Where to register | What to run in your network |
 |---|---|---|
 | **Supercheck Cloud** | Sign in to Cloud and select your project. | Only the Private Agent; keep using the cloud dashboard. |
-| **Self-hosted Supercheck** | Open your own dashboard and select your project. | The Private Agent, pointed at your instance's HTTPS origin. |
+| **Self-hosted Supercheck** | Open your own dashboard and select your project. | The Private Agent, using the main Compose profile on the same host, or a standalone agent on another network. |
 
 You need:
 
 - Permission to configure connectors, such as **Project Admin**, **Org Admin**, or **Org Owner**.
 - Docker Engine with Compose v2 (`docker compose`) on a machine that can reach your internal provider endpoints.
-- Outbound access from the container to your Supercheck instance over HTTPS. No inbound firewall ports are needed.
+- Outbound access from the container to Supercheck. Remote agents use HTTPS; a colocated agent uses the private Docker network. No inbound firewall ports are needed.
 
 ## Setup Workflow
 
@@ -59,7 +59,22 @@ sequenceDiagram
 </div>
 </div>
 
-## Set Up the Agent
+## On the Supercheck Host
+
+For a self-hosted installation, register the agent as described below. In your existing `deploy/docker/.env`, add:
+
+```dotenv
+COMPOSE_PROFILES=https,private-agent
+PRIVATE_AGENT_ID=your-agent-id
+PRIVATE_AGENT_TOKEN=your-registration-token
+```
+
+Keep any existing profiles. For local HTTP evaluation, use `COMPOSE_PROFILES=private-agent`. Start it with `docker compose up -d private-agent`. The default app origin is `http://app:3000` on an isolated Docker network; no database, Redis, or storage credentials are passed to the agent.
+
+Stop it with `docker compose stop private-agent` before removing the profile. Preserve its state volume and use `docker compose up -d --force-recreate private-agent` after changing its environment.
+
+## On Another Network or with Cloud
+
 
 Download the [Private Agent Compose file](https://github.com/supercheck-io/supercheck/blob/v1.3.6/deploy/docker/docker-compose-private-agent.yml) into a dedicated directory:
 
@@ -111,8 +126,6 @@ Keep the `private-agent-state` volume so the agent can reconnect after a restart
 3. Enter the internal endpoint and a least-privilege read-only provider credential. Limit access to the services that need it.
 4. Validate the connector and run a known-result search before using it in an investigation.
 
-![Add a read-only connector](/screenshots/sre-add-connector-dialog.png)
-
 Use an endpoint the container can resolve and reach. `localhost` and loopback addresses are rejected; they do not refer to another service on the Docker host. For a service on that host, use a reachable private address or DNS name. Internal provider endpoints may use HTTP or HTTPS; prefer HTTPS.
 
 See [Connectors](/docs/app/investigate/connectors) for supported providers and credential requirements. Provider credentials are stored encrypted by Supercheck and supplied to the agent for queries; they are not included in AI prompts.
@@ -121,7 +134,7 @@ See [Connectors](/docs/app/investigate/connectors) for supported providers and c
 
 1. Open an incident under **Investigate → Incidents** and link it to a service in the connector's **Service scope**.
 2. Turn on **Include live sources** and select **Run investigation**. This requires connector investigation permission.
-3. Review the cited findings and evidence on the incident. Use [Copilot](/docs/app/investigate/copilot) with **Live sources** enabled for follow-up questions.
+3. Review the cited findings and evidence on the incident. Use [Copilot](/docs/app/investigate/copilot) for follow-up questions; live sources are on by default when you have connector access.
 
 If the agent is unavailable or the query fails, check the agent status and connector validation before retrying. See [Incident Investigation](/docs/app/investigate/incidents) for the full responder workflow.
 

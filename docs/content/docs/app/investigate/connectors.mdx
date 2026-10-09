@@ -6,8 +6,6 @@ icon: Plug
 
 Add a connector when you want an investigation to use evidence from a tool your team already operates. Configure connectors under **Organization Admin → Integrations** with a role that can configure connectors.
 
-![Connectors Overview](/screenshots/sre-connectors.png)
-
 ## Supported Providers
 
 Choose one of these providers in **Add connector**:
@@ -71,8 +69,6 @@ To register a connector:
 4. Enter the API endpoint URL and configure a least-privilege read-only credential token.
 5. Define the **Service scope** to restrict which services may access this connector.
 6. Save, validate, and run one known-result query and one no-result query before relying on it during an incident.
-
-![Add Connector Dialog](/screenshots/sre-add-connector-dialog.png)
 
 Kubernetes searches require an explicit namespace. Grant the connector service account read-only access only to the namespaces under test; do not grant cluster-admin or write permissions.
 

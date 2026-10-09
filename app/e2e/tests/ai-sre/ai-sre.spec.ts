@@ -190,31 +190,52 @@ test.describe("AI SRE investigation surfaces @aisre @critical", () => {
       "Describe a symptom or paste evidence...",
     );
     await expect(composer).toBeEnabled({ timeout: 30_000 });
+    await expect(
+      page.getByRole("switch", { name: "Live sources" }),
+    ).toBeChecked();
+    const chatResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        response.url().includes("/api/sre/chat/assistant-ui"),
+    );
     await composer.fill(prompt);
     await page.getByRole("button", { name: "Send", exact: true }).click();
+    const response = await chatResponse;
+    expect(response.status()).toBe(200);
+    expect(response.request().postDataJSON()).toMatchObject({
+      incidentId: null,
+      useLiveConnectorTools: true,
+    });
 
     const userMessage = page
       .getByLabel("User message")
       .filter({ hasText: prompt });
     await expect(userMessage).toBeVisible();
-    const assistantMessage = page.locator('[aria-label="Copilot message"]:not(textarea)').last();
+    const assistantMessage = page
+      .locator('[aria-label="Copilot message"]:not(textarea)')
+      .last();
     await expect(assistantMessage).toBeVisible({ timeout: 60_000 });
     await expect(assistantMessage).not.toBeEmpty();
 
     await page.getByRole("button", { name: "New chat", exact: true }).click();
     await expect(page.getByLabel("User message")).toHaveCount(0);
-    await page.getByRole("button", {name:"History",exact:true}).click();
-    const savedSession = page.getByRole("dialog", {name:"Chat history"}).getByRole("button").filter({hasText:prompt});
+    await page.getByRole("button", { name: "History", exact: true }).click();
+    const savedSession = page
+      .getByRole("dialog", { name: "Chat history" })
+      .getByRole("button")
+      .filter({ hasText: prompt });
     await expect(savedSession).toBeVisible();
     await savedSession.click();
     await expect(
       page.getByLabel("User message").filter({ hasText: prompt }),
     ).toBeVisible();
-    await page.getByRole("button", { name: "Archive chat", exact: true }).click();
+    await page
+      .getByRole("button", { name: "Archive chat", exact: true })
+      .click();
     await expect(
       page.getByText("Copilot session archived", { exact: true }),
     ).toBeVisible();
-    await page.getByRole("button", {name:"History",exact:true}).click();
+    await page.getByRole("button", { name: "History", exact: true }).click();
     await expect(savedSession).toHaveCount(0);
   });
 
@@ -275,32 +296,23 @@ test.describe("AI SRE investigation surfaces @aisre @critical", () => {
     await expect(page.getByText("Read-only", { exact: true })).toBeVisible();
   });
 
-  test("opens the floating Copilot as a mobile full-screen dialog and hands off to the console", async ({
+  test("rejects an invalid incident context", async ({ page }) => {
+    const response = await page.goto("/copilot?incident=invalid");
+    expect(response?.status()).toBe(404);
+  });
+
+  test("uses the dedicated Copilot screen on mobile without an AI popup", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/tests", { waitUntil: "load" });
-    const launcher = page.getByRole("button", { name: "Open Copilot" });
-    await expect(launcher).toHaveAttribute("aria-expanded", "false");
-    await launcher.click();
-
-    const dialog = page.getByRole("dialog", { name: "Copilot" });
-    await expect(dialog).toBeVisible();
-    await expect(dialog).toHaveCSS("width", "390px");
     await expect(
-      dialog.getByPlaceholder("Describe a symptom or paste evidence..."),
-    ).toBeEnabled();
-    await expect(dialog.getByText("Read-only", { exact: true })).toBeVisible();
-      await dialog
-        .getByRole("link", { name: "Full view", exact: true })
-        .click();
-    await expect(page).toHaveURL(/\/copilot$/);
+      page.getByRole("button", { name: "Open Copilot", exact: true }),
+    ).toHaveCount(0);
+    await page.goto("/copilot", { waitUntil: "load" });
     await expect(
       page.getByRole("heading", { name: "Copilot", exact: true }),
     ).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: "Open Copilot", exact: true }),
-    ).toBeHidden();
     const history = page.getByRole("button", { name: "History", exact: true });
     await expect(history).toHaveAttribute("aria-expanded", "false");
     await history.click();

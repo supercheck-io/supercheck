@@ -10,6 +10,8 @@
 #   3. Create .env with generated secrets (optional integrations can be added later)
 #   4. Run: KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig docker compose up -d
 #   5. Access: http://localhost:3000
+# For a public server, set APP_DOMAIN, ACME_EMAIL, and COMPOSE_PROFILES=https.
+# Add private-agent to COMPOSE_PROFILES to run an optional colocated Private Agent.
 #
 # Upgrading:
 #   Set SUPERCHECK_VERSION in your .env file or shell environment:
@@ -46,12 +48,12 @@ x-common-env: &common-env # Database Configuration
   REDIS_TLS_REJECT_UNAUTHORIZED: ${REDIS_TLS_REJECT_UNAUTHORIZED:-false}
 
   # App Configuration
-  NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
-  APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
-  BETTER_AUTH_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+  NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-${APP_DOMAIN:+https://}${APP_DOMAIN:-http://localhost:3000}}
+  APP_URL: ${APP_URL:-${NEXT_PUBLIC_APP_URL:-${APP_DOMAIN:+https://}${APP_DOMAIN:-http://localhost:3000}}}
+  BETTER_AUTH_URL: ${BETTER_AUTH_URL:-${NEXT_PUBLIC_APP_URL:-${APP_DOMAIN:+https://}${APP_DOMAIN:-http://localhost:3000}}}
 
   # Status Page Domain Configuration
-  STATUS_PAGE_DOMAIN: ${STATUS_PAGE_DOMAIN:-localhost}
+  STATUS_PAGE_DOMAIN: ${STATUS_PAGE_DOMAIN:-${APP_DOMAIN:-localhost}}
   # Hide the public status page branding footer globally when set to true.
   STATUS_PAGE_HIDE_BRANDING: ${STATUS_PAGE_HIDE_BRANDING:-false}
   BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-CHANGE_THIS_GENERATE_64_CHAR_HEX}
@@ -281,11 +283,41 @@ x-common-env: &common-env # Database Configuration
   QUEUE_ALERT_WEBHOOK_URL: ${QUEUE_ALERT_WEBHOOK_URL:-} # JSON payload { type: 'queue_alert', alert: ... }
 
 services:
+  # Traefik Reverse Proxy with HTTPS
+  traefik:
+    profiles: [https]
+    image: traefik:v3.6.6
+    environment:
+      # Traefik Configuration using environment variables
+      - TRAEFIK_API_DASHBOARD=false
+      - TRAEFIK_PROVIDERS_DOCKER=true
+      - TRAEFIK_PROVIDERS_DOCKER_EXPOSEDBYDEFAULT=false
+      - TRAEFIK_ENTRYPOINTS_WEB_ADDRESS=:80
+      - TRAEFIK_ENTRYPOINTS_WEBSECURE_ADDRESS=:443
+      # Let's Encrypt ACME configuration for automatic SSL certificates
+      - TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_HTTPCHALLENGE=true
+      - TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_HTTPCHALLENGE_ENTRYPOINT=web
+      - TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_EMAIL=${ACME_EMAIL:-}
+      - TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_STORAGE=/letsencrypt/acme.json
+      - TRAEFIK_LOG_LEVEL=INFO
+      - TRAEFIK_ACCESSLOG=true
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik-letsencrypt:/letsencrypt
+    labels:
+      - "traefik.enable=false"
+    networks:
+      - supercheck-network
+    restart: unless-stopped
+
   # App (Next.js Frontend) - Handles migrations internally
   app:
     image: ghcr.io/supercheck-io/supercheck/app:${SUPERCHECK_VERSION:-1.3.6}
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     environment:
       <<: *common-env
       # App-specific configuration (inherits all common env vars)
@@ -303,8 +335,59 @@ services:
       timeout: 10s
       retries: 5
       start_period: 120s # Increased to allow for migrations
+    labels:
+      - "traefik.enable=true"
+
+      # Main app — uses APP_DOMAIN from environment
+      - "traefik.http.routers.app.rule=Host(`${APP_DOMAIN:-localhost}`)"
+      - "traefik.http.routers.app.priority=100"
+      - "traefik.http.routers.app.entrypoints=websecure"
+      - "traefik.http.routers.app.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.app.service=app"
+
+      # Status pages — wildcard subdomain namespace.
+      # Defaults to APP_DOMAIN when STATUS_PAGE_DOMAIN is not explicitly set.
+      - "traefik.http.routers.status-pages.rule=HostRegexp(`[a-zA-Z0-9-]+\\.${STATUS_PAGE_DOMAIN:-${APP_DOMAIN:-localhost}}`)"
+      - "traefik.http.routers.status-pages.priority=50"
+      - "traefik.http.routers.status-pages.entrypoints=websecure"
+      - "traefik.http.routers.status-pages.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.status-pages.service=app"
+
+      # Verified custom domains — lower priority than APP_DOMAIN and reserved
+      # STATUS_PAGE_DOMAIN subdomains. Matches public multi-label hostnames only;
+      # provide custom-domain TLS separately (Traefik file provider, wildcard cert, etc.).
+      - "traefik.http.routers.status-custom.rule=HostRegexp(`^[a-zA-Z0-9-]+(\\.[a-zA-Z0-9-]+)+$`) && !HostRegexp(`^[0-9]+(\\.[0-9]+){3}$`) && !Host(`${APP_DOMAIN:-localhost}`)"
+      - "traefik.http.routers.status-custom.priority=10"
+      - "traefik.http.routers.status-custom.entrypoints=websecure"
+      - "traefik.http.routers.status-custom.tls=true"
+      - "traefik.http.routers.status-custom.service=app"
+
+      # HTTP → HTTPS redirect for main app
+      - "traefik.http.routers.app-http.rule=Host(`${APP_DOMAIN:-localhost}`)"
+      - "traefik.http.routers.app-http.entrypoints=web"
+      - "traefik.http.routers.app-http.middlewares=app-https-redirect"
+      - "traefik.http.routers.app-http.service=app"
+
+      # HTTP → HTTPS redirect for status pages
+      - "traefik.http.routers.status-pages-http.rule=HostRegexp(`[a-zA-Z0-9-]+\\.${STATUS_PAGE_DOMAIN:-${APP_DOMAIN:-localhost}}`)"
+      - "traefik.http.routers.status-pages-http.entrypoints=web"
+      - "traefik.http.routers.status-pages-http.middlewares=app-https-redirect"
+      - "traefik.http.routers.status-pages-http.service=app"
+
+      # HTTP → HTTPS redirect for verified custom domains
+      - "traefik.http.routers.status-custom-http.rule=HostRegexp(`^[a-zA-Z0-9-]+(\\.[a-zA-Z0-9-]+)+$`) && !HostRegexp(`^[0-9]+(\\.[0-9]+){3}$`) && !Host(`${APP_DOMAIN:-localhost}`)"
+      - "traefik.http.routers.status-custom-http.priority=10"
+      - "traefik.http.routers.status-custom-http.entrypoints=web"
+      - "traefik.http.routers.status-custom-http.middlewares=app-https-redirect"
+      - "traefik.http.routers.status-custom-http.service=app"
+
+      # Redirect middleware & service config
+      - "traefik.http.middlewares.app-https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.services.app.loadbalancer.server.port=3000"
+      - "traefik.http.services.app.loadbalancer.healthCheck.path=/api/health"
     networks:
       - supercheck-network
+      - private-agent-network
     deploy:
       resources:
         limits:
@@ -483,7 +566,44 @@ services:
           cpus: "0.25"
           memory: 512M
 
+  private-agent:
+    profiles: [private-agent]
+    image: ghcr.io/supercheck-io/supercheck/worker:${SUPERCHECK_VERSION:-1.3.6}
+    init: true
+    user: "pwuser:pwuser"
+    read_only: true
+    tmpfs:
+      - /tmp:size=256M,uid=1001,gid=1001,mode=1777
+      - /home/pwuser/.cache:size=128M,uid=1001,gid=1001,mode=0700
+    volumes:
+      - private-agent-state:/home/pwuser/.supercheck
+    environment:
+      NODE_ENV: production
+      SUPERCHECK_RUNTIME_MODE: private-agent
+      SUPERCHECK_API_URL: ${SUPERCHECK_API_URL:-http://app:3000}
+      PRIVATE_AGENT_ID: ${PRIVATE_AGENT_ID:-}
+      PRIVATE_AGENT_TOKEN: ${PRIVATE_AGENT_TOKEN:-}
+      PRIVATE_AGENT_CREDENTIAL_FILE: /home/pwuser/.supercheck/private-agent-token
+      # Agent version identity is baked into the image from the release tag.
+      PRIVATE_AGENT_LEASE_WAIT_MS: ${PRIVATE_AGENT_LEASE_WAIT_MS:-25000}
+      PRIVATE_AGENT_RETRY_INTERVAL_MS: ${PRIVATE_AGENT_RETRY_INTERVAL_MS:-5000}
+      PRIVATE_AGENT_HEARTBEAT_INTERVAL_MS: ${PRIVATE_AGENT_HEARTBEAT_INTERVAL_MS:-30000}
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      - private-agent-network
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
 volumes:
+  private-agent-state:
+    driver: local
+  traefik-letsencrypt:
+    driver: local
   postgres-data:
     driver: local
   redis-data:
@@ -498,5 +618,7 @@ volumes:
     driver: local
 
 networks:
+  private-agent-network:
+    driver: bridge
   supercheck-network:
     driver: bridge

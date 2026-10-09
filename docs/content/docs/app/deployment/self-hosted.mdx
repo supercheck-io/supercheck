@@ -19,7 +19,7 @@ flowchart TB
     T --> App[Next.js App<br/>UI + API]
     App --> DB[(PostgreSQL<br/>Primary DB)] & Redis[(Redis + BullMQ<br/>Queue + Cache)] & S3[(MinIO<br/>Artifacts)]
     App --> SRE[AI SRE Engine<br/>Read-only investigations]
-    SRE -.-> Private[Private Agents<br/>Outbound HTTPS only]
+    SRE -.-> Private[Private Agents<br/>Outbound-only queries]
 
     Redis --> W1
     Redis --> W2
@@ -51,265 +51,78 @@ flowchart TB
 </div>
 </div>
 
-Use the Docker Compose steps below. All bundled services run on one Linux host. Private Agents initiate outbound HTTPS connections to Supercheck.
-
-## Setup Overview
-
-1. Prepare a Linux server and install Docker Compose.
-2. Configure your instance URL and generate secrets.
-3. Run the supplied execution-sandbox setup script, then start Supercheck.
-4. Sign in, create a test, and run it to verify your installation.
-
-Start with **Quick Start** below. Use **Production (HTTPS)** for a public server; **External Services** is for an existing managed database and storage.
-
-Installing with an agent? Give it the [installation runbook](https://raw.githubusercontent.com/supercheck-io/supercheck/main/deploy/docker/INSTALL.md). The [agent documentation index](/llms.txt) links to Markdown sources.
-
----
+Use one Compose file for the bundled stack. HTTP is available on the host for evaluation; enable the `https` profile for a public server. The optional `private-agent` profile adds read-only access to private evidence sources.
 
 ## Docker Compose
 
-Use a Linux server (Ubuntu 22.04+ or Debian 12+) with Docker Compose v2. The execution sandbox requires Linux; macOS, Windows, and WSL2 are not supported.
+Use Ubuntu 22.04+ or Debian 12+ with Docker Engine and Compose **v2.24.4 or newer**. The execution sandbox requires Linux; macOS, Windows, and WSL2 are not supported. Allow at least 2 vCPU and 4 GB RAM.
 
-<Tabs items={['Quick Start', 'Production (HTTPS)', 'External Services']}>
-  <Tab value="Quick Start">
-    <Steps>
-      <Step>
-        ### Install Docker
+Installing with an agent? Use the [installation runbook](https://raw.githubusercontent.com/supercheck-io/supercheck/main/deploy/docker/INSTALL.md).
 
-        ```bash
-        # Review Docker's official installation script before running it.
-        curl -fsSL https://get.docker.com -o get-docker.sh
-        sudo sh get-docker.sh
-        sudo usermod -aG docker $USER
-        newgrp docker
-        ```
+### 1. Prepare the Host
 
-        For production hosts, you can instead follow Docker's [distribution-specific Engine installation instructions](https://docs.docker.com/engine/install/) to install from its package repository. Verify that `docker compose version` reports Compose v2 before continuing.
-      </Step>
+```bash
+git clone https://github.com/supercheck-io/supercheck.git
+cd supercheck/deploy/docker
+./init-secrets.sh
+sudo bash setup-k3s.sh
+```
 
-      <Step>
-        ### Clone and Configure
+The scripts generate secrets and prepare the isolated execution environment. Preserve an existing `.env` and its secrets when updating or retrying.
 
-        ```bash
-        git clone https://github.com/supercheck-io/supercheck.git
-        cd supercheck/deploy/docker
-        ./init-secrets.sh
-        ```
+### 2. Configure HTTPS
 
-        Edit `.env` for optional integrations (SMTP, AI, OAuth). If you will open this HTTP deployment from another computer, also set the externally reachable origin (with no trailing slash):
+For a public server, point your app hostname at the server and allow inbound TCP ports **80** and **443**. Edit `.env`:
 
-        ```bash
-        NEXT_PUBLIC_APP_URL=http://YOUR_SERVER_IP:3000
-        ```
-      </Step>
+```dotenv
+COMPOSE_PROFILES=https
+APP_DOMAIN=app.example.com
+ACME_EMAIL=admin@example.com
+STATUS_PAGE_DOMAIN=example.com
+```
 
-      <Step>
-        ### Set Up Execution Sandbox
+Traefik obtains the app certificate and redirects HTTP to HTTPS. The app URL and authentication origin are derived from `APP_DOMAIN`. If `NEXT_PUBLIC_APP_URL` is already set, update it to the same HTTPS origin.
 
-        ```bash
-        sudo bash setup-k3s.sh
-        ```
+For local evaluation, leave `COMPOSE_PROFILES` and `APP_DOMAIN` unset and open `http://localhost:3000` on the host. Port 3000 is bound to loopback; when using a remote server, forward it with SSH or configure HTTPS.
 
-        Run this once on the server before starting the workers. It prepares the isolated environment required for Playwright and k6 test execution.
-      </Step>
+`STATUS_PAGE_DOMAIN` reserves the default status-page namespace. Point its DNS records at your instance and provide a wildcard or per-host certificate before publishing subdomain status pages. Verified custom domains also route to the app, but require your own certificate setup. If using Cloudflare, use **Full (strict)** and keep custom-domain records DNS-only until verification and origin HTTPS work.
 
-      <Step>
-        ### Deploy
+### 3. Start and Verify
 
-        ```bash
-        KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig docker compose up -d
-        ```
-      </Step>
+```bash
+KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig docker compose config -q
+KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig docker compose up -d --wait --wait-timeout 300
+docker compose ps
+curl --fail --silent --show-error https://app.example.com/api/health
+```
 
-      <Step>
-        ### Access
+For local evaluation, use `http://localhost:3000/api/health`. The app applies migrations at startup; no separate migration command is needed. Sign up, then run a test to verify the execution sandbox. To grant your account Super Admin access:
 
-        Open the URL configured in `NEXT_PUBLIC_APP_URL` and create your account. If you are working directly on the server and left the default unchanged, use `http://localhost:3000`.
+```bash
+docker compose exec app node scripts/bootstrap-admin.js your-email@example.com
+```
 
-        ```bash
-        # Optional: grant super admin
-        docker compose exec app node scripts/bootstrap-admin.js your-email@example.com
-        ```
-      </Step>
-    </Steps>
-  </Tab>
+### Optional Private Agent
 
-  <Tab value="Production (HTTPS)">
-    <Steps>
-      <Step>
-        ### Install Docker
+Register an agent in **Organization Admin → Private Agents**, then add its ID and registration token to `.env`:
 
-        ```bash
-        # Review Docker's official installation script before running it.
-        curl -fsSL https://get.docker.com -o get-docker.sh
-        sudo sh get-docker.sh
-        sudo usermod -aG docker $USER
-        newgrp docker
-        ```
+```dotenv
+COMPOSE_PROFILES=https,private-agent
+PRIVATE_AGENT_ID=your-agent-id
+PRIVATE_AGENT_TOKEN=your-registration-token
+```
 
-        For production hosts, you can instead follow Docker's [distribution-specific Engine installation instructions](https://docs.docker.com/engine/install/) to install from its package repository. Verify that `docker compose version` reports Compose v2 before continuing.
-      </Step>
+```bash
+docker compose up -d private-agent
+```
 
-      <Step>
-        ### Configure DNS
+The colocated agent connects to the app over the private Docker network. It receives no database, Redis, or storage credentials. See [Private Agent](/docs/app/deployment/private-agent) for connector setup and agents on another network or connected to Supercheck Cloud.
 
-        | Type | Name | Value |
-        |------|------|-------|
-        | A | `app` | Your Server IP |
-        | A | `*` | Your Server IP |
+To stop it, run `docker compose stop private-agent` and remove `private-agent` from `COMPOSE_PROFILES`. Keep the agent state volume for reconnection.
 
-        <Callout type="info">
-        The wildcard (`*`) record enables default status page URLs like `abc123.example.com`.
-        </Callout>
+### Existing Managed Services
 
-        <Callout type="info">
-        The same wildcard usually also covers the derived custom-domain target (for example, `cname.example.com`). If the target shown in Settings is outside that wildcard or on another zone, add an A/AAAA record for that target as well.
-        </Callout>
-
-        <Callout type="info">
-        Customer-facing custom domains should stay outside the `STATUS_PAGE_DOMAIN` namespace. For example, you might reserve `example.com` for default UUID URLs and serve a status page at `status.example.net` by pointing its CNAME to `cname.example.com`.
-        </Callout>
-
-        <Callout type="warn">
-        **Cloudflare Users**: Set SSL/TLS mode to **"Full"** or **"Full (Strict)"**.
-        </Callout>
-
-        <Callout type="warn">
-        Keep inbound TCP ports **80** and **443** open. Traefik uses port 80 for the ACME HTTP challenge and redirects HTTP traffic to HTTPS.
-        </Callout>
-      </Step>
-
-      <Step>
-        ### Clone and Configure
-
-        ```bash
-        git clone https://github.com/supercheck-io/supercheck.git
-        cd supercheck/deploy/docker
-        ./init-secrets.sh
-        ```
-
-        Edit `.env`:
-
-        ```bash
-        APP_DOMAIN=app.example.com
-        ACME_EMAIL=admin@example.com
-        STATUS_PAGE_DOMAIN=example.com
-        ```
-
-        <Callout type="info">
-        `STATUS_PAGE_DOMAIN` reserves the default status page namespace (`[uuid].STATUS_PAGE_DOMAIN`). In the HTTPS Compose examples, Supercheck derives the custom-domain target from it automatically, usually as `cname.STATUS_PAGE_DOMAIN`.
-        </Callout>
-
-        <Callout type="warn">
-        Set `STATUS_PAGE_DOMAIN` to a publicly reachable hostname. Keep customer-facing custom domains outside that reserved namespace, and keep those hostnames as CNAME records only. The target shown in Settings must already point to your app, usually via the wildcard `*` record above or a dedicated A/AAAA record for that target.
-        </Callout>
-
-        <Callout type="info">
-        Local development still stays on `http://localhost:3000/status/[subdomain]`. `STATUS_PAGE_DOMAIN` is only used for public/default status-page hostnames once you access the app through that public hostname.
-        </Callout>
-      </Step>
-
-      <Step>
-        ### Set Up Execution Sandbox
-
-        ```bash
-        sudo bash setup-k3s.sh
-        ```
-
-        Run this once on the server before starting the workers. It prepares the isolated environment required for Playwright and k6 test execution.
-      </Step>
-
-      <Step>
-        ### Deploy
-
-        ```bash
-        KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig docker compose -f docker-compose-secure.yml up -d
-        ```
-      </Step>
-
-      <Step>
-        ### Access
-
-        Open `https://app.example.com` and create your account.
-
-        ```bash
-        # Optional: grant super admin
-        docker compose -f docker-compose-secure.yml exec app node scripts/bootstrap-admin.js your-email@example.com
-        ```
-      </Step>
-    </Steps>
-  </Tab>
-  <Tab value="External Services">
-    Use `docker-compose-external.yml` when you want to connect Supercheck to managed external services (Neon, Supabase, Upstash, Cloudflare R2) instead of running PostgreSQL, Redis, and MinIO in Docker.
-
-    <Steps>
-      <Step>
-        ### Configure External Services
-
-        Generate a secure `.env`, then replace its database, Redis, storage, and public URL values with your managed-service settings:
-
-        ```bash
-        ./init-secrets.sh
-
-        # Managed PostgreSQL (Neon, Supabase, RDS)
-        DATABASE_URL=postgresql://user:password@host:5432/supercheck
-        DB_HOST=host
-        DB_PORT=5432
-        DB_USER=user
-        DB_PASSWORD=password
-        DB_NAME=supercheck
-
-        # Managed Redis (Upstash, Redis Cloud)
-        REDIS_URL=redis://user:password@host:6379
-        REDIS_HOST=host
-        REDIS_PORT=6379
-        REDIS_PASSWORD=password
-        REDIS_TLS_ENABLED=true
-
-        # Managed S3-compatible storage (Cloudflare R2, AWS S3)
-        S3_ENDPOINT=https://your-account.r2.cloudflarestorage.com
-        AWS_REGION=auto
-        AWS_ACCESS_KEY_ID=your-access-key
-        AWS_SECRET_ACCESS_KEY=your-secret-key
-
-        # Public HTTPS configuration
-        APP_DOMAIN=app.example.com
-        APP_URL=https://app.example.com
-        NEXT_PUBLIC_APP_URL=https://app.example.com
-        BETTER_AUTH_URL=https://app.example.com
-        STATUS_PAGE_DOMAIN=example.com
-        ACME_EMAIL=admin@example.com
-        ```
-
-        Keep the generated `BETTER_AUTH_SECRET` and `SECRET_ENCRYPTION_KEY`. For Redis providers that do not use TLS, set `REDIS_TLS_ENABLED=false`.
-      </Step>
-      <Step>
-        ### Set Up Execution Sandbox
-
-        ```bash
-        sudo bash setup-k3s.sh
-        ```
-
-        Run this once on the server before starting the workers. It prepares the isolated environment required for test execution.
-      </Step>
-      <Step>
-        ### Start Services
-
-        ```bash
-        # Create .env with your managed service credentials
-        # Use the template below or start from the compose file's documented variables
-        KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig docker compose -f docker-compose-external.yml up -d
-        ```
-      </Step>
-    </Steps>
-
-    <Callout type="info">
-    This compose file skips the bundled PostgreSQL, Redis, and MinIO containers. It starts the App, Worker, and Traefik containers; the Worker runs tests in the host's execution sandbox.
-    </Callout>
-  </Tab>
-</Tabs>
-
----
+Use `docker-compose-external.yml` when you already have PostgreSQL, Redis, and S3-compatible storage. Configure their connection values and your domain in `.env`, then use `docker compose -f docker-compose-external.yml` for the commands above. For regional execution workers, see [Multi-Location](/docs/app/deployment/multi-location).
 
 ## Optional Configuration
 
@@ -453,7 +266,7 @@ Use a Linux server (Ubuntu 22.04+ or Debian 12+) with Docker Compose v2. The exe
 
     No enable flags are needed. For manual investigations only, set `SRE_AUTOMATION_ENABLED=false`. To disable AI SRE entirely, set `SRE_ENABLED=false`.
 
-    Automatic triage can use your AI provider when alerts fire and incur provider charges. Live connectors are optional and require consent in each investigation or chat. See [AI SRE Setup](/docs/app/admin/ai-sre-setup).
+    Automatic triage can use your AI provider when alerts fire and incur provider charges. Copilot live sources are on by default for authorized users. Full investigation runs have a separate **Include live sources** option. See [AI SRE Setup](/docs/app/admin/ai-sre-setup).
 
     After changing `.env`, apply it to both services:
 
@@ -461,105 +274,46 @@ Use a Linux server (Ubuntu 22.04+ or Debian 12+) with Docker Compose v2. The exe
     docker compose up -d --force-recreate app worker
     ```
 
-    For HTTPS, add `-f docker-compose-secure.yml` to the command.
   </Accordion>
 </Accordions>
 
 ---
-
-## Verify Installation
-
-```bash
-docker compose ps
-curl --fail --silent --show-error http://localhost:3000/api/health
-```
-
-For HTTPS, use `docker compose -f docker-compose-secure.yml ps` and your app URL for the health check. Wait for the app and worker to report healthy, then sign in and run a test. A completed test confirms the execution sandbox is working.
 
 ## Operations
 
 ### Scaling
 
-<Callout type="info">
-Keep `WORKER_LOCATION=local` (the default) for a single-server deployment. Location selectors appear only when more than one location is available. Expand later via [Multi-Location Workers](/docs/app/deployment/multi-location).
-</Callout>
-
-```bash
-# Quick Start (HTTP):
-WORKER_REPLICAS=2 RUNNING_CAPACITY=2 QUEUED_CAPACITY=20 \
-KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig \
-docker compose up -d
-
-# Production (HTTPS):
-WORKER_REPLICAS=2 RUNNING_CAPACITY=2 QUEUED_CAPACITY=20 \
-KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig \
-docker compose -f docker-compose-secure.yml up -d
-```
-
-| Size | Workers | Capacity | Server |
-|------|---------|----------|--------|
-| **Small** | 1 | 1 | 2 vCPU / 4GB |
-| **Medium** | 2 | 2 | 4 vCPU / 8GB |
-| **Large** | 4 | 4 | 8 vCPU / 16GB |
-
-<Callout type="info">
-Set `WORKER_REPLICAS`, `RUNNING_CAPACITY`, and `QUEUED_CAPACITY` in `.env`. Keep `RUNNING_CAPACITY` equal to the total worker replicas, and choose `QUEUED_CAPACITY` based on how many waiting runs you want to allow.
-</Callout>
+Set `WORKER_REPLICAS` and `RUNNING_CAPACITY` to the same number in `.env`, then run `docker compose up -d`. Keep `WORKER_LOCATION=local` for a single-server installation.
 
 ### Backups
 
+Back up your database, MinIO data, `.env`, and Traefik certificate volume before upgrades. For a database backup:
+
 ```bash
-docker compose exec postgres sh -c 'pg_dump -U "$DB_USER" "$DB_NAME"' > backup.sql        # Create
-docker compose exec -T postgres sh -c 'psql -U "$DB_USER" "$DB_NAME"' < backup.sql        # Restore
+docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' > backup.sql
 ```
 
 ### Updates
 
-Images are pinned to a specific release through `SUPERCHECK_VERSION`, which defaults to the release bundled with this Compose file. Set it in `.env` to upgrade, and keep the App and Worker on the same value to keep the services compatible.
+Set `SUPERCHECK_VERSION` to the release you want in `.env`, then run:
 
 ```bash
-# In .env: set the target release (see GitHub Releases for available tags)
-SUPERCHECK_VERSION=1.3.6
+docker compose pull
+KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig docker compose up -d
 ```
 
-If you previously disabled an AI SRE workflow, keep that choice with `SRE_ENABLED=false` or `SRE_AUTOMATION_ENABLED=false` before upgrading.
-
-Then pull and recreate the services:
+The same file and profiles are used for installation and updates. After changing environment values, recreate the affected services; `restart` does not load new `.env` values:
 
 ```bash
-# Quick Start (HTTP):
-docker compose pull && \
-KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig \
-docker compose up -d
-
-# Production (HTTPS):
-docker compose -f docker-compose-secure.yml pull && \
-KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig \
-docker compose -f docker-compose-secure.yml up -d
+docker compose up -d --force-recreate app worker
 ```
 
-<Accordions>
-  <Accordion title="Upgrading from before 1.3.3">
-    Back up the database and install the execution sandbox before running the update commands above:
+Recreate `private-agent` too when its settings change, preserving its state volume. Existing deployments may keep using `docker-compose-secure.yml`; it is a compatibility entry point backed by the main Compose file. HTTPS certificates and application data keep their existing named volumes.
 
-    ```bash
-    docker compose exec postgres sh -c 'pg_dump -U "$DB_USER" "$DB_NAME"' > backup-pre-k3s-migration.sql
-    sudo bash setup-k3s.sh
-    ```
-
-    For HTTPS, use `-f docker-compose-secure.yml` for the backup command. Run `setup-k3s.sh` on each remote worker server too.
-  </Accordion>
-</Accordions>
-
----
+**Upgrading from before 1.3.3:** Back up your data and run `sudo bash setup-k3s.sh` before updating to the isolated execution sandbox.
 
 ## Next Steps
 
-<Cards>
-  <Card
-    icon={<MapPin className="text-emerald-500" />}
-    title="Multi-Location Workers"
-    description="Deploy workers in multiple regions for global coverage"
-    href="/docs/app/deployment/multi-location"
-  />
-</Cards>
+- [AI SRE Setup](/docs/app/admin/ai-sre-setup) — add services and read-only evidence sources.
+- [Private Agent](/docs/app/deployment/private-agent) — reach sources inside another network.
+- [Multi-Location](/docs/app/deployment/multi-location) — add regional execution workers.

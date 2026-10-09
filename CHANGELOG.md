@@ -4,6 +4,9 @@ Notable features, fixes, and upgrade requirements for Supercheck users. App and 
 
 ## [Unreleased]
 
+- **Copilot:** One dedicated screen for general and incident chat; the AI SRE popup is removed and support chat remains available. New chat preserves incident context. Authorized live sources default on in the UI and both chat APIs; API callers can send `useLiveConnectorTools=false` to disable them. General-chat connector results stay temporary; incident results are saved.
+- **Self-hosting:** One main Compose file with optional `https` and `private-agent` profiles. HTTP evaluation binds to localhost; use HTTPS or SSH forwarding for remote access. Existing HTTPS commands remain supported through a compatibility file. Remote and Cloud-connected Private Agents retain their standalone setup.
+
 - **AI providers:** GPT-6 Luna is the default, with DeepSeek V4.1 Flash available as an optional provider.
 - **AI test dialogs:** Clearer creation guidance, visible API and k6 examples, and improved code-review and analysis layouts. Generated scripts remain available for review and editing before applying.
 - **AI SRE setup:** AI SRE and alert-triggered automation are enabled when an AI provider is configured. Use `SRE_ENABLED` and `SRE_AUTOMATION_ENABLED` to control manual AI features and automatic processing.

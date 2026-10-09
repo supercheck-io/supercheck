@@ -21,7 +21,7 @@ import { requireSreSameOriginRequest } from "../_auth";
 const chatRequestSchema = z.object({
   conversationId: z.string().uuid().optional().nullable(),
   incidentId: z.string().uuid().optional().nullable(),
-  useLiveConnectorTools: z.boolean().optional().default(false),
+  useLiveConnectorTools: z.boolean().optional().default(true),
   message: z.string().trim().min(1).max(4000),
   title: z.string().trim().max(200).optional().nullable(),
   attachments: z
@@ -62,7 +62,11 @@ const chatLogger = createLogger({ module: "sre-chat-api" }) as {
 
 function authErrorResponse(error: unknown) {
   return NextResponse.json(
-    { error: isAuthError(error) ? "Authentication required" : "Unable to authorize Copilot" },
+    {
+      error: isAuthError(error)
+        ? "Authentication required"
+        : "Unable to authorize Copilot",
+    },
     { status: isAuthError(error) ? 401 : 500 },
   );
 }
@@ -131,6 +135,7 @@ function buildChatPrompt(input: {
   message: string;
   incidentId: string | null;
   projectName: string;
+  liveConnectorToolsEnabled: boolean;
   attachments: Array<ReturnType<typeof sanitizeAttachmentForPrompt>>;
 }) {
   return [
@@ -139,6 +144,9 @@ function buildChatPrompt(input: {
     input.incidentId
       ? "Use available read-only evidence tools before giving incident-specific conclusions."
       : "No incident is scoped; do not claim incident evidence was inspected.",
+    input.liveConnectorToolsEnabled
+      ? "Use available live connector tools when fresh data is needed. Discover available project connectors and services first; ask which service if the target is ambiguous."
+      : "Live connector tools are not available for this chat; use conversation text and any available stored incident evidence only.",
     input.attachments.length > 0
       ? `User-provided context attachments (server-validated metadata/text only):\n${JSON.stringify(input.attachments, null, 2)}`
       : null,
@@ -305,7 +313,11 @@ export async function POST(request: NextRequest) {
 
   if (!isSreEnabled()) {
     return NextResponse.json(
-      { error: "AI SRE is disabled", code: "feature_disabled", enabledBy: "SRE_ENABLED" },
+      {
+        error: "AI SRE is disabled",
+        code: "feature_disabled",
+        enabledBy: "SRE_ENABLED",
+      },
       { status: 503 },
     );
   }
@@ -424,30 +436,34 @@ export async function POST(request: NextRequest) {
     let assistantText: string;
     let modelId: string | null = null;
     try {
-      const incidentToolScope = conversation.incidentId
-        ? {
-            organizationId: context.organizationId,
-            projectId: context.project.id,
-            incidentId: conversation.incidentId,
-            userId: context.userId,
-          }
-        : null;
+      const connectorToolScope = {
+        organizationId: context.organizationId,
+        projectId: context.project.id,
+        incidentId: conversation.incidentId,
+        userId: context.userId,
+      };
+      const liveConnectorToolsEnabled =
+        parsed.data.useLiveConnectorTools && canInvestigateConnectors;
       const result = await runSreAgent({
         system: buildSreTriageSystemPrompt(),
         prompt: buildChatPrompt({
           message: parsed.data.message,
           incidentId: conversation.incidentId,
           projectName: context.project.name,
+          liveConnectorToolsEnabled,
           attachments: sanitizedAttachments,
         }),
-        tools: incidentToolScope
-          ? {
-              ...createSreEvidenceTools(incidentToolScope),
-              ...(parsed.data.useLiveConnectorTools && canInvestigateConnectors
-                ? createSreConnectorTools(incidentToolScope)
-                : {}),
-            }
-          : undefined,
+        tools: {
+          ...(conversation.incidentId
+            ? createSreEvidenceTools({
+                ...connectorToolScope,
+                incidentId: conversation.incidentId,
+              })
+            : {}),
+          ...(liveConnectorToolsEnabled
+            ? createSreConnectorTools(connectorToolScope)
+            : {}),
+        },
         budget: { maxSteps: 4, maxOutputTokens: 1200, timeoutMs: 45_000 },
         onStepFinish: (event) =>
           send("agent.step", sanitizeSreAgentStepEvent(event)),

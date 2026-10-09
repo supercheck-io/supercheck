@@ -82,13 +82,20 @@ GITHUB_CLIENT_SECRET=
 # ────────────────────────────────────────────────────────────
 # OPTIONAL: Domain Configuration (for HTTPS deployment)
 # ────────────────────────────────────────────────────────────
-# Uncomment and set these for production with domain
+# Uncomment and set these for production HTTPS with the main Compose file
+# COMPOSE_PROFILES=https
 # APP_DOMAIN=app.yourdomain.com
 # ACME_EMAIL=admin@yourdomain.com
 # STATUS_PAGE_DOMAIN=yourdomain.com        # Reserved namespace for default status page URLs ([uuid].STATUS_PAGE_DOMAIN)
 # STATUS_PAGE_HIDE_BRANDING=false    # Set to true to hide the public status page branding footer globally
 
 # ────────────────────────────────────────────────────────────
+# OPTIONAL: Colocated Private Agent (register it in Admin → Private Agents first)
+# Add private-agent to COMPOSE_PROFILES (for example: https,private-agent).
+# PRIVATE_AGENT_ID=
+# PRIVATE_AGENT_TOKEN=
+# SUPERCHECK_API_URL=http://app:3000  # Internal app origin; remote agents use HTTPS.
+
 # AUTO-GENERATED: Security Secrets (do not modify)
 # ────────────────────────────────────────────────────────────
 BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
