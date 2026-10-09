@@ -115,6 +115,67 @@ describe("Copilot connector service scope", () => {
     expect(query.params).toContain("%Checkout%");
   });
 
+  it.each([
+    {
+      incidentId: null,
+      selectedServiceId: undefined,
+      expected: ["checkout", "search", "shared"],
+    },
+    {
+      incidentId: null,
+      selectedServiceId: serviceId,
+      expected: ["checkout", "shared"],
+    },
+    {
+      incidentId: "018f0000-0000-7000-8000-000000000099",
+      selectedServiceId: undefined,
+      expected: ["checkout", "shared"],
+    },
+  ])(
+    "discovers project connectors and filters service-scoped chats ($incidentId, $selectedServiceId)",
+    async ({ incidentId, selectedServiceId, expected }) => {
+      db.query.sreServices.findFirst.mockResolvedValue({ id: serviceId });
+      db.query.sreIncidents.findFirst.mockResolvedValue({
+        primaryServiceId: serviceId,
+      });
+      db.select
+        .mockReturnValueOnce(
+          selectRows(
+            ["checkout", "search", "shared"].map((name) => ({
+              connector: {
+                id: name,
+                name,
+                type: "prometheus",
+                status: "valid",
+                config: {
+                  endpointUrl: "https://internal.example",
+                  secret: "hidden",
+                },
+              },
+            })),
+          ),
+        )
+        .mockReturnValueOnce(
+          selectRows([
+            { connectorId: "checkout", serviceId },
+            { connectorId: "search", serviceId: "other-service" },
+          ]),
+        );
+      const result = await listIncidentLiveConnectors({
+        ...scope,
+        incidentId,
+        serviceId: selectedServiceId,
+      });
+      expect(result.connectors.map((connector) => connector.id)).toEqual(
+        expected,
+      );
+      expect(result.connectors[0].scopedServiceIds).toEqual([serviceId]);
+      expect(result.connectors.at(-1)?.scopedServiceIds).toEqual([]);
+      expect(JSON.stringify(result)).not.toContain("hidden");
+      expect(JSON.stringify(result)).not.toContain("internal.example");
+    },
+  );
+
   it("rejects a service outside the project before loading or executing connectors", async () => {
     db.query.sreServices.findFirst.mockResolvedValue(null);
     await expect(
