@@ -96,10 +96,40 @@
           g.addEventListener('blur', clear);
         });
       }
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initFlow);
-      } else {
+      /* Self-sizing: report the rendered content height so the embedding docs
+         page can set the frame height exactly — no letterboxing, no inner
+         scrollbar. No-op when this file is opened directly. */
+      function initSizing() {
+        function reportHeight() {
+          if (window.parent === window) return;
+          var height = Math.ceil(document.body.getBoundingClientRect().height);
+          var target = window.location.protocol === 'file:' ? '*' : window.location.origin;
+          try {
+            window.parent.postMessage({ type: 'supercheck-diagram-height', height: height }, target);
+          } catch (_) {}
+        }
+        function scheduleReport() {
+          if (typeof window.requestAnimationFrame === 'function') {
+            window.requestAnimationFrame(reportHeight);
+          } else {
+            reportHeight();
+          }
+        }
+        window.addEventListener('load', scheduleReport);
+        window.addEventListener('resize', scheduleReport);
+        if (document.fonts && document.fonts.ready) { document.fonts.ready.then(scheduleReport); }
+        if ('ResizeObserver' in window) { new ResizeObserver(scheduleReport).observe(document.body); }
+        scheduleReport();
+      }
+
+      function boot() {
         initFlow();
+        initSizing();
+      }
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', boot);
+      } else {
+        boot();
       }
     })();
   </script>
@@ -134,12 +164,9 @@
       font-family: var(--font-name);
       background: var(--paper);
       color: var(--ink);
-      min-height: 100vh;
-      display: grid;
-      place-items: center;
-      padding: 2rem 1rem;
+      padding: 1rem;
     }
-    .frame { max-width: 1280px; width: 100%; }
+    .frame { max-width: 1280px; width: 100%; margin: 0 auto; }
     .diagram-container { width: 100%; overflow-x: auto; }
     svg { width: 100%; min-width: 0; display: block; }
 
