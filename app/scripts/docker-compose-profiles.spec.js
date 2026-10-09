@@ -2,6 +2,13 @@ const { execFileSync } = require("node:child_process");
 const path = require("node:path");
 
 const cwd = path.resolve(__dirname, "../../deploy/docker");
+let testCompose = test;
+try {
+  execFileSync("docker", ["compose", "version"], { stdio: "ignore" });
+} catch (error) {
+  if (process.env.CI) throw error;
+  testCompose = test.skip;
+}
 function config(profiles = "", file = "docker-compose.yml", vars = {}) {
   return JSON.parse(
     execFileSync(
@@ -34,7 +41,7 @@ const https = {
   ACME_EMAIL: "admin@example.com",
 };
 
-test("the default stack needs neither HTTPS nor Private Agent settings", () => {
+testCompose("the default stack needs neither HTTPS nor Private Agent settings", () => {
   const stack = config();
   expect(Object.keys(stack.services).sort()).toEqual([
     "app",
@@ -46,10 +53,15 @@ test("the default stack needs neither HTTPS nor Private Agent settings", () => {
   expect(stack.services.app.environment.NEXT_PUBLIC_APP_URL).toBe(
     "http://localhost:3000",
   );
-  expect(stack.services.app.ports[0].host_ip).toBe("127.0.0.1");
+  for (const name of ["app", "postgres", "redis", "minio"]) {
+    expect(stack.services[name].ports.length).toBeGreaterThan(0);
+    for (const port of stack.services[name].ports) {
+      expect(port.host_ip).toBe("127.0.0.1");
+    }
+  }
 });
 
-test("HTTPS uses the main file and keeps routing, certificates and app origins aligned", () => {
+testCompose("HTTPS uses the main file and keeps routing, certificates and app origins aligned", () => {
   const stack = config("https", "docker-compose.yml", https);
   expect(stack.services.traefik.ports.map((port) => port.published)).toEqual([
     "80",
@@ -62,6 +74,9 @@ test("HTTPS uses the main file and keeps routing, certificates and app origins a
     "Host(`app.example.com`)",
   );
   expect(
+    stack.services.app.labels["traefik.http.routers.status-pages.rule"],
+  ).toBe("HostRegexp(`[a-zA-Z0-9-]+\\.app.example.com`)");
+  expect(
     stack.services.app.labels["traefik.http.routers.status-custom.service"],
   ).toBe("app");
   expect(
@@ -71,7 +86,7 @@ test("HTTPS uses the main file and keeps routing, certificates and app origins a
   ).toBe(true);
 });
 
-test("Private Agent is optional, isolated and never inherits infrastructure credentials", () => {
+testCompose("Private Agent is optional, isolated and never inherits infrastructure credentials", () => {
   const stack = config("https,private-agent", "docker-compose.yml", {
     ...https,
     PRIVATE_AGENT_ID: "agent-id",
@@ -93,7 +108,7 @@ test("Private Agent is optional, isolated and never inherits infrastructure cred
   expect(agent.volumes[0].source).toBe("private-agent-state");
 });
 
-test("the existing HTTPS file remains a compatible entry point", () => {
+testCompose("the existing HTTPS file remains a compatible entry point", () => {
   const stack = config("", "docker-compose-secure.yml", https);
   expect(stack.services.traefik).toBeDefined();
   expect(stack.services.app.ports).toBeUndefined();
@@ -104,7 +119,7 @@ test("the existing HTTPS file remains a compatible entry point", () => {
   expect(stack.services["private-agent"]).toBeUndefined();
 });
 
-test("legacy HTTPS preserves explicit app and auth URL overrides for both app and worker", () => {
+testCompose("legacy HTTPS preserves explicit app and auth URL overrides for both app and worker", () => {
   const stack = config("", "docker-compose-secure.yml", {
     ...https, APP_URL: "https://api.example.com", BETTER_AUTH_URL: "https://auth.example.com",
   });

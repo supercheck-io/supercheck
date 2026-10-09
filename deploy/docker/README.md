@@ -26,11 +26,11 @@ KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig docker compose up 
 
 ## Prerequisites
 
-> **Modern Docker Compose Required**: Use `docker compose` (with space), not `docker-compose` (with hyphen).
+> **Docker Compose v2.24.4 or newer is required.** Use `docker compose` (with space).
 
 ```bash
 docker compose version
-# Should show: Docker Compose version v2.x.x or higher
+# Should show v2.24.4 or newer
 ```
 
 **Install Docker (Linux only):** For production hosts, prefer Docker's

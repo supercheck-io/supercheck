@@ -167,17 +167,12 @@ Org admins can restrict a project's available locations in **Organization Admin 
     WORKER_LOCATION=eu-central
     ```
 
-    Restart using the same Compose file your main server already uses:
+    Apply the change on the main server. For HTTPS, keep `COMPOSE_PROFILES=https`, `APP_DOMAIN`, and `ACME_EMAIL` in `.env`:
+
+    If your installation uses another Compose file, keep its `-f` option in the commands below.
     ```bash
-    # Quick Start (HTTP)
-    docker compose down && \
     KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig \
     docker compose up -d
-
-    # Production (HTTPS)
-    docker compose -f docker-compose-secure.yml down && \
-    KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig \
-    docker compose -f docker-compose-secure.yml up -d
     ```
   </Step>
 
@@ -298,7 +293,7 @@ Use the remote-worker `.env` example above on both remote hosts. Keep the same d
 # Main server: total of 3 workers across all servers (1 + 1 + 1)
 RUNNING_CAPACITY=3 QUEUED_CAPACITY=30 \
 KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig \
-docker compose -f docker-compose-secure.yml up -d
+docker compose up -d
 
 # Remote worker server: scale replicas on that server only
 WORKER_REPLICAS=1 \

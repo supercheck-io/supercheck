@@ -74,6 +74,58 @@ describe("SreAiConsole", () => {
     );
   });
 
+  it("switches history scope without bypassing Next.js router synchronization", () => {
+    window.history.replaceState({ __NA: true }, "", "/copilot");
+    const replaceState = jest.spyOn(window.history, "replaceState");
+    render(
+      <SreAiConsole
+        initialHistories={[
+          {
+            conversationId: "general",
+            incidentId: null,
+            title: "General chat",
+            updatedAt: "2026-10-09",
+            messages: [],
+          },
+          {
+            conversationId: "incident-chat",
+            incidentId: "incident-1",
+            title: "Incident chat",
+            updatedAt: "2026-10-09",
+            messages: [
+              {
+                id: "m1",
+                role: "assistant",
+                content: "Selected incident answer",
+                modelId: "test-model",
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "History" }));
+    fireEvent.click(screen.getByText("Incident chat"));
+    expect(replaceState).toHaveBeenLastCalledWith(
+      null,
+      "",
+      "/copilot?incident=incident-1",
+    );
+    expect(screen.getByText("Selected incident answer")).toBeInTheDocument();
+    expect(screen.getByTestId("chat-thread")).toHaveAttribute(
+      "data-incident",
+      "incident-1",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "History" }));
+    fireEvent.click(screen.getByText("General chat"));
+    expect(replaceState).toHaveBeenLastCalledWith(null, "", "/copilot");
+    expect(screen.getByTestId("chat-thread")).toHaveAttribute(
+      "data-incident",
+      "",
+    );
+    replaceState.mockRestore();
+  });
+
   it("opens general chat from the sidebar even when an incident chat is newest", () => {
     render(
       <SreAiConsole

@@ -113,8 +113,9 @@ export function SreAiConsole({
     setIsHistoryOpen(false);
     setConversationId(history.conversationId);
     setIncidentId(history.incidentId);
+    // Let Next.js synchronize the URL instead of reusing its internal history markers.
     window.history.replaceState(
-      window.history.state,
+      null,
       "",
       history.incidentId
         ? `/copilot?incident=${history.incidentId}`
