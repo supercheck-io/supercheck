@@ -29,7 +29,6 @@ export function formatCopilotError(error: unknown) {
 
 export function getQuickRepliesForAssistantText(
   content: string,
-  incidentScoped = true,
 ): SreQuickReply[] {
   const normalized = content.toLowerCase();
   const replies: SreQuickReply[] = [];
@@ -48,26 +47,25 @@ export function getQuickRepliesForAssistantText(
       content,
     );
 
-  if (incidentScoped && reportsFailedCheck) {
+  if (reportsFailedCheck) {
     replies.push(
       {
         label: "Retry read-only check",
         intent: "check",
         prompt:
-          "Retry the read-only investigation check. If it still fails, summarize the likely dependency or permission blocker.",
+          "Retry the read-only check. If it still fails, summarize the likely dependency or permission blocker.",
       },
       {
         label: "Try without connectors",
         intent: "check",
         prompt:
-          "Continue the investigation without live connectors and use only native Supercheck evidence.",
+          "Continue without live connectors using conversation text and any available saved evidence.",
         disableLiveConnectors: true,
       },
     );
   }
 
   if (
-    incidentScoped &&
     !reportsMissingEvidence &&
     /(evidence|incident|investigat|root cause|hypothesis|theory)/.test(
       normalized,

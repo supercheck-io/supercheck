@@ -1,98 +1,41 @@
 ---
 title: Copilot Chat
-description: Interactive, read-only AI SRE assistant for operational triage
+description: Ask operational questions using incident evidence and connected sources
 icon: MessageSquare
 ---
 
-Copilot is Supercheck's read-only operational assistant. Access it from **Investigate → Copilot** for open-ended queries or via the floating action panel on any incident page for incident-scoped follow-ups.
+Open **Investigate → Copilot** to ask about your services, errors, or logs. From an incident, select **Open Copilot** to bring its saved evidence into the same chat screen.
 
-![Copilot Chat](/screenshots/sre-copilot-chat.png)
-
-## Chat Workflow
-
-<p className="text-sm md:hidden">Scroll horizontally to view the full diagram.</p>
-
-<div className="overflow-x-auto" role="region" aria-label="Copilot chat workflow" tabIndex={0}>
-<div className="min-w-[36rem]">
-
-```mermaid
-sequenceDiagram
-    accTitle: Ask Copilot about an incident
-    accDescr: Ask a question, optionally include authorized live sources, and review citations.
-    autonumber
-    participant You as Responder
-    participant App as Copilot
-
-    rect rgba(139, 92, 246, 0.08)
-        You->>App: Open chat from an incident
-        opt Live evidence is needed and permitted
-            You->>App: Enable Live sources
-        end
-        You->>App: Ask a focused question
-    end
-    rect rgba(59, 130, 246, 0.08)
-        App-->>You: Answer, citations, and gaps
-        You->>App: Review evidence and suggested checks
-    end
-    opt More context is needed
-        You->>App: Restate context and ask a follow-up
-        App-->>You: Updated answer
-    end
-```
-
-</div>
-</div>
-
-## Chat Modes
-
-| Source | Mode | Capabilities |
-|---|---|---|
-| **Standalone** | Platform chat (`/copilot`) | Ask about an error, describe symptoms, or paste relevant logs. |
-| **Incident-scoped** | Incident panel | Ask follow-up questions about the incident and review citations to its saved evidence. |
-| **Live connectors** | Incident chat (opt-in) | Read-only queries to Kubernetes, Prometheus, Grafana, Datadog, GitHub, Loki, and other configured connectors. |
-
-<Callout type="info">
-Copilot is strictly read-only. It never modifies infrastructure or provider data, applies remediation, or deploys code. It synthesizes findings and suggests safe verification commands.
-</Callout>
-
-## Conversation Management
-
-- **New chat** — Starts a clean conversation thread.
-- **History** — Search and restore previous triage sessions.
-- **Archive** — Archives concluded sessions while preserving audit logs.
-- **Chat help** — Provides suggested questions and guidance on what Copilot can use.
-
-Conversations are automatically scoped to your current organization, project, and user identity.
-
-## Investigation Map
-
-For complex outages involving distributed microservices, open the **Investigation Map** (`/copilot/evidence-graph`) to navigate relationships between alerts, incidents, and upstream/downstream services.
-
-![Investigation Map](/screenshots/sre-investigation-map.png)
-
-The map displays:
-- Relationships between alert signals, incidents, and the services they affect
-- Service topology dependencies and tier classifications
-- Interactive node inspection for immediate evidence drill-down
+Copilot is read-only: it can gather evidence and suggest checks, but cannot change your systems or apply a fix.
 
 ## Live Sources
 
-Live connector queries are **disabled by default**. To activate them during an incident chat:
+**Live sources** is on by default for Project Admins and organization admins or owners. Copilot can query configured [connectors](/docs/app/investigate/connectors) when it needs fresh data.
 
-1. Ensure the incident is linked to a registered service with configured connectors.
-2. Verify that your user role has connector investigation permissions (`project_admin` or higher).
-3. Toggle **Live sources** in the chat composer before submitting your prompt.
+- **General chat** — Name the service you want to check. Copilot finds available sources in your current project and asks if the service is unclear.
+- **Incident chat** — Uses the incident's saved evidence and connectors for its linked service. **New chat** keeps this incident context.
 
-### Limits and Context
+Turn **Live sources** off to use conversation text and available saved evidence only. Project Editors can use Copilot without live queries; Viewers cannot use Copilot.
 
-- **Bounded queries** — Maximum 10 rows, 15-second execution timeout, and a historical time window of up to six hours (60 minutes by default).
-- **Namespace isolation** — Kubernetes queries strictly require explicit namespace scoping.
-- **Message length** — Keep each message under 4,000 characters. Restate relevant context in follow-up questions; earlier chat messages are not automatically reused.
-- **Saved answers** — Let an answer finish if you want to reopen it from History. Stopped answers are not saved.
-- **Request limits** — Up to 30 messages per minute. If a request is unavailable or times out, review the message before retrying.
-- **Attachments** — File uploads provide metadata rather than file contents to Copilot. Paste the relevant text when you want it analyzed; do not assume an uploaded screenshot or video was inspected.
-- **Sensitive data** — Keep credentials in connector settings rather than pasting them into chat.
+If live data is unavailable, check the service and connector configuration in **Services**. A failed or incomplete query is an evidence gap, not a verified result.
 
-<Callout type="info">
-For a full investigation with a saved, shareable report, use [Incident Investigation](/docs/app/investigate/incidents). Copilot is for interactive questions; an investigation runs the complete evidence pass and records its findings on the incident timeline.
-</Callout>
+## Conversations
+
+- **New chat** starts a fresh thread. To leave an incident context, open **Investigate → Copilot**.
+- **History** searches and restores your saved general and incident chats.
+- **Archive** removes a chat from active history.
+- **Chat help** offers suggested questions and explains available sources.
+
+History is private to you within your current organization and project. Let a response finish to save it; stopped answers are not saved. Follow-ups use the conversation text. General-chat connector results are temporary and are not added to the incident evidence graph; incident-chat results are saved on the incident.
+
+## Asking Useful Questions
+
+Ask one focused question, then review citations and any evidence gaps before acting. For example:
+
+- “Is checkout-api healthy? Check recent errors and latency.”
+- “Which evidence supports the leading hypothesis?”
+- “What should I check next to confirm this?”
+
+Keep messages under 4,000 characters. Paste relevant text for analysis; Copilot does not inspect uploaded images or videos. Keep credentials in connector settings rather than chat.
+
+For a complete investigation with a saved report, use [Incident Investigation](/docs/app/investigate/incidents). The [Investigation Map](/docs/app/investigate/incidents#incident-workspace) helps explore relationships between incidents, evidence, and services.

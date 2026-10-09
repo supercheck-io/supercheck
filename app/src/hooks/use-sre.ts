@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { getSreEvidenceGraphAction } from "@/actions/sre-evidence-graph";
-import { getSreStandaloneChatHistories } from "@/actions/sre-ai";
+import { getSreCopilotChatHistories } from "@/actions/sre-ai";
 import {
   getSreIncidentAnalytics,
   getSreIncidentDetails,
@@ -92,7 +92,7 @@ export function useSreCopilotHistories(options?: { enabled?: boolean }) {
   const { projectId } = useProjectContext();
   return useQuery({
     queryKey: getSreCopilotHistoriesQueryKey(projectId),
-    queryFn: getSreStandaloneChatHistories,
+    queryFn: getSreCopilotChatHistories,
     enabled: Boolean(projectId) && options?.enabled !== false,
     staleTime: 30_000,
     meta: MEMORY_ONLY_QUERY,

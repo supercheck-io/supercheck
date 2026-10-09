@@ -104,7 +104,7 @@ flowchart TB
     T --> App[Next.js App<br/>UI + API]
     App --> DB[(PostgreSQL<br/>Primary DB)] & Redis[(Redis + BullMQ<br/>Queue + Cache)] & S3[(MinIO<br/>Artifacts)]
     App --> SRE[AI SRE Engine<br/>Read-only investigations]
-    SRE -.-> Private[Private Agents<br/>Outbound HTTPS only]
+    SRE -.-> Private[Private Agents<br/>Outbound-only queries]
 
     Redis --> W_EU
     Redis -.->|Internet| W_US

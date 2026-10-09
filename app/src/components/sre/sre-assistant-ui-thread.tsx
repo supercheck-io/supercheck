@@ -31,7 +31,7 @@ import {
   CheckCircle2,
 } from "lucide-react";
 
-import type { SreStandaloneChatHistory } from "@/actions/sre-ai";
+import type { SreCopilotChatHistory } from "@/actions/sre-ai";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 import { CopilotChatHelp } from "@/components/sre/sre-copilot-chat-help";
 import {
@@ -92,10 +92,10 @@ export type SreAssistantUiMessage = UIMessage<SreAssistantUiMessageMetadata>;
 type SreAssistantUiThreadProps = {
   conversationId: string | null;
   incidentId?: string | null;
-  initialMessages: SreStandaloneChatHistory["messages"];
+  initialMessages: SreCopilotChatHistory["messages"];
   onConversationResolved: (input: {
     conversationId: string;
-    messages: SreStandaloneChatHistory["messages"];
+    messages: SreCopilotChatHistory["messages"];
     title: string;
   }) => void;
   onClearError: () => void;
@@ -103,7 +103,7 @@ type SreAssistantUiThreadProps = {
 };
 
 export function historyMessagesToUiMessages(
-  messages: SreStandaloneChatHistory["messages"],
+  messages: SreCopilotChatHistory["messages"],
 ): SreAssistantUiMessage[] {
   return messages.map((message) => ({
     id: message.id,
@@ -147,7 +147,7 @@ function textFromThreadMessage(message: {
 
 export function uiMessagesToHistoryMessages(
   messages: SreAssistantUiMessage[],
-): SreStandaloneChatHistory["messages"] {
+): SreCopilotChatHistory["messages"] {
   return messages.flatMap((message) => {
     if (message.role !== "user" && message.role !== "assistant") {
       return [];
@@ -309,8 +309,8 @@ function EmptyThread({
             }
             description={
               incidentId
-                ? "Review stored incident evidence, test a hypothesis, or choose the next safe checks. Live sources stay off until you enable them."
-                : "Describe the symptom or paste evidence. Copilot separates known facts from assumptions and suggests safe next checks."
+                ? "Review incident evidence, check live sources, or test a hypothesis."
+                : "Ask about a service, describe a symptom, or paste evidence. Copilot can check available sources and suggest next steps."
             }
             className="min-h-[320px]"
             action={
@@ -340,11 +340,9 @@ function EmptyThread({
 }
 
 function SreFollowUpSuggestions({
-  incidentId,
   onClearError,
   onUseLiveConnectorToolsChange,
 }: {
-  incidentId: string | null;
   onClearError: () => void;
   onUseLiveConnectorToolsChange: (enabled: boolean) => void;
 }) {
@@ -362,7 +360,7 @@ function SreFollowUpSuggestions({
   });
   const isRunning = useAuiState((state) => state.thread.isRunning);
   const replies = latestAssistantText
-    ? getQuickRepliesForAssistantText(latestAssistantText, Boolean(incidentId))
+    ? getQuickRepliesForAssistantText(latestAssistantText)
     : [];
 
   if (isRunning || !latestAssistantText || replies.length === 0) {
@@ -469,7 +467,7 @@ function SreComposer({
               Read-only
             </span>
           </div>
-          {incidentId && canUseLiveConnectors ? (
+          {canUseLiveConnectors ? (
             <div className="flex shrink-0 items-center gap-2">
               <Switch
                 id="copilot-live-connectors"
@@ -485,8 +483,7 @@ function SreComposer({
                 id="copilot-live-connectors-description"
                 className="sr-only"
               >
-                Allow this incident chat to query configured read-only
-                connectors.
+                Allow this chat to query configured read-only connectors.
               </span>
             </div>
           ) : null}
@@ -544,7 +541,6 @@ export function SreThread({
           </ThreadPrimitive.Messages>
           <AssistantThinking />
           <SreFollowUpSuggestions
-            incidentId={incidentId}
             onClearError={onClearError}
             onUseLiveConnectorToolsChange={onUseLiveConnectorToolsChange}
           />
@@ -586,7 +582,7 @@ export function SreAssistantUiThread({
   const canUseLiveConnectors = canUseSreLiveConnectors(
     currentProject?.userRole,
   );
-  const [useLiveConnectorTools, setUseLiveConnectorTools] = useState(false);
+  const [useLiveConnectorTools, setUseLiveConnectorTools] = useState(true);
   const uiMessages = useMemo(
     () => historyMessagesToUiMessages(initialMessages),
     [initialMessages],

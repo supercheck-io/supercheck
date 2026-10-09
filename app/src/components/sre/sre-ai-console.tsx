@@ -12,8 +12,8 @@ import {
 import { toast } from "sonner";
 
 import {
-  archiveSreStandaloneChat,
-  type SreStandaloneChatHistory,
+  archiveSreCopilotChat,
+  type SreCopilotChatHistory,
 } from "@/actions/sre-ai";
 import { SreAssistantUiThread } from "@/components/sre/sre-assistant-ui-thread";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -30,9 +30,10 @@ import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 
 type SreAiConsoleProps = {
-  initialHistories?: SreStandaloneChatHistory[];
+  initialHistories?: SreCopilotChatHistory[];
+  initialIncidentId?: string | null;
   loadError?: string | null;
-  onHistoriesChange?: (histories: SreStandaloneChatHistory[]) => void;
+  onHistoriesChange?: (histories: SreCopilotChatHistory[]) => void;
 };
 
 function formatHistoryDate(value: string) {
@@ -50,21 +51,30 @@ function formatHistoryDate(value: string) {
 
 export function SreAiConsole({
   initialHistories = [],
+  initialIncidentId = null,
   loadError = null,
   onHistoriesChange,
 }: SreAiConsoleProps) {
+  const initialHistory = initialIncidentId
+    ? initialHistories.find(
+        (history) => history.incidentId === initialIncidentId,
+      )
+    : initialHistories.find((history) => history.incidentId === null);
+  const [incidentId, setIncidentId] = useState<string | null>(
+    initialIncidentId ?? initialHistory?.incidentId ?? null,
+  );
   const [histories, setHistories] = useState(initialHistories);
   const [historyQuery, setHistoryQuery] = useState("");
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(
-    initialHistories[0]?.conversationId ?? null,
+    initialHistory?.conversationId ?? null,
   );
   const [activeMessages, setActiveMessages] = useState<
-    SreStandaloneChatHistory["messages"]
-  >(initialHistories[0]?.messages ?? []);
+    SreCopilotChatHistory["messages"]
+  >(initialHistory?.messages ?? []);
   const [error, setError] = useState<string | null>(loadError);
   const [threadKey, setThreadKey] = useState(
-    initialHistories[0]?.conversationId ?? "new",
+    initialHistory?.conversationId ?? "new",
   );
   const [isArchiving, startArchiveTransition] = useTransition();
 
@@ -99,9 +109,18 @@ export function SreAiConsole({
     setThreadKey(`new-${Date.now()}`);
   };
 
-  const selectHistory = (history: SreStandaloneChatHistory) => {
+  const selectHistory = (history: SreCopilotChatHistory) => {
     setIsHistoryOpen(false);
     setConversationId(history.conversationId);
+    setIncidentId(history.incidentId);
+    // Let Next.js synchronize the URL instead of reusing its internal history markers.
+    window.history.replaceState(
+      null,
+      "",
+      history.incidentId
+        ? `/copilot?incident=${history.incidentId}`
+        : "/copilot",
+    );
     setActiveMessages(history.messages);
     setError(null);
     setThreadKey(history.conversationId);
@@ -113,7 +132,7 @@ export function SreAiConsole({
     }
 
     startArchiveTransition(async () => {
-      const result = await archiveSreStandaloneChat({ conversationId });
+      const result = await archiveSreCopilotChat({ conversationId });
       if (!result.success) {
         toast.error(result.error);
         return;
@@ -129,12 +148,11 @@ export function SreAiConsole({
 
   const handleConversationResolved = (input: {
     conversationId: string;
-    messages: SreStandaloneChatHistory["messages"];
+    messages: SreCopilotChatHistory["messages"];
     title: string;
   }) => {
     setConversationId(input.conversationId);
     setActiveMessages(input.messages);
-    setThreadKey(input.conversationId);
     setHistories((current) => {
       const withoutActive = current.filter(
         (history) => history.conversationId !== input.conversationId,
@@ -143,6 +161,7 @@ export function SreAiConsole({
         {
           conversationId: input.conversationId,
           title: input.title,
+          incidentId,
           updatedAt: new Date().toISOString(),
           messages: input.messages,
         },
@@ -219,7 +238,9 @@ export function SreAiConsole({
             <div className="min-w-0">
               <h1 className="truncate text-sm font-semibold">Copilot</h1>
               <p className="truncate text-xs text-muted-foreground">
-                Uses the context you provide.
+                {incidentId
+                  ? "Incident evidence and connected sources."
+                  : "Ask about your services and connected sources."}
               </p>
             </div>
           </div>
@@ -280,6 +301,7 @@ export function SreAiConsole({
           <SreAssistantUiThread
             key={threadKey}
             conversationId={conversationId}
+            incidentId={incidentId}
             initialMessages={activeMessages}
             onConversationResolved={handleConversationResolved}
             onClearError={() => setError(null)}
@@ -291,10 +313,12 @@ export function SreAiConsole({
         </section>
         <footer className="shrink-0 border-t px-3 py-2 text-center text-xs text-muted-foreground sm:px-5">
           <Link
-            href="/incidents"
+            href={incidentId ? `/incidents/${incidentId}` : "/incidents"}
             className="rounded-sm underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            Open an incident to ask about its evidence
+            {incidentId
+              ? "Back to incident"
+              : "Open an incident to ask about its evidence"}
           </Link>
         </footer>
       </main>

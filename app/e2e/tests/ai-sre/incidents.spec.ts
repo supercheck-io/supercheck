@@ -140,19 +140,36 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
         .click();
       await expect(page.locator(`#sre-evidence-${evidenceId}`)).toBeVisible();
 
-      await page.getByRole("button", { name: "Open Copilot" }).click();
-      const copilotDialog = page.getByRole("dialog", { name: "Copilot" });
-      await expect(copilotDialog).toContainText(
-        "Stored incident evidence with optional live sources.",
+      await expect(
+        page.getByRole("button", { name: "Open Copilot", exact: true }),
+      ).toHaveCount(0);
+      await page.getByRole("link", { name: "Open Copilot" }).click();
+      await expect(page).toHaveURL(
+        new RegExp(`/copilot\\?incident=${promotedIncidentId}$`),
       );
-      const liveSources = copilotDialog.getByRole("switch", {
+      await expect(
+        page.getByText("Incident evidence and connected sources.", {
+          exact: true,
+        }),
+      ).toBeVisible();
+      await page.getByRole("button", { name: "New chat", exact: true }).click();
+      await expect(page).toHaveURL(
+        new RegExp(`/copilot\\?incident=${promotedIncidentId}$`),
+      );
+      await page.reload();
+      await expect(
+        page.getByPlaceholder("Ask about this incident or its evidence..."),
+      ).toBeEnabled();
+      const liveSources = page.getByRole("switch", {
         name: "Live sources",
       });
+      await expect(liveSources).toBeChecked();
+      await liveSources.click();
       await expect(liveSources).not.toBeChecked();
       await liveSources.click();
       await expect(liveSources).toBeChecked();
       const scopedPrompt = `Summarize stored and live evidence ${Date.now()}`;
-      await copilotDialog
+      await page
         .getByPlaceholder("Ask about this incident or its evidence...")
         .fill(scopedPrompt);
       const scopedResponsePromise = page.waitForResponse(
@@ -160,9 +177,7 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
           response.request().method() === "POST" &&
           response.url().includes("/api/sre/chat/assistant-ui"),
       );
-      await copilotDialog
-        .getByRole("button", { name: "Send", exact: true })
-        .click();
+      await page.getByRole("button", { name: "Send", exact: true }).click();
       const scopedResponse = await scopedResponsePromise;
       const scopedBody = scopedResponse.request().postDataJSON() as {
         incidentId?: string;
@@ -174,14 +189,12 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
       });
       expect(scopedResponse.status(), await scopedResponse.text()).toBe(200);
       await expect(
-        copilotDialog.getByLabel("User message").filter({
+        page.getByLabel("User message").filter({
           hasText: scopedPrompt,
         }),
       ).toBeVisible();
       await expect(
-        copilotDialog
-          .locator('[aria-label="Copilot message"]:not(textarea)')
-          .last(),
+        page.locator('[aria-label="Copilot message"]:not(textarea)').last(),
       ).not.toBeEmpty({
         timeout: 60_000,
       });

@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNull, like, or } from "drizzle-orm";
+import { and, desc, eq, ilike, inArray, isNull, like, or } from "drizzle-orm";
 import { tool } from "ai";
 import { z } from "zod";
 
@@ -10,6 +10,7 @@ import {
   diagnosticQueries,
   sreEvidenceItems,
   sreIncidents,
+  sreServices,
   sreInvestigationToolCalls,
 } from "@/db/schema";
 import { routeSreConnectorQuery } from "@/lib/private-agents/job-router";
@@ -66,6 +67,13 @@ const supportedLiveConnectorTypes = [
 type SupportedLiveConnectorType = (typeof supportedLiveConnectorTypes)[number];
 
 const connectorSearchInputSchema = z.object({
+  serviceId: z
+    .string()
+    .uuid()
+    .optional()
+    .describe(
+      "Service ID returned by listIncidentConnectors; required for chats without an incident.",
+    ),
   connectorId: z.string().uuid(),
   query: z
     .string()
@@ -99,6 +107,13 @@ const connectorSearchInputSchema = z.object({
 });
 
 const diagnosticQueryInputSchema = z.object({
+  serviceId: z
+    .string()
+    .uuid()
+    .optional()
+    .describe(
+      "Service ID returned by listIncidentConnectors; required for general chats.",
+    ),
   queryId: z.string().uuid(),
   parameters: z
     .record(z.union([z.string().max(500), z.number(), z.boolean(), z.null()]))
@@ -116,7 +131,8 @@ const diagnosticQueryInputSchema = z.object({
 export type SreConnectorToolScope = {
   organizationId: string;
   projectId: string;
-  incidentId: string;
+  incidentId: string | null;
+  serviceId?: string;
   userId?: string | null;
   investigationRunId?: string | null;
 };
@@ -214,6 +230,20 @@ function endpointUrl(row: ConnectorRow) {
 }
 
 async function getIncidentPrimaryService(scope: SreConnectorToolScope) {
+  if (!scope.incidentId) {
+    if (!scope.serviceId) return null;
+    const service = await db.query.sreServices.findFirst({
+      where: and(
+        eq(sreServices.id, scope.serviceId),
+        eq(sreServices.organizationId, scope.organizationId),
+        eq(sreServices.projectId, scope.projectId),
+        eq(sreServices.status, "active"),
+      ),
+      columns: { id: true },
+    });
+    if (!service) throw new Error("Service not found or access denied");
+    return service.id;
+  }
   const incident = await db.query.sreIncidents.findFirst({
     where: and(
       eq(sreIncidents.id, scope.incidentId),
@@ -233,6 +263,9 @@ async function getIncidentPrimaryService(scope: SreConnectorToolScope) {
     );
   }
 
+  if (scope.serviceId && scope.serviceId !== incident.primaryServiceId) {
+    throw new Error("Service does not match the scoped incident");
+  }
   return incident.primaryServiceId;
 }
 
@@ -282,13 +315,26 @@ async function loadIncidentConnectors(scope: SreConnectorToolScope) {
     primaryServiceId,
     connectors: connectors.filter(
       (entry) =>
+        !primaryServiceId ||
         entry.scopedServiceIds.length === 0 ||
         entry.scopedServiceIds.includes(primaryServiceId),
     ),
   };
 }
 
-function summarizeEvidenceItem(row: typeof sreEvidenceItems.$inferSelect) {
+type EvidenceSummaryRow = Pick<
+  typeof sreEvidenceItems.$inferSelect,
+  | "id"
+  | "sourceType"
+  | "sourceUri"
+  | "title"
+  | "summary"
+  | "evidenceType"
+  | "observedAt"
+  | "citationResultHash"
+>;
+
+function summarizeEvidenceItem(row: EvidenceSummaryRow) {
   return {
     id: row.id,
     sourceType: row.sourceType,
@@ -342,7 +388,7 @@ function evidenceInsertValue(
   };
 }
 
-async function persistPrivateAgentEvidence(input: {
+async function collectPrivateAgentEvidence(input: {
   scope: SreConnectorToolScope;
   connector: ConnectorRow;
   jobId: string;
@@ -355,6 +401,19 @@ async function persistPrivateAgentEvidence(input: {
     input.maxItems,
   );
   if (summaries.length === 0) return [];
+  const incidentId = input.scope.incidentId;
+  if (!incidentId) {
+    return summaries.map((item) => ({
+      id: item.id,
+      sourceType: input.connector.type as SupportedLiveConnectorType,
+      sourceUri: item.sourceUri,
+      title: item.title,
+      summary: item.summary,
+      evidenceType: item.evidenceType,
+      observedAt: item.observedAtDate,
+      citationResultHash: item.resultHash,
+    }));
+  }
 
   return db.transaction(async (tx) => {
     const persisted = [];
@@ -364,7 +423,9 @@ async function persistPrivateAgentEvidence(input: {
         .from(sreEvidenceItems)
         .where(
           and(
-            eq(sreEvidenceItems.incidentId, input.scope.incidentId),
+            eq(sreEvidenceItems.organizationId, input.scope.organizationId),
+            eq(sreEvidenceItems.projectId, input.scope.projectId),
+            eq(sreEvidenceItems.incidentId, incidentId),
             eq(sreEvidenceItems.sourceConnectorId, input.connector.id),
             eq(sreEvidenceItems.citationResultHash, item.resultHash),
           ),
@@ -409,18 +470,40 @@ async function persistPrivateAgentEvidence(input: {
   });
 }
 
-export async function listIncidentLiveConnectors(scope: SreConnectorToolScope) {
+export async function listIncidentLiveConnectors(
+  scope: SreConnectorToolScope,
+  serviceName?: string,
+) {
   const { primaryServiceId, connectors } = await loadIncidentConnectors(scope);
+
+  const services = !scope.incidentId
+    ? await db.query.sreServices.findMany({
+        where: and(
+          eq(sreServices.organizationId, scope.organizationId),
+          eq(sreServices.projectId, scope.projectId),
+          eq(sreServices.status, "active"),
+          serviceName ? ilike(sreServices.name, `%${serviceName}%`) : undefined,
+        ),
+        columns: { id: true, name: true, environment: true },
+        orderBy: desc(sreServices.updatedAt),
+        limit: 51,
+      })
+    : [];
 
   return {
     primaryServiceId,
+    services: services.slice(0, 50),
+    servicesTruncated: services.length > 50,
     connectors: connectors.slice(0, 25).map(({ row, scopedServiceIds }) => ({
       id: row.id,
       name: row.name,
       type: row.type,
       status: row.status,
       executionMode: row.privateAgentId ? "private_agent" : "direct",
-      scopedToPrimaryService: scopedServiceIds.includes(primaryServiceId),
+      scopedServiceIds,
+      scopedToPrimaryService: Boolean(
+        primaryServiceId && scopedServiceIds.includes(primaryServiceId),
+      ),
       defaultTimeWindowMinutes: row.defaultTimeWindowMinutes,
       outputLimits: normalizeOutputLimits(row.outputLimits),
       queryGuidance: getAgentConnectorQueryGuidance(row.type),
@@ -433,14 +516,20 @@ export async function searchIncidentLiveConnectorEvidence(
   input: z.infer<typeof connectorSearchInputSchema>,
 ) {
   const startedAt = Date.now();
+  scope = { ...scope, serviceId: input.serviceId ?? scope.serviceId };
   const { primaryServiceId, connectors } = await loadIncidentConnectors(scope);
+  if (!primaryServiceId) {
+    throw new Error(
+      "Select a service from listIncidentConnectors before querying live sources",
+    );
+  }
   const selected = connectors.find(
     (entry) => entry.row.id === input.connectorId,
   );
 
   if (!selected) {
     throw new Error(
-      "Connector not found, unavailable, or not scoped to the incident service",
+      "Connector not found, unavailable, or not scoped to the selected service",
     );
   }
 
@@ -753,7 +842,7 @@ export async function searchIncidentLiveConnectorEvidence(
     }
 
     if (waitResult.state === "completed") {
-      const persistedEvidence = await persistPrivateAgentEvidence({
+      const persistedEvidence = await collectPrivateAgentEvidence({
         scope,
         connector,
         jobId,
@@ -775,7 +864,9 @@ export async function searchIncidentLiveConnectorEvidence(
         status: "success",
         durationMs: Date.now() - startedAt,
         costEstimateCents: 0,
-        evidenceItemId: persistedEvidence[0]?.id ?? null,
+        evidenceItemId: scope.incidentId
+          ? (persistedEvidence[0]?.id ?? null)
+          : null,
         executedAt: new Date(),
       });
 
@@ -785,7 +876,8 @@ export async function searchIncidentLiveConnectorEvidence(
         queued: false,
         evidence: persistedEvidence.map(summarizeEvidenceItem),
         truncated,
-        message: `Persisted ${persistedEvidence.length} connector evidence item(s)`,
+        persisted: Boolean(scope.incidentId),
+        message: `${scope.incidentId ? "Persisted" : "Returned"} ${persistedEvidence.length} connector evidence item(s)`,
       };
     }
 
@@ -852,14 +944,18 @@ export async function searchIncidentLiveConnectorEvidence(
       rawEvidence,
       policyDecision.effectiveLimits,
     );
-    const insertedEvidence = sanitized.items.length
-      ? await db
-          .insert(sreEvidenceItems)
-          .values(
-            sanitized.items.map((item) => evidenceInsertValue(scope, item)),
-          )
-          .returning()
-      : [];
+    const insertedEvidence =
+      scope.incidentId && sanitized.items.length
+        ? await db
+            .insert(sreEvidenceItems)
+            .values(
+              sanitized.items.map((item) => evidenceInsertValue(scope, item)),
+            )
+            .returning()
+        : sanitized.items.map((item) => ({
+            id: item.id,
+            ...evidenceInsertValue(scope, item),
+          }));
 
     await db.insert(sreInvestigationToolCalls).values({
       investigationRunId: scope.investigationRunId ?? null,
@@ -873,7 +969,9 @@ export async function searchIncidentLiveConnectorEvidence(
       status: "success",
       durationMs: Date.now() - startedAt,
       costEstimateCents: 0,
-      evidenceItemId: insertedEvidence[0]?.id ?? null,
+      evidenceItemId: scope.incidentId
+        ? (insertedEvidence[0]?.id ?? null)
+        : null,
       executedAt: new Date(),
     });
 
@@ -883,7 +981,8 @@ export async function searchIncidentLiveConnectorEvidence(
       stage: stagedStage,
       evidence: insertedEvidence.map(summarizeEvidenceItem),
       truncated: sanitized.truncated,
-      message: `Persisted ${insertedEvidence.length} connector evidence item(s)`,
+      persisted: Boolean(scope.incidentId),
+      message: `${scope.incidentId ? "Persisted" : "Returned"} ${insertedEvidence.length} connector evidence item(s)`,
     };
   } catch (error) {
     await db.insert(sreInvestigationToolCalls).values({
@@ -966,6 +1065,7 @@ export async function executeIncidentDiagnosticQuery(
   input: z.infer<typeof diagnosticQueryInputSchema>,
 ) {
   const startedAt = Date.now();
+  scope = { ...scope, serviceId: input.serviceId ?? scope.serviceId };
   const { connectors } = await loadIncidentConnectors(scope);
   const connectorIds = connectors.map((entry) => entry.row.id);
 
@@ -1000,7 +1100,7 @@ export async function executeIncidentDiagnosticQuery(
 
   if (!definition || !connectorIds.includes(definition.connectorId)) {
     throw new Error(
-      "Diagnostic query is not available for this incident service scope",
+      "Diagnostic query is not available for the selected service scope",
     );
   }
 
@@ -1066,13 +1166,16 @@ export function createSreConnectorTools(scope: SreConnectorToolScope) {
   return {
     listIncidentConnectors: tool({
       description:
-        "List live read-only connectors available to the scoped incident's primary service.",
-      inputSchema: z.object({}),
-      execute: async () => listIncidentLiveConnectors(scope),
+        "List read-only connectors and services available in this project. In incident chat, only connectors for the incident service are available. In general chat, filter services by name if needed and use returned service IDs when searching; ask which service if the target is ambiguous.",
+      inputSchema: z.object({
+        serviceName: z.string().trim().min(1).max(100).optional(),
+      }),
+      execute: async (input) =>
+        listIncidentLiveConnectors(scope, input.serviceName),
     }),
     searchLiveConnectorEvidence: tool({
       description:
-        "Search one live read-only connector for the scoped incident's primary service. For staged log evidence, supply stage and progress through statistics, sample, signatures, temporal_context, then correlation. Loki statistics require a LogQL metric function. Direct connectors persist sanitized evidence immediately. Private Agent searches wait for a bounded server-authorized result and persist sanitized evidence when it completes; if queued is true, do not treat the pending search as evidence. For Kubernetes, never infer a label selector from a service name: use * with an explicit namespace until a returned pod or stored evidence verifies the label mapping. If a response has error=true, do not call the same connector again during this run; report the failure or use a different source.",
+        "Search one live read-only connector for the incident service or a selected project service. Staged log searches require an active investigation run; in chat, omit stage and use ordinary bounded queries. During an investigation, progress through statistics, sample, signatures, temporal_context, then correlation. Loki statistics require a LogQL metric function. Incident-scoped results are persisted; general-chat results are temporary. Private Agent searches wait for a bounded server-authorized result; if queued is true, do not treat the pending search as evidence. For Kubernetes, never infer a label selector from a service name: use * with an explicit namespace until a returned pod or stored evidence verifies the label mapping. If a response has error=true, do not call the same connector again during this run; report the failure or use a different source.",
       inputSchema: connectorSearchInputSchema,
       execute: async (input) => {
         if (connectorFailureGuard.hasFailed(input.connectorId)) {
@@ -1108,13 +1211,13 @@ export function createSreConnectorTools(scope: SreConnectorToolScope) {
     }),
     listDiagnosticQueries: tool({
       description:
-        "List admin-approved read-only diagnostic query templates available to the scoped incident service.",
+        "List admin-approved read-only diagnostic query templates available to this chat.",
       inputSchema: z.object({}),
       execute: async () => listIncidentDiagnosticQueries(scope),
     }),
     executeDiagnosticQuery: tool({
       description:
-        "Execute one admin-approved read-only diagnostic query template with allowlisted parameters for the scoped incident service.",
+        "Execute one admin-approved read-only diagnostic query template with allowlisted parameters for the incident service or a selected project service.",
       inputSchema: diagnosticQueryInputSchema,
       execute: async (input) => executeIncidentDiagnosticQuery(scope, input),
     }),

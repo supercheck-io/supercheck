@@ -207,6 +207,13 @@ describe("Copilot assistant-ui chat API", () => {
 
     expect(response.status).toBe(200);
     expect(await response.text()).toBe("assistant-ui-stream");
+    expect(mockCreateSreConnectorTools).toHaveBeenCalledWith(
+      expect.objectContaining({
+        incidentId: null,
+        projectId: "018f0000-0000-7000-8000-000000000003",
+      }),
+    );
+    expect(mockCreateSreEvidenceTools).not.toHaveBeenCalled();
     expect(mockCreateSreConversation).toHaveBeenCalledWith(
       expect.objectContaining({
         incidentId: null,
@@ -236,7 +243,7 @@ describe("Copilot assistant-ui chat API", () => {
     );
     expect(streamText).toHaveBeenCalledWith(
       expect.objectContaining({
-        system: expect.stringContaining("Standalone Copilot chat rules"),
+        system: expect.stringContaining("General Copilot chat rules"),
         messages: [{ role: "user", content: "converted" }],
       }),
     );
@@ -267,7 +274,7 @@ describe("Copilot assistant-ui chat API", () => {
     expect(streamText).toHaveBeenCalledWith(
       expect.objectContaining({
         system: expect.stringContaining(
-          "Standalone chat has no incident evidence or live connector scope",
+          "discover project connectors and service IDs first",
         ),
       }),
     );
@@ -401,105 +408,128 @@ describe("Copilot assistant-ui chat API", () => {
     );
   });
 
-  it("scopes floating Copilot to an incident and enables read-only connector tools only with RBAC", async () => {
-    const incidentId = "018f0000-0000-7000-8000-000000000099";
-    mockCreateSreConversation.mockResolvedValueOnce({
-      id: "018f0000-0000-7000-8000-000000000004",
-      incidentId,
-      status: "active",
-    });
-
-    const response = await POST(
-      new NextRequest("http://localhost/api/sre/chat/assistant-ui", {
-        method: "POST",
-        body: JSON.stringify({
-          id: "client-thread",
-          incidentId,
-          useLiveConnectorTools: true,
-          messages: [
-            {
-              id: "user-message",
-              role: "user",
-              parts: [
-                {
-                  type: "text",
-                  text: "/verify Check the latest stored and live evidence",
-                },
-              ],
-            },
-          ],
-        }),
-      }),
-    );
-
-    expect(response.status).toBe(200);
-    expect(mockCreateSreConversation).toHaveBeenCalledWith(
-      expect.objectContaining({
+  it.each([undefined, true])(
+    "enables incident connector tools by default or when enabled (%s)",
+    async (useLiveConnectorTools) => {
+      const incidentId = "018f0000-0000-7000-8000-000000000099";
+      mockCreateSreConversation.mockResolvedValueOnce({
+        id: "018f0000-0000-7000-8000-000000000004",
         incidentId,
-        scope: expect.objectContaining({ incidentId }),
-      }),
-    );
-    expect(mockCreateSreEvidenceTools).toHaveBeenCalledWith(
-      expect.objectContaining({ incidentId }),
-    );
-    expect(mockCreateSreConnectorTools).toHaveBeenCalledWith(
-      expect.objectContaining({ incidentId }),
-    );
-    expect(streamText).toHaveBeenCalledWith(
-      expect.objectContaining({
-        system: expect.stringContaining("Incident-scoped Copilot chat rules"),
-        tools: expect.objectContaining({
-          listNativeEvidence: expect.any(Object),
-          listIncidentConnectors: expect.any(Object),
+        status: "active",
+      });
+
+      const response = await POST(
+        new NextRequest("http://localhost/api/sre/chat/assistant-ui", {
+          method: "POST",
+          body: JSON.stringify({
+            id: "client-thread",
+            incidentId,
+            useLiveConnectorTools,
+            messages: [
+              {
+                id: "user-message",
+                role: "user",
+                parts: [
+                  {
+                    type: "text",
+                    text: "/verify Check the latest stored and live evidence",
+                  },
+                ],
+              },
+            ],
+          }),
         }),
-      }),
-    );
-  });
+      );
 
-  it("keeps live connector tools disabled when connector investigate permission is missing", async () => {
-    mockCheckPermissionWithContext.mockImplementation(
-      (resource: string) => resource === "sre_investigation",
-    );
-    const incidentId = "018f0000-0000-7000-8000-000000000099";
-    mockCreateSreConversation.mockResolvedValueOnce({
-      id: "018f0000-0000-7000-8000-000000000004",
-      incidentId,
-      status: "active",
-    });
-
-    const response = await POST(
-      new NextRequest("http://localhost/api/sre/chat/assistant-ui", {
-        method: "POST",
-        body: JSON.stringify({
+      expect(response.status).toBe(200);
+      expect(mockCreateSreConversation).toHaveBeenCalledWith(
+        expect.objectContaining({
           incidentId,
-          useLiveConnectorTools: true,
-          messages: [
-            {
-              id: "user-message",
-              role: "user",
-              parts: [{ type: "text", text: "/verify Stored evidence only" }],
-            },
-          ],
+          scope: expect.objectContaining({ incidentId }),
         }),
-      }),
-    );
+      );
+      expect(mockCreateSreEvidenceTools).toHaveBeenCalledWith(
+        expect.objectContaining({ incidentId }),
+      );
+      expect(mockCreateSreConnectorTools).toHaveBeenCalledWith(
+        expect.objectContaining({ incidentId }),
+      );
+      expect(streamText).toHaveBeenCalledWith(
+        expect.objectContaining({
+          system: expect.stringContaining("Incident-scoped Copilot chat rules"),
+          tools: expect.objectContaining({
+            listNativeEvidence: expect.any(Object),
+            listIncidentConnectors: expect.any(Object),
+          }),
+        }),
+      );
+    },
+  );
 
-    expect(response.status).toBe(200);
-    expect(mockCreateSreEvidenceTools).toHaveBeenCalledWith(
-      expect.objectContaining({ incidentId }),
-    );
-    expect(mockCreateSreConnectorTools).not.toHaveBeenCalled();
-    expect(streamText).toHaveBeenCalledWith(
-      expect.objectContaining({
-        system: expect.stringContaining(
-          "Live connector tools are not available",
-        ),
-        tools: expect.not.objectContaining({
-          listIncidentConnectors: expect.anything(),
+  it.each(
+    [
+      { permission: false, useLiveConnectorTools: undefined },
+      { permission: false, useLiveConnectorTools: true },
+      { permission: true, useLiveConnectorTools: false },
+    ].flatMap((row) => [
+      { ...row, incidentId: null },
+      { ...row, incidentId: "018f0000-0000-7000-8000-000000000099" },
+    ]),
+  )(
+    "keeps connector tools disabled without permission or when turned off (%j)",
+    async ({ permission, useLiveConnectorTools, incidentId }) => {
+      mockCheckPermissionWithContext.mockImplementation(
+        (resource: string) => resource === "sre_investigation" || permission,
+      );
+      mockCreateSreConversation.mockResolvedValueOnce({
+        id: "018f0000-0000-7000-8000-000000000004",
+        incidentId,
+        status: "active",
+      });
+
+      const response = await POST(
+        new NextRequest("http://localhost/api/sre/chat/assistant-ui", {
+          method: "POST",
+          body: JSON.stringify({
+            incidentId,
+            useLiveConnectorTools,
+            messages: [
+              {
+                id: "user-message",
+                role: "user",
+                parts: [{ type: "text", text: "/verify Stored evidence only" }],
+              },
+            ],
+          }),
         }),
-      }),
-    );
-  });
+      );
+
+      expect(response.status).toBe(200);
+      if (incidentId) {
+        expect(mockCreateSreEvidenceTools).toHaveBeenCalledWith(
+          expect.objectContaining({ incidentId }),
+        );
+      } else {
+        expect(mockCreateSreEvidenceTools).not.toHaveBeenCalled();
+      }
+      expect(mockCreateSreConnectorTools).not.toHaveBeenCalled();
+      const prompt = jest.mocked(streamText).mock.calls[0][0].system;
+      expect(prompt).not.toContain("Use available live connector tools");
+      expect(prompt).not.toContain(
+        "discover project connectors and service IDs",
+      );
+      expect(streamText).toHaveBeenCalledWith(
+        expect.objectContaining({
+          system: expect.stringContaining(
+            "Live connector tools are not available",
+          ),
+          tools: expect.not.objectContaining({
+            listIncidentConnectors: expect.anything(),
+          }),
+        }),
+      );
+    },
+  );
 
   it("rejects conversation reuse when the incident context changes", async () => {
     mockGetSreConversation.mockResolvedValueOnce({
@@ -673,14 +703,21 @@ describe("Copilot assistant-ui chat API", () => {
     const previous = process.env.SRE_ENABLED;
     process.env.SRE_ENABLED = "false";
     try {
-      const response = await POST(new NextRequest("http://localhost/api/sre/chat/assistant-ui", { method: "POST", body: "{}" }));
+      const response = await POST(
+        new NextRequest("http://localhost/api/sre/chat/assistant-ui", {
+          method: "POST",
+          body: "{}",
+        }),
+      );
       expect(response.status).toBe(503);
-      expect(await response.json()).toMatchObject({ code: "feature_disabled", enabledBy: "SRE_ENABLED" });
+      expect(await response.json()).toMatchObject({
+        code: "feature_disabled",
+        enabledBy: "SRE_ENABLED",
+      });
       expect(mockValidateAIConfiguration).not.toHaveBeenCalled();
     } finally {
       if (previous === undefined) delete process.env.SRE_ENABLED;
       else process.env.SRE_ENABLED = previous;
     }
   });
-
 });

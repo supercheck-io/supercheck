@@ -20,17 +20,17 @@ nano .env
 # Start self-hosted stack
 KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig docker compose up -d
 
-# Or start with HTTPS
-KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig docker compose -f docker-compose-secure.yml up -d
+# For HTTPS, set COMPOSE_PROFILES=https, APP_DOMAIN and ACME_EMAIL in .env.
+# The start command stays the same.
 ```
 
 ## Prerequisites
 
-> **Modern Docker Compose Required**: Use `docker compose` (with space), not `docker-compose` (with hyphen).
+> **Docker Compose v2.24.4 or newer is required.** Use `docker compose` (with space).
 
 ```bash
 docker compose version
-# Should show: Docker Compose version v2.x.x or higher
+# Should show v2.24.4 or newer
 ```
 
 **Install Docker (Linux only):** For production hosts, prefer Docker's
@@ -52,11 +52,11 @@ newgrp docker
 
 | File | Use Case |
 |------|----------|
-| `docker-compose.yml` | Self-hosted deployment (HTTP, localhost:3000) |
-| `docker-compose-secure.yml` | Production with HTTPS |
+| `docker-compose.yml` | Bundled stack; optional `https` and `private-agent` profiles |
+| `docker-compose-secure.yml` | Compatibility entry point for existing HTTPS installations |
 | `docker-compose-external.yml` | Connect to managed external PostgreSQL, Redis, and S3 services |
 | `docker-compose-worker.yml` | Remote regional worker |
-| `docker-compose-private-agent.yml` | Read-only private evidence queries for AI SRE investigations |
+| `docker-compose-private-agent.yml` | Standalone agent for remote networks or Supercheck Cloud |
 | `docker-compose-local.yml` | Source-based local development |
 | `docker-compose-aisre-lab.yml` | Optional AI SRE integration lab with OSS telemetry and webhook capture |
 
@@ -82,18 +82,11 @@ Use `./init-secrets.sh` to generate secure defaults, then configure:
 
 OAuth (`GITHUB_*` / `GOOGLE_*`) is optional in self-hosted mode.
 
-When accessing the HTTP quick start from another computer, set
-`NEXT_PUBLIC_APP_URL=http://YOUR_SERVER_IP:3000` before starting the stack and
-open that URL instead of `localhost`. Production HTTPS deployments derive the
-public origin from `APP_DOMAIN`.
+HTTP evaluation is bound to localhost. Use an SSH port forward for remote evaluation; use HTTPS for a public server.
 
-### Production (docker-compose-secure.yml)
+### HTTPS Profile
 
-| Variable | Description |
-|----------|-------------|
-| `APP_DOMAIN` | Your domain (e.g., `app.yourdomain.com`) |
-| `ACME_EMAIL` | Email for Let's Encrypt |
-| `STATUS_PAGE_DOMAIN` | Reserved hostname namespace for default status page URLs (e.g., `yourdomain.com`) |
+Set `COMPOSE_PROFILES=https`, `APP_DOMAIN`, and `ACME_EMAIL` in `.env`. App and authentication URLs derive from `APP_DOMAIN`; update any existing `NEXT_PUBLIC_APP_URL` override to the same HTTPS origin. Point DNS at the server and open ports 80 and 443. Run the same `docker compose up -d` command.
 
 `STATUS_PAGE_DOMAIN` reserves the default status-page namespace (`[uuid].STATUS_PAGE_DOMAIN`). In the HTTPS Compose variants, Supercheck derives the custom-domain target shown in Settings from it, usually `cname.STATUS_PAGE_DOMAIN`. In self-hosted deployments, that target must already point to your app, usually through an A/AAAA record or a wildcard record that already covers it. Keep customer-facing custom domains outside the `STATUS_PAGE_DOMAIN` namespace (for example, `status.example.net`) and point their CNAME to the exact target shown in Settings (for example, `cname.example.com`). The Compose HTTPS variants include a lower-priority Traefik catch-all router so verified custom domains route to the app automatically, but TLS for those hostnames still requires your own certificate workflow. If you use Cloudflare, keep the custom CNAME on DNS-only until verification and origin HTTPS are working.
 
@@ -168,10 +161,10 @@ docker compose up -d
 
 ```bash
 # Create backup
-docker compose exec postgres sh -c 'pg_dump -U "$DB_USER" "$DB_NAME"' > backup.sql
+docker compose exec postgres sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' > backup.sql
 
 # Restore backup
-docker compose exec -T postgres sh -c 'psql -U "$DB_USER" "$DB_NAME"' < backup.sql
+docker compose exec -T postgres sh -c 'psql -U "$POSTGRES_USER" "$POSTGRES_DB"' < backup.sql
 ```
 
 ---
@@ -184,4 +177,10 @@ Full documentation: **[supercheck.io/docs/app/deployment](https://supercheck.io/
 
 Configure an AI provider to use AI SRE. Investigations, Copilot, and automatic alert triage are enabled by default. Migrations run when the app starts.
 
-Set `SRE_AUTOMATION_ENABLED=false` for manual investigations only, or `SRE_ENABLED=false` to disable AI SRE. Automatic triage can incur AI-provider charges. After changing `.env`, run `docker compose up -d --force-recreate app worker` (add `-f docker-compose-secure.yml` for HTTPS).
+Set `SRE_AUTOMATION_ENABLED=false` for manual investigations only, or `SRE_ENABLED=false` to disable AI SRE. Automatic triage can incur AI-provider charges. After changing `.env`, run `docker compose up -d --force-recreate app worker` with the configured profiles.
+
+### Private Agent Profile
+
+For a colocated agent, register it in Organization Admin → Private Agents, set its `PRIVATE_AGENT_ID` and `PRIVATE_AGENT_TOKEN`, and add `private-agent` to `COMPOSE_PROFILES` (for example `https,private-agent`). Run `docker compose up -d private-agent`. It uses the app's internal origin and an isolated Docker network, with no database, Redis, or S3 credentials.
+
+Stop it with `docker compose stop private-agent` before removing the profile. Recreate it after `.env` changes, preserving `private-agent-state`. Use the standalone file only when the agent runs on another network or connects to Cloud.

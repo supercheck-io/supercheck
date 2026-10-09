@@ -92,7 +92,7 @@ const assistantUiChatRequestSchema = z.object({
   id: z.string().trim().max(200).optional().nullable(),
   conversationId: z.string().uuid().optional().nullable(),
   incidentId: z.string().uuid().optional().nullable(),
-  useLiveConnectorTools: z.boolean().optional().default(false),
+  useLiveConnectorTools: z.boolean().optional().default(true),
   trigger: z
     .enum(["submit-message", "regenerate-message"])
     .optional()
@@ -161,21 +161,21 @@ function buildAssistantUiSystemPrompt(input: {
     "",
     input.incidentId
       ? "Incident-scoped Copilot chat rules:"
-      : "Standalone Copilot chat rules:",
+      : "General Copilot chat rules:",
     `- Project: ${input.projectName}`,
     input.incidentId ? `- Scoped incident ID: ${input.incidentId}` : null,
     "- This chat is read-only. Do not suggest production mutations or destructive commands.",
     input.incidentId
-      ? "- Use available stored evidence tools before making incident-specific claims. Use live connector tools only when the user enabled them and fresh evidence is needed."
+      ? "- Use available stored evidence tools before making incident-specific claims."
       : "- If no incident is scoped, do not claim incident evidence was inspected.",
-    input.incidentId && !input.liveConnectorToolsEnabled
+    !input.liveConnectorToolsEnabled
       ? "- Live connector tools are not available for this chat; explain that verification is based on stored evidence and user-provided context only."
+      : null,
+    input.liveConnectorToolsEnabled
+      ? "- Use available live connector tools when fresh data is needed. For a general question, discover project connectors and service IDs first; ask which service if the target is ambiguous. Never claim a source was checked without successful tool output."
       : null,
     "- Never invent evidence IDs, source systems, queries, observations, metric values, timestamps, or confidence levels.",
     "- Treat evidence as verified only when it appears in tool output or was explicitly supplied by the user. Otherwise say that no supporting evidence is available.",
-    !input.incidentId
-      ? "- Standalone chat has no incident evidence or live connector scope. Ask for concrete symptoms or pasted evidence when the request lacks enough context."
-      : null,
     "- Prefer concise headings, short bullets, markdown tables for comparisons, and fenced code blocks for commands or queries.",
     "- Answer the user's exact question first. Keep a simple health question concise when no evidence is available.",
     "- Never invent or assign team names, owners, departments, escalation paths, or handoff tasks unless the user explicitly asks for ownership planning and supplies that organization context.",
@@ -207,7 +207,11 @@ export async function POST(request: NextRequest) {
 
   if (!isSreEnabled()) {
     return NextResponse.json(
-      { error: "AI SRE is disabled", code: "feature_disabled", enabledBy: "SRE_ENABLED" },
+      {
+        error: "AI SRE is disabled",
+        code: "feature_disabled",
+        enabledBy: "SRE_ENABLED",
+      },
       { status: 503 },
     );
   }
@@ -394,18 +398,14 @@ export async function POST(request: NextRequest) {
     maxOutputTokens: 1200,
     timeoutMs: 45_000,
   });
-  const incidentToolScope = conversation.incidentId
-    ? {
-        organizationId: context.organizationId,
-        projectId: context.project.id,
-        incidentId: conversation.incidentId,
-        userId: context.userId,
-      }
-    : null;
+  const connectorToolScope = {
+    organizationId: context.organizationId,
+    projectId: context.project.id,
+    incidentId: conversation.incidentId,
+    userId: context.userId,
+  };
   const liveConnectorToolsEnabled =
-    Boolean(incidentToolScope) &&
-    parsed.data.useLiveConnectorTools &&
-    canInvestigateConnectors;
+    parsed.data.useLiveConnectorTools && canInvestigateConnectors;
   const system = buildAssistantUiSystemPrompt({
     projectName: context.project.name,
     incidentId: conversation.incidentId,
@@ -422,14 +422,17 @@ export async function POST(request: NextRequest) {
     model: getProviderModel(),
     system,
     messages: await convertToModelMessages(modelMessages),
-    tools: incidentToolScope
-      ? {
-          ...createSreEvidenceTools(incidentToolScope),
-          ...(liveConnectorToolsEnabled
-            ? createSreConnectorTools(incidentToolScope)
-            : {}),
-        }
-      : undefined,
+    tools: {
+      ...(conversation.incidentId
+        ? createSreEvidenceTools({
+            ...connectorToolScope,
+            incidentId: conversation.incidentId,
+          })
+        : {}),
+      ...(liveConnectorToolsEnabled
+        ? createSreConnectorTools(connectorToolScope)
+        : {}),
+    },
     stopWhen: stepCountIs(budget.maxSteps),
     maxOutputTokens: budget.maxOutputTokens,
     abortSignal: AbortSignal.timeout(budget.timeoutMs),

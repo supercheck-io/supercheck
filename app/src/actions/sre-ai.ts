@@ -1,6 +1,6 @@
 "use server";
 
-import { and, asc, desc, eq, isNull } from "drizzle-orm";
+import { and, asc, desc, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
@@ -11,13 +11,14 @@ import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { archiveSreConversation } from "@/sre/lib/session-store";
 import { db } from "@/utils/db";
 
-const archiveStandaloneChatSchema = z.object({
+const archiveCopilotChatSchema = z.object({
   conversationId: z.string().uuid(),
 });
 
-export type SreStandaloneChatHistory = {
+export type SreCopilotChatHistory = {
   conversationId: string;
   title: string | null;
+  incidentId: string | null;
   updatedAt: string;
   messages: Array<{
     id: string;
@@ -27,20 +28,28 @@ export type SreStandaloneChatHistory = {
   }>;
 };
 
-export async function getSreStandaloneChatHistories(): Promise<
-  | { success: true; histories: SreStandaloneChatHistory[] }
+export async function getSreCopilotChatHistories(): Promise<
+  | { success: true; histories: SreCopilotChatHistory[] }
   | { success: false; error: string; histories: [] }
 > {
   try {
     const { userId, organizationId, project } = await requireProjectContext();
-    const canInvestigate = checkPermissionWithContext("sre_investigation", "investigate", {
-      userId,
-      organizationId,
-      project,
-    });
+    const canInvestigate = checkPermissionWithContext(
+      "sre_investigation",
+      "investigate",
+      {
+        userId,
+        organizationId,
+        project,
+      },
+    );
 
     if (!canInvestigate) {
-      return { success: false, error: "Insufficient permissions to view SRE AI chats", histories: [] };
+      return {
+        success: false,
+        error: "Insufficient permissions to view SRE AI chats",
+        histories: [],
+      };
     }
 
     const conversations = await db
@@ -52,8 +61,7 @@ export async function getSreStandaloneChatHistories(): Promise<
           eq(sreChatConversations.projectId, project.id),
           eq(sreChatConversations.userId, userId),
           eq(sreChatConversations.status, "active"),
-          isNull(sreChatConversations.incidentId)
-        )
+        ),
       )
       .orderBy(desc(sreChatConversations.updatedAt))
       .limit(30);
@@ -69,46 +77,68 @@ export async function getSreStandaloneChatHistories(): Promise<
         return {
           conversationId: conversation.id,
           title: conversation.title,
+          incidentId: conversation.incidentId,
           updatedAt: conversation.updatedAt.toISOString(),
           messages: messages.flatMap((message) => {
-            if ((message.role !== "user" && message.role !== "assistant") || !message.content) {
+            if (
+              (message.role !== "user" && message.role !== "assistant") ||
+              !message.content
+            ) {
               return [];
             }
 
-            return [{
-              id: message.id,
-              role: message.role,
-              content: message.content,
-              modelId: message.modelId,
-            }];
+            return [
+              {
+                id: message.id,
+                role: message.role,
+                content: message.content,
+                modelId: message.modelId,
+              },
+            ];
           }),
         };
-      })
+      }),
     );
 
     return { success: true, histories };
   } catch (error) {
-    console.error("Error fetching standalone SRE AI chats:", error);
-    return { success: false, error: "Failed to load SRE AI chat history", histories: [] };
+    console.error("Error fetching Copilot chats:", error);
+    return {
+      success: false,
+      error: "Failed to load SRE AI chat history",
+      histories: [],
+    };
   }
 }
 
-export async function archiveSreStandaloneChat(input: z.input<typeof archiveStandaloneChatSchema>) {
-  const parsed = archiveStandaloneChatSchema.safeParse(input);
+export async function archiveSreCopilotChat(
+  input: z.input<typeof archiveCopilotChatSchema>,
+) {
+  const parsed = archiveCopilotChatSchema.safeParse(input);
   if (!parsed.success) {
-    return { success: false as const, error: "Invalid SRE AI chat archive request" };
+    return {
+      success: false as const,
+      error: "Invalid SRE AI chat archive request",
+    };
   }
 
   try {
     const { userId, organizationId, project } = await requireProjectContext();
-    const canInvestigate = checkPermissionWithContext("sre_investigation", "investigate", {
-      userId,
-      organizationId,
-      project,
-    });
+    const canInvestigate = checkPermissionWithContext(
+      "sre_investigation",
+      "investigate",
+      {
+        userId,
+        organizationId,
+        project,
+      },
+    );
 
     if (!canInvestigate) {
-      return { success: false as const, error: "Insufficient permissions to archive SRE AI chat" };
+      return {
+        success: false as const,
+        error: "Insufficient permissions to archive SRE AI chat",
+      };
     }
 
     const conversation = await db.query.sreChatConversations.findFirst({
@@ -117,7 +147,6 @@ export async function archiveSreStandaloneChat(input: z.input<typeof archiveStan
         eq(sreChatConversations.organizationId, organizationId),
         eq(sreChatConversations.projectId, project.id),
         eq(sreChatConversations.userId, userId),
-        isNull(sreChatConversations.incidentId)
       ),
       columns: { id: true },
     });
@@ -136,7 +165,7 @@ export async function archiveSreStandaloneChat(input: z.input<typeof archiveStan
     await logAuditEvent({
       userId,
       organizationId,
-      action: "sre_standalone_chat_archived",
+      action: "sre_copilot_chat_archived",
       resource: "sre_chat_conversation",
       resourceId: parsed.data.conversationId,
       metadata: { projectId: project.id },

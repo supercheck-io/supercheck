@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   Clock,
+  Bot,
   Database,
   Network,
 } from "lucide-react";
@@ -214,6 +215,14 @@ export function SreIncidentDetailView({
             </h1>
           </div>
           <div className="flex flex-wrap gap-2">
+            {detail.permissions.canInvestigate && (
+              <Button asChild variant="outline" size="sm">
+                <Link href={`/copilot?incident=${detail.incident.id}`}>
+                  <Bot className="h-4 w-4" />
+                  Open Copilot
+                </Link>
+              </Button>
+            )}
             <EditSreIncidentDialog
               incident={detail.incident}
               services={services}

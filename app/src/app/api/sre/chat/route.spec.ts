@@ -94,6 +94,7 @@ describe("SRE chat API", () => {
     expect(response.headers.get("content-type")).toContain("text/event-stream");
     expect(text).toContain("event: conversation");
     expect(text).toContain("Read-only guidance");
+    expect(mockRunSreAgent.mock.calls[0][0].tools).toHaveProperty("searchLiveConnectorEvidence");
     expect(mockRunSreAgent).toHaveBeenCalledWith(expect.objectContaining({
       system: "read-only system",
       prompt: expect.stringContaining(
@@ -114,7 +115,14 @@ describe("SRE chat API", () => {
     expect(mockCreateSreConversation).not.toHaveBeenCalled();
   });
 
-  it("passes read-only evidence tools for incident-scoped conversations", async () => {
+  it.each([
+    { permission: true, useLiveConnectorTools: false },
+    { permission: false, useLiveConnectorTools: undefined },
+    { permission: false, useLiveConnectorTools: true },
+  ])("uses stored evidence when live sources are off or unauthorized (%j)", async ({ permission, useLiveConnectorTools }) => {
+    mockCheckPermissionWithContext.mockImplementation(
+      (resource: string) => resource === "sre_investigation" || permission,
+    );
     mockCreateSreConversation.mockResolvedValueOnce({
       id: "018f0000-0000-7000-8000-000000000004",
       incidentId: "018f0000-0000-7000-8000-000000000007",
@@ -126,6 +134,7 @@ describe("SRE chat API", () => {
       body: JSON.stringify({
         incidentId: "018f0000-0000-7000-8000-000000000007",
         message: "Use evidence to triage",
+        useLiveConnectorTools,
       }),
     }));
 
@@ -142,7 +151,36 @@ describe("SRE chat API", () => {
     );
   });
 
-  it("adds live connector tools only after explicit opt-in", async () => {
+  it.each([
+    { permission: true, useLiveConnectorTools: false },
+    { permission: false, useLiveConnectorTools: undefined },
+  ])(
+    "keeps general-chat prompts consistent when live tools are unavailable (%j)",
+    async ({ permission, useLiveConnectorTools }) => {
+      mockCheckPermissionWithContext.mockImplementation(
+        (resource: string) => resource === "sre_investigation" || permission,
+      );
+      const response = await POST(
+        new NextRequest("http://localhost/api/sre/chat", {
+          method: "POST",
+          body: JSON.stringify({
+            message: "Is checkout healthy?",
+            useLiveConnectorTools,
+          }),
+        }),
+      );
+      await responseText(response);
+      const input = mockRunSreAgent.mock.calls[0][0];
+      expect(input.tools).not.toHaveProperty("searchLiveConnectorEvidence");
+      expect(input.prompt).toContain("Live connector tools are not available");
+      expect(input.prompt).not.toContain(
+        "Discover available project connectors",
+      );
+      expect(input.prompt).not.toContain("Use available live connector tools");
+    },
+  );
+
+  it.each([undefined, true])("adds live connector tools by default or when enabled (%s)", async (useLiveConnectorTools) => {
     mockCreateSreConversation.mockResolvedValueOnce({
       id: "018f0000-0000-7000-8000-000000000004",
       incidentId: "018f0000-0000-7000-8000-000000000007",
@@ -154,7 +192,7 @@ describe("SRE chat API", () => {
       body: JSON.stringify({
         incidentId: "018f0000-0000-7000-8000-000000000007",
         message: "Use live evidence to triage",
-        useLiveConnectorTools: true,
+        useLiveConnectorTools,
       }),
     }));
 

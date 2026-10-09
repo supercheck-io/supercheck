@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-import { archiveSreStandaloneChat } from "@/actions/sre-ai";
+import { archiveSreCopilotChat } from "@/actions/sre-ai";
 import { SreAiConsole } from "./sre-ai-console";
 
 jest.mock("next/navigation", () => ({
@@ -8,16 +8,18 @@ jest.mock("next/navigation", () => ({
 }));
 
 jest.mock("@/actions/sre-ai", () => ({
-  archiveSreStandaloneChat: jest.fn(),
+  archiveSreCopilotChat: jest.fn(),
 }));
 
 jest.mock("@/components/sre/sre-assistant-ui-thread", () => ({
   SreAssistantUiThread: ({
     initialMessages,
+    incidentId,
   }: {
     initialMessages: Array<{ content: string }>;
+    incidentId?: string | null;
   }) => (
-    <div>
+    <div data-testid="chat-thread" data-incident={incidentId ?? ""}>
       {initialMessages.map((message, index) => (
         <p key={`${message.content}-${index}`}>{message.content}</p>
       ))}
@@ -26,12 +28,138 @@ jest.mock("@/components/sre/sre-assistant-ui-thread", () => ({
 }));
 
 describe("SreAiConsole", () => {
+  beforeEach(() => window.history.replaceState(null, "", "/copilot"));
+  it("keeps New chat incident-scoped and preserves that scope in history", () => {
+    window.history.replaceState(null, "", "/copilot?incident=incident-1");
+    render(
+      <SreAiConsole
+        initialIncidentId="incident-1"
+        initialHistories={[
+          {
+            conversationId: "general",
+            incidentId: null,
+            title: "General question",
+            updatedAt: "2026-10-09",
+            messages: [],
+          },
+          {
+            conversationId: "incident-chat",
+            incidentId: "incident-1",
+            title: "Incident question",
+            updatedAt: "2026-10-09",
+            messages: [],
+          },
+        ]}
+      />,
+    );
+    expect(screen.getByTestId("chat-thread")).toHaveAttribute(
+      "data-incident",
+      "incident-1",
+    );
+    expect(
+      screen.getByRole("link", { name: "Back to incident" }),
+    ).toHaveAttribute("href", "/incidents/incident-1");
+    fireEvent.click(screen.getByRole("button", { name: "New chat" }));
+    expect(window.location.search).toBe("?incident=incident-1");
+    expect(screen.getByTestId("chat-thread")).toHaveAttribute(
+      "data-incident",
+      "incident-1",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "History" }));
+    fireEvent.click(screen.getByText("Incident question"));
+    expect(window.location.search).toBe("?incident=incident-1");
+    expect(screen.getByTestId("chat-thread")).toHaveAttribute(
+      "data-incident",
+      "incident-1",
+    );
+  });
+
+  it("switches history scope without bypassing Next.js router synchronization", () => {
+    window.history.replaceState({ __NA: true }, "", "/copilot");
+    const replaceState = jest.spyOn(window.history, "replaceState");
+    render(
+      <SreAiConsole
+        initialHistories={[
+          {
+            conversationId: "general",
+            incidentId: null,
+            title: "General chat",
+            updatedAt: "2026-10-09",
+            messages: [],
+          },
+          {
+            conversationId: "incident-chat",
+            incidentId: "incident-1",
+            title: "Incident chat",
+            updatedAt: "2026-10-09",
+            messages: [
+              {
+                id: "m1",
+                role: "assistant",
+                content: "Selected incident answer",
+                modelId: "test-model",
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "History" }));
+    fireEvent.click(screen.getByText("Incident chat"));
+    expect(replaceState).toHaveBeenLastCalledWith(
+      null,
+      "",
+      "/copilot?incident=incident-1",
+    );
+    expect(screen.getByText("Selected incident answer")).toBeInTheDocument();
+    expect(screen.getByTestId("chat-thread")).toHaveAttribute(
+      "data-incident",
+      "incident-1",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "History" }));
+    fireEvent.click(screen.getByText("General chat"));
+    expect(replaceState).toHaveBeenLastCalledWith(null, "", "/copilot");
+    expect(screen.getByTestId("chat-thread")).toHaveAttribute(
+      "data-incident",
+      "",
+    );
+    replaceState.mockRestore();
+  });
+
+  it("opens general chat from the sidebar even when an incident chat is newest", () => {
+    render(
+      <SreAiConsole
+        initialHistories={[
+          {
+            conversationId: "incident-chat",
+            incidentId: "incident-1",
+            title: "Incident",
+            updatedAt: "2026-10-09",
+            messages: [],
+          },
+          {
+            conversationId: "general",
+            incidentId: null,
+            title: "General",
+            updatedAt: "2026-10-08",
+            messages: [],
+          },
+        ]}
+      />,
+    );
+    expect(screen.getByTestId("chat-thread")).toHaveAttribute(
+      "data-incident",
+      "",
+    );
+  });
+
   it("renders chat history and switches conversations", () => {
     render(
       <SreAiConsole
         initialHistories={[
           {
             conversationId: "018f0000-0000-7000-8000-000000000001",
+            incidentId: null,
             title: "Checkout investigation",
             updatedAt: "2026-06-24T10:00:00.000Z",
             messages: [
@@ -45,6 +173,7 @@ describe("SreAiConsole", () => {
           },
           {
             conversationId: "018f0000-0000-7000-8000-000000000002",
+            incidentId: null,
             title: "Search incident",
             updatedAt: "2026-06-24T11:00:00.000Z",
             messages: [
@@ -92,6 +221,7 @@ describe("SreAiConsole", () => {
         initialHistories={[
           {
             conversationId: "018f0000-0000-7000-8000-000000000001",
+            incidentId: null,
             title: "Invalid date session",
             updatedAt: "not-a-date",
             messages: [
@@ -112,12 +242,13 @@ describe("SreAiConsole", () => {
   });
 
   it("archives the current chat and removes it from searchable history", async () => {
-    jest.mocked(archiveSreStandaloneChat).mockResolvedValue({ success: true });
+    jest.mocked(archiveSreCopilotChat).mockResolvedValue({ success: true });
     render(
       <SreAiConsole
         initialHistories={[
           {
             conversationId: "chat-1",
+            incidentId: null,
             title: "Saved chat",
             updatedAt: "2026-06-24T10:00:00Z",
             messages: [],
@@ -131,7 +262,7 @@ describe("SreAiConsole", () => {
         screen.queryByRole("button", { name: "Archive chat" }),
       ).not.toBeInTheDocument(),
     );
-    expect(archiveSreStandaloneChat).toHaveBeenCalledWith({
+    expect(archiveSreCopilotChat).toHaveBeenCalledWith({
       conversationId: "chat-1",
     });
     fireEvent.click(screen.getByRole("button", { name: "History" }));
