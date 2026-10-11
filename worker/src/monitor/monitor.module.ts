@@ -29,10 +29,7 @@ const monitorJobOptions = {
 };
 
 const monitorQueueSettings = {
-  ...monitorJobOptions,
-  lockDuration: 5 * 60 * 1000,
-  stallInterval: 30000,
-  maxStalledCount: 2,
+  defaultJobOptions: monitorJobOptions,
 };
 
 // Common providers

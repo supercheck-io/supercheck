@@ -59,7 +59,7 @@ describe('SreAlertTriageQueueService', () => {
     expect(queue.add).toHaveBeenCalledWith(
       'triage-alert-history',
       { alertHistoryId: 'alert-history-1' },
-      { jobId: 'sre-alert-triage:alert-history-1' },
+      { jobId: 'sre-alert-triage-alert-history-1' },
     );
   });
 

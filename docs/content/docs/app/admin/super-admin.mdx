@@ -71,7 +71,7 @@ Manage all users system-wide. View user details, organization memberships, and a
 
 ## Queue Management
 
-Monitor BullMQ queues for test execution, monitoring, and background jobs. View queue health, pending jobs, and processing status.
+Monitor BullMQ queues for test execution, monitoring, and background jobs. View queue health, pending jobs, and processing status. Queue controls can retry, promote, or delete jobs; use them carefully because these actions affect live work. Admitted jobs retained for a disabled location remain visible and are labelled disabled. The dashboard is restricted to super admins on every request.
 
 ![BullMQ Queues](/screenshots/super-admin-bullmq-queues.png)
 
@@ -87,7 +87,7 @@ Manage geographic locations for multi-region monitoring and performance testing.
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| **Code** | Yes | Identifier that must match the worker's `WORKER_LOCATION` (e.g. `us-east`). Lowercase, 2–50 characters, letters/digits/hyphens only, no consecutive hyphens. Reserved codes (`global`, `all`, `default`, `none`, `any`, `local`) are blocked. |
+| **Code** | Yes | Identifier that must match the worker's `WORKER_LOCATION` (e.g. `us-east`). Lowercase, 2–50 characters, letters/digits/hyphens only, no consecutive hyphens. Reserved codes (`global`, `all`, `default`, `none`, `any`, `local`, `job-scheduler`, `scheduler`) are blocked. |
 | **Name** | Yes | Human-readable display name (e.g. "US East"). |
 | **Region** | No | Geographic description (e.g. "Ashburn, Virginia"). |
 | **Flag** | No | Emoji flag for the UI (e.g. 🇺🇸). |

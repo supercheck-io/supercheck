@@ -28,7 +28,7 @@ Choose one location for each run. Repeat the test from other available locations
 **Execution Context**: 
 - **Playground**: When multiple project-available locations are available, select a specific location. The "Global" option is shown only when the project is not restricted to specific locations. When only one location exists, tests run automatically without a location prompt.
 - **Jobs**: K6 jobs execute from the project's requested location when provided, otherwise they fall back to the project's default available location.
-- **Worker availability**: Choose an online location when possible. If a location is offline, a submitted run may wait until execution is available there.
+- **Worker availability**: K6 submissions require a live matching worker heartbeat before capacity is reserved. If the worker is offline or its heartbeat lookup fails, the submission fails with `queue_unavailable`; retry after the worker connects. A newly started worker may need a short time to publish its first heartbeat.
 
 **Self-Hosted Deployments**: By default, self-hosted instances have a single `local` location. Tests execute from your worker. To enable multi-location testing, deploy additional workers and add locations via the Super Admin panel.
 </Callout>

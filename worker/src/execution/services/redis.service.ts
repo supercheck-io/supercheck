@@ -14,8 +14,6 @@ import { buildRedisOptions } from '../../common/redis/redis-options';
 
 // Constants for Redis TTL
 const REDIS_JOB_TTL = 7 * 24 * 60 * 60; // 7 days for job data
-const REDIS_EVENT_TTL = 24 * 60 * 60; // 24 hours for events/stats
-const REDIS_METRICS_TTL = 48 * 60 * 60; // 48 hours for metrics data
 const REDIS_CLEANUP_BATCH_SIZE = 100; // Process keys in smaller batches to reduce memory pressure
 
 /**
@@ -30,7 +28,7 @@ const REDIS_CLEANUP_BATCH_SIZE = 100; // Process keys in smaller batches to redu
  * 4. Automated cleanup of Redis keys to prevent memory growth
  *
  * The service eliminates the need for separate Redis pub/sub channels by using
- * Bull's built-in event system with proper TTL for automatic cleanup.
+ * BullMQ's event system and terminal-job retention for automatic cleanup.
  */
 @Injectable()
 export class RedisService implements OnModuleInit, OnModuleDestroy {
@@ -179,7 +177,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
       // 2. Trim event streams to reduce memory usage
       await this.queue.trimEvents(1000);
 
-      // 3. Set TTL on orphaned keys
+      // 3. Repair unsafe TTLs left by older cleanup code
       await this.cleanupOrphanedKeys(PLAYWRIGHT_QUEUE);
 
       this.logger.log('Redis cleanup completed successfully');
@@ -189,7 +187,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Cleans up orphaned Redis keys that might not have TTL set
+   * Repairs legacy expiry on durable BullMQ keys
    * Uses efficient SCAN pattern to reduce memory pressure
    */
   private async cleanupOrphanedKeys(queueName: string): Promise<void> {
@@ -210,36 +208,49 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
         cursor = nextCursor;
         processedKeys += keys.length;
 
-        // Process this batch of keys
+        // Repair durable keys in bounded pipelines; BullMQ leases keep native TTLs.
+        const durable: string[] = [];
+        const candidates: string[] = [];
         for (const key of keys) {
-          // Skip keys that BullMQ manages automatically
+          const suffix = key.slice(`bull:${queueName}:`.length);
           if (
-            key.includes(':active') ||
-            key.includes(':wait') ||
-            key.includes(':delayed') ||
-            key.includes(':failed') ||
-            key.includes(':completed')
-          ) {
+            suffix === 'limiter' ||
+            suffix === 'stalled-check' ||
+            suffix.startsWith('de:') ||
+            suffix.endsWith(':lock')
+          )
             continue;
+          if (
+            /^(id|wait|active|paused|delayed|prioritized|waiting-children|completed|failed|stalled|repeat|meta|events|pc|marker)$/.test(
+              suffix,
+            ) ||
+            /:(logs|dependencies|processed|failed|unsuccessful)$/.test(
+              suffix,
+            ) ||
+            /^metrics:(completed|failed)(:data)?$/.test(suffix)
+          )
+            durable.push(key);
+          else candidates.push(key);
+        }
+        if (candidates.length) {
+          const types = this.redisClient.pipeline();
+          candidates.forEach((key) => types.type(key));
+          const results = await types.exec();
+          if (!results)
+            throw new Error('Queue key inspection returned no results');
+          for (let i = 0; i < results.length; i++) {
+            const [error, type] = results[i];
+            if (error) throw error;
+            if (type === 'hash') durable.push(candidates[i]);
           }
-
-          // Check if the key has a TTL set
-          const ttl = await this.redisClient.ttl(key);
-          if (ttl === -1) {
-            // -1 means key exists but no TTL is set
-            // Set appropriate TTL based on key type
-            let expiryTime = REDIS_JOB_TTL;
-
-            if (key.includes(':events:')) {
-              expiryTime = REDIS_EVENT_TTL;
-            } else if (key.includes(':metrics')) {
-              expiryTime = REDIS_METRICS_TTL;
-            } else if (key.includes(':meta')) {
-              continue; // Skip meta keys as they should live as long as the app runs
-            }
-
-            await this.redisClient.expire(key, expiryTime);
-            this.logger.debug(`Set TTL of ${expiryTime}s for key: ${key}`);
+        }
+        if (durable.length) {
+          const repair = this.redisClient.pipeline();
+          durable.forEach((key) => repair.persist(key));
+          const results = await repair.exec();
+          if (!results) throw new Error('Queue key repair returned no results');
+          for (const [error] of results) {
+            if (error) throw error;
           }
         }
       } while (cursor !== '0');

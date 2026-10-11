@@ -13,11 +13,17 @@ jest.mock("@/lib/location-registry", () => ({
 }));
 jest.mock("@/lib/queue", () => ({
   getQueues: jest.fn(),
+  getCapacityQueues: jest.fn(),
   getQueueLocationSignature: jest.fn(),
   invalidateQueueMaps: jest.fn(),
   locationCodesSignature: (codes: string[]) => [...codes].sort().join("\0"),
 }));
 
+jest.mock("@/sre/lib/background-alert-triage-queue", () => ({
+  getSreAlertTriageQueue: jest.fn(async () => ({ name: "sre-alert-triage" })),
+}));
+
+import { getSreAlertTriageQueue } from "@/sre/lib/background-alert-triage-queue";
 import { createBullBoard } from "@bull-board/api";
 import type { BullBoardQueues, BullBoardRequest } from "@bull-board/api/typings/app";
 import { NextRequest } from "next/server";
@@ -25,12 +31,14 @@ import { getCurrentUser } from "@/lib/session";
 import { getAllEnabledLocationCodes } from "@/lib/location-registry";
 import {
   getQueues,
+  getCapacityQueues,
   getQueueLocationSignature,
   invalidateQueueMaps,
 } from "@/lib/queue";
 import { getBullBoardState, invalidateBullBoard } from "@/lib/bull-board/state";
 import type { NextBullBoardAdapter } from "@/lib/bull-board/next-adapter";
-import { GET } from "./route";
+import { GET, POST, PUT, PATCH, DELETE } from "./route";
+import { promises as fs } from "node:fs";
 
 const mockCreateBullBoard = createBullBoard as jest.Mock;
 const mockGetCurrentUser = getCurrentUser as jest.Mock;
@@ -77,11 +85,13 @@ describe("Bull Board replica state", () => {
     delete boardScope.__SUPERCHECK_BULL_BOARD_STATE__;
     jest.resetAllMocks();
     enabledCodes = ["eu"];
+    (getSreAlertTriageQueue as jest.Mock).mockResolvedValue({ name: "sre-alert-triage" });
     queueSignature = "eu";
     mockGetCurrentUser.mockResolvedValue({ id: "admin", role: "super_admin" });
     mockGetEnabledCodes.mockImplementation(async () => enabledCodes);
     mockGetSignature.mockImplementation(() => queueSignature);
     mockGetQueues.mockImplementation(async () => queuesFor(enabledCodes));
+    (getCapacityQueues as jest.Mock).mockImplementation(async () => ({ k6Queues: queuesFor(enabledCodes).k6Queues }));
     mockInvalidateQueues.mockImplementation(async () => {
       queueSignature = [...enabledCodes].sort().join("\0");
     });
@@ -131,6 +141,51 @@ describe("Bull Board replica state", () => {
     expect(await second.json()).toEqual(payload);
     expect(mockCreateBullBoard).toHaveBeenCalledTimes(1);
   });
+
+  it("shows retained disabled k6 jobs and the SRE triage queue", async () => {
+    (getCapacityQueues as jest.Mock).mockResolvedValue({ k6Queues: { global: { name: "k6-global" }, retired: { name: "k6-retired" } } });
+    expect((await poll()).status).toBe(200);
+    const adapters = mockCreateBullBoard.mock.calls[0][0].queues;
+    expect(adapters.map((adapter: { queue: { name: string } }) => adapter.queue.name)).toEqual(expect.arrayContaining(["k6-retired", "sre-alert-triage"]));
+  });
+
+  it("revalidates assets with stable paths after authentication", async () => {
+    const read = jest.spyOn(fs, "readFile").mockResolvedValue(Buffer.from("image"));
+    try {
+      const response = await GET(new NextRequest("http://localhost/api/admin/queues/static/favicon.png"), { params: Promise.resolve({ path: ["static", "favicon.png"] }) });
+      expect(response.status).toBe(200);
+      expect(response.headers.get("cache-control")).toBe("private, max-age=0, must-revalidate");
+    } finally { read.mockRestore(); }
+  });
+
+  it("rejects traversal into a sibling directory sharing the assets prefix", async () => {
+    const read = jest.spyOn(fs, "readFile").mockResolvedValue(Buffer.from("private sibling data"));
+    try {
+      const response = await GET(new NextRequest("http://localhost/api/admin/queues/static/sibling"), {
+        params: Promise.resolve({ path: ["static", "../assets-private", "secret.txt"] }),
+      });
+      expect(response.status).toBe(404);
+      expect(read).not.toHaveBeenCalled();
+    } finally { read.mockRestore(); }
+  });
+
+  it("retains immutable caching for content-hashed bundles", async () => {
+    const read = jest.spyOn(fs, "readFile").mockResolvedValue(Buffer.from("script"));
+    try {
+      const response = await GET(new NextRequest("http://localhost/api/admin/queues/static/main.abcd1234.js"), { params: Promise.resolve({ path: ["static", "main.abcd1234.js"] }) });
+      expect(response.status).toBe(200);
+      expect(response.headers.get("cache-control")).toBe("private, max-age=31536000, immutable");
+    } finally { read.mockRestore(); }
+  });
+
+  it.each([["POST", POST], ["PUT", PUT], ["PATCH", PATCH], ["DELETE", DELETE]] as const)(
+    "authenticates %s before initialization", async (method, handler) => {
+      mockGetCurrentUser.mockResolvedValue({ role: "org_owner" });
+      const response = await handler(new NextRequest("http://localhost/api/admin/queues/api/queues", { method }), { params: Promise.resolve({ path: ["api", "queues"] }) });
+      expect(response.status).toBe(401);
+      expect(mockGetQueues).not.toHaveBeenCalled();
+    },
+  );
 
   it("initializes once when cold polls finish their location read concurrently", async () => {
     const locations = deferred<string[]>();

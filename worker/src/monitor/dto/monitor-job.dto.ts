@@ -19,4 +19,5 @@ export class MonitorJobDataDto {
   executionLocation?: MonitoringLocation;
   executionGroupId?: string;
   expectedLocations?: MonitoringLocation[];
+  aggregationOnly?: boolean;
 }

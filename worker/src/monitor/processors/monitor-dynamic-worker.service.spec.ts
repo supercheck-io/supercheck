@@ -1,10 +1,16 @@
 jest.mock('bullmq', () => ({
+  DelayedError: jest.requireActual('bullmq').DelayedError,
   Worker: jest.fn().mockImplementation(() => ({
     on: jest.fn(),
     close: jest.fn().mockResolvedValue(undefined),
   })),
 }));
-jest.mock('../monitor.service', () => ({ MonitorService: class {} }));
+jest.mock('../monitor.service', () => ({
+  MonitorService: class {},
+  MonitorAggregationBusyError: class extends Error {
+    readonly retryAfterMs = 60000;
+  },
+}));
 jest.mock('../../db/db.service', () => ({ DbService: class {} }));
 jest.mock('../../common/heartbeat/heartbeat.service', () => ({
   HeartbeatService: class {},
@@ -16,7 +22,10 @@ import { Worker, Job } from 'bullmq';
 import { MonitorJobDataDto } from '../dto/monitor-job.dto';
 import Redis from 'ioredis';
 import { MonitorDynamicWorkerService } from './monitor-dynamic-worker.service';
-import { MonitorService } from '../monitor.service';
+import {
+  MonitorService,
+  MonitorAggregationBusyError,
+} from '../monitor.service';
 import { DbService } from '../../db/db.service';
 import { HeartbeatService } from '../../common/heartbeat/heartbeat.service';
 
@@ -476,4 +485,86 @@ describe('MonitorDynamicWorkerService lifecycle', () => {
       }
     },
   );
+  it('defers aggregation contention without spending a failed attempt', async () => {
+    const monitorService = {
+      executeMonitor: jest.fn().mockResolvedValue({
+        monitorId: 'monitor-1',
+        location: 'eu',
+        isUp: true,
+      }),
+      saveDistributedMonitorResult: jest
+        .fn()
+        .mockRejectedValue(new MonitorAggregationBusyError()),
+    };
+    const service = new MonitorDynamicWorkerService(
+      monitorService as unknown as MonitorService,
+      new ConfigService(),
+      {} as HeartbeatService,
+      {} as DbService,
+    );
+    const moveToDelayed = jest.fn().mockResolvedValue(undefined);
+    const job = {
+      name: 'executeMonitorJob',
+      data: { monitorId: 'monitor-1', executionLocation: 'eu' },
+      token: 'worker-token',
+      attemptsMade: 0,
+      moveToDelayed,
+      updateData: jest.fn().mockResolvedValue(undefined),
+    };
+    await expect(
+      service['processJob'](job as unknown as Job<MonitorJobDataDto>),
+    ).rejects.toMatchObject({ name: 'DelayedError' });
+    expect(moveToDelayed).toHaveBeenCalledWith(
+      expect.any(Number),
+      'worker-token',
+    );
+    expect(job.attemptsMade).toBe(0);
+    expect(job.updateData).toHaveBeenCalledWith(
+      expect.objectContaining({ aggregationOnly: true }),
+    );
+  });
+  it('resumes an aggregation delay from persisted evidence without rerunning the probe', async () => {
+    const executeMonitor = jest.fn();
+    const save = jest.fn().mockResolvedValue(undefined);
+    const row = {
+      monitorId: 'monitor-1',
+      location: 'eu',
+      status: 'up',
+      isUp: true,
+      checkedAt: new Date(),
+      details: null,
+      responseTimeMs: 1,
+      testExecutionId: null,
+      testReportS3Url: null,
+    };
+    const service = new MonitorDynamicWorkerService(
+      {
+        executeMonitor,
+        saveDistributedMonitorResult: save,
+      } as unknown as MonitorService,
+      new ConfigService(),
+      {} as HeartbeatService,
+      {
+        db: {
+          query: {
+            monitorResults: { findFirst: jest.fn().mockResolvedValue(row) },
+          },
+        },
+      } as unknown as DbService,
+    );
+    await service['processJob']({
+      name: 'executeMonitorJob',
+      data: {
+        monitorId: 'monitor-1',
+        executionLocation: 'eu',
+        executionGroupId: 'group-1',
+        aggregationOnly: true,
+      },
+    } as unknown as Job<MonitorJobDataDto>);
+    expect(executeMonitor).not.toHaveBeenCalled();
+    expect(save).toHaveBeenCalledWith(
+      expect.objectContaining({ monitorId: 'monitor-1', isUp: true }),
+      expect.objectContaining({ persisted: true }),
+    );
+  });
 });

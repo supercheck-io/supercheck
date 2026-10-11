@@ -25,6 +25,8 @@ const RESERVED_CODES = new Set([
   "none",
   "any",
   "local",
+  "scheduler",
+  "job-scheduler",
 ]);
 
 export const createLocationSchema = z.object({

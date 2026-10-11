@@ -22,6 +22,9 @@ import type { ExecutionUsageTransaction } from '../services/execution-usage-rece
 @Processor(PLAYWRIGHT_QUEUE, {
   concurrency: 1,
   lockDuration: 70 * 60 * 1000,
+  stalledInterval: 30000,
+  maxStalledCount: 2,
+  metrics: { maxDataPoints: 60 },
 })
 export class PlaywrightExecutionProcessor extends WorkerHost {
   private readonly logger = new Logger(PlaywrightExecutionProcessor.name);
