@@ -296,10 +296,22 @@ test.describe("AI SRE investigation surfaces @aisre @critical", () => {
     await expect(page.getByText("Read-only", { exact: true })).toBeVisible();
   });
 
-  test("rejects an invalid incident context", async ({ page }) => {
-    const response = await page.goto("/copilot?incident=invalid");
-    expect(response?.status()).toBe(404);
-  });
+  for (const query of [
+    "incident=invalid",
+    "incident=",
+    "incident=invalid&incident=invalid",
+  ]) {
+    test(`rejects an invalid incident context (${query})`, async ({ page }) => {
+      await page.goto(`/copilot?${query}`);
+      // Next.js can return HTTP 200 when notFound() follows streamed headers.
+      await expect(
+        page.getByRole("heading", { name: "Page Not Found", exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByPlaceholder("Describe a symptom or paste evidence..."),
+      ).toHaveCount(0);
+    });
+  }
 
   test("uses the dedicated Copilot screen on mobile without an AI popup", async ({
     page,
