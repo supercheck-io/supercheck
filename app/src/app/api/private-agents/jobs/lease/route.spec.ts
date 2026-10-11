@@ -5,8 +5,11 @@ import { NextRequest } from "next/server";
 jest.mock("@/utils/db", () => ({
   db: {
     transaction: jest.fn(),
+    query: { externalConnectorCredentials: { findFirst: jest.fn() } },
+    update: jest.fn(),
   },
 }));
+jest.mock("@/lib/sre/connectors", () => ({ decryptConnectorCredential: jest.fn() }));
 
 jest.mock("../auth", () => ({
   authenticatePrivateAgent: jest.fn(),
@@ -18,6 +21,8 @@ import { POST } from "./route";
 const { db: mockDb } = jest.requireMock("@/utils/db") as {
   db: {
     transaction: jest.Mock;
+    query: { externalConnectorCredentials: { findFirst: jest.Mock } };
+    update: jest.Mock;
   };
 };
 
@@ -82,5 +87,32 @@ describe("Private Agent job lease route", () => {
       leaseExpiresAt: null,
       startedAt: null,
     });
+  });
+
+  it("fails an expired connector credential without decrypting or handing it to the agent", async () => {
+    const leasedJob = {
+      id: "00000000-0000-4000-8000-000000000010",
+      connectorId: "00000000-0000-4000-8000-000000000011",
+      organizationId: "00000000-0000-0000-0000-000000000002",
+      projectId: "00000000-0000-4000-8000-000000000012",
+    };
+    mockDb.transaction.mockResolvedValueOnce(leasedJob);
+    mockDb.query.externalConnectorCredentials.findFirst.mockResolvedValue({
+      expiresAt: new Date(Date.now() - 1_000),
+      encryptedCredential: "expired-secret",
+    });
+    const set = jest.fn(() => ({ where: jest.fn().mockResolvedValue([]) }));
+    mockDb.update.mockReturnValue({ set });
+    const response = await POST(new NextRequest("http://localhost/api/private-agents/jobs/lease", {
+      method: "POST",
+      body: JSON.stringify({ waitMs: 0 }),
+    }));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ job: null });
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({
+      status: "failed",
+      errorCode: "connector_credential_expired",
+    }));
+    expect(jest.requireMock("@/lib/sre/connectors").decryptConnectorCredential).not.toHaveBeenCalled();
   });
 });

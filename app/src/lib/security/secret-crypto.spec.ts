@@ -322,6 +322,16 @@ describe("Secret Crypto", () => {
   });
 
   describe("Error Handling", () => {
+    it.each(["CHANGE_THIS", "change-this", "ChangeThis"])("rejects a placeholder key (%s)", (placeholder) => {
+      const originalKey = process.env.SECRET_ENCRYPTION_KEY;
+      try {
+        process.env.SECRET_ENCRYPTION_KEY = placeholder.padEnd(64, "_");
+        expect(() => encryptSecret("test")).toThrow("placeholder value");
+      } finally {
+        process.env.SECRET_ENCRYPTION_KEY = originalKey;
+      }
+    });
+
     it("should throw if encryption key is not set", () => {
       const originalKey = process.env.SECRET_ENCRYPTION_KEY;
       delete process.env.SECRET_ENCRYPTION_KEY;

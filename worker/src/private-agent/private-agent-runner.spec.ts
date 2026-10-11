@@ -455,6 +455,53 @@ describe('private agent connector execution', () => {
     warnSpy.mockRestore();
   });
 
+  it.each(['lost response', 'rejected lease'])(
+    'never changes a completed result to failed after a %s',
+    async (scenario) => {
+      const config: PrivateAgentConfig = {
+        apiUrl: 'https://app.supercheck.io',
+        agentId: baseJob.id,
+        token: 'scpac_runtime_1234567890',
+        tokenSource: 'env',
+        credentialFile: null,
+        agentVersion: '1.3.6',
+        retryIntervalMs: 5_000,
+        leaseWaitMs: 25_000,
+        heartbeatIntervalMs: 30_000,
+      };
+      const fetchMock = jest.fn().mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: { result: [] } }),
+      });
+      if (scenario === 'lost response') {
+        fetchMock.mockRejectedValueOnce(new TypeError('connection lost'));
+        fetchMock.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ ok: true, alreadyAccepted: true }),
+        });
+      } else {
+        fetchMock.mockResolvedValueOnce({ ok: false, status: 409 });
+      }
+      global.fetch = fetchMock as unknown as typeof fetch;
+      const processing = processLeasedJob(config, {
+        job: baseJob,
+        leaseToken: 'lease-token',
+      });
+      if (scenario === 'lost response') {
+        await expect(processing).resolves.toBeUndefined();
+        expect(fetchMock.mock.calls[1][1].body).toBe(
+          fetchMock.mock.calls[2][1].body,
+        );
+      } else {
+        await expect(processing).rejects.toThrow('HTTP 409');
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+      }
+      for (const [, options] of fetchMock.mock.calls.slice(1)) {
+        expect(JSON.parse(options.body).status).toBe('completed');
+      }
+    },
+  );
+
   it('exchanges registration tokens for runtime credentials', async () => {
     const config: PrivateAgentConfig = {
       apiUrl: 'https://app.supercheck.io',

@@ -18,6 +18,7 @@ jest.mock("../auth", () => ({
 }));
 
 import { POST } from "./route";
+import { hashConnectorPayload } from "@/lib/sre/connectors";
 
 const { authenticatePrivateAgent: mockAuth } = jest.requireMock("../auth") as { authenticatePrivateAgent: jest.Mock };
 
@@ -52,7 +53,7 @@ describe("Private Agent job result route", () => {
   });
 
   it("returns 409 when a concurrent or replayed post already finished the job", async () => {
-    mockSelectLimit.mockResolvedValue([{ id: jobId, leaseExpiresAt: new Date(Date.now() + 60_000), startedAt: null }]);
+    mockSelectLimit.mockResolvedValue([{ id: jobId, status: "leased", leaseExpiresAt: new Date(Date.now() + 60_000), startedAt: null }]);
     // The guarded UPDATE ... RETURNING matches no row because the job is no longer leased/running.
     mockTransaction.mockImplementation(async (fn) =>
       fn({
@@ -61,5 +62,53 @@ describe("Private Agent job result route", () => {
     );
     const response = await POST(request(body));
     expect(response.status).toBe(409);
+  });
+
+  it("acknowledges an identical result replay without writing, even after lease expiry", async () => {
+    mockSelectLimit.mockResolvedValue([{
+      id: jobId,
+      status: "completed",
+      leaseExpiresAt: new Date(0),
+      errorCode: null,
+      resultHash: hashConnectorPayload({ evidence: [], truncated: false }),
+      resultSummary: { evidence: [], truncated: false, receivedAt: "2026-10-10T00:00:00Z" },
+    }]);
+    const response = await POST(request(body));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ ok: true, alreadyAccepted: true });
+    expect(mockTransaction).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { status: "failed" },
+    { resultHash: "b".repeat(64) },
+    { resultSummary: { evidence: [], truncated: true } },
+    { errorCode: "different-error" },
+  ])("rejects a different terminal result (%j)", async (change) => {
+    mockSelectLimit.mockResolvedValue([{
+      id: jobId,
+      status: "completed",
+      leaseExpiresAt: new Date(0),
+      errorCode: null,
+      resultHash: hashConnectorPayload({ evidence: [], truncated: false }),
+      resultSummary: { evidence: [], truncated: false },
+      ...change,
+    }]);
+    expect((await POST(request(body))).status).toBe(409);
+    expect(mockTransaction).not.toHaveBeenCalled();
+  });
+
+  it("acknowledges an identical result accepted during a concurrent guarded update", async () => {
+    mockSelectLimit
+      .mockResolvedValueOnce([{ id: jobId, status: "leased", leaseExpiresAt: new Date(Date.now() + 60_000) }])
+      .mockResolvedValueOnce([{
+        id: jobId, status: "completed", errorCode: null,
+        resultHash: hashConnectorPayload({ evidence: [], truncated: false }),
+        resultSummary: { evidence: [], truncated: false },
+      }]);
+    mockTransaction.mockImplementation(async (fn) => fn({
+      update: () => ({ set: () => ({ where: () => ({ returning: async () => [] }) }) }),
+    }));
+    expect((await POST(request(body))).status).toBe(200);
   });
 });

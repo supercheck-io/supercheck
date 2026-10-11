@@ -1626,6 +1626,15 @@ function writeCredentialFile(filePath: string, token: string) {
   writeFileSync(filePath, `${token}\n`, { encoding: 'utf8', mode: 0o600 });
 }
 
+class PrivateAgentHttpError extends Error {
+  constructor(
+    path: string,
+    public readonly status: number,
+  ) {
+    super(`${path} failed with HTTP ${status}`);
+  }
+}
+
 async function postJson(
   config: PrivateAgentConfig,
   path: string,
@@ -1644,7 +1653,7 @@ async function postJson(
   });
 
   if (!response.ok) {
-    throw new Error(`${path} failed with HTTP ${response.status}`);
+    throw new PrivateAgentHttpError(path, response.status);
   }
 
   return response.json();
@@ -1802,7 +1811,7 @@ async function submitResult(
   result?: ConnectorExecutionResult,
   errorCode?: string,
 ) {
-  await postJson(config, '/api/private-agents/jobs/result', {
+  const payload = {
     jobId: leased.job.id,
     leaseToken: leased.leaseToken,
     status,
@@ -1810,16 +1819,23 @@ async function submitResult(
     evidence: result?.evidence ?? [],
     truncated: result?.truncated ?? false,
     errorCode,
-  });
+  };
+  try {
+    await postJson(config, '/api/private-agents/jobs/result', payload);
+  } catch (error) {
+    if (error instanceof PrivateAgentHttpError) throw error;
+    // Retry the identical result once when its acknowledgement was lost.
+    await postJson(config, '/api/private-agents/jobs/result', payload);
+  }
 }
 
 export async function processLeasedJob(
   config: PrivateAgentConfig,
   leased: { job: LeasedJob; leaseToken: string },
 ): Promise<void> {
+  let result: ConnectorExecutionResult;
   try {
-    const result = await executePrivateAgentConnectorJob(leased.job);
-    await submitResult(config, leased, 'completed', result);
+    result = await executePrivateAgentConnectorJob(leased.job);
   } catch (error) {
     const errorCode =
       error instanceof Error
@@ -1827,7 +1843,9 @@ export async function processLeasedJob(
         : 'private_agent_job_error';
     await submitResult(config, leased, 'failed', undefined, errorCode);
     console.warn(`Private Agent job failed: ${errorCode}`);
+    return;
   }
+  await submitResult(config, leased, 'completed', result);
 }
 
 export async function startPrivateAgentRunner(): Promise<void> {

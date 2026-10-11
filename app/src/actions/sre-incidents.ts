@@ -1303,7 +1303,7 @@ export async function updateSreIncident(
         });
 
       if (!updatedIncident) {
-        throw new Error("Incident was updated or deleted by another request");
+        return null;
       }
 
       await tx.insert(sreIncidentTimelineEvents).values({
@@ -1331,6 +1331,10 @@ export async function updateSreIncident(
 
       return updatedIncident;
     });
+
+    if (!incident) {
+      return { success: false, error: "Incident changed by another request — reload and try again" };
+    }
 
     await logAuditEvent({
       userId,
