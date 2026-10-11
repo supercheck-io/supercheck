@@ -3,6 +3,7 @@ jest.mock('node:dns/promises', () => ({
 }));
 
 import {
+  assertSecureApiUrl,
   exchangeRegistrationToken,
   executePrivateAgentConnectorJob,
   processLeasedJob,
@@ -575,5 +576,31 @@ describe('private agent connector execution', () => {
 
     await expect(exchangeRegistrationToken(config)).resolves.toBe(config);
     expect(global.fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe('assertSecureApiUrl', () => {
+  it.each([
+    'https://app.supercheck.io',
+    'http://localhost:3000',
+    'http://app:3000',
+    'http://10.0.0.5:3000',
+    'http://[::1]:3000',
+    'http://[fd00::5]:3000',
+  ])('allows %s', (url) => {
+    expect(() => assertSecureApiUrl(url)).not.toThrow();
+  });
+
+  it.each([
+    'http://app.supercheck.io',
+    'http://8.8.8.8',
+    'http://10.evil.com',
+    'http://127.0.0.1.evil.com',
+    'http://192.168.1.1.attacker.io',
+    'http://[2001:4860:4860::8888]:3000',
+    'http://[::ffff:8.8.8.8]',
+    'ftp://app',
+  ])('rejects %s', (url) => {
+    expect(() => assertSecureApiUrl(url)).toThrow('must use https://');
   });
 });

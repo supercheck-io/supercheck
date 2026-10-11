@@ -15,7 +15,13 @@ const REDACTION_PATTERNS: Array<[RegExp, string]> = [
   [/\b(token|api[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token|secret|password|passwd|pwd)\s*[:=]\s*[^\s,;"']+/gi, "$1=[REDACTED]"],
   [/\b(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{20,}\b/g, "[REDACTED_GITHUB_TOKEN]"],
   [/\bxox[baprs]-[A-Za-z0-9-]{10,}\b/g, "[REDACTED_SLACK_TOKEN]"],
-  [/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[REDACTED_EMAIL]"],
+  [/\bAKIA[0-9A-Z]{16}\b/g, "[REDACTED_AWS_ACCESS_KEY]"],
+  // Lookarounds (not \b) keep this linear: "-" is a class member, so \b would restart a scan at every "-eyJ".
+  [/(?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}(?![A-Za-z0-9_-])/g, "[REDACTED_JWT]"],
+  [/\bsk-[A-Za-z0-9_-]{20,}\b/g, "[REDACTED_API_KEY]"],
+  [/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)/g, "[REDACTED_PRIVATE_KEY]"],
+  // Start-anchored and length-bounded (local part capped at 254, domain at 255) so a long run without "@" is scanned once.
+  [/(?<![A-Z0-9._%+-])[A-Z0-9._%+-]{1,254}@[A-Z0-9.-]{1,255}\.[A-Z]{2,}\b/gi, "[REDACTED_EMAIL]"],
 ];
 
 export type SanitizedConnectorOutput = {
@@ -25,8 +31,14 @@ export type SanitizedConnectorOutput = {
   byteLength: number;
 };
 
+// Redaction is O(n) per pattern; bound n so one oversized log line cannot stall the event loop.
+const MAX_REDACTION_INPUT_CHARS = 64 * 1024;
+
 export function redactConnectorText(value: string): string {
-  return REDACTION_PATTERNS.reduce((current, [pattern, replacement]) => current.replace(pattern, replacement), value);
+  const bounded = value.length > MAX_REDACTION_INPUT_CHARS
+      ? `${value.slice(0, MAX_REDACTION_INPUT_CHARS)} [TRUNCATED]`
+      : value;
+  return REDACTION_PATTERNS.reduce((current, [pattern, replacement]) => current.replace(pattern, replacement), bounded);
 }
 
 export function sanitizeConnectorEvidence(

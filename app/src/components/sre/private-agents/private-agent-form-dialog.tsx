@@ -3,6 +3,7 @@
 import { useState, useTransition, type FormEvent } from "react";
 import { Copy, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { copyToClipboard } from "./copy-to-clipboard";
 
 import {
   registerPrivateAgent,
@@ -77,14 +78,12 @@ export function PrivateAgentFormDialog({
 
   const copyToken = async () => {
     if (!registrationToken) return;
-    await navigator.clipboard.writeText(registrationToken);
-    toast.success("Registration token copied");
+    await copyToClipboard(registrationToken, "Registration token");
   };
 
   const copyAgentId = async () => {
     if (!registeredAgentId) return;
-    await navigator.clipboard.writeText(registeredAgentId);
-    toast.success("Agent ID copied");
+    await copyToClipboard(registeredAgentId, "Agent ID");
   };
 
   return (

@@ -107,9 +107,47 @@ describe('AI SRE CLI Commands', () => {
 
       await incidentCommand.parseAsync(['node', 'incident', 'resolve', '018f0000-0000-7000-8000-000000000001', '--comment', 'Fix applied', '--force'])
 
-      expect(mockPost).toHaveBeenCalledWith('/api/sre/incidents/018f0000-0000-7000-8000-000000000001/resolve', { comment: 'Fix applied' })
+      expect(mockPost).toHaveBeenCalledWith('/api/sre/incidents/018f0000-0000-7000-8000-000000000001/resolve', { comment: 'Fix applied' }, { retries: 0 })
       expect(mockSuccess).toHaveBeenCalledWith('Incident resolved')
       expect(mockOutputDetail).toHaveBeenCalledWith(expect.objectContaining({ success: true }))
+    })
+  })
+
+  describe('incident resolve safeguards', () => {
+    const id = '018f0000-0000-7000-8000-000000000001'
+
+    it('reports an already-resolved incident instead of claiming success', async () => {
+      mockPost.mockResolvedValueOnce({ data: { success: true, alreadyResolved: true, message: 'Incident #1 was already resolved' } })
+      await incidentCommand.parseAsync(['node', 'incident', 'resolve', id, '--comment', 'x', '--force'])
+      expect(mockSuccess).not.toHaveBeenCalled()
+      expect(mockInfo).toHaveBeenCalledWith('Incident #1 was already resolved')
+    })
+
+    it('refuses to resolve non-interactively without --force', async () => {
+      const original = Object.getOwnPropertyDescriptor(process.stdin, 'isTTY')
+      Object.defineProperty(process.stdin, 'isTTY', { value: false, configurable: true })
+      try {
+        await expect(incidentCommand.parseAsync(['node', 'incident', 'resolve', id, '--comment', 'x']))
+          .rejects.toMatchObject({ exitCode: 3 })
+        expect(mockPost).not.toHaveBeenCalled()
+      } finally {
+        if (original) Object.defineProperty(process.stdin, 'isTTY', original)
+        else delete (process.stdin as { isTTY?: boolean }).isTTY
+      }
+    })
+  })
+
+  describe('sre input validation', () => {
+    it.each(['abc', '0', '5'])('rejects invalid --idle-timeout %s', async (value) => {
+      await expect(sreCommand.parseAsync(['node', 'sre', 'ask', 'q', '--idle-timeout', value]))
+        .rejects.toMatchObject({ exitCode: 3 })
+      expect(mockPostSse).not.toHaveBeenCalled()
+    })
+
+    it('rejects incident numbers beyond the 32-bit server range', async () => {
+      await expect(sreCommand.parseAsync(['node', 'sre', 'triage', '2147483648']))
+        .rejects.toMatchObject({ exitCode: 3 })
+      expect(mockGet).not.toHaveBeenCalled()
     })
   })
 
@@ -170,8 +208,8 @@ describe('AI SRE CLI Commands', () => {
       const directionColumn = options.columns.find(({ header }) => header === 'Direction')
       const relatedServiceColumn = options.columns.find(({ header }) => header === 'Related Service ID')
 
-      expect(directionColumn?.format?.(undefined, mockDeps[0])).toBe('downstream')
-      expect(directionColumn?.format?.(undefined, mockDeps[1])).toBe('upstream')
+      expect(directionColumn?.format?.(undefined, mockDeps[0])).toBe('upstream (depends on)')
+      expect(directionColumn?.format?.(undefined, mockDeps[1])).toBe('downstream (depended on by)')
       expect(relatedServiceColumn?.format?.(undefined, mockDeps[0])).toBe('payment-api')
       expect(relatedServiceColumn?.format?.(undefined, mockDeps[1])).toBe('frontend-api')
     })
@@ -187,16 +225,16 @@ describe('AI SRE CLI Commands', () => {
       await sreCommand.parseAsync(['node', 'sre', command, '1'])
       expect(mockGet).toHaveBeenCalledWith('/api/sre/incidents', { incidentNumber: '1' })
       if (command === 'brief') {
-        expect(mockPostSse).toHaveBeenCalledWith('/api/sre/evidence-brief/stream', { incidentId }, expect.any(Function), expect.any(Number))
+        expect(mockPostSse).toHaveBeenCalledWith('/api/sre/evidence-brief/stream', { incidentId }, expect.any(Function), expect.objectContaining({ idleTimeoutMs: 60_000 }))
       } else {
-        expect(mockPost).toHaveBeenCalledWith(`/api/sre/${command}`, expect.objectContaining({ incidentId }))
+        expect(mockPost).toHaveBeenCalledWith(`/api/sre/${command}`, expect.objectContaining({ incidentId }), expect.objectContaining({ retries: 0 }))
       }
     })
 
     it('resolves the incident number for Copilot', async () => {
       mockGet.mockResolvedValueOnce({ data: { incidents: [{ id: incidentId, incidentNumber: 1 }] } })
       await sreCommand.parseAsync(['node', 'sre', 'ask', 'What failed?', '--incident', '1'])
-      expect(mockPostSse).toHaveBeenCalledWith('/api/sre/chat', expect.objectContaining({ incidentId }), expect.any(Function), expect.any(Number))
+      expect(mockPostSse).toHaveBeenCalledWith('/api/sre/chat', expect.objectContaining({ incidentId }), expect.any(Function), expect.objectContaining({ idleTimeoutMs: 60_000 }))
     })
 
     it.each(['get', 'timeline', 'resolve'])('resolves the displayed incident number for incident %s', async (command) => {
@@ -205,7 +243,7 @@ describe('AI SRE CLI Commands', () => {
       mockPost.mockResolvedValueOnce({ data: { success: true } })
       await incidentCommand.parseAsync(['node', 'incident', command, '1', ...(command === 'resolve' ? ['--comment', 'Fixed', '--force'] : [])])
       if (command === 'resolve') {
-        expect(mockPost).toHaveBeenCalledWith(`/api/sre/incidents/${incidentId}/resolve`, { comment: 'Fixed' })
+        expect(mockPost).toHaveBeenCalledWith(`/api/sre/incidents/${incidentId}/resolve`, { comment: 'Fixed' }, { retries: 0 })
       } else {
         expect(mockGet).toHaveBeenCalledWith(`/api/sre/incidents/${incidentId}${command === 'timeline' ? '/timeline' : ''}`)
       }
@@ -228,7 +266,7 @@ describe('AI SRE CLI Commands', () => {
 
       await sreCommand.parseAsync(['node', 'sre', 'triage', '018f0000-0000-7000-8000-000000000001'])
 
-      expect(mockPost).toHaveBeenCalledWith('/api/sre/triage', { incidentId: '018f0000-0000-7000-8000-000000000001' })
+      expect(mockPost).toHaveBeenCalledWith('/api/sre/triage', { incidentId: '018f0000-0000-7000-8000-000000000001' }, { timeout: 90_000, retries: 0 })
       expect(mockOutputDetail).toHaveBeenCalledWith(expect.objectContaining({ status: 'completed' }))
       expect(mockNarrative).toHaveBeenCalledWith('Triage summary', 'Triage complete')
     })
@@ -241,7 +279,7 @@ describe('AI SRE CLI Commands', () => {
       expect(mockPost).toHaveBeenCalledWith('/api/sre/investigate', {
         incidentId: '018f0000-0000-7000-8000-000000000001',
         useLiveConnectors: true,
-      })
+      }, { retries: 0 })
       expect(mockOutputDetail).toHaveBeenCalledWith(expect.objectContaining({ id: 'run-1', status: 'accepted' }))
     })
 
@@ -285,7 +323,7 @@ describe('AI SRE CLI Commands', () => {
           useLiveConnectorTools: true,
         },
         expect.any(Function),
-        expect.any(Number),
+        expect.objectContaining({ idleTimeoutMs: 60_000 }),
       )
     })
 
@@ -298,7 +336,7 @@ describe('AI SRE CLI Commands', () => {
         '/api/sre/evidence-brief/stream',
         { incidentId: '018f0000-0000-7000-8000-000000000001' },
         expect.any(Function),
-        expect.any(Number),
+        expect.objectContaining({ idleTimeoutMs: 60_000 }),
       )
     })
   })

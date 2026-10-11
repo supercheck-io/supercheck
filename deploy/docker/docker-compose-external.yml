@@ -157,7 +157,7 @@ x-common-env: &common-env # Database Configuration - External PostgreSQL
   WEBHOOK_CLEANUP_SAFETY_LIMIT: ${WEBHOOK_CLEANUP_SAFETY_LIMIT:-100000}
 
   # Security Configuration
-  SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:-CHANGE_THIS_GENERATE_32_CHAR_HEX}
+  SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:?Set SECRET_ENCRYPTION_KEY - run ./init-secrets.sh or use openssl rand -hex 32}
 
   # Better Auth Admin Configuration
   MAX_PROJECTS_PER_ORG: ${MAX_PROJECTS_PER_ORG:-10}

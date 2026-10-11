@@ -1281,6 +1281,10 @@ export async function updateSreIncident(
             parsed.data.status === "resolved"
               ? (current.resolvedAt ?? now)
               : null,
+          // A reopened incident is no longer verified.
+          ...(parsed.data.status !== "resolved" && current.status === "resolved"
+            ? { verifiedAt: null }
+            : {}),
           updatedAt: now,
         })
         .where(
@@ -1288,6 +1292,8 @@ export async function updateSreIncident(
             eq(sreIncidents.id, parsed.data.id),
             eq(sreIncidents.organizationId, organizationId),
             eq(sreIncidents.projectId, project.id),
+            // Optimistic guard: fail if a concurrent resolve/update changed the status since we read it.
+            eq(sreIncidents.status, current.status),
           ),
         )
         .returning({
@@ -1517,7 +1523,17 @@ export async function createSreIncidentFromAlert(
           sreIncidents,
           eq(sreIncidentAlerts.incidentId, sreIncidents.id),
         )
-        .where(eq(sreIncidentAlerts.alertEventId, alertEvent.id))
+        .where(
+          and(
+            eq(sreIncidentAlerts.alertEventId, alertEvent.id),
+            // Resolved incidents only stop absorbing the alert when they were resolved
+            // before this firing; a queued retry must not open a second incident.
+            or(
+              ne(sreIncidents.status, "resolved"),
+              gte(sreIncidents.resolvedAt, firedAt),
+            ),
+          ),
+        )
         .orderBy(desc(sreIncidents.createdAt))
         .limit(1);
 

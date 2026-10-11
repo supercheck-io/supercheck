@@ -1,4 +1,4 @@
-import { sanitizeConnectorEvidence } from "./output-sanitizer";
+import { redactConnectorText, sanitizeConnectorEvidence } from "./output-sanitizer";
 import { type ConnectorEvidenceItem } from "./connector-base";
 
 const item: ConnectorEvidenceItem = {
@@ -66,5 +66,33 @@ describe("sanitizeConnectorEvidence", () => {
     );
 
     expect(result.items[0].sourceUri).toBe("#");
+  });
+});
+
+describe("redactConnectorText", () => {
+  it.each([
+    ["AWS access key", "key AKIAIOSFODNN7EXAMPLE used", "AKIAIOSFODNN7EXAMPLE"],
+    ["JWT", "auth eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dBjftJeZ4CVPmB92K27uhbUJU1p1r_wW1gFWFOEjXk end", "eyJhbGciOiJIUzI1NiJ9"],
+    ["API key", "using sk-abcdefghijklmnopqrstuvwxyz123456 now", "sk-abcdefghijklmnopqrstuvwxyz123456"],
+    ["private key", "-----BEGIN RSA PRIVATE KEY-----\nMIIEabc\n-----END RSA PRIVATE KEY----- tail", "MIIEabc"],
+  ])("redacts %s", (_name, input, secret) => {
+    const redacted = redactConnectorText(input);
+    expect(redacted).not.toContain(secret);
+    expect(redacted).toContain("[REDACTED");
+  });
+
+  it("still redacts email addresses", () => {
+    expect(redactConnectorText("contact jane.doe+ops@example.co.uk now")).toBe("contact [REDACTED_EMAIL] now");
+  });
+
+  it("leaves ordinary log text untouched", () => {
+    expect(redactConnectorText("GET /health 200 in 12ms")).toBe("GET /health 200 in 12ms");
+  });
+
+  it("redacts adversarial dash-separated input in linear time", () => {
+    const hostile = "-eyJ".repeat(40_000);
+    const started = Date.now();
+    redactConnectorText(hostile);
+    expect(Date.now() - started).toBeLessThan(500);
   });
 });

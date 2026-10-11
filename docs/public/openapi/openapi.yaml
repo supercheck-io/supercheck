@@ -301,6 +301,60 @@ paths:
           description: Rate limited
         "503":
           description: Feature disabled or temporarily unavailable
+  /api/sre/runs/{id}:
+    get:
+      operationId: getSreInvestigationRun
+      summary: Get an AI SRE investigation run
+      description: Returns the status of a run started by the investigate or triage
+        endpoints. Scoped to the active project.
+      tags:
+        - AI SRE
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Investigation run
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - run
+                properties:
+                  run:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                      incidentId:
+                        type: string
+                        format: uuid
+                        nullable: true
+                      agentType:
+                        type: string
+                      status:
+                        type: string
+                      startedAt:
+                        type: string
+                        format: date-time
+                        nullable: true
+                      completedAt:
+                        type: string
+                        format: date-time
+                        nullable: true
+                      durationMs:
+                        type: integer
+                        nullable: true
+        "400":
+          description: Invalid investigation run ID
+        "404":
+          description: Investigation run not found in the active project
   /api/sre/chat:
     post:
       operationId: streamSreChat

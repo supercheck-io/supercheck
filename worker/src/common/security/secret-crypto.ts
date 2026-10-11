@@ -39,6 +39,12 @@ function selectKey(): Buffer {
     );
   }
 
+  if (/change[_-]?this/i.test(key)) {
+    throw new Error(
+      `${KEY_ENV} is still set to a placeholder value. Generate one with: openssl rand -hex 32`,
+    );
+  }
+
   const buffer =
     /^[0-9a-fA-F]+$/.test(key) && key.length >= RAW_KEY_LENGTH * 2
       ? Buffer.from(key.slice(0, RAW_KEY_LENGTH * 2), 'hex')

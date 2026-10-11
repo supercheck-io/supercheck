@@ -36,7 +36,8 @@ export async function POST(request: NextRequest) {
       return unauthorized();
     }
 
-    const body = resultSchema.safeParse(await request.json());
+    const rawBody = await request.json().catch(() => null);
+    const body = resultSchema.safeParse(rawBody);
     if (!body.success) {
       return NextResponse.json({ error: "Invalid job result payload" }, { status: 400 });
     }
@@ -69,8 +70,10 @@ export async function POST(request: NextRequest) {
     };
     const resultHash = body.data.resultHash ?? hashConnectorPayload(resultSummary);
 
-    await db.transaction(async (tx) => {
-      await tx
+    const accepted = await db.transaction(async (tx) => {
+      // Re-assert lease ownership and state in the UPDATE so concurrent or
+      // replayed result posts cannot overwrite a job that already finished.
+      const updated = await tx
         .update(privateAgentJobs)
         .set({
           status: body.data.status,
@@ -80,7 +83,18 @@ export async function POST(request: NextRequest) {
           resultHash,
           resultSummary,
         })
-        .where(eq(privateAgentJobs.id, job.id));
+        .where(
+          and(
+            eq(privateAgentJobs.id, job.id),
+            eq(privateAgentJobs.leaseTokenHash, leaseTokenHash),
+            inArray(privateAgentJobs.status, ["leased", "running"])
+          )
+        )
+        .returning({ id: privateAgentJobs.id });
+
+      if (updated.length === 0) {
+        return false;
+      }
 
       await tx
         .update(privateAgents)
@@ -90,7 +104,12 @@ export async function POST(request: NextRequest) {
         .update(privateAgentCredentials)
         .set({ lastUsedAt: now })
         .where(eq(privateAgentCredentials.id, auth.credential.id));
+      return true;
     });
+
+    if (!accepted) {
+      return NextResponse.json({ error: "Job lease is invalid or expired" }, { status: 409 });
+    }
 
     return NextResponse.json({ ok: true, receivedAt: now.toISOString() });
   } catch (error) {

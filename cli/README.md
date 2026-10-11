@@ -48,10 +48,10 @@ Local Playwright and k6 runs require their respective dependencies. Use `superch
 | Run tests | `test run --file <path>`, `job run --id <id>` |
 | Follow execution | `run stream <id>`, `run status <id>`, `run cancel <id>` |
 | Manage project settings | `var`, `tag`, `notification` |
-| Inspect incidents | `incident list`, `incident get <number-or-uuid>`, `incident timeline <number-or-uuid>` |
+| Inspect incidents | `incident list`, `incident get <number-or-uuid>`, `incident timeline <number-or-uuid>`, `incident resolve <number-or-uuid> --comment <text>` |
 | Investigate | `sre triage <incident>`, `sre investigate <incident>`, `sre status <runId>` |
 | Ask Copilot | `sre ask "What needs attention?"`, `sre brief <incident>` |
-| Inspect services | `service list`, `service get <id>`, `service health <id>` |
+| Inspect services | `service list`, `service get <id>`, `service health <id>`, `service dependencies <id>` |
 | Diagnose | `doctor`, `health`, `whoami` |
 
 Prefix commands with `supercheck`. Use `supercheck <command> --help` or the [full command reference](https://supercheck.io/docs/cli/commands) for CRUD options, filters, and limits. Status-page sync supports reads and deletions; creation and updates use the dashboard.

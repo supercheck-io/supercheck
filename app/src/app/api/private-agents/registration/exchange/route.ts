@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
       return unauthorized();
     }
 
-    const body = exchangeSchema.safeParse(await request.json());
+    const body = exchangeSchema.safeParse(await request.json().catch(() => null));
     if (!body.success) {
       return NextResponse.json({ error: "Invalid registration exchange payload" }, { status: 400 });
     }

@@ -264,6 +264,8 @@ Use `docker-compose-external.yml` when you already have PostgreSQL, Redis, and S
   <Accordion title="AI SRE">
     Configure an AI provider above to use investigations, Copilot, and automatic alert triage. Database migrations run automatically when the app starts.
 
+    AI SRE stores connector credentials encrypted with `SECRET_ENCRYPTION_KEY` (generate with `openssl rand -hex 32`). The app and every worker must share the same value, and changing it makes existing credentials unreadable. `./init-secrets.sh` generates it for you.
+
     No enable flags are needed. For manual investigations only, set `SRE_AUTOMATION_ENABLED=false`. To disable AI SRE entirely, set `SRE_ENABLED=false`.
 
     Automatic triage can use your AI provider when alerts fire and incur provider charges. Copilot live sources are on by default for authorized users. Full investigation runs have a separate **Include live sources** option. See [AI SRE Setup](/docs/app/admin/ai-sre-setup).

@@ -4,6 +4,7 @@ import { dirname } from 'node:path';
 import { z } from 'zod';
 import { getServiceVersion } from '../common/version';
 import { requestPrivateAgentEndpoint } from './private-agent-endpoint';
+import { isIP } from 'node:net';
 
 const PROTOCOL_VERSION = '2026-06-22';
 const DEFAULT_RETRY_INTERVAL_MS = 5_000;
@@ -1541,6 +1542,32 @@ export async function executePrivateAgentConnectorJob(
   }
 }
 
+/** The agent sends a bearer token, so plain HTTP is only allowed for local/private-network control planes. */
+export function assertSecureApiUrl(apiUrl: string): void {
+  const url = new URL(apiUrl);
+  if (url.protocol === 'https:') return;
+  const host = url.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  const family = isIP(host);
+  const isLocal =
+    url.protocol === 'http:' &&
+    (host === 'localhost' ||
+      host.endsWith('.localhost') ||
+      // Single-label names (e.g. the Compose service "app"); never applies to IP literals.
+      (family === 0 && !host.includes('.')) ||
+      // Only literal IPs: a DNS name such as "10.evil.com" is attacker-controlled, not private.
+      (family === 4 &&
+        /^(10\.|127\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host)) ||
+      // Loopback, unique-local (fc00::/7) and link-local (fe80::/10) only.
+      (family === 6 &&
+        (host === '::1' ||
+          /^(f[cd][0-9a-f]{2}|fe[89ab][0-9a-f]):/.test(host))));
+  if (!isLocal) {
+    throw new Error(
+      'SUPERCHECK_API_URL must use https:// (http:// is only allowed for localhost or private-network hosts)',
+    );
+  }
+}
+
 function readConfig(): PrivateAgentConfig {
   const apiUrl = process.env.SUPERCHECK_API_URL?.replace(/\/$/, '');
   const agentId = process.env.PRIVATE_AGENT_ID;
@@ -1556,6 +1583,8 @@ function readConfig(): PrivateAgentConfig {
       'Private Agent mode requires SUPERCHECK_API_URL, PRIVATE_AGENT_ID, and PRIVATE_AGENT_TOKEN',
     );
   }
+
+  assertSecureApiUrl(apiUrl);
 
   return {
     apiUrl,

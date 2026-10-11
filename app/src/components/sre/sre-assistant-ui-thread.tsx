@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import type { UIMessage } from "ai";
 import {
   AssistantRuntimeProvider,
@@ -221,11 +221,11 @@ function AssistantMessage() {
           hideWhenSingleBranch
           className="mt-2 flex w-fit items-center gap-1 rounded border bg-muted/50 px-1 py-0.5 text-xs text-muted-foreground"
         >
-          <BranchPickerPrimitive.Previous className="rounded-sm hover:bg-background p-0.5 transition-colors" />
+          <BranchPickerPrimitive.Previous aria-label="Previous response" className="rounded-sm hover:bg-background p-0.5 transition-colors" />
           <span className="font-medium">
             <BranchPickerPrimitive.Number /> / <BranchPickerPrimitive.Count />
           </span>
-          <BranchPickerPrimitive.Next className="rounded-sm hover:bg-background p-0.5 transition-colors" />
+          <BranchPickerPrimitive.Next aria-label="Next response" className="rounded-sm hover:bg-background p-0.5 transition-colors" />
         </BranchPickerPrimitive.Root>
       </div>
     </MessagePrimitive.Root>
@@ -247,11 +247,11 @@ function UserMessage() {
           hideWhenSingleBranch
           className="mt-2 ml-auto flex w-fit items-center gap-1 rounded border bg-background/50 px-1 py-0.5 text-xs text-muted-foreground"
         >
-          <BranchPickerPrimitive.Previous className="rounded-sm hover:bg-background p-0.5 transition-colors" />
+          <BranchPickerPrimitive.Previous aria-label="Previous response" className="rounded-sm hover:bg-background p-0.5 transition-colors" />
           <span className="font-medium">
             <BranchPickerPrimitive.Number /> / <BranchPickerPrimitive.Count />
           </span>
-          <BranchPickerPrimitive.Next className="rounded-sm hover:bg-background p-0.5 transition-colors" />
+          <BranchPickerPrimitive.Next aria-label="Next response" className="rounded-sm hover:bg-background p-0.5 transition-colors" />
         </BranchPickerPrimitive.Root>
       </div>
       <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border bg-background shadow-sm">
@@ -599,12 +599,18 @@ export function SreAssistantUiThread({
       }),
     [conversationId, incidentId, useLiveConnectorTools, canUseLiveConnectors],
   );
+  // Set false on unmount (New chat / history switch / archive remount this component)
+  // so a late stream can neither keep running nor write into the next thread.
+  const isActiveRef = useRef(true);
   const runtime = useChatRuntime<SreAssistantUiMessage>({
     id: conversationId ?? undefined,
     messages: uiMessages,
     transport,
     onError: (error) => onError(formatCopilotError(error)),
     onFinish: ({ message, messages }) => {
+      if (!isActiveRef.current) {
+        return;
+      }
       if (message.role === "assistant" && !textFromUiMessage(message)) {
         onError(
           "Copilot could not complete the read-only check. No failed connector result was treated as evidence.",
@@ -626,6 +632,18 @@ export function SreAssistantUiThread({
       });
     },
   });
+
+  useEffect(() => {
+    isActiveRef.current = true;
+    return () => {
+      isActiveRef.current = false;
+      try {
+        runtime.thread.cancelRun();
+      } catch {
+        // No active run to cancel.
+      }
+    };
+  }, [runtime]);
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>

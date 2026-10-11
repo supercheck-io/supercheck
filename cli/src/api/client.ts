@@ -107,6 +107,8 @@ export class ApiClient {
       params?: Record<string, string | number | boolean | undefined>
       headers?: Record<string, string>
       retries?: number
+      /** Per-request timeout in ms; overrides the client default. */
+      timeout?: number
     },
   ): Promise<ApiResponse<T>> {
     const url = this.buildUrl(path, options?.params)
@@ -116,6 +118,7 @@ export class ApiClient {
     const targetOrigin = parsedUrl.origin
     const headers = this.buildHeaders(options?.headers)
     const maxRetries = options?.retries ?? MAX_RETRIES
+    const timeout = options?.timeout ?? this.timeout
     const attemptCount = maxRetries + 1
     const attemptLabel = `${attemptCount} ${attemptCount === 1 ? 'attempt' : 'attempts'}`
 
@@ -130,7 +133,7 @@ export class ApiClient {
       let timeoutId: ReturnType<typeof setTimeout> | null = null
       try {
         const controller = new AbortController()
-        timeoutId = setTimeout(() => controller.abort(), this.timeout)
+        timeoutId = setTimeout(() => controller.abort(), timeout)
 
         // Use explicitly-set proxy, otherwise resolve from env vars (NO_PROXY-aware)
         const proxy = this.proxy || getProxyEnv(parsedUrl)
@@ -152,15 +155,16 @@ export class ApiClient {
 
         // Rate limit handling
         if (response.status === 429) {
+          const retryAfter = response.headers.get('Retry-After')
+          const parsedSeconds = retryAfter ? Number(retryAfter) : NaN
           if (attempt >= maxRetries) {
+            const hint = Number.isFinite(parsedSeconds) && parsedSeconds > 0 ? ` Retry in ${Math.ceil(parsedSeconds)}s.` : ''
             throw new ApiRequestError(
-              `Rate limited after ${attemptLabel}: ${method} ${path}`,
+              `Rate limited after ${attemptLabel}: ${method} ${path}.${hint}`,
               429,
             )
           }
 
-          const retryAfter = response.headers.get('Retry-After')
-          const parsedSeconds = retryAfter ? Number(retryAfter) : NaN
           const waitMs = Number.isFinite(parsedSeconds) && parsedSeconds > 0
             ? parsedSeconds * 1000
             : RETRY_BACKOFF_MS * Math.pow(2, attempt)
@@ -208,7 +212,7 @@ export class ApiClient {
         if (err instanceof ApiRequestError) throw err
 
         if (err instanceof DOMException && err.name === 'AbortError') {
-          throw new TimeoutError(`Request to ${targetOrigin} timed out after ${this.timeout}ms: ${method} ${path}`)
+          throw new TimeoutError(`Request to ${targetOrigin} timed out after ${timeout}ms: ${method} ${path}`)
         }
 
         lastError = err as Error
@@ -242,8 +246,12 @@ export class ApiClient {
     return this.request<T>('GET', path, { params })
   }
 
-  async post<T = unknown>(path: string, body?: unknown): Promise<ApiResponse<T>> {
-    return this.request<T>('POST', path, { body })
+  async post<T = unknown>(
+    path: string,
+    body?: unknown,
+    options?: { timeout?: number; retries?: number },
+  ): Promise<ApiResponse<T>> {
+    return this.request<T>('POST', path, { body, ...options })
   }
 
   async put<T = unknown>(path: string, body?: unknown): Promise<ApiResponse<T>> {

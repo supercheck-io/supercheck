@@ -62,6 +62,7 @@ export type SreBackgroundAlertTriageResult =
         | "non_sent_alert"
         | "resolved_alert"
         | "already_triaged"
+        | "triage_in_progress"
         | "unsupported_source"
         | "ai_not_configured";
     }
@@ -250,7 +251,17 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
         sreIncidents,
         eq(sreIncidentAlerts.incidentId, sreIncidents.id),
       )
-      .where(eq(sreIncidentAlerts.alertEventId, alertEvent.id))
+      .where(
+          and(
+            eq(sreIncidentAlerts.alertEventId, alertEvent.id),
+            // Resolved incidents only stop absorbing the alert when they were resolved
+            // before this firing; a queued retry must not open a second incident.
+            or(
+              ne(sreIncidents.status, "resolved"),
+              gte(sreIncidents.resolvedAt, firedAt),
+            ),
+          ),
+        )
       .orderBy(desc(sreIncidents.createdAt))
       .limit(1);
 
@@ -524,6 +535,11 @@ export async function processSreBackgroundAlertTriageJob(
     userId: null,
     incidentId: incident.incidentId,
   });
+
+  if (!triage.success && triage.status === 409) {
+    // Another triage/investigation is already running for this incident; nothing to retry.
+    return { success: true, skipped: true, reason: "triage_in_progress" };
+  }
 
   if (!triage.success) {
     return {

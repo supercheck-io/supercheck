@@ -25,7 +25,14 @@ export async function initializeSreAlertTriageProcessor() {
     const connection = await getRedisConnection();
     worker = new Worker<SreAlertTriageQueueJob>(
       SRE_ALERT_TRIAGE_QUEUE_NAME,
-      async (job) => processSreBackgroundAlertTriageJob(job.data),
+      async (job) => {
+        const result = await processSreBackgroundAlertTriageJob(job.data);
+        // Throw on real failures so BullMQ applies its attempts/backoff instead of marking the job completed.
+        if (!result.success) {
+          throw new Error(result.error);
+        }
+        return result;
+      },
       {
         connection: connection.duplicate(),
         concurrency: 1,
