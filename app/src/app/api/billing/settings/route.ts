@@ -55,6 +55,8 @@ export async function GET() {
   }
 }
 
+const MAX_NOTIFICATION_EMAILS = 10;
+
 // Validation schema for billing settings update
 const updateSettingsSchema = z.object({
   organizationId: z.string().uuid().optional(),
@@ -72,7 +74,13 @@ const updateSettingsSchema = z.object({
   notifyAt80Percent: z.boolean().optional(),
   notifyAt90Percent: z.boolean().optional(),
   notifyAt100Percent: z.boolean().optional(),
-  notificationEmails: z.array(z.string().email()).optional(),
+  // Org admins already receive alerts; extra recipients are bounded so a
+  // settings change cannot fan billing email out to arbitrary lists.
+  notificationEmails: z
+    .array(z.string().trim().toLowerCase().email().max(254))
+    .max(MAX_NOTIFICATION_EMAILS)
+    .transform((emails) => Array.from(new Set(emails)))
+    .optional(),
 });
 
 /**

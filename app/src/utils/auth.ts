@@ -66,28 +66,6 @@ function getPolarPlugin() {
       //    which has proper error handling (ensurePolarCustomerAndLink function)
       // 3. This ensures signup always succeeds, and Polar customer is created gracefully
       createCustomerOnSignUp: false,
-      // Note: getCustomerCreateParams is kept for reference but won't be called
-      // since createCustomerOnSignUp is false
-      getCustomerCreateParams: async ({
-        user,
-      }: {
-        user: { id?: string; email?: string; name?: string };
-      }) => {
-        console.log("[Polar] Creating customer for user:", {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-        });
-
-        // Only return metadata - the plugin handles email/name from user object
-        // Social auth users get their data synced via syncPolarCustomerData() in setup-defaults
-        return {
-          metadata: {
-            ...(user.id ? { userId: String(user.id) } : {}),
-            source: "supercheck-signup",
-          },
-        };
-      },
       use: [
         // Checkout and portal are intentionally exposed through Supercheck's
         // own billing routes. Those routes enforce active-organization

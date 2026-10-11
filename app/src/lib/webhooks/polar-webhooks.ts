@@ -1127,10 +1127,16 @@ async function processSubscriptionCanceled(payload: PolarWebhookPayload) {
   // Get subscription end date from payload - user keeps access until this date
   const subscriptionDates = getSubscriptionDatesFromPayload(payload);
 
+  // End-of-period cancellation stays "canceled" (access until period end).
+  // An immediate cancellation arrives with Polar's terminal status, which maps
+  // to "none": record it as such so a tied revocation snapshot still matches.
+  const canceledStatus = getSubscriptionStatusFromPayload(payload) === "none"
+    ? "none" : "canceled";
   await subscriptionService.updateSubscription(
     org.id,
     {
-      subscriptionStatus: "canceled",
+      subscriptionStatus: canceledStatus,
+      ...(canceledStatus === "none" ? { subscriptionPlan: null } : {}),
       // Preserve the end date - access continues until this date
       ...(subscriptionDates.endsAt
         ? { subscriptionEndsAt: subscriptionDates.endsAt }
@@ -1812,6 +1818,13 @@ function orderedHandler(
         canReplaceSubscription: eventType === "subscription.active",
         periodStart: getSubscriptionDatesFromPayload(payload).startsAt,
         affectsSubscriptionState: eventType !== "order.paid",
+        // A deferred plan change keeps the current plan, so compare with that.
+        snapshot: eventType === "order.paid" ? undefined : {
+          status: getSubscriptionStatusFromPayload(payload),
+          plan: isFuturePendingProduct(payload, getProductIdFromPayload(payload))
+            ? org.subscriptionPlan
+            : getPlanFromProductId(getProductIdFromPayload(payload) || null),
+        },
       },
       () => handler(payload),
     );

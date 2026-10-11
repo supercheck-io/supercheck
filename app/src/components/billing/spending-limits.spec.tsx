@@ -91,6 +91,22 @@ describe("SpendingLimits loading recovery", () => {
     });
   });
 
+  it("keeps a pre-cap recipient list intact and blocks saving until it is trimmed", async () => {
+    const saved = Array.from({ length: 12 }, (_, i) => `user${i}@example.com`);
+    const fetchMock = jest.fn().mockImplementation(async (url: string) => ({
+      ok: true,
+      json: async () => url.endsWith("/settings")
+        ? { organizationId: "org_1", enableSpendingLimit: false, notifyAt80Percent: true, notificationEmails: saved }
+        : { organizationId: "org_1", spending: null },
+    }));
+    global.fetch = fetchMock;
+    render(<SpendingLimits organizationId="org_1" />);
+    expect(await screen.findByText(/Remove 2 recipient\(s\) to save/)).toBeInTheDocument();
+    expect(screen.getByText("user11@example.com")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+    expect(fetchMock.mock.calls.some((call) => call[1]?.method === "PATCH")).toBe(false);
+  });
+
   it("prevents saving controls loaded for a different organization", async () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true, json: async () => ({ organizationId: "org_2", enableSpendingLimit: false }),

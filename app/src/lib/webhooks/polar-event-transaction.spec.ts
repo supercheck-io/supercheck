@@ -80,15 +80,43 @@ describe("Polar event transactions", () => {
     },
   );
 
-  it("fails closed on ambiguous timestamp ties", async () => {
+  it("applies a paired event tied on the bound subscription", async () => {
+    const { set } = setup({
+      polarWebhookTimestamp: at,
+      polarWebhookEventKey: "subscription.updated:event-0",
+      subscriptionStatus: "canceled",
+      subscriptionPlan: "plus",
+    });
+    const apply = jest.fn();
+    await runOrderedPolarEvent(
+      { ...input, snapshot: { status: "canceled", plan: "plus" } },
+      apply,
+    );
+    expect(apply).toHaveBeenCalledTimes(1);
+    expect(set).toHaveBeenCalledWith({
+      polarWebhookTimestamp: at,
+      polarWebhookEventKey: input.eventKey,
+    });
+  });
+
+  it.each([
+    ["another subscription", { subscriptionId: "sub-2" }],
+    ["a customer event", { subscriptionId: null }],
+    ["an active snapshot after revocation", { snapshot: { status: "active", plan: "plus" } }],
+    ["a different plan", { snapshot: { status: "none", plan: null }, orgStatus: "active" }],
+    ["an unknown status", { snapshot: { status: undefined, plan: "plus" } }],
+    ["a missing snapshot", {}],
+  ])("fails closed on timestamp ties for %s", async (_, { orgStatus, ...overrides }: Record<string, unknown>) => {
     setup({
       polarWebhookTimestamp: at,
       polarWebhookEventKey: "different-event",
+      subscriptionStatus: orgStatus ?? "none",
+      subscriptionPlan: orgStatus ? "plus" : null,
     });
     const apply = jest.fn();
-    await expect(runOrderedPolarEvent(input, apply)).rejects.toThrow(
-      "Ambiguous",
-    );
+    await expect(
+      runOrderedPolarEvent({ ...input, ...overrides }, apply),
+    ).rejects.toThrow("Ambiguous");
     expect(apply).not.toHaveBeenCalled();
   });
 
