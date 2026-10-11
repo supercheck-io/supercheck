@@ -9,9 +9,10 @@ Signing does not change the public license of an existing release.
 ## Parties and contributions
 
 “You” means the individual signing, or the legal entity on whose behalf that
-individual is authorized to sign. “Maintainer” means Krishna Kant, the current
-maintainer of the Supercheck project, and successors to the project to whom the
-Maintainer transfers the rights granted by this agreement.
+individual is authorized to sign. “Maintainer” means Krishna Kant, doing business as Supercheck, the current
+maintainer of the Supercheck project, and successors to the project (including
+any legal entity later formed to operate it) to whom the Maintainer transfers
+the rights granted by this agreement.
 
 “Contribution” means original code, documentation, or other material that You
 intentionally submit for inclusion in Supercheck in the pull request identified

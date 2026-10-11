@@ -1,7 +1,8 @@
 # Enable and verify contributor agreements
 
-The agreement is [CLA.md](../CLA.md), version 1.0, naming Krishna Kant as the
-current maintainer. Contributors keep ownership; the grant supports both
+The agreement is [CLA.md](../CLA.md), version 1.0, naming Krishna Kant, doing
+business as Supercheck, as the current maintainer, because the agreement needs a
+legal person as its party. Contributors keep ownership; the grant supports both
 open-source distribution and commercial licensing. Have counsel review the
 agreement and holder identity before relying on it for alternative licensing.
 

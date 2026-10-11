@@ -20,7 +20,7 @@
     "type": "git",
     "url": "git+https://github.com/supercheck-io/supercheck.git"
   },
-  "author": "Krishna Kant",
+  "author": "Supercheck <hello@supercheck.io>",
   "type": "module",
   "license": "Apache-2.0",
   "publishConfig": {

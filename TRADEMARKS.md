@@ -1,7 +1,7 @@
 # Supercheck trademark policy
 
 The Supercheck name and logo identify the Supercheck project and its official
-hosted service. Krishna Kant is their current steward. This policy does not
+hosted service. The maintainers are their current stewards. This policy does not
 claim a registered trademark or change any software license.
 
 You may use the name to identify the software you use, describe compatibility,

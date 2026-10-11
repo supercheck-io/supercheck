@@ -27,8 +27,13 @@ assert.equal(lock.packages[''].version, cli.version, 'CLI root package version')
 assert.equal(lock.packages[''].license, cli.license, 'CLI lockfile license');
 assert.ok(cli.files.includes('NOTICE'), 'CLI NOTICE must be packaged');
 
-assert.match(read('NOTICE'), /Copyright \(C\) 2026 Krishna Kant/);
-assert.match(read('recorder/NOTICE'), /Copyright \(c\) 2026 Krishna Kant/);
+// NOTICE promises k6 and xk6-dashboard license files in the worker image.
+const workerDockerfile = read('worker/Dockerfile');
+assert.match(workerDockerfile, /k6@v1\.6\.1\/LICENSE\.md \.\/third-party\//, 'k6 license not shipped');
+assert.match(workerDockerfile, /xk6-dashboard@v0\.8\.1\/LICENSE \.\/third-party\//, 'xk6-dashboard license not shipped');
+
+assert.match(read('NOTICE'), /Copyright \(C\) 2025-2026 Supercheck/);
+assert.match(read('recorder/NOTICE'), /Copyright \(c\) 2026 Supercheck/);
 assert.match(read('recorder/NOTICE'), /Copyright \(c\) Rui Figueira/);
 assert.match(read('recorder/playwright/NOTICE'), /Microsoft/);
 
