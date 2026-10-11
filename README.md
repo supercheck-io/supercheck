@@ -186,7 +186,7 @@ Community integrations are maintained outside the core Supercheck repository. If
 
 The Supercheck app, worker (including Private Agent mode), documentation, and deployment assets are licensed under [AGPL-3.0-only](LICENSE). The [CLI](cli/LICENSE), from version 0.3.1, and [recorder](recorder/LICENSE) are Apache-2.0. Third-party licenses and notices remain in effect; earlier releases retain their original terms.
 
-Supercheck Cloud subscriptions pay for managed infrastructure, execution, and support. Self-hosting the open core has no license fee; you supply infrastructure and AI provider keys. Existing open features stay available in the open core: tests, monitors, alerts, status pages, RBAC, audit logs, API keys, GitHub/Google login, and bring-your-own-key AI. Future paid capabilities will be additions.
+Supercheck Cloud subscriptions pay for managed infrastructure, execution, and support. Self-hosting the open core has no license fee; you supply infrastructure and AI provider keys. Existing open features stay available in the open core: tests, monitors, alerts, status pages, RBAC, audit logs, API keys, GitHub/Google login, and bring-your-own-key AI.
 
 Contributors keep ownership of their work; see the [contributor agreement](CLA.md). The Supercheck name and logo are covered by the [trademark policy](TRADEMARKS.md).
 
