@@ -246,6 +246,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
         }
         if (durable.length) {
           const repair = this.redisClient.pipeline();
+          // Hashes may be live BullMQ data; unreachable hashes also persist and need a separate audit. Keep classification aligned with app/src/lib/queue.ts.
           durable.forEach((key) => repair.persist(key));
           const results = await repair.exec();
           if (!results) throw new Error('Queue key repair returned no results');

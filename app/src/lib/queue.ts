@@ -904,6 +904,7 @@ async function cleanupOrphanedKeys(
       }
       if (durable.length) {
         const repair = connection.pipeline();
+        // Hashes may be live BullMQ data; unreachable hashes also persist and need a separate audit. Keep classification aligned with worker/src/execution/services/redis.service.ts.
         durable.forEach((key) => repair.persist(key));
         const results = await repair.exec();
         if (!results) throw new Error('Queue key repair returned no results');

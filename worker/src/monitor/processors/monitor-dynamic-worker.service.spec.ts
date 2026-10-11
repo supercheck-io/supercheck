@@ -523,6 +523,72 @@ describe('MonitorDynamicWorkerService lifecycle', () => {
       expect.objectContaining({ aggregationOnly: true }),
     );
   });
+  it.each([false, true])(
+    'requeues final aggregation contention without another probe (existing=%s)',
+    async (existing) => {
+      const row = {
+        id: 'result',
+        monitorId: 'monitor-1',
+        location: 'eu',
+        status: 'error',
+        isUp: false,
+        checkedAt: new Date(),
+        details: null,
+      };
+      const findFirst = jest
+        .fn()
+        .mockResolvedValueOnce(existing ? row : undefined)
+        .mockResolvedValue(row);
+      const executeMonitor = jest.fn();
+      const save = jest
+        .fn()
+        .mockRejectedValueOnce(new MonitorAggregationBusyError())
+        .mockResolvedValue(undefined);
+      const service = new MonitorDynamicWorkerService(
+        {
+          executeMonitor,
+          saveDistributedMonitorResult: save,
+        } as unknown as MonitorService,
+        new ConfigService(),
+        {} as HeartbeatService,
+        {
+          db: { query: { monitorResults: { findFirst } } },
+        } as unknown as DbService,
+      );
+      const job = {
+        name: 'executeMonitorJob',
+        data: {
+          monitorId: 'monitor-1',
+          executionGroupId: 'group-1',
+          executionLocation: 'eu',
+          expectedLocations: ['eu'],
+        },
+        attemptsMade: 3,
+        getState: jest.fn().mockResolvedValue('failed'),
+        updateData: jest.fn(),
+        retry: jest.fn().mockResolvedValue(undefined),
+      };
+      job.updateData.mockImplementation(async (data: typeof job.data) => {
+        job.data = data;
+      });
+      await service['handleFinalJobFailure'](
+        job as unknown as Job<MonitorJobDataDto>,
+        new Error('probe failed'),
+      );
+      expect(job.updateData).toHaveBeenCalledWith(
+        expect.objectContaining({ aggregationOnly: true }),
+      );
+      expect(job.retry).toHaveBeenCalledWith('failed');
+      if (existing)
+        expect(save.mock.calls[0][1]).toMatchObject({ persisted: true });
+      await service['processJob'](job as unknown as Job<MonitorJobDataDto>);
+      expect(executeMonitor).not.toHaveBeenCalled();
+      expect(save).toHaveBeenLastCalledWith(
+        expect.objectContaining({ id: 'result' }),
+        expect.objectContaining({ persisted: true }),
+      );
+    },
+  );
   it('resumes an aggregation delay from persisted evidence without rerunning the probe', async () => {
     const executeMonitor = jest.fn();
     const save = jest.fn().mockResolvedValue(undefined);

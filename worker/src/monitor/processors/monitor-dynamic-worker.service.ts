@@ -386,8 +386,7 @@ export class MonitorDynamicWorkerService
    * without it, the persisted group never contains every expected location.
    *
    * If processJob() already persisted a real result (e.g. the probe
-   * succeeded but saveDistributedMonitorResult threw during aggregation), we skip writing a synthetic error to avoid
-   * overwriting a valid result.
+   * succeeded but aggregation threw), resume aggregation without overwriting it.
    */
   private async handleFinalJobFailure(
     job: Job<MonitorJobDataDto>,
@@ -414,7 +413,6 @@ export class MonitorDynamicWorkerService
         eq(schema.monitorResults.executionGroupId, executionGroupId),
         eq(schema.monitorResults.location, executionLocation),
       ),
-      columns: { id: true },
     });
 
     if (existing) {
@@ -422,24 +420,39 @@ export class MonitorDynamicWorkerService
         `Skipping synthetic error for ${monitorId}/${executionLocation}: ` +
           `real result already persisted (executionGroupId=${executionGroupId})`,
       );
-      return;
     }
 
-    const errorResult: MonitorExecutionResult = {
-      monitorId,
-      location: executionLocation,
-      status: 'error',
-      checkedAt: new Date(),
-      isUp: false,
-      details: {
-        errorMessage: `Worker execution failed after ${job.attemptsMade} attempt(s): ${error.message}`,
-      },
-    };
+    const errorResult: MonitorExecutionResult = existing
+      ? {
+          ...existing,
+          details: existing.details ?? undefined,
+          responseTimeMs: existing.responseTimeMs ?? undefined,
+          testExecutionId: existing.testExecutionId ?? undefined,
+          testReportS3Url: existing.testReportS3Url ?? undefined,
+        }
+      : {
+          monitorId,
+          location: executionLocation,
+          status: 'error',
+          checkedAt: new Date(),
+          isUp: false,
+          details: {
+            errorMessage: `Worker execution failed after ${job.attemptsMade} attempt(s): ${error.message}`,
+          },
+        };
 
-    await this.monitorService.saveDistributedMonitorResult(errorResult, {
-      executionGroupId,
-      expectedLocations,
-    });
+    try {
+      await this.monitorService.saveDistributedMonitorResult(errorResult, {
+        executionGroupId,
+        expectedLocations,
+        ...(existing ? { persisted: true } : {}),
+      });
+    } catch (aggregationError) {
+      if (!(aggregationError instanceof MonitorAggregationBusyError))
+        throw aggregationError;
+      await job.updateData({ ...job.data, aggregationOnly: true });
+      await job.retry('failed');
+    }
   }
 
   /**
