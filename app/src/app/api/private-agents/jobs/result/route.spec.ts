@@ -3,11 +3,12 @@
 import { NextRequest } from "next/server";
 
 const mockSelectLimit = jest.fn();
+const mockSelectWhere = jest.fn((_condition: SQL) => ({ limit: mockSelectLimit }));
 const mockTransaction = jest.fn();
 
 jest.mock("@/utils/db", () => ({
   db: {
-    select: () => ({ from: () => ({ where: () => ({ limit: mockSelectLimit }) }) }),
+    select: () => ({ from: () => ({ where: mockSelectWhere }) }),
     transaction: (fn: (tx: unknown) => Promise<unknown>) => mockTransaction(fn),
   },
 }));
@@ -19,6 +20,9 @@ jest.mock("../auth", () => ({
 
 import { POST } from "./route";
 import { hashConnectorPayload } from "@/lib/sre/connectors";
+import { hashApiKey } from "@/lib/security/api-key-hash";
+import { PgDialect } from "drizzle-orm/pg-core";
+import type { SQL } from "drizzle-orm";
 
 const { authenticatePrivateAgent: mockAuth } = jest.requireMock("../auth") as { authenticatePrivateAgent: jest.Mock };
 
@@ -50,6 +54,28 @@ describe("Private Agent job result route", () => {
     mockSelectLimit.mockResolvedValue([]);
     const response = await POST(request(body));
     expect(response.status).toBe(409);
+  });
+
+  it("scopes the read to the authenticated tenant and retains the atomic lease/state guard", async () => {
+    mockSelectLimit.mockResolvedValue([{ id: jobId, status: "leased", leaseExpiresAt: new Date(Date.now() + 60_000) }]);
+    const guardedWhere = jest.fn((_condition: SQL) => ({ returning: async () => [{ id: jobId }] }));
+    mockTransaction.mockImplementation(async (fn) => fn({
+      update: () => ({ set: () => ({ where: guardedWhere }) }),
+    }));
+    expect((await POST(request(body))).status).toBe(200);
+    const dialect = new PgDialect();
+    const read = dialect.sqlToQuery(mockSelectWhere.mock.calls[0][0]);
+    expect(read.params).toEqual(expect.arrayContaining([jobId, "agent-1", "org-1", hashApiKey(body.leaseToken)]));
+    const write = dialect.sqlToQuery(guardedWhere.mock.calls[0][0]);
+    expect(write.sql).toContain('"lease_token_hash"');
+    expect(write.sql).toContain('"status"');
+    expect(write.params).toEqual(expect.arrayContaining([jobId, hashApiKey(body.leaseToken), "leased", "running"]));
+  });
+
+  it("rejects an expired active lease without writing", async () => {
+    mockSelectLimit.mockResolvedValue([{ id: jobId, status: "leased", leaseExpiresAt: new Date(0) }]);
+    expect((await POST(request(body))).status).toBe(409);
+    expect(mockTransaction).not.toHaveBeenCalled();
   });
 
   it("returns 409 when a concurrent or replayed post already finished the job", async () => {
