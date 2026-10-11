@@ -1,6 +1,6 @@
 {
   "name": "@supercheck/cli",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Open-source testing, monitoring, and AI SRE \u2014 as code",
   "keywords": [
     "monitoring",
@@ -20,9 +20,9 @@
     "type": "git",
     "url": "git+https://github.com/supercheck-io/supercheck.git"
   },
-  "author": "Supercheck <hello@supercheck.io>",
+  "author": "Krishna Kant",
   "type": "module",
-  "license": "AGPL-3.0-only",
+  "license": "Apache-2.0",
   "publishConfig": {
     "access": "public",
     "tag": "latest"
@@ -44,6 +44,7 @@
   "files": [
     "dist",
     "README.md",
+    "NOTICE",
     "assets/architecture.png"
   ],
   "scripts": {

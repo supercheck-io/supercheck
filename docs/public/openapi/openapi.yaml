@@ -9,7 +9,7 @@ info:
     name: Supercheck
     url: https://supercheck.io
   license:
-    name: AGPL-3.0
+    name: AGPL-3.0-only
     url: https://github.com/supercheck-io/supercheck/blob/main/LICENSE
 servers:
   - url: https://demo.supercheck.dev

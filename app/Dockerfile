@@ -65,6 +65,7 @@ WORKDIR /app
 
 # Add OCI labels to link package to repository
 LABEL org.opencontainers.image.source=https://github.com/supercheck-io/supercheck
+LABEL org.opencontainers.image.licenses="AGPL-3.0-only"
 LABEL org.opencontainers.image.title="Supercheck App"
 LABEL org.opencontainers.image.description="Next.js frontend service for Supercheck - A comprehensive automation & monitoring platform for modern apps. Includes dashboard, job scheduling, test execution, and monitoring capabilities with multi-tenant support."
 
@@ -92,6 +93,7 @@ COPY --from=deps-prod --chown=nextjs:nodejs /app/node_modules ./node_modules
 
 # Copy package.json for scripts that may need it (like npm run commands in dev fallback)
 COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
+COPY --from=builder --chown=nextjs:nodejs /app/LICENSE /app/NOTICE ./
 
 # Copy migration files, scripts, and bootstrap admin script
 COPY --from=builder --chown=nextjs:nodejs /app/src/db ./src/db

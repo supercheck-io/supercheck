@@ -2,7 +2,7 @@
 
 Manage tests, monitors, scheduled jobs, and AI SRE from your terminal or CI. Supports Supercheck Cloud and self-hosted installations.
 
-[![npm](https://img.shields.io/npm/v/@supercheck/cli)](https://www.npmjs.com/package/@supercheck/cli) [![License: AGPL-3.0-only](https://img.shields.io/badge/license-AGPL--3.0--only-blue.svg)](https://github.com/supercheck-io/supercheck/blob/main/LICENSE)
+[![npm](https://img.shields.io/npm/v/@supercheck/cli)](https://www.npmjs.com/package/@supercheck/cli) [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](https://github.com/supercheck-io/supercheck/blob/main/cli/LICENSE)
 
 ## Installation
 
@@ -114,4 +114,4 @@ AI SRE requires a configured server AI provider. Live connectors require explici
 - [Changelog](https://github.com/supercheck-io/supercheck/blob/main/CHANGELOG.md)
 - [Contributing](https://github.com/supercheck-io/supercheck/blob/main/CONTRIBUTING.md) · [Security policy](https://github.com/supercheck-io/supercheck/blob/main/SECURITY.md)
 
-Licensed under [AGPL-3.0-only](https://github.com/supercheck-io/supercheck/blob/main/LICENSE). The npm package includes the license.
+From version 0.3.1, licensed under [Apache-2.0](https://github.com/supercheck-io/supercheck/blob/main/cli/LICENSE). The npm package includes LICENSE and NOTICE. Earlier published versions retain their original licenses.

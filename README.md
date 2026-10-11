@@ -149,7 +149,7 @@ The application stores platform data in PostgreSQL, schedules work through Redis
 | --- | --- | --- |
 | [`app/`](app/) | Next.js web application and API | AGPL-3.0-only |
 | [`worker/`](worker/) | NestJS orchestration and execution worker | AGPL-3.0-only |
-| [`cli/`](cli/) | `@supercheck/cli` source and documentation | AGPL-3.0-only |
+| [`cli/`](cli/) | `@supercheck/cli` source and documentation | Apache-2.0 |
 | [`recorder/`](recorder/) | Browser recorder based on Playwright CRX | Apache-2.0 |
 | [`docs/`](docs/) | Product and deployment documentation | AGPL-3.0-only |
 | [`deploy/`](deploy/) | Docker Compose deployment assets | AGPL-3.0-only |
@@ -184,7 +184,11 @@ Community integrations are maintained outside the core Supercheck repository. If
 
 ## License
 
-The Supercheck app, worker, CLI, documentation, and deployment assets are licensed under the [GNU Affero General Public License v3.0 only](LICENSE). The recorder remains Apache-2.0; see [`recorder/LICENSE`](recorder/LICENSE), [`recorder/NOTICE`](recorder/NOTICE), and its retained upstream attribution.
+The Supercheck app, worker (including Private Agent mode), documentation, and deployment assets are licensed under [AGPL-3.0-only](LICENSE). The [CLI](cli/LICENSE), from version 0.3.1, and [recorder](recorder/LICENSE) are Apache-2.0. Third-party licenses and notices remain in effect; earlier releases retain their original terms.
+
+Supercheck Cloud subscriptions pay for managed infrastructure, execution, and support. Self-hosting the open core has no license fee; you supply infrastructure and AI provider keys. Existing open features stay available in the open core: tests, monitors, alerts, status pages, RBAC, audit logs, API keys, GitHub/Google login, and bring-your-own-key AI. Future paid capabilities will be additions.
+
+Contributors keep ownership of their work; see the [contributor agreement](CLA.md). The Supercheck name and logo are covered by the [trademark policy](TRADEMARKS.md).
 
 ## Community
 

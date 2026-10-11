@@ -51,6 +51,9 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Verify licenses and notices
+        run: node ../.github/scripts/check-licenses.mjs
+
       - name: Verify package contents
         run: npm pack --dry-run
 

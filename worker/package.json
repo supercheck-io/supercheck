@@ -4,7 +4,7 @@
   "description": "Supercheck - Distributed test execution and job processing worker service",
   "license": "AGPL-3.0-only",
   "author": {
-    "name": "Supercheck Contributors",
+    "name": "Krishna Kant",
     "url": "https://github.com/supercheck-io/supercheck"
   },
   "homepage": "https://github.com/supercheck-io/supercheck",

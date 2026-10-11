@@ -1,12 +1,26 @@
 Supercheck
-Copyright (C) 2026 Supercheck Contributors
+Copyright (C) 2026 Krishna Kant
 
 SPDX-License-Identifier: AGPL-3.0-only
 
-The Supercheck app, worker, CLI, deployment assets, and documentation in this repository are licensed under version 3 only of
-the GNU Affero General Public License. See LICENSE for the complete terms.
+The Supercheck app, worker, deployment assets, and documentation are licensed
+under version 3 only of the GNU Affero General Public License. See LICENSE.
+The CLI and recorder are licensed separately under Apache-2.0; see their
+LICENSE and NOTICE files. These notices do not change earlier releases.
 
+Other contributors retain copyright in their contributions. Deployment fixes
+in pull request #312 were contributed by Víctor González.
 Third-party components retain their original licenses and copyright notices.
-The recorder is licensed under Apache-2.0 and includes Playwright-derived code;
-see recorder/LICENSE, recorder/NOTICE, recorder/playwright/LICENSE, and
-recorder/playwright/NOTICE for its terms and attributions.
+The recorder includes Playwright-derived code; see recorder/NOTICE and
+recorder/playwright/NOTICE for its upstream attributions.
+
+Corresponding source, dependency lockfiles, and build instructions:
+https://github.com/supercheck-io/supercheck
+Use the source revision identified by the release or container image metadata.
+
+The worker image also bundles k6 v1.6.1 and xk6-dashboard v0.8.1, each under
+its upstream AGPL license. Their original license files are in third-party/
+in the worker image. Corresponding upstream source and build dependencies:
+https://github.com/grafana/k6/tree/v1.6.1
+https://github.com/grafana/xk6-dashboard/tree/v0.8.1
+The worker Dockerfile records the versions and xk6 build command.

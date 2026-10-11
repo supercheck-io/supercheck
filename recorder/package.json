@@ -25,7 +25,7 @@
     "clean:pw": "npm run clean:pw:bundles && rimraf -g ./playwright/packages/*/lib ./playwright/packages/*/src/generated",
     "generate:pw": "cd ./playwright && node ./utils/generate_injected.js",
     "build:examples:todomvc": "npm run build --prefix ./examples/todomvc-crx",
-    "build:examples:recorder": "npm run build --prefix ./examples/recorder-crx",
+    "build:examples:recorder": "npm run build --prefix ./examples/recorder-crx && node ./utils/copy-license-files.mjs",
     "build:examples": "npm run build:examples:todomvc && npm run build:examples:recorder",
     "clean:examples": "rimraf ./examples/recorder-crx/dist && rimraf ./examples/todomvc-crx/dist",
     "build:tests": "npm run build --prefix ./tests",
