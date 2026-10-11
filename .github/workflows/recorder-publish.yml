@@ -99,6 +99,9 @@ jobs:
 
       - name: Package extension
         run: |
+          for file in LICENSE NOTICE playwright/LICENSE playwright/NOTICE; do
+            cmp "$file" "examples/recorder-crx/dist/$file"
+          done
           cd examples/recorder-crx/dist
           zip -r "../supercheck-recorder-v${{ steps.version.outputs.version }}.zip" .
 

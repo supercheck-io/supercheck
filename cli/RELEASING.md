@@ -1,6 +1,6 @@
 # Releasing the Supercheck CLI
 
-Version **0.3.0** is prepared; **0.2.1** is currently published. Publish manually from a clean checkout after the release PR merges and CI passes. The README diagram points to an image on `main`, so merge it before publishing.
+Version **0.3.1** is prepared with the Apache-2.0 CLI license; verify the currently published version against npm. Publish manually from a clean checkout after the release PR merges and CI passes. The README diagram points to an image on `main`, so merge it before publishing.
 
 ## Validate and build
 
@@ -17,7 +17,7 @@ node -p "require('./package.json').version"
 npm view @supercheck/cli versions --json
 ```
 
-Confirm the package version is 0.3.0 and that version is absent from npm. Inspect the package contents: executable, type exports, README, architecture image, and license. Future releases must update both package versions in `package-lock.json`, `package.json`, and the changelog.
+Confirm the package version is 0.3.1 and that version is absent from npm. Inspect the package contents: executable, type exports, README, architecture image, Apache-2.0 LICENSE, and NOTICE. Verify package.json and the lockfile both declare Apache-2.0. Future releases must update both package versions in `package-lock.json`, `package.json`, and the changelog.
 
 ## Authenticate and publish manually
 
@@ -37,14 +37,14 @@ npm versions cannot be overwritten. An authentication failure does not consume a
 ## Verify publication
 
 ```bash
-npm view @supercheck/cli@0.3.0 version dist --json
+npm view @supercheck/cli@0.3.1 version license dist --json
 npm view @supercheck/cli dist-tags --json
-npm install -g @supercheck/cli@0.3.0
+npm install -g @supercheck/cli@0.3.1
 supercheck --version
 supercheck sre --help
 ```
 
-Confirm `latest` and the installed CLI report 0.3.0. Check the npm README image after publication. Date the CLI changelog entry and publish release notes identifying the source commit and the new `--delete` opt-in. Matching app/worker deployment is required for investigation status and the console/k6 fixes.
+Confirm `latest` and the installed CLI report 0.3.1. Check the npm README image after publication. Date the CLI changelog entry and publish release notes identifying the source commit and the Apache-2.0 license change. Matching app/worker deployment is required for investigation status and the console/k6 fixes.
 
 ## Optional GitHub publishing
 

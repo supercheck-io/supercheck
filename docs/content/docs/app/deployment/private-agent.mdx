@@ -10,6 +10,8 @@ Use a Private Agent to include private services such as Prometheus, Grafana, or 
 Private Agents execute read-only connector queries for investigations. They do not run monitors, Playwright tests, or k6 tests. For test execution, see [worker deployment](/docs/app/deployment/multi-location).
 </Callout>
 
+The Private Agent runs the Supercheck worker image in a separate runtime mode and is licensed under [AGPL-3.0-only](https://github.com/supercheck-io/supercheck/blob/main/LICENSE), including when used with Cloud. Source and build instructions are in the [public repository](https://github.com/supercheck-io/supercheck); use the revision matching your image release.
+
 ## Before You Start
 
 | You use | Where to register | What to run in your network |

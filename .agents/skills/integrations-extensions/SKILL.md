@@ -49,7 +49,7 @@ sequenceDiagram
 ### Licensing and release
 
 - Preserve `recorder/LICENSE`, `recorder/NOTICE`, `recorder/playwright/LICENSE`, `recorder/playwright/NOTICE`, and upstream file headers.
-- Do not relicense Playwright-derived recorder files as AGPL. App, worker, CLI, and docs remain AGPL-3.0-only.
+- Do not relicense Playwright-derived recorder files as AGPL. App, worker (including Private Agent mode), and docs remain AGPL-3.0-only. CLI releases from 0.3.1 are Apache-2.0.
 - The vendored source must be enough for a clean reproducible build without another private checkout.
 - Build lint, vendored bundles, generated types, CRX library, recorder/TodoMVC examples, and test extension.
 - Run unit security and browser suites. Local browser fixture limitations must be disclosed; CI/Linux and manual installed-extension acceptance remain release gates.

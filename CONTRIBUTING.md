@@ -145,4 +145,6 @@ Use disposable fixtures for browser and provider tests and remove them afterward
 
 ## License
 
-The app, worker, CLI, deployment assets, and documentation are licensed under `AGPL-3.0-only`. The recorder remains under Apache-2.0 because it derives from Playwright CRX and Playwright; see `recorder/LICENSE` and `recorder/NOTICE`. By submitting a contribution, you certify that you have the right to submit it under the license of the files you change. All contributors must follow [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+The app, worker (including Private Agent mode), deployment assets, and documentation are `AGPL-3.0-only`. The CLI and recorder are Apache-2.0; retain third-party licenses, notices, and upstream headers.
+
+Read the [contributor license agreement](CLA.md); maintainers will ask you to sign it, or to give equivalent written acceptance, before your contribution is merged. You keep ownership and grant the maintainer rights to distribute your contribution under open-source or commercial terms, with a patent grant. The agreement does not replace the license of the files you change. Every human contributor must be covered, including co-authors and anyone contributing through an employer. Maintainers follow the [CLA setup and verification runbook](.github/CLA_SETUP.md). All contributors must follow [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).

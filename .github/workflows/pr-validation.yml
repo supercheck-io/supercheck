@@ -282,6 +282,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
+      - name: Verify licenses and distribution notices
+        run: node .github/scripts/check-licenses.mjs
+
       - name: Validate Compose files and deploy scripts
         run: ./deploy/docker/validate.sh
 

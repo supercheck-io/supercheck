@@ -42,6 +42,7 @@ ENV SUPERCHECK_VERSION=${SUPERCHECK_VERSION}
 
 # Add OCI labels to link package to repository
 LABEL org.opencontainers.image.source=https://github.com/supercheck-io/supercheck
+LABEL org.opencontainers.image.licenses="AGPL-3.0-only"
 LABEL org.opencontainers.image.title="Supercheck Worker"
 LABEL org.opencontainers.image.description="NestJS worker service for Supercheck - Executes Playwright tests, monitors endpoints, and processes background jobs with parallel execution capabilities. Includes all Playwright browsers (Chromium, Firefox, WebKit) and supports multi-architecture deployment."
 
@@ -49,6 +50,8 @@ ENV NODE_ENV=production
 
 # Copy k6 binary with xk6-dashboard extension
 COPY --from=k6-builder /go/k6 /usr/local/bin/k6
+COPY --from=k6-builder /go/pkg/mod/go.k6.io/k6@v1.6.1/LICENSE.md ./third-party/k6-LICENSE.md
+COPY --from=k6-builder /go/pkg/mod/github.com/grafana/xk6-dashboard@v0.8.1/LICENSE ./third-party/xk6-dashboard-LICENSE
 RUN chmod +x /usr/local/bin/k6
 ENV K6_BIN_PATH=/usr/local/bin/k6
 
@@ -62,6 +65,7 @@ RUN test "$(id -u pwuser)" = "1001" && test "$(id -g pwuser)" = "1001"
 
 # Copy only necessary files with proper ownership
 COPY --from=builder --chown=pwuser:pwuser /worker/package*.json ./
+COPY --from=builder --chown=pwuser:pwuser /worker/LICENSE /worker/NOTICE ./
 
 # Install production dependencies with caching and memory limits
 RUN --mount=type=cache,target=/root/.npm,sharing=locked \

@@ -18,6 +18,10 @@ Notable features, fixes, and upgrade requirements for Supercheck users. App and 
 
 **Upgrade note:** Apply the included database migrations before updating app and worker images, including `0024_execution_usage_receipts.sql`. Review existing AI SRE automation opt-outs: older per-workflow flags must be replaced with the two controls above. Remove `-f docker-compose-collaboration.yml` from existing Compose commands; Slack/Teams command credentials are no longer read.
 
+## [CLI 0.3.1] - Unreleased
+
+- **License:** The CLI is now Apache-2.0, with LICENSE and NOTICE included in the npm package. Earlier published versions retain their original license terms. The app and worker, including Private Agent mode, remain AGPL-3.0-only.
+
 ## [CLI 0.3.0] - 2026-10-07
 
 - **Investigation status:** Use `sre status <runId>` to check the lifecycle of an investigation in the current project.

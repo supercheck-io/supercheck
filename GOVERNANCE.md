@@ -17,6 +17,7 @@ This document describes how the Supercheck project is maintained. It is intentio
 ## Pull requests and reviews
 
 - A maintainer review is required before merge.
+- Every human contributor must be covered by the [CLA](CLA.md) or equivalent written permission before merge. Squash merging does not remove that requirement.
 - Pull requests are squashed on merge, and Conventional Commit style titles are used for the resulting history. See [CONTRIBUTING.md](CONTRIBUTING.md).
 - Maintainers may close stale or out-of-scope pull requests with an explanation.
 
