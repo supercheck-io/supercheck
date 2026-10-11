@@ -17,6 +17,13 @@ const mockUseOrganizations = jest.fn(() => ({
 }));
 jest.mock("@/hooks/use-organizations", () => ({ useOrganizations: () => mockUseOrganizations() }));
 
+// Radix popovers measure their trigger; jsdom has no ResizeObserver.
+Object.defineProperty(global, "ResizeObserver", {
+  value: class { observe() {} unobserve() {} disconnect() {} },
+  writable: true,
+  configurable: true,
+});
+
 const meter = { used: 0, included: 100, overage: 0, percentage: 0 };
 const resource = { current: 1, limit: 5, remaining: 4, percentage: 20 };
 const subscription = {
@@ -152,7 +159,9 @@ describe("SubscriptionTab", () => {
     await screen.findByText("$349.00");
     expect(await screen.findByText(/Pro would cost about \$172.50/)).toHaveTextContent("$176.50 less");
     expect(screen.getByRole("link", { name: "Compare plans" })).toHaveAttribute("href", "/subscribe");
-    expect(screen.getByText(/this organization only/)).toBeInTheDocument();
+    // A click is what a touch tap dispatches; hover/focus-only UI fails here.
+    fireEvent.click(screen.getByRole("button", { name: "How billing works" }));
+    expect(await screen.findByText(/this organization only/)).toBeInTheDocument();
   });
 
   it("does not overstate Pro K6 cost at a floating-point boundary", async () => {

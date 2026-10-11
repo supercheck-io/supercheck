@@ -163,6 +163,21 @@ describe("PolarUsageService retry idempotency", () => {
     expect(metrics.totalOverageCostCents).toBe(expected);
   });
 
+  it.each([
+    [299, 300, 99], [300, 300, 100], [29, 100, 29], [2999.9999, 3000, 99],
+    // True exhaustion must never floor to 99, even with float noise.
+    [0.3, 0.3, 100], [25.86, 25.86, 100], [0.7, 0.7, 100], [3000.0001, 3000, 100],
+  ])("floors usage %s of %s to %s%% so alerts never fire early", async (used, included, expected) => {
+    const database = { query: {
+      organization: { findFirst: jest.fn().mockResolvedValue({ subscriptionPlan: "pro", aiCreditsUsed: used, playwrightMinutesUsed: used }) },
+      planLimits: { findFirst: jest.fn().mockResolvedValue({ playwrightMinutesIncluded: included, k6VuMinutesIncluded: 100, aiCreditsIncluded: included, sreInvestigationUnitsIncluded: "100" }) },
+      overagePricing: { findFirst: jest.fn().mockResolvedValue({}) },
+    } } as unknown as Pick<typeof db, "query">;
+    const metrics = await polarUsageService.getUsageMetrics("org-1", { database, additionalSreUnits: 0 });
+    expect(metrics.aiCredits.percentage).toBe(expected);
+    expect(metrics.playwrightMinutes.percentage).toBe(expected);
+  });
+
   it("does not add a cent to an exact fractional SRE overage or trigger a premature stop", async () => {
     const database = { query: {
       organization: { findFirst: jest.fn().mockResolvedValue({ subscriptionPlan: "plus", sreInvestigationUnitsUsed: "26" }) },

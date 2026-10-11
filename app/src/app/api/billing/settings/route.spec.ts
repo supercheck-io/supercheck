@@ -70,6 +70,24 @@ describe("PATCH /api/billing/settings", () => {
     },
   );
 
+  it("normalizes and de-duplicates notification recipients", async () => {
+    const response = await PATCH(settingsRequest(JSON.stringify({
+      notificationEmails: [" Ops@Example.com ", "ops@example.com", "billing@example.com"],
+    })));
+    expect(response.status).toBe(200);
+    expect(billingSettingsService.updateSettings).toHaveBeenCalledWith("org_123", {
+      notificationEmails: ["ops@example.com", "billing@example.com"],
+    });
+  });
+
+  it("rejects more than ten notification recipients", async () => {
+    const response = await PATCH(settingsRequest(JSON.stringify({
+      notificationEmails: Array.from({ length: 11 }, (_, i) => `user${i}@example.com`),
+    })));
+    expect(response.status).toBe(400);
+    expect(billingSettingsService.updateSettings).not.toHaveBeenCalled();
+  });
+
   it("rejects malformed JSON as a client error", async () => {
     const response = await PATCH(settingsRequest("{invalid"));
     expect(response.status).toBe(400);

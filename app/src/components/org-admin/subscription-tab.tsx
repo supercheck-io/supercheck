@@ -7,6 +7,11 @@ import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { SupercheckLoading } from "@/components/shared/supercheck-loading";
 import {
   Calendar,
@@ -20,6 +25,7 @@ import {
   Globe,
   Tally4,
   CreditCard,
+  Info,
 } from "lucide-react";
 import { toast } from "sonner";
 import { SpendingLimits } from "@/components/billing/spending-limits";
@@ -304,7 +310,7 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
   return (
     <div className="space-y-4">
       {/* Plan Header - Compact */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b">
         <div className="flex items-center gap-4">
           <div>
             <div className="flex flex-wrap items-center gap-3">
@@ -319,6 +325,25 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
                   : data.subscription.status === "none" ? "Not subscribed"
                   : data.subscription.status}
               </Badge>
+              {/* Popover, not tooltip: tooltips do not open on touch taps. */}
+              {hasSubscription && data.subscription.plan !== "unlimited" && (
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label="How billing works"
+                      className="text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      <Info className="h-4 w-4" />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent side="top" className="w-80 space-y-1.5 text-xs text-muted-foreground">
+                    <p>This monthly subscription and its allowances cover this organization only.</p>
+                    <p>K6 usage is peak VUs × execution minutes, rounded up per run. AI credits are a hard limit.</p>
+                    <p>Discounts, credits, and plan-change proration can change your invoice. Invoices and payment details are in Manage Subscription.</p>
+                  </PopoverContent>
+                </Popover>
+              )}
               {/* Hard Stop Alert - Inline with status */}
               {isHardStopActive && spending && (
                 <HardStopAlert
@@ -329,7 +354,7 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
               )}
             </div>
             {hasSubscription && (
-              <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground mt-2">
+              <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground mt-1.5">
                 <span className="flex items-center gap-2">
                   <Calendar className="h-4 w-4" />
                   {daysRemaining === null ? "Billing period unavailable" : `${daysRemaining} days remaining`}
@@ -370,7 +395,7 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
                   : `$${estimatedTotal.toFixed(2)}`}
                 {currentOverage !== undefined && currentOverage > 0 && (
                   <span className="text-xs font-normal text-muted-foreground ml-1">
-                    (${basePrice} + ${currentOverage.toFixed(2)} overage)
+                    (${basePrice.toFixed(2)} + ${currentOverage.toFixed(2)} overage)
                   </span>
                 )}
               </p>
@@ -396,14 +421,6 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
         )}
       </div>
 
-      {hasSubscription && data.subscription.plan !== "unlimited" && (
-        <p className="text-xs text-muted-foreground">
-          This monthly subscription and its usage allowances cover this organization only.
-          K6 usage is peak VUs × execution minutes, rounded up per run. AI credits are a hard limit.
-          Discounts, credits, and plan-change proration can change your invoice.
-          View invoices and payment details in Manage Subscription.
-        </p>
-      )}
       {proSavings >= 0.01 && (
         <p className="text-sm text-muted-foreground">
           At current list prices, Pro would cost about ${proEstimate?.toFixed(2)} for this usage,
@@ -431,15 +448,15 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
 
       {/* Usage & Resources - Combined Compact Grid */}
       {hasSubscription && (
-        <div className="grid gap-6 md:grid-cols-2">
+        <div className="grid gap-4 md:grid-cols-2">
           {/* Usage This Period */}
           <Card>
-            <CardHeader className="pb-4">
+            <CardHeader className="pb-3">
               <CardTitle className="text-base font-medium">
                 Usage This Period
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-5 text-sm text-muted-foreground">
+            <CardContent className="space-y-4 text-sm text-muted-foreground">
               <UsageProgressBar
                 icon={
                   <PlaywrightLogo
@@ -485,13 +502,13 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
 
           {/* Resource Limits - Compact */}
           <Card>
-            <CardHeader className="pb-4">
+            <CardHeader className="pb-3">
               <CardTitle className="text-base font-medium">
                 Resource Limits
               </CardTitle>
             </CardHeader>
-            <CardContent className="text-sm space-y-5">
-              <div className="grid grid-cols-2 gap-4">
+            <CardContent className="text-sm">
+              <div className="grid grid-cols-2 gap-3">
                 <CompactResourceCard
                   icon={Globe}
                   label="Monitors"
@@ -535,6 +552,14 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
  * - Shows included usage in blue
  * - Shows overage in red with proper bar scaling
  */
+// Usage is metered to four decimals. Keep them for sub-unit values (a
+// five-second run is 0.0833 minutes); two are enough to read larger totals.
+function formatUsage(value: number) {
+  return value.toLocaleString(undefined, {
+    maximumFractionDigits: Math.abs(value) < 1 ? 4 : 2,
+  });
+}
+
 function UsageProgressBar({
   icon,
   label,
@@ -573,14 +598,14 @@ function UsageProgressBar({
         <div className="flex items-center gap-2">
           {hasOverage && (
             <Badge variant="destructive" className="text-xs px-1.5 py-0 h-5">
-              <TrendingUp className="h-3 w-3 mr-1" />+{overage.toLocaleString(undefined, { maximumFractionDigits: 4 })}{" "}
+              <TrendingUp className="h-3 w-3 mr-1" />+{formatUsage(overage)}{" "}
               overage
             </Badge>
           )}
           <span
             className={`text-sm ${hasOverage ? "text-red-500 font-medium" : "text-muted-foreground"}`}
           >
-            {used.toLocaleString(undefined, { maximumFractionDigits: 4 })} / {included.toLocaleString()}
+            {formatUsage(used)} / {formatUsage(included)}
           </span>
         </div>
       </div>

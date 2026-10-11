@@ -158,7 +158,8 @@ export const UsageNotificationEmail = ({
             <Section style={usageBox}>
               <Text style={usageLabel}>{getResourceLabel()}</Text>
               <Text style={usageValue}>
-                {usageAmount.toLocaleString()} / {usageLimit.toLocaleString()} {getUnitLabel()}
+                {usageAmount.toLocaleString("en-US", { maximumFractionDigits: 2 })} /{" "}
+                {usageLimit.toLocaleString("en-US", { maximumFractionDigits: 2 })} {getUnitLabel()}
               </Text>
               <Section style={progressBarContainer}>
                 <Section
@@ -173,8 +174,9 @@ export const UsageNotificationEmail = ({
 
             {notificationType === "usage_100_percent" && (
               <Text style={warningText}>
-                ⚠️ You have exceeded your included quota. Additional usage will be
-                billed at your plan&apos;s overage rate.
+                {resourceType === "ai"
+                  ? "⚠️ You have used all AI credits included in your plan. AI actions are unavailable until your next billing period starts or you upgrade your plan."
+                  : "⚠️ You have used your included quota. Additional usage will be billed at your plan's overage rate."}
               </Text>
             )}
           </>

@@ -26,6 +26,8 @@ export async function runOrderedPolarEvent(
     canReplaceSubscription: boolean;
     periodStart: Date | null;
     affectsSubscriptionState?: boolean;
+    /** Normalized subscription state carried by this event, for tie checks. */
+    snapshot?: { status: string | undefined; plan: string | null };
   },
   apply: () => Promise<void>,
 ) {
@@ -52,9 +54,21 @@ export async function runOrderedPolarEvent(
         (difference === 0 && org.polarWebhookEventKey === input.eventKey)
       )
         return;
-      // SDK Date objects have millisecond precision. Do not invent an ordering
-      // for conflicting events at the same instant; fail retryably for recovery.
-      if (difference === 0)
+      // SDK Date objects have millisecond precision. Polar emits the catch-all
+      // subscription.updated together with the specific lifecycle event from
+      // one state change. Apply a tie only when it is on the bound
+      // subscription and carries the state already applied; a conflicting
+      // snapshot (e.g. active after revoked) could restore access, so it and
+      // any other tie fail retryably for reconciliation.
+      const snapshot = input.snapshot;
+      const consistentTie = Boolean(
+        input.subscriptionId &&
+          input.subscriptionId === org.subscriptionId &&
+          snapshot?.status &&
+          snapshot.status === org.subscriptionStatus &&
+          (snapshot.status === "none" || snapshot.plan === org.subscriptionPlan),
+      );
+      if (difference === 0 && !consistentTie)
         throw new Error(
           "Ambiguous Polar event order; reconcile customer state before retrying",
         );

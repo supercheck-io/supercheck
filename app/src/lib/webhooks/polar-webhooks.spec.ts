@@ -69,6 +69,7 @@ import {
   handleSubscriptionActive,
   handleSubscriptionCreated,
   handleSubscriptionPastDue,
+  handleSubscriptionCanceled,
   handleSubscriptionUpdated,
   handleOrderPaid,
   handleCustomerCreated,
@@ -591,6 +592,24 @@ describe("Polar webhook helpers", () => {
         }),
         db,
       );
+    });
+
+    it.each([
+      ["an end-of-period cancellation", { status: "active", cancel_at_period_end: true }, "canceled"],
+      ["an immediate cancellation", { status: "canceled" }, "none"],
+    ])("records %s with the matching local status", async (_, snapshot, expected) => {
+      mockWebhookClaim();
+      (db.query.organization.findFirst as jest.Mock).mockResolvedValue({
+        id: "org_123", subscriptionPlan: "plus", subscriptionStatus: "active",
+        subscriptionId: "sub_123", polarCustomerId: "cus_123",
+      });
+      await handleSubscriptionCanceled({ id: `evt_${expected}`, type: "subscription.canceled",
+        data: { id: "sub_123", ...snapshot, product_id: "prod_plus", customer_id: "cus_123" },
+      });
+      const write = (subscriptionService.updateSubscription as jest.Mock).mock.calls[0][1];
+      expect(write.subscriptionStatus).toBe(expected);
+      if (expected === "none") expect(write.subscriptionPlan).toBeNull();
+      else expect(write).not.toHaveProperty("subscriptionPlan");
     });
 
     it("marks subscriptions past_due from the explicit Polar event", async () => {

@@ -91,6 +91,11 @@ type UsageSyncResult = {
 };
 const FALLBACK_OVERAGE_PRICING_CENTS = DEFAULT_OVERAGE_PRICING_CENTS;
 
+/** Whole percent reached, floored after removing floating-point noise. */
+function usagePercentage(used: number, included: number): number {
+  return Math.floor(Number(((used * 100) / included).toFixed(6)));
+}
+
 class PolarUsageService {
   private polarClient: InstanceType<typeof Polar> | null = null;
 
@@ -363,21 +368,23 @@ class PolarUsageService {
         (pricing?.sreInvestigationUnitPriceCents ?? fallbackPricing.sreInvestigationUnits)
     );
 
+    // Floor so threshold alerts fire only once usage has actually reached
+    // the threshold; rounding would report 99.5% of a quota as 100%.
     const playwrightPercentage =
       plan.playwrightMinutesIncluded > 0
-        ? Math.round((playwrightUsed / plan.playwrightMinutesIncluded) * 100)
+        ? usagePercentage(playwrightUsed, plan.playwrightMinutesIncluded)
         : 100;
     const k6Percentage =
       plan.k6VuMinutesIncluded > 0
-        ? Math.round((k6Used / plan.k6VuMinutesIncluded) * 100)
+        ? usagePercentage(k6Used, plan.k6VuMinutesIncluded)
         : 100;
     const aiPercentage =
       plan.aiCreditsIncluded > 0
-        ? Math.round((aiCreditsUsed / plan.aiCreditsIncluded) * 100)
+        ? usagePercentage(aiCreditsUsed, plan.aiCreditsIncluded)
         : 100;
     const sreInvestigationsPercentage =
       sreInvestigationsIncluded > 0
-        ? Math.round((sreInvestigationsUsed / sreInvestigationsIncluded) * 100)
+        ? usagePercentage(sreInvestigationsUsed, sreInvestigationsIncluded)
         : 100;
 
     return {

@@ -10,6 +10,9 @@ import { DollarSign, Bell, Save, Loader2, Mail, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
+// Matches the server-side cap in PATCH /api/billing/settings.
+const MAX_NOTIFICATION_EMAILS = 10;
+
 interface SpendingLimitsProps {
   organizationId?: string;
   onSaveButton?: (button: React.ReactNode) => void;
@@ -176,7 +179,8 @@ export function SpendingLimits({ organizationId, className, onSaved }: SpendingL
   };
 
   const addEmail = () => {
-    if (!newEmail) {
+    const email = newEmail.trim().toLowerCase();
+    if (!email) {
       toast.error("Email is required", {
         description: "Please enter an email address",
         duration: 3000,
@@ -184,7 +188,7 @@ export function SpendingLimits({ organizationId, className, onSaved }: SpendingL
       return;
     }
 
-    if (emails.includes(newEmail)) {
+    if (emails.includes(email)) {
       toast.error("Email already added", {
         description: "This email is already in the notification list",
         duration: 3000,
@@ -194,7 +198,7 @@ export function SpendingLimits({ organizationId, className, onSaved }: SpendingL
 
     // Basic email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(newEmail)) {
+    if (!emailRegex.test(email)) {
       toast.error("Invalid email format", {
         description: "Please enter a valid email address",
         duration: 3000,
@@ -202,10 +206,18 @@ export function SpendingLimits({ organizationId, className, onSaved }: SpendingL
       return;
     }
 
-    setEmails([...emails, newEmail]);
+    if (emails.length >= MAX_NOTIFICATION_EMAILS) {
+      toast.error("Recipient limit reached", {
+        description: `You can add up to ${MAX_NOTIFICATION_EMAILS} extra recipients`,
+        duration: 3000,
+      });
+      return;
+    }
+
+    setEmails([...emails, email]);
     setNewEmail("");
     toast.success("Email added", {
-      description: `${newEmail} will receive usage notifications`,
+      description: `${email} will receive usage notifications`,
       duration: 3000,
     });
   };
@@ -239,7 +251,7 @@ export function SpendingLimits({ organizationId, className, onSaved }: SpendingL
 
   return (
     <Card className={cn("", className)}>
-      <CardContent className="space-y-4 pt-6">
+      <CardContent className="space-y-3 pt-5">
         {/* Header with Save Button */}
         <div className="flex items-center justify-between">
           <div>
@@ -271,7 +283,7 @@ export function SpendingLimits({ organizationId, className, onSaved }: SpendingL
         <div className="grid gap-4 md:grid-cols-2">
           {/* Spending Limit Column */}
           <div className="flex flex-col h-full">
-            <div className="flex items-start gap-3 p-4 rounded-lg border bg-muted/30 flex-1">
+            <div className="flex items-start gap-3 p-3 rounded-lg border bg-muted/30 flex-1">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
                 <DollarSign className="h-4 w-4 text-primary" />
               </div>
@@ -357,7 +369,7 @@ export function SpendingLimits({ organizationId, className, onSaved }: SpendingL
 
           {/* Usage Alerts Column */}
           <div className="flex flex-col h-full">
-            <div className="flex items-start gap-3 p-4 rounded-lg border bg-muted/30 flex-1">
+            <div className="flex items-start gap-3 p-3 rounded-lg border bg-muted/30 flex-1">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
                 <Bell className="h-4 w-4 text-primary" />
               </div>
@@ -439,7 +451,7 @@ export function SpendingLimits({ organizationId, className, onSaved }: SpendingL
                       </div>
                     )}
                     <p className="text-xs text-muted-foreground">
-                      Org admins always receive alerts
+                      Organization owners and admins always receive alerts
                     </p>
                   </div>
                 )}

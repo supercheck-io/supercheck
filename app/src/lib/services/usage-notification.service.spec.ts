@@ -181,6 +181,35 @@ describe("UsageNotificationService", () => {
     );
   });
 
+  it("sends the 100% alert once usage reaches the included quota", async () => {
+    (billingSettingsService.getSettings as jest.Mock).mockResolvedValue({
+      enableSpendingLimit: false,
+      monthlySpendingLimitCents: null,
+      hardStopOnLimit: false,
+      notifyAt50Percent: false,
+      notifyAt80Percent: true,
+      notifyAt90Percent: true,
+      notifyAt100Percent: true,
+      notificationEmails: [],
+    });
+    (polarUsageService.getUsageMetrics as jest.Mock).mockResolvedValue({
+      playwrightMinutes: { used: 0, included: 100, percentage: 0 },
+      k6VuMinutes: { used: 0, included: 100, percentage: 0 },
+      aiCredits: { used: 100, included: 100, percentage: 100 },
+      sreInvestigations: { used: 0, included: 10, percentage: 0 },
+      totalOverageCostCents: 0,
+    });
+
+    await usageNotificationService.checkAndNotify("org_123");
+
+    expect(billingSettingsService.markNotificationSent).toHaveBeenCalledWith(
+      "org_123",
+      "100",
+      "ai",
+      expect.any(Date),
+    );
+  });
+
   it("sends AI SRE investigation quota notifications", async () => {
     (billingSettingsService.getSettings as jest.Mock).mockResolvedValue({
       enableSpendingLimit: false,
