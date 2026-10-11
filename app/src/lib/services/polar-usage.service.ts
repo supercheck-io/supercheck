@@ -91,9 +91,13 @@ type UsageSyncResult = {
 };
 const FALLBACK_OVERAGE_PRICING_CENTS = DEFAULT_OVERAGE_PRICING_CENTS;
 
-/** Whole percent reached, floored after removing floating-point noise. */
+/**
+ * Whole percent reached, floored after removing floating-point noise.
+ * No allowance (or invalid input) reports 100% so alerts fail safe.
+ */
 function usagePercentage(used: number, included: number): number {
-  return Math.floor(Number(((used * 100) / included).toFixed(6)));
+  if (!(included > 0) || !Number.isFinite(used)) return 100;
+  return Math.max(0, Math.floor(Number(((used * 100) / included).toFixed(6))));
 }
 
 class PolarUsageService {
@@ -370,22 +374,10 @@ class PolarUsageService {
 
     // Floor so threshold alerts fire only once usage has actually reached
     // the threshold; rounding would report 99.5% of a quota as 100%.
-    const playwrightPercentage =
-      plan.playwrightMinutesIncluded > 0
-        ? usagePercentage(playwrightUsed, plan.playwrightMinutesIncluded)
-        : 100;
-    const k6Percentage =
-      plan.k6VuMinutesIncluded > 0
-        ? usagePercentage(k6Used, plan.k6VuMinutesIncluded)
-        : 100;
-    const aiPercentage =
-      plan.aiCreditsIncluded > 0
-        ? usagePercentage(aiCreditsUsed, plan.aiCreditsIncluded)
-        : 100;
-    const sreInvestigationsPercentage =
-      sreInvestigationsIncluded > 0
-        ? usagePercentage(sreInvestigationsUsed, sreInvestigationsIncluded)
-        : 100;
+    const playwrightPercentage = usagePercentage(playwrightUsed, plan.playwrightMinutesIncluded);
+    const k6Percentage = usagePercentage(k6Used, plan.k6VuMinutesIncluded);
+    const aiPercentage = usagePercentage(aiCreditsUsed, plan.aiCreditsIncluded);
+    const sreInvestigationsPercentage = usagePercentage(sreInvestigationsUsed, sreInvestigationsIncluded);
 
     return {
       playwrightMinutes: {

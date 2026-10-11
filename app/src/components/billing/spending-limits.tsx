@@ -60,6 +60,8 @@ export function SpendingLimits({ organizationId, className, onSaved }: SpendingL
   const [emails, setEmails] = useState<string[]>([]);
   const [newEmail, setNewEmail] = useState("");
 
+  // Lists saved before the cap may exceed it; never drop recipients silently.
+  const tooManyEmails = emails.length > MAX_NOTIFICATION_EMAILS;
   const parsedLimitAmount = limitAmount.trim() ? Number(limitAmount) : null;
   const limitAmountInvalid =
     enableLimit &&
@@ -113,6 +115,13 @@ export function SpendingLimits({ organizationId, className, onSaved }: SpendingL
 
   const handleSave = async () => {
     if (loading || loadError || saving || !settings) return;
+    if (tooManyEmails) {
+      toast.error("Too many alert recipients", {
+        description: `Remove ${emails.length - MAX_NOTIFICATION_EMAILS} to keep at most ${MAX_NOTIFICATION_EMAILS} extra recipients.`,
+        duration: 4000,
+      });
+      return;
+    }
     if (limitAmountInvalid) {
       toast.error("Spending limit is required", {
         description: "Enter a positive monthly overage cap before saving.",
@@ -262,7 +271,7 @@ export function SpendingLimits({ organizationId, className, onSaved }: SpendingL
           </div>
           <Button
             onClick={handleSave}
-            disabled={saving || limitAmountInvalid}
+            disabled={saving || limitAmountInvalid || tooManyEmails}
             size="sm"
           >
             {saving ? (
@@ -449,6 +458,11 @@ export function SpendingLimits({ organizationId, className, onSaved }: SpendingL
                           </Badge>
                         ))}
                       </div>
+                    )}
+                    {tooManyEmails && (
+                      <p role="alert" className="text-xs text-destructive">
+                        Remove {emails.length - MAX_NOTIFICATION_EMAILS} recipient(s) to save; up to {MAX_NOTIFICATION_EMAILS} are allowed.
+                      </p>
                     )}
                     <p className="text-xs text-muted-foreground">
                       Organization owners and admins always receive alerts

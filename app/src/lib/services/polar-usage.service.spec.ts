@@ -178,6 +178,19 @@ describe("PolarUsageService retry idempotency", () => {
     expect(metrics.playwrightMinutes.percentage).toBe(expected);
   });
 
+  it("floors K6 and SRE percentages and reports a zero allowance as 100%", async () => {
+    const database = { query: {
+      organization: { findFirst: jest.fn().mockResolvedValue({ subscriptionPlan: "plus", k6VuMinutesUsed: 19999, sreInvestigationUnitsUsed: "25", aiCreditsUsed: 0 }) },
+      planLimits: { findFirst: jest.fn().mockResolvedValue({ playwrightMinutesIncluded: 3000, k6VuMinutesIncluded: 20000, aiCreditsIncluded: 0, sreInvestigationUnitsIncluded: "25" }) },
+      overagePricing: { findFirst: jest.fn().mockResolvedValue({}) },
+    } } as unknown as Pick<typeof db, "query">;
+    const metrics = await polarUsageService.getUsageMetrics("org-1", { database, additionalSreUnits: 0 });
+    expect(metrics.k6VuMinutes.percentage).toBe(99);
+    expect(metrics.sreInvestigations.percentage).toBe(100);
+    expect(metrics.aiCredits.percentage).toBe(100);
+    expect(metrics.playwrightMinutes.percentage).toBe(0);
+  });
+
   it("does not add a cent to an exact fractional SRE overage or trigger a premature stop", async () => {
     const database = { query: {
       organization: { findFirst: jest.fn().mockResolvedValue({ subscriptionPlan: "plus", sreInvestigationUnitsUsed: "26" }) },
