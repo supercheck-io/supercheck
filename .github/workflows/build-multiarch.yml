@@ -496,7 +496,7 @@ jobs:
     timeout-minutes: 60
     continue-on-error: true
     concurrency:
-      group: supercheck-e2e-https://demo.supercheck.dev
+      group: supercheck-e2e
       cancel-in-progress: false
     permissions:
       contents: read

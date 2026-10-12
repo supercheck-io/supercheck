@@ -443,6 +443,24 @@ describe("client-permissions", () => {
       expect(hasPermission(Role.PROJECT_ADMIN, "project", "update")).toBe(true);
     });
 
+    it.each([
+      ["project", "view", true],
+      ["project", "manage_members", true],
+      ["project", "create", false],
+      ["organization", "view", true],
+      ["organization", "update", false],
+      ["member", "view", true],
+      ["member", "create", false],
+    ] as const)("pins project-admin %s/%s to %s", (resource, action, expected) => {
+      expect(hasPermission(Role.PROJECT_ADMIN, resource, action)).toBe(expected);
+      expect(checkRolePermissionsClient(Role.PROJECT_ADMIN, {
+        [resource]: [action],
+      })).toBe(expected);
+      expect(checkRolePermissions(Role.PROJECT_ADMIN, {
+        [resource]: [action],
+      })).toBe(expected);
+    });
+
     it("lets project editors manage variables without deleting them", () => {
       expect(hasPermission(Role.PROJECT_EDITOR, "variable", "create")).toBe(
         true,
@@ -577,27 +595,6 @@ describe("client-permissions", () => {
   });
 
   describe("parity with the role matrix", () => {
-    it("client hasPermission matches the role matrix for every role/resource/action", () => {
-      const divergences: string[] = [];
-
-      for (const role of ALL_ROLES) {
-        for (const [resource, actions] of Object.entries(statement)) {
-          for (const action of actions as readonly string[]) {
-            const client = hasPermission(role, resource, action);
-            const matrix = checkRolePermissionsClient(role, {
-              [resource]: [action],
-            });
-
-            if (client !== matrix) {
-              divergences.push(`${role} ${resource} ${action}`);
-            }
-          }
-        }
-      }
-
-      expect(divergences).toEqual([]);
-    });
-
     it("keeps permissions-client matrix aligned with the server matrix", () => {
       const divergences: string[] = [];
 

@@ -175,7 +175,7 @@ describe('secret-crypto', () => {
       // JSON.parse errors are surfaced unwrapped rather than as the
       // "Invalid encrypted payload" envelope error.
       expect(() => decryptSecret(envelopeFromPayload(payload))).toThrow(
-        /not valid JSON|Unexpected token/,
+        SyntaxError,
       );
     });
 

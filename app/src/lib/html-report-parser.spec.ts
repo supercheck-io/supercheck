@@ -1,3 +1,5 @@
+import { spawnSync } from "node:child_process";
+
 import {
   HTMLReportParser,
   type ParsedHTMLReport,
@@ -20,6 +22,30 @@ jest.mock("jsdom", () => ({
 }));
 
 describe("HTMLReportParser", () => {
+  it("parses a report with the real jsdom runtime", () => {
+    // A child process loads real ESM dependencies without Jest's module mock.
+    const result = spawnSync(process.execPath, ["--require", "tsx/cjs", "-e", `
+      const { HTMLReportParser } = require('./src/lib/html-report-parser.ts');
+      HTMLReportParser.parseHTMLReport(
+        '<h1>Runtime</h1><div class="test-duration">2.5s</div>' +
+        '<div class="error">TimeoutError: waiting at sample.spec.ts:42:5</div>'
+      ).then(report => console.log(JSON.stringify(report)))
+       .catch(error => { console.error(error); process.exitCode = 1; });
+    `], { cwd: process.cwd(), encoding: "utf8", timeout: 5000 });
+
+    if (result.status !== 0) {
+      throw new Error(result.error?.message || result.stderr || "Parser integration failed");
+    }
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      testName: "Runtime",
+      duration: "2.5s",
+      status: "failed",
+      errors: expect.arrayContaining([
+        expect.objectContaining({ lineNumber: 42, source: "html" }),
+      ]),
+    });
+  });
+
   describe("parseHTMLReport", () => {
     it("extracts the test name, duration, and errors from a failure report", async () => {
       const html = `

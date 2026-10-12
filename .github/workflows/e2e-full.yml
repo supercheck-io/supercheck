@@ -65,9 +65,9 @@ jobs:
     name: Full E2E Tests
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    # These workflows mutate shared test accounts on the target deployment.
+    # Serialize shared test identities, including callers using URL aliases.
     concurrency:
-      group: supercheck-e2e-${{ inputs.base_url || 'https://demo.supercheck.dev' }}
+      group: supercheck-e2e
       cancel-in-progress: false
 
     steps:
