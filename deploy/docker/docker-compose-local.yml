@@ -12,7 +12,7 @@
 # Features:
 #   - Builds app and worker from local source (../../app, ../../worker)
 #   - Source code mounted for hot-reload
-#   - All services included: PostgreSQL, Redis, MinIO
+#   - All services included: PostgreSQL, Redis, RustFS
 #
 # This file builds from source for local iteration, but uses the same K3s +
 # gVisor execution model as the production Compose variants.
@@ -80,11 +80,11 @@ x-common-env: &common-env # Database Configuration
   # For local dev - processes all queues
   WORKER_LOCATION: ${WORKER_LOCATION:-local}
 
-  # AWS S3 / MinIO Configuration
+  # S3-compatible storage (RustFS)
   AWS_REGION: ${AWS_REGION:-us-east-1}
-  AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-minioadmin}
-  AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-minioadmin}
-  S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
+  AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-localdevaccesskey}
+  AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-localdevsecretkey0123456789abcdef}
+  S3_ENDPOINT: ${S3_ENDPOINT:-http://rustfs:9000}
   # Playwright buckets
   S3_TEST_BUCKET_NAME: ${S3_TEST_BUCKET_NAME:-playwright-test-artifacts}
   S3_JOB_BUCKET_NAME: ${S3_JOB_BUCKET_NAME:-playwright-job-artifacts}
@@ -277,7 +277,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      minio:
+      rustfs:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
@@ -337,7 +337,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      minio:
+      rustfs:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
@@ -425,18 +425,17 @@ services:
           cpus: "0.25"
           memory: 256M
 
-  # MinIO (S3-compatible storage)
-  minio:
-    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+  # RustFS (S3-compatible storage, Apache-2.0)
+  rustfs:
+    image: ghcr.io/rustfs/rustfs:1.0.1
     environment:
-      - MINIO_ROOT_USER=minioadmin
-      - MINIO_ROOT_PASSWORD=minioadmin
-    command: server /data --console-address ":9001"
+      - RUSTFS_ACCESS_KEY=${AWS_ACCESS_KEY_ID:-localdevaccesskey}
+      - RUSTFS_SECRET_KEY=${AWS_SECRET_ACCESS_KEY:-localdevsecretkey0123456789abcdef}
     volumes:
-      - minio-data:/data
+      - rustfs-data:/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9000/health"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -456,7 +455,7 @@ volumes:
     driver: local
   redis-data:
     driver: local
-  minio-data:
+  rustfs-data:
     driver: local
   worker-playwright-reports:
     driver: local

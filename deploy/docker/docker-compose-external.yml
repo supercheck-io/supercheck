@@ -3,7 +3,7 @@
 # Use this when connecting to external managed databases and storage:
 #   - External PostgreSQL (e.g., Neon, Supabase, AWS RDS)
 #   - External Redis (e.g., Upstash, Redis Cloud, AWS ElastiCache)
-#   - External S3 (e.g., AWS S3, Cloudflare R2, MinIO)
+#   - External S3 (e.g., AWS S3, Cloudflare R2, RustFS)
 #
 # This configuration runs only App, Worker, and Traefik (no database containers).
 #
@@ -86,7 +86,7 @@ x-common-env: &common-env # Database Configuration - External PostgreSQL
   K6_TEST_EXECUTION_TIMEOUT_MS: ${K6_TEST_EXECUTION_TIMEOUT_MS:-3600000}
   K6_JOB_EXECUTION_TIMEOUT_MS: ${K6_JOB_EXECUTION_TIMEOUT_MS:-3600000}
 
-  # AWS S3 / External MinIO Configuration
+  # AWS S3 / External S3-compatible Configuration
   AWS_REGION: ${AWS_REGION:-us-east-1}
   AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
   AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
