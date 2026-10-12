@@ -37,7 +37,7 @@ export async function GET() {
     return NextResponse.json({ token: null }, { headers: NO_STORE });
   }
 
-  // Generate HMAC SHA256 signature of the user ID using the validation key
+  // Chatwoot requires HMAC-SHA256 of the raw identifier; it has no expiry and key rotation invalidates it.
   const hmac = crypto.createHmac("sha256", key);
   hmac.update(userId);
   const token = hmac.digest("hex");

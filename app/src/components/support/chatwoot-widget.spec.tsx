@@ -66,6 +66,19 @@ describe("ChatwootWidget", () => {
     expect(cw.setUser.mock.calls[0][1]).not.toHaveProperty("identifier_hash");
   });
 
+  it.each([{}, { skip: undefined }])("shows the bubble without sending empty attributes: %p", (customAttributes) => {
+    const cw = makeChatwoot();
+    cw.setCustomAttributes.mockImplementation((attributes) => {
+      if (!Object.keys(attributes).length) throw new Error("Custom attributes should have atleast one key");
+    });
+    window.$chatwoot = cw;
+    render(<ChatwootWidget {...baseProps} customAttributes={customAttributes} />);
+
+    window.dispatchEvent(new Event("chatwoot:ready"));
+    expect(cw.setCustomAttributes).not.toHaveBeenCalled();
+    expect(cw.toggleBubbleVisibility).toHaveBeenCalledWith("show");
+  });
+
   it("hides the bubble on unmount without resetting the contact session", () => {
     const cw = makeChatwoot();
     cw.hasLoaded = true;

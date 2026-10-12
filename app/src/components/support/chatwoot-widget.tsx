@@ -200,7 +200,9 @@ export function ChatwootWidget({
                             JSON.parse(attributesKey) as Record<string, unknown>
                         ).filter(([, v]) => v !== undefined && v !== null)
                     );
-                    chatwoot.setCustomAttributes(attributes);
+                    if (Object.keys(attributes).length) {
+                        chatwoot.setCustomAttributes(attributes);
+                    }
                 }
                 identifiedSignature.current = signature;
             }
