@@ -429,6 +429,7 @@ services:
   rustfs:
     image: ghcr.io/rustfs/rustfs:1.0.1
     environment:
+      - RUSTFS_CONSOLE_ENABLE=false
       - RUSTFS_ACCESS_KEY=${AWS_ACCESS_KEY_ID:-localdevaccesskey}
       - RUSTFS_SECRET_KEY=${AWS_SECRET_ACCESS_KEY:-localdevsecretkey0123456789abcdef}
     volumes:
