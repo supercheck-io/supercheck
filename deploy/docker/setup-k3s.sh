@@ -138,7 +138,9 @@ export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
 
 # ─── Step 2: Install gVisor (runsc) ──────────────────────────────────────────
 
-if command -v runsc &>/dev/null; then
+# A runsc installed by an earlier version of this script has no gvisor-bin/
+# sidecar tree, so it is reinstalled (idempotent) rather than skipped.
+if command -v runsc &>/dev/null && [[ -d /usr/local/bin/gvisor-bin ]]; then
   warn "gVisor (runsc) is already installed: $(runsc --version 2>&1 | head -1)"
 else
   log "Installing gVisor (runsc) release ${GVISOR_RELEASE}..."

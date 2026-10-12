@@ -23,7 +23,7 @@ sudo apt-get install -y git bzip2 ca-certificates curl gnupg
 
 sudo install -m 0755 -d /etc/apt/keyrings
 curl -fsSL "https://download.docker.com/linux/$(. /etc/os-release && echo "$ID")/gpg" \
-  | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+  | sudo gpg --dearmor --yes -o /etc/apt/keyrings/docker.gpg
 sudo chmod a+r /etc/apt/keyrings/docker.gpg
 echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
 https://download.docker.com/linux/$(. /etc/os-release && echo "$ID") \
@@ -37,6 +37,8 @@ sudo apt-get install -y docker-ce docker-ce-cli containerd.io \
 # Compose commands are documented without sudo, so the user needs docker access.
 sudo usermod -aG docker "$USER"   # takes effect in a new shell (or run: newgrp docker)
 ```
+
+Group membership only applies to new shells. If you are driving this runbook from a single shell session (for example an agent), run the Docker commands below through `sg docker -c '<command>'` or start a new login shell, then confirm `docker ps` works without `sudo` before continuing.
 
 `bzip2` is required by `setup-k3s.sh`, which extracts the gVisor release archive. Minimal Ubuntu cloud images ship `tar`, `gzip`, and `xz` but not `bzip2`.
 
