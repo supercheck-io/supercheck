@@ -396,19 +396,20 @@ export class PlaywrightValidationService {
         message: "module.exports manipulation is not allowed",
       },
 
-      // Dangerous Buffer constructors and methods (allow Playwright Buffer usage)
+      // Dangerous Buffer constructors and methods (allow Playwright Buffer usage).
+      // The \b keeps these from shadowing SharedArrayBuffer/ArrayBuffer patterns.
       {
         pattern: /new\s+Buffer\s*\(/,
         message:
           "Buffer constructor is not allowed - use Buffer.from() or Buffer.alloc() instead",
       },
       {
-        pattern: /Buffer\s*\(/,
+        pattern: /\bBuffer\s*\(/,
         message:
           "Direct Buffer() calls are not allowed - use Buffer.from() or Buffer.alloc() instead",
       },
       {
-        pattern: /Buffer\s*\.\s*(allocUnsafe|allocUnsafeSlow)/,
+        pattern: /\bBuffer\s*\.\s*(allocUnsafe|allocUnsafeSlow)/,
         message: "Unsafe Buffer allocation methods are not allowed",
       },
       {
@@ -540,36 +541,10 @@ export class PlaywrightValidationService {
         CallExpression: (node: acorn.CallExpression & acorn.Node) => {
           const callee = node.callee as acorn.Node;
 
-          // Enhanced require() validation
-          if (
-            callee.type === "Identifier" &&
-            (callee as acorn.Identifier).name === "require"
-          ) {
-            if (node.arguments.length !== 1) {
-              throw new Error(
-                `Invalid require() call. Please review and remove the invalid require statement to proceed.`
-              );
-            }
-
-            const arg = node.arguments[0];
-            if (arg.type !== "Literal" || typeof arg.value !== "string") {
-              throw new Error(
-                `Dynamic require() calls are not allowed. Please review and remove the dynamic require to proceed.`
-              );
-            }
-
-            const moduleName = arg.value as string;
-            if (
-              !ALLOWED_MODULES.has(moduleName) &&
-              !moduleName.startsWith("@playwright/") &&
-              !moduleName.startsWith("k6/") &&
-              moduleName !== "k6"
-            ) {
-              throw new Error(
-                `Module '${moduleName}' is not allowed. Please review and remove the restricted module import to proceed.`
-              );
-            }
-          }
+          // NOTE: require() itself is rejected by the Identifier visitor below
+          // ("Usage of 'require' is not allowed. Use ES6 import statements").
+          // Scripts are transpiled to ESM, so CommonJS require() can never run;
+          // there is deliberately no per-module require() allow-list here.
 
           // Check for blocked function calls
           if (callee.type === "MemberExpression") {

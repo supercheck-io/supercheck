@@ -1,110 +1,42 @@
 /**
- * Client-side permission checking utilities for Better Auth RBAC System
+ * Client-side permission checking utilities for the Better Auth RBAC system.
+ *
+ * The authoritative permission matrix lives in `permissions-client.ts`
+ * (`rolePermissions`), which is kept in lock-step with the server-side Better
+ * Auth roles in `permissions.ts`. Everything here delegates to that matrix so
+ * the UI can never drift from what the server enforces.
+ *
+ * `client-permissions.spec.ts` pins the helper behaviour and verifies the
+ * matrix parity against the server statements.
  */
 
-import { Role } from "./permissions-client";
+import { Role, checkRolePermissionsClient } from "./permissions-client";
+
+// Re-export the shared role-scope helpers so components can keep importing
+// them from a single client-permissions entry point.
+export {
+  hasOrganizationWideAccess,
+  isProjectLimitedRole,
+  canEditResources,
+  canDeleteResources,
+} from "./permissions-client";
 
 /**
- * Check if role has permission to perform action on resource
+ * Check if role has permission to perform action on resource.
+ *
+ * Super admins bypass the matrix entirely (they hold every permission, even
+ * for resources that are not part of the statement definitions).
  */
 export function hasPermission(
   role: Role,
   resource: string,
   action: string
 ): boolean {
-  let result: boolean;
-  switch (role) {
-    case Role.SUPER_ADMIN:
-      result = true; // Super admin has all permissions
-      break;
-
-    case Role.ORG_OWNER:
-      // Owners can do everything except system-level operations
-      result = resource !== "system";
-      break;
-
-    case Role.ORG_ADMIN:
-      // Admins can manage org and projects but not delete org
-      if (resource === "organization" && action === "delete") {
-        result = false;
-      } else {
-        result = resource !== "system";
-      }
-      break;
-
-    case Role.PROJECT_ADMIN:
-      // Project admins have full control over assigned projects but limited organization access
-      if (
-        [
-          "test",
-          "job",
-          "monitor",
-          "run",
-          "apiKey",
-          "notification",
-          "tag",
-          "status_page",
-          "requirement",
-          "sre_service",
-          "sre_incident",
-          "sre_investigation",
-          "sre_connector",
-          "sre_runbook",
-          "sre_evidence",
-        ].includes(resource)
-      ) {
-        result = true; // Full access to project resources including 'manage' action
-      } else if (resource === "project") {
-        result = ["view", "manage_members"].includes(action);
-      } else if (["organization", "member"].includes(resource)) {
-        result = action === "view";
-      } else {
-        result = false;
-      }
-      break;
-
-    case Role.PROJECT_EDITOR:
-      // Editors can create and edit but cannot delete any resources in assigned projects
-      if (["test", "job", "status_page", "requirement"].includes(resource)) {
-        result = ["view", "create", "update", "run", "trigger"].includes(
-          action
-        );
-      } else if (resource === "monitor") {
-        result = ["view", "create", "update", "manage"].includes(action); // Can manage (pause/resume) monitors
-      } else if (resource === "tag") {
-        result = ["view", "create", "update"].includes(action); // Cannot delete tags
-      } else if (resource === "run") {
-        result = ["view", "cancel"].includes(action); // Can cancel runs but not delete
-      } else if (resource === "apiKey") {
-        result = ["view", "create", "update"].includes(action); // Cannot delete API keys
-      } else if (resource === "notification") {
-        result = ["create", "update", "view"].includes(action); // Cannot delete notifications
-      } else if (
-        ["sre_service", "sre_incident", "sre_investigation"].includes(resource)
-      ) {
-        result = ["create", "update", "view", "investigate"].includes(action);
-      } else if (resource === "sre_connector") {
-        result = action === "view";
-      } else if (["sre_runbook", "sre_evidence"].includes(resource)) {
-        result = ["create", "update", "view"].includes(action);
-      } else if (["organization", "member", "project"].includes(resource)) {
-        result = action === "view";
-      } else {
-        result = false;
-      }
-      break;
-
-    case Role.PROJECT_VIEWER:
-      // Viewers can only view resources
-      result = action === "view";
-      break;
-
-    default:
-      result = false;
-      break;
+  if (role === Role.SUPER_ADMIN) {
+    return true; // Super admin has all permissions
   }
 
-  return result;
+  return checkRolePermissionsClient(role, { [resource]: [action] });
 }
 
 /**
@@ -317,50 +249,6 @@ export function canManageNotifications(role: Role): boolean {
     hasPermission(role, "notification", "update") ||
     hasPermission(role, "notification", "delete")
   );
-}
-
-/**
- * Check if role has organization-wide access
- */
-export function hasOrganizationWideAccess(role: Role): boolean {
-  return [
-    Role.SUPER_ADMIN,
-    Role.ORG_OWNER,
-    Role.ORG_ADMIN,
-    Role.PROJECT_VIEWER,
-  ].includes(role);
-}
-
-/**
- * Check if role is limited to assigned projects
- */
-export function isProjectLimitedRole(role: Role): boolean {
-  return [Role.PROJECT_ADMIN, Role.PROJECT_EDITOR].includes(role);
-}
-
-/**
- * Check if role can edit resources
- */
-export function canEditResources(role: Role): boolean {
-  return [
-    Role.SUPER_ADMIN,
-    Role.ORG_OWNER,
-    Role.ORG_ADMIN,
-    Role.PROJECT_ADMIN,
-    Role.PROJECT_EDITOR,
-  ].includes(role);
-}
-
-/**
- * Check if role can delete resources
- */
-export function canDeleteResources(role: Role): boolean {
-  return [
-    Role.SUPER_ADMIN,
-    Role.ORG_OWNER,
-    Role.ORG_ADMIN,
-    Role.PROJECT_ADMIN,
-  ].includes(role);
 }
 
 /**

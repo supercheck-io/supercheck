@@ -46,7 +46,7 @@ jobs:
         run: npm run lint
 
       - name: Run tests
-        run: npm test
+        run: npm run test:cov -- --maxWorkers=2
 
       - name: Build
         run: npm run build

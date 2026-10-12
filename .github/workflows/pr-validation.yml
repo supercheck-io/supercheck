@@ -235,7 +235,15 @@ jobs:
 
       - name: Run tests
         working-directory: ./cli
-        run: npm test
+        run: npm run test:cov -- --maxWorkers=2
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: cli-coverage
+          path: cli/coverage
+          retention-days: 7
 
       - name: Build package
         working-directory: ./cli
