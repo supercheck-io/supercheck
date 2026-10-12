@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { MAX_SCRIPT_LENGTH } from "@/lib/validations/common";
 import { db } from "@/utils/db";
 import { tests, jobTests, jobs, monitors } from "@/db/schema";
 import { eq, and, count, sql } from "drizzle-orm";
@@ -112,6 +113,13 @@ export async function PUT(
       return NextResponse.json(
         { error: "Insufficient permissions" },
         { status: 403 }
+      );
+    }
+
+    if (typeof body.script === "string" && body.script.length > MAX_SCRIPT_LENGTH) {
+      return NextResponse.json(
+        { error: `Script cannot exceed ${MAX_SCRIPT_LENGTH} characters` },
+        { status: 413 }
       );
     }
 

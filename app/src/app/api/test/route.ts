@@ -25,6 +25,7 @@ import {
   getSafeExecutionQueueErrorDetails,
 } from "@/lib/execution-api-responses";
 import { requireSameOriginRequest } from "@/lib/security/same-origin";
+import { MAX_SCRIPT_LENGTH } from "@/lib/validations/common";
 
 function buildReportProxyUrl(entityId: string): string {
   return `/api/test-results/${encodeURIComponent(entityId)}/report/index.html?forceIframe=true`;
@@ -81,6 +82,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: "No script provided" },
         { status: 400 }
+      );
+    }
+
+    if (code.length > MAX_SCRIPT_LENGTH) {
+      return NextResponse.json(
+        { error: `Script cannot exceed ${MAX_SCRIPT_LENGTH} characters` },
+        { status: 413 }
       );
     }
 

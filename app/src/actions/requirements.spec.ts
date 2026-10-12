@@ -64,6 +64,10 @@ describe("Requirements Server Actions", () => {
   const testOrgId = "22222222-2222-2222-2222-222222222222";
   const testProjectId = "33333333-3333-3333-3333-333333333333";
   const testRequirementId = "44444444-4444-4444-4444-444444444444";
+  const testIdA = "66666666-6666-6666-6666-666666666666";
+  const testIdB = "77777777-7777-7777-7777-777777777777";
+  const foreignTestId = "88888888-8888-8888-8888-888888888888";
+  const foreignRequirementId = "99999999-9999-9999-9999-999999999999";
 
   const mockProjectContext = {
     userId: testUserId,
@@ -72,6 +76,34 @@ describe("Requirements Server Actions", () => {
       id: testProjectId,
       name: "Test Project",
     },
+  };
+
+
+  // Queue results for successive db.select() calls (requirement scope check,
+  // then test scope check). Each chain resolves for both `.where()` and `.limit()`.
+  const mockSelectResults = (...results: unknown[][]) => {
+    for (const rows of results) {
+      (mockDb.select as jest.Mock).mockImplementationOnce(() => ({
+        from: () => ({
+          where: () => {
+            const p = Promise.resolve(rows);
+            return Object.assign(p, { limit: () => Promise.resolve(rows) });
+          },
+        }),
+      }));
+    }
+  };
+
+  const mockWriteChains = () => {
+    (mockDb.insert as jest.Mock).mockImplementation(() => ({
+      values: () => ({ onConflictDoNothing: () => Promise.resolve() }),
+    }));
+    (mockDb.update as jest.Mock).mockImplementation(() => ({
+      set: () => ({ where: () => Promise.resolve() }),
+    }));
+    (mockDb.delete as jest.Mock).mockImplementation(() => ({
+      where: () => Promise.resolve(),
+    }));
   };
 
   beforeEach(() => {
@@ -160,7 +192,7 @@ describe("Requirements Server Actions", () => {
       it("should require update permission", async () => {
         mockCheckPermissionWithContext.mockReturnValue(false);
 
-        const result = await linkTestsToRequirement(testRequirementId, ["test-1"]);
+        const result = await linkTestsToRequirement(testRequirementId, [testIdA]);
 
         expect(result.success).toBe(false);
         expect(result.error).toContain("Insufficient permissions");
@@ -171,7 +203,7 @@ describe("Requirements Server Actions", () => {
       it("should require update permission", async () => {
         mockCheckPermissionWithContext.mockReturnValue(false);
 
-        const result = await unlinkTestFromRequirement(testRequirementId, "test-1");
+        const result = await unlinkTestFromRequirement(testRequirementId, testIdA);
 
         expect(result.success).toBe(false);
         expect(result.error).toContain("Insufficient permissions");
@@ -268,7 +300,11 @@ describe("Requirements Server Actions", () => {
     });
 
     it("should log audit event on link tests", async () => {
-      await linkTestsToRequirement(testRequirementId, ["test-1", "test-2"]);
+      mockWriteChains();
+      mockSelectResults([{ id: testRequirementId }], [{ id: testIdA }, { id: testIdB }]);
+      // updateCoverageSnapshot reads linked tests
+      mockSelectResults([]);
+      await linkTestsToRequirement(testRequirementId, [testIdA, testIdB]);
 
       expect(mockLogAuditEvent).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -282,7 +318,10 @@ describe("Requirements Server Actions", () => {
     });
 
     it("should log audit event on unlink test", async () => {
-      await unlinkTestFromRequirement(testRequirementId, "test-1");
+      mockWriteChains();
+      mockSelectResults([{ id: testRequirementId }], [{ id: testIdA }]);
+      mockSelectResults([]);
+      await unlinkTestFromRequirement(testRequirementId, testIdA);
 
       expect(mockLogAuditEvent).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -293,6 +332,54 @@ describe("Requirements Server Actions", () => {
           success: true,
         })
       );
+    });
+  });
+
+  describe("Test link scope enforcement", () => {
+    it("rejects an update with tags from another project before writing anything", async () => {
+      mockWriteChains();
+      mockSelectResults([]);
+
+      const result = await updateRequirement({
+        id: testRequirementId,
+        title: "Updated",
+        tagIds: ["55555555-5555-5555-5555-555555555555"],
+      });
+
+      expect(result.success).toBe(false);
+      expect(mockDb.update).not.toHaveBeenCalled();
+      expect(mockDb.delete).not.toHaveBeenCalled();
+    });
+
+    it("refuses to link tests to a requirement outside the caller's scope", async () => {
+      mockWriteChains();
+      mockSelectResults([]);
+
+      const result = await linkTestsToRequirement(foreignRequirementId, [testIdA]);
+
+      expect(result.success).toBe(false);
+      expect(mockDb.insert).not.toHaveBeenCalled();
+      expect(mockLogAuditEvent).not.toHaveBeenCalled();
+    });
+
+    it("refuses to link tests outside the caller's scope", async () => {
+      mockWriteChains();
+      mockSelectResults([{ id: testRequirementId }], []);
+
+      const result = await linkTestsToRequirement(testRequirementId, [foreignTestId]);
+
+      expect(result.success).toBe(false);
+      expect(mockDb.insert).not.toHaveBeenCalled();
+    });
+
+    it("refuses to unlink from a requirement outside the caller's scope", async () => {
+      mockWriteChains();
+      mockSelectResults([]);
+
+      const result = await unlinkTestFromRequirement(foreignRequirementId, testIdA);
+
+      expect(result.success).toBe(false);
+      expect(mockDb.delete).not.toHaveBeenCalled();
     });
   });
 

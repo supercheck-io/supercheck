@@ -1,29 +1,30 @@
-"use server";
-
 import { db } from "@/utils/db";
 import {
   incidents,
   statusPages,
   statusPageSubscribers,
+  incidentComponents,
 } from "@/db/schema";
 import { eq, and, isNotNull } from "drizzle-orm";
 import {
-  deliverWebhook,
+  deliverSlackMessage,
   shouldQuarantine,
-  type WebhookEvent,
-} from "@/lib/webhook-delivery.service";
+  type SlackIncidentEvent,
+} from "@/lib/slack-delivery.service";
+import { getPublicStatusPageUrl } from "@/lib/domain-utils";
+import { getEffectiveStatusPageDomain } from "@/lib/status-page-domain";
 
 /**
- * Send webhook notifications to all verified webhook subscribers
+ * Send Slack notifications to all verified Slack subscribers
  * This is called after an incident is created or updated
  */
-export async function sendWebhookNotifications(
+export async function sendSlackNotifications(
   incidentId: string,
   statusPageId: string
 ) {
   try {
     console.log(
-      `[Webhook Notifications] Sending notifications for incident ${incidentId} on status page ${statusPageId}`
+      `[Slack Notifications] Sending notifications for incident ${incidentId} on status page ${statusPageId}`
     );
 
     // Fetch incident details
@@ -33,7 +34,7 @@ export async function sendWebhookNotifications(
 
     if (!incident) {
       console.warn(
-        `[Webhook Notifications] Incident not found: ${incidentId}`
+        `[Slack Notifications] Incident not found: ${incidentId}`
       );
       return {
         success: false,
@@ -45,7 +46,7 @@ export async function sendWebhookNotifications(
     // Check if notifications should be sent
     if (!incident.deliverNotifications) {
       console.log(
-        `[Webhook Notifications] Notifications disabled for incident ${incidentId}`
+        `[Slack Notifications] Notifications disabled for incident ${incidentId}`
       );
       return {
         success: true,
@@ -61,7 +62,7 @@ export async function sendWebhookNotifications(
 
     if (!statusPage) {
       console.warn(
-        `[Webhook Notifications] Status page not found: ${statusPageId}`
+        `[Slack Notifications] Status page not found: ${statusPageId}`
       );
       return {
         success: false,
@@ -70,23 +71,39 @@ export async function sendWebhookNotifications(
       };
     }
 
-    // Check if webhook subscriptions are enabled
-    if (!statusPage.allowWebhookSubscribers) {
+    // Check if Slack subscriptions are enabled
+    if (!statusPage.allowSlackSubscribers) {
       console.log(
-        `[Webhook Notifications] Webhook subscriptions disabled for status page ${statusPageId}`
+        `[Slack Notifications] Slack subscriptions disabled for status page ${statusPageId}`
       );
       return {
         success: true,
-        message: "Webhook subscriptions not enabled for this status page",
+        message: "Slack subscriptions not enabled for this status page",
         sentCount: 0,
       };
     }
 
-    // Get all verified webhook subscribers for this status page
+    // Get affected components
+    const affectedComponentsRecords = await db.query.incidentComponents.findMany({
+      where: eq(incidentComponents.incidentId, incidentId),
+      with: {
+        component: {
+          columns: {
+            name: true,
+          },
+        },
+      },
+    });
+
+    const affectedComponents = affectedComponentsRecords.map(
+      (ic) => ic.component?.name || "Unknown Component"
+    );
+
+    // Get all verified Slack subscribers for this status page
     const subscribers = await db.query.statusPageSubscribers.findMany({
       where: and(
         eq(statusPageSubscribers.statusPageId, statusPageId),
-        eq(statusPageSubscribers.mode, "webhook"),
+        eq(statusPageSubscribers.mode, "slack"),
         isNotNull(statusPageSubscribers.verifiedAt) // Ensure verified
       ),
     });
@@ -98,21 +115,32 @@ export async function sendWebhookNotifications(
 
     if (activeSubscribers.length === 0) {
       console.log(
-        `[Webhook Notifications] No active webhook subscribers for status page ${statusPageId}`
+        `[Slack Notifications] No active Slack subscribers for status page ${statusPageId}`
       );
       return {
         success: true,
-        message: "No active webhook subscribers to notify",
+        message: "No active Slack subscribers to notify",
         sentCount: 0,
       };
     }
 
     console.log(
-      `[Webhook Notifications] Found ${activeSubscribers.length} active subscribers`
+      `[Slack Notifications] Found ${activeSubscribers.length} active subscribers`
     );
 
-    // Prepare webhook event payload
-    const webhookEvent: WebhookEvent = {
+    // Construct notification URLs
+    const baseUrl =
+      process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || "http://localhost:3000";
+    const statusPageUrl = getPublicStatusPageUrl({
+      subdomain: statusPage.subdomain,
+      customDomain: statusPage.customDomain,
+      customDomainVerified: statusPage.customDomainVerified,
+      appUrl: baseUrl,
+      statusPageDomain: getEffectiveStatusPageDomain(),
+    });
+
+    // Prepare Slack event payload
+    const slackEvent: SlackIncidentEvent = {
       type:
         incident.status === "resolved"
           ? "incident.resolved"
@@ -121,6 +149,8 @@ export async function sendWebhookNotifications(
           : "incident.updated",
       timestamp: new Date().toISOString(),
       statusPageId,
+      statusPageName: statusPage.name,
+      statusPageUrl,
       incident: {
         id: incident.id,
         name: incident.name,
@@ -128,35 +158,35 @@ export async function sendWebhookNotifications(
         impact: incident.impact,
         body: incident.body || "No additional details provided.",
       },
+      affectedComponents,
     };
 
-    // Send webhooks to all active subscribers
+    // Send Slack messages to all active subscribers
     let successCount = 0;
     let failureCount = 0;
 
     const deliveryPromises = activeSubscribers.map(async (subscriber) => {
       try {
-        if (!subscriber.endpoint || !subscriber.webhookSecret) {
+        if (!subscriber.endpoint) {
           console.warn(
-            `[Webhook Notifications] Subscriber ${subscriber.id} missing endpoint or secret`
+            `[Slack Notifications] Subscriber ${subscriber.id} missing webhook URL`
           );
           failureCount++;
           return;
         }
 
         console.log(
-          `[Webhook Notifications] Delivering webhook to ${subscriber.endpoint}`
+          `[Slack Notifications] Delivering Slack message to ${subscriber.endpoint}`
         );
 
-        const result = await deliverWebhook(
+        const result = await deliverSlackMessage(
           subscriber.endpoint,
-          webhookEvent,
-          subscriber.webhookSecret
+          slackEvent
         );
 
         if (result.success) {
           console.log(
-            `[Webhook Notifications] Webhook delivered successfully to ${subscriber.endpoint}`
+            `[Slack Notifications] Slack message delivered successfully to ${subscriber.endpoint}`
           );
           successCount++;
 
@@ -171,7 +201,7 @@ export async function sendWebhookNotifications(
             .where(eq(statusPageSubscribers.id, subscriber.id));
         } else {
           console.error(
-            `[Webhook Notifications] Failed to deliver webhook to ${subscriber.endpoint}: ${result.error}`
+            `[Slack Notifications] Failed to deliver Slack message to ${subscriber.endpoint}: ${result.error}`
           );
           failureCount++;
 
@@ -186,7 +216,7 @@ export async function sendWebhookNotifications(
 
           if (shouldQuarantine(newFailureCount)) {
             console.warn(
-              `[Webhook Notifications] Quarantining subscriber ${subscriber.id} after ${newFailureCount} failures`
+              `[Slack Notifications] Quarantining subscriber ${subscriber.id} after ${newFailureCount} failures`
             );
             updates.quarantinedAt = new Date();
           }
@@ -198,22 +228,22 @@ export async function sendWebhookNotifications(
         }
       } catch (error) {
         console.error(
-          `[Webhook Notifications] Error delivering webhook to subscriber:`,
+          `[Slack Notifications] Error delivering Slack message to subscriber:`,
           error
         );
         failureCount++;
       }
     });
 
-    // Wait for all webhooks to be delivered
+    // Wait for all Slack messages to be delivered
     await Promise.allSettled(deliveryPromises);
 
     const message =
       failureCount === 0
-        ? `Successfully sent ${successCount} webhook notifications`
-        : `Sent ${successCount} webhooks successfully, ${failureCount} failed`;
+        ? `Successfully sent ${successCount} Slack notifications`
+        : `Sent ${successCount} Slack messages successfully, ${failureCount} failed`;
 
-    console.log(`[Webhook Notifications] ${message}`);
+    console.log(`[Slack Notifications] ${message}`);
 
     return {
       success: failureCount === 0,
@@ -222,10 +252,10 @@ export async function sendWebhookNotifications(
       failedCount: failureCount,
     };
   } catch (error) {
-    console.error("[Webhook Notifications] Fatal error:", error);
+    console.error("[Slack Notifications] Fatal error:", error);
     return {
       success: false,
-      message: `Failed to send webhook notifications: ${
+      message: `Failed to send Slack notifications: ${
         error instanceof Error ? error.message : String(error)
       }`,
       sentCount: 0,

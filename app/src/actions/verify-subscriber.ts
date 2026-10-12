@@ -2,9 +2,10 @@
 
 import { db } from "@/utils/db";
 import { statusPageSubscribers, statusPages } from "@/db/schema";
-import { eq, and, isNull, isNotNull, count } from "drizzle-orm";
+import { eq, and, ne, isNull, isNotNull, count } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { checkSubscriberLimit } from "@/lib/middleware/plan-enforcement";
+import { insertWithinPlanLimit } from "@/lib/middleware/plan-limit-lock";
 
 export async function verifySubscriber(token: string) {
   try {
@@ -68,43 +69,59 @@ export async function verifySubscriber(token: string) {
       },
     });
 
-    if (statusPage?.organizationId) {
-      const [subscriberCountResult] = await db
-        .select({ value: count() })
-        .from(statusPageSubscribers)
+    // Count and activation run under one lock so concurrent verifications
+    // cannot all pass the same subscriber count.
+    const activate = (executor: Pick<typeof db, "update">) =>
+      executor
+        .update(statusPageSubscribers)
+        .set({
+          verifiedAt: new Date(),
+          updatedAt: new Date(),
+        })
         .where(
           and(
-            eq(statusPageSubscribers.statusPageId, subscriber.statusPageId),
-            isNull(statusPageSubscribers.purgeAt),
-            isNotNull(statusPageSubscribers.verifiedAt)
+            eq(statusPageSubscribers.id, subscriber.id),
+            isNull(statusPageSubscribers.verifiedAt)
           )
         );
 
-      const currentSubscriberCount = subscriberCountResult?.value ?? 0;
+    if (statusPage?.organizationId) {
+      const activated = await insertWithinPlanLimit({
+        organizationId: statusPage.organizationId,
+        resource: "subscribers",
+        lockKey: subscriber.statusPageId,
+        check: checkSubscriberLimit,
+        countRows: async (tx) => {
+          const [row] = await tx
+            .select({ value: count() })
+            .from(statusPageSubscribers)
+            .where(
+              and(
+                eq(statusPageSubscribers.statusPageId, subscriber.statusPageId),
+                // Exclude this subscriber so a concurrent double-verify does not
+                // count itself and report a false "limit reached".
+                ne(statusPageSubscribers.id, subscriber.id),
+                isNull(statusPageSubscribers.purgeAt),
+                isNotNull(statusPageSubscribers.verifiedAt)
+              )
+            );
+          return row?.value ?? 0;
+        },
+        insert: activate,
+      });
 
-      const limitCheck = await checkSubscriberLimit(
-        statusPage.organizationId,
-        currentSubscriberCount
-      );
-
-      if (!limitCheck.allowed) {
+      if (!activated.ok) {
         return {
           success: false,
-          message:
-            limitCheck.error ||
-            "Subscriber limit reached for this status page.",
+          message: activated.busy
+            ? "Too many concurrent requests. Please retry shortly."
+            : activated.check.error ||
+              "Subscriber limit reached for this status page.",
         };
       }
+    } else {
+      await activate(db);
     }
-
-    // Verify the subscriber
-    await db
-      .update(statusPageSubscribers)
-      .set({
-        verifiedAt: new Date(),
-        updatedAt: new Date(),
-      })
-      .where(eq(statusPageSubscribers.id, subscriber.id));
 
     // Revalidate both public and internal paths
     revalidatePath(`/status/${subscriber.statusPageId}`);

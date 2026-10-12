@@ -13,7 +13,7 @@ declare global {
 const DEFAULT_INTERVAL_MS = 5 * 60 * 1000;
 const DEFAULT_BATCH_SIZE = 50;
 
-function readBooleanEnv(value: string | undefined, fallback: boolean): boolean {
+export function readBooleanEnv(value: string | undefined, fallback: boolean): boolean {
   if (value === undefined) {
     return fallback;
   }
@@ -21,7 +21,7 @@ function readBooleanEnv(value: string | undefined, fallback: boolean): boolean {
   return !["0", "false", "no", "off"].includes(value.toLowerCase());
 }
 
-function readPositiveIntegerEnv(value: string | undefined, fallback: number): number {
+export function readPositiveIntegerEnv(value: string | undefined, fallback: number): number {
   if (!value) {
     return fallback;
   }

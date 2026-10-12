@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
-import { invitation, organization, user as userTable } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { invitation, member, organization, user as userTable } from "@/db/schema";
+import { eq, and, gte, sql } from "drizzle-orm";
+import { checkTeamMemberLimit } from "@/lib/middleware/plan-enforcement";
+import { insertWithinPlanLimit } from "@/lib/middleware/plan-limit-lock";
 import { getUserOrgRole } from "@/lib/rbac/middleware";
 import { requireUserAuthContext, isAuthError } from "@/lib/auth-context";
 import { Role } from "@/lib/rbac/permissions";
@@ -246,11 +248,49 @@ export async function POST(
     newExpiresAt.setDate(newExpiresAt.getDate() + 7);
 
     if (isExpired) {
-      // Extend the expiry date for expired invitations
-      await db
-        .update(invitation)
-        .set({ expiresAt: newExpiresAt })
-        .where(eq(invitation.id, resolvedParams.invitationId));
+      // Reviving an expired invitation reserves a seat again, so it goes through
+      // the same locked limit check as creating one.
+      const revived = await insertWithinPlanLimit({
+        organizationId,
+        resource: "members",
+        check: checkTeamMemberLimit,
+        countRows: async (tx) => {
+          const [memberRow] = await tx
+            .select({ count: sql<number>`count(*)` })
+            .from(member)
+            .where(eq(member.organizationId, organizationId));
+          const [pendingRow] = await tx
+            .select({ count: sql<number>`count(*)` })
+            .from(invitation)
+            .where(
+              and(
+                eq(invitation.organizationId, organizationId),
+                eq(invitation.status, "pending"),
+                gte(invitation.expiresAt, new Date())
+              )
+            );
+          return Number(memberRow?.count || 0) + Number(pendingRow?.count || 0);
+        },
+        insert: async (executor) => {
+          await executor
+            .update(invitation)
+            .set({ expiresAt: newExpiresAt })
+            .where(eq(invitation.id, resolvedParams.invitationId));
+          return true;
+        },
+      });
+      if (!revived.ok && revived.busy) {
+        return NextResponse.json(
+          { error: "Too many concurrent requests. Please retry shortly." },
+          { status: 503, headers: { "Retry-After": "2" } }
+        );
+      }
+      if (!revived.ok) {
+        return NextResponse.json(
+          { error: revived.check.error || "Team member limit reached" },
+          { status: 403 }
+        );
+      }
     }
 
     // Send email invitation

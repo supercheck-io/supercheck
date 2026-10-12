@@ -10,6 +10,7 @@ import { getUserRole, getUserAssignedProjects } from "@/lib/rbac/middleware";
 import { hasPermission as checkPermission } from "@/lib/rbac/permissions";
 import { hashApiKey } from "@/lib/security/api-key-hash";
 import { createLogger } from "@/lib/logger/pino-config";
+import { MAX_SCRIPT_LENGTH } from "@/lib/validations/common";
 
 const logger = createLogger({ module: "recordings" });
 
@@ -56,7 +57,10 @@ const recordingSchema = z.object({
     .min(1, "Name is required")
     .max(255, "Name must be less than 255 characters")
     .transform((val) => val.trim()),
-  script: z.string().min(1, "Script is required"),
+  script: z
+    .string()
+    .min(1, "Script is required")
+    .max(MAX_SCRIPT_LENGTH, `Script cannot exceed ${MAX_SCRIPT_LENGTH} characters`),
   metadata: z.object({
     recordedAt: z.string(),
     duration: z.number().int().nonnegative(),

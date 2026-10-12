@@ -16,7 +16,8 @@ import crypto from "crypto";
 import { requireProjectContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
-import { updateCoverageSnapshot } from "@/actions/requirements";
+import { updateCoverageSnapshot } from "@/lib/requirements-internal";
+import { MAX_SCRIPT_LENGTH } from "@/lib/validations/common";
 import { validateScriptTypeMatch, normalizeTestType } from "@/lib/script-type-validator";
 import { decodeStoredTestScript, encodeStoredTestScript } from "@/lib/test-script";
 
@@ -50,6 +51,14 @@ export async function saveTest(
 
     const scriptToSave = encodeStoredTestScript(validatedData.script || "");
     const scriptForValidation = decodeStoredTestScript(validatedData.script || "");
+
+    if (scriptForValidation.length > MAX_SCRIPT_LENGTH) {
+      return {
+        id: "",
+        success: false,
+        error: `Script cannot exceed ${MAX_SCRIPT_LENGTH} characters`,
+      };
+    }
 
     const resolvedType = normalizeTestType(validatedData.type);
     if (scriptForValidation.trim().length > 0) {
@@ -273,8 +282,9 @@ export async function saveTest(
 }
 
 /**
- * Helper function to decode a base64-encoded script
- * This should be used on the client side when loading a test from the database
+ * Helper function to decode a base64-encoded script.
+ * Kept as an action because the playground form calls it from the browser, where
+ * Node's Buffer is not guaranteed. It is a pure decode with no data access.
  * @param base64Script The base64-encoded script to decode
  * @returns The decoded script
  */

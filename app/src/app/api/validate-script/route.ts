@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { MAX_SCRIPT_LENGTH } from "@/lib/validations/common";
 import type { TestType } from "@/db/schema/types";
 import { playwrightValidationService } from "@/lib/playwright-validator";
 import { isK6Script, validateK6Script } from "@/lib/k6-validator";
@@ -23,6 +24,13 @@ export async function POST(request: NextRequest) {
     const script = data.script as string;
     const requestedType =
       typeof data.testType === "string" ? (data.testType as TestType) : undefined;
+
+    if (typeof script === "string" && script.length > MAX_SCRIPT_LENGTH) {
+      return NextResponse.json(
+        { error: `Script cannot exceed ${MAX_SCRIPT_LENGTH} characters` },
+        { status: 413 }
+      );
+    }
 
     if (!script) {
       return NextResponse.json(

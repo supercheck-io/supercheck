@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { MAX_SCRIPT_LENGTH } from "@/lib/validations/common";
 import { db } from "@/utils/db";
 import { tests, testTags, tags } from "@/db/schema";
 import { desc, eq, and, inArray, like, count } from "drizzle-orm";
@@ -204,6 +205,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: "Test title is required" },
         { status: 400 }
+      );
+    }
+
+    if (typeof script === "string" && script.length > MAX_SCRIPT_LENGTH) {
+      return NextResponse.json(
+        { error: `Script cannot exceed ${MAX_SCRIPT_LENGTH} characters` },
+        { status: 413 }
       );
     }
 

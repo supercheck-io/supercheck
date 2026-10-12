@@ -9,6 +9,7 @@ import { requirePermissions } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { randomUUID } from "crypto";
 import { checkStatusPageLimit } from "@/lib/middleware/plan-enforcement";
+import { insertWithinPlanLimit } from "@/lib/middleware/plan-limit-lock";
 import { eq, sql } from "drizzle-orm";
 
 const createStatusPageSchema = z.object({
@@ -51,44 +52,58 @@ export async function createStatusPage(data: CreateStatusPageData) {
     // Validate the data
     const validatedData = createStatusPageSchema.parse(data);
 
-    // Check status page limit for the organization
-    const currentStatusPageCount = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(statusPages)
-      .where(eq(statusPages.organizationId, organizationId));
-
-    const limitCheck = await checkStatusPageLimit(
-      organizationId,
-      Number(currentStatusPageCount[0]?.count || 0)
-    );
-    if (!limitCheck.allowed) {
-      console.warn(`Status page limit reached for organization ${organizationId}: ${limitCheck.error}`);
-      return {
-        success: false,
-        message: limitCheck.error,
-      };
-    }
-
     // Generate a unique subdomain using UUID v4 without dashes
     const subdomain = randomUUID().replace(/-/g, "");
 
     try {
-      // Create the status page with proper project and user association
-      const [statusPage] = await db
-        .insert(statusPages)
-        .values({
-          organizationId: organizationId,
-          projectId: project.id,
-          name: validatedData.name,
-          subdomain: subdomain,
-          headline: validatedData.headline || null,
-          pageDescription: validatedData.pageDescription || null,
-          status: "draft",
-          createdByUserId: userId,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        })
-        .returning();
+      // Serialize count -> limit check -> insert per organization so concurrent
+      // requests cannot both pass the plan limit.
+      const outcome = await insertWithinPlanLimit({
+        organizationId,
+        resource: "status_pages",
+        check: checkStatusPageLimit,
+        countRows: async (tx) => {
+          const [row] = await tx
+            .select({ count: sql<number>`count(*)` })
+            .from(statusPages)
+            .where(eq(statusPages.organizationId, organizationId));
+          return Number(row?.count || 0);
+        },
+        insert: async (executor) => {
+          // Create the status page with proper project and user association
+          const [created] = await executor
+            .insert(statusPages)
+            .values({
+              organizationId: organizationId,
+              projectId: project.id,
+              name: validatedData.name,
+              subdomain: subdomain,
+              headline: validatedData.headline || null,
+              pageDescription: validatedData.pageDescription || null,
+              status: "draft",
+              createdByUserId: userId,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            })
+            .returning();
+          return created;
+        },
+      });
+
+      if (!outcome.ok && outcome.busy) {
+        return {
+          success: false,
+          message: "Too many concurrent requests. Please retry shortly.",
+        };
+      }
+      if (!outcome.ok) {
+        console.warn(`Status page limit reached for organization ${organizationId}: ${outcome.check.error}`);
+        return {
+          success: false,
+          message: outcome.check.error,
+        };
+      }
+      const statusPage = outcome.row;
 
       console.log(
         `Status page ${statusPage.id} created successfully by user ${userId} in project ${project.name}`

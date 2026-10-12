@@ -20,6 +20,11 @@ import crypto from "crypto";
 import { requireProjectContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
+import {
+  syncRequirementTags,
+  syncRequirementTagsByName,
+  updateCoverageSnapshot,
+} from "@/lib/requirements-internal";
 
 // ============================================================================
 // TYPES
@@ -94,103 +99,6 @@ export type UpdateRequirementInput = z.infer<typeof updateRequirementSchema>;
 // ============================================================================
 // TAG SYNC HELPERS
 // ============================================================================
-
-/**
- * Sync tags for a requirement by replacing all existing tag associations.
- * Creates new tags in the centralized tags table if they don't exist.
- */
-export async function syncRequirementTags(
-  requirementId: string,
-  tagIds: string[]
-): Promise<void> {
-  // Enforce maximum 10 tags per requirement (consistent with API route)
-  if (tagIds.length > 10) {
-    throw new Error("Maximum of 10 tags allowed per requirement");
-  }
-
-  // Delete existing tags for this requirement
-  await db
-    .delete(requirementTags)
-    .where(eq(requirementTags.requirementId, requirementId));
-
-  // Insert new tags if any
-  if (tagIds.length > 0) {
-    await db
-      .insert(requirementTags)
-      .values(
-        tagIds.map((tagId) => ({
-          requirementId,
-          tagId,
-          assignedAt: new Date(),
-        }))
-      )
-      .onConflictDoNothing();
-  }
-}
-
-/**
- * Sync tags from tag names (used by AI extraction).
- * Creates tags in centralized table if they don't exist,
- * then associates them with the requirement.
- */
-export async function syncRequirementTagsByName(
-  requirementId: string,
-  tagNames: string[],
-  organizationId: string,
-  projectId: string,
-  userId: string | null
-): Promise<void> {
-  if (tagNames.length === 0) return;
-
-  const normalizedNames = tagNames.map((name) => name.trim().toLowerCase());
-
-  // Find existing tags
-  const existingTags = await db
-    .select({ id: tags.id, name: tags.name })
-    .from(tags)
-    .where(
-      and(
-        eq(tags.projectId, projectId),
-        inArray(tags.name, normalizedNames)
-      )
-    );
-
-  const existingTagNames = new Set(existingTags.map((t) => t.name.toLowerCase()));
-  const tagsToCreate = normalizedNames.filter((name) => !existingTagNames.has(name));
-
-  // Create missing tags
-  const newTags: { id: string; name: string }[] = [];
-  if (tagsToCreate.length > 0) {
-    const defaultColors = [
-      "#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6",
-      "#06B6D4", "#84CC16", "#F97316", "#EC4899", "#6B7280",
-    ];
-    
-    const createdTags = await db
-      .insert(tags)
-      .values(
-        tagsToCreate.map((name, i) => ({
-          name,
-          organizationId,
-          projectId,
-          createdByUserId: userId,
-          color: defaultColors[i % defaultColors.length],
-        }))
-      )
-      .returning({ id: tags.id, name: tags.name });
-    
-    newTags.push(...createdTags);
-  }
-
-  // Combine all tag IDs
-  const allTagIds = [
-    ...existingTags.map((t) => t.id),
-    ...newTags.map((t) => t.id),
-  ];
-
-  // Sync requirement tags
-  await syncRequirementTags(requirementId, allTagIds);
-}
 
 // ============================================================================
 // LIST REQUIREMENTS
@@ -304,7 +212,13 @@ export async function getRequirements(options?: {
             tagColor: tags.color,
           })
           .from(requirementTags)
-          .innerJoin(tags, eq(requirementTags.tagId, tags.id))
+          .innerJoin(
+            tags,
+            and(
+              eq(requirementTags.tagId, tags.id),
+              eq(tags.projectId, project.id)
+            )
+          )
           .where(inArray(requirementTags.requirementId, requirementIds))
       : [];
 
@@ -496,6 +410,31 @@ export async function updateRequirement(
 
     const validatedData = updateRequirementSchema.parse(data);
 
+    // Tag IDs come from the client: only accept tags from this project. Checked
+    // before any write so a bad tag cannot leave a half-applied update.
+    const uniqueTagIds =
+      validatedData.tagIds !== undefined
+        ? Array.from(new Set(validatedData.tagIds))
+        : undefined;
+    if (uniqueTagIds && uniqueTagIds.length > 0) {
+      const scopedTags = await db
+        .select({ id: tags.id })
+        .from(tags)
+        .where(
+          and(
+            inArray(tags.id, uniqueTagIds),
+            eq(tags.projectId, project.id),
+            eq(tags.organizationId, organizationId)
+          )
+        );
+      if (scopedTags.length !== uniqueTagIds.length) {
+        return {
+          success: false,
+          error: "One or more tags are invalid or not accessible",
+        };
+      }
+    }
+
     // Update requirement
     const updatedRequirements = await db
       .update(requirements)
@@ -524,9 +463,9 @@ export async function updateRequirement(
       };
     }
 
-    // Sync tags if provided
-    if (validatedData.tagIds !== undefined) {
-      await syncRequirementTags(validatedData.id, validatedData.tagIds);
+    // Sync tags if provided (already validated above)
+    if (uniqueTagIds !== undefined) {
+      await syncRequirementTags(validatedData.id, uniqueTagIds);
     }
 
     // Log audit event
@@ -716,13 +655,61 @@ export async function deleteRequirements(
 // ============================================================================
 
 /**
+ * True when the requirement (and every given test) belongs to the caller's
+ * project and organization. Actions take raw IDs from the client, so each one
+ * that touches testRequirements must pass this before reading or writing.
+ */
+async function isInCallerScope(
+  requirementId: string,
+  testIds: string[],
+  scope: { projectId: string; organizationId: string }
+): Promise<boolean> {
+  const [requirement] = await db
+    .select({ id: requirements.id })
+    .from(requirements)
+    .where(
+      and(
+        eq(requirements.id, requirementId),
+        eq(requirements.projectId, scope.projectId),
+        eq(requirements.organizationId, scope.organizationId)
+      )
+    )
+    .limit(1);
+  if (!requirement) return false;
+
+  const uniqueTestIds = Array.from(new Set(testIds));
+  if (uniqueTestIds.length === 0) return true;
+
+  const scopedTests = await db
+    .select({ id: tests.id })
+    .from(tests)
+    .where(
+      and(
+        inArray(tests.id, uniqueTestIds),
+        eq(tests.projectId, scope.projectId),
+        eq(tests.organizationId, scope.organizationId)
+      )
+    );
+  return scopedTests.length === uniqueTestIds.length;
+}
+
+/**
  * Link tests to a requirement
  */
+/** Upper bound on tests linked in one call; keeps queries and audit rows small. */
+const MAX_LINKED_TESTS_PER_REQUEST = 200;
+
+const linkTestsSchema = z.object({
+  requirementId: z.string().uuid(),
+  testIds: z.array(z.string().uuid()).max(MAX_LINKED_TESTS_PER_REQUEST),
+});
+
 export async function linkTestsToRequirement(
   requirementId: string,
   testIds: string[]
 ): Promise<{ success: boolean; error?: string }> {
   try {
+
     const { userId, project, organizationId } = await requireProjectContext();
 
     // Check update permission (optimized - reuses context)
@@ -739,8 +726,24 @@ export async function linkTestsToRequirement(
       };
     }
 
+    if (!linkTestsSchema.safeParse({ requirementId, testIds }).success) {
+      return { success: false, error: "Invalid requirement or test IDs" };
+    }
+
     if (testIds.length === 0) {
       return { success: true };
+    }
+
+    if (
+      !(await isInCallerScope(requirementId, testIds, {
+        projectId: project.id,
+        organizationId,
+      }))
+    ) {
+      return {
+        success: false,
+        error: "Requirement or tests not found or access denied",
+      };
     }
 
     // Insert test-requirement links (ignore duplicates)
@@ -913,6 +916,7 @@ export async function unlinkTestFromRequirement(
   testId: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
+
     const { userId, project, organizationId } = await requireProjectContext();
 
     // Check update permission (optimized - reuses context)
@@ -926,6 +930,25 @@ export async function unlinkTestFromRequirement(
       return {
         success: false,
         error: "Insufficient permissions to unlink tests",
+      };
+    }
+
+    if (
+      !z.string().uuid().safeParse(requirementId).success ||
+      !z.string().uuid().safeParse(testId).success
+    ) {
+      return { success: false, error: "Invalid requirement or test ID" };
+    }
+
+    if (
+      !(await isInCallerScope(requirementId, [testId], {
+        projectId: project.id,
+        organizationId,
+      }))
+    ) {
+      return {
+        success: false,
+        error: "Requirement or test not found or access denied",
       };
     }
 
@@ -972,53 +995,6 @@ export async function unlinkTestFromRequirement(
 // ============================================================================
 // COVERAGE SNAPSHOT UPDATE
 // ============================================================================
-
-/**
- * Update coverage snapshot for a requirement based on linked test results
- * This is called after linking/unlinking tests and by the coverage worker after job completion
- */
-export async function updateCoverageSnapshot(
-  requirementId: string
-): Promise<void> {
-  // Get linked tests with their latest run status
-  const linkedTests = await db
-    .select({
-      testId: testRequirements.testId,
-    })
-    .from(testRequirements)
-    .where(eq(testRequirements.requirementId, requirementId));
-
-  const linkedTestCount = linkedTests.length;
-
-  if (linkedTestCount === 0) {
-    // No linked tests = missing coverage
-    await db
-      .update(requirementCoverageSnapshots)
-      .set({
-        status: "missing",
-        linkedTestCount: 0,
-        passedTestCount: 0,
-        failedTestCount: 0,
-        lastEvaluatedAt: new Date(),
-        updatedAt: new Date(),
-      })
-      .where(eq(requirementCoverageSnapshots.requirementId, requirementId));
-    return;
-  }
-
-  // Get latest run status for each linked test
-  // This is a simplified version - in production, you'd query the runs table
-  // For now, set status based on linked test count
-  await db
-    .update(requirementCoverageSnapshots)
-    .set({
-      linkedTestCount,
-      // Status will be computed by coverage worker after job runs
-      lastEvaluatedAt: new Date(),
-      updatedAt: new Date(),
-    })
-    .where(eq(requirementCoverageSnapshots.requirementId, requirementId));
-}
 
 // ============================================================================
 // GET DASHBOARD STATS
@@ -1198,7 +1174,13 @@ export async function getRequirement(
         tagColor: tags.color,
       })
       .from(requirementTags)
-      .innerJoin(tags, eq(requirementTags.tagId, tags.id))
+      .innerJoin(
+            tags,
+            and(
+              eq(requirementTags.tagId, tags.id),
+              eq(tags.projectId, project.id)
+            )
+          )
       .where(eq(requirementTags.requirementId, id));
 
     const r = result[0];
@@ -1268,6 +1250,15 @@ export async function getLinkedTests(
       return [];
     }
 
+    if (
+      !(await isInCallerScope(requirementId, [], {
+        projectId: project.id,
+        organizationId,
+      }))
+    ) {
+      return [];
+    }
+
     // Import tests table dynamically to avoid circular deps
     const { tests, tags, testTags } = await import("@/db/schema");
 
@@ -1279,7 +1270,14 @@ export async function getLinkedTests(
         description: tests.description,
       })
       .from(testRequirements)
-      .innerJoin(tests, eq(testRequirements.testId, tests.id))
+      .innerJoin(
+        tests,
+        and(
+          eq(testRequirements.testId, tests.id),
+          eq(tests.projectId, project.id),
+          eq(tests.organizationId, organizationId)
+        )
+      )
       .where(eq(testRequirements.requirementId, requirementId));
 
     if (linkedTestsData.length === 0) {
@@ -1348,6 +1346,15 @@ export async function getAvailableTestsForLinking(
     });
 
     if (!canView) {
+      return [];
+    }
+
+    if (
+      !(await isInCallerScope(requirementId, [], {
+        projectId: project.id,
+        organizationId,
+      }))
+    ) {
       return [];
     }
 
@@ -1456,7 +1463,13 @@ export async function exportRequirementsCsv(): Promise<{
               tagName: tags.name,
             })
             .from(requirementTags)
-            .innerJoin(tags, eq(requirementTags.tagId, tags.id))
+            .innerJoin(
+            tags,
+            and(
+              eq(requirementTags.tagId, tags.id),
+              eq(tags.projectId, project.id)
+            )
+          )
             .where(inArray(requirementTags.requirementId, requirementIds))
         : [];
 
