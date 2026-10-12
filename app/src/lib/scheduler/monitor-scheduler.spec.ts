@@ -142,6 +142,7 @@ describe("monitor-scheduler", () => {
       "project-1"
     );
   });
+
   it("records Redis enqueue errors even when some regional commands succeeded", async () => {
     mockResolveMonitorLocations.mockResolvedValue(["eu-central", "us-east"]);
     (getQueues as jest.Mock).mockResolvedValue({ monitorExecutionQueue: { "eu-central": {}, "us-east": {} } });
@@ -161,7 +162,4 @@ describe("monitor-scheduler", () => {
       lastStatusChangeAt: status === "up" ? expect.any(Date) : undefined,
     }));
   });
-
-
-
 });
