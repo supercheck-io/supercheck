@@ -13,9 +13,11 @@ let s3CheckInflight: Promise<S3Check> | null = null;
 
 function getS3Check(): Promise<S3Check> {
   if (s3CheckCache && Date.now() - s3CheckCache.at < S3_CHECK_TTL_MS) {
-    return Promise.resolve(s3CheckCache.result);
+    // latencyMs belongs to the original probe, so it is not repeated on cache hits.
+    return Promise.resolve({ status: s3CheckCache.result.status, error: s3CheckCache.result.error });
   }
   s3CheckInflight ??= probeS3()
+    .catch((): S3Check => ({ status: 'error', error: 'S3 connection failed' }))
     .then((result) => {
       s3CheckCache = { at: Date.now(), result };
       return result;

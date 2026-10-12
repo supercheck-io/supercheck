@@ -128,11 +128,21 @@ describe('GET /api/health S3 check', () => {
     expect(mockSend).toHaveBeenCalledTimes(1);
   });
 
-  it('reports a fixed message when the client cannot be built', async () => {
+  it('reports a fixed message, and caches it, when the client cannot be built', async () => {
     (S3ClientMock as jest.Mock).mockImplementationOnce(() => {
       throw new Error('bad endpoint http://secret-host');
     });
-    const body = await call();
+    const get = await loadGet();
+    const body = await (await get()).json();
     expect(body.checks.s3.error).toBe('S3 connection failed');
+    await get();
+    expect(S3ClientMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('omits latencyMs on cache hits', async () => {
+    mockSend.mockResolvedValue({});
+    const get = await loadGet();
+    expect((await (await get()).json()).checks.s3.latencyMs).toEqual(expect.any(Number));
+    expect((await (await get()).json()).checks.s3.latencyMs).toBeUndefined();
   });
 });
