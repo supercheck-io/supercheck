@@ -286,7 +286,7 @@ function OptionsPage() {
           <h2>Need Help?</h2>
           <ul>
             <li>
-              <a href='https://docs.supercheck.io/recorder' target='_blank' rel='noopener noreferrer'>
+              <a href='https://supercheck.io/docs/recorder' target='_blank' rel='noopener noreferrer'>
                 Documentation
               </a>
             </li>
