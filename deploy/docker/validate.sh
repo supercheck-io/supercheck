@@ -70,6 +70,16 @@ for file in "${files[@]}"; do
   fi
 done
 
+echo "==> install.sh default version matches docker-compose.yml"
+compose_ver="$(grep -o 'supercheck/app:[$]{SUPERCHECK_VERSION:-[^}]*}' docker-compose.yml | head -n1 | sed 's/.*:-//; s/}$//')"
+installer_ver="$(sed -n 's/^SUPERCHECK_VERSION_DEFAULT="\(.*\)"/\1/p' install.sh | head -n1)"
+if [ -n "$compose_ver" ] && [ "$compose_ver" = "$installer_ver" ]; then
+  echo "  ok   $installer_ver"
+else
+  echo "  FAIL install.sh says '$installer_ver', docker-compose.yml says '$compose_ver'"
+  fail=1
+fi
+
 if [ "$fail" -ne 0 ]; then
   echo "Deployment validation failed" >&2
   exit 1

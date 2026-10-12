@@ -61,6 +61,30 @@ Use Ubuntu 22.04+ or Debian 12+ with Docker Engine and Compose **v2.24.4 or newe
 **Linux only** — the execution sandbox needs the Linux kernel, so this Compose deployment does not work on macOS, Windows, WSL2, or Docker Desktop. `setup-k3s.sh` stops with a clear error on those hosts. Use a Linux server (or a Linux VM) for the steps below.
 </Callout>
 
+### Quick install
+
+On a fresh Ubuntu 22.04+ or Debian 12+ server, download the installer, read it, and run it:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/supercheck-io/supercheck/main/deploy/docker/install.sh -o install.sh
+less install.sh
+sudo bash install.sh
+```
+
+It checks the server, asks whether you are evaluating locally or running a public HTTPS server,
+installs Docker and the isolated test sandbox, downloads and prepares the images, starts Supercheck,
+and verifies it is healthy. It is safe to re-run and never regenerates your secrets.
+
+| Goal | Command |
+|---|---|
+| Guided | `sudo bash install.sh` |
+| Evaluate on this server, no prompts | `sudo bash install.sh --local --yes` |
+| Public HTTPS, no prompts | `sudo bash install.sh --domain app.example.com --email you@example.com --yes` |
+| See the plan without changing anything | `sudo bash install.sh --dry-run` |
+
+Run `bash install.sh --help` for every option. The steps below are the manual equivalent of the installer,
+for custom setups and for understanding what it does.
+
 Installing with an agent? Use the [installation runbook](https://raw.githubusercontent.com/supercheck-io/supercheck/main/deploy/docker/INSTALL.md).
 
 ### 0. Install Prerequisites
