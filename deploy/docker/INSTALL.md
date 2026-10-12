@@ -40,6 +40,8 @@ sudo usermod -aG docker "$USER"   # takes effect in a new shell (or run: newgrp 
 
 Group membership only applies to new shells. If you are driving this runbook from a single shell session (for example an agent), run the Docker commands below through `sg docker -c '<command>'` or start a new login shell, then confirm `docker ps` works without `sudo` before continuing.
 
+Docker group membership is root-equivalent on the host, so add only users you trust.
+
 `bzip2` is required by `setup-k3s.sh`, which extracts the gVisor release archive. Minimal Ubuntu cloud images ship `tar`, `gzip`, and `xz` but not `bzip2`.
 
 ## 1. Prepare
