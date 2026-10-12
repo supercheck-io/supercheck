@@ -372,17 +372,17 @@
  * Only position and alignment - let Chatwoot handle icon sizing.
  */
 
-/* Stack customer support above the AI SRE Copilot launcher in the bottom-right corner. */
+/* Pin the launcher to the bottom-right corner; the chat window opens just above it. */
 .woot-widget-bubble,
 .cw-widget-bubble {
   right: 20px !important;
-  bottom: 84px !important;
+  bottom: 20px !important;
   z-index: 45 !important;
 }
 
 .woot-widget-holder,
 .cw-widget-container {
   right: 20px !important;
-  bottom: 148px !important;
+  bottom: 84px !important;
   z-index: 45 !important;
 }
