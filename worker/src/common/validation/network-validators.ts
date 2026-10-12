@@ -4,11 +4,27 @@
  * Includes SSRF protection and command injection prevention
  */
 
-import { SECURITY, isInternalHost } from '../constants';
+import { isIP } from 'node:net';
+
+import { SECURITY } from '../constants';
+import { isPrivateHost } from '../utils/url-validator';
 
 export interface ValidationResult {
   valid: boolean;
   error?: string;
+}
+
+/**
+ * Returns true when the target resolves to a private, loopback, link-local,
+ * reserved, or cloud-metadata destination.
+ *
+ * Uses the shared outbound-policy classifier (`isPrivateHost`) so URL, ping,
+ * and port checks agree with the webhook SSRF policy, including IPv6
+ * (`::1`, `::ffff:10.0.0.1`, `fc00::/7`, `fe80::/10`) and bracketed literals.
+ */
+function isBlockedInternalTarget(hostnameOrAddress: string): boolean {
+  const normalized = hostnameOrAddress.toLowerCase().replace(/^\[|\]$/g, '');
+  return isPrivateHost(normalized);
 }
 
 /**
@@ -33,8 +49,7 @@ export function validateTargetUrl(
     }
 
     // Check for localhost/internal IPs (SSRF protection)
-    const hostname = url.hostname.toLowerCase();
-    if (isInternalHost(hostname)) {
+    if (isBlockedInternalTarget(url.hostname)) {
       // Allow if explicitly configured
       if (
         !options?.allowInternalTargets &&
@@ -97,7 +112,10 @@ export function validatePingTarget(target: string): ValidationResult {
     }
 
     // Check if it's internal
-    if (isInternalHost(target) && !process.env.ALLOW_INTERNAL_TARGETS) {
+    if (
+      isBlockedInternalTarget(target) &&
+      !process.env.ALLOW_INTERNAL_TARGETS
+    ) {
       return {
         valid: false,
         error:
@@ -108,9 +126,22 @@ export function validatePingTarget(target: string): ValidationResult {
     return { valid: true };
   }
 
-  // Check for IPv6 address format (basic)
-  const ipv6Regex = /^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$|^::1$|^::/;
-  if (ipv6Regex.test(target)) {
+  // Check for IPv6 address format (covers compressed forms like 2606::1)
+  if (isIP(target) === 6) {
+    // IPv6 literals are subject to the same SSRF policy as IPv4/hostnames:
+    // loopback (::1), unspecified (::), IPv4-mapped (::ffff:10.0.0.1),
+    // link-local (fe80::/10) and ULA (fc00::/7) addresses are internal.
+    if (
+      isBlockedInternalTarget(target) &&
+      !process.env.ALLOW_INTERNAL_TARGETS
+    ) {
+      return {
+        valid: false,
+        error:
+          'Internal/localhost targets are not allowed for security reasons',
+      };
+    }
+
     return { valid: true };
   }
 
@@ -122,8 +153,7 @@ export function validatePingTarget(target: string): ValidationResult {
   }
 
   // Additional security check for localhost/internal IPs
-  const lowerTarget = target.toLowerCase();
-  if (isInternalHost(lowerTarget) && !process.env.ALLOW_INTERNAL_TARGETS) {
+  if (isBlockedInternalTarget(target) && !process.env.ALLOW_INTERNAL_TARGETS) {
     return {
       valid: false,
       error: 'Internal/localhost targets are not allowed for security reasons',
