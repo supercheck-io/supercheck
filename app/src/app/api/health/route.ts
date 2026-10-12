@@ -71,6 +71,7 @@ export async function GET() {
         region: process.env.AWS_REGION || 'us-east-1',
         endpoint: s3Endpoint,
         forcePathStyle: true,
+        maxAttempts: 1, // keep latency and error reporting predictable inside the 5s budget
         credentials: {
           accessKeyId: process.env.AWS_ACCESS_KEY_ID || 'minioadmin',
           secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || 'minioadmin',
@@ -85,9 +86,11 @@ export async function GET() {
       } catch (error) {
         // The worker creates buckets on startup, so a missing bucket still means
         // the storage backend answered and accepted our credentials.
-        const err = error as { name?: string; $metadata?: { httpStatusCode?: number } };
-        if (err.name !== 'NotFound' && err.$metadata?.httpStatusCode !== 404) {
-          throw new Error('S3 endpoint not reachable or credentials rejected');
+        const err = error as { name?: string; $metadata?: { httpStatusCode?: number } } | null;
+        if (err?.name !== 'NotFound' && err?.name !== 'NoSuchBucket') {
+          // Name and status only: raw SDK messages can include the endpoint host.
+          const status = err?.$metadata?.httpStatusCode;
+          throw new Error(`S3 probe failed: ${err?.name ?? 'UnknownError'}${status ? ` (${status})` : ''}`);
         }
       } finally {
         s3Client.destroy();

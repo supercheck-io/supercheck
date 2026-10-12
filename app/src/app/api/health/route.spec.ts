@@ -11,6 +11,7 @@ jest.mock('@aws-sdk/client-s3', () => ({
 jest.mock('@/utils/db', () => ({ db: { execute: jest.fn().mockResolvedValue([]) } }));
 jest.mock('drizzle-orm', () => ({ sql: jest.fn() }));
 
+import { S3Client, HeadBucketCommand } from '@aws-sdk/client-s3';
 import { GET } from './route';
 
 const unsetEnv = (key: string) => {
@@ -42,6 +43,50 @@ describe('GET /api/health S3 check', () => {
     mockSend.mockRejectedValue({ name: 'NotFound', $metadata: { httpStatusCode: 404 } });
     const body = await (await GET()).json();
     expect(body.checks.s3.status).toBe('ok');
+    expect(mockDestroy).toHaveBeenCalled();
+  });
+
+  it('accepts NoSuchBucket', async () => {
+    mockSend.mockRejectedValue({ name: 'NoSuchBucket' });
+    expect((await (await GET()).json()).checks.s3.status).toBe('ok');
+  });
+
+  it('does not treat a bare 404 from a non-S3 service as healthy', async () => {
+    mockSend.mockRejectedValue({ name: 'UnknownError', $metadata: { httpStatusCode: 404 } });
+    const body = await (await GET()).json();
+    expect(body.checks.s3.status).toBe('error');
+  });
+
+  it('degrades on 501 and reports name and status only', async () => {
+    mockSend.mockRejectedValue({ name: 'NotImplemented', message: 'secret-host:9000', $metadata: { httpStatusCode: 501 } });
+    const body = await (await GET()).json();
+    expect(body.status).toBe('degraded');
+    expect(body.checks.s3.error).toBe('S3 probe failed: NotImplemented (501)');
+    expect(body.checks.s3.error).not.toContain('secret-host');
+    expect(mockDestroy).toHaveBeenCalled();
+  });
+
+  it('degrades on timeout and a thrown non-object', async () => {
+    mockSend.mockRejectedValueOnce({ name: 'TimeoutError' });
+    expect((await (await GET()).json()).checks.s3.error).toBe('S3 probe failed: TimeoutError');
+    mockSend.mockRejectedValueOnce(null);
+    expect((await (await GET()).json()).checks.s3.status).toBe('error');
+  });
+
+  it('configures the client and bucket from env, with a timeout signal', async () => {
+    process.env.S3_TEST_BUCKET_NAME = 'custom-bucket';
+    process.env.AWS_ACCESS_KEY_ID = 'ak';
+    process.env.AWS_SECRET_ACCESS_KEY = 'sk';
+    mockSend.mockResolvedValue({});
+    await GET();
+    expect(S3Client).toHaveBeenCalledWith(expect.objectContaining({
+      endpoint: 'http://s3:9000',
+      forcePathStyle: true,
+      maxAttempts: 1,
+      credentials: { accessKeyId: 'ak', secretAccessKey: 'sk' },
+    }));
+    expect(HeadBucketCommand).toHaveBeenCalledWith({ Bucket: 'custom-bucket' });
+    expect(mockSend.mock.calls[0][1]).toEqual({ abortSignal: expect.any(AbortSignal) });
   });
 
   it('degrades when credentials are rejected', async () => {
