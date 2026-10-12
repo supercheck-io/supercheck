@@ -47,9 +47,33 @@ declare global {
             setCustomAttributes: (attributes: Record<string, unknown>) => void;
             toggle: (state?: "open" | "close") => void;
             reset: () => void;
-            isLoaded?: boolean;
+            toggleBubbleVisibility?: (state: "show" | "hide") => void;
+            hasLoaded?: boolean;
+            hideMessageBubble?: boolean;
+            resetTriggered?: boolean;
+            identifier?: string | number;
+            user?: Record<string, unknown>;
         };
     }
+}
+
+/**
+ * Clears the Chatwoot contact session (call on logout or when the signed-in user changes).
+ */
+export function resetChatwootSession() {
+    const chatwoot = window.$chatwoot;
+    if (!chatwoot) return;
+    if (chatwoot.hasLoaded) {
+        chatwoot.toggle("close");
+        chatwoot.toggleBubbleVisibility?.("hide");
+    }
+    chatwoot.hideMessageBubble = true;
+    chatwoot.hasLoaded = false;
+    // The SDK retains the old user on reset and suppresses ready; clear both for re-identification.
+    delete chatwoot.user;
+    delete chatwoot.identifier;
+    chatwoot.reset();
+    chatwoot.resetTriggered = false;
 }
 
 /**
@@ -109,77 +133,115 @@ export function ChatwootWidget({
     user,
     customAttributes,
 }: ChatwootWidgetProps) {
-    const isIdentified = useRef(false);
+    // Signature of the last identity pushed to Chatwoot, so re-renders never re-send it
+    const identifiedSignature = useRef<string | null>(null);
+    // Set on unmount so a late SDK load (lazyOnload) can't create a bubble on a page we left
+    const unmounted = useRef(false);
 
     // Validate baseUrl for security
     const validatedBaseUrl = validateBaseUrl(baseUrl);
 
-    // Configure Chatwoot settings on mount
+    // Primitive keys keep the effects below stable when parents pass fresh object literals
+    const settingsKey = JSON.stringify(settings);
+    const userKey = user
+        ? JSON.stringify([
+              user.id,
+              user.email,
+              user.name,
+              user.image,
+              user.identityValidationToken,
+          ])
+        : null;
+    const attributesKey = customAttributes ? JSON.stringify(customAttributes) : null;
+
+    // Configure Chatwoot settings (must be set before the SDK runs)
     useEffect(() => {
         if (!validatedBaseUrl) return;
 
         window.chatwootSettings = {
-            hideMessageBubble: false,
+            // Hidden until the user is identified, avoiding a flash of an anonymous bubble
+            hideMessageBubble: true,
             position: "right",
             locale: "en",
             type: "standard",
             darkMode: "auto",
-            ...settings,
+            ...(JSON.parse(settingsKey) as ChatwootSettings),
         };
-    }, [settings, validatedBaseUrl]);
+    }, [settingsKey, validatedBaseUrl]);
 
-    // Handle SDK load - identify user after SDK is ready
-    const handleLoad = useCallback(() => {
-        if (!window.chatwootSDK || !validatedBaseUrl) return;
+    // Identify the user once the widget is ready (Chatwoot's `chatwoot:ready` event)
+    useEffect(() => {
+        if (!validatedBaseUrl || !userKey) return;
+
+        const identify = () => {
+            const chatwoot = window.$chatwoot;
+            if (!chatwoot) return;
+
+            const signature = `${userKey}|${attributesKey}`;
+            if (identifiedSignature.current !== signature) {
+                const [id, email, name, image, hash] = JSON.parse(userKey) as [
+                    string,
+                    string,
+                    string | null,
+                    string | null,
+                    string | null,
+                ];
+                chatwoot.setUser(id, {
+                    email,
+                    name: name || email,
+                    avatar_url: image || undefined,
+                    // Only send the HMAC when identity validation is configured server-side
+                    ...(hash ? { identifier_hash: hash } : {}),
+                });
+
+                if (attributesKey) {
+                    const attributes = Object.fromEntries(
+                        Object.entries(
+                            JSON.parse(attributesKey) as Record<string, unknown>
+                        ).filter(([, v]) => v !== undefined && v !== null)
+                    );
+                    if (Object.keys(attributes).length) {
+                        chatwoot.setCustomAttributes(attributes);
+                    }
+                }
+                identifiedSignature.current = signature;
+            }
+            chatwoot.toggleBubbleVisibility?.("show");
+        };
+
+        // The widget may already be ready (e.g. remount after navigation)
+        if (window.$chatwoot?.hasLoaded) identify();
+        window.addEventListener("chatwoot:ready", identify);
+        return () => window.removeEventListener("chatwoot:ready", identify);
+    }, [validatedBaseUrl, userKey, attributesKey]);
+
+    // On unmount (logout, public/hidden routes, impersonation) hide the bubble. The contact
+    // session itself is cleared by resetChatwootSession() on logout / user switch.
+    useEffect(() => {
+        unmounted.current = false;
+        return () => {
+            unmounted.current = true;
+            identifiedSignature.current = null;
+            const chatwoot = window.$chatwoot;
+            if (!chatwoot) return;
+            // Bubble DOM is created only once the iframe loads; hiding it earlier throws in the SDK.
+            if (chatwoot.hasLoaded) {
+                chatwoot.toggle("close");
+                chatwoot.toggleBubbleVisibility?.("hide");
+            }
+            chatwoot.hideMessageBubble = true;
+        };
+    }, []);
+
+    // Start the SDK once the script has loaded; skip if it is already running
+    const handleReady = useCallback(() => {
+        if (unmounted.current || !window.chatwootSDK || !validatedBaseUrl || window.$chatwoot) return;
 
         window.chatwootSDK.run({
             websiteToken,
             baseUrl: validatedBaseUrl,
         });
-
-        // Identify user after SDK initialization (with small delay for SDK to be ready)
-        if (user && !isIdentified.current) {
-            setTimeout(() => {
-                if (window.$chatwoot) {
-                    window.$chatwoot.setUser(user.id, {
-                        email: user.email,
-                        name: user.name || user.email,
-                        avatar_url: user.image || undefined,
-                        identifier_hash: user.identityValidationToken, // Pass the HMAC token
-                    });
-
-                    if (customAttributes) {
-                        // Filter out undefined values
-                        const filteredAttributes = Object.fromEntries(
-                            Object.entries(customAttributes).filter(([, v]) => v !== undefined)
-                        );
-                        window.$chatwoot.setCustomAttributes(filteredAttributes);
-                    }
-
-                    isIdentified.current = true;
-                }
-            }, 500);
-        }
-    }, [websiteToken, validatedBaseUrl, user, customAttributes]);
-
-    // Re-identify user if user data changes after initial load
-    useEffect(() => {
-        if (!user || !window.$chatwoot || !isIdentified.current) return;
-
-        window.$chatwoot.setUser(user.id, {
-            email: user.email,
-            name: user.name || user.email,
-            avatar_url: user.image || undefined,
-            identifier_hash: user.identityValidationToken,
-        });
-
-        if (customAttributes) {
-            const filteredAttributes = Object.fromEntries(
-                Object.entries(customAttributes).filter(([, v]) => v !== undefined)
-            );
-            window.$chatwoot.setCustomAttributes(filteredAttributes);
-        }
-    }, [user, customAttributes]);
+    }, [websiteToken, validatedBaseUrl]);
 
     // Don't render if baseUrl is invalid
     if (!validatedBaseUrl) {
@@ -191,7 +253,7 @@ export function ChatwootWidget({
             id="chatwoot-sdk"
             src={`${validatedBaseUrl}/packs/js/sdk.js`}
             strategy="lazyOnload"
-            onLoad={handleLoad}
+            onReady={handleReady}
         />
     );
 }

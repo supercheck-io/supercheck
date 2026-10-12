@@ -183,6 +183,8 @@ S3_ENDPOINT=http://minio:9000
 # ────────────────────────────────────────────────────────────
 # CHATWOOT_BASE_URL=https://app.chatwoot.com
 # CHATWOOT_WEBSITE_TOKEN=your-token
+# HMAC secret from Chatwoot inbox > Configuration > Identity Validation (verifies signed-in users)
+# CHATWOOT_IDENTITY_VALIDATION_KEY=
 
 
 # ────────────────────────────────────────────────────────────

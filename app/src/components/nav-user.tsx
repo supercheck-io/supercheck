@@ -15,6 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useTheme } from "next-themes";
 import { Moon, Sun, User, Monitor } from "lucide-react";
 import { useProjectContextSafe, clearProjectsCache } from "@/hooks/use-project-context";
+import { resetChatwootSession } from "@/components/support/chatwoot-widget";
 import { clearQueryCache } from "@/lib/query-provider";
 
 export function NavUser() {
@@ -37,6 +38,7 @@ export function NavUser() {
     // Clear all caches to prevent data leakage between sessions
     clearProjectsCache();
     clearQueryCache();
+    resetChatwootSession(); // Drop the support-chat contact so the next user never sees this conversation
     await signOut();
     // Sign-out crosses an authentication boundary. Replace the history entry
     // with a same-origin document navigation to avoid reusing private UI state.

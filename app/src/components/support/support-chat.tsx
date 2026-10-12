@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { usePathname } from "next/navigation";
 import { useSession } from "@/utils/auth-client";
 import { useImpersonationStatus } from "@/hooks/use-impersonation-status";
-import { ChatwootWidget } from "./chatwoot-widget";
+import { ChatwootWidget, resetChatwootSession } from "./chatwoot-widget";
 
 // Routes where the chat widget should be hidden (external/public pages)
 const HIDDEN_ROUTES = [
@@ -69,7 +69,10 @@ export function SupportChat() {
     const isHydrated = useHydrated();
     const pathname = usePathname();
     const [chatwootConfig, setChatwootConfig] = useState<ChatwootConfigResponse | null>(null);
-    const [identityToken, setIdentityToken] = useState<string | null>(null);
+    // Identity token is per user: store it with the id it was issued for
+    const [identity, setIdentity] = useState<{ userId: string; token: string | null } | null>(null);
+    const userId = session?.user?.id ?? null;
+    const previousUserId = useRef<string | null>(null);
 
     // Check if current route is an external/public page
     const isExternalPage = HIDDEN_ROUTES.some(route => pathname?.startsWith(route));
@@ -81,28 +84,12 @@ export function SupportChat() {
 
         const fetchConfig = async () => {
             try {
-                // Fetch Chatwoot config from server (includes cloud mode check)
                 const configResponse = await fetch("/api/config/chatwoot");
                 if (!configResponse.ok) {
                     setChatwootConfig({ enabled: false, baseUrl: null, websiteToken: null });
                     return;
                 }
-                const configData: ChatwootConfigResponse = await configResponse.json();
-                setChatwootConfig(configData);
-
-                // If enabled, also fetch identity token for verified user badge
-                if (configData.enabled) {
-                    try {
-                        const tokenResponse = await fetch("/api/auth/chatwoot-token");
-                        if (tokenResponse.ok) {
-                            const tokenData = await tokenResponse.json();
-                            setIdentityToken(tokenData.token);
-                        }
-                    } catch (e) {
-                        // Identity validation is optional - chat still works without it
-                        console.warn("[Chatwoot] Failed to fetch identity token:", e);
-                    }
-                }
+                setChatwootConfig(await configResponse.json());
             } catch {
                 // Default to disabling chat on error (fail-safe)
                 setChatwootConfig({ enabled: false, baseUrl: null, websiteToken: null });
@@ -111,6 +98,40 @@ export function SupportChat() {
 
         fetchConfig();
     }, [isHydrated]);
+
+    // Fetch the identity-validation HMAC for the current user (re-run when the user changes)
+    const chatEnabled = !!chatwootConfig?.enabled;
+    useEffect(() => {
+        if (!chatEnabled || !userId || isExternalPage) return;
+
+        let cancelled = false;
+        const fetchToken = async () => {
+            let token: string | null = null;
+            try {
+                const tokenResponse = await fetch("/api/auth/chatwoot-token");
+                if (tokenResponse.ok) {
+                    token = (await tokenResponse.json()).token ?? null;
+                }
+            } catch (e) {
+                // Identity validation is optional - chat still works without it
+                console.warn("[Chatwoot] Failed to fetch identity token:", e);
+            }
+            if (!cancelled) setIdentity({ userId, token });
+        };
+
+        fetchToken();
+        return () => {
+            cancelled = true;
+        };
+    }, [chatEnabled, userId, isExternalPage]);
+
+    // Clear the Chatwoot contact session on logout or when a different user signs in
+    useEffect(() => {
+        if (previousUserId.current && previousUserId.current !== userId) {
+            resetChatwootSession();
+        }
+        previousUserId.current = userId;
+    }, [userId]);
 
     // Don't render if:
     // 1. Not hydrated yet (avoid hydration mismatch)
@@ -127,6 +148,7 @@ export function SupportChat() {
         !chatwootConfig.enabled ||
         !chatwootConfig.baseUrl ||
         !chatwootConfig.websiteToken ||
+        identity?.userId !== userId ||
         !session?.user ||
         isImpersonationLoading ||
         isImpersonating
@@ -160,7 +182,7 @@ export function SupportChat() {
                 email: user.email,
                 name: user.name,
                 image: user.image,
-                identityValidationToken: identityToken,
+                identityValidationToken: identity.token,
             }}
             customAttributes={customAttributes}
         />
