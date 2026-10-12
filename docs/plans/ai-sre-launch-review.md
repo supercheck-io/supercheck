@@ -17,8 +17,8 @@ Private Agent API
 
 Config / secrets
 - `.env.example` (app, worker) documented unused `VARIABLES_ENCRYPTION_KEY`/`CREDENTIAL_ENCRYPTION_KEY`; code reads `SECRET_ENCRYPTION_KEY`. Fixed.
-- Compose (`docker-compose.yml`, `-local`, `-external`) no longer default `SECRET_ENCRYPTION_KEY` to a public placeholder; they fail with a clear message.
-- `secret-crypto.ts` (app + worker) rejects `CHANGE_THIS`-style placeholder keys.
+- Compose (`docker-compose.yml`, `-local`, `-external`) keep the legacy `SECRET_ENCRYPTION_KEY` fallback so existing installs start and stored secrets stay readable; new installs get a generated key from `init-secrets.sh`.
+- `secret-crypto.ts` (app + worker) logs a one-time warning for `CHANGE_THIS`-style keys instead of rejecting them, to avoid orphaning data encrypted under the old default.
 - Private-agent service: image HTTP healthcheck disabled (agent mode serves no HTTP).
 
 Follow-up validation: full app/worker and CLI suites, type checks, lint and builds passed in isolated worktrees. Compose configuration, OpenAPI, diagram and docs-build checks passed. Independent source review found no remaining blockers in the fixes.
@@ -31,7 +31,7 @@ Reviewed, no change needed: registration exchange (single-use, constant-time, TT
 - [ ] Config: review `BETTER_AUTH_SECRET` placeholder handling.
 - [ ] `docker-compose-aisre-lab.yml` uses `:latest` + `admin/admin` (127.0.0.1 only) - pin or document as lab-only.
 - [ ] Complete the credential-vault/query-injection deep dive and remaining connector/Copilot documentation review.
-- [ ] Manual Compose acceptance: start with/without `SECRET_ENCRYPTION_KEY`, register a Private Agent, and rotate its token.
+- [ ] Manual Compose acceptance: start with and without `SECRET_ENCRYPTION_KEY` (both must start), register a Private Agent, and rotate its token.
 
 ## Note
 The working tree also holds unrelated uncommitted queue/location/monitor changes (app `queue.ts`, `location-service.ts`, scheduler; worker k6/monitor/redis; some docs). They are not part of this review; do not mix them into AI SRE commits.
