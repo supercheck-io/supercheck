@@ -1,6 +1,82 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/utils/db';
 import { sql } from 'drizzle-orm';
+import { S3Client, HeadBucketCommand } from '@aws-sdk/client-s3';
+
+type S3Check = { status: 'ok' | 'error'; latencyMs?: number; error?: string };
+
+// The route is public and the probe is signed with real credentials, so share one
+// in-flight probe and reuse the result briefly instead of hitting storage per request.
+const S3_CHECK_TTL_MS = 8000;
+let s3CheckCache: { key: string; at: number; result: S3Check } | null = null;
+let s3CheckInflight: { key: string; promise: Promise<S3Check> } | null = null;
+
+function getS3Check(): Promise<S3Check> {
+  // Keyed by the probe inputs so a config change never serves another config's result.
+  const key = [
+    process.env.S3_ENDPOINT,
+    process.env.S3_TEST_BUCKET_NAME,
+    process.env.AWS_REGION,
+    process.env.AWS_ACCESS_KEY_ID,
+    process.env.AWS_SECRET_ACCESS_KEY,
+  ].join('|');
+  if (s3CheckCache?.key === key && Date.now() - s3CheckCache.at < S3_CHECK_TTL_MS) {
+    // latencyMs belongs to the original probe, so it is not repeated on cache hits.
+    return Promise.resolve({ status: s3CheckCache.result.status, error: s3CheckCache.result.error });
+  }
+  if (s3CheckInflight?.key === key) return s3CheckInflight.promise;
+  const promise = probeS3()
+    .catch((): S3Check => ({ status: 'error', error: 'S3 connection failed' }))
+    .then((result) => {
+      s3CheckCache = { key, at: Date.now(), result };
+      return result;
+    })
+    .finally(() => {
+      if (s3CheckInflight?.promise === promise) s3CheckInflight = null;
+    });
+  s3CheckInflight = { key, promise };
+  return promise;
+}
+
+async function probeS3(): Promise<S3Check> {
+  const start = Date.now();
+  // Authenticated HeadBucket: proves the endpoint, credentials and path-style
+  // addressing work. A bare HEAD / is not portable (MinIO answers 403, RustFS 501).
+  const client = new S3Client({
+    region: process.env.AWS_REGION || 'us-east-1',
+    endpoint: process.env.S3_ENDPOINT,
+    forcePathStyle: true,
+    maxAttempts: 1, // keep latency and error reporting predictable inside the 5s budget
+    credentials: {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID || 'minioadmin',
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || 'minioadmin',
+    },
+  });
+  const bucket = process.env.S3_TEST_BUCKET_NAME || 'playwright-test-artifacts';
+
+  try {
+    await client.send(new HeadBucketCommand({ Bucket: bucket }), {
+      abortSignal: AbortSignal.timeout(5000),
+    });
+  } catch (error) {
+    const err = error as { name?: string; $metadata?: { httpStatusCode?: number; requestId?: string } } | null;
+    // HEAD responses have no body, so the SDK reports any bodiless 404 as NotFound. Only
+    // trust it as "storage answered" when the response carries an S3 request id; the worker
+    // creates buckets at startup, so a missing bucket is otherwise fine.
+    const bucketMissing = (err?.name === 'NotFound' || err?.name === 'NoSuchBucket') && !!err.$metadata?.requestId;
+    if (!bucketMissing) {
+      // Name and status only: raw SDK messages can include the endpoint host.
+      const status = err?.$metadata?.httpStatusCode;
+      return {
+        status: 'error',
+        error: `S3 probe failed: ${err?.name ?? 'UnknownError'}${status ? ` (${status})` : ''}`,
+      };
+    }
+  } finally {
+    client.destroy();
+  }
+  return { status: 'ok', latencyMs: Date.now() - start };
+}
 
 /**
  * Deep health check endpoint
@@ -8,7 +84,7 @@ import { sql } from 'drizzle-orm';
  * Checks connectivity to critical infrastructure:
  * - Database (PostgreSQL)
  * - Redis (via BullMQ queues) - optional, only if REDIS_HOST is configured
- * - S3/MinIO - optional, only if S3_ENDPOINT is configured
+ * - S3-compatible storage - optional, only if S3_ENDPOINT is configured
  * 
  * Returns:
  * - 200 OK: All required services are healthy
@@ -59,33 +135,13 @@ export async function GET() {
     }
   }
 
-  // Check S3/MinIO connectivity (optional - only if configured)
-  const s3Endpoint = process.env.S3_ENDPOINT;
-  if (s3Endpoint) {
+  // Check S3-compatible storage connectivity (optional - only if configured)
+  if (process.env.S3_ENDPOINT) {
     try {
-      const s3Start = Date.now();
-      // Simple HTTP check to S3 endpoint (HEAD request to check availability)
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
-      
-      const response = await fetch(s3Endpoint, {
-        method: 'HEAD',
-        signal: controller.signal,
-      }).catch(() => null);
-      
-      clearTimeout(timeoutId);
-      
-      if (response && (response.ok || response.status === 403 || response.status === 400)) {
-        // 403/400 is expected for unauthenticated requests - endpoint is reachable
-        checks.s3 = { status: 'ok', latencyMs: Date.now() - s3Start };
-      } else {
-        throw new Error('S3 endpoint not reachable');
-      }
-    } catch (error) {
-      checks.s3 = { 
-        status: 'error', 
-        error: error instanceof Error ? error.message : 'S3 connection failed' 
-      };
+      checks.s3 = await getS3Check();
+      if (checks.s3.status === 'error' && overallStatus === 'ok') overallStatus = 'degraded';
+    } catch {
+      checks.s3 = { status: 'error', error: 'S3 connection failed' };
       // S3 failure degrades but doesn't make unhealthy (reports can be retried)
       if (overallStatus === 'ok') overallStatus = 'degraded';
     }
