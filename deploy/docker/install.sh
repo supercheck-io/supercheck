@@ -5,7 +5,7 @@
 #
 #   curl -fsSL https://raw.githubusercontent.com/supercheck-io/supercheck/main/deploy/docker/install.sh -o install.sh
 #   less install.sh                 # read it first
-#   sudo bash install.sh            # guided; asks two questions at most
+#   sudo bash install.sh            # guided; asks only what it cannot detect
 #
 #   sudo bash install.sh --local --yes                                   # evaluation on this host, no prompts
 #   sudo bash install.sh --domain app.example.com --email you@example.com --yes   # public HTTPS, no prompts
@@ -13,6 +13,8 @@
 #
 # This is a thin wrapper around init-secrets.sh and setup-k3s.sh, which remain the source of
 # truth. Safe to re-run: it never regenerates secrets, never overwrites .env and skips finished steps.
+#
+# Exit codes: 0 installed and healthy, 1 failed, 2 bad usage, 3 installed but the health check reports a problem.
 #
 # Network access: Docker apt repository (only if Docker is missing), GitHub (source, k3s, gVisor)
 # and ghcr.io (images). Nothing is sent anywhere else and there is no telemetry.
@@ -24,7 +26,7 @@ SUPERCHECK_VERSION_DEFAULT="1.3.6"
 REPO_URL="https://github.com/supercheck-io/supercheck.git"
 MIN_COMPOSE="2.24.4"
 KUBECONFIG_FILE="/etc/rancher/k3s/supercheck-worker.kubeconfig"
-LOG_FILE="/var/log/supercheck-install.log"
+LOG_FILE="/dev/null"
 TOTAL_STEPS=7
 
 # ─── Options ────────────────────────────────────────────────────────────────
@@ -38,6 +40,8 @@ VERSION="$SUPERCHECK_VERSION_DEFAULT"
 ASSUME_YES=false
 DRY_RUN=false
 PREWARM=true
+DOCKER_GROUP=false
+IGNORE_MINIO=false
 
 usage() {
   cat <<'EOF'
@@ -55,6 +59,8 @@ Behaviour:
   --dir <path>            Where to put the source and .env (default: /opt/supercheck)
   --version <x.y.z>       Release to install (default: bundled with this script)
   --no-prewarm            Skip importing the worker image into the sandbox runtime
+  --docker-group          Add the invoking sudo user to the docker group (root-equivalent access)
+  --ignore-minio          Do not stop for a leftover MinIO volume (start with empty storage)
   --no-color              Disable colour (also honours NO_COLOR)
   --help, -h              Show this help
 
@@ -66,23 +72,36 @@ EOF
 }
 
 NO_COLOR_FLAG=false
+VERSION_SET=false
+need_val() {
+  if [[ $# -lt 2 || -z "$2" || "$2" == -* ]]; then
+    echo "Option $1 needs a value. Run with --help for usage." >&2
+    exit 2
+  fi
+}
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --local) MODE="local" ;;
-    --domain) DOMAIN="${2:-}"; MODE="public"; shift ;;
-    --email) EMAIL="${2:-}"; shift ;;
-    --status-domain) STATUS_DOMAIN="${2:-}"; shift ;;
-    --dir) INSTALL_DIR="${2:-}"; shift ;;
-    --version) VERSION="${2:-}"; shift ;;
+    --domain) need_val "$@"; DOMAIN="$2"; MODE="public"; shift ;;
+    --email) need_val "$@"; EMAIL="$2"; shift ;;
+    --status-domain) need_val "$@"; STATUS_DOMAIN="$2"; shift ;;
+    --dir) need_val "$@"; INSTALL_DIR="$2"; shift ;;
+    --version) need_val "$@"; VERSION="${2#v}"; VERSION_SET=true; shift ;;
     --yes|-y) ASSUME_YES=true ;;
     --dry-run) DRY_RUN=true ;;
     --no-prewarm) PREWARM=false ;;
+    --docker-group) DOCKER_GROUP=true ;;
+    --ignore-minio) IGNORE_MINIO=true ;;
     --no-color) NO_COLOR_FLAG=true ;;
     --help|-h) usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; echo "Run with --help for usage." >&2; exit 2 ;;
   esac
   shift
 done
+if [[ "$VERSION_SET" == true && ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+  echo "'$VERSION' is not a release number like 1.3.6." >&2; exit 2
+fi
+if [[ "$INSTALL_DIR" != /* ]]; then echo "--dir must be an absolute path." >&2; exit 2; fi
 
 # ─── Output ─────────────────────────────────────────────────────────────────
 
@@ -102,6 +121,21 @@ die()    { fail "$1"; shift; for l in "$@"; do printf '    %s\n' "$l" >&2; done;
 header() { printf '\n%s[%s/%s]%s %s%s%s\n' "$CYAN" "$1" "$TOTAL_STEPS" "$RESET" "$BOLD" "$2" "$RESET"; }
 
 SPIN_PID=""
+STEP_PID=""
+
+kill_tree() { # kill_tree <pid>: TERM the process and all of its descendants
+  local pid="$1" child
+  for child in $(pgrep -P "$pid" 2>/dev/null || true); do kill_tree "$child"; done
+  kill -TERM "$pid" 2>/dev/null || true
+}
+stop_step() {
+  if [[ -n "$STEP_PID" ]]; then
+    kill_tree "$STEP_PID"
+    wait "$STEP_PID" 2>/dev/null || true
+    STEP_PID=""
+  fi
+}
+
 spin_start() {
   [[ "$IS_TTY" == true ]] || return 0
   (
@@ -123,13 +157,14 @@ spin_stop() {
 on_exit() {
   local rc=$?
   spin_stop
+  stop_step
   if [[ $rc -ne 0 && "$DRY_RUN" != true && -f "$LOG_FILE" && "${SHOWN_LOG_TAIL:-false}" != true ]]; then
     printf '\n%sInstallation did not finish.%s Re-running is safe and resumes where it stopped.\n' "$RED" "$RESET" >&2
     printf 'Full log: %s\n' "$LOG_FILE" >&2
   fi
 }
 trap on_exit EXIT
-trap 'spin_stop; printf "\n"; fail "Interrupted. Re-run the same command to resume; nothing is left half-written."; exit 130' INT TERM
+trap 'spin_stop; stop_step; printf "\n"; fail "Interrupted. The running step was stopped; re-run the same command to resume."; exit 130' INT TERM
 
 # Run a step body in a subshell with `set -e` honoured, output going to the log.
 # Usage: run_step "label" function [args...]
@@ -143,12 +178,18 @@ run_step() {
   if [[ "$IS_TTY" != true ]]; then printf '  → %s\n' "$label"; fi
   spin_start "$label"
   ( set -Eeuo pipefail; "$@" ) >>"$LOG_FILE" 2>&1 &
-  local pid=$!
-  if wait "$pid"; then
+  STEP_PID=$!
+  if wait "$STEP_PID"; then
+    STEP_PID=""
     spin_stop
     ok "$label ${DIM}($((SECONDS - start))s)${RESET}"
   else
+    STEP_PID=""
     spin_stop
+    if [[ "${SOFT_STEP:-false}" == true ]]; then
+      warn "$label did not complete (continuing; details in $LOG_FILE)"
+      return 0
+    fi
     fail "$label"
     printf '\n    %sLast lines of the log:%s\n' "$DIM" "$RESET" >&2
     tail -n 15 "$LOG_FILE" | sed 's/^/    | /' >&2
@@ -195,12 +236,16 @@ docker_ready() {
 
 port_in_use() { ss -ltnH "sport = :$1" 2>/dev/null | grep -q .; }
 
-is_valid_domain() { [[ "$1" =~ ^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$ ]]; }
-is_valid_email() { [[ "$1" =~ ^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$ ]]; }
+is_valid_domain() { [[ "$1" =~ ^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+([a-zA-Z]{2,}|[xX][nN]--[a-zA-Z0-9-]+)$ ]]; }
+# Conservative on purpose: the value is written to .env, where $ # quotes and spaces would be misread.
+is_valid_email() { [[ "$1" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]]; }
 
 os_field() { sed -n "s/^$1=//p" /etc/os-release 2>/dev/null | head -n1 | tr -d '"'; }
 
-compose_dir() { echo "${INSTALL_DIR}/deploy/docker"; }
+COMPOSE_DIR=""
+compose_dir() { echo "${COMPOSE_DIR:-${INSTALL_DIR}/deploy/docker}"; }
+
+env_get() { sed -n "s/^$1=//p" "$(compose_dir)/.env" 2>/dev/null | tail -n1 | tr -d '"'''; }
 
 dc() { ( cd "$(compose_dir)" && KUBECONFIG_FILE="$KUBECONFIG_FILE" docker compose "$@" ); }
 
@@ -209,47 +254,78 @@ dc() { ( cd "$(compose_dir)" && KUBECONFIG_FILE="$KUBECONFIG_FILE" docker compos
 install_prerequisites() {
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -qq
-  apt-get install -y -qq git bzip2 curl ca-certificates gnupg
+  apt-get install -y -qq git bzip2 curl ca-certificates gnupg iproute2
+  if command -v docker >/dev/null 2>&1 && ! docker info >/dev/null 2>&1; then
+    systemctl enable --now docker 2>/dev/null || true
+    for _ in $(seq 1 30); do docker info >/dev/null 2>&1 && break; sleep 1; done
+  fi
   if ! docker_ready; then
     local id codename
     id="$(os_field ID)"
     codename="$(os_field VERSION_CODENAME)"
     install -m 0755 -d /etc/apt/keyrings
-    curl -fsSL "https://download.docker.com/linux/${id}/gpg" | gpg --dearmor --yes -o /etc/apt/keyrings/docker.gpg
+    curl -fsSL "https://download.docker.com/linux/${id}/gpg" -o /tmp/docker-key.asc
+    # Docker's published apt signing key fingerprint; refuse anything else.
+    if ! gpg --show-keys --with-colons /tmp/docker-key.asc | grep -q '^fpr:::::::::9DC858229FC7DD38854AE2D88D81803C0EBFCD88:'; then
+      rm -f /tmp/docker-key.asc
+      echo "Docker apt key fingerprint did not match the expected value; refusing to install it." >&2
+      exit 1
+    fi
+    gpg --dearmor --yes -o /etc/apt/keyrings/docker.gpg < /tmp/docker-key.asc
+    rm -f /tmp/docker-key.asc
     chmod a+r /etc/apt/keyrings/docker.gpg
     echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/${id} ${codename} stable" \
       >/etc/apt/sources.list.d/docker.list
     apt-get update -qq
-    apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+    if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+      # Docker is already installed and running: only add or upgrade the Compose plugin.
+      apt-get install -y -qq docker-compose-plugin
+    else
+      apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+    fi
     systemctl enable --now docker
     for _ in $(seq 1 30); do docker info >/dev/null 2>&1 && break; sleep 1; done
     docker info >/dev/null
   fi
-  if [[ -n "${SUDO_USER:-}" && "$SUDO_USER" != "root" ]]; then
-    usermod -aG docker "$SUDO_USER" || true
+  if [[ "$DOCKER_GROUP" == true && -n "${SUDO_USER:-}" && "$SUDO_USER" != "root" ]]; then
+    usermod -aG docker "$SUDO_USER"
   fi
 }
 
 fetch_source() {
   mkdir -p "$(dirname "$INSTALL_DIR")"
-  git clone --quiet --depth 1 --branch "v${VERSION}" "$REPO_URL" "$INSTALL_DIR"
+  # Fetch the tag ref explicitly: `git clone --branch` would prefer a same-named branch.
+  mkdir -p "$INSTALL_DIR"
+  git -C "$INSTALL_DIR" init --quiet
+  git -C "$INSTALL_DIR" remote add origin "$REPO_URL"
+  git -C "$INSTALL_DIR" fetch --quiet --depth 1 origin "refs/tags/v${VERSION}:refs/tags/v${VERSION}"
+  git -C "$INSTALL_DIR" checkout --quiet --detach "refs/tags/v${VERSION}"
 }
 
 generate_config() {
   local dir; dir="$(compose_dir)"
   cd "$dir"
-  bash ./init-secrets.sh
-  chmod 600 .env
-  if [[ "$MODE" == "public" ]]; then
-    {
-      echo ""
-      echo "# ─── Set by install.sh ───"
-      echo "COMPOSE_PROFILES=https"
-      echo "APP_DOMAIN=${DOMAIN}"
-      echo "ACME_EMAIL=${EMAIL}"
-      echo "STATUS_PAGE_DOMAIN=${STATUS_DOMAIN:-$DOMAIN}"
-    } >>.env
-  fi
+  # Build the final .env beside the real one and move it into place, so an interruption
+  # can never leave a local-mode .env that a re-run would then keep.
+  ( umask 077
+    cp -p .env .env.keep 2>/dev/null || true
+    rm -f .env
+    bash ./init-secrets.sh
+    cp .env .env.new
+    rm -f .env.keep
+    if [[ "$MODE" == "public" ]]; then
+      {
+        echo ""
+        echo "# ─── Set by install.sh ───"
+        echo "COMPOSE_PROFILES=https"
+        echo "APP_DOMAIN=${DOMAIN}"
+        echo "ACME_EMAIL=${EMAIL}"
+        echo "STATUS_PAGE_DOMAIN=${STATUS_DOMAIN:-$DOMAIN}"
+      } >>.env.new
+    fi
+    chmod 600 .env.new
+    mv .env.new .env
+  )
 }
 
 setup_sandbox() {
@@ -263,10 +339,15 @@ pull_images() {
 
 prewarm_worker_image() {
   local image="$1"
-  if k3s ctr -n k8s.io images ls -q 2>/dev/null | grep -qxF "$image"; then
+  local have
+  have="$(k3s ctr -n k8s.io images ls -q 2>/dev/null || true)"
+  if grep -qxF "$image" <<<"$have"; then
     return 0
   fi
-  docker save "$image" | k3s ctr -n k8s.io images import -
+  local platform
+  platform="linux/$(dpkg --print-architecture)"
+  docker save --platform "$platform" "$image" 2>/dev/null | k3s ctr -n k8s.io images import --all-platforms - \
+    || docker save "$image" | k3s ctr -n k8s.io images import --all-platforms -
 }
 
 start_stack() {
@@ -323,18 +404,31 @@ preflight() {
   elif [[ "$disk_gb" -lt 15 ]]; then warn "${disk_gb} GB free on /; 15 GB or more is recommended."
   else ok "${disk_gb} GB free disk"; fi
 
-  if curl -fsS --max-time 8 -o /dev/null https://ghcr.io/v2/ 2>/dev/null || [[ "$(curl -s --max-time 8 -o /dev/null -w '%{http_code}' https://ghcr.io/v2/ 2>/dev/null)" == "401" ]]; then
-    ok "Can reach ghcr.io and GitHub"
+  if command -v curl >/dev/null 2>&1; then
+    local host unreachable=""
+    for host in github.com ghcr.io get.k3s.io download.docker.com; do
+      curl -s --max-time 8 -o /dev/null "https://${host}" 2>/dev/null || unreachable="${unreachable} ${host}"
+    done
+    if [[ -z "$unreachable" ]]; then ok "Can reach GitHub, ghcr.io, k3s and Docker downloads"
+    else fail "Cannot reach:${unreachable}. Check DNS, proxy and firewall egress."; problems=1; fi
   else
-    fail "Cannot reach ghcr.io. Check DNS, proxy and firewall egress."; problems=1
+    note "curl is not installed yet; network checks run after prerequisites."
   fi
 
   if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
     local vols
     vols="$(docker volume ls -q 2>/dev/null || true)"
-    if grep -Eq '(^|_)minio-data$' <<<"$vols" && ! grep -Eq '(^|_)rustfs-data$' <<<"$vols"; then
-      fail "An existing MinIO storage volume was found. Installing now would start with empty storage."
+    if [[ "$IGNORE_MINIO" != true ]] && grep -Eqx 'supercheck_minio-data' <<<"$vols" && ! grep -Eqx 'supercheck_rustfs-data' <<<"$vols"; then
+      fail "An existing Supercheck MinIO storage volume was found. Installing now would start with empty storage."
       note "Run migrate-minio-to-rustfs.sh from your current checkout first (see 'Upgrading from MinIO' in the docs)."
+      note "Starting fresh on purpose? Re-run with --ignore-minio."
+      problems=1
+    fi
+    if [[ ! -f "$(compose_dir)/.env" ]] && grep -Eqx 'supercheck_(postgres|rustfs)-data' <<<"$vols"; then
+      fail "Data from an earlier Supercheck install exists, but no .env was found to unlock it."
+      note "A new .env would generate new passwords that cannot open the existing database."
+      note "Restore your original .env into $(compose_dir), or remove the old volumes first if you are starting over:"
+      note "  docker volume ls | grep supercheck"
       problems=1
     fi
   fi
@@ -343,11 +437,11 @@ preflight() {
 }
 
 check_ports() {
-  local ports=(3000); [[ "$MODE" == "public" ]] && ports=(80 443 3000)
+  local ports=(3000 9000); [[ "$MODE" == "public" ]] && ports=(80 443 3000 9000)
   for p in "${ports[@]}"; do
     if port_in_use "$p"; then
-      # A re-run on an existing install legitimately finds our own stack listening.
-      if [[ -f "$(compose_dir)/.env" ]]; then warn "Port $p is already in use (assuming the existing Supercheck stack)."
+      # A re-run on a running install legitimately finds our own stack listening.
+      if docker ps --format '{{.Names}} {{.Ports}}' 2>/dev/null | grep -Eq "supercheck.*:${p}->"; then note "Port $p is held by the existing Supercheck stack."
       else fail "Port $p is already in use by another process."; note "Find it with: ss -ltnp 'sport = :$p'"; exit 1; fi
     fi
   done
@@ -355,181 +449,208 @@ check_ports() {
 
 # ─── Main ───────────────────────────────────────────────────────────────────
 
-printf '\n%s  Supercheck self-hosted installer%s\n' "$BOLD" "$RESET"
-printf '%s  Version %s · about 10 minutes, mostly image downloads%s\n' "$DIM" "$VERSION" "$RESET"
-[[ "$DRY_RUN" == true ]] && printf '%s  Dry run: read-only checks and a plan, nothing is changed.%s\n' "$YELLOW" "$RESET"
+main() {
+  printf '\n%s  Supercheck self-hosted installer%s\n' "$BOLD" "$RESET"
+  printf '%s  Version %s · about 10 minutes, mostly image downloads%s\n' "$DIM" "$VERSION" "$RESET"
+  [[ "$DRY_RUN" == true ]] && printf '%s  Dry run: read-only checks and a plan, nothing is changed.%s\n' "$YELLOW" "$RESET"
 
-# Use the checkout this script lives in, if any; otherwise install into --dir.
-SELF_DIR=""
-if [[ -n "${BASH_SOURCE[0]:-}" && -f "${BASH_SOURCE[0]}" ]]; then SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"; fi
-if [[ -n "$SELF_DIR" && -f "$SELF_DIR/docker-compose.yml" && -f "$SELF_DIR/init-secrets.sh" ]]; then
-  INSTALL_DIR="$(cd "$SELF_DIR/../.." && pwd)"
-fi
-
-if [[ "$DRY_RUN" != true ]]; then
-  mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null || true
-  : >>"$LOG_FILE" 2>/dev/null || { LOG_FILE="/tmp/supercheck-install.log"; : >>"$LOG_FILE"; }
-  chmod 600 "$LOG_FILE" 2>/dev/null || true
-  printf '\n=== install.sh %s (version %s) ===\n' "$(date -u +%FT%TZ)" "$VERSION" >>"$LOG_FILE"
-fi
-
-header 1 "Checking this server"
-preflight
-
-header 2 "Choosing your setup"
-if [[ -z "$MODE" ]]; then
-  if [[ "$CAN_PROMPT" == true ]]; then
-    printf '\n    1) Try it on this server   %s(HTTP on localhost, fastest)%s\n' "$DIM" "$RESET" >/dev/tty
-    printf '    2) Public server           %s(HTTPS with your domain)%s\n\n' "$DIM" "$RESET" >/dev/tty
-    choice="$(ask "Choose" "1")"
-    [[ "$choice" == "2" ]] && MODE="public" || MODE="local"
+  # Use the checkout this script lives in, if any; otherwise install into --dir.
+  SELF_DIR=""
+  if [[ -n "${BASH_SOURCE[0]:-}" && -f "${BASH_SOURCE[0]}" ]]; then SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"; fi
+  if [[ -n "$SELF_DIR" && -f "$SELF_DIR/docker-compose.yml" && -f "$SELF_DIR/init-secrets.sh" && -f "$SELF_DIR/setup-k3s.sh" ]]; then
+    COMPOSE_DIR="$SELF_DIR"
+    INSTALL_DIR="$SELF_DIR"
+    USING_THIS_CHECKOUT=true
   else
-    die "No setup chosen and no terminal to ask on." "Pass --local, or --domain <host> --email <address>."
+    USING_THIS_CHECKOUT=false
   fi
-fi
 
-if [[ "$MODE" == "public" ]]; then
-  # With a terminal, re-ask on a typo instead of aborting; flag values are validated strictly below.
-  if [[ "$CAN_PROMPT" == true ]]; then
-    for _ in 1 2 3; do
-      [[ -n "$DOMAIN" ]] && is_valid_domain "$DOMAIN" && break
-      [[ -n "$DOMAIN" ]] && fail "'$DOMAIN' is not a valid hostname (use a name like app.example.com, not an IP or URL)."
-      DOMAIN="$(ask "Domain for Supercheck (for example app.example.com)")"
+  if [[ "$DRY_RUN" != true && "$EUID" -eq 0 ]]; then
+    LOG_DIR="/var/log/supercheck"
+    [[ -L "$LOG_DIR" ]] && die "$LOG_DIR is a symlink; refusing to write the install log there."
+    ( umask 077; install -d -m 700 "$LOG_DIR" )
+    LOG_FILE="${LOG_DIR}/install.log"
+    [[ -L "$LOG_FILE" ]] && die "$LOG_FILE is a symlink; refusing to write the install log there."
+    ( umask 077; : >>"$LOG_FILE" )
+    printf '\n=== install.sh %s (version %s) ===\n' "$(date -u +%FT%TZ)" "$VERSION" >>"$LOG_FILE"
+  else
+    LOG_FILE="/dev/null"
+  fi
+
+  if [[ "$USING_THIS_CHECKOUT" == true && ( "$VERSION_SET" == true || "$INSTALL_DIR" != "$SELF_DIR" ) ]]; then
+    warn "Running from an existing checkout (${SELF_DIR}); --version and --dir are ignored and its images and files are used as they are."
+  fi
+
+  header 1 "Checking this server"
+  preflight
+
+  header 2 "Choosing your setup"
+  if [[ -z "$MODE" ]]; then
+    if [[ "$CAN_PROMPT" == true ]]; then
+      printf '\n    1) Try it on this server   %s(HTTP on localhost, fastest)%s\n' "$DIM" "$RESET" >/dev/tty
+      printf '    2) Public server           %s(HTTPS with your domain)%s\n\n' "$DIM" "$RESET" >/dev/tty
+      choice="$(ask "Choose" "1")"
+      [[ "$choice" == "2" ]] && MODE="public" || MODE="local"
+    else
+      die "No setup chosen and no terminal to ask on." "Pass --local, or --domain <host> --email <address>."
+    fi
+  fi
+
+  if [[ "$MODE" == "public" ]]; then
+    # With a terminal, re-ask on a typo instead of aborting; flag values are validated strictly below.
+    if [[ "$CAN_PROMPT" == true ]]; then
+      for _ in 1 2 3; do
+        [[ -n "$DOMAIN" ]] && is_valid_domain "$DOMAIN" && break
+        [[ -n "$DOMAIN" ]] && fail "'$DOMAIN' is not a valid hostname (use a name like app.example.com, not an IP or URL)."
+        DOMAIN="$(ask "Domain for Supercheck (for example app.example.com)")"
+      done
+      for _ in 1 2 3; do
+        [[ -n "$EMAIL" ]] && is_valid_email "$EMAIL" && break
+        [[ -n "$EMAIL" ]] && fail "'$EMAIL' is not a valid email address."
+        EMAIL="$(ask "Email for Let's Encrypt notices")"
+      done
+    fi
+    [[ -n "$DOMAIN" ]] || die "A domain is required for a public install." "Pass --domain app.example.com"
+    is_valid_domain "$DOMAIN" || die "'$DOMAIN' is not a valid hostname." "Use a name like app.example.com, not an IP address or URL."
+    [[ -n "$EMAIL" ]] || die "An email address is required for Let's Encrypt." "Pass --email you@example.com"
+    is_valid_email "$EMAIL" || die "'$EMAIL' is not a valid email address."
+    if [[ -n "$STATUS_DOMAIN" ]]; then is_valid_domain "$STATUS_DOMAIN" || die "'$STATUS_DOMAIN' is not a valid hostname."; fi
+    if getent hosts "$DOMAIN" >/dev/null 2>&1; then
+      ok "$DOMAIN resolves in DNS"
+    else
+      warn "$DOMAIN does not resolve yet. Point an A record at this server before certificates can be issued."
+      if [[ "$CAN_PROMPT" == true ]]; then confirm "Continue anyway?" || die "Stopped. Create the DNS record, then re-run."; fi
+    fi
+    ok "Public HTTPS install for ${BOLD}${DOMAIN}${RESET}"
+    note "Status pages use ${STATUS_DOMAIN:-$DOMAIN} subdomains, so also add a wildcard record (*.${STATUS_DOMAIN:-$DOMAIN})."
+  else
+    ok "Local evaluation on this server"
+  fi
+
+  check_ports
+
+  if [[ -f "$(compose_dir)/.env" ]]; then
+    note "An existing .env was found and will be kept; setup choices above are not applied to it."
+  fi
+
+  if [[ "$CAN_PROMPT" == true && "$DRY_RUN" != true ]]; then
+    printf '\n  This will install Docker (if missing), k3s with the gVisor sandbox, and Supercheck %s.\n' "$VERSION"
+    confirm "Continue?" || die "Cancelled. Nothing was changed."
+  fi
+
+  header 3 "Installing prerequisites"
+  if [[ "$DRY_RUN" == true ]]; then
+    if docker_ready; then note "Docker and Compose >= $MIN_COMPOSE are present"; else note "would: install Docker, Compose, git and bzip2"; fi
+  elif docker_ready && command -v git >/dev/null 2>&1 && command -v bzip2 >/dev/null 2>&1 && command -v curl >/dev/null 2>&1; then
+    ok "Docker $(docker version --format '{{.Server.Version}}' 2>/dev/null), Compose $(compose_version), git, bzip2"
+  else
+    run_step "Installing Docker, Compose, git and bzip2" install_prerequisites
+  fi
+
+  header 4 "Preparing configuration"
+  if [[ -f "$(compose_dir)/init-secrets.sh" ]]; then
+    ok "Source in $(compose_dir)"
+  elif [[ -e "$INSTALL_DIR" && -n "$(ls -A "$INSTALL_DIR" 2>/dev/null)" ]]; then
+    die "${INSTALL_DIR} exists but is not a Supercheck checkout." "Choose another location with --dir, or remove it."
+  else
+    if [[ "$DRY_RUN" != true ]] && ! git ls-remote --exit-code --tags "$REPO_URL" "refs/tags/v${VERSION}" >/dev/null 2>&1; then
+      die "Release v${VERSION} was not found (or GitHub is unreachable)." "Releases: https://github.com/supercheck-io/supercheck/releases" "Omit --version to install the version bundled with this installer."
+    fi
+    run_step "Downloading Supercheck ${VERSION}" fetch_source
+  fi
+  if [[ -f "$(compose_dir)/.env" ]]; then
+    ok "Keeping existing .env (secrets are never regenerated)"
+  else
+    run_step "Generating secrets and configuration" generate_config
+  fi
+
+  header 5 "Setting up the isolated test sandbox"
+  # setup-k3s.sh is idempotent: it skips what is installed and re-runs its own gVisor
+  # verification, so a previous run that failed verification is not silently accepted.
+  run_step "Installing and verifying k3s and gVisor (a few minutes the first time)" setup_sandbox
+
+  header 6 "Downloading images"
+  if [[ "$DRY_RUN" == true ]]; then
+    note "would: pull app, worker and storage images, then import the worker image into the sandbox"
+  else
+    if [[ "$VERSION_SET" == true && "$USING_THIS_CHECKOUT" != true ]]; then export SUPERCHECK_VERSION="$VERSION"; fi
+    run_step "Pulling Supercheck images" pull_images
+    compose_cfg="$(dc config 2>/dev/null || true)"
+    worker_image="$(awk '/^ *WORKER_IMAGE:/ {print $2; exit}' <<<"$compose_cfg")"
+    last_seg="${worker_image##*/}"
+    if [[ "$VERSION_SET" == true && "$USING_THIS_CHECKOUT" != true ]]; then export SUPERCHECK_VERSION="$VERSION"; fi
+    if [[ "$PREWARM" != true ]]; then
+      note "Skipping image warm-up (--no-prewarm); the first test run will download it and may time out."
+    elif [[ -z "$worker_image" ]]; then
+      warn "Could not determine the worker image; skipping warm-up. The first test run may time out."
+    elif [[ "$last_seg" != *:* || "$last_seg" == *:latest ]]; then
+      note "Worker image uses a mutable tag, so it is pulled on every run; skipping warm-up."
+    else
+      SOFT_STEP=true run_step "Preparing the test runtime (3 GB, one time)" prewarm_worker_image "$worker_image"
+      ctr_images="$(k3s ctr -n k8s.io images ls -q 2>/dev/null || true)"
+      if ! grep -qxF "$worker_image" <<<"$ctr_images"; then
+        warn "The test runtime is not prepared; the first test run will download it and may time out. Re-run the installer to retry."
+      fi
+    fi
+  fi
+
+  header 7 "Starting Supercheck"
+  run_step "Starting services and waiting until healthy" start_stack
+  HEALTHY=false
+  if [[ "$DRY_RUN" != true ]]; then
+    health=""
+    for _ in $(seq 1 30); do
+      health="$(curl -sS --max-time 5 http://127.0.0.1:3000/api/health 2>/dev/null || true)"
+      [[ "$health" == '{"status":"ok"'* ]] && break
+      sleep 2
     done
-    for _ in 1 2 3; do
-      [[ -n "$EMAIL" ]] && is_valid_email "$EMAIL" && break
-      [[ -n "$EMAIL" ]] && fail "'$EMAIL' is not a valid email address."
-      EMAIL="$(ask "Email for Let's Encrypt notices")"
-    done
+    if [[ "$health" == '{"status":"ok"'* ]]; then
+      ok "Health check passed"
+      HEALTHY=true
+    elif [[ -n "$health" ]]; then
+      warn "Running, but the health check reports a problem:"
+      note "$health"
+      note "Inspect with: cd $(compose_dir) && docker compose logs --tail=100 app worker"
+    else
+      die "The app did not answer on http://127.0.0.1:3000." "Inspect with: cd $(compose_dir) && docker compose logs --tail=100 app worker"
+    fi
   fi
-  [[ -n "$DOMAIN" ]] || die "A domain is required for a public install." "Pass --domain app.example.com"
-  is_valid_domain "$DOMAIN" || die "'$DOMAIN' is not a valid hostname." "Use a name like app.example.com, not an IP address or URL."
-  [[ -n "$EMAIL" ]] || die "An email address is required for Let's Encrypt." "Pass --email you@example.com"
-  is_valid_email "$EMAIL" || die "'$EMAIL' is not a valid email address."
-  if [[ -n "$STATUS_DOMAIN" ]]; then is_valid_domain "$STATUS_DOMAIN" || die "'$STATUS_DOMAIN' is not a valid hostname."; fi
-  if getent hosts "$DOMAIN" >/dev/null 2>&1; then
-    ok "$DOMAIN resolves in DNS"
+
+  # ─── Done ───────────────────────────────────────────────────────────────────
+
+  if [[ "$DRY_RUN" == true ]]; then
+    printf '\n%sDry run finished. Nothing was changed.%s Re-run without --dry-run to install.\n\n' "$GREEN" "$RESET"
+    exit 0
+  fi
+
+  if [[ "$MODE" == "public" ]]; then URL="https://${DOMAIN}"; else URL="http://localhost:3000"; fi
+  if [[ "$HEALTHY" == true ]]; then
+    printf '\n%s  Supercheck is ready.%s %s(%ss)%s\n\n' "$GREEN$BOLD" "$RESET" "$DIM" "$SECONDS" "$RESET"
   else
-    warn "$DOMAIN does not resolve yet. Point an A record at this server before certificates can be issued."
-    if [[ "$CAN_PROMPT" == true ]]; then confirm "Continue anyway?" || die "Stopped. Create the DNS record, then re-run."; fi
+    printf '\n%s  Supercheck is running, but the health check reported a problem (see above).%s %s(%ss)%s\n\n' "$YELLOW$BOLD" "$RESET" "$DIM" "$SECONDS" "$RESET"
   fi
-  ok "Public HTTPS install for ${BOLD}${DOMAIN}${RESET}"
-  note "Status pages use ${STATUS_DOMAIN:-$DOMAIN} subdomains, so also add a wildcard record (*.${STATUS_DOMAIN:-$DOMAIN})."
-else
-  ok "Local evaluation on this server"
-fi
-
-check_ports
-
-if [[ -f "$(compose_dir)/.env" ]]; then
-  note "An existing .env was found and will be kept; setup choices above are not applied to it."
-fi
-
-if [[ "$CAN_PROMPT" == true && "$DRY_RUN" != true ]]; then
-  printf '\n  This will install Docker (if missing), k3s with the gVisor sandbox, and Supercheck %s.\n' "$VERSION"
-  confirm "Continue?" || die "Cancelled. Nothing was changed."
-fi
-
-header 3 "Installing prerequisites"
-if [[ "$DRY_RUN" == true ]]; then
-  if docker_ready; then note "Docker and Compose >= $MIN_COMPOSE are present"; else note "would: install Docker, Compose, git and bzip2"; fi
-elif docker_ready && command -v git >/dev/null 2>&1 && command -v bzip2 >/dev/null 2>&1 && command -v curl >/dev/null 2>&1; then
-  ok "Docker $(docker version --format '{{.Server.Version}}' 2>/dev/null), Compose $(compose_version), git, bzip2"
-else
-  run_step "Installing Docker, Compose, git and bzip2" install_prerequisites
-fi
-
-header 4 "Preparing configuration"
-if [[ -f "$(compose_dir)/init-secrets.sh" ]]; then
-  ok "Source in ${INSTALL_DIR}"
-elif [[ -e "$INSTALL_DIR" && -n "$(ls -A "$INSTALL_DIR" 2>/dev/null)" ]]; then
-  die "${INSTALL_DIR} exists but is not a Supercheck checkout." "Choose another location with --dir, or remove it."
-else
-  if [[ "$DRY_RUN" != true ]] && ! git ls-remote --exit-code --tags "$REPO_URL" "refs/tags/v${VERSION}" >/dev/null 2>&1; then
-    die "Release v${VERSION} was not found (or GitHub is unreachable)." "Releases: https://github.com/supercheck-io/supercheck/releases" "Omit --version to install the version bundled with this installer."
-  fi
-  run_step "Downloading Supercheck ${VERSION}" fetch_source
-fi
-if [[ -f "$(compose_dir)/.env" ]]; then
-  ok "Keeping existing .env (secrets are never regenerated)"
-else
-  run_step "Generating secrets and configuration" generate_config
-fi
-
-header 5 "Setting up the isolated test sandbox"
-if [[ "$DRY_RUN" != true ]] && command -v k3s >/dev/null 2>&1 && command -v runsc >/dev/null 2>&1 \
-  && [[ -x /usr/local/bin/gvisor-bin/gvisor_sentry ]] && [[ -f "$KUBECONFIG_FILE" ]]; then
-  ok "k3s and gVisor already installed"
-else
-  run_step "Installing k3s and gVisor (a few minutes)" setup_sandbox
-fi
-
-header 6 "Downloading images"
-if [[ "$DRY_RUN" == true ]]; then
-  note "would: pull app, worker and storage images, then import the worker image into the sandbox"
-else
-  run_step "Pulling Supercheck images" pull_images
-  worker_image="$(dc config 2>/dev/null | awk '/^ *WORKER_IMAGE:/ {print $2; exit}')"
-  last_seg="${worker_image##*/}"
-  if [[ "$PREWARM" != true ]]; then
-    note "Skipping image warm-up (--no-prewarm); the first test run will download it and may time out."
-  elif [[ -z "$worker_image" ]]; then
-    warn "Could not determine the worker image; skipping warm-up. The first test run may time out."
-  elif [[ "$last_seg" != *:* || "$last_seg" == *:latest ]]; then
-    note "Worker image uses a mutable tag, so it is pulled on every run; skipping warm-up."
+  printf '  Open        %s%s%s\n' "$BOLD" "$URL" "$RESET"
+  if [[ "$MODE" == "local" ]]; then
+    note "Port 3000 listens on this server only. From your laptop: ssh -L 3000:localhost:3000 <user>@<this-server>"
   else
-    run_step "Preparing the test runtime (3 GB, one time)" prewarm_worker_image "$worker_image"
+    note "The certificate is issued on first visit and can take up to a minute. If the browser warns, wait and reload."
   fi
-fi
-
-header 7 "Starting Supercheck"
-run_step "Starting services and waiting until healthy" start_stack
-HEALTHY=false
-if [[ "$DRY_RUN" != true ]]; then
-  health=""
-  for _ in $(seq 1 30); do
-    health="$(curl -fsS --max-time 5 http://127.0.0.1:3000/api/health 2>/dev/null || true)"
-    [[ "$health" == '{"status":"ok"'* ]] && break
-    sleep 2
-  done
-  if [[ "$health" == '{"status":"ok"'* ]]; then
-    ok "Health check passed"
-    HEALTHY=true
-  elif [[ -n "$health" ]]; then
-    warn "Running, but the health check reports a problem:"
-    note "$health"
-    note "Inspect with: cd $(compose_dir) && docker compose logs --tail=100 app worker"
-  else
-    die "The app did not answer on http://127.0.0.1:3000." "Inspect with: cd $(compose_dir) && docker compose logs --tail=100 app worker"
+  printf '  Next        create your account, then add a test and run it\n'
+  if [[ "$MODE" == "public" ]]; then
+    warn "Sign-up is open to anyone who can reach ${URL}. Create your account first, then set SIGNUP_ENABLED=false in .env"
+    note "(or restrict it with ALLOWED_EMAIL_DOMAINS) and run: cd $(compose_dir) && docker compose up -d --force-recreate app"
   fi
-fi
+  printf '  Config      %s/.env  %s(keep a private backup; it holds your secrets)%s\n' "$(compose_dir)" "$DIM" "$RESET"
+  printf '  Logs        cd %s && docker compose logs -f app worker\n' "$(compose_dir)"
+  printf '  Stop/start  docker compose stop   /   KUBECONFIG_FILE=%s docker compose up -d\n' "$KUBECONFIG_FILE"
+  printf '  Install log %s\n' "$LOG_FILE"
+  printf '  Docs        https://supercheck.io/docs/app/deployment/self-hosted\n'
+  if [[ "$DOCKER_GROUP" == true && -n "${SUDO_USER:-}" && "$SUDO_USER" != "root" ]]; then
+    note "${SUDO_USER} was added to the docker group (root-equivalent); log out and back in to use docker without sudo."
+  fi
+  printf '\n'
+  [[ "$HEALTHY" == true ]] || exit 3
+}
 
-# ─── Done ───────────────────────────────────────────────────────────────────
-
-if [[ "$DRY_RUN" == true ]]; then
-  printf '\n%sDry run finished. Nothing was changed.%s Re-run without --dry-run to install.\n\n' "$GREEN" "$RESET"
-  exit 0
-fi
-
-if [[ "$MODE" == "public" ]]; then URL="https://${DOMAIN}"; else URL="http://localhost:3000"; fi
-if [[ "$HEALTHY" == true ]]; then
-  printf '\n%s  Supercheck is ready.%s %s(%ss)%s\n\n' "$GREEN$BOLD" "$RESET" "$DIM" "$SECONDS" "$RESET"
-else
-  printf '\n%s  Supercheck is running, but the health check reported a problem (see above).%s %s(%ss)%s\n\n' "$YELLOW$BOLD" "$RESET" "$DIM" "$SECONDS" "$RESET"
-fi
-printf '  Open        %s%s%s\n' "$BOLD" "$URL" "$RESET"
-if [[ "$MODE" == "local" ]]; then
-  note "Port 3000 listens on this server only. From your laptop: ssh -L 3000:localhost:3000 <user>@<this-server>"
-else
-  note "The certificate is issued on first visit and can take up to a minute. If the browser warns, wait and reload."
-fi
-printf '  Next        create your account, then add a test and run it\n'
-printf '  Config      %s/.env  %s(keep a private backup; it holds your secrets)%s\n' "$(compose_dir)" "$DIM" "$RESET"
-printf '  Logs        cd %s && docker compose logs -f app worker\n' "$(compose_dir)"
-printf '  Stop/start  docker compose stop   /   KUBECONFIG_FILE=%s docker compose up -d\n' "$KUBECONFIG_FILE"
-printf '  Install log %s\n' "$LOG_FILE"
-printf '  Docs        https://supercheck.io/docs/app/deployment/self-hosted\n'
-if [[ -n "${SUDO_USER:-}" && "$SUDO_USER" != "root" ]]; then
-  note "${SUDO_USER} was added to the docker group; log out and back in to use docker without sudo."
-fi
-printf '\n'
+# Everything above only defines functions, so a truncated download cannot run a partial install.
+main "$@"

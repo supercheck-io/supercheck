@@ -12,7 +12,7 @@ sudo bash install.sh --local --yes                                              
 sudo bash install.sh --domain app.example.com --email admin@example.com --yes   # public HTTPS
 ```
 
-Use `--dry-run` first to see the plan without changing the host. It exits non-zero on failure and prints the log path (`/var/log/supercheck-install.log`). Re-running is safe: it keeps `.env` and skips finished steps. Report the printed URL and whether the health check passed. Use the manual runbook below only when the installer does not support the host.
+Use `--dry-run` first to see the plan without changing the host. It exits 0 when installed and healthy, 1 on failure (log: `/var/log/supercheck/install.log`), 2 on bad usage and 3 when installed but the health check reports a problem. Re-running is safe: it keeps `.env` and skips finished steps. Report the printed URL and whether the health check passed. Use the manual runbook below only when the installer does not support the host.
 
 ## Inputs
 

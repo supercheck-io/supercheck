@@ -71,8 +71,8 @@ for file in "${files[@]}"; do
 done
 
 echo "==> install.sh default version matches docker-compose.yml"
-compose_ver="$(grep -o 'supercheck/app:[$]{SUPERCHECK_VERSION:-[^}]*}' docker-compose.yml | head -n1 | sed 's/.*:-//; s/}$//')"
-installer_ver="$(sed -n 's/^SUPERCHECK_VERSION_DEFAULT="\(.*\)"/\1/p' install.sh | head -n1)"
+compose_ver="$(grep -o 'supercheck/app:[$]{SUPERCHECK_VERSION:-[^}]*}' docker-compose.yml | head -n1 | sed 's/.*:-//; s/}$//' || true)"
+installer_ver="$(sed -n 's/^SUPERCHECK_VERSION_DEFAULT="\(.*\)"/\1/p' install.sh | head -n1 || true)"
 if [ -n "$compose_ver" ] && [ "$compose_ver" = "$installer_ver" ]; then
   echo "  ok   $installer_ver"
 else
