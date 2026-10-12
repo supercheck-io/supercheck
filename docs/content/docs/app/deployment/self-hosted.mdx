@@ -55,20 +55,55 @@ Use one Compose file for the bundled stack. HTTP is available on the host for ev
 
 ## Docker Compose
 
-Use Ubuntu 22.04+ or Debian 12+ with Docker Engine and Compose **v2.24.4 or newer**. The execution sandbox requires Linux; macOS, Windows, and WSL2 are not supported. Allow at least 2 vCPU and 4 GB RAM.
+Use Ubuntu 22.04+ or Debian 12+ with Docker Engine and Compose **v2.24.4 or newer**. Allow at least 2 vCPU and 4 GB RAM.
+
+<Callout type="warn">
+**Linux only** — the execution sandbox needs the Linux kernel, so this Compose deployment does not work on macOS, Windows, WSL2, or Docker Desktop. `setup-k3s.sh` stops with a clear error on those hosts. Use a Linux server (or a Linux VM) for the steps below.
+</Callout>
 
 Installing with an agent? Use the [installation runbook](https://raw.githubusercontent.com/supercheck-io/supercheck/main/deploy/docker/INSTALL.md).
+
+### 0. Install Prerequisites
+
+Minimal Ubuntu and Debian images do not include Docker, Git, or `bzip2`. Install them first (skip whatever is already present):
+
+```bash
+sudo apt-get update
+sudo apt-get install -y git bzip2 ca-certificates curl gnupg
+
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL "https://download.docker.com/linux/$(. /etc/os-release && echo "$ID")/gpg" \
+  | sudo gpg --dearmor --yes -o /etc/apt/keyrings/docker.gpg
+sudo chmod a+r /etc/apt/keyrings/docker.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+https://download.docker.com/linux/$(. /etc/os-release && echo "$ID") \
+$(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
+  | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+sudo apt-get update
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io \
+  docker-buildx-plugin docker-compose-plugin
+
+# The Compose commands below run without sudo, so the user needs docker access.
+sudo usermod -aG docker "$USER"   # takes effect in a new shell (or run: newgrp docker)
+```
+
+Group membership only applies to new shells: log out and back in (or run `newgrp docker`) and confirm `docker ps` works without `sudo` before continuing.
+
+Docker group membership is root-equivalent on the host, so add only users you trust.
+
+`bzip2` is required by `setup-k3s.sh`, which extracts the gVisor release archive: current Ubuntu cloud images ship `tar`, `gzip`, and `xz` but not `bzip2`.
 
 ### 1. Prepare the Host
 
 ```bash
-git clone https://github.com/supercheck-io/supercheck.git
+git clone --depth 1 https://github.com/supercheck-io/supercheck.git
 cd supercheck/deploy/docker
 ./init-secrets.sh
 sudo bash setup-k3s.sh
 ```
 
-The scripts generate secrets and prepare the isolated execution environment. Preserve an existing `.env` and its secrets when updating or retrying.
+The scripts generate secrets and prepare the isolated execution environment. Preserve an existing `.env` and its secrets when updating or retrying. `--depth 1` is enough because updates pull published images rather than newer git history.
 
 The generated `SECRET_ENCRYPTION_KEY` encrypts variables and Private Agent connector credentials. Keep the same value for the app and every worker; changing it makes existing encrypted values unreadable unless they are re-encrypted first.
 
