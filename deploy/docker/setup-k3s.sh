@@ -71,6 +71,18 @@ if ! command -v sha512sum &>/dev/null; then
   exit 1
 fi
 
+# The gVisor release archive is .tar.bz2 and "tar -xjf" shells out to bzip2.
+# Minimal Ubuntu/Debian images (including every current Ubuntu cloud image) ship
+# tar, gzip and xz but not bzip2, so this fails with a misleading
+# "tar (child): bzip2: Cannot exec: No such file or directory" after the
+# download and checksum have already succeeded.
+if ! command -v bzip2 &>/dev/null; then
+  error "bzip2 is required to extract the gVisor release archive"
+  error "Install it first, then re-run this script:"
+  error "  apt-get install -y bzip2"
+  exit 1
+fi
+
 HOST_IP=$(ip route get 1.1.1.1 2>/dev/null | awk '{for (i = 1; i <= NF; i++) if ($i == "src") {print $(i+1); exit}}')
 if [[ -z "$HOST_IP" ]]; then
   error "Failed to detect host IP address for Kubernetes API access"
@@ -85,7 +97,10 @@ info "Starting Supercheck K3s + gVisor setup..."
 
 # Pin K3s to a vetted version and use the official gVisor release channel format.
 K3S_VERSION="v1.32.10+k3s1"
-GVISOR_RELEASE="${GVISOR_RELEASE:-latest}"
+# gVisor is pinned for the same reason as K3s: the release archive's contents are
+# part of the contract (runsc plus the gvisor-bin/ sidecar tree), and an upstream
+# packaging change has already broken installs twice. Override with GVISOR_RELEASE.
+GVISOR_RELEASE="${GVISOR_RELEASE:-20261005.0}"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
@@ -152,6 +167,19 @@ else
 
   install -m 0755 "${TMP_DIR}/runsc" /usr/local/bin/runsc
   install -m 0755 "${TMP_DIR}/containerd-shim-runsc-v1" /usr/local/bin/containerd-shim-runsc-v1
+
+  # Current releases ship the sandbox "sentry" sidecar in a gvisor-bin/
+  # directory inside the same archive. runsc resolves it relative to its own
+  # binary and defaults to --sidecar-usage-policy=strict, so the whole directory
+  # has to be installed next to runsc; copying only the two binaries above
+  # leaves every sandbox pod stuck on
+  #   sidecar "gvisor_sentry" not usable
+  #   (stat /usr/local/bin/gvisor-bin/gvisor_sentry: no such file or directory).
+  # Guarded so older archives without gvisor-bin/ keep working.
+  if [[ -d "${TMP_DIR}/gvisor-bin" ]]; then
+    install -d -m 0755 /usr/local/bin/gvisor-bin
+    install -m 0755 "${TMP_DIR}"/gvisor-bin/* /usr/local/bin/gvisor-bin/
+  fi
 
   log "gVisor installed: $(runsc --version 2>&1 | head -1)"
 fi

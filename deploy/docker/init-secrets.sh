@@ -30,6 +30,17 @@ if [ -f "$ENV_FILE" ] && [ "$1" != "--force" ]; then
     exit 0
 fi
 
+# The execution sandbox is Linux-only. Warn here, before secrets are generated,
+# so a user on macOS/Windows finds out now rather than after setup-k3s.sh fails.
+# Generating .env on a different machine and copying it to the server is fine.
+if [ "$(uname -s)" != "Linux" ]; then
+    echo -e "${YELLOW}⚠️  This host is $(uname -s), not Linux.${NC}"
+    echo -e "   Supercheck's execution sandbox requires Linux (Ubuntu 22.04+, Debian 12+)."
+    echo -e "   setup-k3s.sh will refuse to run here."
+    echo -e "   Secrets can still be generated, but continue on a Linux server."
+    echo ""
+fi
+
 # Generate secure random secrets
 generate_secret() {
     openssl rand -hex "$1" 2>/dev/null || head -c "$1" /dev/urandom | xxd -p | head -c $(($1 * 2))
@@ -223,7 +234,9 @@ echo -e "   2. Install local K3s + gVisor:"
 echo -e "      ${BLUE}sudo bash setup-k3s.sh${NC}"
 echo ""
 echo -e "   3. Start Supercheck:"
-echo -e "      ${BLUE}KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig docker compose up -d${NC}"
+echo -e "      ${BLUE}KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig docker compose up -d --wait --wait-timeout 300${NC}"
+echo -e "      Then check health:"
+echo -e "      ${BLUE}curl --fail --silent --show-error http://localhost:3000/api/health${NC}"
 echo ""
 echo -e "   4. Access at:"
 echo -e "      ${BLUE}http://localhost:3000${NC}"
