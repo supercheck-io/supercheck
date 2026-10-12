@@ -102,6 +102,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (
+      typeof name !== "string" ||
+      name.length > 255 ||
+      (slug != null && (typeof slug !== "string" || slug.length > 100)) ||
+      (description != null &&
+        (typeof description !== "string" || description.length > 2000))
+    ) {
+      return NextResponse.json(
+        { error: "Invalid project name, slug or description" },
+        { status: 400 }
+      );
+    }
+
     let targetOrgId = organizationId;
     if (!targetOrgId) {
       if (!authOrgId) {

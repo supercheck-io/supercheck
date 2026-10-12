@@ -185,3 +185,25 @@ describe("diagnostic-query", () => {
     ).toThrow("valid date/time");
   });
 });
+
+describe("diagnostic query pattern safety", () => {
+  const schemaWith = (pattern: string) => ({
+    host: { type: "string", pattern },
+  });
+
+  it.each(["(a+)+$", "(a*)*", "(x+x+)+y", "([a-z]+)*"])(
+    "rejects nested-quantifier pattern %s",
+    (pattern) => {
+      expect(() => validateDiagnosticQueryParameterSchema(schemaWith(pattern))).toThrow(
+        /too complex|invalid pattern/
+      );
+    }
+  );
+
+  it.each(["^[a-z0-9-]+$", "^\\d{1,5}$", "^(prod|staging)$", "^[a-z]+(-[a-z]+)?$"])(
+    "still accepts ordinary pattern %s",
+    (pattern) => {
+      expect(() => validateDiagnosticQueryParameterSchema(schemaWith(pattern))).not.toThrow();
+    }
+  );
+});
