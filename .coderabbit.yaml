@@ -1,0 +1,65 @@
+# yaml-language-server: $schema=https://www.coderabbit.ai/integrations/schema.v2.json
+language: en-US
+early_access: false
+tone_instructions: >-
+  Be direct and technical. Prioritize correctness, security, tenant isolation,
+  and actionable maintainability issues. Verify findings against surrounding
+  code and legitimate scope exceptions. Avoid praise and duplicate CI findings.
+
+reviews:
+  profile: chill
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  in_progress_fortune: false
+  collapse_walkthrough: true
+  auto_review:
+    enabled: true
+    drafts: false
+    auto_incremental_review: true
+    # Keep reviewing active PRs throughout the trial; provider limits still apply.
+    auto_pause_after_reviewed_commits: 0
+    ignore_title_keywords:
+      - "skip-ai-review"
+    labels:
+      - "!skip-ai-review"
+  path_filters:
+    - "!**/node_modules/**"
+    - "!**/dist/**"
+    - "!**/.next/**"
+    - "!**/out/**"
+    - "!**/coverage/**"
+    - "!**/graphify-out/**"
+  pre_merge_checks:
+    docstrings:
+      mode: "off"
+    title:
+      mode: warning
+    description:
+      mode: warning
+    issue_assessment:
+      mode: warning
+  tools:
+    biome:
+      enabled: false
+    oxc:
+      enabled: false
+    opengrep:
+      enabled: false
+    sqlfluff:
+      enabled: false
+    trufflehog:
+      enabled: false
+
+chat:
+  auto_reply: true
+  allow_non_org_members: true
+
+knowledge_base:
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - files: ".github/copilot-instructions.md"
+        applyTo: "**/*"
+  learnings:
+    scope: local
