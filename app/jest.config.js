@@ -34,10 +34,10 @@ const customJestConfig = {
   coverageDirectory: "coverage",
   coverageThreshold: {
     global: {
-      branches: 3,
-      functions: 3,
-      lines: 4,
-      statements: 4,
+      branches: 20,
+      functions: 25,
+      lines: 25,
+      statements: 25,
     },
     // Critical paid-service paths are ratcheted independently from the broad
     // application baseline. Keep these floors at or below measured coverage

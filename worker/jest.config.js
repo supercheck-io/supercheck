@@ -14,10 +14,10 @@ module.exports = {
   },
   coverageThreshold: {
     global: {
-      branches: 10,
-      functions: 10,
-      lines: 15,
-      statements: 15,
+      branches: 40,
+      functions: 40,
+      lines: 50,
+      statements: 50,
     },
     // Security- and reliability-critical modules are ratcheted independently
     // from the broad baseline. Keep these floors at or below measured coverage

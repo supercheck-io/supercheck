@@ -56,6 +56,12 @@ const config = {
   // masked-secret handling) is ratcheted independently. Keep these floors at
   // or below measured coverage and raise them as tests are added.
   coverageThreshold: {
+    global: {
+      branches: 30,
+      functions: 40,
+      lines: 40,
+      statements: 40,
+    },
     './src/utils/reconcile.ts': {
       branches: 90,
       functions: 95,

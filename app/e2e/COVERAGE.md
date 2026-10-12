@@ -20,12 +20,15 @@ specifications.
 - The full suite uses only dependencies already available to the deployed
   application. Mailbox delivery and third-party webhook/connector availability
   are intentionally outside this regression gate.
-- Passed tests do not retain screenshots or video. Failures retain screenshots
-  and traces. CI retries are disabled so flakes fail the gate visibly.
-- Every deployment profile must first assert the exact 40-character build SHA
-  returned by `/api/health`.
+- Passed tests do not retain screenshots or video. Failures retain screenshots;
+  traces are disabled in `playwright.config.ts`. CI retries are disabled so
+  flakes fail the gate visibly.
+- Profiles with `E2E_EXPECTED_BUILD_SHA` assert the exact 40-character build
+  SHA returned by `/api/health`. The scheduled/manual `e2e-full.yml` workflow
+  allows this input to be omitted, in which case revision attestation is not
+  registered.
 
-## Current executable inventory
+## Dated executable inventory
 
 Verified locally on 2026-07-22:
 
@@ -43,9 +46,11 @@ Verified locally on 2026-07-22:
 - Dynamic `test.skip` / `describe.skip` in executable E2E tests: none.
 - All required dedicated identities, including all six RBAC roles, were
   provisioned and exercised by the full runtime.
-The single `e2e-full.yml` workflow runs this inventory using
-`playwright.config.ts`. It can be started manually, called by a trusted deploy
-workflow, and runs daily at 02:00 UTC.
+
+Current local check on 2026-10-12: Playwright discovery reports **168 tests in
+39 files**, including three new variable-role tests, and E2E TypeScript
+typecheck passed. Runtime execution of the three new tests is pending. This
+discovery/typecheck result does not replace the dated runtime evidence above.
 
 ## Capability traceability
 
@@ -77,23 +82,29 @@ workflow, and runs daily at 02:00 UTC.
 
 ## Workflow and gate
 
-`e2e-full.yml` is the only E2E workflow. It runs the complete deterministic
-Chromium suite from `playwright.config.ts`, requires every test identity, rejects
-priority skips, verifies the exact deployed build SHA, uploads failure artifacts,
-and runs daily or on demand.
+`e2e-full.yml` runs the complete deterministic Chromium suite from
+`playwright.config.ts`, requires every test identity, rejects priority skips,
+and runs daily, manually, or through a reusable workflow call. Scheduled and
+manual runs do not attest a revision when `expected_build_sha` is omitted; the
+reusable call requires it. Failure screenshots are retained in the local test
+results, while CI uploads the rendered Playwright report only. Release builds
+also run the suite in `build-multiarch.yml` after verifying the deployed exact
+SHA, but that E2E job is advisory (`continue-on-error`).
 
 ## Merge-gate contract
 
-1. PR validation typechecks and discovers the E2E suite without secrets.
+1. PR validation typechecks and discovers the E2E suite without secrets; it
+   does not run E2E against a PR preview deployment.
 2. A trusted preview deployment must expose the exact PR SHA in `/api/health`.
 3. Protected-environment workflows run critical API/UI coverage against that
    preview. Never use `pull_request_target` to execute untrusted PR code with
    secrets.
 4. Main/staging runs the same complete suite with every required identity.
 
-`e2e-full.yml` provides scheduled, manual, and reusable exact-revision execution.
-A repository-owned preview deployment caller is still required before PR E2E
-can be claimed as a merge-blocking gate.
+The workflows provide scheduled/manual full E2E and exact-SHA release E2E, while
+PR validation remains discovery/typecheck only. A repository-owned preview
+deployment caller is still required before PR E2E can be claimed as a
+merge-blocking gate.
 
 ## Open implementation and environment gaps
 

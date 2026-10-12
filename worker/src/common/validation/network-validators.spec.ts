@@ -10,6 +10,10 @@ import {
 describe('network-validators', () => {
   const originalAllowInternal = process.env.ALLOW_INTERNAL_TARGETS;
 
+  beforeEach(() => {
+    delete process.env.ALLOW_INTERNAL_TARGETS;
+  });
+
   afterEach(() => {
     if (originalAllowInternal === undefined) {
       delete process.env.ALLOW_INTERNAL_TARGETS;

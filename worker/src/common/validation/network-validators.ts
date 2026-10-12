@@ -15,12 +15,13 @@ export interface ValidationResult {
 }
 
 /**
- * Returns true when the target resolves to a private, loopback, link-local,
+ * Returns true for a private, loopback, link-local,
  * reserved, or cloud-metadata destination.
  *
  * Uses the shared outbound-policy classifier (`isPrivateHost`) so URL, ping,
- * and port checks agree with the webhook SSRF policy, including IPv6
+ * and port checks share the webhook address classification, including IPv6
  * (`::1`, `::ffff:10.0.0.1`, `fc00::/7`, `fe80::/10`) and bracketed literals.
+ * This synchronous check does not resolve DNS.
  */
 function isBlockedInternalTarget(hostnameOrAddress: string): boolean {
   const normalized = hostnameOrAddress.toLowerCase().replace(/^\[|\]$/g, '');

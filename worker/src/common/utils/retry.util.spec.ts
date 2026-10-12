@@ -47,6 +47,12 @@ describe('retry.util', () => {
     envKeys.map((key) => [key, process.env[key]]),
   );
 
+  beforeEach(() => {
+    for (const key of envKeys) {
+      delete process.env[key];
+    }
+  });
+
   afterEach(() => {
     global.fetch = originalFetch;
     jest.restoreAllMocks();

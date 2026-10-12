@@ -119,6 +119,23 @@ test.describe('RBAC - Viewer Restrictions @auth @rbac', () => {
 
     await expect(page.getByRole('heading', { name: 'Runs', exact: true })).toBeVisible();
   });
+
+  test('Viewer cannot add variables @high @rbac', async ({ viewerPage: page }) => {
+    const permissions = page.waitForResponse((response) =>
+      /\/api\/projects\/[^/]+\/variables$/.test(new URL(response.url()).pathname) &&
+      response.request().method() === 'GET',
+    );
+    await page.goto('/variables');
+    const response = await permissions;
+    expect(response.status()).toBe(200);
+    expect(await response.json()).toMatchObject({
+      success: true,
+      canCreateEdit: false,
+      canManage: false,
+    });
+    await expect(page.getByText('Loading data...', { exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Add Variable', exact: true })).toBeDisabled();
+  });
 });
 
 test.describe('RBAC - Editor Capabilities @auth @rbac', () => {
@@ -137,6 +154,14 @@ test.describe('RBAC - Editor Capabilities @auth @rbac', () => {
       page.getByRole('button', { name: /create test/i }),
     );
     await expect(createButton).toBeVisible();
+    await expect(createButton).toBeEnabled();
+  });
+
+  test('Editor can open the variable form @high @rbac', async ({ editorPage: page }) => {
+    await page.goto('/variables');
+    await page.getByRole('button', { name: 'Add Variable', exact: true }).click();
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await expect(page.getByRole('dialog').getByLabel('Variable Name *', { exact: true })).toBeEditable();
   });
 
   /**
@@ -167,6 +192,14 @@ test.describe('RBAC - Project Admin Capabilities @auth @rbac', () => {
 
     await page.goto('/tests');
     await expect(page.getByRole('button', { name: 'Create Test', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Create Test', exact: true })).toBeEnabled();
+  });
+
+  test('Project admin can open the variable form @high @rbac', async ({ projectAdminPage: page }) => {
+    await page.goto('/variables');
+    await page.getByRole('button', { name: 'Add Variable', exact: true }).click();
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await expect(page.getByRole('dialog').getByLabel('Variable Name *', { exact: true })).toBeEditable();
   });
 
 });

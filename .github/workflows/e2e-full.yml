@@ -65,6 +65,10 @@ jobs:
     name: Full E2E Tests
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    # These workflows mutate shared test accounts on the target deployment.
+    concurrency:
+      group: supercheck-e2e-${{ inputs.base_url || 'https://demo.supercheck.dev' }}
+      cancel-in-progress: false
 
     steps:
       - name: Checkout repository
