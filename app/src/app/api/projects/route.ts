@@ -104,6 +104,7 @@ export async function POST(request: NextRequest) {
 
     if (
       typeof name !== "string" ||
+      name.trim().length === 0 ||
       name.length > 255 ||
       (slug != null && (typeof slug !== "string" || slug.length > 100)) ||
       (description != null &&

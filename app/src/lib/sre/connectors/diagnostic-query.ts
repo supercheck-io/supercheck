@@ -225,7 +225,7 @@ function normalizeParameterSchemaEntry(name: string, schemaValue: unknown): Norm
     } catch {
       throw new Error(`Diagnostic query parameter schema for "${name}" has invalid pattern`);
     }
-    if (NESTED_QUANTIFIER.test(schemaValue.pattern)) {
+    if (isUnsafePattern(schemaValue.pattern)) {
       throw new Error(`Diagnostic query parameter schema for "${name}" pattern is too complex (nested quantifiers)`);
     }
 
@@ -240,6 +240,11 @@ function normalizeParameterSchemaEntry(name: string, schemaValue: unknown): Norm
 // and bound the input a pattern is tested against.
 const NESTED_QUANTIFIER = /\((?:[^()\\]|\\.)*[+*](?:[^()\\]|\\.)*\)\s*(?:[+*]|\{\d)/;
 const MAX_PATTERN_INPUT_LENGTH = 1000;
+
+/** Heuristic only: catches nested quantifiers, not every ReDoS shape (e.g. overlapping alternation). */
+function isUnsafePattern(pattern: string): boolean {
+  return NESTED_QUANTIFIER.test(pattern);
+}
 
 export function validateDiagnosticQueryParameterSchema(parameterSchema: Record<string, unknown>): void {
   const keys = Object.keys(parameterSchema);
@@ -303,6 +308,11 @@ function validateParameterValue(name: string, value: DiagnosticQueryParameterVal
     }
     if (schema.pattern && value.length > MAX_PATTERN_INPUT_LENGTH) {
       throw new Error(`Diagnostic query parameter "${name}" is too long`);
+    }
+    // Patterns saved before the schema-time check existed are not rewritten, so
+    // re-check here, where the regex actually runs.
+    if (schema.pattern && isUnsafePattern(schema.pattern)) {
+      throw new Error(`Diagnostic query parameter "${name}" has a pattern that is too complex to evaluate`);
     }
     if (schema.pattern && !new RegExp(schema.pattern).test(value)) {
       throw new Error(`Diagnostic query parameter "${name}" does not match its required pattern`);

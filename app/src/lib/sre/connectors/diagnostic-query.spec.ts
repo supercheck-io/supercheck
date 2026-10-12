@@ -207,3 +207,32 @@ describe("diagnostic query pattern safety", () => {
     }
   );
 });
+
+describe("diagnostic query pattern matching path", () => {
+  const withPattern = (pattern: string) => ({
+    ...definition,
+    parameterSchema: { service: { type: "string", pattern } },
+    allowlist: {},
+  });
+
+  it("rejects a stored nested-quantifier pattern at match time without hanging", () => {
+    const start = Date.now();
+    expect(() =>
+      renderDiagnosticQueryTemplate(withPattern("(a+)+$"), { service: `${"a".repeat(40)}!` })
+    ).toThrow(/too complex/);
+    expect(Date.now() - start).toBeLessThan(500);
+  });
+
+  it("rejects values longer than the pattern input cap", () => {
+    expect(() =>
+      renderDiagnosticQueryTemplate(withPattern("^[a-z]+$"), { service: "a".repeat(1001) })
+    ).toThrow(/too long/);
+  });
+
+  it("still matches an ordinary pattern", () => {
+    expect(renderDiagnosticQueryTemplate(withPattern("^[a-z]+$"), { service: "checkout" }).query).toContain("checkout");
+    expect(() =>
+      renderDiagnosticQueryTemplate(withPattern("^[a-z]+$"), { service: "Checkout1" })
+    ).toThrow(/required pattern/);
+  });
+});
