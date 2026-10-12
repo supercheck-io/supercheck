@@ -8,11 +8,23 @@ import { CLIError, ExitCode } from '../utils/errors.js'
 import { z } from 'zod'
 import { resolveIncidentId } from '../utils/incidents.js'
 
+// Triage is synchronous server-side (up to ~45s budget); leave headroom over the 30s client default.
+const TRIAGE_TIMEOUT_MS = 90_000
+const MIN_IDLE_TIMEOUT_SECONDS = 10
+
+function parseIdleTimeout(value: string): number {
+  const seconds = Number(value)
+  if (!Number.isFinite(seconds) || seconds < MIN_IDLE_TIMEOUT_SECONDS) {
+    throw new CLIError(`--idle-timeout must be a number of seconds >= ${MIN_IDLE_TIMEOUT_SECONDS}.`, ExitCode.ConfigError)
+  }
+  return seconds * 1000
+}
+
 export const sreCommand = new Command('sre').description('AI-assisted incident investigation')
 
 sreCommand.command('triage <incidentId>').description('Classify an incident by number or UUID').action(async (incidentId: string) => {
   incidentId = await resolveIncidentId(incidentId)
-  const { data } = await withSpinner('Triaging incident', () => createAuthenticatedClient().post<Record<string, unknown>>('/api/sre/triage', { incidentId }))
+  const { data } = await withSpinner('Triaging incident', () => createAuthenticatedClient().post<Record<string, unknown>>('/api/sre/triage', { incidentId }, { timeout: TRIAGE_TIMEOUT_MS, retries: 0 }))
   if (getOutputFormat() === 'json') outputDetail(data)
   else {
     outputDetail({ id: data.investigationRunId, status: 'completed', model: data.modelId, finishReason: data.finishReason })
@@ -28,7 +40,7 @@ sreCommand.command('investigate <incidentId>')
     const { data } = await withSpinner('Starting investigation', () => createAuthenticatedClient().post<Record<string, unknown>>('/api/sre/investigate', {
       incidentId,
       useLiveConnectors: Boolean(options.liveConnectors),
-    }))
+    }, { retries: 0 }))
     if (getOutputFormat() === 'json') outputDetail(data)
     else {
       outputDetail({ id: data.investigationRunId, incidentId, status: 'accepted' })
@@ -42,6 +54,7 @@ sreCommand.command('ask <question>')
   .option('--live-connectors', 'Allow configured read-only telemetry connectors')
   .option('--idle-timeout <seconds>', 'Abort when no stream data arrives', '60')
   .action(async (question: string, options: { incident?: string; liveConnectors?: boolean; idleTimeout: string }) => {
+    const idleTimeoutMs = parseIdleTimeout(options.idleTimeout)
     const json = getOutputFormat() === 'json'
     await postSse('/api/sre/chat', {
       message: question,
@@ -55,13 +68,14 @@ sreCommand.command('ask <question>')
       const record = typeof data === 'object' && data !== null ? data as Record<string, unknown> : {}
       if (event === 'message' && record.role === 'assistant' && typeof record.content === 'string') outputNarrative('Copilot', record.content)
       else if (event === 'agent.step') logger.info(`Investigation step ${String(record.stepIndex ?? '')}`.trim())
-    }, Math.max(Number(options.idleTimeout) || 60, 10) * 1000)
+    }, { idleTimeoutMs, isTerminal: ({ event }) => event === 'done' })
   })
 
 sreCommand.command('brief <incidentId>')
   .description('Generate and stream an evidence brief by incident number or UUID')
   .option('--idle-timeout <seconds>', 'Abort when no stream data arrives', '60')
   .action(async (incidentId: string, options: { idleTimeout: string }) => {
+    const idleTimeoutMs = parseIdleTimeout(options.idleTimeout)
     incidentId = await resolveIncidentId(incidentId)
     const json = getOutputFormat() === 'json'
     let hasContent = false
@@ -80,7 +94,10 @@ sreCommand.command('brief <incidentId>')
         logger.newline()
         logger.success(String(record.message ?? 'Evidence brief generated'))
       }
-    }, Math.max(Number(options.idleTimeout) || 60, 10) * 1000)
+    }, {
+      idleTimeoutMs,
+      isTerminal: ({ data }) => typeof data === 'object' && data !== null && (data as Record<string, unknown>).type === 'done',
+    })
   })
 
 sreCommand.command('status <runId>')

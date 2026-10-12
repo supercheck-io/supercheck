@@ -1,7 +1,7 @@
 import { requireAuth, getStoredBaseUrl } from '../auth/store.js'
 import { getResolvedConfigBaseUrl } from '../api/authenticated-client.js'
 import { CLI_VERSION } from '../version.js'
-import { CLIError, ExitCode, networkErrorMessage } from './errors.js'
+import { ApiRequestError, CLIError, ExitCode, networkErrorMessage } from './errors.js'
 import { getProxyAgent, getProxyEnv } from './proxy.js'
 
 import { createSpinner } from './spinner.js'
@@ -10,16 +10,25 @@ const MAX_EVENT_BYTES = 1024 * 1024
 
 export type SseEvent = { event: string; data: unknown }
 
+/** Returns true for the event that marks a stream as completed by the server. */
+export type SseTerminalPredicate = (event: SseEvent) => boolean
+
+export interface SseOptions {
+  idleTimeoutMs?: number
+  /** When set, a stream that closes before this returns true is treated as truncated. */
+  isTerminal?: SseTerminalPredicate
+}
+
 async function streamSse(
   method: 'GET' | 'POST',
   path: string,
   body: unknown,
   onEvent: (event: SseEvent) => void | false,
-  idleTimeoutMs = 60_000,
+  { idleTimeoutMs = 60_000, isTerminal }: SseOptions = {},
 ): Promise<void> {
   const token = requireAuth()
   const baseUrl = getStoredBaseUrl() ?? getResolvedConfigBaseUrl() ?? 'https://app.supercheck.io'
-  const url = new URL(path, `${baseUrl}/`)
+  const url = new URL(`${baseUrl.replace(/\/+$/, '')}${path}`)
   const controller = new AbortController()
   let interrupted = false
   const onInterrupt = () => { interrupted = true; controller.abort() }
@@ -63,7 +72,9 @@ async function streamSse(
     phase = 'Subscribed — waiting for output'
     if (!response.ok) {
       const details = (await response.text()).slice(0, 4096)
-      throw new CLIError(`Stream request failed (${response.status})${details ? `: ${details}` : ''}`, ExitCode.ApiError)
+      let parsed: unknown = details
+      try { parsed = JSON.parse(details) } catch { /* Keep the raw text body. */ }
+      throw new ApiRequestError(`Stream request failed (${response.status})${details ? `: ${details}` : ''}`, response.status, parsed)
     }
     reader = response.body?.getReader()
     if (!reader) throw new CLIError('Stream returned no response body', ExitCode.ApiError)
@@ -73,13 +84,16 @@ async function streamSse(
     let eventName = 'message'
     let dataLines: string[] = []
     let eventBytes = 0
+    let completed = false
     const dispatch = () => {
       if (dataLines.length === 0) return
       const raw = dataLines.join('\n')
       let data: unknown = raw
       try { data = JSON.parse(raw) } catch { /* Preserve plain-text SSE data. */ }
       if (!['ready', 'heartbeat'].includes(eventName)) spinner.stop()
-      const keepReading = onEvent({ event: eventName, data })
+      const sseEvent = { event: eventName, data }
+      const keepReading = onEvent(sseEvent)
+      if (isTerminal?.(sseEvent)) completed = true
       const record = typeof data === 'object' && data !== null ? data as Record<string, unknown> : {}
       if (eventName === 'error' || record.type === 'error') {
         throw new CLIError(String(record.message ?? record.error ?? 'Stream failed'), ExitCode.ApiError)
@@ -92,7 +106,16 @@ async function streamSse(
     }
     while (true) {
       const { done, value } = await reader.read()
-      if (done) break
+      if (done) {
+        // Flush the decoder and any frame the server did not terminate with a blank line.
+        buffer += decoder.decode()
+        for (const line of buffer.split(/\r?\n/)) {
+          if (line.startsWith('event:')) eventName = line.slice(6).trim() || 'message'
+          else if (line.startsWith('data:')) dataLines.push(line.slice(5).replace(/^ /, ''))
+        }
+        if (dispatch() === false) return
+        break
+      }
       resetIdleTimer()
       buffer += decoder.decode(value, { stream: true })
       const lines = buffer.split(/\r?\n/)
@@ -115,6 +138,9 @@ async function streamSse(
         throw new CLIError('Stream event exceeded the 1 MiB safety limit', ExitCode.ApiError)
       }
     }
+    if (isTerminal && !completed) {
+      throw new CLIError('Stream ended before the server reported completion. The connection may have been closed by a proxy; retry the command.', ExitCode.ApiError)
+    }
   } catch (error) {
     if (error instanceof CLIError) throw error
     if (controller.signal.aborted) {
@@ -131,10 +157,10 @@ async function streamSse(
   }
 }
 
-export function postSse(path: string, body: unknown, onEvent: (event: SseEvent) => void | false, idleTimeoutMs = 60_000): Promise<void> {
-  return streamSse('POST', path, body, onEvent, idleTimeoutMs)
+export function postSse(path: string, body: unknown, onEvent: (event: SseEvent) => void | false, options: SseOptions | number = {}): Promise<void> {
+  return streamSse('POST', path, body, onEvent, typeof options === 'number' ? { idleTimeoutMs: options } : options)
 }
 
-export function getSse(path: string, onEvent: (event: SseEvent) => void | false, idleTimeoutMs = 60_000): Promise<void> {
-  return streamSse('GET', path, undefined, onEvent, idleTimeoutMs)
+export function getSse(path: string, onEvent: (event: SseEvent) => void | false, options: SseOptions | number = {}): Promise<void> {
+  return streamSse('GET', path, undefined, onEvent, typeof options === 'number' ? { idleTimeoutMs: options } : options)
 }

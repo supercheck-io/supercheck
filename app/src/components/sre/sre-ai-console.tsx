@@ -49,8 +49,11 @@ function formatHistoryDate(value: string) {
   }).format(date);
 }
 
+// Stable reference: an inline `[]` default would re-trigger the history-sync effect on every render.
+const NO_HISTORIES: SreCopilotChatHistory[] = [];
+
 export function SreAiConsole({
-  initialHistories = [],
+  initialHistories = NO_HISTORIES,
   initialIncidentId = null,
   loadError = null,
   onHistoriesChange,

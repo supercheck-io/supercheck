@@ -137,6 +137,11 @@ export function ConnectorFormDialog({
       return;
     }
 
+    if (executionMode === "private_agent" && !privateAgentId) {
+      toast.error("Select a Private Agent, or switch to direct execution");
+      return;
+    }
+
     startTransition(async () => {
       const result = await createSreConnector({
         name,

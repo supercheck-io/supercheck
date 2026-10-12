@@ -3,6 +3,7 @@ jest.mock('node:dns/promises', () => ({
 }));
 
 import {
+  assertSecureApiUrl,
   exchangeRegistrationToken,
   executePrivateAgentConnectorJob,
   processLeasedJob,
@@ -454,6 +455,53 @@ describe('private agent connector execution', () => {
     warnSpy.mockRestore();
   });
 
+  it.each(['lost response', 'rejected lease'])(
+    'never changes a completed result to failed after a %s',
+    async (scenario) => {
+      const config: PrivateAgentConfig = {
+        apiUrl: 'https://app.supercheck.io',
+        agentId: baseJob.id,
+        token: 'scpac_runtime_1234567890',
+        tokenSource: 'env',
+        credentialFile: null,
+        agentVersion: '1.3.6',
+        retryIntervalMs: 5_000,
+        leaseWaitMs: 25_000,
+        heartbeatIntervalMs: 30_000,
+      };
+      const fetchMock = jest.fn().mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: { result: [] } }),
+      });
+      if (scenario === 'lost response') {
+        fetchMock.mockRejectedValueOnce(new TypeError('connection lost'));
+        fetchMock.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ ok: true, alreadyAccepted: true }),
+        });
+      } else {
+        fetchMock.mockResolvedValueOnce({ ok: false, status: 409 });
+      }
+      global.fetch = fetchMock as unknown as typeof fetch;
+      const processing = processLeasedJob(config, {
+        job: baseJob,
+        leaseToken: 'lease-token',
+      });
+      if (scenario === 'lost response') {
+        await expect(processing).resolves.toBeUndefined();
+        expect(fetchMock.mock.calls[1][1].body).toBe(
+          fetchMock.mock.calls[2][1].body,
+        );
+      } else {
+        await expect(processing).rejects.toThrow('HTTP 409');
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+      }
+      for (const [, options] of fetchMock.mock.calls.slice(1)) {
+        expect(JSON.parse(options.body).status).toBe('completed');
+      }
+    },
+  );
+
   it('exchanges registration tokens for runtime credentials', async () => {
     const config: PrivateAgentConfig = {
       apiUrl: 'https://app.supercheck.io',
@@ -575,5 +623,35 @@ describe('private agent connector execution', () => {
 
     await expect(exchangeRegistrationToken(config)).resolves.toBe(config);
     expect(global.fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe('assertSecureApiUrl', () => {
+  it.each([
+    'https://app.supercheck.io',
+    'http://localhost:3000',
+    'http://app:3000',
+    'http://10.0.0.5:3000',
+    'http://[::1]:3000',
+    'http://[fd00::5]:3000',
+    'http://app.default.svc.cluster.local:3000',
+    'http://supercheck.internal',
+    'http://100.64.1.2:3000',
+    'http://169.254.10.1',
+  ])('allows %s', (url) => {
+    expect(() => assertSecureApiUrl(url)).not.toThrow();
+  });
+
+  it.each([
+    'http://app.supercheck.io',
+    'http://8.8.8.8',
+    'http://10.evil.com',
+    'http://127.0.0.1.evil.com',
+    'http://192.168.1.1.attacker.io',
+    'http://[2001:4860:4860::8888]:3000',
+    'http://[::ffff:8.8.8.8]',
+    'ftp://app',
+  ])('rejects %s', (url) => {
+    expect(() => assertSecureApiUrl(url)).toThrow('must use https://');
   });
 });

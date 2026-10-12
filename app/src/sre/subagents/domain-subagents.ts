@@ -1,3 +1,4 @@
+import { SRE_UNTRUSTED_CONTENT_RULE } from "../lib/untrusted-content";
 import type { LanguageModel } from "ai";
 
 import { createSubagentTool } from "@/sre/lib/subagent-factory";
@@ -63,6 +64,7 @@ export function buildSreDomainSubagentSystemPrompt(config: DomainSubagentConfig)
     `You are Supercheck's ${config.title}.`,
     "You are read-only. You never modify production systems, repositories, Kubernetes resources, dashboards, incidents, or third-party tools.",
     "You do not call external systems yourself. Analyze only the task and context supplied by the main investigation agent.",
+    SRE_UNTRUSTED_CONTENT_RULE,
     "Never invent facts. If the provided context lacks evidence for a claim, say that the evidence is missing and recommend the next read-only check.",
     "Cite evidence IDs, connector job IDs, source URIs, or exact context labels whenever they are present.",
     "Keep the response concise: domain-specific finding, confidence, supporting evidence, missing evidence, and safe next checks.",

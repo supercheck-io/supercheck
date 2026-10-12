@@ -456,4 +456,32 @@ describe("Copilot connector service scope", () => {
     expect(db.query.sreServices.findFirst).not.toHaveBeenCalled();
     expect(db.select).not.toHaveBeenCalled();
   });
+
+  it.each(["connector_credential_expired", "private-secret-error"])("reports safe Private Agent failure diagnostics (%s)", async (errorCode) => {
+    db.query.sreServices.findFirst.mockResolvedValue({ id: serviceId });
+    db.query.privateAgents.findFirst.mockResolvedValue({ id: "private-agent" });
+    db.select
+      .mockReturnValueOnce(selectRows([{ connector: {
+        id: connectorId, type: "prometheus", privateAgentId: "private-agent",
+        config: { endpointUrl: "https://prometheus.example" }, status: "configured",
+        permissionLevel: "read", sideEffectLevel: "none", defaultTimeWindowMinutes: 60,
+        outputLimits: { maxRows: 10, maxBytes: 1024, maxSeconds: 15 },
+      } }]))
+      .mockReturnValueOnce(selectRows([{ connectorId, serviceId }]));
+    jest.mocked(checkSreConnectorSearchRateLimit).mockResolvedValue({ allowed: true, remaining: 10 });
+    jest.requireMock("@/lib/private-agents/job-router").routeSreConnectorQuery.mockReturnValue({
+      routed: true, privateAgentId: "private-agent", jobClass: "connector-query",
+      jobSpec: {}, jobSpecHash: "hash", idempotencyKey: "job-key",
+    });
+    jest.requireMock("@/lib/sre/private-agent-job-waiter").waitForPrivateAgentConnectorJob.mockResolvedValue({
+      state: "failed", job: { errorCode },
+    });
+    const values = jest.fn(() => ({ onConflictDoNothing: () => ({ returning: async () => [{ id: "job" }] }) }));
+    db.insert.mockReturnValue({ values });
+    const expected = errorCode === "connector_credential_expired"
+      ? "Connector credential expired — re-authenticate the connector"
+      : "Private Agent connector search failed";
+    await expect(searchIncidentLiveConnectorEvidence(scope, search)).rejects.toThrow(expected);
+    expect(values).toHaveBeenCalledWith(expect.objectContaining({ status: "error", errorMessage: expected }));
+  });
 });

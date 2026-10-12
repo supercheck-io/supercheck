@@ -1,9 +1,10 @@
 import { Command, Option } from 'commander'
 import { createAuthenticatedClient } from '../api/authenticated-client.js'
-import { output, outputDetail } from '../output/formatter.js'
+import { getOutputFormat, output, outputDetail } from '../output/formatter.js'
 import { logger } from '../utils/logger.js'
 import { confirmPrompt } from '../utils/prompt.js'
 import { withSpinner } from '../utils/spinner.js'
+import { CLIError, ExitCode } from '../utils/errors.js'
 import { resolveIncidentId } from '../utils/incidents.js'
 
 type IncidentEnvelope = { incidents: Record<string, unknown>[] }
@@ -45,11 +46,18 @@ incidentCommand.command('resolve <id>')
   .action(async (id: string, options: { comment: string; force?: boolean }) => {
     const label = /^\d+$/.test(id) ? `#${id}` : id
     id = await resolveIncidentId(id)
-    if (!options.force && !await confirmPrompt(`Resolve incident ${label}?`, { default: false })) {
-      logger.info('Aborted')
-      return
+    if (!options.force) {
+      if (!process.stdin.isTTY || getOutputFormat() === 'json') {
+        throw new CLIError('Refusing to resolve without confirmation in a non-interactive session. Pass --force to proceed.', ExitCode.ConfigError)
+      }
+      if (!await confirmPrompt(`Resolve incident ${label}?`, { default: false })) {
+        logger.info('Aborted')
+        process.exitCode = ExitCode.GeneralError
+        return
+      }
     }
-    const { data } = await withSpinner('Resolving incident', () => createAuthenticatedClient().post<Record<string, unknown>>(`/api/sre/incidents/${id}/resolve`, { comment: options.comment }))
-    logger.success('Incident resolved')
+    const { data } = await withSpinner('Resolving incident', () => createAuthenticatedClient().post<Record<string, unknown>>(`/api/sre/incidents/${id}/resolve`, { comment: options.comment }, { retries: 0 }))
+    if (data.alreadyResolved === true) logger.info(typeof data.message === 'string' ? data.message : 'Incident was already resolved')
+    else logger.success('Incident resolved')
     outputDetail(data)
   })

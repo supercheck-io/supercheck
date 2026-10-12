@@ -823,6 +823,9 @@ export async function searchIncidentLiveConnectorEvidence(
     });
 
     if (waitResult.state === "missing" || waitResult.state === "failed") {
+      const errorMessage = waitResult.state === "failed" && waitResult.job.errorCode === "connector_credential_expired"
+        ? "Connector credential expired — re-authenticate the connector"
+        : "Private Agent connector search failed";
       await db.insert(sreInvestigationToolCalls).values({
         investigationRunId: scope.investigationRunId ?? null,
         connectorId: connector.id,
@@ -833,12 +836,12 @@ export async function searchIncidentLiveConnectorEvidence(
         outputHash: route.jobSpecHash,
         outputSummary: "Private Agent connector search did not complete",
         status: "error",
-        errorMessage: "Private Agent connector search failed",
+        errorMessage,
         durationMs: Date.now() - startedAt,
         costEstimateCents: 0,
         executedAt: new Date(),
       });
-      throw new Error("Private Agent connector search failed");
+      throw new Error(errorMessage);
     }
 
     if (waitResult.state === "completed") {

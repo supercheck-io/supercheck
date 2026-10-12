@@ -1182,6 +1182,7 @@ function OrgAdminDashboardContent() {
                 <PrivateAgentsAdminView
                   initialAgents={privateAgents}
                   loadError={privateAgentsLoadError}
+                  onSetupChanged={handleSreSetupChanged}
                 />
               )}
             </TabsContent>

@@ -24,6 +24,7 @@ jest.mock("@/sre/lib/feature-gates", () => ({
 }));
 
 import { Worker } from "bullmq";
+import { processSreBackgroundAlertTriageJob } from "@/sre/lib/background-alert-triage";
 import { isSreBackgroundAlertTriageEnabled } from "@/sre/lib/feature-gates";
 import { initializeSreAlertTriageProcessor, shutdownSreAlertTriageProcessor } from "./background-alert-triage-processor";
 
@@ -61,5 +62,29 @@ describe("initializeSreAlertTriageProcessor", () => {
     expect(result).toBe(true);
     expect(mockWorkerConstructor).toHaveBeenCalledTimes(1);
     expect(mockWorkerRun).toHaveBeenCalledTimes(1);
+  });
+
+  describe("job handler", () => {
+    async function getHandler() {
+      mockIsSreBackgroundAlertTriageEnabled.mockReturnValue(true);
+      mockWorkerRun.mockReturnValue(new Promise(() => undefined));
+      await initializeSreAlertTriageProcessor();
+      return mockWorkerConstructor.mock.calls[0][1] as (job: { data: unknown }) => Promise<unknown>;
+    }
+
+    it("throws on failed triage so BullMQ retries the job", async () => {
+      (processSreBackgroundAlertTriageJob as jest.Mock).mockResolvedValue({ success: false, error: "SRE triage failed" });
+      const handler = await getHandler();
+
+      await expect(handler({ data: {} })).rejects.toThrow("SRE triage failed");
+    });
+
+    it("does not throw for skipped jobs", async () => {
+      const skipped = { success: true, skipped: true, reason: "already_triaged" };
+      (processSreBackgroundAlertTriageJob as jest.Mock).mockResolvedValue(skipped);
+      const handler = await getHandler();
+
+      await expect(handler({ data: {} })).resolves.toEqual(skipped);
+    });
   });
 });

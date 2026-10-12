@@ -41,6 +41,12 @@ const https = {
   ACME_EMAIL: "admin@example.com",
 };
 
+testCompose("still starts without SECRET_ENCRYPTION_KEY so upgrades keep reading existing secrets", () => {
+  for (const file of ["docker-compose.yml", "docker-compose-local.yml", "docker-compose-external.yml"]) {
+    expect(() => config("", file, { SECRET_ENCRYPTION_KEY: "" })).not.toThrow();
+  }
+});
+
 testCompose("the default stack needs neither HTTPS nor Private Agent settings", () => {
   const stack = config();
   expect(Object.keys(stack.services).sort()).toEqual([

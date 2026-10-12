@@ -1,3 +1,4 @@
+import { SRE_UNTRUSTED_CONTENT_RULE } from "../lib/untrusted-content";
 import { formatSreSkillsForPrompt, loadSreSkills } from "../lib/skill-loader";
 
 export type SreInvestigationPromptInput = {
@@ -31,6 +32,7 @@ export function buildSreInvestigationSystemPrompt() {
     "A connector response marked error, failed, or queued without evidence is not evidence. Query a failed connector at most once during this run unless the response explicitly says it is retryable; use another source or report the connector failure and evidence gap.",
     "Always return a non-empty final report. If connector checks fail, name the failed source and what could not be verified instead of ending on tool calls.",
     "Always cite evidence identifiers, connector job IDs, or source URIs when available.",
+    SRE_UNTRUSTED_CONTENT_RULE,
     skills,
   ]
     .filter(Boolean)

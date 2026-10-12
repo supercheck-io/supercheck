@@ -593,6 +593,9 @@ services:
         condition: service_healthy
     networks:
       - private-agent-network
+    # Agent mode runs no HTTP server, so the image's /health/ready check would always fail.
+    healthcheck:
+      disable: true
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
