@@ -33,7 +33,7 @@ export const WEBHOOK_PRESETS: WebhookPreset[] = [
     label: "Custom webhook",
     summary:
       "Use the default Supercheck payload or author your own JSON template.",
-    docsUrl: "https://docs.supercheck.io/app/communicate/alerts",
+    docsUrl: "https://supercheck.io/docs/app/communicate/alerts",
     endpointPlaceholder: "https://api.yourservice.com/alerts",
     config: {
       method: "POST",

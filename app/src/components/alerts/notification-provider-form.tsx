@@ -292,7 +292,7 @@ const MASKED_FIELD_LABELS: Record<string, string> = {
 };
 
 const WEBHOOK_DOCS_URL =
-  "https://docs.supercheck.io/app/communicate/alerts#body-template";
+  "https://supercheck.io/docs/app/communicate/alerts#body-template";
 
 type FormValues = z.infer<ReturnType<typeof createNotificationProviderSchema>>;
 
