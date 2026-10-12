@@ -1554,9 +1554,14 @@ export function assertSecureApiUrl(apiUrl: string): void {
       host.endsWith('.localhost') ||
       // Single-label names (e.g. the Compose service "app"); never applies to IP literals.
       (family === 0 && !host.includes('.')) ||
+      // Reserved private-network suffixes (Kubernetes services, mDNS, RFC 8375, internal zones).
+      (family === 0 &&
+        /\.(local|internal|lan|svc|cluster\.local|home\.arpa)$/.test(host)) ||
       // Only literal IPs: a DNS name such as "10.evil.com" is attacker-controlled, not private.
       (family === 4 &&
-        /^(10\.|127\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host)) ||
+        /^(10\.|127\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.)/.test(
+          host,
+        )) ||
       // Loopback, unique-local (fc00::/7) and link-local (fe80::/10) only.
       (family === 6 &&
         (host === '::1' ||

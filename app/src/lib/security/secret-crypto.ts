@@ -24,6 +24,8 @@ type EncryptionOptions = {
   context?: string;
 };
 
+let placeholderWarned = false;
+
 function getBaseKey(): Buffer {
   const key = process.env[KEY_ENV];
 
@@ -39,8 +41,13 @@ function getBaseKey(): Buffer {
     );
   }
 
-  if (/change[_-]?this/i.test(key)) {
-    throw new Error(`${KEY_ENV} is still set to a placeholder value. Generate one with: openssl rand -hex 32`);
+  // Existing installs may still run on the old compose default and hold data encrypted
+  // with it, so rejecting it would make that data unreadable. Warn instead.
+  if (!placeholderWarned && /change[_-]?this/i.test(key)) {
+    placeholderWarned = true;
+    console.warn(
+      `${KEY_ENV} is set to a placeholder value and is not secret. Generate one with: openssl rand -hex 32. Changing it makes existing encrypted secrets unreadable, so re-enter them afterwards.`
+    );
   }
 
   const buffer =

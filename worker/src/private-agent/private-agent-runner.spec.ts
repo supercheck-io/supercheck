@@ -634,6 +634,10 @@ describe('assertSecureApiUrl', () => {
     'http://10.0.0.5:3000',
     'http://[::1]:3000',
     'http://[fd00::5]:3000',
+    'http://app.default.svc.cluster.local:3000',
+    'http://supercheck.internal',
+    'http://100.64.1.2:3000',
+    'http://169.254.10.1',
   ])('allows %s', (url) => {
     expect(() => assertSecureApiUrl(url)).not.toThrow();
   });

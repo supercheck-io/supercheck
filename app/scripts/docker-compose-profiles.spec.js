@@ -29,8 +29,6 @@ function config(profiles = "", file = "docker-compose.yml", vars = {}) {
           PATH: process.env.PATH,
           HOME: process.env.HOME,
           COMPOSE_PROFILES: profiles,
-          // Required by compose (no insecure default); these tests exercise profiles, not secrets.
-          SECRET_ENCRYPTION_KEY: "0".repeat(32),
           ...vars,
         },
         encoding: "utf8",
@@ -43,9 +41,9 @@ const https = {
   ACME_EMAIL: "admin@example.com",
 };
 
-testCompose("refuses to start without SECRET_ENCRYPTION_KEY instead of using a public placeholder", () => {
+testCompose("still starts without SECRET_ENCRYPTION_KEY so upgrades keep reading existing secrets", () => {
   for (const file of ["docker-compose.yml", "docker-compose-local.yml", "docker-compose-external.yml"]) {
-    expect(() => config("", file, { SECRET_ENCRYPTION_KEY: "" })).toThrow();
+    expect(() => config("", file, { SECRET_ENCRYPTION_KEY: "" })).not.toThrow();
   }
 });
 

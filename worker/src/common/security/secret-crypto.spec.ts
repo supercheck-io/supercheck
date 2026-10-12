@@ -8,10 +8,15 @@ describe('worker secret encryption key validation', () => {
   });
 
   it.each(['CHANGE_THIS', 'change-this', 'ChangeThis'])(
-    'rejects placeholder key %s',
+    'keeps legacy placeholder key %s working',
     (placeholder) => {
-      process.env.SECRET_ENCRYPTION_KEY = placeholder.padEnd(64, '_');
-      expect(() => encryptSecret('secret')).toThrow('placeholder value');
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      try {
+        process.env.SECRET_ENCRYPTION_KEY = placeholder.padEnd(64, '_');
+        expect(decryptSecret(encryptSecret('secret'))).toBe('secret');
+      } finally {
+        warn.mockRestore();
+      }
     },
   );
 

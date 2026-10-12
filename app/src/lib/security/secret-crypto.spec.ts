@@ -322,12 +322,14 @@ describe("Secret Crypto", () => {
   });
 
   describe("Error Handling", () => {
-    it.each(["CHANGE_THIS", "change-this", "ChangeThis"])("rejects a placeholder key (%s)", (placeholder) => {
+    it.each(["CHANGE_THIS", "change-this", "ChangeThis"])("keeps a legacy placeholder key (%s) working", (placeholder) => {
       const originalKey = process.env.SECRET_ENCRYPTION_KEY;
+      const warn = jest.spyOn(console, "warn").mockImplementation(() => undefined);
       try {
         process.env.SECRET_ENCRYPTION_KEY = placeholder.padEnd(64, "_");
-        expect(() => encryptSecret("test")).toThrow("placeholder value");
+        expect(decryptSecret(encryptSecret("test"))).toBe("test");
       } finally {
+        warn.mockRestore();
         process.env.SECRET_ENCRYPTION_KEY = originalKey;
       }
     });
