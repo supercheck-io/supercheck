@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/utils/db';
 import { sql } from 'drizzle-orm';
+import { S3Client, HeadBucketCommand } from '@aws-sdk/client-s3';
 
 /**
  * Deep health check endpoint
@@ -8,7 +9,7 @@ import { sql } from 'drizzle-orm';
  * Checks connectivity to critical infrastructure:
  * - Database (PostgreSQL)
  * - Redis (via BullMQ queues) - optional, only if REDIS_HOST is configured
- * - S3/MinIO - optional, only if S3_ENDPOINT is configured
+ * - S3-compatible storage - optional, only if S3_ENDPOINT is configured
  * 
  * Returns:
  * - 200 OK: All required services are healthy
@@ -64,23 +65,34 @@ export async function GET() {
   if (s3Endpoint) {
     try {
       const s3Start = Date.now();
-      // Simple HTTP check to S3 endpoint (HEAD request to check availability)
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
-      
-      const response = await fetch(s3Endpoint, {
-        method: 'HEAD',
-        signal: controller.signal,
-      }).catch(() => null);
-      
-      clearTimeout(timeoutId);
-      
-      if (response && (response.ok || response.status === 403 || response.status === 400)) {
-        // 403/400 is expected for unauthenticated requests - endpoint is reachable
-        checks.s3 = { status: 'ok', latencyMs: Date.now() - s3Start };
-      } else {
-        throw new Error('S3 endpoint not reachable');
+      // Authenticated HeadBucket: proves the endpoint, credentials and path-style
+      // addressing work. A bare HEAD / is not portable (MinIO answers 403, RustFS 501).
+      const s3Client = new S3Client({
+        region: process.env.AWS_REGION || 'us-east-1',
+        endpoint: s3Endpoint,
+        forcePathStyle: true,
+        credentials: {
+          accessKeyId: process.env.AWS_ACCESS_KEY_ID || 'minioadmin',
+          secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || 'minioadmin',
+        },
+      });
+      const bucket = process.env.S3_TEST_BUCKET_NAME || 'playwright-test-artifacts';
+
+      try {
+        await s3Client.send(new HeadBucketCommand({ Bucket: bucket }), {
+          abortSignal: AbortSignal.timeout(5000),
+        });
+      } catch (error) {
+        // The worker creates buckets on startup, so a missing bucket still means
+        // the storage backend answered and accepted our credentials.
+        const err = error as { name?: string; $metadata?: { httpStatusCode?: number } };
+        if (err.name !== 'NotFound' && err.$metadata?.httpStatusCode !== 404) {
+          throw new Error('S3 endpoint not reachable or credentials rejected');
+        }
+      } finally {
+        s3Client.destroy();
       }
+      checks.s3 = { status: 'ok', latencyMs: Date.now() - s3Start };
     } catch (error) {
       checks.s3 = { 
         status: 'error', 
