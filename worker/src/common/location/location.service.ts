@@ -71,20 +71,8 @@ export class LocationService {
       return 'down';
     }
 
-    // Use location codes as-is (dynamic locations, no legacy normalization needed)
-    const locations = rawLocations;
-
-    // Only aggregate over locations that actually have results.
-    // When some locations are disabled (no workers), their results won't exist
-    // and they should not count as "down" in the aggregation.
-    const resultKeys = Object.keys(locationStatuses);
-    const effectiveLocations = resultKeys.length > 0 ? resultKeys : locations;
-    if (resultKeys.length > 0 && resultKeys.length < locations.length) {
-      this.logger.debug(
-        `Aggregating over ${resultKeys.length}/${locations.length} locations with results: [${resultKeys.join(', ')}]. ` +
-          `Locations without results (disabled/offline): [${locations.filter((l) => !resultKeys.includes(l)).join(', ')}].`,
-      );
-    }
+    // Missing configured locations cannot satisfy an all-locations check.
+    const effectiveLocations = Array.from(new Set(rawLocations));
 
     const upCount = effectiveLocations.filter(
       (loc) => locationStatuses[loc] === true,

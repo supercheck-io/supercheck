@@ -2,12 +2,14 @@ import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios'; // Import HttpService
 import { AxiosError, AxiosRequestConfig, Method } from 'axios'; // Import Method from axios
 import * as tls from 'tls';
+import { randomUUID } from 'node:crypto';
 import { firstValueFrom } from 'rxjs'; // To convert Observable to Promise
 import { MonitorJobDataDto } from './dto/monitor-job.dto';
 import { MonitorExecutionResult } from './types/monitor-result.type';
 import { DbService } from '../db/db.service';
 import { ExecutionService } from '../execution/services/execution.service';
 import { UsageTrackerService } from '../execution/services/usage-tracker.service';
+import { RedisService } from '../execution/services/redis.service';
 import * as schema from '../db/schema'; // Assuming your schema is here and WILL contain monitorResults
 import type {
   MonitorConfig,
@@ -17,7 +19,7 @@ import type {
   monitorResultsSelectSchema,
 } from '../db/schema';
 import type { z } from 'zod';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import { MonitorAlertService } from './services/monitor-alert.service';
 import { ValidationService } from '../common/validation/validation.service';
 import {
@@ -55,7 +57,6 @@ import {
   sanitizeResponseBody,
   getErrorMessage,
 } from '../common/validation';
-import { RedisService } from '../execution/services/redis.service';
 import { VariableResolverService } from '../common/services/variable-resolver.service';
 import { requestPinnedMonitorTarget } from '../common/utils/pinned-monitor-request';
 
@@ -84,22 +85,30 @@ function serializeResponseData(value: unknown): string {
   }
 }
 
-// Redis key constants for aggregation coordination
-const REDIS_AGGREGATION_KEY_PREFIX = 'monitor:aggr:';
-const REDIS_AGGREGATION_TTL_SECONDS = 120; // 2 minutes - enough time for all locations to report
-
 type AggregatedAlertState = {
   consecutiveFailureCount: number;
   consecutiveSuccessCount: number;
   alertsSentForFailure: number;
   alertsSentForRecovery: number;
+  executionGroupId?: string;
 };
+
+type GroupAlertEvaluation = {
+  previousStatus: string;
+  currentStatus: 'up' | 'down';
+  alertState?: AggregatedAlertState;
+};
+
+export class MonitorAggregationBusyError extends Error {
+  readonly retryAfterMs = 60_000;
+  constructor() {
+    super('Monitor aggregation lease is busy or no longer owned');
+  }
+}
 
 @Injectable()
 export class MonitorService {
   private readonly logger = new Logger(MonitorService.name);
-  private static readonly AGGREGATION_MAX_RETRIES = 3;
-  private static readonly AGGREGATION_RETRY_DELAY_MS = 200; // Reduced from 500ms since Redis is fast
 
   constructor(
     private readonly dbService: DbService,
@@ -418,7 +427,7 @@ export class MonitorService {
    */
   async saveMonitorResults(
     results: MonitorExecutionResult[],
-    options?: { persisted?: boolean },
+    options?: { persisted?: boolean; executionGroupId?: string },
   ): Promise<void> {
     if (results.length === 0) {
       this.logger.warn('No results to save');
@@ -426,7 +435,7 @@ export class MonitorService {
     }
 
     const monitorId = results[0].monitorId;
-    const monitor = await this.getMonitorById(monitorId);
+    let monitor = await this.getMonitorById(monitorId);
 
     if (!monitor) {
       this.logger.warn(`Monitor ${monitorId} not found, skipping save`);
@@ -477,22 +486,48 @@ export class MonitorService {
     }
 
     // Update monitor status with aggregated result
-    const previousStatus = monitor.status;
+    let previousStatus = monitor.status;
     const checkedAt = results[0].checkedAt;
-
-    await this.updateMonitorStatus(monitorId, overallStatus, checkedAt);
+    let groupEvaluation:
+      | (GroupAlertEvaluation & { resultId: string })
+      | undefined;
+    if (options?.executionGroupId) {
+      const prepared = await this.prepareGroupEvaluation(
+        monitorId,
+        options.executionGroupId,
+        overallStatus,
+        checkedAt,
+        results.length,
+      );
+      if (!prepared) return;
+      monitor = prepared.monitor;
+      previousStatus = prepared.evaluation.previousStatus;
+      overallStatus = prepared.evaluation.currentStatus;
+      groupEvaluation = { ...prepared.evaluation, resultId: prepared.resultId };
+    } else {
+      await this.updateMonitorStatus(monitorId, overallStatus, checkedAt);
+    }
 
     // Handle alerts based on aggregated status using consolidated alert logic
     // Always evaluate alerts (not just on status change) so threshold counting works correctly
     const currentStatus = overallStatus;
 
     // Calculate location summary for alert reason
-    const downCount = results.filter((r) => !r.isUp).length;
-    const upCount = results.length - downCount;
+    const configuredLocations =
+      locationConfig?.enabled && locationConfig.locations?.length
+        ? Array.from(new Set(locationConfig.locations))
+        : Object.keys(locationStatuses);
+    const missingLocations = configuredLocations.filter(
+      (location) => !(location in locationStatuses),
+    );
+    const upCount = configuredLocations.filter(
+      (location) => locationStatuses[location] === true,
+    ).length;
+    const downCount = configuredLocations.length - upCount;
     const reason =
       currentStatus === 'down'
-        ? `Monitor is down in ${downCount}/${results.length} locations`
-        : `Monitor has recovered (${upCount}/${results.length} locations up)`;
+        ? `Monitor is down in ${downCount}/${configuredLocations.length} locations${missingLocations.length ? ` (no results from ${missingLocations.join(', ')})` : ''}`
+        : `Monitor has recovered (${upCount}/${configuredLocations.length} locations up)`;
 
     const avgResponseTime =
       results.reduce((sum, r) => sum + (r.responseTimeMs || 0), 0) /
@@ -511,6 +546,7 @@ export class MonitorService {
       previousStatus,
       currentStatus,
       reason,
+      preparedAlertState: groupEvaluation?.alertState,
       metadata: {
         responseTime: avgResponseTime,
         locationResults: results.map((r) => ({
@@ -520,6 +556,117 @@ export class MonitorService {
         })),
       },
     });
+    if (groupEvaluation) {
+      await this.dbService.db
+        .update(schema.monitorResults)
+        .set({
+          details: sql`jsonb_set(coalesce(${schema.monitorResults.details}, '{}'::jsonb), '{aggregationNotificationProcessed}', 'true'::jsonb)`,
+        })
+        .where(eq(schema.monitorResults.id, groupEvaluation.resultId));
+    }
+  }
+
+  private isMultiLocationEvaluation(
+    config: MonitorConfig | null | undefined,
+    resultCount: number,
+  ): boolean {
+    return (
+      Boolean(
+        config?.locationConfig?.enabled &&
+        new Set(config.locationConfig.locations ?? []).size > 1,
+      ) || resultCount > 1
+    );
+  }
+
+  private async prepareGroupEvaluation(
+    monitorId: string,
+    executionGroupId: string,
+    currentStatus: 'up' | 'down',
+    checkedAt: Date,
+    resultCount: number,
+  ) {
+    return this.dbService.db.transaction(async (tx) => {
+      const [monitor] = await tx
+        .select()
+        .from(schema.monitors)
+        .where(eq(schema.monitors.id, monitorId))
+        .limit(1)
+        .for('update');
+      if (!monitor) return null;
+      const rows = await tx
+        .select({
+          id: schema.monitorResults.id,
+          details: schema.monitorResults.details,
+        })
+        .from(schema.monitorResults)
+        .where(
+          and(
+            eq(schema.monitorResults.monitorId, monitorId),
+            eq(schema.monitorResults.executionGroupId, executionGroupId),
+          ),
+        );
+      const applied = rows.find((row) => row.details?.aggregationEvaluation);
+      if (applied) {
+        if (applied.details?.aggregationNotificationProcessed === true)
+          return null;
+        return {
+          monitor,
+          resultId: applied.id,
+          evaluation: applied.details!
+            .aggregationEvaluation as GroupAlertEvaluation,
+        };
+      }
+      const row = rows[0];
+      if (!row) throw new Error('Persisted aggregation group is missing');
+      const previousStatus = monitor.status;
+      const evaluation: GroupAlertEvaluation = {
+        previousStatus,
+        currentStatus,
+      };
+      if (this.isMultiLocationEvaluation(monitor.config, resultCount)) {
+        const previousState = this.readAggregatedAlertState(monitor.config);
+        evaluation.alertState = {
+          ...(monitor.alertConfig?.enabled &&
+          !['pending', 'paused'].includes(previousStatus)
+            ? this.getNextAggregatedAlertState(
+                previousState,
+                previousStatus,
+                currentStatus,
+              )
+            : previousState),
+          executionGroupId,
+        };
+      }
+      // Commit cycle counters and its receipt together; a Redis marker cannot do this.
+      await tx
+        .update(schema.monitors)
+        .set({
+          status: currentStatus,
+          lastCheckAt: checkedAt,
+          lastStatusChangeAt:
+            previousStatus !== currentStatus ? checkedAt : undefined,
+          ...(evaluation.alertState
+            ? {
+                config: {
+                  ...(monitor.config ?? {}),
+                  aggregatedAlertState: evaluation.alertState,
+                },
+              }
+            : {}),
+        })
+        .where(eq(schema.monitors.id, monitorId));
+      await tx
+        .update(schema.monitorResults)
+        .set({
+          details: {
+            ...(row.details ?? {}),
+            aggregationEvaluation: evaluation,
+            aggregationNotificationProcessed: false,
+          },
+        })
+        .where(eq(schema.monitorResults.id, row.id));
+      return { monitor, resultId: row.id, evaluation };
+    });
   }
 
   async saveDistributedMonitorResult(
@@ -527,6 +674,7 @@ export class MonitorService {
     options: {
       executionGroupId?: string;
       expectedLocations?: MonitoringLocation[];
+      persisted?: boolean;
     },
   ): Promise<void> {
     const executionGroupId = options.executionGroupId;
@@ -547,7 +695,7 @@ export class MonitorService {
           }
         : result;
 
-    await this.saveMonitorResultToDb(persistedResult);
+    if (!options.persisted) await this.saveMonitorResultToDb(persistedResult);
 
     if (!executionGroupId) {
       await this.saveMonitorResults([persistedResult], { persisted: true });
@@ -566,33 +714,11 @@ export class MonitorService {
         ? expectedLocations
         : this.locationService.getEffectiveLocations(locationConfig);
 
-    // Use Redis for aggregation coordination instead of polling the database
-    // This is much more efficient: O(1) Redis ops vs expensive JSON field queries
-    const redisKey = `${REDIS_AGGREGATION_KEY_PREFIX}${executionGroupId}`;
     const redis = this.redisService.getClient();
-
-    // Add current location to the Redis set for this execution group
-    await redis.sadd(redisKey, result.location);
-    await redis.expire(redisKey, REDIS_AGGREGATION_TTL_SECONDS);
-
-    // Check if all locations have reported using Redis (O(1) operation)
-    const reportedCount = await redis.scard(redisKey);
-
-    if (reportedCount < expected.length) {
-      // Not all locations have reported yet - let the last worker handle aggregation
-      this.logger.debug(
-        `Location ${result.location} reported for monitor ${result.monitorId}. ` +
-          `Waiting for others: ${reportedCount}/${expected.length}. ` +
-          `ExecutionGroupId: ${executionGroupId}`,
-      );
+    const completedKey = `monitor:aggr:completed:${executionGroupId}`;
+    const abortedKey = `monitor:aggr:aborted:${executionGroupId}`;
+    if ((await redis.get(completedKey)) || (await redis.get(abortedKey)))
       return;
-    }
-
-    // All locations reported! This worker will aggregate.
-    // Brief pause to ensure all DB writes have committed before querying
-    await new Promise((resolve) =>
-      setTimeout(resolve, MonitorService.AGGREGATION_RETRY_DELAY_MS),
-    );
 
     // Define the type for the rows we're selecting
     type MonitorResultRow = {
@@ -607,7 +733,7 @@ export class MonitorService {
       testReportS3Url: string | null;
     };
 
-    // Now fetch results from DB (single query, not in a loop)
+    // The indexed, persisted group survives slow checks, retries, and Redis expiry.
     const groupRows = await this.dbService.db
       .select({
         monitorId: schema.monitorResults.monitorId,
@@ -638,12 +764,9 @@ export class MonitorService {
       }
     }
 
-    // Clean up Redis key now that we've aggregated
-    await redis.del(redisKey);
-
-    if (latestByLocation.size < expected.length) {
-      this.logger.warn(
-        `Redis reported all locations but DB query found fewer. ` +
+    if (expected.some((location) => !latestByLocation.has(location))) {
+      this.logger.debug(
+        `Waiting for persisted location results. ` +
           `Expected: ${expected.join(', ')}. ` +
           `Got: ${Array.from(latestByLocation.keys()).join(', ')}. ` +
           `ExecutionGroupId: ${executionGroupId}`,
@@ -683,10 +806,73 @@ export class MonitorService {
     this.logger.log(
       `Calling saveMonitorResults for monitor ${result.monitorId} with ${aggregatedResults.length} results`,
     );
-    await this.saveMonitorResults(aggregatedResults, { persisted: true });
+    await this.withAggregationLease(result.monitorId, async (assertOwned) => {
+      if ((await redis.get(completedKey)) || (await redis.get(abortedKey)))
+        return;
+      await assertOwned();
+      await this.saveMonitorResults(aggregatedResults, {
+        persisted: true,
+        executionGroupId,
+      });
+      await assertOwned();
+      await redis
+        .set(completedKey, '1', 'EX', 7 * 24 * 60 * 60)
+        .catch((error: unknown) =>
+          this.logger.warn(
+            `Unable to mark aggregated group ${executionGroupId} complete: ${getErrorMessage(error)}`,
+          ),
+        );
+    });
     this.logger.log(
       `Successfully aggregated and saved results for monitor ${result.monitorId}`,
     );
+  }
+
+  private async withAggregationLease(
+    monitorId: string,
+    aggregate: (assertOwned: () => Promise<void>) => Promise<void>,
+  ): Promise<void> {
+    const redis = this.redisService.getClient();
+    const lockKey = `monitor:aggr:lock:${monitorId}`;
+    const token = randomUUID();
+    const leaseMs = 60_000;
+    if ((await redis.set(lockKey, token, 'PX', leaseMs, 'NX')) !== 'OK') {
+      throw new MonitorAggregationBusyError();
+    }
+    const renewScript =
+      'if redis.call("GET", KEYS[1]) == ARGV[1] then return redis.call("PEXPIRE", KEYS[1], ARGV[2]) end return 0';
+    const assertOwned = async () => {
+      if ((await redis.eval(renewScript, 1, lockKey, token, leaseMs)) !== 1) {
+        throw new MonitorAggregationBusyError();
+      }
+    };
+    let renewal: Promise<void> = Promise.resolve();
+    const timer = setInterval(() => {
+      renewal = renewal.then(assertOwned).catch((error: unknown) => {
+        this.logger.warn(
+          `Unable to renew monitor aggregation lease ${monitorId}: ${getErrorMessage(error)}`,
+        );
+      });
+    }, leaseMs / 3);
+    timer.unref();
+    try {
+      await aggregate(assertOwned);
+    } finally {
+      clearInterval(timer);
+      await renewal;
+      await redis
+        .eval(
+          'if redis.call("GET", KEYS[1]) == ARGV[1] then return redis.call("DEL", KEYS[1]) end return 0',
+          1,
+          lockKey,
+          token,
+        )
+        .catch((error: unknown) =>
+          this.logger.warn(
+            `Unable to release monitor aggregation lease ${monitorId}: ${getErrorMessage(error)}`,
+          ),
+        );
+    }
   }
 
   async saveMonitorResult(resultData: MonitorExecutionResult): Promise<void> {
@@ -2368,8 +2554,21 @@ export class MonitorService {
 
       await this.dbService.db
         .update(schema.monitors)
-        .set({ config: nextConfig })
-        .where(eq(schema.monitors.id, monitorId));
+        .set({
+          config: aggregatedAlertState.executionGroupId
+            ? sql`jsonb_set(coalesce(${schema.monitors.config}, '{}'::jsonb), '{aggregatedAlertState}', ${JSON.stringify(aggregatedAlertState)}::jsonb)`
+            : nextConfig,
+        })
+        .where(
+          and(
+            eq(schema.monitors.id, monitorId),
+            ...(aggregatedAlertState.executionGroupId
+              ? [
+                  sql`${schema.monitors.config}->'aggregatedAlertState'->>'executionGroupId' = ${aggregatedAlertState.executionGroupId}`,
+                ]
+              : []),
+          ),
+        );
     } catch (error) {
       this.logger.error(
         `Failed to persist aggregated alert state for monitor ${monitorId}: ${getErrorMessage(error)}`,
@@ -2396,6 +2595,7 @@ export class MonitorService {
     currentStatus: 'up' | 'down';
     reason: string;
     metadata: Record<string, unknown>;
+    preparedAlertState?: AggregatedAlertState;
   }): Promise<{ alertSent: boolean; alertType?: string }> {
     const { monitorId, previousStatus, currentStatus, reason, metadata } =
       options;
@@ -2424,17 +2624,22 @@ export class MonitorService {
     )
       ? ((metadata as { locationResults?: unknown[] }).locationResults ?? [])
       : [];
-    const isMultiLocationEvaluation = locationResults.length > 1;
+    const isMultiLocationEvaluation = this.isMultiLocationEvaluation(
+      monitorConfig,
+      locationResults.length,
+    );
 
     let latestResult: MonitorResult | undefined;
     let aggregatedAlertState: AggregatedAlertState | null = null;
 
     if (isMultiLocationEvaluation) {
-      aggregatedAlertState = this.getNextAggregatedAlertState(
-        this.readAggregatedAlertState(monitorConfig),
-        previousStatus,
-        currentStatus,
-      );
+      aggregatedAlertState =
+        options.preparedAlertState ??
+        this.getNextAggregatedAlertState(
+          this.readAggregatedAlertState(monitorConfig),
+          previousStatus,
+          currentStatus,
+        );
     } else {
       // Keep existing row-based logic for single-location evaluations
       latestResult = await this.dbService.db.query.monitorResults.findFirst({
@@ -2546,7 +2751,11 @@ export class MonitorService {
     }
 
     if (!shouldSendAlert || !alertType) {
-      if (isMultiLocationEvaluation && aggregatedAlertState) {
+      if (
+        isMultiLocationEvaluation &&
+        aggregatedAlertState &&
+        !options.preparedAlertState
+      ) {
         await this.persistAggregatedAlertState(
           monitorId,
           monitorConfig,

@@ -40,7 +40,7 @@ export class SreAlertTriageQueueService implements OnModuleDestroy {
           queue.add(
             'triage-alert-history',
             { alertHistoryId: row.id },
-            { jobId: `sre-alert-triage:${row.id}` },
+            { jobId: `sre-alert-triage-${row.id}` },
           ),
         ),
       );

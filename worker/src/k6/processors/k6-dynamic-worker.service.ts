@@ -126,6 +126,7 @@ export class K6DynamicWorkerService implements OnModuleInit, OnModuleDestroy {
         lockDuration: 70 * 60 * 1000,
         stalledInterval: 30000,
         maxStalledCount: 2,
+        metrics: { maxDataPoints: 60 },
       },
     );
 

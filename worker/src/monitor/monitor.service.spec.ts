@@ -39,7 +39,8 @@ jest.mock('../common/utils/pinned-monitor-request', () => ({
   ),
 }));
 
-import { MonitorService } from './monitor.service';
+import { MonitorService, MonitorAggregationBusyError } from './monitor.service';
+import type { MonitorExecutionResult } from './types/monitor-result.type';
 import { DbService } from '../db/db.service';
 import { ExecutionService } from '../execution/services/execution.service';
 import { UsageTrackerService } from '../execution/services/usage-tracker.service';
@@ -52,6 +53,7 @@ import { ResourceManagerService } from '../common/resources/resource-manager.ser
 import { LocationService } from '../common/location/location.service';
 import { RedisService } from '../execution/services/redis.service';
 import { VariableResolverService } from '../common/services/variable-resolver.service';
+import * as schema from '../db/schema';
 
 describe('MonitorService', () => {
   let service: MonitorService;
@@ -91,6 +93,7 @@ describe('MonitorService', () => {
         orderBy: jest.fn().mockReturnThis(),
         limit: jest.fn().mockResolvedValue([]),
       }),
+      transaction: jest.fn(),
     },
   };
 
@@ -149,6 +152,9 @@ describe('MonitorService', () => {
 
   const mockRedisService = {
     getClient: jest.fn().mockReturnValue({
+      get: jest.fn().mockResolvedValue(null),
+      set: jest.fn().mockResolvedValue('OK'),
+      eval: jest.fn().mockResolvedValue(1),
       sadd: jest.fn().mockResolvedValue(1),
       expire: jest.fn().mockResolvedValue(1),
       scard: jest.fn().mockResolvedValue(1),
@@ -185,6 +191,9 @@ describe('MonitorService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    mockRedisService.getClient().get.mockReset().mockResolvedValue(null);
+    mockRedisService.getClient().set.mockReset().mockResolvedValue('OK');
+    mockRedisService.getClient().eval.mockReset().mockResolvedValue(1);
 
     // Default mock for monitor lookup
     mockDbService.db.query.monitors.findFirst.mockResolvedValue(mockMonitor);
@@ -721,6 +730,32 @@ describe('MonitorService', () => {
   // ==========================================================================
 
   describe('Multi-location Alert Thresholds', () => {
+    it('uses aggregate counters when default routing produced multiple actual results', async () => {
+      const monitor = {
+        ...mockMonitor,
+        status: 'down',
+        alertConfig: {
+          enabled: true,
+          alertOnFailure: true,
+          failureThreshold: 3,
+        },
+        config: {
+          locationConfig: { enabled: false, locations: [], threshold: 100 },
+        },
+      };
+      await service['evaluateAndSendAlert']({
+        monitorId: monitor.id,
+        monitor: monitor as unknown as typeof schema.monitors.$inferSelect,
+        previousStatus: 'down',
+        currentStatus: 'down',
+        reason: 'both locations failed',
+        metadata: { locationResults: [{ location: 'eu' }, { location: 'us' }] },
+      });
+      expect(
+        mockDbService.db.query.monitorResults.findFirst,
+      ).not.toHaveBeenCalled();
+      expect(mockAlertService.sendNotification).not.toHaveBeenCalled();
+    });
     it('uses aggregated alert state for multi-location thresholds', async () => {
       mockDbService.db.query.monitorResults.findFirst.mockResolvedValue({
         id: 'result-latest',
@@ -790,6 +825,207 @@ describe('MonitorService', () => {
   // ==========================================================================
   // RESULT STORAGE TESTS
   // ==========================================================================
+
+  describe('durable group aggregation', () => {
+    it('counts a group once after marker failure and an intervening group', async () => {
+      let monitor = {
+        ...mockMonitor,
+        status: 'down',
+        alertConfig: {
+          enabled: true,
+          alertOnFailure: true,
+          failureThreshold: 3,
+        },
+        config: {
+          locationConfig: {
+            enabled: true,
+            locations: ['eu', 'us'],
+            threshold: 100,
+            strategy: 'all',
+          },
+          aggregatedAlertState: {
+            consecutiveFailureCount: 1,
+            consecutiveSuccessCount: 0,
+            alertsSentForFailure: 0,
+            alertsSentForRecovery: 0,
+          },
+        },
+      };
+      const rows: Record<
+        string,
+        { id: string; details: Record<string, unknown> }
+      > = {
+        a: { id: 'result-a', details: {} },
+        b: { id: 'result-b', details: {} },
+      };
+      let activeGroup = 'a';
+      const tx = {
+        select: () => ({
+          from: (table: unknown) => ({
+            where: () => ({
+              limit: () => ({ for: async () => [monitor] }),
+              then: (resolve: (value: unknown) => void) =>
+                resolve(
+                  table === schema.monitorResults
+                    ? [rows[activeGroup]]
+                    : [monitor],
+                ),
+            }),
+          }),
+        }),
+        update: (table: unknown) => ({
+          set: (values: Record<string, unknown>) => ({
+            where: async () => {
+              if (table === schema.monitors)
+                monitor = { ...monitor, ...values } as typeof monitor;
+              else
+                rows[activeGroup].details = values.details as Record<
+                  string,
+                  unknown
+                >;
+            },
+          }),
+        }),
+      };
+      mockDbService.db.transaction.mockImplementation(
+        async (callback: (value: typeof tx) => Promise<unknown>) =>
+          callback(tx),
+      );
+      mockDbService.db.query.monitors.findFirst.mockImplementation(
+        async () => monitor,
+      );
+      mockLocationService.calculateAggregatedStatus.mockReturnValue('down');
+      let failMarker = true;
+      mockDbService.db.update.mockImplementation((table: unknown) => ({
+        set: jest.fn(() => ({
+          where: async () => {
+            if (table === schema.monitorResults) {
+              if (failMarker) {
+                failMarker = false;
+                throw new Error('marker write failed');
+              }
+              rows[activeGroup].details.aggregationNotificationProcessed = true;
+            }
+          },
+        })),
+      }));
+      const results = ['eu', 'us'].map((location) => ({
+        monitorId: monitor.id,
+        location,
+        status: 'down' as const,
+        isUp: false,
+        checkedAt: new Date(),
+      }));
+      await expect(
+        service.saveMonitorResults(results, {
+          persisted: true,
+          executionGroupId: 'a',
+        }),
+      ).rejects.toThrow('marker write failed');
+      expect(monitor.config.aggregatedAlertState.consecutiveFailureCount).toBe(
+        2,
+      );
+      activeGroup = 'b';
+      await service.saveMonitorResults(results, {
+        persisted: true,
+        executionGroupId: 'b',
+      });
+      expect(monitor.config.aggregatedAlertState.consecutiveFailureCount).toBe(
+        3,
+      );
+      expect(mockAlertService.sendNotification).toHaveBeenCalledTimes(1);
+      activeGroup = 'a';
+      await service.saveMonitorResults(results, {
+        persisted: true,
+        executionGroupId: 'a',
+      });
+      await service.saveMonitorResults(results, {
+        persisted: true,
+        executionGroupId: 'a',
+      });
+      expect(monitor.config.aggregatedAlertState.consecutiveFailureCount).toBe(
+        3,
+      );
+      expect(mockAlertService.sendNotification).toHaveBeenCalledTimes(1);
+      expect(rows.a.details.aggregationNotificationProcessed).toBe(true);
+    });
+
+    it('propagates group transaction failures before sending notifications', async () => {
+      mockDbService.db.query.monitors.findFirst.mockResolvedValue(mockMonitor);
+      mockDbService.db.transaction.mockRejectedValueOnce(
+        new Error('transaction failed'),
+      );
+      await expect(
+        service.saveMonitorResults(
+          [
+            {
+              monitorId: mockMonitor.id,
+              location: 'eu',
+              status: 'down',
+              isUp: false,
+              checkedAt: new Date(),
+            },
+          ],
+          {
+            persisted: true,
+            executionGroupId: 'group-failed',
+          },
+        ),
+      ).rejects.toThrow('transaction failed');
+      expect(mockAlertService.sendNotification).not.toHaveBeenCalled();
+    });
+  });
+
+  it('keeps aggregate failure thresholds when only one of two configured locations reports', async () => {
+    const monitor = {
+      ...mockMonitor,
+      status: 'down',
+      alertConfig: {
+        enabled: true,
+        alertOnFailure: true,
+        failureThreshold: 3,
+      },
+      config: {
+        locationConfig: {
+          enabled: true,
+          locations: ['eu-central', 'us-east'],
+          strategy: 'all',
+          threshold: 100,
+        },
+        aggregatedAlertState: {
+          consecutiveFailureCount: 1,
+          consecutiveSuccessCount: 0,
+          alertsSentForFailure: 0,
+          alertsSentForRecovery: 0,
+        },
+      },
+    };
+    const state = service as unknown as {
+      evaluateAndSendAlert(options: object): Promise<{ alertSent: boolean }>;
+    };
+    await state.evaluateAndSendAlert({
+      monitorId: monitor.id,
+      monitor,
+      previousStatus: 'down',
+      currentStatus: 'down',
+      reason: 'missing us-east',
+      metadata: { locationResults: [{ location: 'eu-central', isUp: true }] },
+    });
+    expect(
+      mockDbService.db.query.monitorResults.findFirst,
+    ).not.toHaveBeenCalled();
+    expect(
+      mockDbService.db.update.mock.results[0].value.set,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        config: expect.objectContaining({
+          aggregatedAlertState: expect.objectContaining({
+            consecutiveFailureCount: 2,
+          }),
+        }),
+      }),
+    );
+  });
 
   describe('Result Storage', () => {
     it('should have db service for storing results', () => {
@@ -1005,6 +1241,360 @@ describe('MonitorService', () => {
     it('should handle binary response', () => {
       const binaryIndicator = 'application/octet-stream';
       expect(binaryIndicator).toContain('octet-stream');
+    });
+  });
+  describe('distributed group recovery', () => {
+    function result(
+      location: string,
+      checkedAt = new Date(),
+    ): MonitorExecutionResult {
+      return {
+        monitorId: mockMonitor.id,
+        location,
+        status: 'up',
+        isUp: true,
+        checkedAt,
+      };
+    }
+
+    function persistedRows(rows: MonitorExecutionResult[]) {
+      mockDbService.db.select.mockReturnValue({
+        from: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockResolvedValue(rows),
+        limit: jest.fn().mockResolvedValue(rows),
+      });
+    }
+
+    it('aggregates a location that reports five minutes after the first without a Redis completion gate', async () => {
+      const persist = jest
+        .spyOn(
+          service as unknown as {
+            saveMonitorResultToDb(
+              result: MonitorExecutionResult,
+            ): Promise<void>;
+          },
+          'saveMonitorResultToDb',
+        )
+        .mockResolvedValue(undefined);
+      const aggregate = jest
+        .spyOn(service, 'saveMonitorResults')
+        .mockResolvedValue(undefined);
+      const early = result('eu-central', new Date('2026-10-11T00:00:00Z'));
+      const late = result('us-east', new Date('2026-10-11T00:05:00Z'));
+      const group = {
+        executionGroupId: 'group-slow',
+        expectedLocations: ['eu-central', 'us-east'],
+      };
+      persistedRows([early]);
+      await service.saveDistributedMonitorResult(early, group);
+      expect(aggregate).not.toHaveBeenCalled();
+      persistedRows([late, early]);
+      await service.saveDistributedMonitorResult(late, group);
+      expect(persist).toHaveBeenCalledTimes(2);
+      expect(aggregate).toHaveBeenCalledWith(
+        [expect.objectContaining(early), expect.objectContaining(late)],
+        { persisted: true, executionGroupId: 'group-slow' },
+      );
+      expect(mockRedisService.getClient().sadd).not.toHaveBeenCalled();
+    });
+
+    it('does not advance alert thresholds for a replay of a completed group', async () => {
+      jest
+        .spyOn(
+          service as unknown as {
+            saveMonitorResultToDb(
+              result: MonitorExecutionResult,
+            ): Promise<void>;
+          },
+          'saveMonitorResultToDb',
+        )
+        .mockResolvedValue(undefined);
+      const aggregate = jest
+        .spyOn(service, 'saveMonitorResults')
+        .mockResolvedValue(undefined);
+      const current = result('eu-central');
+      persistedRows([current]);
+      const group = {
+        executionGroupId: 'group-replayed',
+        expectedLocations: ['eu-central'],
+      };
+      await service.saveDistributedMonitorResult(current, group);
+      mockRedisService.getClient().get.mockResolvedValueOnce('1');
+      await service.saveDistributedMonitorResult(current, group);
+      expect(aggregate).toHaveBeenCalledTimes(1);
+    });
+
+    it('serializes simultaneous group completion and skips the delayed replay', async () => {
+      jest
+        .spyOn(
+          service as unknown as {
+            saveMonitorResultToDb(
+              result: MonitorExecutionResult,
+            ): Promise<void>;
+          },
+          'saveMonitorResultToDb',
+        )
+        .mockResolvedValue(undefined);
+      const values = new Map<string, string>();
+      const redis = mockRedisService.getClient();
+      redis.get.mockImplementation(
+        async (key: string) => values.get(key) ?? null,
+      );
+      redis.set.mockImplementation(
+        async (key: string, value: string, ...options: unknown[]) => {
+          if (options.includes('NX') && values.has(key)) return null;
+          values.set(key, value);
+          return 'OK';
+        },
+      );
+      redis.eval.mockImplementation(
+        async (script: string, _count: number, key: string, token: string) => {
+          if (values.get(key) !== token) return 0;
+          if (script.includes('"DEL"')) values.delete(key);
+          return 1;
+        },
+      );
+      let finish!: () => void;
+      let entered!: () => void;
+      const started = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      const aggregate = jest
+        .spyOn(service, 'saveMonitorResults')
+        .mockImplementation(async () => {
+          entered();
+          await new Promise<void>((resolve) => {
+            finish = resolve;
+          });
+        });
+      const current = result('eu-central');
+      persistedRows([current, result('us-east')]);
+      const group = {
+        executionGroupId: 'group-race',
+        expectedLocations: ['eu-central', 'us-east'],
+      };
+      const first = service.saveDistributedMonitorResult(current, group);
+      await started;
+      await expect(
+        service.saveDistributedMonitorResult(result('us-east'), group),
+      ).rejects.toBeInstanceOf(MonitorAggregationBusyError);
+      expect(aggregate).toHaveBeenCalledTimes(1);
+      finish();
+      await first;
+      await service.saveDistributedMonitorResult(result('us-east'), group);
+      expect(aggregate).toHaveBeenCalledTimes(1);
+    });
+
+    it('renews a slow aggregation lease past its initial minute and releases its token', async () => {
+      jest.useFakeTimers();
+      let finish!: () => void;
+      let entered!: () => void;
+      const started = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      const leased = service as unknown as {
+        withAggregationLease(
+          monitorId: string,
+          work: (assertOwned: () => Promise<void>) => Promise<void>,
+        ): Promise<void>;
+      };
+      const pending = leased.withAggregationLease(
+        'slow-monitor',
+        async (assertOwned) => {
+          await assertOwned();
+          entered();
+          await new Promise<void>((resolve) => {
+            finish = resolve;
+          });
+          await assertOwned();
+        },
+      );
+      try {
+        await started;
+        await jest.advanceTimersByTimeAsync(80_000);
+        const redis = mockRedisService.getClient();
+        expect(
+          redis.eval.mock.calls.filter(([script]) => script.includes('PEXPIRE'))
+            .length,
+        ).toBeGreaterThanOrEqual(5);
+        finish();
+        await pending;
+        const token = redis.set.mock.calls[0][1];
+        expect(redis.eval).toHaveBeenLastCalledWith(
+          expect.stringContaining('DEL'),
+          1,
+          'monitor:aggr:lock:slow-monitor',
+          token,
+        );
+        expect(jest.getTimerCount()).toBe(0);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('does not publish completion after losing ownership of the aggregation lease', async () => {
+      jest
+        .spyOn(
+          service as unknown as {
+            saveMonitorResultToDb(
+              result: MonitorExecutionResult,
+            ): Promise<void>;
+          },
+          'saveMonitorResultToDb',
+        )
+        .mockResolvedValue(undefined);
+      const redis = mockRedisService.getClient();
+      jest.spyOn(service, 'saveMonitorResults').mockImplementation(async () => {
+        redis.eval.mockResolvedValueOnce(0);
+      });
+      persistedRows([result('eu-central')]);
+      await expect(
+        service.saveDistributedMonitorResult(result('eu-central'), {
+          executionGroupId: 'group-lost',
+          expectedLocations: ['eu-central'],
+        }),
+      ).rejects.toBeInstanceOf(MonitorAggregationBusyError);
+      expect(redis.set).not.toHaveBeenCalledWith(
+        'monitor:aggr:completed:group-lost',
+        '1',
+        'EX',
+        604800,
+      );
+    });
+
+    it('skips aggregation of an aborted publication while preserving its observed result', async () => {
+      const persist = jest
+        .spyOn(
+          service as unknown as {
+            saveMonitorResultToDb(
+              result: MonitorExecutionResult,
+            ): Promise<void>;
+          },
+          'saveMonitorResultToDb',
+        )
+        .mockResolvedValue(undefined);
+      const aggregate = jest
+        .spyOn(service, 'saveMonitorResults')
+        .mockResolvedValue(undefined);
+      mockRedisService
+        .getClient()
+        .get.mockImplementation(async (key: string) =>
+          key.includes(':aborted:') ? '1' : null,
+        );
+      await service.saveDistributedMonitorResult(result('eu-central'), {
+        executionGroupId: 'group-aborted',
+        expectedLocations: ['eu-central', 'us-east'],
+      });
+      expect(persist).toHaveBeenCalledTimes(1);
+      expect(aggregate).not.toHaveBeenCalled();
+    });
+
+    it('explains a down status caused by a missing configured location', async () => {
+      mockDbService.db.query.monitors.findFirst.mockResolvedValue({
+        ...mockMonitor,
+        status: 'up',
+        config: {
+          locationConfig: {
+            enabled: true,
+            locations: ['eu-central', 'us-east'],
+            strategy: 'all',
+            threshold: 100,
+          },
+        },
+      });
+      mockLocationService.calculateAggregatedStatus.mockReturnValueOnce(
+        'partial',
+      );
+      const alert = jest
+        .spyOn(
+          service as unknown as {
+            evaluateAndSendAlert(data: { reason: string }): Promise<void>;
+          },
+          'evaluateAndSendAlert',
+        )
+        .mockResolvedValue(undefined);
+      await service.saveMonitorResults([result('eu-central')], {
+        persisted: true,
+      });
+      expect(alert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          currentStatus: 'down',
+          reason: 'Monitor is down in 1/2 locations (no results from us-east)',
+        }),
+      );
+    });
+
+    it('does not retry an already committed aggregate when its completion marker cannot be written', async () => {
+      jest
+        .spyOn(
+          service as unknown as {
+            saveMonitorResultToDb(
+              result: MonitorExecutionResult,
+            ): Promise<void>;
+          },
+          'saveMonitorResultToDb',
+        )
+        .mockResolvedValue(undefined);
+      const aggregate = jest
+        .spyOn(service, 'saveMonitorResults')
+        .mockResolvedValue(undefined);
+      mockRedisService
+        .getClient()
+        .set.mockImplementation(async (key: string) => {
+          if (key.startsWith('monitor:aggr:completed:'))
+            throw new Error('redis disconnected');
+          return 'OK';
+        });
+      const current = result('eu-central');
+      persistedRows([current]);
+      await expect(
+        service.saveDistributedMonitorResult(current, {
+          executionGroupId: 'group-committed',
+          expectedLocations: ['eu-central'],
+        }),
+      ).resolves.toBeUndefined();
+      expect(aggregate).toHaveBeenCalledTimes(1);
+    });
+
+    it('leaves the group retryable when aggregation fails after all results are persisted', async () => {
+      jest
+        .spyOn(
+          service as unknown as {
+            saveMonitorResultToDb(
+              result: MonitorExecutionResult,
+            ): Promise<void>;
+          },
+          'saveMonitorResultToDb',
+        )
+        .mockResolvedValue(undefined);
+      const aggregate = jest
+        .spyOn(service, 'saveMonitorResults')
+        .mockRejectedValueOnce(new Error('database unavailable'))
+        .mockResolvedValue(undefined);
+      const current = result('eu-central');
+      persistedRows([current]);
+      const group = {
+        executionGroupId: 'group-retry',
+        expectedLocations: ['eu-central'],
+      };
+      await expect(
+        service.saveDistributedMonitorResult(current, group),
+      ).rejects.toThrow('database unavailable');
+      expect(mockRedisService.getClient().set).not.toHaveBeenCalledWith(
+        'monitor:aggr:completed:group-retry',
+        '1',
+        'EX',
+        604800,
+      );
+      await service.saveDistributedMonitorResult(current, group);
+      expect(aggregate).toHaveBeenCalledTimes(2);
+      expect(mockRedisService.getClient().set).toHaveBeenCalledWith(
+        'monitor:aggr:completed:group-retry',
+        '1',
+        'EX',
+        604800,
+      );
     });
   });
 });

@@ -140,12 +140,12 @@ Locations are managed in **Super Admin → Locations**.
 | **Disabled** | Unavailable for new checks and runs |
 
 <Callout type="info">
-Offline locations remain visible in your configurations. Monitors use the online subset of their selected locations. k6 runs can wait for execution to become available; choose an online location when you need an immediate run.
+Offline locations remain visible in your configurations. Monitors are enqueued to the online subset of their enabled, project-allowed locations. K6 submissions require a live matching worker heartbeat before reserving capacity; if no heartbeat is available, the request fails with `queue_unavailable`. A worker starting up may need a short time to publish its first heartbeat, so retry after it connects.
 </Callout>
 
 Keep at least one worker running in each region where you offer monitoring. Monitoring does not automatically start stopped workers.
 
-Enabling or disabling a location updates queue routing on every app server and regional worker. The Super Admin queue dashboard follows that same location set. A disabled location stops receiving new regional k6 and monitor work. Active work drains, and existing queued jobs remain until the location is re-enabled. Those jobs keep their admitted execution capacity while running, waiting, or retrying. Worker processes and replica counts are managed separately; Playwright continues to use its global queue.
+Enabling or disabling a location updates queue routing on every app server and regional worker. A disabled location stops receiving new regional k6 and monitor work. Active work drains, and existing queued jobs remain until the location is re-enabled. Admitted K6 jobs in disabled locations remain visible in the Super Admin queue dashboard with a disabled label, and keep their capacity reservation while unfinished. Worker processes and replica counts are managed separately; Playwright continues to use its global queue.
 
 Changes are distributed over Redis. If a notification is missed, servers and workers reconcile with the enabled locations. Allow a short convergence period before checking the dashboard. During a database outage, existing subscriptions are retained unless a valid location-change notification provides an updated set. If the database is unavailable at worker startup, a regional worker temporarily consumes its own region until discovery recovers.
 

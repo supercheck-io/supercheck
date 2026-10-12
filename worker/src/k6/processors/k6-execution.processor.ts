@@ -641,6 +641,9 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
 @Processor(K6_QUEUE, {
   concurrency: 1,
   lockDuration: 70 * 60 * 1000,
+  stalledInterval: 30000,
+  maxStalledCount: 2,
+  metrics: { maxDataPoints: 60 },
 })
 export class K6ExecutionProcessor extends BaseK6ExecutionProcessor {
   constructor(

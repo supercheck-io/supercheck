@@ -5,10 +5,13 @@ import {
   Logger,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Worker, Job } from 'bullmq';
+import { Worker, Job, DelayedError } from 'bullmq';
 import Redis from 'ioredis';
 import { buildRedisOptions } from '../../common/redis/redis-options';
-import { MonitorService } from '../monitor.service';
+import {
+  MonitorService,
+  MonitorAggregationBusyError,
+} from '../monitor.service';
 import { MonitorJobDataDto } from '../dto/monitor-job.dto';
 import { MonitorExecutionResult } from '../types/monitor-result.type';
 import {
@@ -17,7 +20,7 @@ import {
 } from '../monitor.constants';
 import { HeartbeatService } from '../../common/heartbeat/heartbeat.service';
 import { DbService } from '../../db/db.service';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import * as schema from '../../db/schema';
 
 /**
@@ -125,6 +128,7 @@ export class MonitorDynamicWorkerService
         lockDuration: 5 * 60 * 1000,
         stalledInterval: 30000,
         maxStalledCount: 2,
+        metrics: { maxDataPoints: 60 },
       },
     );
 
@@ -148,7 +152,7 @@ export class MonitorDynamicWorkerService
 
       // When the job has exhausted all retries and is part of a distributed
       // execution group, generate an error MonitorResult so the aggregation
-      // gate (Redis SCARD vs expectedLocations.length) can still complete.
+      // group can still contain a result for every expected location.
       // Without this, one failed location would stall aggregation for the
       // entire execution cycle.
       if (job?.data) {
@@ -324,17 +328,50 @@ export class MonitorDynamicWorkerService
     const jobLocation = job.data.executionLocation;
 
     if (jobLocation) {
-      const result = await this.monitorService.executeMonitor(
-        job.data,
-        jobLocation,
-      );
+      const saved =
+        job.data.aggregationOnly && job.data.executionGroupId
+          ? await this.dbService.db.query.monitorResults.findFirst({
+              where: and(
+                eq(schema.monitorResults.monitorId, job.data.monitorId),
+                eq(
+                  schema.monitorResults.executionGroupId,
+                  job.data.executionGroupId,
+                ),
+                eq(schema.monitorResults.location, jobLocation),
+              ),
+              orderBy: [desc(schema.monitorResults.checkedAt)],
+            })
+          : undefined;
+      if (job.data.aggregationOnly && !saved)
+        throw new Error(
+          'Persisted monitor result unavailable for aggregation retry',
+        );
+      const result = saved
+        ? {
+            ...saved,
+            details: saved.details ?? undefined,
+            responseTimeMs: saved.responseTimeMs ?? undefined,
+            testExecutionId: saved.testExecutionId ?? undefined,
+            testReportS3Url: saved.testReportS3Url ?? undefined,
+          }
+        : await this.monitorService.executeMonitor(job.data, jobLocation);
 
       if (!result) return [];
 
-      await this.monitorService.saveDistributedMonitorResult(result, {
-        executionGroupId: job.data.executionGroupId,
-        expectedLocations: job.data.expectedLocations,
-      });
+      try {
+        await this.monitorService.saveDistributedMonitorResult(result, {
+          executionGroupId: job.data.executionGroupId,
+          expectedLocations: job.data.expectedLocations,
+          ...(saved ? { persisted: true } : {}),
+        });
+      } catch (error) {
+        if (error instanceof MonitorAggregationBusyError) {
+          await job.updateData({ ...job.data, aggregationOnly: true });
+          await job.moveToDelayed(Date.now() + error.retryAfterMs, job.token);
+          throw new DelayedError();
+        }
+        throw error;
+      }
 
       return [result];
     }
@@ -346,13 +383,10 @@ export class MonitorDynamicWorkerService
   /**
    * Generate an error MonitorResult for a job that failed after all retries.
    * This ensures the distributed aggregation gate can still complete —
-   * without it, the Redis SCARD never reaches expectedLocations.length
-   * and the aggregation stalls until the TTL expires.
+   * without it, the persisted group never contains every expected location.
    *
    * If processJob() already persisted a real result (e.g. the probe
-   * succeeded but saveDistributedMonitorResult threw during Redis
-   * coordination), we skip writing a synthetic error to avoid
-   * overwriting a valid result.
+   * succeeded but aggregation threw), resume aggregation without overwriting it.
    */
   private async handleFinalJobFailure(
     job: Job<MonitorJobDataDto>,
@@ -379,7 +413,6 @@ export class MonitorDynamicWorkerService
         eq(schema.monitorResults.executionGroupId, executionGroupId),
         eq(schema.monitorResults.location, executionLocation),
       ),
-      columns: { id: true },
     });
 
     if (existing) {
@@ -387,24 +420,39 @@ export class MonitorDynamicWorkerService
         `Skipping synthetic error for ${monitorId}/${executionLocation}: ` +
           `real result already persisted (executionGroupId=${executionGroupId})`,
       );
-      return;
     }
 
-    const errorResult: MonitorExecutionResult = {
-      monitorId,
-      location: executionLocation,
-      status: 'error',
-      checkedAt: new Date(),
-      isUp: false,
-      details: {
-        errorMessage: `Worker execution failed after ${job.attemptsMade} attempt(s): ${error.message}`,
-      },
-    };
+    const errorResult: MonitorExecutionResult = existing
+      ? {
+          ...existing,
+          details: existing.details ?? undefined,
+          responseTimeMs: existing.responseTimeMs ?? undefined,
+          testExecutionId: existing.testExecutionId ?? undefined,
+          testReportS3Url: existing.testReportS3Url ?? undefined,
+        }
+      : {
+          monitorId,
+          location: executionLocation,
+          status: 'error',
+          checkedAt: new Date(),
+          isUp: false,
+          details: {
+            errorMessage: `Worker execution failed after ${job.attemptsMade} attempt(s): ${error.message}`,
+          },
+        };
 
-    await this.monitorService.saveDistributedMonitorResult(errorResult, {
-      executionGroupId,
-      expectedLocations,
-    });
+    try {
+      await this.monitorService.saveDistributedMonitorResult(errorResult, {
+        executionGroupId,
+        expectedLocations,
+        ...(existing ? { persisted: true } : {}),
+      });
+    } catch (aggregationError) {
+      if (!(aggregationError instanceof MonitorAggregationBusyError))
+        throw aggregationError;
+      await job.updateData({ ...job.data, aggregationOnly: true });
+      await job.retry('failed');
+    }
   }
 
   /**

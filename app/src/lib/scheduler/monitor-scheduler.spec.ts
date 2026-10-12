@@ -14,6 +14,7 @@ const mockInsert = jest.fn().mockReturnValue({ values: mockInsertValues });
 
 jest.mock("@/lib/queue", () => ({
   getQueues: jest.fn(),
+  enqueueMonitorLocationJobs: jest.fn(),
   monitorQueueName: (location: string) => `monitor-${location}`,
   queueLogger: {
     warn: jest.fn(),
@@ -33,20 +34,17 @@ jest.mock("@/lib/monitor-location-routing", () => ({
   isMonitorLocationResolutionError: jest.fn(),
 }));
 
-jest.mock("@/utils/db", () => ({
-  db: {
+jest.mock("@/utils/db", () => {
+  const database = {
     update: jest.fn(() => mockUpdate()),
     insert: jest.fn(() => mockInsert()),
-    query: {
-      monitors: {
-        findFirst: jest.fn(),
-      },
-      monitorResults: {
-        findFirst: jest.fn(),
-      },
-    },
-  },
-}));
+    select: jest.fn(() => ({ from: jest.fn().mockReturnThis(), where: jest.fn().mockReturnThis(), for: async () => {
+      const monitor = await mockMonitorsFindFirst(); return monitor ? [monitor] : [];
+    } })),
+    query: { monitors: { findFirst: jest.fn() }, monitorResults: { findFirst: jest.fn() } },
+  };
+  return { db: { ...database, transaction: jest.fn(async (callback: (tx: typeof database) => Promise<unknown>) => callback(database)) } };
+});
 
 jest.mock("@/db/schema", () => ({
   monitors: {},
@@ -62,6 +60,8 @@ jest.mock("./constants", () => ({
   EXECUTE_MONITOR_JOB_NAME: "executeMonitorJob",
 }));
 
+import { getQueues, enqueueMonitorLocationJobs } from "@/lib/queue";
+import { partitionMonitorLocationsByAvailability } from "@/lib/monitor-location-routing";
 import { db } from "@/utils/db";
 import {
   getFirstVisibleProjectRestrictionCode,
@@ -141,5 +141,25 @@ describe("monitor-scheduler", () => {
     expect(mockGetFirstVisibleProjectRestrictionCode).toHaveBeenCalledWith(
       "project-1"
     );
+  });
+
+  it("records Redis enqueue errors even when some regional commands succeeded", async () => {
+    mockResolveMonitorLocations.mockResolvedValue(["eu-central", "us-east"]);
+    (getQueues as jest.Mock).mockResolvedValue({ monitorExecutionQueue: { "eu-central": {}, "us-east": {} } });
+    (partitionMonitorLocationsByAvailability as jest.Mock).mockResolvedValue({ enqueuedLocations: ["eu-central", "us-east"], skippedLocations: [] });
+    (enqueueMonitorLocationJobs as jest.Mock).mockRejectedValue(new Error("incomplete cycle enqueue"));
+    await expect(processScheduledMonitor({ data: { monitorId: "monitor-1", type: "website", target: "https://example.com" } } as never)).rejects.toThrow("incomplete cycle enqueue");
+    expect(mockUpdateSet).toHaveBeenCalledWith(expect.objectContaining({ status: "down" }));
+    expect(mockInsertValues).toHaveBeenCalledWith(expect.objectContaining({ location: "eu-central", isUp: false }));
+  });
+
+  it.each(["up", "down"])("updates status-change time only when changing %s to down", async (status) => {
+    mockMonitorsFindFirst.mockResolvedValue({ status, config: null, projectId: "project-1" });
+    mockResolveMonitorLocations.mockRejectedValue(new Error("no jobs enqueued"));
+    mockGetFirstVisibleProjectRestrictionCode.mockResolvedValue("eu-central");
+    await expect(processScheduledMonitor({ data: { monitorId: "monitor-1", type: "website", target: "https://example.com" } } as never)).rejects.toThrow();
+    expect(mockUpdateSet).toHaveBeenCalledWith(expect.objectContaining({
+      lastStatusChangeAt: status === "up" ? expect.any(Date) : undefined,
+    }));
   });
 });

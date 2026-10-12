@@ -22,9 +22,6 @@ const defaultJobOptions = {
 // Queue settings with proper timeout for K6 (up to 60 minutes execution time)
 const queueSettings = {
   defaultJobOptions,
-  lockDuration: 70 * 60 * 1000,
-  stallInterval: 30000,
-  maxStalledCount: 2,
 };
 
 /**

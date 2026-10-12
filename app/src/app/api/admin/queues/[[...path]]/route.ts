@@ -12,6 +12,7 @@ import {
 } from "@/lib/bull-board/state";
 import {
   getQueueLocationSignature,
+  getCapacityQueues,
   getQueues,
   invalidateQueueMaps,
   locationCodesSignature,
@@ -19,12 +20,12 @@ import {
 import { getAllEnabledLocationCodes } from "@/lib/location-registry";
 import { getCurrentUser } from "@/lib/session";
 import { Role } from "@/lib/rbac/permissions";
+import { getSreAlertTriageQueue } from "@/sre/lib/background-alert-triage-queue";
 
 import type { NextBullBoardAdapterState } from "@/lib/bull-board/next-adapter";
 
 // Configuration constants
 const BULL_BOARD_BASE_PATH = "/api/admin/queues";
-const STATIC_CACHE_MAX_AGE = 31536000; // 1 year for immutable assets
 const INIT_TIMEOUT_MS = 30000; // 30 second timeout for initialization
 
 class HttpError extends Error {
@@ -108,7 +109,6 @@ const initializeBullBoard = async (): Promise<NextBullBoardAdapterState> => {
 
   const {
     playwrightQueues,
-    k6Queues,
     monitorExecutionQueue,
     jobSchedulerQueue,
     k6JobSchedulerQueue,
@@ -116,6 +116,8 @@ const initializeBullBoard = async (): Promise<NextBullBoardAdapterState> => {
     emailTemplateQueue,
     dataLifecycleCleanupQueue,
   } = await getQueues();
+  const { k6Queues } = await getCapacityQueues();
+  const sreAlertTriageQueue = await getSreAlertTriageQueue();
 
   const serverAdapter = new NextBullBoardAdapter().setBasePath(BULL_BOARD_BASE_PATH);
   createBullBoard({
@@ -128,7 +130,9 @@ const initializeBullBoard = async (): Promise<NextBullBoardAdapterState> => {
       ),
       ...Object.entries(k6Queues).map(
         ([region, queue]) =>
-          new BullMQAdapter(queue, { displayName: `k6 Execution (${region})` })
+          new BullMQAdapter(queue, {
+            displayName: `k6 Execution (${region}${enabledCodes.includes(region) || region === "global" ? "" : "; disabled"})`,
+          })
       ),
       ...Object.entries(monitorExecutionQueue).map(
         ([region, queue]) =>
@@ -151,6 +155,7 @@ const initializeBullBoard = async (): Promise<NextBullBoardAdapterState> => {
       new BullMQAdapter(dataLifecycleCleanupQueue, {
         displayName: "Data Lifecycle Cleanup",
       }),
+      new BullMQAdapter(sreAlertTriageQueue, { displayName: "SRE Alert Triage" }),
     ],
     serverAdapter,
     options: {
@@ -207,8 +212,10 @@ const toBodyInit = (value: string | Uint8Array): BodyInit => {
 
 const safeJoin = (basePath: string, relativePath: string): string => {
   const normalizedRelative = relativePath.replace(/^[\\/]+/, "");
-  const fullPath = path.resolve(basePath, normalizedRelative);
-  if (!fullPath.startsWith(path.resolve(basePath))) {
+  const root = path.resolve(basePath);
+  const fullPath = path.resolve(root, normalizedRelative);
+  const relative = path.relative(root, fullPath);
+  if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
     throw new HttpError(404, "File not found");
   }
 
@@ -245,10 +252,13 @@ const serveStaticAsset = async (
     const filePath = safeJoin(staticPath, relativePath || "index.html");
     const file = await fs.readFile(filePath);
     const mimeType = getMimeType(filePath);
+    const contentHashed = /\.[a-f0-9]{8,}\.(js|css)$/.test(path.basename(filePath));
 
     const headers = new Headers({
       "Content-Type": mimeType,
-      "Cache-Control": `public, max-age=${STATIC_CACHE_MAX_AGE}, immutable`,
+      "Cache-Control": contentHashed
+        ? "private, max-age=31536000, immutable"
+        : "private, max-age=0, must-revalidate",
     });
 
     if (method === "HEAD") {
