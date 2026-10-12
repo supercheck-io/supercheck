@@ -3,6 +3,69 @@ import { db } from '@/utils/db';
 import { sql } from 'drizzle-orm';
 import { S3Client, HeadBucketCommand } from '@aws-sdk/client-s3';
 
+type S3Check = { status: 'ok' | 'error'; latencyMs?: number; error?: string };
+
+// The route is public and the probe is signed with real credentials, so share one
+// in-flight probe and reuse the result briefly instead of hitting storage per request.
+const S3_CHECK_TTL_MS = 8000;
+let s3CheckCache: { at: number; result: S3Check } | null = null;
+let s3CheckInflight: Promise<S3Check> | null = null;
+
+function getS3Check(): Promise<S3Check> {
+  if (s3CheckCache && Date.now() - s3CheckCache.at < S3_CHECK_TTL_MS) {
+    return Promise.resolve(s3CheckCache.result);
+  }
+  s3CheckInflight ??= probeS3()
+    .then((result) => {
+      s3CheckCache = { at: Date.now(), result };
+      return result;
+    })
+    .finally(() => {
+      s3CheckInflight = null;
+    });
+  return s3CheckInflight;
+}
+
+async function probeS3(): Promise<S3Check> {
+  const start = Date.now();
+  // Authenticated HeadBucket: proves the endpoint, credentials and path-style
+  // addressing work. A bare HEAD / is not portable (MinIO answers 403, RustFS 501).
+  const client = new S3Client({
+    region: process.env.AWS_REGION || 'us-east-1',
+    endpoint: process.env.S3_ENDPOINT,
+    forcePathStyle: true,
+    maxAttempts: 1, // keep latency and error reporting predictable inside the 5s budget
+    credentials: {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID || 'minioadmin',
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || 'minioadmin',
+    },
+  });
+  const bucket = process.env.S3_TEST_BUCKET_NAME || 'playwright-test-artifacts';
+
+  try {
+    await client.send(new HeadBucketCommand({ Bucket: bucket }), {
+      abortSignal: AbortSignal.timeout(5000),
+    });
+  } catch (error) {
+    const err = error as { name?: string; $metadata?: { httpStatusCode?: number; requestId?: string } } | null;
+    // HEAD responses have no body, so the SDK reports any bodiless 404 as NotFound. Only
+    // trust it as "storage answered" when the response carries an S3 request id; the worker
+    // creates buckets at startup, so a missing bucket is otherwise fine.
+    const bucketMissing = (err?.name === 'NotFound' || err?.name === 'NoSuchBucket') && !!err.$metadata?.requestId;
+    if (!bucketMissing) {
+      // Name and status only: raw SDK messages can include the endpoint host.
+      const status = err?.$metadata?.httpStatusCode;
+      return {
+        status: 'error',
+        error: `S3 probe failed: ${err?.name ?? 'UnknownError'}${status ? ` (${status})` : ''}`,
+      };
+    }
+  } finally {
+    client.destroy();
+  }
+  return { status: 'ok', latencyMs: Date.now() - start };
+}
+
 /**
  * Deep health check endpoint
  * 
@@ -60,47 +123,13 @@ export async function GET() {
     }
   }
 
-  // Check S3/MinIO connectivity (optional - only if configured)
-  const s3Endpoint = process.env.S3_ENDPOINT;
-  if (s3Endpoint) {
+  // Check S3-compatible storage connectivity (optional - only if configured)
+  if (process.env.S3_ENDPOINT) {
     try {
-      const s3Start = Date.now();
-      // Authenticated HeadBucket: proves the endpoint, credentials and path-style
-      // addressing work. A bare HEAD / is not portable (MinIO answers 403, RustFS 501).
-      const s3Client = new S3Client({
-        region: process.env.AWS_REGION || 'us-east-1',
-        endpoint: s3Endpoint,
-        forcePathStyle: true,
-        maxAttempts: 1, // keep latency and error reporting predictable inside the 5s budget
-        credentials: {
-          accessKeyId: process.env.AWS_ACCESS_KEY_ID || 'minioadmin',
-          secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || 'minioadmin',
-        },
-      });
-      const bucket = process.env.S3_TEST_BUCKET_NAME || 'playwright-test-artifacts';
-
-      try {
-        await s3Client.send(new HeadBucketCommand({ Bucket: bucket }), {
-          abortSignal: AbortSignal.timeout(5000),
-        });
-      } catch (error) {
-        // The worker creates buckets on startup, so a missing bucket still means
-        // the storage backend answered and accepted our credentials.
-        const err = error as { name?: string; $metadata?: { httpStatusCode?: number } } | null;
-        if (err?.name !== 'NotFound' && err?.name !== 'NoSuchBucket') {
-          // Name and status only: raw SDK messages can include the endpoint host.
-          const status = err?.$metadata?.httpStatusCode;
-          throw new Error(`S3 probe failed: ${err?.name ?? 'UnknownError'}${status ? ` (${status})` : ''}`);
-        }
-      } finally {
-        s3Client.destroy();
-      }
-      checks.s3 = { status: 'ok', latencyMs: Date.now() - s3Start };
-    } catch (error) {
-      checks.s3 = { 
-        status: 'error', 
-        error: error instanceof Error ? error.message : 'S3 connection failed' 
-      };
+      checks.s3 = await getS3Check();
+      if (checks.s3.status === 'error' && overallStatus === 'ok') overallStatus = 'degraded';
+    } catch {
+      checks.s3 = { status: 'error', error: 'S3 connection failed' };
       // S3 failure degrades but doesn't make unhealthy (reports can be retried)
       if (overallStatus === 'ok') overallStatus = 'degraded';
     }
