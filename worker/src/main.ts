@@ -12,6 +12,10 @@ async function bootstrap() {
   // Use Pino logger for the entire application
   app.useLogger(app.get(Logger));
 
+  // Without this, Nest never installs SIGTERM/SIGINT listeners and every
+  // onModuleDestroy hook (queue workers, heartbeat, redis, executors) is skipped.
+  app.enableShutdownHooks();
+
   // Start the server
   const port = process.env.PORT ?? 8000;
   await app.listen(port);

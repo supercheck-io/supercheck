@@ -33,11 +33,17 @@ export const cronExpressionSchema = z
   .min(1, "Cron expression is required")
   .regex(/^(\*|([0-9]|1[0-9]|2[0-9]|3[0-9]|4[0-9]|5[0-9])|\*\/([0-9]|1[0-9]|2[0-9]|3[0-9]|4[0-9]|5[0-9])) (\*|([0-9]|1[0-9]|2[0-3])|\*\/([0-9]|1[0-9]|2[0-3])) (\*|([1-9]|1[0-9]|2[0-9]|3[0-1])|\*\/([1-9]|1[0-9]|2[0-9]|3[0-1])) (\*|([1-9]|1[0-2])|\*\/([1-9]|1[0-2])) (\*|([0-6])|\*\/([0-6]))$/, "Please enter a valid cron expression")
 
+/** Upper bound for user-supplied test/job scripts (characters). */
+export const MAX_SCRIPT_LENGTH = 1_000_000;
+
 // Common form schemas
 export const createJobSchema = z.object({
   name: nameSchema,
   description: descriptionSchema,
-  script: z.string().min(1, "Script is required"),
+  script: z
+    .string()
+    .min(1, "Script is required")
+    .max(MAX_SCRIPT_LENGTH, `Script cannot exceed ${MAX_SCRIPT_LENGTH} characters`),
   cronExpression: cronExpressionSchema,
   timeout: z.number().min(1, "Timeout must be at least 1 second").max(3600, "Timeout cannot exceed 1 hour"),
 })

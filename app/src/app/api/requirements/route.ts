@@ -126,7 +126,13 @@ export async function GET(request: NextRequest) {
               tagColor: tags.color,
             })
             .from(requirementTags)
-            .innerJoin(tags, eq(requirementTags.tagId, tags.id))
+            .innerJoin(
+              tags,
+              and(
+                eq(requirementTags.tagId, tags.id),
+                eq(tags.projectId, context.project.id)
+              )
+            )
             .where(inArray(requirementTags.requirementId, requirementIds))
         : [];
 

@@ -15,9 +15,9 @@ import { requireProjectContext } from "@/lib/project-context";
 import { requirePermissions } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { eq, and } from "drizzle-orm";
-import { sendIncidentNotifications } from "./send-incident-notifications";
-import { sendWebhookNotifications } from "./send-webhook-notifications";
-import { sendSlackNotifications } from "./send-slack-notifications";
+import { sendIncidentNotifications } from "@/lib/incident-notifications/send-incident-notifications";
+import { sendWebhookNotifications } from "@/lib/incident-notifications/send-webhook-notifications";
+import { sendSlackNotifications } from "@/lib/incident-notifications/send-slack-notifications";
 
 const createIncidentSchema = z.object({
   statusPageId: z.string().uuid(),

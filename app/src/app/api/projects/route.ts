@@ -7,6 +7,7 @@ import { db } from "@/utils/db";
 import { projects, projectMembers } from "@/db/schema";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { checkProjectLimit } from "@/lib/middleware/plan-enforcement";
+import { insertWithinPlanLimit } from "@/lib/middleware/plan-limit-lock";
 import { eq, sql } from "drizzle-orm";
 import { subscriptionService } from "@/lib/services/subscription-service";
 
@@ -130,38 +131,50 @@ export async function POST(request: NextRequest) {
     await subscriptionService.blockUntilSubscribed(targetOrgId);
     await subscriptionService.requireValidPolarCustomer(targetOrgId);
 
-    // Check project limit based on subscription plan
-    // OPTIMIZED: Use SQL count(*) instead of fetching all rows and using .length
-    const projectCountResult = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(projects)
-      .where(eq(projects.organizationId, targetOrgId));
+    // Serialize count -> limit check -> insert per organization so concurrent
+    // requests cannot both pass the plan limit.
+    const created = await insertWithinPlanLimit({
+      organizationId: targetOrgId,
+      resource: "projects",
+      check: checkProjectLimit,
+      countRows: async (tx) => {
+        const [row] = await tx
+          .select({ count: sql<number>`count(*)` })
+          .from(projects)
+          .where(eq(projects.organizationId, targetOrgId));
+        return Number(row?.count || 0);
+      },
+      insert: async (executor) => {
+        const [inserted] = await executor
+          .insert(projects)
+          .values({
+            organizationId: targetOrgId,
+            name,
+            slug: slug || null,
+            description: description || null,
+            isDefault: false,
+            status: "active",
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .returning();
+        return inserted;
+      },
+    });
 
-    const limitCheck = await checkProjectLimit(
-      targetOrgId,
-      Number(projectCountResult[0]?.count || 0)
-    );
-    if (!limitCheck.allowed) {
-      console.warn(
-        `Project limit reached for organization ${targetOrgId}: ${limitCheck.error}`
+    if (!created.ok && created.busy) {
+      return NextResponse.json(
+        { error: "Too many concurrent requests. Please retry shortly." },
+        { status: 503, headers: { "Retry-After": "2" } },
       );
-      return NextResponse.json({ error: limitCheck.error }, { status: 403 });
     }
-
-    // Create project
-    const [newProject] = await db
-      .insert(projects)
-      .values({
-        organizationId: targetOrgId,
-        name,
-        slug: slug || null,
-        description: description || null,
-        isDefault: false,
-        status: "active",
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      })
-      .returning();
+    if (!created.ok) {
+      console.warn(
+        `Project limit reached for organization ${targetOrgId}: ${created.check.error}`
+      );
+      return NextResponse.json({ error: created.check.error }, { status: 403 });
+    }
+    const newProject = created.row;
 
     // Add user as project editor (project ownership is handled by org membership in unified RBAC)
     await db.insert(projectMembers).values({

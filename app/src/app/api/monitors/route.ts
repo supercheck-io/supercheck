@@ -9,7 +9,8 @@ import { eq, desc, and, sql, inArray } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import {
-  createMonitorHandler,
+  insertMonitorRecord,
+  scheduleCreatedMonitor,
   updateMonitorHandler,
 } from "@/lib/monitor-service";
 import { logAuditEvent } from "@/lib/audit-logger";
@@ -19,6 +20,7 @@ import {
   sanitizeHostname,
 } from "@/lib/input-sanitizer";
 import { checkMonitorLimit } from "@/lib/middleware/plan-enforcement";
+import { insertWithinPlanLimit } from "@/lib/middleware/plan-limit-lock";
 import { subscriptionService } from "@/lib/services/subscription-service";
 import { getProjectAvailableLocationCodes } from "@/lib/location-registry";
 import { createLogger } from "@/lib/logger/index";
@@ -408,32 +410,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Check monitor limit for the organization's plan using proper SQL COUNT
-    const countResult = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(monitors)
-      .where(eq(monitors.organizationId, organizationId));
-
-    const limitCheck = await checkMonitorLimit(
-      organizationId,
-      Number(countResult[0]?.count || 0),
-    );
-    if (!limitCheck.allowed) {
-      logger.warn(
-        { organizationId },
-        `Monitor limit reached: ${limitCheck.error}`,
-      );
-      return NextResponse.json(
-        {
-          error: limitCheck.error,
-          upgrade: limitCheck.upgrade,
-          currentPlan: limitCheck.currentPlan,
-          limit: limitCheck.limit,
-        },
-        { status: 403 },
-      );
-    }
-
     // Use the monitor service to create the monitor
     const monitorData = {
       name: rawData.name,
@@ -497,7 +473,47 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const newMonitor = await createMonitorHandler(monitorData);
+    // Serialize count -> limit check -> insert per organization so concurrent
+    // requests cannot both pass the plan limit.
+    const inserted = await insertWithinPlanLimit({
+      organizationId,
+      resource: "monitors",
+      check: checkMonitorLimit,
+      countRows: async (tx) => {
+        const [row] = await tx
+          .select({ count: sql<number>`count(*)` })
+          .from(monitors)
+          .where(eq(monitors.organizationId, organizationId));
+        return Number(row?.count || 0);
+      },
+      insert: (executor) => insertMonitorRecord(monitorData, executor),
+    });
+    if (!inserted.ok && inserted.busy) {
+      return NextResponse.json(
+        { error: "Too many concurrent requests. Please retry shortly." },
+        { status: 503, headers: { "Retry-After": "2" } },
+      );
+    }
+    if (!inserted.ok) {
+      const limitCheck = inserted.check;
+      logger.warn(
+        { organizationId },
+        `Monitor limit reached: ${limitCheck.error}`,
+      );
+      return NextResponse.json(
+        {
+          error: limitCheck.error,
+          upgrade: limitCheck.upgrade,
+          currentPlan: limitCheck.currentPlan,
+          limit: limitCheck.limit,
+        },
+        { status: 403 },
+      );
+    }
+    const newMonitor = await scheduleCreatedMonitor(
+      inserted.row.newMonitor,
+      inserted.row.enabled,
+    );
 
     // Link notification providers if alert config is enabled
     if (

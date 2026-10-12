@@ -31,7 +31,17 @@ interface MonitorApiData {
   createdByUserId?: string; // Assuming this comes from authenticated session
 }
 
-export async function createMonitorHandler(data: MonitorApiData) {
+/** Anything that can run an insert: the global `db` or a transaction handle. */
+type InsertExecutor = Pick<typeof db, "insert">;
+
+/**
+ * Validate and insert a monitor row only (no scheduling). Pass a transaction
+ * as `executor` when the insert must commit together with a lock release.
+ */
+export async function insertMonitorRecord(
+  data: MonitorApiData,
+  executor: InsertExecutor = db
+) {
   const validation = monitorsInsertSchema.safeParse(data);
   if (!validation.success) {
     throw {
@@ -61,14 +71,22 @@ export async function createMonitorHandler(data: MonitorApiData) {
     // id, createdAt, updatedAt are typically auto-generated or set by DB/Drizzle
   };
 
-  const [newMonitor] = await db
+  const [newMonitor] = await executor
     .insert(monitorTable)
     .values(newMonitorData) // Use the explicitly mapped data
     .returning();
 
+  return { newMonitor, enabled: validatedData.enabled !== false };
+}
+
+/** Schedule a freshly committed monitor. Must run after the insert commits. */
+export async function scheduleCreatedMonitor(
+  newMonitor: typeof monitorTable.$inferSelect,
+  enabled: boolean
+) {
   if (
     newMonitor &&
-    validatedData.enabled !== false &&
+    enabled &&
     newMonitor.frequencyMinutes > 0
   ) {
     // Use validatedData.enabled here
@@ -110,6 +128,11 @@ export async function createMonitorHandler(data: MonitorApiData) {
     });
   }
   return newMonitor;
+}
+
+export async function createMonitorHandler(data: MonitorApiData) {
+  const { newMonitor, enabled } = await insertMonitorRecord(data);
+  return scheduleCreatedMonitor(newMonitor, enabled);
 }
 
 export async function updateMonitorHandler(

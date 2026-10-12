@@ -10,6 +10,7 @@ import { inviteMemberSchema } from "@/lib/validations/member";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { renderOrganizationInvitationEmail } from "@/lib/email-renderer";
 import { checkTeamMemberLimit } from "@/lib/middleware/plan-enforcement";
+import { insertWithinPlanLimit } from "@/lib/middleware/plan-limit-lock";
 import { getRedisConnection } from "@/lib/queue";
 
 // Redis-based rate limiting for distributed/serverless environments
@@ -163,23 +164,6 @@ export async function POST(request: NextRequest) {
       ? normalizedSelectedProjects
       : [];
 
-    // Check team member limit for the organization
-    const currentMemberCount = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(member)
-      .where(eq(member.organizationId, organizationId));
-
-    const limitCheck = await checkTeamMemberLimit(
-      organizationId,
-      Number(currentMemberCount[0]?.count || 0),
-    );
-    if (!limitCheck.allowed) {
-      console.warn(
-        `Team member limit reached for organization ${organizationId}: ${limitCheck.error}`,
-      );
-      return NextResponse.json({ error: limitCheck.error }, { status: 403 });
-    }
-
     // Check if user already exists and is a member
     const existingUser = await db
       .select({
@@ -273,18 +257,60 @@ export async function POST(request: NextRequest) {
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7); // 7 days expiry
 
-    const [newInvitation] = await db
-      .insert(invitation)
-      .values({
-        organizationId,
-        email: normalizedEmail,
-        role,
-        status: "pending",
-        expiresAt,
-        inviterId: userId,
-        selectedProjects: selectedProjectsForRole,
-      })
-      .returning();
+    // Pending invitations reserve a seat: accepting one adds a member without
+    // re-checking the limit, so seats are counted at invite time. The lock keeps
+    // concurrent invites from all passing the same count.
+    const invited = await insertWithinPlanLimit({
+      organizationId,
+      resource: "members",
+      check: checkTeamMemberLimit,
+      countRows: async (tx) => {
+        const [memberRow] = await tx
+          .select({ count: sql<number>`count(*)` })
+          .from(member)
+          .where(eq(member.organizationId, organizationId));
+        const [pendingRow] = await tx
+          .select({ count: sql<number>`count(*)` })
+          .from(invitation)
+          .where(
+            and(
+              eq(invitation.organizationId, organizationId),
+              eq(invitation.status, "pending"),
+              gte(invitation.expiresAt, new Date()),
+            ),
+          );
+        return Number(memberRow?.count || 0) + Number(pendingRow?.count || 0);
+      },
+      insert: async (executor) => {
+        const [created] = await executor
+          .insert(invitation)
+          .values({
+            organizationId,
+            email: normalizedEmail,
+            role,
+            status: "pending",
+            expiresAt,
+            inviterId: userId,
+            selectedProjects: selectedProjectsForRole,
+          })
+          .returning();
+        return created;
+      },
+    });
+
+    if (!invited.ok && invited.busy) {
+      return NextResponse.json(
+        { error: "Too many concurrent requests. Please retry shortly." },
+        { status: 503, headers: { "Retry-After": "2" } },
+      );
+    }
+    if (!invited.ok) {
+      console.warn(
+        `Team member limit reached for organization ${organizationId}: ${invited.check.error}`,
+      );
+      return NextResponse.json({ error: invited.check.error }, { status: 403 });
+    }
+    const newInvitation = invited.row;
 
     // Send email invitation
     const emailService = EmailService.getInstance();
