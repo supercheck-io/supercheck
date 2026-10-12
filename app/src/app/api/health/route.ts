@@ -8,24 +8,28 @@ type S3Check = { status: 'ok' | 'error'; latencyMs?: number; error?: string };
 // The route is public and the probe is signed with real credentials, so share one
 // in-flight probe and reuse the result briefly instead of hitting storage per request.
 const S3_CHECK_TTL_MS = 8000;
-let s3CheckCache: { at: number; result: S3Check } | null = null;
-let s3CheckInflight: Promise<S3Check> | null = null;
+let s3CheckCache: { key: string; at: number; result: S3Check } | null = null;
+let s3CheckInflight: { key: string; promise: Promise<S3Check> } | null = null;
 
 function getS3Check(): Promise<S3Check> {
-  if (s3CheckCache && Date.now() - s3CheckCache.at < S3_CHECK_TTL_MS) {
+  // Keyed by the probe inputs so a config change never serves another config's result.
+  const key = [process.env.S3_ENDPOINT, process.env.S3_TEST_BUCKET_NAME, process.env.AWS_ACCESS_KEY_ID].join('|');
+  if (s3CheckCache?.key === key && Date.now() - s3CheckCache.at < S3_CHECK_TTL_MS) {
     // latencyMs belongs to the original probe, so it is not repeated on cache hits.
     return Promise.resolve({ status: s3CheckCache.result.status, error: s3CheckCache.result.error });
   }
-  s3CheckInflight ??= probeS3()
+  if (s3CheckInflight?.key === key) return s3CheckInflight.promise;
+  const promise = probeS3()
     .catch((): S3Check => ({ status: 'error', error: 'S3 connection failed' }))
     .then((result) => {
-      s3CheckCache = { at: Date.now(), result };
+      s3CheckCache = { key, at: Date.now(), result };
       return result;
     })
     .finally(() => {
-      s3CheckInflight = null;
+      if (s3CheckInflight?.promise === promise) s3CheckInflight = null;
     });
-  return s3CheckInflight;
+  s3CheckInflight = { key, promise };
+  return promise;
 }
 
 async function probeS3(): Promise<S3Check> {

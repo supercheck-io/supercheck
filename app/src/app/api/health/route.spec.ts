@@ -145,4 +145,22 @@ describe('GET /api/health S3 check', () => {
     expect((await (await get()).json()).checks.s3.latencyMs).toEqual(expect.any(Number));
     expect((await (await get()).json()).checks.s3.latencyMs).toBeUndefined();
   });
+
+  it('degrades on a 403 even when it carries an S3 request id', async () => {
+    mockSend.mockRejectedValue({ name: 'Forbidden', $metadata: { httpStatusCode: 403, requestId: 'abc' } });
+    const body = await call();
+    expect(body.checks.s3.error).toBe('S3 probe failed: Forbidden (403)');
+    expect(body.status).toBe('degraded');
+  });
+
+  it('re-probes when the bucket or credentials change within the TTL', async () => {
+    mockSend.mockResolvedValue({});
+    const get = await loadGet();
+    await get();
+    process.env.S3_TEST_BUCKET_NAME = 'other-bucket';
+    await get();
+    process.env.AWS_ACCESS_KEY_ID = 'other-key';
+    await get();
+    expect(mockSend).toHaveBeenCalledTimes(3);
+  });
 });
