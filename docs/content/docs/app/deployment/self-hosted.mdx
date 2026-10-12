@@ -70,6 +70,8 @@ sudo bash setup-k3s.sh
 
 The scripts generate secrets and prepare the isolated execution environment. Preserve an existing `.env` and its secrets when updating or retrying.
 
+The generated `SECRET_ENCRYPTION_KEY` encrypts variables and Private Agent connector credentials. Keep the same value for the app and every worker; changing it makes existing encrypted values unreadable unless they are re-encrypted first.
+
 ### 2. Configure HTTPS
 
 For a public server, point your app hostname at the server and allow inbound TCP ports **80** and **443**. Edit `.env`:

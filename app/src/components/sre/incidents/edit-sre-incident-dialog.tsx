@@ -77,6 +77,20 @@ export function EditSreIncidentDialog({
     incident.primaryServiceId ?? noServiceValue,
   );
 
+  // The dialog can open from the ?edit=service URL without handleOpenChange(true),
+  // so re-seed the form whenever it transitions to open to avoid saving stale values.
+  const isDialogOpen = open || mappingRequested;
+  const [wasDialogOpen, setWasDialogOpen] = useState(false);
+  if (isDialogOpen !== wasDialogOpen) {
+    setWasDialogOpen(isDialogOpen);
+    if (isDialogOpen) {
+      setTitle(incident.title);
+      setSeverity(incident.severity);
+      setStatus(incident.status);
+      setPrimaryServiceId(incident.primaryServiceId ?? noServiceValue);
+    }
+  }
+
   const closeDialog = () => {
     setOpen(false);
     if (mappingRequested) {
@@ -224,9 +238,15 @@ export function EditSreIncidentDialog({
                     User applying fix
                   </SelectItem>
                   <SelectItem value="verifying">Verifying</SelectItem>
-                  <SelectItem value="resolved">Resolved</SelectItem>
+                  <SelectItem value="resolved" disabled>
+                    Resolved (use Resolve incident)
+                  </SelectItem>
                 </SelectContent>
               </Select>
+              <p className="text-xs text-muted-foreground">
+                Use the Resolve incident action to close an incident with a
+                recovery note.
+              </p>
             </div>
           </div>
 

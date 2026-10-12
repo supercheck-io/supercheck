@@ -2,7 +2,10 @@
 
 jest.mock("next/cache", () => ({ revalidatePath: jest.fn() }));
 jest.mock("@/utils/db", () => ({
-  db: { select: jest.fn(), query: { sreInvestigationReports: { findFirst: jest.fn().mockResolvedValue(null) } } },
+  db: { select: jest.fn(), transaction: jest.fn(), query: {
+    sreIncidents: { findFirst: jest.fn() },
+    sreInvestigationReports: { findFirst: jest.fn().mockResolvedValue(null) },
+  } },
 }));
 jest.mock("@/lib/project-context", () => ({ requireProjectContext: jest.fn() }));
 jest.mock("@/lib/rbac/middleware", () => ({ checkPermissionWithContext: jest.fn() }));
@@ -14,7 +17,7 @@ jest.mock("@/sre/lib/feature-gates", () => ({ isSreInvestigationAgentEnabled: je
 import { db } from "@/utils/db";
 import { requireProjectContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
-import { getSreIncidentDetails } from "./sre-incidents";
+import { getSreIncidentDetails, updateSreIncident } from "./sre-incidents";
 
 function selectRows(rows: unknown[]) {
   return Object.assign(Promise.resolve(rows), {
@@ -68,5 +71,20 @@ describe("getSreIncidentDetails investigation summary", () => {
     const result = await getSreIncidentDetails("incident-1");
     expect(result.success).toBe(true);
     if (result.success) expect(result.detail.latestInvestigation?.summary).toBe(summary);
+  });
+
+  it("reports a lost update race without adding timeline or audit events", async () => {
+    const incidentId = "00000000-0000-4000-8000-000000000001";
+    (db.query.sreIncidents.findFirst as jest.Mock).mockResolvedValue({ id: incidentId, status: "investigating" });
+    const insert = jest.fn();
+    (db.transaction as jest.Mock).mockImplementation(async (callback) => callback({
+      update: () => ({ set: () => ({ where: () => ({ returning: async () => [] }) }) }),
+      insert,
+    }));
+    await expect(updateSreIncident({
+      id: incidentId, title: "Updated title", severity: "sev2", status: "identified", primaryServiceId: null,
+    })).resolves.toEqual({ success: false, error: "Incident changed by another request — reload and try again" });
+    expect(insert).not.toHaveBeenCalled();
+    expect(jest.requireMock("@/lib/audit-logger").logAuditEvent).not.toHaveBeenCalled();
   });
 });

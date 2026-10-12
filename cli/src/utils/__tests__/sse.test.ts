@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals'
 
+let storedBaseUrl = 'https://app.supercheck.io'
 jest.unstable_mockModule('../../auth/store.js', () => ({
   requireAuth: () => 'sck_live_test',
-  getStoredBaseUrl: () => 'https://app.supercheck.io',
+  getStoredBaseUrl: () => storedBaseUrl,
 }))
 jest.unstable_mockModule('../../api/authenticated-client.js', () => ({
   getResolvedConfigBaseUrl: () => null,
@@ -122,4 +123,34 @@ describe('postSse', () => {
     await expect(getSse('/api/runs/run-1/stream', () => undefined, 5)).rejects.toMatchObject({ exitCode: 5 })
   })
 
+
+  it('fails when the stream closes before the terminal event', async () => {
+    jest.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('event: message\ndata: {"role":"assistant"}\n\n', { status: 200 }))
+    await expect(postSse('/api/sre/chat', {}, () => undefined, { isTerminal: ({ event }) => event === 'done' }))
+      .rejects.toMatchObject({ message: expect.stringContaining('ended before'), exitCode: 4 })
+  })
+
+  it('dispatches a final frame that lacks a trailing blank line', async () => {
+    jest.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('event: done\ndata: {"ok":true}', { status: 200 }))
+    const events: string[] = []
+    await postSse('/api/sre/chat', {}, ({ event }) => { events.push(event) }, { isTerminal: ({ event }) => event === 'done' })
+    expect(events).toEqual(['done'])
+  })
+
+  it('throws ApiRequestError with status and parsed body for HTTP failures', async () => {
+    jest.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{"error":"feature_disabled"}', { status: 503 }))
+    await expect(postSse('/api/sre/chat', {}, () => undefined))
+      .rejects.toMatchObject({ statusCode: 503, responseBody: { error: 'feature_disabled' } })
+  })
+
+  it('preserves a sub-path in the configured base URL', async () => {
+    storedBaseUrl = 'https://corp.example.com/supercheck/'
+    const fetchMock = jest.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('event: done\ndata: {}\n\n', { status: 200 }))
+    try {
+      await postSse('/api/sre/chat', {}, () => undefined)
+    } finally {
+      storedBaseUrl = 'https://app.supercheck.io'
+    }
+    expect(fetchMock.mock.calls[0][0]).toEqual(new URL('https://corp.example.com/supercheck/api/sre/chat'))
+  })
 })

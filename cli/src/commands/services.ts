@@ -38,7 +38,7 @@ serviceCommand.command('dependencies <id>').description('List upstream and downs
     {
       key: 'sourceServiceId',
       header: 'Direction',
-      format: (_value, row) => row.sourceServiceId === id ? 'downstream' : row.targetServiceId === id ? 'upstream' : 'related',
+      format: (_value, row) => row.sourceServiceId === id ? 'upstream (depends on)' : row.targetServiceId === id ? 'downstream (depended on by)' : 'related',
     },
     {
       key: 'targetServiceId',

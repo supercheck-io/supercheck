@@ -152,6 +152,15 @@ export async function POST(request: NextRequest) {
           where: eq(externalConnectorCredentials.connectorId, leasedJob.connectorId),
         })
       : null;
+    if (credentialRow?.expiresAt && credentialRow.expiresAt <= new Date()) {
+      // Never hand an expired secret to the agent; fail the job so the investigation can proceed without it.
+      await db
+        .update(privateAgentJobs)
+        .set({ status: "failed", completedAt: new Date(), errorCode: "connector_credential_expired" })
+        .where(and(eq(privateAgentJobs.id, leasedJob.id), eq(privateAgentJobs.privateAgentId, auth.agent.id)));
+      return NextResponse.json({ job: null });
+    }
+
     const credential = credentialRow
       ? {
           credentialType: credentialRow.credentialType,

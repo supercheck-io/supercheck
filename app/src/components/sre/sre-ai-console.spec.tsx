@@ -29,6 +29,22 @@ jest.mock("@/components/sre/sre-assistant-ui-thread", () => ({
 
 describe("SreAiConsole", () => {
   beforeEach(() => window.history.replaceState(null, "", "/copilot"));
+
+  it("renders without a re-render loop when history failed to load", () => {
+    const errors = jest.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      const { rerender } = render(<SreAiConsole loadError="History unavailable" />);
+      // The loop only starts once a second render hands the effect a fresh default array.
+      rerender(<SreAiConsole loadError="History unavailable" />);
+      expect(screen.getByTestId("chat-thread")).toBeInTheDocument();
+      expect(errors).not.toHaveBeenCalledWith(
+        expect.stringContaining("Maximum update depth"),
+      );
+    } finally {
+      errors.mockRestore();
+    }
+  });
+
   it("keeps New chat incident-scoped and preserves that scope in history", () => {
     window.history.replaceState(null, "", "/copilot?incident=incident-1");
     render(

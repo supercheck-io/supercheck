@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
       return unauthorized();
     }
 
-    const body = heartbeatSchema.safeParse(await request.json());
+    const body = heartbeatSchema.safeParse(await request.json().catch(() => null));
     if (!body.success) {
       return NextResponse.json({ error: "Invalid heartbeat payload" }, { status: 400 });
     }

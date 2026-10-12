@@ -47,6 +47,9 @@ services:
       PRIVATE_AGENT_LEASE_WAIT_MS: ${PRIVATE_AGENT_LEASE_WAIT_MS:-25000}
       PRIVATE_AGENT_RETRY_INTERVAL_MS: ${PRIVATE_AGENT_RETRY_INTERVAL_MS:-5000}
       PRIVATE_AGENT_HEARTBEAT_INTERVAL_MS: ${PRIVATE_AGENT_HEARTBEAT_INTERVAL_MS:-30000}
+    # Agent mode runs no HTTP server, so the image's /health/ready check would always fail.
+    healthcheck:
+      disable: true
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true

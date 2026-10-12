@@ -71,7 +71,7 @@ export type StartSreIncidentInvestigationResult =
 const ACTIVE_INCIDENT_RUN_CONSTRAINT =
   "sre_investigation_runs_active_incident_unique";
 
-function isActiveIncidentRunConflict(error: unknown): boolean {
+export function isActiveIncidentRunConflict(error: unknown): boolean {
   let current = error;
   for (let depth = 0; depth < 3 && current; depth += 1) {
     if (typeof current !== "object") return false;
