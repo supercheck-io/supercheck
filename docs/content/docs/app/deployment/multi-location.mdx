@@ -21,7 +21,7 @@ Deploy workers across multiple regions for geographic test execution and monitor
 flowchart TB
     Users[Users / CI/CD] --> T[Traefik Proxy<br/>SSL / Load Balancer]
     T --> App[Next.js App<br/>UI + API]
-    App --> DB[(PostgreSQL<br/>Primary DB)] & Redis[(Redis + BullMQ<br/>Queue + Cache)] & S3[(MinIO<br/>Artifacts)]
+    App --> DB[(PostgreSQL<br/>Primary DB)] & Redis[(Redis + BullMQ<br/>Queue + Cache)] & S3[(RustFS<br/>Artifacts)]
     App --> SRE[AI SRE Engine<br/>Read-only investigations]
     SRE -.-> Private[Private Agents<br/>Outbound HTTPS only]
 
@@ -189,7 +189,7 @@ Org admins can restrict a project's available locations in **Organization Admin 
       redis:
         ports:
           - "${PRIVATE_BIND_IP:?Set the main server private IP}:6379:6379"
-      minio:
+      rustfs:
         ports:
           - "${PRIVATE_BIND_IP:?Set the main server private IP}:9000:9000"
     ```
@@ -245,10 +245,10 @@ Org admins can restrict a project's available locations in **Organization Admin 
     REDIS_PORT=6379
     REDIS_PASSWORD=YOUR_REDIS_PASSWORD
 
-    # S3/MinIO
+    # S3 (RustFS)
     S3_ENDPOINT=http://MAIN_SERVER_PRIVATE_IP:9000
-    AWS_ACCESS_KEY_ID=YOUR_MINIO_ACCESS_KEY
-    AWS_SECRET_ACCESS_KEY=YOUR_MINIO_SECRET_KEY
+    AWS_ACCESS_KEY_ID=YOUR_S3_ACCESS_KEY
+    AWS_SECRET_ACCESS_KEY=YOUR_S3_SECRET_KEY
     ```
 
     Use credentials from the main server's `.env`. Use the Compose file, sandbox script, and App/Worker images from the same release. Protect the worker `.env` with `chmod 600 .env`.
@@ -312,7 +312,7 @@ docker compose -f docker-compose-worker.yml up -d
 ## Security
 
 <Callout type="error">
-**Important**: Multi-location deployments require exposing database ports (PostgreSQL, Redis, MinIO) over the network. You are responsible for securing these connections using appropriate measures such as:
+**Important**: Multi-location deployments require exposing database ports (PostgreSQL, Redis, RustFS) over the network. You are responsible for securing these connections using appropriate measures such as:
 - **VPN** (WireGuard, Tailscale)
 - **Firewall rules** (UFW, iptables, Cloud Security Groups)
 - **Encrypted tunnels**

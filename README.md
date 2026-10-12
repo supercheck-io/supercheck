@@ -102,7 +102,7 @@ Record browser interactions and save Playwright tests directly to Supercheck:
 flowchart TB
     Users[Users / CI/CD] --> T[Traefik Proxy<br/>SSL / Load Balancer]
     T --> App[Next.js App<br/>UI + API]
-    App --> DB[(PostgreSQL<br/>Primary DB)] & Redis[(Redis + BullMQ<br/>Queue + Cache)] & S3[(MinIO<br/>Artifacts)]
+    App --> DB[(PostgreSQL<br/>Primary DB)] & Redis[(Redis + BullMQ<br/>Queue + Cache)] & S3[(RustFS<br/>Artifacts)]
     App --> SRE[AI SRE Engine<br/>Read-only investigations]
     SRE -.-> Private[Private Agents<br/>Outbound-only queries]
 
@@ -141,7 +141,7 @@ flowchart TB
     style APAC fill:none,stroke:#64748b,stroke-width:2px,stroke-dasharray: 5 5
 ```
 
-The application stores platform data in PostgreSQL, schedules work through Redis and BullMQ, and keeps execution artifacts in S3-compatible storage such as MinIO. Workers consume location-aware queues and run Playwright or k6 workloads in isolated execution environments. Deploy one local worker or add workers for other configured locations.
+The application stores platform data in PostgreSQL, schedules work through Redis and BullMQ, and keeps execution artifacts in S3-compatible storage (RustFS in the bundled stack). Workers consume location-aware queues and run Playwright or k6 workloads in isolated execution environments. Deploy one local worker or add workers for other configured locations.
 
 ## Repository layout
 

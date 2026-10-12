@@ -17,7 +17,7 @@ Deploy Supercheck on a single server with Docker Compose.
 flowchart TB
     Users[Users / CI/CD] --> T[Traefik Proxy<br/>SSL / Load Balancer]
     T --> App[Next.js App<br/>UI + API]
-    App --> DB[(PostgreSQL<br/>Primary DB)] & Redis[(Redis + BullMQ<br/>Queue + Cache)] & S3[(MinIO<br/>Artifacts)]
+    App --> DB[(PostgreSQL<br/>Primary DB)] & Redis[(Redis + BullMQ<br/>Queue + Cache)] & S3[(RustFS<br/>Artifacts)]
     App --> SRE[AI SRE Engine<br/>Read-only investigations]
     SRE -.-> Private[Private Agents<br/>Outbound-only queries]
 
@@ -322,9 +322,55 @@ Use `docker-compose-external.yml` when you already have PostgreSQL, Redis, and S
 
 Set `WORKER_REPLICAS` and `RUNNING_CAPACITY` to the same number in `.env`, then run `docker compose up -d`. Keep `WORKER_LOCATION=local` for a single-server installation.
 
+### Upgrading from MinIO (2.0, breaking)
+
+Earlier releases bundled MinIO. MinIO no longer publishes its container images, so the bundled
+storage service is now RustFS. The data formats are not compatible, so existing artifacts and
+status-page files must be copied across. Your `minio-data` volume is never modified or deleted.
+
+Do this **before** you pull the new release, while the old stack is running:
+
+```bash
+cd supercheck/deploy/docker
+mkdir -p ../../storage-export
+AK=$(grep '^AWS_ACCESS_KEY_ID=' .env | cut -d= -f2-)
+SK=$(grep '^AWS_SECRET_ACCESS_KEY=' .env | cut -d= -f2-)
+NET=$(docker inspect "$(docker compose ps -q minio)" --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}}{{end}}')
+
+docker run --rm --network "$NET" -v "$PWD/../../storage-export:/export" \
+  -e RCLONE_CONFIG_OLD_TYPE=s3 -e RCLONE_CONFIG_OLD_PROVIDER=Minio \
+  -e RCLONE_CONFIG_OLD_ENDPOINT=http://minio:9000 \
+  -e RCLONE_CONFIG_OLD_ACCESS_KEY_ID="$AK" -e RCLONE_CONFIG_OLD_SECRET_ACCESS_KEY="$SK" \
+  --entrypoint sh rclone/rclone -c 'for b in $(rclone lsd old: | awk "{print \$NF}"); do rclone sync old:$b /export/$b; done'
+```
+
+Then upgrade:
+
+```bash
+git pull
+sed -i 's#^S3_ENDPOINT=.*#S3_ENDPOINT=http://rustfs:9000#' .env
+KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig docker compose up -d --wait --remove-orphans
+```
+
+`--remove-orphans` removes the old `minio` container, which would otherwise keep port 9000. Finally, import:
+
+```bash
+docker run --rm --network "$(docker inspect "$(docker compose ps -q rustfs)" --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}}{{end}}')" \
+  -v "$PWD/../../storage-export:/export" \
+  -e RCLONE_CONFIG_NEW_TYPE=s3 -e RCLONE_CONFIG_NEW_PROVIDER=Other \
+  -e RCLONE_CONFIG_NEW_ENDPOINT=http://rustfs:9000 \
+  -e RCLONE_CONFIG_NEW_ACCESS_KEY_ID="$AK" -e RCLONE_CONFIG_NEW_SECRET_ACCESS_KEY="$SK" \
+  --entrypoint sh rclone/rclone -c 'for b in /export/*; do rclone sync "$b" new:$(basename "$b"); done'
+```
+
+Check `curl --fail --silent --show-error http://localhost:3000/api/health` reports `s3` as `ok`, open a
+status page and a test report, and keep `storage-export` and the `minio-data` volume until you are satisfied.
+If you skip the copy, the app starts with empty storage; test artifacts regenerate on the next runs, but
+uploaded status-page assets and documents are not recovered.
+
 ### Backups
 
-Back up your database, MinIO data, `.env`, and Traefik certificate volume before upgrades. For a database backup:
+Back up your database, RustFS data, `.env`, and Traefik certificate volume before upgrades. For a database backup:
 
 ```bash
 docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' > backup.sql
