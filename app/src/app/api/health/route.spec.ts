@@ -161,6 +161,10 @@ describe('GET /api/health S3 check', () => {
     await get();
     process.env.AWS_ACCESS_KEY_ID = 'other-key';
     await get();
-    expect(mockSend).toHaveBeenCalledTimes(3);
+    process.env.AWS_SECRET_ACCESS_KEY = 'rotated-secret';
+    await get();
+    process.env.AWS_REGION = 'eu-west-1';
+    await get();
+    expect(mockSend).toHaveBeenCalledTimes(5);
   });
 });

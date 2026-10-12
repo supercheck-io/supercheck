@@ -13,7 +13,13 @@ let s3CheckInflight: { key: string; promise: Promise<S3Check> } | null = null;
 
 function getS3Check(): Promise<S3Check> {
   // Keyed by the probe inputs so a config change never serves another config's result.
-  const key = [process.env.S3_ENDPOINT, process.env.S3_TEST_BUCKET_NAME, process.env.AWS_ACCESS_KEY_ID].join('|');
+  const key = [
+    process.env.S3_ENDPOINT,
+    process.env.S3_TEST_BUCKET_NAME,
+    process.env.AWS_REGION,
+    process.env.AWS_ACCESS_KEY_ID,
+    process.env.AWS_SECRET_ACCESS_KEY,
+  ].join('|');
   if (s3CheckCache?.key === key && Date.now() - s3CheckCache.at < S3_CHECK_TTL_MS) {
     // latencyMs belongs to the original probe, so it is not repeated on cache hits.
     return Promise.resolve({ status: s3CheckCache.result.status, error: s3CheckCache.result.error });
