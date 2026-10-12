@@ -183,7 +183,7 @@ else
   if [[ -d "${TMP_DIR}/gvisor-bin" ]]; then
     install -d -m 0755 /usr/local/bin/gvisor-bin
     # Regular files only, so a subdirectory in a future archive cannot abort the copy.
-    find "${TMP_DIR}/gvisor-bin" -maxdepth 1 -type f -exec install -m 0755 {} /usr/local/bin/gvisor-bin/ \;
+    find "${TMP_DIR}/gvisor-bin" -maxdepth 1 -type f -exec install -m 0755 -t /usr/local/bin/gvisor-bin/ {} +
     if [[ ! -x /usr/local/bin/gvisor-bin/gvisor_sentry ]]; then
       error "gVisor archive did not contain gvisor-bin/gvisor_sentry"
       exit 1
