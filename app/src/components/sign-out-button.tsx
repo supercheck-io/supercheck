@@ -4,6 +4,7 @@ import { signOut } from "@/utils/auth-client";
 import { Button } from "@/components/ui/button";
 import { LogOut } from "lucide-react";
 import { clearAuthSession } from "@/components/auth-guard";
+import { resetChatwootSession } from "@/components/support/chatwoot-widget";
 import { clearQueryCache } from "@/lib/query-provider";
 import { clearProjectsCache } from "@/hooks/use-project-context";
 
@@ -27,6 +28,7 @@ export function SignOutButton({
     clearAuthSession(); // Clear client-side auth cache
     clearProjectsCache(); // Clear projects cache
     clearQueryCache(); // Clear React Query cache and localStorage
+    resetChatwootSession(); // Drop the support-chat contact so the next user never sees this conversation
     await signOut();
     // Sign-out crosses an authentication boundary. Replace the history entry
     // with a same-origin document navigation to avoid reusing private UI state.
