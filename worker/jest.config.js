@@ -19,6 +19,39 @@ module.exports = {
       lines: 15,
       statements: 15,
     },
+    // Security- and reliability-critical modules are ratcheted independently
+    // from the broad baseline. Keep these floors at or below measured coverage
+    // and raise them as tests are added; a regression now fails CI.
+    './src/common/errors/standardized-error-handler.ts': {
+      branches: 90,
+      functions: 95,
+      lines: 92,
+      statements: 92,
+    },
+    './src/common/security/secret-crypto.ts': {
+      branches: 90,
+      functions: 95,
+      lines: 95,
+      statements: 95,
+    },
+    './src/common/utils/retry.util.ts': {
+      branches: 85,
+      functions: 70,
+      lines: 95,
+      statements: 95,
+    },
+    './src/common/validation/http-validators.ts': {
+      branches: 95,
+      functions: 95,
+      lines: 95,
+      statements: 95,
+    },
+    './src/common/validation/network-validators.ts': {
+      branches: 95,
+      functions: 95,
+      lines: 95,
+      statements: 95,
+    },
   },
   testTimeout: 10000,
   // Transform ESM modules that Jest can't parse by default

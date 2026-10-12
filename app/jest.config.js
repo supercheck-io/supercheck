@@ -66,6 +66,24 @@ const customJestConfig = {
       lines: 100,
       statements: 95,
     },
+    "./src/lib/rbac/client-permissions.ts": {
+      branches: 95,
+      functions: 95,
+      lines: 95,
+      statements: 95,
+    },
+    "./src/lib/playwright-validator.ts": {
+      branches: 85,
+      functions: 95,
+      lines: 93,
+      statements: 93,
+    },
+    "./src/lib/html-report-parser.ts": {
+      branches: 65,
+      functions: 80,
+      lines: 82,
+      statements: 80,
+    },
   },
   testTimeout: 10000,
 };
