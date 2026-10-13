@@ -35,3 +35,14 @@ Use a fresh VM per case (OrbStack: `orb create ubuntu:24.04 <name>`), copy `depl
 3. Demo host: run `migrate-minio-to-rustfs.sh` on it before its next deploy (`.github/scripts/deploy-demo.sh` has no `--remove-orphans`; adding it without migrating would silently give the demo empty storage).
 4. Release notes lead with the breaking storage change and link the "Upgrading from MinIO" section.
 5. Open the PR for `docs/selfhost-installer-plan` (still unmerged) or fold it into this one.
+
+## Testing from `main` before a release tag exists
+`install.sh` fetches its source by tag, and no released tag has the RustFS compose files yet (the standalone default `v1.3.6` is refused with a clear message). Until a tag exists, test from a checkout of `main`:
+
+```bash
+git clone --depth 1 https://github.com/supercheck-io/supercheck.git /opt/supercheck
+export SUPERCHECK_VERSION=1.3.7-canary.15     # newest canary images; they predate #375, so /api/health shows s3 "degraded" (expected, exit code 3)
+sudo -E bash /opt/supercheck/deploy/docker/install.sh --local --yes
+```
+
+After the next canary tag is cut from `main`, use `sudo bash install.sh --version <that tag> --local --yes` instead and expect exit 0. **Cutting any `v*` tag also deploys the demo host** (`build-multiarch.yml`, `deploy-demo.sh`): migrate the demo host with `migrate-minio-to-rustfs.sh` first.

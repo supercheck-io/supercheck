@@ -656,6 +656,13 @@ main() {
     fi
     run_step "Downloading Supercheck ${VERSION}" fetch_source
   fi
+  # This installer targets the RustFS storage layout. A source tree that still defines a MinIO
+  # service (an older release) would start a stack whose image can no longer be pulled.
+  if [[ -f "$(compose_dir)/docker-compose.yml" ]] && grep -q '^  minio:' "$(compose_dir)/docker-compose.yml"; then
+    die "This source tree is from a release that still bundles MinIO, whose image can no longer be pulled." \
+      "Install a release that includes the RustFS storage change: see https://github.com/supercheck-io/supercheck/releases" \
+      "then re-run with --version <that release>, or run install.sh from a checkout of its source."
+  fi
   if [[ -f "$(compose_dir)/.env" ]]; then
     ok "Keeping existing .env (secrets are never regenerated)"
     if [[ "$NEED_PUBLIC_APPLY" == true ]]; then run_step "Applying HTTPS settings to .env" apply_public_config; fi
