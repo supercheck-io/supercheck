@@ -113,6 +113,98 @@ install_prerequisites
         self.assertIn('Release v9.9.9', output)
         self.assertFalse((self.root / 'packages-installed').exists())
 
+    def test_no_flag_rerun_does_not_pin_a_new_default(self):
+        self.run_shell(r'''echo BETTER_AUTH_SECRET=fixture > "$COMPOSE_DIR/.env"
+USING_THIS_CHECKOUT=false
+SOURCE_FETCHED=false
+VERSION_SET=false
+VERSION=1.3.7-canary.16
+persist_version
+''')
+        self.assertEqual((self.root / 'compose/.env').read_text(), 'BETTER_AUTH_SECRET=fixture\n')
+
+    def test_https_and_version_changes_keep_separate_backups(self):
+        self.run_shell(r'''printf '%s\n' BETTER_AUTH_SECRET=fixture APP_DOMAIN=old.example.com > "$COMPOSE_DIR/.env"
+date() { echo 20261013120000; }
+DOMAIN=new.example.com
+EMAIL=admin@example.com
+apply_public_config
+USING_THIS_CHECKOUT=false
+VERSION_SET=true
+VERSION=1.3.7-canary.16
+persist_version
+''')
+        backups = list((self.root / 'compose').glob('.env.bak-*'))
+        self.assertEqual(len(backups), 2)
+        self.assertTrue(any('APP_DOMAIN=old.example.com' in p.read_text() for p in backups))
+        self.assertTrue(all(p.stat().st_mode & 0o777 == 0o600 for p in backups))
+
+    def test_quoted_local_urls_follow_https_configuration(self):
+        self.run_shell(r'''cat > "$COMPOSE_DIR/.env" <<'EOF'
+BETTER_AUTH_SECRET=fixture
+APP_URL="http://localhost:3000"
+BETTER_AUTH_URL='http://127.0.0.1:3000'
+NEXT_PUBLIC_APP_URL=https://custom.example.com
+EOF
+DOMAIN=new.example.com
+EMAIL=admin@example.com
+apply_public_config
+''')
+        config = (self.root / 'compose/.env').read_text()
+        self.assertNotIn('localhost', config)
+        self.assertNotIn('127.0.0.1', config)
+        self.assertIn('APP_URL=https://new.example.com', config)
+        self.assertIn('NEXT_PUBLIC_APP_URL=https://custom.example.com', config)
+
+    def test_stale_env_temporary_files_are_private_before_writes(self):
+        self.run_shell(r'''printf '%s\n' BETTER_AUTH_SECRET=fixture APP_URL=https://old.example.com APP_DOMAIN=old.example.com > "$COMPOSE_DIR/.env"
+touch "$COMPOSE_DIR/.env.new" "$COMPOSE_DIR/.env.filtered"
+chmod 644 "$COMPOSE_DIR/.env.new" "$COMPOSE_DIR/.env.filtered"
+grep() {
+  if [[ "$*" == *SUPERCHECK_VERSION* || "$*" == *COMPOSE_PROFILES* ]]; then
+    [[ $(find .env.new -perm -004 -print) == '' ]] || exit 90
+  fi
+  command grep "$@"
+}
+sed() {
+  [[ $(find .env.filtered -perm -004 -print) == '' ]] || exit 90
+  command sed "$@"
+}
+DOMAIN=new.example.com
+EMAIL=admin@example.com
+apply_public_config
+touch .env.new
+chmod 644 .env.new
+USING_THIS_CHECKOUT=false
+VERSION_SET=true
+VERSION=1.3.7-canary.16
+persist_version
+''')
+
+    def test_existing_admin_permissions_fixed_before_gvisor_failure(self):
+        k3s = (DEPLOY / 'setup-k3s.sh').read_text().replace('$EUID', '$INSTALL_TEST_EUID')
+        for prefix in ['/etc/rancher/k3s', '/etc/systemd/system', '/usr/local/bin']:
+            k3s = k3s.replace(prefix, str(self.root / prefix.lstrip('/')))
+        (self.root / 'setup-fixture.sh').write_text(k3s)
+        admin = self.root / 'etc/rancher/k3s/k3s.yaml'
+        admin.parent.mkdir(parents=True)
+        admin.write_text('fixture')
+        admin.chmod(0o644)
+        service = self.root / 'etc/systemd/system/k3s.service'
+        service.parent.mkdir(parents=True)
+        service.write_text("ExecStart=k3s \\\n '--write-kubeconfig-mode' \\\n '644' \\\n")
+        self.run_shell(r'''uname() { [[ "$1" == -s ]] && echo Linux || echo x86_64; }
+sha512sum() { :; }
+bzip2() { :; }
+ip() { echo '1.1.1.1 via 10.0.0.1 dev eth0 src 10.0.0.2'; }
+k3s() { :; }
+systemctl() { :; }
+curl() { return 22; }
+source "$TEST_ROOT/setup-fixture.sh"
+''', 22)
+        self.assertEqual(admin.stat().st_mode & 0o777, 0o600)
+        self.assertNotIn("'644'", service.read_text())
+
     def test_private_backup_permissions_for_new_and_existing_files(self):
         self.run_shell(r'''umask 022
 file="$TEST_ROOT/backup.sql"
