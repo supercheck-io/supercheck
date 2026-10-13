@@ -167,7 +167,7 @@ sudo env KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig docker co
 
 ### 3. Verify regional execution
 
-Confirm the location shows **Active**, then run a monitor or k6 test in that region and check the reported location. Worker readiness must pass; a heartbeat alone does not verify its database, Redis, and storage connections.
+Confirm the location shows **Active** and the worker is ready, then run a monitor or k6 test in that region and check the reported location. A heartbeat alone does not verify its database, Redis, and storage connections.
 
 ## Operations
 

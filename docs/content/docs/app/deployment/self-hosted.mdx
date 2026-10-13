@@ -249,10 +249,10 @@ Run commands from your installation's `deploy/docker` directory (default: `/opt/
 
     ```bash
     sudo curl -fsSL -o migrate-minio-to-rustfs.sh https://raw.githubusercontent.com/supercheck-io/supercheck/main/deploy/docker/migrate-minio-to-rustfs.sh
-    sudo bash migrate-minio-to-rustfs.sh
+    sudo bash migrate-minio-to-rustfs.sh && sudo rm -- migrate-minio-to-rustfs.sh
     ```
 
-    The script stops app/worker, copies and verifies buckets, and backs up `.env` to `.env.pre-rustfs`. Failed migration leaves `.env` unchanged.
+    Stop any remote workers first. The script stops local app/worker, copies and verifies buckets, and backs up `.env` to `.env.pre-rustfs`. Failed migration leaves `.env` unchanged.
 
     Update the checkout to `v1.3.7-canary.16` with `git fetch origin tag v1.3.7-canary.16` and `git checkout --detach v1.3.7-canary.16`. Use `sudo git` for a root-owned checkout. Set `SUPERCHECK_VERSION=1.3.7-canary.16` in `.env`, then start:
 
@@ -261,14 +261,15 @@ Run commands from your installation's `deploy/docker` directory (default: `/opt/
     curl --fail --silent --show-error http://localhost:3000/api/health
     ```
 
-    `--remove-orphans` removes the old MinIO container and frees port 9000. Verify a status page and test report before deleting `minio-data`. To roll back, restore `.env.pre-rustfs` and the previous checkout. If already updated without migrating, restore the old checkout and migrate first.
+    `--remove-orphans` removes the old MinIO container and frees port 9000. Verify a status page and test report before deleting `minio-data`. To roll back, run `sudo install -m 600 .env.pre-rustfs .env` and restore the previous checkout. If already updated without migrating, restore the old checkout and migrate first.
   </Accordion>
 
   <Accordion title="Backups" id="backups">
     Back up PostgreSQL, the RustFS data volume, `.env`, and the Traefik certificate volume before upgrades. To export the database:
 
     ```bash
-    sudo docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' > "$HOME/supercheck-backup.sql"
+    install -m 600 /dev/null "$HOME/supercheck-backup.sql" && \
+      sudo docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' > "$HOME/supercheck-backup.sql"
     ```
 
     Store backups privately. The database export does not include files, `.env`, or certificates.
