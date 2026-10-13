@@ -127,8 +127,8 @@ Back up your data and `.env` first (see [Backups](#backups)). Run commands from 
 **Upgrading from bundled MinIO (releases before `1.3.7-canary.16`):** MinIO and RustFS disk formats are incompatible. Stop remote workers, then download and run the migration script from your **current MinIO checkout**, with the old stack running, **before updating the checkout**:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/supercheck-io/supercheck/main/deploy/docker/migrate-minio-to-rustfs.sh -o migrate-minio-to-rustfs.sh && \
-bash migrate-minio-to-rustfs.sh && rm -- migrate-minio-to-rustfs.sh
+sudo curl -fsSL https://raw.githubusercontent.com/supercheck-io/supercheck/main/deploy/docker/migrate-minio-to-rustfs.sh -o migrate-minio-to-rustfs.sh && \
+sudo bash migrate-minio-to-rustfs.sh && sudo rm -- migrate-minio-to-rustfs.sh
 ```
 
 Continue only after migration succeeds. The script stops local app/worker, copies and verifies storage, and preserves `.env.pre-rustfs` and `minio-data` for recovery. Follow the [migration guide](https://supercheck.io/docs/app/deployment/self-hosted#upgrading-from-minio-breaking), then start the new checkout with `docker compose up -d --wait --wait-timeout 300 --remove-orphans` (with `KUBECONFIG_FILE` set as below) to remove the old MinIO container and free port 9000. Verify a status page and test report before deleting the old storage volume.
