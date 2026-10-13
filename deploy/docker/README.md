@@ -12,6 +12,8 @@ For HTTPS, point your domain at the server and allow inbound ports 80 and 443. m
 
 See the [self-hosting guide](https://supercheck.io/docs/app/deployment/self-hosted) for optional configuration and maintenance. Use `bash install.sh --help` for flags or [INSTALL.md](./INSTALL.md) for custom and agent-assisted installations. The references below describe the files managed by the installer.
 
+Run maintenance commands from your installation's `deploy/docker` directory. Examples below assume your user can read `.env` and access Docker. For installer-managed, root-owned installations, use `sudo docker compose`, `sudo env KUBECONFIG_FILE=... docker compose` for commands with that prefix, and `sudoedit .env`; download and run migration scripts with `sudo` too.
+
 ## Available Configurations
 
 | File | Use Case |
@@ -26,7 +28,7 @@ See the [self-hosting guide](https://supercheck.io/docs/app/deployment/self-host
 
 The optional [AI SRE integration lab](./aisre-lab/README.md) is for connector development and testing; it is not needed for installation.
 
-All worker Docker definitions use the worker readiness endpoint (`/health/ready`) for healthchecks. A worker is marked unhealthy when it cannot reach required dependencies such as PostgreSQL, Redis, or its queues.
+Execution workers use the worker readiness endpoint (`/health/ready`) for healthchecks. A worker is marked unhealthy when it cannot reach required dependencies such as PostgreSQL, Redis, or its queues. Private agents disable healthchecks by design because agent mode runs no HTTP server.
 
 ---
 
@@ -38,15 +40,16 @@ Use `./init-secrets.sh` to generate secure defaults, then configure:
 
 | Variable | Description |
 |----------|-------------|
+| `SUPERCHECK_VERSION` | App/worker image tag for prebuilt Compose variants, including the sandbox image (default in this checkout: `1.3.7-canary.16`); set explicitly in `.env` when upgrading |
 | `SELF_HOSTED` | Self-hosted mode toggle (default: `true`) |
 | `SIGNUP_ENABLED` | Toggle open email/password signup (default: `true`) |
 | `ALLOWED_EMAIL_DOMAINS` | Optional comma-separated signup allowlist (default: empty = allow all) |
 | `STATUS_PAGE_HIDE_BRANDING` | Hide the `Powered by Supercheck` footer on all public status and incident pages when set to `true` (default: `false`) |
-| `NEXT_PUBLIC_APP_URL` | Browser-reachable app origin, including scheme and port, with no trailing slash (default: `http://localhost:3000`) |
+| `NEXT_PUBLIC_APP_URL` | Browser-reachable app origin, including scheme and port, with no trailing slash (bundled stack: derived as `https://${APP_DOMAIN}` when set, otherwise `http://localhost:3000`; external-services variant requires an explicit value) |
 
 OAuth (`GITHUB_*` / `GOOGLE_*`) is optional in self-hosted mode.
 
-HTTP evaluation is bound to localhost. Use an SSH port forward for remote evaluation; use HTTPS for a public server.
+The default HTTP setup binds the app to loopback (`127.0.0.1:3000`). Use an SSH port forward for remote evaluation; use HTTPS for a public server.
 
 ### HTTPS Profile
 
@@ -60,13 +63,14 @@ When you are running the app locally on `http://localhost:3000`, Supercheck keep
 
 | Variable | Description | Default |
 |----------|-------------|---------|
+| `CORS_ALLOWED_ORIGINS` | App-side: comma-separated additional trusted origins for browser integrations | Empty |
 | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | Optional GitHub social sign-in | - |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Optional Google social sign-in | - |
 | `SMTP_HOST`, `SMTP_FROM_EMAIL` (+ optional `SMTP_USER`/`SMTP_PASSWORD`) | Email notifications (disabled if SMTP_HOST not set) | - |
 | `AI_PROVIDER` | AI provider (`openai`, `azure`, `anthropic`, `gemini`, `google-vertex`, `bedrock`, `openrouter`, `deepseek`) | `openai` |
 | `AI_MODEL` | AI model name | `gpt-6-luna` |
 | `OPENAI_API_KEY` | AI features (for default OpenAI provider) | - |
-| `DEEPSEEK_API_KEY` | DeepSeek V4.1 Flash (optional) | - |
+| `DEEPSEEK_API_KEY` | API key required when `AI_PROVIDER=deepseek` | - |
 | `WORKER_REPLICAS` | Number of worker containers (worker-side scaling knob) | `1` |
 | `RUNNING_CAPACITY` | App-side gate: max concurrent test runs (set equal to `WORKER_REPLICAS`) | `1` |
 | `QUEUED_CAPACITY` | App-side gate: max queued test runs before new submissions are rejected | `10` |
@@ -97,13 +101,20 @@ Production self-hosted deployments use [gVisor](https://gvisor.dev) for sandboxe
 
 ### Installation
 
-Run the bootstrap script on your host:
+For manual installation, first install Docker Engine and Compose v2.24.4+ using the [manual runbook](./INSTALL.md#0-install-prerequisites), including these Ubuntu/Debian prerequisites:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y git bzip2 ca-certificates curl gnupg
+```
+
+`bzip2` is required to extract the gVisor archive. Then run the bootstrap script once on your host before starting the workers:
 
 ```bash
 sudo bash setup-k3s.sh
 ```
 
-Run this once before starting the workers. It prepares the isolated environment required for Playwright and k6 test execution, including resource limits and network restrictions.
+It prepares the isolated environment required for Playwright and k6 test execution, including resource limits and network restrictions. The installer also imports the roughly 3 GB worker image into the sandbox runtime. With manual installation, the first test run downloads that image into the cluster and may be slow or time out.
 
 > **Linux host required:** Docker Engine on a Linux server (Ubuntu 22.04+, Debian 12+) is the only supported target. macOS, Windows, and WSL2 are not supported because the execution sandbox requires the Linux kernel.
 
@@ -111,11 +122,26 @@ Run this once before starting the workers. It prepares the isolated environment 
 
 ## Upgrading
 
+Back up your data and `.env` first (see [Backups](#backups)). Run commands from your installation's `deploy/docker` directory, using the same Compose file and profiles as installation; custom variants need their corresponding `-f` flag.
+
+**Upgrading from bundled MinIO (releases before `1.3.7-canary.16`):** MinIO and RustFS disk formats are incompatible. Stop remote workers, then download and run the migration script from your **current MinIO checkout**, with the old stack running, **before updating the checkout**:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/supercheck-io/supercheck/main/deploy/docker/migrate-minio-to-rustfs.sh -o migrate-minio-to-rustfs.sh && \
+bash migrate-minio-to-rustfs.sh && rm -- migrate-minio-to-rustfs.sh
+```
+
+Continue only after migration succeeds. The script stops local app/worker, copies and verifies storage, and preserves `.env.pre-rustfs` and `minio-data` for recovery. Follow the [migration guide](https://supercheck.io/docs/app/deployment/self-hosted#upgrading-from-minio-breaking), then start the new checkout with `docker compose up -d --wait --wait-timeout 300 --remove-orphans` (with `KUBECONFIG_FILE` set as below) to remove the old MinIO container and free port 9000. Verify a status page and test report before deleting the old storage volume.
+
+Update the deployment files to the target release when required by its release notes. Set `SUPERCHECK_VERSION=<new release>` in `.env` (without the Git tag's leading `v`), then run:
+
 ```bash
 docker compose pull && \
 KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig \
-docker compose up -d
+docker compose up -d --wait --wait-timeout 300
 ```
+
+`pull` alone downloads the currently selected tag; it does not select a newer release. Migrations run automatically at app startup. Preserve existing secrets and data volumes; `restart` does not reload `.env` changes.
 
 > **Upgrading from pre-1.3.3 releases:** Supercheck introduced the current isolated execution sandbox in `1.3.3`. Before upgrading an older deployment, back up your database and run `sudo bash setup-k3s.sh` to install the execution sandbox. See the [deployment guide](https://supercheck.io/docs/app/deployment/self-hosted) for details.
 
@@ -123,14 +149,18 @@ docker compose up -d
 
 ## Backups
 
+Back up PostgreSQL, the `rustfs-data` volume (including reports, uploaded assets, and documents), `.env`, and the `traefik-letsencrypt` certificate volume when using HTTPS. For external services, use their backup tools. Keep backups private and off the server; `.env` contains the database password, `BETTER_AUTH_SECRET`, and `SECRET_ENCRYPTION_KEY`, which must be preserved to read encrypted data.
+
 ```bash
-# Create backup
+# Create a private database export without a TTY
 install -m 600 /dev/null "$HOME/supercheck-backup.sql" && \
   sudo docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' > "$HOME/supercheck-backup.sql"
 
-# Restore backup
-sudo docker compose exec -T postgres sh -c 'psql -U "$POSTGRES_USER" "$POSTGRES_DB"' < "$HOME/supercheck-backup.sql"
+# Restore into an empty database with the matching database role available
+sudo docker compose exec -T postgres sh -c 'psql --set ON_ERROR_STOP=on -U "$POSTGRES_USER" "$POSTGRES_DB"' < "$HOME/supercheck-backup.sql"
 ```
+
+Stop app/worker and remote workers before restoring; do not restore over a populated database. The SQL export does not include storage files, `.env`, or certificates. Use consistent volume snapshots or stop the services that write to a volume before copying it, and verify backups with a restore in an isolated installation.
 
 ---
 
