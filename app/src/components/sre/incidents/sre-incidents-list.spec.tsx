@@ -143,6 +143,43 @@ describe("SreIncidentsList", () => {
     expect(screen.getByText("Total 2 incidents")).toBeInTheDocument();
   });
 
+  it("clears the active shortcut by toggling it and can restore it from a specific status", () => {
+    render(
+      <SreIncidentsList
+        incidents={[
+          incidentFixture(1),
+          incidentFixture(2),
+          incidentFixture(3, { status: "resolved" }),
+        ]}
+        loadError={null}
+      />,
+    );
+    expect(screen.getByText("Total 2 incidents")).toBeInTheDocument();
+    fireEvent.click(
+      within(screen.getByTestId("incident-header-actions")).getByRole(
+        "button",
+        { name: /Status/ },
+      ),
+    );
+    fireEvent.click(screen.getByRole("option", { name: "Active incidents" }));
+    expect(screen.getByText("Total 3 incidents")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("option", { name: "Clear filters" }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("option", { name: "resolved" }));
+    expect(screen.getByText("Total 1 incident")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("option", { name: "Active incidents" }));
+    expect(screen.getByText("Total 2 incidents")).toBeInTheDocument();
+    expect(
+      screen.queryByText("#3 · Checkout incident 3"),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("option", { name: "Active incidents" }));
+    expect(screen.getByText("Total 3 incidents")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("option", { name: "Active incidents" }));
+    fireEvent.click(screen.getByRole("option", { name: "Clear filters" }));
+    expect(screen.getByText("Total 3 incidents")).toBeInTheDocument();
+  });
+
   it("combines faceted selections, retains active-by-default, and clears filters", () => {
     render(
       <SreIncidentsList
