@@ -15,9 +15,9 @@ export const PRICING_FAQS = [
       "K6 usage is peak virtual users multiplied by execution duration in minutes, rounded up to a whole VU-minute per run. This can exceed accumulated active VU-time for ramping tests. Review your load profile and spending settings before running a large test.",
   },
   {
-    question: "How does included AI assistance work?",
+    question: "How do AI credits work?",
     answer:
-      "AI assistance for test generation, fixes, and failure analysis is included, subject to fair use. Automated bulk use and abuse are restricted. Your account shows your monthly allowance and remaining usage; assistance pauses if that allowance is exhausted until renewal or an upgrade. Each accepted action uses allowance before processing, even if it later fails. There are no additional AI assistance charges.",
+      "Each plan includes a monthly pool of AI credits for test generation, test fixes, and failure analysis, subject to fair use. Automated bulk use and abuse are restricted. Your account shows your monthly allowance and remaining credits. Each accepted action uses one credit before generation or analysis starts, even if it later fails. There are no AI credit overages; upgrade or wait for your next billing cycle when the pool is exhausted.",
   },
   {
     question: "What counts as an AI SRE investigation?",
@@ -27,7 +27,7 @@ export const PRICING_FAQS = [
   {
     question: "What happens if I exceed my limits?",
     answer:
-      "Playwright minutes, K6 VU-minutes, and completed full AI SRE reports use the overage rates shown above. AI assistance is included subject to fair use, with no paid overages. Monitor, member, project, and status-page limits require an upgrade rather than an overage payment.",
+      "Playwright minutes, K6 VU-minutes, and completed full AI SRE reports use the overage rates shown above. AI credits are included, subject to fair use, with no overages. Monitor, member, project, and status-page limits require an upgrade rather than an overage payment.",
   },
   {
     question: "How can I control overage spending?",
@@ -41,7 +41,7 @@ export const PRICING_FAQS = [
   },
   {
     question: "Do unused allowances roll over?",
-    answer: "No. Execution minutes, AI assistance allowances, and AI SRE investigation allowances reset monthly on your billing date.",
+    answer: "No. Execution minutes, AI credits, and AI SRE investigation allowances reset monthly on your billing date.",
   },
   {
     question: "Can I try Supercheck before subscribing?",

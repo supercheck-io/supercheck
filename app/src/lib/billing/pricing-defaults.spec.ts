@@ -23,6 +23,11 @@ describe("pricing defaults and copy", () => {
       "$0.50/AI SRE investigation",
     );
   });
+  it("formats sub-cent Playwright rates per minute when requested", () => {
+    expect(formatOveragePrice(0.01, "min", true)).toBe("$0.01/min");
+    expect(formatOveragePrice(0.005, "min", true)).toBe("$0.005/min");
+  });
+
   it("offers a lower browser rate on Pro without billing AI actions", () => {
     expect(DEFAULT_OVERAGE_PRICING.plus.playwrightMinutes).toBe(0.01);
     expect(DEFAULT_OVERAGE_PRICING.pro.playwrightMinutes).toBe(0.005);

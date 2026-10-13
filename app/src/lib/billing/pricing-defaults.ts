@@ -34,8 +34,8 @@ export const DEFAULT_OVERAGE_PRICING = {
   },
 };
 
-export function formatOveragePrice(price: number, unit: string) {
-  if (price < 0.01) {
+export function formatOveragePrice(price: number, unit: string, perUnit = false) {
+  if (price < 0.01 && !perUnit) {
     return `$${(price * 1000).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 })} per 1,000 ${unit}`;
   }
   return `$${price.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 6 })}/${unit}`;

@@ -128,7 +128,7 @@ const OVERAGE_PRICING_SEED = [
     playwrightMinutePriceCents: 1,
     k6VuMinutePriceCents: 1, // Legacy fallback for older workers
     k6VuMinutePriceCentsOverride: 0.2,
-    aiCreditPriceCents: 5,
+    aiCreditPriceCents: 5, // Legacy column: AI has no paid overage and no reader prices it
     sreInvestigationUnitPriceCents: 10,
   },
   {
@@ -136,7 +136,7 @@ const OVERAGE_PRICING_SEED = [
     playwrightMinutePriceCents: 0.5,
     k6VuMinutePriceCents: 1, // Legacy fallback for older workers
     k6VuMinutePriceCentsOverride: 0.1,
-    aiCreditPriceCents: 3,
+    aiCreditPriceCents: 3, // Legacy column: AI has no paid overage and no reader prices it
     sreInvestigationUnitPriceCents: 10,
   },
 ];

@@ -35,7 +35,7 @@ const plans = [
             '5 status pages with custom domains',
             '3,000 Playwright minutes/month',
             '30,000 K6 VU minutes/month',
-            'AI assistance included · fair use',
+            '1,000 AI credits/month',
             '200 completed AI SRE investigations/month',
             'Read-only evidence connectors',
             'Private Agent support',
@@ -59,7 +59,7 @@ const plans = [
             '20 status pages with custom domains',
             '10,000 Playwright minutes/month',
             '100,000 K6 VU minutes/month',
-            'AI assistance included · fair use',
+            '5,000 AI credits/month',
             '1,000 completed AI SRE investigations/month',
             'Read-only evidence connectors',
             'Private Agent support',
@@ -79,7 +79,7 @@ const plans = [
         features: [
             'Custom monitor allowance',
             'Custom Playwright & K6 allowances',
-            'Custom AI assistance allowance or bring-your-own-provider',
+            'Custom AI credit pool or bring-your-own-provider',
             'Custom AI SRE investigation volume',
             'Custom connector and Private Agent limits',
             'Custom team member & project limits',
@@ -97,7 +97,7 @@ const plans = [
 const overagePricing = [
     { metric: 'Playwright minute', plus: '$0.01', pro: '$0.005' },
     { metric: '1,000 K6 VU-minutes', plus: '$2.00', pro: '$1.00' },
-    { metric: 'AI assistance', plus: 'Included · fair use', pro: 'Included · fair use' },
+    { metric: 'AI credits', plus: 'Included · fair use', pro: 'Included · fair use' },
     { metric: 'Completed AI SRE investigation', plus: '$0.10', pro: '$0.10' },
 ];
 
@@ -107,7 +107,7 @@ const comparisonFeatures = [
             { name: 'Monitors', plus: '50', pro: '200', selfHosted: 'Unlimited' },
             { name: 'Playwright minutes/month', plus: '3,000', pro: '10,000', selfHosted: 'Unlimited' },
             { name: 'K6 VU minutes/month', plus: '30,000', pro: '100,000', selfHosted: 'Unlimited' },
-            { name: 'AI assistance', plus: 'Included · fair use', pro: 'Included · fair use', selfHosted: 'Unlimited with BYO provider' },
+            { name: 'AI credits/month', plus: '1,000', pro: '5,000', selfHosted: 'Unlimited with BYO provider' },
             { name: 'Completed AI SRE investigations/month', plus: '200', pro: '1,000', selfHosted: 'Unlimited' },
             { name: 'Read-only evidence connectors', plus: 'Included', pro: 'Included', selfHosted: 'Self-managed' },
             { name: 'Private Agent support', plus: 'Included', pro: 'Included', selfHosted: 'Self-managed' },
@@ -184,11 +184,11 @@ const faqs = [
     },
     {
         question: 'Do unused minutes roll over?',
-        answer: 'No. Execution minutes, AI assistance allowances, and AI SRE investigation allowances reset monthly on your billing date.',
+        answer: 'No. Execution minutes, AI credits, and AI SRE investigation allowances reset monthly on your billing date.',
     },
     {
-        question: 'How does included AI assistance work?',
-        answer: 'AI assistance for test generation, fixes, and failure analysis is included, subject to fair use. Automated bulk use and abuse are restricted. Your account shows your monthly allowance and remaining usage; assistance pauses if that allowance is exhausted until renewal or an upgrade. Each accepted action uses allowance before processing, even if it later fails. There are no additional AI assistance charges. Full AI SRE investigations use a separate allowance: each completed report uses one investigation unit, without guaranteeing a diagnosis or resolution. Failed or timed-out full investigations and billing retries do not consume investigation units. AI SRE chat, triage, and evidence briefs do not consume investigation units.',
+        question: 'How do AI credits work?',
+        answer: 'Each plan includes a monthly pool of AI credits for test generation, test fixes, and failure analysis, subject to fair use. Automated bulk use and abuse are restricted. Each accepted action uses one credit before generation or analysis starts, even if it later fails. There are no AI credit overages; upgrade or wait for your next billing cycle when the pool is exhausted. Full AI SRE investigations use a separate allowance: each completed report uses one investigation unit, without guaranteeing a diagnosis or resolution. Failed or timed-out full investigations and billing retries do not consume investigation units. AI SRE chat, triage, and evidence briefs do not consume investigation units.',
     },
     {
         question: 'How can I control overage spending?',
