@@ -1,61 +1,16 @@
-# Docker Compose Configurations
+# Self-host Supercheck
 
-Docker Compose files for self-hosting Supercheck.
-
-For agent-assisted installation, use [INSTALL.md](./INSTALL.md).
-
-## Quick Start
+Install on an Ubuntu 22.04+ or Debian 12+ server with sudo access and `curl` (at least 2 vCPU, 4 GB RAM, and 15 GB free disk):
 
 ```bash
-git clone https://github.com/supercheck-io/supercheck.git
-cd supercheck/deploy/docker
-
-# Generate secrets and set up the execution sandbox
-./init-secrets.sh
-sudo bash setup-k3s.sh
-
-# Edit .env for optional integrations (SMTP, AI, OAuth)
-nano .env
-
-# Start self-hosted stack
-KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig docker compose up -d
-
-# For HTTPS, set COMPOSE_PROFILES=https, APP_DOMAIN and ACME_EMAIL in .env.
-# The start command stays the same.
+curl -fsSL https://raw.githubusercontent.com/supercheck-io/supercheck/main/deploy/docker/install.sh -o install.sh && sudo bash install.sh --version 1.3.7-canary.16
 ```
 
-## Prerequisites
+This installs **1.3.7-canary.16**, which includes RustFS. Choose local evaluation or public HTTPS and follow the prompts. The installer installs Docker and Compose, generates secrets, prepares the execution sandbox, starts the services, and checks health. Open the printed URL to create your account and run a test.
 
-> **Docker Compose v2.24.4 or newer is required.** Use `docker compose` (with space).
+For HTTPS, point your domain at the server and allow inbound ports 80 and 443. macOS, Windows, WSL2, and Docker Desktop are not supported.
 
-```bash
-docker compose version
-# Should show v2.24.4 or newer
-```
-
-**Install Docker (Linux only):** For production hosts, prefer Docker's
-[distribution-specific Engine installation instructions](https://docs.docker.com/engine/install/).
-If you use Docker's convenience script, download and review it before running it:
-
-```bash
-curl -fsSL https://get.docker.com -o get-docker.sh
-sudo sh get-docker.sh
-sudo usermod -aG docker "$USER"
-newgrp docker
-```
-
-> **Linux Required:** The test-execution sandbox requires the Linux kernel. Only Linux servers (Ubuntu 22.04+, Debian 12+) are supported. macOS, Windows, and WSL2 are not supported.
-
----
-
-## Quick start
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/supercheck-io/supercheck/main/deploy/docker/install.sh -o install.sh
-sudo bash install.sh
-```
-
-See `bash install.sh --help` for flags. The files below are what the installer drives; most users never edit them.
+See the [self-hosting guide](https://supercheck.io/docs/app/deployment/self-hosted) for optional configuration and maintenance. Use `bash install.sh --help` for flags or [INSTALL.md](./INSTALL.md) for custom and agent-assisted installations. The references below describe the files managed by the installer.
 
 ## Available Configurations
 
