@@ -31,11 +31,12 @@ const plans = [
         period: '/month',
         description: 'For startups and small teams',
         features: [
-            '25 monitors',
+            '50 monitors',
+            '5 status pages with custom domains',
             '3,000 Playwright minutes/month',
-            '20,000 K6 VU minutes/month',
-            '100 AI credits/month',
-            '25 completed AI SRE investigations/month',
+            '30,000 K6 VU minutes/month',
+            'AI assistance included · fair use',
+            '200 completed AI SRE investigations/month',
             'Read-only evidence connectors',
             'Private Agent support',
             '5 team members',
@@ -54,11 +55,12 @@ const plans = [
         period: '/month',
         description: 'For growing teams',
         features: [
-            '100 monitors',
+            '200 monitors',
+            '20 status pages with custom domains',
             '10,000 Playwright minutes/month',
-            '75,000 K6 VU minutes/month',
-            '300 AI credits/month',
-            '100 completed AI SRE investigations/month',
+            '100,000 K6 VU minutes/month',
+            'AI assistance included · fair use',
+            '1,000 completed AI SRE investigations/month',
             'Read-only evidence connectors',
             'Private Agent support',
             '25 team members',
@@ -77,7 +79,7 @@ const plans = [
         features: [
             'Custom monitor allowance',
             'Custom Playwright & K6 allowances',
-            'Custom AI credit pool or bring-your-own-provider',
+            'Custom AI assistance allowance or bring-your-own-provider',
             'Custom AI SRE investigation volume',
             'Custom connector and Private Agent limits',
             'Custom team member & project limits',
@@ -93,20 +95,20 @@ const plans = [
 ];
 
 const overagePricing = [
-    { metric: 'Playwright minute', plus: '$0.03', pro: '$0.02' },
-    { metric: 'K6 VU minute', plus: '$0.005', pro: '$0.0025' },
-    { metric: 'AI credit', plus: 'Hard limit', pro: 'Hard limit' },
-    { metric: 'Completed AI SRE investigation', plus: '$0.50', pro: '$0.50' },
+    { metric: 'Playwright minute', plus: '$0.01', pro: '$0.005' },
+    { metric: '1,000 K6 VU-minutes', plus: '$2.00', pro: '$1.00' },
+    { metric: 'AI assistance', plus: 'Included · fair use', pro: 'Included · fair use' },
+    { metric: 'Completed AI SRE investigation', plus: '$0.10', pro: '$0.10' },
 ];
 
 const comparisonFeatures = [
     {
         category: 'Usage Limits', items: [
-            { name: 'Monitors', plus: '25', pro: '100', selfHosted: 'Unlimited' },
+            { name: 'Monitors', plus: '50', pro: '200', selfHosted: 'Unlimited' },
             { name: 'Playwright minutes/month', plus: '3,000', pro: '10,000', selfHosted: 'Unlimited' },
-            { name: 'K6 VU minutes/month', plus: '20,000', pro: '75,000', selfHosted: 'Unlimited' },
-            { name: 'AI credits/month', plus: '100', pro: '300', selfHosted: 'Unlimited with BYO provider' },
-            { name: 'Completed AI SRE investigations/month', plus: '25', pro: '100', selfHosted: 'Unlimited' },
+            { name: 'K6 VU minutes/month', plus: '30,000', pro: '100,000', selfHosted: 'Unlimited' },
+            { name: 'AI assistance', plus: 'Included · fair use', pro: 'Included · fair use', selfHosted: 'Unlimited with BYO provider' },
+            { name: 'Completed AI SRE investigations/month', plus: '200', pro: '1,000', selfHosted: 'Unlimited' },
             { name: 'Read-only evidence connectors', plus: 'Included', pro: 'Included', selfHosted: 'Self-managed' },
             { name: 'Private Agent support', plus: 'Included', pro: 'Included', selfHosted: 'Self-managed' },
             { name: 'Concurrent jobs', plus: '5', pro: '10', selfHosted: 'Configurable' },
@@ -129,8 +131,8 @@ const comparisonFeatures = [
             { name: 'Team members', plus: '5', pro: '25', selfHosted: 'Unlimited' },
             { name: 'Cloud subscription scope', plus: 'One organization', pro: 'One organization', selfHosted: 'Self-managed' },
             { name: 'Projects', plus: '10', pro: '50', selfHosted: 'Unlimited' },
-            { name: 'Status pages', plus: '3', pro: '15', selfHosted: 'Unlimited' },
-            { name: 'Subscribers per status page', plus: '500', pro: '5,000', selfHosted: 'Unlimited' },
+            { name: 'Status pages', plus: '5', pro: '20', selfHosted: 'Unlimited' },
+            { name: 'Subscribers per status page', plus: '1,000', pro: '10,000', selfHosted: 'Unlimited' },
         ]
     },
     {
@@ -158,7 +160,7 @@ const faqs = [
     },
     {
         question: 'When should I consider Pro?',
-        answer: 'Pro includes more capacity and lower Playwright and K6 overage rates. At standard list prices, with only browser usage, Plus and Pro cost the same at about 6,333 Playwright minutes/month. With only K6 usage, they cost the same at 40,000 VU-minutes/month. Other usage, discounts, taxes, and proration affect the comparison; review your organization’s estimate before changing plans.',
+        answer: 'Pro includes more capacity and half the Playwright and K6 overage rates. At standard list prices, with only browser usage, Plus and Pro cost the same at 16,000 Playwright minutes/month. With only K6 usage, they cost the same at 80,000 VU-minutes/month. Other usage, discounts, taxes, and proration affect the comparison; review your organization’s estimate before changing plans.',
     },
     {
         question: 'How are browser execution minutes measured?',
@@ -166,7 +168,11 @@ const faqs = [
     },
     {
         question: 'What does frequent synthetic monitoring cost?',
-        answer: 'Five monitors running for five seconds every five minutes in one location use approximately 3,599 Playwright minutes in a 30-day month: about $66.96 total on Plus, or within Pro’s $149 allowance. Longer runs, additional locations, retries, and other tests increase usage. This is an estimate before taxes.',
+        answer: 'Five monitors running for five seconds every five minutes in one location use approximately 3,599 Playwright minutes in a 30-day month: about $54.99 total on Plus, or within Pro’s $149 allowance. Longer runs, additional locations, retries, and other tests increase usage. This is an estimate before taxes.',
+    },
+    {
+        question: 'How does run duration affect browser pricing?',
+        answer: 'Beyond included usage, 1,000 five-second executions cost about $0.83 on Plus or $0.42 on Pro. At 30 seconds each, they cost $5.00 or $2.50. Each executed location and retry contributes usage; these estimates exclude the monthly subscription and taxes.',
     },
     {
         question: 'How are load tests measured?',
@@ -178,11 +184,11 @@ const faqs = [
     },
     {
         question: 'Do unused minutes roll over?',
-        answer: 'No. Execution minutes, AI credits, and AI SRE investigation allowances reset monthly on your billing date.',
+        answer: 'No. Execution minutes, AI assistance allowances, and AI SRE investigation allowances reset monthly on your billing date.',
     },
     {
-        question: 'How do AI credits work?',
-        answer: 'AI credits are a hard monthly pool for test generation, test fixes, and failure analysis. Each accepted action uses one credit before generation or analysis starts, even if it later fails. There are no AI credit overages; upgrade or wait for your next billing cycle when the pool is exhausted. Full AI SRE investigations use a separate allowance: each completed report uses one investigation unit, without guaranteeing a diagnosis or resolution. Failed or timed-out full investigations and billing retries do not consume investigation units. AI SRE chat, triage, and evidence briefs do not consume investigation units.',
+        question: 'How does included AI assistance work?',
+        answer: 'AI assistance for test generation, fixes, and failure analysis is included, subject to fair use. Automated bulk use and abuse are restricted. Your account shows your monthly allowance and remaining usage; assistance pauses if that allowance is exhausted until renewal or an upgrade. Each accepted action uses allowance before processing, even if it later fails. There are no additional AI assistance charges. Full AI SRE investigations use a separate allowance: each completed report uses one investigation unit, without guaranteeing a diagnosis or resolution. Failed or timed-out full investigations and billing retries do not consume investigation units. AI SRE chat, triage, and evidence briefs do not consume investigation units.',
     },
     {
         question: 'How can I control overage spending?',

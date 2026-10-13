@@ -265,7 +265,7 @@ function SubscribePageContent() {
                 `${Number(plan.features.monitors).toLocaleString()} monitors`,
                 `${Number(plan.features.playwrightMinutes).toLocaleString()} Playwright minutes/month`,
                 `${Number(plan.features.k6VuMinutes).toLocaleString()} K6 VU-minutes/month`,
-                `${Number(plan.features.aiCredits).toLocaleString()} AI credits/month (hard limit)`,
+                "AI assistance included · fair use",
                 `${Number(plan.features.sreInvestigationUnits).toLocaleString()} completed AI SRE reports/month`,
                 "Read-only evidence connectors",
                 "Private Agent support",
@@ -278,7 +278,7 @@ function SubscribePageContent() {
                   : "Standard status-page domains",
                 ...(plan.features.support ? [plan.features.support] : []),
               ]}
-              overageText={`Overage: ${formatOveragePrice(plan.overagePricing.playwrightMinutes, "min")} Playwright · ${formatOveragePrice(plan.overagePricing.k6VuMinutes, "VU-min")} K6 · ${formatOveragePrice(plan.overagePricing.sreInvestigationUnits, "completed full AI SRE report")} · No AI credit overages`}
+              overageText={`Overage: ${formatOveragePrice(plan.overagePricing.playwrightMinutes, "min")} Playwright · ${formatOveragePrice(plan.overagePricing.k6VuMinutes, "VU-min")} K6 · ${formatOveragePrice(plan.overagePricing.sreInvestigationUnits, "completed full AI SRE report")} · AI assistance included`}
               ctaText={`Continue with ${plan.name}`}
               ctaVariant={plan.id === "pro" ? "default" : "outline"}
               onCtaClick={() => handleSubscribe(plan.id)}
@@ -296,7 +296,7 @@ function SubscribePageContent() {
             keyFeatures={[
               "Custom monitor allowance",
               "Custom Playwright & K6 allowances",
-              "Custom AI credit pool or bring-your-own-provider",
+              "Custom AI assistance allowance or bring-your-own-provider",
               "Custom completed AI SRE report allowance",
               "Custom connector and Private Agent limits",
               "Custom team member & project limits",

@@ -10,18 +10,18 @@ import { getEnabledLocations } from "@/lib/location-registry";
 const PLAN_LIMIT_FALLBACKS = {
   plus: {
     playwrightMinutesIncluded: 3000,
-    k6VuMinutesIncluded: 20000,
-    aiCreditsIncluded: 100,
-    sreInvestigationUnitsIncluded: 25,
+    k6VuMinutesIncluded: 30000,
+    aiCreditsIncluded: 1000,
+    sreInvestigationUnitsIncluded: 200,
     dataRetentionDays: 7,
     aggregatedDataRetentionDays: 30,
     jobDataRetentionDays: 30,
   },
   pro: {
     playwrightMinutesIncluded: 10000,
-    k6VuMinutesIncluded: 75000,
-    aiCreditsIncluded: 300,
-    sreInvestigationUnitsIncluded: 100,
+    k6VuMinutesIncluded: 100000,
+    aiCreditsIncluded: 5000,
+    sreInvestigationUnitsIncluded: 1000,
     dataRetentionDays: 7,
     aggregatedDataRetentionDays: 90,
     jobDataRetentionDays: 90,
@@ -129,7 +129,7 @@ export async function GET() {
             ? {
                 playwrightMinutes: overage.playwrightMinutePriceCents / 100,
                 k6VuMinutes: (overage.k6VuMinutePriceCentsOverride ?? overage.k6VuMinutePriceCents) / 100,
-                aiCredits: overage.aiCreditPriceCents / 100,
+                aiCredits: 0, // AI assistance has no paid overage.
                 sreInvestigationUnits:
                   overage.sreInvestigationUnitPriceCents / 100,
               }
@@ -178,9 +178,9 @@ export async function GET() {
             enterprise: "Custom",
           },
           {
-            name: "AI Credits",
-            plus: `${plans.find((p) => p.plan === "plus")?.aiCreditsIncluded ?? PLAN_LIMIT_FALLBACKS.plus.aiCreditsIncluded}/month`,
-            pro: `${plans.find((p) => p.plan === "pro")?.aiCreditsIncluded ?? PLAN_LIMIT_FALLBACKS.pro.aiCreditsIncluded}/month`,
+            name: "AI assistance",
+            plus: "Included · fair use",
+            pro: "Included · fair use",
             enterprise: "Custom",
           },
           {
@@ -321,7 +321,7 @@ export async function GET() {
         k6VuMinutes: plusOverage
           ? (plusOverage.k6VuMinutePriceCentsOverride ?? plusOverage.k6VuMinutePriceCents) / 100
           : DEFAULT_OVERAGE_PRICING.plus.k6VuMinutes,
-        aiCredits: plusOverage ? plusOverage.aiCreditPriceCents / 100 : DEFAULT_OVERAGE_PRICING.plus.aiCredits,
+        aiCredits: 0,
         sreInvestigationUnits: plusOverage
           ? plusOverage.sreInvestigationUnitPriceCents / 100
           : DEFAULT_OVERAGE_PRICING.plus.sreInvestigationUnits,
@@ -331,7 +331,7 @@ export async function GET() {
           ? proOverage.playwrightMinutePriceCents / 100
           : DEFAULT_OVERAGE_PRICING.pro.playwrightMinutes,
         k6VuMinutes: proOverage ? (proOverage.k6VuMinutePriceCentsOverride ?? proOverage.k6VuMinutePriceCents) / 100 : DEFAULT_OVERAGE_PRICING.pro.k6VuMinutes,
-        aiCredits: proOverage ? proOverage.aiCreditPriceCents / 100 : DEFAULT_OVERAGE_PRICING.pro.aiCredits,
+        aiCredits: 0,
         sreInvestigationUnits: proOverage
           ? proOverage.sreInvestigationUnitPriceCents / 100
           : DEFAULT_OVERAGE_PRICING.pro.sreInvestigationUnits,

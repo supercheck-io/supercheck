@@ -2,16 +2,16 @@
 
 export const DEFAULT_OVERAGE_PRICING_CENTS = {
   plus: {
-    playwrightMinutes: 3,
-    k6VuMinutes: 0.5,
-    aiCredits: 5,
-    sreInvestigationUnits: 50,
+    playwrightMinutes: 1,
+    k6VuMinutes: 0.2,
+    aiCredits: 0,
+    sreInvestigationUnits: 10,
   },
   pro: {
-    playwrightMinutes: 2,
-    k6VuMinutes: 0.25,
-    aiCredits: 3,
-    sreInvestigationUnits: 50,
+    playwrightMinutes: 0.5,
+    k6VuMinutes: 0.1,
+    aiCredits: 0,
+    sreInvestigationUnits: 10,
   },
 } as const;
 

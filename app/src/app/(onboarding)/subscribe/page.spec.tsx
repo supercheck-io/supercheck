@@ -45,10 +45,10 @@ describe("signup plan selection", () => {
   it("lets an owner review plans and explains the separate AI meters", async () => {
     expect(await openPage()).toBeEnabled();
     expect(screen.getByRole("heading", { name: "Plus", level: 2 })).toBeVisible();
-    expect(screen.getAllByText("100 AI credits/month (hard limit)")).toHaveLength(2);
+    expect(screen.getAllByText("AI assistance included · fair use")).toHaveLength(2);
     expect(screen.getAllByText("25 completed AI SRE reports/month")).toHaveLength(2);
     expect(screen.queryByText("Most Popular")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "How do AI credits work?" }));
+    fireEvent.click(screen.getByRole("button", { name: "How does included AI assistance work?" }));
     expect(screen.getByText(/even if it later fails/)).toBeVisible();
     expect(screen.getByRole("link", { name: "Terms of service" })).toHaveAttribute("href", "https://supercheck.io/terms");
     expect(screen.getByRole("link", { name: "Get in touch about Enterprise" })).toHaveAttribute("href", "mailto:hello@supercheck.io");

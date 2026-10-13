@@ -152,13 +152,13 @@ export function PricingComparisonTable({
             </TableRow>
             <TableRow className="hover:bg-muted/30 transition-colors border-b">
               <TableHead scope="row" className="py-3 pl-6 text-sm font-medium text-foreground whitespace-normal">
-                AI Credits
+                AI assistance
               </TableHead>
               <TableCell className="text-center py-3 text-sm text-muted-foreground">
-                Hard limit (no overage)
+                Included · fair use
               </TableCell>
               <TableCell className="text-center py-3 text-sm text-muted-foreground">
-                Hard limit (no overage)
+                Included · fair use
               </TableCell>
               <TableCell className="text-center py-3 text-sm text-muted-foreground">
                 Custom
