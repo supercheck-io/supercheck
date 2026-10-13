@@ -46,17 +46,7 @@ Supercheck combines capabilities that are commonly split across test automation,
 
 ### Self-host Supercheck
 
-Production self-hosting requires a Linux server with Docker Compose v2. Run the supplied setup script once to prepare the test-execution sandbox; macOS, Windows, and WSL2 are not supported deployment targets.
-
-```bash
-git clone https://github.com/supercheck-io/supercheck.git
-cd supercheck/deploy/docker
-./init-secrets.sh
-sudo bash setup-k3s.sh
-KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig docker compose up -d
-```
-
-Open `http://localhost:3000`, or follow the [self-hosting guide](https://supercheck.io/docs/app/deployment/self-hosted) to configure HTTPS, optional integrations, backups, and multi-location workers.
+Follow the [self-hosting guide](https://supercheck.io/docs/app/deployment/self-hosted) to install Supercheck on a Linux server and configure HTTPS, optional integrations, backups, and multi-location workers.
 
 ### Install the CLI
 
@@ -185,8 +175,6 @@ Community integrations are maintained outside the core Supercheck repository. If
 ## License
 
 The Supercheck app, worker (including Private Agent mode), documentation, and deployment assets are licensed under [AGPL-3.0-only](LICENSE). The [CLI](cli/LICENSE), from version 0.3.1, and [recorder](recorder/LICENSE) are Apache-2.0. Third-party licenses and notices remain in effect; earlier releases retain their original terms.
-
-Supercheck Cloud subscriptions pay for managed infrastructure, execution, and support. Self-hosting the open core has no license fee; you supply infrastructure and AI provider keys. Existing open features stay available in the open core: tests, monitors, alerts, status pages, RBAC, audit logs, API keys, GitHub/Google login, and bring-your-own-key AI.
 
 Contributors keep ownership of their work; see the [contributor agreement](CLA.md). The Supercheck name and logo are covered by the [trademark policy](TRADEMARKS.md).
 
