@@ -12,7 +12,7 @@
 #   sudo bash install.sh --dry-run                                       # show the plan, change nothing
 #
 # This is a thin wrapper around init-secrets.sh and setup-k3s.sh, which remain the source of
-# truth. Safe to re-run: it never regenerates secrets, never overwrites .env and skips finished steps.
+# truth. Safe to re-run: it preserves secrets and keeps private backups when settings change.
 #
 # Exit codes: 0 installed and healthy, 1 failed, 2 bad usage, 3 installed but the health check reports a problem.
 #
@@ -22,7 +22,7 @@
 set -Eeuo pipefail
 
 # Keep in sync with the SUPERCHECK_VERSION default in docker-compose.yml (validate.sh enforces it).
-SUPERCHECK_VERSION_DEFAULT="1.3.6"
+SUPERCHECK_VERSION_DEFAULT="1.3.7-canary.16"
 REPO_URL="https://github.com/supercheck-io/supercheck.git"
 MIN_COMPOSE="2.24.4"
 KUBECONFIG_FILE="/etc/rancher/k3s/supercheck-worker.kubeconfig"
@@ -373,7 +373,8 @@ generate_config() {
 # Turn an existing .env into a public HTTPS configuration without touching its secrets.
 apply_public_config() {
   cd "$(compose_dir)"
-  local profiles
+  local profiles previous_domain
+  previous_domain="$(env_get APP_DOMAIN)"
   profiles="$(env_get COMPOSE_PROFILES)"
   # Keep the operator's status-page domain unless --status-domain was given.
   local status
@@ -382,15 +383,82 @@ apply_public_config() {
   if [[ -z "$profiles" ]]; then profiles="https"; elif [[ "$profiles" != *https* ]]; then profiles="${profiles},https"; fi
   ( umask 077
     rm -f .env.new
-    install -m 600 .env ".env.bak-$(date +%Y%m%d%H%M%S)"
-    # Drop the active keys we set, and any explicit localhost URLs that would override APP_DOMAIN.
-    grep -v -E '^(COMPOSE_PROFILES|APP_DOMAIN|ACME_EMAIL|STATUS_PAGE_DOMAIN)=|^(NEXT_PUBLIC_APP_URL|APP_URL|BETTER_AUTH_URL)=https?://(localhost|127\.)' .env >.env.new || [[ $? -eq 1 ]]
+    install -m 600 .env "$(mktemp ".env.bak-$(date +%Y%m%d%H%M%S).XXXXXX")"
+    # Normalize known local and previous app origins, preserving custom origins.
+    grep -v -E '^(COMPOSE_PROFILES|APP_DOMAIN|ACME_EMAIL|STATUS_PAGE_DOMAIN)=' .env >.env.new || [[ $? -eq 1 ]]
+    rm -f .env.filtered
+    local key value
+    for key in NEXT_PUBLIC_APP_URL APP_URL BETTER_AUTH_URL; do
+      value="$(env_get "$key")"
+      if [[ "$value" =~ ^https?://(localhost|127(\.[0-9]+){1,3}|\[::1\])(:[0-9]+)?/?$ ]] || \
+        { [[ -n "$previous_domain" ]] && [[ "$value" == "https://${previous_domain}" || "$value" == "https://${previous_domain}/" || "$value" == "http://${previous_domain}" || "$value" == "http://${previous_domain}/" ]]; }; then
+        sed "/^${key}=/d" .env.new >.env.filtered
+        mv .env.filtered .env.new
+        printf '%s=https://%s\n' "$key" "$DOMAIN" >>.env.new
+      fi
+    done
     public_block "$profiles" "$status" >>.env.new
     # Refuse to replace a good .env with a truncated one: a known secret must have survived.
     grep -q '^BETTER_AUTH_SECRET=' .env.new || { echo "refusing to write .env: BETTER_AUTH_SECRET missing from the new file" >&2; exit 1; }
     chmod 600 .env.new
     mv .env.new .env
   )
+}
+
+# Explicitly starting fresh changes only the retired bundled storage endpoint and missing keys.
+apply_fresh_storage_config() {
+  [[ "$IGNORE_MINIO" == true && "$(env_get S3_ENDPOINT)" == "http://minio:9000" ]] || return 0
+  cd "$(compose_dir)"
+  ( umask 077
+    install -m 600 .env "$(mktemp ".env.bak-$(date +%Y%m%d%H%M%S).XXXXXX")"
+    rm -f .env.new .env.filtered
+    grep -v '^S3_ENDPOINT=' .env >.env.new || [[ $? -eq 1 ]]
+    printf 'S3_ENDPOINT=http://rustfs:9000\n' >>.env.new
+    local key value
+    for key in AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; do
+      if [[ -z "$(env_get "$key")" ]]; then
+        value="$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+        sed "/^${key}=/d" .env.new >.env.filtered
+        mv .env.filtered .env.new
+        printf '%s=%s\n' "$key" "$value" >>.env.new
+      fi
+    done
+    grep -q '^BETTER_AUTH_SECRET=' .env.new
+    chmod 600 .env.new
+    mv .env.new .env
+  )
+}
+
+# Save an explicit standalone image choice so later Compose commands use it too.
+persist_version() {
+  [[ "$USING_THIS_CHECKOUT" != true ]] || return 0
+  [[ "$VERSION_SET" == true || "${SOURCE_FETCHED:-false}" == true ]] || return 0
+  local selected="${SUPERCHECK_VERSION:-$VERSION}"
+  [[ "$VERSION_SET" != true ]] || selected="$VERSION"
+  if [[ "$VERSION_SET" != true && -n "$(env_get SUPERCHECK_VERSION)" ]]; then return 0; fi
+  [[ "$(env_get SUPERCHECK_VERSION)" != "$selected" ]] || return 0
+  cd "$(compose_dir)"
+  ( umask 077
+    install -m 600 .env "$(mktemp ".env.bak-$(date +%Y%m%d%H%M%S).XXXXXX")"
+    rm -f .env.new
+    grep -v '^SUPERCHECK_VERSION=' .env >.env.new || [[ $? -eq 1 ]]
+    printf 'SUPERCHECK_VERSION=%s\n' "$selected" >>.env.new
+    grep -q '^BETTER_AUTH_SECRET=' .env.new
+    chmod 600 .env.new
+    mv .env.new .env
+  )
+}
+
+check_release() {
+  [[ "$DRY_RUN" != true && "$USING_THIS_CHECKOUT" != true ]] || return 0
+  curl -fsSL --max-time 30 -o /dev/null "https://raw.githubusercontent.com/supercheck-io/supercheck/refs/tags/v${VERSION}/deploy/docker/docker-compose.yml" || \
+    die "Release v${VERSION} was not found (or GitHub is unreachable)." "Releases: https://github.com/supercheck-io/supercheck/releases"
+}
+
+install_lookup_tools() {
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update -qq
+  apt-get install -y -qq curl ca-certificates
 }
 
 setup_sandbox() {
@@ -488,11 +556,21 @@ preflight() {
     vols="$(docker volume ls -q 2>/dev/null || true)"
     local proj
     proj="$(project_name)"
-    if [[ "$IGNORE_MINIO" != true ]] && grep -Fxq "${proj}_minio-data" <<<"$vols" && ! grep -Fxq "${proj}_rustfs-data" <<<"$vols"; then
+    if [[ "$IGNORE_MINIO" != true ]] && grep -Fxq "${proj}_minio-data" <<<"$vols" && { [[ "$(env_get S3_ENDPOINT)" != "http://rustfs:9000" ]] || ! grep -Fxq "${proj}_rustfs-data" <<<"$vols"; }; then
       fail "An existing Supercheck MinIO storage volume was found. Installing now would start with empty storage."
       note "Run migrate-minio-to-rustfs.sh from your current checkout first (see 'Upgrading from MinIO' in the docs)."
       note "Starting fresh on purpose? Re-run with --ignore-minio."
       problems=1
+    fi
+    if [[ "$IGNORE_MINIO" == true ]]; then
+      local minio_containers
+      if ! minio_containers="$(docker ps -aq --filter "label=com.docker.compose.project=$proj" --filter label=com.docker.compose.service=minio)"; then
+        fail "Cannot verify whether the project's old MinIO container remains. Check Docker and re-run."
+        problems=1
+      elif [[ -n "$minio_containers" ]]; then
+        fail "Remove the old project's MinIO container before using --ignore-minio; keep its volume for recovery."
+        problems=1
+      fi
     fi
     if [[ ! -f "$(compose_dir)/.env" ]] && grep -Fxq -e "${proj}_postgres-data" -e "${proj}_rustfs-data" <<<"$vols"; then
       fail "Data from an earlier Supercheck install exists, but no .env was found to unlock it."
@@ -511,7 +589,7 @@ check_ports() {
   for p in "${ports[@]}"; do
     if port_in_use "$p"; then
       # A re-run on a running install legitimately finds our own stack listening.
-      if docker ps --format '{{.Names}} {{.Ports}}' 2>/dev/null | grep -Eq "supercheck.*:${p}->"; then note "Port $p is held by the existing Supercheck stack."
+      if docker ps --filter "label=com.docker.compose.project=$(project_name)" --format '{{.Ports}}' 2>/dev/null | grep -Eq ":${p}->"; then note "Port $p is held by the existing Supercheck stack."
       else fail "Port $p is already in use by another process."; note "Find it with: ss -ltnp 'sport = :$p'"; exit 1; fi
     fi
   done
@@ -525,6 +603,7 @@ main() {
   [[ "$DRY_RUN" == true ]] && printf '%s  Dry run: read-only checks and a plan, nothing is changed.%s\n' "$YELLOW" "$RESET"
 
   # Use the checkout this script lives in, if any; otherwise install into --dir.
+  SOURCE_FETCHED=false
   SELF_DIR=""
   if [[ -n "${BASH_SOURCE[0]:-}" && -f "${BASH_SOURCE[0]}" ]]; then SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"; fi
   if [[ -n "$SELF_DIR" && -f "$SELF_DIR/docker-compose.yml" && -f "$SELF_DIR/init-secrets.sh" && -f "$SELF_DIR/setup-k3s.sh" ]]; then
@@ -635,15 +714,27 @@ main() {
     confirm "Continue?" || die "Cancelled. Nothing was changed."
   fi
 
+  if [[ "$USING_THIS_CHECKOUT" != true && ( "$VERSION_SET" == true || ! -f "$(compose_dir)/init-secrets.sh" ) ]]; then
+    if [[ ! -f "$(compose_dir)/init-secrets.sh" && -d "$INSTALL_DIR" ]] && dir_has_content "$INSTALL_DIR"; then
+      die "${INSTALL_DIR} exists but is not a Supercheck checkout." "Choose another location with --dir, or remove it."
+    fi
+    if [[ "$DRY_RUN" != true ]] && ! command -v curl >/dev/null 2>&1; then
+      run_step "Installing release lookup tools" install_lookup_tools
+    fi
+    run_step "Checking release v${VERSION}" check_release
+  fi
+
   ATTEMPTED=true
   header 3 "Installing prerequisites"
   if [[ "$DRY_RUN" == true ]]; then
     if docker_ready; then note "Docker and Compose >= $MIN_COMPOSE are present"; else note "would: install Docker, Compose, git and bzip2"; fi
-  elif docker_ready && command -v git >/dev/null 2>&1 && command -v bzip2 >/dev/null 2>&1 && command -v curl >/dev/null 2>&1; then
+  elif docker_ready && command -v git >/dev/null 2>&1 && command -v bzip2 >/dev/null 2>&1 && command -v curl >/dev/null 2>&1 && command -v ip >/dev/null 2>&1 && command -v ss >/dev/null 2>&1; then
     ok "Docker $(docker version --format '{{.Server.Version}}' 2>/dev/null), Compose $(compose_version), git, bzip2"
   else
     run_step "Installing Docker, Compose, git and bzip2" install_prerequisites
   fi
+
+  check_ports
 
   header 4 "Preparing configuration"
   if [[ -f "$(compose_dir)/init-secrets.sh" ]]; then
@@ -651,10 +742,8 @@ main() {
   elif [[ -d "$INSTALL_DIR" ]] && dir_has_content "$INSTALL_DIR"; then
     die "${INSTALL_DIR} exists but is not a Supercheck checkout." "Choose another location with --dir, or remove it."
   else
-    if [[ "$DRY_RUN" != true ]] && ! git ls-remote --exit-code --tags "$REPO_URL" "refs/tags/v${VERSION}" >/dev/null 2>&1; then
-      die "Release v${VERSION} was not found (or GitHub is unreachable)." "Releases: https://github.com/supercheck-io/supercheck/releases" "Omit --version to install the version bundled with this installer."
-    fi
     run_step "Downloading Supercheck ${VERSION}" fetch_source
+    SOURCE_FETCHED=true
   fi
   # This installer targets the RustFS storage layout. A source tree that still defines a MinIO
   # service (an older release) would start a stack whose image can no longer be pulled.
@@ -669,6 +758,9 @@ main() {
   else
     run_step "Generating secrets and configuration" generate_config
   fi
+
+  run_step "Applying explicitly requested fresh storage settings" apply_fresh_storage_config
+  run_step "Saving the image version" persist_version
 
   header 5 "Setting up the isolated test sandbox"
   # setup-k3s.sh is idempotent: it skips what is installed and re-runs its own gVisor

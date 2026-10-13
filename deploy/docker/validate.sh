@@ -11,7 +11,7 @@
 #   ./deploy/docker/validate.sh                      # validate everything
 #   ./deploy/docker/validate.sh docker-compose.yml   # validate specific files
 #
-# Requires: bash and the Docker Compose v2 plugin (`docker compose`).
+# Requires: bash, Python 3, and the Docker Compose v2 plugin (`docker compose`).
 
 set -euo pipefail
 
@@ -45,6 +45,9 @@ for script in ./*.sh; do
     fail=1
   fi
 done
+
+echo "==> Installer regression checks"
+python3 ./install.spec.py
 
 if ! docker compose version >/dev/null 2>&1; then
   echo "ERROR: the Docker Compose v2 plugin ('docker compose') is required" >&2

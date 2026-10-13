@@ -39,6 +39,33 @@ warn()  { echo -e "${YELLOW}[!]${NC} $*"; }
 error() { echo -e "${RED}[✗]${NC} $*" >&2; }
 info()  { echo -e "${BLUE}[i]${NC} $*"; }
 
+# Upgrade the mode saved by older runs, so restarts cannot expose admin credentials.
+secure_kubeconfig() {
+  local service_file="$1"
+  local kubeconfig="$2"
+  if [[ -f "$service_file" ]]; then
+    local service_tmp
+    service_tmp="$(mktemp)"
+    awk '
+      mode_arg { sub(/[0-7]+/, "600"); mode_arg = 0 }
+      /--write-kubeconfig-mode/ {
+        if (match($0, /--write-kubeconfig-mode[\047"]?[= ]+[\047"]?[0-7]+/)) {
+          option = substr($0, RSTART, RLENGTH)
+          sub(/[0-7]+$/, "600", option)
+          $0 = substr($0, 1, RSTART - 1) option substr($0, RSTART + RLENGTH)
+        } else mode_arg = 1
+      }
+      { print }
+    ''' "$service_file" >"$service_tmp"
+    if ! cmp -s "$service_file" "$service_tmp"; then
+      install -m 644 "$service_tmp" "$service_file"
+      systemctl daemon-reload
+    fi
+    rm -f "$service_tmp"
+  fi
+  if [[ -f "$kubeconfig" ]]; then chmod 600 "$kubeconfig"; fi
+}
+
 # ─── Preflight checks ────────────────────────────────────────────────────────
 
 if [[ $EUID -ne 0 ]]; then
@@ -64,6 +91,10 @@ if [[ "$ARCH" == "x86_64" ]]; then
   GVISOR_ARCH="x86_64"
 elif [[ "$ARCH" == "aarch64" ]]; then
   GVISOR_ARCH="aarch64"
+fi
+
+if command -v k3s &>/dev/null; then
+  secure_kubeconfig /etc/systemd/system/k3s.service /etc/rancher/k3s/k3s.yaml
 fi
 
 if ! command -v sha512sum &>/dev/null; then
@@ -102,7 +133,8 @@ K3S_VERSION="v1.32.10+k3s1"
 # packaging change has already broken installs twice. Override with GVISOR_RELEASE.
 GVISOR_RELEASE="${GVISOR_RELEASE:-20261005.0}"
 TMP_DIR="$(mktemp -d)"
-trap 'rm -rf "$TMP_DIR"' EXIT
+WORKER_KUBECONFIG_TMP=""
+trap 'rm -rf "$TMP_DIR"; if [[ -n "${WORKER_KUBECONFIG_TMP:-}" ]]; then rm -f "$WORKER_KUBECONFIG_TMP"; fi' EXIT
 
 # ─── Step 1: Install K3s (containerd, no Docker) ─────────────────────────────
 
@@ -113,7 +145,7 @@ else
   curl -fsSL https://get.k3s.io -o "${TMP_DIR}/install-k3s.sh"
   chmod 0755 "${TMP_DIR}/install-k3s.sh"
   INSTALL_K3S_VERSION="${K3S_VERSION}" sh "${TMP_DIR}/install-k3s.sh" \
-    --write-kubeconfig-mode 644 \
+    --write-kubeconfig-mode 600 \
     --tls-san "${HOST_IP}" \
     --disable traefik
 
@@ -233,6 +265,7 @@ fi
 # ─── Step 4: Restart K3s to pick up containerd changes ───────────────────────
 
 log "Restarting K3s to apply containerd configuration..."
+secure_kubeconfig /etc/systemd/system/k3s.service /etc/rancher/k3s/k3s.yaml
 systemctl restart k3s
 
 # Wait for K3s to be ready after restart
@@ -248,6 +281,7 @@ if ! k3s kubectl get nodes 2>/dev/null | grep -q " Ready"; then
   error "K3s failed to become ready after restart"
   exit 1
 fi
+chmod 600 /etc/rancher/k3s/k3s.yaml
 log "K3s restarted successfully"
 
 # ─── Step 5: Create gVisor RuntimeClass ───────────────────────────────────────
@@ -466,7 +500,8 @@ if [[ -z "$TOKEN" ]]; then
   exit 1
 fi
 
-cat > "$WORKER_KUBECONFIG" <<EOF
+WORKER_KUBECONFIG_TMP="$(mktemp "${WORKER_KUBECONFIG}.XXXXXX")"
+cat > "$WORKER_KUBECONFIG_TMP" <<EOF
 apiVersion: v1
 kind: Config
 clusters:
@@ -491,8 +526,9 @@ EOF
 # compose runs it as "pwuser:pwuser" with NO supplemental groups, and docker
 # --user does not apply the host's group database). The kubeconfig is
 # bind-mounted read-only, so the file must be group-readable by gid 1001.
-chgrp 1001 "$WORKER_KUBECONFIG"
-chmod 0440 "$WORKER_KUBECONFIG"
+chgrp 1001 "$WORKER_KUBECONFIG_TMP"
+chmod 0440 "$WORKER_KUBECONFIG_TMP"
+mv -f "$WORKER_KUBECONFIG_TMP" "$WORKER_KUBECONFIG"
 log "Restricted worker kubeconfig written to $WORKER_KUBECONFIG (group-readable by GID 1001 / pwuser)"
 
 # ─── Step 8: Label the node for gVisor scheduling ────────────────────────────
@@ -571,6 +607,6 @@ info "  2. Or run Docker Compose with K3s-backed execution using:"
 info "     Set COMPOSE_PROFILES=https, APP_DOMAIN and ACME_EMAIL in .env for HTTPS."
 info "     KUBECONFIG_FILE=${WORKER_KUBECONFIG} docker compose up -d"
 info ""
-info "Admin kubeconfig:   export KUBECONFIG=/etc/rancher/k3s/k3s.yaml"
+info "Admin access:       sudo k3s kubectl get nodes (admin kubeconfig is root-only)"
 info "Worker kubeconfig:  ${WORKER_KUBECONFIG}"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

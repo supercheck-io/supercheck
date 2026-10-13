@@ -68,7 +68,26 @@ if ! flock -n 9; then
   exit 75
 fi
 
+# Storage migration must be completed on the host before automated image updates.
+ensure_storage_migrated() {
+  local services project minio_containers
+  services="$(docker compose -f "$COMPOSE_FILE" config --services)" || return 1
+  if grep -Fxq minio <<<"$services"; then
+    echo "Migrate MinIO to RustFS and update the host Compose files before deploying this release." >&2
+    return 1
+  fi
+  project="$(docker compose -f "$COMPOSE_FILE" config | awk '/^name:/ { gsub(/["\047]/, "", $2); print $2 }')" || return 1
+  [[ -n "$project" ]] || { echo "Could not determine the demo Compose project." >&2; return 1; }
+  minio_containers="$(docker ps -aq --filter "label=com.docker.compose.project=$project" --filter label=com.docker.compose.service=minio)" || return 1
+  if [[ -n "$minio_containers" ]]; then
+    echo "Complete the verified storage migration with docker compose up -d --wait --remove-orphans before deploying." >&2
+    return 1
+  fi
+}
+
 export SUPERCHECK_VERSION="$IMAGE_TAG"
+
+if ! ensure_storage_migrated; then exit 78; fi
 
 mapfile -t configured_images < <(docker compose -f "$COMPOSE_FILE" config --images)
 if ! printf '%s\n' "${configured_images[@]}" | grep -Fxq "$EXPECTED_APP_IMAGE"; then

@@ -153,14 +153,15 @@ esac
 docker rm -f "$RFS_NAME" >/dev/null 2>&1 || true
 
 if [[ -f .env.pre-rustfs ]]; then
-  mv .env.pre-rustfs ".env.pre-rustfs.$(date +%Y%m%d%H%M%S)"
+  chmod 600 .env.pre-rustfs
+  mv .env.pre-rustfs "$(mktemp ".env.pre-rustfs.$(date +%Y%m%d%H%M%S).XXXXXX")"
   warn "An older .env.pre-rustfs (a previous attempt or a rollback) was kept under a timestamped name."
 fi
-cp -p .env .env.pre-rustfs
-chmod 600 .env.pre-rustfs
+install -m 600 .env .env.pre-rustfs
 ( umask 077
 {
-  grep -v -E '^(S3_ENDPOINT)=' .env
+  grep -v -E '^(S3_ENDPOINT|COMPOSE_PROJECT_NAME)=' .env || [[ $? -eq 1 ]]
+  echo "COMPOSE_PROJECT_NAME=${PROJECT}"
   echo "S3_ENDPOINT=http://rustfs:9000"
   if [[ "$KEYS_MISSING" == true ]]; then
     echo "AWS_ACCESS_KEY_ID=${NEW_AK}"
