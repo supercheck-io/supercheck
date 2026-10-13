@@ -72,53 +72,11 @@ curl -fsSL https://raw.githubusercontent.com/supercheck-io/supercheck/main/deplo
 
 Follow the prompts for local evaluation or HTTPS. Open the printed URL, create your account, and run a test.
 
-
 ## Optional Configuration
 
+In your installation's `deploy/docker` directory, update `.env` and run `sudo docker compose up -d --force-recreate app worker`.
+
 <Accordions>
-  <Accordion title="Edit and apply settings" id="apply-configuration-changes">
-    From `/opt/supercheck/deploy/docker` (or the directory printed by the installer), edit `.env` with `sudoedit .env` and apply:
-
-    ```bash
-    sudo env KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig docker compose up -d --force-recreate app worker
-    ```
-
-    Keep `.env` private and backed up. Preserve `SECRET_ENCRYPTION_KEY` so encrypted variables and connector credentials remain readable.
-  </Accordion>
-
-  <Accordion title="Browser Integrations (CORS)">
-    Allow only trusted origins for browser integrations:
-
-    ```dotenv
-    CORS_ALLOWED_ORIGINS=https://dev.azure.com,https://*.visualstudio.com
-    ```
-
-    Empty by default.
-  </Accordion>
-
-  <Accordion title="OAuth (GitHub / Google)">
-    <Tabs items={['GitHub', 'Google']}>
-      <Tab value="GitHub">
-        1. Go to [GitHub Developer Settings](https://github.com/settings/developers) → **OAuth Apps** → **New OAuth App**
-        2. Set Callback URL: `https://app.yourdomain.com/api/auth/callback/github`
-        3. Add to `.env`:
-           ```bash
-           GITHUB_CLIENT_ID=your-client-id
-           GITHUB_CLIENT_SECRET=your-client-secret
-           ```
-      </Tab>
-      <Tab value="Google">
-        1. Go to [Google Cloud Console](https://console.cloud.google.com/) → **APIs & Services** → **Credentials**
-        2. Create **OAuth client ID** with redirect URI: `https://app.yourdomain.com/api/auth/callback/google`
-        3. Add to `.env`:
-           ```bash
-           GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
-           GOOGLE_CLIENT_SECRET=your-client-secret
-           ```
-      </Tab>
-    </Tabs>
-  </Accordion>
-
   <Accordion title="Registration Controls">
     | Variable | Default | Description |
     |----------|---------|-------------|
@@ -143,86 +101,19 @@ Follow the prompts for local evaluation or HTTPS. Open the printed URL, create y
   </Accordion>
 
   <Accordion title="AI Provider">
-    OpenAI GPT-6 Luna is the default. Configure one provider for the installation; set its credentials and matching model.
+    OpenAI GPT-6 Luna is the default. Add its API key to `.env`:
 
-    <Tabs items={['OpenAI', 'Azure', 'Anthropic', 'Gemini', 'Vertex AI', 'Bedrock', 'OpenRouter', 'DeepSeek']}>
-      <Tab value="OpenAI">
-        ```bash
-        AI_PROVIDER=openai
-        AI_MODEL=gpt-6-luna
-        OPENAI_API_KEY=sk-your-api-key
-        ```
-      </Tab>
-      <Tab value="Azure">
-        ```bash
-        AI_PROVIDER=azure
-        AZURE_RESOURCE_NAME=your-resource-name
-        AZURE_API_KEY=your-api-key
-        AZURE_OPENAI_DEPLOYMENT=your-deployment-name
-        AZURE_INCLUDE_TEMPERATURE=false
-        ```
-      </Tab>
-      <Tab value="Anthropic">
-        ```bash
-        AI_PROVIDER=anthropic
-        AI_MODEL=claude-3-5-haiku-20241022
-        ANTHROPIC_API_KEY=sk-ant-your-key
-        ```
-      </Tab>
-      <Tab value="Gemini">
-        ```bash
-        AI_PROVIDER=gemini
-        AI_MODEL=gemini-2.5-flash
-        GOOGLE_GENERATIVE_AI_API_KEY=your-api-key
-        ```
-      </Tab>
-      <Tab value="Vertex AI">
-        ```bash
-        AI_PROVIDER=google-vertex
-        AI_MODEL=gemini-2.5-flash
-        GOOGLE_VERTEX_PROJECT=your-project-id
-        ```
+    ```dotenv
+    AI_PROVIDER=openai
+    AI_MODEL=gpt-6-luna
+    OPENAI_API_KEY=your-api-key
+    ```
 
-        <Callout type="info">
-        Use [Application Default Credentials](https://cloud.google.com/docs/authentication/application-default-credentials). Outside GCP, mount the service account key and set `GOOGLE_APPLICATION_CREDENTIALS` in the app container; the shipped Compose file does not do this automatically.
-        </Callout>
-      </Tab>
-      <Tab value="Bedrock">
-        ```bash
-        AI_PROVIDER=bedrock
-        AI_MODEL=anthropic.claude-3-5-haiku-20241022-v1:0
-        BEDROCK_AWS_REGION=us-east-1
-        BEDROCK_AWS_ACCESS_KEY_ID=your-access-key
-        BEDROCK_AWS_SECRET_ACCESS_KEY=your-secret-key
-        ```
-      </Tab>
-      <Tab value="OpenRouter">
-        ```bash
-        AI_PROVIDER=openrouter
-        AI_MODEL=anthropic/claude-3.5-haiku
-        OPENROUTER_API_KEY=your-api-key
-        ```
-      </Tab>
-      <Tab value="DeepSeek">
-        ```bash
-        AI_PROVIDER=deepseek
-        AI_MODEL=deepseek-flash
-        DEEPSEEK_API_KEY=your-deepseek-api-key
-        ```
-
-        <Callout type="warn">
-        DeepSeek sends prompts, code, requirement text, and evidence to its hosted API. Check your data residency requirements before enabling it; errors do not switch providers.
-        </Callout>
-      </Tab>
-    </Tabs>
-  </Accordion>
-
-  <Accordion title="AI SRE">
-    Configure an AI provider to use AI SRE. Automatic triage is enabled by default and can incur provider charges.
-
-    Set `SRE_AUTOMATION_ENABLED=false` for manual investigations only, or `SRE_ENABLED=false` to disable AI SRE. See [AI SRE Setup](/docs/app/admin/ai-sre-setup) for services and evidence sources.
+    AI triage is enabled by default and can incur provider charges. See [AI SRE Setup](/docs/app/admin/ai-sre-setup) to configure services and evidence sources.
   </Accordion>
 </Accordions>
+
+For advanced settings, see the [Docker environment reference](https://github.com/supercheck-io/supercheck/blob/v1.3.7-canary.16/deploy/docker/README.md#environment-variables).
 
 ## Operations
 
@@ -239,9 +130,7 @@ Run commands from your installation's `deploy/docker` directory (default: `/opt/
     sudo env KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig docker compose up -d --wait --wait-timeout 300
     ```
 
-    Migrations run automatically. For `.env` changes, recreate affected services; `restart` does not reload settings. Preserve data volumes. Existing HTTPS installations can keep `docker-compose-secure.yml`.
-
-    **Upgrading from before 1.3.3:** run `sudo bash setup-k3s.sh` before updating to the isolated execution sandbox.
+    Migrations run automatically. Preserve data volumes. Existing HTTPS installations can keep `docker-compose-secure.yml`.
   </Accordion>
 
   <Accordion title="Upgrading from MinIO (breaking)" id="upgrading-from-minio-breaking">
@@ -274,48 +163,6 @@ Run commands from your installation's `deploy/docker` directory (default: `/opt/
 
     Store backups privately. The database export does not include files, `.env`, or certificates.
   </Accordion>
-
-  <Accordion title="Scaling" id="scaling">
-    Set `WORKER_REPLICAS` and `RUNNING_CAPACITY` to the same number in `.env`, then run:
-
-    ```bash
-    sudo env KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig docker compose up -d
-    ```
-
-    Keep `WORKER_LOCATION=local` for a single-server installation.
-  </Accordion>
-</Accordions>
-
-## Advanced Deployment
-
-<Accordions>
-  <Accordion title="Private Agent" id="optional-private-agent">
-
-    Register an agent in **Organization Admin → Private Agents**. Add its credentials and profile to `.env`:
-
-    ```dotenv
-    COMPOSE_PROFILES=https,private-agent
-    PRIVATE_AGENT_ID=your-agent-id
-    PRIVATE_AGENT_TOKEN=your-registration-token
-    ```
-
-    For local evaluation, use `COMPOSE_PROFILES=private-agent`.
-
-    ```bash
-    sudo docker compose up -d private-agent
-    ```
-
-    To stop it, run `sudo docker compose stop private-agent`, then remove its profile. Preserve its state volume. See [Private Agent](/docs/app/deployment/private-agent) for connectors and remote agents.
-  </Accordion>
-
-  <Accordion title="Status-page domains" id="configure-https">
-    Point `STATUS_PAGE_DOMAIN` DNS at the server and provide wildcard or per-host certificates. Custom domains need their own certificates. With Cloudflare, use **Full (strict)** and DNS-only records until verification and origin HTTPS work.
-  </Accordion>
-
-  <Accordion title="Existing managed services" id="existing-managed-services">
-    For external PostgreSQL, Redis, and S3 storage, use the [manual runbook](https://raw.githubusercontent.com/supercheck-io/supercheck/main/deploy/docker/INSTALL.md) with `docker-compose-external.yml`. Use `sudo docker compose -f docker-compose-external.yml` for maintenance.
-  </Accordion>
-
 </Accordions>
 
 ## Next Steps

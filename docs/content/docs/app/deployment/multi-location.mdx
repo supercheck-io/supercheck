@@ -169,40 +169,6 @@ sudo env KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig docker co
 
 Confirm the location shows **Active** and the worker is ready, then run a monitor or k6 test in that region and check the reported location. A heartbeat alone does not verify its database, Redis, and storage connections.
 
-## Operations
+Monitors can run in selected regions. Each k6 run uses one region or **Global** selection; Playwright uses a shared queue and is not pinned to a region. Each worker's `WORKER_LOCATION` must match an enabled location code; use `local` only for a single-server installation.
 
-<Accordions>
-  <Accordion title="Execution locations" id="choose-execution-locations">
-    | Workload | Location selection |
-    |---|---|
-    | Monitors | Select regions in the monitor configuration. |
-    | k6 tests and jobs | One available region per run; Global lets Supercheck choose. |
-    | Playwright tests and jobs | Shared global queue; location settings do not pin execution. |
-
-    Each worker's `WORKER_LOCATION` must match an enabled location code. Use `local` only for a single-server installation.
-  </Accordion>
-
-  <Accordion title="Managing locations" id="managing-locations">
-    Manage regions in **Super Admin → Locations**. Each needs a unique code matching `WORKER_LOCATION` and a display name.
-
-    **Active** means enabled with a worker heartbeat; **Offline** means enabled without one; **Disabled** prevents new regional work. Keep workers running for monitoring. Disabling a location lets active work drain and retains queued work and its capacity reservation until re-enabled. Playwright uses its global queue.
-
-    Monitors use online, enabled, project-allowed locations. k6 submissions require a matching live heartbeat; wait for a starting worker to connect before retrying `queue_unavailable`.
-  </Accordion>
-
-  <Accordion title="Project location restrictions" id="project-location-restrictions">
-    Org admins can restrict regions in **Organization Admin → Projects → Location restrictions**.
-  </Accordion>
-
-  <Accordion title="Scaling workers" id="scaling-workers">
-    Set `WORKER_REPLICAS` in each worker host's `.env`. On the main server, set `RUNNING_CAPACITY` to the total replicas across all hosts and `QUEUED_CAPACITY` to the desired queue limit. Apply with the corresponding Compose start command above.
-  </Accordion>
-
-  <Accordion title="Connection settings" id="connection-settings">
-    `SELF_HOSTED=true` matches bundled PostgreSQL without TLS. For a database requiring TLS, add `?sslmode=require` to `DATABASE_URL`.
-
-    If the main server uses custom database names, users, S3 region, or bucket names, copy their matching values. See the [worker Compose reference](https://github.com/supercheck-io/supercheck/blob/v1.3.7-canary.16/deploy/docker/docker-compose-worker.yml).
-
-    Keep `.env` private. After changing settings, use `up -d --force-recreate`; `restart` does not reload environment values.
-  </Accordion>
-</Accordions>
+For custom connection, bucket, or TLS settings, match the [worker Compose file](https://github.com/supercheck-io/supercheck/blob/v1.3.7-canary.16/deploy/docker/docker-compose-worker.yml).
