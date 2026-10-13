@@ -184,7 +184,7 @@ export async function createSreDiagnosticQuery(input: z.infer<typeof createDiagn
     if (connector.status === "disabled") {
       return {
         success: false,
-        error: "Enable or replace this connector before adding a diagnostic recipe",
+        error: "Enable or replace this connector before adding a saved query",
       };
     }
 
@@ -247,7 +247,7 @@ export async function createSreDiagnosticQuery(input: z.infer<typeof createDiagn
     return {
       success: true,
       query: (await getDiagnosticQueryListItem(created.id, organizationId, project.id)) ?? undefined,
-      message: "Diagnostic query created",
+      message: "Saved query created",
     };
   } catch (error) {
     console.error("Error creating SRE diagnostic query:", error);
@@ -290,7 +290,7 @@ export async function disableSreDiagnosticQuery(input: z.infer<typeof disableDia
     return {
       success: true,
       query: (await getDiagnosticQueryListItem(updated.id, organizationId, project.id)) ?? undefined,
-      message: "Diagnostic query disabled",
+      message: "Saved query disabled",
     };
   } catch (error) {
     console.error("Error disabling SRE diagnostic query:", error);

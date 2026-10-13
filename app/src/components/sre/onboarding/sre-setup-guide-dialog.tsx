@@ -37,15 +37,15 @@ export function SreSetupGuideDialog({ status }: SreSetupGuideDialogProps) {
       action: "Open Integrations",
     },
     {
-      label: "Add a diagnostic recipe",
+      label: "Save a query (optional)",
       description: "Save a bounded query for a common investigation check.",
       complete: Boolean(status?.diagnosticRecipes),
-      href: "/org-admin?tab=diagnostic-recipes",
-      action: "Open Recipes",
+      href: "/org-admin?tab=integrations&section=saved-queries",
+      action: "Open Saved queries",
     },
   ];
   const completedSteps = status?.completedRequiredSteps ?? 0;
-  const requiredSteps = status?.requiredSteps ?? steps.length;
+  const requiredSteps = status?.requiredSteps ?? 2;
 
   return (
     <Dialog>
@@ -55,7 +55,7 @@ export function SreSetupGuideDialog({ status }: SreSetupGuideDialogProps) {
           Setup guide
         </Button>
       </DialogTrigger>
-      <DialogContent className="w-[calc(100vw-2rem)] max-w-2xl gap-0 overflow-hidden p-0">
+      <DialogContent className="w-[calc(100vw-2rem)] max-w-2xl max-h-[calc(100svh-2rem)] gap-0 overflow-y-auto p-0">
         <DialogHeader className="border-b px-6 py-5">
           <div className="flex flex-wrap items-center gap-2">
             <DialogTitle>AI SRE setup</DialogTitle>
@@ -66,7 +66,8 @@ export function SreSetupGuideDialog({ status }: SreSetupGuideDialogProps) {
             </TableBadge>
           </div>
           <DialogDescription>
-            Complete these steps before running connector-backed investigations.
+            Add a service and connector for live evidence. Saved queries are
+            optional.
           </DialogDescription>
         </DialogHeader>
 

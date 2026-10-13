@@ -201,6 +201,7 @@ export function DiagnosticQueriesAdminView({
       if (result.query) {
         upsertQuery(result.query);
       }
+      onSetupChanged?.();
       toast.success(result.message);
       setPendingDisableQuery(null);
     });
@@ -213,8 +214,8 @@ export function DiagnosticQueriesAdminView({
   if (loadError) {
     return (
       <DashboardEmptyState
-        className="min-h-[420px]"
-        title="Diagnostic recipes unavailable"
+        className="min-h-[240px]"
+        title="Saved queries unavailable"
         description={loadError}
         icon={<SquareLibrary className="h-10 w-10" />}
       />
@@ -225,24 +226,24 @@ export function DiagnosticQueriesAdminView({
     <div className="space-y-4">
       {availableConnectors.length === 0 ? (
         <DashboardEmptyState
-          className="min-h-[420px]"
+          className="min-h-[240px]"
           title="Enabled connector required"
-          description="Add or enable an evidence connector first. Diagnostic recipes are scoped to one connector and stay read-only."
+          description="Add or enable an evidence connector first. Saved queries are scoped to one connector and stay read-only."
           icon={<ShieldCheck className="h-10 w-10" />}
           action={<SreSetupGuideDialog status={setupStatus} />}
         />
       ) : queries.length === 0 ? (
         <DashboardEmptyState
-          className="min-h-[420px]"
-          title="No diagnostic recipes"
-          description="Add a bounded, allowlisted diagnostic recipe for common incident questions such as 5xx spikes, slow traces, or error logs."
+          className="min-h-[240px]"
+          title="No saved queries"
+          description="Save a read-only query for a question your team repeats, such as service error rate or recent error logs."
           icon={<SquareLibrary className="h-10 w-10" />}
           action={
             <div className="flex flex-col gap-2 sm:flex-row">
               <SreSetupGuideDialog status={setupStatus} />
               <Button onClick={() => setIsCreateOpen(true)}>
                 <Plus className="mr-2 h-4 w-4" />
-                Add recipe
+                Add query
               </Button>
             </div>
           }
@@ -258,7 +259,7 @@ export function DiagnosticQueriesAdminView({
               setupGuide={<SreSetupGuideDialog status={setupStatus} />}
             />
           )}
-          entityLabel="diagnostic recipes"
+          entityLabel="saved queries"
           meta={{
             onDelete,
             isDisabling,
@@ -274,11 +275,11 @@ export function DiagnosticQueriesAdminView({
       )}
 
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-        <DialogContent className="w-[min(94vw,64rem)] max-w-none gap-0 overflow-hidden p-0">
+        <DialogContent className="max-h-[calc(100svh-2rem)] w-[calc(100vw-2rem)] gap-0 overflow-y-auto p-0 sm:max-w-[920px]">
           <DialogHeader className="border-b px-6 py-5">
-            <DialogTitle>Add diagnostic recipe</DialogTitle>
+            <DialogTitle>Add saved query</DialogTitle>
             <DialogDescription>
-              Save a bounded, read-only recipe for future investigations.
+              Save a bounded, read-only query for future investigations.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 px-6 py-5">
@@ -320,7 +321,7 @@ export function DiagnosticQueriesAdminView({
             {adapterRecipes.length > 0 && (
               <div className="rounded-lg border bg-muted/20 p-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-sm font-medium">Recommended recipes</p>
+                  <p className="text-sm font-medium">Query templates</p>
                   <p className="text-xs text-muted-foreground">
                     Optional starting points for this connector.
                   </p>
@@ -473,7 +474,7 @@ export function DiagnosticQueriesAdminView({
               }
             >
               {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Save recipe
+              Save query
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -487,7 +488,7 @@ export function DiagnosticQueriesAdminView({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Disable diagnostic recipe?</AlertDialogTitle>
+            <AlertDialogTitle>Disable saved query?</AlertDialogTitle>
             <AlertDialogDescription>
               This removes {pendingDisableQuery?.name} from investigation
               tooling. The definition remains stored but will not be available
@@ -504,7 +505,7 @@ export function DiagnosticQueriesAdminView({
               disabled={isDisabling}
             >
               {isDisabling && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Disable recipe
+              Disable query
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -4,6 +4,16 @@ import type { SreIncidentListItem } from "@/actions/sre-incidents";
 
 import { SreIncidentsList } from "./sre-incidents-list";
 
+// Radix/cmdk use browser layout APIs that jsdom does not provide.
+beforeAll(() => {
+  globalThis.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+  Element.prototype.scrollIntoView = jest.fn();
+});
+
 jest.mock("next/navigation", () => ({
   useRouter: () => ({
     push: jest.fn(),
@@ -85,7 +95,9 @@ describe("SreIncidentsList", () => {
   it("disables creation while permissions load and enables it when they resolve", () => {
     mockRole = "";
     mockProjectLoading = true;
-    const { rerender } = render(<SreIncidentsList incidents={[]} loadError={null} />);
+    const { rerender } = render(
+      <SreIncidentsList incidents={[]} loadError={null} />,
+    );
     const button = screen.getByRole("button", { name: /new incident/i });
     expect(button).toBeDisabled();
     fireEvent.click(button);
@@ -99,14 +111,108 @@ describe("SreIncidentsList", () => {
   it("explains permission failures and keeps creation unavailable", () => {
     mockProjectError = "Project fetch failed";
     render(<SreIncidentsList incidents={[]} loadError={null} />);
-    expect(screen.getByRole("status")).toHaveTextContent("Permissions unavailable");
-    expect(screen.queryByRole("button", { name: /new incident/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Permissions unavailable",
+    );
+    expect(
+      screen.queryByRole("button", { name: /new incident/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("hides creation from viewers", () => {
     mockRole = "project_viewer";
     render(<SreIncidentsList incidents={[]} loadError={null} />);
-    expect(screen.queryByRole("button", { name: /new incident/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /new incident/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("replaces the active shortcut when a specific status is selected", () => {
+    render(
+      <SreIncidentsList
+        incidents={[incidentFixture(1), incidentFixture(2)]}
+        loadError={null}
+      />,
+    );
+    const actions = within(screen.getByTestId("incident-header-actions"));
+    fireEvent.click(actions.getByRole("button", { name: /Status/ }));
+    fireEvent.click(screen.getByRole("option", { name: "investigating" }));
+    expect(screen.getByText("Total 1 incident")).toBeInTheDocument();
+    expect(screen.getByText("#2 · Checkout incident 2")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("option", { name: "Active incidents" }));
+    expect(screen.getByText("Total 2 incidents")).toBeInTheDocument();
+  });
+
+  it("combines faceted selections, retains active-by-default, and clears filters", () => {
+    render(
+      <SreIncidentsList
+        incidents={[
+          incidentFixture(1),
+          incidentFixture(2),
+          incidentFixture(3, { status: "resolved" }),
+        ]}
+        loadError={null}
+      />,
+    );
+    expect(screen.getByText("Total 2 incidents")).toBeInTheDocument();
+    fireEvent.click(
+      within(screen.getByTestId("incident-header-actions")).getByRole(
+        "button",
+        { name: "Severity" },
+      ),
+    );
+    fireEvent.click(screen.getByRole("option", { name: "SEV2" }));
+    expect(screen.getByText("Total 1 incident")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("option", { name: "SEV3" }));
+    expect(screen.getByText("Total 2 incidents")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("option", { name: "Clear filters" }));
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    fireEvent.click(
+      within(screen.getByTestId("incident-header-actions")).getByRole(
+        "button",
+        { name: "Service" },
+      ),
+    );
+    fireEvent.click(screen.getByRole("option", { name: "No service linked" }));
+    expect(screen.getByText("#1 · Checkout incident 1")).toBeInTheDocument();
+    expect(
+      screen.queryByText("#2 · Checkout incident 2"),
+    ).not.toBeInTheDocument();
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    fireEvent.click(
+      within(screen.getByTestId("incident-header-actions")).getByRole(
+        "button",
+        { name: /Status/ },
+      ),
+    );
+    fireEvent.click(screen.getByRole("option", { name: "Clear filters" }));
+    expect(screen.getByText("Total 2 incidents")).toBeInTheDocument();
+    expect(screen.getByText("#3 · Checkout incident 3")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("option", { name: "resolved" }));
+    expect(screen.getByText("Total 1 incident")).toBeInTheDocument();
+    expect(screen.getByText("#3 · Checkout incident 3")).toBeInTheDocument();
+  });
+
+  it("resets pagination when a facet changes", () => {
+    render(
+      <SreIncidentsList
+        incidents={Array.from({ length: 13 }, (_, index) =>
+          incidentFixture(index + 1),
+        )}
+        loadError={null}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Go to next page" }));
+    expect(screen.getByText("Page 2 of 2")).toBeInTheDocument();
+    fireEvent.click(
+      within(screen.getByTestId("incident-header-actions")).getByRole(
+        "button",
+        { name: "Severity" },
+      ),
+    );
+    fireEvent.click(screen.getByRole("option", { name: "SEV2" }));
+    expect(screen.getByText("Page 1 of 1")).toBeInTheDocument();
+    expect(screen.getByText("Total 6 incidents")).toBeInTheDocument();
   });
 
   it("renders a compact sortable incident table with filters and pagination", () => {
@@ -134,7 +240,15 @@ describe("SreIncidentsList", () => {
     expect(
       within(headerActions).getByPlaceholderText("Search incidents..."),
     ).toBeInTheDocument();
-    expect(within(headerActions).getAllByRole("combobox")).toHaveLength(2);
+    expect(
+      within(headerActions).getByRole("button", { name: "Severity" }),
+    ).toHaveClass("border-dashed");
+    expect(
+      within(headerActions).getByRole("button", { name: "Service" }),
+    ).toHaveClass("border-dashed");
+    expect(
+      within(headerActions).getByRole("button", { name: /Status/ }),
+    ).toHaveClass("border-dashed");
     expect(
       within(headerActions).getByRole("link", { name: /trends/i }),
     ).toBeInTheDocument();

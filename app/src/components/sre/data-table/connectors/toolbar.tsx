@@ -29,14 +29,14 @@ export function ConnectorsToolbar<TData>({
 
   return (
     <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-      <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:items-center">
-        <div className="relative w-full sm:max-w-sm">
-          <Search className="absolute left-3 top-2 h-4 w-4 text-muted-foreground" />
+      <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+        <div className="relative w-full sm:w-[250px]">
+          <Search className="absolute left-2 top-2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Search connectors..."
             value={(table.getState().globalFilter as string) ?? ""}
             onChange={(event) => table.setGlobalFilter(event.target.value)}
-            className="h-8 pl-9"
+            className="h-8 pl-8"
             aria-label="Search connectors"
           />
         </div>

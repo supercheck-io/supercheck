@@ -63,7 +63,7 @@ describe("SRE diagnostic query actions", () => {
 
     expect(result).toEqual({
       success: false,
-      error: "Enable or replace this connector before adding a diagnostic recipe",
+      error: "Enable or replace this connector before adding a saved query",
     });
     expect(db.insert).not.toHaveBeenCalled();
   });

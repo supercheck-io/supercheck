@@ -1,10 +1,17 @@
+import { DataTableColumnHeader } from "@/components/ui/data-table-column-header";
 import { ColumnDef } from "@tanstack/react-table";
 import Link from "next/link";
 import { type SreServiceListItem } from "@/actions/sre-services";
 import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
 import { Button } from "@/components/ui/button";
 import { isSafeEvidenceSourceUri } from "@/lib/sre/evidence-source-uri";
-import { Archive, ExternalLink, Eye, MoreHorizontal, Pencil } from "lucide-react";
+import {
+  Archive,
+  ExternalLink,
+  Eye,
+  MoreHorizontal,
+  Pencil,
+} from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -36,17 +43,37 @@ function formatDate(value: Date | string) {
 export const columns: ColumnDef<SreServiceListItem>[] = [
   {
     accessorKey: "name",
-    header: "Service",
-    cell: ({ row }) => <span className="whitespace-nowrap font-medium">{row.original.name}</span>,
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Service" />
+    ),
+    cell: ({ row }) => (
+      <span
+        className="block max-w-[240px] truncate font-medium"
+        title={row.original.name}
+      >
+        {row.original.name}
+      </span>
+    ),
   },
   {
-    id: "environment",
-    header: "Env",
-    cell: ({ row }) => row.original.environment ? <TableBadge tone="info" compact className="whitespace-nowrap">{row.original.environment}</TableBadge> : <span>-</span>,
+    accessorKey: "environment",
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Env" />
+    ),
+    cell: ({ row }) =>
+      row.original.environment ? (
+        <TableBadge tone="info" compact className="whitespace-nowrap">
+          {row.original.environment}
+        </TableBadge>
+      ) : (
+        <span>-</span>
+      ),
   },
   {
-    id: "description",
-    header: "Description",
+    accessorKey: "description",
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Description" />
+    ),
     cell: ({ row }) => (
       <div
         className="max-w-[240px] truncate text-sm"
@@ -58,7 +85,9 @@ export const columns: ColumnDef<SreServiceListItem>[] = [
   },
   {
     accessorKey: "tier",
-    header: "Tier",
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Tier" />
+    ),
     cell: ({ row }) => {
       const tier = row.getValue("tier") as SreServiceListItem["tier"];
       return <TableBadge compact>{tierLabels[tier]}</TableBadge>;
@@ -69,8 +98,17 @@ export const columns: ColumnDef<SreServiceListItem>[] = [
   },
   {
     accessorKey: "ownerTeam",
-    header: "Owner",
-    cell: ({ row }) => <span className="whitespace-nowrap">{row.original.ownerTeam ?? "Unassigned"}</span>,
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Owner" />
+    ),
+    cell: ({ row }) => (
+      <span
+        className="block max-w-[180px] truncate"
+        title={row.original.ownerTeam ?? "Unassigned"}
+      >
+        {row.original.ownerTeam ?? "Unassigned"}
+      </span>
+    ),
   },
   {
     id: "repo",
@@ -78,19 +116,32 @@ export const columns: ColumnDef<SreServiceListItem>[] = [
     cell: ({ row }) => {
       const repo = row.original.repoUrl;
       return repo && isSafeEvidenceSourceUri(repo) ? (
-        <a href={repo} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-primary hover:underline whitespace-nowrap">
+        <a
+          href={repo}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 text-xs text-primary hover:underline whitespace-nowrap"
+        >
           Link <ExternalLink className="h-3 w-3" />
         </a>
-      ) : <span>-</span>;
+      ) : (
+        <span>-</span>
+      );
     },
   },
   {
     accessorKey: "status",
-    header: "Status",
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Status" />
+    ),
     cell: ({ row }) => {
       const service = row.original;
       return (
-        <TableBadge tone={statusTones[service.status]} compact className="capitalize">
+        <TableBadge
+          tone={statusTones[service.status]}
+          compact
+          className="capitalize"
+        >
           {service.status}
         </TableBadge>
       );
@@ -101,9 +152,15 @@ export const columns: ColumnDef<SreServiceListItem>[] = [
   },
   {
     accessorKey: "updatedAt",
-    header: "Updated",
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Updated" />
+    ),
     cell: ({ row }) => {
-      return <span suppressHydrationWarning>{formatDate(row.getValue("updatedAt"))}</span>;
+      return (
+        <span suppressHydrationWarning>
+          {formatDate(row.getValue("updatedAt"))}
+        </span>
+      );
     },
   },
   {
@@ -135,12 +192,12 @@ export const columns: ColumnDef<SreServiceListItem>[] = [
                 View details
               </Link>
             </DropdownMenuItem>
-            {meta?.canUpdate && <DropdownMenuItem
-              onClick={() => meta?.onEdit?.(service)}
-            >
-              <Pencil className="mr-2 h-4 w-4" />
-              Edit service
-            </DropdownMenuItem>}
+            {meta?.canUpdate && (
+              <DropdownMenuItem onClick={() => meta?.onEdit?.(service)}>
+                <Pencil className="mr-2 h-4 w-4" />
+                Edit service
+              </DropdownMenuItem>
+            )}
             {meta?.canArchive && service.status !== "deprecated" && (
               <DropdownMenuItem
                 className="text-destructive focus:text-destructive"

@@ -783,7 +783,7 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
       </Tabs>
 
       <Dialog open={dependencyOpen} onOpenChange={setDependencyOpen}>
-        <DialogContent className="w-[min(94vw,44rem)] max-w-none">
+        <DialogContent className="max-h-[calc(100svh-2rem)] w-[min(94vw,44rem)] max-w-none overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {editingDependency ? "Edit dependency" : "Add dependency"}
@@ -849,7 +849,7 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
       </Dialog>
 
       <Dialog open={resourceOpen} onOpenChange={setResourceOpen}>
-        <DialogContent className="w-[min(94vw,48rem)] max-w-none">
+        <DialogContent className="max-h-[calc(100svh-2rem)] w-[min(94vw,48rem)] max-w-none overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {editingResourceId ? "Edit resource link" : "Link resource"}

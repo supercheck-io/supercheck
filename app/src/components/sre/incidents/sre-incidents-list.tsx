@@ -27,6 +27,7 @@ import {
   type SreIncidentListItem,
 } from "@/actions/sre-incidents";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
+import { DataTableFacetedFilter } from "@/components/ui/data-table-faceted-filter";
 import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -204,8 +205,9 @@ export function SreIncidentsList({
   const [summary, setSummary] = useState("");
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search);
-  const [severityFilter, setSeverityFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("active");
+  const [severityFilter, setSeverityFilter] = useState<string[]>([]);
+  const [statusFilter, setStatusFilter] = useState<string[]>(["active"]);
+  const [serviceFilter, setServiceFilter] = useState<string[]>([]);
   const [sortKey, setSortKey] = useState<IncidentSortKey>("updatedAt");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [pageIndex, setPageIndex] = useState(0);
@@ -262,16 +264,38 @@ export function SreIncidentsList({
     [incidents],
   );
 
+  const serviceOptions = useMemo(
+    () =>
+      Array.from(
+        new Map(
+          incidents.map((incident) => [
+            incident.primaryServiceId ?? "unlinked",
+            {
+              value: incident.primaryServiceId ?? "unlinked",
+              label: incident.primaryServiceName ?? "No service linked",
+            },
+          ]),
+        ).values(),
+      ).sort((a, b) => a.label.localeCompare(b.label)),
+    [incidents],
+  );
+
   const filteredIncidents = useMemo(() => {
     const query = deferredSearch.trim().toLowerCase();
     const filtered = incidents.filter((incident) => {
       const matchesSeverity =
-        severityFilter === "all" || incident.severity === severityFilter;
+        severityFilter.length === 0 ||
+        severityFilter.includes(incident.severity);
       const matchesStatus =
-        statusFilter === "all" ||
-        (statusFilter === "active"
-          ? incident.status !== "resolved"
-          : incident.status === statusFilter);
+        statusFilter.length === 0 ||
+        statusFilter.some((status) =>
+          status === "active"
+            ? incident.status !== "resolved"
+            : incident.status === status,
+        );
+      const matchesService =
+        serviceFilter.length === 0 ||
+        serviceFilter.includes(incident.primaryServiceId ?? "unlinked");
       const searchable = [
         incident.id,
         String(incident.incidentNumber),
@@ -287,6 +311,7 @@ export function SreIncidentsList({
       return (
         matchesSeverity &&
         matchesStatus &&
+        matchesService &&
         (!query || searchable.includes(query))
       );
     });
@@ -307,6 +332,7 @@ export function SreIncidentsList({
     deferredSearch,
     incidents,
     severityFilter,
+    serviceFilter,
     sortDirection,
     sortKey,
     statusFilter,
@@ -342,9 +368,9 @@ export function SreIncidentsList({
   }
 
   return (
-    <div className="w-full max-w-full space-y-4 overflow-x-hidden p-2">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="shrink-0">
+    <div className="w-full max-w-full mt-6 space-y-4 p-2">
+      <div className="mb-4 -mt-2 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="min-w-0 lg:max-w-sm lg:shrink-0">
           <h2 className="text-2xl font-semibold">Incidents</h2>
           <p className="text-sm text-muted-foreground">
             Track, investigate, and resolve operational incidents.
@@ -364,6 +390,7 @@ export function SreIncidentsList({
                     setSearch(event.target.value);
                     setPageIndex(0);
                   }}
+                  aria-label="Search incidents"
                   placeholder="Search incidents..."
                   className="h-8 pl-8 pr-8"
                 />
@@ -381,47 +408,49 @@ export function SreIncidentsList({
                   </button>
                 )}
               </div>
-              <Select
-                value={severityFilter}
-                onValueChange={(value) => {
-                  setSeverityFilter(value);
-                  setPageIndex(0);
-                }}
-              >
-                <SelectTrigger className="h-8 w-full sm:w-[140px]">
-                  <SelectValue placeholder="Severity" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All severities</SelectItem>
-                  <SelectItem value="sev1">SEV1</SelectItem>
-                  <SelectItem value="sev2">SEV2</SelectItem>
-                  <SelectItem value="sev3">SEV3</SelectItem>
-                  <SelectItem value="sev4">SEV4</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select
-                value={statusFilter}
-                onValueChange={(value) => {
-                  setStatusFilter(value);
-                  setPageIndex(0);
-                }}
-              >
-                <SelectTrigger className="h-8 w-full sm:w-[140px]">
-                  <SelectValue placeholder="Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="active">Active incidents</SelectItem>
-                  <SelectItem value="all">All incidents</SelectItem>
-                  <SelectItem value="resolved">Resolved</SelectItem>
-                  {statusOptions
-                    .filter((status) => status !== "resolved")
-                    .map((status) => (
-                      <SelectItem key={status} value={status}>
-                        {formatStatus(status)}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
+              <div className="flex flex-wrap items-center gap-2">
+                <DataTableFacetedFilter
+                  title="Severity"
+                  value={severityFilter}
+                  onValueChange={(values) => {
+                    setSeverityFilter(values);
+                    setPageIndex(0);
+                  }}
+                  options={["sev1", "sev2", "sev3", "sev4"].map((value) => ({
+                    value,
+                    label: value.toUpperCase(),
+                  }))}
+                />
+                <DataTableFacetedFilter
+                  title="Service"
+                  value={serviceFilter}
+                  onValueChange={(values) => {
+                    setServiceFilter(values);
+                    setPageIndex(0);
+                  }}
+                  options={serviceOptions}
+                />
+                <DataTableFacetedFilter
+                  title="Status"
+                  value={statusFilter}
+                  onValueChange={(values) => {
+                    // The active shortcut is exclusive so a specific status narrows the list.
+                    setStatusFilter(
+                      values.includes("active") &&
+                        !statusFilter.includes("active")
+                        ? ["active"]
+                        : values.filter((value) => value !== "active"),
+                    );
+                    setPageIndex(0);
+                  }}
+                  options={[
+                    { value: "active", label: "Active incidents" },
+                    ...Array.from(new Set([...statusOptions, "resolved"])).map(
+                      (value) => ({ value, label: formatStatus(value) }),
+                    ),
+                  ]}
+                />
+              </div>
             </>
           )}
           <Button asChild type="button" variant="outline" className="h-8">
@@ -463,8 +492,8 @@ export function SreIncidentsList({
         />
       ) : (
         <>
-          <div className="w-full max-w-full overflow-hidden rounded-t-lg border">
-            <Table>
+          <div className="relative max-w-full overflow-x-auto rounded-t-lg border">
+            <Table className="w-full min-w-[900px]">
               <TableHeader>
                 <TableRow>
                   <SortableHead
@@ -616,7 +645,8 @@ export function SreIncidentsList({
 
           <div className="flex flex-col gap-3 px-2 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex-1 text-sm text-muted-foreground">
-              Total {filteredIncidents.length} {filteredIncidents.length === 1 ? "incident" : "incidents"}
+              Total {filteredIncidents.length}{" "}
+              {filteredIncidents.length === 1 ? "incident" : "incidents"}
             </div>
             <div className="flex flex-wrap items-center gap-3 sm:gap-6 lg:gap-8">
               <div className="flex items-center space-x-2">
