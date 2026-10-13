@@ -26,7 +26,7 @@ class InstallerTests(unittest.TestCase):
                                  'COMPOSE_DIR="$TEST_ROOT/compose"\n'
                                  'mkdir -p "$COMPOSE_DIR"\n' + body],
                                 env={**os.environ, 'TEST_ROOT': str(self.root),
-                                     'INSTALL_TEST_EUID': '0', 'NO_COLOR': '1'},
+                                     'INSTALL_TEST_EUID': '0', 'NO_COLOR': '1', 'TMPDIR': str(self.root)},
                                 text=True, capture_output=True, timeout=10)
         self.assertEqual(result.returncode, code, result.stdout + result.stderr)
         return result.stdout + result.stderr
@@ -106,9 +106,15 @@ persist_version
         output = self.run_shell(r'''USING_THIS_CHECKOUT=false
 VERSION=9.9.9
 curl() { return 22; }
-check_release
+INSTALL_DIR="$TEST_ROOT/target"
+COMPOSE_DIR=""
+MODE=local
+preflight() { :; }
+check_ports() { :; }
+docker_ready() { return 1; }
+git() { return 2; }
 install_prerequisites() { touch "$TEST_ROOT/packages-installed"; }
-install_prerequisites
+main
 ''', 1)
         self.assertIn('Release v9.9.9', output)
         self.assertFalse((self.root / 'packages-installed').exists())
@@ -161,13 +167,15 @@ apply_public_config
 touch "$COMPOSE_DIR/.env.new" "$COMPOSE_DIR/.env.filtered"
 chmod 644 "$COMPOSE_DIR/.env.new" "$COMPOSE_DIR/.env.filtered"
 grep() {
-  if [[ "$*" == *SUPERCHECK_VERSION* || "$*" == *COMPOSE_PROFILES* ]]; then
+  if [[ "$1" == -v ]] && [[ "$*" == *SUPERCHECK_VERSION* || "$*" == *COMPOSE_PROFILES* ]]; then
     [[ $(find .env.new -perm -004 -print) == '' ]] || exit 90
   fi
   command grep "$@"
 }
 sed() {
-  [[ $(find .env.filtered -perm -004 -print) == '' ]] || exit 90
+  if [[ "$*" == *'.env.new'* ]]; then
+    [[ $(find .env.filtered -perm -004 -print) == '' ]] || exit 90
+  fi
   command sed "$@"
 }
 DOMAIN=new.example.com
@@ -204,6 +212,176 @@ source "$TEST_ROOT/setup-fixture.sh"
 ''', 22)
         self.assertEqual(admin.stat().st_mode & 0o777, 0o600)
         self.assertNotIn("'644'", service.read_text())
+
+    def test_completed_migration_and_explicit_ignore_are_accepted(self):
+        for endpoint, ignore in [('http://rustfs:9000', 'false'), ('http://minio:9000', 'true')]:
+            with self.subTest(endpoint=endpoint, ignore=ignore):
+                self.run_shell(r'''uname() { [[ "$1" == -s ]] && echo Linux || echo x86_64; }
+os_field() { [[ "$1" == ID ]] && echo ubuntu || echo 24.04; }
+awk() { [[ "$*" == *MemTotal* ]] && echo 8000000 || echo 20; }
+nproc() { echo 2; }
+df() { echo placeholder; }
+curl() { :; }
+docker() { [[ "$*" == 'volume ls -q' ]] && printf '%s\n' supercheck_minio-data supercheck_rustfs-data || true; }
+''' + f'IGNORE_MINIO={ignore}\necho S3_ENDPOINT={endpoint} > "$COMPOSE_DIR/.env"\npreflight\n')
+
+    def test_new_source_version_is_persisted_and_idempotent(self):
+        self.run_shell(r'''echo BETTER_AUTH_SECRET=fixture > "$COMPOSE_DIR/.env"
+USING_THIS_CHECKOUT=false
+SOURCE_FETCHED=true
+VERSION_SET=false
+VERSION=1.3.7-canary.16
+unset SUPERCHECK_VERSION
+persist_version
+persist_version
+''')
+        self.assertIn('SUPERCHECK_VERSION=1.3.7-canary.16', (self.root / 'compose/.env').read_text())
+        self.assertEqual(len(list((self.root / 'compose').glob('.env.bak-*'))), 1)
+
+    def test_existing_docker_still_installs_missing_network_tools(self):
+        self.run_shell(r'''touch "$TEST_ROOT/docker-compose.yml" "$TEST_ROOT/init-secrets.sh" "$TEST_ROOT/setup-k3s.sh"
+echo BETTER_AUTH_SECRET=fixture > "$TEST_ROOT/.env"
+MODE=local
+preflight() { :; }
+check_ports() { :; }
+docker_ready() { return 0; }
+command() {
+  [[ "$*" != '-v ip' ]] || return 1
+  builtin command "$@"
+}
+install_prerequisites() { touch "$TEST_ROOT/packages-installed"; }
+setup_sandbox() { :; }
+pull_images() { :; }
+start_stack() { :; }
+dc() { [[ "$*" == config ]] && echo 'WORKER_IMAGE: worker:latest' || true; }
+curl() { echo '{"status":"ok"}'; }
+main
+''')
+        self.assertTrue((self.root / 'packages-installed').exists())
+
+    def test_worker_credential_is_private_before_final_chmod(self):
+        source = (DEPLOY / 'setup-k3s.sh').read_text()
+        start = source.index('WORKER_KUBECONFIG_TMP="$(mktemp')
+        end = source.index('log "Restricted worker kubeconfig', start)
+        snippet = source[start:end]
+        self.run_shell(r'''WORKER_KUBECONFIG="$TEST_ROOT/worker.kubeconfig"
+API_SERVER=https://fixture
+CA_DATA=fixture
+TOKEN=fixture
+chgrp() { :; }
+chmod() {
+  [[ $(find "$2" -perm -004 -print) == '' ]] || exit 90
+  command chmod "$@"
+}
+umask 022
+''' + snippet)
+        self.assertEqual((self.root / 'worker.kubeconfig').stat().st_mode & 0o777, 0o440)
+        self.assertEqual(len(list(self.root.glob('worker.kubeconfig.*'))), 0)
+
+    def test_demo_deployment_requires_completed_storage_migration(self):
+        source = (DEPLOY.parent.parent / '.github/scripts/deploy-demo.sh').read_text()
+        start = source.index('ensure_storage_migrated() {')
+        end = source.index('\n}', start) + 2
+        function = source[start:end]
+        for legacy, orphan, code in [('minio', '', 78), ('rustfs', 'old-minio-id', 78), ('rustfs', '', 0)]:
+            with self.subTest(legacy=legacy, orphan=orphan):
+                self.run_shell(function + r'''
+COMPOSE_FILE=docker-compose-secure.yml
+docker() {
+  case "$*" in
+    *'config --services'*) printf '%s\n' app worker "$LEGACY_SERVICE" ;;
+    *'config'*) echo 'name: custom-demo' ;;
+    *'ps -aq'*)
+      [[ "$*" == *'label=com.docker.compose.project=custom-demo'* ]] || return 1
+      printf '%s' "$ORPHAN" ;;
+    *) return 1 ;;
+  esac
+}
+''' + f'LEGACY_SERVICE={legacy}\nORPHAN={orphan}\nensure_storage_migrated || exit 78\n', code)
+
+    def test_admin_mode_upgrade_handles_systemd_argument_formats(self):
+        source = (DEPLOY / 'setup-k3s.sh').read_text()
+        start = source.index('secure_kubeconfig() {')
+        end = source.index('\n}', start) + 2
+        function = source[start:end]
+        for option in ["--write-kubeconfig-mode 0644", "'--write-kubeconfig-mode' '644'", '"--write-kubeconfig-mode=0644"']:
+            with self.subTest(option=option):
+                service = self.root / 'k3s.service'
+                service.write_text(f'ExecStart=k3s server {option} --tls-san 192.168.0.64\n')
+                admin = self.root / 'admin.yaml'
+                admin.write_text('fixture')
+                admin.chmod(0o644)
+                self.run_shell(function + '\nsystemctl() { :; }\nsecure_kubeconfig "$TEST_ROOT/k3s.service" "$TEST_ROOT/admin.yaml"\n')
+                self.assertNotIn('644', service.read_text())
+                self.assertIn('600', service.read_text())
+                self.assertIn('--tls-san 192.168.0.64', service.read_text())
+                self.assertEqual(admin.stat().st_mode & 0o777, 0o600)
+
+    def test_migration_keeps_private_unique_rollback_backups(self):
+        migration = self.root / 'migration'
+        migration.mkdir()
+        (migration / 'migrate.sh').write_text((DEPLOY / 'migrate-minio-to-rustfs.sh').read_text())
+        binaries = self.root / 'bin'
+        binaries.mkdir()
+        (binaries / 'docker').write_text(r'''#!/usr/bin/env bash
+case "$*" in
+  'compose ps -q minio') echo minio-id ;;
+  inspect*) [[ "$*" == *com.docker.compose.project* ]] && echo fixture-project || echo fixture-network ;;
+  *) exit 0 ;;
+esac
+''')
+        (binaries / 'date').write_text('#!/bin/sh\necho 20261013120000\n')
+        (binaries / 'chmod').write_text(r'''#!/usr/bin/env bash
+if [[ "$*" == '600 .env.pre-rustfs' ]]; then
+  [[ $(find .env.pre-rustfs -perm -004 -print) == '' ]] || touch "$TEST_ROOT/exposed-backup"
+fi
+exec /bin/chmod "$@"
+''')
+        for binary in binaries.iterdir():
+            binary.chmod(0o755)
+        original = 'S3_ENDPOINT=http://minio:9000\nAWS_ACCESS_KEY_ID=fixture\nAWS_SECRET_ACCESS_KEY=fixture\n'
+        for attempt in range(3):
+            config = migration / '.env'
+            config.write_text(original)
+            config.chmod(0o644)
+            self.run_shell('export PATH="$TEST_ROOT/bin:$PATH"\nbash "$TEST_ROOT/migration/migrate.sh" --yes\n')
+            self.assertEqual((migration / '.env.pre-rustfs').read_text(), original)
+            self.assertEqual((migration / '.env.pre-rustfs').stat().st_mode & 0o777, 0o600)
+            self.assertEqual(config.stat().st_mode & 0o777, 0o600)
+            self.assertFalse((self.root / 'exposed-backup').exists())
+            self.assertEqual(len(list(migration.glob('.env.pre-rustfs.*'))), attempt)
+
+    def test_admin_permission_upgrade_allows_interrupted_first_start(self):
+        source = (DEPLOY / 'setup-k3s.sh').read_text()
+        start = source.index('secure_kubeconfig() {')
+        end = source.index('\n}', start) + 2
+        service = self.root / 'k3s.service'
+        service.write_text('ExecStart=k3s server --write-kubeconfig-mode=644\n')
+        self.run_shell(source[start:end] + '\nsystemctl() { :; }\nsecure_kubeconfig "$TEST_ROOT/k3s.service" "$TEST_ROOT/not-created.yaml"\n')
+        self.assertIn('--write-kubeconfig-mode=600', service.read_text())
+        self.assertFalse((self.root / 'not-created.yaml').exists())
+
+    def test_invalid_version_does_not_modify_an_existing_standalone_install(self):
+        self.run_shell(r'''INSTALL_DIR="$TEST_ROOT/target"
+COMPOSE_DIR=""
+mkdir -p "$INSTALL_DIR/deploy/docker"
+touch "$INSTALL_DIR/deploy/docker/init-secrets.sh"
+printf '%s\n' BETTER_AUTH_SECRET=fixture SUPERCHECK_VERSION=1.3.6 > "$INSTALL_DIR/deploy/docker/.env"
+MODE=local
+VERSION_SET=true
+VERSION=9.9.9
+preflight() { :; }
+check_ports() { :; }
+docker_ready() { return 1; }
+curl() { return 22; }
+install_prerequisites() { touch "$TEST_ROOT/packages-installed"; }
+setup_sandbox() { :; }
+pull_images() { return 1; }
+main
+''', 1)
+        self.assertEqual((self.root / 'target/deploy/docker/.env').read_text(),
+                         'BETTER_AUTH_SECRET=fixture\nSUPERCHECK_VERSION=1.3.6\n')
+        self.assertFalse((self.root / 'packages-installed').exists())
 
     def test_private_backup_permissions_for_new_and_existing_files(self):
         self.run_shell(r'''umask 022
