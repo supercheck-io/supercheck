@@ -48,7 +48,7 @@ sequenceDiagram
   <Accordion title="Requirements" id="requirements">
     - Permission to configure connectors (for example, Project Admin or Org Admin).
     - A Docker Engine host with Compose v2 that can reach Supercheck and your provider endpoints.
-    - Outbound HTTPS to Supercheck for remote agents; no inbound ports. Colocated agents use the private Docker network.
+    - Outbound HTTPS to the Supercheck API without interactive browser challenges; no inbound ports for remote agents. Colocated agents use the private Docker network.
 
     Use the supplied Compose configuration to retain its non-root user, read-only filesystem, and restricted permissions.
   </Accordion>
@@ -103,6 +103,8 @@ Copy the **Agent ID** and **Registration token**. Start the agent within **15 mi
   </Tab>
 </Tabs>
 
+Preserve `private-agent-state` during maintenance. If the registration token expires, choose **Rotate token** and replace it in `.env` before starting.
+
 ### 3. Connect a provider
 
 Confirm the agent shows **connected**. In the same project's **Organization Admin → Integrations**, add a connector, select **Private Agent**, and choose this agent.
@@ -110,44 +112,3 @@ Confirm the agent shows **connected**. In the same project's **Organization Admi
 Enter a container-reachable provider endpoint and a read-only credential. Loopback addresses such as `localhost` are rejected. Validate the connector and test a known-result query. See [Connectors](/docs/app/investigate/connectors) for provider requirements.
 
 Link the connector's service to an incident and run an investigation with **Include live sources**, or use [Copilot](/docs/app/investigate/copilot).
-
-## Operations
-
-<Accordions>
-  <Accordion title="Restarts and configuration changes" id="restarts-and-token-rotation">
-    Preserve `private-agent-state`; routine restarts need no new token. Keep `PRIVATE_AGENT_TOKEN` in `.env` and never use `down -v` for maintenance.
-
-    After changing `.env`, recreate the agent:
-
-    ```bash
-    sudo docker compose -f docker-compose-private-agent.yml up -d --force-recreate private-agent
-    ```
-
-    On the Supercheck host, omit `-f docker-compose-private-agent.yml`. Stop the agent before removing its profile. `restart` does not reload environment values.
-  </Accordion>
-
-  <Accordion title="Token rotation" id="token-rotation">
-    For an expired registration token or credential replacement, choose **Rotate token** in the agent's actions menu. Replace `PRIVATE_AGENT_TOKEN` in `.env` and recreate the container within 15 minutes using the command above. Rotation revokes the old credential immediately.
-  </Accordion>
-
-  <Accordion title="Network and data access" id="security">
-    Allow outbound DNS, HTTPS to Supercheck, and only the provider hosts and ports your connectors need. Use approved evidence sources; query results may contain operational data.
-
-    Agents receive no database, Redis, or storage credentials. Provider credentials are stored encrypted by Supercheck and supplied for queries, not included in AI prompts.
-  </Accordion>
-
-  <Accordion title="Reverse proxies and browser challenges" id="reverse-proxies">
-    Agents cannot solve interactive browser challenges. Exclude only these routes from such challenges:
-
-    - `/api/private-agents/registration/exchange`
-    - `/api/private-agents/heartbeat`
-    - `/api/private-agents/jobs/lease`
-    - `/api/private-agents/jobs/result`
-
-    Keep authentication, TLS, rate limits, request-size limits, logging, and non-interactive WAF protection. Cloudflare Bot Fight Mode cannot be excluded by path; use narrow-exclusion support or a dedicated protected API hostname.
-  </Accordion>
-
-  <Accordion title="Source and license" id="source-and-license">
-    The agent uses the Supercheck worker image under [AGPL-3.0-only](https://github.com/supercheck-io/supercheck/blob/main/LICENSE), including with Cloud. Use [source](https://github.com/supercheck-io/supercheck) matching the image release to build it.
-  </Accordion>
-</Accordions>
