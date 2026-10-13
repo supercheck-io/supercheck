@@ -102,6 +102,8 @@ if [[ "$VERSION_SET" == true && ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9
   echo "'$VERSION' is not a release number like 1.3.6." >&2; exit 2
 fi
 if [[ "$INSTALL_DIR" != /* ]]; then echo "--dir must be an absolute path." >&2; exit 2; fi
+while [[ "$INSTALL_DIR" == */ && "$INSTALL_DIR" != "/" ]]; do INSTALL_DIR="${INSTALL_DIR%/}"; done
+if [[ "$INSTALL_DIR" == "/" ]]; then echo "--dir cannot be /." >&2; exit 2; fi
 
 # ─── Output ─────────────────────────────────────────────────────────────────
 
@@ -117,7 +119,7 @@ ok()     { printf '  %s✓%s %s\n' "$GREEN" "$RESET" "$*"; }
 warn()   { printf '  %s!%s %s\n' "$YELLOW" "$RESET" "$*"; }
 note()   { printf '    %s%s%s\n' "$DIM" "$*" "$RESET"; }
 fail()   { printf '  %s✗%s %s\n' "$RED" "$RESET" "$*" >&2; }
-die()    { fail "$1"; shift; for l in "$@"; do printf '    %s\n' "$l" >&2; done; exit 1; }
+die()    { fail "$1"; shift; for l in "$@"; do printf '    %s\n' "$l" >&2; done; SHOWN_LOG_TAIL=true; exit 1; }
 header() { printf '\n%s[%s/%s]%s %s%s%s\n' "$CYAN" "$1" "$TOTAL_STEPS" "$RESET" "$BOLD" "$2" "$RESET"; }
 
 SPIN_PID=""
@@ -161,7 +163,7 @@ on_exit() {
   stop_step
   # Only after changes began, and only for a real failure (1): usage errors (2), an unhealthy
   # but running stack (3) and interrupts (130) print their own message.
-  if [[ $rc -eq 1 && "$ATTEMPTED" == true && "$DRY_RUN" != true && -f "$LOG_FILE" && "${SHOWN_LOG_TAIL:-false}" != true ]]; then
+  if [[ $rc -ne 0 && $rc -ne 2 && $rc -ne 3 && $rc -ne 130 && "$ATTEMPTED" == true && "$DRY_RUN" != true && -f "$LOG_FILE" && "${SHOWN_LOG_TAIL:-false}" != true ]]; then
     printf '\n%sInstallation did not finish.%s Re-running is safe and resumes where it stopped.\n' "$RED" "$RESET" >&2
     printf 'Full log: %s\n' "$LOG_FILE" >&2
   fi
@@ -248,7 +250,7 @@ os_field() { sed -n "s/^$1=//p" /etc/os-release 2>/dev/null | head -n1 | tr -d '
 COMPOSE_DIR=""
 compose_dir() { echo "${COMPOSE_DIR:-${INSTALL_DIR}/deploy/docker}"; }
 
-env_get() { sed -n "s/^$1=//p" "$(compose_dir)/.env" 2>/dev/null | tail -n1 | tr -d '"'''; }
+env_get() { sed -n "s/^$1=//p" "$(compose_dir)/.env" 2>/dev/null | tail -n1 | tr -d "\"'"; }
 
 # Compose names volumes <project>_<volume>; the project is COMPOSE_PROJECT_NAME (shell, then .env) or "supercheck".
 project_name() {
@@ -324,7 +326,13 @@ fetch_source() {
   mkdir -p "$(dirname "$INSTALL_DIR")"
   # An empty or .git-only directory is the leftover of an interrupted run; stale temp dirs too.
   rm -rf "${INSTALL_DIR}".tmp.*
-  if [[ -d "$INSTALL_DIR" ]] && ! dir_has_content "$INSTALL_DIR"; then rm -rf "$INSTALL_DIR"; fi
+  # Remove only our own leftover: empty, or a bare `git init` with no commits and no refs.
+  if [[ -d "$INSTALL_DIR" ]] && ! dir_has_content "$INSTALL_DIR" \
+    && ! git -C "$INSTALL_DIR" rev-parse -q --verify HEAD >/dev/null 2>&1 \
+    && [[ -z "$(git -C "$INSTALL_DIR" for-each-ref 2>/dev/null)" ]] \
+    && [[ "$(git -C "$INSTALL_DIR" remote get-url origin 2>/dev/null || echo "$REPO_URL")" == "$REPO_URL" ]]; then
+    rm -rf "$INSTALL_DIR"
+  fi
   # Build in a temp sibling and rename on success, so an interruption never leaves a
   # half-populated install directory that a re-run would refuse.
   tmp="$(mktemp -d "${INSTALL_DIR}.tmp.XXXXXX")"
@@ -335,7 +343,7 @@ fetch_source() {
   git -C "$tmp" fetch --quiet --depth 1 origin "refs/tags/v${VERSION}:refs/tags/v${VERSION}"
   git -C "$tmp" checkout --quiet --detach "refs/tags/v${VERSION}"
   chmod 755 "$tmp"
-  mv "$tmp" "$INSTALL_DIR"
+  mv -T "$tmp" "$INSTALL_DIR"
   trap - EXIT
 }
 
@@ -345,7 +353,7 @@ public_block() {
   echo "COMPOSE_PROFILES=$1"
   echo "APP_DOMAIN=${DOMAIN}"
   echo "ACME_EMAIL=${EMAIL}"
-  echo "STATUS_PAGE_DOMAIN=${STATUS_DOMAIN:-$DOMAIN}"
+  echo "STATUS_PAGE_DOMAIN=${2:-${STATUS_DOMAIN:-$DOMAIN}}"
 }
 
 generate_config() {
@@ -354,7 +362,7 @@ generate_config() {
   # place, so an interruption can never leave a partial .env that a re-run would keep.
   rm -f .env.new
   ( umask 077
-    ENV_FILE="$PWD/.env.new" bash ./init-secrets.sh
+    SUPERCHECK_ENV_FILE="$PWD/.env.new" bash ./init-secrets.sh
     [[ -s .env.new ]]
     if [[ "$MODE" == "public" ]]; then public_block "https" >>.env.new; fi
     chmod 600 .env.new
@@ -367,12 +375,19 @@ apply_public_config() {
   cd "$(compose_dir)"
   local profiles
   profiles="$(env_get COMPOSE_PROFILES)"
+  # Keep the operator's status-page domain unless --status-domain was given.
+  local status
+  status="${STATUS_DOMAIN:-$(env_get STATUS_PAGE_DOMAIN)}"
+  status="${status:-$DOMAIN}"
   if [[ -z "$profiles" ]]; then profiles="https"; elif [[ "$profiles" != *https* ]]; then profiles="${profiles},https"; fi
   ( umask 077
-    cp -p .env ".env.bak-$(date +%Y%m%d%H%M%S)"
+    rm -f .env.new
+    install -m 600 .env ".env.bak-$(date +%Y%m%d%H%M%S)"
     # Drop the active keys we set, and any explicit localhost URLs that would override APP_DOMAIN.
-    grep -v -E '^(COMPOSE_PROFILES|APP_DOMAIN|ACME_EMAIL|STATUS_PAGE_DOMAIN)=|^(NEXT_PUBLIC_APP_URL|APP_URL|BETTER_AUTH_URL)=https?://(localhost|127\.)' .env >.env.new || true
-    public_block "$profiles" >>.env.new
+    grep -v -E '^(COMPOSE_PROFILES|APP_DOMAIN|ACME_EMAIL|STATUS_PAGE_DOMAIN)=|^(NEXT_PUBLIC_APP_URL|APP_URL|BETTER_AUTH_URL)=https?://(localhost|127\.)' .env >.env.new || [[ $? -eq 1 ]]
+    public_block "$profiles" "$status" >>.env.new
+    # Refuse to replace a good .env with a truncated one: a known secret must have survived.
+    grep -q '^BETTER_AUTH_SECRET=' .env.new || { echo "refusing to write .env: BETTER_AUTH_SECRET missing from the new file" >&2; exit 1; }
     chmod 600 .env.new
     mv .env.new .env
   )
@@ -536,6 +551,12 @@ main() {
     warn "Running from an existing checkout (${SELF_DIR}); --version and --dir are ignored and its images and files are used as they are."
   fi
 
+  # One installer at a time: two runs would delete each other's partial downloads.
+  if [[ "$DRY_RUN" != true && "$EUID" -eq 0 ]] && command -v flock >/dev/null 2>&1; then
+    exec 9>/run/supercheck-install.lock
+    flock -n 9 || die "Another install.sh is already running on this server." "Wait for it to finish, then re-run."
+  fi
+
   header 1 "Checking this server"
   preflight
 
@@ -599,7 +620,7 @@ main() {
   # configured for that domain updates only the HTTPS keys (backup kept); anything else keeps it.
   NEED_PUBLIC_APPLY=false
   if [[ -f "$(compose_dir)/.env" && "$USE_EXISTING" != true ]]; then
-    if [[ "$MODE" == "public" ]] && { ! env_has_https || [[ "$(env_get APP_DOMAIN)" != "$DOMAIN" || "$(env_get ACME_EMAIL)" != "$EMAIL" ]]; }; then
+    if [[ "$MODE" == "public" ]] && { ! env_has_https || [[ "$(env_get APP_DOMAIN)" != "$DOMAIN" || "$(env_get ACME_EMAIL)" != "$EMAIL" || ( -n "$STATUS_DOMAIN" && "$(env_get STATUS_PAGE_DOMAIN)" != "$STATUS_DOMAIN" ) ]]; }; then
       NEED_PUBLIC_APPLY=true
       note "An existing .env was found. Its secrets are kept; the HTTPS settings for ${DOMAIN} will be added (a backup is saved)."
     elif [[ "$MODE" == "local" ]] && env_has_https; then

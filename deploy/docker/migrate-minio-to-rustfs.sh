@@ -46,11 +46,6 @@ if [[ "$(env_get S3_ENDPOINT)" == *rustfs* ]]; then
   log ".env already points at RustFS, so this install is migrated. Continue with: git pull && docker compose up -d --wait --remove-orphans"
   exit 0
 fi
-if [[ -f .env.pre-rustfs ]]; then
-  mv .env.pre-rustfs ".env.pre-rustfs.$(date +%Y%m%d%H%M%S)"
-  warn "Found an older .env.pre-rustfs (a previous attempt or a rollback); it was kept under a timestamped name."
-fi
-
 MINIO_CID="$(docker compose ps -q minio 2>/dev/null || true)"
 [[ -n "$MINIO_CID" ]] || die "No running 'minio' service found.
     Run this BEFORE 'git pull', with the old stack up:  docker compose up -d
@@ -81,17 +76,19 @@ if [[ "$ASSUME_YES" != true ]]; then
 fi
 
 TMP_DIR="$(mktemp -d)"; chmod 700 "$TMP_DIR"
+rm -f .env.migrating
 RFS_NAME="${PROJECT}-rustfs-migrate"
 cleanup() { docker rm -f "$RFS_NAME" >/dev/null 2>&1 || true; rm -rf "$TMP_DIR"; }
 trap cleanup EXIT
 
 docker compose stop app worker >/dev/null 2>&1 || true
 # Verify instead of trusting the exit status: copying while writers are active loses data.
-for cid in $(docker compose ps -q app worker 2>/dev/null || true); do
-  if [[ "$(docker inspect -f '{{.State.Running}}' "$cid" 2>/dev/null || echo false)" == "true" ]]; then
-    die "app or worker is still running, so the copy could miss new writes. Nothing was changed. Stop them with: docker compose stop app worker"
-  fi
-done
+# A compose error would make `ps` print nothing, so ask Docker about the whole project instead.
+RUNNING_APP="$(docker ps -q --filter "label=com.docker.compose.project=${PROJECT}" --filter "label=com.docker.compose.service=app" 2>/dev/null || true)"
+RUNNING_WORKER="$(docker ps -q --filter "label=com.docker.compose.project=${PROJECT}" --filter "label=com.docker.compose.service=worker" 2>/dev/null || true)"
+if [[ -n "$RUNNING_APP$RUNNING_WORKER" ]]; then
+  die "app or worker is still running, so the copy could miss new writes. Stop them (docker compose stop app worker) and re-run; bring the stack back with: docker compose up -d"
+fi
 log "Stopped app and worker"
 
 VOL="${PROJECT}_rustfs-data"
@@ -155,8 +152,13 @@ esac
 
 docker rm -f "$RFS_NAME" >/dev/null 2>&1 || true
 
+if [[ -f .env.pre-rustfs ]]; then
+  mv .env.pre-rustfs ".env.pre-rustfs.$(date +%Y%m%d%H%M%S)"
+  warn "An older .env.pre-rustfs (a previous attempt or a rollback) was kept under a timestamped name."
+fi
 cp -p .env .env.pre-rustfs
 chmod 600 .env.pre-rustfs
+( umask 077
 {
   grep -v -E '^(S3_ENDPOINT)=' .env
   echo "S3_ENDPOINT=http://rustfs:9000"
@@ -164,9 +166,10 @@ chmod 600 .env.pre-rustfs
     echo "AWS_ACCESS_KEY_ID=${NEW_AK}"
     echo "AWS_SECRET_ACCESS_KEY=${NEW_SK}"
   fi
-} > "$TMP_DIR/env.new"
-chmod 600 "$TMP_DIR/env.new"
-mv "$TMP_DIR/env.new" .env
+} > .env.migrating
+)
+chmod 600 .env.migrating
+mv .env.migrating .env
 log ".env updated (backup: .env.pre-rustfs)"
 
 echo ""

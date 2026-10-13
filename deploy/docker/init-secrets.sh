@@ -12,8 +12,8 @@ set -e
 umask 077
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# ENV_FILE can be overridden so a caller (install.sh) can build the file atomically.
-ENV_FILE="${ENV_FILE:-${SCRIPT_DIR}/.env}"
+# SUPERCHECK_ENV_FILE lets a caller (install.sh) build the file atomically.
+ENV_FILE="${SUPERCHECK_ENV_FILE:-${SCRIPT_DIR}/.env}"
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -61,7 +61,9 @@ REDIS_PASSWORD=$(generate_secret 16)
 S3_ACCESS_KEY=$(generate_secret 16)
 S3_SECRET_KEY=$(generate_secret 32)
 
-# Create .env file
+# Create .env file. Remove any existing file first (--force): truncating a 644 file in place
+# would write the new secrets into a world-readable file until the chmod below.
+rm -f "$ENV_FILE"
 cat > "$ENV_FILE" << EOF
 # ============================================================
 # Supercheck Self-Hosted Configuration
