@@ -8,8 +8,12 @@
 
 set -e
 
+# .env holds every secret: never create it world-readable, even briefly.
+umask 077
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ENV_FILE="${SCRIPT_DIR}/.env"
+# ENV_FILE can be overridden so a caller (install.sh) can build the file atomically.
+ENV_FILE="${ENV_FILE:-${SCRIPT_DIR}/.env}"
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -224,6 +228,7 @@ S3_ENDPOINT=http://rustfs:9000
 # MAX_DOCUMENTS_PER_PROJECT=100
 EOF
 
+chmod 600 "$ENV_FILE"
 echo -e "${GREEN}✅ Created .env file at: ${ENV_FILE}${NC}"
 echo ""
 echo -e "${YELLOW}📋 Next steps:${NC}"

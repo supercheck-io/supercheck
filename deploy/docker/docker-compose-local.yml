@@ -80,7 +80,10 @@ x-common-env: &common-env # Database Configuration
   # For local dev - processes all queues
   WORKER_LOCATION: ${WORKER_LOCATION:-local}
 
-  # S3-compatible storage (RustFS)
+  # S3-compatible storage (RustFS). Development only: the app and rustfs read the same
+  # AWS_* variables, so setting them in .env changes both together. These public fallbacks
+  # exist so a source checkout starts without running init-secrets.sh; never use them on a
+  # server (docker-compose.yml requires real keys).
   AWS_REGION: ${AWS_REGION:-us-east-1}
   AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-localdevaccesskey}
   AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-localdevsecretkey0123456789abcdef}

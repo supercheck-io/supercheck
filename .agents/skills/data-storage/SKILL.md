@@ -1,6 +1,6 @@
 ---
 name: supercheck-data-storage
-description: Work on Supercheck PostgreSQL data, S3 or MinIO artifacts, signed URLs and asset proxying, retention cleanup, dashboard/report queries, exports, or audit logging.
+description: Work on Supercheck PostgreSQL data, S3-compatible (RustFS in the bundled stack) artifacts, signed URLs and asset proxying, retention cleanup, dashboard/report queries, exports, or audit logging.
 ---
 
 # Supercheck data storage and lifecycle
@@ -17,12 +17,12 @@ flowchart TD
 
 ## PostgreSQL and object storage
 
-- PostgreSQL holds relational state and artifact metadata; S3/MinIO-compatible stores hold large reports, traces, screenshots, files, and exports.
+- PostgreSQL holds relational state and artifact metadata; S3-compatible stores (RustFS bundled) hold large reports, traces, screenshots, files, and exports.
 - Generate object keys server-side from trusted tenant/resource identifiers. Never accept arbitrary bucket/key pairs or filesystem paths from clients.
 - Authorize ownership before issuing short-lived signed URLs or proxying an object.
 - Asset proxying allows only configured storage origins/keys and must not become a generic server-side fetch endpoint.
 - Uploads enforce object class, MIME/type expectations, byte limits, timeouts, and bounded streaming. Avoid buffering untrusted large objects in app memory.
-- Preserve compatibility across cloud S3/R2-style services and self-hosted MinIO where shared adapters claim support.
+- Preserve compatibility across cloud S3/R2-style services and self-hosted RustFS (and legacy MinIO) where shared adapters claim support.
 
 ## Lifecycle and retention
 

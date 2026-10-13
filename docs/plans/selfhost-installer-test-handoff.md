@@ -28,3 +28,10 @@ Use a fresh VM per case (OrbStack: `orb create ubuntu:24.04 <name>`), copy `depl
 - `SUPERCHECK_VERSION_DEFAULT` is 1.3.6, which predates #375, and the installer fetches tag `v1.3.6`.
 - The resume run after commit `c8e79e33` was started but its result was never read; treat the hardened script as untested end to end.
 - Not covered by anyone yet: Debian, 22.04, amd64, public HTTPS, the demo host migration (`.github/scripts/deploy-demo.sh` has no `--remove-orphans`).
+
+## Release checklist (order matters)
+1. Merge #378 only after the hands-on cases above pass; the tester's earlier pass covered fresh install, re-run, SIGINT, guards, failure paths, migration (including wrong credentials and rollback), first test run and artifacts.
+2. The `v1.3.6` tag still contains the MinIO compose files and an unpullable MinIO image, so the installer's default version must move to the new release together with the compose defaults (`validate.sh` enforces they match). Cut the release from `main` after #375 and #378.
+3. Demo host: run `migrate-minio-to-rustfs.sh` on it before its next deploy (`.github/scripts/deploy-demo.sh` has no `--remove-orphans`; adding it without migrating would silently give the demo empty storage).
+4. Release notes lead with the breaking storage change and link the "Upgrading from MinIO" section.
+5. Open the PR for `docs/selfhost-installer-plan` (still unmerged) or fold it into this one.

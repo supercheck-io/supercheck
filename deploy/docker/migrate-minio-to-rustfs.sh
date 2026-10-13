@@ -36,14 +36,20 @@ ASSUME_YES=false
 [[ "${1:-}" == "--yes" ]] && ASSUME_YES=true
 
 [[ -f .env ]] || die ".env not found in $(pwd). Run this from your existing deploy/docker directory."
-if [[ -f .env.pre-rustfs ]]; then
-  log "Already migrated (.env.pre-rustfs exists). Continue with: git pull && docker compose up -d --wait --remove-orphans"
-  exit 0
-fi
-
 env_get() {
   grep -E "^$1=" .env | tail -1 | cut -d= -f2- | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//" || true
 }
+
+# Decide from the effective .env, not from the backup file: after a rollback (restoring
+# .env.pre-rustfs) the backup still exists but .env points at MinIO again and must be migrated.
+if [[ "$(env_get S3_ENDPOINT)" == *rustfs* ]]; then
+  log ".env already points at RustFS, so this install is migrated. Continue with: git pull && docker compose up -d --wait --remove-orphans"
+  exit 0
+fi
+if [[ -f .env.pre-rustfs ]]; then
+  mv .env.pre-rustfs ".env.pre-rustfs.$(date +%Y%m%d%H%M%S)"
+  warn "Found an older .env.pre-rustfs (a previous attempt or a rollback); it was kept under a timestamped name."
+fi
 
 MINIO_CID="$(docker compose ps -q minio 2>/dev/null || true)"
 [[ -n "$MINIO_CID" ]] || die "No running 'minio' service found.
@@ -80,6 +86,12 @@ cleanup() { docker rm -f "$RFS_NAME" >/dev/null 2>&1 || true; rm -rf "$TMP_DIR";
 trap cleanup EXIT
 
 docker compose stop app worker >/dev/null 2>&1 || true
+# Verify instead of trusting the exit status: copying while writers are active loses data.
+for cid in $(docker compose ps -q app worker 2>/dev/null || true); do
+  if [[ "$(docker inspect -f '{{.State.Running}}' "$cid" 2>/dev/null || echo false)" == "true" ]]; then
+    die "app or worker is still running, so the copy could miss new writes. Nothing was changed. Stop them with: docker compose stop app worker"
+  fi
+done
 log "Stopped app and worker"
 
 VOL="${PROJECT}_rustfs-data"

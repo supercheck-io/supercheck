@@ -50,6 +50,14 @@ testCompose("still starts without SECRET_ENCRYPTION_KEY so upgrades keep reading
   }
 });
 
+testCompose("production compose files refuse to start without S3 keys", () => {
+  for (const file of ["docker-compose.yml", "docker-compose-external.yml"]) {
+    for (const key of ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"]) {
+      expect(() => config("", file, { [key]: "" })).toThrow();
+    }
+  }
+});
+
 testCompose("the default stack needs neither HTTPS nor Private Agent settings", () => {
   const stack = config();
   expect(Object.keys(stack.services).sort()).toEqual([

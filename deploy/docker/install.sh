@@ -122,6 +122,7 @@ header() { printf '\n%s[%s/%s]%s %s%s%s\n' "$CYAN" "$1" "$TOTAL_STEPS" "$RESET" 
 
 SPIN_PID=""
 STEP_PID=""
+ATTEMPTED=false
 
 kill_tree() { # kill_tree <pid>: TERM the process and all of its descendants
   local pid="$1" child
@@ -158,7 +159,9 @@ on_exit() {
   local rc=$?
   spin_stop
   stop_step
-  if [[ $rc -ne 0 && "$DRY_RUN" != true && -f "$LOG_FILE" && "${SHOWN_LOG_TAIL:-false}" != true ]]; then
+  # Only after changes began, and only for a real failure (1): usage errors (2), an unhealthy
+  # but running stack (3) and interrupts (130) print their own message.
+  if [[ $rc -eq 1 && "$ATTEMPTED" == true && "$DRY_RUN" != true && -f "$LOG_FILE" && "${SHOWN_LOG_TAIL:-false}" != true ]]; then
     printf '\n%sInstallation did not finish.%s Re-running is safe and resumes where it stopped.\n' "$RED" "$RESET" >&2
     printf 'Full log: %s\n' "$LOG_FILE" >&2
   fi
@@ -247,6 +250,28 @@ compose_dir() { echo "${COMPOSE_DIR:-${INSTALL_DIR}/deploy/docker}"; }
 
 env_get() { sed -n "s/^$1=//p" "$(compose_dir)/.env" 2>/dev/null | tail -n1 | tr -d '"'''; }
 
+# Compose names volumes <project>_<volume>; the project is COMPOSE_PROJECT_NAME (shell, then .env) or "supercheck".
+project_name() {
+  local p="${COMPOSE_PROJECT_NAME:-}"
+  [[ -n "$p" ]] || p="$(env_get COMPOSE_PROJECT_NAME)"
+  p="${p:-supercheck}"
+  printf '%s\n' "$p" | tr '[:upper:]' '[:lower:]'
+}
+
+# True when the directory has anything besides a bare .git (an interrupted clone leaves only that).
+dir_has_content() {
+  local f
+  for f in "$1"/* "$1"/.[!.]* "$1"/..?*; do
+    [[ -e "$f" || -L "$f" ]] || continue
+    [[ "$(basename "$f")" == ".git" ]] && continue
+    return 0
+  done
+  return 1
+}
+
+# True when the existing .env actually enables HTTPS (commented template lines do not count).
+env_has_https() { [[ "$(env_get COMPOSE_PROFILES)" == *https* && -n "$(env_get APP_DOMAIN)" ]]; }
+
 dc() { ( cd "$(compose_dir)" && KUBECONFIG_FILE="$KUBECONFIG_FILE" docker compose "$@" ); }
 
 # ─── Step bodies (run in subshells; failures abort the step) ────────────────
@@ -264,15 +289,17 @@ install_prerequisites() {
     id="$(os_field ID)"
     codename="$(os_field VERSION_CODENAME)"
     install -m 0755 -d /etc/apt/keyrings
-    curl -fsSL "https://download.docker.com/linux/${id}/gpg" -o /tmp/docker-key.asc
+    local key
+    key="$(mktemp)"
+    curl -fsSL "https://download.docker.com/linux/${id}/gpg" -o "$key"
     # Docker's published apt signing key fingerprint; refuse anything else.
-    if ! gpg --show-keys --with-colons /tmp/docker-key.asc | grep -q '^fpr:::::::::9DC858229FC7DD38854AE2D88D81803C0EBFCD88:'; then
-      rm -f /tmp/docker-key.asc
+    if ! gpg --show-keys --with-colons "$key" | grep -q '^fpr:::::::::9DC858229FC7DD38854AE2D88D81803C0EBFCD88:'; then
+      rm -f "$key"
       echo "Docker apt key fingerprint did not match the expected value; refusing to install it." >&2
       exit 1
     fi
-    gpg --dearmor --yes -o /etc/apt/keyrings/docker.gpg < /tmp/docker-key.asc
-    rm -f /tmp/docker-key.asc
+    gpg --dearmor --yes -o /etc/apt/keyrings/docker.gpg < "$key"
+    rm -f "$key"
     chmod a+r /etc/apt/keyrings/docker.gpg
     echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/${id} ${codename} stable" \
       >/etc/apt/sources.list.d/docker.list
@@ -293,36 +320,59 @@ install_prerequisites() {
 }
 
 fetch_source() {
+  local tmp
   mkdir -p "$(dirname "$INSTALL_DIR")"
+  # An empty or .git-only directory is the leftover of an interrupted run; stale temp dirs too.
+  rm -rf "${INSTALL_DIR}".tmp.*
+  if [[ -d "$INSTALL_DIR" ]] && ! dir_has_content "$INSTALL_DIR"; then rm -rf "$INSTALL_DIR"; fi
+  # Build in a temp sibling and rename on success, so an interruption never leaves a
+  # half-populated install directory that a re-run would refuse.
+  tmp="$(mktemp -d "${INSTALL_DIR}.tmp.XXXXXX")"
+  trap 'rm -rf "$tmp"' EXIT
   # Fetch the tag ref explicitly: `git clone --branch` would prefer a same-named branch.
-  mkdir -p "$INSTALL_DIR"
-  git -C "$INSTALL_DIR" init --quiet
-  git -C "$INSTALL_DIR" remote add origin "$REPO_URL"
-  git -C "$INSTALL_DIR" fetch --quiet --depth 1 origin "refs/tags/v${VERSION}:refs/tags/v${VERSION}"
-  git -C "$INSTALL_DIR" checkout --quiet --detach "refs/tags/v${VERSION}"
+  git -C "$tmp" init --quiet
+  git -C "$tmp" remote add origin "$REPO_URL"
+  git -C "$tmp" fetch --quiet --depth 1 origin "refs/tags/v${VERSION}:refs/tags/v${VERSION}"
+  git -C "$tmp" checkout --quiet --detach "refs/tags/v${VERSION}"
+  chmod 755 "$tmp"
+  mv "$tmp" "$INSTALL_DIR"
+  trap - EXIT
+}
+
+public_block() {
+  echo ""
+  echo "# ─── Set by install.sh ───"
+  echo "COMPOSE_PROFILES=$1"
+  echo "APP_DOMAIN=${DOMAIN}"
+  echo "ACME_EMAIL=${EMAIL}"
+  echo "STATUS_PAGE_DOMAIN=${STATUS_DOMAIN:-$DOMAIN}"
 }
 
 generate_config() {
-  local dir; dir="$(compose_dir)"
-  cd "$dir"
-  # Build the final .env beside the real one and move it into place, so an interruption
-  # can never leave a local-mode .env that a re-run would then keep.
+  cd "$(compose_dir)"
+  # init-secrets.sh writes to .env.new (ENV_FILE override) and the finished file is moved into
+  # place, so an interruption can never leave a partial .env that a re-run would keep.
+  rm -f .env.new
   ( umask 077
-    cp -p .env .env.keep 2>/dev/null || true
-    rm -f .env
-    bash ./init-secrets.sh
-    cp .env .env.new
-    rm -f .env.keep
-    if [[ "$MODE" == "public" ]]; then
-      {
-        echo ""
-        echo "# ─── Set by install.sh ───"
-        echo "COMPOSE_PROFILES=https"
-        echo "APP_DOMAIN=${DOMAIN}"
-        echo "ACME_EMAIL=${EMAIL}"
-        echo "STATUS_PAGE_DOMAIN=${STATUS_DOMAIN:-$DOMAIN}"
-      } >>.env.new
-    fi
+    ENV_FILE="$PWD/.env.new" bash ./init-secrets.sh
+    [[ -s .env.new ]]
+    if [[ "$MODE" == "public" ]]; then public_block "https" >>.env.new; fi
+    chmod 600 .env.new
+    mv .env.new .env
+  )
+}
+
+# Turn an existing .env into a public HTTPS configuration without touching its secrets.
+apply_public_config() {
+  cd "$(compose_dir)"
+  local profiles
+  profiles="$(env_get COMPOSE_PROFILES)"
+  if [[ -z "$profiles" ]]; then profiles="https"; elif [[ "$profiles" != *https* ]]; then profiles="${profiles},https"; fi
+  ( umask 077
+    cp -p .env ".env.bak-$(date +%Y%m%d%H%M%S)"
+    # Drop the active keys we set, and any explicit localhost URLs that would override APP_DOMAIN.
+    grep -v -E '^(COMPOSE_PROFILES|APP_DOMAIN|ACME_EMAIL|STATUS_PAGE_DOMAIN)=|^(NEXT_PUBLIC_APP_URL|APP_URL|BETTER_AUTH_URL)=https?://(localhost|127\.)' .env >.env.new || true
+    public_block "$profiles" >>.env.new
     chmod 600 .env.new
     mv .env.new .env
   )
@@ -346,8 +396,11 @@ prewarm_worker_image() {
   fi
   local platform
   platform="linux/$(dpkg --print-architecture)"
-  docker save --platform "$platform" "$image" 2>/dev/null | k3s ctr -n k8s.io images import --all-platforms - \
-    || docker save "$image" | k3s ctr -n k8s.io images import --all-platforms -
+  # Prefer a single-platform archive (a containerd image store can emit an index with missing
+  # blobs); with pipefail a truncated or failed import falls back to the plain archive.
+  if ! { docker save --platform "$platform" "$image" | k3s ctr -n k8s.io images import --all-platforms -; }; then
+    docker save "$image" | k3s ctr -n k8s.io images import --all-platforms -
+  fi
 }
 
 start_stack() {
@@ -418,13 +471,15 @@ preflight() {
   if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
     local vols
     vols="$(docker volume ls -q 2>/dev/null || true)"
-    if [[ "$IGNORE_MINIO" != true ]] && grep -Eqx 'supercheck_minio-data' <<<"$vols" && ! grep -Eqx 'supercheck_rustfs-data' <<<"$vols"; then
+    local proj
+    proj="$(project_name)"
+    if [[ "$IGNORE_MINIO" != true ]] && grep -Fxq "${proj}_minio-data" <<<"$vols" && ! grep -Fxq "${proj}_rustfs-data" <<<"$vols"; then
       fail "An existing Supercheck MinIO storage volume was found. Installing now would start with empty storage."
       note "Run migrate-minio-to-rustfs.sh from your current checkout first (see 'Upgrading from MinIO' in the docs)."
       note "Starting fresh on purpose? Re-run with --ignore-minio."
       problems=1
     fi
-    if [[ ! -f "$(compose_dir)/.env" ]] && grep -Eqx 'supercheck_(postgres|rustfs)-data' <<<"$vols"; then
+    if [[ ! -f "$(compose_dir)/.env" ]] && grep -Fxq -e "${proj}_postgres-data" -e "${proj}_rustfs-data" <<<"$vols"; then
       fail "Data from an earlier Supercheck install exists, but no .env was found to unlock it."
       note "A new .env would generate new passwords that cannot open the existing database."
       note "Restore your original .env into $(compose_dir), or remove the old volumes first if you are starting over:"
@@ -485,6 +540,17 @@ main() {
   preflight
 
   header 2 "Choosing your setup"
+  USE_EXISTING=false
+  if [[ -z "$MODE" && -f "$(compose_dir)/.env" ]]; then
+    USE_EXISTING=true
+    if env_has_https; then
+      MODE="public"; DOMAIN="$(env_get APP_DOMAIN)"
+      ok "Using your existing configuration: HTTPS for ${BOLD}${DOMAIN}${RESET}"
+    else
+      MODE="local"
+      ok "Using your existing configuration: local HTTP"
+    fi
+  fi
   if [[ -z "$MODE" ]]; then
     if [[ "$CAN_PROMPT" == true ]]; then
       printf '\n    1) Try it on this server   %s(HTTP on localhost, fastest)%s\n' "$DIM" "$RESET" >/dev/tty
@@ -496,7 +562,7 @@ main() {
     fi
   fi
 
-  if [[ "$MODE" == "public" ]]; then
+  if [[ "$MODE" == "public" && "$USE_EXISTING" != true ]]; then
     # With a terminal, re-ask on a typo instead of aborting; flag values are validated strictly below.
     if [[ "$CAN_PROMPT" == true ]]; then
       for _ in 1 2 3; do
@@ -523,14 +589,24 @@ main() {
     fi
     ok "Public HTTPS install for ${BOLD}${DOMAIN}${RESET}"
     note "Status pages use ${STATUS_DOMAIN:-$DOMAIN} subdomains, so also add a wildcard record (*.${STATUS_DOMAIN:-$DOMAIN})."
-  else
+  elif [[ "$MODE" == "local" && "$USE_EXISTING" != true ]]; then
     ok "Local evaluation on this server"
   fi
 
   check_ports
 
-  if [[ -f "$(compose_dir)/.env" ]]; then
-    note "An existing .env was found and will be kept; setup choices above are not applied to it."
+  # An existing .env is never regenerated. A public request against a .env that is not yet
+  # configured for that domain updates only the HTTPS keys (backup kept); anything else keeps it.
+  NEED_PUBLIC_APPLY=false
+  if [[ -f "$(compose_dir)/.env" && "$USE_EXISTING" != true ]]; then
+    if [[ "$MODE" == "public" ]] && { ! env_has_https || [[ "$(env_get APP_DOMAIN)" != "$DOMAIN" || "$(env_get ACME_EMAIL)" != "$EMAIL" ]]; }; then
+      NEED_PUBLIC_APPLY=true
+      note "An existing .env was found. Its secrets are kept; the HTTPS settings for ${DOMAIN} will be added (a backup is saved)."
+    elif [[ "$MODE" == "local" ]] && env_has_https; then
+      warn "The existing .env is configured for HTTPS (${BOLD}$(env_get APP_DOMAIN)${RESET}); --local is ignored and it is left as is."
+    else
+      note "An existing .env was found and will be kept."
+    fi
   fi
 
   if [[ "$CAN_PROMPT" == true && "$DRY_RUN" != true ]]; then
@@ -538,6 +614,7 @@ main() {
     confirm "Continue?" || die "Cancelled. Nothing was changed."
   fi
 
+  ATTEMPTED=true
   header 3 "Installing prerequisites"
   if [[ "$DRY_RUN" == true ]]; then
     if docker_ready; then note "Docker and Compose >= $MIN_COMPOSE are present"; else note "would: install Docker, Compose, git and bzip2"; fi
@@ -550,7 +627,7 @@ main() {
   header 4 "Preparing configuration"
   if [[ -f "$(compose_dir)/init-secrets.sh" ]]; then
     ok "Source in $(compose_dir)"
-  elif [[ -e "$INSTALL_DIR" && -n "$(ls -A "$INSTALL_DIR" 2>/dev/null)" ]]; then
+  elif [[ -d "$INSTALL_DIR" ]] && dir_has_content "$INSTALL_DIR"; then
     die "${INSTALL_DIR} exists but is not a Supercheck checkout." "Choose another location with --dir, or remove it."
   else
     if [[ "$DRY_RUN" != true ]] && ! git ls-remote --exit-code --tags "$REPO_URL" "refs/tags/v${VERSION}" >/dev/null 2>&1; then
@@ -560,6 +637,7 @@ main() {
   fi
   if [[ -f "$(compose_dir)/.env" ]]; then
     ok "Keeping existing .env (secrets are never regenerated)"
+    if [[ "$NEED_PUBLIC_APPLY" == true ]]; then run_step "Applying HTTPS settings to .env" apply_public_config; fi
   else
     run_step "Generating secrets and configuration" generate_config
   fi
@@ -578,7 +656,6 @@ main() {
     compose_cfg="$(dc config 2>/dev/null || true)"
     worker_image="$(awk '/^ *WORKER_IMAGE:/ {print $2; exit}' <<<"$compose_cfg")"
     last_seg="${worker_image##*/}"
-    if [[ "$VERSION_SET" == true && "$USING_THIS_CHECKOUT" != true ]]; then export SUPERCHECK_VERSION="$VERSION"; fi
     if [[ "$PREWARM" != true ]]; then
       note "Skipping image warm-up (--no-prewarm); the first test run will download it and may time out."
     elif [[ -z "$worker_image" ]]; then
@@ -610,9 +687,9 @@ main() {
     elif [[ -n "$health" ]]; then
       warn "Running, but the health check reports a problem:"
       note "$health"
-      note "Inspect with: cd $(compose_dir) && docker compose logs --tail=100 app worker"
+      note "Inspect with: cd $(compose_dir) && sudo docker compose logs --tail=100 app worker"
     else
-      die "The app did not answer on http://127.0.0.1:3000." "Inspect with: cd $(compose_dir) && docker compose logs --tail=100 app worker"
+      die "The app did not answer on http://127.0.0.1:3000." "Inspect with: cd $(compose_dir) && sudo docker compose logs --tail=100 app worker"
     fi
   fi
 
@@ -623,6 +700,8 @@ main() {
     exit 0
   fi
 
+  # Report what is actually configured, not what was requested.
+  if env_has_https; then MODE="public"; DOMAIN="$(env_get APP_DOMAIN)"; else MODE="local"; fi
   if [[ "$MODE" == "public" ]]; then URL="https://${DOMAIN}"; else URL="http://localhost:3000"; fi
   if [[ "$HEALTHY" == true ]]; then
     printf '\n%s  Supercheck is ready.%s %s(%ss)%s\n\n' "$GREEN$BOLD" "$RESET" "$DIM" "$SECONDS" "$RESET"
@@ -638,11 +717,11 @@ main() {
   printf '  Next        create your account, then add a test and run it\n'
   if [[ "$MODE" == "public" ]]; then
     warn "Sign-up is open to anyone who can reach ${URL}. Create your account first, then set SIGNUP_ENABLED=false in .env"
-    note "(or restrict it with ALLOWED_EMAIL_DOMAINS) and run: cd $(compose_dir) && docker compose up -d --force-recreate app"
+    note "(or restrict it with ALLOWED_EMAIL_DOMAINS) and run: cd $(compose_dir) && sudo docker compose up -d --force-recreate app"
   fi
   printf '  Config      %s/.env  %s(keep a private backup; it holds your secrets)%s\n' "$(compose_dir)" "$DIM" "$RESET"
-  printf '  Logs        cd %s && docker compose logs -f app worker\n' "$(compose_dir)"
-  printf '  Stop/start  docker compose stop   /   KUBECONFIG_FILE=%s docker compose up -d\n' "$KUBECONFIG_FILE"
+  printf '  Logs        cd %s && sudo docker compose logs -f app worker\n' "$(compose_dir)"
+  printf '  Stop/start  sudo docker compose stop   /   sudo env KUBECONFIG_FILE=%s docker compose up -d\n' "$KUBECONFIG_FILE"
   printf '  Install log %s\n' "$LOG_FILE"
   printf '  Docs        https://supercheck.io/docs/app/deployment/self-hosted\n'
   if [[ "$DOCKER_GROUP" == true && -n "${SUDO_USER:-}" && "$SUDO_USER" != "root" ]]; then

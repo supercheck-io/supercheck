@@ -38,7 +38,7 @@ npm run generate-docs
   - `/docs`: Next.js docs site
   - `/cli`: Command-line client
   - `/recorder`: Browser recorder and extension packages
-- Execution flow is: UI/API request -> App API route creates/updates DB run rows -> App enqueues BullMQ jobs in Redis -> Worker processors execute and update statuses/artifacts -> results are stored in Postgres + S3/MinIO.
+- Execution flow is: UI/API request -> App API route creates/updates DB run rows -> App enqueues BullMQ jobs in Redis -> Worker processors execute and update statuses/artifacts -> results are stored in Postgres + S3-compatible storage (RustFS).
 - Queue topology is intentionally mixed:
   - Playwright: single global queue (`playwright-global`)
   - k6: global queue (`k6-global`) plus per-location queues (e.g., `k6-local`, `k6-us-east`) — dynamically created from `locations` DB table
