@@ -160,7 +160,8 @@ fi
 install -m 600 .env .env.pre-rustfs
 ( umask 077
 {
-  grep -v -E '^(S3_ENDPOINT)=' .env
+  grep -v -E '^(S3_ENDPOINT|COMPOSE_PROJECT_NAME)=' .env || [[ $? -eq 1 ]]
+  echo "COMPOSE_PROJECT_NAME=${PROJECT}"
   echo "S3_ENDPOINT=http://rustfs:9000"
   if [[ "$KEYS_MISSING" == true ]]; then
     echo "AWS_ACCESS_KEY_ID=${NEW_AK}"

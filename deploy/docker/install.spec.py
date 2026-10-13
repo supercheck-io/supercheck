@@ -341,11 +341,14 @@ exec /bin/chmod "$@"
             binary.chmod(0o755)
         original = 'S3_ENDPOINT=http://minio:9000\nAWS_ACCESS_KEY_ID=fixture\nAWS_SECRET_ACCESS_KEY=fixture\n'
         for attempt in range(3):
+            expected_backup = original + ('COMPOSE_PROJECT_NAME=previous-project\n' if attempt else '')
             config = migration / '.env'
-            config.write_text(original)
+            config.write_text(expected_backup)
             config.chmod(0o644)
             self.run_shell('export PATH="$TEST_ROOT/bin:$PATH"\nbash "$TEST_ROOT/migration/migrate.sh" --yes\n')
-            self.assertEqual((migration / '.env.pre-rustfs').read_text(), original)
+            self.assertEqual((migration / '.env.pre-rustfs').read_text(), expected_backup)
+            self.assertIn('COMPOSE_PROJECT_NAME=fixture-project\n', config.read_text())
+            self.assertEqual(config.read_text().count('COMPOSE_PROJECT_NAME='), 1)
             self.assertEqual((migration / '.env.pre-rustfs').stat().st_mode & 0o777, 0o600)
             self.assertEqual(config.stat().st_mode & 0o777, 0o600)
             self.assertFalse((self.root / 'exposed-backup').exists())
