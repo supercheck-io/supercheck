@@ -127,7 +127,7 @@ export function ServiceFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-4xl min-w-2xl gap-3 overflow-y-auto p-5">
+      <DialogContent className="max-h-[calc(100svh-2rem)] w-[calc(100vw-2rem)] max-w-4xl gap-3 overflow-y-auto p-5 sm:w-full">
         <DialogHeader>
           <DialogTitle>{service ? "Edit service" : "Add service"}</DialogTitle>
           <DialogDescription>

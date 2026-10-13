@@ -12,7 +12,7 @@ describe("SreSetupGuideDialog", () => {
           diagnosticRecipes: 0,
           privateAgents: 0,
           completedRequiredSteps: 1,
-          requiredSteps: 3,
+          requiredSteps: 2,
           complete: false,
         }}
       />,
@@ -24,7 +24,7 @@ describe("SreSetupGuideDialog", () => {
     expect(
       screen.getByRole("dialog", { name: "AI SRE setup" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("1/3 complete")).toBeInTheDocument();
+    expect(screen.getByText("1/2 complete")).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "Open Integrations" }),
     ).toHaveAttribute("href", "/org-admin?tab=integrations");
@@ -33,23 +33,24 @@ describe("SreSetupGuideDialog", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("remains available after setup is complete", () => {
+  it("completes setup without optional saved queries", () => {
     render(
       <SreSetupGuideDialog
         status={{
           services: 1,
           connectors: 1,
-          diagnosticRecipes: 1,
+          diagnosticRecipes: 0,
           privateAgents: 0,
-          completedRequiredSteps: 3,
-          requiredSteps: 3,
+          completedRequiredSteps: 2,
+          requiredSteps: 2,
           complete: true,
         }}
       />,
     );
 
-    expect(
-      screen.getByRole("button", { name: /setup guide/i }),
-    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /setup guide/i }));
+    expect(screen.getByText("2/2 complete")).toBeInTheDocument();
+    expect(screen.getByText("Save a query (optional)")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open Saved queries" })).toHaveAttribute("href", "/org-admin?tab=integrations&section=saved-queries");
   });
 });

@@ -1,12 +1,12 @@
 ---
 title: AI SRE Setup
-description: Configure services, read-only integrations, diagnostic recipes, and Private Agents
+description: Configure services, read-only integrations, saved queries, and Private Agents
 icon: Bot
 ---
 
 Project Admins and organization-level administrators configure AI SRE from **Organization Admin**. Responders start from **Alerts** or **Investigate → Incidents**. **Copilot** and **Services** are grouped under **Investigate**; the map is an optional link from an incident or service.
 
-Select **Setup guide** beside **Add service**, **Add connector**, or **Add recipe** to review setup status.
+Select **Setup guide** beside **Add service**, **Add connector**, or **Add query** to review setup status.
 
 <Callout type="info">
 **Self-hosted:** Configure an [AI provider](/docs/app/deployment/self-hosted#optional-configuration) to use AI SRE. Start with stored evidence; connectors and Private Agents are optional.
@@ -36,19 +36,19 @@ Suggested relationships do not enter the Investigation Map until an authorized u
 
 Use **Organization Admin → Integrations** to add read-only evidence sources. Each connector has a service scope, validation status, execution mode, and output limits.
 
-![Integrations Tab](/screenshots/sre-connectors.png)
-
 Click **Add connector** to connect external telemetry providers like Prometheus, Grafana, Loki, or GitHub:
 
 Use the narrowest credential and service scope that supports your investigation queries. Validate the connector after setup. See [Connectors](/docs/app/investigate/connectors) for supported providers and query examples.
 
 Connectors are optional. Start with stored Supercheck evidence, then add external sources your team needs.
 
-## Diagnostic Recipes
+## Saved queries (optional)
 
-Use **Diagnostic Recipes** to save approved, repeatable investigation queries. Choose a connector, define the approved query, and set output and time limits.
+Saved queries are optional named templates for read-only questions your team repeats. You can investigate stored Supercheck evidence and run supported live connector searches without creating one. Save a query when you want responders to reuse the same bounded question, such as checking a service's 5xx rate over the last five minutes.
 
-Start with high-value checks such as service error rate, latency, recent error logs, or slow traces.
+In **Organization Admin → Integrations**, expand **Saved queries** below connector management and click **Add query**. Each query is tied to one enabled connector, validates its parameters and allowlist, and limits returned rows, output size, and runtime. Supported query types depend on the connector and include SQL, PromQL, LogQL, TraceQL, and HTTP GET. Disabling a saved query prevents future executions; it does not remove evidence already collected.
+
+![Saved queries under Integrations](/screenshots/sre-integrations-saved-queries.png)
 
 ## Private Agents
 
@@ -91,14 +91,14 @@ flowchart LR
 1. Investigate an incident using stored Supercheck evidence.
 2. Add service context when you need service links, dependencies, or live connectors.
 3. Optionally add connectors for external evidence. If a provider is private, deploy a Private Agent before selecting it in the connector.
-4. Add diagnostic recipes for questions you need to repeat.
+4. Optionally save a query if responders need to repeat the same bounded question.
 5. Validate each connector and run an investigation with live sources enabled before relying on it during an incident.
 
 ## Permissions
 
 | Task | Required permission |
 |---|---|
-| Manage integrations, recipes, or Private Agents | Connector configure |
+| Manage integrations, saved queries, or Private Agents | Connector configure |
 | Edit service metadata, dependencies, or links | Service update |
 | Approve topology suggestions | Service configure |
 | Create or investigate incidents | Matching incident permission |

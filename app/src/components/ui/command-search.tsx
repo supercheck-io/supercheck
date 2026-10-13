@@ -86,7 +86,8 @@ export function CommandSearch({
           ? {
               "admin-services": "/services",
               "admin-integrations": "/org-admin?tab=integrations",
-              "admin-diagnostic-recipes": "/org-admin?tab=diagnostic-recipes",
+              "admin-diagnostic-recipes":
+                "/org-admin?tab=integrations&section=saved-queries",
               "admin-private-agents": "/org-admin?tab=private-agents",
             }
           : {}),
@@ -129,7 +130,7 @@ export function CommandSearch({
         }
       }
     },
-    [canConfigureSre, canInvestigateSre, router]
+    [canConfigureSre, canInvestigateSre, router],
   );
 
   // Command palette toggle only
@@ -237,7 +238,9 @@ export function CommandSearch({
                       <Bot className="mr-2 h-4 w-4 !text-zinc-400" />
                       <span>Copilot</span>
                     </CommandItem>
-                    <CommandItem onSelect={() => handleCommand("evidence-graph")}>
+                    <CommandItem
+                      onSelect={() => handleCommand("evidence-graph")}
+                    >
                       <BrainCircuit className="mr-2 h-4 w-4 !text-violet-500" />
                       <span>Investigation Map</span>
                     </CommandItem>
@@ -254,7 +257,9 @@ export function CommandSearch({
                 </CommandItem>
                 {canConfigureSre && (
                   <>
-                    <CommandItem onSelect={() => handleCommand("admin-services")}>
+                    <CommandItem
+                      onSelect={() => handleCommand("admin-services")}
+                    >
                       <Boxes className="mr-2 h-4 w-4 !text-sky-600" />
                       <span>Services</span>
                     </CommandItem>
@@ -265,12 +270,10 @@ export function CommandSearch({
                       <span>Integrations</span>
                     </CommandItem>
                     <CommandItem
-                      onSelect={() =>
-                        handleCommand("admin-diagnostic-recipes")
-                      }
+                      onSelect={() => handleCommand("admin-diagnostic-recipes")}
                     >
                       <SquareLibrary className="mr-2 h-4 w-4 !text-cyan-600" />
-                      <span>Diagnostic Recipes</span>
+                      <span>Saved queries</span>
                     </CommandItem>
                     <CommandItem
                       onSelect={() => handleCommand("admin-private-agents")}

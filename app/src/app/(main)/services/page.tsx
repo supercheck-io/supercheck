@@ -1,4 +1,5 @@
 import { getSreServices } from "@/actions/sre-services";
+import { Card, CardContent } from "@/components/ui/card";
 import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
 import { ServiceCatalog } from "@/components/sre/services/service-catalog";
 import { requireProjectContext } from "@/lib/project-context";
@@ -16,26 +17,23 @@ export default async function ServicesPage() {
   };
 
   return (
-    <div className="space-y-6 p-4 md:p-6">
+    <div>
       <PageBreadcrumbs
         items={[
           { label: "Investigate", href: "/incidents" },
           { label: "Services", isCurrentPage: true },
         ]}
       />
-      <div>
-        <h1 className="text-2xl font-semibold">Services</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Optional context for investigations. Link monitors and jobs to a
-          service to scope live sources and understand dependencies.
-        </p>
-      </div>
-      <ServiceCatalog
-        key={context.project.id}
-        initialServices={result.services}
-        loadError={result.success ? null : result.error}
-        permissions={permissions}
-      />
+      <Card className="m-4 min-w-0 overflow-hidden shadow-sm transition-shadow duration-200 hover:shadow-md">
+        <CardContent>
+          <ServiceCatalog
+            key={context.project.id}
+            initialServices={result.services}
+            loadError={result.success ? null : result.error}
+            permissions={permissions}
+          />
+        </CardContent>
+      </Card>
     </div>
   );
 }

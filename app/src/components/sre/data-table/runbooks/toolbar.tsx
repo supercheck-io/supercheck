@@ -21,14 +21,14 @@ export function RunbooksToolbar<TData>({
 }: RunbooksToolbarProps<TData>) {
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-      <div className="relative w-full sm:max-w-sm">
-        <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+      <div className="relative w-full sm:w-[250px]">
+        <Search className="absolute left-2 top-2 h-4 w-4 text-muted-foreground" />
         <Input
           value={(table.getState().globalFilter as string) ?? ""}
           onChange={(event) => table.setGlobalFilter(event.target.value)}
-          placeholder="Search recipe, connector, type..."
-          className="h-8 pl-9"
-          aria-label="Search diagnostic recipes"
+          placeholder="Search query, connector, type..."
+          className="h-8 pl-8"
+          aria-label="Search saved queries"
         />
       </div>
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -39,7 +39,7 @@ export function RunbooksToolbar<TData>({
           className="w-full sm:w-auto"
         >
           <Plus className="mr-2 h-4 w-4" />
-          Add recipe
+          Add query
         </Button>
       </div>
     </div>

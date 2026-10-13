@@ -12,7 +12,7 @@ export default function IncidentsPage() {
     <div>
       <PageBreadcrumbs items={breadcrumbs} />
       <Card className="m-4 min-w-0 overflow-hidden shadow-sm transition-shadow duration-200 hover:shadow-md">
-        <CardContent className="p-6">
+        <CardContent>
           <SreIncidentsPageClient />
         </CardContent>
       </Card>

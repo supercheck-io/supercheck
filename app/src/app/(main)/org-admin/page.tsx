@@ -14,6 +14,11 @@ import { TableBadge } from "@/components/ui/table-badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -32,6 +37,7 @@ import {
   RadioTower,
   Cable,
   SquareLibrary,
+  ChevronDown,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AuditLogsTable } from "@/components/admin/audit-logs-table";
@@ -165,11 +171,7 @@ type SrePrivateAgentsResponse =
   | { success: false; error: string; agents: [] };
 
 const ADMIN_SETUP_FETCH_TIMEOUT_MS = 15000;
-const SRE_SETUP_TABS = new Set([
-  "integrations",
-  "diagnostic-recipes",
-  "private-agents",
-]);
+const SRE_SETUP_TABS = new Set(["integrations", "private-agents"]);
 
 async function fetchAdminSetupJson<T>(url: string): Promise<T> {
   const controller = new AbortController();
@@ -237,7 +239,6 @@ function OrgAdminDashboardContent() {
             "cli-tokens",
             "audit",
             "integrations",
-            "diagnostic-recipes",
             "private-agents",
             "subscription",
           ]
@@ -247,7 +248,6 @@ function OrgAdminDashboardContent() {
             "cli-tokens",
             "audit",
             "integrations",
-            "diagnostic-recipes",
             "private-agents",
           ],
     [isCloudHosted],
@@ -257,8 +257,8 @@ function OrgAdminDashboardContent() {
   const normalizedRequestedTab =
     requestedTab === "sre-setup"
       ? "private-agents"
-      : requestedTab === "runbooks"
-        ? "diagnostic-recipes"
+      : requestedTab === "runbooks" || requestedTab === "diagnostic-recipes"
+        ? "integrations"
         : requestedTab;
   const safeTab =
     normalizedRequestedTab && allowedTabs.includes(normalizedRequestedTab)
@@ -266,6 +266,13 @@ function OrgAdminDashboardContent() {
       : "projects";
 
   const [activeTab, setActiveTab] = useState(safeTab);
+  const requestedSavedQueries =
+    searchParams.get("section") === "saved-queries" ||
+    requestedTab === "runbooks" ||
+    requestedTab === "diagnostic-recipes";
+  const [savedQueriesOpen, setSavedQueriesOpen] = useState(
+    requestedSavedQueries,
+  );
 
   const { details: orgDetails, isLoading: detailsLoading } = useOrgDetails();
   const {
@@ -332,7 +339,6 @@ function OrgAdminDashboardContent() {
   const [diagnosticLoadError, setDiagnosticLoadError] = useState<string | null>(
     null,
   );
-  const [diagnosticLoading, setDiagnosticLoading] = useState(false);
   const [diagnosticLoaded, setDiagnosticLoaded] = useState(
     Boolean(cachedDiagnostic),
   );
@@ -425,6 +431,10 @@ function OrgAdminDashboardContent() {
   }, [safeTab]);
 
   useEffect(() => {
+    setSavedQueriesOpen(requestedSavedQueries);
+  }, [requestedSavedQueries]);
+
+  useEffect(() => {
     if (requestedTab === "services") {
       router.replace("/services");
       return;
@@ -436,6 +446,7 @@ function OrgAdminDashboardContent() {
     ) {
       const params = new URLSearchParams(searchParams.toString());
       params.set("tab", safeTab);
+      if (requestedSavedQueries) params.set("section", "saved-queries");
       router.replace(`${pathname}?${params.toString()}`, { scroll: false });
     }
   }, [
@@ -443,6 +454,7 @@ function OrgAdminDashboardContent() {
     normalizedRequestedTab,
     pathname,
     requestedTab,
+    requestedSavedQueries,
     router,
     safeTab,
     searchParams,
@@ -491,12 +503,11 @@ function OrgAdminDashboardContent() {
   }, [activeTab, integrationsLoaded, projectId, queryClient]);
 
   useEffect(() => {
-    if (activeTab !== "diagnostic-recipes" || diagnosticLoaded) {
+    if (activeTab !== "integrations" || !savedQueriesOpen || diagnosticLoaded) {
       return;
     }
 
     let isCancelled = false;
-    setDiagnosticLoading(true);
 
     queryClient
       .fetchQuery({
@@ -517,19 +528,16 @@ function OrgAdminDashboardContent() {
       })
       .catch((error) => {
         if (isCancelled) return;
-        console.error("Error loading diagnostic recipes:", error);
+        console.error("Error loading saved queries:", error);
         setDiagnosticQueries([]);
-        setDiagnosticLoadError("Failed to fetch diagnostic recipes");
+        setDiagnosticLoadError("Failed to fetch saved queries");
         setDiagnosticLoaded(true);
-      })
-      .finally(() => {
-        if (!isCancelled) setDiagnosticLoading(false);
       });
 
     return () => {
       isCancelled = true;
     };
-  }, [activeTab, diagnosticLoaded, projectId, queryClient]);
+  }, [activeTab, savedQueriesOpen, diagnosticLoaded, projectId, queryClient]);
 
   useEffect(() => {
     if (activeTab !== "private-agents" || privateAgentsLoaded) {
@@ -585,11 +593,22 @@ function OrgAdminDashboardContent() {
       params.set("tab", value);
     }
     params.delete("action");
+    params.delete("section");
+    setSavedQueriesOpen(false);
 
     const nextUrl = params.toString()
       ? `${pathname}?${params.toString()}`
       : pathname;
     router.replace(nextUrl, { scroll: false });
+  };
+
+  const handleSavedQueriesOpenChange = (open: boolean) => {
+    setSavedQueriesOpen(open);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("tab", "integrations");
+    if (open) params.set("section", "saved-queries");
+    else params.delete("section");
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
   };
 
   const handleSreSetupChanged = () => {
@@ -598,6 +617,7 @@ function OrgAdminDashboardContent() {
       queryKey: getSreEvidenceGraphQueryKey(projectId),
     });
     setSreSetupLoaded(false);
+    setDiagnosticLoaded(false);
   };
 
   const handleRenameOrganization = async () => {
@@ -862,13 +882,6 @@ function OrgAdminDashboardContent() {
               >
                 <Cable className="h-4 w-4" />
                 <span className="hidden sm:inline">Integrations</span>
-              </TabsTrigger>
-              <TabsTrigger
-                value="diagnostic-recipes"
-                className="flex items-center gap-2"
-              >
-                <SquareLibrary className="h-4 w-4" />
-                <span className="hidden sm:inline">Diagnostic Recipes</span>
               </TabsTrigger>
               <TabsTrigger
                 value="private-agents"
@@ -1159,20 +1172,45 @@ function OrgAdminDashboardContent() {
                   onSetupChanged={handleSreSetupChanged}
                 />
               )}
-            </TabsContent>
-
-            <TabsContent value="diagnostic-recipes" className="space-y-4">
-              {diagnosticLoading && !diagnosticLoaded ? (
-                <TabLoadingSpinner message="Loading diagnostic recipes..." />
-              ) : (
-                <DiagnosticQueriesAdminView
-                  initialQueries={diagnosticQueries}
-                  setupOptions={diagnosticSetupOptions}
-                  loadError={diagnosticLoadError}
-                  setupStatus={sreSetupStatus}
-                  onSetupChanged={handleSreSetupChanged}
-                />
-              )}
+              <Collapsible
+                open={savedQueriesOpen}
+                onOpenChange={handleSavedQueriesOpenChange}
+                className="rounded-lg border"
+              >
+                <CollapsibleTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="h-auto w-full justify-between gap-3 whitespace-normal p-4 text-left"
+                  >
+                    <span className="flex min-w-0 items-center gap-2">
+                      <SquareLibrary className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      Saved queries
+                      <TableBadge compact>Optional</TableBadge>
+                    </span>
+                    <ChevronDown
+                      className={`h-4 w-4 shrink-0 transition-transform ${savedQueriesOpen ? "rotate-180" : ""}`}
+                    />
+                  </Button>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="space-y-4 border-t p-4">
+                  <p className="text-sm text-muted-foreground">
+                    Reuse read-only queries for common investigation questions.
+                    Investigations work without them.
+                  </p>
+                  {!diagnosticLoaded ? (
+                    <TabLoadingSpinner message="Loading saved queries..." />
+                  ) : (
+                    <DiagnosticQueriesAdminView
+                      initialQueries={diagnosticQueries}
+                      setupOptions={diagnosticSetupOptions}
+                      loadError={diagnosticLoadError}
+                      setupStatus={sreSetupStatus}
+                      onSetupChanged={handleSreSetupChanged}
+                    />
+                  )}
+                </CollapsibleContent>
+              </Collapsible>
             </TabsContent>
 
             <TabsContent value="private-agents" className="space-y-4">
@@ -1193,7 +1231,10 @@ function OrgAdminDashboardContent() {
 
             {isCloudHosted && (
               <TabsContent value="subscription" className="space-y-4">
-                <SubscriptionTab key={orgDetails?.id} currentUserRole={currentUserRole} />
+                <SubscriptionTab
+                  key={orgDetails?.id}
+                  currentUserRole={currentUserRole}
+                />
               </TabsContent>
             )}
           </Tabs>

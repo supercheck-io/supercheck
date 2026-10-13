@@ -23,6 +23,8 @@ import { Separator } from "@/components/ui/separator";
 interface DataTableFacetedFilterProps<TData, TValue> {
   column?: Column<TData, TValue>;
   title?: string;
+  value?: string[];
+  onValueChange?: (value: string[]) => void;
   options: {
     label: string;
     value: string;
@@ -35,9 +37,17 @@ export function DataTableFacetedFilter<TData, TValue>({
   column,
   title,
   options,
+  value,
+  onValueChange,
 }: DataTableFacetedFilterProps<TData, TValue>) {
   const facets = column?.getFacetedUniqueValues();
-  const selectedValues = new Set(column?.getFilterValue() as string[]);
+  const selectedValues = new Set(
+    value ?? (column?.getFilterValue() as string[]),
+  );
+  const setFilterValue = (values: string[]) => {
+    if (onValueChange) onValueChange(values);
+    else column?.setFilterValue(values.length ? values : undefined);
+  };
 
   return (
     <Popover>
@@ -98,9 +108,7 @@ export function DataTableFacetedFilter<TData, TValue>({
                         selectedValues.add(option.value);
                       }
                       const filterValues = Array.from(selectedValues);
-                      column?.setFilterValue(
-                        filterValues.length ? filterValues : undefined
-                      );
+                      setFilterValue(filterValues);
                     }}
                   >
                     <div
@@ -108,7 +116,7 @@ export function DataTableFacetedFilter<TData, TValue>({
                         "mr-2 flex h-4 w-4 items-center justify-center rounded-sm border border-primary",
                         isSelected
                           ? "bg-primary text-primary-foreground"
-                          : "opacity-50 [&_svg]:invisible"
+                          : "opacity-50 [&_svg]:invisible",
                       )}
                     >
                       <CheckIcon className={cn("h-4 w-4")} />
@@ -117,14 +125,16 @@ export function DataTableFacetedFilter<TData, TValue>({
                       <option.icon
                         className={cn(
                           "mr-2 h-4 w-4 flex-shrink-0",
-                          option.color ?? "text-foreground"
+                          option.color ?? "text-foreground",
                         )}
                       />
                     )}
                     <span className="truncate flex-1">{option.label}</span>
-                    <span className="ml-auto flex h-4 w-4 items-center justify-center font-mono text-xs flex-shrink-0">
-                      {facets?.get(option.value) ?? 0}
-                    </span>
+                    {facets && (
+                      <span className="ml-auto flex h-4 w-4 items-center justify-center font-mono text-xs flex-shrink-0">
+                        {facets.get(option.value) ?? 0}
+                      </span>
+                    )}
                   </CommandItem>
                 );
               })}
@@ -134,7 +144,7 @@ export function DataTableFacetedFilter<TData, TValue>({
                 <CommandSeparator />
                 <CommandGroup>
                   <CommandItem
-                    onSelect={() => column?.setFilterValue(undefined)}
+                    onSelect={() => setFilterValue([])}
                     className="justify-center text-center"
                   >
                     Clear filters

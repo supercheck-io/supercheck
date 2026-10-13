@@ -113,9 +113,7 @@ export async function getSreOnboardingStatus(
     const diagnosticRecipes = recipeRows[0]?.count ?? 0;
     const privateAgentCount = agentRows[0]?.count ?? 0;
     const completedRequiredSteps =
-      Number(services > 0) +
-      Number(connectors > 0) +
-      Number(diagnosticRecipes > 0);
+      Number(services > 0) + Number(connectors > 0);
 
     return {
       success: true,
@@ -125,8 +123,8 @@ export async function getSreOnboardingStatus(
         diagnosticRecipes,
         privateAgents: privateAgentCount,
         completedRequiredSteps,
-        requiredSteps: 3,
-        complete: completedRequiredSteps === 3,
+        requiredSteps: 2,
+        complete: completedRequiredSteps === 2,
       },
     };
   } catch (error) {

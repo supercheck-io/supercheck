@@ -93,7 +93,8 @@ export function PrivateAgentsAdminView({
     agent: PrivateAgentListItem;
     token: string;
   } | null>(null);
-  const [rotatingAgent, setRotatingAgent] = useState<PrivateAgentListItem | null>(null);
+  const [rotatingAgent, setRotatingAgent] =
+    useState<PrivateAgentListItem | null>(null);
   const [isMutating, startMutationTransition] = useTransition();
 
   const handleSaved = (savedAgent: PrivateAgentListItem) => {
@@ -188,8 +189,8 @@ export function PrivateAgentsAdminView({
               Register agent
             </Button>
           </div>
-          <div className="overflow-hidden rounded-lg border">
-            <Table>
+          <div className="relative max-w-full overflow-x-auto rounded-t-lg border">
+            <Table className="w-full min-w-[900px]">
               <TableHeader>
                 <TableRow>
                   <TableHead>Agent</TableHead>
@@ -203,7 +204,7 @@ export function PrivateAgentsAdminView({
               <TableBody>
                 {agents.map((agent) => (
                   <TableRow key={agent.id}>
-                    <TableCell className="min-w-[240px] whitespace-normal">
+                    <TableCell className="min-w-[240px] whitespace-normal py-2.5">
                       <div className="space-y-1">
                         <p className="font-medium">{agent.name}</p>
                         <div className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -229,7 +230,7 @@ export function PrivateAgentsAdminView({
                         )}
                       </div>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="py-2.5">
                       <TableBadge
                         tone={statusTones[agent.status]}
                         compact
@@ -238,7 +239,7 @@ export function PrivateAgentsAdminView({
                         {agent.status}
                       </TableBadge>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="py-2.5">
                       <div className="space-y-1 text-sm">
                         <p>{agent.region ?? "No region"}</p>
                         <p className="text-xs text-muted-foreground">
@@ -246,13 +247,13 @@ export function PrivateAgentsAdminView({
                         </p>
                       </div>
                     </TableCell>
-                    <TableCell suppressHydrationWarning>
+                    <TableCell className="py-2.5" suppressHydrationWarning>
                       {formatDate(agent.lastHeartbeatAt)}
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="py-2.5">
                       {agent.projectScoped ? "Current project" : "Organization"}
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="py-2.5">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button
