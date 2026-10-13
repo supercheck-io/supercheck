@@ -1,14 +1,10 @@
 ---
 title: Multi-Location
-description: Deploy workers in multiple geographic regions for true global coverage
+description: Add regional workers to your self-hosted installation
 icon: MapPin
 ---
 
-Deploy workers across multiple regions for geographic test execution and monitoring coverage.
-
-<Callout type="info">
-**Prerequisite** — Complete the [Single-Location](/docs/app/deployment/self-hosted) setup first. Multi-location builds on top of an existing deployment by adding remote workers.
-</Callout>
+Add regional workers to an existing [Single-Location](/docs/app/deployment/self-hosted) installation.
 
 ## Architecture
 
@@ -63,17 +59,6 @@ flowchart TB
 </div>
 </div>
 
-Use the Docker Compose steps below. Remote workers need protected access to PostgreSQL, Redis, and artifact storage. Private Agents initiate outbound HTTPS connections to Supercheck.
-
-## Setup Overview
-
-1. Add each region in **Super Admin → Locations**.
-2. Configure your main server and secure access to its database, Redis, and artifact storage.
-3. Deploy a worker on a Linux server in each region using the matching location code.
-4. Confirm each location shows **Active**, then run a test or monitor and check its reported location.
-
-Remote workers need access to the same PostgreSQL database, Redis, and artifact storage as the main instance. A visible worker alone does not confirm all three connections are working. See [Troubleshooting](#troubleshooting) if checks do not complete.
-
 ## Regional Setup
 
 <p className="text-sm md:hidden">Scroll horizontally to view the full diagram.</p>
@@ -105,231 +90,119 @@ sequenceDiagram
 </div>
 </div>
 
-## Choose Execution Locations
-
-| What you run | How to choose a location |
-|---|---|
-| **Monitors** | Select the regions to check in the monitor's configuration. |
-| **k6 performance tests and jobs** | Select one available region per run. **Global**, when available, lets Supercheck choose a location. |
-| **Playwright tests and jobs** | Runs can use any available worker; the region setting does not pin them to a specific location. |
-
-Use `WORKER_LOCATION=local` for a single-server deployment. For regional coverage, deploy workers in the actual regions and set each worker's `WORKER_LOCATION` to its matching location code. Changing a code does not move a server geographically.
-
----
-
-## Managing Locations
-
-Locations are managed in **Super Admin → Locations**.
-
-| Field | Required | Description |
-|-------|----------|-------------|
-| **Code** | Yes | Identifier that must match the worker's `WORKER_LOCATION` (e.g. `us-east`). Lowercase, 2–50 chars, letters/digits/hyphens. Reserved codes blocked. |
-| **Name** | Yes | Display name (e.g. "US East") |
-| **Region** | No | Geographic description (e.g. "Ashburn, Virginia") |
-| **Flag** | No | Emoji flag for UI (e.g. 🇺🇸) |
-| **Coordinates** | No | Lat/lng for map visualization |
-| **Default** | No | Default location for K6 jobs. Only one at a time. |
-| **Enabled** | No | Make the location available for new checks and runs. |
-
-### Status Indicators
-
-| Status | Meaning |
-|--------|---------|
-| **Active** | Enabled, workers connected (heartbeat detected) |
-| **Offline** | Enabled, no workers currently connected |
-| **Disabled** | Unavailable for new checks and runs |
-
-<Callout type="info">
-Offline locations remain visible in your configurations. Monitors are enqueued to the online subset of their enabled, project-allowed locations. K6 submissions require a live matching worker heartbeat before reserving capacity; if no heartbeat is available, the request fails with `queue_unavailable`. A worker starting up may need a short time to publish its first heartbeat, so retry after it connects.
-</Callout>
-
-Keep at least one worker running in each region where you offer monitoring. Monitoring does not automatically start stopped workers.
-
-Enabling or disabling a location updates queue routing on every app server and regional worker. A disabled location stops receiving new regional k6 and monitor work. Active work drains, and existing queued jobs remain until the location is re-enabled. Admitted K6 jobs in disabled locations remain visible in the Super Admin queue dashboard with a disabled label, and keep their capacity reservation while unfinished. Worker processes and replica counts are managed separately; Playwright continues to use its global queue.
-
-Changes are distributed over Redis. If a notification is missed, servers and workers reconcile with the enabled locations. Allow a short convergence period before checking the dashboard. During a database outage, existing subscriptions are retained unless a valid location-change notification provides an updated set. If the database is unavailable at worker startup, a regional worker temporarily consumes its own region until discovery recovers.
-
-### Project Location Restrictions
-
-Org admins can restrict a project's available locations in **Organization Admin → Projects** using the **Location restrictions** action.
-
----
-
 ## Setup
 
-<Steps>
-  <Step>
-    ### Configure Main Server
+<Accordions>
+  <Accordion title="Requirements" id="requirements">
+    - A running self-hosted instance and Super Admin access.
+    - A Linux server per region: Ubuntu 22.04+ or Debian 12+, x86_64 or ARM64, at least 2 vCPU, 4 GB RAM, and 15 GB free disk.
+    - Sudo access, `curl`, `bzip2`, and [Docker Engine with Compose v2.24.4+](https://docs.docker.com/engine/install/).
+    - VPN or encrypted private connectivity to the main server's PostgreSQL, Redis, and S3 storage. Allow only worker hosts; never expose these services publicly.
+    - App, workers, Compose files, and sandbox scripts from the same release. Examples use **1.3.7-canary.16**.
 
-    Update your main server's `.env` to set a specific region instead of `local`:
+    macOS, Windows, WSL2, and Docker Desktop are not supported for execution workers.
+  </Accordion>
+</Accordions>
 
-    ```bash
-    WORKER_LOCATION=eu-central
-    ```
+### 1. Configure the main server
 
-    Apply the change on the main server. For HTTPS, keep `COMPOSE_PROFILES=https`, `APP_DOMAIN`, and `ACME_EMAIL` in `.env`:
+In **Super Admin → Locations**, add and enable each region (for example, `eu-central` and `us-east`). Set the main server's `.env`:
 
-    If your installation uses another Compose file, keep its `-f` option in the commands below.
-    ```bash
-    KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig \
-    docker compose up -d
-    ```
-  </Step>
-
-  <Step>
-    ### Expose Services
-
-    Bind shared-service ports to a private interface reachable through your VPN or protected network. Set `PRIVATE_BIND_IP` in the main server's `.env` (for example, `10.0.0.10`), then add these mappings to the Compose file you use:
-
-    ```yaml
-    services:
-      postgres:
-        ports:
-          - "${PRIVATE_BIND_IP:?Set the main server private IP}:5432:5432"
-      redis:
-        ports:
-          - "${PRIVATE_BIND_IP:?Set the main server private IP}:6379:6379"
-      rustfs:
-        ports:
-          - "${PRIVATE_BIND_IP:?Set the main server private IP}:9000:9000"
-    ```
-
-    <Callout type="error">
-    **Security**: Exposing database ports requires proper network security. Use VPN (WireGuard/Tailscale), firewall rules, or encrypted tunnels. See [Security](#security) below.
-    </Callout>
-  </Step>
-
-  <Step>
-    ### Deploy Remote Workers
-
-    On each remote VPS:
-
-    **1. Install Docker and execution sandbox:**
-
-    <Callout type="warn">
-    Each remote worker requires a **Linux server** (Ubuntu 22.04+, Debian 12+) with Docker and the execution sandbox installed. macOS, Windows, and WSL2 are not supported.
-    </Callout>
-
-    ```bash
-    curl -fsSL https://get.docker.com -o get-docker.sh
-    # Review the downloaded script before running it.
-    sudo sh get-docker.sh
-    sudo usermod -aG docker $USER && newgrp docker
-
-    # Set up the execution sandbox
-    curl -fsSL -o setup-k3s.sh https://raw.githubusercontent.com/supercheck-io/supercheck/v1.3.6/deploy/docker/setup-k3s.sh
-    sudo bash setup-k3s.sh
-    ```
-
-    **2. Download worker compose:**
-    ```bash
-    mkdir -p ~/supercheck-worker && cd ~/supercheck-worker
-    curl --fail --show-error --location -o docker-compose-worker.yml \
-      https://raw.githubusercontent.com/supercheck-io/supercheck/v1.3.6/deploy/docker/docker-compose-worker.yml
-    ```
-
-    **3. Create `.env`:**
-    ```bash
-    # Worker location (must match an enabled location code in Super Admin)
-    WORKER_LOCATION=us-east
-    SELF_HOSTED=true
-    SUPERCHECK_VERSION=1.3.6
-
-    # Same PostgreSQL database as the main server. Remote workers default to
-    # SELF_HOSTED=true (no TLS), matching Docker Compose Postgres. If your
-    # database requires TLS, set SELF_HOSTED=false or add ?sslmode=require.
-    DATABASE_URL=postgresql://postgres:YOUR_DB_PASSWORD@MAIN_SERVER_PRIVATE_IP:5432/supercheck
-
-    # Redis
-    REDIS_HOST=MAIN_SERVER_PRIVATE_IP
-    REDIS_PORT=6379
-    REDIS_PASSWORD=YOUR_REDIS_PASSWORD
-
-    # S3 (RustFS)
-    S3_ENDPOINT=http://MAIN_SERVER_PRIVATE_IP:9000
-    AWS_ACCESS_KEY_ID=YOUR_S3_ACCESS_KEY
-    AWS_SECRET_ACCESS_KEY=YOUR_S3_SECRET_KEY
-    ```
-
-    Use credentials from the main server's `.env`. Use the Compose file, sandbox script, and App/Worker images from the same release. Protect the worker `.env` with `chmod 600 .env`.
-
-    **4. Start:**
-    ```bash
-    KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig docker compose -f docker-compose-worker.yml up -d
-    docker compose -f docker-compose-worker.yml logs -f  # Verify connection
-    ```
-  </Step>
-</Steps>
-
----
-
-## Complete 3-Region Example
-
-| Server | Region | `WORKER_LOCATION` |
-|---|---|---|
-| Main Server | Europe | `eu-central` |
-| Remote VPS 1 | US | `us-east` |
-| Remote VPS 2 | Asia | `asia-pacific` |
-
-Use the remote-worker `.env` example above on both remote hosts. Keep the same database, Redis, and storage settings; change only the location code:
-
-| Host | `.env` location |
-|---|---|
-| Main server | `WORKER_LOCATION=eu-central` |
-| US worker | `WORKER_LOCATION=us-east` |
-| APAC worker | `WORKER_LOCATION=asia-pacific` |
-
----
-
-## Scaling Workers
-
-<Callout type="info">
-- `WORKER_REPLICAS`: Controls the number of worker containers. Set individually on each worker server.
-- `RUNNING_CAPACITY`: Maximum concurrent test runs in running state. Set on the app server equal to total worker replicas across all servers.
-- `QUEUED_CAPACITY`: Maximum queued test runs before rejecting submissions. Set on the app server based on your desired queue length.
-</Callout>
-
-```bash
-# Main server: total of 3 workers across all servers (1 + 1 + 1)
-RUNNING_CAPACITY=3 QUEUED_CAPACITY=30 \
-KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig \
-docker compose up -d
-
-# Remote worker server: scale replicas on that server only
-WORKER_REPLICAS=1 \
-KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig \
-docker compose -f docker-compose-worker.yml up -d
+```dotenv
+WORKER_LOCATION=eu-central
 ```
 
-| Server | Role | Setting |
-|--------|------|---------|
-| Main server (App + Worker) | App + 1 worker | `RUNNING_CAPACITY=3` (total), `WORKER_REPLICAS=1` |
-| Remote VPS 1 | Worker only | `WORKER_REPLICAS=1` (no `RUNNING_CAPACITY` needed) |
-| Remote VPS 2 | Worker only | `WORKER_REPLICAS=1` (no `RUNNING_CAPACITY` needed) |
+In its Compose file, replace the PostgreSQL, Redis, and RustFS localhost port bindings with the server's **private VPN address**:
 
----
+```yaml
+services:
+  postgres:
+    ports:
+      - "10.0.0.10:5432:5432"
+  redis:
+    ports:
+      - "10.0.0.10:6379:6379"
+  rustfs:
+    ports:
+      - "10.0.0.10:9000:9000"
+```
 
-## Security
+From the installation's `deploy/docker` directory, apply the changes. Keep existing HTTPS settings and any custom `-f` option:
 
-<Callout type="error">
-**Important**: Multi-location deployments require exposing database ports (PostgreSQL, Redis, RustFS) over the network. You are responsible for securing these connections using appropriate measures such as:
-- **VPN** (WireGuard, Tailscale)
-- **Firewall rules** (UFW, iptables, Cloud Security Groups)
-- **Encrypted tunnels**
+```bash
+sudo env KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig docker compose up -d
+```
 
-Detailed network security configuration is beyond the scope of this documentation. Please consult your infrastructure provider's security best practices.
-</Callout>
+### 2. Start a regional worker
 
----
+On each prepared regional server:
 
-## Troubleshooting
+```bash
+mkdir -p ~/supercheck-worker
+cd ~/supercheck-worker
+curl -fsSL -o setup-k3s.sh https://raw.githubusercontent.com/supercheck-io/supercheck/v1.3.7-canary.16/deploy/docker/setup-k3s.sh
+curl -fsSL -o docker-compose-worker.yml https://raw.githubusercontent.com/supercheck-io/supercheck/v1.3.7-canary.16/deploy/docker/docker-compose-worker.yml
+sudo bash setup-k3s.sh
+```
 
-| Issue | Diagnostic Command |
-|-------|-------------------|
-| Worker can't reach DB | Check readiness with `docker compose -f docker-compose-worker.yml exec worker curl -sf http://127.0.0.1:8000/health/ready`, then test the database directly with `docker run --rm postgres:18 psql "postgresql://USER:PASSWORD@MAIN_SERVER_PRIVATE_IP:5432/supercheck" -c "SELECT 1"` |
-| Worker logs `Failed query` for every database call | Set `SELF_HOSTED=true` when connecting to the bundled PostgreSQL database without TLS. For a TLS-enabled external database, set `SELF_HOSTED=false` or add `?sslmode=require` to `DATABASE_URL`. |
-| Worker visible in Super Admin but monitors do not run | Confirm `DATABASE_URL` points at the **same** database as the app, `SELF_HOSTED=true` for Docker Postgres without TLS, and ports 5432/6379/9000 are reachable. |
-| Worker can't reach Redis | `docker run --rm redis:8 redis-cli -h MAIN_SERVER_PRIVATE_IP -a PASSWORD ping` |
-| Verify worker location | `docker compose -f docker-compose-worker.yml logs worker` (look for the matching location code) |
-| K6 jobs stuck queued | Ensure a worker has the matching `WORKER_LOCATION` running |
-| "No monitor queues available" | Verify workers are running in the monitor's configured locations |
+Create `.env` with the location code and credentials from the main server. Use its **private** address and the same database and storage buckets:
+
+```dotenv
+WORKER_LOCATION=us-east
+SELF_HOSTED=true
+SUPERCHECK_VERSION=1.3.7-canary.16
+DATABASE_URL=postgresql://postgres:YOUR_DB_PASSWORD@10.0.0.10:5432/supercheck
+REDIS_HOST=10.0.0.10
+REDIS_PORT=6379
+REDIS_PASSWORD=YOUR_REDIS_PASSWORD
+S3_ENDPOINT=http://10.0.0.10:9000
+AWS_ACCESS_KEY_ID=YOUR_S3_ACCESS_KEY
+AWS_SECRET_ACCESS_KEY=YOUR_S3_SECRET_KEY
+```
+
+```bash
+chmod 600 .env
+sudo env KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig docker compose -f docker-compose-worker.yml up -d --wait --wait-timeout 300
+```
+
+### 3. Verify regional execution
+
+Confirm the location shows **Active**, then run a monitor or k6 test in that region and check the reported location. Worker readiness must pass; a heartbeat alone does not verify its database, Redis, and storage connections.
+
+## Operations
+
+<Accordions>
+  <Accordion title="Execution locations" id="choose-execution-locations">
+    | Workload | Location selection |
+    |---|---|
+    | Monitors | Select regions in the monitor configuration. |
+    | k6 tests and jobs | One available region per run; Global lets Supercheck choose. |
+    | Playwright tests and jobs | Shared global queue; location settings do not pin execution. |
+
+    Each worker's `WORKER_LOCATION` must match an enabled location code. Use `local` only for a single-server installation.
+  </Accordion>
+
+  <Accordion title="Managing locations" id="managing-locations">
+    Manage regions in **Super Admin → Locations**. Each needs a unique code matching `WORKER_LOCATION` and a display name.
+
+    **Active** means enabled with a worker heartbeat; **Offline** means enabled without one; **Disabled** prevents new regional work. Keep workers running for monitoring. Disabling a location lets active work drain and retains queued work and its capacity reservation until re-enabled. Playwright uses its global queue.
+
+    Monitors use online, enabled, project-allowed locations. k6 submissions require a matching live heartbeat; wait for a starting worker to connect before retrying `queue_unavailable`.
+  </Accordion>
+
+  <Accordion title="Project location restrictions" id="project-location-restrictions">
+    Org admins can restrict regions in **Organization Admin → Projects → Location restrictions**.
+  </Accordion>
+
+  <Accordion title="Scaling workers" id="scaling-workers">
+    Set `WORKER_REPLICAS` in each worker host's `.env`. On the main server, set `RUNNING_CAPACITY` to the total replicas across all hosts and `QUEUED_CAPACITY` to the desired queue limit. Apply with the corresponding Compose start command above.
+  </Accordion>
+
+  <Accordion title="Connection settings" id="connection-settings">
+    `SELF_HOSTED=true` matches bundled PostgreSQL without TLS. For a database requiring TLS, add `?sslmode=require` to `DATABASE_URL`.
+
+    If the main server uses custom database names, users, S3 region, or bucket names, copy their matching values. See the [worker Compose reference](https://github.com/supercheck-io/supercheck/blob/v1.3.7-canary.16/deploy/docker/docker-compose-worker.yml).
+
+    Keep `.env` private. After changing settings, use `up -d --force-recreate`; `restart` does not reload environment values.
+  </Accordion>
+</Accordions>

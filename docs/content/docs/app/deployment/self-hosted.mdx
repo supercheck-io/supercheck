@@ -1,10 +1,10 @@
 ---
 title: Single-Location
-description: Docker Compose deployment on a single server
+description: Install Supercheck on one server with a guided command
 icon: Container
 ---
 
-Deploy Supercheck on a single server with Docker Compose.
+Self-host Supercheck on one Linux server.
 
 ## Architecture
 
@@ -51,156 +51,49 @@ flowchart TB
 </div>
 </div>
 
-Use one Compose file for the bundled stack. HTTP is available on the host for evaluation; enable the `https` profile for a public server. The optional `private-agent` profile adds read-only access to private evidence sources.
+## Install
 
-## Docker Compose
+<Accordions>
+  <Accordion title="Requirements" id="requirements">
+    - Ubuntu 22.04+ or Debian 12+ server; x86_64 or ARM64.
+    - At least 2 vCPU, 4 GB RAM, and 15 GB free disk.
+    - Sudo access, `curl`, and internet access for downloads. Docker and Compose are installed automatically.
+    - Public HTTPS: point your domain at the server, open inbound ports 80/443, and have an email for certificate notices.
 
-Use Ubuntu 22.04+ or Debian 12+ with Docker Engine and Compose **v2.24.4 or newer**. Allow at least 2 vCPU and 4 GB RAM.
+    macOS, Windows, WSL2, and Docker Desktop are not supported.
+  </Accordion>
+</Accordions>
 
-<Callout type="warn">
-**Linux only** — the execution sandbox needs the Linux kernel, so this Compose deployment does not work on macOS, Windows, WSL2, or Docker Desktop. `setup-k3s.sh` stops with a clear error on those hosts. Use a Linux server (or a Linux VM) for the steps below.
-</Callout>
-
-### Quick install
-
-On a fresh Ubuntu 22.04+ or Debian 12+ server, download the installer, read it, and run it:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/supercheck-io/supercheck/main/deploy/docker/install.sh -o install.sh
-less install.sh
-sudo bash install.sh
-```
-
-It checks the server, asks whether you are evaluating locally or running a public HTTPS server,
-installs Docker and the isolated test sandbox, downloads and prepares the images, starts Supercheck,
-and verifies it is healthy. It is safe to re-run and never regenerates your secrets.
-
-| Goal | Command |
-|---|---|
-| Guided | `sudo bash install.sh` |
-| Evaluate on this server, no prompts | `sudo bash install.sh --local --yes` |
-| Public HTTPS, no prompts | `sudo bash install.sh --domain app.example.com --email you@example.com --yes` |
-| See the plan without changing anything | `sudo bash install.sh --dry-run` |
-
-Run `bash install.sh --help` for every option. The steps below are the manual equivalent of the installer,
-for custom setups and for understanding what it does.
-
-Installing with an agent? Use the [installation runbook](https://raw.githubusercontent.com/supercheck-io/supercheck/main/deploy/docker/INSTALL.md).
-
-### 0. Install Prerequisites
-
-Minimal Ubuntu and Debian images do not include Docker, Git, or `bzip2`. Install them first (skip whatever is already present):
+Run on your server to install **1.3.7-canary.16**:
 
 ```bash
-sudo apt-get update
-sudo apt-get install -y git bzip2 ca-certificates curl gnupg
-
-sudo install -m 0755 -d /etc/apt/keyrings
-curl -fsSL "https://download.docker.com/linux/$(. /etc/os-release && echo "$ID")/gpg" \
-  | sudo gpg --dearmor --yes -o /etc/apt/keyrings/docker.gpg
-sudo chmod a+r /etc/apt/keyrings/docker.gpg
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
-https://download.docker.com/linux/$(. /etc/os-release && echo "$ID") \
-$(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
-  | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-
-sudo apt-get update
-sudo apt-get install -y docker-ce docker-ce-cli containerd.io \
-  docker-buildx-plugin docker-compose-plugin
-
-# The Compose commands below run without sudo, so the user needs docker access.
-sudo usermod -aG docker "$USER"   # takes effect in a new shell (or run: newgrp docker)
+curl -fsSL https://raw.githubusercontent.com/supercheck-io/supercheck/main/deploy/docker/install.sh -o install.sh && sudo bash install.sh --version 1.3.7-canary.16
 ```
 
-Group membership only applies to new shells: log out and back in (or run `newgrp docker`) and confirm `docker ps` works without `sudo` before continuing.
+Follow the prompts for local evaluation or HTTPS. Open the printed URL, create your account, and run a test.
 
-Docker group membership is root-equivalent on the host, so add only users you trust.
-
-`bzip2` is required by `setup-k3s.sh`, which extracts the gVisor release archive: current Ubuntu cloud images ship `tar`, `gzip`, and `xz` but not `bzip2`.
-
-### 1. Prepare the Host
-
-```bash
-git clone --depth 1 https://github.com/supercheck-io/supercheck.git
-cd supercheck/deploy/docker
-./init-secrets.sh
-sudo bash setup-k3s.sh
-```
-
-The scripts generate secrets and prepare the isolated execution environment. Preserve an existing `.env` and its secrets when updating or retrying. `--depth 1` is enough because updates pull published images rather than newer git history.
-
-The generated `SECRET_ENCRYPTION_KEY` encrypts variables and Private Agent connector credentials. Keep the same value for the app and every worker; changing it makes existing encrypted values unreadable unless they are re-encrypted first.
-
-### 2. Configure HTTPS
-
-For a public server, point your app hostname at the server and allow inbound TCP ports **80** and **443**. Edit `.env`:
-
-```dotenv
-COMPOSE_PROFILES=https
-APP_DOMAIN=app.example.com
-ACME_EMAIL=admin@example.com
-STATUS_PAGE_DOMAIN=example.com
-```
-
-Traefik obtains the app certificate and redirects HTTP to HTTPS. The app URL and authentication origin are derived from `APP_DOMAIN`. If `NEXT_PUBLIC_APP_URL` is already set, update it to the same HTTPS origin.
-
-For local evaluation, leave `COMPOSE_PROFILES` and `APP_DOMAIN` unset and open `http://localhost:3000` on the host. Port 3000 is bound to loopback; when using a remote server, forward it with SSH or configure HTTPS.
-
-`STATUS_PAGE_DOMAIN` reserves the default status-page namespace. Point its DNS records at your instance and provide a wildcard or per-host certificate before publishing subdomain status pages. Verified custom domains also route to the app, but require your own certificate setup. If using Cloudflare, use **Full (strict)** and keep custom-domain records DNS-only until verification and origin HTTPS work.
-
-### 3. Start and Verify
-
-```bash
-KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig docker compose config -q
-KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig docker compose up -d --wait --wait-timeout 300
-docker compose ps
-curl --fail --silent --show-error https://app.example.com/api/health
-```
-
-For local evaluation, use `http://localhost:3000/api/health`. The app applies migrations at startup; no separate migration command is needed. Sign up, then run a test to verify the execution sandbox. To grant your account Super Admin access:
-
-```bash
-docker compose exec app node scripts/bootstrap-admin.js your-email@example.com
-```
-
-### Optional Private Agent
-
-Register an agent in **Organization Admin → Private Agents**, then add its ID and registration token to `.env`:
-
-```dotenv
-COMPOSE_PROFILES=https,private-agent
-PRIVATE_AGENT_ID=your-agent-id
-PRIVATE_AGENT_TOKEN=your-registration-token
-```
-
-```bash
-docker compose up -d private-agent
-```
-
-The colocated agent connects to the app over the private Docker network. It receives no database, Redis, or storage credentials. See [Private Agent](/docs/app/deployment/private-agent) for connector setup and agents on another network or connected to Supercheck Cloud.
-
-To stop it, run `docker compose stop private-agent` and remove `private-agent` from `COMPOSE_PROFILES`. Keep the agent state volume for reconnection.
-
-### Existing Managed Services
-
-Use `docker-compose-external.yml` when you already have PostgreSQL, Redis, and S3-compatible storage. Configure their connection values and your domain in `.env`, then use `docker compose -f docker-compose-external.yml` for the commands above. For regional execution workers, see [Multi-Location](/docs/app/deployment/multi-location).
 
 ## Optional Configuration
 
 <Accordions>
-  <Accordion title="Browser Integrations (CORS)">
-    Browser-based integrations such as Azure DevOps dashboard widgets, Grafana panels, or custom embedded views need CORS enabled on the App service.
-
-    Add this to your `.env` when you want browser clients from those domains to call Supercheck APIs directly:
+  <Accordion title="Edit and apply settings" id="apply-configuration-changes">
+    From `/opt/supercheck/deploy/docker` (or the directory printed by the installer), edit `.env` with `sudoedit .env` and apply:
 
     ```bash
+    sudo env KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig docker compose up -d --force-recreate app worker
+    ```
+
+    Keep `.env` private and backed up. Preserve `SECRET_ENCRYPTION_KEY` so encrypted variables and connector credentials remain readable.
+  </Accordion>
+
+  <Accordion title="Browser Integrations (CORS)">
+    Allow only trusted origins for browser integrations:
+
+    ```dotenv
     CORS_ALLOWED_ORIGINS=https://dev.azure.com,https://*.visualstudio.com
     ```
 
-    <Callout type="info">
-    `CORS_ALLOWED_ORIGINS` is optional and empty by default. This preserves the secure default for self-hosted deployments. Only enable it for trusted browser-based integrations.
-    </Callout>
-
+    Empty by default.
   </Accordion>
 
   <Accordion title="OAuth (GitHub / Google)">
@@ -231,6 +124,12 @@ Use `docker-compose-external.yml` when you already have PostgreSQL, Redis, and S
     |----------|---------|-------------|
     | `SIGNUP_ENABLED` | `true` | Set `false` to disable open registration (invited users still work) |
     | `ALLOWED_EMAIL_DOMAINS` | *(empty)* | Comma-separated allowlist (e.g. `acme.com,acme.org`) |
+
+    On a public server, create your account, then disable open signup or restrict allowed domains. To grant your account Super Admin access:
+
+    ```bash
+    sudo docker compose exec app node scripts/bootstrap-admin.js your-email@example.com
+    ```
   </Accordion>
 
   <Accordion title="Email (SMTP)">
@@ -244,7 +143,7 @@ Use `docker-compose-external.yml` when you already have PostgreSQL, Redis, and S
   </Accordion>
 
   <Accordion title="AI Provider">
-    OpenAI GPT-6 Luna is the default for test creation, repair, requirement extraction, and AI SRE. Provider selection applies to the whole installation. When switching providers, set both `AI_PROVIDER` and the matching `AI_MODEL`.
+    OpenAI GPT-6 Luna is the default. Configure one provider for the installation; set its credentials and matching model.
 
     <Tabs items={['OpenAI', 'Azure', 'Anthropic', 'Gemini', 'Vertex AI', 'Bedrock', 'OpenRouter', 'DeepSeek']}>
       <Tab value="OpenAI">
@@ -260,8 +159,6 @@ Use `docker-compose-external.yml` when you already have PostgreSQL, Redis, and S
         AZURE_RESOURCE_NAME=your-resource-name
         AZURE_API_KEY=your-api-key
         AZURE_OPENAI_DEPLOYMENT=your-deployment-name
-        # Optional: only set if your Azure deployment supports temperature.
-        # GPT-5/reasoning deployments commonly reject this parameter.
         AZURE_INCLUDE_TEMPERATURE=false
         ```
       </Tab>
@@ -287,7 +184,7 @@ Use `docker-compose-external.yml` when you already have PostgreSQL, Redis, and S
         ```
 
         <Callout type="info">
-        Vertex AI uses [Google Application Default Credentials (ADC)](https://cloud.google.com/docs/authentication/application-default-credentials). On GCP, prefer an attached service account. For self-hosted Docker outside GCP, mount your service account key into the app container and set `GOOGLE_APPLICATION_CREDENTIALS` in the container environment; adding it to `.env` alone is not enough because the shipped Compose files do not forward that variable or mount the key file automatically.
+        Use [Application Default Credentials](https://cloud.google.com/docs/authentication/application-default-credentials). Outside GCP, mount the service account key and set `GOOGLE_APPLICATION_CREDENTIALS` in the app container; the shipped Compose file does not do this automatically.
         </Callout>
       </Tab>
       <Tab value="Bedrock">
@@ -313,99 +210,112 @@ Use `docker-compose-external.yml` when you already have PostgreSQL, Redis, and S
         DEEPSEEK_API_KEY=your-deepseek-api-key
         ```
 
-        `deepseek-flash` is the official API model ID for [DeepSeek V4.1 Flash](https://api-docs.deepseek.com/news/news260910/).
-
         <Callout type="warn">
-        DeepSeek is optional. Selecting it sends prompts, code, uploaded requirement text, and evidence supplied to AI features to DeepSeek's hosted API. Review its data handling and China-related residency implications against your organization's requirements before enabling it. DeepSeek errors do not automatically switch to OpenAI.
+        DeepSeek sends prompts, code, requirement text, and evidence to its hosted API. Check your data residency requirements before enabling it; errors do not switch providers.
         </Callout>
       </Tab>
     </Tabs>
   </Accordion>
 
   <Accordion title="AI SRE">
-    Configure an AI provider above to use investigations, Copilot, and automatic alert triage. Database migrations run automatically when the app starts.
+    Configure an AI provider to use AI SRE. Automatic triage is enabled by default and can incur provider charges.
 
-    No enable flags are needed. For manual investigations only, set `SRE_AUTOMATION_ENABLED=false`. To disable AI SRE entirely, set `SRE_ENABLED=false`.
-
-    Automatic triage can use your AI provider when alerts fire and incur provider charges. Copilot live sources are on by default for authorized users. Full investigation runs have a separate **Include live sources** option. See [AI SRE Setup](/docs/app/admin/ai-sre-setup).
-
-    After changing `.env`, apply it to both services:
-
-    ```bash
-    docker compose up -d --force-recreate app worker
-    ```
-
+    Set `SRE_AUTOMATION_ENABLED=false` for manual investigations only, or `SRE_ENABLED=false` to disable AI SRE. See [AI SRE Setup](/docs/app/admin/ai-sre-setup) for services and evidence sources.
   </Accordion>
 </Accordions>
 
----
-
 ## Operations
 
-### Scaling
+Run commands from your installation's `deploy/docker` directory (default: `/opt/supercheck/deploy/docker`).
 
-Set `WORKER_REPLICAS` and `RUNNING_CAPACITY` to the same number in `.env`, then run `docker compose up -d`. Keep `WORKER_LOCATION=local` for a single-server installation.
+<Accordions>
+  <Accordion title="Updates" id="updates">
+    Back up your data first. If your installation uses MinIO, follow **Upgrading from MinIO** below before updating.
 
-### Upgrading from MinIO (breaking)
+    Set `SUPERCHECK_VERSION` to the release you want in `.env`, then run:
 
-Earlier releases bundled MinIO. MinIO no longer publishes its container images, so the bundled
-storage service is now RustFS. The two use incompatible on-disk formats, so your artifacts and
-status-page files must be copied across. This is a one-time step, and your `minio-data` volume is
-never modified or deleted.
+    ```bash
+    sudo docker compose pull
+    sudo env KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig docker compose up -d --wait --wait-timeout 300
+    ```
 
-Run it from your **current** checkout, with the old stack running, **before** `git pull`:
+    Migrations run automatically. For `.env` changes, recreate affected services; `restart` does not reload settings. Preserve data volumes. Existing HTTPS installations can keep `docker-compose-secure.yml`.
 
-```bash
-cd supercheck/deploy/docker
-curl -fsSL -o migrate-minio-to-rustfs.sh https://raw.githubusercontent.com/supercheck-io/supercheck/main/deploy/docker/migrate-minio-to-rustfs.sh
-bash migrate-minio-to-rustfs.sh
-```
+    **Upgrading from before 1.3.3:** run `sudo bash setup-k3s.sh` before updating to the isolated execution sandbox.
+  </Accordion>
 
-The script stops app and worker (downtime starts here), copies and verifies every bucket, backs up
-`.env` to `.env.pre-rustfs`, and points `S3_ENDPOINT` at RustFS. If anything fails it leaves `.env`
-unchanged. Then finish the upgrade:
+  <Accordion title="Upgrading from MinIO (breaking)" id="upgrading-from-minio-breaking">
+    MinIO and RustFS disk formats are incompatible. From your **current checkout**, with the old stack running, migrate **before updating**:
 
-```bash
-git pull
-KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig docker compose up -d --wait --remove-orphans
-curl --fail --silent --show-error http://localhost:3000/api/health
-```
+    ```bash
+    sudo curl -fsSL -o migrate-minio-to-rustfs.sh https://raw.githubusercontent.com/supercheck-io/supercheck/main/deploy/docker/migrate-minio-to-rustfs.sh
+    sudo bash migrate-minio-to-rustfs.sh
+    ```
 
-`--remove-orphans` removes the old `minio` container, which would otherwise keep port 9000.
-Open a status page and a test report, and keep `minio-data` until you are satisfied. To roll back,
-restore `.env.pre-rustfs` over `.env` and check out the previous release.
+    The script stops app/worker, copies and verifies buckets, and backs up `.env` to `.env.pre-rustfs`. Failed migration leaves `.env` unchanged.
 
-If you pull and start the new release without running the script, the stack comes up with empty
-storage and the S3 health check reports an error. Test artifacts regenerate on later runs, but
-uploaded status-page assets and documents are not recovered until you run the script (check out the
-previous release, run it, then upgrade).
+    Update the checkout to `v1.3.7-canary.16` with `git fetch origin tag v1.3.7-canary.16` and `git checkout --detach v1.3.7-canary.16`. Use `sudo git` for a root-owned checkout. Set `SUPERCHECK_VERSION=1.3.7-canary.16` in `.env`, then start:
 
-### Backups
+    ```bash
+    sudo env KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig docker compose up -d --wait --remove-orphans
+    curl --fail --silent --show-error http://localhost:3000/api/health
+    ```
 
-Back up your database, RustFS data, `.env`, and Traefik certificate volume before upgrades. For a database backup:
+    `--remove-orphans` removes the old MinIO container and frees port 9000. Verify a status page and test report before deleting `minio-data`. To roll back, restore `.env.pre-rustfs` and the previous checkout. If already updated without migrating, restore the old checkout and migrate first.
+  </Accordion>
 
-```bash
-docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' > backup.sql
-```
+  <Accordion title="Backups" id="backups">
+    Back up PostgreSQL, the RustFS data volume, `.env`, and the Traefik certificate volume before upgrades. To export the database:
 
-### Updates
+    ```bash
+    sudo docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' > "$HOME/supercheck-backup.sql"
+    ```
 
-Set `SUPERCHECK_VERSION` to the release you want in `.env`, then run:
+    Store backups privately. The database export does not include files, `.env`, or certificates.
+  </Accordion>
 
-```bash
-docker compose pull
-KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig docker compose up -d
-```
+  <Accordion title="Scaling" id="scaling">
+    Set `WORKER_REPLICAS` and `RUNNING_CAPACITY` to the same number in `.env`, then run:
 
-The same file and profiles are used for installation and updates. After changing environment values, recreate the affected services; `restart` does not load new `.env` values:
+    ```bash
+    sudo env KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig docker compose up -d
+    ```
 
-```bash
-docker compose up -d --force-recreate app worker
-```
+    Keep `WORKER_LOCATION=local` for a single-server installation.
+  </Accordion>
+</Accordions>
 
-Recreate `private-agent` too when its settings change, preserving its state volume. Existing deployments may keep using `docker-compose-secure.yml`; it is a compatibility entry point backed by the main Compose file. HTTPS certificates and application data keep their existing named volumes.
+## Advanced Deployment
 
-**Upgrading from before 1.3.3:** Back up your data and run `sudo bash setup-k3s.sh` before updating to the isolated execution sandbox.
+<Accordions>
+  <Accordion title="Private Agent" id="optional-private-agent">
+
+    Register an agent in **Organization Admin → Private Agents**. Add its credentials and profile to `.env`:
+
+    ```dotenv
+    COMPOSE_PROFILES=https,private-agent
+    PRIVATE_AGENT_ID=your-agent-id
+    PRIVATE_AGENT_TOKEN=your-registration-token
+    ```
+
+    For local evaluation, use `COMPOSE_PROFILES=private-agent`.
+
+    ```bash
+    sudo docker compose up -d private-agent
+    ```
+
+    To stop it, run `sudo docker compose stop private-agent`, then remove its profile. Preserve its state volume. See [Private Agent](/docs/app/deployment/private-agent) for connectors and remote agents.
+  </Accordion>
+
+  <Accordion title="Status-page domains" id="configure-https">
+    Point `STATUS_PAGE_DOMAIN` DNS at the server and provide wildcard or per-host certificates. Custom domains need their own certificates. With Cloudflare, use **Full (strict)** and DNS-only records until verification and origin HTTPS work.
+  </Accordion>
+
+  <Accordion title="Existing managed services" id="existing-managed-services">
+    For external PostgreSQL, Redis, and S3 storage, use the [manual runbook](https://raw.githubusercontent.com/supercheck-io/supercheck/main/deploy/docker/INSTALL.md) with `docker-compose-external.yml`. Use `sudo docker compose -f docker-compose-external.yml` for maintenance.
+  </Accordion>
+
+</Accordions>
 
 ## Next Steps
 
