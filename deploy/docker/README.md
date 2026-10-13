@@ -125,10 +125,11 @@ docker compose up -d
 
 ```bash
 # Create backup
-docker compose exec postgres sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' > backup.sql
+install -m 600 /dev/null "$HOME/supercheck-backup.sql" && \
+  sudo docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' > "$HOME/supercheck-backup.sql"
 
 # Restore backup
-docker compose exec -T postgres sh -c 'psql -U "$POSTGRES_USER" "$POSTGRES_DB"' < backup.sql
+sudo docker compose exec -T postgres sh -c 'psql -U "$POSTGRES_USER" "$POSTGRES_DB"' < "$HOME/supercheck-backup.sql"
 ```
 
 ---
