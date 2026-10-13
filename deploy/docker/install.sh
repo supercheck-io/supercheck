@@ -12,7 +12,7 @@
 #   sudo bash install.sh --dry-run                                       # show the plan, change nothing
 #
 # This is a thin wrapper around init-secrets.sh and setup-k3s.sh, which remain the source of
-# truth. Safe to re-run: it never regenerates secrets, never overwrites .env and skips finished steps.
+# truth. Safe to re-run: it preserves secrets and keeps private backups when settings change.
 #
 # Exit codes: 0 installed and healthy, 1 failed, 2 bad usage, 3 installed but the health check reports a problem.
 #
@@ -405,6 +405,30 @@ apply_public_config() {
   )
 }
 
+# Explicitly starting fresh changes only the retired bundled storage endpoint and missing keys.
+apply_fresh_storage_config() {
+  [[ "$IGNORE_MINIO" == true && "$(env_get S3_ENDPOINT)" == "http://minio:9000" ]] || return 0
+  cd "$(compose_dir)"
+  ( umask 077
+    install -m 600 .env "$(mktemp ".env.bak-$(date +%Y%m%d%H%M%S).XXXXXX")"
+    rm -f .env.new .env.filtered
+    grep -v '^S3_ENDPOINT=' .env >.env.new || [[ $? -eq 1 ]]
+    printf 'S3_ENDPOINT=http://rustfs:9000\n' >>.env.new
+    local key value
+    for key in AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; do
+      if [[ -z "$(env_get "$key")" ]]; then
+        value="$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+        sed "/^${key}=/d" .env.new >.env.filtered
+        mv .env.filtered .env.new
+        printf '%s=%s\n' "$key" "$value" >>.env.new
+      fi
+    done
+    grep -q '^BETTER_AUTH_SECRET=' .env.new
+    chmod 600 .env.new
+    mv .env.new .env
+  )
+}
+
 # Save an explicit standalone image choice so later Compose commands use it too.
 persist_version() {
   [[ "$USING_THIS_CHECKOUT" != true ]] || return 0
@@ -532,11 +556,21 @@ preflight() {
     vols="$(docker volume ls -q 2>/dev/null || true)"
     local proj
     proj="$(project_name)"
-    if [[ "$IGNORE_MINIO" != true ]] && grep -Fxq "${proj}_minio-data" <<<"$vols" && [[ "$(env_get S3_ENDPOINT)" != "http://rustfs:9000" ]]; then
+    if [[ "$IGNORE_MINIO" != true ]] && grep -Fxq "${proj}_minio-data" <<<"$vols" && { [[ "$(env_get S3_ENDPOINT)" != "http://rustfs:9000" ]] || ! grep -Fxq "${proj}_rustfs-data" <<<"$vols"; }; then
       fail "An existing Supercheck MinIO storage volume was found. Installing now would start with empty storage."
       note "Run migrate-minio-to-rustfs.sh from your current checkout first (see 'Upgrading from MinIO' in the docs)."
       note "Starting fresh on purpose? Re-run with --ignore-minio."
       problems=1
+    fi
+    if [[ "$IGNORE_MINIO" == true ]]; then
+      local minio_containers
+      if ! minio_containers="$(docker ps -aq --filter "label=com.docker.compose.project=$proj" --filter label=com.docker.compose.service=minio)"; then
+        fail "Cannot verify whether the project's old MinIO container remains. Check Docker and re-run."
+        problems=1
+      elif [[ -n "$minio_containers" ]]; then
+        fail "Remove the old project's MinIO container before using --ignore-minio; keep its volume for recovery."
+        problems=1
+      fi
     fi
     if [[ ! -f "$(compose_dir)/.env" ]] && grep -Fxq -e "${proj}_postgres-data" -e "${proj}_rustfs-data" <<<"$vols"; then
       fail "Data from an earlier Supercheck install exists, but no .env was found to unlock it."
@@ -725,6 +759,7 @@ main() {
     run_step "Generating secrets and configuration" generate_config
   fi
 
+  run_step "Applying explicitly requested fresh storage settings" apply_fresh_storage_config
   run_step "Saving the image version" persist_version
 
   header 5 "Setting up the isolated test sandbox"

@@ -76,7 +76,7 @@ ensure_storage_migrated() {
     echo "Migrate MinIO to RustFS and update the host Compose files before deploying this release." >&2
     return 1
   fi
-  project="$(docker compose -f "$COMPOSE_FILE" config | awk '/^name:/ { print $2 }')" || return 1
+  project="$(docker compose -f "$COMPOSE_FILE" config | awk '/^name:/ { gsub(/["\047]/, "", $2); print $2 }')" || return 1
   [[ -n "$project" ]] || { echo "Could not determine the demo Compose project." >&2; return 1; }
   minio_containers="$(docker ps -aq --filter "label=com.docker.compose.project=$project" --filter label=com.docker.compose.service=minio)" || return 1
   if [[ -n "$minio_containers" ]]; then

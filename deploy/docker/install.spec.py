@@ -50,7 +50,7 @@ check_ports
     def test_failed_migration_volume_does_not_unlock_install(self):
         output = self.run_shell(r'''uname() { [[ "$1" == -s ]] && echo Linux || echo x86_64; }
 os_field() { [[ "$1" == ID ]] && echo ubuntu || echo 24.04; }
-awk() { [[ "$*" == *MemTotal* ]] && echo 8000000 || echo 20; }
+awk() { if [[ "$*" == *MemTotal* ]]; then echo 8000000; else cat >/dev/null; echo 20; fi; }
 nproc() { echo 2; }
 df() { echo placeholder; }
 curl() { :; }
@@ -218,7 +218,7 @@ source "$TEST_ROOT/setup-fixture.sh"
             with self.subTest(endpoint=endpoint, ignore=ignore):
                 self.run_shell(r'''uname() { [[ "$1" == -s ]] && echo Linux || echo x86_64; }
 os_field() { [[ "$1" == ID ]] && echo ubuntu || echo 24.04; }
-awk() { [[ "$*" == *MemTotal* ]] && echo 8000000 || echo 20; }
+awk() { if [[ "$*" == *MemTotal* ]]; then echo 8000000; else cat >/dev/null; echo 20; fi; }
 nproc() { echo 2; }
 df() { echo placeholder; }
 curl() { :; }
@@ -382,6 +382,107 @@ main
         self.assertEqual((self.root / 'target/deploy/docker/.env').read_text(),
                          'BETTER_AUTH_SECRET=fixture\nSUPERCHECK_VERSION=1.3.6\n')
         self.assertFalse((self.root / 'packages-installed').exists())
+
+    def test_rustfs_configuration_without_its_volume_still_blocks_minio_upgrade(self):
+        output = self.run_shell(r'''uname() { [[ "$1" == -s ]] && echo Linux || echo x86_64; }
+os_field() { [[ "$1" == ID ]] && echo ubuntu || echo 24.04; }
+awk() { if [[ "$*" == *MemTotal* ]]; then echo 8000000; else cat >/dev/null; echo 20; fi; }
+nproc() { echo 2; }
+df() { echo placeholder; }
+curl() { :; }
+docker() { [[ "$*" == 'volume ls -q' ]] && echo supercheck_minio-data || true; }
+echo S3_ENDPOINT=http://rustfs:9000 > "$COMPOSE_DIR/.env"
+preflight
+''', 1)
+        self.assertIn('MinIO', output)
+
+    def test_demo_guard_handles_a_quoted_numeric_project_name(self):
+        source = (DEPLOY.parent.parent / '.github/scripts/deploy-demo.sh').read_text()
+        start = source.index('ensure_storage_migrated() {')
+        end = source.index('\n}', start) + 2
+        self.run_shell(source[start:end] + r'''
+COMPOSE_FILE=docker-compose-secure.yml
+docker() {
+  case "$*" in
+    *'config --services'*) printf '%s\n' app worker rustfs ;;
+    *'config'*) echo 'name: "00123"' ;;
+    *'ps -aq'*)
+      [[ "$*" != *'label=com.docker.compose.project=00123'* ]] || echo old-minio-id
+      return 0 ;;
+    *) return 1 ;;
+  esac
+}
+ensure_storage_migrated || exit 78
+''', 78)
+
+    def test_explicit_ignore_rejects_retained_minio_container(self):
+        output = self.run_shell(r'''uname() { [[ "$1" == -s ]] && echo Linux || echo x86_64; }
+os_field() { [[ "$1" == ID ]] && echo ubuntu || echo 24.04; }
+awk() { if [[ "$*" == *MemTotal* ]]; then echo 8000000; else cat >/dev/null; echo 20; fi; }
+nproc() { echo 2; }
+df() { echo placeholder; }
+curl() { :; }
+docker() {
+  case "$*" in
+    'volume ls -q') echo supercheck_minio-data ;;
+    *'ps -aq'*'label=com.docker.compose.service=minio'*) echo retained-minio ;;
+    *) return 0 ;;
+  esac
+}
+IGNORE_MINIO=true
+preflight
+''', 1)
+        self.assertIn("Remove the old project's MinIO container", output)
+
+    def test_explicit_ignore_fails_closed_when_container_query_fails(self):
+        output = self.run_shell(r'''uname() { [[ "$1" == -s ]] && echo Linux || echo x86_64; }
+os_field() { [[ "$1" == ID ]] && echo ubuntu || echo 24.04; }
+awk() { if [[ "$*" == *MemTotal* ]]; then echo 8000000; else cat >/dev/null; echo 20; fi; }
+nproc() { echo 2; }
+df() { echo placeholder; }
+curl() { :; }
+docker() {
+  case "$*" in
+    'volume ls -q') echo supercheck_minio-data ;;
+    *'ps -aq'*'label=com.docker.compose.service=minio'*) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+IGNORE_MINIO=true
+preflight
+''', 1)
+        self.assertIn("Cannot verify whether", output)
+
+    def test_explicit_fresh_storage_preserves_secrets_and_creates_missing_keys(self):
+        self.run_shell(r'''cat > "$COMPOSE_DIR/.env" <<'EOF'
+BETTER_AUTH_SECRET=fixture
+POSTGRES_PASSWORD=database-fixture
+ENCRYPTION_KEY=encryption-fixture
+S3_ENDPOINT=http://minio:9000
+AWS_ACCESS_KEY_ID=existing-key
+AWS_SECRET_ACCESS_KEY=
+EOF
+IGNORE_MINIO=true
+apply_fresh_storage_config
+''')
+        env = (self.root / 'compose/.env').read_text()
+        for line in ['BETTER_AUTH_SECRET=fixture', 'POSTGRES_PASSWORD=database-fixture',
+                     'ENCRYPTION_KEY=encryption-fixture', 'AWS_ACCESS_KEY_ID=existing-key',
+                     'S3_ENDPOINT=http://rustfs:9000']:
+            self.assertIn(line, env)
+        self.assertRegex(env, r'AWS_SECRET_ACCESS_KEY=[0-9a-f]{64}\n')
+        backups = list((self.root / 'compose').glob('.env.bak-*'))
+        self.assertEqual(len(backups), 1)
+        self.assertIn('S3_ENDPOINT=http://minio:9000', backups[0].read_text())
+        self.assertEqual(backups[0].stat().st_mode & 0o777, 0o600)
+
+    def test_fresh_storage_requires_explicit_flag_and_preserves_external_origins(self):
+        for endpoint, ignore in [('http://minio:9000', 'false'), ('https://external.example.com', 'true')]:
+            original = f'BETTER_AUTH_SECRET=fixture\nS3_ENDPOINT={endpoint}\n'
+            (self.root / 'compose').mkdir(exist_ok=True)
+            (self.root / 'compose/.env').write_text(original)
+            self.run_shell(f'IGNORE_MINIO={ignore}\napply_fresh_storage_config\n')
+            self.assertEqual((self.root / 'compose/.env').read_text(), original)
 
     def test_private_backup_permissions_for_new_and_existing_files(self):
         self.run_shell(r'''umask 022

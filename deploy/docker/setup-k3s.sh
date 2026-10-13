@@ -41,8 +41,8 @@ info()  { echo -e "${BLUE}[i]${NC} $*"; }
 
 # Upgrade the mode saved by older runs, so restarts cannot expose admin credentials.
 secure_kubeconfig() {
-  local service_file="${1:-/etc/systemd/system/k3s.service}"
-  local kubeconfig="${2:-/etc/rancher/k3s/k3s.yaml}"
+  local service_file="$1"
+  local kubeconfig="$2"
   if [[ -f "$service_file" ]]; then
     local service_tmp
     service_tmp="$(mktemp)"
@@ -94,7 +94,7 @@ elif [[ "$ARCH" == "aarch64" ]]; then
 fi
 
 if command -v k3s &>/dev/null; then
-  secure_kubeconfig
+  secure_kubeconfig /etc/systemd/system/k3s.service /etc/rancher/k3s/k3s.yaml
 fi
 
 if ! command -v sha512sum &>/dev/null; then
@@ -265,7 +265,7 @@ fi
 # ─── Step 4: Restart K3s to pick up containerd changes ───────────────────────
 
 log "Restarting K3s to apply containerd configuration..."
-secure_kubeconfig
+secure_kubeconfig /etc/systemd/system/k3s.service /etc/rancher/k3s/k3s.yaml
 systemctl restart k3s
 
 # Wait for K3s to be ready after restart
