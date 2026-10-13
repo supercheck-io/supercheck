@@ -7,7 +7,7 @@
 # 1. Main Supercheck instance running and accessible
 # 2. Docker installed on the remote server
 # 3. Local K3s + gVisor installed on the remote server (`sudo bash setup-k3s.sh`)
-# 4. Network connectivity to main instance (Redis, PostgreSQL, MinIO)
+# 4. Network connectivity to main instance (Redis, PostgreSQL, S3)
 #
 # Usage:
 #   1. Copy this file to your remote VPS
@@ -25,7 +25,7 @@
 #   REDIS_HOST - Redis hostname (main server IP or hostname)
 #   REDIS_PORT - Redis port (default: 6379)
 #   REDIS_PASSWORD - Redis password from main server
-#   S3_ENDPOINT - MinIO/S3 endpoint URL (main server or cloud)
+#   S3_ENDPOINT - S3 endpoint URL (main server or cloud)
 #   WORKER_LOCATION - This worker's region (must match an enabled Super Admin location code, e.g. us-east, eu-west, ap-south)
 #   AWS_ACCESS_KEY_ID - S3 credentials
 #   AWS_SECRET_ACCESS_KEY - S3 credentials
@@ -47,8 +47,8 @@
 # REDIS_PORT=6379
 # REDIS_PASSWORD=your-redis-password
 # S3_ENDPOINT=http://main-server.example.com:9000
-# AWS_ACCESS_KEY_ID=minioadmin
-# AWS_SECRET_ACCESS_KEY=minioadmin
+# AWS_ACCESS_KEY_ID=<AWS_ACCESS_KEY_ID from the main server .env>
+# AWS_SECRET_ACCESS_KEY=<AWS_SECRET_ACCESS_KEY from the main server .env>
 # WORKER_LOCATION=us-east
 # WORKER_REPLICAS=1
 # ----------------------------------------
@@ -88,8 +88,8 @@ services:
       # single-server self-hosted mode.
       WORKER_LOCATION: ${WORKER_LOCATION:?WORKER_LOCATION is required - set to an enabled location code from Super Admin (e.g. us-east)}
 
-      # S3/MinIO storage (required)
-      S3_ENDPOINT: ${S3_ENDPOINT:?S3_ENDPOINT is required - MinIO/S3 endpoint URL}
+      # S3 storage (required)
+      S3_ENDPOINT: ${S3_ENDPOINT:?S3_ENDPOINT is required - S3 endpoint URL}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:?AWS_ACCESS_KEY_ID is required}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:?AWS_SECRET_ACCESS_KEY is required}
       AWS_REGION: ${AWS_REGION:-us-east-1}

@@ -48,6 +48,15 @@ newgrp docker
 
 ---
 
+## Quick start
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/supercheck-io/supercheck/main/deploy/docker/install.sh -o install.sh
+sudo bash install.sh
+```
+
+See `bash install.sh --help` for flags. The files below are what the installer drives; most users never edit them.
+
 ## Available Configurations
 
 | File | Use Case |

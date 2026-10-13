@@ -34,10 +34,10 @@ services:
     extends:
       file: docker-compose.yml
       service: redis
-  minio:
+  rustfs:
     extends:
       file: docker-compose.yml
-      service: minio
+      service: rustfs
   private-agent:
     extends:
       file: docker-compose.yml
@@ -46,7 +46,7 @@ services:
 volumes:
   postgres-data:
   redis-data:
-  minio-data:
+  rustfs-data:
   worker-playwright-reports:
   worker-k6-reports:
   worker-reports:

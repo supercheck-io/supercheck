@@ -427,7 +427,7 @@ export class AISecurityService {
           accessKeyId: process.env.AWS_ACCESS_KEY_ID || "minioadmin",
           secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "minioadmin",
         },
-        forcePathStyle: true, // Required for MinIO
+        forcePathStyle: true, // Required for RustFS/MinIO path-style addressing
       });
 
       const command = new GetObjectCommand({

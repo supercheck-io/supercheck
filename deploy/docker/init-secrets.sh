@@ -8,8 +8,12 @@
 
 set -e
 
+# .env holds every secret: never create it world-readable, even briefly.
+umask 077
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ENV_FILE="${SCRIPT_DIR}/.env"
+# SUPERCHECK_ENV_FILE lets a caller (install.sh) build the file atomically.
+ENV_FILE="${SUPERCHECK_ENV_FILE:-${SCRIPT_DIR}/.env}"
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -54,10 +58,12 @@ BETTER_AUTH_SECRET=$(generate_secret 32)
 SECRET_ENCRYPTION_KEY=$(generate_secret 16)
 DB_PASSWORD=$(generate_secret 16)
 REDIS_PASSWORD=$(generate_secret 16)
-MINIO_ACCESS_KEY=$(generate_secret 16)
-MINIO_SECRET_KEY=$(generate_secret 32)
+S3_ACCESS_KEY=$(generate_secret 16)
+S3_SECRET_KEY=$(generate_secret 32)
 
-# Create .env file
+# Create .env file. Remove any existing file first (--force): truncating a 644 file in place
+# would write the new secrets into a world-readable file until the chmod below.
+rm -f "$ENV_FILE"
 cat > "$ENV_FILE" << EOF
 # ============================================================
 # Supercheck Self-Hosted Configuration
@@ -127,10 +133,10 @@ REDIS_HOST=redis
 REDIS_PORT=6379
 # REDIS_TLS_ENABLED=false
 
-# MinIO/S3 Credentials (auto-generated)
-AWS_ACCESS_KEY_ID=${MINIO_ACCESS_KEY}
-AWS_SECRET_ACCESS_KEY=${MINIO_SECRET_KEY}
-S3_ENDPOINT=http://minio:9000
+# S3 (RustFS) credentials (auto-generated)
+AWS_ACCESS_KEY_ID=${S3_ACCESS_KEY}
+AWS_SECRET_ACCESS_KEY=${S3_SECRET_KEY}
+S3_ENDPOINT=http://rustfs:9000
 
 # ────────────────────────────────────────────────────────────
 # OPTIONAL: Email Notifications (SMTP)
@@ -224,6 +230,7 @@ S3_ENDPOINT=http://minio:9000
 # MAX_DOCUMENTS_PER_PROJECT=100
 EOF
 
+chmod 600 "$ENV_FILE"
 echo -e "${GREEN}✅ Created .env file at: ${ENV_FILE}${NC}"
 echo ""
 echo -e "${YELLOW}📋 Next steps:${NC}"

@@ -17,7 +17,7 @@ Deploy Supercheck on a single server with Docker Compose.
 flowchart TB
     Users[Users / CI/CD] --> T[Traefik Proxy<br/>SSL / Load Balancer]
     T --> App[Next.js App<br/>UI + API]
-    App --> DB[(PostgreSQL<br/>Primary DB)] & Redis[(Redis + BullMQ<br/>Queue + Cache)] & S3[(MinIO<br/>Artifacts)]
+    App --> DB[(PostgreSQL<br/>Primary DB)] & Redis[(Redis + BullMQ<br/>Queue + Cache)] & S3[(RustFS<br/>Artifacts)]
     App --> SRE[AI SRE Engine<br/>Read-only investigations]
     SRE -.-> Private[Private Agents<br/>Outbound-only queries]
 
@@ -60,6 +60,30 @@ Use Ubuntu 22.04+ or Debian 12+ with Docker Engine and Compose **v2.24.4 or newe
 <Callout type="warn">
 **Linux only** — the execution sandbox needs the Linux kernel, so this Compose deployment does not work on macOS, Windows, WSL2, or Docker Desktop. `setup-k3s.sh` stops with a clear error on those hosts. Use a Linux server (or a Linux VM) for the steps below.
 </Callout>
+
+### Quick install
+
+On a fresh Ubuntu 22.04+ or Debian 12+ server, download the installer, read it, and run it:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/supercheck-io/supercheck/main/deploy/docker/install.sh -o install.sh
+less install.sh
+sudo bash install.sh
+```
+
+It checks the server, asks whether you are evaluating locally or running a public HTTPS server,
+installs Docker and the isolated test sandbox, downloads and prepares the images, starts Supercheck,
+and verifies it is healthy. It is safe to re-run and never regenerates your secrets.
+
+| Goal | Command |
+|---|---|
+| Guided | `sudo bash install.sh` |
+| Evaluate on this server, no prompts | `sudo bash install.sh --local --yes` |
+| Public HTTPS, no prompts | `sudo bash install.sh --domain app.example.com --email you@example.com --yes` |
+| See the plan without changing anything | `sudo bash install.sh --dry-run` |
+
+Run `bash install.sh --help` for every option. The steps below are the manual equivalent of the installer,
+for custom setups and for understanding what it does.
 
 Installing with an agent? Use the [installation runbook](https://raw.githubusercontent.com/supercheck-io/supercheck/main/deploy/docker/INSTALL.md).
 
@@ -322,9 +346,43 @@ Use `docker-compose-external.yml` when you already have PostgreSQL, Redis, and S
 
 Set `WORKER_REPLICAS` and `RUNNING_CAPACITY` to the same number in `.env`, then run `docker compose up -d`. Keep `WORKER_LOCATION=local` for a single-server installation.
 
+### Upgrading from MinIO (breaking)
+
+Earlier releases bundled MinIO. MinIO no longer publishes its container images, so the bundled
+storage service is now RustFS. The two use incompatible on-disk formats, so your artifacts and
+status-page files must be copied across. This is a one-time step, and your `minio-data` volume is
+never modified or deleted.
+
+Run it from your **current** checkout, with the old stack running, **before** `git pull`:
+
+```bash
+cd supercheck/deploy/docker
+curl -fsSL -o migrate-minio-to-rustfs.sh https://raw.githubusercontent.com/supercheck-io/supercheck/main/deploy/docker/migrate-minio-to-rustfs.sh
+bash migrate-minio-to-rustfs.sh
+```
+
+The script stops app and worker (downtime starts here), copies and verifies every bucket, backs up
+`.env` to `.env.pre-rustfs`, and points `S3_ENDPOINT` at RustFS. If anything fails it leaves `.env`
+unchanged. Then finish the upgrade:
+
+```bash
+git pull
+KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig docker compose up -d --wait --remove-orphans
+curl --fail --silent --show-error http://localhost:3000/api/health
+```
+
+`--remove-orphans` removes the old `minio` container, which would otherwise keep port 9000.
+Open a status page and a test report, and keep `minio-data` until you are satisfied. To roll back,
+restore `.env.pre-rustfs` over `.env` and check out the previous release.
+
+If you pull and start the new release without running the script, the stack comes up with empty
+storage and the S3 health check reports an error. Test artifacts regenerate on later runs, but
+uploaded status-page assets and documents are not recovered until you run the script (check out the
+previous release, run it, then upgrade).
+
 ### Backups
 
-Back up your database, MinIO data, `.env`, and Traefik certificate volume before upgrades. For a database backup:
+Back up your database, RustFS data, `.env`, and Traefik certificate volume before upgrades. For a database backup:
 
 ```bash
 docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' > backup.sql

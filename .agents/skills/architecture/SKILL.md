@@ -17,7 +17,7 @@ flowchart LR
   API --> Q[(Redis and BullMQ)]
   Q --> WORKER[NestJS worker]
   WORKER --> JOB[gVisor execution Job]
-  WORKER --> OBJ[(S3 or MinIO)]
+  WORKER --> OBJ[(S3 or RustFS)]
 ```
 
 ## Repository map

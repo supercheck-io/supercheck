@@ -200,3 +200,9 @@ supercheck.config.local.mjs
 .pytest_cache/
 __pycache__/
 *.pyc
+
+# Secret-bearing copies made by the installer and migration scripts
+.env.new
+.env.migrating
+.env.bak-*
+.env.pre-rustfs*

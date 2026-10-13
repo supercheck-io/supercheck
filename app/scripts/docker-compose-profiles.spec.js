@@ -29,6 +29,9 @@ function config(profiles = "", file = "docker-compose.yml", vars = {}) {
           PATH: process.env.PATH,
           HOME: process.env.HOME,
           COMPOSE_PROFILES: profiles,
+          // Required by the bundled storage service; init-secrets.sh generates real values.
+          AWS_ACCESS_KEY_ID: "placeholder-access-key",
+          AWS_SECRET_ACCESS_KEY: "placeholder-secret-key-0123456789ab",
           ...vars,
         },
         encoding: "utf8",
@@ -47,19 +50,27 @@ testCompose("still starts without SECRET_ENCRYPTION_KEY so upgrades keep reading
   }
 });
 
+testCompose("production compose files refuse to start without S3 keys", () => {
+  for (const file of ["docker-compose.yml", "docker-compose-external.yml"]) {
+    for (const key of ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"]) {
+      expect(() => config("", file, { [key]: "" })).toThrow();
+    }
+  }
+});
+
 testCompose("the default stack needs neither HTTPS nor Private Agent settings", () => {
   const stack = config();
   expect(Object.keys(stack.services).sort()).toEqual([
     "app",
-    "minio",
     "postgres",
     "redis",
+    "rustfs",
     "worker",
   ]);
   expect(stack.services.app.environment.NEXT_PUBLIC_APP_URL).toBe(
     "http://localhost:3000",
   );
-  for (const name of ["app", "postgres", "redis", "minio"]) {
+  for (const name of ["app", "postgres", "redis", "rustfs"]) {
     expect(stack.services[name].ports.length).toBeGreaterThan(0);
     for (const port of stack.services[name].ports) {
       expect(port.host_ip).toBe("127.0.0.1");

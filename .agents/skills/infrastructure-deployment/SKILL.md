@@ -26,7 +26,7 @@ flowchart TD
 
 ## Docker Compose and self-hosting
 
-- App, worker, PostgreSQL, Redis, MinIO/object storage, proxy/TLS, and K3s dependencies start in a health-aware order.
+- App, worker, PostgreSQL, Redis, RustFS/object storage, proxy/TLS, and K3s dependencies start in a health-aware order.
 - Generate unique auth/encryption/storage/Redis secrets and keep all `.env` files untracked.
 - Browser URL, API URL, OAuth callbacks, cookie domain, trusted proxy, status-page domain, and TLS routing must agree.
 - Bind stateful services privately; do not publish PostgreSQL, Redis, or object storage to the internet.

@@ -103,7 +103,7 @@
       "items": [
         "Postgres stores runs, usage, audits",
         "Redis holds queues and heartbeats",
-        "MinIO or R2 keeps reports and traces",
+        "RustFS or R2 keeps reports and traces",
         "AI SRE reads opted-in connectors"
       ]
     }
