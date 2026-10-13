@@ -296,9 +296,7 @@ export const overagePricing = pgTable("overage_pricing", {
   plan: text("plan").$type<"plus" | "pro">().notNull().unique(),
 
   // Overage pricing (in cents per unit)
-  playwrightMinutePriceCents: integer(
-    "playwright_minute_price_cents"
-  ).notNull(), // e.g., 10 = $0.10
+  playwrightMinutePriceCents: numeric("playwright_minute_price_cents", { precision: 14, scale: 4, mode: "number" }).notNull(),
   k6VuMinutePriceCents: integer("k6_vu_minute_price_cents").notNull(), // e.g., 1 = $0.01 per VU minute
   // Nullable fractional-cent rate; legacy integer rate remains the fallback.
   k6VuMinutePriceCentsOverride: numeric("k6_vu_minute_price_cents_override", { precision: 14, scale: 4, mode: "number" }),
@@ -307,7 +305,7 @@ export const overagePricing = pgTable("overage_pricing", {
     "sre_investigation_unit_price_cents"
   )
     .notNull()
-    .default(50), // e.g., 50 = $0.50 per full investigation unit
+    .default(10), // $0.10 per completed full investigation
 
   // Metadata
   createdAt: timestamp("created_at").defaultNow().notNull(),

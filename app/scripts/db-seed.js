@@ -56,19 +56,19 @@ function logError(message) {
 const PLAN_LIMITS_SEED = [
   {
     plan: "plus",
-    maxMonitors: 25,
+    maxMonitors: 50,
     minCheckIntervalMinutes: 1,
     playwrightMinutesIncluded: 3000,
-    k6VuMinutesIncluded: 20000,
-    aiCreditsIncluded: 100,
-    sreInvestigationUnitsIncluded: "25.0000",
+    k6VuMinutesIncluded: 30000,
+    aiCreditsIncluded: 1000,
+    sreInvestigationUnitsIncluded: "200.0000",
     runningCapacity: 5,
     queuedCapacity: 50,
     maxTeamMembers: 5,
     maxOrganizations: 1,
     maxProjects: 10,
-    maxStatusPages: 3,
-    maxStatusPageSubscribers: 500,
+    maxStatusPages: 5,
+    maxStatusPageSubscribers: 1000,
     customDomains: true,
     ssoEnabled: true,
     dataRetentionDays: 7,
@@ -77,19 +77,19 @@ const PLAN_LIMITS_SEED = [
   },
   {
     plan: "pro",
-    maxMonitors: 100,
+    maxMonitors: 200,
     minCheckIntervalMinutes: 1,
     playwrightMinutesIncluded: 10000,
-    k6VuMinutesIncluded: 75000,
-    aiCreditsIncluded: 300,
-    sreInvestigationUnitsIncluded: "100.0000",
+    k6VuMinutesIncluded: 100000,
+    aiCreditsIncluded: 5000,
+    sreInvestigationUnitsIncluded: "1000.0000",
     runningCapacity: 10,
     queuedCapacity: 100,
     maxTeamMembers: 25,
     maxOrganizations: 1,
     maxProjects: 50,
-    maxStatusPages: 15,
-    maxStatusPageSubscribers: 5000,
+    maxStatusPages: 20,
+    maxStatusPageSubscribers: 10000,
     customDomains: true,
     ssoEnabled: true,
     dataRetentionDays: 7,
@@ -125,19 +125,19 @@ const PLAN_LIMITS_SEED = [
 const OVERAGE_PRICING_SEED = [
   {
     plan: "plus",
-    playwrightMinutePriceCents: 3,
+    playwrightMinutePriceCents: 1,
     k6VuMinutePriceCents: 1, // Legacy fallback for older workers
-    k6VuMinutePriceCentsOverride: 0.5,
-    aiCreditPriceCents: 5,
-    sreInvestigationUnitPriceCents: 50,
+    k6VuMinutePriceCentsOverride: 0.2,
+    aiCreditPriceCents: 5, // Legacy column: AI has no paid overage and no reader prices it
+    sreInvestigationUnitPriceCents: 10,
   },
   {
     plan: "pro",
-    playwrightMinutePriceCents: 2,
+    playwrightMinutePriceCents: 0.5,
     k6VuMinutePriceCents: 1, // Legacy fallback for older workers
-    k6VuMinutePriceCentsOverride: 0.25,
-    aiCreditPriceCents: 3,
-    sreInvestigationUnitPriceCents: 50,
+    k6VuMinutePriceCentsOverride: 0.1,
+    aiCreditPriceCents: 3, // Legacy column: AI has no paid overage and no reader prices it
+    sreInvestigationUnitPriceCents: 10,
   },
 ];
 
@@ -264,6 +264,18 @@ async function seedOveragePricing(client, { preserveExisting = true } = {}) {
   `.then((result) => result[0]?.exists);
   if (!overrideExists) {
     logError("Migration 0025 is required for pricing seeds. Run npm run db:migrate before npm run db:seed.");
+    return false;
+  }
+
+  const fractionalPlaywright = await client`
+    SELECT EXISTS (
+      SELECT FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'overage_pricing'
+      AND column_name = 'playwright_minute_price_cents' AND data_type = 'numeric'
+    );
+  `.then((result) => result[0]?.exists);
+  if (!fractionalPlaywright) {
+    logError("Migration 0026 is required for fractional Playwright pricing. Run npm run db:migrate before npm run db:seed.");
     return false;
   }
 

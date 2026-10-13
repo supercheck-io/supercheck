@@ -17,7 +17,7 @@ export const PRICING_FAQS = [
   {
     question: "How do AI credits work?",
     answer:
-      "AI credits are a hard monthly pool for test generation, test fixes, and failure analysis. Each accepted action uses one credit before generation or analysis starts, even if it later fails. There are no AI credit overages; upgrade or wait for your next billing cycle when the pool is exhausted.",
+      "Each plan includes a monthly pool of AI credits for test generation, test fixes, and failure analysis, subject to fair use. Automated bulk use and abuse are restricted. Your account shows your monthly allowance and remaining credits. Each accepted action uses one credit before generation or analysis starts, even if it later fails. There are no AI credit overages; upgrade or wait for your next billing cycle when the pool is exhausted.",
   },
   {
     question: "What counts as an AI SRE investigation?",
@@ -27,7 +27,7 @@ export const PRICING_FAQS = [
   {
     question: "What happens if I exceed my limits?",
     answer:
-      "Playwright minutes, K6 VU-minutes, and completed full AI SRE reports use the overage rates shown above. AI credits have a hard monthly limit with no overages. Monitor, member, project, and status-page limits require an upgrade rather than an overage payment.",
+      "Playwright minutes, K6 VU-minutes, and completed full AI SRE reports use the overage rates shown above. AI credits are included, subject to fair use, with no overages. Monitor, member, project, and status-page limits require an upgrade rather than an overage payment.",
   },
   {
     question: "How can I control overage spending?",

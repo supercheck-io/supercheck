@@ -13,12 +13,12 @@ const pricing = {
     id, name: id === "plus" ? "Plus" : "Pro", price: id === "plus" ? 49 : 149,
     interval: "month", description: "Managed testing and monitoring",
     features: {
-      monitors: 25, playwrightMinutes: 3000, k6VuMinutes: 20000,
-      aiCredits: 100, sreInvestigationUnits: 25, teamMembers: 5,
+      monitors: 50, playwrightMinutes: 3000, k6VuMinutes: 30000,
+      aiCredits: 1000, sreInvestigationUnits: 200, teamMembers: 5,
       projects: 10, monitorDataRetention: "7 days raw / 30 days metrics",
       jobDataRetention: "30 days", customDomains: true, support: "Email support",
     },
-    overagePricing: { playwrightMinutes: 0.03, k6VuMinutes: 0.005, aiCredits: 0.05, sreInvestigationUnits: 0.5 },
+    overagePricing: { playwrightMinutes: 0.01, k6VuMinutes: 0.002, aiCredits: 0, sreInvestigationUnits: 0.1 },
   })),
   featureComparison: [], faqs: [],
 };
@@ -45,8 +45,8 @@ describe("signup plan selection", () => {
   it("lets an owner review plans and explains the separate AI meters", async () => {
     expect(await openPage()).toBeEnabled();
     expect(screen.getByRole("heading", { name: "Plus", level: 2 })).toBeVisible();
-    expect(screen.getAllByText("100 AI credits/month (hard limit)")).toHaveLength(2);
-    expect(screen.getAllByText("25 completed AI SRE reports/month")).toHaveLength(2);
+    expect(screen.getAllByText("1,000 AI credits/month · fair use")).toHaveLength(2);
+    expect(screen.getAllByText("200 completed AI SRE reports/month")).toHaveLength(2);
     expect(screen.queryByText("Most Popular")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "How do AI credits work?" }));
     expect(screen.getByText(/even if it later fails/)).toBeVisible();

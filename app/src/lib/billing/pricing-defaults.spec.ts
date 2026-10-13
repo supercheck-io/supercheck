@@ -15,13 +15,26 @@ describe("pricing defaults and copy", () => {
     );
     expect(
       formatOveragePrice(DEFAULT_OVERAGE_PRICING.plus.k6VuMinutes, "VU-min"),
-    ).toBe("$5.00 per 1,000 VU-min");
+    ).toBe("$2.00 per 1,000 VU-min");
     expect(
       formatOveragePrice(DEFAULT_OVERAGE_PRICING.pro.k6VuMinutes, "VU-min"),
-    ).toBe("$2.50 per 1,000 VU-min");
+    ).toBe("$1.00 per 1,000 VU-min");
     expect(formatOveragePrice(0.5, "AI SRE investigation")).toBe(
       "$0.50/AI SRE investigation",
     );
+  });
+  it("formats sub-cent Playwright rates per minute when requested", () => {
+    expect(formatOveragePrice(0.01, "min", true)).toBe("$0.01/min");
+    expect(formatOveragePrice(0.005, "min", true)).toBe("$0.005/min");
+  });
+
+  it("offers a lower browser rate on Pro without billing AI actions", () => {
+    expect(DEFAULT_OVERAGE_PRICING.plus.playwrightMinutes).toBe(0.01);
+    expect(DEFAULT_OVERAGE_PRICING.pro.playwrightMinutes).toBe(0.005);
+    expect(DEFAULT_OVERAGE_PRICING.plus.sreInvestigationUnits).toBe(0.1);
+    expect(DEFAULT_OVERAGE_PRICING.pro.sreInvestigationUnits).toBe(0.1);
+    expect(DEFAULT_OVERAGE_PRICING.plus.aiCredits).toBe(0);
+    expect(DEFAULT_OVERAGE_PRICING.pro.aiCredits).toBe(0);
   });
   it("shares the organization scope and peak VU contract across API and fallback", () => {
     expect(

@@ -127,10 +127,10 @@ export function PricingComparisonTable({
                 Playwright Minutes
               </TableHead>
               <TableCell className="text-center py-3 text-sm font-medium">
-                {formatOveragePrice(pricing.plus.playwrightMinutes, "min")}
+                {formatOveragePrice(pricing.plus.playwrightMinutes, "min", true)}
               </TableCell>
               <TableCell className="text-center py-3 text-sm font-medium">
-                {formatOveragePrice(pricing.pro.playwrightMinutes, "min")}
+                {formatOveragePrice(pricing.pro.playwrightMinutes, "min", true)}
               </TableCell>
               <TableCell className="text-center py-3 text-sm text-muted-foreground">
                 Custom
@@ -155,10 +155,10 @@ export function PricingComparisonTable({
                 AI Credits
               </TableHead>
               <TableCell className="text-center py-3 text-sm text-muted-foreground">
-                Hard limit (no overage)
+                Included · fair use
               </TableCell>
               <TableCell className="text-center py-3 text-sm text-muted-foreground">
-                Hard limit (no overage)
+                Included · fair use
               </TableCell>
               <TableCell className="text-center py-3 text-sm text-muted-foreground">
                 Custom

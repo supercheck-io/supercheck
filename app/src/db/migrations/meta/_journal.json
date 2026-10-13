@@ -183,6 +183,20 @@
       "when": 1790985600000,
       "tag": "0025_k6_volume_pricing",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1791936000000,
+      "tag": "0026_fractional_playwright_pricing",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1791936001000,
+      "tag": "0027_competitive_cloud_pricing",
+      "breakpoints": true
     }
   ]
 }
