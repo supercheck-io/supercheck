@@ -79,6 +79,7 @@ module.exports = defineConfig({
       {
         outputFolder: htmlReportDir,
         open: 'never',
+        mergeFiles: true,
       },
     ], // Always generate HTML reports for S3 upload
     ['list'], // Console output for debugging
@@ -113,9 +114,9 @@ module.exports = defineConfig({
     timezoneId: 'UTC',
 
     /* Artifact collection strategy - configurable via environment variables */
-    trace: process.env.PLAYWRIGHT_TRACE || 'retain-on-failure',
+    trace: process.env.PLAYWRIGHT_TRACE || 'retain-on-failure-and-retries',
     screenshot: process.env.PLAYWRIGHT_SCREENSHOT || 'on',
-    video: process.env.PLAYWRIGHT_VIDEO || 'retain-on-failure',
+    video: process.env.PLAYWRIGHT_VIDEO || 'retain-on-failure-and-retries',
 
     /* Browser optimization for resource efficiency - browser-specific args moved to projects */
 

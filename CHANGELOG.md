@@ -3,6 +3,7 @@
 Notable features, fixes, and upgrade requirements for Supercheck users. App and CLI releases are versioned separately.
 
 ## [Unreleased]
+- **Playwright:** Use the installed Playwright version for editor typing, retain traces and videos on failures and retries, and group HTML reports. Add four opt-in templates for diagnostics, passkeys, experimental Chromium WebMCP, and job-scoped test locks.
 - **Playwright:** Upgrade app, worker, and E2E dependencies to 1.64.0 (Chromium 156, Firefox 157, WebKit 27.2). Hidden-iframe elements now count as hidden; `Locator.ariaRef()` is removed in favor of `ariaSnapshot()`, and `videosPath`/`videoSize` are replaced by `recordVideo`. Worker Firefox pins `screen` to 1280×720; saved tests that override the viewport must also set a matching `screen` for screen-sensitive checks.
 - **Local development:** `docker-compose-local.yml` publishes PostgreSQL, Redis, and RustFS on `127.0.0.1`, so the app and worker can be stopped as containers and run from source (`npm run dev`) against the same stack and data.
 

@@ -14,7 +14,11 @@ describe('Playwright execution configuration', () => {
   });
 
   function loadConfig() {
-    const output = execFileSync(process.execPath, ['-e', `
+    const output = execFileSync(
+      process.execPath,
+      [
+        '-e',
+        `
       const config = require(${JSON.stringify(configPath)});
       const titles = ['plain test', 'test @firefox', 'test @webkit', 'test @mobile'];
       console.log(JSON.stringify({
@@ -26,7 +30,10 @@ describe('Playwright execution configuration', () => {
         ).map(project => project.name)),
         allDefault: config.projects.every(project => project.default !== false)
       }));
-    `], { encoding: 'utf8', env: process.env });
+    `,
+      ],
+      { encoding: 'utf8', env: process.env },
+    );
     return JSON.parse(output.trim().split('\n').at(-1)!);
   }
 
@@ -48,13 +55,22 @@ describe('Playwright execution configuration', () => {
 
   it('groups the HTML view without replacing the JSON reporter', () => {
     const config = loadConfig();
-    expect(config.reporter.find(([name]: [string]) => name === 'html')[1].mergeFiles).toBe(true);
-    expect(config.reporter.some(([name]: [string]) => name === 'json')).toBe(true);
+    expect(
+      config.reporter.find(([name]: [string]) => name === 'html')[1].mergeFiles,
+    ).toBe(true);
+    expect(config.reporter.some(([name]: [string]) => name === 'json')).toBe(
+      true,
+    );
   });
 
   it('still routes each browser tag to its existing project', () => {
     const config = loadConfig();
-    expect(config.selected).toEqual([['chromium'], ['firefox'], ['safari'], ['mobile-safari']]);
+    expect(config.selected).toEqual([
+      ['chromium'],
+      ['firefox'],
+      ['safari'],
+      ['mobile-safari'],
+    ]);
     expect(config.allDefault).toBe(true);
   });
 });

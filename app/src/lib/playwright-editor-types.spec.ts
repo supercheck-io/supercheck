@@ -1,6 +1,7 @@
 /** @jest-environment node */
 
 import fs from "node:fs";
+import { execFileSync } from "node:child_process";
 import path from "node:path";
 import ts from "typescript";
 import { getTemplatesByType } from "@/components/playground/template-data";
@@ -30,8 +31,11 @@ function diagnostics(code: string) {
   const originalReadFile = host.readFile.bind(host);
   const originalFileExists = host.fileExists.bind(host);
   const originalGetSourceFile = host.getSourceFile.bind(host);
+  const originalDirectoryExists = host.directoryExists!.bind(host);
   host.readFile = (file) => files[file] ?? originalReadFile(file);
   host.fileExists = (file) => file in files || originalFileExists(file);
+  host.directoryExists = (directory) =>
+    Object.keys(files).some((file) => file.startsWith(`${directory.replace(/\/$/, "")}/`)) || originalDirectoryExists(directory);
   host.getSourceFile = (file, languageVersion, onError, shouldCreateNewSourceFile) =>
     file in files
       ? ts.createSourceFile(file, files[file], languageVersion, true)
@@ -43,6 +47,10 @@ function diagnostics(code: string) {
 }
 
 describe("Playground Playwright declarations", () => {
+  beforeAll(() => {
+    execFileSync(process.execPath, [path.join(appRoot, "scripts/generate-playwright-types.js")]);
+  });
+
   it("accepts current APIs, capture options, and Supercheck helpers", () => {
     expect(diagnostics(`
       import { test, type Locator, type BrowserContext, type Page } from '@playwright/test';
@@ -70,6 +78,8 @@ describe("Playground Playwright declarations", () => {
       import { test } from '@playwright/test';
       test('invalid API', async ({ page }) => { await page.notARealAPI(); });
     `).join("\n")).toContain("Property 'notARealAPI' does not exist");
+    expect(diagnostics(`declare const buffer: Buffer; buffer.notARealAPI();`).join("\n"))
+      .toContain("Property 'notARealAPI' does not exist");
   });
 
   it.each(["pw-failure-diagnostics", "pw-passkey-authentication", "pw-webmcp-tools", "pw-resource-lock"])(

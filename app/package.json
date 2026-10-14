@@ -59,7 +59,10 @@
     "db:studio": "drizzle-kit studio",
     "db:migrate:prod": "node scripts/db-migrate.js",
     "setup:admin": "node scripts/bootstrap-admin.js",
-    "revoke:admin": "node scripts/revoke-admin.js"
+    "revoke:admin": "node scripts/revoke-admin.js",
+    "predev": "node scripts/generate-playwright-types.js",
+    "prebuild": "node scripts/generate-playwright-types.js",
+    "prebuild:webpack": "node scripts/generate-playwright-types.js"
   },
   "dependencies": {
     "@ai-sdk/amazon-bedrock": "^4.0.4",
