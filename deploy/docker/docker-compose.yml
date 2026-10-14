@@ -337,6 +337,7 @@ services:
       start_period: 120s # Increased to allow for migrations
     labels:
       - "traefik.enable=true"
+      - "traefik.docker.network=${COMPOSE_PROJECT_NAME}_supercheck-network"
 
       # Main app — uses APP_DOMAIN from environment
       - "traefik.http.routers.app.rule=Host(`${APP_DOMAIN:-localhost}`)"
