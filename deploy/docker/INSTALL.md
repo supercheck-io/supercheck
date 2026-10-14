@@ -120,7 +120,7 @@ If startup fails, inspect `docker compose logs --tail=100 app worker` with the c
 
 ## Optional AI SRE
 
-Configure one AI provider in `.env` using the [provider reference](https://supercheck.io/docs/app/deployment/self-hosted#optional-configuration). AI SRE and automatic alert triage are enabled by default. Automatic triage can incur provider charges; set `SRE_AUTOMATION_ENABLED=false` for manual investigations only, or `SRE_ENABLED=false` to disable AI SRE.
+Configure one AI provider in `.env` using the [provider reference](https://supercheck.io/docs/app/deployment/self-hosted#optional-configuration). AI SRE is enabled by default for manual investigations; automatic alert triage is off by default. Set `SRE_AUTOMATION_ENABLED=true` to opt in (it can incur provider charges), or `SRE_ENABLED=false` to disable AI SRE.
 
 Apply `.env` changes with `docker compose up -d --force-recreate app worker`, with the configured profiles. Connectors and Private Agents can be added later through [AI SRE Setup](https://supercheck.io/docs/app/admin/ai-sre-setup).
 

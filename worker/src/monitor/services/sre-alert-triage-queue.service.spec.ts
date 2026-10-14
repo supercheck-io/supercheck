@@ -27,8 +27,7 @@ describe('SreAlertTriageQueueService', () => {
     config.set('REDIS_PORT', 6379);
   });
 
-  it('does not create a queue when background triage is disabled', async () => {
-    config.set('SRE_AUTOMATION_ENABLED', 'false');
+  it('does not create a queue when automation is unset (default off)', async () => {
     const service = new SreAlertTriageQueueService(configService);
 
     await service.enqueueAlertHistoryRows([
@@ -39,6 +38,7 @@ describe('SreAlertTriageQueueService', () => {
   });
 
   it('does not enqueue failed alert deliveries', async () => {
+    config.set('SRE_AUTOMATION_ENABLED', 'true');
     const service = new SreAlertTriageQueueService(configService);
 
     await service.enqueueAlertHistoryRows([
@@ -48,7 +48,8 @@ describe('SreAlertTriageQueueService', () => {
     expect(mockQueueConstructor).not.toHaveBeenCalled();
   });
 
-  it('enqueues deterministic jobs for sent alert deliveries by default', async () => {
+  it('enqueues deterministic jobs for sent alert deliveries when opted in', async () => {
+    config.set('SRE_AUTOMATION_ENABLED', 'true');
     const service = new SreAlertTriageQueueService(configService);
 
     await service.enqueueAlertHistoryRows([
@@ -64,23 +65,36 @@ describe('SreAlertTriageQueueService', () => {
   });
 
   it.each(['false', '0', ' FALSE '])(
-    'honors the triage opt-out %s',
+    'does not enqueue when SRE_ENABLED=%s even if automation is on',
     async (flag) => {
       config.set('SRE_ENABLED', flag);
+      config.set('SRE_AUTOMATION_ENABLED', 'true');
       await new SreAlertTriageQueueService(
         configService,
       ).enqueueAlertHistoryRows([{ id: 'alert-history-1', status: 'sent' }]);
       expect(mockQueueConstructor).not.toHaveBeenCalled();
     },
   );
-  it.each(['false', '0', ' FALSE '])(
-    'honors the automation opt-out %s',
+
+  it.each(['', 'false', '0', ' FALSE ', 'yes'])(
+    'does not enqueue when SRE_AUTOMATION_ENABLED=%j',
     async (flag) => {
       config.set('SRE_AUTOMATION_ENABLED', flag);
       await new SreAlertTriageQueueService(
         configService,
       ).enqueueAlertHistoryRows([{ id: 'alert-history-1', status: 'sent' }]);
       expect(mockQueueConstructor).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['true', '1', ' TRUE '])(
+    'enqueues when SRE_AUTOMATION_ENABLED=%j and SRE_ENABLED is unset',
+    async (flag) => {
+      config.set('SRE_AUTOMATION_ENABLED', flag);
+      await new SreAlertTriageQueueService(
+        configService,
+      ).enqueueAlertHistoryRows([{ id: 'alert-history-1', status: 'sent' }]);
+      expect(mockQueueConstructor).toHaveBeenCalledTimes(1);
     },
   );
 });

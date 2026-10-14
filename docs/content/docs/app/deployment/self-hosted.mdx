@@ -113,7 +113,7 @@ Artifacts are cleaned automatically. Optional `.env` controls: `MONITOR_CLEANUP_
     OPENAI_API_KEY=your-api-key
     ```
 
-    AI triage is enabled by default and can incur provider charges. See [AI SRE Setup](/docs/app/admin/ai-sre-setup) to configure services and evidence sources.
+    Manual AI SRE is enabled by default. Automatic alert triage is opt-in: set `SRE_AUTOMATION_ENABLED=true` in both app and worker, and note it can incur provider charges. See [AI SRE Setup](/docs/app/admin/ai-sre-setup) to configure services and evidence sources.
   </Accordion>
 </Accordions>
 

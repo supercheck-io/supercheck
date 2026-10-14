@@ -18,14 +18,27 @@ describe("AI SRE feature defaults", () => {
   });
   afterEach(() => { process.env = originalEnv; });
 
-  it("enables normal and automated SRE workflows by default", () => {
+  it("enables manual SRE workflows and keeps automation off by default", () => {
     expect(isSreEnabled()).toBe(true);
     expect(isSreTriageAgentEnabled()).toBe(true);
     expect(isSreInvestigationAgentEnabled()).toBe(true);
-    expect(isSreAutomaticTriageEnabled()).toBe(true);
-    expect(isSreBackgroundAlertTriageEnabled()).toBe(true);
+    expect(isSreAutomaticTriageEnabled()).toBe(false);
+    expect(isSreBackgroundAlertTriageEnabled()).toBe(false);
     expect(isSreAlertCorrelationEnabled()).toBe(true);
     expect(isSreAgentSandboxEnabled()).toBe(false);
+  });
+
+  it.each(["true", "1", " TRUE "])("enables automation only when opted in: %s", (value) => {
+    process.env.SRE_AUTOMATION_ENABLED = value;
+    expect(isSreAutomaticTriageEnabled()).toBe(true);
+    expect(isSreBackgroundAlertTriageEnabled()).toBe(true);
+  });
+
+  it.each(["", "false", "0", "yes", "enabled"])("keeps automation off for %j", (value) => {
+    process.env.SRE_AUTOMATION_ENABLED = value;
+    expect(isSreAutomaticTriageEnabled()).toBe(false);
+    expect(isSreBackgroundAlertTriageEnabled()).toBe(false);
+    expect(isSreTriageAgentEnabled()).toBe(true);
   });
 
   it.each(["false", "0", " FALSE "])("disables all AI workflows: %s", (value) => {
@@ -37,13 +50,5 @@ describe("AI SRE feature defaults", () => {
     expect(isSreAutomaticTriageEnabled()).toBe(false);
     expect(isSreBackgroundAlertTriageEnabled()).toBe(false);
     expect(isSreAlertCorrelationEnabled()).toBe(false);
-  });
-
-  it.each(["false", "0", " FALSE "])("can stop automation while allowing manual requests: %s", (value) => {
-    process.env.SRE_AUTOMATION_ENABLED = value;
-    expect(isSreTriageAgentEnabled()).toBe(true);
-    expect(isSreInvestigationAgentEnabled()).toBe(true);
-    expect(isSreAutomaticTriageEnabled()).toBe(false);
-    expect(isSreBackgroundAlertTriageEnabled()).toBe(false);
   });
 });
