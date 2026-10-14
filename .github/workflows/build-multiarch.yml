@@ -54,7 +54,7 @@ jobs:
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           ref: main
-          path: ${{ runner.temp }}/release-signers
+          path: release-signers
           sparse-checkout: .github/release-allowed-signers
           sparse-checkout-cone-mode: false
           persist-credentials: false
@@ -72,7 +72,7 @@ jobs:
             exit 1
           fi
           git -c gpg.format=ssh \
-            -c gpg.ssh.allowedSignersFile="$RUNNER_TEMP/release-signers/.github/release-allowed-signers" \
+            -c gpg.ssh.allowedSignersFile="$GITHUB_WORKSPACE/release-signers/.github/release-allowed-signers" \
             verify-tag "refs/tags/$RELEASE_TAG"
 
       # The release tag is the single source of truth for the version baked
