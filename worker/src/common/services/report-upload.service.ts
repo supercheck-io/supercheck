@@ -9,7 +9,7 @@ import { existsSync } from 'fs';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { S3Service } from '../../execution/services/s3.service';
-import { findFirstMatchingFile, pathExists } from '../utils/file-search';
+import { pathExists } from '../utils/file-search';
 
 export interface ReportUploadResult {
   success: boolean;
@@ -28,7 +28,7 @@ export interface ReportUploadOptions {
 
 /**
  * Service responsible for uploading Playwright HTML reports to S3
- * Handles report discovery, processing, uploading, and cleanup
+ * Handles generated report processing, uploading, and cleanup
  */
 @Injectable()
 export class ReportUploadService {
@@ -41,7 +41,7 @@ export class ReportUploadService {
 
   /**
    * Upload a Playwright report to S3
-   * Searches for reports in standard locations and handles upload
+   * Uploads the configured reporter's extracted HTML directory
    *
    * @param options Report upload configuration
    * @returns Upload result with S3 URL or error
@@ -57,105 +57,38 @@ export class ReportUploadService {
       entityType,
       processReportFiles = true,
     } = options;
-
     const testBucket = this.s3Service.getBucketForEntityType(entityType);
-    let reportFound = false;
-    let s3Url: string | null = null;
-    let lastUploadError: string | undefined;
+    // Only trust the configured reporter output; other extracted HTML may be test-authored.
+    const reportDir = path.join(runDir, 'html');
+    if (!(await pathExists(reportDir))) {
+      this.logger.warn(`No generated HTML report found for test ${testId}`);
+      return { success: false, reportUrl: null, error: 'Report not found' };
+    }
 
-    const candidateDirs: string[] = [
-      path.join(runDir, `report-${testId.substring(0, 8)}`),
-      path.join(runDir, 'pw-report'),
-      path.join(runDir, 'playwright-report'),
-      path.join(runDir, 'playwright-reports', 'html'),
-      path.join(runDir, 'playwright-reports'),
-    ];
-
-    for (const dir of candidateDirs) {
-      if (!(await pathExists(dir))) {
-        continue;
-      }
-
-      const result = await this._uploadFromDirectory(
-        dir,
-        s3ReportKeyPrefix,
-        testBucket,
-        executionId,
-        entityType,
-        testId,
-        processReportFiles,
-      );
-
-      if (result.success) {
-        reportFound = true;
-        s3Url =
+    const result = await this._uploadFromDirectory(
+      reportDir,
+      s3ReportKeyPrefix,
+      testBucket,
+      executionId,
+      entityType,
+      testId,
+      processReportFiles,
+    );
+    if (result.success) {
+      return {
+        success: true,
+        reportUrl:
           this.s3Service.getBaseUrlForEntity(entityType, executionId) +
-          '/index.html';
-        return { success: true, reportUrl: s3Url };
-      }
-
-      if (result.error && result.error !== 'No index.html found') {
-        reportFound = true;
-        lastUploadError = result.error;
-      }
-    }
-
-    if (!reportFound) {
-      const fallbackIndex = await findFirstMatchingFile(
-        runDir,
-        (fullPath, entryName) => entryName === 'index.html',
-        { maxDepth: 6 },
-      );
-
-      if (fallbackIndex) {
-        const fallbackDir = path.dirname(fallbackIndex);
-        const result = await this._uploadFromDirectory(
-          fallbackDir,
-          s3ReportKeyPrefix,
-          testBucket,
-          executionId,
-          entityType,
-          testId,
-          processReportFiles,
-        );
-
-        if (result.success) {
-          reportFound = true;
-          s3Url =
-            this.s3Service.getBaseUrlForEntity(entityType, executionId) +
-            '/index.html';
-          return { success: true, reportUrl: s3Url };
-        }
-
-        if (result.error && result.error !== 'No index.html found') {
-          reportFound = true;
-          lastUploadError = result.error;
-        }
-      }
-    }
-
-    if (lastUploadError) {
-      const warning = `HTML report was generated for test ${testId}, but upload failed: ${lastUploadError}`;
-      this.logger.warn(warning);
-      return {
-        success: false,
-        reportUrl: null,
-        error: lastUploadError,
+          '/index.html',
       };
     }
 
-    // No report found in any location
-    if (!reportFound) {
-      const warning = `No HTML report found in any expected location for test ${testId}`;
-      this.logger.warn(warning);
-      return {
-        success: false,
-        reportUrl: null,
-        error: 'Report not found',
-      };
-    }
-
-    return { success: true, reportUrl: s3Url };
+    const error =
+      result.error === 'No index.html found'
+        ? 'Report not found'
+        : result.error || 'Report upload failed';
+    this.logger.warn(`HTML report upload failed for test ${testId}: ${error}`);
+    return { success: false, reportUrl: null, error };
   }
 
   /**
