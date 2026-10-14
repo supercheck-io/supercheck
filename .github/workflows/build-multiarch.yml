@@ -45,6 +45,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
+          # Preserve the annotated tag object for signature verification.
+          fetch-depth: 0
           persist-credentials: false
 
       # Release tags must be annotated and signed by a key listed in
