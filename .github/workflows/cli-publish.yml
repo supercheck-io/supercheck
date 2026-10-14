@@ -28,6 +28,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
+        with:
+          # Preserve the annotated tag object for signature verification.
+          fetch-depth: 0
 
       # Release tags must be annotated and signed by a key listed in
       # main's .github/release-allowed-signers. The signers file is read
