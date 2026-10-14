@@ -209,6 +209,8 @@ describe('competitive stock pricing rollout', () => {
       expect(await drizzle(pg).select().from(overagePricing)).toEqual(prices);
     });
     it.each([
+      "UPDATE plan_limits SET max_monitors=50 WHERE plan='plus'",
+      "UPDATE overage_pricing SET playwright_minute_price_cents=1 WHERE plan='plus'",
       "UPDATE plan_limits SET max_team_members=7 WHERE plan='plus'",
       "UPDATE plan_limits SET max_organizations=3 WHERE plan='plus'",
       "UPDATE overage_pricing SET k6_vu_minute_price_cents_override=0 WHERE plan='plus'",
