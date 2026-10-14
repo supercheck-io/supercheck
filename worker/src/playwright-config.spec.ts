@@ -1,4 +1,5 @@
 import * as path from 'node:path';
+import { execFileSync } from 'node:child_process';
 
 describe('Playwright execution configuration', () => {
   const configPath = path.resolve(__dirname, '../playwright.config.js');
@@ -10,12 +11,23 @@ describe('Playwright execution configuration', () => {
     else process.env.PLAYWRIGHT_TRACE = originalTrace;
     if (originalVideo === undefined) delete process.env.PLAYWRIGHT_VIDEO;
     else process.env.PLAYWRIGHT_VIDEO = originalVideo;
-    jest.resetModules();
   });
 
   function loadConfig() {
-    jest.resetModules();
-    return jest.requireActual(configPath);
+    const output = execFileSync(process.execPath, ['-e', `
+      const config = require(${JSON.stringify(configPath)});
+      const titles = ['plain test', 'test @firefox', 'test @webkit', 'test @mobile'];
+      console.log(JSON.stringify({
+        use: config.use,
+        reporter: config.reporter,
+        selected: titles.map(title => config.projects.filter(project =>
+          (!project.grep || project.grep.test(title)) &&
+          (!project.grepInvert || !project.grepInvert.test(title))
+        ).map(project => project.name)),
+        allDefault: config.projects.every(project => project.default !== false)
+      }));
+    `], { encoding: 'utf8', env: process.env });
+    return JSON.parse(output.trim().split('\n').at(-1)!);
   }
 
   it('retains successful retries as well as failures', () => {
@@ -41,14 +53,8 @@ describe('Playwright execution configuration', () => {
   });
 
   it('still routes each browser tag to its existing project', () => {
-    const projects = loadConfig().projects;
-    const selected = (title: string) => projects.filter((project: { grep?: RegExp; grepInvert?: RegExp }) =>
-      (!project.grep || project.grep.test(title)) && (!project.grepInvert || !project.grepInvert.test(title)),
-    ).map((project: { name: string }) => project.name);
-    expect(selected('plain test')).toEqual(['chromium']);
-    expect(selected('test @firefox')).toEqual(['firefox']);
-    expect(selected('test @webkit')).toEqual(['safari']);
-    expect(selected('test @mobile')).toEqual(['mobile-safari']);
-    expect(projects.every((project: { default?: boolean }) => project.default !== false)).toBe(true);
+    const config = loadConfig();
+    expect(config.selected).toEqual([['chromium'], ['firefox'], ['safari'], ['mobile-safari']]);
+    expect(config.allDefault).toBe(true);
   });
 });
