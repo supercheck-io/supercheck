@@ -144,4 +144,132 @@ describe('competitive stock pricing rollout', () => {
       )?.playwrightMinutePriceCents,
     ).toBe(0.5);
   });
+  describe('legacy organization-count repair', () => {
+    const repair = () => pg.exec(readMigration('0028_legacy_stock_pricing'));
+    beforeEach(async () => {
+      await pg.exec(
+        "UPDATE plan_limits SET max_organizations=CASE plan WHEN 'plus' THEN 2 ELSE 10 END",
+      );
+    });
+    it('repairs skipped legacy stock contracts and is idempotent', async () => {
+      await migrate();
+      expect(
+        (await drizzle(pg).select().from(overagePricing)).map(
+          (p) => p.playwrightMinutePriceCents,
+        ),
+      ).toEqual([3, 2]);
+      await repair();
+      const plans = (
+        await pg.query<Record<string, string | number>>(
+          'SELECT * FROM plan_limits ORDER BY plan',
+        )
+      ).rows;
+      const prices = await drizzle(pg).select().from(overagePricing);
+      expect(
+        prices.map((p) => [
+          p.plan,
+          p.playwrightMinutePriceCents,
+          p.k6VuMinutePriceCentsOverride,
+          p.sreInvestigationUnitPriceCents,
+        ]),
+      ).toEqual([
+        ['plus', 1, 0.2, 10],
+        ['pro', 0.5, 0.1, 10],
+      ]);
+      expect(
+        plans.map((p) =>
+          [
+            'max_organizations',
+            'max_monitors',
+            'k6_vu_minutes_included',
+            'ai_credits_included',
+            'sre_investigation_units_included',
+            'max_status_pages',
+            'max_status_page_subscribers',
+          ].map((k) => Number(p[k])),
+        ),
+      ).toEqual([
+        [2, 50, 30000, 1000, 200, 5, 1000],
+        [10, 200, 100000, 5000, 1000, 20, 10000],
+      ]);
+      expect(
+        Number(
+          (await pg.query<{ units: string }>('SELECT units FROM usage_events'))
+            .rows[0].units,
+        ),
+      ).toBe(123.4567);
+      await repair();
+      expect(
+        (
+          await pg.query<Record<string, string | number>>(
+            'SELECT * FROM plan_limits ORDER BY plan',
+          )
+        ).rows,
+      ).toEqual(plans);
+      expect(await drizzle(pg).select().from(overagePricing)).toEqual(prices);
+    });
+    it.each([
+      "UPDATE plan_limits SET max_monitors=50 WHERE plan='plus'",
+      "UPDATE overage_pricing SET playwright_minute_price_cents=1 WHERE plan='plus'",
+      "UPDATE plan_limits SET max_team_members=7 WHERE plan='plus'",
+      "UPDATE plan_limits SET max_organizations=3 WHERE plan='plus'",
+      "UPDATE overage_pricing SET k6_vu_minute_price_cents_override=0 WHERE plan='plus'",
+      "UPDATE overage_pricing SET playwright_minute_price_cents=4 WHERE plan='plus'",
+    ])('preserves customized legacy contracts: %s', async (customize) => {
+      await pg.exec(customize);
+      await migrate();
+      const plan = (
+        await pg.query("SELECT * FROM plan_limits WHERE plan='plus'")
+      ).rows;
+      const prices = await drizzle(pg).select().from(overagePricing);
+      await repair();
+      expect(
+        (await pg.query("SELECT * FROM plan_limits WHERE plan='plus'")).rows,
+      ).toEqual(plan);
+      expect(
+        (await drizzle(pg).select().from(overagePricing)).find(
+          (p) => p.plan === 'plus',
+        ),
+      ).toEqual(prices.find((p) => p.plan === 'plus'));
+      expect(
+        (await drizzle(pg).select().from(overagePricing)).find(
+          (p) => p.plan === 'pro',
+        )?.playwrightMinutePriceCents,
+      ).toBe(0.5);
+    });
+    it('rolls back both prices and limits when a plan update fails', async () => {
+      await migrate();
+      const plans = (await pg.query('SELECT * FROM plan_limits ORDER BY plan'))
+        .rows;
+      const prices = await drizzle(pg).select().from(overagePricing);
+      await pg.exec(`CREATE FUNCTION reject_plan_update() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN RAISE EXCEPTION 'blocked plan update'; END $$;
+        CREATE TRIGGER reject_plan_update BEFORE UPDATE ON plan_limits
+        FOR EACH ROW EXECUTE FUNCTION reject_plan_update();`);
+      await expect(repair()).rejects.toThrow('blocked plan update');
+      expect(
+        (await pg.query('SELECT * FROM plan_limits ORDER BY plan')).rows,
+      ).toEqual(plans);
+      expect(await drizzle(pg).select().from(overagePricing)).toEqual(prices);
+    });
+    it('leaves already upgraded canonical contracts unchanged', async () => {
+      await pg.exec('UPDATE plan_limits SET max_organizations=1');
+      await migrate();
+      const plans = (
+        await pg.query<Record<string, string | number>>(
+          'SELECT * FROM plan_limits ORDER BY plan',
+        )
+      ).rows;
+      const prices = await drizzle(pg).select().from(overagePricing);
+      await repair();
+      expect(
+        (
+          await pg.query<Record<string, string | number>>(
+            'SELECT * FROM plan_limits ORDER BY plan',
+          )
+        ).rows,
+      ).toEqual(plans);
+      expect(await drizzle(pg).select().from(overagePricing)).toEqual(prices);
+    });
+  });
 });
