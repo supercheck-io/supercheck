@@ -2149,6 +2149,166 @@ for (const { url, expectedTitle } of rows) {
 }
 `,
   },
+  {
+    id: "pw-failure-diagnostics",
+    name: "Failure Diagnostics",
+    description: "Rich failure traces, annotated retry videos, and a scoped network HAR",
+    category: "Diagnostics",
+    testType: "browser",
+    tags: ["trace", "video", "har", "retries"],
+    code: `import { test, expect } from '@playwright/test';
+import { unlink } from 'node:fs/promises';
+
+// These captures apply only to this test file, including its retries.
+test.use({
+  trace: { mode: 'retain-on-failure-and-retries', snapshots: { dom: true, aria: true, screen: true } },
+  video: { mode: 'retain-on-failure-and-retries', show: { actions: { position: 'top-right' } } },
+});
+
+const recordingContexts = new WeakSet();
+
+test.beforeEach(async ({ context }, testInfo) => {
+  await context.tracing.startHar(testInfo.outputPath('network.har'), {
+    content: 'embed',
+    urlFilter: 'https://example.com/**',
+  });
+  recordingContexts.add(context);
+});
+
+test.afterEach(async ({ context }, testInfo) => {
+  if (!recordingContexts.delete(context)) return;
+  await context.tracing.stopHar();
+  const harPath = testInfo.outputPath('network.har');
+  if (testInfo.status !== testInfo.expectedStatus) {
+    await testInfo.attach('network.har', { path: harPath, contentType: 'application/json' });
+  } else {
+    await unlink(harPath);
+  }
+});
+
+test('diagnose a page', async ({ page }) => {
+  // Replace this synthetic page and HAR URL filter with your application.
+  await page.route('https://example.com/**', route => route.fulfill({
+    contentType: 'text/html',
+    body: '<h1>Example application</h1><button>Continue</button>',
+  }));
+  await test.step('Open the application', async () => {
+    await page.goto('https://example.com/');
+    await expect(page.getByRole('heading')).toHaveText('Example application');
+    await page.getByRole('button', { name: 'Continue' }).click();
+  }, { subtitle: 'synthetic account', params: { origin: 'https://example.com' } });
+});
+`,
+  },
+  {
+    id: "pw-passkey-authentication",
+    name: "Passkey Registration and Sign-In",
+    description: "Exercise WebAuthn with a virtual authenticator, without hardware keys",
+    category: "Authentication",
+    testType: "browser",
+    tags: ["passkey", "webauthn", "authentication"],
+    code: `import { test, expect } from '@playwright/test';
+
+test('register and authenticate a passkey', async ({ context, page }) => {
+  await context.credentials.install();
+  await page.route('https://example.com/**', route => route.fulfill({
+    contentType: 'text/html', body: '<h1>Passkey example</h1>',
+  }));
+  await page.goto('https://example.com/');
+
+  // For a real application, use its registration/sign-in UI and server challenges.
+  const passkey = await test.step('Register a passkey', async () => page.evaluate(async () => {
+    const credential = await navigator.credentials.create({ publicKey: {
+      challenge: crypto.getRandomValues(new Uint8Array(32)),
+      rp: { name: 'Example application', id: location.hostname },
+      user: { id: new Uint8Array([1, 2, 3, 4]), name: 'test-user', displayName: 'Test User' },
+      pubKeyCredParams: [{ type: 'public-key', alg: -7 }],
+      authenticatorSelection: { residentKey: 'required', userVerification: 'required' },
+      timeout: 15000,
+    } });
+    if (!credential || credential.type !== 'public-key' || !('rawId' in credential) || !(credential.rawId instanceof ArrayBuffer)) {
+      throw new Error('Expected a passkey');
+    }
+    return { id: credential.id, rawId: Array.from(new Uint8Array(credential.rawId)) };
+  }), { subtitle: 'virtual authenticator' });
+
+  const signedInId = await test.step('Sign in with the passkey', async () => page.evaluate(async (passkey) => {
+    const credential = await navigator.credentials.get({ publicKey: {
+      challenge: crypto.getRandomValues(new Uint8Array(32)),
+      rpId: location.hostname,
+      allowCredentials: [{ type: 'public-key', id: new Uint8Array(passkey.rawId) }],
+      userVerification: 'required',
+      timeout: 15000,
+    } });
+    return credential?.id;
+  }, passkey), { subtitle: 'same relying party' });
+  expect(signedInId).toBe(passkey.id);
+});
+`,
+  },
+  {
+    id: "pw-webmcp-tools",
+    name: "WebMCP Tools (Experimental, Chromium)",
+    description: "Discover and call a page-defined tool using Chromium's experimental WebMCP support",
+    category: "AI Applications",
+    testType: "browser",
+    tags: ["webmcp", "experimental", "chromium"],
+    code: `import { test, expect } from '@playwright/test';
+
+// Opt in for this file only; use Chromium, not @firefox or @webkit tags.
+test.use({ launchOptions: { args: ['--enable-features=WebMCP'] } });
+
+test('discover and call a WebMCP tool', async ({ page }) => {
+  // Replace the synthetic registration with your WebMCP-enabled application.
+  await page.route('https://example.com/**', route => route.fulfill({
+    contentType: 'text/html',
+    body: '<h1>WebMCP example</h1><script>' +
+      'document.modelContext.registerTool({' +
+      'name: "add", description: "Add two numbers",' +
+      'inputSchema: { type: "object", properties: { a: { type: "number" }, b: { type: "number" } }, required: ["a", "b"] },' +
+      'execute: ({a, b}) => ({ content: [{ type: "text", text: String(a + b) }] })' +
+      '});</script>',
+  }));
+  await page.goto('https://example.com/');
+  await test.step('Discover tools', async () => {
+    const tools = await page.webmcp.tools();
+    expect(tools.map(tool => tool.name)).toContain('add');
+  });
+  await test.step('Call the tool', async () => {
+    const result = await page.webmcp.callTool('add', { a: 2, b: 3 });
+    expect(result.content).toEqual([{ type: 'text', text: '5' }]);
+  }, { params: { a: 2, b: 3 } });
+});
+`,
+  },
+  {
+    id: "pw-resource-lock",
+    name: "Shared Resource Lock",
+    description: "Serialize tests sharing a resource within one Playwright job",
+    category: "Reliability",
+    testType: "browser",
+    tags: ["lock", "parallel", "isolation"],
+    code: `import { test, expect } from '@playwright/test';
+
+// Use the same name in every file that mutates this resource within a job.
+// Locks do not coordinate separate Supercheck runs or jobs.
+test.describe.configure({ lock: 'shared-account-settings' });
+
+test('update profile', async ({ page }) => {
+  // Replace this synthetic form with your application's shared account.
+  await page.setContent('<h1>Profile</h1><input aria-label="Display name" value="Test User">');
+  await test.step('Change the display name', async () => {
+    await page.getByLabel('Display name').fill('Updated User');
+    await expect(page.getByLabel('Display name')).toHaveValue('Updated User');
+  }, { subtitle: 'serialized within this job' });
+});
+
+test('read profile', async ({ page }) => {
+  await page.setContent('<h1>Profile</h1><input aria-label="Display name" value="Test User">');
+  await expect(page.getByLabel('Display name')).toHaveValue('Test User');
+});
+`,
+  },
 ];
 
 // Helper function to get templates by test type

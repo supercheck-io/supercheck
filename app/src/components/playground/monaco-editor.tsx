@@ -14,6 +14,7 @@ import { Maximize2, X, Loader2 } from "lucide-react";
 import { useMonacoPerformance } from "./use-monaco-performance";
 import { getCachedTypeDefs } from "@/components/monaco-prefetcher";
 import { registerMonacoThemes, getMonacoTheme } from "@/lib/monaco-config";
+import { loadPlaywrightEditorTypes } from "@/lib/playwright-editor-types";
 
 interface MonacoEditorProps {
   value: string;
@@ -81,40 +82,45 @@ export const MonacoEditorClient = memo(
         // Set eager model sync for immediate type loading
         monaco.languages.typescript.javascriptDefaults.setEagerModelSync(true);
 
-        // Configure JavaScript defaults
-        monaco.languages.typescript.javascriptDefaults.setCompilerOptions({
-          target: monaco.languages.typescript.ScriptTarget.ESNext,
-          allowNonTsExtensions: true,
-          moduleResolution:
-            monaco.languages.typescript.ModuleResolutionKind.NodeJs,
-          module: monaco.languages.typescript.ModuleKind.ESNext,
-          noEmit: true,
-          esModuleInterop: true,
-          allowJs: true,
-          checkJs: true,
-          strict: true,
-          noImplicitAny: false,
-          strictNullChecks: true,
-          strictFunctionTypes: true,
-          strictBindCallApply: true,
-          strictPropertyInitialization: true,
-          noImplicitThis: true,
-          alwaysStrict: true,
-        });
+        // Both editor languages need Node module resolution for installed declarations.
+        for (const defaults of [
+          monaco.languages.typescript.typescriptDefaults,
+          monaco.languages.typescript.javascriptDefaults,
+        ]) {
+          defaults.setCompilerOptions({
+            target: monaco.languages.typescript.ScriptTarget.ESNext,
+            allowNonTsExtensions: true,
+            moduleResolution:
+              monaco.languages.typescript.ModuleResolutionKind.NodeJs,
+            module: monaco.languages.typescript.ModuleKind.ESNext,
+            noEmit: true,
+            esModuleInterop: true,
+            allowJs: true,
+            checkJs: true,
+            strict: true,
+            noImplicitAny: false,
+            strictNullChecks: true,
+            strictFunctionTypes: true,
+            strictBindCallApply: true,
+            strictPropertyInitialization: true,
+            noImplicitThis: true,
+            alwaysStrict: true,
+          });
 
-        // Enable diagnostics and suggestions
-        monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions({
-          noSemanticValidation: false,
-          noSyntaxValidation: false,
-          noSuggestionDiagnostics: false,
-          diagnosticCodesToIgnore: [],
-        });
+          // Enable diagnostics and suggestions
+          defaults.setDiagnosticsOptions({
+            noSemanticValidation: false,
+            noSyntaxValidation: false,
+            noSuggestionDiagnostics: false,
+            diagnosticCodesToIgnore: [],
+          });
+        }
 
         // Load enhanced type definitions with secure error handling
         // PERFORMANCE: Uses cached types from MonacoPrefetcher if available
         const loadTypeDefinitions = async () => {
           try {
-            // Load comprehensive Supercheck types (includes all Playwright types)
+            // Runtime helpers are separate from the installed Playwright declarations.
             const typeFiles = [
               {
                 path: "/supercheck.d.ts",
@@ -186,6 +192,7 @@ export const MonacoEditorClient = memo(
                 );
               }
             }
+            await loadPlaywrightEditorTypes(monaco.languages.typescript.typescriptDefaults);
           } catch (error) {
             console.error("Error in loadTypeDefinitions:", error);
           }
