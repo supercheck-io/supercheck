@@ -282,6 +282,27 @@ export class S3CleanupService {
     return this.deleteReports([input]);
   }
 
+  getFailedReportEntityIds(inputs: ReportDeletionInput[], result: S3DeletionResult): Set<string> {
+    if (result.success) return new Set();
+    const allIds = new Set(inputs.map(input => input.entityId));
+    if (result.failedObjects.length === 0) return allIds;
+    const prefixes = inputs.map(input => {
+      try { return { input, prefix: `${this.extractS3Key(input)}/` }; }
+      catch { return { input, prefix: undefined }; }
+    });
+    const failedIds = new Set<string>();
+    for (const { key } of result.failedObjects) {
+      const matches = prefixes.filter(({ input, prefix }) =>
+        key === input.reportPath || key === input.s3Url || key === input.entityId ||
+        (prefix && key.startsWith(prefix))
+      );
+      // An unknown failure must never discard a pointer that may still need retry.
+      if (matches.length === 0) return allIds;
+      for (const { input } of matches) failedIds.add(input.entityId);
+    }
+    return failedIds;
+  }
+
   /**
    * Delete all reports for a specific entity (run, job, or test)
    */

@@ -46,7 +46,7 @@ import {
   alertHistory,
   auditLogs,
 } from "@/db/schema";
-import { sql, and, or, isNotNull, lt, eq, inArray, asc, type SQL } from "drizzle-orm";
+import { sql, and, or, isNotNull, lt, eq, inArray, gt, asc, type SQL } from "drizzle-orm";
 import { Queue, Worker, QueueEvents } from "bullmq";
 import type Redis from "ioredis";
 import { createS3CleanupService, type ReportDeletionInput } from "./s3-cleanup";
@@ -514,6 +514,8 @@ export class MonitorResultsCleanupStrategy implements ICleanupStrategy {
         );
 
         let orgDeleted = 0;
+        // Keep PostgreSQL microseconds; Date truncation can reselect retained failures.
+        let cursor: { checkedAt: string; id: string } | undefined;
         let iterations = 0;
         const maxIterations = Math.ceil(
           (maxRecords - totalProcessed) / batchSize
@@ -532,29 +534,17 @@ export class MonitorResultsCleanupStrategy implements ICleanupStrategy {
 
           if (dryRun) {
             // Count records that would be deleted for this org
-            const countResult = await db
-              .select({
-                count: sql<number>`count(*)`,
-                deleteCount: sql<number>`count(*) FILTER (WHERE ${monitorResults.isStatusChange} = false)`,
-              })
-              .from(monitorResults)
-              .where(
-                and(
-                  inArray(monitorResults.monitorId, monitorIds),
-                  lt(monitorResults.checkedAt, cutoffDate),
-                  or(
-                    eq(monitorResults.isStatusChange, false),
-                    isNotNull(monitorResults.testExecutionId),
-                    isNotNull(monitorResults.testReportS3Url)
-                  )
-                )
-              );
-
-            const count = Number(countResult[0]?.count || 0);
-            if (count === 0) break;
-            const processed = Math.min(count, maxRecords - totalProcessed);
-            orgDeleted += Math.min(Number(countResult[0]?.deleteCount || 0), processed);
-            totalProcessed += processed;
+            const count = await this.countResultsToClean(and(
+              inArray(monitorResults.monitorId, monitorIds),
+              lt(monitorResults.checkedAt, cutoffDate),
+              or(
+                eq(monitorResults.isStatusChange, false),
+                isNotNull(monitorResults.testExecutionId),
+                isNotNull(monitorResults.testReportS3Url)
+              )
+            )!, maxRecords - totalProcessed);
+            orgDeleted += count.deleted;
+            totalProcessed += count.processed;
             result.details.recordsProcessed = totalProcessed;
             break; // In dry-run, just count once
           } else {
@@ -562,6 +552,7 @@ export class MonitorResultsCleanupStrategy implements ICleanupStrategy {
             const idsToDelete = await db
               .select({
                 id: monitorResults.id,
+                checkedAt: sql<string>`${monitorResults.checkedAt}::text`,
                 isStatusChange: monitorResults.isStatusChange,
                 status: monitorResults.status,
                 testExecutionId: monitorResults.testExecutionId,
@@ -572,6 +563,10 @@ export class MonitorResultsCleanupStrategy implements ICleanupStrategy {
                 and(
                   inArray(monitorResults.monitorId, monitorIds),
                   lt(monitorResults.checkedAt, cutoffDate),
+                  cursor ? or(
+                    gt(monitorResults.checkedAt, sql`${cursor.checkedAt}::timestamp`),
+                    and(eq(monitorResults.checkedAt, sql`${cursor.checkedAt}::timestamp`), gt(monitorResults.id, cursor.id))
+                  ) : undefined,
                   or(
                     eq(monitorResults.isStatusChange, false),
                     isNotNull(monitorResults.testExecutionId),
@@ -579,14 +574,24 @@ export class MonitorResultsCleanupStrategy implements ICleanupStrategy {
                   )
                 )
               )
+              .orderBy(asc(monitorResults.checkedAt), asc(monitorResults.id))
               .limit(Math.min(batchSize, maxRecords - totalProcessed));
 
             if (idsToDelete.length === 0) break;
 
-            orgDeleted += await this.cleanupBatch(idsToDelete, result);
             totalProcessed += idsToDelete.length;
             result.details.recordsProcessed = totalProcessed;
-            result.recordsDeleted = totalDeleted + orgDeleted;
+            try {
+              orgDeleted += await this.cleanupBatch(idsToDelete, result);
+              const last = idsToDelete[idsToDelete.length - 1];
+              cursor = { checkedAt: last.checkedAt, id: last.id };
+              result.recordsDeleted = totalDeleted + orgDeleted;
+            } catch (error) {
+              // Preserve this failed batch for retry without starving other tenants.
+              result.success = false;
+              result.errors.push(error instanceof Error ? error.message : String(error));
+              break;
+            }
 
             // Small delay between batches
             if (idsToDelete.length === batchSize) {
@@ -634,6 +639,18 @@ export class MonitorResultsCleanupStrategy implements ICleanupStrategy {
     return result;
   }
 
+  private async countResultsToClean(condition: SQL, limit: number) {
+    const candidates = db.select({ isStatusChange: monitorResults.isStatusChange })
+      .from(monitorResults).where(condition)
+      .orderBy(asc(monitorResults.checkedAt), asc(monitorResults.id))
+      .limit(limit).as("expired_monitor_results");
+    const [count] = await db.select({
+      count: sql<number>`count(*)`,
+      deleteCount: sql<number>`count(*) FILTER (WHERE ${candidates.isStatusChange} = false)`,
+    }).from(candidates);
+    return { processed: Number(count?.count || 0), deleted: Number(count?.deleteCount || 0) };
+  }
+
   private async cleanupBatch(
     rows: Array<{
       id: string;
@@ -648,18 +665,23 @@ export class MonitorResultsCleanupStrategy implements ICleanupStrategy {
       .filter(row => row.testReportS3Url || (row.status !== "up" && row.testExecutionId))
       .map(row => ({
         entityType: "monitor",
-        entityId: row.testExecutionId || row.id,
+        entityId: row.id,
         reportPath: row.testExecutionId || undefined,
         s3Url: row.testReportS3Url || undefined,
       }));
+    let failedIds = new Set<string>();
     if (inputs.length > 0) {
       const s3Result = await this.s3Service.deleteReports(inputs);
       result.s3ObjectsDeleted! += s3Result.deletedObjects.length;
       if (!s3Result.success) {
-        throw new Error(`Monitor artifact cleanup had ${s3Result.failedObjects.length} S3 failures; preserving DB pointers for retry`);
+        failedIds = this.s3Service.getFailedReportEntityIds(inputs, s3Result);
+        result.success = false;
+        result.errors.push(`Monitor artifact cleanup had ${s3Result.failedObjects.length} S3 failures; preserving failed pointers for retry`);
       }
     }
 
+    rows = rows.filter(row => !failedIds.has(row.id));
+    if (rows.length === 0) return 0;
     const executionIds = rows.flatMap(row => row.testExecutionId ? [row.testExecutionId] : []);
     const urls = rows.flatMap(row => !row.testExecutionId && row.testReportS3Url ? [row.testReportS3Url] : []);
     const deleteIds = rows.filter(row => !row.isStatusChange).map(row => row.id);
@@ -720,38 +742,28 @@ export class MonitorResultsCleanupStrategy implements ICleanupStrategy {
     try {
       let totalDeleted = 0;
       let totalProcessed = 0;
+      let cursor: { checkedAt: string; id: string } | undefined;
       let iterations = 0;
       const maxIterations = Math.ceil(maxRecords / batchSize);
 
       if (dryRun) {
         // Dry-run: count matching records once (no loop needed since data isn't modified)
-        const countResult = await db
-          .select({
-            count: sql<number>`count(*)`,
-            deleteCount: sql<number>`count(*) FILTER (WHERE ${monitorResults.isStatusChange} = false)`,
-          })
-          .from(monitorResults)
-          .where(
-            and(
-              lt(monitorResults.checkedAt, cutoffDate),
-              or(
-                eq(monitorResults.isStatusChange, false),
-                isNotNull(monitorResults.testExecutionId),
-                isNotNull(monitorResults.testReportS3Url)
-              )
-            )
-          );
-
-        totalDeleted = Math.min(
-          Number(countResult[0]?.deleteCount || 0),
-          maxRecords
-        );
-        result.details.recordsProcessed = Math.min(Number(countResult[0]?.count || 0), maxRecords);
+        const count = await this.countResultsToClean(and(
+          lt(monitorResults.checkedAt, cutoffDate),
+          or(
+            eq(monitorResults.isStatusChange, false),
+            isNotNull(monitorResults.testExecutionId),
+            isNotNull(monitorResults.testReportS3Url)
+          )
+        )!, maxRecords);
+        totalDeleted = count.deleted;
+        result.details.recordsProcessed = count.processed;
       } else {
         while (iterations < maxIterations) {
           const idsToDelete = await db
             .select({
               id: monitorResults.id,
+              checkedAt: sql<string>`${monitorResults.checkedAt}::text`,
               isStatusChange: monitorResults.isStatusChange,
               status: monitorResults.status,
               testExecutionId: monitorResults.testExecutionId,
@@ -761,6 +773,10 @@ export class MonitorResultsCleanupStrategy implements ICleanupStrategy {
             .where(
               and(
                 lt(monitorResults.checkedAt, cutoffDate),
+                cursor ? or(
+                  gt(monitorResults.checkedAt, sql`${cursor.checkedAt}::timestamp`),
+                  and(eq(monitorResults.checkedAt, sql`${cursor.checkedAt}::timestamp`), gt(monitorResults.id, cursor.id))
+                ) : undefined,
                 or(
                 eq(monitorResults.isStatusChange, false),
                 isNotNull(monitorResults.testExecutionId),
@@ -768,11 +784,14 @@ export class MonitorResultsCleanupStrategy implements ICleanupStrategy {
               )
               )
             )
+            .orderBy(asc(monitorResults.checkedAt), asc(monitorResults.id))
             .limit(Math.min(batchSize, maxRecords - totalProcessed));
 
           if (idsToDelete.length === 0) break;
 
           totalDeleted += await this.cleanupBatch(idsToDelete, result);
+          const last = idsToDelete[idsToDelete.length - 1];
+          cursor = { checkedAt: last.checkedAt, id: last.id };
           totalProcessed += idsToDelete.length;
           result.details.recordsProcessed = totalProcessed;
           result.recordsDeleted = totalDeleted;
@@ -1352,16 +1371,21 @@ export class JobRunsCleanupStrategy implements ICleanupStrategy {
       } else {
         const orgStats: Record<string, { deleted: number; s3Deleted: number; retentionDays: number }> = {};
         for (const orgRetention of orgRetentions) {
-          if (result.recordsDeleted >= maxRecords) break;
+          if (Number(result.details.recordsProcessed || 0) >= maxRecords) break;
           const jobsInOrg = await db.select({ id: jobs.id }).from(jobs)
             .where(eq(jobs.organizationId, orgRetention.organizationId));
           if (jobsInOrg.length === 0) continue;
           const before = result.recordsDeleted;
           const beforeS3 = result.s3ObjectsDeleted!;
-          await this.cleanupRuns(and(
-            inArray(runs.jobId, jobsInOrg.map(job => job.id)),
-            lt(runs.createdAt, new Date(Date.now() - orgRetention.jobRetentionDays * 86400000))
-          )!, dryRun, maxRecords - result.recordsDeleted, result);
+          try {
+            await this.cleanupRuns(and(
+              inArray(runs.jobId, jobsInOrg.map(job => job.id)),
+              lt(runs.createdAt, new Date(Date.now() - orgRetention.jobRetentionDays * 86400000))
+            )!, dryRun, maxRecords - Number(result.details.recordsProcessed || 0), result);
+          } catch (error) {
+            result.success = false;
+            result.errors.push(error instanceof Error ? error.message : String(error));
+          }
           orgStats[orgRetention.organizationId] = {
             deleted: result.recordsDeleted - before,
             s3Deleted: result.s3ObjectsDeleted! - beforeS3,
@@ -1373,11 +1397,12 @@ export class JobRunsCleanupStrategy implements ICleanupStrategy {
 
         // Playground run rows live for 30 days; their temporary artifacts expire separately after 24h.
         const before = result.recordsDeleted;
-        if (before < maxRecords) {
+        const remaining = maxRecords - Number(result.details.recordsProcessed || 0);
+        if (remaining > 0) {
           await this.cleanupRuns(and(
             sql`${runs.jobId} IS NULL`,
             lt(runs.createdAt, new Date(Date.now() - 30 * 86400000))
-          )!, dryRun, maxRecords - before, result);
+          )!, dryRun, remaining, result);
         }
         result.details.playgroundRunsDeleted = result.recordsDeleted - before;
       }
@@ -1399,17 +1424,27 @@ export class JobRunsCleanupStrategy implements ICleanupStrategy {
     const batchSize = this.config.batchSize || 100;
     if (dryRun) {
       const count = await db.select({ count: sql<number>`count(*)` }).from(runs).where(condition);
-      result.recordsDeleted += Math.min(Number(count[0]?.count || 0), maxRecords);
+      const processed = Math.min(Number(count[0]?.count || 0), maxRecords);
+      result.recordsDeleted += processed;
+      result.details.recordsProcessed = Number(result.details.recordsProcessed || 0) + processed;
       return;
     }
     let processed = 0;
+    // Keep PostgreSQL microseconds; Date truncation can reselect retained failures.
+    let cursor: { createdAt: string; id: string } | undefined;
     while (processed < maxRecords) {
       const limit = Math.min(batchSize, maxRecords - processed);
       const oldRuns = await db.select({
-        id: runs.id, reportS3Url: runs.reportS3Url, logsS3Url: runs.logsS3Url,
+        id: runs.id, createdAt: sql<string>`${runs.createdAt}::text`, reportS3Url: runs.reportS3Url, logsS3Url: runs.logsS3Url,
       }).from(runs)
-        .where(condition).orderBy(asc(runs.createdAt), asc(runs.id)).limit(limit);
+        .where(and(condition, cursor ? or(
+          gt(runs.createdAt, sql`${cursor.createdAt}::timestamp`),
+          and(eq(runs.createdAt, sql`${cursor.createdAt}::timestamp`), gt(runs.id, cursor.id))
+        ) : undefined))
+        .orderBy(asc(runs.createdAt), asc(runs.id)).limit(limit);
       if (oldRuns.length === 0) break;
+      processed += oldRuns.length;
+      result.details.recordsProcessed = Number(result.details.recordsProcessed || 0) + oldRuns.length;
       const runIds = oldRuns.map(run => run.id);
       const associatedReports = await db.select().from(reports).where(and(
         inArray(reports.entityType, ["job", "test", "k6_test", "k6_job"]),
@@ -1421,38 +1456,52 @@ export class JobRunsCleanupStrategy implements ICleanupStrategy {
         entityId: report.entityId,
         entityType: report.entityType as ReportDeletionInput["entityType"],
       }));
+      const invalidRunIds = new Set<string>();
       const reportedRunIds = new Set(associatedReports.map(report => report.entityId));
       for (const run of oldRuns) {
         if (reportedRunIds.has(run.id)) continue;
-        for (const s3Url of new Set([run.reportS3Url, run.logsS3Url].filter((url): url is string => !!url))) {
-          const url = new URL(s3Url);
-          const parts = url.pathname.split("/").filter(Boolean);
-          const entityTypes = ["job", "k6_job", "test", "k6_test"] as const;
-          const entityType = entityTypes.find(type => {
-            const bucket = this.s3Service.getBucketForEntityType(type);
-            return (parts[0] === bucket && parts[1] === run.id) ||
-              (url.hostname.startsWith(`${bucket}.`) && parts[0] === run.id);
-          });
-          if (!entityType) throw new Error(`Run ${run.id} artifact URL does not match a configured bucket and execution directory`);
-          inputs.push({ entityId: run.id, reportPath: run.id, s3Url, entityType });
+        try {
+          const runInputs: ReportDeletionInput[] = [];
+          for (const s3Url of new Set([run.reportS3Url, run.logsS3Url].filter((url): url is string => !!url))) {
+            const url = new URL(s3Url);
+            const parts = url.pathname.split("/").filter(Boolean);
+            const entityTypes = ["job", "k6_job", "test", "k6_test"] as const;
+            const entityType = entityTypes.find(type => {
+              const bucket = this.s3Service.getBucketForEntityType(type);
+              return (parts[0] === bucket && parts[1] === run.id) ||
+                (url.hostname.startsWith(`${bucket}.`) && parts[0] === run.id);
+            });
+            if (!entityType) throw new Error("Artifact URL does not match a configured bucket and execution directory");
+            runInputs.push({ entityId: run.id, reportPath: run.id, s3Url, entityType });
+          }
+          inputs.push(...runInputs);
+        } catch (error) {
+          invalidRunIds.add(run.id);
+          result.success = false;
+          result.errors.push(`Run ${run.id}: ${error instanceof Error ? error.message : String(error)}; preserving pointers for retry`);
         }
       }
       if (inputs.length > 0) {
         const s3Result = await this.s3Service.deleteReports(inputs);
         result.s3ObjectsDeleted! += s3Result.deletedObjects.length;
         if (!s3Result.success) {
-          throw new Error(`Run artifact cleanup had ${s3Result.failedObjects.length} S3 failures; preserving DB pointers for retry`);
+          for (const id of this.s3Service.getFailedReportEntityIds(inputs, s3Result)) invalidRunIds.add(id);
+          result.success = false;
+          result.errors.push(`Run artifact cleanup had ${s3Result.failedObjects.length} S3 failures; preserving failed pointers for retry`);
         }
       }
+      const validRunIds = runIds.filter(id => !invalidRunIds.has(id));
+      const validReportIds = associatedReports.filter(report => !invalidRunIds.has(report.entityId)).map(report => report.id);
       // Keep report pointers and runs together if either database deletion fails.
-      await db.transaction(async tx => {
-        if (associatedReports.length > 0) {
-          await tx.delete(reports).where(inArray(reports.id, associatedReports.map(report => report.id)));
+      if (validRunIds.length > 0) await db.transaction(async tx => {
+        if (validReportIds.length > 0) {
+          await tx.delete(reports).where(inArray(reports.id, validReportIds));
         }
-        await tx.delete(runs).where(inArray(runs.id, runIds));
+        await tx.delete(runs).where(inArray(runs.id, validRunIds));
       });
-      processed += oldRuns.length;
-      result.recordsDeleted += oldRuns.length;
+      const last = oldRuns[oldRuns.length - 1];
+      cursor = { createdAt: last.createdAt, id: last.id };
+      result.recordsDeleted += validRunIds.length;
       if (oldRuns.length < limit) break;
       if (processed < maxRecords) await new Promise(resolve => setTimeout(resolve, 100));
     }

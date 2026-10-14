@@ -125,6 +125,33 @@ describe("S3 report cleanup", () => {
     expect(result.failedObjects[0].error).toBe("Access denied");
   });
 
+  it("identifies only failed report owners in a partially successful S3 batch", async () => {
+    const inputs = [
+      { entityType: "job" as const, entityId: "owner-1", reportPath: "run-1/report" },
+      { entityType: "job" as const, entityId: "owner-10", reportPath: "run-10/report" },
+    ];
+    send.mockResolvedValueOnce({ Contents: [{ Key: "run-1/report/index.html" }] })
+      .mockResolvedValueOnce({ Contents: [{ Key: "run-10/report/index.html" }] })
+      .mockResolvedValueOnce({ Deleted: [{ Key: "run-10/report/index.html" }], Errors: [{ Key: "run-1/report/index.html", Message: "Denied" }] });
+    const result = await service.deleteReports(inputs);
+    expect(service.getFailedReportEntityIds(inputs, result)).toEqual(new Set(["owner-1"]));
+  });
+
+  it("maps URL parsing failures back to their recorded owner", () => {
+    const inputs = [
+      { entityType: "monitor" as const, entityId: "bad", s3Url: "broken" },
+      { entityType: "monitor" as const, entityId: "good", reportPath: "test-good" },
+    ];
+    expect(service.getFailedReportEntityIds(inputs, { success: false, deletedObjects: [], failedObjects: [{ key: "broken", error: "Invalid URL" }], totalAttempted: 1 }))
+      .toEqual(new Set(["bad"]));
+  });
+
+  it("retains every owner when a failure key cannot be identified", () => {
+    const inputs = [{ entityType: "job" as const, entityId: "run-1" }, { entityType: "job" as const, entityId: "run-2" }];
+    expect(service.getFailedReportEntityIds(inputs, { success: false, deletedObjects: [], failedObjects: [{ key: "unknown", error: "Denied" }], totalAttempted: 1 }))
+      .toEqual(new Set(["run-1", "run-2"]));
+  });
+
   it("paginates listings and splits S3 deletes at 1000 keys", async () => {
     const keys = Array.from({ length: 1001 }, (_, i) => `run-1/report/${i}.png`);
     send.mockResolvedValueOnce({ Contents: keys.slice(0, 1000).map(Key => ({ Key })), NextContinuationToken: "page-2" })

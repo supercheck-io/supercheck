@@ -25,12 +25,14 @@ jest.mock("bullmq", () => ({
 
 const monitorConfig = { entityType: "monitor_results" as const, enabled: true, cronSchedule: "0 2 * * *", retentionDays: 30, batchSize: 10, maxRecordsPerRun: 10 };
 const jobConfig = { ...monitorConfig, entityType: "job_runs" as const, retentionDays: 90 };
-const oldResult = { id: "result-1", monitorId: "monitor-1", status: "down", isStatusChange: false, testExecutionId: "test-ab12", testReportS3Url: "http://storage:9000/monitors/test-ab12/report/index.html" };
+const oldCreatedAt = "2026-01-01 00:00:00.123456";
+const oldResult = { checkedAt: oldCreatedAt, id: "result-1", monitorId: "monitor-1", status: "down", isStatusChange: false, testExecutionId: "test-ab12", testReportS3Url: "http://storage:9000/monitors/test-ab12/report/index.html" };
 const s3Success = { success: true, deletedObjects: ["test-ab12/report/index.html"], failedObjects: [], totalAttempted: 1 };
 
 describe("Artifact retention strategies", () => {
   const deleteReports = jest.fn();
   const deleteObjectsBatch = jest.fn();
+  const getFailedReportEntityIds = jest.fn();
   const send = jest.fn();
   let selections: unknown[][];
   let predicates: SQL[];
@@ -79,7 +81,8 @@ describe("Artifact retention strategies", () => {
     jest.mocked(db.transaction).mockImplementation(async callback => callback(db as unknown as Parameters<typeof callback>[0]));
     deleteReports.mockImplementation(async () => { events.push("s3"); return s3Success; });
     deleteObjectsBatch.mockResolvedValue(s3Success);
-    jest.mocked(createS3CleanupService).mockReturnValue({ deleteReports, deleteObjectsBatch, getBucketForEntityType: (type: string) => ({job: "playwright-job-artifacts", k6_job: "k6-job-artifacts", test: "playwright-test-artifacts", k6_test: "k6-test-artifacts"}[type]) } as unknown as ReturnType<typeof createS3CleanupService>);
+    getFailedReportEntityIds.mockImplementation((inputs) => new Set(inputs.map((input: { entityId: string }) => input.entityId)));
+    jest.mocked(createS3CleanupService).mockReturnValue({ deleteReports, deleteObjectsBatch, getFailedReportEntityIds, getBucketForEntityType: (type: string) => ({job: "playwright-job-artifacts", k6_job: "k6-job-artifacts", test: "playwright-test-artifacts", k6_test: "k6-test-artifacts"}[type]) } as unknown as ReturnType<typeof createS3CleanupService>);
     jest.mocked(S3Client).mockImplementation(() => ({ send }) as unknown as S3Client);
   });
 
@@ -174,6 +177,17 @@ describe("Artifact retention strategies", () => {
     expect(ordering).toContain('"id"');
   });
 
+  it.each(["tenant", "global"])("orders the %s live subset identically to dry-run", async mode => {
+    if (mode === "tenant") monitorSelections();
+    else selections = [[], [], [oldResult]];
+    const result = await new MonitorResultsCleanupStrategy({ ...monitorConfig, maxRecordsPerRun: 1 }).execute();
+    expect(result.success).toBe(true);
+    expect(orderings).toHaveLength(1);
+    const ordering = orderings[0].map(column => new PgDialect().sqlToQuery(column).sql).join(" ");
+    expect(ordering).toContain("checked_at");
+    expect(ordering).toContain('"id"');
+  });
+
   it("continues later monitor tenants after a failed batch while retaining retry pointers", async () => {
     selections = [[{ organizationId: "org-1", subscriptionPlan: "plus" }, { organizationId: "org-2", subscriptionPlan: "plus" }],
       [{ plan: "plus", dataRetentionDays: 7 }], [{ id: "monitor-1" }], [oldResult],
@@ -186,6 +200,31 @@ describe("Artifact retention strategies", () => {
     const deleted = deleteWhere.mock.calls.map(([condition]) => new PgDialect().sqlToQuery(condition).params).flat();
     expect(deleted).toContain("result-2");
     expect(deleted).not.toContain("result-1");
+  });
+
+  it("cleans healthy monitor rows in a partially failed S3 batch", async () => {
+    monitorSelections([oldResult, { ...oldResult, id: "result-2", testExecutionId: "test-good" }]);
+    deleteReports.mockResolvedValue({ ...s3Success, success: false, failedObjects: [{ key: "test-ab12/report", error: "Denied" }] });
+    getFailedReportEntityIds.mockReturnValue(new Set(["result-1"]));
+    const result = await new MonitorResultsCleanupStrategy(monitorConfig).execute();
+    expect(result).toMatchObject({ success: false, recordsDeleted: 1 });
+    const deleted = deleteWhere.mock.calls.map(([condition]) => new PgDialect().sqlToQuery(condition).params).flat();
+    expect(deleted).toContain("result-2");
+    expect(deleted).not.toContain("result-1");
+    expect(deleted).not.toContain("test-ab12");
+  });
+
+  it("advances past a failed monitor report to healthy rows in the same tenant", async () => {
+    selections = [[{ organizationId: "org-1", subscriptionPlan: "plus" }], [{ plan: "plus", dataRetentionDays: 7 }],
+      [{ id: "monitor-1" }], [oldResult], [{ id: "monitor-1" }], [{ ...oldResult, id: "result-2", testExecutionId: "test-good" }]];
+    deleteReports.mockResolvedValueOnce({ ...s3Success, success: false, failedObjects: [{ key: "test-ab12", error: "Denied" }] })
+      .mockResolvedValueOnce(s3Success);
+    const result = await new MonitorResultsCleanupStrategy({ ...monitorConfig, batchSize: 1, maxRecordsPerRun: 2 }).execute();
+    expect(result).toMatchObject({ success: false, recordsDeleted: 1, details: { recordsProcessed: 2 } });
+    expect(predicates.some(p => {
+      const q = new PgDialect().sqlToQuery(p);
+      return q.sql.includes(" > ") && q.params.includes("result-1");
+    })).toBe(true);
   });
 
   it("charges failed monitor batches against the shared safety limit", async () => {
@@ -217,7 +256,7 @@ describe("Artifact retention strategies", () => {
 
   function jobSelections(mode: "tenant" | "global" | "playground") {
     const report = { id: "report-1", entityType: mode === "playground" ? "k6_test" : "k6_job", entityId: "run-1", reportPath: "run-1/report", s3Url: null };
-    const run = { id: "run-1", jobId: mode === "playground" ? null : "job-1", artifactPaths: null };
+    const run = { id: "run-1", createdAt: oldCreatedAt, jobId: mode === "playground" ? null : "job-1", artifactPaths: null };
     if (mode === "global") selections = [[], [], [run], [report]];
     else selections = [[{ organizationId: "org-1", subscriptionPlan: "plus" }], [{ plan: "plus", jobDataRetentionDays: 30 }],
       mode === "playground" ? [] : [{ id: "job-1" }], [run], [report], []];
@@ -233,7 +272,7 @@ describe("Artifact retention strategies", () => {
 
   it.each([true, false])("cleans persisted k6 run URLs without report metadata (S3 success: %s)", async success => {
     jobSelections("tenant");
-    selections[3] = [{ id: "run-1", reportS3Url: "http://storage:9000/k6-job-artifacts/run-1/report/index.html", logsS3Url: "http://storage:9000/k6-job-artifacts/run-1/report/console.log" }];
+    selections[3] = [{ id: "run-1", createdAt: oldCreatedAt, reportS3Url: "http://storage:9000/k6-job-artifacts/run-1/report/index.html", logsS3Url: "http://storage:9000/k6-job-artifacts/run-1/report/console.log" }];
     selections[4] = [];
     deleteReports.mockResolvedValue({ ...s3Success, success, failedObjects: success ? [] : [{ key: "run-1/metrics.json", error: "Denied" }] });
     const result = await new JobRunsCleanupStrategy(jobConfig).execute();
@@ -245,7 +284,7 @@ describe("Artifact retention strategies", () => {
 
   it("refuses missing-metadata URL cleanup for a different execution", async () => {
     jobSelections("tenant");
-    selections[3] = [{ id: "run-1", reportS3Url: "http://storage:9000/k6-job-artifacts/run-2/report/index.html" }];
+    selections[3] = [{ id: "run-1", createdAt: oldCreatedAt, reportS3Url: "http://storage:9000/k6-job-artifacts/run-2/report/index.html" }];
     selections[4] = [];
     const result = await new JobRunsCleanupStrategy(jobConfig).execute();
     expect(result.success).toBe(false);
@@ -256,8 +295,8 @@ describe("Artifact retention strategies", () => {
   it.each(["not-a-url", "http://storage:9000/k6-job-artifacts/run-other/report/index.html"])("retains a corrupt run URL %s and still cleans healthy runs", async reportS3Url => {
     jobSelections("tenant");
     selections[3] = [
-      { id: "run-bad", reportS3Url },
-      { id: "run-good", reportS3Url: "http://storage:9000/k6-job-artifacts/run-good/report/index.html" },
+      { id: "run-bad", createdAt: oldCreatedAt, reportS3Url },
+      { id: "run-good", createdAt: oldCreatedAt, reportS3Url: "http://storage:9000/k6-job-artifacts/run-good/report/index.html" },
     ];
     selections[4] = [];
     const result = await new JobRunsCleanupStrategy(jobConfig).execute();
@@ -270,7 +309,7 @@ describe("Artifact retention strategies", () => {
 
   it("does not queue any URL for a run whose second pointer is invalid", async () => {
     jobSelections("tenant");
-    selections[3] = [{ id: "run-1", reportS3Url: "http://storage:9000/k6-job-artifacts/run-1/report/index.html", logsS3Url: "broken" }];
+    selections[3] = [{ id: "run-1", createdAt: oldCreatedAt, reportS3Url: "http://storage:9000/k6-job-artifacts/run-1/report/index.html", logsS3Url: "broken" }];
     selections[4] = [];
     const result = await new JobRunsCleanupStrategy(jobConfig).execute();
     expect(result.success).toBe(false);
@@ -278,24 +317,26 @@ describe("Artifact retention strategies", () => {
     expect(db.delete).not.toHaveBeenCalled();
   });
 
-  it("excludes corrupt run IDs from subsequent bounded batches", async () => {
+  it("advances past corrupt run IDs in subsequent bounded batches", async () => {
     selections = [[{ organizationId: "org-1", subscriptionPlan: "plus" }], [{ plan: "plus", jobDataRetentionDays: 30 }], [{ id: "job-1" }],
-      [{ id: "run-bad", reportS3Url: "broken" }], [],
-      [{ id: "run-good", reportS3Url: "http://storage:9000/k6-job-artifacts/run-good/report/index.html" }], []];
+      [{ id: "run-bad", createdAt: oldCreatedAt, reportS3Url: "broken" }], [],
+      [{ id: "run-good", createdAt: oldCreatedAt, reportS3Url: "http://storage:9000/k6-job-artifacts/run-good/report/index.html" }], []];
     const result = await new JobRunsCleanupStrategy({ ...jobConfig, batchSize: 1, maxRecordsPerRun: 2 }).execute();
     expect(result).toMatchObject({ success: false, recordsDeleted: 1, details: { recordsProcessed: 2 } });
     expect(predicates.some(p => {
       const q = new PgDialect().sqlToQuery(p);
-      return q.sql.includes("not in") && q.params.includes("run-bad");
+      return q.sql.includes(" > ") && q.params.includes("run-bad");
     })).toBe(true);
     expect(limits).toEqual([1, 1]);
+    const cursorParams = predicates.map(p => new PgDialect().sqlToQuery(p).params).flat();
+    expect(cursorParams).toContain(oldCreatedAt);
   });
 
   it("continues later job tenants after an S3 failure without exceeding the work limit", async () => {
     const report = { id: "report-1", entityType: "k6_job", entityId: "run-1", reportPath: "run-1/report", s3Url: null };
     selections = [[{ organizationId: "org-1", subscriptionPlan: "plus" }, { organizationId: "org-2", subscriptionPlan: "plus" }],
-      [{ plan: "plus", jobDataRetentionDays: 30 }], [{ id: "job-1" }], [{ id: "run-1" }], [report],
-      [{ id: "job-2" }], [{ id: "run-2" }], [{ ...report, id: "report-2", entityId: "run-2", reportPath: "run-2/report" }]];
+      [{ plan: "plus", jobDataRetentionDays: 30 }], [{ id: "job-1" }], [{ id: "run-1", createdAt: oldCreatedAt }], [report],
+      [{ id: "job-2" }], [{ id: "run-2", createdAt: oldCreatedAt }], [{ ...report, id: "report-2", entityId: "run-2", reportPath: "run-2/report" }]];
     deleteReports.mockResolvedValueOnce({ ...s3Success, success: false, failedObjects: [{ key: "run-1/report", error: "Denied" }] })
       .mockResolvedValueOnce(s3Success);
     const result = await new JobRunsCleanupStrategy({ ...jobConfig, maxRecordsPerRun: 2 }).execute();
@@ -306,9 +347,27 @@ describe("Artifact retention strategies", () => {
     expect(limits).toEqual([2, 1]);
   });
 
+  it("cleans healthy job rows and metadata in a partially failed S3 batch", async () => {
+    jobSelections("tenant");
+    selections[3] = [{ id: "run-1", createdAt: oldCreatedAt }, { id: "run-2", createdAt: oldCreatedAt }];
+    selections[4] = [
+      { id: "report-1", entityId: "run-1", entityType: "k6_job", reportPath: "run-1/report" },
+      { id: "report-2", entityId: "run-2", entityType: "k6_job", reportPath: "run-2/report" },
+    ];
+    deleteReports.mockResolvedValue({ ...s3Success, success: false, failedObjects: [{ key: "run-1/metrics.json", error: "Denied" }] });
+    getFailedReportEntityIds.mockReturnValue(new Set(["run-1"]));
+    const result = await new JobRunsCleanupStrategy(jobConfig).execute();
+    expect(result).toMatchObject({ success: false, recordsDeleted: 1 });
+    const deleted = deleteWhere.mock.calls.map(([condition]) => new PgDialect().sqlToQuery(condition).params).flat();
+    expect(deleted).toContain("run-2");
+    expect(deleted).toContain("report-2");
+    expect(deleted).not.toContain("run-1");
+    expect(deleted).not.toContain("report-1");
+  });
+
   it("processes additional job batches up to the exact safety limit", async () => {
     selections = [[{ organizationId: "org-1", subscriptionPlan: "plus" }], [{ plan: "plus", jobDataRetentionDays: 30 }], [{ id: "job-1" }],
-      [{ id: "run-1" }, { id: "run-2" }], [], [{ id: "run-3" }], []];
+      [{ id: "run-1", createdAt: oldCreatedAt }, { id: "run-2", createdAt: oldCreatedAt }], [], [{ id: "run-3", createdAt: oldCreatedAt }], []];
     const result = await new JobRunsCleanupStrategy({ ...jobConfig, batchSize: 2, maxRecordsPerRun: 3 }).execute();
     expect(result.recordsDeleted).toBe(3);
     expect(limits).toEqual([2, 1]);
