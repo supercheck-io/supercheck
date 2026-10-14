@@ -47,6 +47,34 @@ jobs:
         with:
           persist-credentials: false
 
+      # Release tags must be annotated and signed by a key listed in
+      # main's .github/release-allowed-signers. The signers file is read
+      # from main, not from the tagged commit, so a tag cannot add its own key.
+      - name: Checkout release signers from main
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: main
+          path: ${{ runner.temp }}/release-signers
+          sparse-checkout: .github/release-allowed-signers
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Require signed annotated release tag
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        env:
+          RELEASE_REF: ${{ github.ref }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -Eeuo pipefail
+          if [[ "$(git cat-file -t "refs/tags/$RELEASE_TAG")" != "tag" ]]; then
+            echo "::error::Tag $RELEASE_TAG is lightweight or missing. Release tags must be annotated and signed."
+            exit 1
+          fi
+          git -c gpg.format=ssh \
+            -c gpg.ssh.allowedSignersFile="$RUNNER_TEMP/release-signers/.github/release-allowed-signers" \
+            verify-tag "refs/tags/$RELEASE_TAG"
+
       # The release tag is the single source of truth for the version baked
       # into the images. Stable tags must also match every other version
       # location, so npm metadata, image identity, and the self-hosted Compose
