@@ -5,6 +5,7 @@ on:
     paths:
       - .github/scripts/pr-review.mjs
       - .github/scripts/pr-review.test.mjs
+      - .github/review-rules.md
       - .github/workflows/pr-review.yml
       - .github/workflows/pr-review-script.yml
 

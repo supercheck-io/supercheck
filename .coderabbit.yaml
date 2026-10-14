@@ -61,5 +61,7 @@ knowledge_base:
     filePatterns:
       - files: ".github/copilot-instructions.md"
         applyTo: "**/*"
+      - files: ".github/review-rules.md"
+        applyTo: "**/*"
   learnings:
     scope: local
