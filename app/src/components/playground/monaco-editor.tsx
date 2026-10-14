@@ -14,6 +14,7 @@ import { Maximize2, X, Loader2 } from "lucide-react";
 import { useMonacoPerformance } from "./use-monaco-performance";
 import { getCachedTypeDefs } from "@/components/monaco-prefetcher";
 import { registerMonacoThemes, getMonacoTheme } from "@/lib/monaco-config";
+import { loadPlaywrightEditorTypes } from "@/lib/playwright-editor-types";
 
 interface MonacoEditorProps {
   value: string;
@@ -191,15 +192,7 @@ export const MonacoEditorClient = memo(
                 );
               }
             }
-            const defaults = monaco.languages.typescript.typescriptDefaults;
-            if (!defaults.getExtraLibs()["file:///node_modules/@playwright/test/index.d.ts"]) {
-              const response = await fetch("/playwright-types.json");
-              if (!response.ok) throw new Error("Failed to load Playwright editor types");
-              const bundle: { files: Record<string, string> } = await response.json();
-              for (const [uri, content] of Object.entries(bundle.files)) {
-                defaults.addExtraLib(content, uri);
-              }
-            }
+            await loadPlaywrightEditorTypes(monaco.languages.typescript.typescriptDefaults);
           } catch (error) {
             console.error("Error in loadTypeDefinitions:", error);
           }
