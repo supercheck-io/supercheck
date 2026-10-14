@@ -76,6 +76,10 @@ Follow the prompts for local evaluation or HTTPS. Open the printed URL, create y
 
 In your installation's `deploy/docker` directory, update `.env` and run `sudo docker compose up -d --force-recreate app worker`.
 
+### Artifact Retention
+
+Artifacts are cleaned automatically. Optional `.env` controls: `MONITOR_CLEANUP_CRON`, `JOB_RUNS_CLEANUP_CRON`, and `PLAYGROUND_CLEANUP_CRON` for schedules; `PLAYGROUND_CLEANUP_MAX_AGE_HOURS` for playground retention.
+
 <Accordions>
   <Accordion title="Registration Controls">
     | Variable | Default | Description |

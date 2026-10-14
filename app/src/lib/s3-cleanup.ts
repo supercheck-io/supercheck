@@ -8,7 +8,6 @@
 
 import {
   S3Client,
-  DeleteObjectCommand,
   ListObjectsV2Command,
   DeleteObjectsCommand,
   type DeleteObjectsCommandOutput,
@@ -79,7 +78,7 @@ export class S3CleanupService {
   /**
    * Get the appropriate bucket name based on entity type
    */
-  private getBucketForEntityType(
+  getBucketForEntityType(
     entityType: "job" | "test" | "monitor" | "k6_test" | "k6_job" | "status"
   ): string {
     switch (entityType) {
@@ -104,88 +103,25 @@ export class S3CleanupService {
    * Extract S3 key from various input formats
    */
   private extractS3Key(input: ReportDeletionInput): string {
-    // If s3Url is provided, extract key from URL
-    if (input.s3Url) {
-      try {
-        const url = new URL(input.s3Url);
-        // Remove bucket name from path to get just the key
-        const pathParts = url.pathname.split("/").filter(Boolean);
-        if (pathParts.length > 1) {
-          const key = pathParts.slice(1).join("/"); // Skip bucket name
-          console.log(`[S3_CLEANUP] Extracted key from s3Url: ${key}`);
-          return key;
-        }
-      } catch (error) {
-        console.warn(
-          "[S3_CLEANUP] Failed to parse s3Url, falling back to reportPath:",
-          error
-        );
+    let key = input.reportPath;
+    if (!key && input.s3Url) {
+      const url = new URL(input.s3Url);
+      const bucket = this.getBucketForEntityType(input.entityType);
+      const parts = url.pathname.split("/").filter(Boolean);
+      if (parts[0] === bucket) {
+        key = parts.slice(1).join("/");
+      } else if (url.hostname.startsWith(`${bucket}.`)) {
+        key = parts.join("/");
+      } else {
+        throw new Error(`Report URL does not match bucket ${bucket}`);
       }
     }
-
-    // Fall back to reportPath or generate from entityId
-    if (input.reportPath) {
-      console.log(`[S3_CLEANUP] Using reportPath: ${input.reportPath}`);
-      return input.reportPath;
+    // Reports own an execution directory; k6 also stores metrics beside /report.
+    const executionId = (key ?? input.entityId).split("/")[0];
+    if (!executionId || executionId === "." || executionId === "..") {
+      throw new Error("Report cleanup requires a non-empty execution directory");
     }
-
-    // Default format: entityId/report (matches the worker service format)
-    const defaultKey = `${input.entityId}/report`;
-    console.log(`[S3_CLEANUP] Using default key format: ${defaultKey}`);
-    return defaultKey;
-  }
-
-  /**
-   * Delete a single S3 object with retry logic
-   */
-  private async deleteObject(
-    bucketName: string,
-    key: string
-  ): Promise<boolean> {
-    let lastError: Error | null = null;
-
-    for (let attempt = 0; attempt < this.config.maxRetries; attempt++) {
-      try {
-        console.log(
-          `[S3_CLEANUP] Deleting object: s3://${bucketName}/${key} (attempt ${
-            attempt + 1
-          })`
-        );
-
-        await this.s3Client.send(
-          new DeleteObjectCommand({
-            Bucket: bucketName,
-            Key: key,
-          })
-        );
-
-        console.log(
-          `[S3_CLEANUP] Successfully deleted: s3://${bucketName}/${key}`
-        );
-        return true;
-      } catch (error) {
-        lastError = error as Error;
-        const errorMessage =
-          error instanceof Error ? error.message : String(error);
-        console.warn(
-          `[S3_CLEANUP] Delete attempt ${
-            attempt + 1
-          } failed for ${key}: ${errorMessage}`
-        );
-
-        // Wait before retrying (exponential backoff)
-        if (attempt < this.config.maxRetries - 1) {
-          const delay = Math.pow(2, attempt) * 500; // 500ms, 1s, 2s
-          await new Promise((resolve) => setTimeout(resolve, delay));
-        }
-      }
-    }
-
-    console.error(
-      `[S3_CLEANUP] Failed to delete ${key} after ${this.config.maxRetries} attempts:`,
-      lastError?.message
-    );
-    return false;
+    return executionId;
   }
 
   /**
@@ -243,7 +179,7 @@ export class S3CleanupService {
   /**
    * Delete multiple objects in batch (more efficient for large numbers)
    */
-  private async deleteObjectsBatch(
+  async deleteObjectsBatch(
     bucketName: string,
     keys: string[]
   ): Promise<S3DeletionResult> {
@@ -343,51 +279,28 @@ export class S3CleanupService {
    * Delete a single report and its associated files
    */
   async deleteReport(input: ReportDeletionInput): Promise<S3DeletionResult> {
-    const bucketName = this.getBucketForEntityType(input.entityType);
-    const s3Key = this.extractS3Key(input);
+    return this.deleteReports([input]);
+  }
 
-    // Always treat reports as directories since they contain multiple files (HTML, assets, etc.)
-    // Reports are stored as: entityId/report/index.html, entityId/report/assets/...
-    const prefix = s3Key.endsWith("/") ? s3Key : `${s3Key}/`;
-    console.log(`[S3_CLEANUP] Treating as directory, using prefix: ${prefix}`);
-
-    try {
-      const objectKeys = await this.listObjectsWithPrefix(bucketName, prefix);
-
-      if (objectKeys.length === 0) {
-        console.log(
-          `[S3_CLEANUP] No objects found with prefix ${prefix}, treating as single file`
-        );
-        // If no objects found with directory prefix, try as single file
-        const success = await this.deleteObject(bucketName, s3Key);
-        return {
-          success,
-          deletedObjects: success ? [s3Key] : [],
-          failedObjects: success
-            ? []
-            : [{ key: s3Key, error: "Single object deletion failed" }],
-          totalAttempted: 1,
-        };
-      }
-
-      console.log(
-        `[S3_CLEANUP] Found ${objectKeys.length} objects with prefix ${prefix}, deleting as batch`
+  getFailedReportEntityIds(inputs: ReportDeletionInput[], result: S3DeletionResult): Set<string> {
+    if (result.success) return new Set();
+    const allIds = new Set(inputs.map(input => input.entityId));
+    if (result.failedObjects.length === 0) return allIds;
+    const prefixes = inputs.map(input => {
+      try { return { input, prefix: `${this.extractS3Key(input)}/` }; }
+      catch { return { input, prefix: undefined }; }
+    });
+    const failedIds = new Set<string>();
+    for (const { key } of result.failedObjects) {
+      const matches = prefixes.filter(({ input, prefix }) =>
+        key === input.reportPath || key === input.s3Url || key === input.entityId ||
+        (prefix && key.startsWith(prefix))
       );
-      return await this.deleteObjectsBatch(bucketName, objectKeys);
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-      console.error(
-        `[S3_CLEANUP] Error during directory deletion:`,
-        errorMessage
-      );
-      return {
-        success: false,
-        deletedObjects: [],
-        failedObjects: [{ key: s3Key, error: errorMessage }],
-        totalAttempted: 1,
-      };
+      // An unknown failure must never discard a pointer that may still need retry.
+      if (matches.length === 0) return allIds;
+      for (const { input } of matches) failedIds.add(input.entityId);
     }
+    return failedIds;
   }
 
   /**
@@ -495,71 +408,16 @@ export class S3CleanupService {
       // Collect all keys to delete from this bucket
       const keysToDelete: string[] = [];
 
+      const processedPrefixes = new Set<string>();
       for (const input of bucketInputs) {
-        const s3Key = this.extractS3Key(input);
-
-        // Always try to expand as directory first (reports are directories)
-        const prefix = s3Key.endsWith("/") ? s3Key : `${s3Key}/`;
         try {
-          console.log(
-            `[S3_CLEANUP] Expanding directory for entity ${input.entityId} with prefix: ${prefix}`
-          );
-          const directoryKeys = await this.listObjectsWithPrefix(
-            bucketName,
-            prefix
-          );
-
-          if (directoryKeys.length > 0) {
-            console.log(
-              `[S3_CLEANUP] Found ${directoryKeys.length} objects in directory`
-            );
-            keysToDelete.push(...directoryKeys);
-          } else {
-            console.log(
-              `[S3_CLEANUP] No objects found with prefix, trying alternative patterns for ${input.entityId}`
-            );
-            // Try alternative prefix patterns
-            const alternativePrefixes = [
-              `${input.entityId}/report/`,
-              input.entityId, // Single file
-            ];
-
-            let foundObjects = false;
-            for (const altPrefix of alternativePrefixes) {
-              try {
-                const altKeys = await this.listObjectsWithPrefix(
-                  bucketName,
-                  altPrefix
-                );
-                if (altKeys.length > 0) {
-                  console.log(
-                    `[S3_CLEANUP] Found ${altKeys.length} objects with alternative prefix: ${altPrefix}`
-                  );
-                  keysToDelete.push(...altKeys);
-                  foundObjects = true;
-                  break;
-                }
-              } catch (altError) {
-                console.warn(
-                  `[S3_CLEANUP] Alternative prefix ${altPrefix} failed:`,
-                  altError
-                );
-              }
-            }
-
-            if (!foundObjects) {
-              console.warn(
-                `[S3_CLEANUP] No objects found for entity ${input.entityId} with any prefix pattern`
-              );
-            }
-          }
+          const prefix = `${this.extractS3Key(input)}/`;
+          if (processedPrefixes.has(prefix)) continue;
+          processedPrefixes.add(prefix);
+          keysToDelete.push(...await this.listObjectsWithPrefix(bucketName, prefix));
         } catch (error) {
-          console.error(
-            `[S3_CLEANUP] Error expanding directory for ${input.entityId}:`,
-            error
-          );
           combinedResult.failedObjects.push({
-            key: s3Key,
+            key: input.reportPath || input.s3Url || input.entityId,
             error: error instanceof Error ? error.message : String(error),
           });
           combinedResult.success = false;
