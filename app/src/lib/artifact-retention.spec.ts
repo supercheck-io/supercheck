@@ -1,22 +1,31 @@
 /** @jest-environment node */
 import { PgDialect } from "drizzle-orm/pg-core";
 import { SQL } from "drizzle-orm";
+import { Queue, Worker } from "bullmq";
+import type Redis from "ioredis";
 import { S3Client, HeadBucketCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { db } from "@/utils/db";
 import { monitorResults, reports, runs } from "@/db/schema";
 import { isPolarEnabled } from "./feature-flags";
 import { createS3CleanupService } from "./s3-cleanup";
-import { MonitorResultsCleanupStrategy, JobRunsCleanupStrategy, PlaygroundArtifactsCleanupStrategy } from "./data-lifecycle-service";
+import { DataLifecycleService, MonitorResultsCleanupStrategy, JobRunsCleanupStrategy, PlaygroundArtifactsCleanupStrategy } from "./data-lifecycle-service";
 
 jest.mock("@/utils/db", () => ({ db: { select: jest.fn(), delete: jest.fn(), update: jest.fn(), transaction: jest.fn() } }));
 jest.mock("./feature-flags", () => ({ isPolarEnabled: jest.fn() }));
 jest.mock("./monitor-aggregation-service", () => ({ monitorAggregationService: {} }));
 jest.mock("./s3-cleanup", () => ({ createS3CleanupService: jest.fn() }));
 jest.mock("@aws-sdk/client-s3", () => ({ ...jest.requireActual("@aws-sdk/client-s3"), S3Client: jest.fn() }));
+jest.mock("bullmq", () => ({
+  Queue: jest.fn().mockImplementation(() => ({
+    getRepeatableJobs: jest.fn().mockResolvedValue([]), add: jest.fn().mockResolvedValue({}),
+  })),
+  QueueEvents: jest.fn(),
+  Worker: jest.fn().mockImplementation(() => ({ on: jest.fn() })),
+}));
 
 const monitorConfig = { entityType: "monitor_results" as const, enabled: true, cronSchedule: "0 2 * * *", retentionDays: 30, batchSize: 10, maxRecordsPerRun: 10 };
 const jobConfig = { ...monitorConfig, entityType: "job_runs" as const, retentionDays: 90 };
-const oldResult = { id: "result-1", monitorId: "monitor-1", isStatusChange: false, testExecutionId: "test-ab12", testReportS3Url: "http://storage:9000/monitors/test-ab12/report/index.html" };
+const oldResult = { id: "result-1", monitorId: "monitor-1", status: "down", isStatusChange: false, testExecutionId: "test-ab12", testReportS3Url: "http://storage:9000/monitors/test-ab12/report/index.html" };
 const s3Success = { success: true, deletedObjects: ["test-ab12/report/index.html"], failedObjects: [], totalAttempted: 1 };
 
 describe("Artifact retention strategies", () => {
@@ -42,7 +51,13 @@ describe("Artifact retention strategies", () => {
     jest.mocked(isPolarEnabled).mockReturnValue(true);
     jest.mocked(db.select).mockImplementation(() => {
       const rows = selections.shift() || [];
-      const query = {
+      const query: {
+        from: () => typeof query;
+        where: (condition: SQL) => typeof query;
+        limit: (limit: number) => typeof query;
+        orderBy: () => typeof query;
+        then: (resolve: (rows: unknown[]) => unknown) => Promise<unknown>;
+      } = {
         from: jest.fn().mockReturnThis(),
         where: jest.fn((condition: SQL) => { predicates.push(condition); return query; }),
         limit: jest.fn((limit: number) => { limits.push(limit); return query; }),
@@ -61,7 +76,7 @@ describe("Artifact retention strategies", () => {
     jest.mocked(db.transaction).mockImplementation(async callback => callback(db as unknown as Parameters<typeof callback>[0]));
     deleteReports.mockImplementation(async () => { events.push("s3"); return s3Success; });
     deleteObjectsBatch.mockResolvedValue(s3Success);
-    jest.mocked(createS3CleanupService).mockReturnValue({ deleteReports, deleteObjectsBatch } as unknown as ReturnType<typeof createS3CleanupService>);
+    jest.mocked(createS3CleanupService).mockReturnValue({ deleteReports, deleteObjectsBatch, getBucketForEntityType: (type: string) => ({job: "playwright-job-artifacts", k6_job: "k6-job-artifacts", test: "playwright-test-artifacts", k6_test: "k6-test-artifacts"}[type]) } as unknown as ReturnType<typeof createS3CleanupService>);
     jest.mocked(S3Client).mockImplementation(() => ({ send }) as unknown as S3Client);
   });
 
@@ -99,8 +114,8 @@ describe("Artifact retention strategies", () => {
     expect(result.s3ObjectsDeleted).toBe(1);
   });
 
-  it("cleans successful checks without sending S3 requests", async () => {
-    monitorSelections([{ ...oldResult, testExecutionId: null, testReportS3Url: null } as unknown as typeof oldResult]);
+  it("cleans successful synthetic metadata without sending S3 requests", async () => {
+    monitorSelections([{ ...oldResult, status: "up", testReportS3Url: null } as unknown as typeof oldResult]);
     const result = await new MonitorResultsCleanupStrategy(monitorConfig).execute();
     expect(result.recordsDeleted).toBe(1);
     expect(deleteReports).not.toHaveBeenCalled();
@@ -136,7 +151,7 @@ describe("Artifact retention strategies", () => {
 
   it("makes no S3 or DB mutations in dry-run mode", async () => {
     monitorSelections();
-    selections[3] = [{ count: 3 }];
+    selections[3] = [{ count: 3, deleteCount: 2 }];
     await new MonitorResultsCleanupStrategy(monitorConfig).execute(true);
     expect(deleteReports).not.toHaveBeenCalled();
     expect(db.delete).not.toHaveBeenCalled();
@@ -168,6 +183,56 @@ describe("Artifact retention strategies", () => {
     expect(db.delete).not.toHaveBeenCalled();
   });
 
+  it.each([true, false])("cleans persisted k6 run URLs without report metadata (S3 success: %s)", async success => {
+    jobSelections("tenant");
+    selections[3] = [{ id: "run-1", reportS3Url: "http://storage:9000/k6-job-artifacts/run-1/report/index.html", logsS3Url: "http://storage:9000/k6-job-artifacts/run-1/report/console.log" }];
+    selections[4] = [];
+    deleteReports.mockResolvedValue({ ...s3Success, success, failedObjects: success ? [] : [{ key: "run-1/metrics.json", error: "Denied" }] });
+    const result = await new JobRunsCleanupStrategy(jobConfig).execute();
+    expect(deleteReports).toHaveBeenCalledWith(expect.arrayContaining([expect.objectContaining({ entityId: "run-1", entityType: "k6_job", reportPath: "run-1" })]));
+    expect(result.success).toBe(success);
+    if (!success) expect(db.delete).not.toHaveBeenCalled();
+    else expect(db.delete).toHaveBeenCalledWith(runs);
+  });
+
+  it("refuses missing-metadata URL cleanup for a different execution", async () => {
+    jobSelections("tenant");
+    selections[3] = [{ id: "run-1", reportS3Url: "http://storage:9000/k6-job-artifacts/run-2/report/index.html" }];
+    selections[4] = [];
+    const result = await new JobRunsCleanupStrategy(jobConfig).execute();
+    expect(result.success).toBe(false);
+    expect(deleteReports).not.toHaveBeenCalled();
+    expect(db.delete).not.toHaveBeenCalled();
+  });
+
+  it("processes additional job batches up to the exact safety limit", async () => {
+    selections = [[{ organizationId: "org-1", subscriptionPlan: "plus" }], [{ plan: "plus", jobDataRetentionDays: 30 }], [{ id: "job-1" }],
+      [{ id: "run-1" }, { id: "run-2" }], [], [{ id: "run-3" }], []];
+    const result = await new JobRunsCleanupStrategy({ ...jobConfig, batchSize: 2, maxRecordsPerRun: 3 }).execute();
+    expect(result.recordsDeleted).toBe(3);
+    expect(limits).toEqual([2, 1]);
+    expect(db.transaction).toHaveBeenCalledTimes(2);
+  });
+
+  it("counts preserved monitor history as updates, not deletions, in dry-run", async () => {
+    monitorSelections();
+    selections[3] = [{ count: 3, deleteCount: 0 }];
+    const result = await new MonitorResultsCleanupStrategy(monitorConfig).execute(true);
+    expect(result.recordsDeleted).toBe(0);
+    expect(result.details.recordsProcessed).toBe(3);
+    expect(db.update).not.toHaveBeenCalled();
+  });
+
+  it.each(["monitor", "job"])("reports %s database transaction failures", async entity => {
+    if (entity === "monitor") monitorSelections(); else jobSelections("tenant");
+    jest.mocked(db.transaction).mockRejectedValueOnce(new Error("Transaction failed"));
+    const strategy = entity === "monitor" ? new MonitorResultsCleanupStrategy(monitorConfig) : new JobRunsCleanupStrategy(jobConfig);
+    const result = await strategy.execute();
+    expect(result.success).toBe(false);
+    expect(result.recordsDeleted).toBe(0);
+    expect(result.errors).toContain("Transaction failed");
+  });
+
   it("deletes k6 job reports and runs only after S3 succeeds", async () => {
     jobSelections("tenant");
     const result = await new JobRunsCleanupStrategy(jobConfig).execute();
@@ -197,5 +262,22 @@ describe("Artifact retention strategies", () => {
     const result = await new PlaygroundArtifactsCleanupStrategy({ entityType: "playground_artifacts", enabled: true, cronSchedule: "0 5 * * *", customConfig: { maxAgeHours: 24 } }).execute();
     expect(result.success).toBe(false);
     expect(result.errors).not.toHaveLength(0);
+  });
+
+  it("throws failed cleanup results to activate BullMQ retries and releases the lock", async () => {
+    const redis = { set: jest.fn().mockResolvedValue("OK"), del: jest.fn().mockResolvedValue(1) };
+    const service = new DataLifecycleService([monitorConfig]);
+    await service.initialize(redis as unknown as Redis);
+    const processor = jest.mocked(Worker).mock.calls[0][1];
+    if (typeof processor !== "function") throw new Error("Missing queue processor");
+    const execute = jest.spyOn(MonitorResultsCleanupStrategy.prototype, "execute").mockResolvedValue({
+      success: false, entityType: "monitor_results", recordsDeleted: 0, duration: 1,
+      errors: ["S3 cleanup denied"], details: {},
+    });
+    const job = { data: { entityType: "monitor_results", dryRun: false } } as Parameters<typeof processor>[0];
+    await expect(processor(job)).rejects.toThrow("S3 cleanup denied");
+    expect(execute).toHaveBeenCalledWith(false);
+    expect(redis.del).toHaveBeenCalledWith("cleanup:monitor_results:lock");
+    expect(jest.mocked(Queue).mock.calls[0][1]?.defaultJobOptions?.attempts).toBe(2);
   });
 });

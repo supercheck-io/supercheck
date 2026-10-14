@@ -76,6 +76,10 @@ Follow the prompts for local evaluation or HTTPS. Open the printed URL, create y
 
 In your installation's `deploy/docker` directory, update `.env` and run `sudo docker compose up -d --force-recreate app worker`.
 
+### Artifact Retention
+
+The application schedules artifact cleanup through BullMQ; no separate cleanup container or Kubernetes CronJob is required. Monitor results and their synthetic Playwright artifacts are cleaned daily at 2 AM using the retention in the database `plan_limits` table (7 days on seeded plans). Job artifacts are cleaned at 3 AM using plan retention (30 days on Plus and 90 days on Pro and self-hosted). Playground artifacts in the Playwright and k6 test buckets are swept at 5 AM after 24 hours. These schedules can be changed with the `MONITOR_CLEANUP_CRON`, `JOB_RUNS_CLEANUP_CRON`, and `PLAYGROUND_CLEANUP_CRON` environment variables; retention days are database configuration, not environment variables.
+
 <Accordions>
   <Accordion title="Registration Controls">
     | Variable | Default | Description |

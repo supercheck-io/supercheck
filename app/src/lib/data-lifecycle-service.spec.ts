@@ -675,13 +675,7 @@ describe("Data Lifecycle Service", () => {
         expect(failedKeys.length).toBe(2);
       });
 
-      it("should proceed with DB deletion even on partial S3 failure", () => {
-        // Rationale: Better to delete DB records than leave orphaned references
-        const partialS3Failure = true;
-        const proceedWithDb = true;
-        expect(partialS3Failure).toBe(true);
-        expect(proceedWithDb).toBe(true);
-      });
+
     });
 
     describe("Critical Error Logging", () => {

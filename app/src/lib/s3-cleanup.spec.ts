@@ -93,6 +93,30 @@ describe("S3 report cleanup", () => {
     expect(send).toHaveBeenCalledTimes(1);
   });
 
+  it("supports virtual-hosted report URLs", async () => {
+    objects.set("monitors", ["test-ab12/report/index.html"]);
+    const result = await service.deleteReports([{
+      entityType: "monitor", entityId: "monitor-1",
+      s3Url: "https://monitors.storage.example/test-ab12/report/index.html",
+    }]);
+    expect(result.success).toBe(true);
+    expect(objects.get("monitors")).toEqual([]);
+  });
+
+  it.each(["/", "../report"])("refuses unsafe report path %s", async reportPath => {
+    const result = await service.deleteReports([{ entityType: "job", entityId: "run-1", reportPath }]);
+    expect(result.success).toBe(false);
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("rejects a URL for a different bucket", async () => {
+    const result = await service.deleteReports([{
+      entityType: "monitor", entityId: "monitor-1", s3Url: "https://storage.example/tests/test-ab12/report/index.html",
+    }]);
+    expect(result.success).toBe(false);
+    expect(send).not.toHaveBeenCalled();
+  });
+
   it("reports individual delete failures", async () => {
     send.mockResolvedValueOnce({ Contents: [{ Key: "run-1/report/index.html" }] })
       .mockResolvedValueOnce({ Errors: [{ Key: "run-1/report/index.html", Message: "Access denied" }] });
