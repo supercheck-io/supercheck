@@ -149,7 +149,7 @@
     "pino": "^10.1.0",
     "pino-http": "^11.0.0",
     "pino-pretty": "^13.1.2",
-    "playwright": "1.58.2",
+    "playwright": "1.64.0",
     "postgres": "^3.4.5",
     "react": "19.2.0",
     "react-day-picker": "^9.8.1",
@@ -173,7 +173,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
-    "@playwright/test": "1.58.2",
+    "@playwright/test": "1.64.0",
     "@tailwindcss/postcss": "^4",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",

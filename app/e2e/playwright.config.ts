@@ -68,6 +68,8 @@ export default defineConfig({
       name: 'chromium',
       use: {
         ...devices['Desktop Chrome'],
+        // 1.64 forwards screen from device descriptors; pinned for parity, revisit deliberately.
+        screen: undefined,
         storageState: 'user-auth-state.json',
       },
       dependencies: ['setup'],

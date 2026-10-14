@@ -141,6 +141,8 @@ module.exports = defineConfig({
       grepInvert: /@(mobile|iphone|firefox|webkit|safari)\b/i,
       use: {
         ...devices['Desktop Chrome'],
+        // 1.64 forwards screen from device descriptors; pinned for parity, revisit deliberately.
+        screen: undefined,
         // Override with optimized settings
         viewport: { width: 1280, height: 720 }, // Standard viewport for consistent results
         // Enable headless mode for better performance
@@ -157,6 +159,8 @@ module.exports = defineConfig({
       grep: /@firefox\b/i,
       use: {
         ...devices['Desktop Firefox'],
+        // Firefox 157 defaults to a larger screen; preserve the pre-upgrade viewport-sized screen.
+        screen: { width: 1280, height: 720 },
         viewport: { width: 1280, height: 720 },
         headless: true,
         // Firefox-specific launch options
@@ -179,6 +183,8 @@ module.exports = defineConfig({
       grep: /@(webkit|safari)\b/i,
       use: {
         ...devices['Desktop Safari'],
+        // 1.64 forwards screen from device descriptors; pinned for parity, revisit deliberately.
+        screen: undefined,
         viewport: { width: 1280, height: 720 },
         headless: true,
         // WebKit-specific launch options
@@ -196,6 +202,8 @@ module.exports = defineConfig({
       grep: /@(mobile|iphone)\b/i,
       use: {
         ...devices['iPhone 13'],
+        // 1.64 forwards screen from device descriptors; pinned for parity, revisit deliberately.
+        screen: undefined,
         headless: true,
       },
     },
