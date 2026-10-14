@@ -56,11 +56,19 @@ export class SreAlertTriageQueueService implements OnModuleDestroy {
     }
   }
 
+  // SRE_ENABLED is on unless disabled; SRE_AUTOMATION_ENABLED is opt-in and
+  // must be explicitly "true" or "1". Keep in sync with
+  // app/src/sre/lib/feature-gates.ts.
   private isEnabled() {
-    return ['SRE_ENABLED', 'SRE_AUTOMATION_ENABLED'].every((key) => {
-      const value = this.configService.get<string>(key)?.trim().toLowerCase();
-      return value !== 'false' && value !== '0';
-    });
+    const read = (key: string) =>
+      this.configService.get<string>(key)?.trim().toLowerCase();
+    const sre = read('SRE_ENABLED');
+    const automation = read('SRE_AUTOMATION_ENABLED');
+    return (
+      sre !== 'false' &&
+      sre !== '0' &&
+      (automation === 'true' || automation === '1')
+    );
   }
 
   private getQueue() {

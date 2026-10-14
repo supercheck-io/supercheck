@@ -60,9 +60,9 @@ x-common-env: &common-env # Database Configuration
   NODE_ENV: ${NODE_ENV:-production}
   SHOW_COMMUNITY_LINKS: ${SHOW_COMMUNITY_LINKS:-true}
   # AI SRE is on by default with a configured AI provider.
-  # Disable automation to prevent AI work triggered by delivered alerts.
+  # Set SRE_AUTOMATION_ENABLED=true to opt in to alert-triggered AI work.
   SRE_ENABLED: ${SRE_ENABLED:-true}
-  SRE_AUTOMATION_ENABLED: ${SRE_AUTOMATION_ENABLED:-true}
+  SRE_AUTOMATION_ENABLED: ${SRE_AUTOMATION_ENABLED:-false}
 
   # CORS: Allow browser-based integrations (Azure DevOps widgets, Grafana panels, etc.)
   # Comma-separated origins. Supports wildcard subdomains (e.g., https://*.visualstudio.com)

@@ -177,9 +177,9 @@ Full documentation: **[supercheck.io/docs/app/deployment](https://supercheck.io/
 
 ## AI SRE
 
-Configure an AI provider to use AI SRE. Investigations, Copilot, and automatic alert triage are enabled by default. Migrations run when the app starts.
+Configure an AI provider to use AI SRE. Investigations and Copilot are enabled by default; automatic alert triage is opt-in. Migrations run when the app starts.
 
-Set `SRE_AUTOMATION_ENABLED=false` for manual investigations only, or `SRE_ENABLED=false` to disable AI SRE. Automatic triage can incur AI-provider charges. After changing `.env`, run `docker compose up -d --force-recreate app worker` with the configured profiles.
+Automatic alert triage is off by default, so investigations are manual. Set `SRE_AUTOMATION_ENABLED=true` to opt in (it can incur AI-provider charges), or `SRE_ENABLED=false` to disable AI SRE. After changing `.env`, run `docker compose up -d --force-recreate app worker` with the configured profiles.
 
 ### Private Agent Profile
 

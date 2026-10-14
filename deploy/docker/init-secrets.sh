@@ -152,10 +152,11 @@ S3_ENDPOINT=http://rustfs:9000
 # ────────────────────────────────────────────────────────────
 # OPTIONAL: AI Features & AI SRE
 # ────────────────────────────────────────────────────────────
-# AI SRE and automation are enabled by default with a configured AI provider.
+# AI SRE is enabled by default with a configured AI provider; automatic
+# alert-triggered triage is off by default.
 # Optional deployment-wide controls (shared by app and worker):
 # SRE_ENABLED=false           # Disable AI SRE requests and automation
-# SRE_AUTOMATION_ENABLED=false # Keep manual SRE, disable alert-triggered AI work
+# SRE_AUTOMATION_ENABLED=true # Opt in to alert-triggered triage (may incur AI costs)
 
 # OpenAI (default provider)
 # AI_PROVIDER=openai
