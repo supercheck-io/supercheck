@@ -29,7 +29,7 @@ assert.ok(cli.files.includes('NOTICE'), 'CLI NOTICE must be packaged');
 
 // NOTICE promises k6 and xk6-dashboard license files in the worker image.
 const workerDockerfile = read('worker/Dockerfile');
-assert.match(workerDockerfile, /k6@v1\.6\.1\/LICENSE\.md \.\/third-party\//, 'k6 license not shipped');
+assert.match(workerDockerfile, /k6@v1\.8\.2\/LICENSE\.md \.\/third-party\//, 'k6 license not shipped');
 assert.match(workerDockerfile, /xk6-dashboard@v0\.8\.1\/LICENSE \.\/third-party\//, 'xk6-dashboard license not shipped');
 
 assert.match(read('NOTICE'), /Copyright \(C\) 2025-2026 Supercheck/);

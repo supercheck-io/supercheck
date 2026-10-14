@@ -5,11 +5,11 @@ FROM mcr.microsoft.com/playwright:v1.58.2-noble@sha256:6446946a1d9fd62d9ae501312
 
 # Build k6 with xk6-dashboard extension
 # Pin golang to specific patch version for reproducible builds
-FROM golang:1.25.8-alpine@sha256:8e02eb337d9e0ea459e041f1ee5eece41cbb61f1d83e7d883a3e2fb4862063fa AS k6-builder
+FROM golang:1.26.9-alpine@sha256:3082400e369fa24d5fc60bca20edab3f6d604e0c5a690ec66b295eff4dd87ade AS k6-builder
 RUN apk add --no-cache git
 RUN go install go.k6.io/xk6/cmd/xk6@v1.3.6
-# Pin k6 to v1.6.1 and xk6-dashboard to v0.8.1 for reproducible builds
-RUN xk6 build v1.6.1 --with github.com/grafana/xk6-dashboard@v0.8.1
+# Pin k6 to v1.8.2 and xk6-dashboard to v0.8.1 for reproducible builds
+RUN xk6 build v1.8.2 --with github.com/grafana/xk6-dashboard@v0.8.1
 RUN chmod +x k6
 
 # NOTE: Docker CLI removed — execution is orchestrated through Kubernetes Jobs.
@@ -50,7 +50,7 @@ ENV NODE_ENV=production
 
 # Copy k6 binary with xk6-dashboard extension
 COPY --from=k6-builder /go/k6 /usr/local/bin/k6
-COPY --from=k6-builder /go/pkg/mod/go.k6.io/k6@v1.6.1/LICENSE.md ./third-party/k6-LICENSE.md
+COPY --from=k6-builder /go/pkg/mod/go.k6.io/k6@v1.8.2/LICENSE.md ./third-party/k6-LICENSE.md
 COPY --from=k6-builder /go/pkg/mod/github.com/grafana/xk6-dashboard@v0.8.1/LICENSE ./third-party/xk6-dashboard-LICENSE
 RUN chmod +x /usr/local/bin/k6
 ENV K6_BIN_PATH=/usr/local/bin/k6
