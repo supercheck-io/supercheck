@@ -51,6 +51,38 @@ describe("Playground Playwright declarations", () => {
     execFileSync(process.execPath, [path.join(appRoot, "scripts/generate-playwright-types.js")]);
   });
 
+  it("cleans up diagnostics only after HAR recording starts", async () => {
+    let beforeHook: (...args: unknown[]) => Promise<void> = async () => {};
+    let afterHook: typeof beforeHook = async () => {};
+    const test = Object.assign(() => {}, {
+      use: () => {},
+      beforeEach: (hook: typeof beforeHook) => { beforeHook = hook; },
+      afterEach: (hook: typeof afterHook) => { afterHook = hook; },
+    });
+    const unlink = jest.fn();
+    const template = getTemplatesByType("browser").find(item => item.id === "pw-failure-diagnostics")!;
+    const source = ts.transpileModule(template.code, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
+    new Function("require", "exports", source)((name: string) => {
+      if (name === "@playwright/test") return { test, expect: jest.fn() };
+      if (name === "node:fs/promises") return { unlink };
+      throw new Error(`Unexpected template import: ${name}`);
+    }, {});
+    const context = { tracing: { startHar: jest.fn().mockResolvedValue(undefined), stopHar: jest.fn().mockResolvedValue(undefined) } };
+    const info = { outputPath: (name: string) => `/tmp/${name}`, status: "skipped", expectedStatus: "skipped", attach: jest.fn() };
+
+    await afterHook({ context }, info);
+    expect(context.tracing.stopHar).not.toHaveBeenCalled();
+    await beforeHook({ context }, info);
+    await afterHook({ context }, info);
+    expect(context.tracing.stopHar).toHaveBeenCalledTimes(1);
+    expect(unlink).toHaveBeenCalledWith("/tmp/network.har");
+
+    context.tracing.startHar.mockRejectedValueOnce(new Error("setup failed"));
+    await expect(beforeHook({ context }, info)).rejects.toThrow("setup failed");
+    await afterHook({ context }, info);
+    expect(context.tracing.stopHar).toHaveBeenCalledTimes(1);
+  });
+
   it("accepts current APIs, capture options, and Supercheck helpers", () => {
     expect(diagnostics(`
       import { test, type Locator, type BrowserContext, type Page } from '@playwright/test';

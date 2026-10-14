@@ -2165,14 +2165,18 @@ test.use({
   video: { mode: 'retain-on-failure-and-retries', show: { actions: { position: 'top-right' } } },
 });
 
+const recordingContexts = new WeakSet();
+
 test.beforeEach(async ({ context }, testInfo) => {
   await context.tracing.startHar(testInfo.outputPath('network.har'), {
     content: 'embed',
     urlFilter: 'https://example.com/**',
   });
+  recordingContexts.add(context);
 });
 
 test.afterEach(async ({ context }, testInfo) => {
+  if (!recordingContexts.delete(context)) return;
   await context.tracing.stopHar();
   const harPath = testInfo.outputPath('network.har');
   if (testInfo.status !== testInfo.expectedStatus) {
