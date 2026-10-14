@@ -149,6 +149,15 @@ describe("Artifact retention strategies", () => {
     expect(result).toMatchObject({ success: true, recordsDeleted: 1, s3ObjectsDeleted: 1 });
   });
 
+  it("reports global dry-run processed rows separately from deletions", async () => {
+    selections = [[], [], [{ count: 3, deleteCount: 1 }]];
+    const result = await new MonitorResultsCleanupStrategy({ ...monitorConfig, maxRecordsPerRun: 2 }).execute(true);
+    expect(result.recordsDeleted).toBe(1);
+    expect(result.details.recordsProcessed).toBe(2);
+    expect(deleteReports).not.toHaveBeenCalled();
+    expect(db.delete).not.toHaveBeenCalled();
+  });
+
   it("makes no S3 or DB mutations in dry-run mode", async () => {
     monitorSelections();
     selections[3] = [{ count: 3, deleteCount: 2 }];
