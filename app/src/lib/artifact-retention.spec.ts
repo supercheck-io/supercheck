@@ -35,6 +35,7 @@ describe("Artifact retention strategies", () => {
   let selections: unknown[][];
   let predicates: SQL[];
   let limits: number[];
+  let orderings: SQL[][];
   let events: string[];
   const deleteWhere = jest.fn();
   const updateSet = jest.fn();
@@ -47,22 +48,24 @@ describe("Artifact retention strategies", () => {
     selections = [];
     predicates = [];
     limits = [];
+    orderings = [];
     events = [];
     jest.mocked(isPolarEnabled).mockReturnValue(true);
     jest.mocked(db.select).mockImplementation(() => {
-      const rows = selections.shift() || [];
       const query: {
         from: () => typeof query;
         where: (condition: SQL) => typeof query;
         limit: (limit: number) => typeof query;
-        orderBy: () => typeof query;
+        orderBy: (...columns: SQL[]) => typeof query;
+        as: (alias: string) => { isStatusChange: typeof monitorResults.isStatusChange };
         then: (resolve: (rows: unknown[]) => unknown) => Promise<unknown>;
       } = {
         from: jest.fn().mockReturnThis(),
         where: jest.fn((condition: SQL) => { predicates.push(condition); return query; }),
         limit: jest.fn((limit: number) => { limits.push(limit); return query; }),
-        orderBy: jest.fn().mockReturnThis(),
-        then: (resolve: (rows: unknown[]) => unknown) => Promise.resolve(rows).then(resolve),
+        orderBy: jest.fn((...columns: SQL[]) => { orderings.push(columns); return query; }),
+        as: jest.fn(() => ({ isStatusChange: monitorResults.isStatusChange })),
+        then: (resolve: (rows: unknown[]) => unknown) => Promise.resolve(selections.shift() || []).then(resolve),
       };
       return query as unknown as ReturnType<typeof db.select>;
     });
@@ -150,12 +153,48 @@ describe("Artifact retention strategies", () => {
   });
 
   it("reports global dry-run processed rows separately from deletions", async () => {
-    selections = [[], [], [{ count: 3, deleteCount: 1 }]];
+    selections = [[], [], [{ count: 2, deleteCount: 1 }]];
     const result = await new MonitorResultsCleanupStrategy({ ...monitorConfig, maxRecordsPerRun: 2 }).execute(true);
     expect(result.recordsDeleted).toBe(1);
     expect(result.details.recordsProcessed).toBe(2);
     expect(deleteReports).not.toHaveBeenCalled();
     expect(db.delete).not.toHaveBeenCalled();
+  });
+
+  it.each(["tenant", "global"])("bounds the ordered %s dry-run subset before counting historical rows", async mode => {
+    if (mode === "tenant") {
+      monitorSelections();
+      selections[3] = [{ count: 2, deleteCount: 0 }];
+    } else selections = [[], [], [{ count: 2, deleteCount: 0 }]];
+    const result = await new MonitorResultsCleanupStrategy({ ...monitorConfig, maxRecordsPerRun: 2 }).execute(true);
+    expect(result).toMatchObject({ recordsDeleted: 0, details: { recordsProcessed: 2 } });
+    expect(limits).toEqual([2]);
+    const ordering = orderings.flat().map(column => new PgDialect().sqlToQuery(column).sql).join(" ");
+    expect(ordering).toContain("checked_at");
+    expect(ordering).toContain('"id"');
+  });
+
+  it("continues later monitor tenants after a failed batch while retaining retry pointers", async () => {
+    selections = [[{ organizationId: "org-1", subscriptionPlan: "plus" }, { organizationId: "org-2", subscriptionPlan: "plus" }],
+      [{ plan: "plus", dataRetentionDays: 7 }], [{ id: "monitor-1" }], [oldResult],
+      [{ id: "monitor-2" }], [{ ...oldResult, id: "result-2", testExecutionId: "test-good" }]];
+    deleteReports.mockResolvedValueOnce({ ...s3Success, success: false, failedObjects: [{ key: "test-ab12/report/index.html", error: "Denied" }] })
+      .mockResolvedValueOnce(s3Success);
+    const result = await new MonitorResultsCleanupStrategy({ ...monitorConfig, maxRecordsPerRun: 2 }).execute();
+    expect(result).toMatchObject({ success: false, recordsDeleted: 1, details: { recordsProcessed: 2 } });
+    expect(deleteReports).toHaveBeenCalledTimes(2);
+    const deleted = deleteWhere.mock.calls.map(([condition]) => new PgDialect().sqlToQuery(condition).params).flat();
+    expect(deleted).toContain("result-2");
+    expect(deleted).not.toContain("result-1");
+  });
+
+  it("charges failed monitor batches against the shared safety limit", async () => {
+    selections = [[{ organizationId: "org-1", subscriptionPlan: "plus" }, { organizationId: "org-2", subscriptionPlan: "plus" }],
+      [{ plan: "plus", dataRetentionDays: 7 }], [{ id: "monitor-1" }], [oldResult]];
+    deleteReports.mockResolvedValue({ ...s3Success, success: false, failedObjects: [{ key: "test-ab12", error: "Denied" }] });
+    const result = await new MonitorResultsCleanupStrategy({ ...monitorConfig, maxRecordsPerRun: 1 }).execute();
+    expect(result).toMatchObject({ success: false, recordsDeleted: 0, details: { recordsProcessed: 1 } });
+    expect(deleteReports).toHaveBeenCalledTimes(1);
   });
 
   it("makes no S3 or DB mutations in dry-run mode", async () => {
@@ -212,6 +251,59 @@ describe("Artifact retention strategies", () => {
     expect(result.success).toBe(false);
     expect(deleteReports).not.toHaveBeenCalled();
     expect(db.delete).not.toHaveBeenCalled();
+  });
+
+  it.each(["not-a-url", "http://storage:9000/k6-job-artifacts/run-other/report/index.html"])("retains a corrupt run URL %s and still cleans healthy runs", async reportS3Url => {
+    jobSelections("tenant");
+    selections[3] = [
+      { id: "run-bad", reportS3Url },
+      { id: "run-good", reportS3Url: "http://storage:9000/k6-job-artifacts/run-good/report/index.html" },
+    ];
+    selections[4] = [];
+    const result = await new JobRunsCleanupStrategy(jobConfig).execute();
+    expect(result).toMatchObject({ success: false, recordsDeleted: 1, details: { recordsProcessed: 2 } });
+    expect(deleteReports).toHaveBeenCalledWith([expect.objectContaining({ entityId: "run-good" })]);
+    const deleted = deleteWhere.mock.calls.map(([condition]) => new PgDialect().sqlToQuery(condition).params).flat();
+    expect(deleted).toContain("run-good");
+    expect(deleted).not.toContain("run-bad");
+  });
+
+  it("does not queue any URL for a run whose second pointer is invalid", async () => {
+    jobSelections("tenant");
+    selections[3] = [{ id: "run-1", reportS3Url: "http://storage:9000/k6-job-artifacts/run-1/report/index.html", logsS3Url: "broken" }];
+    selections[4] = [];
+    const result = await new JobRunsCleanupStrategy(jobConfig).execute();
+    expect(result.success).toBe(false);
+    expect(deleteReports).not.toHaveBeenCalled();
+    expect(db.delete).not.toHaveBeenCalled();
+  });
+
+  it("excludes corrupt run IDs from subsequent bounded batches", async () => {
+    selections = [[{ organizationId: "org-1", subscriptionPlan: "plus" }], [{ plan: "plus", jobDataRetentionDays: 30 }], [{ id: "job-1" }],
+      [{ id: "run-bad", reportS3Url: "broken" }], [],
+      [{ id: "run-good", reportS3Url: "http://storage:9000/k6-job-artifacts/run-good/report/index.html" }], []];
+    const result = await new JobRunsCleanupStrategy({ ...jobConfig, batchSize: 1, maxRecordsPerRun: 2 }).execute();
+    expect(result).toMatchObject({ success: false, recordsDeleted: 1, details: { recordsProcessed: 2 } });
+    expect(predicates.some(p => {
+      const q = new PgDialect().sqlToQuery(p);
+      return q.sql.includes("not in") && q.params.includes("run-bad");
+    })).toBe(true);
+    expect(limits).toEqual([1, 1]);
+  });
+
+  it("continues later job tenants after an S3 failure without exceeding the work limit", async () => {
+    const report = { id: "report-1", entityType: "k6_job", entityId: "run-1", reportPath: "run-1/report", s3Url: null };
+    selections = [[{ organizationId: "org-1", subscriptionPlan: "plus" }, { organizationId: "org-2", subscriptionPlan: "plus" }],
+      [{ plan: "plus", jobDataRetentionDays: 30 }], [{ id: "job-1" }], [{ id: "run-1" }], [report],
+      [{ id: "job-2" }], [{ id: "run-2" }], [{ ...report, id: "report-2", entityId: "run-2", reportPath: "run-2/report" }]];
+    deleteReports.mockResolvedValueOnce({ ...s3Success, success: false, failedObjects: [{ key: "run-1/report", error: "Denied" }] })
+      .mockResolvedValueOnce(s3Success);
+    const result = await new JobRunsCleanupStrategy({ ...jobConfig, maxRecordsPerRun: 2 }).execute();
+    expect(result).toMatchObject({ success: false, recordsDeleted: 1, details: { recordsProcessed: 2 } });
+    const deleted = deleteWhere.mock.calls.map(([condition]) => new PgDialect().sqlToQuery(condition).params).flat();
+    expect(deleted).toContain("run-2");
+    expect(deleted).not.toContain("run-1");
+    expect(limits).toEqual([2, 1]);
   });
 
   it("processes additional job batches up to the exact safety limit", async () => {
