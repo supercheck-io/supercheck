@@ -35,7 +35,7 @@ docker compose -f deploy/docker/docker-compose-local.yml stop app worker
 
 Before starting either package, copy its `.env.example` to `.env` only if `.env` does not already exist, then configure it for the local Compose services. Set matching `DATABASE_URL` and S3 settings in both packages. The database URL must use the Compose PostgreSQL credentials, and the S3 endpoint, bucket, region, access key, and secret key must match RustFS. Preserve existing `.env` files and edit them as needed. The local RustFS development keys are `localdevaccesskey` / `localdevsecretkey0123456789abcdef`.
 
-The app uses `REDIS_URL` and also reads `REDIS_HOST`, `REDIS_PORT`, and `REDIS_PASSWORD` for its shared Redis clients. The worker uses `REDIS_HOST`, `REDIS_PORT`, and `REDIS_PASSWORD`. Match these settings to the Compose Redis service. If a local service already uses a default port, change `DB_HOST_PORT` or `REDIS_HOST_PORT` in `deploy/docker/.env` and update the corresponding package settings.
+The app uses `REDIS_URL` and also reads `REDIS_HOST`, `REDIS_PORT`, and `REDIS_PASSWORD` for its shared Redis clients. The worker uses `REDIS_HOST`, `REDIS_PORT`, and `REDIS_PASSWORD`. Match these settings to the Compose Redis service. If a local service already uses a default port, set `DB_HOST_PORT`, `REDIS_HOST_PORT`, or `RUSTFS_HOST_PORT` in `deploy/docker/.env` and update the corresponding package settings (`DATABASE_URL`, Redis settings, or `S3_ENDPOINT`).
 
 In a separate terminal for the app, run from the repository root:
 

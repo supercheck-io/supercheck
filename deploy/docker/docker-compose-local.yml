@@ -445,7 +445,7 @@ services:
     image: ghcr.io/rustfs/rustfs:1.0.1
     # Published so the app/worker can run from source on the host (hybrid mode)
     ports:
-      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:${RUSTFS_HOST_PORT:-9000}:9000"
     environment:
       - RUSTFS_CONSOLE_ENABLE=false
       - RUSTFS_ACCESS_KEY=${AWS_ACCESS_KEY_ID:-localdevaccesskey}

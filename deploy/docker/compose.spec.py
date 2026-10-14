@@ -41,5 +41,34 @@ class ComposeTests(unittest.TestCase):
                             self.assertIn('private-agent-network', services['private-agent']['networks'])
 
 
+    def test_local_services_publish_only_on_loopback_with_port_overrides(self):
+        defaults = {'postgres': 5432, 'redis': 6379, 'rustfs': 9000}
+        variables = {'postgres': 'DB_HOST_PORT', 'redis': 'REDIS_HOST_PORT',
+                     'rustfs': 'RUSTFS_HOST_PORT'}
+        for overridden in (False, True):
+            with self.subTest(overridden=overridden):
+                env = {key: value for key, value in os.environ.items()
+                       if key not in (*variables.values(), 'COMPOSE_PROFILES')}
+                expected = {name: port + (10000 if overridden else 0)
+                            for name, port in defaults.items()}
+                if overridden:
+                    env.update({variables[name]: str(port)
+                                for name, port in expected.items()})
+                result = subprocess.run(
+                    ['docker', 'compose', '--env-file', '/dev/null',
+                     '-f', 'docker-compose-local.yml', 'config', '--format', 'json'],
+                    cwd=DEPLOY, env=env, text=True,
+                    capture_output=True, check=True, timeout=30)
+                services = json.loads(result.stdout)['services']
+                for name, port in expected.items():
+                    with self.subTest(service=name):
+                        published = services[name]['ports']
+                        self.assertEqual(len(published), 1)
+                        self.assertEqual(published[0]['host_ip'], '127.0.0.1')
+                        self.assertEqual(int(published[0]['published']), port)
+                        self.assertEqual(published[0]['target'], defaults[name])
+                        self.assertEqual(published[0]['protocol'], 'tcp')
+
+
 if __name__ == '__main__':
     unittest.main()
