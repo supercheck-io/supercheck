@@ -21,6 +21,23 @@ Requirements:
 
 Run `npm` commands from the package directory, not the repository root. Each package has its own `package-lock.json`; use `npm ci` for a clean, reproducible install.
 
+### Run app and worker from source against Compose infrastructure
+
+For fast iteration, run the app and worker with `npm run dev` while PostgreSQL, Redis, and RustFS keep running in Docker Compose. `docker-compose-local.yml` publishes those services on `127.0.0.1` for this:
+
+```bash
+cd deploy/docker
+docker compose -f docker-compose-local.yml up -d postgres redis rustfs
+docker compose -f docker-compose-local.yml stop app worker   # when the containers were running
+
+cd ../../app && npm ci && npm run dev      # http://localhost:3000
+cd ../worker && npm ci && npm run dev      # http://localhost:8000/health/ready
+```
+
+Both packages read their own gitignored `.env`, where `DATABASE_URL`, `REDIS_URL`, and `S3_ENDPOINT` point at `127.0.0.1` and credentials match the Compose defaults (`postgres`/`postgres`, the Redis password from `docker-compose-local.yml`, and the RustFS development keys `localdevaccesskey` / `localdevsecretkey0123456789abcdef`). If something else already listens on a default port (for example a Homebrew Redis on 6379), publish the container service elsewhere with `DB_HOST_PORT` / `REDIS_HOST_PORT` in `deploy/docker/.env` and point the package `.env` files at the same port. Run `npm run db:migrate` in `app/` after pulling schema changes, and switch back to the containerized stack with `docker compose -f docker-compose-local.yml up -d app worker`.
+
+Worker test runs still execute as Kubernetes Jobs. Point the worker at your execution cluster through `KUBECONFIG` (OrbStack's context is the default on macOS) and remember the caveat above: OrbStack has no gVisor RuntimeClass, so set `EXECUTION_RUNTIME_CLASS_NAME=none` to run without the sandbox; use it only for local, trusted targets.
+
 ## Workflow
 
 1. Fork the repository and branch from `main`. Use a short, descriptive branch name such as `fix/cli-timeout` or `docs/deploy-sync`.
