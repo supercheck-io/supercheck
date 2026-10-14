@@ -585,6 +585,7 @@ export class MonitorResultsCleanupStrategy implements ICleanupStrategy {
 
             orgDeleted += await this.cleanupBatch(idsToDelete, result);
             totalProcessed += idsToDelete.length;
+            result.details.recordsProcessed = totalProcessed;
             result.recordsDeleted = totalDeleted + orgDeleted;
 
             // Small delay between batches
@@ -745,6 +746,7 @@ export class MonitorResultsCleanupStrategy implements ICleanupStrategy {
           Number(countResult[0]?.deleteCount || 0),
           maxRecords
         );
+        result.details.recordsProcessed = Math.min(Number(countResult[0]?.count || 0), maxRecords);
       } else {
         while (iterations < maxIterations) {
           const idsToDelete = await db
@@ -772,6 +774,7 @@ export class MonitorResultsCleanupStrategy implements ICleanupStrategy {
 
           totalDeleted += await this.cleanupBatch(idsToDelete, result);
           totalProcessed += idsToDelete.length;
+          result.details.recordsProcessed = totalProcessed;
           result.recordsDeleted = totalDeleted;
 
           if (idsToDelete.length === batchSize) {
