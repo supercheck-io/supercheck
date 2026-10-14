@@ -364,7 +364,7 @@ else console.log(JSON.stringify({state: 'open', head: {sha: 'abc'}}))
   const run = (history) => {
     execFileSync(process.execPath, ["--require", path.join(dir, "capture.cjs"), script, "publish"], { env: {
       ...process.env, PATH: `${dir}${path.delimiter}${process.env.PATH}`, GITHUB_REPOSITORY: repo,
-      GITHUB_TOKEN: "fixture-token", REVIEW_DIR: dir, REVIEW_RESULT_DIR: resultDir, CAPTURE: path.join(dir, "request.json"), HISTORY: JSON.stringify([history]),
+      GITHUB_TOKEN: "fixture-token", REVIEW_INPUT_DIR: dir, REVIEW_DIR: resultDir, CAPTURE: path.join(dir, "request.json"), HISTORY: JSON.stringify([history]),
     } })
     return JSON.parse(readFileSync(path.join(dir, "request.json"), "utf8"))
   }
@@ -383,7 +383,9 @@ test("workflow carries trusted inputs separately from model output", () => {
   for (const file of ["prompt.txt", "index.json", "meta.json", "evidence.json", "prior.json"]) {
     assert.ok(inputUpload.includes(`/pr-review/${file}`), `missing input artifact ${file}`)
   }
-  assert.match(workflow, /REVIEW_DIR: \$\{\{ runner.temp \}\}\/pr-review\n\s+REVIEW_RESULT_DIR: \$\{\{ runner.temp \}\}\/pr-review-result/)
+  // PR workflow YAML runs before the trusted default-branch script is upgraded.
+  assert.ok(workflow.includes("REVIEW_DIR: ${{ needs.prepare.outputs.decision == 'review' && format('{0}/pr-review-result', runner.temp) || format('{0}/pr-review', runner.temp) }}"))
+  assert.match(workflow, /REVIEW_INPUT_DIR: \$\{\{ runner.temp \}\}\/pr-review/)
   assert.match(workflow, /GH_TOKEN: ""\n\s+GITHUB_TOKEN: ""/)
 })
 

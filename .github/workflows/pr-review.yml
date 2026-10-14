@@ -158,8 +158,9 @@ jobs:
       - name: Publish the GitHub review
         env:
           PR_NUMBER: ${{ github.event.pull_request.number || inputs.pull_number }}
-          REVIEW_DIR: ${{ runner.temp }}/pr-review
-          REVIEW_RESULT_DIR: ${{ runner.temp }}/pr-review-result
+          # Retain the legacy result path while this workflow runs with default-branch scripts.
+          REVIEW_DIR: ${{ needs.prepare.outputs.decision == 'review' && format('{0}/pr-review-result', runner.temp) || format('{0}/pr-review', runner.temp) }}
+          REVIEW_INPUT_DIR: ${{ runner.temp }}/pr-review
           GH_TOKEN: ${{ github.token }}
           GITHUB_TOKEN: ${{ github.token }}
         run: node .github/scripts/pr-review.mjs publish

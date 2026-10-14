@@ -578,7 +578,7 @@ async function model() {
 
 async function publish() {
   const repo = repository()
-  const dir = workDir()
+  const dir = process.env.REVIEW_INPUT_DIR ?? workDir()
   const meta = JSON.parse(readFileSync(path.join(dir, "meta.json"), "utf8"))
   const token = process.env.GITHUB_TOKEN
   if (!token) throw new Error("GITHUB_TOKEN is missing")
@@ -608,7 +608,7 @@ async function publish() {
     return
   }
 
-  const resultDir = process.env.REVIEW_RESULT_DIR ?? dir
+  const resultDir = workDir()
   const review = JSON.parse(readFileSync(path.join(resultDir, "review.json"), "utf8"))
   const marker = review.kind === "failure" ? FAILURE_MARKER : MARKER
   if (hasReviewForCommit(reviews, review.headSha, marker)) {
