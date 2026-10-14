@@ -17,9 +17,9 @@ Corresponding source, dependency lockfiles, and build instructions:
 https://github.com/supercheck-io/supercheck
 Use the source revision identified by the release or container image metadata.
 
-The worker image also bundles k6 v1.6.1 and xk6-dashboard v0.8.1, each under
+The worker image also bundles k6 v1.8.2 and xk6-dashboard v0.8.1, each under
 its upstream AGPL license. Their original license files are in third-party/
 in the worker image. Corresponding upstream source and build dependencies:
-https://github.com/grafana/k6/tree/v1.6.1
+https://github.com/grafana/k6/tree/v1.8.2
 https://github.com/grafana/xk6-dashboard/tree/v0.8.1
 The worker Dockerfile records the versions and xk6 build command.
