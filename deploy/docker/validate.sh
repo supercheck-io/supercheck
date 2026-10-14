@@ -73,6 +73,9 @@ for file in "${files[@]}"; do
   fi
 done
 
+echo "==> Compose routing regression checks"
+python3 ./compose.spec.py
+
 echo "==> install.sh default version matches docker-compose.yml"
 compose_ver="$(grep -o 'supercheck/app:[$]{SUPERCHECK_VERSION:-[^}]*}' docker-compose.yml | head -n1 | sed 's/.*:-//; s/}$//' || true)"
 installer_ver="$(sed -n 's/^SUPERCHECK_VERSION_DEFAULT="\(.*\)"/\1/p' install.sh | head -n1 || true)"

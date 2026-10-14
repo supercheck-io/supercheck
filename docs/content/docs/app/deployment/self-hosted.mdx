@@ -119,6 +119,13 @@ For advanced settings, see the [Docker environment reference](https://github.com
 
 Run commands from your installation's `deploy/docker` directory (default: `/opt/supercheck/deploy/docker`).
 
+Before starting upgraded workers, make the restricted worker kubeconfig readable by the worker's `pwuser` group (GID 1001). Run this on each Docker host that runs workers, including remote worker hosts; replace the path if `KUBECONFIG_FILE` is configured differently. Do not apply this to the admin `/etc/rancher/k3s/k3s.yaml`:
+
+```bash
+sudo chgrp 1001 /etc/rancher/k3s/supercheck-worker.kubeconfig
+sudo chmod 0440 /etc/rancher/k3s/supercheck-worker.kubeconfig
+```
+
 <Accordions>
   <Accordion title="Updates" id="updates">
     Back up your data first. If your installation uses MinIO, follow **Upgrading from MinIO** below before updating.

@@ -22,6 +22,12 @@ import {
 
 const DEFAULT_REPORT_ASSET_MAX_RETRIES = 2;
 const DEFAULT_REPORT_ASSET_RETRY_DELAY_MS = 250;
+const INLINE_ATTACHMENT_TYPES = new Set([
+  "image/png", "image/jpeg", "image/gif", "image/webp", "image/avif", "image/bmp",
+  "video/webm", "video/mp4", "video/ogg",
+  "audio/mpeg", "audio/mp4", "audio/ogg", "audio/wav", "audio/webm",
+  "text/plain", "application/json",
+]);
 
 function getReportAssetRetryConfig() {
   const maxRetries = Number.parseInt(
@@ -451,28 +457,53 @@ export async function GET(request: Request) {
       const s3Response = await fetchReportAssetWithRecovery(bucket, s3Key);
 
       // Convert Response to NextResponse
-      const headers: Record<string, string> = {};
-      s3Response.headers.forEach((value, key) => {
-        headers[key] = value;
-      });
+      const headers = new Headers(s3Response.headers);
 
       // Report assets are authorization-gated and may contain tenant data.
       // Never allow shared caches or browsers to retain the response.
-      headers["Cache-Control"] = getReportCacheControl();
+      headers.set("Cache-Control", getReportCacheControl());
+      headers.set("X-Content-Type-Options", "nosniff");
 
       // Only include Content-Disposition for downloads if not forcing iframe display
-      const contentType =
-        headers["content-type"] ||
-        headers["Content-Type"] ||
-        "application/octet-stream";
+      const contentType = (headers.get("Content-Type") || "application/octet-stream")
+        .split(";")[0]
+        .trim()
+        .toLowerCase();
       if (
         !forceIframe &&
         contentType.includes("application/") &&
         !contentType.includes("html")
       ) {
-        headers["Content-Disposition"] = `inline; filename="${targetFile
-          .split("/")
-          .pop()}"`;
+        headers.set(
+          "Content-Disposition",
+          `inline; filename="${targetFile.split("/").pop()}"`
+        );
+      }
+
+      const isGeneratedDocument =
+        /^(?:report\/)?(?:index\.html|trace\/(?:index|snapshot|uiMode)\.html)$/.test(targetFile) ||
+        ((reportResult.entityType === "k6_test" || reportResult.entityType === "k6_job") &&
+          /^(?:report\/)?report\.html$/.test(targetFile));
+      const isAttachment = /(?:^|\/)data\//.test(targetFile);
+      const isActiveDocument =
+        /^(?:text\/(?:html|xml)|application\/(?:xhtml\+xml|xml)|image\/svg\+xml)$/.test(contentType) ||
+        /\.(?:html?|xhtml|svg|xml)$/i.test(targetFile);
+      const isSafeInlineAttachment = INLINE_ATTACHMENT_TYPES.has(contentType);
+
+      // Attachments are untrusted documents, including artifacts uploaded before this fix.
+      if (
+        (!isGeneratedDocument && isActiveDocument) ||
+        (isAttachment && (!isSafeInlineAttachment || isActiveDocument))
+      ) {
+        const filename = targetFile.split("/").pop() || "attachment";
+        headers.set(
+          "Content-Disposition",
+          `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`
+        );
+        headers.set(
+          "Content-Security-Policy",
+          "sandbox; default-src 'none'; base-uri 'none'; form-action 'none'"
+        );
       }
 
       const buffer = await s3Response.arrayBuffer();

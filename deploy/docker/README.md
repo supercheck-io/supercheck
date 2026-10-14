@@ -124,6 +124,13 @@ It prepares the isolated environment required for Playwright and k6 test executi
 
 Back up your data and `.env` first (see [Backups](#backups)). Run commands from your installation's `deploy/docker` directory, using the same Compose file and profiles as installation; custom variants need their corresponding `-f` flag.
 
+Before starting upgraded workers, make the restricted worker kubeconfig readable by the worker's `pwuser` group (GID 1001). Run this on each Docker host that runs workers, including remote worker hosts; replace the path if `KUBECONFIG_FILE` is configured differently. Do not apply this to the admin `/etc/rancher/k3s/k3s.yaml`:
+
+```bash
+sudo chgrp 1001 /etc/rancher/k3s/supercheck-worker.kubeconfig
+sudo chmod 0440 /etc/rancher/k3s/supercheck-worker.kubeconfig
+```
+
 **Upgrading from bundled MinIO (releases before `1.3.7-canary.16`):** MinIO and RustFS disk formats are incompatible. Stop remote workers, then download and run the migration script from your **current MinIO checkout**, with the old stack running, **before updating the checkout**:
 
 ```bash
