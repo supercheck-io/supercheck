@@ -14,6 +14,12 @@
 #   - Source code mounted for hot-reload
 #   - All services included: PostgreSQL, Redis, RustFS
 #
+# Hybrid mode: PostgreSQL, Redis, and RustFS are published on 127.0.0.1, so the
+# app and worker can run from source on the host (npm run dev) instead of in
+# containers. Stop the app and worker containers before starting the dev servers:
+#   docker compose -f docker-compose-local.yml up -d postgres redis rustfs
+#   docker compose -f docker-compose-local.yml stop app worker
+#
 # This file builds from source for local iteration, but uses the same K3s +
 # gVisor execution model as the production Compose variants.
 #
@@ -371,6 +377,9 @@ services:
   # PostgreSQL Database
   postgres:
     image: postgres:18
+    # Published so the app/worker can run from source on the host (hybrid mode)
+    ports:
+      - "127.0.0.1:${DB_HOST_PORT:-5432}:5432"
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
@@ -398,6 +407,9 @@ services:
   # Redis (for job queues)
   redis:
     image: redis:8
+    # Published so the app/worker can run from source on the host (hybrid mode)
+    ports:
+      - "127.0.0.1:${REDIS_HOST_PORT:-6379}:6379"
     environment:
       - REDIS_PASSWORD=supersecure-redis-password-change-this
     command: sh -c "rm -rf /data/* && redis-server --requirepass \"supersecure-redis-password-change-this\" --maxmemory 512mb --maxmemory-policy noeviction --save '' --appendonly no --protected-mode yes --bind 0.0.0.0 --tcp-keepalive 300"
@@ -431,6 +443,9 @@ services:
   # RustFS (S3-compatible storage, Apache-2.0)
   rustfs:
     image: ghcr.io/rustfs/rustfs:1.0.1
+    # Published so the app/worker can run from source on the host (hybrid mode)
+    ports:
+      - "127.0.0.1:${RUSTFS_HOST_PORT:-9000}:9000"
     environment:
       - RUSTFS_CONSOLE_ENABLE=false
       - RUSTFS_ACCESS_KEY=${AWS_ACCESS_KEY_ID:-localdevaccesskey}

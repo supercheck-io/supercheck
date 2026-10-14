@@ -21,6 +21,50 @@ Requirements:
 
 Run `npm` commands from the package directory, not the repository root. Each package has its own `package-lock.json`; use `npm ci` for a clean, reproducible install.
 
+### Run the app and worker from source against Compose infrastructure
+
+For fast iteration, run the app and worker with `npm run dev` while PostgreSQL, Redis, and RustFS run in Docker Compose. The local Compose file publishes these services on loopback with public local development credentials. Use these credentials only for trusted local development.
+
+Start the infrastructure from the repository root:
+
+```bash
+cd /path/to/supercheck
+docker compose -f deploy/docker/docker-compose-local.yml up -d postgres redis rustfs
+docker compose -f deploy/docker/docker-compose-local.yml stop app worker
+```
+
+Before starting either package, copy its `.env.example` to `.env` only if `.env` does not already exist, then configure it for the local Compose services. Set matching `DATABASE_URL` and S3 settings in both packages. The database URL must use the Compose PostgreSQL credentials, and the S3 endpoint, bucket, region, access key, and secret key must match RustFS. Preserve existing `.env` files and edit them as needed. The local RustFS development keys are `localdevaccesskey` / `localdevsecretkey0123456789abcdef`.
+
+The app uses `REDIS_URL` and also reads `REDIS_HOST`, `REDIS_PORT`, and `REDIS_PASSWORD` for its shared Redis clients. The worker uses `REDIS_HOST`, `REDIS_PORT`, and `REDIS_PASSWORD`. Match these settings to the Compose Redis service. If a local service already uses a default port, set `DB_HOST_PORT`, `REDIS_HOST_PORT`, or `RUSTFS_HOST_PORT` in `deploy/docker/.env` and update the corresponding package settings (`DATABASE_URL`, Redis settings, or `S3_ENDPOINT`).
+
+In a separate terminal for the app, run from the repository root:
+
+```bash
+cd /path/to/supercheck/app
+test -f .env || cp .env.example .env
+npm ci
+npm run db:migrate
+npm run dev
+```
+
+The app is available at `http://localhost:3000`. In another terminal for the worker, run from the repository root:
+
+```bash
+cd /path/to/supercheck/worker
+test -f .env || cp .env.example .env
+npm ci
+npm run dev
+```
+
+The worker health endpoint is `http://localhost:8000/health/ready`. To switch back, stop both dev servers with Ctrl+C, then start the containerized app and worker from `deploy/docker`:
+
+```bash
+cd /path/to/supercheck/deploy/docker
+docker compose -f docker-compose-local.yml up -d app worker
+```
+
+Worker test runs still execute as Kubernetes Jobs. For a local cluster, use a namespace-scoped worker kubeconfig through `KUBECONFIG`. OrbStack has no gVisor `RuntimeClass`; set `EXECUTION_RUNTIME_CLASS_NAME=none` to run without the sandbox, and use only local, trusted targets.
+
 ## Workflow
 
 1. Fork the repository and branch from `main`. Use a short, descriptive branch name such as `fix/cli-timeout` or `docs/deploy-sync`.
