@@ -28,9 +28,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
-        with:
-          # Preserve the annotated tag object for signature verification.
-          fetch-depth: 0
 
       # Release tags must be annotated and signed by a key listed in
       # main's .github/release-allowed-signers. The signers file is read
@@ -49,6 +46,7 @@ jobs:
         env:
           RELEASE_REF: ${{ github.ref }}
           RELEASE_TAG: ${{ github.ref_name }}
+          GITHUB_TOKEN: ${{ github.token }}
           DRY_RUN: ${{ inputs.dry-run }}
         run: |
           set -Eeuo pipefail
@@ -60,6 +58,12 @@ jobs:
             echo "::error::Publishing requires a signed release tag; got $RELEASE_REF."
             exit 1
           fi
+          # actions/checkout fetches the tag as a bare commit
+          # (+<sha>:refs/tags/<tag>), overwriting the annotated tag object.
+          # Re-fetch the real tag object before verifying it.
+          auth="$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 -w0)"
+          git -c "http.${GITHUB_SERVER_URL}/.extraheader=AUTHORIZATION: basic ${auth}" \
+            fetch --no-tags --force origin "+refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
           if [[ "$(git cat-file -t "refs/tags/$RELEASE_TAG")" != "tag" ]]; then
             echo "::error::Tag $RELEASE_TAG is lightweight or missing. Release tags must be annotated and signed."
             exit 1
@@ -67,6 +71,11 @@ jobs:
           git -c gpg.format=ssh \
             -c gpg.ssh.allowedSignersFile="$GITHUB_WORKSPACE/release-signers/.github/release-allowed-signers" \
             verify-tag "refs/tags/$RELEASE_TAG"
+          # The verified tag must still point at the commit this run builds.
+          if [[ "$(git rev-parse "refs/tags/${RELEASE_TAG}^{commit}")" != "$GITHUB_SHA" ]]; then
+            echo "::error::Tag $RELEASE_TAG no longer points at $GITHUB_SHA."
+            exit 1
+          fi
 
       - name: Setup Node.js
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
