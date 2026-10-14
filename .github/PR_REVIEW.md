@@ -22,19 +22,23 @@ GitHub does not trigger another workflow when a PR is created or updated using `
 - Reviews see at most 100,000 patch characters plus bounded PR metadata. Missing text patches and truncated diffs are marked partial. Binary-only or deletion-only diffs without commentable new-file lines receive a notice.
 - The model sees the supplied diff, not the whole repository, CI results, or runtime behavior. It can miss bugs and suggest incorrect fixes. Validate each finding before applying it.
 - Each request has a five-minute timeout, an 8,192-token output limit, and at most one retry. Authentication and other permanent HTTP errors are not retried.
+- Trusted path-scoped rules come from `.github/review-rules.md` beside the default-branch script, with a 6,000-character budget. PR changes to those rules apply only after merge. CodeRabbit shares this file alongside the Copilot instructions.
+- Prior inline findings are fetched as untrusted data, restricted to this reviewer's marked reviews by `github-actions[bot]`. The prompt includes at most 12,000 characters of history. All prior inline findings, including outdated ones, count toward a 12-comment PR budget; each pass posts at most four.
+- Candidates require blocker/warning severity, numeric confidence of at least 0.9, a root-cause description, and exact source-line evidence. Repeated root-cause fingerprints and identical bodies are filtered. Semantic deduplication still depends on the model following the prompt; confidence is model-reported, not a calibrated probability.
+- The publisher rechecks evidence, lines, history, and budget, redacts its credential, and generates the summary from the accepted count. Model prose cannot publish issues outside inline comments. Missing-test claims are disallowed without supplied tests. Vendored Playwright and generated declaration/type files are excluded.
 - A PR that closes or receives a new commit while the model is running gets no obsolete review.
 
 ## Security and maintenance
 
 `pull_request` runs for internal PRs; fork PRs are skipped and GitHub withholds their secrets. GitHub runs the PR workflow definition, so internal collaborators must be trusted to modify workflows (as they already have write access). The reviewer scripts are checked out from the default branch, and its resolved commit is reused by all jobs; PR source code is never built or executed by the reviewer. Downloaded artifacts contain data only. Input collection, provider access, and publishing use separate jobs. Only the provider job receives `OPENCODE_API_KEY`; only the publisher has PR write permission. PR text and model responses are data, never shell commands. Only completed JSON reviews are accepted; inline paths and lines must exist in the included diff. Recognized credential formats and the provider key are redacted before output limits are applied. Raw provider replies and errors are not logged or uploaded.
 
-The title, body, and bounded diff are sent to OpenCode Go; input artifacts expire after one day. This applies to private ops changes too. Do not put credentials in PR content.
+The title, body, bounded diff, selected trusted rules, and bounded prior findings are sent to OpenCode Go; input artifacts expire after one day. This applies to private ops changes too. Do not put credentials in PR content. PR code is never executed; the model still has no repository tools or GitHub token.
 
 This uses GitHub’s ordinary PR event without overriding event policies or checkout protections. Runs perform only repository development work: no hosted service, unrelated compute, persistent process, or quota evasion. Timeouts, concurrency cancellation, size limits, bounded retries, and one-day artifact retention limit resource use. GitHub can still enforce account policies; no workflow can guarantee account status.
 
 References: [secure use](https://docs.github.com/en/actions/reference/security/secure-use), [PR event security](https://docs.github.com/en/actions/reference/security/securely-using-pull_request_target), and [Actions usage terms](https://docs.github.com/en/site-policy/github-terms/github-terms-for-additional-products-and-features#actions).
 
-The workflow, script, tests, and this guide are kept identical in `supercheck` and `supercheck-ops`. Change both copies together. Actions are pinned by commit SHA and Node 24 is explicit. Run:
+The script, tests, and this guide are kept identical in `supercheck` and `supercheck-ops`; workflow action pins may differ. Change shared behavior in both copies together. Each repository owns its review rules. Actions are pinned by commit SHA and Node 24 is explicit. Run:
 
 ```sh
 node --test .github/scripts/pr-review.test.mjs
