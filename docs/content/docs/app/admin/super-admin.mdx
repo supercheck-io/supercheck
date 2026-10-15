@@ -77,7 +77,7 @@ Monitor BullMQ queues for test execution, monitoring, and background jobs. View 
 
 ## Locations
 
-Manage geographic locations for multi-region monitoring and performance testing. Deploy a worker in each region you want to offer, then make that location available to projects.
+Manage worker execution entries for self-hosted monitoring and performance testing. Connect a worker, then enable its entry for projects.
 
 ### Adding a Location
 
@@ -87,9 +87,9 @@ Manage geographic locations for multi-region monitoring and performance testing.
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| **Code** | Yes | Identifier that must match the worker's `WORKER_LOCATION` (e.g. `us-east`). Lowercase, 2–50 characters, letters/digits/hyphens only, no consecutive hyphens. Reserved codes (`global`, `all`, `default`, `none`, `any`, `local`, `job-scheduler`, `scheduler`) are blocked. |
-| **Name** | Yes | Human-readable display name (e.g. "US East"). |
-| **Region** | No | Geographic description (e.g. "Ashburn, Virginia"). |
+| **Code** | Yes | Identifier that must match the worker's `WORKER_LOCATION` (e.g. `worker-pool`). Lowercase, 2–50 characters, letters/digits/hyphens only, no consecutive hyphens. Reserved codes (`global`, `all`, `default`, `none`, `any`, `local`, `job-scheduler`, `scheduler`) are blocked. |
+| **Name** | Yes | Human-readable display name (e.g. "Worker Pool"). |
+| **Region** | No | Optional descriptive label for administrators. |
 | **Flag** | No | Emoji flag for the UI (e.g. 🇺🇸). |
 | **Coordinates** | No | Latitude/longitude for map visualization. |
 | **Default** | No | Set as the default K6 job execution location. |
@@ -104,7 +104,7 @@ Manage geographic locations for multi-region monitoring and performance testing.
 | **Disabled** | Location is unavailable for new checks and runs |
 
 <Callout type="info">
-A location becomes **Active** when a matching worker connects. Deploy a worker with the matching `WORKER_LOCATION` to bring a location online. See [Multi-Location Deployment](/docs/app/deployment/multi-location) for setup instructions.
+A location becomes **Active** when a matching worker connects. Deploy a worker with the matching `WORKER_LOCATION` to bring a location online. See [Self-Hosted Deployment](/docs/app/deployment/self-hosted) for setup instructions.
 </Callout>
 
 ### Default Location
@@ -124,7 +124,7 @@ Organization admins can restrict which locations a project is allowed to use.
 | **Users** | Manage all users system-wide, ban/unban accounts |
 | **Impersonation** | Log in as any user for troubleshooting |
 | **Queue Monitoring** | Real-time BullMQ queue stats via Bull Dashboard |
-| **Location Management** | Add, edit, enable/disable geographic locations for multi-region deployments |
+| **Location Management** | Add, edit, enable, or disable worker execution entries |
 
 ## User Management
 

@@ -1,5 +1,5 @@
 ---
-title: Single-Location
+title: Self-Hosted
 description: Install Supercheck on one server with a guided command
 icon: Container
 ---
@@ -10,7 +10,7 @@ Self-host Supercheck on one Linux server.
 
 <p className="text-sm md:hidden">Scroll horizontally to view the full diagram.</p>
 
-<div className="overflow-x-auto" role="region" aria-label="Single-Location deployment layout diagram" tabIndex={0}>
+<div className="overflow-x-auto" role="region" aria-label="Self-Hosted deployment layout diagram" tabIndex={0}>
 <div className="min-w-[52rem]">
 
 ```mermaid
@@ -176,8 +176,11 @@ sudo chmod 0440 /etc/rancher/k3s/supercheck-worker.kubeconfig
   </Accordion>
 </Accordions>
 
+## Monitor Check Availability
+
+Checks depend on connected workers. When multiple execution targets are configured and enabled for a monitor, checks are queued only to connected targets. Overall status and alert thresholds still evaluate the full configured set: missing results cannot satisfy **All**, the majority uses the configured set, and an incomplete cycle is stored as **Down**. An offline target does not switch a partial cycle to per-result thresholding. If worker-registry access fails, affected monitors remain **Down** until checks resume. Review individual check results even when the overall status is **Up**.
+
 ## Next Steps
 
 - [AI SRE Setup](/docs/app/admin/ai-sre-setup) — add services and read-only evidence sources.
 - [Private Agent](/docs/app/deployment/private-agent) — reach sources inside another network.
-- [Multi-Location](/docs/app/deployment/multi-location) — add regional execution workers.

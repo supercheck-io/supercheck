@@ -35,7 +35,7 @@ Existing records for unsupported providers are labeled **Setup only** and cannot
 
 Private Agent mode supports GitHub, Kubernetes, Prometheus, Grafana, Sentry, Datadog, Loki, Elasticsearch/OpenSearch, Tempo, and AWS CloudWatch. GitLab, PagerDuty, and Opsgenie support **Direct** only.
 
-Use an endpoint reachable from the selected execution location. Supercheck Cloud Direct mode cannot reach private IPs or private DNS names. Self-hosted Direct mode and Private Agents allow internal HTTP or HTTPS endpoints. All modes reject loopback and cloud metadata endpoints and credentials embedded in URLs; enter credentials in the dedicated fields.
+Use an endpoint reachable from your Supercheck instance or Private Agent. Supercheck Cloud Direct mode cannot reach private IPs or private DNS names. Self-hosted Direct mode and Private Agents allow internal HTTP or HTTPS endpoints. All modes reject loopback and cloud metadata endpoints and credentials embedded in URLs; enter credentials in the dedicated fields.
 
 <p className="text-sm">Scroll horizontally on smaller screens to view all steps.</p>
 
@@ -101,7 +101,7 @@ Always provision dedicated, read-only credentials limited to the specific servic
 | **Grafana** | Service Account token with `Viewer` role; never use administrative accounts |
 | **Prometheus / Loki** | Read-only bearer token or gateway credential for query endpoints |
 | **Sentry** | Read-only integration token restricted to relevant project IDs |
-| **Datadog** | API key plus application key with read-only event access for the correct regional site |
+| **Datadog** | API key plus application key with read-only event access for the correct Datadog site |
 | **AWS CloudWatch** | Access key ID and secret access key with `cloudwatch:DescribeAlarms` and `cloudwatch:GetMetricData`; prefer short-lived STS credentials and include the session token |
 
 <Callout type="info">
