@@ -3,6 +3,7 @@ import { AIStreamingService } from "@/lib/ai/ai-streaming-service";
 import { AuthService } from "@/lib/ai/ai-security";
 import { AIPromptBuilder } from "@/lib/ai/ai-prompts";
 import { getActiveOrganization } from "@/lib/session";
+import { hasPermissionForUser } from "@/lib/rbac/middleware";
 import { usageTracker } from "@/lib/services/usage-tracker";
 import { headers } from "next/headers";
 import { logAuditEvent } from "@/lib/audit-logger";
@@ -122,6 +123,22 @@ export async function POST(request: NextRequest) {
 
     // Step 5b: Verify monitor belongs to user's organization
     if (activeOrg && monitor.organizationId !== activeOrg.id) {
+      return NextResponse.json(
+        { success: false, message: "Monitor not found" },
+        { status: 404 }
+      );
+    }
+
+    // Step 5c: Require view access on the monitor's own project (not just org
+    // membership), before any credit is spent or monitor data reaches the model.
+    const canViewMonitor =
+      !!monitor.organizationId &&
+      !!monitor.projectId &&
+      (await hasPermissionForUser(session.user.id, "monitor", "view", {
+        organizationId: monitor.organizationId,
+        projectId: monitor.projectId,
+      }));
+    if (!canViewMonitor) {
       return NextResponse.json(
         { success: false, message: "Monitor not found" },
         { status: 404 }
