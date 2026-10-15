@@ -78,7 +78,7 @@ const features = [
 ];
 
 const navLinkClass =
-  "p-2 md:px-3 md:py-2 rounded-lg inline-flex items-center gap-1.5 text-sm font-medium text-fd-muted-foreground hover:text-fd-foreground hover:bg-fd-accent/80 transition-colors";
+  "p-1.5 sm:p-2 md:px-3 md:py-2 rounded-lg items-center gap-1.5 text-sm font-medium text-fd-muted-foreground hover:text-fd-foreground hover:bg-fd-accent/80 transition-colors";
 
 function LandingAtmosphere() {
   return (
@@ -215,7 +215,7 @@ export default function HomePage() {
 
       <header className="fixed top-0 right-0 left-0 z-50 border-b border-fd-border/40 bg-fd-background/85 backdrop-blur-md">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
-          <Link href="/" className="flex min-w-0 shrink-0 items-center gap-2">
+          <Link href="/" className="flex min-w-0 items-center gap-2">
             <Image
               src="/supercheck-logo.png"
               alt="Supercheck"
@@ -223,7 +223,7 @@ export default function HomePage() {
               height={28}
               className="size-7 rounded-lg"
             />
-            <span className="truncate text-lg font-bold text-fd-foreground sm:text-xl">
+            <span className="hidden truncate text-base font-bold text-fd-foreground min-[375px]:inline sm:text-xl">
               Supercheck
             </span>
           </Link>
@@ -231,10 +231,13 @@ export default function HomePage() {
             aria-label="Primary"
             className="flex shrink-0 items-center gap-0.5 sm:gap-1 md:gap-2"
           >
+            <Link href="/pricing" className={`inline-flex ${navLinkClass}`}>
+              Pricing
+            </Link>
             <SearchButton />
             <Link
               href="/docs/app/welcome"
-              className={navLinkClass}
+              className={`inline-flex ${navLinkClass}`}
               aria-label="Documentation"
             >
               <BookOpenText className="size-5" />
@@ -260,7 +263,7 @@ export default function HomePage() {
               href="https://github.com/supercheck-io/supercheck"
               target="_blank"
               rel="noopener noreferrer"
-              className={navLinkClass}
+              className={`inline-flex ${navLinkClass}`}
               aria-label="Star on GitHub"
             >
               <svg
@@ -441,15 +444,14 @@ export default function HomePage() {
                   Ready to automate testing & monitoring?
                 </h2>
                 <p className="mx-auto mt-3 max-w-xl text-fd-muted-foreground">
-                  Start with the CLI, or deploy on Linux with Docker Compose,
-                  K3s, and gVisor.
+                  Explore cloud plans for your team, or get started with the CLI.
                 </p>
                 <div className="mt-8 flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:items-center">
                   <Link
-                    href="/docs/app/deployment/self-hosted"
+                    href="/pricing"
                     className="inline-flex items-center justify-center gap-2 rounded-lg bg-fd-primary px-5 py-2.5 text-sm font-medium text-fd-primary-foreground shadow-sm transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fd-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-fd-background"
                   >
-                    Self-Hosted Deployment
+                    View pricing
                     <ArrowRight className="size-4" />
                   </Link>
                   <Link

@@ -5,27 +5,6 @@ import { SiteHeader } from '../../lib/layout.shared';
 
 const plans = [
     {
-        name: 'Self-Hosted',
-        price: 'Free',
-        description: 'No license cost; infrastructure and AI provider costs apply',
-        features: [
-            'Unlimited monitors',
-            'Unlimited Playwright minutes',
-            'Unlimited K6 VU minutes',
-            'Unlimited AI feature usage with your own provider key',
-            'Unlimited AI SRE investigations on your infrastructure',
-            'Unlimited read-only evidence connectors',
-            'Unlimited team members',
-            'Unlimited projects in your default organization',
-            'CI/CD integration',
-            'Cron job scheduling',
-            'Community support',
-        ],
-        cta: 'Deploy Now',
-        ctaLink: '/docs/app/deployment/self-hosted',
-        highlighted: false,
-    },
-    {
         name: 'Plus',
         price: '$49',
         period: '/month',
@@ -104,51 +83,50 @@ const overagePricing = [
 const comparisonFeatures = [
     {
         category: 'Usage Limits', items: [
-            { name: 'Monitors', plus: '50', pro: '200', selfHosted: 'Unlimited' },
-            { name: 'Playwright minutes/month', plus: '3,000', pro: '10,000', selfHosted: 'Unlimited' },
-            { name: 'K6 VU minutes/month', plus: '30,000', pro: '100,000', selfHosted: 'Unlimited' },
-            { name: 'AI credits/month', plus: '1,000', pro: '5,000', selfHosted: 'Unlimited with BYO provider' },
-            { name: 'Completed AI SRE investigations/month', plus: '200', pro: '1,000', selfHosted: 'Unlimited' },
-            { name: 'Read-only evidence connectors', plus: 'Included', pro: 'Included', selfHosted: 'Self-managed' },
-            { name: 'Private Agent support', plus: 'Included', pro: 'Included', selfHosted: 'Self-managed' },
-            { name: 'Concurrent jobs', plus: '5', pro: '10', selfHosted: 'Configurable' },
-            { name: 'Queued jobs', plus: '50', pro: '100', selfHosted: 'Configurable' },
-            { name: 'Minimum check interval', plus: '1 minute', pro: '1 minute', selfHosted: '1 minute' },
-            { name: 'Minimum synthetic check interval', plus: '5 minutes', pro: '5 minutes', selfHosted: '5 minutes' },
+            { name: 'Monitors', plus: '50', pro: '200' },
+            { name: 'Playwright minutes/month', plus: '3,000', pro: '10,000' },
+            { name: 'K6 VU minutes/month', plus: '30,000', pro: '100,000' },
+            { name: 'AI credits/month', plus: '1,000', pro: '5,000' },
+            { name: 'Completed AI SRE investigations/month', plus: '200', pro: '1,000' },
+            { name: 'Read-only evidence connectors', plus: 'Included', pro: 'Included' },
+            { name: 'Private Agent support', plus: 'Included', pro: 'Included' },
+            { name: 'Concurrent jobs', plus: '5', pro: '10' },
+            { name: 'Queued jobs', plus: '50', pro: '100' },
+            { name: 'Minimum check interval', plus: '1 minute', pro: '1 minute' },
+            { name: 'Minimum synthetic check interval', plus: '5 minutes', pro: '5 minutes' },
         ]
     },
     {
         category: 'AI SRE', items: [
-            { name: 'Standalone AI SRE Copilot', plus: '✓', pro: '✓', selfHosted: '✓' },
-            { name: 'Incident-scoped Copilot', plus: '✓', pro: '✓', selfHosted: '✓' },
-            { name: 'Evidence graph and reports', plus: '✓', pro: '✓', selfHosted: '✓' },
-            { name: 'Report snapshots and feedback', plus: '✓', pro: '✓', selfHosted: '✓' },
-            { name: 'Read-only connector evidence', plus: 'Included', pro: 'Included', selfHosted: 'Self-managed' },
+            { name: 'Standalone AI SRE Copilot', plus: '✓', pro: '✓' },
+            { name: 'Incident-scoped Copilot', plus: '✓', pro: '✓' },
+            { name: 'Evidence graph and reports', plus: '✓', pro: '✓' },
+            { name: 'Report snapshots and feedback', plus: '✓', pro: '✓' },
+            { name: 'Read-only connector evidence', plus: 'Included', pro: 'Included' },
         ]
     },
     {
         category: 'Team & Organization', items: [
-            { name: 'Team members', plus: '5', pro: '25', selfHosted: 'Unlimited' },
-            { name: 'Cloud subscription scope', plus: 'One organization', pro: 'One organization', selfHosted: 'Self-managed' },
-            { name: 'Projects', plus: '10', pro: '50', selfHosted: 'Unlimited' },
-            { name: 'Status pages', plus: '5', pro: '20', selfHosted: 'Unlimited' },
-            { name: 'Subscribers per status page', plus: '1,000', pro: '10,000', selfHosted: 'Unlimited' },
+            { name: 'Team members', plus: '5', pro: '25' },
+            { name: 'Cloud subscription scope', plus: 'One organization', pro: 'One organization' },
+            { name: 'Projects', plus: '10', pro: '50' },
+            { name: 'Status pages', plus: '5', pro: '20' },
+            { name: 'Subscribers per status page', plus: '1,000', pro: '10,000' },
         ]
     },
     {
         category: 'Data Retention', items: [
-            { name: 'Raw monitor data', plus: '7 days', pro: '7 days', selfHosted: '7 days by default' },
-            { name: 'Aggregated metrics', plus: '30 days', pro: '90 days', selfHosted: '90 days by default' },
-            { name: 'Job run history', plus: '30 days', pro: '90 days', selfHosted: '90 days by default' },
+            { name: 'Raw monitor data', plus: '7 days', pro: '7 days' },
+            { name: 'Aggregated metrics', plus: '30 days', pro: '90 days' },
+            { name: 'Job run history', plus: '30 days', pro: '90 days' },
         ]
     },
     {
         category: 'Features', items: [
-            { name: 'Custom domains', plus: '✓', pro: '✓', selfHosted: '✓' },
-            { name: 'CI/CD integration', plus: '✓', pro: '✓', selfHosted: '✓' },
-            { name: 'Cron job scheduling', plus: '✓', pro: '✓', selfHosted: '✓' },
-            { name: 'Available monitoring locations', plus: 'All enabled locations', pro: 'All enabled locations', selfHosted: 'Self-managed' },
-            { name: 'Support', plus: 'Email', pro: 'Priority email', selfHosted: 'Community' },
+            { name: 'Custom domains', plus: '✓', pro: '✓' },
+            { name: 'CI/CD integration', plus: '✓', pro: '✓' },
+            { name: 'Cron job scheduling', plus: '✓', pro: '✓' },
+            { name: 'Support', plus: 'Email', pro: 'Priority email' },
         ]
     },
 ];
@@ -164,15 +142,15 @@ const faqs = [
     },
     {
         question: 'How are browser execution minutes measured?',
-        answer: 'Playwright tests and synthetic monitors share your minute allowance. We measure execution milliseconds and round to four decimal places in minutes per run, without a whole-minute minimum. A five-second run uses 0.0833 minutes. Each location and executed retry contributes usage. HTTP, ping, and port checks do not consume these minutes. Failed or canceled executions can still consume compute usage.',
+        answer: 'Playwright tests and synthetic monitors share your minute allowance. We measure execution milliseconds and round to four decimal places in minutes per run, without a whole-minute minimum. A five-second run uses 0.0833 minutes. Each executed check and retry contributes usage. HTTP, ping, and port checks do not consume these minutes. Failed or canceled executions can still consume compute usage.',
     },
     {
         question: 'What does frequent synthetic monitoring cost?',
-        answer: 'Five monitors running for five seconds every five minutes in one location use approximately 3,599 Playwright minutes in a 30-day month: about $54.99 total on Plus, or within Pro’s $149 allowance. Longer runs, additional locations, retries, and other tests increase usage. This is an estimate before taxes.',
+        answer: 'Five monitors running for five seconds every five minutes use approximately 3,599 Playwright minutes in a 30-day month: about $54.99 total on Plus, or within Pro’s $149 allowance. Longer runs, retries, and other tests increase usage. This is an estimate before taxes.',
     },
     {
         question: 'How does run duration affect browser pricing?',
-        answer: 'Beyond included usage, 1,000 five-second executions cost about $0.83 on Plus or $0.42 on Pro. At 30 seconds each, they cost $5.00 or $2.50. Each executed location and retry contributes usage; these estimates exclude the monthly subscription and taxes.',
+        answer: 'Beyond included usage, 1,000 five-second executions cost about $0.83 on Plus or $0.42 on Pro. At 30 seconds each, they cost $5.00 or $2.50. Each executed check and retry contributes usage; these estimates exclude the monthly subscription and taxes.',
     },
     {
         question: 'How are load tests measured?',
@@ -201,10 +179,6 @@ const faqs = [
     {
         question: 'What payment methods do you accept?',
         answer: 'We accept all major credit cards (Visa, Mastercard, American Express) through our payment provider.',
-    },
-    {
-        question: 'Is the self-hosted version really free?',
-        answer: 'Yes. Supercheck core is open source under AGPLv3. Self-host on your infrastructure with unlimited Supercheck usage at no license cost. You still pay your own infrastructure and AI provider costs.',
     },
     {
         question: 'Do you offer enterprise plans?',
@@ -238,7 +212,7 @@ export default function PricingPage() {
                         Simple, Transparent Pricing
                     </h1>
                     <p className="text-lg text-fd-muted-foreground max-w-2xl mx-auto">
-                        Self-host at no license cost, or choose a monthly cloud plan for your team. One subscription covers all projects in your default organization.
+                        One subscription covers all projects in your default organization.
                     </p>
                     <p className="mt-4 text-sm text-fd-muted-foreground">
                         Cloud prices are in USD, billed monthly, before applicable taxes. Usage overages are additional.
@@ -246,7 +220,7 @@ export default function PricingPage() {
                 </div>
 
                 {/* Pricing Cards */}
-                <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8 mb-6">
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8 mb-6">
                     {plans.map((plan) => (
                         <div
                             key={plan.name}
@@ -296,7 +270,7 @@ export default function PricingPage() {
                     ))}
                 </div>
                 <p className="text-center text-sm text-fd-muted-foreground max-w-3xl mx-auto mb-20">
-                    Self-hosting requires your own infrastructure and AI provider; you pay those costs and manage capacity, security, and retention. Cloud allowances reset each billing month and do not roll over. Joining an invited team uses that team’s subscription.
+                    Cloud allowances reset each billing month and do not roll over. Joining an invited team uses that team’s subscription.
                 </p>
 
                 {/* Overage Pricing */}
@@ -334,11 +308,10 @@ export default function PricingPage() {
                     <h2 className="text-2xl font-bold text-center mb-8">Full Feature Comparison</h2>
                     <p className="text-center text-sm text-fd-muted-foreground mb-4 md:hidden">Scroll horizontally to compare all plans.</p>
                     <div className="rounded-lg border overflow-x-auto" role="region" aria-label="Plan feature comparison" tabIndex={0}>
-                            <table className="w-full min-w-[760px]" aria-label="Full plan feature comparison">
+                            <table className="w-full min-w-[640px]" aria-label="Full plan feature comparison">
                                 <thead className="bg-fd-muted">
                                     <tr>
                                         <th className="text-left px-6 py-3 text-sm font-medium">Feature</th>
-                                        <th className="text-center px-6 py-3 text-sm font-medium">Self-Hosted</th>
                                         <th className="text-center px-6 py-3 text-sm font-medium">Plus</th>
                                         <th className="text-center px-6 py-3 text-sm font-medium">Pro</th>
                                         <th className="text-center px-6 py-3 text-sm font-medium">Enterprise</th>
@@ -348,14 +321,13 @@ export default function PricingPage() {
                                     {comparisonFeatures.map((category) => (
                                         <React.Fragment key={category.category}>
                                             <tr className="bg-fd-muted/50 border-l-2 border-l-fd-primary/50">
-                                                <td colSpan={5} className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-fd-muted-foreground">
+                                                <td colSpan={4} className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-fd-muted-foreground">
                                                     {category.category}
                                                 </td>
                                             </tr>
                                             {category.items.map((item, idx) => (
                                                 <tr key={item.name} className={idx % 2 === 0 ? 'bg-fd-card' : 'bg-fd-muted/30'}>
                                                     <th scope="row" className="px-6 py-3 text-sm pl-10 text-left font-normal">{item.name}</th>
-                                                    <td className="px-6 py-3 text-sm text-center">{item.selfHosted}</td>
                                                     <td className="px-6 py-3 text-sm text-center">{item.plus}</td>
                                                     <td className="px-6 py-3 text-sm text-center">{item.pro}</td>
                                                     <td className="px-6 py-3 text-sm text-center">{(item as Record<string, string>).enterprise ?? 'Custom'}</td>

@@ -58,6 +58,7 @@ const sections = [
     {
         title: "Resources",
         links: [
+            { name: "Pricing", href: "/pricing" },
             { name: "Live Demo", href: process.env.NEXT_PUBLIC_DEMO_URL || "https://demo.supercheck.dev" },
             { name: "Chrome Extension", href: "https://chromewebstore.google.com/detail/supercheck-recorder/gfmbcelfhhfmifdkccnbgdadibdfhioe" },
             { name: "Edge Extension", href: "https://microsoftedge.microsoft.com/addons/detail/supercheck-recorder/0rdckc265vb9" },

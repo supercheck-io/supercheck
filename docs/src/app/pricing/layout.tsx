@@ -2,11 +2,11 @@ import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
     title: { absolute: 'Pricing | Supercheck' },
-    description: 'Simple, transparent pricing for Supercheck. Start with self-hosted for free or choose a cloud plan.',
+    description: 'Simple, transparent pricing for Supercheck. Compare monthly cloud plans for your team.',
     alternates: { canonical: '/pricing' },
     openGraph: {
         title: 'Pricing | Supercheck',
-        description: 'Compare monthly cloud plans, included usage, and overage rates, or self-host Supercheck at no license cost.',
+        description: 'Compare monthly cloud plans, included usage, and overage rates.',
         url: '/pricing',
         siteName: 'Supercheck',
         type: 'website',
@@ -15,7 +15,7 @@ export const metadata: Metadata = {
     twitter: {
         card: 'summary_large_image',
         title: 'Pricing | Supercheck',
-        description: 'Compare monthly cloud plans, included usage, and overage rates, or self-host Supercheck at no license cost.',
+        description: 'Compare monthly cloud plans, included usage, and overage rates.',
         images: ['/screenshots/playground-editor.png'],
     },
 };
