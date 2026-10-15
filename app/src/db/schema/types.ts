@@ -126,6 +126,7 @@ export type MonitorConfig = {
   timeoutSeconds?: number;
   regions?: string[];
   locationConfig?: LocationConfig;
+  /** @deprecated Unsupported for monitors; accepted for compatibility and ignored. */
   retryStrategy?: {
     maxRetries: number;
     backoffFactor: number;

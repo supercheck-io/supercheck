@@ -7,7 +7,8 @@ import {
 } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { requireProjectContext } from "@/lib/project-context";
-import { requirePermissions } from "@/lib/rbac/middleware";
+import { hasPermissionForUser, requirePermissions } from "@/lib/rbac/middleware";
+import { monitorTargetForRead } from "@/lib/monitor-read-config";
 import { z } from "zod";
 
 // UUID validation schema
@@ -46,7 +47,7 @@ export async function getComponents(statusPageId: string) {
     const { organizationId, project } = await requireProjectContext();
 
     // Check RBAC permissions
-    await requirePermissions(
+    const { userId } = await requirePermissions(
       { status_page: ["view"] },
       { organizationId, projectId: project.id }
     );
@@ -95,12 +96,19 @@ export async function getComponents(statusPageId: string) {
       },
     });
 
+    // Monitor targets can embed credentials; show them only to monitor updaters
+    const canUpdateMonitors = await hasPermissionForUser(userId, "monitor", "update", {
+      organizationId,
+      projectId: project.id,
+    });
+
     // Transform the data to the expected format
     const componentsWithMonitors = components.map((component) => {
       const linkedMonitors = component.monitors
         .filter((assoc) => assoc.monitor)
         .map((assoc) => ({
           ...assoc.monitor,
+          target: monitorTargetForRead(assoc.monitor.target, canUpdateMonitors),
           weight: assoc.weight,
         }));
 

@@ -1,3 +1,5 @@
+import { hasPermissionForUser, requireAuth } from "@/lib/rbac/middleware";
+import { monitorConfigForRead, monitorResultDetailsForRead, monitorTargetForRead } from "@/lib/monitor-read-config";
 import { Metadata } from "next";
 import { MonitorDetailClient, MonitorWithResults, MonitorResultItem } from "@/components/monitors/monitor-detail-client";
 import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
@@ -10,7 +12,6 @@ import {
   MonitorStatus as DBMoniotorStatusType,
   MonitorType as DBMonitorType,
   MonitorResultStatus as DBMonitorResultStatusType,
-  MonitorConfig
 } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
 
@@ -26,6 +27,7 @@ type MonitorDetailsPageProps = {
 // Direct server-side data fetching function (replaces the old fetchMonitorWithResults that used HTTP fetch)
 async function getMonitorDetailsDirectly(id: string): Promise<MonitorWithResults | null> {
   try {
+    const { userId } = await requireAuth();
     // Run both queries in parallel for faster initial page load
     const [monitorDataResult, recentResultsData] = await Promise.all([
       db
@@ -65,6 +67,14 @@ async function getMonitorDetailsDirectly(id: string): Promise<MonitorWithResults
     }
 
     const monitor = monitorDataResult[0];
+    if (!monitor.organizationId || !monitor.projectId) return null;
+    const permissionScope = { organizationId: monitor.organizationId, projectId: monitor.projectId };
+    const [canView, canUpdate] = await Promise.all([
+      hasPermissionForUser(userId, "monitor", "view", permissionScope),
+      hasPermissionForUser(userId, "monitor", "update", permissionScope),
+    ]);
+    if (!canView) return null;
+
 
     // Map DB results to MonitorResultItem structure for charts only
     const mappedRecentResults: MonitorResultItem[] = recentResultsData.map((r) => ({
@@ -73,7 +83,7 @@ async function getMonitorDetailsDirectly(id: string): Promise<MonitorWithResults
       checkedAt: r.checkedAt ? new Date(r.checkedAt).toISOString() : new Date().toISOString(),
       status: r.status as DBMonitorResultStatusType,
       responseTimeMs: r.responseTimeMs,
-      details: r.details,
+      details: monitorResultDetailsForRead(r.details),
       isUp: r.isUp,
       isStatusChange: r.isStatusChange,
       testExecutionId: r.testExecutionId ?? undefined,
@@ -86,8 +96,8 @@ async function getMonitorDetailsDirectly(id: string): Promise<MonitorWithResults
     const transformedMonitor: MonitorWithResults = {
       id: monitor.id,
       name: monitor.name,
-      url: monitor.target,
-      target: monitor.target,
+      url: monitorTargetForRead(monitor.target, canUpdate),
+      target: monitorTargetForRead(monitor.target, canUpdate),
       type: monitor.type as DBMonitorType,
       enabled: monitor.enabled,
       frequencyMinutes,
@@ -99,7 +109,7 @@ async function getMonitorDetailsDirectly(id: string): Promise<MonitorWithResults
       responseTime: mappedRecentResults[0]?.responseTimeMs ?? undefined,
       uptime: undefined,
       recentResults: mappedRecentResults,
-      config: monitor.config as MonitorConfig,
+      config: monitorConfigForRead(monitor.config, canUpdate) ?? undefined,
       alertConfig: monitor.alertConfig || undefined,
       projectName: monitor.projectName || undefined,
     };

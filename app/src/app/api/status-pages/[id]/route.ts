@@ -10,6 +10,7 @@ import {
 } from "@/db/schema";
 import { eq, and, ne, isNull, inArray, sql } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
+import { monitorTargetForRead } from "@/lib/monitor-read-config";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import { generateProxyUrl } from "@/lib/asset-proxy";
 import { logAuditEvent } from "@/lib/audit-logger";
@@ -157,12 +158,16 @@ export async function GET(request: NextRequest, context: RouteContext) {
         )
       );
 
+    // Monitor targets can embed credentials; show them only to monitor updaters
+    const canUpdateMonitors = checkPermissionWithContext("monitor", "update", authCtx);
+
     // Transform components data
     const componentsWithMonitors = components.map((component) => {
       const linkedMonitors = component.monitors
         .filter((assoc) => assoc.monitor)
         .map((assoc) => ({
           ...assoc.monitor,
+          target: monitorTargetForRead(assoc.monitor.target, canUpdateMonitors),
           weight: assoc.weight,
         }));
 

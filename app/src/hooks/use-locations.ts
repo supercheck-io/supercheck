@@ -77,6 +77,27 @@ export async function fetchAvailableLocations(
   return data.data;
 }
 
+export type LocationDisplayData = Pick<LocationData,
+  "code" | "name" | "region" | "flag" | "coordinates" | "isEnabled"
+>;
+
+/** Display metadata only; execution pickers must continue using enabled locations. */
+export function useLocationMetadata() {
+  const query = useQuery<LocationDisplayData[]>({
+    queryKey: [...LOCATIONS_QUERY_KEY, "metadata"],
+    queryFn: async () => {
+      const response = await fetch("/api/locations/metadata");
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = await response.json();
+      if (!data.success) throw new Error(data.error || "Failed to fetch location metadata");
+      return data.data;
+    },
+    staleTime: 5 * 60 * 1000,
+    refetchOnMount: "always",
+  });
+  return { locations: query.data ?? [], isLoading: query.isPending && query.isFetching, error: query.error };
+}
+
 // ── Hooks ──────────────────────────────────────────────────────
 
 /** Fetch enabled locations for any authenticated user (e.g. location pickers). */

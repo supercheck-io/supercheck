@@ -14,6 +14,7 @@ import {
   sreIncidents,
 } from "@/db/schema";
 import { db } from "@/utils/db";
+import { monitorConfigForRead, monitorResultDetailsForRead, monitorTargetForRead } from "@/lib/monitor-read-config";
 
 const DEFAULT_LOOKBACK_MINUTES = 120;
 const DEFAULT_FORWARD_BUFFER_MINUTES = 10;
@@ -68,11 +69,14 @@ function safeJson(value: unknown) {
   }
 }
 
-function redact(value: string) {
+export function redact(value: string) {
   return value
-    .replace(/(authorization|api[_-]?key|token|password|secret)(["'\s:=]+)([^"'\s,}]+)/gi, "$1$2[REDACTED]")
     .replace(/Bearer\s+[A-Za-z0-9._~+/-]+=*/gi, "Bearer [REDACTED]")
-    .replace(/Basic\s+[A-Za-z0-9+/]+=*/gi, "Basic [REDACTED]");
+    .replace(/Basic\s+[A-Za-z0-9+/]+=*/gi, "Basic [REDACTED]")
+    .replace(
+      /(authorization|api[_-]?key|token|password|secret|cookie)(["']?\s*[:=]\s*)("(?:[^"\\]|\\.)*"|'[^']*'|[^\s,}]+)/gi,
+      "$1$2[REDACTED]"
+    );
 }
 
 function excerpt(value: unknown) {
@@ -382,14 +386,15 @@ export async function collectNativeEvidence(input: {
         addEvidence(evidence, {
           sourceUri: `/monitors/${monitor.id}`,
           title: `Monitor configuration: ${monitor.name}`,
-          summary: `${monitor.type} monitor targeting ${monitor.target} is currently ${monitor.status}.`,
+          summary: `${monitor.type} monitor targeting ${monitorTargetForRead(monitor.target, false)} is currently ${monitor.status}.`,
           rawContentExcerpt: excerpt({
             name: monitor.name,
             type: monitor.type,
-            target: monitor.target,
+            target: monitorTargetForRead(monitor.target, false),
             status: monitor.status,
             alertConfig: monitor.alertConfig,
-            config: monitor.config,
+            // Evidence is readable by viewers; keep request credentials out of it.
+            config: monitorConfigForRead(monitor.config, false),
           }),
           evidenceType: "event",
           severity: monitor.status === "down" || monitor.status === "error" ? "sev2" : alert.severity,
@@ -412,7 +417,7 @@ export async function collectNativeEvidence(input: {
             status: result.status,
             isUp: result.isUp,
             responseTimeMs: result.responseTimeMs,
-            details: result.details,
+            details: monitorResultDetailsForRead(result.details),
             consecutiveFailureCount: result.consecutiveFailureCount,
             consecutiveSuccessCount: result.consecutiveSuccessCount,
             testExecutionId: result.testExecutionId,

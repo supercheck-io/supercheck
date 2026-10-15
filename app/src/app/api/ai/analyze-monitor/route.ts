@@ -3,6 +3,8 @@ import { AIStreamingService } from "@/lib/ai/ai-streaming-service";
 import { AuthService } from "@/lib/ai/ai-security";
 import { AIPromptBuilder } from "@/lib/ai/ai-prompts";
 import { getActiveOrganization } from "@/lib/session";
+import { hasPermissionForUser, requireAuth } from "@/lib/rbac/middleware";
+import { monitorConfigForRead, monitorTargetForRead } from "@/lib/monitor-read-config";
 import { usageTracker } from "@/lib/services/usage-tracker";
 import { headers } from "next/headers";
 import { logAuditEvent } from "@/lib/audit-logger";
@@ -128,6 +130,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Step 5c: Require view access on the monitor's own project (not just org
+    // membership), before any credit is spent or monitor data reaches the model.
+    // Use the effective (impersonation-aware) user id, as the monitor pages do.
+    const { userId: effectiveUserId } = await requireAuth();
+    const canViewMonitor =
+      !!monitor.organizationId &&
+      !!monitor.projectId &&
+      (await hasPermissionForUser(effectiveUserId, "monitor", "view", {
+        organizationId: monitor.organizationId,
+        projectId: monitor.projectId,
+      }));
+    if (!canViewMonitor) {
+      return NextResponse.json(
+        { success: false, message: "Monitor not found" },
+        { status: 404 }
+      );
+    }
+
     // Atomically consume AI credit
     const creditResult = await usageTracker.consumeAICredit(activeOrg.id, "ai_analyze");
     if (!creditResult.allowed) {
@@ -231,9 +251,10 @@ export async function POST(request: NextRequest) {
         id: monitor.id,
         name: monitor.name,
         type: monitor.type,
-        url: monitor.target || "",
+        // Keep embedded URL credentials and request secrets out of the model prompt
+        url: monitorTargetForRead(monitor.target, false) || "",
         status: monitor.status as "up" | "down" | "paused",
-        config: monitor.config as Record<string, unknown> | null,
+        config: monitorConfigForRead(monitor.config, false) as Record<string, unknown> | null,
       },
 
       stats24h,

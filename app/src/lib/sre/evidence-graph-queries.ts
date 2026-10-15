@@ -25,6 +25,7 @@ import {
   formatSreInvestigationTypeLabel,
 } from "@/lib/sre/evidence-graph-display";
 import { db } from "@/utils/db";
+import { monitorTargetForRead } from "@/lib/monitor-read-config";
 
 const graphLogger = createLogger({ module: "sre-evidence-graph" }) as {
   error: (data: unknown, msg?: string) => void;
@@ -447,7 +448,7 @@ export async function getSreEvidenceGraph(incidentId?: string): Promise<
         sourceId: monitor.id,
         type: "monitor",
         title: monitor.name,
-        subtitle: `${monitor.type} · ${monitor.target}`,
+        subtitle: `${monitor.type} · ${monitorTargetForRead(monitor.target, false)}`,
         status: monitor.status,
         href: "/monitors",
         createdAt: monitor.createdAt,

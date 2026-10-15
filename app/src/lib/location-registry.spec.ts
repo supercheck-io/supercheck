@@ -30,6 +30,19 @@ describe("location-registry helpers", () => {
     return import("./location-registry");
   }
 
+  it.each([true, false])("projects only public display fields and respects self-hosted=%s", async (selfHosted) => {
+    const { getLocationDisplayData } = await loadModule(selfHosted, [
+      { code: "local" }, { code: "us-east" },
+    ]);
+    const displayed = await getLocationDisplayData();
+    expect(displayed.map((row) => row.code)).toEqual(selfHosted ? ["local", "us-east"] : ["us-east"]);
+    const { db } = await import("@/utils/db");
+    const select = jest.mocked(db.select);
+    expect(Object.keys(select.mock.calls[0][0] ?? {}).sort()).toEqual([
+      "code", "coordinates", "flag", "isEnabled", "name", "region",
+    ]);
+  });
+
   it("drops hidden local restrictions in cloud mode", async () => {
     const { getVisibleProjectRestrictions } = await loadModule(false);
 

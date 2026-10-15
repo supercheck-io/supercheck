@@ -9,8 +9,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { MapPin } from "lucide-react";
-import { buildLocationMetadataMap, type MonitoringLocation } from "@/lib/location-service";
-import { useLocations } from "@/hooks/use-locations";
+import { buildLocationMetadataMap, getLocationDisplayMetadata } from "@/lib/location-service";
+import { useLocationMetadata } from "@/hooks/use-locations";
 
 interface LocationFilterDropdownProps {
   selectedLocation: "all" | string;
@@ -25,7 +25,7 @@ export function LocationFilterDropdown({
   onLocationChange,
   className = "",
 }: LocationFilterDropdownProps) {
-  const { locations: dynamicLocations } = useLocations();
+  const { locations: dynamicLocations } = useLocationMetadata();
   const metadataMap = React.useMemo(() => {
     if (dynamicLocations.length > 0) {
       return buildLocationMetadataMap(dynamicLocations);
@@ -34,7 +34,7 @@ export function LocationFilterDropdown({
   }, [dynamicLocations]);
 
   const getMetadata = (code: string) => {
-    return metadataMap[code];
+    return getLocationDisplayMetadata(code, metadataMap);
   };
 
   if (availableLocations.length <= 1) {

@@ -75,6 +75,16 @@ export function sanitizeHeaders(
     'x-api-key',
     'api-key',
     'x-auth-token',
+    'proxy-authorization',
+    'x-csrf-token',
+    'x-xsrf-token',
+    'x-access-token',
+    'x-refresh-token',
+    'x-session-id',
+    'x-amz-security-token',
+    'x-vault-token',
+    'x-jwt',
+    'authentication-info',
   ];
 
   const sanitized: Record<string, string | string[]> = {};
@@ -89,6 +99,24 @@ export function sanitizeHeaders(
   }
 
   return sanitized;
+}
+
+/**
+ * Converts an HTTP client's response headers (plain object or AxiosHeaders)
+ * into a plain object with sensitive values redacted, for persisting on a
+ * monitor result. Returns undefined when there are no headers.
+ */
+export function sanitizeResponseHeaders(
+  headers: unknown,
+): Record<string, string> | undefined {
+  if (!headers || typeof headers !== 'object') return undefined;
+  const plain =
+    typeof (headers as { toJSON?: unknown }).toJSON === 'function'
+      ? (
+          headers as { toJSON: () => Record<string, string | string[]> }
+        ).toJSON()
+      : (headers as Record<string, string | string[]>);
+  return sanitizeHeaders(plain) as Record<string, string>;
 }
 
 /**
