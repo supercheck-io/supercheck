@@ -1,4 +1,4 @@
-import { monitorConfigForRead, monitorTargetForRead } from './monitor-read-config';
+import { monitorConfigForRead, monitorTargetForRead, monitorResultDetailsForRead } from './monitor-read-config';
 import type { MonitorConfig } from '@/db/schema';
 
 const config: MonitorConfig = {
@@ -75,5 +75,32 @@ describe('monitor target reads', () => {
   });
   it('does not treat unrelated parameters such as author as secret', () => {
     expect(monitorTargetForRead('https://example.com/?author=jo', false)).toBe('https://example.com/?author=jo');
+  });
+});
+
+describe('monitor result detail reads', () => {
+  const details = {
+    statusCode: 200,
+    responseHeaders: {
+      'content-type': 'text/html', 'Set-Cookie': ['sid=private-session; HttpOnly'] as unknown as string,
+      authorization: 'private-auth', 'x-api-key': 'private-key', 'X-CSRF-Token': 'private-csrf',
+      'cache-control': 'no-store',
+    },
+  };
+
+  it('replaces sensitive header values but keeps the field shape and other headers', () => {
+    const out = monitorResultDetailsForRead(details);
+    expect(JSON.stringify(out)).not.toMatch(/private-/);
+    expect(out.responseHeaders).toMatchObject({
+      'content-type': 'text/html', 'cache-control': 'no-store', 'Set-Cookie': '[REDACTED]', authorization: '[REDACTED]',
+    });
+    expect(out.statusCode).toBe(200);
+    expect(details.responseHeaders.authorization).toBe('private-auth');
+  });
+  it('returns details without headers, and null or undefined, untouched', () => {
+    const plain = { statusCode: 500, errorMessage: 'boom' };
+    expect(monitorResultDetailsForRead(plain)).toBe(plain);
+    expect(monitorResultDetailsForRead(null)).toBeNull();
+    expect(monitorResultDetailsForRead(undefined)).toBeUndefined();
   });
 });

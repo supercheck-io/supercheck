@@ -14,7 +14,7 @@ import {
   sreIncidents,
 } from "@/db/schema";
 import { db } from "@/utils/db";
-import { monitorConfigForRead, monitorTargetForRead } from "@/lib/monitor-read-config";
+import { monitorConfigForRead, monitorResultDetailsForRead, monitorTargetForRead } from "@/lib/monitor-read-config";
 
 const DEFAULT_LOOKBACK_MINUTES = 120;
 const DEFAULT_FORWARD_BUFFER_MINUTES = 10;
@@ -417,7 +417,7 @@ export async function collectNativeEvidence(input: {
             status: result.status,
             isUp: result.isUp,
             responseTimeMs: result.responseTimeMs,
-            details: result.details,
+            details: monitorResultDetailsForRead(result.details),
             consecutiveFailureCount: result.consecutiveFailureCount,
             consecutiveSuccessCount: result.consecutiveSuccessCount,
             testExecutionId: result.testExecutionId,

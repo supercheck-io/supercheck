@@ -23,11 +23,12 @@ jest.mock('@/lib/s3-cleanup', () => ({}));
 jest.mock('@/lib/logger/index', () => ({ createLogger: () => ({ error: jest.fn(), debug: jest.fn() }) }));
 
 import { db } from '@/utils/db';
-import { monitors } from '@/db/schema';
+import { monitors, monitorResults } from '@/db/schema';
 import { requireAuthContext } from '@/lib/auth-context';
 import { requireAuth, hasPermissionForUser, checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { GET as list } from '@/app/api/monitors/route';
 import { GET as detail } from '@/app/api/monitors/[id]/route';
+import { GET as results } from '@/app/api/monitors/[id]/results/route';
 import MainPage from '@/app/(main)/monitors/[id]/page';
 import NotificationPage from '@/app/(notification)/notification-monitor/[id]/page';
 
@@ -39,6 +40,11 @@ const stored = {
   lastStatusChangeAt: null, mutedUntil: null, scheduledJobId: null,
   config: { method: 'POST', auth: { type: 'bearer', token: 'private-token' }, headers: { 'X-Key': 'private-key' }, body: 'private-body' },
 } satisfies typeof monitors.$inferSelect;
+const storedResult = {
+  id: 'result-1', monitorId: 'monitor-1', checkedAt: new Date('2026-01-01T00:00:00Z'), status: 'up', isUp: true,
+  isStatusChange: false, responseTimeMs: 12, location: 'eu-central', testExecutionId: null, testReportS3Url: null,
+  details: { statusCode: 200, responseHeaders: { 'content-type': 'text/html', 'set-cookie': 'sid=private-session' } },
+};
 const scope = { params: Promise.resolve({ id: stored.id }) };
 let editable = false;
 let accessible = true;
@@ -54,7 +60,7 @@ beforeEach(() => {
   jest.mocked(db.select).mockImplementation((selection?: unknown) => {
     let rows: unknown[] = [];
     const builder = {
-      from: (table: unknown) => { rows = table === monitors ? [stored] : []; return builder; },
+      from: (table: unknown) => { rows = table === monitors ? [stored] : table === monitorResults ? [storedResult] : []; return builder; },
       leftJoin: () => builder, where: () => builder, orderBy: () => builder,
       limit: () => builder, offset: () => builder,
       then: (resolve: (value: unknown[]) => unknown) => Promise.resolve(resolve(selection && 'count' in (selection as object) ? [{ count: 1 }] : rows)),
@@ -92,4 +98,18 @@ it('notification links check the resource project rather than the active project
 it('does not serialize an inaccessible notification monitor', async () => {
   accessible = false;
   expect(await readers.notificationPage()).not.toContain('example.com');
+});
+
+it('redacts session headers from stored result details while keeping the response shape', async () => {
+  const body = JSON.stringify(await (await results(new NextRequest('http://localhost/api/monitors/monitor-1/results'), scope)).json());
+  expect(body).not.toContain('private-session');
+  expect(body).toContain('[REDACTED]');
+  expect(body).toContain('text/html');
+  expect(storedResult.details.responseHeaders['set-cookie']).toBe('sid=private-session');
+});
+
+it.each(['detail', 'mainPage', 'notificationPage'] as const)('%s redacts session headers from recent results', async (name) => {
+  const output = await readers[name]();
+  expect(output).toContain('result-1');
+  expect(output).not.toContain('private-session');
 });

@@ -55,6 +55,7 @@ import {
   validatePortCheckTarget,
   isExpectedStatus,
   sanitizeResponseBody,
+  sanitizeResponseHeaders,
   getErrorMessage,
 } from '../common/validation';
 import { VariableResolverService } from '../common/services/variable-resolver.service';
@@ -1380,7 +1381,8 @@ export class MonitorService {
       details = {
         statusCode: response.status,
         statusText: response.statusText,
-        responseHeaders: response.headers as Record<string, string>,
+        // Session material (Set-Cookie, tokens) must not be persisted or shown to viewers
+        responseHeaders: sanitizeResponseHeaders(response.headers),
         responseSize: response.data ? JSON.stringify(response.data).length : 0,
       };
 

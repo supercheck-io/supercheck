@@ -1,5 +1,5 @@
 import { hasPermissionForUser, requireAuth } from "@/lib/rbac/middleware";
-import { monitorConfigForRead, monitorTargetForRead } from "@/lib/monitor-read-config";
+import { monitorConfigForRead, monitorResultDetailsForRead, monitorTargetForRead } from "@/lib/monitor-read-config";
 import { Metadata } from "next";
 import { MonitorDetailClient, MonitorWithResults, MonitorResultItem } from "@/components/monitors/monitor-detail-client";
 import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
@@ -83,7 +83,7 @@ async function getMonitorDetailsDirectly(id: string): Promise<MonitorWithResults
       checkedAt: r.checkedAt ? new Date(r.checkedAt).toISOString() : new Date().toISOString(),
       status: r.status as DBMonitorResultStatusType,
       responseTimeMs: r.responseTimeMs,
-      details: r.details,
+      details: monitorResultDetailsForRead(r.details),
       isUp: r.isUp,
       isStatusChange: r.isStatusChange,
       testExecutionId: r.testExecutionId ?? undefined,

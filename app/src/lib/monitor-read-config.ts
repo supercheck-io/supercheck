@@ -80,3 +80,20 @@ export function monitorTargetForRead(target: string | null | undefined, canUpdat
   for (const name of sensitiveParams) parsed.searchParams.set(name, "REDACTED");
   return parsed.toString();
 }
+
+const SENSITIVE_RESPONSE_HEADER = /^(set-)?cookie2?$|^proxy-authorization$|authorization|token|secret|api[-_]?key|session|csrf|xsrf/i;
+
+/**
+ * Stored response headers can carry session material issued to the monitor
+ * (Set-Cookie, tokens). The field stays in the response, with those values
+ * replaced, so API consumers keep the documented shape.
+ */
+export function monitorResultDetailsForRead<T extends object | null | undefined>(details: T): T {
+  const headers = (details as { responseHeaders?: unknown } | null | undefined)?.responseHeaders;
+  if (!details || !headers || typeof headers !== "object" || Array.isArray(headers)) return details;
+  const redacted: Record<string, unknown> = {};
+  for (const [name, value] of Object.entries(headers)) {
+    redacted[name] = SENSITIVE_RESPONSE_HEADER.test(name) ? "[REDACTED]" : value;
+  }
+  return { ...details, responseHeaders: redacted };
+}

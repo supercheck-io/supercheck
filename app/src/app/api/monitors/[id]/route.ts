@@ -1,4 +1,4 @@
-import { monitorConfigForRead, monitorTargetForRead } from "@/lib/monitor-read-config";
+import { monitorConfigForRead, monitorTargetForRead, monitorResultDetailsForRead } from "@/lib/monitor-read-config";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import {
@@ -87,7 +87,7 @@ export async function GET(
       ...monitor,
       config: monitorConfigForRead(monitor.config, canUpdateMonitor),
       target: monitorTargetForRead(monitor.target, canUpdateMonitor),
-      recentResults,
+      recentResults: recentResults.map((result) => ({ ...result, details: monitorResultDetailsForRead(result.details) })),
       alertConfig: monitor.alertConfig || {
         enabled: false,
         notificationProviders: [],

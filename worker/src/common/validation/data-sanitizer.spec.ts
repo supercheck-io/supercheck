@@ -2,6 +2,7 @@ import {
   maskCredentials,
   sanitizeResponseBody,
   sanitizeHeaders,
+  sanitizeResponseHeaders,
   getErrorMessage,
   sanitizeLogData,
 } from './data-sanitizer';
@@ -185,6 +186,25 @@ describe('DataSanitizer', () => {
       const headers = { 'Set-Cookie': 'session=abc123; HttpOnly' };
       const result = sanitizeHeaders(headers);
       expect(result['Set-Cookie']).toBe('[REDACTED]');
+    });
+
+    it('should redact proxy-authorization and CSRF/XSRF token headers', () => {
+      const result = sanitizeHeaders({
+        'Proxy-Authorization': 'Basic abc',
+        'X-CSRF-Token': 'csrf',
+        'x-xsrf-token': 'xsrf',
+        'content-type': 'text/html',
+      });
+      expect(result['Proxy-Authorization']).toBe('[REDACTED]');
+      expect(result['X-CSRF-Token']).toBe('[REDACTED]');
+      expect(result['x-xsrf-token']).toBe('[REDACTED]');
+      expect(result['content-type']).toBe('text/html');
+    });
+
+    it('should redact set-cookie arrays without mutating the input', () => {
+      const headers = { 'set-cookie': ['a=1', 'b=2'] };
+      expect(sanitizeHeaders(headers)['set-cookie']).toBe('[REDACTED]');
+      expect(headers['set-cookie']).toEqual(['a=1', 'b=2']);
     });
 
     it('should redact x-api-key header', () => {
@@ -416,6 +436,32 @@ describe('DataSanitizer', () => {
       expect(result.PASSWORD).toBe('[REDACTED]');
       expect(result.Token).toBe('[REDACTED]');
       expect(result.APIKEY).toBe('[REDACTED]');
+    });
+  });
+
+  describe('sanitizeResponseHeaders', () => {
+    it('redacts sensitive values from plain header objects', () => {
+      expect(
+        sanitizeResponseHeaders({
+          'Set-Cookie': ['sid=private'],
+          'content-type': 'text/html',
+        }),
+      ).toEqual({ 'Set-Cookie': '[REDACTED]', 'content-type': 'text/html' });
+    });
+
+    it('converts AxiosHeaders-like objects via toJSON', () => {
+      const headers = {
+        toJSON: () => ({ authorization: 'private', etag: 'abc' }),
+      };
+      expect(sanitizeResponseHeaders(headers)).toEqual({
+        authorization: '[REDACTED]',
+        etag: 'abc',
+      });
+    });
+
+    it('returns undefined when there are no headers', () => {
+      expect(sanitizeResponseHeaders(undefined)).toBeUndefined();
+      expect(sanitizeResponseHeaders(null)).toBeUndefined();
     });
   });
 });
