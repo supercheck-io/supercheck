@@ -43,7 +43,7 @@ import { Home } from "lucide-react";
 import { PerformanceTestReport } from "@/components/playground/performance-test-report";
 import type { K6RunStatus } from "@/lib/k6-runs";
 import { AIJobAnalyzeButton } from "./ai-job-analyze-button";
-import { useLocations } from "@/hooks/use-locations";
+import { useLocationMetadata } from "@/hooks/use-locations";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { formatBillingBlockedMessage, isBillingBlockedStatus } from "@/lib/billing-errors";
 
@@ -92,14 +92,17 @@ export function RunDetails({
     run.errorDetails ?? null
   );
 
-  // Fetch dynamic location data for display
-  const { locations: dynamicLocations } = useLocations();
+  // Display-only metadata: includes regions disabled after this run executed
+  const { locations: dynamicLocations } = useLocationMetadata();
 
   // Build a lookup from dynamic data
   const locationLookup = useMemo(() => {
     const map: Record<string, { flag: string; name: string }> = {};
     for (const loc of dynamicLocations) {
-      map[loc.code] = { flag: loc.flag || "📍", name: loc.name };
+      map[loc.code] = {
+        flag: loc.flag || "📍",
+        name: loc.isEnabled === false ? `${loc.name} (inactive)` : loc.name,
+      };
     }
     return map;
   }, [dynamicLocations]);
