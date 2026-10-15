@@ -1,4 +1,4 @@
-import { monitorConfigForRead } from "@/lib/monitor-read-config";
+import { monitorConfigForRead, monitorTargetForRead } from "@/lib/monitor-read-config";
 import { Metadata } from "next";
 import { AlertCircle } from "lucide-react";
 import {
@@ -102,8 +102,8 @@ async function getMonitorDetailsDirectly(
     const transformedMonitor: MonitorWithResults = {
       id: monitor.id,
       name: monitor.name,
-      url: monitor.target,
-      target: monitor.target,
+      url: monitorTargetForRead(monitor.target, canUpdate),
+      target: monitorTargetForRead(monitor.target, canUpdate),
       type: monitor.type as DBMonitorType,
       enabled: monitor.enabled,
       frequencyMinutes,

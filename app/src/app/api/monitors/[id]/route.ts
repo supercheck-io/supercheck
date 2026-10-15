@@ -1,4 +1,4 @@
-import { monitorConfigForRead } from "@/lib/monitor-read-config";
+import { monitorConfigForRead, monitorTargetForRead } from "@/lib/monitor-read-config";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import {
@@ -81,10 +81,12 @@ export async function GET(
       .orderBy(desc(monitorResults.checkedAt))
       .limit(RECENT_RESULTS_LIMIT);
 
+    const canUpdateMonitor = checkPermissionWithContext("monitor", "update", context);
     // Ensure alertConfig has proper defaults if it's null or undefined
     const responseMonitor = {
       ...monitor,
-      config: monitorConfigForRead(monitor.config, checkPermissionWithContext("monitor", "update", context)),
+      config: monitorConfigForRead(monitor.config, canUpdateMonitor),
+      target: monitorTargetForRead(monitor.target, canUpdateMonitor),
       recentResults,
       alertConfig: monitor.alertConfig || {
         enabled: false,

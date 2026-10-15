@@ -1,4 +1,4 @@
-import { monitorConfigForRead } from './monitor-read-config';
+import { monitorConfigForRead, monitorTargetForRead } from './monitor-read-config';
 import type { MonitorConfig } from '@/db/schema';
 
 const config: MonitorConfig = {
@@ -50,5 +50,30 @@ describe('monitor configuration reads', () => {
     };
     expect(monitorConfigForRead({ ...full, headers: { A: 'b' }, body: 'x', auth: { type: 'none' } }, false))
       .toEqual({ ...full, auth: { type: 'none' } });
+  });
+});
+
+describe('monitor target reads', () => {
+  const secretUrl = 'https://user:pa55@example.com/health?api_key=abc123&page=2&token=xyz';
+
+  it('masks embedded credentials and secret query values for viewers only', () => {
+    const masked = monitorTargetForRead(secretUrl, false);
+    for (const secret of ['user', 'pa55', 'abc123', 'xyz']) expect(masked).not.toContain(secret);
+    expect(masked).toContain('example.com/health');
+    expect(masked).toContain('page=2');
+    expect(monitorTargetForRead(secretUrl, true)).toBe(secretUrl);
+  });
+  it('returns targets without credentials exactly unchanged', () => {
+    for (const target of ['https://example.com/a?b=1', 'HTTP://Example.com', 'example.com', '10.0.0.1', 'not a url', 'https://', '']) {
+      expect(monitorTargetForRead(target, false)).toBe(target);
+    }
+    expect(monitorTargetForRead(null, false)).toBeNull();
+    expect(monitorTargetForRead(undefined, false)).toBeUndefined();
+  });
+  it('masks userinfo even when only a username is present', () => {
+    expect(monitorTargetForRead('https://deploy-token@example.com/x', false)).not.toContain('deploy-token');
+  });
+  it('does not treat unrelated parameters such as author as secret', () => {
+    expect(monitorTargetForRead('https://example.com/?author=jo', false)).toBe('https://example.com/?author=jo');
   });
 });

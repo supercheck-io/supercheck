@@ -14,7 +14,7 @@ import {
   sreIncidents,
 } from "@/db/schema";
 import { db } from "@/utils/db";
-import { monitorConfigForRead } from "@/lib/monitor-read-config";
+import { monitorConfigForRead, monitorTargetForRead } from "@/lib/monitor-read-config";
 
 const DEFAULT_LOOKBACK_MINUTES = 120;
 const DEFAULT_FORWARD_BUFFER_MINUTES = 10;
@@ -386,11 +386,11 @@ export async function collectNativeEvidence(input: {
         addEvidence(evidence, {
           sourceUri: `/monitors/${monitor.id}`,
           title: `Monitor configuration: ${monitor.name}`,
-          summary: `${monitor.type} monitor targeting ${monitor.target} is currently ${monitor.status}.`,
+          summary: `${monitor.type} monitor targeting ${monitorTargetForRead(monitor.target, false)} is currently ${monitor.status}.`,
           rawContentExcerpt: excerpt({
             name: monitor.name,
             type: monitor.type,
-            target: monitor.target,
+            target: monitorTargetForRead(monitor.target, false),
             status: monitor.status,
             alertConfig: monitor.alertConfig,
             // Evidence is readable by viewers; keep request credentials out of it.

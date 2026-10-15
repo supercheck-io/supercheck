@@ -4,6 +4,7 @@ import { AuthService } from "@/lib/ai/ai-security";
 import { AIPromptBuilder } from "@/lib/ai/ai-prompts";
 import { getActiveOrganization } from "@/lib/session";
 import { hasPermissionForUser } from "@/lib/rbac/middleware";
+import { monitorConfigForRead, monitorTargetForRead } from "@/lib/monitor-read-config";
 import { usageTracker } from "@/lib/services/usage-tracker";
 import { headers } from "next/headers";
 import { logAuditEvent } from "@/lib/audit-logger";
@@ -248,9 +249,10 @@ export async function POST(request: NextRequest) {
         id: monitor.id,
         name: monitor.name,
         type: monitor.type,
-        url: monitor.target || "",
+        // Keep embedded URL credentials and request secrets out of the model prompt
+        url: monitorTargetForRead(monitor.target, false) || "",
         status: monitor.status as "up" | "down" | "paused",
-        config: monitor.config as Record<string, unknown> | null,
+        config: monitorConfigForRead(monitor.config, false) as Record<string, unknown> | null,
       },
 
       stats24h,

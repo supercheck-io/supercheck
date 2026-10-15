@@ -1,4 +1,4 @@
-import { monitorConfigForRead } from "@/lib/monitor-read-config";
+import { monitorConfigForRead, monitorTargetForRead } from "@/lib/monitor-read-config";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import {
@@ -41,6 +41,7 @@ export async function GET(request: Request) {
 
     // PERFORMANCE: Use checkPermissionWithContext to avoid 5-8 duplicate DB queries
     const canView = checkPermissionWithContext("monitor", "view", context);
+    const canUpdateMonitors = checkPermissionWithContext("monitor", "update", context);
 
     if (!canView) {
       return NextResponse.json(
@@ -102,7 +103,8 @@ export async function GET(request: Request) {
       return NextResponse.json({
         data: monitorsList.map((monitor) => ({
           ...monitor,
-          config: monitorConfigForRead(monitor.config, checkPermissionWithContext("monitor", "update", context)),
+          config: monitorConfigForRead(monitor.config, canUpdateMonitors),
+          target: monitorTargetForRead(monitor.target, canUpdateMonitors),
         })),
         pagination: {
           page,
@@ -128,7 +130,8 @@ export async function GET(request: Request) {
       return NextResponse.json({
         data: monitorsList.map((monitor) => ({
           ...monitor,
-          config: monitorConfigForRead(monitor.config, checkPermissionWithContext("monitor", "update", context)),
+          config: monitorConfigForRead(monitor.config, canUpdateMonitors),
+          target: monitorTargetForRead(monitor.target, canUpdateMonitors),
         })),
         pagination: {
           total: monitorsList.length,

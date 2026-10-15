@@ -1,5 +1,5 @@
 import { hasPermissionForUser, requireAuth } from "@/lib/rbac/middleware";
-import { monitorConfigForRead } from "@/lib/monitor-read-config";
+import { monitorConfigForRead, monitorTargetForRead } from "@/lib/monitor-read-config";
 import { Metadata } from "next";
 import { MonitorDetailClient, MonitorWithResults, MonitorResultItem } from "@/components/monitors/monitor-detail-client";
 import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
@@ -96,8 +96,8 @@ async function getMonitorDetailsDirectly(id: string): Promise<MonitorWithResults
     const transformedMonitor: MonitorWithResults = {
       id: monitor.id,
       name: monitor.name,
-      url: monitor.target,
-      target: monitor.target,
+      url: monitorTargetForRead(monitor.target, canUpdate),
+      target: monitorTargetForRead(monitor.target, canUpdate),
       type: monitor.type as DBMonitorType,
       enabled: monitor.enabled,
       frequencyMinutes,

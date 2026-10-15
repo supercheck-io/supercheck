@@ -32,7 +32,7 @@ import MainPage from '@/app/(main)/monitors/[id]/page';
 import NotificationPage from '@/app/(notification)/notification-monitor/[id]/page';
 
 const stored = {
-  id: 'monitor-1', name: 'Example', type: 'website', target: 'https://example.com',
+  id: 'monitor-1', name: 'Example', type: 'website', target: 'https://deploy:private-pass@example.com/health?api_key=private-apikey&page=2',
   projectId: 'project-1', organizationId: 'org-1', status: 'up',
   createdAt: null, updatedAt: null, description: null, createdByUserId: null,
   frequencyMinutes: 5, enabled: true, alertConfig: null, lastCheckAt: null,
@@ -71,12 +71,16 @@ const readers = {
   notificationPage: async () => renderToStaticMarkup(await NotificationPage(scope)),
 };
 
-it.each(Object.entries(readers))('%s hides credentials from viewers and preserves editor payloads', async (_name, read) => {
+it.each(Object.entries(readers))('%s hides credentials and URL secrets from viewers and preserves editor payloads', async (_name, read) => {
   const visible = await read();
   expect(visible).toContain('POST');
-  for (const secret of ['private-token', 'private-key', 'private-body']) expect(visible).not.toContain(secret);
+  for (const secret of ['private-token', 'private-key', 'private-body', 'private-pass', 'private-apikey']) {
+    expect(visible).not.toContain(secret);
+  }
+  expect(visible).toContain('example.com/health');
   editable = true;
-  expect(await read()).toContain('private-token');
+  const editorView = await read();
+  for (const secret of ['private-token', 'private-pass', 'private-apikey']) expect(editorView).toContain(secret);
   expect(stored.config.auth.token).toBe('private-token');
 });
 
@@ -87,5 +91,5 @@ it('notification links check the resource project rather than the active project
 
 it('does not serialize an inaccessible notification monitor', async () => {
   accessible = false;
-  expect(await readers.notificationPage()).not.toContain('https://example.com');
+  expect(await readers.notificationPage()).not.toContain('example.com');
 });
