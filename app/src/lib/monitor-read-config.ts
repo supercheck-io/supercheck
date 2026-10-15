@@ -56,7 +56,7 @@ export function monitorConfigForRead(
   return visible;
 }
 
-const SENSITIVE_QUERY_PARAM = /token|secret|passw|pwd|api[-_]?key|^key$|auth(?!or)|signature|^sig$|credential|session/i;
+const SENSITIVE_QUERY_PARAM = /token|secret|passw|pwd|^pass$|api[-_]?key|access[-_]?key|private[-_]?key|client[-_]?key|[-_]key$|^key$|auth(?!or\b|ors\b|ority)|signature|^sig$|credential|session|jwt/i;
 
 /**
  * Credentials embedded in a monitor URL (user:pass@host, ?api_key=...) are
@@ -75,7 +75,8 @@ export function monitorTargetForRead(target: string | null | undefined, canUpdat
   }
   const sensitiveParams = [...new Set(parsed.searchParams.keys())].filter((name) => SENSITIVE_QUERY_PARAM.test(name));
   if (!parsed.username && !parsed.password && sensitiveParams.length === 0) return target;
-  parsed.username = "";
+  // Keep a marker so a masked target is recognizable (the CLI warns on it)
+  if (parsed.username || parsed.password) parsed.username = "REDACTED";
   parsed.password = "";
   for (const name of sensitiveParams) parsed.searchParams.set(name, "REDACTED");
   return parsed.toString();

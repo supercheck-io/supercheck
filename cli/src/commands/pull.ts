@@ -356,6 +356,10 @@ function buildMonitorDefinitions(
 
     if (m.description) def.description = m.description
     if (m.target) def.target = m.target
+    // Read-only tokens receive targets with credentials replaced by REDACTED
+    if (m.target && /\/\/REDACTED@|[?&][^=&]*=REDACTED(?:&|#|$)/.test(m.target)) {
+      logger.warn(`Monitor "${m.name}" target has redacted credentials (insufficient permission); do not deploy this value`)
+    }
     if (m.frequencyMinutes !== undefined) def.frequencyMinutes = m.frequencyMinutes
     if (m.enabled !== undefined) def.enabled = m.enabled
 

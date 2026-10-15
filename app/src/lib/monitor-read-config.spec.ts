@@ -70,8 +70,23 @@ describe('monitor target reads', () => {
     expect(monitorTargetForRead(null, false)).toBeNull();
     expect(monitorTargetForRead(undefined, false)).toBeUndefined();
   });
+  it('marks masked userinfo so it is recognizable', () => {
+    expect(monitorTargetForRead('https://user:pa55@example.com/', false)).toBe('https://REDACTED@example.com/');
+  });
   it('masks userinfo even when only a username is present', () => {
     expect(monitorTargetForRead('https://deploy-token@example.com/x', false)).not.toContain('deploy-token');
+  });
+  it('masks authorization, key-style and jwt parameter names', () => {
+    for (const name of ['authorization', 'access_key', 'private-key', 'client_key', 'pass', 'jwt', 'X-Amz-Signature', 'accessToken']) {
+      const masked = monitorTargetForRead(`https://example.com/?${name}=private-value`, false);
+      expect(masked).not.toContain('private-value');
+    }
+  });
+  it('keeps author, authority and code parameters visible', () => {
+    for (const name of ['author', 'authors', 'authority', 'code', 'page']) {
+      const target = `https://example.com/?${name}=visible`;
+      expect(monitorTargetForRead(target, false)).toBe(target);
+    }
   });
   it('does not treat unrelated parameters such as author as secret', () => {
     expect(monitorTargetForRead('https://example.com/?author=jo', false)).toBe('https://example.com/?author=jo');
