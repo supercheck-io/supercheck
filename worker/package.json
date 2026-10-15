@@ -132,7 +132,7 @@
     "multer": "2.4.0",
     "serialize-javascript": ">=7.0.5",
     "webpack": ">=5.104.1",
-    "handlebars": ">=4.7.9",
+    "handlebars": ">=4.7.10",
     "picomatch": ">=2.3.2",
     "brace-expansion@^1.0.0": "1.1.21",
     "path-to-regexp@^8.0.0": ">=8.4.0",

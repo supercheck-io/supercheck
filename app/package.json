@@ -221,7 +221,7 @@
     "minimatch@^10.0.0": ">=10.2.3",
     "qs": "6.16.0",
     "underscore": "1.13.8",
-    "handlebars": ">=4.7.9",
+    "handlebars": ">=4.7.10",
     "picomatch": ">=2.3.2",
     "brace-expansion@^1.0.0": "1.1.21",
     "brace-expansion@^2.0.0": "2.1.7",
