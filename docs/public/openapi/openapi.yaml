@@ -1899,6 +1899,9 @@ paths:
       operationId: listMonitors
       summary: List monitors
       description: List all uptime and performance monitors in the current project.
+        Request authentication credentials, request headers, and request bodies
+        are omitted from config unless the caller has monitor:update permission.
+        Users with update permission receive the full configuration for editing.
       tags:
         - Monitors
       parameters:
@@ -1987,6 +1990,9 @@ paths:
       operationId: getMonitor
       summary: Get monitor details
       description: Retrieve full details for a monitor including recent check results.
+        Request authentication credentials, request headers, and request bodies
+        are omitted from config unless the caller has monitor:update permission.
+        Users with update permission receive the full configuration for editing.
       tags:
         - Monitors
       responses:
@@ -3799,6 +3805,32 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "500":
           description: Internal server error
+  /api/locations/metadata:
+    get:
+      operationId: listLocationMetadata
+      summary: List historical location display metadata
+      description: Requires authentication. Returns display fields for enabled and
+        inactive locations visible in the current hosting mode. Does not include
+        worker status, administrative settings, or execution availability. Use
+        /api/locations or /api/locations/available for execution choices.
+      tags:
+        - System
+      responses:
+        "200":
+          description: Display metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/LocationDisplayMetadata"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
 components:
   securitySchemes:
     bearerAuth:
@@ -5077,6 +5109,10 @@ components:
               type: integer
             backoffFactor:
               type: integer
+          deprecated: true
+          description: Unsupported for monitors. Accepted for compatibility but ignored;
+            it does not change execution retries. Do not set this field in new
+            configurations.
         alertChannels:
           type: array
           items:
@@ -5561,3 +5597,38 @@ components:
                 properties:
                   projectId:
                     type: string
+    LocationDisplayMetadata:
+      type: object
+      description: Display-only location metadata. Inactive locations are historical
+        labels, never execution choices.
+      required:
+        - code
+        - name
+        - region
+        - flag
+        - coordinates
+        - isEnabled
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        region:
+          type: string
+          nullable: true
+        flag:
+          type: string
+          nullable: true
+        coordinates:
+          type: object
+          nullable: true
+          required:
+            - lat
+            - lon
+          properties:
+            lat:
+              type: number
+            lon:
+              type: number
+        isEnabled:
+          type: boolean

@@ -185,6 +185,19 @@ export async function getAllLocations(): Promise<Location[]> {
   return filterLocal(all);
 }
 
+/** Display-only fields, including disabled regions; never use for scheduling. */
+export async function getLocationDisplayData() {
+  const rows = await db.select({
+    code: locations.code,
+    name: locations.name,
+    region: locations.region,
+    flag: locations.flag,
+    coordinates: locations.coordinates,
+    isEnabled: locations.isEnabled,
+  }).from(locations).orderBy(asc(locations.sortOrder), asc(locations.createdAt));
+  return filterLocal(rows);
+}
+
 /**
  * Get locations available for a specific project.
  * If the project has no rows in project_locations, returns all enabled locations.

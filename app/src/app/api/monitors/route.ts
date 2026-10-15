@@ -1,3 +1,4 @@
+import { monitorConfigForRead } from "@/lib/monitor-read-config";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import {
@@ -99,7 +100,10 @@ export async function GET(request: Request) {
       const totalPages = Math.ceil(total / limit);
 
       return NextResponse.json({
-        data: monitorsList,
+        data: monitorsList.map((monitor) => ({
+          ...monitor,
+          config: monitorConfigForRead(monitor.config, checkPermissionWithContext("monitor", "update", context)),
+        })),
         pagination: {
           page,
           limit,
@@ -122,7 +126,10 @@ export async function GET(request: Request) {
 
       // Return standardized response format for React Query hooks
       return NextResponse.json({
-        data: monitorsList,
+        data: monitorsList.map((monitor) => ({
+          ...monitor,
+          config: monitorConfigForRead(monitor.config, checkPermissionWithContext("monitor", "update", context)),
+        })),
         pagination: {
           total: monitorsList.length,
           page: 1,

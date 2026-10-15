@@ -79,6 +79,7 @@ import { TruncatedTextWithTooltip } from "@/components/ui/truncated-text-with-to
 import {
   isMonitoringLocation,
   buildLocationMetadataMap,
+  getLocationDisplayMetadata,
 } from "@/lib/location-service";
 import type { MonitoringLocation } from "@/lib/location-service";
 import { resolveMonitorDetailStatus } from "@/lib/monitor-detail-status";
@@ -90,7 +91,7 @@ import {
 } from "@/hooks/use-monitor-details";
 import { useQueryClient } from "@tanstack/react-query";
 import { MONITORS_QUERY_KEY } from "@/hooks/use-monitors";
-import { useLocations } from "@/hooks/use-locations";
+import { useLocationMetadata } from "@/hooks/use-locations";
 
 export interface MonitorResultItem {
   id: string;
@@ -198,7 +199,7 @@ export function MonitorDetailClient({
   const permissionsReady = hasHydrated && !permissionsLoading;
 
   // Dynamic location metadata
-  const { locations: dynamicLocations } = useLocations();
+  const { locations: dynamicLocations } = useLocationMetadata();
   const dynamicMetadataMap = React.useMemo(() => {
     if (dynamicLocations.length > 0) {
       return buildLocationMetadataMap(dynamicLocations);
@@ -208,7 +209,7 @@ export function MonitorDetailClient({
 
   const getMetadataForLocation = React.useCallback(
     (code: string) => {
-      return dynamicMetadataMap[code];
+      return getLocationDisplayMetadata(code, dynamicMetadataMap);
     },
     [dynamicMetadataMap]
   );

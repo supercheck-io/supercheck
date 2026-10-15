@@ -1,3 +1,4 @@
+import { monitorConfigForRead } from "@/lib/monitor-read-config";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import {
@@ -83,6 +84,7 @@ export async function GET(
     // Ensure alertConfig has proper defaults if it's null or undefined
     const responseMonitor = {
       ...monitor,
+      config: monitorConfigForRead(monitor.config, checkPermissionWithContext("monitor", "update", context)),
       recentResults,
       alertConfig: monitor.alertConfig || {
         enabled: false,

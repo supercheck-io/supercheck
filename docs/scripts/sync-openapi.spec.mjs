@@ -44,3 +44,15 @@ test('OpenAPI sync is explicit, compares values independently of key order, and 
     rmSync(fixture, { recursive: true, force: true });
   }
 });
+
+test('historical location metadata documents every projected field and its nullability', () => {
+  const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+  const spec = JSON.parse(readFileSync(resolve(root, 'openapi.json'), 'utf8'));
+  const metadata = spec.components.schemas.LocationDisplayMetadata;
+  const fields = ['code', 'name', 'region', 'flag', 'coordinates', 'isEnabled'];
+  assert.deepEqual(Object.keys(metadata.properties).sort(), [...fields].sort());
+  assert.deepEqual([...metadata.required].sort(), [...fields].sort());
+  for (const field of ['region', 'flag', 'coordinates']) {
+    assert.equal(metadata.properties[field].nullable, true);
+  }
+});

@@ -1,3 +1,4 @@
+import { monitorConfigForRead } from "@/lib/monitor-read-config";
 import { Metadata } from "next";
 import { AlertCircle } from "lucide-react";
 import {
@@ -13,11 +14,9 @@ import {
   MonitorStatus as DBMoniotorStatusType,
   MonitorType as DBMonitorType,
   MonitorResultStatus as DBMonitorResultStatusType,
-  MonitorConfig,
 } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
-import { getCurrentUser } from "@/lib/session";
-import { getUserOrgRole, requireAuth } from "@/lib/rbac/middleware";
+import { hasPermissionForUser, requireAuth } from "@/lib/rbac/middleware";
 
 // Limit for chart data only - keep small for performance
 const chartResultsLimit = 100;
@@ -33,12 +32,7 @@ async function getMonitorDetailsDirectly(
   id: string
 ): Promise<MonitorWithResults | null> {
   try {
-    // Ensure user is authenticated
-    await requireAuth();
-    const currentUser = await getCurrentUser();
-    if (!currentUser) {
-      return null;
-    }
+    const { userId } = await requireAuth();
 
     const monitorData = await db
       .select({
@@ -68,17 +62,14 @@ async function getMonitorDetailsDirectly(
     }
 
     const monitor = monitorData[0];
+    if (!monitor.organizationId || !monitor.projectId) return null;
+    const permissionScope = { organizationId: monitor.organizationId, projectId: monitor.projectId };
+    const [canView, canUpdate] = await Promise.all([
+      hasPermissionForUser(userId, "monitor", "view", permissionScope),
+      hasPermissionForUser(userId, "monitor", "update", permissionScope),
+    ]);
+    if (!canView) return null;
 
-    // Enforce organization membership for access
-    if (monitor.organizationId) {
-      const orgRole = await getUserOrgRole(
-        currentUser.id,
-        monitor.organizationId
-      );
-      if (!orgRole) {
-        return null;
-      }
-    }
 
     const recentResultsData = await db
       .select()
@@ -130,7 +121,7 @@ async function getMonitorDetailsDirectly(
       responseTime: mappedRecentResults[0]?.responseTimeMs ?? undefined,
       uptime: undefined,
       recentResults: mappedRecentResults,
-      config: monitor.config as MonitorConfig,
+      config: monitorConfigForRead(monitor.config, canUpdate) ?? undefined,
       alertConfig: monitor.alertConfig || undefined,
       projectName: monitor.projectName || undefined,
     };
