@@ -14,6 +14,7 @@ import {
   sreIncidents,
 } from "@/db/schema";
 import { db } from "@/utils/db";
+import { monitorConfigForRead } from "@/lib/monitor-read-config";
 
 const DEFAULT_LOOKBACK_MINUTES = 120;
 const DEFAULT_FORWARD_BUFFER_MINUTES = 10;
@@ -68,11 +69,14 @@ function safeJson(value: unknown) {
   }
 }
 
-function redact(value: string) {
+export function redact(value: string) {
   return value
-    .replace(/(authorization|api[_-]?key|token|password|secret)(["'\s:=]+)([^"'\s,}]+)/gi, "$1$2[REDACTED]")
     .replace(/Bearer\s+[A-Za-z0-9._~+/-]+=*/gi, "Bearer [REDACTED]")
-    .replace(/Basic\s+[A-Za-z0-9+/]+=*/gi, "Basic [REDACTED]");
+    .replace(/Basic\s+[A-Za-z0-9+/]+=*/gi, "Basic [REDACTED]")
+    .replace(
+      /(authorization|api[_-]?key|token|password|secret|cookie)(["']?\s*[:=]\s*)("(?:[^"\\]|\\.)*"|'[^']*'|[^\s,}]+)/gi,
+      "$1$2[REDACTED]"
+    );
 }
 
 function excerpt(value: unknown) {
@@ -389,7 +393,8 @@ export async function collectNativeEvidence(input: {
             target: monitor.target,
             status: monitor.status,
             alertConfig: monitor.alertConfig,
-            config: monitor.config,
+            // Evidence is readable by viewers; keep request credentials out of it.
+            config: monitorConfigForRead(monitor.config, false),
           }),
           evidenceType: "event",
           severity: monitor.status === "down" || monitor.status === "error" ? "sev2" : alert.severity,
