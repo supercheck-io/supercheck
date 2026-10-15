@@ -231,9 +231,6 @@ export default function HomePage() {
             aria-label="Primary"
             className="flex shrink-0 items-center gap-0.5 sm:gap-1 md:gap-2"
           >
-            <Link href="/pricing" className={`inline-flex ${navLinkClass}`}>
-              Pricing
-            </Link>
             <SearchButton />
             <Link
               href="/docs/app/welcome"
@@ -242,6 +239,9 @@ export default function HomePage() {
             >
               <BookOpenText className="size-5" />
               <span className="hidden md:inline">Docs</span>
+            </Link>
+            <Link href="/pricing" className={`inline-flex ${navLinkClass}`}>
+              Pricing
             </Link>
             <a
               href="https://www.npmjs.com/package/@supercheck/cli"
@@ -444,7 +444,7 @@ export default function HomePage() {
                   Ready to automate testing & monitoring?
                 </h2>
                 <p className="mx-auto mt-3 max-w-xl text-fd-muted-foreground">
-                  Explore cloud plans for your team, or get started with the CLI.
+                  Cloud plans are coming soon. Explore pricing, or get started today with the CLI.
                 </p>
                 <div className="mt-8 flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:items-center">
                   <Link

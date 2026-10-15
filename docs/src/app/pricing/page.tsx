@@ -24,8 +24,7 @@ const plans = [
             'Cron job scheduling',
             'Email support',
         ],
-        cta: 'Get Started',
-        ctaLink: 'https://app.supercheck.io/sign-up',
+        cta: 'Coming soon',
         highlighted: false,
     },
     {
@@ -48,8 +47,7 @@ const plans = [
             'Cron job scheduling',
             'Priority email support',
         ],
-        cta: 'Get Started',
-        ctaLink: 'https://app.supercheck.io/sign-up',
+        cta: 'Coming soon',
         highlighted: true,
     },
     {
@@ -158,7 +156,7 @@ const faqs = [
     },
     {
         question: 'Can I try Supercheck before subscribing?',
-        answer: 'Yes! Try our free demo at demo.supercheck.dev \u2014 no signup required. When you\u2019re ready, choose a plan to get started.',
+        answer: 'Yes! Try our free demo at demo.supercheck.dev \u2014 no signup required. Cloud plans are coming soon; signups are not open yet.',
     },
     {
         question: 'Do unused minutes roll over?',
@@ -205,14 +203,14 @@ export default function PricingPage() {
         <div className="min-h-screen bg-fd-background">
             <SiteHeader showPricing={false} />
 
-            <main className="container mx-auto px-4 sm:px-6 py-12 md:py-20">
+            <main className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6 md:py-16">
                 {/* Header */}
-                <div className="text-center mb-16">
-                    <h1 className="text-4xl font-bold tracking-tight mb-4">
-                        Simple, Transparent Pricing
+                <div className="mx-auto mb-12 max-w-3xl text-center">
+                    <h1 className="mb-5 text-balance text-3xl font-bold tracking-tight sm:text-4xl">
+                        Supercheck Cloud is coming soon
                     </h1>
                     <p className="text-lg text-fd-muted-foreground max-w-2xl mx-auto">
-                        One subscription covers all projects in your default organization.
+                        Preview the cloud plans below. Signups are not open yet. One subscription will cover all projects in your default organization.
                     </p>
                     <p className="mt-4 text-sm text-fd-muted-foreground">
                         Cloud prices are in USD, billed monthly, before applicable taxes. Usage overages are additional.
@@ -224,8 +222,8 @@ export default function PricingPage() {
                     {plans.map((plan) => (
                         <div
                             key={plan.name}
-                            className={`relative flex flex-col rounded-xl border p-8 ${plan.highlighted
-                                ? 'border-fd-primary bg-fd-primary/5 shadow-lg'
+                            className={`relative flex flex-col rounded-xl border p-6 sm:p-8 ${plan.highlighted
+                                ? 'border-fd-primary bg-fd-primary/5'
                                 : 'border-fd-border bg-fd-card'
                                 }`}
                         >
@@ -236,36 +234,39 @@ export default function PricingPage() {
                                     </span>
                                 </div>
                             )}
-                            <div className="mb-6">
+                            <div className="mb-6 min-h-24">
                                 <h2 className="text-xl font-semibold mb-2">{plan.name}</h2>
                                 <p className="text-sm text-fd-muted-foreground">{plan.description}</p>
                             </div>
-                            {plan.price !== undefined && <div className="mb-6">
-                                <span className="text-4xl font-bold">{plan.price}</span>
+                            <div className="mb-6 flex min-h-14 items-baseline gap-1">
+                                <span className="text-4xl font-bold">{plan.price ?? 'Custom'}</span>
                                 {plan.period && (
                                     <span className="text-fd-muted-foreground">{plan.period}</span>
                                 )}
-                            </div>}
-                            <ul className="space-y-3 mb-8 flex-1">
+                            </div>
+                            <ul className="mb-8 flex-1 space-y-3">
                                 {plan.features.map((feature) => (
-                                    <li key={feature} className="flex items-start gap-2 text-sm">
-                                        <svg aria-hidden="true" className="w-5 h-5 text-fd-primary flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <li key={feature} className="flex items-start gap-3 text-sm leading-6">
+                                        <svg aria-hidden="true" className="mt-1 size-4 shrink-0 text-fd-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                                         </svg>
-                                        {feature}
+                                        <span className="min-w-0">{feature}</span>
                                     </li>
                                 ))}
                             </ul>
-                            <Link
-                                href={plan.ctaLink}
-                                aria-label={`${plan.cta} — ${plan.name}`}
-                                className={`block w-full text-center py-3 px-4 rounded-lg font-medium transition-colors ${plan.highlighted
-                                    ? 'bg-fd-primary text-fd-primary-foreground hover:bg-fd-primary/90'
-                                    : 'bg-fd-secondary text-fd-secondary-foreground hover:bg-fd-secondary/80'
-                                    }`}
-                            >
-                                {plan.cta}
-                            </Link>
+                            {plan.ctaLink ? (
+                                <Link
+                                    href={plan.ctaLink}
+                                    aria-label={`${plan.cta} — ${plan.name}`}
+                                    className="block w-full rounded-lg bg-fd-secondary px-4 py-3 text-center font-medium transition-colors hover:bg-fd-secondary/80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fd-primary"
+                                >
+                                    {plan.cta}
+                                </Link>
+                            ) : (
+                                <p className="rounded-lg border border-fd-border bg-fd-muted/50 px-4 py-3 text-center font-medium text-fd-muted-foreground">
+                                    {plan.cta}
+                                </p>
+                            )}
                         </div>
                     ))}
                 </div>

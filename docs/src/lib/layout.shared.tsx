@@ -35,8 +35,8 @@ interface SiteHeaderProps {
 export function SiteHeader({ showPricing = true, showDocs = true }: SiteHeaderProps) {
   return (
     <header className="sticky top-0 z-50 border-b border-fd-border bg-fd-background/80 backdrop-blur-sm">
-      <div className="container flex h-14 items-center justify-between">
-        <Link href="/" className="flex items-center gap-2">
+      <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
+        <Link href="/" className="flex min-w-0 items-center gap-2">
           <Image
             src="/supercheck-logo.png"
             alt="Supercheck Logo"
@@ -44,12 +44,17 @@ export function SiteHeader({ showPricing = true, showDocs = true }: SiteHeaderPr
             height={28}
             className="rounded-md"
           />
-          <span className="font-bold text-xl">Supercheck</span>
+          <span className="hidden truncate text-xl font-bold min-[375px]:inline">Supercheck</span>
         </Link>
-        <div className="flex items-center gap-4">
+        <nav aria-label="Site navigation" className="flex shrink-0 items-center gap-4">
           {showDocs && (
             <Link href="/docs/app/welcome" className="text-sm text-fd-muted-foreground hover:text-fd-foreground transition-colors">
               Docs
+            </Link>
+          )}
+          {showPricing && (
+            <Link href="/pricing" className="text-sm text-fd-muted-foreground hover:text-fd-foreground transition-colors">
+              Pricing
             </Link>
           )}
           <Link
@@ -62,11 +67,6 @@ export function SiteHeader({ showPricing = true, showDocs = true }: SiteHeaderPr
             <Image src="/npm.svg" alt="npm" className="size-4.5 rounded-sm" width={18} height={18} />
             <span className="hidden md:inline">npm</span>
           </Link>
-          {showPricing && (
-            <Link href="/pricing" className="text-sm text-fd-muted-foreground hover:text-fd-foreground transition-colors">
-              Pricing
-            </Link>
-          )}
           <Link
             href="https://discord.gg/UVe327CSbm"
             className="text-fd-muted-foreground hover:text-fd-foreground transition-colors"
@@ -78,13 +78,14 @@ export function SiteHeader({ showPricing = true, showDocs = true }: SiteHeaderPr
           </Link>
           <Link
             href="https://github.com/supercheck-io/supercheck"
+            aria-label="GitHub"
             className="text-fd-muted-foreground hover:text-fd-foreground transition-colors"
             target="_blank"
             rel="noopener noreferrer"
           >
             <GitHubIcon />
           </Link>
-        </div>
+        </nav>
       </div>
     </header>
   );
