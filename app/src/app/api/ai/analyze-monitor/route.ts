@@ -3,7 +3,7 @@ import { AIStreamingService } from "@/lib/ai/ai-streaming-service";
 import { AuthService } from "@/lib/ai/ai-security";
 import { AIPromptBuilder } from "@/lib/ai/ai-prompts";
 import { getActiveOrganization } from "@/lib/session";
-import { hasPermissionForUser } from "@/lib/rbac/middleware";
+import { hasPermissionForUser, requireAuth } from "@/lib/rbac/middleware";
 import { monitorConfigForRead, monitorTargetForRead } from "@/lib/monitor-read-config";
 import { usageTracker } from "@/lib/services/usage-tracker";
 import { headers } from "next/headers";
@@ -132,10 +132,12 @@ export async function POST(request: NextRequest) {
 
     // Step 5c: Require view access on the monitor's own project (not just org
     // membership), before any credit is spent or monitor data reaches the model.
+    // Use the effective (impersonation-aware) user id, as the monitor pages do.
+    const { userId: effectiveUserId } = await requireAuth();
     const canViewMonitor =
       !!monitor.organizationId &&
       !!monitor.projectId &&
-      (await hasPermissionForUser(session.user.id, "monitor", "view", {
+      (await hasPermissionForUser(effectiveUserId, "monitor", "view", {
         organizationId: monitor.organizationId,
         projectId: monitor.projectId,
       }));

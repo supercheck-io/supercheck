@@ -82,6 +82,20 @@ describe('monitor target reads', () => {
       expect(masked).not.toContain('private-value');
     }
   });
+  it('masks credentials hidden behind malformed prefixes, fragments and extra parameter names', () => {
+    for (const target of [
+      ' https://u:private-value@h.example/', 'https:/u:private-value@h.example/', 'https:u:private-value@h.example/',
+      'https://h.example/#access_token=private-value', 'https://h.example/?otp=private-value',
+      'https://h.example/?sid=private-value', 'https://h.example/?appkey=private-value', 'https://h.example/?ticket=private-value',
+    ]) {
+      expect(monitorTargetForRead(target, false)).not.toContain('private-value');
+    }
+  });
+  it('leaves non-http schemes and plain fragments alone', () => {
+    for (const target of ['localhost:3000', 'ftp://u:p@h.example/', 'https://h.example/docs#section-2']) {
+      expect(monitorTargetForRead(target, false)).toBe(target);
+    }
+  });
   it('keeps author, authority and code parameters visible', () => {
     for (const name of ['author', 'authors', 'authority', 'code', 'page']) {
       const target = `https://example.com/?${name}=visible`;
@@ -111,6 +125,11 @@ describe('monitor result detail reads', () => {
     });
     expect(out.statusCode).toBe(200);
     expect(details.responseHeaders.authorization).toBe('private-auth');
+  });
+  it('redacts additional credential-style header names', () => {
+    const out = monitorResultDetailsForRead({ responseHeaders: { 'X-Auth': 'private-a', 'x-jwt': 'private-b', 'X-Hub-Signature': 'private-c', 'x-password': 'private-d', 'x-request-id': 'visible' } });
+    expect(JSON.stringify(out)).not.toMatch(/private-/);
+    expect(out.responseHeaders).toMatchObject({ 'x-request-id': 'visible' });
   });
   it('returns details without headers, and null or undefined, untouched', () => {
     const plain = { statusCode: 500, errorMessage: 'boom' };

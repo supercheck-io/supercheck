@@ -78,6 +78,13 @@ export function sanitizeHeaders(
     'proxy-authorization',
     'x-csrf-token',
     'x-xsrf-token',
+    'x-access-token',
+    'x-refresh-token',
+    'x-session-id',
+    'x-amz-security-token',
+    'x-vault-token',
+    'x-jwt',
+    'authentication-info',
   ];
 
   const sanitized: Record<string, string | string[]> = {};

@@ -56,33 +56,39 @@ export function monitorConfigForRead(
   return visible;
 }
 
-const SENSITIVE_QUERY_PARAM = /token|secret|passw|pwd|^pass$|api[-_]?key|access[-_]?key|private[-_]?key|client[-_]?key|[-_]key$|^key$|auth(?!or\b|ors\b|ority)|signature|^sig$|credential|session|jwt/i;
+const SENSITIVE_QUERY_PARAM = /token|secret|passw|pwd|^pass$|api[-_]?key|app[-_]?key|access[-_]?key|private[-_]?key|client[-_]?key|[-_]key$|^key$|auth(?!or\b|ors\b|ority)|signature|^sig$|credential|session|jwt|^otp$|^sid$|ticket|^hash$/i;
 
 /**
- * Credentials embedded in a monitor URL (user:pass@host, ?api_key=...) are
- * shown only to monitor updaters. Targets without such parts, including
- * non-URL targets (hostnames, ids), are returned byte-for-byte unchanged.
+ * Credentials embedded in a monitor URL (user:pass@host, ?api_key=..., an
+ * OAuth-style #fragment) are shown only to monitor updaters. Targets without
+ * such parts, including non-URL targets (hostnames, ids), are returned
+ * byte-for-byte unchanged.
  */
 export function monitorTargetForRead(target: string, canUpdate: boolean): string;
 export function monitorTargetForRead(target: string | null | undefined, canUpdate: boolean): string | null | undefined;
 export function monitorTargetForRead(target: string | null | undefined, canUpdate: boolean) {
-  if (!target || canUpdate || !/^https?:\/\//i.test(target)) return target;
+  if (!target || canUpdate) return target;
   let parsed: URL;
   try {
-    parsed = new URL(target);
+    // Parse rather than prefix-match: WHATWG parsing accepts forms such as
+    // " https://u:p@h" and "https:/u:p@h" that carry userinfo.
+    parsed = new URL(target.trim());
   } catch {
     return target;
   }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return target;
   const sensitiveParams = [...new Set(parsed.searchParams.keys())].filter((name) => SENSITIVE_QUERY_PARAM.test(name));
-  if (!parsed.username && !parsed.password && sensitiveParams.length === 0) return target;
+  const sensitiveFragment = parsed.hash.includes("=");
+  if (!parsed.username && !parsed.password && sensitiveParams.length === 0 && !sensitiveFragment) return target;
   // Keep a marker so a masked target is recognizable (the CLI warns on it)
   if (parsed.username || parsed.password) parsed.username = "REDACTED";
   parsed.password = "";
   for (const name of sensitiveParams) parsed.searchParams.set(name, "REDACTED");
+  if (sensitiveFragment) parsed.hash = "REDACTED";
   return parsed.toString();
 }
 
-const SENSITIVE_RESPONSE_HEADER = /^(set-)?cookie2?$|^proxy-authorization$|authorization|token|secret|api[-_]?key|session|csrf|xsrf/i;
+const SENSITIVE_RESPONSE_HEADER = /^(set-)?cookie2?$|^proxy-authorization$|authorization|authentication-info|^x-auth|token|secret|api[-_]?key|session|csrf|xsrf|jwt|signature|passw|^x-key$|^x-sid$/i;
 
 /**
  * Stored response headers can carry session material issued to the monitor

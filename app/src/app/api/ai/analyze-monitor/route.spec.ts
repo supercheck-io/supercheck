@@ -10,7 +10,7 @@ jest.mock("@/lib/ai/ai-streaming-service", () => ({ AIStreamingService: {
 } }));
 jest.mock("@/lib/ai/ai-prompts", () => ({ AIPromptBuilder: { buildMonitorAnalyzePrompt: jest.fn() } }));
 jest.mock("@/lib/session", () => ({ getActiveOrganization: jest.fn() }));
-jest.mock("@/lib/rbac/middleware", () => ({ hasPermissionForUser: jest.fn() }));
+jest.mock("@/lib/rbac/middleware", () => ({ hasPermissionForUser: jest.fn(), requireAuth: jest.fn() }));
 jest.mock("@/lib/services/usage-tracker", () => ({ usageTracker: { consumeAICredit: jest.fn() } }));
 jest.mock("@/lib/services/subscription-service", () => ({ subscriptionService: {
   blockUntilSubscribed: jest.fn(), requireValidPolarCustomer: jest.fn(),
@@ -28,7 +28,7 @@ const { AuthService } = jest.requireMock("@/lib/ai/ai-security") as { AuthServic
   validateUserAccess: jest.Mock; checkRateLimit: jest.Mock;
 } };
 const { getActiveOrganization } = jest.requireMock("@/lib/session") as { getActiveOrganization: jest.Mock };
-const { hasPermissionForUser } = jest.requireMock("@/lib/rbac/middleware") as { hasPermissionForUser: jest.Mock };
+const { hasPermissionForUser, requireAuth } = jest.requireMock("@/lib/rbac/middleware") as { hasPermissionForUser: jest.Mock; requireAuth: jest.Mock };
 const { AIStreamingService } = jest.requireMock("@/lib/ai/ai-streaming-service") as { AIStreamingService: {
   generateStreamingResponse: jest.Mock;
 } };
@@ -53,6 +53,7 @@ describe("monitor AI analysis project authorization", () => {
     AuthService.validateUserAccess.mockResolvedValue({ user: { id: "user-1", organizationId: "org-1" }, tier: "free" });
     AuthService.checkRateLimit.mockResolvedValue(undefined);
     getActiveOrganization.mockResolvedValue({ id: "org-1" });
+    requireAuth.mockResolvedValue({ userId: "effective-user" });
     // Stop right after the authorization gate so no AI pipeline is needed.
     (usageTracker.consumeAICredit as jest.Mock).mockResolvedValue({ allowed: false, status: 402, reason: "stop" });
   });
@@ -63,7 +64,7 @@ describe("monitor AI analysis project authorization", () => {
 
     await post();
 
-    expect(hasPermissionForUser).toHaveBeenCalledWith("user-1", "monitor", "view", {
+    expect(hasPermissionForUser).toHaveBeenCalledWith("effective-user", "monitor", "view", {
       organizationId: "org-1", projectId: "project-9",
     });
     expect(usageTracker.consumeAICredit).toHaveBeenCalledTimes(1);
