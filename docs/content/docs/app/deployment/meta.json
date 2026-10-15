@@ -4,6 +4,7 @@
     "icon": "Server",
     "pages": [
         "self-hosted",
+        "multi-server",
         "private-agent"
     ]
 }

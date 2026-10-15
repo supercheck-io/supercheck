@@ -8,8 +8,8 @@
 /llms-full/   /llms-full.txt    301
 
 # Retired deployment guide
-/docs/app/deployment/multi-location     /docs/app/deployment/self-hosted    301
-/docs/app/deployment/multi-location/    /docs/app/deployment/self-hosted    301
+/docs/app/deployment/multi-location     /docs/app/deployment/multi-server    301
+/docs/app/deployment/multi-location/    /docs/app/deployment/multi-server    301
 
 # SPA fallback for Next.js dynamic routes
 /*    /index.html   200
