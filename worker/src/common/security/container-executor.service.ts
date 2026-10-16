@@ -9,6 +9,7 @@
  *   long-lived worker control plane.
  */
 
+import { isSelfHostedEnvironment } from '../runtime-mode';
 import {
   Injectable,
   Logger,
@@ -293,9 +294,11 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     // Placement decides where execution pods physically run (e.g. EU-only).
     // In cloud production a malformed value must stop the worker instead of
     // silently running with no pinning.
+    // SELF_HOSTED=1 is a supported spelling of self-hosted mode.
+    const strictPlacement = isCloudProduction && !isSelfHostedEnvironment();
     this.executionNodeSelector = this.parseExecutionNodeSelector(
       this.configService.get<string>('EXECUTION_NODE_SELECTOR'),
-      isCloudProduction,
+      strictPlacement,
     );
     const workerLocation = (
       this.configService.get<string>('WORKER_LOCATION') ?? ''
@@ -304,7 +307,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       .toLowerCase();
     const selectedRegion = this.executionNodeSelector?.region?.toLowerCase();
     if (
-      isCloudProduction &&
+      strictPlacement &&
       selectedRegion &&
       workerLocation &&
       workerLocation !== 'local' &&
@@ -316,7 +319,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     }
     this.executionTolerations = this.parseExecutionTolerations(
       this.configService.get<string>('EXECUTION_TOLERATIONS_JSON'),
-      isCloudProduction,
+      strictPlacement,
     );
     this.executionDnsNameservers = this.parseExecutionDnsNameservers(
       this.configService.get<string>('EXECUTION_DNS_NAMESERVERS'),

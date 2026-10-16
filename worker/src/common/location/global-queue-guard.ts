@@ -18,8 +18,17 @@ export const GLOBAL_QUEUE_GUARD_INTERVAL_MS = 15_000;
  * capability turned off, and resumes it when it is turned back on. Jobs stay
  * queued for a capable worker; nothing is failed or moved.
  *
- * On a DB error the consumer keeps its current state (a database blip must not
- * pause every worker, and the per-job checks still apply).
+ * Failure semantics (there is no per-job backstop for global jobs):
+ * - Only an explicit `false` pauses; a missing location row or a database that
+ *   predates the capability columns keeps today's behaviour.
+ * - On a DB error the consumer keeps its current state: a database blip must
+ *   not pause every worker, but a capability change is then not applied until
+ *   the next successful check (every 15 seconds).
+ * - A job already running when the check pauses the consumer finishes, and a
+ *   change takes up to one interval to apply.
+ * - k6 jobs pinned to a regional queue are additionally checked per job in
+ *   K6ExecutionProcessor.handleProcess; global Playwright and global k6 jobs
+ *   are not.
  */
 export class GlobalQueueCapabilityGuard {
   private timer: ReturnType<typeof setInterval> | null = null;

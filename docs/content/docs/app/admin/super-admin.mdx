@@ -95,7 +95,7 @@ Manage worker execution entries for self-hosted monitoring and performance testi
 | **Default** | No | Set as the default K6 job execution location. |
 | **Browser execution (Playwright)** | No | Allow synthetic (Playwright) monitors to run in this location. New locations created in the dashboard start with this off. |
 | **Performance tests (k6)** | No | Allow k6 tests pinned to this location. New locations created in the dashboard start with this off. |
-| **Enabled** | No | Make the location available for new checks and runs. |
+| **Enabled** | No | Make the location available for new checks and runs. On by default; turn it off to stage a region (its name, coordinates and capabilities) before anyone can select it. A disabled location cannot be the default. |
 
 ### Workload Capabilities
 
@@ -104,7 +104,8 @@ An enabled location always runs HTTP, SSL, ping, and port monitors. Browser (Pla
 - **Synthetic monitors** need **Browser execution**. In the monitor form, locations without it stay visible but disabled ("Browser checks are not available in this region."). Saved selections are never removed automatically; the server rejects a save that still includes one.
 - **k6 tests** need **Performance tests**. `global` runs on any eligible k6 worker.
 - **Playwright tests and CI jobs** have no location of their own. A project is rejected only when every location it may use is probe-only.
-- Turning a capability off stops new executions after caches refresh (about 30 seconds in the app and 10 seconds on workers). Running executions finish, and results already produced are kept. Drain queued work first for a routine change.
+- Turning a capability off stops new executions after caches refresh (about 30 seconds in the app and 10 seconds on workers). Running executions finish, and results already produced are kept. Drain queued work first for a routine change: turning **Performance tests** off also stops that location's k6 workers, so k6 runs already queued there wait until it is turned back on.
+- Turning a capability on takes effect without redeploying: k6 workers for the location start within about 30 seconds of the change.
 
 Existing locations, including `local` on self-hosted installs, keep both capabilities on when you upgrade. Which queues a worker consumes is a separate setting, `WORKER_QUEUES`; see [Multi-Server Deployment](/docs/app/deployment/multi-server#choosing-what-each-worker-runs).
 
@@ -117,7 +118,7 @@ Existing locations, including `local` on self-hosted installs, keep both capabil
 | **Disabled** | Location is unavailable for new checks and runs |
 
 <Callout type="info">
-A location becomes **Active** when a matching worker connects. Deploy a worker with the matching `WORKER_LOCATION` to bring a location online. See [Self-Hosted Deployment](/docs/app/deployment/self-hosted) for setup instructions.
+A location becomes **Active** when it is enabled and a matching worker connects. Deploy a worker with the matching `WORKER_LOCATION` to bring a location online; until the location is created, the worker appears in the **Unregistered worker locations** alert, which confirms it is reaching Redis. A disabled location never shows as Active, and its workers do not consume its queues. See [Self-Hosted Deployment](/docs/app/deployment/self-hosted) for setup instructions.
 </Callout>
 
 ### Default Location

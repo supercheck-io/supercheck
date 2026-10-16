@@ -97,6 +97,11 @@ x-common-env: &common-env # Database Configuration
   # Super Admin location code (for example: us-east, eu-west, ap-south)
   WORKER_LOCATION: ${WORKER_LOCATION:-local}
 
+  # Queue consumers this worker starts (comma list: monitor, k6,
+  # global-playwright, global-k6). Empty or unset starts all of them. Use
+  # "monitor" for a lightweight monitoring-only worker.
+  WORKER_QUEUES: ${WORKER_QUEUES:-}
+
   # S3-compatible storage (bundled RustFS)
   AWS_REGION: ${AWS_REGION:-us-east-1}
   AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:?AWS_ACCESS_KEY_ID is missing from .env. Upgrading from MinIO? Run ./migrate-minio-to-rustfs.sh. Do NOT re-run init-secrets.sh --force on an existing install}

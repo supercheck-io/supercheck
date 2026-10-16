@@ -630,6 +630,22 @@ describe('ContainerExecutorService', () => {
         });
       });
 
+      it.each(['1', 'TRUE'])(
+        'only warns about mismatched placement for self-hosted production (SELF_HOSTED=%p)',
+        (value) => {
+          process.env.NODE_ENV = 'production';
+          process.env.SELF_HOSTED = value;
+          const svc = build({
+            EXECUTION_RUNTIME_CLASS_NAME: 'gvisor',
+            WORKER_LOCATION: 'asia-pacific',
+            EXECUTION_NODE_SELECTOR: 'region=us-east',
+          });
+          expect((svc as any).executionNodeSelector).toEqual({
+            region: 'us-east',
+          });
+        },
+      );
+
       it('rejects a selector region that does not match WORKER_LOCATION in cloud production', () => {
         process.env.NODE_ENV = 'production';
         delete process.env.SELF_HOSTED;

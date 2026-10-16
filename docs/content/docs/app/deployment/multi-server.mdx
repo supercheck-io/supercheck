@@ -176,7 +176,7 @@ Each worker's `WORKER_LOCATION` must match its enabled execution entry. Playwrig
 
 ### Choosing what each worker runs
 
-By default a worker consumes every queue, which is right for single-server and most multi-server setups. To make a server lightweight (for example, monitoring only), set `WORKER_QUEUES` as a real environment variable on that worker:
+By default a worker consumes every queue, which is right for single-server and most multi-server setups. To make a server lightweight (for example, monitoring only), set `WORKER_QUEUES` for that worker. With the shipped Compose files, add it to the `.env` file next to the Compose file (or export it before `docker compose up`); the files pass it into the worker container. When running the worker another way, set it as a real environment variable, because a value that exists only in a `.env` file inside the container is read too late:
 
 | Token | Queue consumed |
 |-------|----------------|

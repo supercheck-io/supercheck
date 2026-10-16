@@ -86,6 +86,11 @@ x-common-env: &common-env # Database Configuration
   # For local dev - processes all queues
   WORKER_LOCATION: ${WORKER_LOCATION:-local}
 
+  # Queue consumers this worker starts (comma list: monitor, k6,
+  # global-playwright, global-k6). Empty or unset starts all of them. Use
+  # "monitor" for a lightweight monitoring-only worker.
+  WORKER_QUEUES: ${WORKER_QUEUES:-}
+
   # S3-compatible storage (RustFS). Development only: the app and rustfs read the same
   # AWS_* variables, so setting them in .env changes both together. These public fallbacks
   # exist so a source checkout starts without running init-secrets.sh; never use them on a

@@ -188,6 +188,7 @@ export function useCreateLocation() {
       region?: string;
       flag?: string;
       coordinates?: { lat: number; lon: number };
+      isEnabled?: boolean;
       isDefault?: boolean;
       supportsBrowser?: boolean;
       supportsK6?: boolean;

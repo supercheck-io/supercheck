@@ -1,3 +1,5 @@
+jest.mock('execa', () => ({ execa: jest.fn() }));
+
 import {
   consumesWorkerQueue,
   parseWorkerQueues,
@@ -37,12 +39,51 @@ describe('worker-queues', () => {
       expect(parseWorkerQueues('monitor').has('monitor')).toBe(true);
     });
 
-    it('still defaults to everything for self-hosted production', () => {
+    it.each(['true', 'TRUE', '1', ' true '])(
+      'still defaults to everything for self-hosted production (SELF_HOSTED=%p)',
+      (value) => {
+        process.env.NODE_ENV = 'production';
+        process.env.SELF_HOSTED = value;
+        expect(parseWorkerQueues(undefined).size).toBe(
+          WORKER_QUEUE_TOKENS.length,
+        );
+      },
+    );
+
+    it('does not require WORKER_QUEUES for the Private Agent runtime', () => {
       process.env.NODE_ENV = 'production';
-      process.env.SELF_HOSTED = 'true';
+      delete process.env.SELF_HOSTED;
+      process.env.SUPERCHECK_RUNTIME_MODE = 'private-agent';
       expect(parseWorkerQueues(undefined).size).toBe(
         WORKER_QUEUE_TOKENS.length,
       );
+    });
+
+    it.each(['false', '0', ''])(
+      'still requires WORKER_QUEUES when SELF_HOSTED=%p',
+      (value) => {
+        process.env.NODE_ENV = 'production';
+        process.env.SELF_HOSTED = value;
+        delete process.env.SUPERCHECK_RUNTIME_MODE;
+        expect(() => parseWorkerQueues(undefined)).toThrow(
+          /must be set explicitly/,
+        );
+      },
+    );
+
+    // main.ts imports AppModule statically, so the @Processor decorators read
+    // WORKER_QUEUES at import time, before the Private Agent branch can run.
+    it('lets the real global processors load under the Private Agent profile', () => {
+      process.env.NODE_ENV = 'production';
+      delete process.env.SELF_HOSTED;
+      delete process.env.WORKER_QUEUES;
+      process.env.SUPERCHECK_RUNTIME_MODE = 'private-agent';
+      jest.isolateModules(() => {
+        expect(() => {
+          require('../execution/processors/playwright-execution.processor');
+          require('../k6/processors/k6-execution.processor');
+        }).not.toThrow();
+      });
     });
   });
 

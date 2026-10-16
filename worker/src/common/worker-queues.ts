@@ -20,6 +20,8 @@
  * @Processor consumers read it when their module is evaluated, before
  * ConfigModule has loaded .env.
  */
+import { isCloudWorkerRuntime } from './runtime-mode';
+
 export const WORKER_QUEUE_TOKENS = [
   'monitor',
   'k6',
@@ -29,21 +31,12 @@ export const WORKER_QUEUE_TOKENS = [
 
 export type WorkerQueueToken = (typeof WORKER_QUEUE_TOKENS)[number];
 
-/** Cloud production must choose its consumers explicitly; a forgotten value would enrol a probe-only region in the heavy global queues. */
-export function isCloudProductionEnvironment(
-  env: NodeJS.ProcessEnv = process.env,
-): boolean {
-  return (
-    env.NODE_ENV === 'production' && env.SELF_HOSTED?.toLowerCase() !== 'true'
-  );
-}
-
 export function parseWorkerQueues(
   raw: string | undefined | null,
 ): Set<WorkerQueueToken> {
   const value = raw?.trim();
   if (!value) {
-    if (isCloudProductionEnvironment()) {
+    if (isCloudWorkerRuntime()) {
       throw new Error(
         `WORKER_QUEUES must be set explicitly in cloud production (allowed: ${WORKER_QUEUE_TOKENS.join(', ')})`,
       );
