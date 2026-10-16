@@ -479,10 +479,6 @@ function buildJobDefinitions(
 }
 
 /**
- * Build variable definitions from remote data.
- * Secret values are never written to config.
- */
-/**
  * A reference to a local environment variable in the generated config. Only code we construct can create one;
  * server-supplied strings that merely look like `${NAME}` are always emitted as literals.
  */
@@ -490,6 +486,19 @@ class EnvRef {
   constructor(readonly name: string) {}
 }
 
+// A secret variable's key is chosen on the server, and the pulled config reads the local environment variable of the
+// same name. Refuse names that could point at the user's own credentials or CI runtime, so a project member cannot
+// name a secret AWS_SECRET_ACCESS_KEY and have a later deploy send that value back.
+const SAFE_ENV_NAME = /^[A-Z][A-Z0-9_]*$/
+const RESERVED_ENV_NAME = /^(?:SUPERCHECK_|AWS_|AZURE_|GCP_|GOOGLE_|GITHUB_|GH_|GITLAB_|CI_|ACTIONS_|RUNNER_|NPM_|YARN_|DOCKER_|KUBE|SSH_|GPG_|HOME$|PATH$|USER$|SHELL$|DATABASE_URL$|DB_URL$|REDIS_URL$)/
+export function isSafeEnvReferenceName(name: string): boolean {
+  return SAFE_ENV_NAME.test(name) && !RESERVED_ENV_NAME.test(name)
+}
+
+/**
+ * Build variable definitions from remote data.
+ * Secret values are never written to config.
+ */
 export function buildVariableDefinitions(variables: RemoteVariable[]): Record<string, unknown>[] {
   // File-type variables are managed via the dashboard (multipart upload).
   // They cannot be round-tripped via config, so exclude them.
@@ -508,9 +517,11 @@ export function buildVariableDefinitions(variables: RemoteVariable[]): Record<st
       // SECURITY: Never write secret values to config files.
       // Use environment variables or `supercheck var set` for secret values.
       const envVarName = v.key.toUpperCase()
-      // Use bracket notation for names that aren't valid JS identifiers
-      // (e.g. keys containing dashes, dots, spaces, or starting with digits)
-      def.value = new EnvRef(envVarName)
+      if (isSafeEnvReferenceName(envVarName)) def.value = new EnvRef(envVarName)
+      else {
+        logger.warn(`Secret variable "${v.key}" cannot be linked to an environment variable automatically; set its value with \`supercheck var set\`.`)
+        def.value = ''
+      }
     } else {
       def.value = v.value ?? ''
     }
