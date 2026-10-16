@@ -14,7 +14,7 @@ import { CLIError, ExitCode, ApiRequestError } from '../utils/errors.js'
 import { fetchAllPages } from '../utils/resources.js'
 import { detectPackageManager, ensurePackageJson, installDependencies } from '../utils/package-manager.js'
 import { extractUuidFromFilename } from '../utils/slug.js'
-import { testRelativePath, testTypeToFolder } from '../utils/paths.js'
+import { isUuid, resolveWithin, testRelativePath, testTypeToFolder } from '../utils/paths.js'
 import { decodeStoredTestScript } from '../utils/script.js'
 
 import pc from '../utils/colors.js'
@@ -186,7 +186,11 @@ async function fetchContext(client: ApiClient): Promise<RemoteContext> {
 
 async function fetchTests(client: ApiClient): Promise<RemoteTest[]> {
   try {
-    return await fetchAllPages<RemoteTest>(client, '/api/tests', 'tests')
+    const tests = await fetchAllPages<RemoteTest>(client, '/api/tests', 'tests')
+    // IDs are used to build local file paths; reject the whole pull before any file is written.
+    const invalid = tests.find((test) => !isUuid(test.id))
+    if (invalid) throw new CLIError('Server returned a test with an invalid ID. No files were written.', ExitCode.ApiError)
+    return tests
   } catch (err) {
     if (err instanceof ApiRequestError && err.statusCode === 404) return []
     throw err
@@ -258,6 +262,15 @@ async function fetchStatusPages(client: ApiClient): Promise<RemoteStatusPage[]> 
  * Pull test scripts into _supercheck_/ directory.
  * Each test is saved as a {slug}.{uuid}.pw.ts or {slug}.{uuid}.k6.ts file.
  */
+class IdentityMismatch extends CLIError {
+  constructor(message: string) { super(message, ExitCode.ApiError) }
+}
+
+/** Server titles are untrusted text: keep them to one line and out of comment terminators. */
+function sanitizeTitle(title: string): string {
+  return title.replace(/[\r\n\u2028\u2029]+/g, ' ').replace(/\*\//g, '* /').trim()
+}
+
 function pullTests(tests: RemoteTest[], cwd: string, summary: PullSummary, managedPaths = new Map<string, string>(), obsoletePaths = new Map<string, string>()): void {
   const baseDir = resolve(cwd, '_supercheck_')
   if (!existsSync(baseDir)) {
@@ -301,25 +314,26 @@ function pullTests(tests: RemoteTest[], cwd: string, summary: PullSummary, manag
 
       // Inject/Update @title metadata to preserve human-readable name in local file
       // Prefer JSDoc injection if a block exists, otherwise use single-line comment
+      const title = sanitizeTitle(test.title)
       if (/@title\s+/.test(script)) {
         // Update existing @title (works for both // @title and * @title)
-        script = script.replace(/(@title\s+)(.+?)(\r?\n|\*\/|$)/, `$1${test.title}$3`)
+        script = script.replace(/(@title\s+)(.+?)(\r?\n|\*\/|$)/, (_match, head: string, _old: string, tail: string) => `${head}${title}${tail}`)
       } else if (/\/\*\*([\s\S]*?)\*\//.test(script)) {
         // Inject into existing JSDoc
-        script = script.replace(/(\/\*\*)/, `$1\n * @title ${test.title}`)
+        script = script.replace(/(\/\*\*)/, (open: string) => `${open}\n * @title ${title}`)
       } else {
         // No JSDoc or existing title, prepend // @title
-        script = `// @title ${test.title}\n\n${script}`
+        script = `// @title ${title}\n\n${script}`
       }
 
       // Clean up old file if UUID exists but filename changed (e.g., test renamed)
       const existingFilename = existingByUuid.get(test.id)
       const currentFile = relPath
-      const filePath = resolve(cwd, relPath)
+      const filePath = resolveWithin(cwd, relPath)
       const written = writeIfChanged(filePath, script, summary)
 
       if (existingFilename && existingFilename !== currentFile) {
-        const oldPath = resolve(cwd, existingFilename)
+        const oldPath = resolveWithin(cwd, existingFilename)
         if (existsSync(oldPath)) {
           const backup = `${oldPath}.supercheck-backup.${randomUUID()}`
           writeFileSync(backup, readFileSync(oldPath), { mode: 0o600, flag: 'wx' })
@@ -903,6 +917,10 @@ export const pullCommand = new Command('pull')
       if (!matchGlob(candidate, pattern)) throw new CLIError(`Cannot import test into custom pattern "${pattern}". Use a compatible testMatch before pulling scripts. No files were written.`, ExitCode.ConfigError)
       managedPaths.set(test.id, candidate)
     }
+    // A local testMatch can point outside the project; refuse up front, before any prompt or write.
+    for (const path of [...managedPaths.values(), ...obsoletePaths.values()]) {
+      try { resolveWithin(cwd, path) } catch { throw new CLIError(`Test path "${path}" resolves outside the project directory or through a symlink. No files were written.`, ExitCode.ConfigError) }
+    }
 
     logger.debug(`Found: ${tests.length} tests, ${monitors.length} monitors, ${jobs.length} jobs, ${variables.length} variables, ${tags.length} tags, ${notificationProviders.length} notification providers, ${statusPages.length} status pages`)
 
@@ -1038,8 +1056,11 @@ export const pullCommand = new Command('pull')
                 { includeScript: 'true' },
               ),
             )
+            if (data?.id !== t.id) throw new IdentityMismatch(`Server returned a different test than requested (${t.id}). No files were written.`)
             fullTests.push(data)
           } catch (err) {
+            // A swapped response means the server is not trustworthy for this pull; abort instead of recording a partial failure.
+            if (err instanceof IdentityMismatch) throw err
             const msg = err instanceof Error ? err.message : String(err)
             logger.warn(`  Could not fetch script for "${t.title}": ${msg}`)
             summary.errors.push(`test "${t.title}": ${msg}`)
