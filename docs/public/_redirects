@@ -7,5 +7,13 @@
 /llms/        /llms.txt         301
 /llms-full/   /llms-full.txt    301
 
+# Retired deployment guide
+/docs/app/deployment/multi-location     /docs/app/deployment/multi-server    301
+/docs/app/deployment/multi-location/    /docs/app/deployment/multi-server    301
+
+# Platform architecture consolidated into the Deployment overview
+/docs/app/architecture     /docs/app/deployment    301
+/docs/app/architecture/    /docs/app/deployment    301
+
 # SPA fallback for Next.js dynamic routes
 /*    /index.html   200

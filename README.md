@@ -12,7 +12,7 @@ Supercheck brings Playwright test automation, k6 performance testing, uptime and
 ## What Supercheck includes
 
 - **Test automation:** browser, API, database, custom, and k6 performance tests, with AI-assisted creation and failure analysis.
-- **Monitoring:** HTTP, website and SSL, ping, port, and scheduled synthetic browser checks across configured execution locations.
+- **Monitoring:** HTTP, website and SSL, ping, port, and scheduled synthetic browser checks.
 - **Investigation:** run logs, screenshots, traces, linked artifacts, and read-only AI SRE investigation over Supercheck evidence and configured connectors.
 - **Communication:** alerts through email, Slack, Discord, Telegram, Microsoft Teams, and webhooks, plus public status pages and subscriber notifications.
 - **Governance:** organizations, projects, six RBAC roles, API keys, audit trails, requirements traceability, and coverage snapshots.
@@ -46,7 +46,7 @@ Supercheck combines capabilities that are commonly split across test automation,
 
 ### Self-host Supercheck
 
-Follow the [self-hosting guide](https://supercheck.io/docs/app/deployment/self-hosted) to install Supercheck on a Linux server and configure HTTPS, optional integrations, backups, and multi-location workers.
+Follow the [self-hosting guide](https://supercheck.io/docs/app/deployment/self-hosted) to install Supercheck on a Linux server and configure HTTPS, optional integrations, backups, and worker scaling.
 
 ### Install the CLI
 
@@ -82,7 +82,7 @@ See the [CLI guide](cli/) and [command reference](https://supercheck.io/docs/cli
 Record browser interactions and save Playwright tests directly to Supercheck:
 
 - [Chrome Web Store](https://chromewebstore.google.com/detail/supercheck-recorder/gfmbcelfhhfmifdkccnbgdadibdfhioe)
-- [Microsoft Edge Add-ons](https://microsoftedge.microsoft.com/addons/detail/supercheck-recorder/0rdckc265vb9)
+- [Microsoft Edge Add-ons](https://microsoftedge.microsoft.com/addons/detail/supercheck-recorder/ngmlkgfgmdnfpddohcbfdgihennolnem)
 - [Source and build instructions](recorder/)
 - [Recorder documentation](https://supercheck.io/docs/recorder)
 
@@ -96,21 +96,8 @@ flowchart TB
     App --> SRE[AI SRE Engine<br/>Read-only investigations]
     SRE -.-> Private[Private Agents<br/>Outbound-only queries]
 
-    Redis --> W_EU
-    Redis -.->|Internet| W_US
-    Redis -.->|Internet| W_APAC
-
-    subgraph PRIMARY["Primary Server"]
-        W_EU[Worker EU<br/>NestJS + BullMQ<br/>WORKER_LOCATION=eu-central] --> K3S_EU[Isolated Test<br/>Execution Sandbox]
-    end
-
-    subgraph US["US Server"]
-        W_US[Worker US<br/>NestJS + BullMQ<br/>WORKER_LOCATION=us-east] --> K3S_US[Isolated Test<br/>Execution Sandbox]
-    end
-
-    subgraph APAC["Asia Pacific Server"]
-        W_APAC[Worker APAC<br/>NestJS + BullMQ<br/>WORKER_LOCATION=asia-pacific] --> K3S_APAC[Isolated Test<br/>Execution Sandbox]
-    end
+    Redis --> Workers[Workers<br/>NestJS + BullMQ]
+    Workers --> Sandbox[Isolated Test<br/>Execution Sandboxes]
 
     style Users fill:#6366f1,stroke:#4338ca,color:#fff
     style T fill:#0ea5e9,stroke:#0369a1,color:#fff
@@ -120,18 +107,11 @@ flowchart TB
     style S3 fill:#8b5cf6,stroke:#6d28d9,color:#fff
     style SRE fill:#0ea5e9,stroke:#0369a1,color:#fff
     style Private fill:#8b5cf6,stroke:#6d28d9,color:#fff
-    style W_EU fill:#10b981,stroke:#047857,color:#fff
-    style W_US fill:#10b981,stroke:#047857,color:#fff
-    style W_APAC fill:#10b981,stroke:#047857,color:#fff
-    style K3S_EU fill:#059669,stroke:#047857,color:#fff
-    style K3S_US fill:#059669,stroke:#047857,color:#fff
-    style K3S_APAC fill:#059669,stroke:#047857,color:#fff
-    style PRIMARY fill:none,stroke:#3b82f6,stroke-width:2px
-    style US fill:none,stroke:#64748b,stroke-width:2px,stroke-dasharray: 5 5
-    style APAC fill:none,stroke:#64748b,stroke-width:2px,stroke-dasharray: 5 5
+    style Workers fill:#10b981,stroke:#047857,color:#fff
+    style Sandbox fill:#059669,stroke:#047857,color:#fff
 ```
 
-The application stores platform data in PostgreSQL, schedules work through Redis and BullMQ, and keeps execution artifacts in S3-compatible storage (RustFS in the bundled stack). Workers consume location-aware queues and run Playwright or k6 workloads in isolated execution environments. Deploy one local worker or add workers for other configured locations.
+The application stores platform data in PostgreSQL, schedules work through Redis and BullMQ, and keeps execution artifacts in S3-compatible storage (RustFS in the bundled stack). Workers consume execution queues and run Playwright or k6 workloads in isolated execution environments. Increase `WORKER_REPLICAS` and set `RUNNING_CAPACITY` to the same value to increase execution capacity.
 
 ## Repository layout
 
@@ -180,6 +160,5 @@ Contributors keep ownership of their work; see the [contributor agreement](CLA.m
 
 ## Community
 
-[![Discord](https://img.shields.io/badge/Discord-Join%20Community-5865F2?logo=discord&logoColor=white)](https://discord.gg/UVe327CSbm)
 [![GitHub Issues](https://img.shields.io/badge/GitHub-Issues-181717?logo=github&logoColor=white)](https://github.com/supercheck-io/supercheck/issues)
 [![GitHub Discussions](https://img.shields.io/badge/GitHub-Discussions-181717?logo=github&logoColor=white)](https://github.com/supercheck-io/supercheck/discussions)

@@ -1,16 +1,16 @@
 ---
-title: Multi-Location
-description: Add regional workers to your self-hosted installation
-icon: MapPin
+title: Multi-Server
+description: Add execution workers on separate servers to your self-hosted installation
+icon: Server
 ---
 
-Add regional workers to an existing [Single-Location](/docs/app/deployment/self-hosted) installation.
+Add execution workers on separate Linux servers to an existing [Self-Hosted](/docs/app/deployment/self-hosted) installation. This guide is for infrastructure you manage; it does not describe Supercheck Cloud availability.
 
 ## Architecture
 
 <p className="text-sm md:hidden">Scroll horizontally to view the full diagram.</p>
 
-<div className="overflow-x-auto" role="region" aria-label="Multi-Location deployment layout diagram" tabIndex={0}>
+<div className="overflow-x-auto" role="region" aria-label="Multi-Server deployment layout diagram" tabIndex={0}>
 <div className="min-w-[52rem]">
 
 ```mermaid
@@ -21,20 +21,20 @@ flowchart TB
     App --> SRE[AI SRE Engine<br/>Read-only investigations]
     SRE -.-> Private[Private Agents<br/>Outbound HTTPS only]
 
-    Redis --> W_EU
-    Redis -.->|Internet| W_US
-    Redis -.->|Internet| W_APAC
+    Redis --> W_MAIN
+    Redis -.->|Private network| W_2
+    Redis -.->|Private network| W_3
 
     subgraph PRIMARY["Primary Server"]
-        W_EU[Worker EU<br/>NestJS + BullMQ<br/>WORKER_LOCATION=eu-central] --> K3S_EU[K3s + gVisor<br/>Sandboxed Execution]
+        W_MAIN[Worker 1<br/>NestJS + BullMQ<br/>WORKER_LOCATION=worker-main] --> K3S_MAIN[K3s + gVisor<br/>Sandboxed Execution]
     end
 
-    subgraph US["US Server"]
-        W_US[Worker US<br/>NestJS + BullMQ<br/>WORKER_LOCATION=us-east] --> K3S_US[K3s + gVisor<br/>Sandboxed Execution]
+    subgraph SERVER_2["Worker Server 2"]
+        W_2[Worker 2<br/>NestJS + BullMQ<br/>WORKER_LOCATION=worker-extra] --> K3S_2[K3s + gVisor<br/>Sandboxed Execution]
     end
 
-    subgraph APAC["Asia Pacific Server"]
-        W_APAC[Worker APAC<br/>NestJS + BullMQ<br/>WORKER_LOCATION=asia-pacific] --> K3S_APAC[K3s + gVisor<br/>Sandboxed Execution]
+    subgraph SERVER_3["Worker Server 3"]
+        W_3[Worker 3<br/>NestJS + BullMQ<br/>WORKER_LOCATION=worker-third] --> K3S_3[K3s + gVisor<br/>Sandboxed Execution]
     end
 
     style Users fill:#6366f1,stroke:#4338ca,color:#fff
@@ -45,45 +45,45 @@ flowchart TB
     style S3 fill:#8b5cf6,stroke:#6d28d9,color:#fff
     style SRE fill:#0ea5e9,stroke:#0369a1,color:#fff
     style Private fill:#8b5cf6,stroke:#6d28d9,color:#fff
-    style W_EU fill:#10b981,stroke:#047857,color:#fff
-    style W_US fill:#10b981,stroke:#047857,color:#fff
-    style W_APAC fill:#10b981,stroke:#047857,color:#fff
-    style K3S_EU fill:#059669,stroke:#047857,color:#fff
-    style K3S_US fill:#059669,stroke:#047857,color:#fff
-    style K3S_APAC fill:#059669,stroke:#047857,color:#fff
+    style W_MAIN fill:#10b981,stroke:#047857,color:#fff
+    style W_2 fill:#10b981,stroke:#047857,color:#fff
+    style W_3 fill:#10b981,stroke:#047857,color:#fff
+    style K3S_MAIN fill:#059669,stroke:#047857,color:#fff
+    style K3S_2 fill:#059669,stroke:#047857,color:#fff
+    style K3S_3 fill:#059669,stroke:#047857,color:#fff
     style PRIMARY fill:none,stroke:#3b82f6,stroke-width:2px
-    style US fill:none,stroke:#64748b,stroke-width:2px,stroke-dasharray: 5 5
-    style APAC fill:none,stroke:#64748b,stroke-width:2px,stroke-dasharray: 5 5
+    style SERVER_2 fill:none,stroke:#64748b,stroke-width:2px,stroke-dasharray: 5 5
+    style SERVER_3 fill:none,stroke:#64748b,stroke-width:2px,stroke-dasharray: 5 5
 ```
 
 </div>
 </div>
 
-## Regional Setup
+## Worker Setup
 
 <p className="text-sm md:hidden">Scroll horizontally to view the full diagram.</p>
 
-<div className="overflow-x-auto" role="region" aria-label="Multi-Location regional setup diagram" tabIndex={0}>
+<div className="overflow-x-auto" role="region" aria-label="Multi-Server worker setup diagram" tabIndex={0}>
 <div className="min-w-[48rem]">
 
 ```mermaid
 sequenceDiagram
-    accTitle: Regional worker setup
-    accDescr: Register a location, start a matching worker, and verify a regional run.
+    accTitle: Additional worker setup
+    accDescr: Register an execution target, start a matching worker, and verify a test run.
     autonumber
     participant You as Administrator
     participant App as Supercheck
-    participant Environment as Regional server
+    participant Environment as Worker server
 
     rect rgba(139, 92, 246, 0.08)
-        You->>App: Add and enable location
+        You->>App: Add and enable execution target
         You->>Environment: Set matching WORKER_LOCATION
         You->>Environment: Set connections and start Compose
     end
     rect rgba(16, 185, 129, 0.08)
-        You->>App: Confirm location is Active
-        You->>App: Select region and run k6 or monitor
-        App-->>You: Results by location
+        You->>App: Confirm worker is Active
+        You->>App: Run k6 or a monitor check
+        App-->>You: Check results
     end
 ```
 
@@ -95,7 +95,7 @@ sequenceDiagram
 <Accordions>
   <Accordion title="Requirements" id="requirements">
     - A running self-hosted instance and Super Admin access.
-    - A Linux server per region: Ubuntu 22.04+ or Debian 12+, x86_64 or ARM64, at least 2 vCPU, 4 GB RAM, and 15 GB free disk.
+    - A Linux server for each additional worker: Ubuntu 22.04+ or Debian 12+, x86_64 or ARM64, at least 2 vCPU, 4 GB RAM, and 15 GB free disk.
     - Sudo access, `curl`, `bzip2`, and [Docker Engine with Compose v2.24.4+](https://docs.docker.com/engine/install/).
     - VPN or encrypted private connectivity to the main server's PostgreSQL, Redis, and S3 storage. Allow only worker hosts; never expose these services publicly.
     - App, workers, Compose files, and sandbox scripts from the same release. Examples use **1.3.7-canary.16**.
@@ -106,11 +106,14 @@ sequenceDiagram
 
 ### 1. Configure the main server
 
-In **Super Admin → Locations**, add and enable each region (for example, `eu-central` and `us-east`). Set the main server's `.env`:
+In [Super Admin](/docs/app/admin/super-admin#locations), add and enable execution entries such as `worker-main` and `worker-extra`. Use the matching code for each worker’s `WORKER_LOCATION`. Set the main server's `.env`:
 
 ```dotenv
-WORKER_LOCATION=eu-central
+WORKER_LOCATION=worker-main
+RUNNING_CAPACITY=3
 ```
+
+Set `RUNNING_CAPACITY` to the total number of workers across all servers (3 in this example); the App admits at most that many concurrent runs.
 
 In its Compose file, replace the PostgreSQL, Redis, and RustFS localhost port bindings with the server's **private VPN address**:
 
@@ -133,9 +136,9 @@ From the installation's `deploy/docker` directory, apply the changes. Keep exist
 sudo env KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig docker compose up -d
 ```
 
-### 2. Start a regional worker
+### 2. Start an additional worker
 
-On each prepared regional server:
+On each prepared worker server:
 
 ```bash
 mkdir -p ~/supercheck-worker
@@ -145,10 +148,10 @@ curl -fsSL -o docker-compose-worker.yml https://raw.githubusercontent.com/superc
 sudo bash setup-k3s.sh
 ```
 
-Create `.env` with the location code and credentials from the main server. Use its **private** address and the same database and storage buckets:
+Create `.env` with the worker routing code and credentials from the main server. Use its **private** address and the same database and storage buckets:
 
 ```dotenv
-WORKER_LOCATION=us-east
+WORKER_LOCATION=worker-extra
 SELF_HOSTED=true
 SUPERCHECK_VERSION=1.3.7-canary.16
 DATABASE_URL=postgresql://postgres:YOUR_DB_PASSWORD@10.0.0.10:5432/supercheck
@@ -165,10 +168,10 @@ chmod 600 .env
 sudo env KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig docker compose -f docker-compose-worker.yml up -d --wait --wait-timeout 300
 ```
 
-### 3. Verify regional execution
+### 3. Verify execution
 
-Confirm the location shows **Active** and the worker is ready, then run a monitor or k6 test in that region and check the reported location. A heartbeat alone does not verify its database, Redis, and storage connections.
+Confirm the execution entry shows **Active** and the worker is ready, then run a monitor or k6 test against that entry and inspect its results. A heartbeat alone does not verify database, Redis, and storage connections.
 
-Monitors can run in selected regions. Each k6 run uses one region or **Global** selection; Playwright uses a shared queue and is not pinned to a region. Each worker's `WORKER_LOCATION` must match an enabled location code; use `local` only for a single-server installation.
+Each worker's `WORKER_LOCATION` must match its enabled execution entry. Playwright uses a shared queue, so adding a worker does not pin browser tests to a particular server. Keep `local` for the default single-server setup; register distinct codes when configuring additional execution targets.
 
 For custom connection, bucket, or TLS settings, match the [worker Compose file](https://github.com/supercheck-io/supercheck/blob/v1.3.7-canary.16/deploy/docker/docker-compose-worker.yml).

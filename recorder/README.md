@@ -5,7 +5,7 @@
 The Supercheck Recorder turns real browser interactions into maintainable Playwright code. Built on Chrome Extensions Manifest V3 and Playwright CRX, it operates directly inside Chrome and Microsoft Edge without requiring external drivers or local runner setups. Record user flows, assert DOM states, inspect selectors, and save generated tests straight to your Supercheck projects with zero manual token copying.
 
 [![Chrome Web Store](https://img.shields.io/badge/Chrome_Web_Store-Supercheck_Recorder-blue?logo=googlechrome)](https://chromewebstore.google.com/detail/supercheck-recorder/gfmbcelfhhfmifdkccnbgdadibdfhioe)
-[![Edge Add-ons](https://img.shields.io/badge/Microsoft_Edge-Supercheck_Recorder-0078D7?logo=microsoftedge)](https://microsoftedge.microsoft.com/addons/detail/supercheck-recorder/0rdckc265vb9)
+[![Edge Add-ons](https://img.shields.io/badge/Microsoft_Edge-Supercheck_Recorder-0078D7?logo=microsoftedge)](https://microsoftedge.microsoft.com/addons/detail/supercheck-recorder/ngmlkgfgmdnfpddohcbfdgihennolnem)
 [![Documentation](https://img.shields.io/badge/Docs-supercheck.io-blue)](https://supercheck.io/docs/recorder)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
@@ -31,7 +31,7 @@ The Supercheck Recorder turns real browser interactions into maintainable Playwr
 Install the official extension from your browser's store:
 
 - **Google Chrome**: [Install from Chrome Web Store](https://chromewebstore.google.com/detail/supercheck-recorder/gfmbcelfhhfmifdkccnbgdadibdfhioe)
-- **Microsoft Edge**: [Install from Microsoft Edge Add-ons](https://microsoftedge.microsoft.com/addons/detail/supercheck-recorder/0rdckc265vb9)
+- **Microsoft Edge**: [Install from Microsoft Edge Add-ons](https://microsoftedge.microsoft.com/addons/detail/supercheck-recorder/ngmlkgfgmdnfpddohcbfdgihennolnem)
 
 ### Install from source (developer build)
 
@@ -214,6 +214,5 @@ The Supercheck Recorder is distributed under the [Apache-2.0 License](LICENSE). 
 
 ## Community
 
-[![Discord](https://img.shields.io/badge/Discord-Join%20Community-5865F2?logo=discord&logoColor=white)](https://discord.gg/UVe327CSbm)
 [![GitHub Issues](https://img.shields.io/badge/GitHub-Issues-181717?logo=github&logoColor=white)](https://github.com/supercheck-io/supercheck/issues)
 [![GitHub Discussions](https://img.shields.io/badge/GitHub-Discussions-181717?logo=github&logoColor=white)](https://github.com/supercheck-io/supercheck/discussions)

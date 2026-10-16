@@ -1,10 +1,10 @@
 ---
 title: Monitors
-description: 24/7 uptime monitoring from multiple regions
+description: 24/7 uptime monitoring for your services
 icon: Globe
 ---
 
-Monitors continuously check your services and alert you when issues occur. Run checks from multiple geographic regions to detect localized outages and ensure global availability.
+Monitors continuously check your services and alert you when issues occur. Track availability and response times, then investigate failed checks.
 
 ![Monitors List](/screenshots/monitors-list.png)
 
@@ -19,7 +19,7 @@ Monitors continuously check your services and alert you when issues occur. Run c
 %%{init: {"flowchart":{"nodeSpacing":20,"rankSpacing":24,"padding":12,"wrappingWidth":140}}}%%
 flowchart LR
     Create[Create a monitor] --> Target[Set endpoint or select a saved test]
-    Target --> Schedule[Choose interval and available regions]
+    Target --> Schedule[Choose check interval]
     Schedule --> Alerts[Select channel and alert thresholds]
     Alerts --> Save[Save and review the first result]
     Save --> Review[Compare results and investigate failures]
@@ -170,38 +170,6 @@ Set synthetic monitor intervals longer than your test execution time to prevent 
 
 📚 [Playwright Documentation](https://playwright.dev/docs/intro) — Learn more about writing browser tests
 
-## Multi-Location Monitoring
-
-Run checks from multiple geographic locations to detect regional outages and measure latency from different parts of the world.
-
-<Callout type="info">
-**Dynamic Locations**: Available locations are managed by your administrator through the Super Admin panel. Add new locations to enable multi-region monitoring from any geographic area.
-</Callout>
-
-### Default Locations
-
-| Region | Location | Notes |
-|--------|----------|-------|
-| **Local** | Your server location | Default for self-hosted deployments |
-
-Cloud deployments may include additional regions such as US East (Ashburn), EU Central (Nuremberg), and Asia Pacific (Singapore). Use the monitor's location picker to see which regions your project can use.
-
-### Choose Monitoring Locations
-
-Select the regions you want to monitor, then use the location filter on the monitor detail page to compare results.
-
-![Multi-Location Selector](/screenshots/create-monitor-multilocation-selector.png)
-
-<Callout type="info">
-**Single Location**: When only one location is available, the multi-location configuration UI is automatically hidden. Location settings appear dynamically when additional locations are added via the Super Admin panel.
-</Callout>
-
-Supercheck enqueues checks to the online subset of enabled locations allowed by the project. Overall status still evaluates configured locations: missing results cannot satisfy **All**, and the majority is measured against configured locations. The multi-location alert threshold path is selected when more than one unique location is configured and enabled; an offline location does not switch a partial cycle to per-result thresholding. Missing configured locations count as failures, so a partial result is stored as **Down**. If worker-registry access fails, affected monitors remain Down until checks resume. Review per-location results to find a regional outage even when the overall status is **Up**.
-
-<Callout type="info">
-**Self-Hosted Deployments**: By default, self-hosted instances have a single `local` location. All checks execute from your worker. For true geographic distribution, deploy additional workers in different regions and add the corresponding locations via the Super Admin panel.
-</Callout>
-
 ## Alert Configuration
 
 Configure when and how you receive notifications about monitor status changes.
@@ -314,7 +282,6 @@ A visual bar chart showing the status of the last 100 individual checks:
 
 - **Green bars** — Successful checks (monitor was up)
 - **Red bars** — Failed checks (monitor was down)
-- **Location Filter** — Filter by specific region or view all locations combined
 
 This visualization helps you quickly identify patterns like intermittent failures or sustained outages.
 
@@ -323,7 +290,6 @@ This visualization helps you quickly identify patterns like intermittent failure
 An interactive line chart displaying response times over time:
 
 - **100 Data Points** — Shows the most recent 100 check results
-- **Multi-Location Data** — Region is shown in the hover details
 - **Hover Details** — View exact response time and timestamp on hover
 - **Visual Patterns** — Identify latency spikes, trends, and anomalies
 
@@ -337,14 +303,12 @@ A paginated table showing detailed results for each check:
 |--------|-------------|
 | **Result** | Pass (✓) or Fail (✗) indicator |
 | **Checked At** | When the check was performed (relative time) |
-| **Location** | Which region performed the check (with flag icon) |
 | **Response Time** | How long the check took |
 | **Error** | For failed checks, shows the error message or links to report |
 
 **Features:**
 - **Pagination** — Navigate through historical results (10 per page)
 - **Date Filter** — Filter results by specific date
-- **Location Filter** — View results from a specific region only
 
 ## Monitor Reports
 
@@ -389,9 +353,7 @@ Use **Copy Prompt** to copy error details for AI-assisted debugging.
 **Synthetic Monitors**: Minimum interval is 5 minutes to prevent overlapping Playwright executions. Set intervals longer than your test execution time—for a 2-minute test, use 5+ minute intervals.
 </Callout>
 
-### Historical location labels and configuration access
-
-The Availability Overview location filter includes regions present in historical check results, even after a region is disabled. Disabled regions retain their configured name and flag and are marked **inactive**. Unknown historical codes use a readable fallback without an inferred flag or activity status. These regions remain selectable for historical filtering; disabling a region still prevents new executions there.
+### Configuration access
 
 Monitor viewers can read check settings and results, but request credentials, request headers, and request bodies are omitted from the configuration returned to them. Users with monitor update permission retain the full configuration needed to edit a monitor. Notification detail links check access to the monitor's own organization and project.
 
