@@ -14,6 +14,8 @@ export interface LocationData {
   coordinates: { lat: number; lon: number } | null;
   isEnabled: boolean;
   isDefault: boolean;
+  supportsBrowser: boolean;
+  supportsK6: boolean;
   sortOrder: number;
   createdAt: string;
   updatedAt: string;
@@ -186,7 +188,10 @@ export function useCreateLocation() {
       region?: string;
       flag?: string;
       coordinates?: { lat: number; lon: number };
+      isEnabled?: boolean;
       isDefault?: boolean;
+      supportsBrowser?: boolean;
+      supportsK6?: boolean;
       sortOrder?: number;
     }) => {
       const response = await fetch("/api/admin/locations", {
@@ -219,6 +224,8 @@ export function useUpdateLocation() {
       coordinates?: { lat: number; lon: number } | null;
       isEnabled?: boolean;
       isDefault?: boolean;
+      supportsBrowser?: boolean;
+      supportsK6?: boolean;
       sortOrder?: number;
     }) => {
       const response = await fetch(`/api/admin/locations/${id}`, {

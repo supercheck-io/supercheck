@@ -27,6 +27,7 @@
 #   REDIS_PASSWORD - Redis password from main server
 #   S3_ENDPOINT - S3 endpoint URL (main server or cloud)
 #   WORKER_LOCATION - This worker's region (must match an enabled Super Admin location code, e.g. us-east, eu-west, ap-south)
+#   WORKER_QUEUES   - Optional. Queue consumers to start (monitor, k6, global-playwright, global-k6). Empty = all.
 #   AWS_ACCESS_KEY_ID - S3 credentials
 #   AWS_SECRET_ACCESS_KEY - S3 credentials
 #   SELF_HOSTED - true for workers connecting to a self-hosted Supercheck stack
@@ -87,6 +88,11 @@ services:
       # Examples: us-east, eu-west, ap-south. Use "local" only for
       # single-server self-hosted mode.
       WORKER_LOCATION: ${WORKER_LOCATION:?WORKER_LOCATION is required - set to an enabled location code from Super Admin (e.g. us-east)}
+
+      # Queue consumers this worker starts (comma list: monitor, k6,
+      # global-playwright, global-k6). Empty or unset starts all of them. Use
+      # "monitor" for a lightweight monitoring-only worker.
+      WORKER_QUEUES: ${WORKER_QUEUES:-}
 
       # S3 storage (required)
       S3_ENDPOINT: ${S3_ENDPOINT:?S3_ENDPOINT is required - S3 endpoint URL}

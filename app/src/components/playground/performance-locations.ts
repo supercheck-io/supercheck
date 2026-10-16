@@ -7,7 +7,13 @@ export type PerformanceLocationOption = {
   name: string;
   region: string;
   flag?: string;
+  /** True when the location cannot run k6; shown but not selectable. */
+  disabled?: boolean;
+  disabledReason?: string;
 };
+
+export const K6_UNAVAILABLE_REASON =
+  "Performance tests are not available in this region.";
 
 /**
  * Build the full list of performance location options (Global + per-location)
@@ -19,12 +25,15 @@ export function buildPerformanceLocationOptions(
     name: string;
     region: string | null;
     flag: string | null;
+    supportsK6?: boolean;
   }>,
   options: {
     includeGlobal?: boolean;
   } = {}
 ): PerformanceLocationOption[] {
-  const includeGlobal = options.includeGlobal ?? true;
+  // "global" runs on any eligible k6 worker, so offer it only when some location can run k6.
+  const anyK6Capable = locations.length === 0 || locations.some((loc) => loc.supportsK6 !== false);
+  const includeGlobal = (options.includeGlobal ?? true) && anyK6Capable;
 
   return [
     ...(includeGlobal
@@ -35,6 +44,9 @@ export function buildPerformanceLocationOptions(
       name: loc.name,
       region: loc.region ?? "",
       flag: loc.flag ?? undefined,
+      ...(loc.supportsK6 === false
+        ? { disabled: true, disabledReason: K6_UNAVAILABLE_REASON }
+        : {}),
     })),
   ];
 }

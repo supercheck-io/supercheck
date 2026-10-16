@@ -446,6 +446,7 @@ export function MonitorCreationWizard() {
             <LocationConfigSection
               value={locationConfig}
               onChange={setLocationConfig}
+              monitorType={monitorData?.type || type}
             />
             <div className="flex justify-end gap-4 pt-4">
               <Button variant="outline" onClick={handleBackFromLocation}>

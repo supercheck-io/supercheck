@@ -14,7 +14,11 @@ import { eq, and, inArray } from 'drizzle-orm';
 import { addJobToQueue, addK6JobToQueue, JobExecutionTask, K6ExecutionTask, queueLogger } from '@/lib/queue';
 import { prepareJobTestScripts } from '@/lib/job-execution-utils';
 import { getNextRunDate } from './cron-utils';
-import { resolveProjectK6Location } from '@/lib/location-registry';
+import {
+  assertProjectSupportsBrowser,
+  LocationWorkloadUnavailableError,
+  resolveProjectK6Location,
+} from '@/lib/location-registry';
 import {
   SubscriptionAccessDeniedError,
   subscriptionService,
@@ -142,7 +146,41 @@ export async function processScheduledJob(
     }
 
     // Resolve location using project-aware logic (respects project location restrictions)
-    const resolvedLocation = isK6Job ? await resolveProjectK6Location(projectId) : null;
+    // A workload with no eligible location is a configuration error: skip the tick
+    // instead of retrying, and never run in another geography.
+    let resolvedLocation: string | null = null;
+    try {
+      if (isK6Job) {
+        resolvedLocation = await resolveProjectK6Location(projectId);
+      } else {
+        await assertProjectSupportsBrowser(projectId);
+      }
+    } catch (error) {
+      if (error instanceof LocationWorkloadUnavailableError) {
+        logger.warn(
+          { jobId, projectId, workload: error.workload },
+          'Scheduled execution skipped: no eligible location for this workload',
+        );
+        // Leave a visible failed run so the skipped tick is not silent.
+        const now = new Date();
+        await db.insert(runs).values({
+          id: runId,
+          jobId,
+          status: 'failed',
+          startedAt: now,
+          completedAt: now,
+          trigger: 'schedule',
+          projectId,
+          errorDetails: error.message,
+          metadata: {
+            jobType,
+            executionEngine: isK6Job ? 'k6' : 'playwright',
+          },
+        });
+        return { success: true };
+      }
+      throw error;
+    }
 
     // Create run record with 'queued' status - capacity manager will update to 'running'
     await db.insert(runs).values({

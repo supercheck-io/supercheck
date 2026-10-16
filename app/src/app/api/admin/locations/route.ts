@@ -21,6 +21,8 @@ export type LocationWithStatus = {
   coordinates: { lat: number; lon: number } | null;
   isEnabled: boolean;
   isDefault: boolean;
+  supportsBrowser: boolean;
+  supportsK6: boolean;
   sortOrder: number;
   createdAt: Date;
   updatedAt: Date;
@@ -87,7 +89,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { code, name, region, flag, coordinates, isDefault, sortOrder } = parsed.data;
+    const {
+      code,
+      name,
+      region,
+      flag,
+      coordinates,
+      isDefault,
+      isEnabled,
+      sortOrder,
+      supportsBrowser,
+      supportsK6,
+    } = parsed.data;
+
+    // A disabled location cannot be the default: new work would resolve to it.
+    if (isDefault && isEnabled === false) {
+      return NextResponse.json(
+        { success: false, error: "A disabled location cannot be the default location" },
+        { status: 400 }
+      );
+    }
 
     // Check for duplicate code
     const [existing] = await db
@@ -120,7 +141,10 @@ export async function POST(request: NextRequest) {
           region: region ?? null,
           flag: flag ?? null,
           coordinates: coordinates ?? null,
+          isEnabled: isEnabled ?? true,
           isDefault: isDefault ?? false,
+          supportsBrowser: supportsBrowser ?? true,
+          supportsK6: supportsK6 ?? true,
           sortOrder: sortOrder ?? 0,
         })
         .returning();

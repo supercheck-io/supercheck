@@ -13,6 +13,8 @@ import { buildRedisOptions } from '../../common/redis/redis-options';
 import { K6ExecutionTask } from '../services/k6-execution.service';
 import { K6ExecutionProcessor } from './k6-execution.processor';
 import { K6_QUEUE, k6QueueName } from '../k6.constants';
+import { consumesWorkerQueue } from '../../common/worker-queues';
+import { isMissingCapabilityColumnError } from '../../common/location/location-capability';
 import { HeartbeatService } from '../../common/heartbeat/heartbeat.service';
 import { DbService } from '../../db/db.service';
 import { sql } from 'drizzle-orm';
@@ -52,6 +54,16 @@ export class K6DynamicWorkerService implements OnModuleInit, OnModuleDestroy {
       .get<string>('WORKER_LOCATION', 'local')
       .toLowerCase();
 
+    const consumeGlobal = consumesWorkerQueue('global-k6');
+    const consumeRegional = consumesWorkerQueue('k6');
+    if (consumeGlobal) this.heartbeatService.addQueues([K6_QUEUE]);
+    if (!consumeRegional) {
+      this.logger.log(
+        'WORKER_QUEUES excludes "k6": regional k6 queues will not be consumed',
+      );
+      return;
+    }
+
     // Create a dedicated Redis connection for workers
     this.connection = this.createRedisConnection();
 
@@ -66,7 +78,6 @@ export class K6DynamicWorkerService implements OnModuleInit, OnModuleDestroy {
       queueNames.push(k6QueueName('local'));
     }
 
-    this.heartbeatService.addQueues([K6_QUEUE]);
     for (const queueName of queueNames) {
       this.createWorkerForQueue(queueName);
     }
@@ -246,6 +257,8 @@ export class K6DynamicWorkerService implements OnModuleInit, OnModuleDestroy {
                 code.toLowerCase() === this.workerLocation,
             )
             .map((code) => k6QueueName(code))
+            // Capability is unknown during a DB outage. The per-job backstop in
+            // K6ExecutionProcessor.handleProcess still refuses incapable locations.
             .filter((name) => name !== K6_QUEUE);
         }
       } catch {
@@ -333,10 +346,26 @@ export class K6DynamicWorkerService implements OnModuleInit, OnModuleDestroy {
   private async fetchEnabledLocationCodes(): Promise<string[] | null> {
     try {
       const rows = await this.dbService.db.execute(
-        sql`SELECT code FROM locations WHERE is_enabled = true`,
+        sql`SELECT code FROM locations WHERE is_enabled = true AND supports_k6 = true`,
       );
       return (rows as unknown as Array<{ code: string }>).map((r) => r.code);
     } catch (error) {
+      if (isMissingCapabilityColumnError(error)) {
+        // Worker rolled out before migration 0029: every location was k6-capable.
+        this.logger.warn(
+          'locations.supports_k6 is missing (migration 0029 not applied); treating all enabled locations as k6-capable',
+        );
+        try {
+          const rows = await this.dbService.db.execute(
+            sql`SELECT code FROM locations WHERE is_enabled = true`,
+          );
+          return (rows as unknown as Array<{ code: string }>).map(
+            (r) => r.code,
+          );
+        } catch {
+          return null;
+        }
+      }
       this.logger.warn(
         `Failed to fetch location codes from DB: ${error instanceof Error ? error.message : String(error)}`,
       );

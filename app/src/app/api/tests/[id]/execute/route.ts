@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { tests, runs, type K6Location } from "@/db/schema";
-import { resolveProjectK6Location } from "@/lib/location-registry";
+import {
+  assertProjectSupportsBrowser,
+  LocationWorkloadUnavailableError,
+  resolveProjectK6Location,
+} from "@/lib/location-registry";
 import { eq } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
@@ -123,6 +127,18 @@ export async function POST(request: NextRequest, context: ExecuteContext) {
         typeof body.location === "string" ? body.location : undefined;
     } catch {
       // Body might be empty, use default
+    }
+
+
+    if (test.type !== "performance") {
+      try {
+        await assertProjectSupportsBrowser(project.id);
+      } catch (error) {
+        // Only the expected error is user-facing; anything else (e.g. a database
+        // failure) must not leak details and is handled by the route's outer catch.
+        if (!(error instanceof LocationWorkloadUnavailableError)) throw error;
+        return NextResponse.json({ error: error.message }, { status: 400 });
+      }
     }
 
     // Resolve location and validate k6 script only for performance tests

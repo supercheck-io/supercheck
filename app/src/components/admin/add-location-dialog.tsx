@@ -29,7 +29,12 @@ export function AddLocationDialog({ open, onOpenChange }: AddLocationDialogProps
   const [flag, setFlag] = React.useState("");
   const [lat, setLat] = React.useState("");
   const [lon, setLon] = React.useState("");
+  const [isEnabled, setIsEnabled] = React.useState(true);
   const [isDefault, setIsDefault] = React.useState(false);
+  // New locations start probe-only; heavy workloads are an explicit decision once
+  // the region has suitable execution capacity.
+  const [supportsBrowser, setSupportsBrowser] = React.useState(false);
+  const [supportsK6, setSupportsK6] = React.useState(false);
   const [sortOrder, setSortOrder] = React.useState("0");
   const reservedCodes = React.useMemo(
     () => new Set(["global", "all", "default", "none", "any", "local"]),
@@ -43,7 +48,10 @@ export function AddLocationDialog({ open, onOpenChange }: AddLocationDialogProps
     setFlag("");
     setLat("");
     setLon("");
+    setIsEnabled(true);
     setIsDefault(false);
+    setSupportsBrowser(false);
+    setSupportsK6(false);
     setSortOrder("0");
   }, []);
 
@@ -89,7 +97,10 @@ export function AddLocationDialog({ open, onOpenChange }: AddLocationDialogProps
         region: region.trim() || undefined,
         flag: flag.trim() || undefined,
         coordinates,
-        isDefault,
+        isEnabled,
+        isDefault: isDefault && isEnabled,
+        supportsBrowser,
+        supportsK6,
         sortOrder: parseInt(sortOrder, 10) || 0,
       });
       toast.success(`Location "${name.trim()}" created`);
@@ -203,12 +214,58 @@ export function AddLocationDialog({ open, onOpenChange }: AddLocationDialogProps
               </div>
             </div>
 
+            {/* Availability */}
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="location-enabled"
+                  checked={isEnabled}
+                  onCheckedChange={setIsEnabled}
+                />
+                <Label htmlFor="location-enabled" className="cursor-pointer">
+                  Enabled
+                </Label>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Turn off to stage a region. A disabled location is not selectable and its
+                workers do not start consuming its queues until you enable it.
+              </p>
+            </div>
+
+            {/* Workload capabilities */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="location-browser"
+                  checked={supportsBrowser}
+                  onCheckedChange={setSupportsBrowser}
+                />
+                <Label htmlFor="location-browser" className="cursor-pointer">
+                  Browser execution (Playwright)
+                </Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="location-k6"
+                  checked={supportsK6}
+                  onCheckedChange={setSupportsK6}
+                />
+                <Label htmlFor="location-k6" className="cursor-pointer">
+                  Performance tests (k6)
+                </Label>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                HTTP, SSL, ping and port monitors are always available in an enabled location.
+              </p>
+            </div>
+
             {/* Default + Sort order */}
             <div className="grid grid-cols-2 gap-3 items-end">
               <div className="flex items-center gap-2">
                 <Switch
                   id="location-default"
-                  checked={isDefault}
+                  checked={isDefault && isEnabled}
+                  disabled={!isEnabled}
                   onCheckedChange={setIsDefault}
                 />
                 <Label htmlFor="location-default" className="cursor-pointer">

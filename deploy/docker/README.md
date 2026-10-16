@@ -75,6 +75,7 @@ When you are running the app locally on `http://localhost:3000`, Supercheck keep
 | `RUNNING_CAPACITY` | App-side gate: max concurrent test runs (set equal to `WORKER_REPLICAS`) | `1` |
 | `QUEUED_CAPACITY` | App-side gate: max queued test runs before new submissions are rejected | `10` |
 | `WORKER_LOCATION` | Worker queue mode (`local` for single-server self-hosted, or any enabled Super Admin location code) | `local` |
+| `WORKER_QUEUES` | Optional comma list of queue consumers the worker starts: `monitor`, `k6`, `global-playwright`, `global-k6`. Empty starts all; use `monitor` for a monitoring-only worker | all |
 
 OpenAI GPT-6 Luna is the default. To opt into DeepSeek V4.1 Flash, set `AI_PROVIDER=deepseek`, `AI_MODEL=deepseek-flash`, and `DEEPSEEK_API_KEY`. This sends AI prompts, code, requirement text, and supplied evidence to DeepSeek's hosted API; review data handling and China-related residency requirements first. Provider selection applies to the entire installation.
 

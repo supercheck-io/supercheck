@@ -627,6 +627,28 @@ export class CapacityManager {
         }, { jobId: jobData.runId });
       } else {
         const location = (jobData.taskData.location as string) || 'global';
+        // Capability may have been revoked while the job waited in the capacity queue.
+        // Fail through the same path as a disappeared queue; never run elsewhere.
+        if (location !== 'global') {
+          const { isLocationCapable } = await import('./location-registry');
+          let capable = true;
+          try {
+            capable = await isLocationCapable(location, 'k6');
+          } catch (capabilityError) {
+            // A transient lookup failure must not kill a queued run. The worker
+            // re-checks capability per job (and retries on DB errors), so this
+            // early check is best-effort.
+            logger.warn(
+              { err: capabilityError, location, runId: jobData.runId },
+              'Could not verify k6 capability during promotion; deferring to worker check'
+            );
+          }
+          if (!capable) {
+            throw new Error(
+              `Location "${location}" no longer supports k6 execution; job cannot be promoted`
+            );
+          }
+        }
         const queue = queues.k6Queues[location];
         if (!queue) {
           const available = Object.keys(queues.k6Queues).join(', ');

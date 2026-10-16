@@ -198,7 +198,9 @@ const Playground: React.FC<PlaygroundProps> = ({
   // Fetch dynamic locations to determine if location dialog should be shown
   const { locations: dynamicLocations, hasRestrictions, isLoading: locationsLoading } = useAvailableLocations();
   const hasMultipleLocations = dynamicLocations.length > 1;
-  const defaultAvailableLocation = dynamicLocations[0]?.code;
+  const defaultAvailableLocation = (
+    dynamicLocations.find((location) => location.supportsK6 !== false) ?? dynamicLocations[0]
+  )?.code;
   // Only set testId from initialTestId if we're on a specific test page
   // Always ensure testId is null when on the main playground page
   const [testId, setTestId] = useState<string | null>(initialTestId || null);

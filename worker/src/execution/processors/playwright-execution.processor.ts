@@ -1,6 +1,10 @@
 import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
-import { Logger } from '@nestjs/common';
+import {
+  Logger,
+  OnApplicationBootstrap,
+  OnModuleDestroy,
+} from '@nestjs/common';
 import { PLAYWRIGHT_QUEUE } from '../constants';
 import { ExecutionService } from '../services/execution.service';
 import { DbService } from '../services/db.service';
@@ -17,6 +21,8 @@ import {
 import { eq } from 'drizzle-orm';
 import { jobs } from '../../db/schema';
 import { ErrorHandler } from '../../common/utils/error-handler';
+import { consumesWorkerQueue } from '../../common/worker-queues';
+import { GlobalQueueCapabilityGuard } from '../../common/location/global-queue-guard';
 import type { ExecutionUsageTransaction } from '../services/execution-usage-receipts';
 
 @Processor(PLAYWRIGHT_QUEUE, {
@@ -25,9 +31,16 @@ import type { ExecutionUsageTransaction } from '../services/execution-usage-rece
   stalledInterval: 30000,
   maxStalledCount: 2,
   metrics: { maxDataPoints: 60 },
+  // Workers that don't consume the global Playwright queue (WORKER_QUEUES) build
+  // the consumer idle: ExecutionService stays available for synthetic monitors.
+  autorun: consumesWorkerQueue('global-playwright'),
 })
-export class PlaywrightExecutionProcessor extends WorkerHost {
+export class PlaywrightExecutionProcessor
+  extends WorkerHost
+  implements OnApplicationBootstrap, OnModuleDestroy
+{
   private readonly logger = new Logger(PlaywrightExecutionProcessor.name);
+  private capabilityGuard: GlobalQueueCapabilityGuard | null = null;
 
   constructor(
     private readonly executionService: ExecutionService,
@@ -39,6 +52,23 @@ export class PlaywrightExecutionProcessor extends WorkerHost {
   ) {
     super();
     this.logger.log(`[Constructor] PlaywrightExecutionProcessor instantiated.`);
+  }
+
+  onApplicationBootstrap(): void {
+    // Only the global consumer needs guarding; idle consumers never run.
+    if (!consumesWorkerQueue('global-playwright')) return;
+    this.capabilityGuard = new GlobalQueueCapabilityGuard(
+      () => this.worker,
+      this.dbService,
+      process.env.WORKER_LOCATION || 'local',
+      'browser',
+      this.logger,
+    );
+    this.capabilityGuard.start();
+  }
+
+  onModuleDestroy(): void {
+    this.capabilityGuard?.stop();
   }
 
   async process(

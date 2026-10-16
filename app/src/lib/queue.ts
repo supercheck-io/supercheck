@@ -110,7 +110,7 @@ export interface JobExecutionTask {
 export interface MonitorJobData {
   monitorId: string;
   projectId?: string;
-  type: "http_request" | "website" | "ping_host" | "port_check";
+  type: "http_request" | "website" | "ping_host" | "port_check" | "synthetic_test";
   target: string;
   config?: unknown; // Using unknown for config for now, can be refined with shared MonitorConfig type
   frequencyMinutes?: number;
@@ -1733,7 +1733,9 @@ export async function addMonitorExecutionJobToQueue(
       (task.config as MonitorConfig | undefined) ?? undefined;
     const locationConfig =
       (monitorConfig?.locationConfig as LocationConfig | null) ?? null;
-    const effectiveLocations = await resolveMonitorLocations(locationConfig, task.projectId);
+    const effectiveLocations = await resolveMonitorLocations(locationConfig, task.projectId, {
+      monitorType: task.type,
+    });
 
     // Determine which locations have active queues — degrade gracefully
     // when a subset of workers is offline rather than aborting entirely.
@@ -1764,7 +1766,10 @@ export async function addMonitorExecutionJobToQueue(
     }
 
     return await enqueueMonitorLocationJobs(monitorExecutionQueue, task, enqueuedLocations, {
-      priority: 1,
+      // lifo keeps immediate runs ahead of queued scheduled checks while leaving the
+      // job in the `:wait` list that the KEDA triggers measure (priority would move
+      // it to `:prioritized`, which they cannot see).
+      lifo: true,
       attempts: 3,
       backoff: { type: "exponential", delay: 5000 },
       removeOnComplete: { age: 3600 },

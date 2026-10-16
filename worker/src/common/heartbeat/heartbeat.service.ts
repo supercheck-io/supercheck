@@ -1,3 +1,4 @@
+import { consumesWorkerQueue } from '../worker-queues';
 import {
   Injectable,
   OnModuleInit,
@@ -31,7 +32,10 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
   private readonly heartbeatKey: string;
   private readonly location: string;
   private readonly startedAt = new Date().toISOString();
-  private queues = new Set<string>([PLAYWRIGHT_QUEUE]);
+  // Advertise only queues this worker actually consumes (WORKER_QUEUES).
+  private queues = new Set<string>(
+    consumesWorkerQueue('global-playwright') ? [PLAYWRIGHT_QUEUE] : [],
+  );
 
   constructor(private readonly configService: ConfigService) {
     this.location = this.configService

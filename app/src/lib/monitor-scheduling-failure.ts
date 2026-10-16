@@ -26,7 +26,7 @@ export async function recordSchedulingFailure(
 
     const monitor = await db.transaction(async (transaction) => {
       const [current] = await transaction.select({
-        config: monitors.config, projectId: monitors.projectId, status: monitors.status,
+        config: monitors.config, projectId: monitors.projectId, status: monitors.status, type: monitors.type,
       }).from(monitors).where(eq(monitors.id, monitorId)).for("update");
       if (!current) return;
       await transaction.update(monitors).set({
@@ -58,7 +58,8 @@ export async function recordSchedulingFailure(
     try {
       const resolvedLocations = await resolveMonitorLocations(
         locationConfig,
-        monitor?.projectId ?? undefined
+        monitor?.projectId ?? undefined,
+        { monitorType: monitor?.type }
       );
       location = resolvedLocations[0] as MonitoringLocation | undefined;
     } catch {
@@ -78,7 +79,8 @@ export async function recordSchedulingFailure(
     if (!location) {
       try {
         const defaultLocations = await resolveDefaultMonitorLocations(
-          monitor?.projectId ?? undefined
+          monitor?.projectId ?? undefined,
+          { monitorType: monitor?.type }
         );
         location = defaultLocations[0] as MonitoringLocation | undefined;
       } catch {

@@ -174,4 +174,21 @@ Confirm the execution entry shows **Active** and the worker is ready, then run a
 
 Each worker's `WORKER_LOCATION` must match its enabled execution entry. Playwright uses a shared queue, so adding a worker does not pin browser tests to a particular server. Keep `local` for the default single-server setup; register distinct codes when configuring additional execution targets.
 
+### Choosing what each worker runs
+
+By default a worker consumes every queue, which is right for single-server and most multi-server setups. To make a server lightweight (for example, monitoring only), set `WORKER_QUEUES` for that worker. With the shipped Compose files, add it to the `.env` file next to the Compose file (or export it before `docker compose up`); the files pass it into the worker container. When running the worker another way, set it as a real environment variable, because a value that exists only in a `.env` file inside the container is read too late:
+
+| Token | Queue consumed |
+|-------|----------------|
+| `monitor` | Regional monitor queue (HTTP, SSL, ping, port, and synthetic monitors) |
+| `k6` | Regional k6 queue, only when the location has **Performance tests** on |
+| `global-playwright` | Shared Playwright queue (tests and CI jobs) |
+| `global-k6` | Shared k6 queue |
+
+```bash
+WORKER_QUEUES=monitor
+```
+
+An unknown token stops the worker at startup. Which workloads users may run in a location is set separately in Super Admin ([Workload Capabilities](/docs/app/admin/super-admin#workload-capabilities)), so enabling browser or k6 for a location later does not require redeploying other workers.
+
 For custom connection, bucket, or TLS settings, match the [worker Compose file](https://github.com/supercheck-io/supercheck/blob/v1.3.7-canary.16/deploy/docker/docker-compose-worker.yml).
