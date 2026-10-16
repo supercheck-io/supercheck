@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from '@jest/globals'
-import { mkdtempSync, existsSync, writeFileSync, readFileSync, realpathSync, mkdirSync, rmSync } from 'node:fs'
+import { mkdtempSync, existsSync, writeFileSync, readFileSync, readdirSync, realpathSync, mkdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 import { spawnSync } from 'node:child_process'
@@ -44,6 +44,7 @@ globalThis.fetch=async (url,options={})=>{
  let data={},status=200;
  const context={organization:{id:'org'},project:{id:state.mode==='wrong-context'?'other-project':'project'},user:{id:'user',role:'project_admin'}};
  if(state.mode==='script-denied'&&route==='/api/tests/${id}'){status=403;data={error:'denied'};}
+ else if(state.mode==='swapped-test'&&route==='/api/tests/${id}'){data={id:'019a9999-0000-7000-8000-000000000009',title:'Other',type:'browser',script:'x'};}
  else if(route==='/api/context')data=context;
  else if(route==='/api/health')data={status:'ok'};
  else if(state.mode==='provider-denied'&&route==='/api/notification-providers'){status=403;data={error:'denied',config:{discordWebhookUrl:'LEAK_TEST_DISCORD',teamsWebhookUrl:'LEAK_TEST_TEAMS',url:'LEAK_TEST_URL',headers:{'X-Custom':'LEAK_TEST_HEADERS'}}};}
@@ -164,6 +165,30 @@ describe('CLI agent workflows through the real entrypoint', () => {
     expect(result.status).not.toBe(0)
     expect(existsSync(resolve(cwd, '_supercheck_'))).toBe(false)
     expect(existsSync(resolve(cwd, '..', 'evil.pw.ts'))).toBe(false)
+  })
+
+  it('writes a hostile test title as a single comment line without altering the script', () => {
+    fixture()
+    const title = "Evil\nrequire('fs').rmSync('x')\n*/ $& $1"
+    const state = read(); state.resources['/api/tests'] = [{ id, title, type: 'browser', script: 'await page.goto("/")' }]
+    writeFileSync(resolve(cwd, 'fixture.json'), JSON.stringify(state))
+    expect(run('pull', '--tests-only', '--force', '--skip-install').status).toBe(0)
+    const dir = resolve(cwd, '_supercheck_/playwright')
+    const file = readdirSync(dir).find((name) => name.endsWith('.pw.ts'))!
+    const lines = readFileSync(resolve(dir, file), 'utf8').split('\n')
+    expect(lines[0].startsWith('// @title Evil ')).toBe(true)
+    expect(lines.some((line) => line.startsWith("require("))).toBe(false)
+    expect(lines).toContain('await page.goto("/")')
+  })
+
+  it('aborts the whole pull when the per-test response is a different test', () => {
+    fixture('swapped-test')
+    const state = read(); state.resources['/api/tests'] = [{ id, title: 'A', type: 'browser' }]
+    writeFileSync(resolve(cwd, 'fixture.json'), JSON.stringify(state))
+    const result = run('pull', '--tests-only', '--force', '--skip-install')
+    expect(result.status).not.toBe(0)
+    expect(result.stderr).toContain('different test than requested')
+    expect(existsSync(resolve(cwd, '_supercheck_/playwright'))).toBe(false)
   })
 
   it('shows the individual failures when a human-mode pull is partial', () => {

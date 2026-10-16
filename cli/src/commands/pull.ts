@@ -262,6 +262,15 @@ async function fetchStatusPages(client: ApiClient): Promise<RemoteStatusPage[]> 
  * Pull test scripts into _supercheck_/ directory.
  * Each test is saved as a {slug}.{uuid}.pw.ts or {slug}.{uuid}.k6.ts file.
  */
+class IdentityMismatch extends CLIError {
+  constructor(message: string) { super(message, ExitCode.ApiError) }
+}
+
+/** Server titles are untrusted text: keep them to one line and out of comment terminators. */
+function sanitizeTitle(title: string): string {
+  return title.replace(/[\r\n\u2028\u2029]+/g, ' ').replace(/\*\//g, '* /').trim()
+}
+
 function pullTests(tests: RemoteTest[], cwd: string, summary: PullSummary, managedPaths = new Map<string, string>(), obsoletePaths = new Map<string, string>()): void {
   const baseDir = resolve(cwd, '_supercheck_')
   if (!existsSync(baseDir)) {
@@ -305,15 +314,16 @@ function pullTests(tests: RemoteTest[], cwd: string, summary: PullSummary, manag
 
       // Inject/Update @title metadata to preserve human-readable name in local file
       // Prefer JSDoc injection if a block exists, otherwise use single-line comment
+      const title = sanitizeTitle(test.title)
       if (/@title\s+/.test(script)) {
         // Update existing @title (works for both // @title and * @title)
-        script = script.replace(/(@title\s+)(.+?)(\r?\n|\*\/|$)/, `$1${test.title}$3`)
+        script = script.replace(/(@title\s+)(.+?)(\r?\n|\*\/|$)/, (_match, head: string, _old: string, tail: string) => `${head}${title}${tail}`)
       } else if (/\/\*\*([\s\S]*?)\*\//.test(script)) {
         // Inject into existing JSDoc
-        script = script.replace(/(\/\*\*)/, `$1\n * @title ${test.title}`)
+        script = script.replace(/(\/\*\*)/, (open: string) => `${open}\n * @title ${title}`)
       } else {
         // No JSDoc or existing title, prepend // @title
-        script = `// @title ${test.title}\n\n${script}`
+        script = `// @title ${title}\n\n${script}`
       }
 
       // Clean up old file if UUID exists but filename changed (e.g., test renamed)
@@ -1038,9 +1048,11 @@ export const pullCommand = new Command('pull')
                 { includeScript: 'true' },
               ),
             )
-            if (data?.id !== t.id) throw new CLIError(`Server returned a different test than requested (${t.id}).`, ExitCode.ApiError)
+            if (data?.id !== t.id) throw new IdentityMismatch(`Server returned a different test than requested (${t.id}). No files were written.`)
             fullTests.push(data)
           } catch (err) {
+            // A swapped response means the server is not trustworthy for this pull; abort instead of recording a partial failure.
+            if (err instanceof IdentityMismatch) throw err
             const msg = err instanceof Error ? err.message : String(err)
             logger.warn(`  Could not fetch script for "${t.title}": ${msg}`)
             summary.errors.push(`test "${t.title}": ${msg}`)

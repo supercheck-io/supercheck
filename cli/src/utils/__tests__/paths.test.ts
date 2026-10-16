@@ -1,7 +1,7 @@
 import { describe, expect, it } from '@jest/globals'
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { isUuid, resolveWithin } from '../paths.js'
 
 describe('isUuid', () => {
@@ -16,13 +16,13 @@ describe('isUuid', () => {
 })
 describe('resolveWithin', () => {
   it('resolves paths inside the root', () => {
-    expect(resolveWithin('/proj', '_supercheck_/playwright/a.pw.ts')).toBe('/proj/_supercheck_/playwright/a.pw.ts')
+    expect(resolveWithin('/proj', '_supercheck_/playwright/a.pw.ts')).toBe(resolve('/proj', '_supercheck_/playwright/a.pw.ts'))
   })
   it.each(['../evil.pw.ts', '_supercheck_/playwright/x/../../../../tmp/evil.pw.ts', '/etc/passwd', '.'])('refuses %s', (target) => {
     expect(() => resolveWithin('/proj', target)).toThrow('outside the project directory')
   })
   it('accepts in-project names that merely start with two dots', () => {
-    expect(resolveWithin('/proj', '..foo/a.pw.ts')).toBe('/proj/..foo/a.pw.ts')
+    expect(resolveWithin('/proj', '..foo/a.pw.ts')).toBe(resolve('/proj', '..foo/a.pw.ts'))
   })
   it('refuses a symlinked directory or file that leaves the root', () => {
     const base = mkdtempSync(join(tmpdir(), 'supercheck-paths-'))

@@ -52,6 +52,9 @@ export function resolveWithin(root: string, target: string): string {
   if (isOutside(relative(resolve(root), resolved))) throw refuse()
   const realRel = relative(realish(root), realish(dirname(resolved)))
   if (realRel !== '' && isOutside(realRel)) throw refuse()
-  try { if (lstatSync(resolved).isSymbolicLink()) throw refuse() } catch (error) { if (error instanceof CLIError) throw error }
+  try { if (lstatSync(resolved).isSymbolicLink()) throw refuse() } catch (error) {
+    if (error instanceof CLIError) throw error
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw refuse()
+  }
   return resolved
 }
