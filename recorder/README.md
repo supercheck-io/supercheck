@@ -35,7 +35,7 @@ Install the official extension from your browser's store:
 
 ### Install from source (developer build)
 
-Requires Node.js 18 or later.
+Requires Node.js 20 or later.
 
 ```bash
 git clone https://github.com/supercheck-io/supercheck.git
