@@ -1,3 +1,4 @@
+import { ensureGitignoreEntries } from './gitignore.js'
 import { CLIError, ExitCode } from './errors.js'
 import { existsSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs'
 import { join, resolve } from 'node:path'
@@ -13,6 +14,7 @@ export function createTempPlaywrightConfig(cwd: string, testMatch?: string | str
     if (!existsSync(path)) throw new CLIError(`Playwright config not found: ${path}`, ExitCode.ConfigError)
     return { path, cleanup: () => undefined }
   }
+  ensureGitignoreEntries(cwd)
   const dir = mkdtempSync(join(cwd, '.supercheck-playwright-'))
   const filePath = join(dir, 'playwright.supercheck.config.mjs')
   const match = testMatch ?? '_supercheck_/playwright/**/*.pw.ts'

@@ -1,4 +1,4 @@
-import { managedState, verifyContext, deploymentLock, rejectAmbiguousCreates } from '../utils/managed.js'
+import { managedState, verifyContext, describeTarget, deploymentLock, rejectAmbiguousCreates } from '../utils/managed.js'
 import { getOutputFormat } from '../output/formatter.js'
 import { Command } from 'commander'
 import { createAuthenticatedClient } from '../api/authenticated-client.js'
@@ -149,6 +149,7 @@ export const deployCommand = new Command('deploy')
     const { config, configPath } = await loadConfig({ cwd, configPath: options.config })
     const client = createAuthenticatedClient(config.api?.baseUrl)
     const context = await verifyContext(client, config)
+    logger.info(`Target: ${describeTarget(context)}`)
     const release = options.dryRun ? () => undefined : deploymentLock(configPath)
     try {
       const state = managedState(client, context, configPath)

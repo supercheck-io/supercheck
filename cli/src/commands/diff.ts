@@ -1,4 +1,4 @@
-import { verifyContext, managedState } from '../utils/managed.js'
+import { verifyContext, describeTarget, managedState } from '../utils/managed.js'
 import { getOutputFormat } from '../output/formatter.js'
 import { Command } from 'commander'
 import { createAuthenticatedClient } from '../api/authenticated-client.js'
@@ -22,6 +22,7 @@ export const diffCommand = new Command('diff')
     const client = createAuthenticatedClient(config.api?.baseUrl)
 
     const context = await verifyContext(client, config)
+    logger.info(`Target: ${describeTarget(context)}`)
   const state = managedState(client, context, configPath)
   logger.newline()
 

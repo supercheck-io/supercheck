@@ -4,6 +4,9 @@ import { redactText } from './redact.js'
 import { spawn } from 'node:child_process'
 import { constants as osConstants } from 'node:os'
 
+const TEXT_LIMIT = 65536
+const REPORT_LIMIT = 8 * 1024 * 1024
+
 function exitCodeForSignal(signal: NodeJS.Signals | null): number {
   if (!signal) return 1
 
@@ -28,26 +31,47 @@ export function runCommand(command: string, args: string[], cwd?: string): Promi
     // spawn() with shell: false treats args as literal arguments, not shell commands
     const json = getOutputFormat() === 'json'
     let stdout = '', stderr = ''
-    let truncated = false
+    let stdoutTruncated = false, stderrTruncated = false
     const child = spawn(executable, args, {
       stdio: json ? ['ignore', 'pipe', 'pipe'] : 'inherit',
       shell: false,  // ✓ SECURE: Prevents command injection
       cwd,
     })
 
-    const collect = (text: string, chunk: Buffer): string => {
-      if (text.length + chunk.length > 65536) truncated = true
-      return (text + chunk.toString()).slice(0, 65536)
+    // Text output keeps its tail (failure details and run summaries come last); a structured report must stay whole to parse.
+    child.stdout?.setEncoding('utf8')
+    child.stderr?.setEncoding('utf8')
+    // Slicing mid-line can strip a URL's scheme and defeat credential masking, so a cut drops the partial first line.
+    const cut = (full: string): { text: string; truncated: boolean } => {
+      if (full.length <= TEXT_LIMIT) return { text: full, truncated: false }
+      const sliced = full.slice(-TEXT_LIMIT)
+      const newline = sliced.indexOf('\n')
+      return { text: newline === -1 ? sliced : sliced.slice(newline + 1), truncated: true }
     }
-    child.stdout?.on('data', (chunk: Buffer) => { stdout = collect(stdout, chunk) })
-    child.stderr?.on('data', (chunk: Buffer) => { stderr = collect(stderr, chunk) })
+    const tail = (text: string, chunk: string): { text: string; truncated: boolean } =>
+      cut(text + chunk)
+    let report = '', reportOverflow = false
+    child.stdout?.on('data', (chunk: string) => {
+      const next = tail(stdout, chunk)
+      stdout = next.text
+      stdoutTruncated ||= next.truncated
+      if (!reportOverflow) {
+        report += chunk
+        if (report.length > REPORT_LIMIT) { reportOverflow = true; report = '' }
+      }
+    })
+    child.stderr?.on('data', (chunk: string) => {
+      const next = tail(stderr, chunk)
+      stderr = next.text
+      stderrTruncated ||= next.truncated
+    })
     child.on('error', (err) => reject(err))
     child.on('close', (code, signal) => {
       const exitCode = code ?? exitCodeForSignal(signal)
       if (json) {
         let result: unknown = undefined
-        try { result = JSON.parse(stdout) } catch { /* Native runners may use text output. */ }
-        logger.output(JSON.stringify({ event: 'local.result', command, exitCode, result, stdout: result === undefined ? redactText(stdout) : undefined, stderr: redactText(stderr), truncated }))
+        try { result = reportOverflow ? undefined : JSON.parse(report) } catch { /* Native runners may use text output. */ }
+        logger.output(JSON.stringify({ event: 'local.result', command, exitCode, result, stdout: result === undefined ? redactText(stdout) : undefined, stderr: redactText(stderr), truncated: (result === undefined && stdoutTruncated) || stderrTruncated }))
       }
       resolve(exitCode)
     })

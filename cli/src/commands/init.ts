@@ -1,6 +1,7 @@
+import { ensureGitignoreEntries } from '../utils/gitignore.js'
 import { outputMutation } from '../output/formatter.js'
 import { Command } from 'commander'
-import { existsSync, mkdirSync, writeFileSync, readFileSync, appendFileSync } from 'node:fs'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { logger } from '../utils/logger.js'
 import { CLIError, ExitCode } from '../utils/errors.js'
@@ -81,16 +82,6 @@ const SUPERCHECK_TSCONFIG = `{
     "_supercheck_/**/*.ts"
   ]
 }
-`
-
-const GITIGNORE_ADDITIONS = `
-# Supercheck CLI
-supercheck.config.local.ts
-supercheck.config.local.js
-supercheck.config.local.mjs
-supercheck.state.json.lock
-.supercheck-artifacts/
-*.supercheck-backup.*
 `
 
 export const initCommand = new Command('init')
@@ -174,14 +165,7 @@ export const initCommand = new Command('init')
     }
 
     // 5. Update .gitignore
-    const gitignorePath = resolve(cwd, '.gitignore')
-    if (existsSync(gitignorePath)) {
-      const content = readFileSync(gitignorePath, 'utf-8')
-      if (!content.includes('supercheck.config.local')) {
-        appendFileSync(gitignorePath, GITIGNORE_ADDITIONS, 'utf-8')
-        logger.success('Updated .gitignore with Supercheck entries')
-      }
-    }
+    if (ensureGitignoreEntries(cwd).length > 0) logger.success('Updated .gitignore with Supercheck entries')
 
     // 6. Detect package manager
     const pm = (requestedPm as 'npm' | 'yarn' | 'pnpm' | 'bun' | undefined) ?? detectPackageManager(cwd)

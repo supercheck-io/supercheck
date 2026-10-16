@@ -1,6 +1,7 @@
-import { existsSync, readFileSync, writeFileSync, renameSync, openSync, closeSync, unlinkSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync, renameSync, openSync, closeSync, unlinkSync, linkSync } from 'node:fs'
 import { dirname, resolve, posix } from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { constants as osConstants, hostname } from 'node:os'
 import { z } from 'zod'
 import type { ApiClient } from '../api/client.js'
 import type { SupercheckConfig } from '../config/schema.js'
@@ -14,7 +15,16 @@ export type ProjectContext = {
   organization: { id: string; slug?: string | null }
   project: { id: string; slug?: string | null }
 }
-export async function verifyContext(client: ApiClient, config: Pick<SupercheckConfig, 'project'>, allowPlaceholders = false): Promise<ProjectContext> {
+const originOf = (url: string): string => { try { return new URL(url).origin } catch { return url } }
+export function describeTarget(context: ProjectContext): string {
+  return `${context.apiUrl} · organization ${context.organization.slug ?? context.organization.id} · project ${context.project.slug ?? context.project.id}`
+}
+export async function verifyContext(client: ApiClient, config: Pick<SupercheckConfig, 'project'> & { api?: { baseUrl?: string } }, allowPlaceholders = false): Promise<ProjectContext> {
+  // A stored `login --url` or SUPERCHECK_URL overrides config; refuse to apply a config to a server it does not declare.
+  const declared = config.api?.baseUrl
+  if (declared && originOf(declared) !== originOf(client.getBaseUrl())) {
+    throw new CLIError(`CONTEXT_MISMATCH: Config api.baseUrl "${declared}" does not match the active API "${client.getBaseUrl()}" (from SUPERCHECK_URL or a stored login --url). Align them before syncing.`, ExitCode.ConfigError)
+  }
   const { data } = await client.get<ProjectContext>('/api/context')
   if (!data.organization?.id || !data.project?.id) throw new CLIError('Invalid project context response.', ExitCode.ApiError)
   for (const key of ['organization', 'project'] as const) {
@@ -25,12 +35,49 @@ export async function verifyContext(client: ApiClient, config: Pick<SupercheckCo
   }
   return { ...data, apiUrl: client.getBaseUrl() }
 }
+const parseLock = (text: string): [number, string] => { const [pid = '', host = ''] = text.split('\n'); return [Number.parseInt(pid, 10), host.trim()] }
+function processAlive(pid: number): boolean {
+  try { process.kill(pid, 0); return true } catch (error) { return (error as NodeJS.ErrnoException).code === 'EPERM' }
+}
 export function deploymentLock(configPath?: string | null): () => void {
   const path = resolve(dirname(configPath ?? resolve('supercheck.config.ts')), 'supercheck.state.json.lock')
-  let fd: number
-  try { fd = openSync(path, 'wx', 0o600) } catch { throw new CLIError(`DEPLOY_LOCKED: Another deploy may be active. If it stopped unexpectedly, inspect and remove ${path}.`, ExitCode.ConfigError) }
-  writeFileSync(fd, `${process.pid}\n`)
-  return () => { closeSync(fd); unlinkSync(path) }
+  const locked = () => new CLIError(`DEPLOY_LOCKED: Another deploy may be active. If it stopped unexpectedly, inspect and remove ${path}.`, ExitCode.ConfigError)
+  const lockBody = `${process.pid}\n${hostname()}\n`
+  let fd: number | undefined
+  for (let attempt = 0; fd === undefined; attempt++) {
+    try { fd = openSync(path, 'wx', 0o600) } catch {
+      // Recover only from a lock whose owning process is verifiably gone (crash or kill); anything uncertain stays locked.
+      let owner = NaN, ownerHost = ''
+      try { [owner, ownerHost] = parseLock(readFileSync(path, 'utf8')) } catch { /* unreadable lock stays locked */ }
+      // A PID is only meaningful on the host that wrote it; a lock from another host or container stays locked.
+      if (attempt > 0 || !Number.isInteger(owner) || owner <= 0 || ownerHost !== hostname() || processAlive(owner)) throw locked()
+      // Move the stale lock aside rather than deleting it, then confirm it was still the dead owner's: if another process
+      // took over in between, put its lock back and stay locked. PID checks are only valid on one host / PID namespace.
+      const aside = `${path}.${randomUUID()}.stale`
+      try { renameSync(path, aside) } catch { throw locked() }
+      let moved = NaN
+      try { moved = parseLock(readFileSync(aside, 'utf8'))[0] } catch { /* treated as foreign */ }
+      if (moved !== owner) { try { linkSync(aside, path) } catch { /* the other owner's lock already exists */ } }
+      try { unlinkSync(aside) } catch { /* best effort */ }
+      if (moved !== owner) throw locked()
+    }
+  }
+  writeFileSync(fd, lockBody)
+  const handle = fd
+  let released = false
+  const release = () => {
+    if (released) return
+    released = true
+    process.off('SIGINT', onSignal)
+    process.off('SIGTERM', onSignal)
+    try { closeSync(handle) } catch { /* already closed */ }
+    // Remove the lock only if it is still ours, so a late release cannot delete a successor's lock.
+    try { if (readFileSync(path, 'utf8') === lockBody) unlinkSync(path) } catch { /* already removed; must not mask the deploy outcome */ }
+  }
+  const onSignal = (signal: NodeJS.Signals) => { release(); process.exit(128 + (osConstants.signals[signal] ?? 0)) }
+  process.on('SIGINT', onSignal)
+  process.on('SIGTERM', onSignal)
+  return release
 }
 export function managedState(client: ApiClient, context: ProjectContext, configPath?: string | null) {
   const path = resolve(dirname(configPath ?? resolve('supercheck.config.ts')), 'supercheck.state.json')

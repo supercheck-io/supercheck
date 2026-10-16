@@ -1,4 +1,4 @@
-import { verifyContext, managedState } from '../utils/managed.js'
+import { verifyContext, describeTarget, managedState } from '../utils/managed.js'
 import { buildLocalResources } from '../utils/resources.js'
 import { getOutputFormat } from '../output/formatter.js'
 import { Command } from 'commander'
@@ -172,6 +172,7 @@ export const destroyCommand = new Command('destroy')
     const { config, configPath } = await loadConfig({ cwd, configPath: options.config })
     const client = createAuthenticatedClient(config.api?.baseUrl)
     const context = await verifyContext(client, config)
+    logger.info(`Target: ${describeTarget(context)}`)
     const state = managedState(client, context, configPath)
 
     logger.newline()

@@ -100,7 +100,7 @@ For `job trigger`, use a job-specific trigger key. To wait for the result with `
 
 Local-only work does not require login: `test run --offline` and `job run --local --offline` run local scripts without contacting Supercheck. Cloud sync and API operations continue to require a CLI token or, for a trigger-only job run, a job trigger key.
 
-The CLI redacts known credential fields in output by default, including webhook URLs, Discord and Teams webhook credentials, and full config headers. The global `--show-secrets` flag explicitly reveals sensitive values; avoid using it in CI logs, shared terminals, or agent transcripts.
+The CLI redacts known credential fields in output by default, including notification provider webhook URLs, Discord and Teams webhook credentials, and provider config headers. Monitor target URLs stay visible, while credential headers such as `Authorization` and `Cookie` are masked. The global `--show-secrets` flag explicitly reveals sensitive values; avoid using it in CI logs, shared terminals, or agent transcripts.
 
 Diagnostic commands (`whoami`, `health`, `locations`, and `capabilities`) tolerate an invalid project config. An explicit `--url`, `SUPERCHECK_URL`, or stored API URL identifies the target and skips config loading. Otherwise, a valid config supplies its API URL; if config loading fails, diagnostics warn in human-readable output and fall back to the default API URL. `capabilities --online` verifies the current API context with one request and does not establish every server feature or permission.
 

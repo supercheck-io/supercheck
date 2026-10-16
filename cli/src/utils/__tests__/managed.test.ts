@@ -1,9 +1,9 @@
-import { afterEach, beforeEach, describe, expect, it } from '@jest/globals'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { tmpdir } from 'node:os'
+import { hostname, tmpdir } from 'node:os'
 import { ApiClient } from '../../api/client.js'
-import { managedState, deploymentLock, rejectAmbiguousCreates } from '../managed.js'
+import { managedState, deploymentLock, rejectAmbiguousCreates, verifyContext } from '../managed.js'
 import { redact, setRevealSecrets } from '../redact.js'
 let dir: string
 const context = { organization: { id: 'org' }, project: { id: 'project' } }
@@ -58,7 +58,69 @@ describe('target-bound deployment identity', () => {
     expect(managedState(client, context, path).resolve('monitor', 'Renamed')).toBe(a)
   })
 })
+describe('deployment lock recovery', () => {
+  it('takes over a lock whose owning process is gone and releases idempotently', () => {
+    const path = join(dir, 'supercheck.config.ts')
+    writeFileSync(join(dir, 'supercheck.state.json.lock'), `2147483646\n${hostname()}\n`)
+    const release = deploymentLock(path)
+    expect(readFileSync(join(dir, 'supercheck.state.json.lock'), 'utf8')).toBe(`${process.pid}\n${hostname()}\n`)
+    release()
+    expect(existsSync(join(dir, 'supercheck.state.json.lock'))).toBe(false)
+    expect(() => release()).not.toThrow()
+  })
+  it('keeps a lock held by a live or unidentifiable owner', () => {
+    const path = join(dir, 'supercheck.config.ts')
+    for (const owner of [`${process.pid}\n${hostname()}\n`, 'garbage', `2147483646\nsome-other-host\n`, '2147483646\n']) {
+      writeFileSync(join(dir, 'supercheck.state.json.lock'), owner)
+      expect(() => deploymentLock(path)).toThrow('DEPLOY_LOCKED')
+    }
+  })
+})
+describe('wrong-target guard', () => {
+  const config = (baseUrl?: string) => ({ project: { organization: 'acme', project: 'web' }, api: baseUrl ? { baseUrl } : undefined })
+  const respond = (target: ApiClient) => jest.spyOn(target, 'get').mockResolvedValue({ data: { organization: { id: 'o', slug: 'acme' }, project: { id: 'p', slug: 'web' } }, status: 200, headers: new Headers() })
+  it('refuses a config whose declared API origin differs from the active client', async () => {
+    const active = new ApiClient({ baseUrl: 'https://prod.example.com' })
+    const get = respond(active)
+    await expect(verifyContext(active, config('https://staging.example.com'))).rejects.toThrow('CONTEXT_MISMATCH')
+    expect(get).not.toHaveBeenCalled()
+  })
+  it('accepts a matching origin or a config without a declared origin', async () => {
+    const active = new ApiClient({ baseUrl: 'https://prod.example.com' })
+    respond(active)
+    await expect(verifyContext(active, config('https://prod.example.com/'))).resolves.toMatchObject({ apiUrl: expect.stringContaining('prod.example.com') })
+    await expect(verifyContext(active, config())).resolves.toBeDefined()
+  })
+})
 describe('transcript-safe output', () => {
+  it('keeps monitor URLs and non-credential headers visible while masking credential headers', () => {
+    const monitor = { type: 'http_request', target: 'https://example.com/health', config: { url: 'https://example.com/health', headers: { Accept: 'text/html', Authorization: 'Bearer SENTINEL', 'X-Api-Token': 'SENTINEL' } } }
+    const result = redact(monitor)
+    expect(result.config.url).toBe('https://example.com/health')
+    expect(result.config.headers.Accept).toBe('text/html')
+    expect(JSON.stringify(result)).not.toContain('SENTINEL')
+  })
+  it('does not rewrite script bodies or non-credential identity fields', () => {
+    const input = { script: "await page.goto('https://app.example.com/cb?token=abc&x=1')", username: 'bob' }
+    expect(redact(input)).toEqual(input)
+  })
+  it('masks signed monitor URLs and signature headers but not ordinary ones', () => {
+    const monitor = { type: 'http_request', config: { url: 'https://example.com/h?sig=SENTINEL&ok=1', headers: { 'X-Signature': 'SENTINEL', 'X-Auth': 'SENTINEL', Accept: 'text/html' } } }
+    const result = redact(monitor)
+    expect(JSON.stringify(result)).not.toContain('SENTINEL')
+    expect(result.config.headers.Accept).toBe('text/html')
+  })
+  it('masks basic-auth username inside provider configs', () => {
+    expect(JSON.stringify(redact({ type: 'webhook', config: { username: 'SENTINEL' } }))).not.toContain('SENTINEL')
+  })
+  it('masks credentials embedded in messages and in script bodies', () => {
+    const input = { message: 'Request to https://api.x.com/v1?token=SENTINEL failed', errorMessage: 'GET https://u:SENTINEL@host/ 500', script: "await page.goto('postgres://u:SENTINEL@db/x')" }
+    expect(JSON.stringify(redact(input))).not.toContain('SENTINEL')
+  })
+  it('masks common credential key variants', () => {
+    const input = { refreshToken: 'SENTINEL', webhookSecret: 'SENTINEL', smtpPassword: 'SENTINEL', 'X-Custom-Token': 'SENTINEL', smtpPass: 'SENTINEL', pwd: 'SENTINEL', cookies: 'SENTINEL' }
+    expect(JSON.stringify(redact(input))).not.toContain('SENTINEL')
+  })
   it('masks every provider credential field while preserving non-credential URLs', () => {
     const config = { webhookUrl: 'SENTINEL', discordWebhookUrl: 'SENTINEL', teamsWebhookUrl: 'SENTINEL', botToken: 'SENTINEL', url: 'https://example.com/SENTINEL', headers: { 'X-Custom': 'SENTINEL' } }
     const input = { type: 'webhook', config, url: 'https://example.com/public' }

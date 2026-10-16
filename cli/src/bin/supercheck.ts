@@ -81,7 +81,7 @@ const program = new Command()
 
     if (actionOpts.offline || ['init', 'login', 'logout', 'doctor'].includes(actionCommand.name()) || (actionCommand.name() === 'capabilities' && !actionOpts.online)) return
 
-    const diagnostic = ['whoami', 'health', 'locations', 'capabilities'].includes(actionCommand.name())
+    const diagnostic = ['whoami', 'health', 'locations', 'capabilities'].includes(actionCommand.name()) && (actionCommand.parent?.name() ?? '') === program.name()
     if (diagnostic) {
       const { config: loadEnv } = await import('dotenv')
       loadEnv({ quiet: true })
@@ -103,7 +103,7 @@ const program = new Command()
     const group = actionCommand.parent?.name()
     const sync = ['deploy', 'diff', 'destroy', 'pull'].includes(actionCommand.name())
     if (project && getToken() && !sync && !['config', 'supercheck'].includes(group ?? '') && actionCommand.name() !== 'health') {
-      await verifyContext(createAuthenticatedClient(), { project })
+      await verifyContext(createAuthenticatedClient(), { project }, true)
     }
   })
 
