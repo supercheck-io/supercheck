@@ -20,15 +20,15 @@ const INTERVALS = [5, 10, 15, 30, 60].filter(
 const PRESETS: { label: string; workload: Workload }[] = [
   {
     label: 'Small team',
-    workload: { checks: 5, intervalMinutes: 15, locations: 2, durationSeconds: 20 },
+    workload: { checks: 5, intervalMinutes: 15, durationSeconds: 20 },
   },
   {
     label: 'Growing product',
-    workload: { checks: 20, intervalMinutes: 10, locations: 3, durationSeconds: 30 },
+    workload: { checks: 20, intervalMinutes: 10, durationSeconds: 30 },
   },
   {
     label: 'Long user journeys',
-    workload: { checks: 20, intervalMinutes: 15, locations: 3, durationSeconds: 90 },
+    workload: { checks: 20, intervalMinutes: 15, durationSeconds: 90 },
   },
 ];
 
@@ -156,14 +156,6 @@ export function CostCalculator() {
               </select>
             </div>
             <Slider
-              label="Locations per check"
-              value={workload.locations}
-              min={1}
-              max={10}
-              unit={workload.locations === 1 ? 'location' : 'locations'}
-              onChange={(locations) => update({ locations })}
-            />
-            <Slider
               label="Average run time"
               value={workload.durationSeconds}
               min={5}
@@ -175,7 +167,7 @@ export function CostCalculator() {
 
           <p className="mt-6 text-xs text-fd-muted-foreground">
             {formatCount(result.runsPerMonth)} runs and {formatCount(result.playwrightMinutes)} browser
-            minutes per month. Retries are not included.
+            minutes per month from one location. Retries are not included.
           </p>
         </div>
 
@@ -223,9 +215,10 @@ export function CostCalculator() {
         </summary>
         <ul className="mt-3 list-disc space-y-2 pl-5">
           <li>
-            Runs per month = checks × runs per day × locations, over a 30-day month. Checkly
-            counts every location as its own run; we apply the same to every vendor so the
-            workloads match.
+            Runs per month = checks × runs per day, over a 30-day month, from one location.
+            Supercheck Cloud launches with a single EU location, and we price every vendor for
+            the same single-location workload. If more locations are enabled later, each location
+            counts as a separate run.
           </li>
           <li>
             Supercheck uses the lowest-cost of Plus ($49, up to 50 monitors) and Pro ($149, up
