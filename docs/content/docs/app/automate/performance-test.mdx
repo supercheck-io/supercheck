@@ -17,7 +17,7 @@ Run k6 performance tests to validate your application under load.
 
 ## Worker Availability
 
-K6 submissions require a live worker heartbeat before capacity is reserved. If the worker is offline or its heartbeat lookup fails, the API returns HTTP 503 with response code `EXECUTION_QUEUE_UNAVAILABLE`; retry after the worker connects. A newly started worker may need a short time to publish its first heartbeat.
+K6 submissions require a live worker heartbeat that advertises the requested K6 queue before capacity is reserved. If the worker is offline, its heartbeat lookup fails, or its latest heartbeat does not yet advertise that queue, the API returns HTTP 503 with response code `EXECUTION_QUEUE_UNAVAILABLE`. A newly started worker can publish its first heartbeat before it registers its K6 queues; wait for the next heartbeat, then retry.
 
 ## Example Script
 

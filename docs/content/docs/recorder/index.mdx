@@ -29,8 +29,8 @@ The extension requires Chrome or Edge with Manifest V3 side-panel support.
 
 ## Record a test
 
-1. Open the page you want to test.
-2. Open the extension, or press `Shift+Alt+R`.
+1. Open the originating Supercheck Playground and start a recording for the page you want to test.
+2. Click the Supercheck Recorder icon in the browser toolbar to begin recording, or press `Shift+Alt+R`.
 3. Interact with the page — the side panel displays the generated Playwright code.
 4. Review or edit the code.
 5. Select **Save** to send the test to the originating Supercheck Playground.
@@ -47,6 +47,7 @@ The extension requests debugger, tabs, storage, side-panel, scripting, and HTTP/
 |---|---|
 | Extension is not detected | Reload the extension and the Supercheck tab, using the same browser profile |
 | Connection fails | Confirm the instance URL uses HTTPS, then sign in and open an authenticated dashboard page in the same browser profile |
+| Extension stays **Not connected to Supercheck** after sign-in | The account already has an active recorder key, which is not re-issued automatically. Revoke it in Supercheck, then reload an authenticated page so the extension can store a new key |
 | Self-hosted instance is unreachable | Open the instance directly and verify its certificate and network access |
 | Recording does not start | Confirm the tab uses HTTP or HTTPS and no other debugger is attached |
 | Save is unavailable | Start the recording from Supercheck so the originating Playground context is available |
