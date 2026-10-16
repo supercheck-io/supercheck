@@ -156,6 +156,16 @@ describe('CLI agent workflows through the real entrypoint', () => {
     expect(JSON.parse(result.stdout).status).toBe('partial')
   })
 
+  it('refuses a pull when the server returns a test ID that is not a UUID, writing nothing', () => {
+    fixture()
+    const state = read(); state.resources['/api/tests'] = [{ id: 'a.b/../../../../evil', title: 'Evil', type: 'browser', script: 'x' }]
+    writeFileSync(resolve(cwd, 'fixture.json'), JSON.stringify(state))
+    const result = run('pull', '--tests-only', '--force')
+    expect(result.status).not.toBe(0)
+    expect(existsSync(resolve(cwd, '_supercheck_'))).toBe(false)
+    expect(existsSync(resolve(cwd, '..', 'evil.pw.ts'))).toBe(false)
+  })
+
   it('shows the individual failures when a human-mode pull is partial', () => {
     fixture('script-denied')
     const state = read(); state.resources['/api/tests'] = [{ id, title: 'Unavailable', type: 'browser' }]

@@ -14,7 +14,7 @@ import { CLIError, ExitCode, ApiRequestError } from '../utils/errors.js'
 import { fetchAllPages } from '../utils/resources.js'
 import { detectPackageManager, ensurePackageJson, installDependencies } from '../utils/package-manager.js'
 import { extractUuidFromFilename } from '../utils/slug.js'
-import { testRelativePath, testTypeToFolder } from '../utils/paths.js'
+import { isUuid, resolveWithin, testRelativePath, testTypeToFolder } from '../utils/paths.js'
 import { decodeStoredTestScript } from '../utils/script.js'
 
 import pc from '../utils/colors.js'
@@ -186,7 +186,11 @@ async function fetchContext(client: ApiClient): Promise<RemoteContext> {
 
 async function fetchTests(client: ApiClient): Promise<RemoteTest[]> {
   try {
-    return await fetchAllPages<RemoteTest>(client, '/api/tests', 'tests')
+    const tests = await fetchAllPages<RemoteTest>(client, '/api/tests', 'tests')
+    // IDs are used to build local file paths; reject the whole pull before any file is written.
+    const invalid = tests.find((test) => !isUuid(test.id))
+    if (invalid) throw new CLIError('Server returned a test with an invalid ID. No files were written.', ExitCode.ApiError)
+    return tests
   } catch (err) {
     if (err instanceof ApiRequestError && err.statusCode === 404) return []
     throw err
@@ -315,11 +319,11 @@ function pullTests(tests: RemoteTest[], cwd: string, summary: PullSummary, manag
       // Clean up old file if UUID exists but filename changed (e.g., test renamed)
       const existingFilename = existingByUuid.get(test.id)
       const currentFile = relPath
-      const filePath = resolve(cwd, relPath)
+      const filePath = resolveWithin(cwd, relPath)
       const written = writeIfChanged(filePath, script, summary)
 
       if (existingFilename && existingFilename !== currentFile) {
-        const oldPath = resolve(cwd, existingFilename)
+        const oldPath = resolveWithin(cwd, existingFilename)
         if (existsSync(oldPath)) {
           const backup = `${oldPath}.supercheck-backup.${randomUUID()}`
           writeFileSync(backup, readFileSync(oldPath), { mode: 0o600, flag: 'wx' })
@@ -1030,6 +1034,7 @@ export const pullCommand = new Command('pull')
                 { includeScript: 'true' },
               ),
             )
+            if (data?.id !== t.id) throw new CLIError(`Server returned a different test than requested (${t.id}).`, ExitCode.ApiError)
             fullTests.push(data)
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err)
