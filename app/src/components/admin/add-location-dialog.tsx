@@ -30,8 +30,10 @@ export function AddLocationDialog({ open, onOpenChange }: AddLocationDialogProps
   const [lat, setLat] = React.useState("");
   const [lon, setLon] = React.useState("");
   const [isDefault, setIsDefault] = React.useState(false);
-  const [supportsBrowser, setSupportsBrowser] = React.useState(true);
-  const [supportsK6, setSupportsK6] = React.useState(true);
+  // New locations start probe-only; heavy workloads are an explicit decision once
+  // the region has suitable execution capacity.
+  const [supportsBrowser, setSupportsBrowser] = React.useState(false);
+  const [supportsK6, setSupportsK6] = React.useState(false);
   const [sortOrder, setSortOrder] = React.useState("0");
   const reservedCodes = React.useMemo(
     () => new Set(["global", "all", "default", "none", "any", "local"]),
@@ -46,6 +48,8 @@ export function AddLocationDialog({ open, onOpenChange }: AddLocationDialogProps
     setLat("");
     setLon("");
     setIsDefault(false);
+    setSupportsBrowser(false);
+    setSupportsK6(false);
     setSortOrder("0");
   }, []);
 

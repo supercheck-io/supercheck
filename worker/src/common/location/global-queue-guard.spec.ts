@@ -80,4 +80,16 @@ describe('GlobalQueueCapabilityGuard', () => {
     await guard.check();
     expect(worker.pause).not.toHaveBeenCalled();
   });
+
+  it('retries pausing on the next check when pause fails', async () => {
+    const { guard, worker } = setup(
+      jest
+        .fn()
+        .mockResolvedValue([{ supports_browser: false, supports_k6: false }]),
+    );
+    worker.pause.mockRejectedValueOnce(new Error('redis down'));
+    await guard.check();
+    await guard.check();
+    expect(worker.pause).toHaveBeenCalledTimes(2);
+  });
 });

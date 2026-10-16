@@ -122,7 +122,9 @@ async function enqueueMonitorExecutionJobs(
       backoff: { type: 'exponential', delay: 5000 },
       removeOnComplete: COMPLETED_JOB_RETENTION,
       removeOnFail: FAILED_JOB_RETENTION,
-      priority: 10,
+      // No BullMQ priority: prioritized jobs live in the `:prioritized` sorted set,
+      // which KEDA's redis list triggers cannot see. Scheduled checks queue FIFO in
+      // `:wait`; immediate runs use lifo to go ahead of them (see queue.ts).
     }
   );
 }

@@ -631,7 +631,19 @@ export class CapacityManager {
         // Fail through the same path as a disappeared queue; never run elsewhere.
         if (location !== 'global') {
           const { isLocationCapable } = await import('./location-registry');
-          if (!(await isLocationCapable(location, 'k6'))) {
+          let capable = true;
+          try {
+            capable = await isLocationCapable(location, 'k6');
+          } catch (capabilityError) {
+            // A transient lookup failure must not kill a queued run. The worker
+            // re-checks capability per job (and retries on DB errors), so this
+            // early check is best-effort.
+            logger.warn(
+              { err: capabilityError, location, runId: jobData.runId },
+              'Could not verify k6 capability during promotion; deferring to worker check'
+            );
+          }
+          if (!capable) {
             throw new Error(
               `Location "${location}" no longer supports k6 execution; job cannot be promoted`
             );

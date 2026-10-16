@@ -51,7 +51,10 @@ import {
   subscriptionService,
 } from "@/lib/services/subscription-service";
 import { polarUsageService } from "@/lib/services/polar-usage.service";
-import { assertProjectSupportsBrowser } from "@/lib/location-registry";
+import {
+  assertProjectSupportsBrowser,
+  resolveProjectK6Location,
+} from "@/lib/location-registry";
 import { processScheduledJob } from "./job-scheduler";
 
 const scheduledJob = {
@@ -186,6 +189,58 @@ describe("scheduled execution admission", () => {
         trigger: "schedule",
       }),
     );
+  });
+
+  it("records a failed k6 run when no k6-capable location exists for the project", async () => {
+    const { LocationWorkloadUnavailableError } = jest.requireMock(
+      "@/lib/location-registry",
+    );
+    (db.select as jest.Mock)
+      .mockReturnValueOnce(
+        selectRows([
+          {
+            id: "job-1",
+            projectId: "project-1",
+            organizationId: "org-1",
+            jobType: "k6",
+          },
+        ]),
+      )
+      .mockReturnValueOnce(selectRows([]));
+    (resolveProjectK6Location as jest.Mock).mockRejectedValueOnce(
+      new LocationWorkloadUnavailableError(),
+    );
+    const values = jest.fn().mockResolvedValue(undefined);
+    (db.insert as jest.Mock).mockReturnValue({ values });
+
+    await expect(processScheduledJob(scheduledJob)).resolves.toEqual({
+      success: true,
+    });
+    expect(values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "failed",
+        metadata: expect.objectContaining({ executionEngine: "k6" }),
+      }),
+    );
+  });
+
+  it("rethrows unexpected location resolution errors so the scheduler retries", async () => {
+    (db.select as jest.Mock)
+      .mockReturnValueOnce(
+        selectRows([
+          {
+            id: "job-1",
+            projectId: "project-1",
+            organizationId: "org-1",
+            jobType: "k6",
+          },
+        ]),
+      )
+      .mockReturnValueOnce(selectRows([]));
+    (resolveProjectK6Location as jest.Mock).mockRejectedValueOnce(
+      new Error("db down"),
+    );
+    await expect(processScheduledJob(scheduledJob)).rejects.toThrow("db down");
   });
 
   it("rethrows unexpected billing dependency errors for scheduler retry", async () => {

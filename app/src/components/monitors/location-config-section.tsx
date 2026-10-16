@@ -448,10 +448,12 @@ function LocationConfigSectionComponent({
 export const LocationConfigSection = React.memo(
   LocationConfigSectionComponent,
   (prevProps, nextProps) => {
-    // Only re-render if value actually changed (deep comparison)
+    // Only re-render if value, disabled state or monitor type changed. The type
+    // decides which locations are selectable, so it must not be ignored.
     return (
       JSON.stringify(prevProps.value) === JSON.stringify(nextProps.value) &&
-      prevProps.disabled === nextProps.disabled
+      prevProps.disabled === nextProps.disabled &&
+      prevProps.monitorType === nextProps.monitorType
     );
   }
 );

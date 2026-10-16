@@ -158,7 +158,11 @@ export async function findLocationsOutsideProject(
   locationConfig: LocationConfig | null | undefined,
   projectId: string
 ): Promise<string[]> {
-  const selected = locationConfig?.locations ?? [];
+  // A disabled location config is inert (the wizard stores the single available
+  // code with enabled:false), so a code that later becomes unavailable must not
+  // block unrelated edits. It is re-resolved to the project's defaults at runtime.
+  if (!locationConfig?.enabled) return [];
+  const selected = locationConfig.locations ?? [];
   if (selected.length === 0) return [];
   const allowed = new Set(await getProjectAvailableLocationCodes(projectId));
   return selected.filter((code) => !allowed.has(code));

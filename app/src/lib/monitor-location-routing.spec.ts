@@ -202,5 +202,8 @@ describe("monitor-location-routing workload capabilities", () => {
       findLocationsOutsideProject(config(["eu-central", "us-east", "nowhere"]), "p1")
     ).resolves.toEqual(["us-east", "nowhere"]);
     await expect(findLocationsOutsideProject(null, "p1")).resolves.toEqual([]);
+    await expect(
+      findLocationsOutsideProject({ ...config(["us-east"]), enabled: false }, "p1")
+    ).resolves.toEqual([]);
   });
 });

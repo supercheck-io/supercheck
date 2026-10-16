@@ -1766,7 +1766,10 @@ export async function addMonitorExecutionJobToQueue(
     }
 
     return await enqueueMonitorLocationJobs(monitorExecutionQueue, task, enqueuedLocations, {
-      priority: 1,
+      // lifo keeps immediate runs ahead of queued scheduled checks while leaving the
+      // job in the `:wait` list that the KEDA triggers measure (priority would move
+      // it to `:prioritized`, which they cannot see).
+      lifo: true,
       attempts: 3,
       backoff: { type: "exponential", delay: 5000 },
       removeOnComplete: { age: 3600 },

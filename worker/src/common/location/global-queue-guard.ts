@@ -59,14 +59,15 @@ export class GlobalQueueCapabilityGuard {
       );
       if (this.stopped) return;
       if (!allowed && !this.paused) {
-        this.paused = true;
         await worker.pause(true);
+        // Only after success: a failed pause must be retried by the next check.
+        this.paused = true;
         this.logger.warn(
           `Location "${this.location}" does not support ${this.workload} execution; paused its global queue consumer`,
         );
       } else if (allowed && this.paused) {
-        this.paused = false;
         worker.resume();
+        this.paused = false;
         this.logger.log(
           `Location "${this.location}" supports ${this.workload} execution again; resumed its global queue consumer`,
         );
