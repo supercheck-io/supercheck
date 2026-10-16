@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { ChevronDown } from 'lucide-react';
 import { SiteHeader } from '../../lib/layout.shared';
 import { CostCalculator } from '../../components/pricing/cost-calculator';
+import { CapabilityComparison } from '../../components/pricing/capability-comparison';
 
 type Feature = string | { text: string; hint: string };
 
@@ -34,6 +35,7 @@ const plans: {
         features: [
             '50 monitors',
             '5 status pages with custom domains',
+            { text: '1 EU monitoring location', hint: 'More regions planned' },
             { text: '3,000 Playwright minutes/month', hint: '≈ 36,000 five-second test runs' },
             '30,000 k6 VU minutes/month',
             '1,000 AI credits/month',
@@ -54,6 +56,7 @@ const plans: {
         features: [
             '200 monitors',
             '20 status pages with custom domains',
+            { text: '1 EU monitoring location', hint: 'More regions planned' },
             { text: '10,000 Playwright minutes/month', hint: '≈ 120,000 five-second test runs' },
             '100,000 k6 VU minutes/month',
             '5,000 AI credits/month',
@@ -71,6 +74,7 @@ const plans: {
         description: 'Get in touch to discuss your requirements',
         features: [
             'Custom monitor allowance',
+            'Custom monitoring locations',
             'Custom Playwright & k6 allowances',
             'Custom AI credit pool or bring-your-own-provider',
             'Custom AI SRE investigation volume',
@@ -119,6 +123,7 @@ const comparisonFeatures: { category: string; items: ComparisonItem[] }[] = [
             { name: 'Queued jobs', plus: '50', pro: '100', enterprise: CUSTOM },
             { name: 'Minimum check interval', plus: '1 minute', pro: '1 minute', enterprise: CUSTOM },
             { name: 'Minimum synthetic check interval', plus: '5 minutes', pro: '5 minutes', enterprise: CUSTOM },
+            { name: 'Monitoring locations', plus: '1 (EU)', pro: '1 (EU)', enterprise: CUSTOM },
         ]
     },
     {
@@ -191,8 +196,12 @@ const faqs = [
         answer: 'Yes. Projects in an organization share one subscription, usage allowances, member limits, and spending controls, so creating another project does not require another plan. Only the organization owner manages billing.',
     },
     {
+        question: 'Where do Cloud checks run?',
+        answer: 'Supercheck Cloud launches with one EU monitoring location. We plan to add more regions. Enterprise can use custom locations, and self-hosted deployments can run checks wherever you deploy.',
+    },
+    {
         question: 'How are browser minutes measured?',
-        answer: 'Playwright tests and synthetic monitors share the browser-minute allowance. Execution time is measured in milliseconds and rounded to four decimal places in minutes per run, with no whole-minute minimum. A five-second run uses 0.0833 minutes. Each location and executed retry adds usage, including failed or canceled executions that used compute. HTTP, ping, and port checks do not use browser minutes.',
+        answer: 'Playwright tests and synthetic monitors share the browser-minute allowance. Execution time is measured in milliseconds and rounded to four decimal places in minutes per run, with no whole-minute minimum. A five-second run uses 0.0833 minutes. If more locations are enabled, each location adds usage, and each executed retry adds usage, including failed or canceled executions that used compute. HTTP, ping, and port checks do not use browser minutes.',
     },
     {
         question: 'How is k6 usage measured?',
@@ -337,6 +346,8 @@ export default function PricingPage() {
                 </aside>
 
                 <CostCalculator />
+
+                <CapabilityComparison />
 
                 {/* Overage Pricing */}
                 <div className="mb-20">

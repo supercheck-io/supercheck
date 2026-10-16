@@ -9,7 +9,6 @@ import {
 export interface Workload {
   checks: number;
   intervalMinutes: number;
-  locations: number;
   durationSeconds: number;
 }
 
@@ -44,9 +43,8 @@ export function formatUsd(value: number): string {
 
 export function estimateCosts(workload: Workload): EstimateResult {
   const executionsPerCheck = MINUTES_PER_MONTH / workload.intervalMinutes;
-  const runsPerMonth = Math.round(
-    workload.checks * executionsPerCheck * workload.locations,
-  );
+  // Supercheck Cloud launches with a single EU location, so one run per check.
+  const runsPerMonth = Math.round(workload.checks * executionsPerCheck);
   const playwrightMinutes = (runsPerMonth * workload.durationSeconds) / 60;
   const notices: string[] = [];
   const estimates: Estimate[] = [];
@@ -125,7 +123,7 @@ export function estimateCosts(workload: Workload): EstimateResult {
 
   // Average concurrent executions if every run starts on schedule.
   const averageConcurrency =
-    (workload.checks * workload.locations * workload.durationSeconds) /
+    (workload.checks * workload.durationSeconds) /
     (workload.intervalMinutes * 60);
   if (supercheck && averageConcurrency > 5) {
     notices.push(
