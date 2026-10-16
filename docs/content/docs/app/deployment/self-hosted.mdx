@@ -178,7 +178,7 @@ sudo chmod 0440 /etc/rancher/k3s/supercheck-worker.kubeconfig
 
 ## Monitor Check Availability
 
-Checks depend on connected workers. When multiple execution targets are configured and enabled for a monitor, checks are queued only to connected targets. Overall status and alert thresholds still evaluate the full configured set: missing results cannot satisfy **All**, the majority uses the configured set, and an incomplete cycle is stored as **Down**. An offline target does not switch a partial cycle to per-result thresholding. If worker-registry access fails, affected monitors remain **Down** until checks resume. Review individual check results even when the overall status is **Up**.
+Checks depend on connected workers. When multiple execution targets are configured and enabled for a monitor, checks are queued only to connected targets. Overall status and alert thresholds still evaluate the full configured set. Missing results cannot satisfy **All**; under **Any**, one successful connected result produces **Up**; and **Majority** produces **Up** when the successful results meet the configured threshold. Otherwise, the cycle is stored as **Down**. An offline target does not switch a partial cycle to per-result thresholding. If worker-registry access fails, affected monitors remain **Down** until checks resume. Review individual check results even when the overall status is **Up**.
 
 ## Next Steps
 

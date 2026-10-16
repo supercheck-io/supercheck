@@ -111,7 +111,7 @@ flowchart TB
     style Sandbox fill:#059669,stroke:#047857,color:#fff
 ```
 
-The application stores platform data in PostgreSQL, schedules work through Redis and BullMQ, and keeps execution artifacts in S3-compatible storage (RustFS in the bundled stack). Workers consume execution queues and run Playwright or k6 workloads in isolated execution environments. Add workers to increase execution capacity.
+The application stores platform data in PostgreSQL, schedules work through Redis and BullMQ, and keeps execution artifacts in S3-compatible storage (RustFS in the bundled stack). Workers consume execution queues and run Playwright or k6 workloads in isolated execution environments. Increase `WORKER_REPLICAS` and set `RUNNING_CAPACITY` to the same value to increase execution capacity.
 
 ## Repository layout
 

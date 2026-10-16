@@ -110,7 +110,10 @@ In [Super Admin](/docs/app/admin/super-admin#locations), add and enable executio
 
 ```dotenv
 WORKER_LOCATION=worker-main
+RUNNING_CAPACITY=3
 ```
+
+Set `RUNNING_CAPACITY` to the total number of workers across all servers (3 in this example); the App admits at most that many concurrent runs.
 
 In its Compose file, replace the PostgreSQL, Redis, and RustFS localhost port bindings with the server's **private VPN address**:
 
