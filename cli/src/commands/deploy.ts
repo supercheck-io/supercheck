@@ -101,6 +101,12 @@ async function applyChange(
         if (typeof config.testId === 'string') config.testId = opts.state.resolve('test', config.testId)
         rawBody.config = config
       }
+      // An unset environment variable evaluates to '' in a pulled config. Never send that as a secret's value: on update
+      // it would overwrite the stored secret with an empty one, and on create it would store nothing useful.
+      if (change.type === 'variable' && rawBody.isSecret === true && (rawBody.value === undefined || rawBody.value === '')) {
+        if (change.action === 'create') throw new CLIError(`Secret variable "${change.name}" has no value. Set its environment variable before deploying.`, ExitCode.ConfigError)
+        delete rawBody.value
+      }
       body = prepareBodyForApi(change.type, rawBody)
     }
     switch (change.action) {
