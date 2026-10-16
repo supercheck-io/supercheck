@@ -899,6 +899,10 @@ export const pullCommand = new Command('pull')
       if (!matchGlob(candidate, pattern)) throw new CLIError(`Cannot import test into custom pattern "${pattern}". Use a compatible testMatch before pulling scripts. No files were written.`, ExitCode.ConfigError)
       managedPaths.set(test.id, candidate)
     }
+    // A local testMatch can point outside the project; refuse up front, before any prompt or write.
+    for (const path of [...managedPaths.values(), ...obsoletePaths.values()]) {
+      try { resolveWithin(cwd, path) } catch { throw new CLIError(`Test path "${path}" resolves outside the project directory or through a symlink. No files were written.`, ExitCode.ConfigError) }
+    }
 
     logger.debug(`Found: ${tests.length} tests, ${monitors.length} monitors, ${jobs.length} jobs, ${variables.length} variables, ${tags.length} tags, ${notificationProviders.length} notification providers, ${statusPages.length} status pages`)
 
