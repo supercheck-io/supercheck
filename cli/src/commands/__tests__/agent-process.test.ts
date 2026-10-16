@@ -244,6 +244,14 @@ describe('CLI agent workflows through the real entrypoint', () => {
     expect(read().requests.every((request) => request.method === 'GET')).toBe(true)
   })
 
+  it('skips the project-context request for read-only commands but still guards writes', () => {
+    fixture('wrong-context')
+    const list = run('monitor', 'list')
+    expect(list.status).toBe(0)
+    expect(read().requests.filter((request) => request.path === '/api/context')).toHaveLength(0)
+    expect(run('monitor', 'delete', id, '--force').status).toBe(3)
+  })
+
   it('normalizes synthetic-monitor references before the second deployment', () => {
     const path = '_supercheck_/playwright/homepage.pw.ts'; mkdirSync(resolve(cwd, '_supercheck_/playwright'), { recursive: true })
     writeFileSync(resolve(cwd, path), "import {test} from '@playwright/test'; test('home',async()=>{});")

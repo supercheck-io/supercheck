@@ -34,6 +34,10 @@ import { DependencyError } from '../utils/deps.js'
 import { CLI_VERSION } from '../version.js'
 import { createAuthenticatedClient, getResolvedProject, resolveAndSetConfigBaseUrl } from '../api/authenticated-client.js'
 
+// Verbs that only read or observe. Everything else is checked against the configured project before it runs, so a newly
+// added command is guarded by default; these skip the extra /api/context request and cannot fail on a stale config.
+const READ_ONLY_VERBS = new Set(['list', 'get', 'status', 'stream', 'wait', 'results', 'stats', 'timeline', 'history', 'permissions', 'dependencies', 'health'])
+
 const program = new Command()
   .name('supercheck')
   .description('Open-source testing, monitoring, and AI SRE — as code')
@@ -102,7 +106,7 @@ const program = new Command()
     const project = getResolvedProject()
     const group = actionCommand.parent?.name()
     const sync = ['deploy', 'diff', 'destroy', 'pull'].includes(actionCommand.name())
-    if (project && getToken() && !sync && !['config', 'supercheck'].includes(group ?? '') && actionCommand.name() !== 'health') {
+    if (project && getToken() && !sync && !READ_ONLY_VERBS.has(actionCommand.name()) && !['config', 'supercheck'].includes(group ?? '')) {
       await verifyContext(createAuthenticatedClient(), { project }, true)
     }
   })
