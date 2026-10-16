@@ -146,9 +146,9 @@ export const deployCommand = new Command('deploy')
   .option('--no-delete', 'Do not delete remote resources missing from config')
   .action(async (options: { config?: string; dryRun?: boolean; force?: boolean; delete?: boolean }) => {
     const cwd = process.cwd()
-    const { config, configPath } = await loadConfig({ cwd, configPath: options.config })
+    const { config, configPath, declaredBaseUrl } = await loadConfig({ cwd, configPath: options.config })
     const client = createAuthenticatedClient(config.api?.baseUrl)
-    const context = await verifyContext(client, config)
+    const context = await verifyContext(client, config, false, declaredBaseUrl)
     logger.info(`Target: ${describeTarget(context)}`)
     const release = options.dryRun ? () => undefined : deploymentLock(configPath)
     try {

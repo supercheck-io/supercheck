@@ -18,10 +18,10 @@ export const diffCommand = new Command('diff')
   .option('--delete', 'Delete ALL remote resources absent from config (including resources created elsewhere)', false)
   .action(async (options: { config?: string; delete?: boolean }) => {
     const cwd = process.cwd()
-    const { config, configPath } = await loadConfig({ cwd, configPath: options.config })
+    const { config, configPath, declaredBaseUrl } = await loadConfig({ cwd, configPath: options.config })
     const client = createAuthenticatedClient(config.api?.baseUrl)
 
-    const context = await verifyContext(client, config)
+    const context = await verifyContext(client, config, false, declaredBaseUrl)
     logger.info(`Target: ${describeTarget(context)}`)
   const state = managedState(client, context, configPath)
   logger.newline()

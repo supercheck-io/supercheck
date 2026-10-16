@@ -844,7 +844,7 @@ export const pullCommand = new Command('pull')
     logger.header('Pulling from Supercheck cloud...')
     logger.newline()
 
-    if (existing) await verifyContext(client, existing.config, true)
+    if (existing) await verifyContext(client, existing.config, true, existing.declaredBaseUrl)
 
     // ── Fetch project/org context and all remote resources in parallel ──
     const [context, tests, monitors, jobs, variables, tags, notificationProviders, statusPages] = await withSpinner(

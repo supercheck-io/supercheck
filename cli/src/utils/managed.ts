@@ -19,12 +19,15 @@ const originOf = (url: string): string => { try { return new URL(url).origin } c
 export function describeTarget(context: ProjectContext): string {
   return `${context.apiUrl} · organization ${context.organization.slug ?? context.organization.id} · project ${context.project.slug ?? context.project.id}`
 }
-export async function verifyContext(client: ApiClient, config: Pick<SupercheckConfig, 'project'> & { api?: { baseUrl?: string } }, allowPlaceholders = false): Promise<ProjectContext> {
-  // A stored `login --url` or SUPERCHECK_URL overrides config; refuse to apply a config to a server it does not declare.
-  const declared = config.api?.baseUrl
+/** Network-free: refuse a config that declares a different API origin than the active client (env or stored login URL wins). */
+export function assertDeclaredOrigin(client: ApiClient, declared?: string | null): void {
   if (declared && originOf(declared) !== originOf(client.getBaseUrl())) {
     throw new CLIError(`CONTEXT_MISMATCH: Config api.baseUrl "${declared}" does not match the active API "${client.getBaseUrl()}" (from SUPERCHECK_URL or a stored login --url). Align them before syncing.`, ExitCode.ConfigError)
   }
+}
+// `declaredBaseUrl` is the config file's own api.baseUrl; the loaded config's value already has SUPERCHECK_URL applied.
+export async function verifyContext(client: ApiClient, config: Pick<SupercheckConfig, 'project'>, allowPlaceholders = false, declaredBaseUrl?: string | null): Promise<ProjectContext> {
+  assertDeclaredOrigin(client, declaredBaseUrl)
   const { data } = await client.get<ProjectContext>('/api/context')
   if (!data.organization?.id || !data.project?.id) throw new CLIError('Invalid project context response.', ExitCode.ApiError)
   for (const key of ['organization', 'project'] as const) {

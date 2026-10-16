@@ -252,6 +252,23 @@ describe('CLI agent workflows through the real entrypoint', () => {
     expect(run('monitor', 'delete', id, '--force').status).toBe(3)
   })
 
+  it('keeps the declared API origin check for read-only commands', () => {
+    fixture()
+    config({ api: { baseUrl: 'https://other.example.com' } })
+    const result = run('monitor', 'list')
+    expect(result.status).toBe(3)
+    expect(read().requests).toEqual([])
+  })
+
+  it('refuses to sync when the config declares a different API origin than SUPERCHECK_URL', () => {
+    fixture()
+    config({ api: { baseUrl: 'https://other.example.com' } })
+    const result = run('deploy', '--force')
+    expect(result.status).toBe(3)
+    expect(JSON.parse(result.stderr).code).toBe('CONTEXT_MISMATCH')
+    expect(read().requests.filter((request) => request.method !== 'GET')).toEqual([])
+  })
+
   it('normalizes synthetic-monitor references before the second deployment', () => {
     const path = '_supercheck_/playwright/homepage.pw.ts'; mkdirSync(resolve(cwd, '_supercheck_/playwright'), { recursive: true })
     writeFileSync(resolve(cwd, path), "import {test} from '@playwright/test'; test('home',async()=>{});")
