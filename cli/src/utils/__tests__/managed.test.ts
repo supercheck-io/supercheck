@@ -77,19 +77,19 @@ describe('deployment lock recovery', () => {
   })
 })
 describe('wrong-target guard', () => {
-  const config = (baseUrl?: string) => ({ project: { organization: 'acme', project: 'web' }, api: baseUrl ? { baseUrl } : undefined })
+  const config = { project: { organization: 'acme', project: 'web' } }
   const respond = (target: ApiClient) => jest.spyOn(target, 'get').mockResolvedValue({ data: { organization: { id: 'o', slug: 'acme' }, project: { id: 'p', slug: 'web' } }, status: 200, headers: new Headers() })
   it('refuses a config whose declared API origin differs from the active client', async () => {
     const active = new ApiClient({ baseUrl: 'https://prod.example.com' })
     const get = respond(active)
-    await expect(verifyContext(active, config('https://staging.example.com'))).rejects.toThrow('CONTEXT_MISMATCH')
+    await expect(verifyContext(active, config, false, 'https://staging.example.com')).rejects.toThrow('CONTEXT_MISMATCH')
     expect(get).not.toHaveBeenCalled()
   })
   it('accepts a matching origin or a config without a declared origin', async () => {
     const active = new ApiClient({ baseUrl: 'https://prod.example.com' })
     respond(active)
-    await expect(verifyContext(active, config('https://prod.example.com/'))).resolves.toMatchObject({ apiUrl: expect.stringContaining('prod.example.com') })
-    await expect(verifyContext(active, config())).resolves.toBeDefined()
+    await expect(verifyContext(active, config, false, 'https://prod.example.com/')).resolves.toMatchObject({ apiUrl: expect.stringContaining('prod.example.com') })
+    await expect(verifyContext(active, config)).resolves.toBeDefined()
   })
 })
 describe('transcript-safe output', () => {

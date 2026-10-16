@@ -5,8 +5,11 @@ import type { ApiClient } from './client.js'
 import { logger } from '../utils/logger.js'
 
 let resolvedConfigBaseUrl: string | null = null
+let resolvedDeclaredBaseUrl: string | null = null
 let resolvedProject: { organization: string; project: string } | null = null
 export function getResolvedProject() { return resolvedProject }
+
+export function getResolvedDeclaredBaseUrl(): string | null { return resolvedDeclaredBaseUrl }
 
 export function getResolvedConfigBaseUrl(): string | null {
   return resolvedConfigBaseUrl
@@ -28,12 +31,14 @@ async function resolveConfigBaseUrl(options: LoadConfigOptions = {}): Promise<st
   if (options.configPath) {
     const result = await loadConfig(options)
     resolvedProject = result.config.project
+    resolvedDeclaredBaseUrl = result.declaredBaseUrl ?? null
     return result.config.api?.baseUrl ?? null
   }
 
   try {
     const result = await tryLoadConfig(options)
     resolvedProject = result?.config.project ?? null
+    resolvedDeclaredBaseUrl = result?.declaredBaseUrl ?? null
     return result?.config?.api?.baseUrl ?? null
   } catch (err) {
     logger.debug(

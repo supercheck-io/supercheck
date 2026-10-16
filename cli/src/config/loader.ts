@@ -130,6 +130,8 @@ export interface LoadConfigOptions {
 export interface LoadConfigResult {
   config: SupercheckConfig
   configPath: string | null
+  /** `api.baseUrl` as written in the config files, before SUPERCHECK_URL overrides it; used for the wrong-target guard. */
+  declaredBaseUrl?: string
 }
 
 /**
@@ -163,6 +165,7 @@ export async function loadConfig(options: LoadConfigOptions = {}): Promise<LoadC
   }
 
   if (options.offline && !config.project) config = { ...config, project: { organization: 'local', project: 'local' } }
+  const declaredBaseUrl = config.api?.baseUrl
   config = applyEnvOverrides(config)
 
   validateNoSecrets(config)
@@ -181,6 +184,7 @@ export async function loadConfig(options: LoadConfigOptions = {}): Promise<LoadC
   return {
     config: parsed.data,
     configPath,
+    declaredBaseUrl,
   }
 }
 

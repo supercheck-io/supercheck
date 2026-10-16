@@ -1,4 +1,4 @@
-import { verifyContext } from '../utils/managed.js'
+import { assertDeclaredOrigin, verifyContext } from '../utils/managed.js'
 import { getToken, getStoredBaseUrl } from '../auth/store.js'
 import { skillsCommand, schemaCommand, capabilitiesCommand } from '../commands/skills.js'
 import { redact, redactText, setRevealSecrets } from '../utils/redact.js'
@@ -32,7 +32,11 @@ import { logger, getOutputCount, setMachineMode, setQuietMode, setLogLevel } fro
 import { ApiRequestError, CLIError, ExitCode } from '../utils/errors.js'
 import { DependencyError } from '../utils/deps.js'
 import { CLI_VERSION } from '../version.js'
-import { createAuthenticatedClient, getResolvedProject, resolveAndSetConfigBaseUrl } from '../api/authenticated-client.js'
+import { createAuthenticatedClient, getResolvedDeclaredBaseUrl, getResolvedProject, resolveAndSetConfigBaseUrl } from '../api/authenticated-client.js'
+
+// Verbs that only read or observe. Everything else is checked against the configured project before it runs, so a newly
+// added command is guarded by default; these skip the extra /api/context request and cannot fail on a stale config.
+const READ_ONLY_VERBS = new Set(['list', 'get', 'status', 'stream', 'wait', 'results', 'stats', 'timeline', 'history', 'permissions', 'dependencies', 'health'])
 
 const program = new Command()
   .name('supercheck')
@@ -102,8 +106,11 @@ const program = new Command()
     const project = getResolvedProject()
     const group = actionCommand.parent?.name()
     const sync = ['deploy', 'diff', 'destroy', 'pull'].includes(actionCommand.name())
-    if (project && getToken() && !sync && !['config', 'supercheck'].includes(group ?? '') && actionCommand.name() !== 'health') {
-      await verifyContext(createAuthenticatedClient(), { project }, true)
+    if (project && getToken() && !sync && !['config', 'supercheck'].includes(group ?? '')) {
+      const client = createAuthenticatedClient()
+      // Reads skip the /api/context request but still must not run against a server the config does not declare.
+      if (READ_ONLY_VERBS.has(actionCommand.name())) assertDeclaredOrigin(client, getResolvedDeclaredBaseUrl())
+      else await verifyContext(client, { project }, true, getResolvedDeclaredBaseUrl())
     }
   })
 

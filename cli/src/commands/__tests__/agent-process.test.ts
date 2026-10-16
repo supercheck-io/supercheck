@@ -279,6 +279,31 @@ describe('CLI agent workflows through the real entrypoint', () => {
     expect(read().requests.every((request) => request.method === 'GET')).toBe(true)
   })
 
+  it('skips the project-context request for read-only commands but still guards writes', () => {
+    fixture('wrong-context')
+    const list = run('monitor', 'list')
+    expect(list.status).toBe(0)
+    expect(read().requests.filter((request) => request.path === '/api/context')).toHaveLength(0)
+    expect(run('monitor', 'delete', id, '--force').status).toBe(3)
+  })
+
+  it('keeps the declared API origin check for read-only commands', () => {
+    fixture()
+    config({ api: { baseUrl: 'https://other.example.com' } })
+    const result = run('monitor', 'list')
+    expect(result.status).toBe(3)
+    expect(read().requests).toEqual([])
+  })
+
+  it('refuses to sync when the config declares a different API origin than SUPERCHECK_URL', () => {
+    fixture()
+    config({ api: { baseUrl: 'https://other.example.com' } })
+    const result = run('deploy', '--force')
+    expect(result.status).toBe(3)
+    expect(JSON.parse(result.stderr).code).toBe('CONTEXT_MISMATCH')
+    expect(read().requests.filter((request) => request.method !== 'GET')).toEqual([])
+  })
+
   it('never sends an empty secret value, so an unset environment variable cannot wipe a stored secret', () => {
     fixture()
     const state = read(); state.resources['/api/variables'] = [{ id, key: 'API_KEY', value: '', isSecret: true, description: 'old' }]
