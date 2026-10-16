@@ -36,7 +36,7 @@ flowchart LR
 
 ## API and trigger keys
 
-- CLI/session API tokens, test keys, and job trigger keys are different credential classes. Validate type, prefix/current format, expiry, enabled state, scope, and allowed operation.
+- CLI/session API tokens (`sck_live_`/`sck_test_`) and job trigger keys (`sck_trigger_`, plus legacy `job_` formats) are different credential classes. Validate type, prefix/current format, expiry, enabled state, scope, and allowed operation.
 - Store credential material according to the current one-time-display/hash design; never make plaintext recoverable through list/get APIs.
 - Token lists expose safe metadata only. Creation returns a plaintext token only at the intended one-time boundary.
 - Rate-limit authentication and credential-sensitive endpoints and return useful retry metadata where supported.
@@ -44,7 +44,7 @@ flowchart LR
 
 ## Project variables and encryption
 
-- Encrypt secret values server-side with the current scoped encryption context and split keys.
+- Encrypt secret values server-side with the current scoped encryption context (single `SECRET_ENCRYPTION_KEY` with HKDF-derived per-context keys; no split-key configuration exists today).
 - List/read APIs return redacted metadata for secrets. Decryption occurs only immediately before authorized isolated execution.
 - Never enqueue decrypted variables or persist them in capacity/job payloads.
 - File variables use the supported upload path and size/type controls. They are not serialized into CLI config.

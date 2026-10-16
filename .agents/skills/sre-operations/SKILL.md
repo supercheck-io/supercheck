@@ -21,6 +21,7 @@ flowchart LR
 - AI SRE source is split between `app/src/sre`, `app/src/lib/sre`, API routes, components, and matching worker schema/types.
 - Incidents, services, connectors, private agents, conversations, messages, evidence, tool calls, and usage remain scoped to their owning organization/project.
 - Authorization is enforced server-side for every tool call and persisted resource. Model instructions and UI visibility are not authorization.
+- Automatic alert triage is opt-in: it runs only when `SRE_AUTOMATION_ENABLED=true|1`; `SRE_ENABLED=false` disables all SRE work. Keep the app and worker gates in sync.
 - Prefer read-only evidence gathering. Mutations require explicit user authority, least-privilege credentials, bounded targets, audit records, and observable outcomes.
 - Kubernetes access uses namespace-scoped service accounts and allowed resources/actions; never grant `cluster-admin`.
 - Preserve stable assistant/user message identity through streaming, persistence, polling/reconciliation, retries, and reloads.
@@ -31,13 +32,13 @@ flowchart LR
 - Tool schemas validate inputs and bound output size. Treat provider/tool output as untrusted evidence.
 - Cancellation and timeout propagate through model streams, tools, polling, persistence, and UI state.
 - Retry only transient/idempotent operations; prevent duplicate messages, actions, tool records, usage events, and charges.
-- Provider fallback must preserve tenant scope, safety policy, model allowlists, usage accounting, and error semantics.
+- Provider fallback (including deterministic evidence-brief fallbacks) must preserve tenant scope, safety policy, configured model selection, usage accounting, and error semantics.
 - Redact secrets and sensitive telemetry before model invocation and persisted transcripts.
 
 ## Resilience
 
 - External calls have explicit connection/operation timeouts and abort handling.
-- Use exponential backoff with jitter for safe transient retries and circuit breakers for sustained dependency failure.
+- Use exponential backoff with jitter for safe transient retries; no circuit-breaker abstraction exists yet, so introduce one deliberately if sustained dependency failure needs containment.
 - Fallbacks degrade explicitly and never bypass authentication, authorization, capacity, billing, or audit controls.
 - Redis connections intentionally survive failover; QueueEvents blocking connections remain isolated from normal command timeout behavior.
 - Distributed schedulers/locks use ownership tokens and bounded leases so one instance cannot release another’s lock.
@@ -52,7 +53,7 @@ flowchart LR
 
 ## Environment configuration
 
-- Environment access is centralized through current config/schema helpers where available.
+- Environment access is direct `process.env` reads (worker uses `@nestjs/config`); there is no central schema helper today.
 - Keep app, worker, deployment manifests, examples, docs, and health/config diagnostics synchronized.
 - Validate required production values and fail closed when security-critical settings are missing.
 - Never expose secrets through health endpoints, startup logs, client-prefixed variables, build output, or configuration APIs.
@@ -64,7 +65,8 @@ flowchart LR
 ```mermaid
 flowchart LR
   CODE[Reviewed commit] --> CI[Required CI]
-  CI --> IMAGE[Immutable signed images]
+  CI --> TAG[Signed annotated release tag]
+  TAG --> IMAGE[Immutable release images]
   IMAGE --> MIGRATE[Compatible migration]
   MIGRATE --> DEPLOY[Bounded deployment]
   DEPLOY --> ACCEPT[Exact-SHA acceptance]
@@ -72,6 +74,7 @@ flowchart LR
 ```
 
 - Use semantic project versions and immutable image tags/digests; never deploy `main`, another branch name, or `latest` to production.
+- Release tags must be annotated and signed with a key listed in `.github/release-allowed-signers`; unsigned, lightweight, or unlisted-key tags fail the publish gate. Agents never create, move, or delete tags or dispatch publish workflows (`docs/releasing.md`).
 - Review database compatibility before rollout and order app/worker/migration changes for version skew.
 - CI must not use `pull_request_target` with untrusted contributor code or expose secrets to fork builds.
 - A successful build/deploy workflow is not release acceptance. Verify deployed SHA, health, migrations, browser flows, RBAC/flags, workers/control plane, provider/billing gates, and cleanup.
