@@ -1,6 +1,7 @@
 import type { BaseLayoutProps, LinkItemType } from 'fumadocs-ui/layouts/shared';
 import Image from 'next/image';
 import Link from 'next/link';
+import { ThemeToggle } from '../components/theme-toggle';
 
 // Custom filled GitHub icon (matches homepage style)
 export const GitHubIcon = () => (
@@ -69,6 +70,7 @@ export function SiteHeader({ showPricing = true, showDocs = true }: SiteHeaderPr
           >
             <GitHubIcon />
           </Link>
+          <ThemeToggle />
         </nav>
       </div>
     </header>
