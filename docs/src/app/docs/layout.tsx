@@ -12,6 +12,10 @@ const tabConfig: Record<string, { description: string; color: string }> = {
     description: 'CLI for CI/CD automation',
     color: 'text-amber-500',
   },
+  'Supercheck Recorder': {
+    description: 'Browser test recorder',
+    color: 'text-rose-500',
+  },
   'Supercheck API': {
     description: 'REST API reference',
     color: 'text-sky-500',

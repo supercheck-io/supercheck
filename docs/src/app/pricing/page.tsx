@@ -5,27 +5,6 @@ import { SiteHeader } from '../../lib/layout.shared';
 
 const plans = [
     {
-        name: 'Self-Hosted',
-        price: 'Free',
-        description: 'No license cost; infrastructure and AI provider costs apply',
-        features: [
-            'Unlimited monitors',
-            'Unlimited Playwright minutes',
-            'Unlimited K6 VU minutes',
-            'Unlimited AI feature usage with your own provider key',
-            'Unlimited AI SRE investigations on your infrastructure',
-            'Unlimited read-only evidence connectors',
-            'Unlimited team members',
-            'Unlimited projects in your default organization',
-            'CI/CD integration',
-            'Cron job scheduling',
-            'Community support',
-        ],
-        cta: 'Deploy Now',
-        ctaLink: '/docs/app/deployment/self-hosted',
-        highlighted: false,
-    },
-    {
         name: 'Plus',
         price: '$49',
         period: '/month',
@@ -34,19 +13,14 @@ const plans = [
             '50 monitors',
             '5 status pages with custom domains',
             '3,000 Playwright minutes/month',
-            '30,000 K6 VU minutes/month',
+            '30,000 k6 VU minutes/month',
             '1,000 AI credits/month',
             '200 completed AI SRE investigations/month',
-            'Read-only evidence connectors',
-            'Private Agent support',
             '5 team members',
             '10 projects per organization',
-            'CI/CD integration',
-            'Cron job scheduling',
             'Email support',
         ],
-        cta: 'Get Started',
-        ctaLink: 'https://app.supercheck.io/sign-up',
+        cta: 'Coming soon',
         highlighted: false,
     },
     {
@@ -58,19 +32,14 @@ const plans = [
             '200 monitors',
             '20 status pages with custom domains',
             '10,000 Playwright minutes/month',
-            '100,000 K6 VU minutes/month',
+            '100,000 k6 VU minutes/month',
             '5,000 AI credits/month',
             '1,000 completed AI SRE investigations/month',
-            'Read-only evidence connectors',
-            'Private Agent support',
             '25 team members',
             '50 projects per organization',
-            'CI/CD integration',
-            'Cron job scheduling',
             'Priority email support',
         ],
-        cta: 'Get Started',
-        ctaLink: 'https://app.supercheck.io/sign-up',
+        cta: 'Coming soon',
         highlighted: true,
     },
     {
@@ -78,7 +47,7 @@ const plans = [
         description: 'Get in touch to discuss your requirements',
         features: [
             'Custom monitor allowance',
-            'Custom Playwright & K6 allowances',
+            'Custom Playwright & k6 allowances',
             'Custom AI credit pool or bring-your-own-provider',
             'Custom AI SRE investigation volume',
             'Custom connector and Private Agent limits',
@@ -96,119 +65,92 @@ const plans = [
 
 const overagePricing = [
     { metric: 'Playwright minute', plus: '$0.01', pro: '$0.005' },
-    { metric: '1,000 K6 VU-minutes', plus: '$2.00', pro: '$1.00' },
-    { metric: 'AI credits', plus: 'Included · fair use', pro: 'Included · fair use' },
+    { metric: '1,000 k6 VU-minutes', plus: '$2.00', pro: '$1.00' },
     { metric: 'Completed AI SRE investigation', plus: '$0.10', pro: '$0.10' },
 ];
 
 const comparisonFeatures = [
     {
         category: 'Usage Limits', items: [
-            { name: 'Monitors', plus: '50', pro: '200', selfHosted: 'Unlimited' },
-            { name: 'Playwright minutes/month', plus: '3,000', pro: '10,000', selfHosted: 'Unlimited' },
-            { name: 'K6 VU minutes/month', plus: '30,000', pro: '100,000', selfHosted: 'Unlimited' },
-            { name: 'AI credits/month', plus: '1,000', pro: '5,000', selfHosted: 'Unlimited with BYO provider' },
-            { name: 'Completed AI SRE investigations/month', plus: '200', pro: '1,000', selfHosted: 'Unlimited' },
-            { name: 'Read-only evidence connectors', plus: 'Included', pro: 'Included', selfHosted: 'Self-managed' },
-            { name: 'Private Agent support', plus: 'Included', pro: 'Included', selfHosted: 'Self-managed' },
-            { name: 'Concurrent jobs', plus: '5', pro: '10', selfHosted: 'Configurable' },
-            { name: 'Queued jobs', plus: '50', pro: '100', selfHosted: 'Configurable' },
-            { name: 'Minimum check interval', plus: '1 minute', pro: '1 minute', selfHosted: '1 minute' },
-            { name: 'Minimum synthetic check interval', plus: '5 minutes', pro: '5 minutes', selfHosted: '5 minutes' },
+            { name: 'Monitors', plus: '50', pro: '200' },
+            { name: 'Playwright minutes/month', plus: '3,000', pro: '10,000' },
+            { name: 'k6 VU minutes/month', plus: '30,000', pro: '100,000' },
+            { name: 'AI credits/month', plus: '1,000', pro: '5,000' },
+            { name: 'Completed AI SRE investigations/month', plus: '200', pro: '1,000' },
+            { name: 'Read-only evidence connectors', plus: 'Included', pro: 'Included' },
+            { name: 'Private Agent support', plus: 'Included', pro: 'Included' },
+            { name: 'Concurrent jobs', plus: '5', pro: '10' },
+            { name: 'Queued jobs', plus: '50', pro: '100' },
+            { name: 'Minimum check interval', plus: '1 minute', pro: '1 minute' },
+            { name: 'Minimum synthetic check interval', plus: '5 minutes', pro: '5 minutes' },
         ]
     },
     {
         category: 'AI SRE', items: [
-            { name: 'Standalone AI SRE Copilot', plus: '✓', pro: '✓', selfHosted: '✓' },
-            { name: 'Incident-scoped Copilot', plus: '✓', pro: '✓', selfHosted: '✓' },
-            { name: 'Evidence graph and reports', plus: '✓', pro: '✓', selfHosted: '✓' },
-            { name: 'Report snapshots and feedback', plus: '✓', pro: '✓', selfHosted: '✓' },
-            { name: 'Read-only connector evidence', plus: 'Included', pro: 'Included', selfHosted: 'Self-managed' },
+            { name: 'Standalone AI SRE Copilot', plus: '✓', pro: '✓' },
+            { name: 'Incident-scoped Copilot', plus: '✓', pro: '✓' },
+            { name: 'Evidence graph and reports', plus: '✓', pro: '✓' },
+            { name: 'Report snapshots and feedback', plus: '✓', pro: '✓' },
+            { name: 'Read-only connector evidence', plus: 'Included', pro: 'Included' },
         ]
     },
     {
-        category: 'Team & Organization', items: [
-            { name: 'Team members', plus: '5', pro: '25', selfHosted: 'Unlimited' },
-            { name: 'Cloud subscription scope', plus: 'One organization', pro: 'One organization', selfHosted: 'Self-managed' },
-            { name: 'Projects', plus: '10', pro: '50', selfHosted: 'Unlimited' },
-            { name: 'Status pages', plus: '5', pro: '20', selfHosted: 'Unlimited' },
-            { name: 'Subscribers per status page', plus: '1,000', pro: '10,000', selfHosted: 'Unlimited' },
+        category: 'Team & Projects', items: [
+            { name: 'Team members', plus: '5', pro: '25' },
+            { name: 'Projects', plus: '10', pro: '50' },
+            { name: 'Status pages', plus: '5', pro: '20' },
+            { name: 'Subscribers per status page', plus: '1,000', pro: '10,000' },
         ]
     },
     {
         category: 'Data Retention', items: [
-            { name: 'Raw monitor data', plus: '7 days', pro: '7 days', selfHosted: '7 days by default' },
-            { name: 'Aggregated metrics', plus: '30 days', pro: '90 days', selfHosted: '90 days by default' },
-            { name: 'Job run history', plus: '30 days', pro: '90 days', selfHosted: '90 days by default' },
+            { name: 'Raw monitor data', plus: '7 days', pro: '7 days' },
+            { name: 'Aggregated metrics', plus: '30 days', pro: '90 days' },
+            { name: 'Job run history', plus: '30 days', pro: '90 days' },
         ]
     },
     {
         category: 'Features', items: [
-            { name: 'Custom domains', plus: '✓', pro: '✓', selfHosted: '✓' },
-            { name: 'CI/CD integration', plus: '✓', pro: '✓', selfHosted: '✓' },
-            { name: 'Cron job scheduling', plus: '✓', pro: '✓', selfHosted: '✓' },
-            { name: 'Available monitoring locations', plus: 'All enabled locations', pro: 'All enabled locations', selfHosted: 'Self-managed' },
-            { name: 'Support', plus: 'Email', pro: 'Priority email', selfHosted: 'Community' },
+            { name: 'Custom domains', plus: '✓', pro: '✓' },
+            { name: 'CI/CD integration', plus: '✓', pro: '✓' },
+            { name: 'Cron job scheduling', plus: '✓', pro: '✓' },
+            { name: 'Support', plus: 'Email', pro: 'Priority email' },
         ]
     },
 ];
 
 const faqs = [
     {
-        question: 'Does one subscription cover the projects in my organization?',
-        answer: 'Yes. Your account has one default organization, and its projects share the subscription, usage allowances, limits, and spending controls. Create and switch projects using the project selector. Projects you join by invitation use their host team’s plan and allowances separately; joining a paid team does not require a personal subscription. Only the host organization’s owner can manage billing.',
+        question: 'Can I try Supercheck before Cloud launches?',
+        answer: 'Yes. Explore the free live demo without signing up. Cloud plans are coming soon; signups are not open yet.',
     },
     {
-        question: 'When should I consider Pro?',
-        answer: 'Pro includes more capacity and half the Playwright and K6 overage rates. At standard list prices, with only browser usage, Plus and Pro cost the same at 16,000 Playwright minutes/month. With only K6 usage, they cost the same at 80,000 VU-minutes/month. Other usage, discounts, taxes, and proration affect the comparison; review your organization’s estimate before changing plans.',
+        question: 'How are browser minutes measured?',
+        answer: 'Playwright tests and synthetic monitors share the browser-minute allowance. Execution time is measured in milliseconds and rounded to four decimal places in minutes per run, with no whole-minute minimum. A five-second run uses 0.0833 minutes. Each executed check and retry adds usage, including failed or canceled executions that used compute. HTTP, ping, and port checks do not use browser minutes.',
     },
     {
-        question: 'How are browser execution minutes measured?',
-        answer: 'Playwright tests and synthetic monitors share your minute allowance. We measure execution milliseconds and round to four decimal places in minutes per run, without a whole-minute minimum. A five-second run uses 0.0833 minutes. Each location and executed retry contributes usage. HTTP, ping, and port checks do not consume these minutes. Failed or canceled executions can still consume compute usage.',
-    },
-    {
-        question: 'What does frequent synthetic monitoring cost?',
-        answer: 'Five monitors running for five seconds every five minutes in one location use approximately 3,599 Playwright minutes in a 30-day month: about $54.99 total on Plus, or within Pro’s $149 allowance. Longer runs, additional locations, retries, and other tests increase usage. This is an estimate before taxes.',
-    },
-    {
-        question: 'How does run duration affect browser pricing?',
-        answer: 'Beyond included usage, 1,000 five-second executions cost about $0.83 on Plus or $0.42 on Pro. At 30 seconds each, they cost $5.00 or $2.50. Each executed location and retry contributes usage; these estimates exclude the monthly subscription and taxes.',
-    },
-    {
-        question: 'How are load tests measured?',
-        answer: 'K6 usage measures peak capacity, not accumulated active VU-time: peak virtual users multiplied by execution duration in minutes, rounded up to a whole VU-minute per run. This can exceed average active VU-time for ramping tests. Review your load profile and spending settings before running a large test.',
-    },
-    {
-        question: 'Can I try Supercheck before subscribing?',
-        answer: 'Yes! Try our free demo at demo.supercheck.dev \u2014 no signup required. When you\u2019re ready, choose a plan to get started.',
-    },
-    {
-        question: 'Do unused minutes roll over?',
-        answer: 'No. Execution minutes, AI credits, and AI SRE investigation allowances reset monthly on your billing date.',
+        question: 'How is k6 usage measured?',
+        answer: 'Each run uses peak virtual users multiplied by its duration in minutes, rounded up to a whole VU-minute. This measures peak capacity, so ramping tests can use more than their average active VU-time suggests. Review your load profile before running large tests.',
     },
     {
         question: 'How do AI credits work?',
-        answer: 'Each plan includes a monthly pool of AI credits for test generation, test fixes, and failure analysis, subject to fair use. Automated bulk use and abuse are restricted. Each accepted action uses one credit before generation or analysis starts, even if it later fails. There are no AI credit overages; upgrade or wait for your next billing cycle when the pool is exhausted. Full AI SRE investigations use a separate allowance: each completed report uses one investigation unit, without guaranteeing a diagnosis or resolution. Failed or timed-out full investigations and billing retries do not consume investigation units. AI SRE chat, triage, and evidence briefs do not consume investigation units.',
+        answer: 'AI credits cover test generation, fixes, and failure analysis, subject to fair use. Each accepted action uses one credit, even if generation or analysis later fails. Credits have no overage charges: upgrade or wait for the next billing cycle when they run out.',
     },
     {
-        question: 'How can I control overage spending?',
-        answer: 'Organization owners and admins can configure a monthly spending limit, billing contacts, threshold alerts, and optional blocking of new billable executions and full investigations. Basic uptime checks continue at the spending limit. Only the owner can manage the paid subscription. Limits apply to usage overages in addition to the base subscription. In-flight execution usage can exceed a configured limit, so it is not a guaranteed invoice cap. Monitor, member, project, and status-page limits require an upgrade rather than an overage payment.',
+        question: 'What counts as an AI SRE investigation?',
+        answer: 'Each completed full investigation report uses one investigation unit. Failed or timed-out investigations and billing retries do not use units. AI SRE chat, triage, and evidence briefs do not use investigation units. A completed report does not guarantee a diagnosis or resolution.',
     },
     {
-        question: 'Can I change plans anytime?',
-        answer: 'Yes. Review the effective date and any prorated charge in the billing portal before confirming a plan change.',
+        question: 'Can I limit overage spending?',
+        answer: 'Owners and admins can set monthly spending limits and alerts, with optional blocking of new billable executions and full investigations. Basic uptime checks continue. Spending limits cover overages, not the subscription fee. In-flight usage can exceed the limit, so it is not a guaranteed invoice cap. Monitor, member, project, and status-page limits require a plan upgrade.',
     },
     {
-        question: 'What payment methods do you accept?',
-        answer: 'We accept all major credit cards (Visa, Mastercard, American Express) through our payment provider.',
+        question: 'Do unused allowances roll over?',
+        answer: 'No. Execution minutes, AI credits, and investigation allowances reset monthly on your billing date.',
     },
     {
-        question: 'Is the self-hosted version really free?',
-        answer: 'Yes. Supercheck core is open source under AGPLv3. Self-host on your infrastructure with unlimited Supercheck usage at no license cost. You still pay your own infrastructure and AI provider costs.',
-    },
-    {
-        question: 'Do you offer enterprise plans?',
-        answer: 'Get in touch at hello@supercheck.io to discuss your requirements, usage allowances, support, SLA, and onboarding.',
+        question: 'Can I change plans?',
+        answer: 'You can change plans through the billing portal once Cloud subscriptions are available. Review the effective date and any prorated charge before confirming.',
     },
 ];
 
@@ -231,27 +173,27 @@ export default function PricingPage() {
         <div className="min-h-screen bg-fd-background">
             <SiteHeader showPricing={false} />
 
-            <main className="container mx-auto px-4 sm:px-6 py-12 md:py-20">
+            <main className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6 md:py-16">
                 {/* Header */}
-                <div className="text-center mb-16">
-                    <h1 className="text-4xl font-bold tracking-tight mb-4">
-                        Simple, Transparent Pricing
+                <div className="mx-auto mb-12 max-w-3xl text-center">
+                    <h1 className="mb-5 text-balance text-3xl font-bold tracking-tight sm:text-4xl">
+                        Supercheck Cloud is coming soon
                     </h1>
                     <p className="text-lg text-fd-muted-foreground max-w-2xl mx-auto">
-                        Self-host at no license cost, or choose a monthly cloud plan for your team. One subscription covers all projects in your default organization.
+                        Preview the plans below. Cloud signups are not open yet.
                     </p>
                     <p className="mt-4 text-sm text-fd-muted-foreground">
-                        Cloud prices are in USD, billed monthly, before applicable taxes. Usage overages are additional.
+                        Prices are in USD per month, before taxes. Usage beyond included allowances is billed separately.
                     </p>
                 </div>
 
                 {/* Pricing Cards */}
-                <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8 mb-6">
+                <div className="mb-16 grid gap-8 md:grid-cols-2 lg:grid-cols-3">
                     {plans.map((plan) => (
                         <div
                             key={plan.name}
-                            className={`relative flex flex-col rounded-xl border p-8 ${plan.highlighted
-                                ? 'border-fd-primary bg-fd-primary/5 shadow-lg'
+                            className={`relative flex flex-col rounded-xl border p-6 sm:p-8 ${plan.highlighted
+                                ? 'border-fd-primary bg-fd-primary/5'
                                 : 'border-fd-border bg-fd-card'
                                 }`}
                         >
@@ -262,42 +204,42 @@ export default function PricingPage() {
                                     </span>
                                 </div>
                             )}
-                            <div className="mb-6">
+                            <div className="mb-6 min-h-20">
                                 <h2 className="text-xl font-semibold mb-2">{plan.name}</h2>
                                 <p className="text-sm text-fd-muted-foreground">{plan.description}</p>
                             </div>
-                            {plan.price !== undefined && <div className="mb-6">
-                                <span className="text-4xl font-bold">{plan.price}</span>
+                            <div className="mb-6 flex min-h-14 items-baseline gap-1">
+                                <span className="text-4xl font-bold">{plan.price ?? 'Custom'}</span>
                                 {plan.period && (
                                     <span className="text-fd-muted-foreground">{plan.period}</span>
                                 )}
-                            </div>}
-                            <ul className="space-y-3 mb-8 flex-1">
+                            </div>
+                            <ul className="mb-8 flex-1 space-y-3">
                                 {plan.features.map((feature) => (
-                                    <li key={feature} className="flex items-start gap-2 text-sm">
-                                        <svg aria-hidden="true" className="w-5 h-5 text-fd-primary flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <li key={feature} className="flex items-start gap-3 text-sm leading-6">
+                                        <svg aria-hidden="true" className="mt-1 size-4 shrink-0 text-fd-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                                         </svg>
-                                        {feature}
+                                        <span className="min-w-0">{feature}</span>
                                     </li>
                                 ))}
                             </ul>
-                            <Link
-                                href={plan.ctaLink}
-                                aria-label={`${plan.cta} — ${plan.name}`}
-                                className={`block w-full text-center py-3 px-4 rounded-lg font-medium transition-colors ${plan.highlighted
-                                    ? 'bg-fd-primary text-fd-primary-foreground hover:bg-fd-primary/90'
-                                    : 'bg-fd-secondary text-fd-secondary-foreground hover:bg-fd-secondary/80'
-                                    }`}
-                            >
-                                {plan.cta}
-                            </Link>
+                            {plan.ctaLink ? (
+                                <Link
+                                    href={plan.ctaLink}
+                                    aria-label={`${plan.cta} — ${plan.name}`}
+                                    className="block w-full rounded-lg bg-fd-secondary px-4 py-3 text-center font-medium transition-colors hover:bg-fd-secondary/80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fd-primary"
+                                >
+                                    {plan.cta}
+                                </Link>
+                            ) : (
+                                <p className="rounded-lg border border-fd-border bg-fd-muted/50 px-4 py-3 text-center font-medium text-fd-muted-foreground">
+                                    {plan.cta}
+                                </p>
+                            )}
                         </div>
                     ))}
                 </div>
-                <p className="text-center text-sm text-fd-muted-foreground max-w-3xl mx-auto mb-20">
-                    Self-hosting requires your own infrastructure and AI provider; you pay those costs and manage capacity, security, and retention. Cloud allowances reset each billing month and do not roll over. Joining an invited team uses that team’s subscription.
-                </p>
 
                 {/* Overage Pricing */}
                 <div className="mb-20">
@@ -334,11 +276,10 @@ export default function PricingPage() {
                     <h2 className="text-2xl font-bold text-center mb-8">Full Feature Comparison</h2>
                     <p className="text-center text-sm text-fd-muted-foreground mb-4 md:hidden">Scroll horizontally to compare all plans.</p>
                     <div className="rounded-lg border overflow-x-auto" role="region" aria-label="Plan feature comparison" tabIndex={0}>
-                            <table className="w-full min-w-[760px]" aria-label="Full plan feature comparison">
+                            <table className="w-full min-w-[640px]" aria-label="Full plan feature comparison">
                                 <thead className="bg-fd-muted">
                                     <tr>
                                         <th className="text-left px-6 py-3 text-sm font-medium">Feature</th>
-                                        <th className="text-center px-6 py-3 text-sm font-medium">Self-Hosted</th>
                                         <th className="text-center px-6 py-3 text-sm font-medium">Plus</th>
                                         <th className="text-center px-6 py-3 text-sm font-medium">Pro</th>
                                         <th className="text-center px-6 py-3 text-sm font-medium">Enterprise</th>
@@ -348,14 +289,13 @@ export default function PricingPage() {
                                     {comparisonFeatures.map((category) => (
                                         <React.Fragment key={category.category}>
                                             <tr className="bg-fd-muted/50 border-l-2 border-l-fd-primary/50">
-                                                <td colSpan={5} className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-fd-muted-foreground">
+                                                <td colSpan={4} className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-fd-muted-foreground">
                                                     {category.category}
                                                 </td>
                                             </tr>
                                             {category.items.map((item, idx) => (
                                                 <tr key={item.name} className={idx % 2 === 0 ? 'bg-fd-card' : 'bg-fd-muted/30'}>
                                                     <th scope="row" className="px-6 py-3 text-sm pl-10 text-left font-normal">{item.name}</th>
-                                                    <td className="px-6 py-3 text-sm text-center">{item.selfHosted}</td>
                                                     <td className="px-6 py-3 text-sm text-center">{item.plus}</td>
                                                     <td className="px-6 py-3 text-sm text-center">{item.pro}</td>
                                                     <td className="px-6 py-3 text-sm text-center">{(item as Record<string, string>).enterprise ?? 'Custom'}</td>

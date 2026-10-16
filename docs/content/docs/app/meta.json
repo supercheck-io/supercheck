@@ -6,9 +6,6 @@
   "defaultOpen": true,
   "pages": [
     "welcome",
-    "architecture",
-    "---Deployment---",
-    "deployment",
     "---Communicate---",
     "communicate",
     "---Automate---",
@@ -18,6 +15,8 @@
     "---Investigate---",
     "investigate",
     "---Admin---",
-    "admin"
+    "admin",
+    "---Deployment---",
+    "deployment"
   ]
 }
