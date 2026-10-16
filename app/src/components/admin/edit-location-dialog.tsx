@@ -38,7 +38,7 @@ export function EditLocationDialog({
   const [lon, setLon] = React.useState(
     location.coordinates?.lon?.toString() || "",
   );
-  const [isDefault, setIsDefault] = React.useState(location.isDefault);
+  const [isDefault, setIsDefault] = React.useState(location.isDefault && location.isEnabled);
   const [supportsBrowser, setSupportsBrowser] = React.useState(
     location.supportsBrowser,
   );
@@ -54,7 +54,7 @@ export function EditLocationDialog({
     setFlag(location.flag || "");
     setLat(location.coordinates?.lat?.toString() || "");
     setLon(location.coordinates?.lon?.toString() || "");
-    setIsDefault(location.isDefault);
+    setIsDefault(location.isDefault && location.isEnabled);
     setSupportsBrowser(location.supportsBrowser);
     setSupportsK6(location.supportsK6);
     setSortOrder(location.sortOrder.toString());

@@ -158,4 +158,31 @@ describe("PATCH /api/admin/locations/[id] default eligibility", () => {
     );
     expect(response.status).toBe(200);
   });
+
+  it.each([
+    { body: { isEnabled: false }, current: { isEnabled: true, isDefault: true } },
+    { body: { isDefault: true }, current: { isEnabled: false, isDefault: false } },
+  ])("rechecks the locked row after a concurrent change: %j", async ({ body, current }) => {
+    limit.mockResolvedValueOnce([
+      { id: "region-1", code: "us-east", isEnabled: true, isDefault: false },
+    ]);
+    const lock = jest.fn().mockResolvedValue([{ id: "region-1", ...current }]);
+    const update = jest.fn();
+    jest.requireMock("@/utils/db").db.transaction.mockImplementationOnce(
+      (fn: (tx: unknown) => unknown) => fn({
+        select: () => ({ from: () => ({ where: () => ({ limit: () => ({ for: lock }) }) }) }),
+        update,
+      }),
+    );
+    const response = await PATCH(
+      new NextRequest("http://localhost/api/admin/locations/region-1", {
+        method: "PATCH", body: JSON.stringify(body),
+      }),
+      { params: Promise.resolve({ id: "region-1" }) },
+    );
+    expect(lock).toHaveBeenCalledWith("update");
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ error: expect.stringContaining("disabled location") });
+    expect(update).not.toHaveBeenCalled();
+  });
 });
