@@ -17,7 +17,7 @@ import {
   Tally4,
   ChartSpline,
   BookOpenText,
-  CreditCard,
+  Tag,
   Chromium,
   Sparkles,
   Terminal,
@@ -242,7 +242,7 @@ export default function HomePage() {
               <span className="hidden md:inline">Docs</span>
             </Link>
             <Link href="/pricing" className={`inline-flex ${navLinkClass}`} aria-label="Pricing">
-              <CreditCard aria-hidden="true" className="size-5" />
+              <Tag aria-hidden="true" className="size-5" />
               <span className="hidden md:inline">Pricing</span>
             </Link>
             <a
