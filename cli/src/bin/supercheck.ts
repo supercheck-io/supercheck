@@ -1,5 +1,5 @@
 import { verifyContext } from '../utils/managed.js'
-import { getToken } from '../auth/store.js'
+import { getToken, getStoredBaseUrl } from '../auth/store.js'
 import { skillsCommand, schemaCommand, capabilitiesCommand } from '../commands/skills.js'
 import { redact, redactText, setRevealSecrets } from '../utils/redact.js'
 import { Command } from 'commander'
@@ -81,12 +81,24 @@ const program = new Command()
 
     if (actionOpts.offline || ['init', 'login', 'logout', 'doctor'].includes(actionCommand.name()) || (actionCommand.name() === 'capabilities' && !actionOpts.online)) return
 
+    const diagnostic = ['whoami', 'health', 'locations', 'capabilities'].includes(actionCommand.name())
+    if (diagnostic) {
+      const { config: loadEnv } = await import('dotenv')
+      loadEnv({ quiet: true })
+    }
+    if (diagnostic && (getStoredBaseUrl() || actionOpts.url)) return
+
     const configPath =
       !isNotificationCommand &&
       typeof actionOpts.config === 'string'
         ? actionOpts.config
         : undefined
-    await resolveAndSetConfigBaseUrl({ configPath })
+    try { await resolveAndSetConfigBaseUrl({ configPath }) } catch (error) {
+      if (!diagnostic) throw error
+      logger.warn('Ignoring invalid project configuration for diagnostics. Set SUPERCHECK_URL to select the API target explicitly.')
+      return
+    }
+    if (diagnostic) return
     const project = getResolvedProject()
     const group = actionCommand.parent?.name()
     const sync = ['deploy', 'diff', 'destroy', 'pull'].includes(actionCommand.name())

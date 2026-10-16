@@ -124,6 +124,7 @@ export interface LoadConfigOptions {
   cwd?: string
   configPath?: string
   offline?: boolean
+  allowMissing?: boolean
 }
 
 export interface LoadConfigResult {
@@ -148,7 +149,7 @@ export async function loadConfig(options: LoadConfigOptions = {}): Promise<LoadC
 
   const configPath = resolveConfigPath(cwd, options.configPath)
   if (!configPath) {
-    if (options.offline) return { config: { schemaVersion: '1.0', project: { organization: 'local', project: 'local' }, tests: { playwright: { testMatch: '_supercheck_/playwright/**/*.pw.ts', browser: 'chromium' }, k6: { testMatch: '_supercheck_/k6/**/*.k6.ts' } } }, configPath: null }
+    if (options.offline && options.allowMissing) return { config: { schemaVersion: '1.0', project: { organization: 'local', project: 'local' }, tests: { playwright: { testMatch: '_supercheck_/playwright/**/*.pw.ts', browser: 'chromium' }, k6: { testMatch: '_supercheck_/k6/**/*.k6.ts' } } }, configPath: null }
     throw new ConfigNotFoundError()
   }
 

@@ -119,6 +119,7 @@ async function applyChange(
       case 'update': {
         const id = change.id ?? change.remote!.id
         await client.put(`${endpoint}/${id}`, body)
+        opts.state.record(change.type, change.name, id)
         return { success: true }
       }
       case 'delete': {
@@ -189,6 +190,7 @@ export const deployCommand = new Command('deploy')
       }
 
       if (actionable.length === 0) {
+        if (!options.dryRun) for (const change of changes) if (change.id) state.record(change.type, change.name, change.id)
         emit({ status: 'no_change', changes: [] })
         logger.success('No config changes to deploy. Remote resources absent from config are preserved.')
         return
@@ -239,14 +241,11 @@ export const deployCommand = new Command('deploy')
       }
 
       if (!options.force) {
-        const confirmed = await confirmPrompt('Apply these changes?', { default: false, context, changes: actionable.map(({ action, type, id, name, details }) => ({ action, type, id, name, details })) })
-        if (!confirmed) {
-          logger.info('Deploy aborted.')
-          return
-        }
+        await confirmPrompt('Apply these changes?', { default: false, context, changes: actionable.map(({ action, type, id, name, details }) => ({ action, type, id, name, details })) })
       }
 
       // Apply changes
+      for (const change of changes) if (change.action === 'no-change' && change.id) state.record(change.type, change.name, change.id)
       logger.info('Applying changes...')
       logger.newline()
 

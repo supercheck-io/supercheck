@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 
 let resources: Record<string, unknown[]> = {}
-const confirm = jest.fn<(...args: unknown[]) => Promise<boolean>>(async () => false)
+const confirm = jest.fn<(...args: unknown[]) => Promise<void>>()
 const install = jest.fn<(...args: unknown[]) => Promise<void>>(async () => undefined)
 const messages: string[] = []
 const log = (message: string) => messages.push(message)
@@ -43,7 +43,7 @@ beforeEach(() => {
   resources = { '/api/monitors': [{ id: 'monitor', name: 'Website', type: 'website' }],
     '/api/notification-providers': [{ id: 'provider', name: 'Discord', type: 'discord', config: {} }] }
   messages.length = 0
-  confirm.mockReset().mockResolvedValue(false)
+  confirm.mockReset().mockRejectedValue(new Error('ABORTED'))
   install.mockClear()
   for (const option of ['force', 'testsOnly', 'configOnly', 'dryRun']) pullCommand.setOptionValue(option, false)
 })
@@ -54,7 +54,7 @@ afterEach(() => {
 
 describe('pull output and local file effects', () => {
   it('identifies config resources when the remote has no tests and safely defaults to no', async () => {
-    await pull()
+    await expect(pull()).rejects.toThrow('ABORTED')
     expect(output()).toContain('1 monitor(s), 1 notification provider(s)')
     expect(output()).toContain('No remote test scripts to pull.')
     expect(output()).toContain('replace supercheck.config.ts')
@@ -69,7 +69,7 @@ describe('pull output and local file effects', () => {
     { flags: [], writesConfig: true, writesTests: true },
   ])('describes only the selected writes: $flags', async ({ flags, writesConfig, writesTests }) => {
     resources['/api/tests'] = [remoteTest]
-    await pull(...flags)
+    await expect(pull(...flags)).rejects.toThrow('ABORTED')
     expect(output().includes('replace supercheck.config.ts')).toBe(writesConfig)
     expect(output().includes('write test scripts')).toBe(writesTests)
     expect(output()).toContain('Pull only copies remote resources to local files.')
@@ -87,7 +87,7 @@ describe('pull output and local file effects', () => {
     mkdirSync(folder, { recursive: true })
     const path = resolve(folder, 'local-only.019a0000-0000-7000-8000-000000000002.pw.ts')
     writeFileSync(path, 'local-only script')
-    confirm.mockResolvedValue(true)
+    confirm.mockResolvedValue(undefined)
     await pull()
     expect(readFileSync(path, 'utf-8')).toBe('local-only script')
     expect(readFileSync(resolve(cwd, 'supercheck.config.ts'), 'utf-8')).toContain('Website')
@@ -112,7 +112,7 @@ describe('pull output and local file effects', () => {
 
   it('discloses dependency installation before confirmation', async () => {
     unlinkSync(resolve(cwd, 'package.json'))
-    await pull()
+    await expect(pull()).rejects.toThrow('ABORTED')
     expect(output()).toContain('create package.json, install dependencies, and create tsconfig.supercheck.json if missing')
     expect(install).not.toHaveBeenCalled()
   })

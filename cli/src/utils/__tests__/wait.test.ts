@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals'
 import { ApiClient } from '../../api/client.js'
 import { waitForRun } from '../wait.js'
+import { ApiRequestError, TimeoutError } from '../errors.js'
 
 const response = (status: string) => ({ data: { status }, status: 200, headers: new Headers() })
 afterEach(() => { jest.restoreAllMocks(); jest.useRealTimers() })
@@ -29,5 +30,23 @@ describe('bounded run waiting', () => {
     await jest.advanceTimersByTimeAsync(5)
     await failure
     expect(request).toHaveBeenCalledTimes(1)
+  })
+  it('preserves the run ID and recovery instruction when a request times out at the deadline', async () => {
+    jest.useFakeTimers()
+    const client = new ApiClient()
+    jest.spyOn(client, 'request').mockImplementation(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 5))
+      throw new TimeoutError('Request timed out')
+    })
+    const failure = expect(waitForRun(client, 'run-id', 5)).rejects.toMatchObject({ exitCode: 5, details: { runId: 'run-id' }, message: expect.stringContaining('run wait run-id') })
+    await jest.advanceTimersByTimeAsync(5)
+    await failure
+  })
+  it('preserves request failures that are not the overall wait deadline', async () => {
+    const client = new ApiClient()
+    for (const error of [new TimeoutError('Request timed out early'), new ApiRequestError('Forbidden', 403)]) {
+      jest.spyOn(client, 'request').mockRejectedValue(error)
+      await expect(waitForRun(client, 'run-id', 60000)).rejects.toBe(error)
+    }
   })
 })

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from '@jest/globals'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { ApiClient } from '../../api/client.js'
@@ -34,9 +34,40 @@ describe('target-bound deployment identity', () => {
     const local = { type: 'monitor' as const, name: 'API', definition: {} }
     expect(() => rejectAmbiguousCreates([local], [{ id: a, type: 'monitor', name: 'API', raw: {} }])).toThrow('UNMANAGED_RESOURCE')
     expect(() => rejectAmbiguousCreates([local, local], [])).toThrow('Duplicate')
+    expect(() => rejectAmbiguousCreates([{ ...local, id: a }, { ...local, id: a, name: 'Other' }], [])).toThrow('Duplicate local resource ID')
+  })
+  it('keeps explicit-ID reference aliases transient when recording unrelated resources', () => {
+    const path = join(dir, 'supercheck.config.ts')
+    const state = managedState(client, context, path)
+    state.apply([{ type: 'notificationProvider', id: a, name: 'Alerts', definition: {} }])
+    expect(state.resolve('notificationProvider', 'Alerts')).toBe(a)
+    state.record('monitor', 'API', b)
+    expect(readFileSync(join(dir, 'supercheck.state.json'), 'utf8')).not.toContain('Alerts')
+  })
+  it('retires an old name when an explicit ID is renamed without adopting a new same-name definition', () => {
+    const path = join(dir, 'supercheck.config.ts')
+    managedState(client, context, path).record('monitor', 'Old', a)
+    const state = managedState(client, context, path)
+    const resources = state.apply([
+      { type: 'monitor', id: a, name: 'Renamed', definition: {} },
+      { type: 'monitor', name: 'Old', definition: {} },
+    ])
+    expect(resources.map((resource) => resource.id)).toEqual([a, undefined])
+    state.record('monitor', 'Renamed', a)
+    expect(() => managedState(client, context, path).resolve('monitor', 'Old')).toThrow('Unresolved')
+    expect(managedState(client, context, path).resolve('monitor', 'Renamed')).toBe(a)
   })
 })
 describe('transcript-safe output', () => {
+  it('masks every provider credential field while preserving non-credential URLs', () => {
+    const config = { webhookUrl: 'SENTINEL', discordWebhookUrl: 'SENTINEL', teamsWebhookUrl: 'SENTINEL', botToken: 'SENTINEL', url: 'https://example.com/SENTINEL', headers: { 'X-Custom': 'SENTINEL' } }
+    const input = { type: 'webhook', config, url: 'https://example.com/public' }
+    expect(JSON.stringify(redact(input))).not.toContain('SENTINEL')
+    expect(redact(input).url).toBe(input.url)
+    expect(config.headers['X-Custom']).toBe('SENTINEL')
+    setRevealSecrets(true)
+    expect(redact(input)).toBe(input)
+  })
   it('masks normalized credential headers, provider fields, secret variables and credential URLs', () => {
     const input = { headers: { 'Proxy-Authorization': 'Basic SENTINEL', 'Set-Cookie': 'session=SENTINEL', 'X-Auth-Token': 'SENTINEL', access_token: 'SENTINEL' }, config: { webhookUrl: 'https://example.com/SENTINEL' }, variables: [{ key: 'PASSWORD', isSecret: true, value: 'SENTINEL' }], target: 'https://user:SENTINEL@example.com?api_key=SENTINEL' }
     expect(JSON.stringify(redact(input))).not.toContain('SENTINEL')

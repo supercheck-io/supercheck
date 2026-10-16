@@ -167,11 +167,7 @@ varCommand
 
     if (!options.force) {
       const { confirmPrompt } = await import('../utils/prompt.js')
-      const confirmed = await confirmPrompt(`Delete variable "${key}"?`, { default: false })
-      if (!confirmed) {
-        logger.info('Aborted')
-        return
-      }
+      await confirmPrompt(`Delete variable "${key}"?`, { default: false })
     }
 
     await withSpinner(

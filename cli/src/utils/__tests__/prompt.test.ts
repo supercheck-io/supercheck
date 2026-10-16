@@ -22,8 +22,8 @@ describe('confirmation EOF', () => {
     await expect(confirmPrompt('Delete?', { default: true })).rejects.toThrow('ABORTED')
   })
   it('keeps explicit and default answers', async () => {
-    input = 'yes'; expect(await confirmPrompt('Delete?')).toBe(true)
-    input = ''; expect(await confirmPrompt('Delete?', { default: true })).toBe(true)
+    input = 'yes'; await expect(confirmPrompt('Delete?')).resolves.toBeUndefined()
+    input = ''; await expect(confirmPrompt('Delete?', { default: true })).resolves.toBeUndefined()
     input = 'no'; await expect(confirmPrompt('Delete?')).rejects.toThrow('ABORTED')
   })
 })

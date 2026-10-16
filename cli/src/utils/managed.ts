@@ -40,11 +40,13 @@ export function managedState(client: ApiClient, context: ProjectContext, configP
   }
   const target = `${client.getBaseUrl()}|${context.organization.id}|${context.project.id}`
   const ids = state.targets[target] ?? {}
+  const aliases: Record<string, string> = {}
+  const retiredAliases = new Set<string>()
   const normalizeRef = (type: string, name: string) => type === 'test' ? posix.normalize(name.replace(/\\/g, '/')).replace(/^_supercheck_\//, '') : name
   const key = (type: string, name: string) => `${type}:${normalizeRef(type, name)}`
   const lookup = (type: string, ref: string): string | undefined => {
     const id = z.string().uuid().safeParse(ref).success ? ref : extractUuidFromFilename(ref)
-    if (!id) return ids[key(type, ref)]
+    if (!id) return aliases[key(type, ref)] ?? (retiredAliases.has(key(type, ref)) ? undefined : ids[key(type, ref)])
     let current = id
     const visited = new Set<string>()
     while (ids[`replacement:${type}:${current}`]) {
@@ -57,16 +59,32 @@ export function managedState(client: ApiClient, context: ProjectContext, configP
   return {
     path, target,
     apply(local: LocalResource[]): LocalResource[] {
+      // An explicit ID carries ownership through a rename; its old name must not adopt a new definition.
+      for (const item of local) if (item.id) {
+        const id = lookup(item.type, item.id)
+        for (const [alias, ownedId] of Object.entries(ids)) {
+          if (alias.startsWith(`${item.type}:`) && alias !== key(item.type, item.name) && lookup(item.type, ownedId) === id) retiredAliases.add(alias)
+        }
+      }
       const resolved = local.map((item) => ({ ...item, id: item.id ? lookup(item.type, item.id) : lookup(item.type, item.name) }))
-      for (const item of resolved) if (item.id) ids[key(item.type, item.name)] = item.id
+      for (const item of resolved) if (item.id) aliases[key(item.type, item.name)] = item.id
       return resolved
     },
     record(type: string, name: string, id: string, previousId?: string): void {
       if (!z.string().uuid().safeParse(id).success) throw new CLIError('Create response did not contain a valid resource UUID. Inspect remote state before retrying.', ExitCode.ApiError)
+      const before = JSON.stringify(state)
+      for (const [alias, ownedId] of Object.entries(ids)) {
+        if (alias.startsWith(`${type}:`) && alias !== key(type, name) && (lookup(type, ownedId) === id || (previousId && lookup(type, ownedId) === lookup(type, previousId)))) {
+          delete ids[alias]
+          retiredAliases.add(alias)
+        }
+      }
       if (previousId) for (const key of Object.keys(ids)) if (ids[key] === previousId) ids[key] = id
       ids[key(type, name)] = id
+      aliases[key(type, name)] = id
       if (previousId && previousId !== id) ids[`replacement:${type}:${previousId}`] = id
       state.targets[target] = ids
+      if (JSON.stringify(state) === before) return
       const temp = `${path}.${randomUUID()}.tmp`
       try { writeFileSync(temp, `${JSON.stringify(state, null, 2)}\n`, { mode: 0o600 }); renameSync(temp, path) }
       finally { if (existsSync(temp)) unlinkSync(temp) }
@@ -97,7 +115,13 @@ export function managedState(client: ApiClient, context: ProjectContext, configP
 }
 export function rejectAmbiguousCreates(local: LocalResource[], remote: RemoteResource[]): void {
   const seen = new Map<string, LocalResource>()
+  const seenIds = new Set<string>()
   for (const item of local) {
+    if (item.id) {
+      const identity = `${item.type}:${item.id}`
+      if (seenIds.has(identity)) throw new CLIError(`Duplicate local resource ID: ${identity}. Define each resource only once.`, ExitCode.ConfigError)
+      seenIds.add(identity)
+    }
     if ((item.type === 'monitor' || item.type === 'job') && item.definition.tags !== undefined) throw new CLIError(`Tag assignments on ${item.type}/${item.name} are not supported by the current API. Standalone tag management remains available.`, ExitCode.ConfigError)
     const key = `${item.type}:${item.name}`
     const previous = seen.get(key)

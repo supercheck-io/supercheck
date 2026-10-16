@@ -361,11 +361,7 @@ testCommand
   .action(async (id: string, options: { force?: boolean }) => {
     if (!options.force) {
       const { confirmPrompt } = await import('../utils/prompt.js')
-      const confirmed = await confirmPrompt(`Delete test ${id}?`, { default: false })
-      if (!confirmed) {
-        logger.info('Aborted')
-        return
-      }
+      await confirmPrompt(`Delete test ${id}?`, { default: false })
     }
 
     const client = createAuthenticatedClient()
@@ -392,7 +388,7 @@ testCommand
     }
 
     const cwd = process.cwd()
-    const { config } = await loadConfig({ cwd, offline: options.offline })
+    const { config } = await loadConfig({ cwd, offline: options.offline, allowMissing: options.offline })
 
     const patterns = {
       playwright: config.tests?.playwright?.testMatch,

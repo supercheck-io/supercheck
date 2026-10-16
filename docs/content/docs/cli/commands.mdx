@@ -28,7 +28,7 @@ Config-aware commands (for example `config`, `diff`, `deploy`, `pull`, `validate
 
 For `sre ask`, `sre brief`, `run stream`, and `test status`, global `--json` produces newline-delimited JSON (NDJSON), one event per line.
 
-List commands keep their existing JSON array shape for compatibility. Add `--envelope` to include pagination metadata. Local test and job runs emit bounded NDJSON `local.result` records in JSON mode. Errors are emitted on stderr. Sensitive fields are redacted by default; use `--show-secrets` only when the output can be handled securely.
+List commands keep their existing JSON array shape for compatibility. Add `--envelope` to include pagination metadata. Local test and job runs emit bounded NDJSON `local.result` records in JSON mode. Errors are emitted on stderr. Sensitive fields are redacted by default, including webhook URLs, Discord and Teams webhook credentials, and full config headers; use `--show-secrets` only when the output can be handled securely.
 
 ## Exit Codes
 
@@ -42,7 +42,7 @@ List commands keep their existing JSON array shape for compatibility. Add `--env
 | `5` | Timeout | Operation exceeded timeout |
 | `130` | Interrupted | Ctrl+C during a stream |
 
-An operation that requires confirmation in a non-interactive session also exits `3` and reports `CONFIRMATION_REQUIRED`. Review its plan, then pass `--force` to apply the already-authorized change. Authentication errors continue to use exit code `2`.
+An operation that requires confirmation exits `3` when declined or when input closes (`ABORTED`), and exits `3` with `CONFIRMATION_REQUIRED` when confirmation is unavailable in a non-interactive session. Review its plan, then pass `--force` to apply the already-authorized change. Authentication errors continue to use exit code `2`.
 
 ## Agent-first operation
 
@@ -63,7 +63,7 @@ supercheck skills investigate
 
 ### `supercheck capabilities`
 
-Report the installed CLI version, local workflow capabilities, and whether credentials are present. Add `--online` to verify the current API context; this does not prove that every server feature is available or that the token has permission for every operation.
+Report the installed CLI version, local workflow capabilities, and whether credentials are present. Add `--online` to verify the current API context with one request; this does not prove that every server feature is available or that the token has permission for every operation. Diagnostic commands tolerate an invalid project config: an explicit, environment, or stored URL identifies the target and skips config loading. Otherwise a valid config supplies its API URL; if config loading fails, diagnostics warn in human-readable output and fall back to the default API URL.
 
 ```bash
 supercheck capabilities --json
@@ -149,7 +149,7 @@ supercheck init --pm pnpm            # Use specific package manager
 
 ### `supercheck config validate`
 
-Validate the configuration file schema. Add `--offline` to validate a local-only config without API credentials.
+Validate the configuration file schema. Add `--offline` to validate a local-only config without API credentials. Both modes require an existing config file; `--offline` skips cloud project identity checks.
 
 ```bash
 supercheck config validate
@@ -166,7 +166,7 @@ supercheck validate
 
 ### `supercheck config print`
 
-Print the resolved configuration with environment variable expansion. Add `--offline` to print a local-only config without API credentials.
+Print the resolved configuration with environment variable expansion. Sensitive provider values, including webhook URLs and config headers, are redacted. Add `--offline` to print a local-only config without API credentials; both modes require an existing config file.
 
 ```bash
 supercheck config print
@@ -274,7 +274,7 @@ supercheck --json job trigger <job-id> --wait
 | `--wait` | Wait for the run to complete |
 | `--timeout` | Maximum wait time in seconds (default: 300) |
 
-`supercheck job trigger` requires `SUPERCHECK_TRIGGER_KEY`. If you also use `--wait`, set `SUPERCHECK_TOKEN` so the CLI can poll the run after triggering it.
+`supercheck job trigger` requires `SUPERCHECK_TRIGGER_KEY`. If you also use `--wait`, set `SUPERCHECK_TOKEN` with access to read job details and run results in the project. The CLI reads the job before triggering, then polls the accepted run; a trigger key alone cannot wait for the result.
 
 The CLI validates the read token and job before starting a waited trigger. If waiting later fails, use the returned run ID with `supercheck run wait <run-id>` to resume observation without triggering another run.
 
@@ -895,7 +895,7 @@ These commands are read-only and require `sre_service:view`.
 
 ### `supercheck pull`
 
-Pull remote resources into local config and files. Config pulls include monitors, jobs, notification providers, variables, tags, and status pages; test pulls also write test scripts under `_supercheck_/`. When overwriting changed files, pull saves a mode-`0600` backup at `<path>.supercheck-backup.<uuid>`. This includes matching test scripts and config files; if a test file is renamed during pull, the old file is backed up before removal.
+Pull remote resources into local config and files. Config pulls include monitors, jobs, notification providers, variables, tags, and status pages; test pulls also write test scripts under `_supercheck_/`. Pull preserves managed test paths and existing browser and `testMatch` settings. Runner-type changes migrate files with backups; new tests must match configured custom globs or pull stops before writing. When overwriting changed files, pull saves a mode-`0600` backup at `<path>.supercheck-backup.<uuid>`. This includes matching test scripts and config files; if a test file is renamed during pull, the old file is backed up before removal. Backups are retained and must be removed manually when no longer needed.
 
 ```bash
 supercheck pull
@@ -917,7 +917,7 @@ supercheck diff
 
 ### `supercheck deploy`
 
-Push configuration to the Supercheck API, including notification provider config and webhook body templates.
+Push configuration to the Supercheck API, including notification provider config and webhook body templates. Renaming an ID-less non-test resource creates a separate resource; the old remote resource remains unless `--delete` is used. Carry its explicit ID or pull it first to update the existing resource.
 
 ```bash
 supercheck deploy

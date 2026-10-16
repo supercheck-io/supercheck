@@ -315,11 +315,7 @@ monitorCommand
   .action(async (id: string, options: { force?: boolean }) => {
     if (!options.force) {
       const { confirmPrompt } = await import('../utils/prompt.js')
-      const confirmed = await confirmPrompt(`Delete monitor ${id}?`, { default: false })
-      if (!confirmed) {
-        logger.info('Aborted')
-        return
-      }
+      await confirmPrompt(`Delete monitor ${id}?`, { default: false })
     }
 
     const client = createAuthenticatedClient()

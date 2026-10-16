@@ -1,8 +1,7 @@
 import { Command } from 'commander'
 import { getApiClient } from '../api/client.js'
-import { createAuthenticatedClient } from '../api/authenticated-client.js'
+import { createAuthenticatedClient, getResolvedConfigBaseUrl } from '../api/authenticated-client.js'
 import { getStoredBaseUrl } from '../auth/store.js'
-import { tryLoadConfig } from '../config/loader.js'
 import { logger } from '../utils/logger.js'
 import { getOutputFormat, output } from '../output/formatter.js'
 import { CLIError, ApiRequestError, ExitCode } from '../utils/errors.js'
@@ -12,10 +11,9 @@ export const healthCommand = new Command('health')
   .description('Check Supercheck API health')
   .option('--url <url>', 'Supercheck API URL')
   .action(async (options: { url?: string }) => {
-    const configResult = await tryLoadConfig()
     const baseUrl = options.url
       ?? getStoredBaseUrl()
-      ?? configResult?.config.api?.baseUrl
+      ?? getResolvedConfigBaseUrl()
       ?? 'https://app.supercheck.io'
 
     const client = getApiClient({ baseUrl })

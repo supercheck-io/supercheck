@@ -9,14 +9,17 @@ const entry = process.env.SUPERCHECK_TEST_CLI_ENTRY ?? fileURLToPath(new URL('..
 let cwd: string
 let testToken: string
 const id = '019a1234-1234-7123-8123-123456789abc'
-type Fixture = { requests: { method: string; path: string; body?: Record<string, unknown> }[]; resources: Record<string, Record<string, unknown>[]>; mode?: string }
+type Fixture = { requests: { method: string; path: string; body?: Record<string, unknown>; usingDotenvToken?: boolean }[]; resources: Record<string, Record<string, unknown>[]>; mode?: string }
 const read = (): Fixture => JSON.parse(readFileSync(resolve(cwd, 'fixture.json'), 'utf8'))
 function fixture(mode?: string) { writeFileSync(resolve(cwd, 'fixture.json'), JSON.stringify({ requests: [], resources: {}, mode })) }
 function config(value: Record<string, unknown> = {}) {
   writeFileSync(resolve(cwd, 'supercheck.config.mjs'), `export default ${JSON.stringify({ schemaVersion: '1.0', project: { organization: 'org', project: 'project' }, ...value })}`)
 }
 function run(...args: string[]) {
-  return spawnSync(process.execPath, ['--import', 'tsx', '--import', resolve(cwd, 'fetch.mjs'), entry, '--json', ...args], {
+  return runWithOutput(true, ...args)
+}
+function runWithOutput(json: boolean, ...args: string[]) {
+  return spawnSync(process.execPath, ['--import', 'tsx', '--import', resolve(cwd, 'fetch.mjs'), entry, ...(json ? ['--json'] : []), ...args], {
     cwd: fileURLToPath(new URL('../../../', import.meta.url)), encoding: 'utf8', timeout: 15000,
     env: { ...process.env, SUPERCHECK_TOKEN: testToken, SUPERCHECK_TRIGGER_KEY: 'sck_trigger_fake_for_tests', SUPERCHECK_URL: 'https://mock.invalid', CLI_TEST_CWD: cwd },
   })
@@ -33,14 +36,17 @@ import {readFileSync,writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 process.chdir(process.env.CLI_TEST_CWD);
 const path=join(process.cwd(),'fixture.json');
+if(JSON.parse(readFileSync(path,'utf8')).mode==='dotenv-token')delete process.env.SUPERCHECK_TOKEN;
 globalThis.fetch=async (url,options={})=>{
  const state=JSON.parse(readFileSync(path,'utf8'));
  const route=new URL(url).pathname,method=options.method??'GET',body=options.body?JSON.parse(options.body):undefined;
- state.requests.push({path:route,method,body});
+ state.requests.push({path:route,method,body,usingDotenvToken:new Headers(options.headers).get('authorization')==='Bearer sck_live_from_dotenv_for_tests'});
  let data={},status=200;
  const context={organization:{id:'org'},project:{id:state.mode==='wrong-context'?'other-project':'project'},user:{id:'user',role:'project_admin'}};
  if(state.mode==='script-denied'&&route==='/api/tests/${id}'){status=403;data={error:'denied'};}
  else if(route==='/api/context')data=context;
+ else if(route==='/api/health')data={status:'ok'};
+ else if(state.mode==='provider-denied'&&route==='/api/notification-providers'){status=403;data={error:'denied',config:{discordWebhookUrl:'LEAK_TEST_DISCORD',teamsWebhookUrl:'LEAK_TEST_TEAMS',url:'LEAK_TEST_URL',headers:{'X-Custom':'LEAK_TEST_HEADERS'}}};}
  else if(state.mode==='inventory-denied'&&route==='/api/jobs'){status=403;data={error:'denied'};}
  else if(route==='/api/validate-script')data={valid:true};
  else if(route.endsWith('/trigger')||route.endsWith('/execute'))data={runId:'${id}'};
@@ -51,6 +57,10 @@ globalThis.fetch=async (url,options={})=>{
   const created={...body,id:'019a1234-1234-7123-8123-'+String(items.length+1).padStart(12,'0')};
   if(route==='/api/jobs'&&body.tests.some(t=>t.id.includes('/'))){status=400;data={error:'Path is not a test UUID'};}
   else{items.push(created);data=route==='/api/tests'?{test:created}:route==='/api/jobs'?{job:created}:created;}
+ }else if(method==='PUT'){
+  const collection=route.substring(0,route.lastIndexOf('/')),id=route.substring(route.lastIndexOf('/')+1);
+  const item=state.resources[collection]?.find(item=>item.id===id);
+  if(item){Object.assign(item,body);data=item;}else{status=404;data={error:'not found'};}
  }else if(method==='DELETE'){state.resources[route.substring(0,route.lastIndexOf('/'))]=[];data={success:true};}
  else{
   const items=state.resources[route]??[];
@@ -144,6 +154,88 @@ describe('CLI agent workflows through the real entrypoint', () => {
     const result = run('pull', '--tests-only', '--force')
     expect(result.status).not.toBe(0)
     expect(JSON.parse(result.stdout).status).toBe('partial')
+  })
+
+  it('shows the individual failures when a human-mode pull is partial', () => {
+    fixture('script-denied')
+    const state = read(); state.resources['/api/tests'] = [{ id, title: 'Unavailable', type: 'browser' }]
+    writeFileSync(resolve(cwd, 'fixture.json'), JSON.stringify(state))
+    const result = runWithOutput(false, 'pull', '--tests-only', '--force', '--skip-install')
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain('test "Unavailable":')
+    expect(result.stderr).toContain('403')
+    expect(result.stderr).toContain('Pull incomplete: 1 error(s)')
+  })
+
+  it('redacts all provider credentials in config, plans, and API errors', () => {
+    const provider = { id, name: 'Hook', type: 'webhook', config: { webhookUrl: 'LEAK_TEST_SLACK', discordWebhookUrl: 'LEAK_TEST_DISCORD', teamsWebhookUrl: 'LEAK_TEST_TEAMS', url: 'LEAK_TEST_URL', headers: { 'X-Custom': 'LEAK_TEST_HEADERS' } } }
+    config({ notificationProviders: [provider] })
+    const state = read(); state.resources['/api/notification-providers'] = [{ ...provider, config: {} }]
+    writeFileSync(resolve(cwd, 'fixture.json'), JSON.stringify(state))
+    for (const args of [['config', 'print'], ['diff'], ['deploy', '--dry-run']]) {
+      const result = run(...args)
+      expect(result.status).toBe(0)
+      expect(result.stdout).toContain('[REDACTED]')
+      expect(result.stdout + result.stderr).not.toContain('LEAK_TEST_')
+    }
+    expect(run('--show-secrets', 'config', 'print').stdout).toContain('LEAK_TEST_DISCORD')
+    fixture('provider-denied')
+    for (const json of [true, false]) {
+      const result = runWithOutput(json, 'notification', 'list')
+      expect(result.status).toBe(4)
+      expect(result.stderr).toContain('[REDACTED]')
+      expect(result.stdout + result.stderr).not.toContain('LEAK_TEST_')
+    }
+  })
+
+  it('keeps diagnostic commands usable when project config cannot load', () => {
+    writeFileSync(resolve(cwd, 'supercheck.config.mjs'), "throw new Error('bad project config')")
+    for (const args of [['whoami'], ['health'], ['locations'], ['capabilities', '--online']]) {
+      const result = run(...args)
+      expect(result.status).toBe(0)
+      expect(result.stderr).toBe('')
+    }
+    expect(read().requests.every((request) => request.method === 'GET')).toBe(true)
+    expect(run('deploy', '--force').status).not.toBe(0)
+    expect(read().requests.every((request) => request.method === 'GET')).toBe(true)
+  })
+
+  it('requires a config file for offline config commands while retaining no-config local execution', () => {
+    rmSync(resolve(cwd, 'supercheck.config.mjs'))
+    for (const action of ['validate', 'print']) {
+      const result = run('config', action, '--offline')
+      expect(result.status).toBe(3)
+      expect(JSON.parse(result.stderr).error).toContain('No supercheck.config.ts found')
+    }
+    const result = run('test', 'run', '--offline', '--file', 'missing.pw.ts')
+    expect(result.status).toBe(3)
+    expect(JSON.parse(result.stderr).error).toContain('Cannot read local test')
+    expect(read().requests).toEqual([])
+  })
+
+  it('loads diagnostic credentials from dotenv without executing broken project config', () => {
+    fixture('dotenv-token')
+    writeFileSync(resolve(cwd, '.env'), 'SUPERCHECK_TOKEN=sck_live_from_dotenv_for_tests\n')
+    writeFileSync(resolve(cwd, 'supercheck.config.mjs'), "throw new Error('must not execute config')")
+    for (const args of [['whoami'], ['locations'], ['capabilities', '--online']]) expect(run(...args).status).toBe(0)
+    expect(read().requests.length).toBeGreaterThan(0)
+    expect(read().requests.every((request) => request.usingDotenvToken)).toBe(true)
+    fixture()
+    expect(run('whoami').status).toBe(0)
+    expect(read().requests.every((request) => !request.usingDotenvToken)).toBe(true)
+  })
+
+  it('releases the old name after an explicit-ID rename without adopting a later definition', () => {
+    config({ monitors: [{ name: 'Old', type: 'http_request' }] })
+    const first = run('deploy', '--force'); expect(first.status).toBe(0)
+    const createdId = JSON.parse(first.stdout).results[0].id
+    config({ monitors: [{ id: createdId, name: 'Renamed', type: 'http_request' }] })
+    expect(run('deploy', '--force').status).toBe(0)
+    config({ monitors: [{ id: createdId, name: 'Renamed', type: 'http_request' }, { name: 'Old', type: 'http_request' }] })
+    const next = run('deploy', '--force'); expect(next.status).toBe(0)
+    expect(JSON.parse(next.stdout).results[0]).toMatchObject({ action: 'create', name: 'Old' })
+    expect(read().resources['/api/monitors'].map((resource) => resource.name)).toEqual(['Renamed', 'Old'])
+    expect(JSON.parse(run('deploy', '--force').stdout).status).toBe('no_change')
   })
   it('checks configured targets for direct resource writes too', () => {
     fixture('wrong-context')
@@ -242,6 +334,7 @@ describe('CLI agent workflows through the real entrypoint', () => {
     expect(offline.contextVerified).toBe(false); expect(read().requests).toEqual([])
     const online = JSON.parse(run('capabilities', '--online').stdout)
     expect(online.contextVerified).toBe(true)
+    expect(read().requests.filter((request) => request.path === '/api/context')).toHaveLength(1)
   })
   it('executes one deployed test and returns its accepted run ID', () => {
     const result = run('test', 'execute', id)

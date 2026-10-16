@@ -992,11 +992,7 @@ export const pullCommand = new Command('pull')
       logger.newline()
 
       const { confirmPrompt } = await import('../utils/prompt.js')
-      const confirmed = await confirmPrompt('Continue?', { default: false, context, changes: plannedFiles })
-      if (!confirmed) {
-        logger.info('Pull aborted.')
-        return
-      }
+      await confirmPrompt('Continue?', { default: false, context, changes: plannedFiles })
       logger.newline()
     }
 
@@ -1184,6 +1180,7 @@ export const pullCommand = new Command('pull')
 
     if (getOutputFormat() === 'json') logger.output(JSON.stringify({ status: totalErrors ? 'partial' : 'success', ...summary, configPath: options.testsOnly ? null : existing?.configPath ?? resolve(cwd, options.config ?? 'supercheck.config.ts') }))
     if (totalErrors > 0) {
+      for (const error of summary.errors) logger.error(error)
       throw new CLIError(`Pull incomplete: ${totalErrors} error(s). Files already written are preserved.`, ExitCode.GeneralError)
     }
 

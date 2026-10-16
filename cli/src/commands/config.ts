@@ -23,7 +23,7 @@ configCommand
 configCommand
   .command('print')
   .description('Print the resolved configuration')
-  .option('--offline', 'Validate local-only configuration without cloud project identity')
+  .option('--offline', 'Print local-only configuration without cloud project identity')
   .option('--config <path>', 'Path to config file')
   .action(async (options: { config?: string; offline?: boolean }) => {
     const { config } = await loadConfig({ configPath: options.config, offline: options.offline })
