@@ -78,7 +78,7 @@ export const COMPETITORS: readonly Competitor[] = [
     sourceUrl: 'https://www.checklyhq.com/pricing/',
     asOf: COMPETITOR_AS_OF,
     billing:
-      'Browser checks bill one run per execution, and each location counts as a run. Plans shown at annual-billing rates.',
+      'Browser checks bill one run per execution. Plans shown at annual-billing rates.',
     note: 'Hobby stops at 1,000 runs. Starter and Team bill $6.50 and $6.25 per 1,000 runs beyond the allowance.',
   },
   {
@@ -96,6 +96,62 @@ export const COMPETITORS: readonly Competitor[] = [
     sourceUrl: 'https://betterstack.com/pricing',
     asOf: COMPETITOR_AS_OF,
     billing: 'Playwright minutes are $1 per 100 minutes.',
-    note: 'Monitors, responders, and status pages are billed separately and are not included in this estimate.',
+    note: 'Monitors, responders, and extra status pages are billed separately and are not included in this estimate.',
+  },
+];
+
+// What each vendor sells, from the same public pricing pages. "Not listed"
+// means the vendor's pricing page names no such product; it is not a claim
+// that the capability is impossible to assemble from other tools.
+export interface CapabilityRow {
+  name: string;
+  supercheck: string;
+  checkly: string;
+  datadog: string;
+  betterstack: string;
+}
+
+export const CAPABILITY_ROWS: readonly CapabilityRow[] = [
+  {
+    name: 'Browser and Playwright tests',
+    supercheck: 'Included, overage billed',
+    checkly: 'Included, billed per run',
+    datadog: 'Billed per run',
+    betterstack: 'Billed per minute',
+  },
+  {
+    name: 'k6 load testing',
+    supercheck: '30,000–100,000 VU min, overage billed',
+    checkly: 'Not listed',
+    datadog: 'Results integration only',
+    betterstack: 'Not listed',
+  },
+  {
+    name: 'Status pages',
+    supercheck: 'Included, 5–20 pages',
+    checkly: 'Add-on, $9–$30/mo',
+    datadog: 'Separate product',
+    betterstack: '1 included, extra pages from $15/mo',
+  },
+  {
+    name: 'AI incident investigation',
+    supercheck: '200–1,000 investigations, overage billed',
+    checkly: 'Add-on, $12–$39/mo',
+    datadog: 'Separate product',
+    betterstack: 'Billed per AI token',
+  },
+  {
+    name: 'Self-hostable',
+    supercheck: 'Yes',
+    checkly: 'SaaS only',
+    datadog: 'SaaS only',
+    betterstack: 'SaaS only',
+  },
+  {
+    name: 'Open-source platform',
+    supercheck: 'Yes, AGPLv3',
+    checkly: 'No',
+    datadog: 'No',
+    betterstack: 'No',
   },
 ];
