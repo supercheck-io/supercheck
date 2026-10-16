@@ -9,17 +9,40 @@ import { detectPackageManager, ensurePackageJson, installDependencies } from '..
 import { installPlaywrightBrowsers, isK6Installed, getK6InstallHint } from '../utils/deps.js'
 import { uuidv7 } from '../utils/uuid.js'
 import { slugify } from '../utils/slug.js'
+import { getStoredBaseUrl, getStoredOrganization, getStoredProject, getToken } from '../auth/store.js'
+import { getApiClient } from '../api/client.js'
 
-const CONFIG_TEMPLATE = `import { defineConfig } from '@supercheck/cli'
+const DEFAULT_BASE_URL = 'https://app.supercheck.io'
+
+/**
+ * Normalize the API URL that gets written to a committed config. Rejects
+ * non-HTTP(S) URLs and embedded credentials (same rule as `login`), and drops
+ * query/fragment so no secret can land in version control.
+ */
+function sanitizeBaseUrl(raw: string | null): string | null {
+  const value = raw?.trim()
+  if (!value) return DEFAULT_BASE_URL
+  try {
+    const url = new URL(value)
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new Error('unsafe')
+    return (url.origin + url.pathname).replace(/\/+$/, '')
+  } catch {
+    logger.warn('Ignoring invalid SUPERCHECK_URL/stored API URL; using the default Supercheck Cloud URL.')
+    return null
+  }
+}
+
+function configTemplate(organization: string, project: string, baseUrl: string): string {
+  return `import { defineConfig } from '@supercheck/cli'
 
 export default defineConfig({
   schemaVersion: '1.0',
   project: {
-    organization: 'my-org',
-    project: 'my-project',
+    organization: ${JSON.stringify(organization)},
+    project: ${JSON.stringify(project)},
   },
   api: {
-    baseUrl: process.env.SUPERCHECK_URL ?? 'https://app.supercheck.io',
+    baseUrl: process.env.SUPERCHECK_URL ?? ${JSON.stringify(baseUrl)},
   },
   tests: {
     playwright: {
@@ -32,6 +55,7 @@ export default defineConfig({
   },
 })
 `
+}
 
 const EXAMPLE_PW_TEST = `// @title Homepage Check
 
@@ -113,8 +137,31 @@ export const initCommand = new Command('init')
     logger.header('Initializing Supercheck project...')
     logger.newline()
 
+    const baseUrl = sanitizeBaseUrl(getStoredBaseUrl())
+    let organization = getStoredOrganization()?.trim() || 'my-org'
+    let project = getStoredProject()?.trim() || 'my-project'
+    const token = getToken()
+    if (token && baseUrl) {
+      try {
+        logger.info('Fetching authenticated project context...')
+        const { data } = await getApiClient({ token, baseUrl }).request<{
+          organization: { id: unknown }; project: { id: unknown }
+        }>('GET', '/api/context', { retries: 0, timeout: 5_000 })
+        const orgId = data.organization?.id
+        const projectId = data.project?.id
+        if (typeof orgId !== 'string' || !orgId || typeof projectId !== 'string' || !projectId) {
+          throw new Error('Missing project context')
+        }
+        organization = process.env.SUPERCHECK_ORG?.trim() || orgId
+        project = process.env.SUPERCHECK_PROJECT?.trim() || projectId
+      } catch (err) {
+        logger.debug(`Context lookup failed: ${err instanceof Error ? err.message : String(err)}`)
+        logger.warn('Could not load authenticated context. Check the organization and project in supercheck.config.ts before deploying.')
+      }
+    }
+
     // 1. Write supercheck.config.ts
-    writeFileSync(configPath, CONFIG_TEMPLATE, 'utf-8')
+    writeFileSync(configPath, configTemplate(organization, project, baseUrl ?? DEFAULT_BASE_URL), 'utf-8')
       filesWritten.push(configPath)
     logger.success('Created supercheck.config.ts')
 
@@ -210,7 +257,7 @@ export const initCommand = new Command('init')
     }
 
     logger.info('Next steps:')
-    logger.info('  1. Edit supercheck.config.ts with your org/project details')
+    logger.info('  1. Check the organization and project in supercheck.config.ts')
     logger.info('  2. Run `supercheck login --token <your-token>` to authenticate')
     logger.info('  3. Write tests in _supercheck_/playwright and _supercheck_/k6')
     logger.info('  4. Run `supercheck diff` to preview changes against the cloud')
