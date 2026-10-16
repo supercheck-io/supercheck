@@ -42,4 +42,6 @@ Device OAuth, scoped workload identities, saved deployment plans, generic API pa
 
 The regression suite covers real CLI entrypoint behavior using a synthetic API, plus focused state, redaction, wait, local-output, and dependency checks. Package verification must use a fresh build and packed installation. Hosted CI and a real isolated cloud test/job/monitor deploy followed by a zero-write second deploy remain release gates; mock acceptance does not establish server compatibility.
 
+Local validation passed 351 tests in 29 suites, typecheck, lint, build, package inspection/installation, and 25 process scenarios against the packed CLI. Account-free Playwright assertions, intentional failure reporting, k6 execution, and a real Chromium page through an explicit application Playwright config passed with CLI cloud requests disabled. Firefox/WebKit execution was not exercised. Repository-wide line coverage is 46.55%; this is not a claim of complete regression coverage.
+
 A new npm CLI release is required for installed users to receive these changes. The repository currently prepares 0.3.1; confirm that version is unpublished before using it, otherwise select the next version and update both package manifests and changelog. Follow `RELEASING.md` after merge and CI. This change does not publish a package, push release tags, or deploy a server.
