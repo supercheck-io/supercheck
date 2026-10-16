@@ -18,7 +18,8 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/supercheck-io/supercheck.git"
+    "url": "git+https://github.com/supercheck-io/supercheck.git",
+    "directory": "cli"
   },
   "author": "Supercheck <hello@supercheck.io>",
   "type": "module",
