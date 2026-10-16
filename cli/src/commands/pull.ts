@@ -493,10 +493,27 @@ function buildJobDefinitions(
 }
 
 /**
+ * A reference to a local environment variable in the generated config. Only code we construct can create one;
+ * server-supplied strings that merely look like `${NAME}` are always emitted as literals.
+ */
+class EnvRef {
+  constructor(readonly name: string) {}
+}
+
+// A secret variable's key is chosen on the server, and the pulled config reads the local environment variable of the
+// same name. Refuse names that could point at the user's own credentials or CI runtime, so a project member cannot
+// name a secret AWS_SECRET_ACCESS_KEY and have a later deploy send that value back.
+const SAFE_ENV_NAME = /^[A-Z][A-Z0-9_]*$/
+const RESERVED_ENV_NAME = /^(?:SUPERCHECK_|AWS_|AZURE_|GCP_|GOOGLE_|GITHUB_|GH_|GITLAB_|CI_|ACTIONS_|RUNNER_|NPM_|NODE_|YARN_|PNPM_|DOCKER_|KUBE|SSH_|GPG_|PG|POSTGRES|MYSQL|MONGO|REDIS|TWINE_|PYPI_|CARGO_|OPENAI_|ANTHROPIC_|HOME$|PATH$|USER$|SHELL$|DATABASE_URL$|DB_URL$)/
+export function isSafeEnvReferenceName(name: string): boolean {
+  return SAFE_ENV_NAME.test(name) && !RESERVED_ENV_NAME.test(name)
+}
+
+/**
  * Build variable definitions from remote data.
  * Secret values are never written to config.
  */
-function buildVariableDefinitions(variables: RemoteVariable[]): Record<string, unknown>[] {
+export function buildVariableDefinitions(variables: RemoteVariable[]): Record<string, unknown>[] {
   // File-type variables are managed via the dashboard (multipart upload).
   // They cannot be round-tripped via config, so exclude them.
   const configVariables = variables.filter((v) => v.type !== 'file')
@@ -514,12 +531,11 @@ function buildVariableDefinitions(variables: RemoteVariable[]): Record<string, u
       // SECURITY: Never write secret values to config files.
       // Use environment variables or `supercheck var set` for secret values.
       const envVarName = v.key.toUpperCase()
-      // Use bracket notation for names that aren't valid JS identifiers
-      // (e.g. keys containing dashes, dots, spaces, or starting with digits)
-      const isValidIdentifier = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(envVarName)
-      def.value = isValidIdentifier
-        ? `\${${envVarName}}`
-        : `\${[${envVarName}]}`
+      if (isSafeEnvReferenceName(envVarName)) def.value = new EnvRef(envVarName)
+      else {
+        logger.warn(`Secret variable "${v.key}" cannot be linked to an environment variable automatically; set its value with \`supercheck var set\`.`)
+        def.value = ''
+      }
     } else {
       def.value = v.value ?? ''
     }
@@ -780,19 +796,11 @@ function formatConfigKey(key: string): string {
  * Produces clean, readable TS syntax (not JSON.stringify).
  */
 function formatValue(value: unknown, indent = 0): string {
+  if (value instanceof EnvRef) {
+    // Bracket notation for names that aren't valid JS identifiers (dashes, dots, spaces, leading digits).
+    return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(value.name) ? `process.env.${value.name} ?? ''` : `process.env[${JSON.stringify(value.name)}] ?? ''`
+  }
   if (typeof value === 'string') {
-    // Check if it's an env var reference like ${VAR_NAME} or ${[VAR-NAME]}
-    if (value.startsWith('${') && value.endsWith('}')) {
-      const inner = value.slice(2, -1)
-      // Bracket-notation reference: ${[VAR-NAME]} → process.env['VAR-NAME']
-      if (inner.startsWith('[') && inner.endsWith(']')) {
-        const varName = inner.slice(1, -1)
-        if (varName && !varName.includes(']'))
-          return `process.env[${JSON.stringify(varName)}] ?? ''`
-      }
-      if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(inner))
-        return `process.env.${inner} ?? ''`
-    }
     return JSON.stringify(value)
   }
   if (typeof value === 'number' || typeof value === 'boolean') return String(value)
