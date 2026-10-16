@@ -39,7 +39,7 @@ sequenceDiagram
 ### Security contract
 
 - The page bridge/content script accepts only `event.source === window`, parsed allowed origins, expected protocol/hostname, and schema-valid messages.
-- Allow HTTPS Supercheck origins, exact HTTP localhost development, and the exact configured self-hosted origin—never arbitrary HTTP/HTTPS pages.
+- Allow exactly the configured instance origin (localhost only when it is the configured instance URL) plus the pinned cloud origins; never arbitrary HTTP/HTTPS pages, wildcard subdomains, or a blanket localhost allowance.
 - Use `window.location.origin` or another verified exact origin as `postMessage` target; never `*` for privileged data.
 - Bind return/callback URLs to the verified sender origin and restrict navigated/recorded target protocols.
 - Inject the page API only on trusted Supercheck pages. Do not add broad `externally_connectable` access.
@@ -52,7 +52,7 @@ sequenceDiagram
 - Do not relicense Playwright-derived recorder files as AGPL. App, worker (including Private Agent mode), and docs remain AGPL-3.0-only. CLI releases from 0.3.1 are Apache-2.0.
 - The vendored source must be enough for a clean reproducible build without another private checkout.
 - Build lint, vendored bundles, generated types, CRX library, recorder/TodoMVC examples, and test extension.
-- Run unit security and browser suites. Local browser fixture limitations must be disclosed; CI/Linux and manual installed-extension acceptance remain release gates.
+- Unit security runs on PRs; the recorder browser suite runs weekly (Mondays 04:30 UTC) and on-demand as a release gate. Local browser fixture limitations must be disclosed; CI/Linux and manual installed-extension acceptance remain release gates.
 - Chrome and Edge store descriptions/assets/certification are separate. Edge submission copy must not describe the product as a Chrome extension.
 - Store publishing requires manual account/2FA/reviewer gates and uses canonical listing IDs/URLs from current public docs.
 
@@ -86,9 +86,9 @@ flowchart LR
 
 ## Customer support chat and third parties
 
-- Load support scripts only when configured and under applicable consent/privacy policy.
+- Load support scripts only when configured; no consent-gate mechanism exists today.
 - Keep tokens and identity-verification secrets server-side. Do not send tenant secrets, auth tokens, sensitive route data, or private incident content to chat by default.
-- Verify inbound signatures, validate payloads, rate-limit callbacks, and make processing idempotent.
+- Polar is the only signature-verified inbound provider today; support-chat webhooks are not implemented. Apply signature verification, payload validation, rate limiting, and idempotency to any new callback.
 - Provider plan, branding, pricing, privacy, and hosting claims change; verify current terms before product decisions.
 
 ## Verify

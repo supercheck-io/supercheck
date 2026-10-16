@@ -62,7 +62,7 @@ flowchart TD
 
 ## Database and migration rules
 
-- PostgreSQL 15+ and Drizzle ORM are current. Do not introduce Prisma, MySQL assumptions, or NextAuth patterns.
+- PostgreSQL 18+ and Drizzle ORM are current (the schema relies on the PostgreSQL 18-native `uuidv7()`). Do not introduce Prisma, MySQL assumptions, or NextAuth patterns.
 - Follow neighboring schema conventions for UUIDs, timestamps, indexes, foreign keys, uniqueness, and delete behavior.
 - Add indexes for real filters, joins, ordering, and uniqueness—not as a template exercise.
 - Generate and inspect migrations. New non-null columns need safe behavior for existing rows.

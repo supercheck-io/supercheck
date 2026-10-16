@@ -1,6 +1,6 @@
 ---
 name: supercheck-monitoring-alerts
-description: Work on Supercheck HTTP, ping, or DNS monitors, regional scheduling and aggregation, alert state/history, incidents, or email, Slack, PagerDuty, and webhook notifications.
+description: Work on Supercheck HTTP request, website/SSL, ping host, port check, or Playwright synthetic monitors, regional scheduling and aggregation, alert state/history, incidents, or email, Slack, webhook, Telegram, Discord, and Microsoft Teams notifications.
 ---
 
 # Supercheck monitoring and alerts
@@ -8,7 +8,7 @@ description: Work on Supercheck HTTP, ping, or DNS monitors, regional scheduling
 ```mermaid
 flowchart LR
   SCHED[Distributed monitor scheduler] --> Q[Regional queues]
-  Q --> CHECK[HTTP, ping, or DNS execution]
+  Q --> CHECK[HTTP, website, ping, port, or synthetic execution]
   CHECK --> AGG[Regional aggregation]
   AGG --> STATE{Alert state machine}
   STATE --> HIST[Alert history]
@@ -18,9 +18,9 @@ flowchart LR
 ## Monitor definition and execution
 
 - Monitor definitions are tenant-owned configuration; executions and regional results are immutable observations.
-- Preserve URL/host, method/type, headers/body, timeout, expected response/assertions, interval, retry, enabled state, locations, and notification relationships across schema, APIs, UI, scheduler, queue, and worker.
-- Monitor destinations are untrusted. Apply input validation and SSRF-safe resolution at configuration time and again at execution, including redirects and DNS changes.
-- Scheduling is safe across multiple app replicas using the current distributed coordination mechanism. Restarts or overlapping scheduler ticks must not duplicate dispatch.
+- Preserve target, type, request/check config (method, headers/body, auth, timeouts, expected status/keywords, SSL checks), synthetic test reference, frequency, location selection, alert thresholds/flags, muted state, enabled state, and notification relationships across schema, APIs, UI, scheduler, queue, and worker. Monitor `retryStrategy` is deprecated and ignored.
+- Monitor destinations are untrusted. Validate URL shape at configuration time; enforce SSRF-safe DNS-pinned resolution at execution time, re-applied on every redirect and against DNS changes.
+- Scheduling is safe across multiple app replicas via BullMQ repeatable monitor jobs keyed by a stable jobId, with a Redis NX lock guarding startup re-scheduling. Restarts or overlapping ticks must not duplicate dispatch.
 - Location selection maps deterministically to worker queues and rejects unknown/unavailable locations deliberately.
 
 ## Aggregation
@@ -33,17 +33,17 @@ flowchart LR
 ## Alert state and history
 
 - Model transitions explicitly using the current states and consecutive-failure/recovery policy.
-- Persist transition history before or atomically with outbound notification scheduling.
+- Persist state transitions with the result that caused them; `alert_history` records each delivery attempt (provider, status, outcome).
 - Deduplicate repeated failing observations while preserving meaningful reminders/escalations configured by the product.
-- Recovery closes/resolves the active condition once and sends at most the intended recovery notifications.
-- Acknowledgement or manual state changes require permission, tenant scope, audit events, and race-safe updates.
+- Recovery closes the active condition once; failure and recovery reminders are interval-bounded and capped at 3 per sequence.
+- Acknowledgement is not implemented. Manual status changes require permission, tenant scope, audit events, and race-safe updates.
 
 ## Notification providers
 
-- Provider definitions are scoped to their owning tenant and secrets remain encrypted/redacted.
+- Provider definitions (email, Slack, webhook, Telegram, Discord, Teams; webhook presets for PagerDuty, Opsgenie, Splunk On-Call, Better Stack, and incident.io) are scoped to their owning tenant and secrets remain encrypted/redacted.
 - Render messages from bounded, escaped data. Do not leak headers, variables, tokens, raw response bodies, or internal errors.
-- Email, Slack, PagerDuty, and webhook delivery use bounded timeouts and retries only when safe.
-- Webhook destinations use SSRF protection. Inbound callbacks verify signatures when applicable.
+- Delivery uses bounded timeouts with provider-appropriate retry behavior (Slack, Telegram, Discord, and Teams retry; webhook and email are single-attempt today).
+- Webhook destinations use SSRF protection (allowlisted hosts, DNS pinning). Notification delivery is strictly outbound; no inbound callback route exists.
 - Record delivery outcome and safe provider diagnostics without blocking the monitor’s terminal persistence indefinitely.
 
 ## Verify

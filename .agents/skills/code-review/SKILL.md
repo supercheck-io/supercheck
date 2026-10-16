@@ -59,7 +59,7 @@ flowchart TD
   CHECK -->|yes| CLEAN{State and docs clean?}
   CLEAN -->|no| BLOCK
   CLEAN -->|yes| COMMIT[Commit-ready]
-  COMMIT --> CI[Required CI/review]
+  COMMIT --> CI[Required CI and human review]
   CI --> ACCEPT[Browser/provider/deployment acceptance]
   ACCEPT --> RELEASE[Release-ready]
 ```

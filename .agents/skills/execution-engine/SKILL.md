@@ -36,7 +36,7 @@ flowchart LR
 
 - Redis must use `maxmemory-policy noeviction`; evicting queue keys can lose or corrupt jobs.
 - General queue operations may share appropriate base connections.
-- Every `QueueEvents` consumer uses an independent duplicated connection because blocking `XREAD` cannot share a normal command connection.
+- Every `QueueEvents` consumer needs its own dedicated connection because blocking `XREAD` cannot share a normal command connection.
 - Do not set `commandTimeout` on shared options inherited by QueueEvents. Keep bounded connection establishment while allowing intentional failover reconnection.
 - Monitor connection count across app replicas, workers, schedulers, dashboards, and event streams.
 
