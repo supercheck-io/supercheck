@@ -1,5 +1,5 @@
 import { describe, it, expect } from '@jest/globals'
-import { generateConfigContent } from '../pull.js'
+import { buildVariableDefinitions, generateConfigContent, isSafeEnvReferenceName } from '../pull.js'
 
 describe('pulled config source', () => {
   it('treats remote object keys and malformed env references as data', () => {
@@ -33,6 +33,41 @@ describe('pulled config source', () => {
     expect(result.monitors[0].config[attackKey]).toBe('value')
     expect(result.monitors[0].config.nested[attackKey]).toBe('value')
     expect(result.monitors[0].config.malformed).toBe('${BAD;globalThis.__pullInjected=true}')
-    expect(result.monitors[0].config.env).toBe('from-env')
+    // A server string shaped like an env reference is data, never a read of the local environment.
+    expect(result.monitors[0].config.env).toBe('${VALID_NAME}')
+  })
+  it('never turns server strings into environment reads, in any field', () => {
+    const source = generateConfigContent({
+      orgId: 'o', projectId: 'p', baseUrl: 'https://example.com',
+      monitors: [{ name: '${SUPERCHECK_TOKEN}', target: '${[AWS-KEY]}' }],
+      jobs: [], variables: [], tags: [],
+      notificationProviders: [{ name: '${HOME}', config: { url: '${SECRET}' } }],
+      statusPages: [],
+    })
+    expect(source).not.toContain('process.env.SUPERCHECK_TOKEN')
+    expect(source).not.toContain('AWS-KEY"]')
+    expect(source).not.toMatch(/process\.env\.(HOME|SECRET)/)
+    expect(source).toContain('"${SUPERCHECK_TOKEN}"')
+  })
+  it('still references the local environment for secret variables only', () => {
+    const variables = buildVariableDefinitions([
+      { id: 'a', key: 'api_key', value: 'server-value', isSecret: true },
+      { id: 'b', key: 'MY_SECRET', value: 'server-value', isSecret: true },
+      { id: 'c', key: 'plain', value: '${SUPERCHECK_TOKEN}', isSecret: false },
+    ] as never)
+    const source = generateConfigContent({ orgId: 'o', projectId: 'p', baseUrl: 'https://example.com', monitors: [], jobs: [], variables, tags: [], notificationProviders: [], statusPages: [] })
+    expect(source).toContain("process.env.API_KEY ?? ''")
+    expect(source).toContain("process.env.MY_SECRET ?? ''")
+    expect(source).not.toContain('server-value')
+    expect(source).toContain('"${SUPERCHECK_TOKEN}"')
+    expect(source).not.toContain('process.env.SUPERCHECK_TOKEN')
+  })
+  it('does not link secret variables to credential-like or malformed environment names', () => {
+    for (const name of ['AWS_SECRET_ACCESS_KEY', 'GITHUB_TOKEN', 'NPM_TOKEN', 'DATABASE_URL', 'SUPERCHECK_TOKEN', 'my-secret', 'a b', 'HOME', 'NODE_AUTH_TOKEN', 'PGPASSWORD', 'MYSQL_PWD', 'REDIS_URL', 'OPENAI_API_KEY']) expect(isSafeEnvReferenceName(name.toUpperCase())).toBe(false)
+    for (const name of ['API_KEY', 'STRIPE_SECRET', 'SLACK_WEBHOOK']) expect(isSafeEnvReferenceName(name)).toBe(true)
+    const source = generateConfigContent({ orgId: 'o', projectId: 'p', baseUrl: 'https://example.com', monitors: [], jobs: [], tags: [], notificationProviders: [], statusPages: [],
+      variables: buildVariableDefinitions([{ id: 'a', key: 'AWS_SECRET_ACCESS_KEY', value: 'x', isSecret: true }, { id: 'b', key: 'API_KEY', value: 'x', isSecret: true }] as never) })
+    expect(source).not.toContain('process.env.AWS_SECRET_ACCESS_KEY')
+    expect(source).toContain("process.env.API_KEY ?? ''")
   })
 })
