@@ -21,7 +21,10 @@ interface AddLocationDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-export function AddLocationDialog({ open, onOpenChange }: AddLocationDialogProps) {
+export function AddLocationDialog({
+  open,
+  onOpenChange,
+}: AddLocationDialogProps) {
   const createLocation = useCreateLocation();
   const [code, setCode] = React.useState("");
   const [name, setName] = React.useState("");
@@ -38,7 +41,7 @@ export function AddLocationDialog({ open, onOpenChange }: AddLocationDialogProps
   const [sortOrder, setSortOrder] = React.useState("0");
   const reservedCodes = React.useMemo(
     () => new Set(["global", "all", "default", "none", "any", "local"]),
-    []
+    [],
   );
 
   const resetForm = React.useCallback(() => {
@@ -71,7 +74,7 @@ export function AddLocationDialog({ open, onOpenChange }: AddLocationDialogProps
       code.includes("--")
     ) {
       toast.error(
-        "Code must be lowercase letters, numbers, and hyphens (2-50 chars)"
+        "Code must be lowercase letters, numbers, and hyphens (2-50 chars)",
       );
       return;
     }
@@ -108,16 +111,19 @@ export function AddLocationDialog({ open, onOpenChange }: AddLocationDialogProps
       onOpenChange(false);
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to create location"
+        error instanceof Error ? error.message : "Failed to create location",
       );
     }
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <form onSubmit={handleSubmit}>
-          <DialogHeader>
+      <DialogContent className="gap-0 p-0 sm:max-w-xl">
+        <form
+          onSubmit={handleSubmit}
+          className="flex max-h-[calc(100dvh-2rem)] flex-col"
+        >
+          <DialogHeader className="shrink-0 px-6 pb-4 pt-6 text-left">
             <DialogTitle>Add Location</DialogTitle>
             <DialogDescription>
               Create a new execution location. Workers with a matching{" "}
@@ -128,40 +134,45 @@ export function AddLocationDialog({ open, onOpenChange }: AddLocationDialogProps
             </DialogDescription>
           </DialogHeader>
 
-          <div className="mt-4 space-y-4">
-            {/* Code */}
-            <div className="space-y-2">
-              <Label htmlFor="location-code">
-                Code <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="location-code"
-                placeholder="e.g. us-west, ap-south"
-                value={code}
-                onChange={(e) =>
-                  setCode(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))
-                }
-                maxLength={50}
-                required
-              />
-              <p className="text-xs text-muted-foreground">
-                Immutable identifier. Lowercase letters, numbers, hyphens. 2-50 characters.
-              </p>
-            </div>
+          <div className="min-h-0 space-y-5 overflow-y-auto px-6 pb-6">
+            <div className="grid gap-4 sm:grid-cols-2">
+              {/* Code */}
+              <div className="space-y-2">
+                <Label htmlFor="location-code">
+                  Code <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="location-code"
+                  placeholder="e.g. us-west, ap-south"
+                  value={code}
+                  onChange={(e) =>
+                    setCode(
+                      e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""),
+                    )
+                  }
+                  maxLength={50}
+                  required
+                />
+                <p className="text-xs text-muted-foreground">
+                  Immutable identifier. Lowercase letters, numbers, hyphens.
+                  2-50 characters.
+                </p>
+              </div>
 
-            {/* Name */}
-            <div className="space-y-2">
-              <Label htmlFor="location-name">
-                Display Name <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="location-name"
-                placeholder="e.g. US West, Asia South"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                maxLength={100}
-                required
-              />
+              {/* Name */}
+              <div className="space-y-2">
+                <Label htmlFor="location-name">
+                  Display Name <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="location-name"
+                  placeholder="e.g. US West, Asia South"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  maxLength={100}
+                  required
+                />
+              </div>
             </div>
 
             {/* Region + Flag row */}
@@ -216,66 +227,97 @@ export function AddLocationDialog({ open, onOpenChange }: AddLocationDialogProps
 
             {/* Availability */}
             <div className="space-y-1">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center justify-between gap-4">
+                <Label
+                  htmlFor="location-enabled"
+                  className="cursor-pointer leading-5"
+                >
+                  Enabled
+                </Label>
                 <Switch
+                  className="shrink-0"
                   id="location-enabled"
                   checked={isEnabled}
                   onCheckedChange={setIsEnabled}
                 />
-                <Label htmlFor="location-enabled" className="cursor-pointer">
-                  Enabled
-                </Label>
               </div>
               <p className="text-xs text-muted-foreground">
-                Turn off to stage a region. A disabled location is not selectable and its
-                workers do not start consuming its queues until you enable it.
+                Turn off to stage a region. A disabled location is not
+                selectable and its workers do not start consuming its queues
+                until you enable it.
               </p>
             </div>
 
             {/* Workload capabilities */}
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
+            <div
+              className="space-y-3 border-t pt-5"
+              role="group"
+              aria-labelledby="location-capabilities"
+            >
+              <h3 id="location-capabilities" className="text-sm font-medium">
+                Execution capabilities
+              </h3>
+              <div className="flex items-center justify-between gap-4">
+                <Label
+                  htmlFor="location-browser"
+                  className="cursor-pointer leading-5"
+                >
+                  Browser execution (Playwright)
+                </Label>
                 <Switch
+                  className="shrink-0"
                   id="location-browser"
+                  aria-describedby="location-capabilities-help"
                   checked={supportsBrowser}
                   onCheckedChange={setSupportsBrowser}
                 />
-                <Label htmlFor="location-browser" className="cursor-pointer">
-                  Browser execution (Playwright)
-                </Label>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center justify-between gap-4">
+                <Label
+                  htmlFor="location-k6"
+                  className="cursor-pointer leading-5"
+                >
+                  Performance tests (k6)
+                </Label>
                 <Switch
+                  className="shrink-0"
                   id="location-k6"
+                  aria-describedby="location-capabilities-help"
                   checked={supportsK6}
                   onCheckedChange={setSupportsK6}
                 />
-                <Label htmlFor="location-k6" className="cursor-pointer">
-                  Performance tests (k6)
-                </Label>
               </div>
-              <p className="text-xs text-muted-foreground">
-                HTTP, SSL, ping and port monitors are always available in an enabled location.
+              <p
+                id="location-capabilities-help"
+                className="text-xs leading-relaxed text-muted-foreground"
+              >
+                HTTP, SSL, ping and port monitors are always available in an
+                enabled location.
               </p>
             </div>
 
             {/* Default + Sort order */}
-            <div className="grid grid-cols-2 gap-3 items-end">
-              <div className="flex items-center gap-2">
+            <div className="space-y-4 border-t pt-5">
+              <div className="flex items-center justify-between gap-4">
+                <Label
+                  htmlFor="location-default"
+                  className="cursor-pointer leading-5"
+                >
+                  Default location
+                </Label>
                 <Switch
+                  className="shrink-0"
                   id="location-default"
                   checked={isDefault && isEnabled}
                   disabled={!isEnabled}
                   onCheckedChange={setIsDefault}
                 />
-                <Label htmlFor="location-default" className="cursor-pointer">
-                  Default location
-                </Label>
               </div>
-              <div className="space-y-2">
+              <div className="flex items-center justify-between gap-4">
                 <Label htmlFor="location-sort">Sort Order</Label>
                 <Input
                   id="location-sort"
+                  className="w-24"
                   type="number"
                   value={sortOrder}
                   onChange={(e) => setSortOrder(e.target.value)}
@@ -284,15 +326,20 @@ export function AddLocationDialog({ open, onOpenChange }: AddLocationDialogProps
             </div>
           </div>
 
-          <DialogFooter className="mt-6">
+          <DialogFooter className="grid shrink-0 grid-cols-2 gap-3 border-t bg-muted/20 px-6 py-4 sm:flex sm:items-center sm:justify-end">
             <Button
               type="button"
               variant="outline"
+              className="w-full sm:w-auto sm:min-w-28"
               onClick={() => onOpenChange(false)}
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={createLocation.isPending}>
+            <Button
+              type="submit"
+              className="w-full sm:w-auto sm:min-w-28"
+              disabled={createLocation.isPending}
+            >
               {createLocation.isPending ? "Creating…" : "Create Location"}
             </Button>
           </DialogFooter>

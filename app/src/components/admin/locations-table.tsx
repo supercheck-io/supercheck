@@ -17,6 +17,7 @@ import {
 import { TableBadge } from "@/components/ui/table-badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -208,12 +209,25 @@ export function LocationsTable() {
                     )}
                   </TableCell>
                   <TableCell className="text-center">
-                    <Switch
-                      checked={loc.isEnabled}
-                      onCheckedChange={() => handleToggleEnabled(loc)}
-                      disabled={updateLocation.isPending || loc.code === "local"}
-                      title={loc.code === "local" ? "The local location cannot be disabled. It is the system fallback." : undefined}
-                    />
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="inline-flex" tabIndex={loc.isDefault || loc.code === "local" ? 0 : undefined}>
+                          <Switch
+                            aria-label={`Enable ${loc.name}`}
+                            checked={loc.isEnabled}
+                            onCheckedChange={() => handleToggleEnabled(loc)}
+                            disabled={updateLocation.isPending || loc.code === "local" || loc.isDefault}
+                          />
+                        </span>
+                      </TooltipTrigger>
+                      {(loc.code === "local" || loc.isDefault) && (
+                        <TooltipContent>
+                          {loc.code === "local"
+                            ? "The local location cannot be disabled. It is the system fallback."
+                            : "Choose another default location or clear Default in Edit before disabling this location."}
+                        </TooltipContent>
+                      )}
+                    </Tooltip>
                   </TableCell>
                   <TableCell>
                     <DropdownMenu>

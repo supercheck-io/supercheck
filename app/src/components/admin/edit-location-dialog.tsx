@@ -33,16 +33,18 @@ export function EditLocationDialog({
   const [region, setRegion] = React.useState(location.region || "");
   const [flag, setFlag] = React.useState(location.flag || "");
   const [lat, setLat] = React.useState(
-    location.coordinates?.lat?.toString() || ""
+    location.coordinates?.lat?.toString() || "",
   );
   const [lon, setLon] = React.useState(
-    location.coordinates?.lon?.toString() || ""
+    location.coordinates?.lon?.toString() || "",
   );
-  const [isDefault, setIsDefault] = React.useState(location.isDefault);
-  const [supportsBrowser, setSupportsBrowser] = React.useState(location.supportsBrowser);
+  const [isDefault, setIsDefault] = React.useState(location.isDefault && location.isEnabled);
+  const [supportsBrowser, setSupportsBrowser] = React.useState(
+    location.supportsBrowser,
+  );
   const [supportsK6, setSupportsK6] = React.useState(location.supportsK6);
   const [sortOrder, setSortOrder] = React.useState(
-    location.sortOrder.toString()
+    location.sortOrder.toString(),
   );
 
   // Sync form when location prop changes (switching between locations)
@@ -52,7 +54,7 @@ export function EditLocationDialog({
     setFlag(location.flag || "");
     setLat(location.coordinates?.lat?.toString() || "");
     setLon(location.coordinates?.lon?.toString() || "");
-    setIsDefault(location.isDefault);
+    setIsDefault(location.isDefault && location.isEnabled);
     setSupportsBrowser(location.supportsBrowser);
     setSupportsK6(location.supportsK6);
     setSortOrder(location.sortOrder.toString());
@@ -92,16 +94,19 @@ export function EditLocationDialog({
       onOpenChange(false);
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to update location"
+        error instanceof Error ? error.message : "Failed to update location",
       );
     }
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <form onSubmit={handleSubmit}>
-          <DialogHeader>
+      <DialogContent className="gap-0 p-0 sm:max-w-xl">
+        <form
+          onSubmit={handleSubmit}
+          className="flex max-h-[calc(100dvh-2rem)] flex-col"
+        >
+          <DialogHeader className="shrink-0 px-6 pb-4 pt-6 text-left">
             <DialogTitle>Edit Location</DialogTitle>
             <DialogDescription>
               Update location details. The code (
@@ -112,25 +117,32 @@ export function EditLocationDialog({
             </DialogDescription>
           </DialogHeader>
 
-          <div className="mt-4 space-y-4">
-            {/* Code (read-only) */}
-            <div className="space-y-2">
-              <Label>Code</Label>
-              <Input value={location.code} disabled className="opacity-60" />
-            </div>
+          <div className="min-h-0 space-y-5 overflow-y-auto px-6 pb-6">
+            <div className="grid gap-4 sm:grid-cols-2">
+              {/* Code (read-only) */}
+              <div className="space-y-2">
+                <Label htmlFor="edit-location-code">Code</Label>
+                <Input
+                  id="edit-location-code"
+                  value={location.code}
+                  disabled
+                  className="opacity-60"
+                />
+              </div>
 
-            {/* Name */}
-            <div className="space-y-2">
-              <Label htmlFor="edit-location-name">
-                Display Name <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="edit-location-name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                maxLength={100}
-                required
-              />
+              {/* Name */}
+              <div className="space-y-2">
+                <Label htmlFor="edit-location-name">
+                  Display Name <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="edit-location-name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  maxLength={100}
+                  required
+                />
+              </div>
             </div>
 
             {/* Region + Flag */}
@@ -184,51 +196,78 @@ export function EditLocationDialog({
             </div>
 
             {/* Workload capabilities */}
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
+            <div
+              className="space-y-3 border-t pt-5"
+              role="group"
+              aria-labelledby="edit-location-capabilities"
+            >
+              <h3
+                id="edit-location-capabilities"
+                className="text-sm font-medium"
+              >
+                Execution capabilities
+              </h3>
+              <div className="flex items-center justify-between gap-4">
+                <Label
+                  htmlFor="edit-location-browser"
+                  className="cursor-pointer leading-5"
+                >
+                  Browser execution (Playwright)
+                </Label>
                 <Switch
+                  className="shrink-0"
                   id="edit-location-browser"
+                  aria-describedby="edit-location-capabilities-help"
                   checked={supportsBrowser}
                   onCheckedChange={setSupportsBrowser}
                 />
-                <Label htmlFor="edit-location-browser" className="cursor-pointer">
-                  Browser execution (Playwright)
-                </Label>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center justify-between gap-4">
+                <Label
+                  htmlFor="edit-location-k6"
+                  className="cursor-pointer leading-5"
+                >
+                  Performance tests (k6)
+                </Label>
                 <Switch
+                  className="shrink-0"
                   id="edit-location-k6"
+                  aria-describedby="edit-location-capabilities-help"
                   checked={supportsK6}
                   onCheckedChange={setSupportsK6}
                 />
-                <Label htmlFor="edit-location-k6" className="cursor-pointer">
-                  Performance tests (k6)
-                </Label>
               </div>
-              <p className="text-xs text-muted-foreground">
-                HTTP, SSL, ping and port monitors are always available in an enabled location.
+              <p
+                id="edit-location-capabilities-help"
+                className="text-xs leading-relaxed text-muted-foreground"
+              >
+                HTTP, SSL, ping and port monitors are always available in an
+                enabled location.
               </p>
             </div>
 
             {/* Default + Sort order */}
-            <div className="grid grid-cols-2 gap-3 items-end">
-              <div className="flex items-center gap-2">
-                <Switch
-                  id="edit-location-default"
-                  checked={isDefault}
-                  onCheckedChange={setIsDefault}
-                />
+            <div className="space-y-4 border-t pt-5">
+              <div className="flex items-center justify-between gap-4">
                 <Label
                   htmlFor="edit-location-default"
-                  className="cursor-pointer"
+                  className="cursor-pointer leading-5"
                 >
                   Default location
                 </Label>
+                <Switch
+                  className="shrink-0"
+                  id="edit-location-default"
+                  checked={isDefault}
+                  disabled={!location.isEnabled && !isDefault}
+                  onCheckedChange={setIsDefault}
+                />
               </div>
-              <div className="space-y-2">
+              <div className="flex items-center justify-between gap-4">
                 <Label htmlFor="edit-location-sort">Sort Order</Label>
                 <Input
                   id="edit-location-sort"
+                  className="w-24"
                   type="number"
                   value={sortOrder}
                   onChange={(e) => setSortOrder(e.target.value)}
@@ -237,15 +276,20 @@ export function EditLocationDialog({
             </div>
           </div>
 
-          <DialogFooter className="mt-6">
+          <DialogFooter className="grid shrink-0 grid-cols-2 gap-3 border-t bg-muted/20 px-6 py-4 sm:flex sm:items-center sm:justify-end">
             <Button
               type="button"
               variant="outline"
+              className="w-full sm:w-auto sm:min-w-28"
               onClick={() => onOpenChange(false)}
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={updateLocation.isPending}>
+            <Button
+              type="submit"
+              className="w-full sm:w-auto sm:min-w-28"
+              disabled={updateLocation.isPending}
+            >
               {updateLocation.isPending ? "Saving…" : "Save Changes"}
             </Button>
           </DialogFooter>

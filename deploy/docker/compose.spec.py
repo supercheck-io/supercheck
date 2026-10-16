@@ -9,6 +9,23 @@ DEPLOY = Path(__file__).resolve().parent
 
 
 class ComposeTests(unittest.TestCase):
+    def test_worker_queue_roles_are_forwarded_without_changing_self_hosted_defaults(self):
+        for file in ('docker-compose.yml', 'docker-compose-local.yml',
+                     'docker-compose-external.yml', 'docker-compose-secure.yml',
+                     'docker-compose-worker.yml'):
+            for queues in ('', 'monitor'):
+                with self.subTest(file=file, queues=queues):
+                    env = {key: value for key, value in os.environ.items()
+                           if key not in ('COMPOSE_PROFILES', 'WORKER_QUEUES')}
+                    env['WORKER_QUEUES'] = queues
+                    result = subprocess.run(
+                        ['docker', 'compose', '--env-file', '/dev/null', '-f', file,
+                         'config', '--format', 'json'],
+                        cwd=DEPLOY, env=env, text=True,
+                        capture_output=True, check=True, timeout=30)
+                    worker = json.loads(result.stdout)['services']['worker']
+                    self.assertEqual(worker['environment']['WORKER_QUEUES'], queues)
+
     def test_traefik_selects_shared_network_without_losing_private_agent_access(self):
         for file in ('docker-compose.yml', 'docker-compose-secure.yml'):
             for project in ('default', 'environment', 'cli'):

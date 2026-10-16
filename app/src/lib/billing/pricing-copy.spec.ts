@@ -10,13 +10,14 @@ describe("PRICING_FAQS", () => {
     }
   });
 
-  it("separates monitoring coverage from execution coverage", () => {
+  it("describes current coverage without advertising planned regions as available", () => {
     const faq = PRICING_FAQS.find(
       (item) => item.question === "Where do Cloud checks run?",
     );
-    expect(faq?.answer).toContain("monitoring runs from EU, US, and Singapore");
+    expect(faq?.answer).toContain("Supercheck Cloud currently runs");
+    expect(faq?.answer).toContain("US and Singapore monitoring regions are planned");
     expect(faq?.answer).toContain(
-      "Browser synthetic checks, Playwright tests, and k6 execution run in EU",
+      "browser synthetic checks, Playwright tests, and k6 execution in EU",
     );
   });
 

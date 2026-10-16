@@ -217,8 +217,8 @@ export function CostCalculator() {
           <li>
             Runs per month = checks × runs per day, over a 30-day month, from one location.
             Browser checks run from a single EU location, and we price every vendor for
-            the same single-location workload. HTTP, SSL, ping and port monitoring from other
-            locations does not use browser minutes. If browser checks are enabled in more
+            the same single-location workload. HTTP, SSL, ping and port checks do not use
+            browser minutes. If browser checks are enabled in more
             locations later, each location counts as a separate run.
           </li>
           <li>

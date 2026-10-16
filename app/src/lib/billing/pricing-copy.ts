@@ -7,7 +7,7 @@ export const PRICING_FAQS = [
   {
     question: "Where do Cloud checks run?",
     answer:
-      "HTTP, SSL, ping, and port monitoring runs from EU, US, and Singapore. Browser synthetic checks, Playwright tests, and k6 execution run in EU. Enterprise can use custom locations, and self-hosted deployments can run checks wherever you deploy.",
+      "Supercheck Cloud currently runs HTTP, SSL, ping, and port monitoring, browser synthetic checks, Playwright tests, and k6 execution in EU. US and Singapore monitoring regions are planned. Enterprise can use custom locations, and self-hosted deployments can run checks wherever you deploy.",
   },
   {
     question: "How are browser execution minutes measured?",
