@@ -48,6 +48,8 @@ export class ApiClient {
     this.proxy = options.proxy ?? null
   }
 
+  getBaseUrl(): string { const url = new URL(this.baseUrl); return url.origin + url.pathname.replace(/\/$/, '') }
+
   setToken(token: string): void {
     this.token = token
   }
@@ -150,8 +152,6 @@ export class ApiClient {
 
         const response = await fetch(url, fetchOptions)
 
-        clearTimeout(timeoutId)
-        timeoutId = null
 
         // Rate limit handling
         if (response.status === 429) {
@@ -201,7 +201,10 @@ export class ApiClient {
           )
         }
 
-        const data = text ? (JSON.parse(text) as T) : ({} as T)
+        let data: T
+        try { data = text ? JSON.parse(text) as T : {} as T } catch {
+          throw new ApiRequestError(`Invalid JSON response from ${targetOrigin}: ${method} ${path}`, response.status)
+        }
 
         return {
           data,

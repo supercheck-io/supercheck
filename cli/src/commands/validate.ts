@@ -1,3 +1,4 @@
+import { getOutputFormat } from '../output/formatter.js'
 import { Command } from 'commander'
 import pc from '../utils/colors.js'
 import { createAuthenticatedClient } from '../api/authenticated-client.js'
@@ -53,6 +54,7 @@ export const validateCommand = new Command('validate')
     logger.header('Validation Results')
     logger.newline()
 
+    if (getOutputFormat() === 'json') logger.output(JSON.stringify({ results, valid: results.every((result) => result.valid) }))
     let failed = 0
     for (const result of results) {
       if (result.valid) {

@@ -1,7 +1,7 @@
 import { Command } from 'commander'
 import { createAuthenticatedClient } from '../api/authenticated-client.js'
 import { logger } from '../utils/logger.js'
-import { getOutputFormat, output, outputDetail, outputPagination } from '../output/formatter.js'
+import { getOutputFormat, output, outputDetail, outputMutation, outputPagination } from '../output/formatter.js'
 import type { PaginatedResponse } from '../api/client.js'
 import { parseBooleanStrict, parseIntStrict } from '../utils/number.js'
 import { withSpinner } from '../utils/spinner.js'
@@ -239,7 +239,7 @@ monitorCommand
 
     if (options.dryRun) {
       logger.header('Dry run — monitor create payload:')
-      logger.info(JSON.stringify(body, null, 2))
+      outputDetail({ dryRun: true, payload: body })
       return
     }
 
@@ -296,7 +296,7 @@ monitorCommand
 
     if (options.dryRun) {
       logger.header('Dry run — monitor update payload:')
-      logger.info(JSON.stringify(body, null, 2))
+      outputDetail({ dryRun: true, payload: body })
       return
     }
 
@@ -315,11 +315,7 @@ monitorCommand
   .action(async (id: string, options: { force?: boolean }) => {
     if (!options.force) {
       const { confirmPrompt } = await import('../utils/prompt.js')
-      const confirmed = await confirmPrompt(`Delete monitor ${id}?`, { default: false })
-      if (!confirmed) {
-        logger.info('Aborted')
-        return
-      }
+      await confirmPrompt(`Delete monitor ${id}?`, { default: false })
     }
 
     const client = createAuthenticatedClient()
@@ -328,4 +324,5 @@ monitorCommand
       () => client.delete(`/api/monitors/${id}`),
     )
     logger.success(`Monitor ${id} deleted`)
+    outputMutation({ id, deleted: true })
   })

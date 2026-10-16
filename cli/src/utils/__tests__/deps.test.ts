@@ -45,6 +45,19 @@ describe('Playwright dependency detection', () => {
     expect(arePlaywrightBrowsersInstalled(cwd)).toBe(false)
   })
 
+  it('checks the selected browser and defers custom browser configuration to Playwright', () => {
+    const cwd = createTempProject()
+    addPlaywrightPackage(cwd)
+    const browserCache = resolve(cwd, 'browser-cache')
+    mkdirSync(resolve(browserCache, 'firefox-1234'), { recursive: true })
+    process.env.PLAYWRIGHT_BROWSERS_PATH = browserCache
+    expect(arePlaywrightBrowsersInstalled(cwd)).toBe(false)
+    expect(() => ensureDependenciesForTestType(cwd, 'playwright', 'firefox')).not.toThrow()
+    expect(() => ensureDependenciesForTestType(cwd, 'playwright', 'webkit')).toThrow('install webkit')
+    expect(() => ensureDependenciesForTestType(cwd, 'playwright', null)).not.toThrow()
+    expect(checkAllDependencies(cwd, { browser: 'firefox' }).find((dep) => dep.name === 'Playwright browsers')?.installed).toBe(true)
+  })
+
   it('marks Playwright browsers as missing in doctor output when only the package exists', () => {
     const cwd = createTempProject()
     addPlaywrightPackage(cwd)

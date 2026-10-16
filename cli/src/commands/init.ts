@@ -1,5 +1,7 @@
+import { ensureGitignoreEntries } from '../utils/gitignore.js'
+import { outputMutation } from '../output/formatter.js'
 import { Command } from 'commander'
-import { existsSync, mkdirSync, writeFileSync, readFileSync, appendFileSync } from 'node:fs'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { logger } from '../utils/logger.js'
 import { CLIError, ExitCode } from '../utils/errors.js'
@@ -82,13 +84,6 @@ const SUPERCHECK_TSCONFIG = `{
 }
 `
 
-const GITIGNORE_ADDITIONS = `
-# Supercheck CLI
-supercheck.config.local.ts
-supercheck.config.local.js
-supercheck.config.local.mjs
-`
-
 export const initCommand = new Command('init')
   .description('Initialize a new Supercheck project with config and example tests')
   .option('--force', 'Overwrite existing config file')
@@ -97,6 +92,7 @@ export const initCommand = new Command('init')
   .option('--pm <manager>', 'Package manager to use (npm, yarn, pnpm, bun)')
   .action(async (options: { force?: boolean; skipInstall?: boolean; skipExamples?: boolean; pm?: string }) => {
     const cwd = process.cwd()
+    const filesWritten: string[] = []
     const requestedPm = options.pm?.trim().toLowerCase()
     if (requestedPm && !['npm', 'yarn', 'pnpm', 'bun'].includes(requestedPm)) {
       throw new CLIError(
@@ -119,12 +115,14 @@ export const initCommand = new Command('init')
 
     // 1. Write supercheck.config.ts
     writeFileSync(configPath, CONFIG_TEMPLATE, 'utf-8')
+      filesWritten.push(configPath)
     logger.success('Created supercheck.config.ts')
 
     // 2. Write tsconfig.supercheck.json for IDE IntelliSense
     const tsconfigPath = resolve(cwd, 'tsconfig.supercheck.json')
     if (!existsSync(tsconfigPath) || options.force) {
       writeFileSync(tsconfigPath, SUPERCHECK_TSCONFIG, 'utf-8')
+      filesWritten.push(tsconfigPath)
       logger.success('Created tsconfig.supercheck.json (IDE IntelliSense)')
     }
 
@@ -150,6 +148,7 @@ export const initCommand = new Command('init')
       const pwTestPath = resolve(cwd, `_supercheck_/playwright/${pwFilename}`)
       if (!existsSync(pwTestPath)) {
         writeFileSync(pwTestPath, EXAMPLE_PW_TEST, 'utf-8')
+      filesWritten.push(pwTestPath)
         logger.success(`Created _supercheck_/playwright/${pwFilename} (Playwright example)`)
       }
 
@@ -160,19 +159,13 @@ export const initCommand = new Command('init')
       const k6TestPath = resolve(cwd, `_supercheck_/k6/${k6Filename}`)
       if (!existsSync(k6TestPath)) {
         writeFileSync(k6TestPath, EXAMPLE_K6_TEST, 'utf-8')
+      filesWritten.push(k6TestPath)
         logger.success(`Created _supercheck_/k6/${k6Filename} (k6 example)`)
       }
     }
 
     // 5. Update .gitignore
-    const gitignorePath = resolve(cwd, '.gitignore')
-    if (existsSync(gitignorePath)) {
-      const content = readFileSync(gitignorePath, 'utf-8')
-      if (!content.includes('supercheck.config.local')) {
-        appendFileSync(gitignorePath, GITIGNORE_ADDITIONS, 'utf-8')
-        logger.success('Updated .gitignore with Supercheck entries')
-      }
-    }
+    if (ensureGitignoreEntries(cwd).length > 0) logger.success('Updated .gitignore with Supercheck entries')
 
     // 6. Detect package manager
     const pm = (requestedPm as 'npm' | 'yarn' | 'pnpm' | 'bun' | undefined) ?? detectPackageManager(cwd)
@@ -230,4 +223,5 @@ export const initCommand = new Command('init')
     logger.info('  supercheck deploy      Push local config to Supercheck')
     logger.info('  supercheck whoami      Check authentication status')
     logger.newline()
+    outputMutation({ initialized: true, filesWritten, installed: !options.skipInstall })
   })

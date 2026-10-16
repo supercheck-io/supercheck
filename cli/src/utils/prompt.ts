@@ -1,3 +1,5 @@
+import { CLIError, ExitCode } from './errors.js'
+import { getOutputFormat } from '../output/formatter.js'
 /**
  * Shared confirmation prompt utility.
  * Standardizes all CLI prompts to use `(yes/no)` format.
@@ -9,12 +11,15 @@
  * @param message - The question to ask (e.g. "Delete resource X?")
  * @param opts.default - What pressing Enter (empty input) means.
  *                       `true` = default yes, `false` = default no (default: false)
- * @returns true if the user confirmed, false otherwise
+ * Resolves after confirmation; refusal or closed input throws a configuration error.
  */
 export async function confirmPrompt(
   message: string,
-  opts: { default?: boolean } = {},
-): Promise<boolean> {
+  opts: { default?: boolean; changes?: unknown[]; context?: unknown } = {},
+): Promise<void> {
+  if (!process.stdin.isTTY || getOutputFormat() === 'json') {
+    throw new CLIError(`CONFIRMATION_REQUIRED: ${message} Re-run with --force (or --yes for upgrade) after reviewing the preview.`, ExitCode.ConfigError, { status: 'confirmation_required', changes: opts.changes ?? [message], context: opts.context, confirmArgs: [...process.argv.slice(2), process.argv.includes('upgrade') ? '--yes' : '--force'] })
+  }
   const defaultYes = opts.default === true
   const hint = defaultYes ? '(yes/no) [yes]' : '(yes/no) [no]'
 
@@ -27,12 +32,13 @@ export async function confirmPrompt(
   })
   rl.close()
 
-  if (answer === null) return false
+  if (answer === null) throw new CLIError('ABORTED: Input closed before confirmation.', ExitCode.ConfigError)
   const normalized = answer.trim().toLowerCase()
 
   // Empty input → use default
-  if (normalized === '') return defaultYes
+  if (normalized === '' && defaultYes) return
 
   // Accept yes/y and no/n
-  return normalized === 'yes' || normalized === 'y'
+  if (normalized === 'yes' || normalized === 'y') return
+  throw new CLIError('ABORTED: Operation cancelled.', ExitCode.ConfigError)
 }

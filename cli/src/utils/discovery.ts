@@ -13,7 +13,7 @@ export interface DiscoveredFile {
  * Match files against a simple glob pattern.
  * Supports: ** (any depth), * (any chars in segment)
  */
-function matchGlob(filePath: string, pattern: string): boolean {
+export function matchGlob(filePath: string, pattern: string): boolean {
   // Use safe placeholders (no regex special chars) to protect globs during escaping
   const withPlaceholders = pattern
     .replace(/\/\*\*\//g, '__GLOBSTAR_SLASH__') // Handle /**/ explicitly to support zero-or-more dirs

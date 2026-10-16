@@ -1,3 +1,7 @@
+import { discoverFiles, matchGlob } from '../utils/discovery.js'
+import { managedState, verifyContext } from '../utils/managed.js'
+import { getOutputFormat } from '../output/formatter.js'
+import { randomUUID } from 'node:crypto'
 import { Command } from 'commander'
 import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, unlinkSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
@@ -124,6 +128,8 @@ interface PullSummary {
   notificationProviders: number
   statusPages: number
   skipped: number
+  files: string[]
+  backups: string[]
   errors: string[]
 }
 
@@ -145,10 +151,13 @@ function mapTestType(apiType: string): 'playwright' | 'k6' {
  * Write a file only if the content has changed, avoiding unnecessary git diffs.
  * Returns true if the file was written (new or changed), false if unchanged.
  */
-function writeIfChanged(filePath: string, content: string): boolean {
+function writeIfChanged(filePath: string, content: string, summary?: PullSummary): boolean {
   if (existsSync(filePath)) {
     const existing = readFileSync(filePath, 'utf-8')
     if (existing === content) return false
+    const backup = `${filePath}.supercheck-backup.${randomUUID()}`
+    writeFileSync(backup, existing, { mode: 0o600, flag: 'wx' })
+    summary?.backups.push(backup)
   }
 
   const dir = dirname(filePath)
@@ -157,6 +166,7 @@ function writeIfChanged(filePath: string, content: string): boolean {
   }
 
   writeFileSync(filePath, content, 'utf-8')
+  summary?.files.push(filePath)
   return true
 }
 
@@ -168,20 +178,10 @@ function decodeScript(script: string | undefined): string | null {
 // Fetch functions
 // ────────────────────────────────────────────────────────────────
 
-async function fetchContext(client: ApiClient): Promise<RemoteContext | null> {
-  try {
-    const { data } = await client.get<{ success: boolean } & RemoteContext>('/api/context')
-    // Validate that we got meaningful data
-    if (data?.organization?.id && data?.project?.id) {
-      return data
-    }
-    logger.debug('Context response missing organization or project ID')
-    return null
-  } catch (err) {
-    logger.warn(`Could not fetch project context: ${err instanceof Error ? err.message : String(err)}`)
-    logger.debug('Organization and project will be set to placeholder values. Re-run after fixing connectivity.')
-    return null
-  }
+async function fetchContext(client: ApiClient): Promise<RemoteContext> {
+  const { data } = await client.get<{ success: boolean } & RemoteContext>('/api/context')
+  if (!data?.organization?.id || !data?.project?.id) throw new CLIError('Invalid project context. No files were written.', ExitCode.ApiError)
+  return data
 }
 
 async function fetchTests(client: ApiClient): Promise<RemoteTest[]> {
@@ -258,7 +258,7 @@ async function fetchStatusPages(client: ApiClient): Promise<RemoteStatusPage[]> 
  * Pull test scripts into _supercheck_/ directory.
  * Each test is saved as a {slug}.{uuid}.pw.ts or {slug}.{uuid}.k6.ts file.
  */
-function pullTests(tests: RemoteTest[], cwd: string, summary: PullSummary): void {
+function pullTests(tests: RemoteTest[], cwd: string, summary: PullSummary, managedPaths = new Map<string, string>(), obsoletePaths = new Map<string, string>()): void {
   const baseDir = resolve(cwd, '_supercheck_')
   if (!existsSync(baseDir)) {
     mkdirSync(baseDir, { recursive: true })
@@ -274,17 +274,19 @@ function pullTests(tests: RemoteTest[], cwd: string, summary: PullSummary): void
       if (!existsSync(folderPath)) continue
       for (const file of readdirSync(folderPath)) {
         const uuid = extractUuidFromFilename(file)
-        if (uuid) existingByUuid.set(uuid, `${folder}/${file}`)
+        if (uuid) existingByUuid.set(uuid, `_supercheck_/${folder}/${file}`)
       }
     }
   } catch {
     // Directory may not exist yet — that's fine
   }
 
+  for (const [id, path] of obsoletePaths) existingByUuid.set(id, path)
+
   for (const test of tests) {
     try {
       const testType = mapTestType(test.type)
-      const relPath = testRelativePath(test.id, test.title, testType)
+      const relPath = managedPaths.get(test.id) ?? testRelativePath(test.id, test.title, testType)
       const folderPath = resolve(baseDir, testTypeToFolder(testType))
       if (!existsSync(folderPath)) {
         mkdirSync(folderPath, { recursive: true })
@@ -312,20 +314,19 @@ function pullTests(tests: RemoteTest[], cwd: string, summary: PullSummary): void
 
       // Clean up old file if UUID exists but filename changed (e.g., test renamed)
       const existingFilename = existingByUuid.get(test.id)
-      const currentFile = relPath.replace(/^_supercheck_\//, '')
+      const currentFile = relPath
+      const filePath = resolve(cwd, relPath)
+      const written = writeIfChanged(filePath, script, summary)
+
       if (existingFilename && existingFilename !== currentFile) {
-        const oldPath = resolve(baseDir, existingFilename)
-        try {
+        const oldPath = resolve(cwd, existingFilename)
+        if (existsSync(oldPath)) {
+          const backup = `${oldPath}.supercheck-backup.${randomUUID()}`
+          writeFileSync(backup, readFileSync(oldPath), { mode: 0o600, flag: 'wx' })
+          summary.backups.push(backup)
           unlinkSync(oldPath)
-          logger.debug(`  Renamed: ${existingFilename} → ${currentFile}`)
-        } catch {
-          // Old file may have been manually deleted — ignore
         }
       }
-
-      const filePath = resolve(cwd, relPath)
-      const written = writeIfChanged(filePath, script)
-
       if (written) {
         logger.info(pc.green(`  + ${relPath}`))
         summary.tests++
@@ -601,6 +602,7 @@ export function generateConfigContent(opts: {
   tags: Record<string, unknown>[]
   notificationProviders: Record<string, unknown>[]
   statusPages: Record<string, unknown>[]
+  tests?: { playwright?: { testMatch?: string; browser?: string }; k6?: { testMatch?: string } }
 }): string {
   const parts: string[] = []
 
@@ -629,10 +631,11 @@ export function generateConfigContent(opts: {
   parts.push('  // Test file patterns — Playwright (.pw.ts) and k6 (.k6.ts) scripts')
   parts.push('  tests: {')
   parts.push('    playwright: {')
-  parts.push(`      testMatch: '_supercheck_/playwright/**/*.pw.ts',`)
+  parts.push(`      testMatch: ${JSON.stringify(opts.tests?.playwright?.testMatch ?? '_supercheck_/playwright/**/*.pw.ts')},`)
+  parts.push(`      browser: ${JSON.stringify(opts.tests?.playwright?.browser ?? 'chromium')},`)
   parts.push('    },')
   parts.push('    k6: {')
-  parts.push(`      testMatch: '_supercheck_/k6/**/*.k6.ts',`)
+  parts.push(`      testMatch: ${JSON.stringify(opts.tests?.k6?.testMatch ?? '_supercheck_/k6/**/*.k6.ts')},`)
   parts.push('    },')
   parts.push('  },')
 
@@ -812,12 +815,14 @@ export const pullCommand = new Command('pull')
   .option('--force', 'Bypass confirmation prompt before overwriting local files')
   .option('--tests-only', 'Only pull test scripts')
   .option('--config-only', 'Only pull config (monitors, jobs, notification providers, variables, tags, status pages)')
+  .option('--skip-install', 'Do not install dependencies when initializing a project')
   .option('--dry-run', 'Show what would be pulled without writing files')
   .action(async (options: {
     config?: string
     force?: boolean
     testsOnly?: boolean
     configOnly?: boolean
+    skipInstall?: boolean
     dryRun?: boolean
   }) => {
     // Validate mutually exclusive flags
@@ -839,6 +844,8 @@ export const pullCommand = new Command('pull')
     logger.header('Pulling from Supercheck cloud...')
     logger.newline()
 
+    if (existing) await verifyContext(client, existing.config, true)
+
     // ── Fetch project/org context and all remote resources in parallel ──
     const [context, tests, monitors, jobs, variables, tags, notificationProviders, statusPages] = await withSpinner(
       'Fetching remote resources...',
@@ -853,10 +860,41 @@ export const pullCommand = new Command('pull')
           options.testsOnly ? Promise.resolve([]) : fetchNotificationProviders(client),
           options.testsOnly ? Promise.resolve([]) : fetchStatusPages(client),
         ])
-        return results as [RemoteContext | null, RemoteTest[], RemoteMonitor[], RemoteJob[], RemoteVariable[], RemoteTag[], RemoteNotificationProvider[], RemoteStatusPage[]]
+        return results as [RemoteContext, RemoteTest[], RemoteMonitor[], RemoteJob[], RemoteVariable[], RemoteTag[], RemoteNotificationProvider[], RemoteStatusPage[]]
       },
       { successText: 'Fetched remote resources' },
     )
+
+    const managedPaths = new Map<string, string>()
+    const obsoletePaths = new Map<string, string>()
+    if (existing) {
+      const state = managedState(client, context, existing.configPath)
+      const patterns = { playwright: existing.config.tests?.playwright?.testMatch, k6: existing.config.tests?.k6?.testMatch }
+      for (const file of discoverFiles(cwd, patterns)) {
+        const name = file.relativePath.replace(/^_supercheck_\//, '')
+        try {
+          const id = state.resolve('test', name)
+          const remote = tests.find((test) => test.id === id)
+          if (remote && mapTestType(remote.type) !== file.type) obsoletePaths.set(id, file.relativePath)
+          else managedPaths.set(id, file.relativePath)
+        } catch (error) {
+          if (!(error instanceof CLIError) || !error.message.startsWith('Unresolved test reference')) throw error
+        }
+      }
+    }
+    for (const test of tests) {
+      if (managedPaths.has(test.id)) continue
+      const type = mapTestType(test.type)
+      const defaultPath = testRelativePath(test.id, test.title, type)
+      const pattern = existing?.config.tests?.[type]?.testMatch
+      if (!pattern || matchGlob(defaultPath, pattern)) { managedPaths.set(test.id, defaultPath); continue }
+      const prefix = pattern.split('/').slice(0, pattern.split('/').findIndex((part) => /[*?]/.test(part))).join('/')
+      let filename = defaultPath.split('/').pop()!
+      if (type === 'playwright' && pattern.endsWith('.spec.ts')) filename = filename.replace(/\.pw\.ts$/, '.spec.ts')
+      const candidate = [prefix, filename].filter(Boolean).join('/')
+      if (!matchGlob(candidate, pattern)) throw new CLIError(`Cannot import test into custom pattern "${pattern}". Use a compatible testMatch before pulling scripts. No files were written.`, ExitCode.ConfigError)
+      managedPaths.set(test.id, candidate)
+    }
 
     logger.debug(`Found: ${tests.length} tests, ${monitors.length} monitors, ${jobs.length} jobs, ${variables.length} variables, ${tags.length} tags, ${notificationProviders.length} notification providers, ${statusPages.length} status pages`)
 
@@ -865,6 +903,7 @@ export const pullCommand = new Command('pull')
 
     const totalResources = tests.length + monitors.length + jobs.length + variables.length + tags.length + notificationProviders.length + statusPages.length
     if (totalResources === 0) {
+      if (getOutputFormat() === 'json') logger.output(JSON.stringify({ status: 'no_change', context, files: [], backups: [], errors: [] }))
       logger.warn(options.testsOnly ? 'No test scripts found on the remote project.'
         : options.configOnly ? 'No config resources found on the remote project.'
           : 'No resources found on the remote project.')
@@ -885,6 +924,12 @@ export const pullCommand = new Command('pull')
     else if (tests.length === 0) logger.info('No remote test scripts to pull.')
 
     const pkgPath = resolve(cwd, 'package.json')
+    const plannedFiles = [
+      ...tests.map((test) => ({ path: resolve(cwd, managedPaths.get(test.id)!), kind: 'test', id: test.id })),
+      ...(!options.testsOnly ? [{ path: existing?.configPath ?? resolve(cwd, options.config ?? 'supercheck.config.ts'), kind: 'config' }] : []),
+    ].map((file) => ({ ...file, overwrite: existsSync(file.path) }))
+    const preview = { status: 'preview', context, files: plannedFiles, installsDependencies: !options.skipInstall && !existsSync(pkgPath), preservesLocalOnlyScripts: true }
+
     const fileEffects: string[] = []
     if (tests.length > 0) fileEffects.push('write test scripts in _supercheck_ (overwriting matching local files)')
     if (!options.testsOnly) fileEffects.push('create or replace supercheck.config.ts (overwriting local config edits)')
@@ -936,6 +981,7 @@ export const pullCommand = new Command('pull')
       }
 
       logger.newline()
+      if (getOutputFormat() === 'json') logger.output(JSON.stringify(preview))
       logger.info(pc.yellow('Dry run — no files written.'))
       logger.newline()
       return
@@ -946,11 +992,7 @@ export const pullCommand = new Command('pull')
       logger.newline()
 
       const { confirmPrompt } = await import('../utils/prompt.js')
-      const confirmed = await confirmPrompt('Continue?', { default: false })
-      if (!confirmed) {
-        logger.info('Pull aborted.')
-        return
-      }
+      await confirmPrompt('Continue?', { default: false, context, changes: plannedFiles })
       logger.newline()
     }
 
@@ -963,6 +1005,8 @@ export const pullCommand = new Command('pull')
       notificationProviders: 0,
       statusPages: 0,
       skipped: 0,
+      files: [],
+      backups: [],
       errors: [],
     }
 
@@ -995,12 +1039,12 @@ export const pullCommand = new Command('pull')
         }
       }
 
-      pullTests(fullTests, cwd, summary)
+      pullTests(fullTests, cwd, summary, managedPaths, obsoletePaths)
       logger.newline()
     }
 
     // ── Install dependencies if package.json is missing ──
-    if (!options.dryRun && !existsSync(pkgPath)) {
+    if (!options.dryRun && !options.skipInstall && !existsSync(pkgPath)) {
       logger.newline()
       logger.info('Initializing project dependencies...')
 
@@ -1053,10 +1097,10 @@ export const pullCommand = new Command('pull')
     // ── Build config from remote resources ──
     if (!options.testsOnly) {
       // Build a test ID -> file path map for job test references
-      const testMap = new Map<string, string>()
+      const testMap = new Map<string, string>(managedPaths)
       for (const t of tests) {
         const testType = mapTestType(t.type)
-        const filePath = testRelativePath(t.id, t.title, testType)
+        const filePath = managedPaths.get(t.id) ?? testRelativePath(t.id, t.title, testType)
         testMap.set(t.id, filePath)
       }
 
@@ -1108,10 +1152,11 @@ export const pullCommand = new Command('pull')
         tags: tagDefs,
         notificationProviders: notificationProviderDefs,
         statusPages: statusPageDefs,
+        tests: existing?.config.tests,
       })
 
-      const configPath = resolve(cwd, 'supercheck.config.ts')
-      const configChanged = writeIfChanged(configPath, configContent)
+      const configPath = existing?.configPath ?? resolve(cwd, options.config ?? 'supercheck.config.ts')
+      const configChanged = writeIfChanged(configPath, configContent, summary)
 
       if (configChanged) {
         logger.header('Config:')
@@ -1133,12 +1178,10 @@ export const pullCommand = new Command('pull')
     const totalWritten = summary.tests + summary.monitors + summary.jobs + summary.variables + summary.tags + summary.notificationProviders + summary.statusPages
     const totalErrors = summary.errors.length
 
+    if (getOutputFormat() === 'json') logger.output(JSON.stringify({ status: totalErrors ? 'partial' : 'success', ...summary, configPath: options.testsOnly ? null : existing?.configPath ?? resolve(cwd, options.config ?? 'supercheck.config.ts') }))
     if (totalErrors > 0) {
-      logger.header('Errors:')
-      for (const err of summary.errors) {
-        logger.error(`  ${err}`)
-      }
-      logger.newline()
+      for (const error of summary.errors) logger.error(error)
+      throw new CLIError(`Pull incomplete: ${totalErrors} error(s). Files already written are preserved.`, ExitCode.GeneralError)
     }
 
     if (totalWritten === 0 && summary.skipped === 0 && totalErrors === 0) {

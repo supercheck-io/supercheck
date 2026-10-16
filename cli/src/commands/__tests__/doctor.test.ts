@@ -11,6 +11,6 @@ const { doctorCommand } = await import('../doctor.js')
 describe('doctor', () => {
   it('does not require browser or load-test dependencies for a monitoring-only configuration', async () => {
     await doctorCommand.parseAsync(['node', 'doctor'])
-    expect(checkAll).toHaveBeenCalledWith(process.cwd(), { requirePlaywright: false, requireK6: false })
+    expect(checkAll).toHaveBeenCalledWith(process.cwd(), { requirePlaywright: false, requireK6: false, browser: 'chromium' })
   })
 })

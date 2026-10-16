@@ -9,6 +9,7 @@ jest.unstable_mockModule('../../utils/reconcile.js', () => ({ reconcile: () => [
 jest.unstable_mockModule('../../utils/discovery.js', () => ({ discoverFiles: () => [] }))
 jest.unstable_mockModule('../../utils/spinner.js', () => ({ withSpinner: async (_text: string, fn: () => Promise<unknown>) => fn() }))
 jest.unstable_mockModule('../../utils/logger.js', () => ({ logger: { info: jest.fn(), warn: jest.fn(), success: jest.fn(), debug: jest.fn(), newline: jest.fn(), header: jest.fn() } }))
+jest.unstable_mockModule('../../utils/managed.js', () => ({ describeTarget: () => 'target', verifyContext: async () => ({ organization: { id: 'org' }, project: { id: 'project' } }), deploymentLock: () => () => undefined, managedState: () => ({ apply: (value: unknown) => value, resolveTests: (value: unknown) => value }), rejectAmbiguousCreates: () => undefined }))
 const { deployCommand } = await import('../deploy.js')
 const { diffCommand } = await import('../diff.js')
 

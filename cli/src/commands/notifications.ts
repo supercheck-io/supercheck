@@ -1,7 +1,7 @@
 import { Command } from 'commander'
 import { createAuthenticatedClient } from '../api/authenticated-client.js'
 import { logger } from '../utils/logger.js'
-import { output, outputDetail } from '../output/formatter.js'
+import { output, outputDetail, outputMutation } from '../output/formatter.js'
 import { CLIError, ExitCode } from '../utils/errors.js'
 import { withSpinner } from '../utils/spinner.js'
 
@@ -172,11 +172,7 @@ notificationCommand
   .action(async (id: string, options: { force?: boolean }) => {
     if (!options.force) {
       const { confirmPrompt } = await import('../utils/prompt.js')
-      const confirmed = await confirmPrompt(`Delete notification provider ${id}?`, { default: false })
-      if (!confirmed) {
-        logger.info('Aborted')
-        return
-      }
+      await confirmPrompt(`Delete notification provider ${id}?`, { default: false })
     }
 
     const client = createAuthenticatedClient()
@@ -185,6 +181,7 @@ notificationCommand
       () => client.delete(`/api/notification-providers/${id}`),
     )
     logger.success(`Notification provider ${id} deleted`)
+    outputMutation({ id, deleted: true })
   })
 
 notificationCommand

@@ -31,6 +31,9 @@ Notable features, fixes, and upgrade requirements for Supercheck users. App and 
 ## [CLI 0.3.1] - Unreleased
 
 - **License:** The CLI is now Apache-2.0, with LICENSE and NOTICE included in the npm package. Earlier published versions retain their original license terms. The app and worker, including Private Agent mode, remain AGPL-3.0-only.
+- **Agent workflows:** Add offline `skills`, config-schema, and capabilities commands; support account-free local test and job execution, cloud test execution, and waiting on existing runs. Improve JSON plans/results, confirmation handling, project-target checks, and deployment state tracking with generated resource IDs.
+- **CLI reliability:** Redact Discord, Teams, and generic webhook credentials; preserve individual pull errors in human output; keep diagnostics usable with invalid project config; retire stale resource-name aliases; and preserve resumable run IDs on wait timeouts. Offline config commands require an existing file, while offline file-based test execution remains available without one.
+- **Review hardening:** Keep monitor URLs and non-credential headers visible in output while masking credentials (provider and untyped configs fail closed); refuse to sync when the config's `api.baseUrl` differs from the active API origin and print the target before prompts; keep waiting through transient poll errors so a started run is not abandoned; recover deploy locks left by a dead process; capture the tail of large local runner output and parse large JSON reports; and add missing `.gitignore` entries for traces and backups to existing projects.
 
 ## [CLI 0.3.0] - 2026-10-07
 

@@ -1,3 +1,4 @@
+import { redact, redactText } from './redact.js'
 import pc from './colors.js'
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error' | 'silent'
@@ -12,6 +13,10 @@ const LOG_LEVELS: Record<LogLevel, number> = {
 
 let currentLevel: LogLevel = 'info'
 let quietMode = false
+let machineMode = false
+let outputCount = 0
+export function setMachineMode(value: boolean): void { machineMode = value; outputCount = 0 }
+export function getOutputCount(): number { return outputCount }
 
 export function setLogLevel(level: LogLevel): void {
   currentLevel = level
@@ -29,31 +34,31 @@ function shouldLog(level: LogLevel): boolean {
 export const logger = {
   debug(message: string, ...args: unknown[]): void {
     if (shouldLog('debug')) {
-      console.error(pc.gray(`[debug] ${message}`), ...args)
+      console.error(pc.gray(`[debug] ${redactText(message)}`), ...args.map((arg) => redact(arg)))
     }
   },
 
   info(message: string, ...args: unknown[]): void {
     if (shouldLog('info') && !quietMode) {
-      console.error(message, ...args)
+      console.error(redactText(message), ...args.map((arg) => redact(arg)))
     }
   },
 
   success(message: string, ...args: unknown[]): void {
     if (shouldLog('info') && !quietMode) {
-      console.error(pc.green(`✓ ${message}`), ...args)
+      console.error(pc.green(`✓ ${redactText(message)}`), ...args.map((arg) => redact(arg)))
     }
   },
 
   warn(message: string, ...args: unknown[]): void {
     if (shouldLog('warn')) {
-      console.error(pc.yellow(`⚠ ${message}`), ...args)
+      console.error(pc.yellow(`⚠ ${redactText(message)}`), ...args.map((arg) => redact(arg)))
     }
   },
 
   error(message: string, ...args: unknown[]): void {
     if (shouldLog('error')) {
-      console.error(pc.red(`✗ ${message}`), ...args)
+      console.error(pc.red(`✗ ${redactText(message)}`), ...args.map((arg) => redact(arg)))
     }
   },
 
@@ -62,7 +67,11 @@ export const logger = {
    * This is for machine-readable output (JSON, tables).
    */
   output(data: string): void {
-    process.stdout.write(`${data}\n`)
+    outputCount++
+    if (machineMode) {
+      try { data = JSON.stringify(redact(JSON.parse(data))) } catch { data = redactText(data) }
+    }
+    process.stdout.write(`${machineMode ? data : redactText(data)}\n`)
   },
 
   newline(): void {

@@ -30,6 +30,19 @@ supercheck deploy
 
 For self-hosted instances, add `--url https://your-supercheck.example.com` to login. In CI, use `SUPERCHECK_TOKEN` from your secret store. Locally stored credentials are obfuscated, not encrypted.
 
+### Agent quick start
+
+Use `supercheck skills` for the offline workflow index and `supercheck skills <topic>` for focused guidance. `supercheck skills install` creates a small `.agents/skills/supercheck/SKILL.md` pointer without replacing an existing file unless `--force` is supplied. `supercheck schema config --json` describes config fields, and `supercheck capabilities --json` reports local CLI capabilities. `capabilities --online` verifies the current API context, but does not determine every server feature or permission.
+
+Local test execution needs no Supercheck account or credentials:
+
+```bash
+supercheck test run --offline --file ./_supercheck_/playwright/homepage.pw.ts
+supercheck job run --id "Nightly E2E" --local --offline
+```
+
+Offline runs use local Playwright or k6 dependencies and skip cloud validation. Browser tests need the project’s browser binaries; pass `--playwright-config <path>` to use an existing Playwright config.
+
 **Deploy preserves resources absent from local config by default.** To prune them, preview `supercheck diff --delete`, then apply `supercheck deploy --delete`. This also deletes resources created outside the config. `destroy` targets resource IDs present in config or local test filenames.
 
 ## Architecture
@@ -42,11 +55,13 @@ Local Playwright and k6 runs require their respective dependencies. Use `superch
 
 | Task | Commands |
 | --- | --- |
+| Learn the CLI | `skills`, `skills local`, `skills sync`, `skills execute`, `skills investigate` |
+| Inspect capabilities and config fields | `capabilities --json`, `capabilities --online --json`, `schema config --json` |
 | Inspect resources | `monitor list`, `test list`, `job list`, `run list` |
 | Resource details | `monitor get <id>`, `test get <id>`, `job get <id>` |
 | Sync configuration | `pull`, `diff`, `deploy`, `config validate` |
-| Run tests | `test run --file <path>`, `job run --id <id>` |
-| Follow execution | `run stream <id>`, `run status <id>`, `run cancel <id>` |
+| Run tests | `test run --file <path>`, `test execute <id>`, `job run --id <id>` |
+| Follow execution | `run wait <run-id>`, `run stream <run-id>`, `run status <run-id>`, `run cancel <run-id>` |
 | Manage project settings | `var`, `tag`, `notification` |
 | Inspect incidents | `incident list`, `incident get <number-or-uuid>`, `incident timeline <number-or-uuid>`, `incident resolve <number-or-uuid> --comment <text>` |
 | Investigate | `sre triage <incident>`, `sre investigate <incident>`, `sre status <runId>` |
@@ -75,9 +90,11 @@ export default defineConfig({
 })
 ```
 
-`pull` populates existing resource IDs for subsequent updates. Deploy validates test scripts before applying changes. See the [configuration guide](https://supercheck.io/docs/cli/configuration) for test discovery, secrets, and notification providers.
+Successful deploys record server-assigned resource IDs for created resources and the current names of updated or unchanged managed resources in `supercheck.state.json`. The state is scoped to the API origin, organization, and project, and tracks replacement IDs when a managed remote resource is deleted and recreated. `diff` and dry runs do not persist state. Commit and share this file with CI so later deploys manage the same resources. The transient `supercheck.state.json.lock` coordinates deploys only on a shared local filesystem; do not commit it. Resource names alone do not establish ownership: pull existing resources or supply explicit IDs. Renaming an ID-less non-test resource creates a separate resource; the old remote resource remains unless deploy uses `--delete`. Carry its explicit ID or pull it first to update the existing resource. The CLI checks configured organization and project against the authenticated API context before sync. Monitor/job tag assignments are rejected before writes; standalone tag management remains available.
 
-`pull` copies remote resources into local files and can overwrite matching test scripts and `supercheck.config.ts`. Local-only test scripts are preserved, including files whose remote tests were deleted; `deploy` can recreate those tests with new IDs. Check `pull --dry-run` before pulling and `diff` before deploying. Use `pull --config-only` to skip test scripts or `pull --tests-only` to leave config untouched. Confirmation defaults to no; use `--force` for unattended pulls. If `package.json` is missing, pull also initializes project dependencies.
+Deploy validates test scripts before applying changes. See the [configuration guide](https://supercheck.io/docs/cli/configuration) for test discovery, secrets, and notification providers.
+
+`pull` copies remote resources into local files and can overwrite matching test scripts and `supercheck.config.ts`. It preserves managed test paths and existing browser/`testMatch` settings. Runner-type changes migrate files with mode-`0600` backups; new tests use compatible custom globs or pull fails before writing. Before overwriting changed scripts or config, pull saves a backup at `<path>.supercheck-backup.<uuid>`. Its JSON summary includes `files` and `backups` arrays. Backups are retained; remove them manually when no longer needed. Local-only test scripts are preserved, including files whose remote tests were deleted; deploy can recreate those tests without renaming their local paths. Check `pull --dry-run` before pulling and `diff` before deploying. Use `pull --config-only` to skip test scripts or `pull --tests-only` to leave config untouched. Confirmation defaults to no; use `--force` for unattended pulls. If `package.json` is missing, pull also initializes project dependencies.
 
 ## CI/CD
 
@@ -93,13 +110,17 @@ A failed run exits nonzero. See [CI/CD examples](https://supercheck.io/docs/cli/
 
 | Option | Behavior |
 | --- | --- |
-| `--json` | Complete JSON payloads; streaming commands emit NDJSON. Errors are JSON on stderr. |
+| `--json` | Structured JSON output; paginated lists keep array responses by default. Streaming and local runs emit NDJSON. Errors are JSON on stderr. |
+| `--envelope` | Include pagination metadata with JSON list results; requires `--json`. |
+| `--show-secrets` | Explicitly disable sensitive-field redaction in output. |
 | `--quiet` | Resource/run IDs only; narrative streams are suppressed. `--json` takes precedence. |
 | `--wide` | Remove table and narrative width limits. |
 | `--no-color` | Disable ANSI colors; `NO_COLOR` is also supported. |
 | `--debug` | Enable diagnostics. |
 
 Lists and details use tables. Triage separates run metadata from its summary; Copilot answers and evidence briefs use labeled narratives. Redirected output has no colors or spinners. Ctrl+C during a stream exits 130; idle timeouts exit 5.
+
+An operation that needs confirmation exits `3` if declined or input closes (`ABORTED` interactively), or if confirmation is unavailable in a non-interactive session (`CONFIRMATION_REQUIRED`). Review the plan and explicitly pass `--force` to proceed unattended. Authentication errors remain exit code `2`. `--show-secrets` deliberately exposes sensitive values; avoid it in shared logs or transcripts.
 
 Use `SUPERCHECK_URL` for a self-hosted API and `SUPERCHECK_TOKEN` for project-scoped access. HTTP proxies use `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY`. Check the active API URL and project with `supercheck whoami`.
 

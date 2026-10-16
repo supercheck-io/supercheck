@@ -24,10 +24,11 @@ export const doctorCommand = new Command('doctor')
     const hasK6Config = configResult?.config.tests?.k6 !== undefined
     const requirePlaywright = hasPlaywrightConfig
     const requireK6 = hasK6Config
+    const browser = configResult?.config.tests?.playwright?.browser ?? 'chromium'
 
     // 1. Check dependencies
     logger.info(pc.bold('Dependencies:'))
-    let deps = checkAllDependencies(cwd, { requirePlaywright, requireK6 })
+    let deps = checkAllDependencies(cwd, { requirePlaywright, requireK6, browser })
 
     if (format === 'table') logger.info(formatDependencyReport(deps))
 
@@ -70,7 +71,7 @@ export const doctorCommand = new Command('doctor')
 
       for (const dep of missingRequired) {
         if (dep.name === 'Playwright browsers') {
-          const ok = await installPlaywrightBrowsers(cwd)
+          const ok = await installPlaywrightBrowsers(cwd, browser)
           if (ok) {
             logger.success('Playwright browsers installed')
           } else {
@@ -84,7 +85,7 @@ export const doctorCommand = new Command('doctor')
       logger.newline()
 
       // Re-check dependencies after attempting fixes
-      deps = checkAllDependencies(cwd, { requirePlaywright, requireK6 })
+      deps = checkAllDependencies(cwd, { requirePlaywright, requireK6, browser })
       missingRequired = deps.filter((d) => !d.installed && d.required)
     }
 
@@ -114,6 +115,9 @@ export const doctorCommand = new Command('doctor')
     if (format === 'json') logger.output(JSON.stringify({
       dependencies: deps,
       authenticated: hasAuth,
+      authenticationVerified: false,
+      localReady: missingRequired.length === 0,
+      cloudCredentialsPresent: hasAuth,
       apiUrl: getStoredBaseUrl() ?? 'https://app.supercheck.io',
       configFound: Boolean(configResult),
       ready: missingRequired.length === 0 && hasAuth && Boolean(configResult),

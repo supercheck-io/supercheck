@@ -1,3 +1,5 @@
+import { waitForRun } from '../utils/wait.js'
+import { parseIntStrict } from '../utils/number.js'
 import { Command } from 'commander'
 import { createAuthenticatedClient } from '../api/authenticated-client.js'
 import { logger } from '../utils/logger.js'
@@ -103,7 +105,7 @@ runCommand
         if (!json) logger.success(`Run complete: ${String(record.status ?? 'done')}`)
         return false
       }
-    }, Math.max(Number(options.idleTimeout) || 60, 10) * 1000)
+    }, { idleTimeoutMs: Math.max(Number(options.idleTimeout) || 60, 10) * 1000, isTerminal: ({ event }) => event === 'complete' })
   })
 
 runCommand
@@ -116,4 +118,12 @@ runCommand
       () => client.post<Record<string, unknown>>(`/api/runs/${id}/cancel`),
     )
     outputDetail(data)
+  })
+
+runCommand.command('wait <id>')
+  .description('Wait for a run with a bounded deadline; does not trigger a new run')
+  .option('--timeout <seconds>', 'Maximum wait time', '300')
+  .action(async (id: string, options: { timeout: string }) => {
+    const timeout = parseIntStrict(options.timeout, '--timeout', { min: 1 }) * 1000
+    outputDetail(await waitForRun(createAuthenticatedClient(), id, timeout))
   })

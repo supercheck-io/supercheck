@@ -62,7 +62,7 @@ export function buildLocalResources(config: SupercheckConfig, cwd: string): Loca
           id: provider.id,
           name: provider.name,
           type: provider.type,
-          config: provider.config,
+          config: { ...provider.config, name: provider.name },
         },
       })
     }
@@ -119,7 +119,7 @@ export function buildLocalResources(config: SupercheckConfig, cwd: string): Loca
       // Parse metadata from script content (e.g. // @title My Test Title or * @title My Test Title)
       const titleMatch = script.match(/@title\s+(.+)$/m)
       const stem = file.filename.replace(/\.(pw|k6)\.ts$/, '')
-      const title = titleMatch ? titleMatch[1].trim() : stem
+      const title = titleMatch ? titleMatch[1].trim() : testId ? stem.replace(new RegExp(`(?:^|\\.)${testId}$`, 'i'), '') || 'Test' : stem
 
       // Strip @title metadata from script for comparison/deploy.
       // The @title annotation is local-only developer convenience;
@@ -476,8 +476,6 @@ function logFetchError(resourceType: string, err: unknown): void {
   if (err instanceof ApiRequestError && err.statusCode === 404) {
     logger.debug(`Could not fetch ${resourceType} (not found / disabled)`)
   } else {
-    const msg = err instanceof Error ? err.message : String(err)
-    logger.error(`Failed to fetch ${resourceType}: ${msg}`)
     throw err
   }
 }

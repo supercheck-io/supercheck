@@ -2,7 +2,7 @@ import { Command } from 'commander'
 import { Buffer } from 'node:buffer'
 import { createAuthenticatedClient } from '../api/authenticated-client.js'
 import { logger } from '../utils/logger.js'
-import { output, outputDetail } from '../output/formatter.js'
+import { output, outputDetail, outputMutation } from '../output/formatter.js'
 import { CLIError, ExitCode } from '../utils/errors.js'
 import { withSpinner } from '../utils/spinner.js'
 
@@ -122,9 +122,9 @@ varCommand
         throw new CLIError('File-type variables cannot be modified via the CLI. Use the dashboard to manage file uploads.', ExitCode.GeneralError)
       }
 
-      await withSpinner(
+      const { data } = await withSpinner(
         'Updating variable',
-        () => client.put(`/api/variables/${existing.id}`, {
+        () => client.put<Record<string, unknown>>(`/api/variables/${existing.id}`, {
           key,
           value: resolvedValue,
           isSecret: options.secret ?? existing.isSecret,
@@ -132,10 +132,11 @@ varCommand
         }),
       )
       logger.success(`Variable "${key}" updated`)
+      outputMutation({ ...data, id: existing.id, key, action: 'updated' })
     } else {
-      await withSpinner(
+      const { data } = await withSpinner(
         'Creating variable',
-        () => client.post('/api/variables', {
+        () => client.post<Record<string, unknown>>('/api/variables', {
           key,
           value: resolvedValue,
           isSecret: options.secret ?? false,
@@ -143,6 +144,7 @@ varCommand
         }),
       )
       logger.success(`Variable "${key}" created`)
+      outputMutation({ ...data, key, action: 'created' })
     }
   })
 
@@ -165,11 +167,7 @@ varCommand
 
     if (!options.force) {
       const { confirmPrompt } = await import('../utils/prompt.js')
-      const confirmed = await confirmPrompt(`Delete variable "${key}"?`, { default: false })
-      if (!confirmed) {
-        logger.info('Aborted')
-        return
-      }
+      await confirmPrompt(`Delete variable "${key}"?`, { default: false })
     }
 
     await withSpinner(
@@ -177,4 +175,5 @@ varCommand
       () => client.delete(`/api/variables/${variable.id}`),
     )
     logger.success(`Variable "${key}" deleted`)
+    outputMutation({ id: variable.id, key, deleted: true })
   })

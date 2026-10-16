@@ -1,3 +1,6 @@
+import { verifyContext, describeTarget, managedState } from '../utils/managed.js'
+import { buildLocalResources } from '../utils/resources.js'
+import { getOutputFormat } from '../output/formatter.js'
 import { Command } from 'commander'
 import { createAuthenticatedClient } from '../api/authenticated-client.js'
 import { loadConfig } from '../config/loader.js'
@@ -24,11 +27,12 @@ interface ManagedResource {
 async function fetchManagedResources(
   client: import('../api/client.js').ApiClient,
   config: SupercheckConfig,
+  managed: Array<{ type: string; id?: string }> = [],
 ): Promise<ManagedResource[]> {
   const resources: ManagedResource[] = []
 
   // Collect ids from config to know what's managed
-  const managedIds = new Set<string>()
+  const managedIds = new Set<string>(managed.filter((r) => r.id).map((r) => `${r.type}:${r.id}`))
 
   if (config.jobs) {
     for (const j of config.jobs) {
@@ -70,7 +74,7 @@ async function fetchManagedResources(
   }
   const cwd = process.cwd()
   const files = discoverFiles(cwd, patterns)
-  const testIds = new Set<string>()
+  const testIds = new Set<string>(managed.filter((r) => r.type === 'test' && r.id).map((r) => r.id!))
   for (const f of files) {
     const uuid = extractUuidFromFilename(f.filename)
     if (uuid) {
@@ -154,7 +158,7 @@ function logDestroyFetchError(resourceType: string, err: unknown): void {
     logger.debug(`Could not fetch ${resourceType} (not found)`)
   } else {
     const msg = err instanceof Error ? err.message : String(err)
-    logger.warn(`Could not fetch ${resourceType}: ${msg}`)
+    throw new CLIError(`Incomplete inventory: could not fetch ${resourceType}: ${msg}`, ExitCode.ApiError)
   }
 }
 
@@ -165,18 +169,22 @@ export const destroyCommand = new Command('destroy')
   .option('--force', 'Skip confirmation prompt')
   .action(async (options: { config?: string; dryRun?: boolean; force?: boolean }) => {
     const cwd = process.cwd()
-    const { config } = await loadConfig({ cwd, configPath: options.config })
+    const { config, configPath } = await loadConfig({ cwd, configPath: options.config })
     const client = createAuthenticatedClient(config.api?.baseUrl)
+    const context = await verifyContext(client, config)
+    logger.info(`Target: ${describeTarget(context)}`)
+    const state = managedState(client, context, configPath)
 
     logger.newline()
 
     const managed = await withSpinner(
       'Scanning for managed resources...',
-      () => fetchManagedResources(client, config),
+      () => fetchManagedResources(client, config, state.apply(buildLocalResources(config, cwd))),
       { successText: 'Scan complete' },
     )
 
     if (managed.length === 0) {
+      if (getOutputFormat() === 'json') logger.output(JSON.stringify({ status: 'no_change', context, results: [] }))
       logger.success('No managed resources found on the remote project.')
       return
     }
@@ -191,20 +199,23 @@ export const destroyCommand = new Command('destroy')
     logger.newline()
 
     if (options.dryRun) {
+      if (getOutputFormat() === 'json') logger.output(JSON.stringify({ status: 'preview', context, resources: managed }))
       logger.info(pc.yellow('Dry run — no resources destroyed.'))
       return
     }
 
     if (!options.force) {
       throw new CLIError(
-        'Use --force to confirm destruction, or --dry-run to preview.',
-        ExitCode.GeneralError,
+        'CONFIRMATION_REQUIRED: Use --force to confirm destruction, or --dry-run to preview.',
+        ExitCode.ConfigError,
+        { status: 'confirmation_required', context, changes: managed, confirmArgs: [...process.argv.slice(2), '--force'] },
       )
     }
 
     logger.info('Destroying resources...')
     logger.newline()
 
+    const results: Record<string, unknown>[] = []
     let succeeded = 0
     let failed = 0
 
@@ -219,16 +230,19 @@ export const destroyCommand = new Command('destroy')
         const endpoint = getApiEndpoint(resource.type)
         await client.delete(`${endpoint}/${resource.id}`)
         logger.info(pc.red(`  - ${resource.type}/${resource.name} ✓`))
+        results.push({ ...resource, deleted: true })
         succeeded++
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         logger.error(`  - ${resource.type}/${resource.name} ✗ ${msg}`)
+        results.push({ ...resource, deleted: false, error: msg })
         failed++
       }
     }
 
     logger.newline()
 
+    if (getOutputFormat() === 'json') logger.output(JSON.stringify({ status: failed ? 'partial' : 'success', context, results, succeeded, failed }))
     if (failed > 0) {
       throw new CLIError(
         `Destroy completed with errors: ${succeeded} destroyed, ${failed} failed`,

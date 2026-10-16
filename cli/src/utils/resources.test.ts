@@ -43,6 +43,7 @@ describe('notification provider resources', () => {
           name: 'VictorOps',
           type: 'webhook',
           config: {
+            name: 'VictorOps',
             url: 'https://alert.victorops.com/integrations/generic/20131114/alert/key/route',
             method: 'POST',
             bodyTemplate: '{"message_type":"{{victorOpsMessageType}}"}',

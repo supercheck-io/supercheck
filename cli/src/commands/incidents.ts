@@ -50,11 +50,7 @@ incidentCommand.command('resolve <id>')
       if (!process.stdin.isTTY || getOutputFormat() === 'json') {
         throw new CLIError('Refusing to resolve without confirmation in a non-interactive session. Pass --force to proceed.', ExitCode.ConfigError)
       }
-      if (!await confirmPrompt(`Resolve incident ${label}?`, { default: false })) {
-        logger.info('Aborted')
-        process.exitCode = ExitCode.GeneralError
-        return
-      }
+      await confirmPrompt(`Resolve incident ${label}?`, { default: false })
     }
     const { data } = await withSpinner('Resolving incident', () => createAuthenticatedClient().post<Record<string, unknown>>(`/api/sre/incidents/${id}/resolve`, { comment: options.comment }, { retries: 0 }))
     if (data.alreadyResolved === true) logger.info(typeof data.message === 'string' ? data.message : 'Incident was already resolved')

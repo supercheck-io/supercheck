@@ -21,7 +21,7 @@ export enum ExitCode {
 export class CLIError extends Error {
   public readonly exitCode: ExitCode
 
-  constructor(message: string, exitCode: ExitCode = ExitCode.GeneralError) {
+  constructor(message: string, exitCode: ExitCode = ExitCode.GeneralError, public readonly details?: unknown) {
     super(message)
     this.name = 'CLIError'
     this.exitCode = exitCode
