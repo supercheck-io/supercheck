@@ -38,6 +38,7 @@ describe('scaffold dependencies', () => {
     await expect(installDependencies(cwd, 'npm')).rejects.toThrow('Failed to install dependencies')
     expect(readPackage().devDependencies['@supercheck/cli']).toBe('^0.3.1')
     expect(execSync).toHaveBeenCalledTimes(1)
+    expect(execSync.mock.calls[0][0]).toBe('npm install')
   })
 })
 
@@ -57,9 +58,9 @@ describe('scaffold dependency edge cases', () => {
     expect(readFileSync(resolve(cwd, 'package.json'), 'utf8')).toContain('\n\t"devDependencies"')
   })
 
-  it('treats peer dependencies as already declared', async () => {
+  it('still declares a package that is only a peer dependency', async () => {
     writeFileSync(resolve(cwd, 'package.json'), JSON.stringify({ peerDependencies: { typescript: '^5' } }))
     await installDependencies(cwd, 'npm', { skipInstall: true })
-    expect(readPackage().devDependencies).not.toHaveProperty('typescript')
+    expect(readPackage().devDependencies.typescript).toBe('^5.7.3')
   })
 })

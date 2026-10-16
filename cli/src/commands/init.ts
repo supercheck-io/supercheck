@@ -21,7 +21,8 @@ const DEFAULT_BASE_URL = 'https://app.supercheck.io'
  */
 function sanitizeBaseUrl(raw: string | null): string | null {
   const value = raw?.trim()
-  if (!value) return DEFAULT_BASE_URL
+  if (raw === null) return DEFAULT_BASE_URL
+  if (!value) return null // explicit empty override: never authenticate against a guessed host
   try {
     const url = new URL(value)
     if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new Error('unsafe')
@@ -30,6 +31,12 @@ function sanitizeBaseUrl(raw: string | null): string | null {
     logger.warn('Ignoring invalid SUPERCHECK_URL/stored API URL; using the default Supercheck Cloud URL.')
     return null
   }
+}
+
+/** The token may only be sent over HTTPS, or HTTP to a loopback host. */
+function isTokenSafeUrl(baseUrl: string): boolean {
+  const { protocol, hostname } = new URL(baseUrl)
+  return protocol === 'https:' || ['localhost', '127.0.0.1', '[::1]'].includes(hostname)
 }
 
 function configTemplate(organization: string, project: string, baseUrl: string): string {
@@ -141,7 +148,9 @@ export const initCommand = new Command('init')
     let organization = getStoredOrganization()?.trim() || 'my-org'
     let project = getStoredProject()?.trim() || 'my-project'
     const token = getToken()
-    if (token && baseUrl) {
+    if (token && baseUrl && !isTokenSafeUrl(baseUrl)) {
+      logger.warn('Skipping authenticated context lookup: the API URL must use HTTPS (HTTP is allowed only for localhost).')
+    } else if (token && baseUrl) {
       try {
         logger.info('Fetching authenticated project context...')
         const { data } = await getApiClient({ token, baseUrl }).request<{

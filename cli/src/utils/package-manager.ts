@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { resolve, basename } from 'node:path'
 import { logger } from './logger.js'
 import { CLIError, ExitCode } from './errors.js'
@@ -17,16 +17,11 @@ export function detectPackageManager(cwd: string): 'npm' | 'yarn' | 'pnpm' | 'bu
 }
 
 /**
- * Get the install command for dev dependencies based on the detected package manager.
+ * Get the install command. The manifest already declares the scaffold's
+ * dependencies, so install from it; naming packages would rewrite the ranges.
  */
-function getInstallCommand(pm: 'npm' | 'yarn' | 'pnpm' | 'bun', packages: string[]): string {
-  const pkgs = packages.join(' ')
-  switch (pm) {
-    case 'bun': return `bun add -d ${pkgs}`
-    case 'pnpm': return `pnpm add -D ${pkgs}`
-    case 'yarn': return `yarn add -D ${pkgs}`
-    case 'npm': return `npm install --save-dev ${pkgs}`
-  }
+function getInstallCommand(pm: 'npm' | 'yarn' | 'pnpm' | 'bun'): string {
+  return `${pm} install`
 }
 
 /**
@@ -60,7 +55,7 @@ export function ensurePackageJson(cwd: string): boolean {
 const DEFAULT_RANGES: Record<string, string> = {
   typescript: '^5.7.3',
   '@types/node': '^22.13.0',
-  '@types/k6': '*',
+  '@types/k6': '^2.3.0',
   '@playwright/test': '^1.50.0',
 }
 
@@ -82,7 +77,7 @@ function declareDependencies(pkgPath: string, names: string[]): void {
   }
   const dev: Record<string, string> = isRecord(pkg.devDependencies) ? pkg.devDependencies : {}
   const present = (name: string) =>
-    [pkg.dependencies, pkg.peerDependencies, pkg.optionalDependencies, dev].some((d) => isRecord(d) && d[name])
+    [pkg.dependencies, pkg.optionalDependencies, dev].some((d) => isRecord(d) && d[name])
   let changed = false
   for (const name of names) {
     if (present(name)) continue
@@ -93,7 +88,10 @@ function declareDependencies(pkgPath: string, names: string[]): void {
   pkg.devDependencies = dev
   const indent = /^[ \t]+(?=")/m.exec(raw)?.[0] ?? 2
   const eol = raw.includes('\r\n') ? '\r\n' : '\n'
-  writeFileSync(pkgPath, JSON.stringify(pkg, null, indent).replace(/\n/g, eol) + eol, 'utf-8')
+  // Write beside the manifest, then rename, so an interrupted write cannot truncate it.
+  const tmpPath = `${pkgPath}.${process.pid}.tmp`
+  writeFileSync(tmpPath, JSON.stringify(pkg, null, indent).replace(/\n/g, eol) + eol, 'utf-8')
+  renameSync(tmpPath, pkgPath)
 }
 
 /**
@@ -115,7 +113,7 @@ export async function installDependencies(
     return
   }
 
-  const cmd = getInstallCommand(pm, devDeps)
+  const cmd = getInstallCommand(pm)
 
   logger.info(`Installing dependencies with ${pm}...`)
   logger.debug(`Running: ${cmd}`)
