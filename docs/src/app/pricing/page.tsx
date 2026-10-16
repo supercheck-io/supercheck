@@ -2,8 +2,30 @@ import React from 'react';
 import Link from 'next/link';
 import { ChevronDown } from 'lucide-react';
 import { SiteHeader } from '../../lib/layout.shared';
+import { CostCalculator } from '../../components/pricing/cost-calculator';
 
-const plans = [
+type Feature = string | { text: string; hint: string };
+
+const WAITLIST_EMAIL = 'hello@supercheck.io';
+
+function waitlistHref(plan: string) {
+    const subject = encodeURIComponent(`Supercheck Cloud waitlist (${plan})`);
+    const body = encodeURIComponent(
+        `Please add me to the Supercheck Cloud waitlist for the ${plan} plan.`,
+    );
+    return `mailto:${WAITLIST_EMAIL}?subject=${subject}&body=${body}`;
+}
+
+const plans: {
+    name: string;
+    price?: string;
+    period?: string;
+    description: string;
+    features: Feature[];
+    cta: string;
+    ctaLink: string;
+    highlighted: boolean;
+}[] = [
     {
         name: 'Plus',
         price: '$49',
@@ -12,7 +34,7 @@ const plans = [
         features: [
             '50 monitors',
             '5 status pages with custom domains',
-            '3,000 Playwright minutes/month',
+            { text: '3,000 Playwright minutes/month', hint: '≈ 36,000 five-second test runs' },
             '30,000 k6 VU minutes/month',
             '1,000 AI credits/month',
             '200 completed AI SRE investigations/month',
@@ -20,7 +42,8 @@ const plans = [
             '10 projects per organization',
             'Email support',
         ],
-        cta: 'Coming soon',
+        cta: 'Join the Plus waitlist',
+        ctaLink: waitlistHref('Plus'),
         highlighted: false,
     },
     {
@@ -31,7 +54,7 @@ const plans = [
         features: [
             '200 monitors',
             '20 status pages with custom domains',
-            '10,000 Playwright minutes/month',
+            { text: '10,000 Playwright minutes/month', hint: '≈ 120,000 five-second test runs' },
             '100,000 k6 VU minutes/month',
             '5,000 AI credits/month',
             '1,000 completed AI SRE investigations/month',
@@ -39,7 +62,8 @@ const plans = [
             '50 projects per organization',
             'Priority email support',
         ],
-        cta: 'Coming soon',
+        cta: 'Join the Pro waitlist',
+        ctaLink: waitlistHref('Pro'),
         highlighted: true,
     },
     {
@@ -58,7 +82,7 @@ const plans = [
             'Onboarding & training',
         ],
         cta: 'Get in touch',
-        ctaLink: 'mailto:hello@supercheck.io',
+        ctaLink: `mailto:${WAITLIST_EMAIL}`,
         highlighted: false,
     },
 ];
@@ -67,66 +91,108 @@ const overagePricing = [
     { metric: 'Playwright minute', plus: '$0.01', pro: '$0.005' },
     { metric: '1,000 k6 VU-minutes', plus: '$2.00', pro: '$1.00' },
     { metric: 'Completed AI SRE investigation', plus: '$0.10', pro: '$0.10' },
+    { metric: 'AI credits', plus: 'No overage', pro: 'No overage' },
 ];
 
-const comparisonFeatures = [
+const CHECK = '✓';
+const NONE = '—';
+const CUSTOM = 'Custom';
+
+interface ComparisonItem {
+    name: string;
+    plus: string;
+    pro: string;
+    enterprise: string;
+}
+
+const comparisonFeatures: { category: string; items: ComparisonItem[] }[] = [
     {
         category: 'Usage Limits', items: [
-            { name: 'Monitors', plus: '50', pro: '200' },
-            { name: 'Playwright minutes/month', plus: '3,000', pro: '10,000' },
-            { name: 'k6 VU minutes/month', plus: '30,000', pro: '100,000' },
-            { name: 'AI credits/month', plus: '1,000', pro: '5,000' },
-            { name: 'Completed AI SRE investigations/month', plus: '200', pro: '1,000' },
-            { name: 'Read-only evidence connectors', plus: 'Included', pro: 'Included' },
-            { name: 'Private Agent support', plus: 'Included', pro: 'Included' },
-            { name: 'Concurrent jobs', plus: '5', pro: '10' },
-            { name: 'Queued jobs', plus: '50', pro: '100' },
-            { name: 'Minimum check interval', plus: '1 minute', pro: '1 minute' },
-            { name: 'Minimum synthetic check interval', plus: '5 minutes', pro: '5 minutes' },
+            { name: 'Monitors', plus: '50', pro: '200', enterprise: CUSTOM },
+            { name: 'Playwright minutes/month', plus: '3,000', pro: '10,000', enterprise: CUSTOM },
+            { name: 'k6 VU minutes/month', plus: '30,000', pro: '100,000', enterprise: CUSTOM },
+            { name: 'AI credits/month', plus: '1,000', pro: '5,000', enterprise: CUSTOM },
+            { name: 'Completed AI SRE investigations/month', plus: '200', pro: '1,000', enterprise: CUSTOM },
+            { name: 'Read-only evidence connectors', plus: 'Included', pro: 'Included', enterprise: CUSTOM },
+            { name: 'Private Agent support', plus: 'Included', pro: 'Included', enterprise: CUSTOM },
+            { name: 'Concurrent jobs', plus: '5', pro: '10', enterprise: CUSTOM },
+            { name: 'Queued jobs', plus: '50', pro: '100', enterprise: CUSTOM },
+            { name: 'Minimum check interval', plus: '1 minute', pro: '1 minute', enterprise: CUSTOM },
+            { name: 'Minimum synthetic check interval', plus: '5 minutes', pro: '5 minutes', enterprise: CUSTOM },
         ]
     },
     {
         category: 'AI SRE', items: [
-            { name: 'Standalone AI SRE Copilot', plus: '✓', pro: '✓' },
-            { name: 'Incident-scoped Copilot', plus: '✓', pro: '✓' },
-            { name: 'Evidence graph and reports', plus: '✓', pro: '✓' },
-            { name: 'Report snapshots and feedback', plus: '✓', pro: '✓' },
-            { name: 'Read-only connector evidence', plus: 'Included', pro: 'Included' },
+            { name: 'Standalone AI SRE Copilot', plus: CHECK, pro: CHECK, enterprise: CHECK },
+            { name: 'Incident-scoped Copilot', plus: CHECK, pro: CHECK, enterprise: CHECK },
+            { name: 'Evidence graph and reports', plus: CHECK, pro: CHECK, enterprise: CHECK },
+            { name: 'Report snapshots and feedback', plus: CHECK, pro: CHECK, enterprise: CHECK },
+            { name: 'Bring-your-own AI provider', plus: NONE, pro: NONE, enterprise: 'On request' },
         ]
     },
     {
         category: 'Team & Projects', items: [
-            { name: 'Team members', plus: '5', pro: '25' },
-            { name: 'Projects', plus: '10', pro: '50' },
-            { name: 'Status pages', plus: '5', pro: '20' },
-            { name: 'Subscribers per status page', plus: '1,000', pro: '10,000' },
+            { name: 'Team members', plus: '5', pro: '25', enterprise: CUSTOM },
+            { name: 'Projects', plus: '10', pro: '50', enterprise: CUSTOM },
+            { name: 'Status pages', plus: '5', pro: '20', enterprise: CUSTOM },
+            { name: 'Subscribers per status page', plus: '1,000', pro: '10,000', enterprise: CUSTOM },
         ]
     },
     {
         category: 'Data Retention', items: [
-            { name: 'Raw monitor data', plus: '7 days', pro: '7 days' },
-            { name: 'Aggregated metrics', plus: '30 days', pro: '90 days' },
-            { name: 'Job run history', plus: '30 days', pro: '90 days' },
+            { name: 'Raw monitor data', plus: '7 days', pro: '7 days', enterprise: CUSTOM },
+            { name: 'Aggregated metrics', plus: '30 days', pro: '90 days', enterprise: CUSTOM },
+            { name: 'Job run history', plus: '30 days', pro: '90 days', enterprise: CUSTOM },
         ]
     },
     {
-        category: 'Features', items: [
-            { name: 'Custom domains', plus: '✓', pro: '✓' },
-            { name: 'CI/CD integration', plus: '✓', pro: '✓' },
-            { name: 'Cron job scheduling', plus: '✓', pro: '✓' },
-            { name: 'Support', plus: 'Email', pro: 'Priority email' },
+        category: 'Features & Support', items: [
+            { name: 'Custom domains', plus: CHECK, pro: CHECK, enterprise: CHECK },
+            { name: 'CI/CD integration', plus: CHECK, pro: CHECK, enterprise: CHECK },
+            { name: 'Cron job scheduling', plus: CHECK, pro: CHECK, enterprise: CHECK },
+            { name: 'Support', plus: 'Email', pro: 'Priority email', enterprise: 'Custom SLA' },
+            { name: 'Dedicated account manager', plus: NONE, pro: NONE, enterprise: CHECK },
+            { name: 'Onboarding & training', plus: NONE, pro: NONE, enterprise: CHECK },
         ]
     },
 ];
 
+function ComparisonCell({ value }: { value: string }) {
+    if (value === CHECK) {
+        return (
+            <>
+                <span aria-hidden="true" className="text-fd-primary">{CHECK}</span>
+                <span className="sr-only">Included</span>
+            </>
+        );
+    }
+    if (value === NONE) {
+        return (
+            <>
+                <span aria-hidden="true" className="text-fd-muted-foreground">{NONE}</span>
+                <span className="sr-only">Not included</span>
+            </>
+        );
+    }
+    return <>{value}</>;
+}
+
 const faqs = [
     {
         question: 'Can I try Supercheck before Cloud launches?',
-        answer: 'Yes. Explore the free live demo without signing up. Cloud plans are coming soon; signups are not open yet.',
+        answer: 'Yes. Explore the free live demo without signing up, or self-host the open-source core today. Cloud plans are coming soon; signups are not open yet. Join the waitlist from a plan above and we will reply when they open.',
+    },
+    {
+        question: 'Can I self-host Supercheck?',
+        answer: 'Yes. Supercheck core is open source under AGPLv3. Self-host it on your own infrastructure with no Supercheck license cost; you pay for your own infrastructure and AI provider usage. The Cloud plans on this page are for teams that prefer a managed service.',
+    },
+    {
+        question: 'Does one subscription cover all my projects?',
+        answer: 'Yes. Projects in an organization share one subscription, usage allowances, member limits, and spending controls, so creating another project does not require another plan. Only the organization owner manages billing.',
     },
     {
         question: 'How are browser minutes measured?',
-        answer: 'Playwright tests and synthetic monitors share the browser-minute allowance. Execution time is measured in milliseconds and rounded to four decimal places in minutes per run, with no whole-minute minimum. A five-second run uses 0.0833 minutes. Each executed check and retry adds usage, including failed or canceled executions that used compute. HTTP, ping, and port checks do not use browser minutes.',
+        answer: 'Playwright tests and synthetic monitors share the browser-minute allowance. Execution time is measured in milliseconds and rounded to four decimal places in minutes per run, with no whole-minute minimum. A five-second run uses 0.0833 minutes. Each location and executed retry adds usage, including failed or canceled executions that used compute. HTTP, ping, and port checks do not use browser minutes.',
     },
     {
         question: 'How is k6 usage measured?',
@@ -143,6 +209,10 @@ const faqs = [
     {
         question: 'Can I limit overage spending?',
         answer: 'Owners and admins can set monthly spending limits and alerts, with optional blocking of new billable executions and full investigations. Basic uptime checks continue. Spending limits cover overages, not the subscription fee. In-flight usage can exceed the limit, so it is not a guaranteed invoice cap. Monitor, member, project, and status-page limits require a plan upgrade.',
+    },
+    {
+        question: 'What happens if I exceed my limits?',
+        answer: 'Playwright minutes, k6 VU-minutes, and completed AI SRE investigations are billed at the overage rates above. AI credits are included with no overage charges. Monitor, member, project, and status-page limits require a plan upgrade rather than an overage payment.',
     },
     {
         question: 'Do unused allowances roll over?',
@@ -180,7 +250,7 @@ export default function PricingPage() {
                         Supercheck Cloud is coming soon
                     </h1>
                     <p className="text-lg text-fd-muted-foreground max-w-2xl mx-auto">
-                        Preview the plans below. Cloud signups are not open yet.
+                        Preview the plans below and join the waitlist for the plan you want. Cloud signups are not open yet.
                     </p>
                     <p className="mt-4 text-sm text-fd-muted-foreground">
                         Prices are in USD per month, before taxes. Usage beyond included allowances is billed separately.
@@ -188,7 +258,7 @@ export default function PricingPage() {
                 </div>
 
                 {/* Pricing Cards */}
-                <div className="mb-16 grid gap-8 md:grid-cols-2 lg:grid-cols-3">
+                <div id="waitlist" className="mb-4 grid scroll-mt-20 gap-8 md:grid-cols-2 lg:grid-cols-3">
                     {plans.map((plan) => (
                         <div
                             key={plan.name}
@@ -215,31 +285,58 @@ export default function PricingPage() {
                                 )}
                             </div>
                             <ul className="mb-8 flex-1 space-y-3">
-                                {plan.features.map((feature) => (
-                                    <li key={feature} className="flex items-start gap-3 text-sm leading-6">
+                                {plan.features.map((feature) => {
+                                    const text = typeof feature === 'string' ? feature : feature.text;
+                                    const hint = typeof feature === 'string' ? null : feature.hint;
+                                    return (
+                                    <li key={text} className="flex items-start gap-3 text-sm leading-6">
                                         <svg aria-hidden="true" className="mt-1 size-4 shrink-0 text-fd-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                                         </svg>
-                                        <span className="min-w-0">{feature}</span>
+                                        <span className="min-w-0">
+                                            {text}
+                                            {hint && <span className="block text-xs text-fd-muted-foreground">{hint}</span>}
+                                        </span>
                                     </li>
-                                ))}
+                                    );
+                                })}
                             </ul>
-                            {plan.ctaLink ? (
-                                <Link
-                                    href={plan.ctaLink}
-                                    aria-label={`${plan.cta} — ${plan.name}`}
-                                    className="block w-full rounded-lg bg-fd-secondary px-4 py-3 text-center font-medium transition-colors hover:bg-fd-secondary/80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fd-primary"
-                                >
-                                    {plan.cta}
-                                </Link>
-                            ) : (
-                                <p className="rounded-lg border border-fd-border bg-fd-muted/50 px-4 py-3 text-center font-medium text-fd-muted-foreground">
-                                    {plan.cta}
-                                </p>
-                            )}
+                            <Link
+                                href={plan.ctaLink}
+                                className={`block w-full rounded-lg px-4 py-3 text-center font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fd-primary ${plan.highlighted
+                                    ? 'bg-fd-primary text-fd-primary-foreground hover:opacity-90'
+                                    : 'bg-fd-secondary hover:bg-fd-secondary/80'
+                                    }`}
+                            >
+                                {plan.cta}
+                            </Link>
                         </div>
                     ))}
                 </div>
+
+                <p className="mb-16 text-center text-xs text-fd-muted-foreground">
+                    Waitlist buttons open an email to {WAITLIST_EMAIL}.
+                </p>
+
+                {/* Self-hosting */}
+                <aside aria-labelledby="self-host-heading" className="mb-20 flex flex-col items-start justify-between gap-4 rounded-xl border border-fd-border bg-fd-card p-6 sm:flex-row sm:items-center sm:p-8">
+                    <div className="max-w-2xl">
+                        <h2 id="self-host-heading" className="mb-1 text-lg font-semibold">Prefer to run it yourself?</h2>
+                        <p className="text-sm text-fd-muted-foreground">
+                            Supercheck core is open source under AGPLv3. Self-host it with no license fee; you pay for your own infrastructure and AI provider.
+                        </p>
+                    </div>
+                    <div className="flex shrink-0 flex-wrap gap-3">
+                        <Link href="/docs/app/deployment/self-hosted" className="rounded-lg bg-fd-secondary px-4 py-2 text-sm font-medium transition-colors hover:bg-fd-secondary/80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fd-primary">
+                            Self-hosting guide
+                        </Link>
+                        <Link href="https://github.com/supercheck-io/supercheck" target="_blank" rel="noopener noreferrer" className="rounded-lg border border-fd-border px-4 py-2 text-sm font-medium transition-colors hover:bg-fd-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fd-primary">
+                            View on GitHub
+                        </Link>
+                    </div>
+                </aside>
+
+                <CostCalculator />
 
                 {/* Overage Pricing */}
                 <div className="mb-20">
@@ -275,7 +372,7 @@ export default function PricingPage() {
                 <div className="mb-20">
                     <h2 className="text-2xl font-bold text-center mb-8">Full Feature Comparison</h2>
                     <p className="text-center text-sm text-fd-muted-foreground mb-4 md:hidden">Scroll horizontally to compare all plans.</p>
-                    <div className="rounded-lg border overflow-x-auto" role="region" aria-label="Plan feature comparison" tabIndex={0}>
+                    <div className="relative rounded-lg border overflow-x-auto" role="region" aria-label="Plan feature comparison" tabIndex={0}>
                             <table className="w-full min-w-[640px]" aria-label="Full plan feature comparison">
                                 <thead className="bg-fd-muted">
                                     <tr>
@@ -295,10 +392,10 @@ export default function PricingPage() {
                                             </tr>
                                             {category.items.map((item, idx) => (
                                                 <tr key={item.name} className={idx % 2 === 0 ? 'bg-fd-card' : 'bg-fd-muted/30'}>
-                                                    <th scope="row" className="px-6 py-3 text-sm pl-10 text-left font-normal">{item.name}</th>
-                                                    <td className="px-6 py-3 text-sm text-center">{item.plus}</td>
-                                                    <td className="px-6 py-3 text-sm text-center">{item.pro}</td>
-                                                    <td className="px-6 py-3 text-sm text-center">{(item as Record<string, string>).enterprise ?? 'Custom'}</td>
+                                                    <th scope="row" className="px-6 py-3 pl-10 text-left text-sm font-normal">{item.name}</th>
+                                                    <td className="px-6 py-3 text-sm text-center"><ComparisonCell value={item.plus} /></td>
+                                                    <td className="px-6 py-3 text-sm text-center"><ComparisonCell value={item.pro} /></td>
+                                                    <td className="px-6 py-3 text-sm text-center"><ComparisonCell value={item.enterprise} /></td>
                                                 </tr>
                                             ))}
                                         </React.Fragment>

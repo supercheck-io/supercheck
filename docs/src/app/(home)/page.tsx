@@ -269,6 +269,7 @@ export default function HomePage() {
               aria-label="GitHub"
             >
               <svg
+                aria-hidden="true"
                 className="size-5"
                 xmlns="http://www.w3.org/2000/svg"
                 viewBox="0 0 24 24"
@@ -344,7 +345,7 @@ export default function HomePage() {
                 <div className="relative aspect-video w-full overflow-hidden rounded-lg border border-fd-border bg-fd-secondary shadow-2xl shadow-fd-foreground/5 md:rounded-xl">
                   {isVideoPlaying ? (
                     <iframe
-                      src={`https://www.youtube.com/embed/${YOUTUBE_VIDEO_ID}?autoplay=1&rel=0&modestbranding=1&playsinline=1`}
+                      src={`https://www.youtube-nocookie.com/embed/${YOUTUBE_VIDEO_ID}?autoplay=1&rel=0&modestbranding=1&playsinline=1`}
                       title="Supercheck Platform Demo"
                       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
                       allowFullScreen
@@ -371,6 +372,7 @@ export default function HomePage() {
                         <div className="cursor-pointer transition-transform duration-200 hover:scale-110 active:scale-95">
                           <svg
                             viewBox="0 0 68 48"
+                            aria-hidden="true"
                             className="h-12 w-16 drop-shadow-lg transition-transform duration-200 md:h-14 md:w-20"
                           >
                             <path
@@ -446,6 +448,23 @@ export default function HomePage() {
                     Get Started
                   </Link>
                 </div>
+                <p className="mt-6 text-sm text-fd-muted-foreground">
+                  Open source under AGPLv3.{" "}
+                  <Link
+                    href="/docs/app/deployment/self-hosted"
+                    className="font-medium text-fd-foreground/80 underline decoration-fd-border underline-offset-4 transition-colors hover:text-fd-foreground hover:decoration-fd-foreground/40"
+                  >
+                    Self-host for free
+                  </Link>{" "}
+                  or{" "}
+                  <Link
+                    href="/pricing#waitlist"
+                    className="font-medium text-fd-foreground/80 underline decoration-fd-border underline-offset-4 transition-colors hover:text-fd-foreground hover:decoration-fd-foreground/40"
+                  >
+                    join the Cloud waitlist
+                  </Link>
+                  .
+                </p>
               </div>
             </div>
           </div>
