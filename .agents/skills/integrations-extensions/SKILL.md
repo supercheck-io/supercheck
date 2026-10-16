@@ -52,7 +52,7 @@ sequenceDiagram
 - Do not relicense Playwright-derived recorder files as AGPL. App, worker (including Private Agent mode), and docs remain AGPL-3.0-only. CLI releases from 0.3.1 are Apache-2.0.
 - The vendored source must be enough for a clean reproducible build without another private checkout.
 - Build lint, vendored bundles, generated types, CRX library, recorder/TodoMVC examples, and test extension.
-- Unit security runs on PRs; the browser suite runs weekly/on-demand as a release gate. Local browser fixture limitations must be disclosed; CI/Linux and manual installed-extension acceptance remain release gates.
+- Unit security runs on PRs; the recorder browser suite runs weekly (Mondays 04:30 UTC) and on-demand as a release gate. Local browser fixture limitations must be disclosed; CI/Linux and manual installed-extension acceptance remain release gates.
 - Chrome and Edge store descriptions/assets/certification are separate. Edge submission copy must not describe the product as a Chrome extension.
 - Store publishing requires manual account/2FA/reviewer gates and uses canonical listing IDs/URLs from current public docs.
 

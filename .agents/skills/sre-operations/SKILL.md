@@ -53,7 +53,7 @@ flowchart LR
 
 ## Environment configuration
 
-- Environment access is direct `process.env` reads (worker uses `@nestjs/config`); there is no central schema helper today.
+- Environment access is mixed: the app reads `process.env` directly, and the worker combines `@nestjs/config` (`ConfigModule.forRoot()` plus injected `ConfigService`) with direct `process.env` reads in several services. No central schema helper exists today.
 - Keep app, worker, deployment manifests, examples, docs, and health/config diagnostics synchronized.
 - Validate required production values and fail closed when security-critical settings are missing.
 - Never expose secrets through health endpoints, startup logs, client-prefixed variables, build output, or configuration APIs.
