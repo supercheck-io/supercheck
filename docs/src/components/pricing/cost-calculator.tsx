@@ -216,9 +216,10 @@ export function CostCalculator() {
         <ul className="mt-3 list-disc space-y-2 pl-5">
           <li>
             Runs per month = checks × runs per day, over a 30-day month, from one location.
-            Supercheck Cloud launches with a single EU location, and we price every vendor for
-            the same single-location workload. If more locations are enabled later, each location
-            counts as a separate run.
+            Browser checks run from a single EU location, and we price every vendor for
+            the same single-location workload. HTTP, SSL, ping and port monitoring from other
+            locations does not use browser minutes. If browser checks are enabled in more
+            locations later, each location counts as a separate run.
           </li>
           <li>
             Supercheck uses the lowest-cost of Plus ($49, up to 50 monitors) and Pro ($149, up

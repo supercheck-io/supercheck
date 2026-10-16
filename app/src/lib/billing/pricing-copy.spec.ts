@@ -10,17 +10,20 @@ describe("PRICING_FAQS", () => {
     }
   });
 
-  it("states the single EU launch location", () => {
+  it("separates monitoring coverage from execution coverage", () => {
     const faq = PRICING_FAQS.find(
       (item) => item.question === "Where do Cloud checks run?",
     );
-    expect(faq?.answer).toContain("one EU monitoring location");
+    expect(faq?.answer).toContain("monitoring runs from EU, US, and Singapore");
+    expect(faq?.answer).toContain(
+      "Browser synthetic checks, Playwright tests, and k6 execution run in EU",
+    );
   });
 
-  it("counts locations toward browser minutes only when more are enabled", () => {
+  it("counts locations toward browser minutes only when browser checks are enabled in more", () => {
     const faq = PRICING_FAQS.find((item) =>
       item.question.startsWith("How are browser execution minutes measured"),
     );
-    expect(faq?.answer).toContain("if more locations are enabled");
+    expect(faq?.answer).toContain("if browser checks are enabled in more locations");
   });
 });
