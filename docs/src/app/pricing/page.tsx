@@ -35,7 +35,7 @@ const plans: {
         features: [
             '50 monitors',
             '5 status pages with custom domains',
-            { text: 'Monitoring from EU, US and Singapore', hint: 'Browser checks and k6 run in EU' },
+            { text: '1 EU monitoring location', hint: 'US and Singapore planned' },
             { text: '3,000 Playwright minutes/month', hint: '≈ 36,000 five-second test runs' },
             '30,000 k6 VU minutes/month',
             '1,000 AI credits/month',
@@ -56,7 +56,7 @@ const plans: {
         features: [
             '200 monitors',
             '20 status pages with custom domains',
-            { text: 'Monitoring from EU, US and Singapore', hint: 'Browser checks and k6 run in EU' },
+            { text: '1 EU monitoring location', hint: 'US and Singapore planned' },
             { text: '10,000 Playwright minutes/month', hint: '≈ 120,000 five-second test runs' },
             '100,000 k6 VU minutes/month',
             '5,000 AI credits/month',
@@ -123,7 +123,7 @@ const comparisonFeatures: { category: string; items: ComparisonItem[] }[] = [
             { name: 'Queued jobs', plus: '50', pro: '100', enterprise: CUSTOM },
             { name: 'Minimum check interval', plus: '1 minute', pro: '1 minute', enterprise: CUSTOM },
             { name: 'Minimum synthetic check interval', plus: '5 minutes', pro: '5 minutes', enterprise: CUSTOM },
-            { name: 'HTTP, SSL, ping and port monitoring locations', plus: 'EU, US, Singapore', pro: 'EU, US, Singapore', enterprise: CUSTOM },
+            { name: 'HTTP, SSL, ping and port monitoring locations', plus: 'EU', pro: 'EU', enterprise: CUSTOM },
             { name: 'Browser checks, Playwright tests and k6 execution', plus: 'EU', pro: 'EU', enterprise: CUSTOM },
         ]
     },
@@ -198,7 +198,7 @@ const faqs = [
     },
     {
         question: 'Where do Cloud checks run?',
-        answer: 'HTTP, SSL, ping, and port monitoring runs from EU, US, and Singapore. Browser synthetic checks, Playwright tests, and k6 execution run in EU. Enterprise can use custom locations, and self-hosted deployments can run checks wherever you deploy.',
+        answer: 'Supercheck Cloud currently runs HTTP, SSL, ping, and port monitoring, browser synthetic checks, Playwright tests, and k6 execution in EU. US and Singapore monitoring regions are planned. Enterprise can use custom locations, and self-hosted deployments can run checks wherever you deploy.',
     },
     {
         question: 'How are browser minutes measured?',
