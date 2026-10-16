@@ -50,7 +50,7 @@ const sections = [
             { name: "Pricing", href: "/pricing" },
             { name: "Live Demo", href: process.env.NEXT_PUBLIC_DEMO_URL || "https://demo.supercheck.dev" },
             { name: "Chrome Extension", href: "https://chromewebstore.google.com/detail/supercheck-recorder/gfmbcelfhhfmifdkccnbgdadibdfhioe" },
-            { name: "Edge Extension", href: "https://microsoftedge.microsoft.com/addons/detail/supercheck-recorder/0rdckc265vb9" },
+            { name: "Edge Extension", href: "https://microsoftedge.microsoft.com/addons/detail/supercheck-recorder/ngmlkgfgmdnfpddohcbfdgihennolnem" },
             { name: "CLI docs", href: "/docs/cli" },
             { name: "API reference", href: "/docs/api" },
             { name: "YouTube", href: "https://www.youtube.com/@supercheck-io" },
