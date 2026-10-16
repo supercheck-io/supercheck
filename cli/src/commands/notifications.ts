@@ -1,7 +1,7 @@
 import { Command } from 'commander'
 import { createAuthenticatedClient } from '../api/authenticated-client.js'
 import { logger } from '../utils/logger.js'
-import { output, outputDetail } from '../output/formatter.js'
+import { output, outputDetail, outputMutation } from '../output/formatter.js'
 import { CLIError, ExitCode } from '../utils/errors.js'
 import { withSpinner } from '../utils/spinner.js'
 
@@ -185,6 +185,7 @@ notificationCommand
       () => client.delete(`/api/notification-providers/${id}`),
     )
     logger.success(`Notification provider ${id} deleted`)
+    outputMutation({ id, deleted: true })
   })
 
 notificationCommand

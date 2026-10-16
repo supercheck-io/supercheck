@@ -5,23 +5,30 @@ description: Complete reference for all Supercheck CLI commands
 
 ## Global Flags
 
-These flags are available on all commands. Place them **before** the subcommand (they are root-level Commander options):
+These flags are available on all commands and can appear before or after the subcommand:
 
 ```bash
 supercheck --json job trigger <job-id> --wait
 supercheck --quiet whoami
+supercheck config validate --json
 ```
 
 | Flag | Description |
 |------|-------------|
 | `--json` | Output in JSON format (for CI/CD scripting) |
+| `--envelope` | Include pagination metadata with JSON list results; requires `--json` |
+| `--show-secrets` | Disable redaction for sensitive fields in command output |
 | `--quiet` | Suppress non-essential output (only IDs and errors) |
+| `--wide` | Show tables without width limits |
+| `--no-color` | Disable ANSI colors |
 | `--debug` | Enable debug logging |
 | `-v`, `--version` | Show version |
 
 Config-aware commands (for example `config`, `diff`, `deploy`, `pull`, `validate`, `destroy`) accept `--config <path>` to point at a specific config file.
 
 For `sre ask`, `sre brief`, `run stream`, and `test status`, global `--json` produces newline-delimited JSON (NDJSON), one event per line.
+
+List commands keep their existing JSON array shape for compatibility. Add `--envelope` to include pagination metadata. Local test and job runs emit bounded NDJSON `local.result` records in JSON mode. Errors are emitted on stderr. Sensitive fields are redacted by default; use `--show-secrets` only when the output can be handled securely.
 
 ## Exit Codes
 
@@ -33,6 +40,51 @@ For `sre ask`, `sre brief`, `run stream`, and `test status`, global `--json` pro
 | `3` | Configuration error | Missing config, invalid schema |
 | `4` | Network / API error | API unreachable, 5xx response |
 | `5` | Timeout | Operation exceeded timeout |
+| `130` | Interrupted | Ctrl+C during a stream |
+
+An operation that requires confirmation in a non-interactive session also exits `3` and reports `CONFIRMATION_REQUIRED`. Review its plan, then pass `--force` to apply the already-authorized change. Authentication errors continue to use exit code `2`.
+
+## Agent-first operation
+
+### `supercheck skills`
+
+Print the offline workflow index or a focused guide. The guidance is bundled with the CLI version and requires no credentials.
+
+```bash
+supercheck skills
+supercheck skills local
+supercheck skills sync
+supercheck skills configure
+supercheck skills execute
+supercheck skills investigate
+```
+
+`supercheck skills install` writes a small `.agents/skills/supercheck/SKILL.md` pointer. Use `--path <directory>` to choose another directory. Existing skill files are preserved unless `--force` is passed.
+
+### `supercheck capabilities`
+
+Report the installed CLI version, local workflow capabilities, and whether credentials are present. Add `--online` to verify the current API context; this does not prove that every server feature is available or that the token has permission for every operation.
+
+```bash
+supercheck capabilities --json
+supercheck capabilities --online --json
+```
+
+### `supercheck schema config`
+
+Describe the installed configuration schema without loading repository code. JSON is useful for generating or validating configuration.
+
+```bash
+supercheck schema config --json
+```
+
+### Machine-readable plans and writes
+
+`diff --json` and `deploy --dry-run --json` return plans on stdout. Successful deploys return per-resource results, including server-assigned IDs and the state-file path. `pull --dry-run --json` describes the remote resources and config path it would write. Other mutation `--dry-run --json` commands return the proposed request payload.
+
+In a non-interactive session, a write requiring confirmation refuses with exit code `3` and a `CONFIRMATION_REQUIRED` error. Review the preview before explicitly passing `--force`. The CLI checks that config organization/project match the authenticated API context before sync operations.
+
+Deploy records returned IDs in `supercheck.state.json`, keyed by API origin and actual organization/project. Share this generated mapping with CI so subsequent deploys manage the same resources. The transient `.lock` coordinates deploys only on a shared local filesystem; do not commit it. Names alone do not establish ownership; pull an existing resource or set its explicit ID. Deploy does not rename local test files.
 
 ---
 
@@ -49,7 +101,7 @@ supercheck login --token <token> --url https://supercheck.yourdomain.com
 
 | Flag | Required | Description |
 |------|----------|-------------|
-| `--token <token>` | No | CLI token (`sck_live_*` or `sck_test_*`). Without it, the CLI prints token-creation instructions. |
+| `--token <token>` | No | CLI token (`sck_live_*` or `sck_test_*`). Without it, the CLI prints setup guidance and exits with authentication error `2`; browser login is not available. |
 | `--url <url>` | No | API base URL; otherwise uses `SUPERCHECK_URL`, stored URL, config URL, then the cloud default |
 
 The token is verified against the API before being stored locally.
@@ -97,10 +149,11 @@ supercheck init --pm pnpm            # Use specific package manager
 
 ### `supercheck config validate`
 
-Validate the configuration file schema.
+Validate the configuration file schema. Add `--offline` to validate a local-only config without API credentials.
 
 ```bash
 supercheck config validate
+supercheck config validate --offline
 ```
 
 ### `supercheck validate`
@@ -113,10 +166,11 @@ supercheck validate
 
 ### `supercheck config print`
 
-Print the resolved configuration with environment variable expansion.
+Print the resolved configuration with environment variable expansion. Add `--offline` to print a local-only config without API credentials.
 
 ```bash
 supercheck config print
+supercheck config print --offline
 ```
 
 ---
@@ -200,7 +254,10 @@ Run a job immediately, bypassing the cron schedule.
 supercheck job run --id <job-id>
 supercheck job run --id <job-id> --local     # Run locally
 supercheck job run --id <job-id> --cloud     # Run in the cloud
+supercheck job run --id "Nightly E2E" --local --offline
 ```
+
+`--local --offline` runs tests referenced by a job in the local configuration without credentials or server-side validation. Browser jobs use the configured Playwright browser. Pass `--playwright-config <path>` to use an existing Playwright configuration.
 
 ### `supercheck job trigger`
 
@@ -218,6 +275,8 @@ supercheck --json job trigger <job-id> --wait
 | `--timeout` | Maximum wait time in seconds (default: 300) |
 
 `supercheck job trigger` requires `SUPERCHECK_TRIGGER_KEY`. If you also use `--wait`, set `SUPERCHECK_TOKEN` so the CLI can poll the run after triggering it.
+
+The CLI validates the read token and job before starting a waited trigger. If waiting later fails, use the returned run ID with `supercheck run wait <run-id>` to resume observation without triggering another run.
 
 ### `supercheck job keys`
 
@@ -278,6 +337,19 @@ Quick status check for a run.
 ```bash
 supercheck run status <run-id>
 ```
+
+### `supercheck run wait`
+
+Wait for an existing run to reach a terminal state. This command does not start or retrigger a run.
+
+```bash
+supercheck run wait <run-id>
+supercheck run wait <run-id> --timeout 600
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--timeout <seconds>` | `300` | Maximum time to wait |
 
 ### `supercheck run stream`
 
@@ -400,6 +472,8 @@ Run tests locally.
 supercheck test run --file ./_supercheck_/playwright/homepage-check.<id>.pw.ts
 supercheck test run --all --type browser
 supercheck test run --all --type performance
+supercheck test run --offline --file ./_supercheck_/playwright/homepage.pw.ts
+supercheck test run --all --offline --playwright-config ./playwright.config.ts
 ```
 
 | Flag | Description |
@@ -407,6 +481,26 @@ supercheck test run --all --type performance
 | `--file` | Path to a local test file to run |
 | `--all` | Run all local tests |
 | `--type` | Filter by local test type (`browser`, `performance`) |
+| `--offline` | Run without credentials or server-side script validation |
+| `--playwright-config` | Use an existing Playwright config |
+
+Offline runs require local Playwright packages and browser binaries, or the k6 executable for performance tests. JSON mode emits bounded NDJSON `local.result` records containing captured output, exit code, and whether output was truncated.
+
+### `supercheck test execute`
+
+Execute one deployed test in the cloud. The command returns the accepted run ID, or waits for its result when `--wait` is supplied.
+
+```bash
+supercheck test execute <test-id>
+supercheck test execute <test-id> --wait --timeout 600
+supercheck test execute <test-id> --location us-east --wait
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--location <code>` | — | Execution location for performance tests |
+| `--wait` | — | Wait for the run to complete |
+| `--timeout <seconds>` | `300` | Maximum wait time |
 
 ### `supercheck test status`
 
@@ -801,7 +895,7 @@ These commands are read-only and require `sre_service:view`.
 
 ### `supercheck pull`
 
-Pull remote resources into local config and files. Config pulls include monitors, jobs, notification providers, variables, tags, and status pages; test pulls also write test scripts under `_supercheck_/`.
+Pull remote resources into local config and files. Config pulls include monitors, jobs, notification providers, variables, tags, and status pages; test pulls also write test scripts under `_supercheck_/`. When overwriting changed files, pull saves a mode-`0600` backup at `<path>.supercheck-backup.<uuid>`. This includes matching test scripts and config files; if a test file is renamed during pull, the old file is backed up before removal.
 
 ```bash
 supercheck pull
@@ -810,6 +904,8 @@ supercheck pull --force
 supercheck pull --tests-only
 supercheck pull --config-only
 ```
+
+In JSON mode, the completed pull summary includes `files` and `backups` arrays with the paths written and preserved. `--dry-run` does not write files or create backups.
 
 ### `supercheck diff`
 

@@ -59,7 +59,7 @@ describe('pull output and local file effects', () => {
     expect(output()).toContain('No remote test scripts to pull.')
     expect(output()).toContain('replace supercheck.config.ts')
     expect(output()).not.toContain('write test scripts')
-    expect(confirm).toHaveBeenCalledWith('Continue?', { default: false })
+    expect(confirm).toHaveBeenCalledWith('Continue?', expect.objectContaining({ default: false, changes: expect.any(Array), context: expect.any(Object) }))
     expect(existsSync(resolve(cwd, 'supercheck.config.ts'))).toBe(false)
   })
 

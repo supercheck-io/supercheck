@@ -22,6 +22,7 @@ jest.unstable_mockModule('../../api/authenticated-client.js', () => ({
 jest.unstable_mockModule('../../output/formatter.js', () => ({
   output: mockOutput,
   outputDetail: mockOutputDetail,
+  outputMutation: mockOutputDetail,
   outputNarrative: mockNarrative,
   outputPagination: jest.fn(),
   getOutputFormat: () => outputFormat,

@@ -109,6 +109,8 @@ supercheck:
 
 ### With Monitoring-as-Code Deploy
 
+Commit `supercheck.state.json` with the project so CI can map local resources to IDs created by earlier deployments. It is scoped to the API origin and actual project. Never commit the transient `supercheck.state.json.lock` file. Keep `SUPERCHECK_TOKEN` in the CI secret store. The CLI checks configured project context before syncing.
+
 ```yaml title=".gitlab-ci.yml"
 stages:
   - test
@@ -221,6 +223,9 @@ The CLI uses specific exit codes for CI/CD scripting:
 | `3` | Config error | Fix `supercheck.config.ts` |
 | `4` | API error | Check connectivity |
 | `5` | Timeout | Increase `--timeout` value |
+| `130` | Interrupted | Stream cancelled with Ctrl+C |
+
+In a non-interactive environment, an operation that requires confirmation refuses with exit code `3` and a `CONFIRMATION_REQUIRED` error. Review the JSON plan, then explicitly pass `--force` for an authorized write. Authentication failures remain exit code `2`.
 
 ```yaml
 # Example: Handle exit codes in GitHub Actions
@@ -242,6 +247,9 @@ The CLI uses specific exit codes for CI/CD scripting:
 ## Best Practices
 
 - **Use `--json` output** for machine-readable results in pipelines
+- **Use `--envelope` with `--json`** when the workflow needs pagination metadata; default list arrays remain compatible
+- **Run `supercheck diff --json` or `supercheck deploy --dry-run --json`** to inspect a plan before a write
+- **Use `supercheck run wait <run-id>`** to resume waiting on an existing run without triggering it again
 - **Set `--timeout`** appropriate to your test suite duration
 - **Use trigger keys** (`sck_trigger_*`) for single-job CI/CD triggers (least-privilege)
 - **Cache the CLI** in your CI/CD environment to speed up builds

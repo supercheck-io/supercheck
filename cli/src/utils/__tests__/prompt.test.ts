@@ -1,4 +1,4 @@
-import { describe, expect, it, jest } from '@jest/globals'
+import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals'
 import { EventEmitter } from 'node:events'
 let input: string | null = null
 jest.unstable_mockModule('node:readline', () => ({
@@ -13,14 +13,17 @@ jest.unstable_mockModule('node:readline', () => ({
   },
 }))
 const { confirmPrompt } = await import('../prompt.js')
+const descriptor = Object.getOwnPropertyDescriptor(process.stdin, 'isTTY')
+beforeEach(() => { Object.defineProperty(process.stdin, 'isTTY', { value: true, configurable: true }) })
+afterEach(() => { if (descriptor) Object.defineProperty(process.stdin, 'isTTY', descriptor); else Reflect.deleteProperty(process.stdin, 'isTTY') })
 describe('confirmation EOF', () => {
   it('declines EOF even when the prompt defaults to yes', async () => {
     input = null
-    expect(await confirmPrompt('Delete?', { default: true })).toBe(false)
+    await expect(confirmPrompt('Delete?', { default: true })).rejects.toThrow('ABORTED')
   })
   it('keeps explicit and default answers', async () => {
     input = 'yes'; expect(await confirmPrompt('Delete?')).toBe(true)
     input = ''; expect(await confirmPrompt('Delete?', { default: true })).toBe(true)
-    input = 'no'; expect(await confirmPrompt('Delete?')).toBe(false)
+    input = 'no'; await expect(confirmPrompt('Delete?')).rejects.toThrow('ABORTED')
   })
 })

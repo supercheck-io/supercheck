@@ -10,6 +10,8 @@ The Supercheck CLI (`@supercheck/cli`) provides a first-class command-line inter
 
 ## Key Features
 
+- **Agent guidance** — Read versioned CLI workflows offline with `supercheck skills`; inspect config fields with `supercheck schema config --json`
+- **Offline local execution** — Run local Playwright and k6 tests without a Supercheck account or server validation
 - **CI/CD Integration** — Trigger jobs, wait for results, and gate deployments
 - **Monitoring-as-Code** — Define monitors, tests, jobs, notification providers, variables, tags, and status pages in `supercheck.config.ts`
 - **Resource management** — Manage supported resources from the terminal within your permissions
@@ -40,6 +42,21 @@ supercheck test list
 supercheck incident list
 supercheck sre ask "Summarize active reliability risks"
 ```
+
+## Agent Workflows
+
+Start with `supercheck skills` for the workflow index, then request focused guidance such as `supercheck skills local`, `supercheck skills sync`, or `supercheck skills execute`. `supercheck skills install` writes a small skill pointer for an agent; it preserves existing files unless `--force` is supplied. These commands work offline.
+
+Use `supercheck capabilities --json` to inspect local CLI capabilities. Add `--online` to verify the current server context. This context check does not establish feature availability or permissions. `supercheck schema config --json` describes the installed configuration schema.
+
+Local runs do not require cloud credentials:
+
+```bash
+supercheck test run --offline --file ./_supercheck_/playwright/homepage.pw.ts
+supercheck job run --id "Nightly E2E" --local --offline
+```
+
+Offline execution runs local files and skips server-side validation. Cloud sync still requires a project-scoped CLI token. See [Agent-first operation](./commands#agent-first-operation) for JSON, confirmation, and resource ownership behavior.
 
 <Callout type="info">
   In CI/CD, set `SUPERCHECK_TOKEN` for general CLI/API commands. For `supercheck job trigger`, set `SUPERCHECK_TRIGGER_KEY`, and add `SUPERCHECK_TOKEN` only when you also use `--wait`.

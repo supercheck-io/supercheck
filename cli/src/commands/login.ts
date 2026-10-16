@@ -77,7 +77,7 @@ export const loginCommand = new Command('login')
       logger.info('Then run: supercheck login --token <your-token>')
     }
     logger.newline()
-    logger.warn('Browser-based OAuth login is not yet implemented.')
+    throw new CLIError('AUTH_REQUIRED: Set SUPERCHECK_TOKEN from your secret store or use login --token. Browser login is not available.', ExitCode.AuthError)
   })
 
 export const logoutCommand = new Command('logout')

@@ -98,6 +98,10 @@ Run `supercheck whoami` to check your API URL, authenticated project, organizati
 
 For `job trigger`, use a job-specific trigger key. To wait for the result with `--wait`, also supply a CLI token that can read runs in that project.
 
+Local-only work does not require login: `test run --offline` and `job run --local --offline` run local scripts without contacting Supercheck. Cloud sync and API operations continue to require a CLI token or, for a trigger-only job run, a job trigger key.
+
+The CLI redacts known credential fields in output by default. The global `--show-secrets` flag explicitly reveals sensitive values; avoid using it in CI logs, shared terminals, or agent transcripts.
+
 ## Rate Limits
 
 Job trigger keys use their server-side per-key configuration. The default is 100 requests per 60-second window, but administrators can configure a different limit for an individual key. Other endpoints may apply their own operation-specific limits.

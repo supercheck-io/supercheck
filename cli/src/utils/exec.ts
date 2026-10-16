@@ -1,3 +1,6 @@
+import { getOutputFormat } from '../output/formatter.js'
+import { logger } from './logger.js'
+import { redactText } from './redact.js'
 import { spawn } from 'node:child_process'
 import { constants as osConstants } from 'node:os'
 
@@ -23,13 +26,30 @@ export function runCommand(command: string, args: string[], cwd?: string): Promi
 
     // SECURITY FIX: Remove shell: true to prevent command injection
     // spawn() with shell: false treats args as literal arguments, not shell commands
+    const json = getOutputFormat() === 'json'
+    let stdout = '', stderr = ''
+    let truncated = false
     const child = spawn(executable, args, {
-      stdio: 'inherit',
+      stdio: json ? ['ignore', 'pipe', 'pipe'] : 'inherit',
       shell: false,  // ✓ SECURE: Prevents command injection
       cwd,
     })
 
+    const collect = (text: string, chunk: Buffer): string => {
+      if (text.length + chunk.length > 65536) truncated = true
+      return (text + chunk.toString()).slice(0, 65536)
+    }
+    child.stdout?.on('data', (chunk: Buffer) => { stdout = collect(stdout, chunk) })
+    child.stderr?.on('data', (chunk: Buffer) => { stderr = collect(stderr, chunk) })
     child.on('error', (err) => reject(err))
-    child.on('close', (code, signal) => resolve(code ?? exitCodeForSignal(signal)))
+    child.on('close', (code, signal) => {
+      const exitCode = code ?? exitCodeForSignal(signal)
+      if (json) {
+        let result: unknown = undefined
+        try { result = JSON.parse(stdout) } catch { /* Native runners may use text output. */ }
+        logger.output(JSON.stringify({ event: 'local.result', command, exitCode, result, stdout: result === undefined ? redactText(stdout) : undefined, stderr: redactText(stderr), truncated }))
+      }
+      resolve(exitCode)
+    })
   })
 }

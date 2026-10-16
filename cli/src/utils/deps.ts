@@ -71,11 +71,9 @@ function getPlaywrightBrowserDirs(cwd: string): string[] {
 }
 
 /**
- * Check if the default Playwright browser runtime is installed.
- * The CLI executes local tests with Playwright's default browser selection,
- * so we require at least one Chromium browser bundle to be present.
+ * Check whether the selected Playwright browser bundle is present.
  */
-export function arePlaywrightBrowsersInstalled(cwd: string): boolean {
+export function arePlaywrightBrowsersInstalled(cwd: string, browser = 'chromium'): boolean {
   for (const dir of getPlaywrightBrowserDirs(cwd)) {
     if (!existsSync(dir)) continue
 
@@ -83,7 +81,7 @@ export function arePlaywrightBrowsersInstalled(cwd: string): boolean {
       const entries = readdirSync(dir, { withFileTypes: true })
       const hasChromium = entries.some((entry) => {
         if (!entry.isDirectory()) return false
-        return entry.name.startsWith('chromium-') || entry.name.startsWith('chromium_headless_shell-')
+        return entry.name.startsWith(`${browser}-`) || (browser === 'chromium' && entry.name.startsWith('chromium_headless_shell-'))
       })
 
       if (hasChromium) {
@@ -158,11 +156,12 @@ export async function installPlaywrightBrowsers(cwd: string, browser = 'chromium
  */
 export function checkAllDependencies(
   cwd: string,
-  options?: { requirePlaywright?: boolean; requireK6?: boolean },
+  options?: { requirePlaywright?: boolean; requireK6?: boolean; browser?: string },
 ): DependencyStatus[] {
   const deps: DependencyStatus[] = []
   const pwRequired = options?.requirePlaywright ?? true
   const k6Required = options?.requireK6 ?? false
+  const browser = options?.browser ?? 'chromium'
 
   // Node.js
   const node = isNodeInstalled()
@@ -186,13 +185,13 @@ export function checkAllDependencies(
 
   // Playwright browsers (chromium)
   if (pwPkg) {
-    const browsersInstalled = arePlaywrightBrowsersInstalled(cwd)
+    const browsersInstalled = arePlaywrightBrowsersInstalled(cwd, browser)
     deps.push({
       name: 'Playwright browsers',
       installed: browsersInstalled,
-      detail: browsersInstalled ? 'chromium browser available' : 'run: npx playwright install chromium',
+      detail: browsersInstalled ? `${browser} browser available` : `run: npx playwright install ${browser}`,
       required: pwRequired,
-      installHint: 'npx playwright install chromium',
+      installHint: `npx playwright install ${browser}`,
     })
   } else {
     deps.push({
@@ -273,6 +272,7 @@ export function formatDependencyReport(deps: DependencyStatus[]): string {
 export function ensureDependenciesForTestType(
   cwd: string,
   testType: 'playwright' | 'k6',
+  browser: string | null = 'chromium',
 ): void {
   if (testType === 'playwright') {
     if (!isPlaywrightPackageInstalled(cwd)) {
@@ -284,11 +284,12 @@ export function ensureDependenciesForTestType(
       )
     }
 
-    if (!arePlaywrightBrowsersInstalled(cwd)) {
+    // An explicit Playwright config can select channels or remote browsers; let its runner check them.
+    if (browser && !arePlaywrightBrowsersInstalled(cwd, browser)) {
       throw new DependencyError(
         'playwright-browsers',
         'Playwright browsers are not installed.\n' +
-        '  Install them with: npx playwright install chromium',
+        `  Install them with: npx playwright install ${browser}`,
       )
     }
   }

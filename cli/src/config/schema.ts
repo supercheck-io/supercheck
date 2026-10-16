@@ -7,7 +7,7 @@ export const tagDefinitionSchema = z.object({
   id: z.string().uuid().optional(),
   name: z.string().min(3).max(20),
   color: z.string().optional(),
-})
+}).strict()
 
 export const variableDefinitionSchema = z.object({
   /** Database UUID. Present for existing resources, omitted for new ones. */
@@ -16,7 +16,7 @@ export const variableDefinitionSchema = z.object({
   value: z.string(),
   isSecret: z.boolean().default(false),
   description: z.string().optional(),
-})
+}).strict()
 
 export const notificationProviderDefinitionSchema = z.object({
   /** Database UUID. Present for existing resources, omitted for new ones. */
@@ -24,7 +24,7 @@ export const notificationProviderDefinitionSchema = z.object({
   name: z.string().min(1),
   type: z.enum(['email', 'slack', 'webhook', 'telegram', 'discord', 'teams']),
   config: z.record(z.unknown()),
-})
+}).strict()
 
 // --- Alert Config ---
 
@@ -47,16 +47,16 @@ export const alertConfigSchema = z.object({
 export const playwrightTestConfigSchema = z.object({
   testMatch: z.string().default('_supercheck_/playwright/**/*.pw.ts'),
   browser: z.enum(['chromium', 'firefox', 'webkit']).default('chromium'),
-})
+}).strict()
 
 export const k6TestConfigSchema = z.object({
   testMatch: z.string().default('_supercheck_/k6/**/*.k6.ts'),
-})
+}).strict()
 
 export const testsConfigSchema = z.object({
   playwright: playwrightTestConfigSchema.optional(),
   k6: k6TestConfigSchema.optional(),
-})
+}).strict()
 
 // --- Monitors ---
 
@@ -72,7 +72,7 @@ export const monitorDefinitionSchema = z.object({
   config: z.record(z.unknown()).optional(),
   alertConfig: alertConfigSchema.optional(),
   tags: z.array(z.string()).optional(),
-})
+}).strict()
 
 // --- Jobs ---
 
@@ -87,7 +87,7 @@ export const jobDefinitionSchema = z.object({
   status: z.string().optional(),
   alertConfig: alertConfigSchema.optional(),
   tags: z.array(z.string()).optional(),
-})
+}).strict()
 
 // --- Status Pages ---
 
@@ -98,7 +98,7 @@ export const statusPageComponentDefinitionSchema = z.object({
   description: z.string().optional(),
   monitors: z.array(z.string()).optional(),
   position: z.number().int().min(0).optional(),
-})
+}).strict()
 
 export const statusPageDefinitionSchema = z.object({
   /** Database UUID. Present for existing resources, omitted for new ones. */
@@ -116,29 +116,29 @@ export const statusPageDefinitionSchema = z.object({
     fontColor: z.string().optional(),
     greens: z.string().optional(),
     reds: z.string().optional(),
-  }).optional(),
+  }).strict().optional(),
   notifications: z.object({
     allowEmailSubscribers: z.boolean().default(true),
     allowWebhookSubscribers: z.boolean().default(false),
     allowRssFeed: z.boolean().default(true),
-  }).optional(),
-})
+  }).strict().optional(),
+}).strict()
 
 // --- Project, API, Defaults ---
 
 export const projectConfigSchema = z.object({
   organization: z.string().min(1),
   project: z.string().min(1),
-})
+}).strict()
 
 export const apiConfigSchema = z.object({
   baseUrl: z.string().url().default('https://app.supercheck.io'),
-})
+}).strict()
 
 export const defaultsConfigSchema = z.object({
   runLocation: z.string().optional(),
   timeout: z.number().int().positive().optional(),
-})
+}).strict()
 
 // --- Root config ---
 
@@ -160,7 +160,7 @@ export const supercheckConfigSchema = z.object({
   notificationProviders: z.array(notificationProviderDefinitionSchema).optional(),
   variables: z.array(variableDefinitionSchema).optional(),
   tags: z.array(tagDefinitionSchema).optional(),
-})
+}).strict()
 
 // --- Inferred types ---
 

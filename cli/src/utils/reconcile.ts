@@ -1,3 +1,4 @@
+import { redact } from './redact.js'
 import pc from './colors.js'
 import { logger } from './logger.js'
 
@@ -155,6 +156,7 @@ function diffFields(local: Record<string, unknown>, remote: Record<string, unkno
     : []
   // Only compare fields present in the local definition
   for (const [key, localVal] of Object.entries(local)) {
+    if (localVal === undefined) continue
     // Skip internal/metadata fields
     if (['id', 'createdAt', 'updatedAt', 'projectId', 'organizationId', 'createdByUserId', '__maskedFields'].includes(key)) continue
 
@@ -167,7 +169,7 @@ function diffFields(local: Record<string, unknown>, remote: Record<string, unkno
       ? stripMaskedConfigFields(localVal, remoteVal, maskedFields)
       : [localVal, remoteVal]
     if (stableStringify(comparableLocal) !== stableStringify(comparableRemote)) {
-      diffs.push(`${key}: ${JSON.stringify(comparableRemote)} -> ${JSON.stringify(comparableLocal)}`)
+      diffs.push(`${key}: ${JSON.stringify(redact({ [key]: comparableRemote })[key])} -> ${JSON.stringify(redact({ [key]: comparableLocal })[key])}`)
     }
   }
   return diffs

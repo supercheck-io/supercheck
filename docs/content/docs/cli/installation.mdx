@@ -61,6 +61,10 @@ supercheck login --token sck_live_a1b2c3d4...
   `supercheck job trigger` uses `SUPERCHECK_TRIGGER_KEY`, not the CLI token. Add `SUPERCHECK_TOKEN` only when you also use `--wait` or other API commands.
 </Callout>
 
+Local test execution does not require a Supercheck account. Use `supercheck test run --offline --file <path>` or `supercheck job run --id <name-or-id> --local --offline`; these commands use local Playwright/k6 dependencies and skip server validation. Cloud commands still require credentials.
+
+For agent setup, `supercheck skills` prints versioned offline workflow guidance, and `supercheck skills install` creates an agent-skill pointer. `supercheck schema config --json` describes the configuration schema.
+
 ## Self-Hosted Setup
 
 Point the CLI at your self-hosted instance:

@@ -16,6 +16,8 @@ Supercheck CLI uses a **TypeScript configuration file** with full IntelliSense v
   Config files must **never** contain tokens. The CLI scans for token patterns (`sck_live_*`, `sck_trigger_*`, `sck_test_*`) and rejects any config containing them.
 </Callout>
 
+The CLI rejects unknown keys in typed configuration sections so misspellings surface during `config validate` or a sync operation. Provider-specific `config` maps remain extensible.
+
 ## Full Example
 
 ```ts title="supercheck.config.ts"
@@ -156,6 +158,16 @@ my-project/
   Test files pulled from the cloud use `slug.{uuid}.pw.ts` and `slug.{uuid}.k6.ts`. The UUID keeps paths stable across renames, while the slug makes files easy to identify locally.
 </Callout>
 
+## Deployment state
+
+When deploy creates a resource, the CLI records its server-assigned ID in `supercheck.state.json`. The mapping is scoped to the API origin and the actual organization and project returned by the server. It also tracks replacement IDs when a previously managed remote resource is deleted and recreated. Commit and share this file with CI so later deployments manage the same resources. The temporary `supercheck.state.json.lock` coordinates deploys only on a shared local filesystem; do not commit it.
+
+Names alone never establish ownership. If a same-name remote resource has no ID in the local config or state file, deploy stops and asks you to pull the resource or provide its explicit ID. Renaming an ID-less non-test resource likewise requires an explicit ID or a pull. Deploy resolves newly created test IDs before dependent jobs and synthetic monitors. It preserves local test file paths instead of renaming them after deployment. Monitor and job tag assignments are rejected before writes; standalone tag CRUD remains supported.
+
+Before sync operations, the CLI verifies configured organization and project IDs or slugs against the authenticated API context. This catches configuration that would otherwise point at a different project than the token.
+
+`config validate --offline` and `config print --offline` support local-only configurations without API credentials. During pull, managed test paths and existing browser and `testMatch` settings are preserved. Runner-type changes migrate files with backups; new tests must match configured custom globs or pull stops before writing.
+
 ## Config Schema Reference
 
 ### `project`
@@ -185,7 +197,7 @@ my-project/
 | Field | Type | Description |
 |-------|------|-------------|
 | `testMatch` | `string` | Glob pattern for Playwright test files |
-| `browser` | `string` | Browser to use (default: `chromium`; local runner executes with chromium) |
+| `browser` | `string` | Browser to use for local execution (`chromium`, `firefox`, or `webkit`; default: `chromium`) |
 
 ### `tests.k6`
 
@@ -260,6 +272,8 @@ my-project/
 | `config` | `object` | Provider-specific configuration, including webhook `method`, `headers`, and `bodyTemplate` |
 
 `pull` omits masked provider secrets such as webhook URLs and credentials. You can still edit non-secret settings such as `bodyTemplate`; `diff` detects those changes without exposing stored secrets.
+
+If you explicitly supply provider credentials in config, those values can still produce an update plan. Review provider changes in `diff` before deploying; do not assume a config containing secrets will always be treated as unchanged.
 
 For webhook notification providers, `config.bodyTemplate` is part of the managed configuration and should be kept in source control with the rest of the provider config. `supercheck pull` exports it, `supercheck diff` reports edits to it, and `supercheck deploy` applies those edits as provider configuration changes.
 

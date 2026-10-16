@@ -1,3 +1,4 @@
+import { redact } from '../utils/redact.js'
 import Table from 'cli-table3'
 import wrapAnsi from 'wrap-ansi'
 import pc, { colorEnabled } from '../utils/colors.js'
@@ -14,6 +15,12 @@ export type OutputColumn = {
 
 let currentFormat: OutputFormat = 'table'
 let wideOutput = false
+let envelope = false
+let pendingList: unknown = undefined
+export function setJsonEnvelope(value: boolean): void { envelope = value; pendingList = undefined }
+export function flushJsonList(): void {
+  if (pendingList !== undefined) { logger.output(JSON.stringify({ data: pendingList, pagination: null })); pendingList = undefined }
+}
 
 export function setWideOutput(wide: boolean): void {
   wideOutput = wide
@@ -36,9 +43,11 @@ export function output<T extends Record<string, unknown>>(
     columns?: OutputColumn[]
   },
 ): void {
+  data = redact(data)
   switch (currentFormat) {
     case 'json':
-      logger.output(JSON.stringify(data, null, 2))
+      if (envelope && Array.isArray(data)) pendingList = data
+      else logger.output(JSON.stringify(data, null, 2))
       break
 
     case 'quiet':
@@ -258,7 +267,10 @@ export function outputPagination(
   pagination: { page?: number; currentPage?: number; totalPages: number; total?: number; totalCount?: number } | null | undefined,
 ): void {
   if (!pagination) return
-  if (currentFormat === 'json') return
+  if (currentFormat === 'json') {
+    if (envelope && pendingList !== undefined) { logger.output(JSON.stringify({ data: pendingList, pagination })); pendingList = undefined }
+    return
+  }
 
   const page = pagination.page ?? pagination.currentPage ?? 1
   const total = pagination.total ?? pagination.totalCount ?? 0
@@ -307,6 +319,7 @@ function summarizeArray(_key: string, items: unknown[]): string {
  * Arrays of objects show a summary count with identifiers.
  */
 export function outputDetail(data: Record<string, unknown>): void {
+  data = redact(data)
   if (currentFormat === 'json') {
     logger.output(JSON.stringify(data, null, 2))
     return
@@ -372,4 +385,9 @@ export function outputNarrative(title: string, text: string): void {
   logger.output(process.stdout.isTTY && !wideOutput
     ? wrapAnsi(text.trimEnd(), process.stdout.columns > 0 ? process.stdout.columns : 120, { hard: true, trim: false })
     : text.trimEnd())
+}
+
+/** Keep existing human confirmations concise while returning mutation identities to machines. */
+export function outputMutation(data: Record<string, unknown>): void {
+  if (currentFormat !== 'table') outputDetail(data)
 }

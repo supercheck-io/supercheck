@@ -31,6 +31,7 @@ Notable features, fixes, and upgrade requirements for Supercheck users. App and 
 ## [CLI 0.3.1] - Unreleased
 
 - **License:** The CLI is now Apache-2.0, with LICENSE and NOTICE included in the npm package. Earlier published versions retain their original license terms. The app and worker, including Private Agent mode, remain AGPL-3.0-only.
+- **Agent workflows:** Add offline `skills`, config-schema, and capabilities commands; support account-free local test and job execution, cloud test execution, and waiting on existing runs. Improve JSON plans/results, confirmation handling, project-target checks, and deployment state tracking with generated resource IDs.
 
 ## [CLI 0.3.0] - 2026-10-07
 
