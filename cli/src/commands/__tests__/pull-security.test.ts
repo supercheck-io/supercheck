@@ -63,7 +63,7 @@ describe('pulled config source', () => {
     expect(source).not.toContain('process.env.SUPERCHECK_TOKEN')
   })
   it('does not link secret variables to credential-like or malformed environment names', () => {
-    for (const name of ['AWS_SECRET_ACCESS_KEY', 'GITHUB_TOKEN', 'NPM_TOKEN', 'DATABASE_URL', 'SUPERCHECK_TOKEN', 'my-secret', 'a b', 'HOME']) expect(isSafeEnvReferenceName(name.toUpperCase())).toBe(false)
+    for (const name of ['AWS_SECRET_ACCESS_KEY', 'GITHUB_TOKEN', 'NPM_TOKEN', 'DATABASE_URL', 'SUPERCHECK_TOKEN', 'my-secret', 'a b', 'HOME', 'NODE_AUTH_TOKEN', 'PGPASSWORD', 'MYSQL_PWD', 'REDIS_URL', 'OPENAI_API_KEY']) expect(isSafeEnvReferenceName(name.toUpperCase())).toBe(false)
     for (const name of ['API_KEY', 'STRIPE_SECRET', 'SLACK_WEBHOOK']) expect(isSafeEnvReferenceName(name)).toBe(true)
     const source = generateConfigContent({ orgId: 'o', projectId: 'p', baseUrl: 'https://example.com', monitors: [], jobs: [], tags: [], notificationProviders: [], statusPages: [],
       variables: buildVariableDefinitions([{ id: 'a', key: 'AWS_SECRET_ACCESS_KEY', value: 'x', isSecret: true }, { id: 'b', key: 'API_KEY', value: 'x', isSecret: true }] as never) })

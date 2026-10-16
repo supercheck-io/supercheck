@@ -490,7 +490,7 @@ class EnvRef {
 // same name. Refuse names that could point at the user's own credentials or CI runtime, so a project member cannot
 // name a secret AWS_SECRET_ACCESS_KEY and have a later deploy send that value back.
 const SAFE_ENV_NAME = /^[A-Z][A-Z0-9_]*$/
-const RESERVED_ENV_NAME = /^(?:SUPERCHECK_|AWS_|AZURE_|GCP_|GOOGLE_|GITHUB_|GH_|GITLAB_|CI_|ACTIONS_|RUNNER_|NPM_|YARN_|DOCKER_|KUBE|SSH_|GPG_|HOME$|PATH$|USER$|SHELL$|DATABASE_URL$|DB_URL$|REDIS_URL$)/
+const RESERVED_ENV_NAME = /^(?:SUPERCHECK_|AWS_|AZURE_|GCP_|GOOGLE_|GITHUB_|GH_|GITLAB_|CI_|ACTIONS_|RUNNER_|NPM_|NODE_|YARN_|PNPM_|DOCKER_|KUBE|SSH_|GPG_|PG|POSTGRES|MYSQL|MONGO|REDIS|TWINE_|PYPI_|CARGO_|OPENAI_|ANTHROPIC_|HOME$|PATH$|USER$|SHELL$|DATABASE_URL$|DB_URL$)/
 export function isSafeEnvReferenceName(name: string): boolean {
   return SAFE_ENV_NAME.test(name) && !RESERVED_ENV_NAME.test(name)
 }
