@@ -39,6 +39,8 @@ export function EditLocationDialog({
     location.coordinates?.lon?.toString() || ""
   );
   const [isDefault, setIsDefault] = React.useState(location.isDefault);
+  const [supportsBrowser, setSupportsBrowser] = React.useState(location.supportsBrowser);
+  const [supportsK6, setSupportsK6] = React.useState(location.supportsK6);
   const [sortOrder, setSortOrder] = React.useState(
     location.sortOrder.toString()
   );
@@ -51,6 +53,8 @@ export function EditLocationDialog({
     setLat(location.coordinates?.lat?.toString() || "");
     setLon(location.coordinates?.lon?.toString() || "");
     setIsDefault(location.isDefault);
+    setSupportsBrowser(location.supportsBrowser);
+    setSupportsK6(location.supportsK6);
     setSortOrder(location.sortOrder.toString());
   }, [location]);
 
@@ -80,6 +84,8 @@ export function EditLocationDialog({
         flag: flag.trim() || null,
         coordinates,
         isDefault,
+        supportsBrowser,
+        supportsK6,
         sortOrder: parseInt(sortOrder, 10) || 0,
       });
       toast.success(`Location "${name.trim()}" updated`);
@@ -175,6 +181,33 @@ export function EditLocationDialog({
                   onChange={(e) => setLon(e.target.value)}
                 />
               </div>
+            </div>
+
+            {/* Workload capabilities */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="edit-location-browser"
+                  checked={supportsBrowser}
+                  onCheckedChange={setSupportsBrowser}
+                />
+                <Label htmlFor="edit-location-browser" className="cursor-pointer">
+                  Browser execution (Playwright)
+                </Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="edit-location-k6"
+                  checked={supportsK6}
+                  onCheckedChange={setSupportsK6}
+                />
+                <Label htmlFor="edit-location-k6" className="cursor-pointer">
+                  Performance tests (k6)
+                </Label>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                HTTP, SSL, ping and port monitors are always available in an enabled location.
+              </p>
             </div>
 
             {/* Default + Sort order */}

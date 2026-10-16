@@ -22,7 +22,11 @@ import {
 import { hashApiKey } from "@/lib/security/api-key-hash";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
-import { resolveProjectK6Location } from "@/lib/location-registry";
+import {
+  assertProjectSupportsBrowser,
+  LocationWorkloadUnavailableError,
+  resolveProjectK6Location,
+} from "@/lib/location-registry";
 import { buildBillingBlockedResponse } from "@/lib/billing-errors";
 import {
   buildExecutionQueueErrorResponse,
@@ -325,6 +329,18 @@ export async function POST(
           },
           { status: 400 }
         );
+      }
+    }
+
+
+    if (!isPerformanceJob) {
+      try {
+        await assertProjectSupportsBrowser(job.projectId!);
+      } catch (error) {
+        // Only the expected error is user-facing; anything else (e.g. a database
+        // failure) must not leak details and is handled by the route's outer catch.
+        if (!(error instanceof LocationWorkloadUnavailableError)) throw error;
+        return NextResponse.json({ error: error.message }, { status: 400 });
       }
     }
 

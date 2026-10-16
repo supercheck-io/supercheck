@@ -196,6 +196,16 @@ export function LocationsTable() {
                         Default
                       </TableBadge>
                     )}
+                    {!loc.supportsBrowser && (
+                      <TableBadge tone="neutral" compact>
+                        No browser
+                      </TableBadge>
+                    )}
+                    {!loc.supportsK6 && (
+                      <TableBadge tone="neutral" compact>
+                        No k6
+                      </TableBadge>
+                    )}
                   </TableCell>
                   <TableCell className="text-center">
                     <Switch

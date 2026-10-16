@@ -27,6 +27,46 @@ export const PROJECT_RESTRICTED_LOCATIONS_DISABLED_ERROR =
   "All restricted locations for this project are currently disabled. " +
   "Enable at least one assigned location or remove the project restrictions.";
 
+/**
+ * Workloads a location can be asked to run.
+ * - "monitor": HTTP/SSL/ping/port probes. Always allowed in an enabled location.
+ * - "browser": Playwright execution (synthetic monitors, tests, CI jobs).
+ * - "k6": k6 performance tests pinned to a location.
+ */
+export type LocationWorkload = "monitor" | "browser" | "k6";
+
+/** Thrown when no eligible location exists for a workload (never falls back across geographies). */
+export class LocationWorkloadUnavailableError extends Error {
+  constructor(
+    public readonly workload: LocationWorkload,
+    message?: string
+  ) {
+    super(message ?? workloadUnavailableMessage(workload));
+    this.name = "LocationWorkloadUnavailableError";
+  }
+}
+
+export function workloadUnavailableMessage(workload: LocationWorkload): string {
+  switch (workload) {
+    case "browser":
+      return "Browser checks are not available in this region.";
+    case "k6":
+      return "Performance tests are not available in this region.";
+    default:
+      return "This workload is not available in this region.";
+  }
+}
+
+/** Capability predicate shared by every validator, resolver and picker. */
+export function locationSupportsWorkload(
+  location: Pick<Location, "supportsBrowser" | "supportsK6">,
+  workload: LocationWorkload
+): boolean {
+  if (workload === "browser") return location.supportsBrowser;
+  if (workload === "k6") return location.supportsK6;
+  return true;
+}
+
 /** Returns true when the "local" location should be excluded (i.e., cloud mode). */
 export function shouldExcludeLocal(): boolean {
   return !isSelfHosted();
@@ -255,9 +295,53 @@ async function getProjectLocationAvailability(
 }
 
 export async function getProjectAvailableLocationCodes(
-  projectId: string
+  projectId: string,
+  workload?: LocationWorkload
 ): Promise<string[]> {
-  return (await getProjectAvailableLocations(projectId)).map((location) => location.code);
+  const available = await getProjectAvailableLocations(projectId);
+  return (workload
+    ? available.filter((location) => locationSupportsWorkload(location, workload))
+    : available
+  ).map((location) => location.code);
+}
+
+/** Enabled location codes (instance-wide) that can run the given workload. Cached. */
+export async function getWorkloadCapableLocationCodes(
+  workload: LocationWorkload
+): Promise<string[]> {
+  return (await getEnabledLocations())
+    .filter((location) => locationSupportsWorkload(location, workload))
+    .map((location) => location.code);
+}
+
+/** True when the code is enabled and supports the workload. Unknown codes are never capable. */
+export async function isLocationCapable(
+  code: string,
+  workload: LocationWorkload
+): Promise<boolean> {
+  const location = (await getEnabledLocations()).find((l) => l.code === code);
+  return !!location && locationSupportsWorkload(location, workload);
+}
+
+/**
+ * Playwright tests and CI jobs have no location of their own: they run on the
+ * location-less `playwright-global` queue. This rejects a project whose permitted
+ * locations are all probe-only. It does not choose where the global queue runs:
+ * workers consuming it pause themselves when their own location lacks
+ * `supports_browser` (see GlobalQueueCapabilityGuard), and WORKER_QUEUES decides
+ * which workers consume it at all.
+ */
+export async function assertProjectSupportsBrowser(projectId: string): Promise<void> {
+  const permitted = await getProjectAvailableLocations(projectId);
+  // Only block when the project has locations and every one is probe-only.
+  // A project with no usable locations at all keeps the pre-capability
+  // behaviour (global queue), so this gate never newly breaks existing setups.
+  if (
+    permitted.length > 0 &&
+    !permitted.some((location) => locationSupportsWorkload(location, "browser"))
+  ) {
+    throw new LocationWorkloadUnavailableError("browser");
+  }
 }
 
 export async function hasProjectLocationRestrictions(
@@ -296,10 +380,14 @@ export async function getFirstVisibleProjectRestrictionCode(
 }
 
 export async function getFirstProjectAvailableLocationCode(
-  projectId: string
+  projectId: string,
+  workload?: LocationWorkload
 ): Promise<string> {
-  const { locations: availableLocations, hasRestrictions } =
-    await getProjectLocationAvailability(projectId);
+  const availability = await getProjectLocationAvailability(projectId);
+  const { hasRestrictions } = availability;
+  const availableLocations = workload
+    ? availability.locations.filter((location) => locationSupportsWorkload(location, workload))
+    : availability.locations;
   const defaultCode = availableLocations.find((location) => location.isDefault)?.code;
 
   if (defaultCode) return defaultCode;
@@ -308,8 +396,15 @@ export async function getFirstProjectAvailableLocationCode(
   // If the project has explicit restrictions but all restricted locations are disabled,
   // do NOT fall through to the instance-wide default — that would bypass the restriction.
   if (hasRestrictions) {
+    // Distinguish "assigned locations exist but cannot run this workload" from "all disabled".
+    if (workload && availability.locations.length > 0) {
+      throw new LocationWorkloadUnavailableError(workload);
+    }
     throw new Error(PROJECT_RESTRICTED_LOCATIONS_DISABLED_ERROR);
   }
+
+  // No restrictions and nothing capable: never fall back to an incapable location.
+  if (workload) throw new LocationWorkloadUnavailableError(workload);
 
   return getFirstDefaultLocationCode();
 }
@@ -355,7 +450,7 @@ export async function resolveProjectK6Location(
   value?: string | null
 ): Promise<string> {
   if (!value) {
-    return getFirstProjectAvailableLocationCode(projectId);
+    return getFirstProjectAvailableLocationCode(projectId, "k6");
   }
 
   const normalizedValue = value.toLowerCase();
@@ -367,12 +462,20 @@ export async function resolveProjectK6Location(
         'The "global" location is not available when project location restrictions are enabled.'
       );
     }
+    // "global" means consumption by eligible k6 workers; with no k6-capable
+    // location there is nowhere eligible to run it.
+    if ((await getWorkloadCapableLocationCodes("k6")).length === 0) {
+      throw new LocationWorkloadUnavailableError("k6");
+    }
     return "global";
   }
 
   const availableCodes = await getProjectAvailableLocationCodes(projectId);
   if (!availableCodes.includes(normalizedValue)) {
     throw new Error(`Location code is not available for this project: ${normalizedValue}`);
+  }
+  if (!(await isLocationCapable(normalizedValue, "k6"))) {
+    throw new LocationWorkloadUnavailableError("k6");
   }
 
   return normalizedValue;

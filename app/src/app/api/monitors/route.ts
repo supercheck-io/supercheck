@@ -24,6 +24,11 @@ import { checkMonitorLimit } from "@/lib/middleware/plan-enforcement";
 import { insertWithinPlanLimit } from "@/lib/middleware/plan-limit-lock";
 import { subscriptionService } from "@/lib/services/subscription-service";
 import { getProjectAvailableLocationCodes } from "@/lib/location-registry";
+import {
+  findUnsupportedMonitorLocations,
+  unsupportedMonitorLocationsMessage,
+} from "@/lib/monitor-location-routing";
+import type { LocationConfig } from "@/db/schema";
 import { createLogger } from "@/lib/logger/index";
 import { validateMonitorConfiguration } from "@/lib/monitor-validation";
 
@@ -403,6 +408,17 @@ export async function POST(req: NextRequest) {
           { status: 400 },
         );
       }
+    }
+
+    const unsupportedCreate = await findUnsupportedMonitorLocations(
+      finalConfig.locationConfig,
+      rawData.type,
+    );
+    if (unsupportedCreate.length > 0) {
+      return NextResponse.json(
+        { error: unsupportedMonitorLocationsMessage(unsupportedCreate, rawData.type) },
+        { status: 400 },
+      );
     }
 
     logger.debug({ finalConfig }, "[MONITOR_CREATE] Final config");
@@ -791,6 +807,24 @@ export async function PUT(req: NextRequest) {
       if (invalidLocations.length > 0) {
         return NextResponse.json(
           { error: `Invalid location codes: ${invalidLocations.join(", ")}` },
+          { status: 400 },
+        );
+      }
+    }
+
+    if (updateData.config || updateData.type) {
+      const effectiveType = updateData.type ?? monitorData[0]?.type;
+      const effectiveConfig = (updateData.config ?? monitorData[0]?.config) as
+        | { locationConfig?: LocationConfig | null }
+        | null
+        | undefined;
+      const unsupportedUpdate = await findUnsupportedMonitorLocations(
+        effectiveConfig?.locationConfig,
+        effectiveType,
+      );
+      if (unsupportedUpdate.length > 0) {
+        return NextResponse.json(
+          { error: unsupportedMonitorLocationsMessage(unsupportedUpdate, effectiveType) },
           { status: 400 },
         );
       }

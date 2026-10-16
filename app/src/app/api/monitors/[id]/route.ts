@@ -24,6 +24,12 @@ import {
 } from "@/lib/s3-cleanup";
 import { createLogger } from "@/lib/logger/index";
 import { validateMonitorConfiguration } from "@/lib/monitor-validation";
+import {
+  findLocationsOutsideProject,
+  findUnsupportedMonitorLocations,
+  unsupportedMonitorLocationsMessage,
+} from "@/lib/monitor-location-routing";
+import type { LocationConfig } from "@/db/schema";
 
 const logger = createLogger({ module: "monitor-detail-api" }) as {
   debug: (data: unknown, msg?: string) => void;
@@ -177,6 +183,37 @@ export async function PUT(
     });
     if (!configurationValidation.success) {
       return NextResponse.json(configurationValidation, { status: 400 });
+    }
+
+    if (updateData.config?.locationConfig) {
+      const outside = await findLocationsOutsideProject(
+        updateData.config.locationConfig as LocationConfig,
+        authCtx.project.id,
+      );
+      if (outside.length > 0) {
+        return NextResponse.json(
+          { error: `Invalid location codes: ${outside.join(", ")}` },
+          { status: 400 },
+        );
+      }
+    }
+
+    if (updateData.config || updateData.type) {
+      const effectiveType = updateData.type ?? currentMonitor.type;
+      const effectiveConfig = (updateData.config ?? currentMonitor.config) as
+        | { locationConfig?: LocationConfig | null }
+        | null
+        | undefined;
+      const unsupported = await findUnsupportedMonitorLocations(
+        effectiveConfig?.locationConfig,
+        effectiveType,
+      );
+      if (unsupported.length > 0) {
+        return NextResponse.json(
+          { error: unsupportedMonitorLocationsMessage(unsupported, effectiveType) },
+          { status: 400 },
+        );
+      }
     }
 
     // Validate frequency bounds (1 minute minimum, 1440 minutes = 24 hours maximum)
@@ -748,6 +785,37 @@ export async function PATCH(
     });
     if (!configurationValidation.success) {
       return NextResponse.json(configurationValidation, { status: 400 });
+    }
+
+    if (rawData.config?.locationConfig) {
+      const outside = await findLocationsOutsideProject(
+        (updatePayload.config as { locationConfig?: LocationConfig } | undefined)
+          ?.locationConfig,
+        authCtx.project.id,
+      );
+      if (outside.length > 0) {
+        return NextResponse.json(
+          { error: `Invalid location codes: ${outside.join(", ")}` },
+          { status: 400 },
+        );
+      }
+    }
+
+    if (rawData.config) {
+      const effectiveConfig = (updatePayload.config ?? currentMonitor.config) as
+        | { locationConfig?: LocationConfig | null }
+        | null
+        | undefined;
+      const unsupported = await findUnsupportedMonitorLocations(
+        effectiveConfig?.locationConfig,
+        currentMonitor.type,
+      );
+      if (unsupported.length > 0) {
+        return NextResponse.json(
+          { error: unsupportedMonitorLocationsMessage(unsupported, currentMonitor.type) },
+          { status: 400 },
+        );
+      }
     }
 
     // Handle partial update for 'alertConfig'

@@ -1,7 +1,11 @@
 import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
-import { Logger } from '@nestjs/common';
+import {
+  Logger,
+  OnApplicationBootstrap,
+  OnModuleDestroy,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Job } from 'bullmq';
+import { Job, UnrecoverableError } from 'bullmq';
 import { sql, eq, and, type SQL } from 'drizzle-orm';
 import {
   K6ExecutionService,
@@ -14,6 +18,9 @@ import { CancellationService } from '../../common/services/cancellation.service'
 import * as schema from '../../db/schema';
 import { JobNotificationService } from '../../execution/services/job-notification.service';
 import { K6_QUEUE } from '../k6.constants';
+import { consumesWorkerQueue } from '../../common/worker-queues';
+import { locationSupportsWorkload } from '../../common/location/location-capability';
+import { GlobalQueueCapabilityGuard } from '../../common/location/global-queue-guard';
 
 type K6Task = K6ExecutionTask;
 
@@ -169,6 +176,24 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
     }
 
     try {
+      // Backstop for stale or misrouted jobs: never execute in a location that
+      // lost k6 capability. Checked inside the try so the run is marked failed
+      // (with job status and notifications) instead of staying queued. A DB
+      // error throws and retries; unknown capability is never treated as allowed.
+      const jobLocation = effectiveJobLocation.toLowerCase();
+      if (jobLocation !== 'global' && !jobLocationIsWildcard) {
+        const allowed = await locationSupportsWorkload(
+          this.dbService,
+          jobLocation,
+          'k6',
+        );
+        if (!allowed) {
+          throw new UnrecoverableError(
+            `Location "${jobLocation}" does not support k6 execution`,
+          );
+        }
+      }
+
       // Mark run as in-progress
       await this.dbService.db
         .update(schema.runs)
@@ -644,8 +669,16 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
   stalledInterval: 30000,
   maxStalledCount: 2,
   metrics: { maxDataPoints: 60 },
+  // Idle unless this worker consumes the global k6 queue (WORKER_QUEUES). The
+  // instance still serves handleProcess() for the regional dynamic workers.
+  autorun: consumesWorkerQueue('global-k6'),
 })
-export class K6ExecutionProcessor extends BaseK6ExecutionProcessor {
+export class K6ExecutionProcessor
+  extends BaseK6ExecutionProcessor
+  implements OnApplicationBootstrap, OnModuleDestroy
+{
+  private capabilityGuard: GlobalQueueCapabilityGuard | null = null;
+
   constructor(
     k6ExecutionService: K6ExecutionService,
     dbService: DbService,
@@ -665,6 +698,23 @@ export class K6ExecutionProcessor extends BaseK6ExecutionProcessor {
       hardStopNotificationService,
       cancellationService,
     );
+  }
+
+  onApplicationBootstrap(): void {
+    // k6-global has no location: the consuming worker's own location decides.
+    if (!consumesWorkerQueue('global-k6')) return;
+    this.capabilityGuard = new GlobalQueueCapabilityGuard(
+      () => this.worker,
+      this.dbService,
+      this.workerLocation,
+      'k6',
+      this.logger,
+    );
+    this.capabilityGuard.start();
+  }
+
+  onModuleDestroy(): void {
+    this.capabilityGuard?.stop();
   }
 
   async process(

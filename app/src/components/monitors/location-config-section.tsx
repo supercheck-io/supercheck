@@ -100,12 +100,15 @@ interface LocationConfigSectionProps {
   value?: LocationConfig | null;
   onChange: (config: LocationConfig) => void;
   disabled?: boolean;
+  /** Effective monitor type; synthetic monitors only run in browser-capable locations. */
+  monitorType?: string;
 }
 
 function LocationConfigSectionComponent({
   value,
   onChange,
   disabled = false,
+  monitorType,
 }: LocationConfigSectionProps) {
   // Fetch dynamic locations from API
   const { locations: dynamicLocations, isLoading: locationsLoading } =
@@ -127,6 +130,17 @@ function LocationConfigSectionComponent({
     }
     return map;
   }, [dynamicLocations]);
+
+  // Capability lookup. Unsupported locations stay visible (disabled) and are never
+  // removed from a saved selection here: the server rejects an unsupported save.
+  const supportsMap = React.useMemo(() => {
+    const map: Record<string, boolean> = {};
+    for (const loc of dynamicLocations) {
+      map[loc.code] =
+        monitorType === "synthetic_test" ? loc.supportsBrowser !== false : true;
+    }
+    return map;
+  }, [dynamicLocations, monitorType]);
 
   // All available location codes
   const availableLocationCodes = React.useMemo(
@@ -187,7 +201,10 @@ function LocationConfigSectionComponent({
       enabled &&
       (!currentConfig.locations || currentConfig.locations.length === 0)
     ) {
-      newConfig.locations = availableLocationCodes[0] ? [availableLocationCodes[0]] : [];
+      const firstSupported = availableLocationCodes.find(
+        (code) => supportsMap[code] !== false
+      );
+      newConfig.locations = firstSupported ? [firstSupported] : [];
     }
     onChange(newConfig);
   };
@@ -195,6 +212,10 @@ function LocationConfigSectionComponent({
   const handleLocationToggle = (location: MonitoringLocation) => {
     const currentConfig = value || DEFAULT_LOCATION_CONFIG;
     const currentLocations = currentConfig.locations || [];
+    // Unsupported locations can be deselected but never newly selected.
+    if (!currentLocations.includes(location) && supportsMap[location] === false) {
+      return;
+    }
     const newLocations = currentLocations.includes(location)
       ? currentLocations.filter((l) => l !== location)
       : [...currentLocations, location];
@@ -272,6 +293,8 @@ function LocationConfigSectionComponent({
                       const metadata = metadataMap[location];
                       const isSelected =
                         config.locations?.includes(location) || false;
+                      const unsupported = supportsMap[location] === false;
+                      const rowDisabled = disabled || (unsupported && !isSelected);
 
                       return (
                         <div
@@ -281,19 +304,19 @@ function LocationConfigSectionComponent({
                             isSelected
                               ? "border-primary bg-primary/5 dark:bg-primary/10"
                               : "border-border hover:border-primary/50",
-                            disabled && "opacity-50 cursor-not-allowed"
+                            rowDisabled && "opacity-50 cursor-not-allowed"
                           )}
                           onClick={() =>
-                            !disabled && handleLocationToggle(location)
+                            !rowDisabled && handleLocationToggle(location)
                           }
                         >
                           <Checkbox
                             className="h-3.5 w-3.5"
                             checked={isSelected}
                             onCheckedChange={() =>
-                              !disabled && handleLocationToggle(location)
+                              !rowDisabled && handleLocationToggle(location)
                             }
-                            disabled={disabled}
+                            disabled={rowDisabled}
                           />
                           <div className="flex-1">
                             <div className="flex items-center gap-2">
@@ -319,6 +342,12 @@ function LocationConfigSectionComponent({
                                 }
                               />
                             </div>
+                            {unsupported && (
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Browser checks are not available in this region.
+                                {isSelected && " Remove it to save this monitor."}
+                              </p>
+                            )}
                           </div>
                         </div>
                       );

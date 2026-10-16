@@ -17,7 +17,11 @@ import { applyVariablesToTestScripts, decodeTestScript } from "@/lib/job-executi
 import { validateK6Script } from "@/lib/k6-validator";
 import { subscriptionService } from "@/lib/services/subscription-service";
 import { polarUsageService } from "@/lib/services/polar-usage.service";
-import { resolveProjectK6Location } from "@/lib/location-registry";
+import {
+  assertProjectSupportsBrowser,
+  LocationWorkloadUnavailableError,
+  resolveProjectK6Location,
+} from "@/lib/location-registry";
 import { buildBillingBlockedResponse } from "@/lib/billing-errors";
 import { checkExecutionRateLimit } from "@/lib/execution-rate-limiter";
 import {
@@ -173,6 +177,18 @@ export async function POST(request: NextRequest) {
           },
           { status: 400 }
         );
+      }
+    }
+
+
+    if (!isPerformanceJob) {
+      try {
+        await assertProjectSupportsBrowser(project.id);
+      } catch (error) {
+        // Only the expected error is user-facing; anything else (e.g. a database
+        // failure) must not leak details and is handled by the route's outer catch.
+        if (!(error instanceof LocationWorkloadUnavailableError)) throw error;
+        return NextResponse.json({ error: error.message }, { status: 400 });
       }
     }
 

@@ -29,7 +29,7 @@ const logger = queueLogger;
 export interface MonitorJobData {
   monitorId: string;
   projectId?: string;
-  type: 'http_request' | 'website' | 'ping_host' | 'port_check';
+  type: 'http_request' | 'website' | 'ping_host' | 'port_check' | 'synthetic_test';
   target: string;
   config?: MonitorConfig;
   frequencyMinutes?: number;
@@ -80,7 +80,9 @@ async function enqueueMonitorExecutionJobs(
   const locationConfig = monitorConfig?.locationConfig as LocationConfig | null ?? null;
 
   // Get effective locations (multi-location monitoring) - now async
-  const effectiveLocations = await resolveMonitorLocations(locationConfig, jobData.projectId);
+  const effectiveLocations = await resolveMonitorLocations(locationConfig, jobData.projectId, {
+    monitorType: jobData.type,
+  });
   const expectedLocations = Array.from(new Set(effectiveLocations));
 
   // Get queue instances

@@ -56,21 +56,25 @@ export function LocationSelectionDialog({
 
   const fallbackLocation = useMemo(() => {
     // If the caller provided a default and it exists in options, use it.
-    if (defaultLocation && locationOptions.some((option) => option.value === defaultLocation)) {
+    if (
+      defaultLocation &&
+      locationOptions.some((option) => option.value === defaultLocation && !option.disabled)
+    ) {
       return defaultLocation;
     }
 
-    // Otherwise, prefer the first *non-global* option (a real location),
-    // falling back to the first option (which may be "global").
-    const firstReal = locationOptions.find((o) => o.value !== "global");
-    return firstReal?.value ?? locationOptions[0]?.value ?? "global";
+    // Otherwise, prefer the first selectable *non-global* option (a real location),
+    // falling back to the first selectable option (which may be "global").
+    const selectable = locationOptions.filter((o) => !o.disabled);
+    const firstReal = selectable.find((o) => o.value !== "global");
+    return firstReal?.value ?? selectable[0]?.value ?? "global";
   }, [defaultLocation, locationOptions]);
 
   // Non-global location codes for the map
   const locationCodes = useMemo(
     () =>
       locationOptions
-        .filter((o) => o.value !== "global")
+        .filter((o) => o.value !== "global" && !o.disabled)
         .map((o) => o.value),
     [locationOptions]
   );
@@ -109,17 +113,29 @@ export function LocationSelectionDialog({
               <Label
                 key={option.value}
                 htmlFor={`location-${option.value}`}
-                className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-border/60 bg-card/60 px-3 py-2.5 transition hover:border-primary/60 hover:bg-card/80"
+                className={`flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-card/60 px-3 py-2.5 transition ${
+                  option.disabled
+                    ? "cursor-not-allowed opacity-50"
+                    : "cursor-pointer hover:border-primary/60 hover:bg-card/80"
+                }`}
               >
-                <div className="flex items-center gap-1.5 font-medium text-foreground">
-                  {option.flag && (
-                    <span className="text-xl">{option.flag}</span>
+                <div className="flex flex-col">
+                  <div className="flex items-center gap-1.5 font-medium text-foreground">
+                    {option.flag && (
+                      <span className="text-xl">{option.flag}</span>
+                    )}
+                    <span className="text-sm">{option.name}</span>
+                  </div>
+                  {option.disabledReason && (
+                    <span className="text-xs text-muted-foreground">
+                      {option.disabledReason}
+                    </span>
                   )}
-                  <span className="text-sm">{option.name}</span>
                 </div>
                 <RadioGroupItem
                   id={`location-${option.value}`}
                   value={option.value}
+                  disabled={option.disabled}
                   className="h-3.5 w-3.5"
                 />
               </Label>

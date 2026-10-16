@@ -44,6 +44,8 @@ export const createLocationSchema = z.object({
     })
     .optional(),
   isDefault: z.boolean().optional(),
+  supportsBrowser: z.boolean().optional(),
+  supportsK6: z.boolean().optional(),
   sortOrder: z.number().int().min(0).optional(),
 });
 
@@ -60,6 +62,8 @@ export const updateLocationSchema = z.object({
     .nullable(),
   isEnabled: z.boolean().optional(),
   isDefault: z.boolean().optional(),
+  supportsBrowser: z.boolean().optional(),
+  supportsK6: z.boolean().optional(),
   sortOrder: z.number().int().min(0).optional(),
 });
 // Note: `code` is intentionally NOT in updateLocationSchema — it's immutable.

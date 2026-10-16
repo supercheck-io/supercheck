@@ -576,6 +576,85 @@ describe('ContainerExecutorService', () => {
       expect(job.spec?.template.spec?.tolerations).toBeUndefined();
     });
 
+    describe('execution placement config validation', () => {
+      const originalEnv = { ...process.env };
+      afterEach(() => {
+        process.env = { ...originalEnv };
+      });
+
+      const build = (config: Record<string, string>) =>
+        new ContainerExecutorService(
+          {
+            get: jest.fn((key: string, defaultValue?: string) => {
+              const all: Record<string, string> = {
+                WORKER_IMAGE: 'ghcr.io/supercheck-io/worker:test',
+                ...config,
+              };
+              return all[key] ?? defaultValue;
+            }),
+          } as any,
+          {
+            isCancelled: jest.fn().mockResolvedValue(false),
+            clearCancellationSignal: jest.fn().mockResolvedValue(undefined),
+          } as any,
+        );
+
+      it('only warns about a malformed selector outside cloud production', () => {
+        process.env.NODE_ENV = 'test';
+        const svc = build({ EXECUTION_NODE_SELECTOR: 'not-a-pair' });
+        expect((svc as any).executionNodeSelector).toBeUndefined();
+      });
+
+      describe.each([
+        ['malformed key=value selector', { EXECUTION_NODE_SELECTOR: 'region' }],
+        ['malformed JSON selector', { EXECUTION_NODE_SELECTOR: '{"region":' }],
+        [
+          'selector with a dropped entry',
+          { EXECUTION_NODE_SELECTOR: '{"region":"eu","bad":1}' },
+        ],
+        [
+          'non-array tolerations',
+          { EXECUTION_TOLERATIONS_JSON: '{"key":"a"}' },
+        ],
+        [
+          'tolerations with a non-object item',
+          { EXECUTION_TOLERATIONS_JSON: '[{"key":"a"}, 5]' },
+        ],
+      ])('fails startup in cloud production for %s', (_name, config) => {
+        it('throws', () => {
+          process.env.NODE_ENV = 'production';
+          delete process.env.SELF_HOSTED;
+          expect(() =>
+            build({ EXECUTION_RUNTIME_CLASS_NAME: 'gvisor', ...config }),
+          ).toThrow(/Invalid EXECUTION_/);
+        });
+      });
+
+      it('rejects a selector region that does not match WORKER_LOCATION in cloud production', () => {
+        process.env.NODE_ENV = 'production';
+        delete process.env.SELF_HOSTED;
+        expect(() =>
+          build({
+            EXECUTION_RUNTIME_CLASS_NAME: 'gvisor',
+            WORKER_LOCATION: 'asia-pacific',
+            EXECUTION_NODE_SELECTOR: 'region=us-east',
+          }),
+        ).toThrow(/does not match WORKER_LOCATION/);
+      });
+
+      it('accepts a valid region selector in cloud production', () => {
+        process.env.NODE_ENV = 'production';
+        delete process.env.SELF_HOSTED;
+        const svc = build({
+          EXECUTION_RUNTIME_CLASS_NAME: 'gvisor',
+          EXECUTION_NODE_SELECTOR: 'region=eu-central',
+        });
+        expect((svc as any).executionNodeSelector).toEqual({
+          region: 'eu-central',
+        });
+      });
+    });
+
     it('uses configured runtime class, node selector, and tolerations', () => {
       const configuredService = new ContainerExecutorService(
         {

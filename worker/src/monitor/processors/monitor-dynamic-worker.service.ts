@@ -5,7 +5,9 @@ import {
   Logger,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Worker, Job, DelayedError } from 'bullmq';
+import { Worker, Job, DelayedError, UnrecoverableError } from 'bullmq';
+import { consumesWorkerQueue } from '../../common/worker-queues';
+import { locationSupportsWorkload } from '../../common/location/location-capability';
 import Redis from 'ioredis';
 import { buildRedisOptions } from '../../common/redis/redis-options';
 import {
@@ -57,6 +59,13 @@ export class MonitorDynamicWorkerService
     this.workerLocation = this.configService
       .get<string>('WORKER_LOCATION', 'local')
       .toLowerCase();
+
+    if (!consumesWorkerQueue('monitor')) {
+      this.logger.log(
+        'WORKER_QUEUES excludes "monitor": monitor queues will not be consumed',
+      );
+      return;
+    }
 
     this.connection = this.createRedisConnection();
 
@@ -346,6 +355,10 @@ export class MonitorDynamicWorkerService
         throw new Error(
           'Persisted monitor result unavailable for aggregation retry',
         );
+      // Backstop for stale/misrouted jobs. Only on the execute path: a saved
+      // result (aggregation retry) must always be allowed to finish, so revoking
+      // a capability never discards results already produced.
+      if (!saved) await this.assertBrowserCapability(job.data, jobLocation);
       const result = saved
         ? {
             ...saved,
@@ -376,8 +389,33 @@ export class MonitorDynamicWorkerService
       return [result];
     }
 
-    // Legacy/single queue mode
+    // Legacy/single queue mode: the job runs from this worker's own location.
+    await this.assertBrowserCapability(job.data, this.workerLocation);
     return this.monitorService.executeMonitorWithLocations(job.data);
+  }
+
+  /**
+   * Synthetic (Playwright) monitors run in this worker, so the job's effective
+   * execution location must support browser execution. HTTP/ping/port/SSL
+   * monitors are never checked. A revoked capability fails the job permanently
+   * (UnrecoverableError) so handleFinalJobFailure still completes aggregation
+   * with an error result; a DB error throws a normal error and retries.
+   */
+  private async assertBrowserCapability(
+    data: MonitorJobDataDto,
+    executionLocation: string,
+  ): Promise<void> {
+    if (data.type !== 'synthetic_test') return;
+    const allowed = await locationSupportsWorkload(
+      this.dbService,
+      executionLocation,
+      'browser',
+    );
+    if (!allowed) {
+      throw new UnrecoverableError(
+        `Browser checks are not available in location "${executionLocation}"`,
+      );
+    }
   }
 
   /**

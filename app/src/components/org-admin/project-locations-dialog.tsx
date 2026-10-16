@@ -96,6 +96,8 @@ export function ProjectLocationsDialog({
         coordinates: null,
         isEnabled: false,
         isDefault: false,
+        supportsBrowser: true,
+        supportsK6: true,
         sortOrder: 999,
         createdAt: "",
         updatedAt: "",

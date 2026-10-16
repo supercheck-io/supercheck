@@ -30,6 +30,8 @@ export function AddLocationDialog({ open, onOpenChange }: AddLocationDialogProps
   const [lat, setLat] = React.useState("");
   const [lon, setLon] = React.useState("");
   const [isDefault, setIsDefault] = React.useState(false);
+  const [supportsBrowser, setSupportsBrowser] = React.useState(true);
+  const [supportsK6, setSupportsK6] = React.useState(true);
   const [sortOrder, setSortOrder] = React.useState("0");
   const reservedCodes = React.useMemo(
     () => new Set(["global", "all", "default", "none", "any", "local"]),
@@ -90,6 +92,8 @@ export function AddLocationDialog({ open, onOpenChange }: AddLocationDialogProps
         flag: flag.trim() || undefined,
         coordinates,
         isDefault,
+        supportsBrowser,
+        supportsK6,
         sortOrder: parseInt(sortOrder, 10) || 0,
       });
       toast.success(`Location "${name.trim()}" created`);
@@ -201,6 +205,33 @@ export function AddLocationDialog({ open, onOpenChange }: AddLocationDialogProps
                   onChange={(e) => setLon(e.target.value)}
                 />
               </div>
+            </div>
+
+            {/* Workload capabilities */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="location-browser"
+                  checked={supportsBrowser}
+                  onCheckedChange={setSupportsBrowser}
+                />
+                <Label htmlFor="location-browser" className="cursor-pointer">
+                  Browser execution (Playwright)
+                </Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="location-k6"
+                  checked={supportsK6}
+                  onCheckedChange={setSupportsK6}
+                />
+                <Label htmlFor="location-k6" className="cursor-pointer">
+                  Performance tests (k6)
+                </Label>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                HTTP, SSL, ping and port monitors are always available in an enabled location.
+              </p>
             </div>
 
             {/* Default + Sort order */}

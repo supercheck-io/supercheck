@@ -1,5 +1,6 @@
 jest.mock('bullmq', () => ({
   DelayedError: jest.requireActual('bullmq').DelayedError,
+  UnrecoverableError: jest.requireActual('bullmq').UnrecoverableError,
   Worker: jest.fn().mockImplementation(() => ({
     on: jest.fn(),
     close: jest.fn().mockResolvedValue(undefined),
@@ -18,7 +19,9 @@ jest.mock('../../common/heartbeat/heartbeat.service', () => ({
 
 import { EventEmitter } from 'events';
 import { ConfigService } from '@nestjs/config';
-import { Worker, Job } from 'bullmq';
+import { Worker, Job, UnrecoverableError } from 'bullmq';
+import { clearLocationCapabilityCache } from '../../common/location/location-capability';
+import { resetWorkerQueuesForTests } from '../../common/worker-queues';
 import { MonitorJobDataDto } from '../dto/monitor-job.dto';
 import Redis from 'ioredis';
 import { MonitorDynamicWorkerService } from './monitor-dynamic-worker.service';
@@ -632,5 +635,133 @@ describe('MonitorDynamicWorkerService lifecycle', () => {
       expect.objectContaining({ monitorId: 'monitor-1', isUp: true }),
       expect.objectContaining({ persisted: true }),
     );
+  });
+});
+
+describe('MonitorDynamicWorkerService workload gating and backstops', () => {
+  const originalQueues = process.env.WORKER_QUEUES;
+  beforeEach(() => resetWorkerQueuesForTests());
+  afterEach(() => {
+    if (originalQueues === undefined) delete process.env.WORKER_QUEUES;
+    else process.env.WORKER_QUEUES = originalQueues;
+    clearLocationCapabilityCache();
+    resetWorkerQueuesForTests();
+  });
+
+  function build(execute: jest.Mock, saved?: object) {
+    const executeMonitor = jest.fn().mockResolvedValue({
+      monitorId: 'monitor-1',
+      location: 'us-east',
+      status: 'up',
+      isUp: true,
+      checkedAt: new Date(),
+    });
+    const save = jest.fn().mockResolvedValue(undefined);
+    const service = new MonitorDynamicWorkerService(
+      {
+        executeMonitor,
+        saveDistributedMonitorResult: save,
+      } as unknown as MonitorService,
+      new ConfigService(),
+      {} as HeartbeatService,
+      {
+        db: {
+          execute,
+          query: {
+            monitorResults: { findFirst: jest.fn().mockResolvedValue(saved) },
+          },
+        },
+      } as unknown as DbService,
+    );
+    return { service, executeMonitor, save };
+  }
+
+  const job = (type: string, extra: object = {}) =>
+    ({
+      name: 'executeMonitorJob',
+      data: {
+        monitorId: 'monitor-1',
+        type,
+        executionLocation: 'us-east',
+        executionGroupId: 'group-1',
+        expectedLocations: ['us-east'],
+        ...extra,
+      },
+    }) as unknown as Job<MonitorJobDataDto>;
+
+  it('fails a synthetic job permanently when the location lost browser capability', async () => {
+    const execute = jest
+      .fn()
+      .mockResolvedValue([{ supports_browser: false, supports_k6: false }]);
+    const { service, executeMonitor } = build(execute);
+    await expect(
+      service['processJob'](job('synthetic_test')),
+    ).rejects.toBeInstanceOf(UnrecoverableError);
+    expect(executeMonitor).not.toHaveBeenCalled();
+  });
+
+  it('runs a synthetic job when the location supports browser', async () => {
+    const execute = jest
+      .fn()
+      .mockResolvedValue([{ supports_browser: true, supports_k6: false }]);
+    const { service, executeMonitor } = build(execute);
+    await service['processJob'](job('synthetic_test'));
+    expect(executeMonitor).toHaveBeenCalledTimes(1);
+  });
+
+  it('never checks capability for HTTP monitors', async () => {
+    const execute = jest.fn();
+    const { service, executeMonitor } = build(execute);
+    await service['processJob'](job('website'));
+    expect(execute).not.toHaveBeenCalled();
+    expect(executeMonitor).toHaveBeenCalledTimes(1);
+  });
+
+  it('treats a capability lookup failure as retryable, not as allowed', async () => {
+    const execute = jest.fn().mockRejectedValue(new Error('db down'));
+    const { service, executeMonitor } = build(execute);
+    const error = await service['processJob'](job('synthetic_test')).catch(
+      (e: unknown) => e,
+    );
+    expect(error).toBeInstanceOf(Error);
+    expect(error).not.toBeInstanceOf(UnrecoverableError);
+    expect(executeMonitor).not.toHaveBeenCalled();
+  });
+
+  it('lets an aggregation retry finish even after capability is revoked', async () => {
+    const execute = jest
+      .fn()
+      .mockResolvedValue([{ supports_browser: false, supports_k6: false }]);
+    const saved = {
+      monitorId: 'monitor-1',
+      location: 'us-east',
+      status: 'up',
+      isUp: true,
+      checkedAt: new Date(),
+      details: null,
+      responseTimeMs: 1,
+      testExecutionId: null,
+      testReportS3Url: null,
+    };
+    const { service, executeMonitor, save } = build(execute, saved);
+    await service['processJob'](
+      job('synthetic_test', { aggregationOnly: true }),
+    );
+    expect(execute).not.toHaveBeenCalled();
+    expect(executeMonitor).not.toHaveBeenCalled();
+    expect(save).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ persisted: true }),
+    );
+  });
+
+  it('starts no monitor consumers when WORKER_QUEUES excludes monitor', async () => {
+    process.env.WORKER_QUEUES = 'k6';
+    const execute = jest.fn();
+    const { service } = build(execute);
+    service['createRedisConnection'] = jest.fn();
+    await service.onModuleInit();
+    expect(service['createRedisConnection']).not.toHaveBeenCalled();
+    expect(execute).not.toHaveBeenCalled();
   });
 });

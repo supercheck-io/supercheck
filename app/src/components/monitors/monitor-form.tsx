@@ -1063,6 +1063,7 @@ export function MonitorForm({
               value={locationConfig}
               onChange={setLocationConfig}
               disabled={isSubmitting}
+              monitorType={type}
             />
             <div className="flex justify-end gap-4">
               <Button

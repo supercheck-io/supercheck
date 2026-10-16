@@ -42,6 +42,10 @@ export const locations = pgTable(
     }>(),
     isEnabled: boolean("is_enabled").notNull().default(true),
     isDefault: boolean("is_default").notNull().default(false),
+    // Workload capabilities: which heavy workloads may run in this location.
+    // HTTP/ping/port/SSL monitors are always allowed in an enabled location.
+    supportsBrowser: boolean("supports_browser").notNull().default(true),
+    supportsK6: boolean("supports_k6").notNull().default(true),
     sortOrder: integer("sort_order").notNull().default(0),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),

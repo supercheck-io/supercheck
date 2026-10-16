@@ -15,7 +15,11 @@ import { resolveProjectVariables, extractVariableNames, type VariableResolutionR
 import { isK6Script, validateK6Script } from "@/lib/k6-validator";
 import { db } from "@/utils/db";
 import { runs, type K6Location } from "@/db/schema";
-import { resolveProjectK6Location } from "@/lib/location-registry";
+import {
+  assertProjectSupportsBrowser,
+  LocationWorkloadUnavailableError,
+  resolveProjectK6Location,
+} from "@/lib/location-registry";
 import { polarUsageService } from "@/lib/services/polar-usage.service";
 import { buildBillingBlockedResponse } from "@/lib/billing-errors";
 import { checkExecutionRateLimit } from "@/lib/execution-rate-limiter";
@@ -145,6 +149,18 @@ export async function POST(request: NextRequest) {
           },
           { status: 400 }
         );
+      }
+    }
+
+
+    if (!isPerformanceTest) {
+      try {
+        await assertProjectSupportsBrowser(project.id);
+      } catch (error) {
+        // Only the expected error is user-facing; anything else (e.g. a database
+        // failure) must not leak details and is handled by the route's outer catch.
+        if (!(error instanceof LocationWorkloadUnavailableError)) throw error;
+        return NextResponse.json({ error: error.message }, { status: 400 });
       }
     }
 

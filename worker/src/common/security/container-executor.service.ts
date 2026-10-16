@@ -290,11 +290,33 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
         'EXECUTION_RUNTIME_CLASS_NAME=gvisor is required in cloud production',
       );
     }
+    // Placement decides where execution pods physically run (e.g. EU-only).
+    // In cloud production a malformed value must stop the worker instead of
+    // silently running with no pinning.
     this.executionNodeSelector = this.parseExecutionNodeSelector(
       this.configService.get<string>('EXECUTION_NODE_SELECTOR'),
+      isCloudProduction,
     );
+    const workerLocation = (
+      this.configService.get<string>('WORKER_LOCATION') ?? ''
+    )
+      .trim()
+      .toLowerCase();
+    const selectedRegion = this.executionNodeSelector?.region?.toLowerCase();
+    if (
+      isCloudProduction &&
+      selectedRegion &&
+      workerLocation &&
+      workerLocation !== 'local' &&
+      selectedRegion !== workerLocation
+    ) {
+      throw new Error(
+        `EXECUTION_NODE_SELECTOR region "${selectedRegion}" does not match WORKER_LOCATION "${workerLocation}"`,
+      );
+    }
     this.executionTolerations = this.parseExecutionTolerations(
       this.configService.get<string>('EXECUTION_TOLERATIONS_JSON'),
+      isCloudProduction,
     );
     this.executionDnsNameservers = this.parseExecutionDnsNameservers(
       this.configService.get<string>('EXECUTION_DNS_NAMESERVERS'),
@@ -2205,11 +2227,21 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
 
   private parseExecutionNodeSelector(
     rawValue?: string,
+    strict = false,
   ): Record<string, string> | undefined {
     const trimmed = rawValue?.trim();
     if (!trimmed) {
       return undefined;
     }
+    const invalid = (message: string): undefined => {
+      if (strict) {
+        throw new Error(`Invalid EXECUTION_NODE_SELECTOR: ${message}`);
+      }
+      this.logger.warn(
+        `Invalid EXECUTION_NODE_SELECTOR value; ignoring custom selector: ${message}`,
+      );
+      return undefined;
+    };
 
     if (trimmed.startsWith('{')) {
       try {
@@ -2218,23 +2250,22 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
           throw new Error('value must be a JSON object');
         }
 
+        const entries = Object.entries(parsed);
         const selector = Object.fromEntries(
-          Object.entries(parsed).flatMap(([key, value]) => {
+          entries.flatMap(([key, value]) => {
             if (!key.trim() || typeof value !== 'string' || !value.trim()) {
               return [];
             }
             return [[key.trim(), value.trim()]];
           }),
         );
+        if (strict && Object.keys(selector).length !== entries.length) {
+          throw new Error('entries must be non-empty string pairs');
+        }
 
         return Object.keys(selector).length > 0 ? selector : undefined;
       } catch (error) {
-        this.logger.warn(
-          `Invalid EXECUTION_NODE_SELECTOR value; ignoring custom selector: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
-        return undefined;
+        return invalid(error instanceof Error ? error.message : String(error));
       }
     }
 
@@ -2244,10 +2275,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       const key = rawKey?.trim();
       const value = rawValueParts.join('=').trim();
       if (!key || !value) {
-        this.logger.warn(
-          'Invalid EXECUTION_NODE_SELECTOR value; expected key=value pairs',
-        );
-        return undefined;
+        return invalid('expected key=value pairs');
       }
       selector[key] = value;
     }
@@ -2257,6 +2285,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
 
   private parseExecutionTolerations(
     rawValue?: string,
+    strict = false,
   ): k8s.V1Toleration[] | undefined {
     const trimmed = rawValue?.trim();
     if (!trimmed) {
@@ -2274,8 +2303,19 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
           !!item && typeof item === 'object' && !Array.isArray(item),
       );
 
+      if (strict && tolerations.length !== parsed.length) {
+        throw new Error('every toleration must be an object');
+      }
+
       return tolerations.length > 0 ? tolerations : undefined;
     } catch (error) {
+      if (strict) {
+        throw new Error(
+          `Invalid EXECUTION_TOLERATIONS_JSON: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
       this.logger.warn(
         `Invalid EXECUTION_TOLERATIONS_JSON value; ignoring custom tolerations: ${
           error instanceof Error ? error.message : String(error)

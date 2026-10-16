@@ -2,6 +2,7 @@
 
 jest.mock("@/lib/location-registry", () => ({
   getAllEnabledLocationCodes: jest.fn(),
+  getWorkloadCapableLocationCodes: jest.fn(),
   getDefaultLocationCodes: jest.fn(),
   getFirstDefaultLocationCode: jest.fn(),
   getProjectAvailableLocationCodes: jest.fn(),
@@ -15,6 +16,8 @@ jest.mock("@/lib/worker-registry", () => ({
 }));
 
 import {
+  findLocationsOutsideProject,
+  findUnsupportedMonitorLocations,
   isMonitorLocationResolutionError,
   partitionMonitorLocationsByAvailability,
   resolveDefaultMonitorLocations,
@@ -23,6 +26,7 @@ import {
 
 const locationRegistry = jest.requireMock("@/lib/location-registry") as {
   getAllEnabledLocationCodes: jest.Mock;
+  getWorkloadCapableLocationCodes: jest.Mock;
   getDefaultLocationCodes: jest.Mock;
   getFirstDefaultLocationCode: jest.Mock;
   getProjectAvailableLocationCodes: jest.Mock;
@@ -127,5 +131,76 @@ describe("monitor-location-routing", () => {
       enqueuedLocations: ["us-east"],
       skippedLocations: ["eu-central", "ap-south"],
     });
+  });
+});
+
+describe("monitor-location-routing workload capabilities", () => {
+  const synthetic = { monitorType: "synthetic_test" };
+  const config = (locations: string[]) => ({
+    enabled: true,
+    locations,
+    threshold: 50,
+    strategy: "majority" as const,
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    locationRegistry.getAllEnabledLocationCodes.mockResolvedValue(["eu-central", "us-east", "asia-pacific"]);
+    locationRegistry.getWorkloadCapableLocationCodes.mockResolvedValue(["eu-central"]);
+    locationRegistry.getDefaultLocationCodes.mockResolvedValue(["eu-central"]);
+    locationRegistry.getFirstDefaultLocationCode.mockResolvedValue("eu-central");
+    locationRegistry.getProjectAvailableLocationCodes.mockResolvedValue(["eu-central", "us-east", "asia-pacific"]);
+    locationRegistry.hasProjectLocationRestrictions.mockResolvedValue(false);
+  });
+
+  it("leaves HTTP monitors unrestricted across probe-only regions", async () => {
+    await expect(
+      resolveMonitorLocations(config(["eu-central", "us-east", "asia-pacific"]), "p1", { monitorType: "website" })
+    ).resolves.toEqual(["eu-central", "us-east", "asia-pacific"]);
+    expect(locationRegistry.getWorkloadCapableLocationCodes).not.toHaveBeenCalled();
+  });
+
+  it("keeps only browser-capable locations for synthetic monitors", async () => {
+    await expect(
+      resolveMonitorLocations(config(["eu-central", "us-east"]), "p1", synthetic)
+    ).resolves.toEqual(["eu-central"]);
+  });
+
+  it("throws a configuration error, not another geography, when no selected location is capable", async () => {
+    const error = await resolveMonitorLocations(config(["us-east", "asia-pacific"]), "p1", synthetic).catch((e) => e);
+    expect(error).toBeInstanceOf(Error);
+    expect(isMonitorLocationResolutionError(error.message)).toBe(true);
+    expect(error.message).toContain("browser-capable");
+  });
+
+  it("resolves synthetic defaults only within capable locations", async () => {
+    locationRegistry.getDefaultLocationCodes.mockResolvedValue(["us-east"]);
+    await expect(resolveDefaultMonitorLocations("p1", synthetic)).resolves.toEqual(["eu-central"]);
+  });
+
+  it("does not escape project restrictions for synthetic defaults", async () => {
+    locationRegistry.hasProjectLocationRestrictions.mockResolvedValue(true);
+    locationRegistry.getProjectAvailableLocationCodes.mockImplementation(
+      async (_p: string, workload?: string) => (workload ? [] : ["us-east"])
+    );
+    const error = await resolveDefaultMonitorLocations("p1", synthetic).catch((e) => e);
+    expect(isMonitorLocationResolutionError(error.message)).toBe(true);
+    expect(error.message).toContain("browser checks");
+  });
+
+  it("finds unsupported selections only when the config is enabled and the type is synthetic", async () => {
+    await expect(findUnsupportedMonitorLocations(config(["eu-central", "us-east"]), "synthetic_test")).resolves.toEqual(["us-east"]);
+    await expect(findUnsupportedMonitorLocations(config(["us-east"]), "website")).resolves.toEqual([]);
+    await expect(
+      findUnsupportedMonitorLocations({ ...config(["us-east"]), enabled: false }, "synthetic_test")
+    ).resolves.toEqual([]);
+  });
+
+  it("reports selected codes outside the project's allowed locations", async () => {
+    locationRegistry.getProjectAvailableLocationCodes.mockResolvedValue(["eu-central"]);
+    await expect(
+      findLocationsOutsideProject(config(["eu-central", "us-east", "nowhere"]), "p1")
+    ).resolves.toEqual(["us-east", "nowhere"]);
+    await expect(findLocationsOutsideProject(null, "p1")).resolves.toEqual([]);
   });
 });

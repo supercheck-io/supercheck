@@ -627,6 +627,16 @@ export class CapacityManager {
         }, { jobId: jobData.runId });
       } else {
         const location = (jobData.taskData.location as string) || 'global';
+        // Capability may have been revoked while the job waited in the capacity queue.
+        // Fail through the same path as a disappeared queue; never run elsewhere.
+        if (location !== 'global') {
+          const { isLocationCapable } = await import('./location-registry');
+          if (!(await isLocationCapable(location, 'k6'))) {
+            throw new Error(
+              `Location "${location}" no longer supports k6 execution; job cannot be promoted`
+            );
+          }
+        }
         const queue = queues.k6Queues[location];
         if (!queue) {
           const available = Object.keys(queues.k6Queues).join(', ');
