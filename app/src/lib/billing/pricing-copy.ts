@@ -5,9 +5,14 @@ export const PRICING_FAQS = [
       "Yes. Your account has one default organization, and all projects within it share your monthly subscription, usage allowances, member limits, and spending controls. You can create and switch projects without purchasing another subscription. Projects you join by invitation use their host team's plan and allowances separately; joining a paid team does not require a personal subscription. Only the host organization owner can manage billing.",
   },
   {
+    question: "Where do Cloud checks run?",
+    answer:
+      "Supercheck Cloud launches with one EU monitoring location. We plan to add more regions. Enterprise can use custom locations, and self-hosted deployments can run checks wherever you deploy.",
+  },
+  {
     question: "How are browser execution minutes measured?",
     answer:
-      "Playwright tests and synthetic monitors share your minute allowance. Execution time is rounded to four decimal places in minutes per run, without a whole-minute minimum. A five-second run uses 0.0833 minutes. Each location and executed retry contributes usage. Failed or canceled executions can still consume compute usage. HTTP, ping, and port checks do not consume Playwright minutes.",
+      "Playwright tests and synthetic monitors share your minute allowance. Execution time is rounded to four decimal places in minutes per run, without a whole-minute minimum. A five-second run uses 0.0833 minutes. Each executed retry contributes usage, and if more locations are enabled, each location counts separately. Failed or canceled executions can still consume compute usage. HTTP, ping, and port checks do not consume Playwright minutes.",
   },
   {
     question: "How are load tests measured?",
