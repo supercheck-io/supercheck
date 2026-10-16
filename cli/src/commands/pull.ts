@@ -482,7 +482,15 @@ function buildJobDefinitions(
  * Build variable definitions from remote data.
  * Secret values are never written to config.
  */
-function buildVariableDefinitions(variables: RemoteVariable[]): Record<string, unknown>[] {
+/**
+ * A reference to a local environment variable in the generated config. Only code we construct can create one;
+ * server-supplied strings that merely look like `${NAME}` are always emitted as literals.
+ */
+class EnvRef {
+  constructor(readonly name: string) {}
+}
+
+export function buildVariableDefinitions(variables: RemoteVariable[]): Record<string, unknown>[] {
   // File-type variables are managed via the dashboard (multipart upload).
   // They cannot be round-tripped via config, so exclude them.
   const configVariables = variables.filter((v) => v.type !== 'file')
@@ -502,10 +510,7 @@ function buildVariableDefinitions(variables: RemoteVariable[]): Record<string, u
       const envVarName = v.key.toUpperCase()
       // Use bracket notation for names that aren't valid JS identifiers
       // (e.g. keys containing dashes, dots, spaces, or starting with digits)
-      const isValidIdentifier = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(envVarName)
-      def.value = isValidIdentifier
-        ? `\${${envVarName}}`
-        : `\${[${envVarName}]}`
+      def.value = new EnvRef(envVarName)
     } else {
       def.value = v.value ?? ''
     }
@@ -766,19 +771,11 @@ function formatConfigKey(key: string): string {
  * Produces clean, readable TS syntax (not JSON.stringify).
  */
 function formatValue(value: unknown, indent = 0): string {
+  if (value instanceof EnvRef) {
+    // Bracket notation for names that aren't valid JS identifiers (dashes, dots, spaces, leading digits).
+    return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(value.name) ? `process.env.${value.name} ?? ''` : `process.env[${JSON.stringify(value.name)}] ?? ''`
+  }
   if (typeof value === 'string') {
-    // Check if it's an env var reference like ${VAR_NAME} or ${[VAR-NAME]}
-    if (value.startsWith('${') && value.endsWith('}')) {
-      const inner = value.slice(2, -1)
-      // Bracket-notation reference: ${[VAR-NAME]} → process.env['VAR-NAME']
-      if (inner.startsWith('[') && inner.endsWith(']')) {
-        const varName = inner.slice(1, -1)
-        if (varName && !varName.includes(']'))
-          return `process.env[${JSON.stringify(varName)}] ?? ''`
-      }
-      if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(inner))
-        return `process.env.${inner} ?? ''`
-    }
     return JSON.stringify(value)
   }
   if (typeof value === 'number' || typeof value === 'boolean') return String(value)
