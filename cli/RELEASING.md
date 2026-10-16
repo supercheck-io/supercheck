@@ -19,6 +19,8 @@ npm view @supercheck/cli versions --json
 
 Confirm the package version is 0.3.1 and that version is absent from npm. Inspect the package contents: executable, type exports, README, architecture image, Apache-2.0 LICENSE, and NOTICE. Verify package.json and the lockfile both declare Apache-2.0. Future releases must update both package versions in `package-lock.json`, `package.json`, and the changelog.
 
+Exercise the packed installation, including offline `skills` guidance and account-free local execution. Before releasing the agent workflow changes, deploy a test, dependent job, and synthetic monitor against an isolated real API, then verify an identical second deploy sends zero writes. Preserve `supercheck.state.json` between deploys. See [agent workflow review notes](./AGENT_FIRST_REVIEW.md) for completed checks and remaining acceptance gates; mock API tests do not replace this real-server check.
+
 ## Authenticate and publish manually
 
 Use an npm account with package-write access:

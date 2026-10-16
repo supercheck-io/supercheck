@@ -50,7 +50,7 @@ The independent review report and PR bot findings were checked against source an
 
 Follow-up validation passed 362 tests in 29 suites, typecheck, lint, build, and all 31 process scenarios against a freshly packed installation. Diagnostic tests cover dotenv-only tokens and exported-token precedence without executing broken project configuration. The documentation production build and internal drift checker also passed. Measured repository-wide line coverage was 47.21%; hosted CI and real isolated cloud acceptance remain separate gates.
 
-The suggested trigger-permission regression is not present in the current API: both `GET /api/jobs/[id]` and `GET /api/runs/[runId]` require `job:view`. Keep the job preflight; a context-only probe would not establish permission to read run results. Server authorization remains authoritative.
+The suggested trigger-permission regression is not present in the current API: both `GET /api/jobs/[id]` and `GET /api/runs/[runId]` require `job:view`. Keep the job preflight; a context-only probe would not establish permission to read run results. Server authorization remains authoritative. After refreshing the base, both current main and the implementation branch have the same source inventory (255 app, 49 worker, and 39 E2E specs), so the reported inventory merge-order discrepancy no longer applies.
 
 Backup pruning remains manual to avoid deleting recovery data. Local output remains bounded, with an explicit truncation flag; native report/artifact details are available when the report fits. Schema description remains tied to the installed Zod 3 API and must be revalidated during a major Zod upgrade. These optional enhancements do not require a new output contract in this fix.
 
